@@ -133,8 +133,12 @@ func CheckAll(cfg *config.Config) error {
 		}
 	}
 
-	// Check cgroups.enabled -> requires cgroups v2 + ptrace
-	if cfg.Sandbox.Cgroups.Enabled {
+	// Check cgroups.enabled -> requires cgroups v2 + ptrace when agentsh must
+	// discover/manage its current process cgroup. When base_path is configured,
+	// the runtime CgroupManager probes that delegated parent directly; a generic
+	// startup probe of /proc/self/cgroup is misleading for systemd services using
+	// DelegateSubgroup=control.
+	if cfg.Sandbox.Cgroups.Enabled && cfg.Sandbox.Cgroups.BasePath == "" {
 		// Check cgroups v2
 		cgResult := checkCgroupsV2ResourceLimits()
 		cgResult.ConfigKey = "sandbox.cgroups.enabled"

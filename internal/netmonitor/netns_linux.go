@@ -117,8 +117,21 @@ func SetupNetNS(ctx context.Context, nsName string, subnetCIDR string, hostIf st
 	rollback = append(rollback, func() {
 		_ = run(context.Background(), "iptables", "-D", "FORWARD", "-d", subnetCIDR, "-j", "ACCEPT")
 	})
+	// Host firewalls (for example NixOS's nixos-fw chain) can drop packets
+	// from the session veth before they reach the host-side interceptor.
+	// Insert this at the front so transparent proxy/DNS listeners remain reachable.
+	if err := run(ctx, "iptables", "-I", "INPUT", "1", "-i", hostIf, "-s", subnetCIDR, "-j", "ACCEPT"); err != nil {
+		rollbackAll()
+		cleanupNS()
+		return nil, err
+	}
+	rollback = append(rollback, func() {
+		_ = run(context.Background(), "iptables", "-D", "INPUT", "-i", hostIf, "-s", subnetCIDR, "-j", "ACCEPT")
+	})
 
-	// Netns DNAT outbound to host-side interceptors.
+	// DNAT outbound traffic to host-side interceptors. TCP DNAT must happen in
+	// the host namespace PREROUTING chain so SO_ORIGINAL_DST observed by the
+	// host-side transparent listener reports the real target, not hostIP:proxyPort.
 	hostTCP := fmt.Sprintf("%s:%d", hostIP, proxyTCPPort)
 	hostDNS := fmt.Sprintf("%s:%d", hostIP, dnsUDPPort)
 	// Avoid rewriting traffic destined to the host veth IP.
@@ -132,11 +145,14 @@ func SetupNetNS(ctx context.Context, nsName string, subnetCIDR string, hostIf st
 		cleanupNS()
 		return nil, err
 	}
-	if err := run(ctx, "ip", "netns", "exec", nsName, "iptables", "-t", "nat", "-A", "OUTPUT", "-p", "tcp", "-j", "DNAT", "--to-destination", hostTCP); err != nil {
+	if err := run(ctx, "iptables", "-t", "nat", "-A", "PREROUTING", "-i", hostIf, "-p", "tcp", "-j", "DNAT", "--to-destination", hostTCP); err != nil {
 		rollbackAll()
 		cleanupNS()
 		return nil, err
 	}
+	rollback = append(rollback, func() {
+		_ = run(context.Background(), "iptables", "-t", "nat", "-D", "PREROUTING", "-i", hostIf, "-p", "tcp", "-j", "DNAT", "--to-destination", hostTCP)
+	})
 	if err := run(ctx, "ip", "netns", "exec", nsName, "iptables", "-t", "nat", "-A", "OUTPUT", "-p", "udp", "--dport", "53", "-j", "DNAT", "--to-destination", hostDNS); err != nil {
 		rollbackAll()
 		cleanupNS()
@@ -161,7 +177,10 @@ func (n *NetNS) Close(ctx context.Context) error {
 	}
 	_ = run(ctx, "ip", "netns", "del", n.Name)
 	_ = run(ctx, "ip", "link", "del", n.HostIfName)
-	// Best-effort cleanup NAT/FORWARD rules.
+	// Best-effort cleanup NAT/FORWARD/INPUT rules.
+	hostTCP := fmt.Sprintf("%s:%d", n.HostIP, n.ProxyTCPPort)
+	_ = run(ctx, "iptables", "-t", "nat", "-D", "PREROUTING", "-i", n.HostIfName, "-p", "tcp", "-j", "DNAT", "--to-destination", hostTCP)
+	_ = run(ctx, "iptables", "-D", "INPUT", "-i", n.HostIfName, "-s", n.SubnetCIDR, "-j", "ACCEPT")
 	_ = run(ctx, "iptables", "-t", "nat", "-D", "POSTROUTING", "-s", n.SubnetCIDR, "-j", "MASQUERADE")
 	_ = run(ctx, "iptables", "-D", "FORWARD", "-s", n.SubnetCIDR, "-j", "ACCEPT")
 	_ = run(ctx, "iptables", "-D", "FORWARD", "-d", n.SubnetCIDR, "-j", "ACCEPT")

@@ -53,7 +53,7 @@ func checkPtraceInject() (injectable bool, detail string) {
 
 // probePtraceAttach forks a short-lived child and attempts PTRACE_SEIZE.
 func probePtraceAttach() bool {
-	cmd := exec.Command("/bin/sleep", "0.1")
+	cmd := exec.Command("sleep", "0.1")
 	if err := cmd.Start(); err != nil {
 		return false
 	}
