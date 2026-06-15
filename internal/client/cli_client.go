@@ -19,6 +19,9 @@ type CLIClient interface {
 	GetSession(ctx context.Context, id string) (types.Session, error)
 	DestroySession(ctx context.Context, id string) error
 	PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error)
+	DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error)
+	AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error)
+	RejectSessionOverlay(ctx context.Context, id string) (types.Session, error)
 
 	Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error)
 	ExecStream(ctx context.Context, sessionID string, req types.ExecRequest) (io.ReadCloser, error)
@@ -159,6 +162,18 @@ func (h *HybridClient) PatchSession(ctx context.Context, id string, req types.Se
 		return h.grpc.PatchSession(ctx, id, req)
 	}
 	return h.Client.PatchSession(ctx, id, req)
+}
+
+func (h *HybridClient) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
+	return h.Client.DiffSessionOverlay(ctx, id)
+}
+
+func (h *HybridClient) AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+	return h.Client.AcceptSessionOverlay(ctx, id)
+}
+
+func (h *HybridClient) RejectSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+	return h.Client.RejectSessionOverlay(ctx, id)
 }
 
 // KillCommand kills a running command. Uses gRPC if available.

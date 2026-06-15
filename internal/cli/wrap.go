@@ -25,6 +25,8 @@ func newWrapCmd() *cobra.Command {
 	var sessionID string
 	var policy string
 	var root string
+	var workspaceMode string
+	var overlayMode bool
 	var report bool
 
 	cmd := &cobra.Command{
@@ -47,12 +49,14 @@ Examples:
 
 			cfg := getClientConfig(cmd)
 			return runWrap(cmd.Context(), cfg, wrapOptions{
-				sessionID: sessionID,
-				policy:    policy,
-				root:      root,
-				report:    report,
-				agentCmd:  args[0],
-				agentArgs: args[1:],
+				sessionID:     sessionID,
+				policy:        policy,
+				root:          root,
+				workspaceMode: workspaceMode,
+				overlayMode:   overlayMode,
+				report:        report,
+				agentCmd:      args[0],
+				agentArgs:     args[1:],
 			})
 		},
 	}
@@ -60,18 +64,22 @@ Examples:
 	cmd.Flags().StringVar(&sessionID, "session", "", "Reuse existing session ID (creates new if empty)")
 	cmd.Flags().StringVar(&policy, "policy", "agent-default", "Policy name")
 	cmd.Flags().StringVar(&root, "root", "", "Workspace root (default: current directory)")
+	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct or overlay")
+	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
 	cmd.Flags().BoolVar(&report, "report", true, "Generate session report on exit")
 
 	return cmd
 }
 
 type wrapOptions struct {
-	sessionID string
-	policy    string
-	root      string
-	report    bool
-	agentCmd  string
-	agentArgs []string
+	sessionID     string
+	policy        string
+	root          string
+	workspaceMode string
+	overlayMode   bool
+	report        bool
+	agentCmd      string
+	agentArgs     []string
 }
 
 func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
@@ -267,6 +275,12 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 	if opts.report {
 		fmt.Fprintf(os.Stderr, "\nagentsh: session %s complete (agent exit code: %d)\n", sessID, exitCode)
 	}
+	if sess.WorkspaceMode == string(types.WorkspaceModeOverlay) || sess.Overlay != nil {
+		fmt.Fprintf(os.Stderr, "agentsh: overlay workspace kept for review\n")
+		fmt.Fprintf(os.Stderr, "  agentsh session diff %s\n", sessID)
+		fmt.Fprintf(os.Stderr, "  agentsh session accept %s\n", sessID)
+		fmt.Fprintf(os.Stderr, "  agentsh session reject %s\n", sessID)
+	}
 
 	if exitCode != 0 {
 		os.Exit(exitCode)
@@ -432,11 +446,17 @@ func fetchSessionForWrap(
 		if opts.sessionID != "" {
 			return c.GetSession(ctx, opts.sessionID)
 		}
-		return c.CreateSessionWithRequest(ctx, types.CreateSessionRequest{
+		req := types.CreateSessionRequest{
 			Workspace: workspace,
 			Policy:    opts.policy,
 			Home:      userHomeDir(),
-		})
+		}
+		if opts.overlayMode {
+			req.WorkspaceMode = string(types.WorkspaceModeOverlay)
+		} else if opts.workspaceMode != "" {
+			req.WorkspaceMode = opts.workspaceMode
+		}
+		return c.CreateSessionWithRequest(ctx, req)
 	}
 
 	sess, err := fetch()

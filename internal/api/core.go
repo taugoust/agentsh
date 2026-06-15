@@ -24,6 +24,7 @@ import (
 	"github.com/agentsh/agentsh/internal/policy/signing"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/signal"
+	"github.com/agentsh/agentsh/internal/workspace/overlay"
 	"github.com/agentsh/agentsh/internal/wrapperlog"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/go-chi/chi/v5"
@@ -618,6 +619,125 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 	return s.Snapshot(), http.StatusCreated, nil
 }
 
+func (a *App) setupOverlayWorkspace(ctx context.Context, s *session.Session, req types.CreateSessionRequest) error {
+	mode := strings.ToLower(strings.TrimSpace(req.WorkspaceMode))
+	if mode == "" {
+		mode = string(types.WorkspaceModeDirect)
+	}
+	s.WorkspaceMode = mode
+	if mode == string(types.WorkspaceModeDirect) {
+		return nil
+	}
+	if mode != string(types.WorkspaceModeOverlay) {
+		return fmt.Errorf("unsupported workspace_mode %q", req.WorkspaceMode)
+	}
+	if runtime.GOOS != "linux" {
+		return fmt.Errorf("overlay workspaces are only supported on Linux")
+	}
+	if !a.cfg.Sessions.WorkspaceOverlay.Enabled {
+		return fmt.Errorf("workspace_mode=overlay requested but sessions.workspace_overlay.enabled is false")
+	}
+
+	excludes := a.cfg.Sessions.WorkspaceOverlay.DefaultExcludes
+	if req.Overlay != nil && len(req.Overlay.Exclude) > 0 {
+		excludes = req.Overlay.Exclude
+	}
+	acceptChown := true
+	if a.cfg.Sessions.WorkspaceOverlay.AcceptChown != nil {
+		acceptChown = *a.cfg.Sessions.WorkspaceOverlay.AcceptChown
+	}
+	ow, err := overlay.Create(ctx, s.ID, s.Workspace, overlay.Options{
+		BaseDir:     a.cfg.Sessions.WorkspaceOverlay.BaseDir,
+		Excludes:    excludes,
+		AcceptChown: acceptChown,
+	})
+	if err != nil {
+		return err
+	}
+	s.SetOverlay(ow)
+	keepOnDestroy := req.Overlay != nil && req.Overlay.KeepOnDestroy
+	destroyAction := a.cfg.Sessions.WorkspaceOverlay.DestroyAction
+	s.SetWorkspaceUnmount(func() error {
+		if keepOnDestroy || destroyAction == "keep" {
+			return ow.Close(context.Background())
+		}
+		return ow.Reject(context.Background())
+	})
+
+	ev := types.Event{
+		ID:        uuid.NewString(),
+		Timestamp: time.Now().UTC(),
+		Type:      "overlay_created",
+		SessionID: s.ID,
+		Fields: map[string]any{
+			"real":   ow.Real,
+			"merged": ow.Merged,
+			"upper":  ow.Upper,
+			"work":   ow.Work,
+		},
+	}
+	_ = a.store.AppendEvent(ctx, ev)
+	a.broker.Publish(ev)
+	return nil
+}
+
+func (a *App) buildPolicyVarsForSession(req types.CreateSessionRequest, s *session.Session, shouldDetect bool) map[string]string {
+	policyVars := make(map[string]string)
+	realWorkspace := s.Workspace
+	effectiveWorkspace := s.WorkspaceMountPath()
+	mapToEffective := func(p string) string {
+		return mapPathPrefix(p, realWorkspace, effectiveWorkspace)
+	}
+
+	if req.ProjectRoot != "" {
+		policyVars["PROJECT_ROOT"] = mapToEffective(req.ProjectRoot)
+		policyVars["GIT_ROOT"] = mapToEffective(req.ProjectRoot)
+	} else if shouldDetect && realWorkspace != "" {
+		markers := a.cfg.Policies.GetProjectMarkers()
+		if markers == nil {
+			markers = policy.DefaultProjectMarkers()
+		}
+		roots, err := policy.DetectProjectRoots(realWorkspace, markers)
+		if err != nil {
+			slog.Warn("project root detection failed", "workspace", realWorkspace, "error", err)
+			policyVars["PROJECT_ROOT"] = effectiveWorkspace
+		} else {
+			policyVars["PROJECT_ROOT"] = mapToEffective(roots.ProjectRoot)
+			if roots.GitRoot != "" {
+				policyVars["GIT_ROOT"] = mapToEffective(roots.GitRoot)
+			}
+		}
+	} else {
+		policyVars["PROJECT_ROOT"] = effectiveWorkspace
+	}
+	if policyVars["GIT_ROOT"] == "" && policyVars["PROJECT_ROOT"] != "" {
+		policyVars["GIT_ROOT"] = policyVars["PROJECT_ROOT"]
+	}
+	if req.Home != "" {
+		policyVars["HOME"] = req.Home
+	} else if home := os.Getenv("HOME"); home != "" {
+		policyVars["HOME"] = home
+	}
+	return policyVars
+}
+
+func mapPathPrefix(path, oldRoot, newRoot string) string {
+	if path == "" || oldRoot == "" || newRoot == "" || oldRoot == newRoot {
+		return path
+	}
+	pathClean := filepath.Clean(path)
+	oldClean := filepath.Clean(oldRoot)
+	if pathClean == oldClean {
+		return filepath.Clean(newRoot)
+	}
+	if session.IsRealPathUnder(pathClean, oldClean) {
+		if rel, err := filepath.Rel(oldClean, pathClean); err == nil {
+			return filepath.Clean(filepath.Join(newRoot, rel))
+		}
+	}
+	return path
+}
+
 func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequest) (types.Session, int, error) {
 	// Handle profile-based session creation
 	if req.Profile != "" {
@@ -635,50 +755,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		shouldDetect = *req.DetectProjectRoot
 	}
 
-	// Build variables map for policy expansion
-	policyVars := make(map[string]string)
-
-	if req.ProjectRoot != "" {
-		// Explicit project root provided
-		policyVars["PROJECT_ROOT"] = req.ProjectRoot
-		policyVars["GIT_ROOT"] = req.ProjectRoot // Assume same if explicit
-	} else if shouldDetect && req.Workspace != "" {
-		// Detect project roots
-		markers := a.cfg.Policies.GetProjectMarkers()
-		if markers == nil {
-			markers = policy.DefaultProjectMarkers()
-		}
-		roots, err := policy.DetectProjectRoots(req.Workspace, markers)
-		if err != nil {
-			// Log warning but continue with workspace as fallback
-			// (detection failure shouldn't block session creation)
-			slog.Warn("project root detection failed", "workspace", req.Workspace, "error", err)
-			policyVars["PROJECT_ROOT"] = req.Workspace
-		} else {
-			policyVars["PROJECT_ROOT"] = roots.ProjectRoot
-			if roots.GitRoot != "" {
-				policyVars["GIT_ROOT"] = roots.GitRoot
-			}
-		}
-	} else {
-		// No detection, use workspace as project root
-		policyVars["PROJECT_ROOT"] = req.Workspace
-	}
-
-	// Ensure GIT_ROOT is set (fall back to PROJECT_ROOT if not detected)
-	if policyVars["GIT_ROOT"] == "" && policyVars["PROJECT_ROOT"] != "" {
-		policyVars["GIT_ROOT"] = policyVars["PROJECT_ROOT"]
-	}
-
-	// Set HOME for policy variable expansion (deny rules use ${HOME}/.bashrc etc.).
-	// Prefer the CLI-provided value (the session user's HOME) over the server's
-	// os.Getenv("HOME") which may differ when the server runs as a different user.
-	// Trust model: HOME is trusted from authenticated clients, same as workspace/policy.
-	if req.Home != "" {
-		policyVars["HOME"] = req.Home
-	} else if home := os.Getenv("HOME"); home != "" {
-		policyVars["HOME"] = home
-	}
+	// Build variables map for policy expansion after session workspace setup.
+	// Overlay sessions need PROJECT_ROOT/GIT_ROOT to point at the merged workspace,
+	// but the overlay path is only known after the session ID exists.
+	var policyVars map[string]string
 
 	// Load policy from configured policy files. Policy compilation is deferred
 	// until after session creation so generated DB unavoidability rules can
@@ -745,6 +825,12 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		return types.Session{}, code, sessionErr
 	}
 
+	if err := a.setupOverlayWorkspace(ctx, s, req); err != nil {
+		a.cleanupCreatedSession(s)
+		return types.Session{}, http.StatusBadRequest, err
+	}
+	policyVars = a.buildPolicyVarsForSession(req, s, shouldDetect)
+
 	enforceApprovals := a.cfg.Approvals.Enabled && a.cfg.Approvals.Mode != ""
 	engine, dbRuleSet, dbStateDir, err := a.compileDBPolicyForSession(ctx, s, basePolicy, policyVars, enforceApprovals)
 	if err != nil {
@@ -797,7 +883,17 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 	a.broker.Publish(ev)
 
 	// Optional: mount FUSE loopback so we can monitor file operations.
-	if a.cfg.Sandbox.FUSE.Enabled && !a.cfg.Sandbox.FUSE.Deferred && a.platform != nil {
+	// Overlay workspaces already occupy WorkspaceMount; skip FUSE for the MVP.
+	if s.HasOverlay() && a.cfg.Sandbox.FUSE.Enabled && !a.cfg.Sandbox.FUSE.Deferred {
+		ev := types.Event{
+			ID:        uuid.NewString(),
+			Timestamp: time.Now().UTC(),
+			Type:      "fuse_skipped_overlay_workspace",
+			SessionID: s.ID,
+		}
+		_ = a.store.AppendEvent(ctx, ev)
+		a.broker.Publish(ev)
+	} else if a.cfg.Sandbox.FUSE.Enabled && !a.cfg.Sandbox.FUSE.Deferred && a.platform != nil {
 		fs := a.platform.Filesystem()
 		if fs != nil && fs.Available() {
 			a.mountFUSEForSession(ctx, fuseMountParams{

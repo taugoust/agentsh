@@ -314,8 +314,19 @@ type SessionsConfig struct {
 	// host and sandbox environments.
 	RealPaths bool `yaml:"real_paths"`
 
+	// WorkspaceOverlay configures optional overlayfs-backed workspaces.
+	WorkspaceOverlay WorkspaceOverlayConfig `yaml:"workspace_overlay"`
+
 	// Checkpoints configures workspace checkpoint/rollback functionality.
 	Checkpoints CheckpointConfig `yaml:"checkpoints"`
+}
+
+type WorkspaceOverlayConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	BaseDir         string   `yaml:"base_dir"`
+	DefaultExcludes []string `yaml:"default_excludes"`
+	AcceptChown     *bool    `yaml:"accept_chown"`
+	DestroyAction   string   `yaml:"destroy_action"` // reject|keep
 }
 
 // CheckpointConfig configures workspace checkpoint and rollback.
@@ -1565,6 +1576,7 @@ func resolveRelativePaths(cfg *Config, baseDir string) {
 	cfg.Audit.Output = resolve(cfg.Audit.Output)
 	cfg.Audit.Storage.SQLitePath = resolve(cfg.Audit.Storage.SQLitePath)
 	cfg.Sessions.BaseDir = resolve(cfg.Sessions.BaseDir)
+	cfg.Sessions.WorkspaceOverlay.BaseDir = resolve(cfg.Sessions.WorkspaceOverlay.BaseDir)
 }
 
 // getDefaultDataDir returns the appropriate data directory based on config source.
@@ -1698,6 +1710,20 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	}
 	if cfg.Sessions.CleanupInterval == "" {
 		cfg.Sessions.CleanupInterval = "1m"
+	}
+	if cfg.Sessions.WorkspaceOverlay.BaseDir == "" {
+		cfg.Sessions.WorkspaceOverlay.BaseDir = filepath.Join(cfg.Sessions.BaseDir, "overlays")
+	}
+	if len(cfg.Sessions.WorkspaceOverlay.DefaultExcludes) == 0 {
+		cfg.Sessions.WorkspaceOverlay.DefaultExcludes = []string{".git", ".direnv"}
+	}
+	// Default true for ownership normalization on accept.
+	if cfg.Sessions.WorkspaceOverlay.AcceptChown == nil {
+		t := true
+		cfg.Sessions.WorkspaceOverlay.AcceptChown = &t
+	}
+	if cfg.Sessions.WorkspaceOverlay.DestroyAction == "" {
+		cfg.Sessions.WorkspaceOverlay.DestroyAction = "reject"
 	}
 	if cfg.Sandbox.FUSE.MountBaseDir == "" {
 		cfg.Sandbox.FUSE.MountBaseDir = cfg.Sessions.BaseDir
@@ -2270,6 +2296,12 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.Sandbox.FUSE.Audit.MaxEventQueue < 0 {
 		return fmt.Errorf("sandbox.fuse.audit.max_event_queue must be >= 0")
+	}
+	switch cfg.Sessions.WorkspaceOverlay.DestroyAction {
+	case "", "reject", "keep":
+		// ok; "" is normalized by applyDefaults.
+	default:
+		return fmt.Errorf("invalid sessions.workspace_overlay.destroy_action %q: must be one of reject or keep", cfg.Sessions.WorkspaceOverlay.DestroyAction)
 	}
 	switch cfg.Sandbox.Network.InterceptMode {
 	case "", "all", "tcp_only", "monitor":

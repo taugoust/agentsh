@@ -38,6 +38,15 @@ func (m *mockCLIClient) DestroySession(ctx context.Context, id string) error { r
 func (m *mockCLIClient) PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error) {
 	return m.session, nil
 }
+func (m *mockCLIClient) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+func (m *mockCLIClient) AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+	return m.session, nil
+}
+func (m *mockCLIClient) RejectSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+	return m.session, nil
+}
 func (m *mockCLIClient) Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error) {
 	return types.ExecResponse{}, nil
 }

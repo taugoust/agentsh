@@ -15,6 +15,7 @@ import (
 	"github.com/agentsh/agentsh/internal/pathutil"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/proxy/credsub"
+	"github.com/agentsh/agentsh/internal/workspace/overlay"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
 )
@@ -30,13 +31,17 @@ type Session struct {
 	mu                sync.Mutex
 	cwdEscapeWarnOnce sync.Once // #377: latches the one-time symlink-cwd-escape diagnostic
 
-	ID             string
-	State          types.SessionState
-	CreatedAt      time.Time
-	LastActivity   time.Time
-	Workspace      string
-	WorkspaceMount string
-	Policy         string
+	ID                string
+	State             types.SessionState
+	CreatedAt         time.Time
+	LastActivity      time.Time
+	Workspace         string
+	WorkspaceMount    string
+	WorkspaceMode     string
+	Overlay           *overlay.Workspace
+	OverlayAcceptedAt *time.Time
+	OverlayRejectedAt *time.Time
+	Policy            string
 
 	Cwd         string
 	VirtualRoot string // "/workspace" or real workspace path when real_paths enabled
@@ -204,17 +209,18 @@ func (m *Manager) CreateWithProfile(id, profile, basePolicy string, mounts []Res
 
 	now := time.Now().UTC()
 	s := &Session{
-		ID:           id,
-		State:        types.SessionStateReady,
-		CreatedAt:    now,
-		LastActivity: now,
-		Workspace:    primaryWorkspace,
-		Policy:       basePolicy,
-		Profile:      profile,
-		Mounts:       mounts,
-		Cwd:          "/workspace",
-		VirtualRoot:  "/workspace",
-		Env:          map[string]string{},
+		ID:            id,
+		State:         types.SessionStateReady,
+		CreatedAt:     now,
+		LastActivity:  now,
+		Workspace:     primaryWorkspace,
+		WorkspaceMode: string(types.WorkspaceModeDirect),
+		Policy:        basePolicy,
+		Profile:       profile,
+		Mounts:        mounts,
+		Cwd:           "/workspace",
+		VirtualRoot:   "/workspace",
+		Env:           map[string]string{},
 	}
 	m.sessions[id] = s
 	return s, nil
@@ -263,6 +269,7 @@ func (m *Manager) CreateWithID(id, workspace, policy string) (*Session, error) {
 		LastActivity:   now,
 		Workspace:      abs,
 		WorkspaceMount: abs,
+		WorkspaceMode:  string(types.WorkspaceModeDirect),
 		Policy:         policy,
 		Cwd:            "/workspace",
 		VirtualRoot:    "/workspace",
@@ -318,12 +325,33 @@ func (s *Session) Snapshot() types.Session {
 		})
 	}
 
+	var overlayInfo *types.OverlayInfo
+	if s.Overlay != nil {
+		overlayInfo = &types.OverlayInfo{
+			Enabled:    true,
+			State:      s.Overlay.State,
+			Real:       s.Overlay.Real,
+			Merged:     s.Overlay.Merged,
+			Upper:      s.Overlay.Upper,
+			Work:       s.Overlay.Work,
+			CreatedAt:  s.Overlay.CreatedAt,
+			AcceptedAt: s.OverlayAcceptedAt,
+			RejectedAt: s.OverlayRejectedAt,
+		}
+	}
+	workspaceMode := s.WorkspaceMode
+	if workspaceMode == "" {
+		workspaceMode = string(types.WorkspaceModeDirect)
+	}
+
 	return types.Session{
 		ID:               s.ID,
 		State:            s.State,
 		CreatedAt:        s.CreatedAt,
 		Workspace:        s.Workspace,
 		WorkspaceMount:   s.WorkspaceMount,
+		WorkspaceMode:    workspaceMode,
+		Overlay:          overlayInfo,
 		Policy:           s.Policy,
 		Profile:          s.Profile,
 		Mounts:           mounts,
@@ -447,6 +475,42 @@ func (s *Session) WorkspaceMountPath() string {
 	return s.Workspace
 }
 
+func (s *Session) SetOverlay(ow *overlay.Workspace) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Overlay = ow
+	if ow != nil {
+		s.WorkspaceMode = string(types.WorkspaceModeOverlay)
+		s.WorkspaceMount = ow.Merged
+	}
+}
+
+func (s *Session) OverlayWorkspace() *overlay.Workspace {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Overlay
+}
+
+func (s *Session) HasOverlay() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Overlay != nil && s.WorkspaceMode == string(types.WorkspaceModeOverlay)
+}
+
+func (s *Session) MarkOverlayAccepted(t time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.OverlayAcceptedAt = &t
+	s.WorkspaceMount = s.Workspace
+}
+
+func (s *Session) MarkOverlayRejected(t time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.OverlayRejectedAt = &t
+	s.WorkspaceMount = s.Workspace
+}
+
 // SetRealPaths switches the session to use real host paths instead of /workspace.
 // Returns false when enabled is true but the workspace is empty (real paths cannot
 // be applied).
@@ -454,10 +518,14 @@ func (s *Session) SetRealPaths(enabled bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if enabled {
-		if s.Workspace == "" {
+		workspace := s.Workspace
+		if s.WorkspaceMode == string(types.WorkspaceModeOverlay) && s.WorkspaceMount != "" {
+			workspace = s.WorkspaceMount
+		}
+		if workspace == "" {
 			return false // empty workspace cannot be used as virtual root
 		}
-		vroot := filepath.ToSlash(filepath.Clean(s.Workspace))
+		vroot := filepath.ToSlash(filepath.Clean(workspace))
 		s.VirtualRoot = vroot
 		s.Cwd = vroot
 	} else {

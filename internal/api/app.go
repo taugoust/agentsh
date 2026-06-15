@@ -296,6 +296,7 @@ func (a *App) Router() http.Handler {
 		r.Get("/sessions/{id}/pty", a.execInSessionPTYWS)
 		r.Get("/sessions/{id}/events", a.streamEvents)
 		r.Get("/sessions/{id}/history", a.sessionHistory)
+		r.Get("/sessions/{id}/overlay/diff", a.diffOverlay)
 		r.Get("/sessions/{id}/proxy", a.getProxyStatus)
 		r.Get("/sessions/{id}/output/{cmdID}", a.getOutputChunk)
 		r.Post("/sessions/{id}/kill/{cmdID}", a.killCommand)
@@ -308,6 +309,12 @@ func (a *App) Router() http.Handler {
 			r.Use(a.requireRoles("approver", "admin"))
 			r.Get("/approvals", a.listApprovals)
 			r.Post("/approvals/{id}", a.resolveApproval)
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(a.requireRoles("admin"))
+			r.Post("/sessions/{id}/overlay/accept", a.acceptOverlay)
+			r.Post("/sessions/{id}/overlay/reject", a.rejectOverlay)
 		})
 
 		// Policy management (admin only)

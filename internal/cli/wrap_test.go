@@ -178,6 +178,15 @@ func (m *mockWrapClient) DestroySession(ctx context.Context, id string) error { 
 func (m *mockWrapClient) PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error) {
 	return types.Session{}, nil
 }
+func (m *mockWrapClient) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+func (m *mockWrapClient) AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+	return types.Session{ID: id}, nil
+}
+func (m *mockWrapClient) RejectSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+	return types.Session{ID: id}, nil
+}
 func (m *mockWrapClient) Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error) {
 	return types.ExecResponse{}, nil
 }

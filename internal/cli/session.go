@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/agentsh/agentsh/internal/client"
@@ -20,6 +21,9 @@ func newSessionCmd() *cobra.Command {
 	cmd.AddCommand(newSessionListCmd())
 	cmd.AddCommand(newSessionInfoCmd())
 	cmd.AddCommand(newSessionUpdateCmd())
+	cmd.AddCommand(newSessionDiffCmd())
+	cmd.AddCommand(newSessionAcceptCmd())
+	cmd.AddCommand(newSessionRejectCmd())
 	cmd.AddCommand(newSessionDestroyCmd())
 	cmd.AddCommand(newSessionAttachCmd())
 	cmd.AddCommand(newSessionLogsCmd())
@@ -32,6 +36,8 @@ func newSessionCreateCmd() *cobra.Command {
 	var policy string
 	var outputJSON bool
 	var realPaths bool
+	var workspaceMode string
+	var overlayMode bool
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new session",
@@ -42,6 +48,11 @@ func newSessionCreateCmd() *cobra.Command {
 				return err
 			}
 			req := types.CreateSessionRequest{Workspace: workspace, Policy: policy, Home: userHomeDir()}
+			if overlayMode {
+				req.WorkspaceMode = string(types.WorkspaceModeOverlay)
+			} else if workspaceMode != "" {
+				req.WorkspaceMode = workspaceMode
+			}
 			if cmd.Flags().Changed("real-paths") {
 				req.RealPaths = &realPaths
 			}
@@ -62,6 +73,8 @@ func newSessionCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&policy, "policy", "default", "Policy name")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	cmd.Flags().BoolVar(&realPaths, "real-paths", false, "Use real host paths instead of /workspace")
+	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct or overlay")
+	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
 	return cmd
 }
 
@@ -127,6 +140,72 @@ func newSessionDestroyCmd() *cobra.Command {
 	return cmd
 }
 
+func newSessionDiffCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "diff SESSION_ID",
+		Short: "Show overlay workspace diff",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := getClientConfig(cmd)
+			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			if err != nil {
+				return err
+			}
+			r, err := c.DiffSessionOverlay(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			_, err = io.Copy(cmd.OutOrStdout(), r)
+			return err
+		},
+	}
+	return cmd
+}
+
+func newSessionAcceptCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "accept SESSION_ID",
+		Short: "Accept overlay workspace changes into the real workspace",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := getClientConfig(cmd)
+			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			if err != nil {
+				return err
+			}
+			s, err := c.AcceptSessionOverlay(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: accept does not yet detect concurrent real-workspace changes.\n")
+			return printJSON(cmd, s)
+		},
+	}
+	return cmd
+}
+
+func newSessionRejectCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "reject SESSION_ID",
+		Short: "Reject and discard overlay workspace changes",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := getClientConfig(cmd)
+			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			if err != nil {
+				return err
+			}
+			s, err := c.RejectSessionOverlay(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return printJSON(cmd, s)
+		},
+	}
+	return cmd
+}
+
 func newSessionUpdateCmd() *cobra.Command {
 	var cwd string
 	var setEnv []string
@@ -171,10 +250,10 @@ func newSessionUpdateCmd() *cobra.Command {
 type LogType string
 
 const (
-	LogTypeAll  LogType = ""    // Show all log types
-	LogTypeLLM  LogType = "llm" // LLM request/response logs
-	LogTypeFS   LogType = "fs"  // Filesystem access logs
-	LogTypeNet  LogType = "net" // Network access logs
+	LogTypeAll  LogType = ""     // Show all log types
+	LogTypeLLM  LogType = "llm"  // LLM request/response logs
+	LogTypeFS   LogType = "fs"   // Filesystem access logs
+	LogTypeNet  LogType = "net"  // Network access logs
 	LogTypeExec LogType = "exec" // Command execution logs
 )
 
@@ -327,6 +406,15 @@ func printSessionCreated(cmd *cobra.Command, c client.CLIClient, s types.Session
 		fmt.Fprintln(w, "Export for agent:")
 		fmt.Fprintf(w, "  export ANTHROPIC_BASE_URL=%s\n", s.ProxyURL)
 		fmt.Fprintf(w, "  export OPENAI_BASE_URL=%s\n", s.ProxyURL)
+	}
+
+	if s.Overlay != nil {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Overlay workspace:")
+		fmt.Fprintf(w, "  Merged: %s\n", s.Overlay.Merged)
+		fmt.Fprintf(w, "  Diff:   agentsh session diff %s\n", s.ID)
+		fmt.Fprintf(w, "  Accept: agentsh session accept %s\n", s.ID)
+		fmt.Fprintf(w, "  Reject: agentsh session reject %s\n", s.ID)
 	}
 
 	return nil

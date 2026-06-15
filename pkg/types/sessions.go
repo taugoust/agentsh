@@ -40,12 +40,38 @@ func (s SessionState) IsActive() bool {
 	}
 }
 
+type WorkspaceMode string
+
+const (
+	WorkspaceModeDirect  WorkspaceMode = "direct"
+	WorkspaceModeOverlay WorkspaceMode = "overlay"
+)
+
+type OverlayInfo struct {
+	Enabled    bool       `json:"enabled"`
+	State      string     `json:"state,omitempty"`
+	Real       string     `json:"real,omitempty"`
+	Merged     string     `json:"merged,omitempty"`
+	Upper      string     `json:"upper,omitempty"`
+	Work       string     `json:"work,omitempty"`
+	CreatedAt  time.Time  `json:"created_at,omitempty"`
+	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
+	RejectedAt *time.Time `json:"rejected_at,omitempty"`
+}
+
+type CreateOverlayOptions struct {
+	Exclude       []string `json:"exclude,omitempty"`
+	KeepOnDestroy bool     `json:"keep_on_destroy,omitempty"`
+}
+
 type Session struct {
 	ID               string       `json:"id"`
 	State            SessionState `json:"state"`
 	CreatedAt        time.Time    `json:"created_at"`
 	Workspace        string       `json:"workspace"`
-	WorkspaceMount   string       `json:"workspace_mount,omitempty"` // FUSE mount point (if active)
+	WorkspaceMount   string       `json:"workspace_mount,omitempty"` // FUSE/overlay mount point (if active)
+	WorkspaceMode    string       `json:"workspace_mode,omitempty"`
+	Overlay          *OverlayInfo `json:"overlay,omitempty"`
 	Policy           string       `json:"policy"`
 	Profile          string       `json:"profile,omitempty"`
 	Mounts           []MountInfo  `json:"mounts,omitempty"`
@@ -107,14 +133,16 @@ type SessionResult struct {
 }
 
 type CreateSessionRequest struct {
-	ID                string `json:"id,omitempty"`
-	Workspace         string `json:"workspace,omitempty"`
-	Policy            string `json:"policy,omitempty"`
-	Profile           string `json:"profile,omitempty"`
-	Home              string `json:"home,omitempty"`                // User's home directory for ${HOME} policy expansion
-	DetectProjectRoot *bool  `json:"detect_project_root,omitempty"` // Override server default
-	ProjectRoot       string `json:"project_root,omitempty"`        // Explicit override
-	RealPaths         *bool  `json:"real_paths,omitempty"`          // Use actual host paths instead of /workspace
+	ID                string                `json:"id,omitempty"`
+	Workspace         string                `json:"workspace,omitempty"`
+	Policy            string                `json:"policy,omitempty"`
+	Profile           string                `json:"profile,omitempty"`
+	Home              string                `json:"home,omitempty"`                // User's home directory for ${HOME} policy expansion
+	DetectProjectRoot *bool                 `json:"detect_project_root,omitempty"` // Override server default
+	ProjectRoot       string                `json:"project_root,omitempty"`        // Explicit override
+	RealPaths         *bool                 `json:"real_paths,omitempty"`          // Use actual host paths instead of /workspace
+	WorkspaceMode     string                `json:"workspace_mode,omitempty"`      // "direct" (default) or "overlay"
+	Overlay           *CreateOverlayOptions `json:"overlay,omitempty"`
 }
 
 type SessionPatchRequest struct {

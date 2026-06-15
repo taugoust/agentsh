@@ -82,6 +82,19 @@ func (c *GRPCClient) CreateSessionWithRequest(ctx context.Context, req types.Cre
 	if req.RealPaths != nil {
 		reqBody["real_paths"] = *req.RealPaths
 	}
+	if req.WorkspaceMode != "" {
+		reqBody["workspace_mode"] = req.WorkspaceMode
+	}
+	if req.Overlay != nil {
+		overlayBody := map[string]any{}
+		if len(req.Overlay.Exclude) > 0 {
+			overlayBody["exclude"] = req.Overlay.Exclude
+		}
+		if req.Overlay.KeepOnDestroy {
+			overlayBody["keep_on_destroy"] = req.Overlay.KeepOnDestroy
+		}
+		reqBody["overlay"] = overlayBody
+	}
 	in, err := jsonToStruct(reqBody)
 	if err != nil {
 		return out, err
