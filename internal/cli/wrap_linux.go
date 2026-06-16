@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/signal"
 	"strings"
 	"syscall"
 	"time"
@@ -234,7 +235,9 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 				slog.Error("wrap: failed to forward notify fd to server", "error", err, "session_id", sessID)
 				return
 			}
-			slog.Info("wrap: notify fd accepted by server", "session_id", sessID, "socket", notifySocket, "wrapper_pid", childPID)
+			if !foregroundTTY {
+				slog.Info("wrap: notify fd accepted by server", "session_id", sessID, "socket", notifySocket, "wrapper_pid", childPID)
+			}
 
 			// Send ACK to wrapper so it knows the handler is ready before exec.
 			// This prevents a race where the wrapper execs before the seccomp
@@ -353,6 +356,12 @@ func isTerminal(fd uintptr) bool {
 
 // reclaimTerminal makes the current process group the foreground group of stdin.
 func reclaimTerminal() {
+	// If the wrapper child owns the foreground terminal, this CLI is briefly in a
+	// background process group while reclaiming it. TIOCSPGRP from a background
+	// process group can deliver SIGTTOU and stop us unless the signal is ignored
+	// or blocked.
+	signal.Ignore(syscall.SIGTTOU)
+	defer signal.Reset(syscall.SIGTTOU)
 	pgid := int32(unix.Getpgrp())
 	_, _, _ = unix.Syscall(unix.SYS_IOCTL, os.Stdin.Fd(), unix.TIOCSPGRP, uintptr(unsafe.Pointer(&pgid)))
 }
