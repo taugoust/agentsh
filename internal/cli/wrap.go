@@ -277,7 +277,7 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 	if opts.report {
 		fmt.Fprintf(os.Stderr, "\nagentsh: session %s complete (agent exit code: %d)\n", sessID, exitCode)
 	}
-	if sess.WorkspaceMode == string(types.WorkspaceModeOverlay) || sess.Overlay != nil {
+	if opts.report && (sess.WorkspaceMode == string(types.WorkspaceModeOverlay) || sess.Overlay != nil) {
 		fmt.Fprintf(os.Stderr, "agentsh: overlay workspace kept for review\n")
 		fmt.Fprintf(os.Stderr, "  agentsh session diff %s\n", sessID)
 		fmt.Fprintf(os.Stderr, "  agentsh session accept %s\n", sessID)

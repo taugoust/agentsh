@@ -177,8 +177,18 @@ func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 		return out, nil
 	}
 	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 1 {
-		return out, nil
+	if errors.As(err, &ee) {
+		switch ee.ExitCode() {
+		case 1:
+			return out, nil
+		case 2:
+			// GNU diff uses exit code 2 for trouble. During review of live/virtiofs
+			// workspaces a file can disappear while diff is walking both trees; treat
+			// that specific race as non-fatal so the user can retry or proceed.
+			if strings.Contains(string(out), "No such file or directory") {
+				return out, nil
+			}
+		}
 	}
 	return out, fmt.Errorf("diff overlay: %w: %s", err, strings.TrimSpace(string(out)))
 }
@@ -199,7 +209,13 @@ func (w *Workspace) Accept(ctx context.Context) error {
 	args = append(args, withTrailingSeparator(w.Merged), withTrailingSeparator(w.Real))
 	cmd := exec.CommandContext(ctx, "rsync", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("accept overlay: %w: %s", err, strings.TrimSpace(string(out)))
+		var ee *exec.ExitError
+		// rsync exit code 24 means files vanished while being transferred. That can
+		// happen on live/virtiofs workspaces during accept and is not a failed
+		// policy or copy decision; keep accepting the overlay and clean it up.
+		if !errors.As(err, &ee) || ee.ExitCode() != 24 {
+			return fmt.Errorf("accept overlay: %w: %s", err, strings.TrimSpace(string(out)))
+		}
 	}
 	if err := w.unmountLocked(ctx); err != nil {
 		return err
