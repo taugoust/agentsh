@@ -312,7 +312,7 @@ func (a *App) Router() http.Handler {
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(a.requireRoles("admin"))
+			r.Use(a.requireRoles("approver", "admin"))
 			r.Post("/sessions/{id}/overlay/accept", a.acceptOverlay)
 			r.Post("/sessions/{id}/overlay/reject", a.rejectOverlay)
 		})
