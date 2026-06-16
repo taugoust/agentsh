@@ -238,7 +238,9 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 		if wrapCfg.ptracePostStart != nil {
 			mechanism = "ptrace"
 		}
-		fmt.Fprintf(os.Stderr, "agentsh: agent %s started with %s interception (pid: %d)\n", opts.agentCmd, mechanism, agentProc.Process.Pid)
+		if !wrapCfg.foregroundTTY {
+			fmt.Fprintf(os.Stderr, "agentsh: agent %s started with %s interception (pid: %d)\n", opts.agentCmd, mechanism, agentProc.Process.Pid)
+		}
 		// Forward the notify fd to the server in the background
 		if wrapCfg.postStart != nil {
 			go wrapCfg.postStart(agentProc.Process.Pid)
@@ -290,14 +292,15 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 
 // wrapLaunchConfig holds the configuration for launching the agent through a wrapper.
 type wrapLaunchConfig struct {
-	command     string
-	args        []string
-	env         []string
-	extraFiles  []*os.File
-	sysProcAttr *syscall.SysProcAttr
-	postStart   func(childPID int) // Called after process start to forward notify fd with child PID
-	postWait    func()             // Called after the process exits (e.g., to reclaim terminal)
-	keepAlive   io.Closer          // Held open during shell lifetime (e.g., ptrace handshake conn)
+	command       string
+	args          []string
+	env           []string
+	extraFiles    []*os.File
+	sysProcAttr   *syscall.SysProcAttr
+	postStart     func(childPID int) // Called after process start to forward notify fd with child PID
+	postWait      func()             // Called after the process exits (e.g., to reclaim terminal)
+	keepAlive     io.Closer          // Held open during shell lifetime (e.g., ptrace handshake conn)
+	foregroundTTY bool               // Child owns the terminal foreground process group after Start.
 	// ptracePostStart is called after the child is started with the child PID.
 	// It performs the ptrace handshake (send PID, wait for ACK).
 	ptracePostStart func(childPID int) error

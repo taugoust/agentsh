@@ -42,18 +42,23 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 		// connHolder stores the keepalive connection set by ptracePostStart.
 		var connHolder net.Conn
 
+		foregroundTTY := false
+		sysProcAttr := func() *syscall.SysProcAttr {
+			attr := &syscall.SysProcAttr{Setpgid: true}
+			if isTerminal(os.Stdin.Fd()) {
+				attr.Foreground = true
+				attr.Ctty = int(os.Stdin.Fd())
+				foregroundTTY = true
+			}
+			return attr
+		}()
+
 		return &wrapLaunchConfig{
-			command: agentPath,
-			args:    agentArgs,
-			env:     env,
-			sysProcAttr: func() *syscall.SysProcAttr {
-				attr := &syscall.SysProcAttr{Setpgid: true}
-				if isTerminal(os.Stdin.Fd()) {
-					attr.Foreground = true
-					attr.Ctty = int(os.Stdin.Fd())
-				}
-				return attr
-			}(),
+			command:       agentPath,
+			args:          agentArgs,
+			env:           env,
+			sysProcAttr:   sysProcAttr,
+			foregroundTTY: foregroundTTY,
 			ptracePostStart: func(childPID int) error {
 				// Connect after child starts, send the child PID explicitly
 				// (SO_PEERCRED would give our parent PID, not the child's).
@@ -187,21 +192,26 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 		extraFiles = append(extraFiles, logFile)
 	}
 
+	foregroundTTY := false
+	sysProcAttr := func() *syscall.SysProcAttr {
+		attr := &syscall.SysProcAttr{Setpgid: true}
+		// If stdin is a terminal, make the child the foreground process
+		// group so interactive shells (bash -i) can read from the TTY.
+		if isTerminal(os.Stdin.Fd()) {
+			attr.Foreground = true
+			attr.Ctty = int(os.Stdin.Fd())
+			foregroundTTY = true
+		}
+		return attr
+	}()
+
 	return &wrapLaunchConfig{
-		command:    wrapResp.WrapperBinary,
-		args:       wrapperArgs,
-		env:        env,
-		extraFiles: extraFiles,
-		sysProcAttr: func() *syscall.SysProcAttr {
-			attr := &syscall.SysProcAttr{Setpgid: true}
-			// If stdin is a terminal, make the child the foreground process
-			// group so interactive shells (bash -i) can read from the TTY.
-			if isTerminal(os.Stdin.Fd()) {
-				attr.Foreground = true
-				attr.Ctty = int(os.Stdin.Fd())
-			}
-			return attr
-		}(),
+		command:       wrapResp.WrapperBinary,
+		args:          wrapperArgs,
+		env:           env,
+		extraFiles:    extraFiles,
+		sysProcAttr:   sysProcAttr,
+		foregroundTTY: foregroundTTY,
 		postWait: func() {
 			// Reclaim the terminal's foreground process group after the child
 			// exits so the parent can continue writing to stderr.
