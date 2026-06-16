@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -32,7 +33,6 @@ const (
 	// still invoke probe-child mode.
 	probeChildEnv    = "AGENTSH_WAIT_KILLABLE_PROBE_CHILD"
 	probeChildSockFD = "AGENTSH_WAIT_KILLABLE_PROBE_SOCK"
-	probeBinaryPath  = "/bin/true"
 
 	// probeChildArgvSentinel is the marker the parent injects as argv[1]
 	// of the probe child. The child's init() requires this exact value
@@ -168,21 +168,19 @@ func runProbeChild() {
 	_ = unix.Close(notifyFD)
 	_ = unix.Close(sockFD)
 
-	// Exec /bin/true to fire the post-execve syscall storm under the
-	// installed filter. Try /bin/true first; if Exec itself fails (not
-	// just a stat-miss — also covers e.g. /bin/true existing but being
-	// non-executable), fall back to /bin/echo. Only after both fail do
-	// we treat this as a setup failure.
+	// Exec a tiny coreutils binary to fire the post-execve syscall storm under
+	// the installed filter. Resolve through PATH first because NixOS does not
+	// provide /bin/true or /bin/echo. Keep absolute fallbacks for traditional
+	// distributions and unusual service environments with a sparse PATH.
 	//
-	// IMPORTANT: the seccomp filter is already installed by this point,
-	// so the second Exec attempt runs under the same filter as the
-	// first. If the kernel bug is present the first failed Exec may
-	// have already triggered the issue #369 kill-signal in the
-	// parent's classifier; the fallback is therefore not a pristine
-	// retry. This is acceptable because both candidates produce the
-	// same observable post-execve syscall storm (libc startup + a
+	// IMPORTANT: the seccomp filter is already installed by this point, so a
+	// later Exec attempt runs under the same filter as earlier attempts. If the
+	// kernel bug is present, a failed first Exec may already have triggered the
+	// issue #369 kill-signal in the parent's classifier; fallback attempts are
+	// therefore not pristine retries. This is acceptable because all candidates
+	// produce the same observable post-execve syscall storm (libc startup + a
 	// handful of trivial syscalls before exit).
-	candidates := []string{probeBinaryPath, "/bin/echo"}
+	candidates := probeExecCandidates()
 	var lastErr error
 	for _, bin := range candidates {
 		if _, statErr := os.Stat(bin); statErr != nil {
@@ -193,6 +191,30 @@ func runProbeChild() {
 		lastErr = syscall.Exec(bin, []string{bin}, []string{})
 	}
 	childSetupFailure("exec failed: %v", lastErr)
+}
+
+func probeExecCandidates() []string {
+	out := make([]string, 0, 4)
+	seen := map[string]struct{}{}
+	add := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		out = append(out, path)
+	}
+	for _, name := range []string{"true", "echo"} {
+		if path, err := exec.LookPath(name); err == nil {
+			add(path)
+		}
+	}
+	add("/bin/true")
+	add("/bin/echo")
+	return out
 }
 
 // addProbeFilterRules installs the worst-case bug-prone notify composition
