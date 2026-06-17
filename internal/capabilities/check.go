@@ -5,6 +5,7 @@
 package capabilities
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -179,6 +180,17 @@ func CheckAll(cfg *config.Config) error {
 	// Check ebpf cgroup attach feasibility (eBPF kernel support + attach-capable cgroup mode).
 	// Only recorded as a fatal failure when ebpf.required=true; enabled=true alone is best-effort.
 	if cfg.Sandbox.Network.EBPF.Enabled || cfg.Sandbox.Network.EBPF.Enforce || cfg.Sandbox.Network.EBPF.Required {
+		// Populate the cgroup probe cache using the same cgroup settings the server
+		// will use at runtime. A generic /proc/self/cgroup probe is misleading for
+		// systemd services with DelegateSubgroup/base_path configured: the login
+		// shell may be unavailable while agentsh.service's delegated subtree is
+		// attach-capable.
+		if LastCgroupProbe() == nil {
+			permitAttachOnly := !cfg.Sandbox.Cgroups.Enabled
+			if mgr, err := limits.NewCgroupManager(context.Background(), cfg.Sandbox.Cgroups.BasePath, permitAttachOnly); err == nil && mgr != nil {
+				cacheCgroupProbe(mgr.Probe())
+			}
+		}
 		result := checkEBPFCgroupAttach()
 		result.ConfigKey = "sandbox.network.ebpf.enabled"
 		result.Suggestion = "See docs/ebpf.md for capability requirements (CAP_BPF, /sys/fs/bpf, CONFIG_CGROUP_BPF)"

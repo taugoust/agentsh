@@ -487,6 +487,7 @@ in
     systemd.services.agentsh = {
       description = "Policy-enforced execution gateway for AI agents";
       wantedBy = [ "multi-user.target" ];
+      restartTriggers = [ configFile ];
       after = [ "network.target" ];
 
       serviceConfig = {

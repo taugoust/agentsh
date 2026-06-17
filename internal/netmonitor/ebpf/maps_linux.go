@@ -46,6 +46,27 @@ func GetLastMapCounts() MapCounts {
 	}
 }
 
+// lpm4Key and lpm6Key mirror struct lpm{4,6}_key in connect.bpf.c.
+// Keep padding explicit: github.com/cilium/ebpf marshals exported fields and
+// rejects implicit Go padding when the encoded size does not match the BPF key.
+type lpm4Key struct {
+	Prefixlen uint32
+	Pad0      uint32
+	CgroupID  uint64
+	Addr      [4]byte
+	Dport     uint16
+	Pad1      uint16
+}
+
+type lpm6Key struct {
+	Prefixlen uint32
+	Pad0      uint32
+	CgroupID  uint64
+	Addr      [16]byte
+	Dport     uint16
+	Pad1      [6]byte
+}
+
 // PopulateAllowlist loads allowed/denied endpoints, CIDRs, and default_deny into the collection maps.
 func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey, allowCIDRs []AllowCIDR, deny []AllowKey, denyCIDRs []AllowCIDR, defaultDeny bool) error {
 	if coll == nil {
@@ -70,12 +91,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 
 	// Clear existing LPM entries for this cgroup.
 	if lpm4 != nil {
-		type lpm4Key struct {
-			Prefixlen uint32
-			CgroupID  uint64
-			Addr      [4]byte
-			Dport     uint16
-		}
 		iter := lpm4.Iterate()
 		var k lpm4Key
 		var v uint8
@@ -89,12 +104,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 		}
 	}
 	if lpm6 != nil {
-		type lpm6Key struct {
-			Prefixlen uint32
-			CgroupID  uint64
-			Addr      [16]byte
-			Dport     uint16
-		}
 		iter := lpm6.Iterate()
 		var k lpm6Key
 		var v uint8
@@ -169,12 +178,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 	// Load CIDRs into LPM tries.
 	for _, c := range allowCIDRs {
 		if c.Family == 2 && lpm4 != nil {
-			type lpm4Key struct {
-				Prefixlen uint32
-				CgroupID  uint64
-				Addr      [4]byte
-				Dport     uint16
-			}
 			var key lpm4Key
 			if c.Dport != 0 {
 				key.Prefixlen = 64 + c.PrefixLen + 16
@@ -190,12 +193,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 			}
 			lpmAllowInserted++
 		} else if c.Family == 10 && lpm6 != nil {
-			type lpm6Key struct {
-				Prefixlen uint32
-				CgroupID  uint64
-				Addr      [16]byte
-				Dport     uint16
-			}
 			var key lpm6Key
 			if c.Dport != 0 {
 				key.Prefixlen = 64 + c.PrefixLen + 16
@@ -214,12 +211,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 	}
 	// Count LPM allow totals after insertion (best effort, may race)
 	if lpm4 != nil {
-		type lpm4Key struct {
-			Prefixlen uint32
-			CgroupID  uint64
-			Addr      [4]byte
-			Dport     uint16
-		}
 		iter := lpm4.Iterate()
 		var k lpm4Key
 		var v uint8
@@ -228,12 +219,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 		}
 	}
 	if lpm6 != nil {
-		type lpm6Key struct {
-			Prefixlen uint32
-			CgroupID  uint64
-			Addr      [16]byte
-			Dport     uint16
-		}
 		iter := lpm6.Iterate()
 		var k lpm6Key
 		var v uint8
@@ -243,12 +228,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 	}
 	for _, c := range denyCIDRs {
 		if c.Family == 2 && lpm4deny != nil {
-			type lpm4Key struct {
-				Prefixlen uint32
-				CgroupID  uint64
-				Addr      [4]byte
-				Dport     uint16
-			}
 			var key lpm4Key
 			if c.Dport != 0 {
 				key.Prefixlen = 64 + c.PrefixLen + 16
@@ -264,12 +243,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 			}
 			lpmDenyInserted++
 		} else if c.Family == 10 && lpm6deny != nil {
-			type lpm6Key struct {
-				Prefixlen uint32
-				CgroupID  uint64
-				Addr      [16]byte
-				Dport     uint16
-			}
 			var key lpm6Key
 			if c.Dport != 0 {
 				key.Prefixlen = 64 + c.PrefixLen + 16
@@ -287,12 +260,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 		}
 	}
 	if lpm4deny != nil {
-		type lpm4Key struct {
-			Prefixlen uint32
-			CgroupID  uint64
-			Addr      [4]byte
-			Dport     uint16
-		}
 		iter := lpm4deny.Iterate()
 		var k lpm4Key
 		var v uint8
@@ -301,12 +268,6 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 		}
 	}
 	if lpm6deny != nil {
-		type lpm6Key struct {
-			Prefixlen uint32
-			CgroupID  uint64
-			Addr      [16]byte
-			Dport     uint16
-		}
 		iter := lpm6deny.Iterate()
 		var k lpm6Key
 		var v uint8
@@ -357,12 +318,6 @@ func CleanupAllowlist(coll *ebpf.Collection, cgroupID uint64) error {
 		}
 	}
 	if lpm4, ok := coll.Maps["lpm4_allow"]; ok {
-		type lpm4Key struct {
-			Prefixlen uint32
-			CgroupID  uint64
-			Addr      [4]byte
-			Dport     uint16
-		}
 		iter := lpm4.Iterate()
 		var k lpm4Key
 		var v uint8
@@ -376,12 +331,6 @@ func CleanupAllowlist(coll *ebpf.Collection, cgroupID uint64) error {
 		}
 	}
 	if lpm6, ok := coll.Maps["lpm6_allow"]; ok {
-		type lpm6Key struct {
-			Prefixlen uint32
-			CgroupID  uint64
-			Addr      [16]byte
-			Dport     uint16
-		}
 		iter := lpm6.Iterate()
 		var k lpm6Key
 		var v uint8
