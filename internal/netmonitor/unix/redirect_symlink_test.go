@@ -30,10 +30,11 @@ func TestCreateStubSymlink(t *testing.T) {
 	// Symlink path should be reasonably short (< 30 chars)
 	assert.Less(t, len(symlinkPath), 30, "symlink path should be short: %s", symlinkPath)
 
-	// Parent dir should have restricted permissions
+	// Parent dir should be non-listable but traversable by the unprivileged
+	// tracee after AgentSH rewrites execve to this path.
 	info, err := os.Stat(filepath.Dir(symlinkPath))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0700), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(0711), info.Mode().Perm())
 }
 
 func TestCreateStubSymlink_Cleanup(t *testing.T) {
