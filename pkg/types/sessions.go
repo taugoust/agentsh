@@ -204,6 +204,7 @@ type WrapInitResponse struct {
 	SeccompConfig         string            `json:"seccomp_config"`
 	NotifySocket          string            `json:"notify_socket"`
 	SignalSocket          string            `json:"signal_socket,omitempty"`
+	ApprovalUISocket      string            `json:"approval_ui_socket,omitempty"`
 	WrapperEnv            map[string]string `json:"wrapper_env"`
 	// EnvInject carries operator-configured sandbox.env_inject values for the
 	// client (shell shim / CLI wrap) to overlay onto the executed command's

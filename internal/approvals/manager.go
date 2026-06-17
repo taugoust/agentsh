@@ -165,10 +165,23 @@ func (m *Manager) ResolveWithWebAuthn(ctx context.Context, approvalID, userID st
 func (m *Manager) ListPending() []Request {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.listPendingLocked("")
+}
+
+func (m *Manager) ListPendingForSession(sessionID string) []Request {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.listPendingLocked(sessionID)
+}
+
+func (m *Manager) listPendingLocked(sessionID string) []Request {
 	out := make([]Request, 0, len(m.pending))
 	now := time.Now().UTC()
 	for _, p := range m.pending {
 		if p.req.ExpiresAt.Before(now) {
+			continue
+		}
+		if sessionID != "" && p.req.SessionID != sessionID {
 			continue
 		}
 		out = append(out, p.req)
@@ -177,8 +190,22 @@ func (m *Manager) ListPending() []Request {
 }
 
 func (m *Manager) Resolve(id string, approved bool, reason string) bool {
+	return m.resolveForSession("", id, approved, reason)
+}
+
+func (m *Manager) ResolveForSession(sessionID string, id string, approved bool, reason string) bool {
+	if sessionID == "" {
+		return false
+	}
+	return m.resolveForSession(sessionID, id, approved, reason)
+}
+
+func (m *Manager) resolveForSession(sessionID string, id string, approved bool, reason string) bool {
 	m.mu.Lock()
 	p, ok := m.pending[id]
+	if ok && sessionID != "" && p.req.SessionID != sessionID {
+		ok = false
+	}
 	if ok {
 		delete(m.pending, id)
 	}

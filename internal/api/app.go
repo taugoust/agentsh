@@ -70,6 +70,9 @@ type App struct {
 
 	approvals *approvals.Manager
 
+	approvalUIMu sync.Mutex
+	approvalUIs  map[string]*approvalUIEndpoint
+
 	metrics *metrics.Collector
 
 	// platform provides cross-platform filesystem, network, and sandbox abstractions
@@ -797,6 +800,7 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
 		return
 	}
+	a.closeApprovalUI(id)
 	_ = s.CloseDBProxy()
 	_ = s.CloseNetNS()
 	_ = s.CloseProxy()

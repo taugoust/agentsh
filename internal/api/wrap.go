@@ -385,21 +385,6 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		return types.WrapInitResponse{}, http.StatusInternalServerError, err
 	}
 
-	// Start background goroutine to accept the notify fd connection.
-	// In shim mode (Mode=="shim") the goroutine exits after a single accept
-	// so per-invocation resources are reclaimed. In agent mode (default) the
-	// function already exits naturally after one accept, so shimMode is
-	// plumbed for clarity and future-proofing but changes no behavior today.
-	shimMode := req.Mode == "shim"
-	startListener := func() {
-		a.acceptNotifyFD(ctx, listener, notifySocketPath, sessionID, s, execveEnabled, req.CallerUID, shimMode)
-	}
-	if a.acceptNotifyFDForTest != nil {
-		a.acceptNotifyFDForTest(startListener)
-	} else {
-		go startListener()
-	}
-
 	// Create signal filter socket if signal filtering is enabled.
 	// This must happen before marshaling the seccomp config so that
 	// signal_filter_enabled accurately reflects whether the socket was created.
@@ -478,6 +463,35 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		return types.WrapInitResponse{}, http.StatusInternalServerError, err
 	}
 
+	var approvalUI *approvalUIEndpoint
+	var approvalUISocketPath string
+	if req.Mode != "shim" && a.approvals != nil {
+		approvalUI, err = a.startApprovalUIEndpoint(sessionID, req.CallerUID)
+		if err != nil {
+			_ = listener.Close()
+			os.RemoveAll(notifyDir)
+			return types.WrapInitResponse{}, http.StatusInternalServerError, fmt.Errorf("approval ui socket: %w", err)
+		}
+		if approvalUI != nil {
+			approvalUISocketPath = approvalUI.path
+		}
+	}
+
+	// Start background goroutine to accept the notify fd connection.
+	// In shim mode (Mode=="shim") the goroutine exits after a single accept
+	// so per-invocation resources are reclaimed. In agent mode (default) the
+	// function already exits naturally after one accept, so shimMode is
+	// plumbed for clarity and future-proofing but changes no behavior today.
+	shimMode := req.Mode == "shim"
+	startListener := func() {
+		a.acceptNotifyFD(ctx, listener, notifySocketPath, sessionID, s, execveEnabled, req.CallerUID, shimMode, approvalUI)
+	}
+	if a.acceptNotifyFDForTest != nil {
+		a.acceptNotifyFDForTest(startListener)
+	} else {
+		go startListener()
+	}
+
 	// Build wrapper env
 	wrapperEnv := map[string]string{
 		"AGENTSH_SECCOMP_CONFIG": string(cfgJSON),
@@ -509,6 +523,7 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		SeccompConfig:         string(cfgJSON),
 		NotifySocket:          notifySocketPath,
 		SignalSocket:          signalSocketPath,
+		ApprovalUISocket:      approvalUISocketPath,
 		WrapperEnv:            wrapperEnv,
 		// env_inject is delivered to the client for it to overlay onto the
 		// executed command's environment (the server does not spawn the
@@ -742,7 +757,7 @@ func resolvedSocketRulesUseNotify(rules []seccomppkg.SocketRule) bool {
 // timeout/error), so shimMode currently changes no runtime behavior — it is
 // plumbed for clarity and to make the per-invocation contract explicit in the
 // call site.
-func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketPath string, sessionID string, s *session.Session, execveEnabled bool, expectedUID int, shimMode bool) {
+func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketPath string, sessionID string, s *session.Session, execveEnabled bool, expectedUID int, shimMode bool, approvalUI *approvalUIEndpoint) {
 	defer listener.Close()
 	// Clean up the entire private temp directory containing the socket
 	defer os.RemoveAll(filepath.Dir(socketPath))
@@ -858,6 +873,10 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 		}
 		slog.Warn("wrap: notify handler failed before ack", "session_id", sessionID, "wrapper_pid", wrapperPID, "error", err)
 		return
+	}
+	if approvalUI != nil && wrapperPID > 0 {
+		approvalUI.SetAuthorizedPID(wrapperPID)
+		slog.Debug("approval-ui: authorized wrapped process", "session_id", sessionID, "pid", wrapperPID, "socket", approvalUI.path)
 	}
 	if err := writeNotifyStatusForWrap(unixConn, true); err != nil {
 		slog.Debug("wrap: failed to write notify setup status", "session_id", sessionID, "error", err)

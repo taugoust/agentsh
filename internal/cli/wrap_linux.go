@@ -150,6 +150,9 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	// paths so injected vars reach the executed command (issue #374).
 	env = envinject.Apply(env, wrapResp.EnvInject)
 	env = append(env, "AGENTSH_NOTIFY_SOCK_FD=3") // fd 3 = ExtraFiles[0]
+	if strings.TrimSpace(wrapResp.ApprovalUISocket) != "" {
+		env = append(env, fmt.Sprintf("AGENTSH_APPROVAL_UI_SOCKET=%s", wrapResp.ApprovalUISocket))
+	}
 	if hasSignalSocket {
 		env = append(env, "AGENTSH_SIGNAL_SOCK_FD=4") // fd 4 = ExtraFiles[1]
 	}

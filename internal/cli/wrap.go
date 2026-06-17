@@ -347,6 +347,8 @@ func buildWrapEnv(base []string, sessionID string, serverAddr string, bypassShel
 			continue
 		case strings.EqualFold(key, "AGENTSH_IN_SESSION"):
 			continue
+		case strings.EqualFold(key, "AGENTSH_APPROVAL_UI_SOCKET"):
+			continue
 		default:
 			env = append(env, e)
 		}
