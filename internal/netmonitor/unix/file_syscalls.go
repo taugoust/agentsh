@@ -44,6 +44,7 @@ func isFileSyscall(nr int32) bool {
 //   - openat2 has non-zero RESOLVE_* flags (the supervisor cannot replicate
 //     these resolution semantics).
 //   - O_TMPFILE is used (file has no path to open via /proc/<pid>/root).
+//
 // emulableFlagMask is the set of open flags the supervisor can faithfully replicate.
 const emulableFlagMask = unix.O_RDONLY | unix.O_WRONLY | unix.O_RDWR |
 	unix.O_APPEND | unix.O_TRUNC | unix.O_CREAT | unix.O_EXCL |
@@ -102,6 +103,21 @@ func shouldFallbackToContinue(nr int32, flags uint32, resolveFlags uint64) bool 
 		return true
 	}
 	return false
+}
+
+// shouldUseContinuePathForFileNotify reports whether a monitored file syscall
+// should be policy-checked and then resumed in the tracee instead of completed
+// by supervisor AddFD emulation. Mutating opens must stay in the tracee: the
+// supervisor is privileged, so emulating O_CREAT/O_TRUNC/O_WRONLY as root would
+// create or modify files with root credentials rather than the tracee's.
+func shouldUseContinuePathForFileNotify(nr int32, flags uint32, resolveFlags uint64) bool {
+	if !isOpenSyscall(nr) {
+		return true
+	}
+	if shouldFallbackToContinue(nr, flags, resolveFlags) {
+		return true
+	}
+	return !isReadOnlyOpen(flags)
 }
 
 // FileArgs holds parsed file syscall arguments.

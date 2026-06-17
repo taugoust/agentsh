@@ -613,9 +613,10 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 		fileArgs.Mode = uint32(howMode)
 	}
 
-	// Determine early if this will be a CONTINUE-path syscall (non-open,
-	// fallback, or unsupported flags). Used to decide error handling below.
-	forceContinue := !isOpenSyscall(args.Nr) || shouldFallbackToContinue(args.Nr, fileArgs.Flags, resolveFlags)
+	// Determine early if this will be a CONTINUE-path syscall. Mutating opens
+	// must continue in the tracee after policy approval; emulating them from the
+	// privileged supervisor would create/modify files with root credentials.
+	forceContinue := shouldUseContinuePathForFileNotify(args.Nr, fileArgs.Flags, resolveFlags)
 
 	// Resolve primary path.
 	// Path resolution uses ProcessVMReadv which may fail under Yama

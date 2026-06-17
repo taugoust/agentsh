@@ -311,7 +311,7 @@ func TestEmulatedOpen_FallbackToContinue(t *testing.T) {
 			wantFallback: false,
 		},
 		{
-			name:         "openat O_CREAT — emulatable",
+			name:         "openat O_CREAT — no semantic fallback",
 			nr:           unix.SYS_OPENAT,
 			flags:        unix.O_CREAT | unix.O_WRONLY,
 			wantFallback: false,
@@ -381,7 +381,9 @@ func TestEmulatedOpen_NonOpenSyscall_UsesContinuePath(t *testing.T) {
 }
 
 // TestEmulatedOpen_WriteOperation verifies that an openat with write flags
-// is correctly mapped to "write" operation and properly emulatable.
+// is correctly mapped to "write" operation. The notification path must use
+// CONTINUE for the actual syscall so the kernel opens the file as the tracee,
+// not as the privileged supervisor.
 func TestEmulatedOpen_WriteOperation(t *testing.T) {
 	pol := &mockFilePolicy{
 		decisions: map[string]FilePolicyDecision{
@@ -414,9 +416,11 @@ func TestEmulatedOpen_WriteOperation(t *testing.T) {
 	require.Len(t, emit.events, 1)
 	assert.Equal(t, "file_write", emit.events[0].Type)
 
-	// Write openat is emulatable (no O_TMPFILE, no RESOLVE flags).
+	// Write openat has no semantic fallback requirement, but the notify handler
+	// must still use CONTINUE to avoid root-owned/root-written files.
 	assert.True(t, isOpenSyscall(unix.SYS_OPENAT))
 	assert.False(t, shouldFallbackToContinue(unix.SYS_OPENAT, flags, 0))
+	assert.True(t, shouldUseContinuePathForFileNotify(unix.SYS_OPENAT, flags, 0))
 }
 
 // TestFilterConfig_BlockIOUring_Flags verifies that FilterConfig correctly
@@ -528,13 +532,13 @@ func TestNotifAddFD_InvalidFD_Integration(t *testing.T) {
 // x (emulateOpen on/off).
 func TestEmulatedOpen_FullDecisionMatrix(t *testing.T) {
 	tests := []struct {
-		name        string
-		path        string
-		decision    string
-		emulate     bool
-		enforce     bool
-		wantAction  string
-		wantErrno   int32
+		name       string
+		path       string
+		decision   string
+		emulate    bool
+		enforce    bool
+		wantAction string
+		wantErrno  int32
 	}{
 		{
 			name: "allow_open_emulated",
@@ -647,12 +651,12 @@ func TestIOUringBlocking_RawSyscall(t *testing.T) {
 // map to the same operation strings the FUSE layer produces.
 func TestFileHandler_OperationMapping(t *testing.T) {
 	tests := []struct {
-		name      string
-		syscall   int32
-		flags     uint32
-		wantOp    string
-		wantType  string // "file_" + wantOp
-		wantSysc  string // fileSyscallName output
+		name     string
+		syscall  int32
+		flags    uint32
+		wantOp   string
+		wantType string // "file_" + wantOp
+		wantSysc string // fileSyscallName output
 	}{
 		{
 			name:     "openat_read",
