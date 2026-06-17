@@ -191,10 +191,12 @@ func couldContainBinaries(dir string) bool {
 }
 
 // DeriveExecutePathsFromFileRules extracts Landlock execute paths from file
-// rules that grant read access to FHS binary directories. This bridges the gap
-// when policies use bare command names (e.g. "git") with glob file rules
-// (e.g. "/usr/**", "/bin/**") -- without explicit execute paths, Landlock
-// blocks exec with EACCES.
+// rules. Explicit file-rule execute grants become Landlock execute grants for
+// the corresponding path prefix. Additionally, read/open grants for FHS binary
+// directories become execute grants as a compatibility bridge for policies that
+// use bare command names (e.g. "git") with glob file rules (e.g. "/usr/**",
+// "/bin/**"). Without this, Landlock can block exec with EACCES even when the
+// command and file policy engines both allow the operation.
 func DeriveExecutePathsFromFileRules(p *policy.Policy) []string {
 	if p == nil {
 		return nil
@@ -208,16 +210,18 @@ func DeriveExecutePathsFromFileRules(p *policy.Policy) []string {
 			continue
 		}
 
-		// Only include rules that allow read or open operations
+		hasExecute := false
 		hasReadOrOpen := false
 		for _, op := range rule.Operations {
 			op = strings.ToLower(op)
+			if op == "execute" || op == "exec" {
+				hasExecute = true
+			}
 			if op == "read" || op == "open" || op == "*" {
 				hasReadOrOpen = true
-				break
 			}
 		}
-		if !hasReadOrOpen && len(rule.Operations) > 0 {
+		if !hasExecute && !hasReadOrOpen && len(rule.Operations) > 0 {
 			continue
 		}
 
@@ -233,8 +237,7 @@ func DeriveExecutePathsFromFileRules(p *policy.Policy) []string {
 				continue
 			}
 
-			// Only include directories that are or contain FHS binary dirs
-			if couldContainBinaries(dir) {
+			if hasExecute || couldContainBinaries(dir) {
 				pathSet[dir] = struct{}{}
 			}
 		}

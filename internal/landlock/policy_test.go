@@ -177,10 +177,10 @@ func TestCouldContainBinaries(t *testing.T) {
 	}{
 		{"/bin", true},
 		{"/sbin", true},
-		{"/usr", true},          // parent of /usr/bin
+		{"/usr", true}, // parent of /usr/bin
 		{"/usr/bin", true},
 		{"/usr/sbin", true},
-		{"/usr/local", true},    // parent of /usr/local/bin
+		{"/usr/local", true}, // parent of /usr/local/bin
 		{"/usr/local/bin", true},
 		{"/usr/local/sbin", true},
 		{"/lib", false},
@@ -190,7 +190,7 @@ func TestCouldContainBinaries(t *testing.T) {
 		{"/opt", false},
 		{"/tmp", false},
 		{"/home/user", false},
-		{"/", false},           // root — filtered out by caller, but function itself returns false
+		{"/", false}, // root — filtered out by caller, but function itself returns false
 	}
 	for _, tt := range tests {
 		t.Run(tt.dir, func(t *testing.T) {
@@ -244,6 +244,31 @@ func TestDeriveExecutePathsFromFileRules(t *testing.T) {
 		if found[reject] {
 			t.Errorf("unexpected %q in result", reject)
 		}
+	}
+}
+
+func TestDeriveExecutePathsFromFileRules_ExplicitExecuteNonFHS(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("landlock tests use Unix paths")
+	}
+	p := &policy.Policy{
+		FileRules: []policy.FileRule{
+			{
+				Name:       "allow-nix-read-exec",
+				Paths:      []string{"/nix/store/**"},
+				Operations: []string{"read", "open", "execute"},
+				Decision:   "allow",
+			},
+		},
+	}
+
+	paths := DeriveExecutePathsFromFileRules(p)
+	found := make(map[string]bool)
+	for _, p := range paths {
+		found[p] = true
+	}
+	if !found["/nix/store"] {
+		t.Fatalf("expected /nix/store from explicit execute file rule, got %v", paths)
 	}
 }
 
