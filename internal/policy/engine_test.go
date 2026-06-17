@@ -220,6 +220,45 @@ func TestEngine_CheckExecve_ArgsPattern(t *testing.T) {
 	require.Equal(t, "block-rm-rf", dec.Rule)
 }
 
+func TestEngine_CheckExecve_AliasesPreserveRuleOrder(t *testing.T) {
+	p := &Policy{
+		Version: 1,
+		Name:    "test-execve-aliases",
+		CommandRules: []CommandRule{
+			{
+				Name:         "deny-destructive-rm",
+				Commands:     []string{"rm"},
+				ArgsPatterns: []string{"-rf"},
+				Decision:     "deny",
+				Context:      DefaultContext(),
+			},
+			{
+				Name:     "allow-rm",
+				Commands: []string{"rm"},
+				Decision: "allow",
+				Context:  DefaultContext(),
+			},
+		},
+	}
+	e, err := NewEngine(p, false, true)
+	require.NoError(t, err)
+
+	canonical := "/nix/store/abc-coreutils-9.11/bin/coreutils"
+	raw := "/nix/store/abc-coreutils-9.11/bin/rm"
+
+	dec := e.CheckExecve(canonical, []string{"rm", "file.txt"}, 0)
+	require.Equal(t, types.DecisionDeny, dec.EffectiveDecision)
+	require.Equal(t, "default-deny-execve", dec.Rule)
+
+	dec = e.CheckExecveWithAliases(canonical, []string{raw}, []string{"rm", "file.txt"}, 0)
+	require.Equal(t, types.DecisionAllow, dec.EffectiveDecision)
+	require.Equal(t, "allow-rm", dec.Rule)
+
+	dec = e.CheckExecveWithAliases(canonical, []string{raw}, []string{"rm", "-rf", "/"}, 0)
+	require.Equal(t, types.DecisionDeny, dec.EffectiveDecision)
+	require.Equal(t, "deny-destructive-rm", dec.Rule)
+}
+
 func TestEngine_CheckExecve_FullPathMatch(t *testing.T) {
 	p := &Policy{
 		Version: 1,

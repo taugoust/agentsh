@@ -28,6 +28,7 @@ import (
 // recoverTimeout is the maximum time to spend persisting a panic event
 // in the recovery path. Prevents a slow store from blocking broker delivery.
 const recoverTimeout = 5 * time.Second
+
 // This prevents blocking forever if the wrapper fails to set up seccomp.
 const recvFDTimeout = 10 * time.Second
 
@@ -91,7 +92,14 @@ type policyEngineWrapper struct {
 }
 
 func (w *policyEngineWrapper) CheckExecve(filename string, argv []string, depth int) unixmon.PolicyDecision {
-	dec := w.engine.CheckExecve(filename, argv, depth)
+	return w.toUnixPolicyDecision(w.engine.CheckExecve(filename, argv, depth))
+}
+
+func (w *policyEngineWrapper) CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) unixmon.PolicyDecision {
+	return w.toUnixPolicyDecision(w.engine.CheckExecveWithAliases(filename, aliases, argv, depth))
+}
+
+func (w *policyEngineWrapper) toUnixPolicyDecision(dec policy.Decision) unixmon.PolicyDecision {
 	// Return both PolicyDecision (for logging) and EffectiveDecision (for enforcement)
 	return unixmon.PolicyDecision{
 		Decision:          string(dec.PolicyDecision),

@@ -1355,8 +1355,17 @@ func (e *Engine) EvaluateConnectRedirect(hostPort string) *ConnectRedirectResult
 // Returns the decision from the first matching rule, or default deny if none match.
 // The depth parameter represents the ancestry depth: 0 = direct (user-typed), 1+ = nested (script-spawned).
 func (e *Engine) CheckExecve(filename string, argv []string, depth int) Decision {
-	cmdLower := strings.ToLower(filename)
-	cmdBase := strings.ToLower(filepath.Base(filename))
+	return e.CheckExecveWithAliases(filename, nil, argv, depth)
+}
+
+// CheckExecveWithAliases is like CheckExecve, but also matches command rules
+// against trusted aliases for the same execve, such as the raw filename before
+// symlink canonicalization. This preserves rule-order semantics while allowing
+// policies like `commands: [rm]` to match Nix multicall binaries where the
+// canonical executable is `/nix/store/.../bin/coreutils` but the raw exec path
+// was `/nix/store/.../bin/rm`.
+func (e *Engine) CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) Decision {
+	candidates := execveCommandCandidates(filename, aliases)
 
 	for _, r := range e.compiledCommandRules {
 		// Check depth/context constraint first
@@ -1371,35 +1380,10 @@ func (e *Engine) CheckExecve(filename string, argv []string, depth int) Decision
 		if len(r.basenames) == 0 && len(r.basenameGlobs) == 0 && len(r.fullPaths) == 0 && len(r.pathGlobs) == 0 {
 			commandMatched = true
 		} else {
-			// Check full path matches first (more specific)
-			if _, ok := r.fullPaths[cmdLower]; ok {
-				commandMatched = true
-			}
-
-			// Check path glob patterns
-			if !commandMatched {
-				for _, g := range r.pathGlobs {
-					if g.Match(cmdLower) || g.Match(filename) {
-						commandMatched = true
-						break
-					}
-				}
-			}
-
-			// Check basename matches (less specific, legacy behavior)
-			if !commandMatched {
-				if _, ok := r.basenames[cmdBase]; ok {
+			for _, cand := range candidates {
+				if execveCandidateMatchesRule(cand, r) {
 					commandMatched = true
-				}
-			}
-
-			// Check basename glob patterns
-			if !commandMatched {
-				for _, g := range r.basenameGlobs {
-					if g.Match(cmdBase) || g.Match(filepath.Base(filename)) {
-						commandMatched = true
-						break
-					}
+					break
 				}
 			}
 		}
@@ -1432,4 +1416,57 @@ func (e *Engine) CheckExecve(filename string, argv []string, depth int) Decision
 	dec := e.wrapDecision(string(types.DecisionDeny), "default-deny-execve", "", nil)
 	dec.EnvPolicy = MergeEnvPolicy(e.policy.EnvPolicy, CommandRule{})
 	return dec
+}
+
+func execveCommandCandidates(filename string, aliases []string) []string {
+	seen := make(map[string]struct{}, 1+len(aliases))
+	out := make([]string, 0, 1+len(aliases))
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		key := strings.ToLower(s)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, s)
+	}
+	add(filename)
+	for _, a := range aliases {
+		add(a)
+	}
+	return out
+}
+
+func execveCandidateMatchesRule(candidate string, r compiledCommandRule) bool {
+	cmdLower := strings.ToLower(candidate)
+	cmdBase := strings.ToLower(filepath.Base(candidate))
+
+	// Check full path matches first (more specific)
+	if _, ok := r.fullPaths[cmdLower]; ok {
+		return true
+	}
+
+	// Check path glob patterns
+	for _, g := range r.pathGlobs {
+		if g.Match(cmdLower) || g.Match(candidate) {
+			return true
+		}
+	}
+
+	// Check basename matches (less specific, legacy behavior)
+	if _, ok := r.basenames[cmdBase]; ok {
+		return true
+	}
+
+	// Check basename glob patterns
+	for _, g := range r.basenameGlobs {
+		if g.Match(cmdBase) || g.Match(filepath.Base(candidate)) {
+			return true
+		}
+	}
+
+	return false
 }

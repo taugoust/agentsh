@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/netmonitor"
@@ -32,16 +33,16 @@ type ExecveHandlerConfig struct {
 
 // ExecveContext holds context for an execve notification.
 type ExecveContext struct {
-	PID         int
-	ParentPID   int
-	Filename    string
-	RawFilename string // Original filename before canonicalization
-	Argv        []string
+	PID            int
+	ParentPID      int
+	Filename       string
+	RawFilename    string // Original filename before canonicalization
+	Argv           []string
 	Truncated      bool
 	SessionID      string
 	Depth          int
-	UnwrappedFrom  string   // If unwrapped: the transparent wrapper command
-	PayloadCommand string   // If unwrapped: the real command being evaluated
+	UnwrappedFrom  string // If unwrapped: the transparent wrapper command
+	PayloadCommand string // If unwrapped: the real command being evaluated
 }
 
 // ExecveResult holds the result of handling an execve.
@@ -58,6 +59,13 @@ type ExecveResult struct {
 // PolicyChecker interface for policy evaluation
 type PolicyChecker interface {
 	CheckExecve(filename string, argv []string, depth int) PolicyDecision
+}
+
+// PolicyCheckerWithAliases is implemented by policy checkers that can match
+// execve command rules against additional trusted names for the same syscall,
+// such as the raw filename before symlink canonicalization.
+type PolicyCheckerWithAliases interface {
+	CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) PolicyDecision
 }
 
 // PolicyDecision represents a policy check result
@@ -91,11 +99,11 @@ type ExecveEmitter interface {
 
 // ExecveHandler handles execve/execveat notifications.
 type ExecveHandler struct {
-	cfg             ExecveHandlerConfig
-	policy          PolicyChecker
-	depthTracker    *DepthTracker
-	emitter         ExecveEmitter
-	approver        ApprovalRequester
+	cfg                  ExecveHandlerConfig
+	policy               PolicyChecker
+	depthTracker         *DepthTracker
+	emitter              ExecveEmitter
+	approver             ApprovalRequester
 	stubSymlinkPath      string // Short symlink path pointing to agentsh-stub
 	transparentOverrides *netmonitor.TransparentOverrides
 }
@@ -250,7 +258,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 				return result, h.buildEvent(ctx, result, "truncated_approval_denied")
 			}
 			// Approved — fall through to policy check
-		// "allow" falls through to policy check
+			// "allow" falls through to policy check
 		}
 	}
 
@@ -270,8 +278,9 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 			payloadEffective = payloadDecision.Decision
 		}
 
-		// Evaluate the wrapper command against policy
-		wrapperDecision := h.policy.CheckExecve(ctx.Filename, ctx.Argv, ctx.Depth)
+		// Evaluate the wrapper command against policy, including trusted aliases
+		// such as the raw pre-canonicalization filename.
+		wrapperDecision := h.checkExecveWithAliases(ctx, ctx.Filename, ctx.Argv)
 		wrapperEffective := wrapperDecision.EffectiveDecision
 		if wrapperEffective == "" {
 			wrapperEffective = wrapperDecision.Decision
@@ -346,8 +355,10 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		return result, h.buildEvent(ctx, result, "no_policy")
 	}
 
-	// Check policy
-	decision := h.policy.CheckExecve(ctx.Filename, ctx.Argv, ctx.Depth)
+	// Check policy, including trusted aliases such as the raw filename before
+	// symlink canonicalization. This lets `commands: [rm]` match Nix coreutils
+	// symlinks even though ctx.Filename is `/nix/store/.../bin/coreutils`.
+	decision := h.checkExecveWithAliases(ctx, ctx.Filename, ctx.Argv)
 
 	// Use EffectiveDecision for actual enforcement (respects shadow mode)
 	// Use Decision for logging to preserve full policy semantics
@@ -415,6 +426,93 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 	}
 }
 
+func (h *ExecveHandler) checkExecveWithAliases(ctx ExecveContext, filename string, argv []string) PolicyDecision {
+	if checker, ok := h.policy.(PolicyCheckerWithAliases); ok && filename == ctx.Filename {
+		return checker.CheckExecveWithAliases(filename, trustedExecveAliases(ctx.Filename, ctx.RawFilename, ctx.Argv), argv, ctx.Depth)
+	}
+	return h.policy.CheckExecve(filename, argv, ctx.Depth)
+}
+
+func trustedExecveAliases(filename, rawFilename string, argv []string) []string {
+	aliases := make([]string, 0, 3)
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" || s == filename {
+			return
+		}
+		for _, existing := range aliases {
+			if strings.EqualFold(existing, s) {
+				return
+			}
+		}
+		aliases = append(aliases, s)
+	}
+
+	// The raw filename is read directly from the execve syscall before AgentSH
+	// canonicalizes symlinks. Use it only when it is itself a trusted system/Nix
+	// path, or when canonicalization did not change the path. This restores
+	// policy semantics for /nix/store/.../bin/rm -> .../bin/coreutils without
+	// allowing /tmp/rm -> /tmp/malware to inherit an `rm` allow rule.
+	rawTrusted := trustedRawExecveAlias(filename, rawFilename)
+	if rawTrusted {
+		add(rawFilename)
+	}
+
+	if len(argv) == 0 {
+		return aliases
+	}
+	argv0 := strings.TrimSpace(argv[0])
+	argv0Base := filepath.Base(argv0)
+	if argv0Base == "" || strings.HasPrefix(argv0Base, "-") {
+		return aliases
+	}
+
+	// argv[0] is caller-controlled, so only use it as a command alias when it is
+	// corroborated by the raw filename or by a trusted Nix coreutils multicall
+	// executable. This avoids allowing /tmp/malware run with argv[0]="rm".
+	if rawTrusted && rawFilename != "" && argv0Base == filepath.Base(rawFilename) {
+		add(argv0)
+		add(argv0Base)
+	} else if isTrustedNixCoreutilsMulticall(filename) || isTrustedNixCoreutilsMulticall(rawFilename) {
+		add(argv0)
+		add(argv0Base)
+	}
+
+	return aliases
+}
+
+func trustedRawExecveAlias(filename, rawFilename string) bool {
+	rawFilename = strings.TrimSpace(rawFilename)
+	if rawFilename == "" {
+		return false
+	}
+	if filepath.Clean(rawFilename) == filepath.Clean(filename) {
+		return true
+	}
+	return isTrustedSystemExecPath(rawFilename)
+}
+
+func isTrustedSystemExecPath(path string) bool {
+	path = filepath.Clean(path)
+	for _, prefix := range []string{
+		"/nix/store/",
+		"/run/current-system/sw/",
+		"/run/wrappers/",
+		"/etc/profiles/",
+		"/nix/var/nix/profiles/",
+		"/nix/profile/",
+	} {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func isTrustedNixCoreutilsMulticall(path string) bool {
+	return filepath.Base(path) == "coreutils" && strings.Contains(path, "/nix/store/") && strings.Contains(path, "-coreutils-")
+}
+
 // buildEvent builds an execve audit event without emitting it.
 func (h *ExecveHandler) buildEvent(ctx ExecveContext, result ExecveResult, rule string) *types.Event {
 	if h.emitter == nil {
@@ -443,16 +541,16 @@ func (h *ExecveHandler) buildEvent(ctx ExecveContext, result ExecveResult, rule 
 	}
 
 	return &types.Event{
-		ID:        fmt.Sprintf("execve-%d-%d", ctx.PID, time.Now().UnixNano()),
-		Timestamp: time.Now().UTC(),
-		Type:      "execve",
-		SessionID: ctx.SessionID,
-		PID:       ctx.PID,
-		ParentPID: ctx.ParentPID,
-		Depth:     ctx.Depth,
-		Filename:    ctx.Filename,
-		RawFilename: ctx.RawFilename,
-		Argv:        ctx.Argv,
+		ID:             fmt.Sprintf("execve-%d-%d", ctx.PID, time.Now().UnixNano()),
+		Timestamp:      time.Now().UTC(),
+		Type:           "execve",
+		SessionID:      ctx.SessionID,
+		PID:            ctx.PID,
+		ParentPID:      ctx.ParentPID,
+		Depth:          ctx.Depth,
+		Filename:       ctx.Filename,
+		RawFilename:    ctx.RawFilename,
+		Argv:           ctx.Argv,
 		Truncated:      ctx.Truncated,
 		UnwrappedFrom:  ctx.UnwrappedFrom,
 		PayloadCommand: ctx.PayloadCommand,

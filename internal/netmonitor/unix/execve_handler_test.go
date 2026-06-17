@@ -25,6 +25,60 @@ func (m *mockPolicy) CheckExecve(filename string, argv []string, depth int) Poli
 	return m.decision
 }
 
+type mockAliasPolicy struct {
+	filename string
+	aliases  []string
+	argv     []string
+	depth    int
+	decision PolicyDecision
+}
+
+func (m *mockAliasPolicy) CheckExecve(filename string, argv []string, depth int) PolicyDecision {
+	m.filename = filename
+	m.argv = argv
+	m.depth = depth
+	return m.decision
+}
+
+func (m *mockAliasPolicy) CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) PolicyDecision {
+	m.filename = filename
+	m.aliases = aliases
+	m.argv = argv
+	m.depth = depth
+	return m.decision
+}
+
+func TestExecveHandler_TrustedAliases(t *testing.T) {
+	cfg := ExecveHandlerConfig{MaxArgc: 1000, MaxArgvBytes: 65536}
+	pol := &mockAliasPolicy{decision: PolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "allow-rm"}}
+	h := NewExecveHandler(cfg, pol, NewDepthTracker(), nil)
+
+	ctx := ExecveContext{
+		PID:         1001,
+		ParentPID:   1000,
+		Filename:    "/nix/store/abc-coreutils-9.11/bin/coreutils",
+		RawFilename: "/nix/store/abc-coreutils-9.11/bin/rm",
+		Argv:        []string{"rm", "file.txt"},
+	}
+
+	result, _ := h.Handle(context.Background(), ctx)
+	require.True(t, result.Allow)
+	require.Equal(t, "/nix/store/abc-coreutils-9.11/bin/coreutils", pol.filename)
+	require.Contains(t, pol.aliases, "/nix/store/abc-coreutils-9.11/bin/rm")
+	require.Contains(t, pol.aliases, "rm")
+}
+
+func TestExecveHandler_RejectsUncorroboratedArgv0Alias(t *testing.T) {
+	aliases := trustedExecveAliases("/tmp/malware", "/tmp/malware", []string{"rm", "file.txt"})
+	require.NotContains(t, aliases, "rm")
+}
+
+func TestExecveHandler_RejectsUntrustedRawSymlinkAlias(t *testing.T) {
+	aliases := trustedExecveAliases("/tmp/malware", "/tmp/rm", []string{"rm", "file.txt"})
+	require.NotContains(t, aliases, "/tmp/rm")
+	require.NotContains(t, aliases, "rm")
+}
+
 func TestExecveHandler_Handle_Allow(t *testing.T) {
 	cfg := ExecveHandlerConfig{
 		MaxArgc:      1000,
