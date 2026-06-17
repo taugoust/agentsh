@@ -121,6 +121,23 @@
         }
       );
 
+      nixosModules = {
+        default =
+          {
+            config,
+            lib,
+            pkgs,
+            ...
+          }@args:
+          import ./nix/modules/nixos/agentsh.nix (
+            args
+            // {
+              defaultPackage = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+            }
+          );
+        agentsh = self.nixosModules.default;
+      };
+
       devShells = forAllSystems (
         pkgs:
         let
