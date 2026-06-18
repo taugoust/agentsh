@@ -1,43 +1,31 @@
 # eBPF connect hook assets
 
-- `connect.bpf.c`: CO-RE BPF program (go:build ignore) built with clang/llc.
-- `connect_bpfel.o`: compiled artifact embedded in Go via `program.go`.
-- `connect_bpfel_arm64.o`: ARM64 version of the compiled artifact.
-- `vmlinux.h`: BTF type definitions (regenerate from running kernel if needed).
-- `Makefile`: helper to rebuild the object locally.
+- `connect.bpf.c`: BPF program (go:build ignore) built with clang.
+- `connect_bpfel.o`: generated Linux build artifact embedded by `program_linux.go`.
+- `connect_bpfel_arm64.o`: generated Linux build artifact embedded by `program_linux.go`.
+- `Makefile`: helper to rebuild the objects locally.
 
 ## Rebuild
 
-Rebuild locally (Linux with clang and BTF available):
+Linux Nix package builds regenerate the embedded `.o` files before `go build`, so changes to `connect.bpf.c` are picked up by `nix build` / `nixos-rebuild`. The generated `.o` files are not checked in.
+
+For manual local rebuilds, enter the flake dev shell and run:
 ```bash
 cd internal/netmonitor/ebpf
-make clean && make
+make clean all BPF_CLANG="$BPF_CLANG" BPF_INCLUDE="$BPF_INCLUDE"
 ```
-Then re-run `go test ./...` to ensure the embedded object is updated.
-
-## Regenerate vmlinux.h
-
-If you encounter BTF-related verifier errors on a new kernel:
+Then re-run targeted tests, for example:
 ```bash
-bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
-make clean && make
+go test ./internal/netmonitor/ebpf -run TestPopulateAllowlistCIDR -count=1
 ```
 
 ## Kernel Compatibility
 
-The eBPF programs use CO-RE (Compile Once - Run Everywhere) and are designed to work with Linux kernels 5.x and 6.x.
+The eBPF programs are designed to work with Linux kernels 5.x and 6.x.
 
-### CO-RE and Portability
+### Portability
 
-The compiled `.o` files contain BTF (BPF Type Format) information that allows them to adapt to different kernel versions at load time. The context fields used (`user_ip4`, `user_ip6`, `user_port`) are stable across kernel versions.
-
-The `vmlinux.h` file is gitignored because each build machine should generate it from its own kernel's BTF. However, the committed `.o` files should work across kernel versions thanks to CO-RE.
-
-If you encounter load errors on a specific kernel version, rebuild locally:
-```bash
-bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
-make clean && make
-```
+The program uses stable `struct bpf_sock_addr` fields from kernel UAPI headers (`user_ip4`, `user_ip6`, `user_port`) and does not require a generated `vmlinux.h`. This keeps Nix builds pure: the BPF object is compiled from checked-in source plus explicit Nix inputs (`clang-unwrapped`, `libbpf`, and `linuxHeaders`), not from the running kernel's `/sys/kernel/btf/vmlinux`.
 
 ### Kernel 6.x Notes
 

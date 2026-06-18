@@ -1,5 +1,6 @@
 BPF_CLANG ?= clang
-BPF_CFLAGS ?= -O2 -g -Wall -Werror -target bpf
+BPF_INCLUDE ?=
+BPF_CFLAGS ?= -O2 -g -Wall -Werror -target bpf $(BPF_INCLUDE)
 BPF_ALLOW_MAX ?= 1024
 BPF_DENY_MAX ?= 1024
 BPF_LPM_MAX ?= 1024

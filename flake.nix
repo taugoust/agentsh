@@ -55,10 +55,17 @@
             nativeBuildInputs = [
               pkgs.makeWrapper
             ]
-            ++ lib.optionals stdenv.hostPlatform.isLinux [ pkgs.pkg-config ];
+            ++ lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.gnumake
+              pkgs.llvm
+              pkgs.llvmPackages.clang-unwrapped
+              pkgs.pkg-config
+            ];
             buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.fuse3
+              pkgs.libbpf
               pkgs.libseccomp
+              pkgs.linuxHeaders
             ];
 
             env.CGO_ENABLED = if stdenv.hostPlatform.isLinux then "1" else "0";
@@ -69,6 +76,12 @@
               "-X main.version=${version}"
               "-X main.commit=${rev}"
             ];
+
+            preBuild = lib.optionalString stdenv.hostPlatform.isLinux ''
+              make -C internal/netmonitor/ebpf clean all \
+                BPF_CLANG=${pkgs.llvmPackages.clang-unwrapped}/bin/clang \
+                BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
+            '';
 
             # Tests exercise kernel features such as FUSE, seccomp, eBPF,
             # ptrace, and network namespaces. Keep package builds pure and
@@ -153,8 +166,13 @@
             ++ lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.pkg-config
               pkgs.gcc
+              pkgs.gnumake
+              pkgs.llvm
+              pkgs.llvmPackages.clang-unwrapped
               pkgs.fuse3
+              pkgs.libbpf
               pkgs.libseccomp
+              pkgs.linuxHeaders
               pkgs.coreutils
               pkgs.diffutils
               pkgs.iproute2
@@ -166,6 +184,8 @@
             shellHook =
               lib.optionalString stdenv.hostPlatform.isLinux ''
                 export CGO_ENABLED=1
+                export BPF_CLANG=${pkgs.llvmPackages.clang-unwrapped}/bin/clang
+                export BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
               ''
               + lib.optionalString stdenv.hostPlatform.isDarwin ''
                 export CGO_ENABLED=0
