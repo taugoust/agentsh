@@ -63,6 +63,32 @@ func TestBuildAllowedEndpoints_NonStrictOnWildcard(t *testing.T) {
 	}
 }
 
+func TestBuildProxyOnlyAllowedEndpoints_LoopbackOnly(t *testing.T) {
+	entries, cidrs := buildProxyOnlyAllowedEndpoints("http://127.0.0.1:18081", "http://127.0.0.1:19091")
+	if len(entries) != 0 {
+		t.Fatalf("expected no exact entries for proxy-only mode, got %d", len(entries))
+	}
+	if len(cidrs) != 3 {
+		t.Fatalf("expected IPv4 network-order, IPv4 native-order, and IPv6 loopback CIDRs, got %d", len(cidrs))
+	}
+	seen4 := false
+	seen6 := false
+	for _, c := range cidrs {
+		if c.Dport != 0 {
+			t.Fatalf("proxy-only loopback CIDR should allow any loopback port, got dport=%d", c.Dport)
+		}
+		if c.Family == 2 && c.PrefixLen == 32 && net.IP(c.Addr[:4]).Equal(net.ParseIP("127.0.0.1")) {
+			seen4 = true
+		}
+		if c.Family == 10 && c.PrefixLen == 128 && net.IP(c.Addr[:]).Equal(net.ParseIP("::1")) {
+			seen6 = true
+		}
+	}
+	if !seen4 || !seen6 {
+		t.Fatalf("expected loopback v4/v6 CIDRs, seen4=%v seen6=%v cidrs=%+v", seen4, seen6, cidrs)
+	}
+}
+
 func TestBuildAllowedEndpoints_NonStrictOnCIDR(t *testing.T) {
 	t.Cleanup(func() { resolveDomainWithTTL = resolveDomainTTL })
 	pol := &policy.Policy{

@@ -197,18 +197,19 @@ static __always_inline bool is_denied(struct ctx_info *info, __u8 protocol) {
         key.protocol = protocol; // restore for CIDR checks
     }
 
-    // Check CIDR LPM maps.
+    // Check CIDR LPM maps. Prefixlen includes the 32 bits of compiler
+    // padding between prefixlen and cgroup_id in struct lpm{4,6}_key.
     if (info->family == AF_INET) {
         struct lpm4_key lk = {};
         lk.cgroup_id = key.cgroup_id;
         __builtin_memcpy(&lk.addr, &info->ipv4, 4);
         lk.dport = info->dport;
-        lk.prefixlen = 64 + 32 + 16; // include port
+        lk.prefixlen = 32 + 64 + 32 + 16; // pad + cgroup + addr + port
         val = bpf_map_lookup_elem(&lpm4_deny, &lk);
         if (val)
             return true;
         // fallback to any-port prefix
-        lk.prefixlen = 64 + 32;
+        lk.prefixlen = 32 + 64 + 32;
         lk.dport = 0;
         val = bpf_map_lookup_elem(&lpm4_deny, &lk);
         if (val)
@@ -218,11 +219,11 @@ static __always_inline bool is_denied(struct ctx_info *info, __u8 protocol) {
         lk.cgroup_id = key.cgroup_id;
         __builtin_memcpy(&lk.addr, info->ipv6, 16);
         lk.dport = info->dport;
-        lk.prefixlen = 64 + 128 + 16; // include port
+        lk.prefixlen = 32 + 64 + 128 + 16; // pad + cgroup + addr + port
         val = bpf_map_lookup_elem(&lpm6_deny, &lk);
         if (val)
             return true;
-        lk.prefixlen = 64 + 128;
+        lk.prefixlen = 32 + 64 + 128;
         lk.dport = 0;
         val = bpf_map_lookup_elem(&lpm6_deny, &lk);
         if (val)
@@ -256,18 +257,19 @@ static __always_inline bool allow(struct ctx_info *info, __u8 protocol) {
             return true;
     }
 
-    // Check CIDR LPM maps.
+    // Check CIDR LPM maps. Prefixlen includes the 32 bits of compiler
+    // padding between prefixlen and cgroup_id in struct lpm{4,6}_key.
     if (info->family == AF_INET) {
         struct lpm4_key lk = {};
         lk.cgroup_id = key.cgroup_id;
         __builtin_memcpy(&lk.addr, &info->ipv4, 4);
         lk.dport = info->dport;
-        lk.prefixlen = 64 + 32 + 16; // include port
+        lk.prefixlen = 32 + 64 + 32 + 16; // pad + cgroup + addr + port
         val = bpf_map_lookup_elem(&lpm4_allow, &lk);
         if (val)
             return true;
         // fallback to any-port prefix
-        lk.prefixlen = 64 + 32;
+        lk.prefixlen = 32 + 64 + 32;
         lk.dport = 0;
         val = bpf_map_lookup_elem(&lpm4_allow, &lk);
         if (val)
@@ -277,11 +279,11 @@ static __always_inline bool allow(struct ctx_info *info, __u8 protocol) {
         lk.cgroup_id = key.cgroup_id;
         __builtin_memcpy(&lk.addr, info->ipv6, 16);
         lk.dport = info->dport;
-        lk.prefixlen = 64 + 128 + 16; // include port
+        lk.prefixlen = 32 + 64 + 128 + 16; // pad + cgroup + addr + port
         val = bpf_map_lookup_elem(&lpm6_allow, &lk);
         if (val)
             return true;
-        lk.prefixlen = 64 + 128;
+        lk.prefixlen = 32 + 64 + 128;
         lk.dport = 0;
         val = bpf_map_lookup_elem(&lpm6_allow, &lk);
         if (val)

@@ -333,7 +333,18 @@ func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, 
 						allowCgid = cgid
 						maxTTL := time.Duration(cfg.Sandbox.Network.EBPF.DNSMaxTTLSeconds) * time.Second
 						ep, cidrs, denyKeys, denyCidrs, strict, hasDomains, ttlHint := buildAllowedEndpoints(pol, maxTTL)
-						if len(ep) == 0 && len(cidrs) == 0 && !enforceNoDNS {
+						proxyOnly := false
+						if sess, ok := app.sessions.Get(sessionID); ok && strings.TrimSpace(sess.ProxyURL()) != "" {
+							proxyOnly = true
+							ep, cidrs = buildProxyOnlyAllowedEndpoints(sess.ProxyURL(), sess.LLMProxyURL())
+							denyKeys, denyCidrs = nil, nil
+							// The proxy is the approval-capable network path. Keep eBPF
+							// default-deny strict even when policy contains wildcard domains;
+							// proxy-aware clients reach loopback, direct bypasses are blocked.
+							strict = true
+							hasDomains = false
+							ttlHint = 0
+						} else if len(ep) == 0 && len(cidrs) == 0 && !enforceNoDNS {
 							// disable default deny when we couldn't resolve anything
 							strict = false
 						}
@@ -362,7 +373,35 @@ func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, 
 							allowlistColl = nil
 							allowCgid = 0
 						}
-						if ebpfEnforce && !strict {
+						if ebpfEnforce && proxyOnly {
+							ev := types.Event{
+								ID:        uuid.NewString(),
+								Timestamp: time.Now().UTC(),
+								Type:      "ebpf_enforce_proxy_only",
+								SessionID: sessionID,
+								CommandID: cmdID,
+								Fields: map[string]any{
+									"reason":           "session proxy available; direct external connects blocked by eBPF",
+									"cgroup_id":        cgid,
+									"allow_entries":    len(ep),
+									"allow_cidr_rules": len(cidrs),
+									"proxy_url": func() string {
+										if sess, ok := app.sessions.Get(sessionID); ok {
+											return sess.ProxyURL()
+										}
+										return ""
+									}(),
+									"llm_proxy_url": func() string {
+										if sess, ok := app.sessions.Get(sessionID); ok {
+											return sess.LLMProxyURL()
+										}
+										return ""
+									}(),
+								},
+							}
+							_ = emit.AppendEvent(ctx, ev)
+							emit.Publish(ev)
+						} else if ebpfEnforce && !strict {
 							ev := types.Event{
 								ID:        uuid.NewString(),
 								Timestamp: time.Now().UTC(),
@@ -394,6 +433,15 @@ func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, 
 										return
 									case <-t.C:
 										ep2, cidrs2, deny2, denyCidrs2, strict2, _, ttl2 := buildAllowedEndpoints(pol, base)
+										if proxyOnly {
+											if sess, ok := app.sessions.Get(sessionID); ok {
+												ep2, cidrs2 = buildProxyOnlyAllowedEndpoints(sess.ProxyURL(), sess.LLMProxyURL())
+											} else {
+												ep2, cidrs2 = buildProxyOnlyAllowedEndpoints()
+											}
+											deny2, denyCidrs2 = nil, nil
+											strict2 = true
+										}
 										if err := ebpfPopulateAllowlist(coll, cgid, ep2, cidrs2, deny2, denyCidrs2, strict2); err != nil {
 											ev := types.Event{
 												ID:        uuid.NewString(),

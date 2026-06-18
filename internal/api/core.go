@@ -904,7 +904,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		}
 	}
 
-	// Optional: start transparent network interception; fall back to explicit proxy on failure.
+	// Optional: start transparent network interception. The explicit HTTP(S)
+	// proxy is still started below when sandbox.network.enabled=true: it is the
+	// approval-capable path for tools that honor proxy env vars, and eBPF
+	// enforce mode can then block direct external connects that bypass it.
 	if a.cfg.Sandbox.Network.Transparent.Enabled {
 		if err := a.tryStartTransparentNetwork(ctx, s); err != nil {
 			fail := types.Event{
@@ -918,10 +921,6 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 			}
 			_ = a.store.AppendEvent(ctx, fail)
 			a.broker.Publish(fail)
-			// Fall back to explicit proxy if configured.
-			if a.cfg.Sandbox.Network.Enabled {
-				a.startExplicitProxy(ctx, s)
-			}
 		} else {
 			okEv := types.Event{
 				ID:        uuid.NewString(),
@@ -932,7 +931,8 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 			_ = a.store.AppendEvent(ctx, okEv)
 			a.broker.Publish(okEv)
 		}
-	} else if a.cfg.Sandbox.Network.Enabled {
+	}
+	if a.cfg.Sandbox.Network.Enabled {
 		a.startExplicitProxy(ctx, s)
 	}
 

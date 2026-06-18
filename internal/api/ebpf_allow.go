@@ -16,6 +16,36 @@ var (
 	resolveDomainWithTTL = resolveDomainTTL
 )
 
+// buildProxyOnlyAllowedEndpoints returns the minimal direct-connect allowlist
+// used when an explicit session proxy is available. In this mode eBPF enforces
+// "proxy-or-block": direct external connects from the wrapped cgroup are denied
+// by default, while proxy-aware clients can reach loopback proxies and let the
+// user-space proxy evaluate allow/approve/deny network policy.
+func buildProxyOnlyAllowedEndpoints(_ ...string) ([]ebpf.AllowKey, []ebpf.AllowCIDR) {
+	var v4 ebpf.AllowCIDR
+	v4.Family = 2
+	v4.PrefixLen = 32
+	v4.Dport = 0
+	copy(v4.Addr[:4], net.ParseIP("127.0.0.1").To4())
+
+	// bpf_sock_addr.user_ip4 is a __u32 copied into the LPM key in native
+	// memory order. Include the little-endian byte representation as well as
+	// the normal network-order bytes so loopback matches on all kernels.
+	var v4le ebpf.AllowCIDR
+	v4le.Family = 2
+	v4le.PrefixLen = 32
+	v4le.Dport = 0
+	v4le.Addr[0], v4le.Addr[1], v4le.Addr[2], v4le.Addr[3] = 1, 0, 0, 127
+
+	var v6 ebpf.AllowCIDR
+	v6.Family = 10
+	v6.PrefixLen = 128
+	v6.Dport = 0
+	copy(v6.Addr[:], net.ParseIP("::1").To16())
+
+	return nil, []ebpf.AllowCIDR{v4, v4le, v6}
+}
+
 // buildAllowedEndpoints converts policy/network rules into ebpf allowlist entries and CIDRs.
 // Best-effort: expands allow network rules into concrete IP/port tuples and prefix matches.
 // Returns: allow entries, allow cidrs, deny entries, deny cidrs, strict flag, hasDomains flag, ttlHint (min TTL observed, 0 if none).

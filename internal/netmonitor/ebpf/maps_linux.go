@@ -67,6 +67,16 @@ type lpm6Key struct {
 	Pad1      [6]byte
 }
 
+const lpmPrefixPaddingBits = 32
+
+func lpmPrefixLen(addrBits uint32, withPort bool) uint32 {
+	bits := uint32(lpmPrefixPaddingBits) + 64 + addrBits
+	if withPort {
+		bits += 16
+	}
+	return bits
+}
+
 // PopulateAllowlist loads allowed/denied endpoints, CIDRs, and default_deny into the collection maps.
 func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey, allowCIDRs []AllowCIDR, deny []AllowKey, denyCIDRs []AllowCIDR, defaultDeny bool) error {
 	if coll == nil {
@@ -179,11 +189,7 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 	for _, c := range allowCIDRs {
 		if c.Family == 2 && lpm4 != nil {
 			var key lpm4Key
-			if c.Dport != 0 {
-				key.Prefixlen = 64 + c.PrefixLen + 16
-			} else {
-				key.Prefixlen = 64 + c.PrefixLen
-			}
+			key.Prefixlen = lpmPrefixLen(c.PrefixLen, c.Dport != 0)
 			key.CgroupID = cgroupID
 			copy(key.Addr[:], c.Addr[:4])
 			key.Dport = c.Dport
@@ -194,11 +200,7 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 			lpmAllowInserted++
 		} else if c.Family == 10 && lpm6 != nil {
 			var key lpm6Key
-			if c.Dport != 0 {
-				key.Prefixlen = 64 + c.PrefixLen + 16
-			} else {
-				key.Prefixlen = 64 + c.PrefixLen
-			}
+			key.Prefixlen = lpmPrefixLen(c.PrefixLen, c.Dport != 0)
 			key.CgroupID = cgroupID
 			copy(key.Addr[:], c.Addr[:])
 			key.Dport = c.Dport
@@ -229,11 +231,7 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 	for _, c := range denyCIDRs {
 		if c.Family == 2 && lpm4deny != nil {
 			var key lpm4Key
-			if c.Dport != 0 {
-				key.Prefixlen = 64 + c.PrefixLen + 16
-			} else {
-				key.Prefixlen = 64 + c.PrefixLen
-			}
+			key.Prefixlen = lpmPrefixLen(c.PrefixLen, c.Dport != 0)
 			key.CgroupID = cgroupID
 			copy(key.Addr[:], c.Addr[:4])
 			key.Dport = c.Dport
@@ -244,11 +242,7 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 			lpmDenyInserted++
 		} else if c.Family == 10 && lpm6deny != nil {
 			var key lpm6Key
-			if c.Dport != 0 {
-				key.Prefixlen = 64 + c.PrefixLen + 16
-			} else {
-				key.Prefixlen = 64 + c.PrefixLen
-			}
+			key.Prefixlen = lpmPrefixLen(c.PrefixLen, c.Dport != 0)
 			key.CgroupID = cgroupID
 			copy(key.Addr[:], c.Addr[:])
 			key.Dport = c.Dport
