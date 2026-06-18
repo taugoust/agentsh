@@ -50,6 +50,10 @@
             ++ lib.optionals stdenv.hostPlatform.isLinux [
               "cmd/agentsh-stub"
               "cmd/agentsh-unixwrap"
+            ]
+            ++ lib.optionals stdenv.hostPlatform.isDarwin [
+              "cmd/agentsh-stub"
+              "cmd/agentsh-rlimit-exec"
             ];
 
             nativeBuildInputs = [
@@ -83,6 +87,16 @@
                 BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
             '';
 
+            postBuild = lib.optionalString stdenv.hostPlatform.isDarwin ''
+              # Keep the main agentsh binary CGO-disabled on Darwin so cgofuse
+              # does not require macFUSE headers. Build only the Seatbelt wrapper
+              # with CGO enabled; it needs sandbox_init_with_parameters().
+              CGO_ENABLED=1 go build \
+                -ldflags='-s -w -X main.version=${version} -X main.commit=${rev}' \
+                -o agentsh-macwrap \
+                ./cmd/agentsh-macwrap
+            '';
+
             # Tests exercise kernel features such as FUSE, seccomp, eBPF,
             # ptrace, and network namespaces. Keep package builds pure and
             # leave integration testing to VM/NixOS tests.
@@ -102,6 +116,21 @@
               substituteInPlace $out/share/agentsh/configs/server-config.yaml \
                 --replace-fail /usr/lib/agentsh/bash_startup.sh \
                   $out/lib/agentsh/bash_startup.sh
+            ''
+            + lib.optionalString stdenv.hostPlatform.isDarwin ''
+
+              install -Dm755 agentsh-macwrap $out/bin/agentsh-macwrap
+
+              wrapProgram $out/bin/agentsh \
+                --suffix PATH : "$out/bin:${runtimePath}"
+              wrapProgram $out/bin/agentsh-shell-shim \
+                --suffix PATH : "$out/bin:${runtimePath}"
+              wrapProgram $out/bin/agentsh-stub \
+                --suffix PATH : "$out/bin:${runtimePath}"
+              wrapProgram $out/bin/agentsh-rlimit-exec \
+                --suffix PATH : "$out/bin:${runtimePath}"
+              wrapProgram $out/bin/agentsh-macwrap \
+                --suffix PATH : "$out/bin:${runtimePath}"
             ''
             + lib.optionalString stdenv.hostPlatform.isLinux ''
 
