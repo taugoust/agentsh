@@ -95,6 +95,19 @@ func (c *GRPCClient) CreateSessionWithRequest(ctx context.Context, req types.Cre
 		}
 		reqBody["overlay"] = overlayBody
 	}
+	if req.Shadow != nil {
+		shadowBody := map[string]any{}
+		if len(req.Shadow.DiffExclude) > 0 {
+			shadowBody["diff_exclude"] = req.Shadow.DiffExclude
+		}
+		if len(req.Shadow.AcceptExclude) > 0 {
+			shadowBody["accept_exclude"] = req.Shadow.AcceptExclude
+		}
+		if req.Shadow.KeepOnDestroy {
+			shadowBody["keep_on_destroy"] = req.Shadow.KeepOnDestroy
+		}
+		reqBody["shadow"] = shadowBody
+	}
 	in, err := jsonToStruct(reqBody)
 	if err != nil {
 		return out, err

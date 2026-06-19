@@ -16,6 +16,7 @@ import (
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/proxy/credsub"
 	"github.com/agentsh/agentsh/internal/workspace/overlay"
+	"github.com/agentsh/agentsh/internal/workspace/shadow"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
 )
@@ -41,6 +42,9 @@ type Session struct {
 	Overlay           *overlay.Workspace
 	OverlayAcceptedAt *time.Time
 	OverlayRejectedAt *time.Time
+	Shadow            *shadow.Workspace
+	ShadowAcceptedAt  *time.Time
+	ShadowRejectedAt  *time.Time
 	Policy            string
 
 	Cwd         string
@@ -339,6 +343,18 @@ func (s *Session) Snapshot() types.Session {
 			RejectedAt: s.OverlayRejectedAt,
 		}
 	}
+	var shadowInfo *types.ShadowInfo
+	if s.Shadow != nil {
+		shadowInfo = &types.ShadowInfo{
+			Enabled:    true,
+			State:      s.Shadow.State,
+			Real:       s.Shadow.Real,
+			Work:       s.Shadow.Work,
+			CreatedAt:  s.Shadow.CreatedAt,
+			AcceptedAt: s.ShadowAcceptedAt,
+			RejectedAt: s.ShadowRejectedAt,
+		}
+	}
 	workspaceMode := s.WorkspaceMode
 	if workspaceMode == "" {
 		workspaceMode = string(types.WorkspaceModeDirect)
@@ -352,6 +368,7 @@ func (s *Session) Snapshot() types.Session {
 		WorkspaceMount:   s.WorkspaceMount,
 		WorkspaceMode:    workspaceMode,
 		Overlay:          overlayInfo,
+		Shadow:           shadowInfo,
 		Policy:           s.Policy,
 		Profile:          s.Profile,
 		Mounts:           mounts,
@@ -491,6 +508,22 @@ func (s *Session) OverlayWorkspace() *overlay.Workspace {
 	return s.Overlay
 }
 
+func (s *Session) SetShadow(sw *shadow.Workspace) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Shadow = sw
+	if sw != nil {
+		s.WorkspaceMode = string(types.WorkspaceModeShadow)
+		s.WorkspaceMount = sw.Work
+	}
+}
+
+func (s *Session) ShadowWorkspace() *shadow.Workspace {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Shadow
+}
+
 func (s *Session) HasOverlay() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -511,6 +544,20 @@ func (s *Session) MarkOverlayRejected(t time.Time) {
 	s.WorkspaceMount = s.Workspace
 }
 
+func (s *Session) MarkShadowAccepted(t time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ShadowAcceptedAt = &t
+	s.WorkspaceMount = s.Workspace
+}
+
+func (s *Session) MarkShadowRejected(t time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ShadowRejectedAt = &t
+	s.WorkspaceMount = s.Workspace
+}
+
 // SetRealPaths switches the session to use real host paths instead of /workspace.
 // Returns false when enabled is true but the workspace is empty (real paths cannot
 // be applied).
@@ -519,7 +566,7 @@ func (s *Session) SetRealPaths(enabled bool) bool {
 	defer s.mu.Unlock()
 	if enabled {
 		workspace := s.Workspace
-		if s.WorkspaceMode == string(types.WorkspaceModeOverlay) && s.WorkspaceMount != "" {
+		if (s.WorkspaceMode == string(types.WorkspaceModeOverlay) || s.WorkspaceMode == string(types.WorkspaceModeShadow)) && s.WorkspaceMount != "" {
 			workspace = s.WorkspaceMount
 		}
 		if workspace == "" {

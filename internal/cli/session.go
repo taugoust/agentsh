@@ -38,6 +38,7 @@ func newSessionCreateCmd() *cobra.Command {
 	var realPaths bool
 	var workspaceMode string
 	var overlayMode bool
+	var shadowMode bool
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new session",
@@ -48,7 +49,12 @@ func newSessionCreateCmd() *cobra.Command {
 				return err
 			}
 			req := types.CreateSessionRequest{Workspace: workspace, Policy: policy, Home: userHomeDir()}
-			if overlayMode {
+			if overlayMode && shadowMode {
+				return fmt.Errorf("--overlay and --shadow are mutually exclusive")
+			}
+			if shadowMode {
+				req.WorkspaceMode = string(types.WorkspaceModeShadow)
+			} else if overlayMode {
 				req.WorkspaceMode = string(types.WorkspaceModeOverlay)
 			} else if workspaceMode != "" {
 				req.WorkspaceMode = workspaceMode
@@ -73,8 +79,9 @@ func newSessionCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&policy, "policy", "default", "Policy name")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	cmd.Flags().BoolVar(&realPaths, "real-paths", false, "Use real host paths instead of /workspace")
-	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct or overlay")
+	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct, overlay, or shadow")
 	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
+	cmd.Flags().BoolVar(&shadowMode, "shadow", false, "Use shadow workspace mode")
 	return cmd
 }
 
@@ -143,7 +150,7 @@ func newSessionDestroyCmd() *cobra.Command {
 func newSessionDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff SESSION_ID",
-		Short: "Show overlay workspace diff",
+		Short: "Show review workspace diff",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
@@ -166,7 +173,7 @@ func newSessionDiffCmd() *cobra.Command {
 func newSessionAcceptCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "accept SESSION_ID",
-		Short: "Accept overlay workspace changes into the real workspace",
+		Short: "Accept review workspace changes into the real workspace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
@@ -188,7 +195,7 @@ func newSessionAcceptCmd() *cobra.Command {
 func newSessionRejectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reject SESSION_ID",
-		Short: "Reject and discard overlay workspace changes",
+		Short: "Reject and discard review workspace changes",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
@@ -412,6 +419,15 @@ func printSessionCreated(cmd *cobra.Command, c client.CLIClient, s types.Session
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Overlay workspace:")
 		fmt.Fprintf(w, "  Merged: %s\n", s.Overlay.Merged)
+		fmt.Fprintf(w, "  Diff:   agentsh session diff %s\n", s.ID)
+		fmt.Fprintf(w, "  Accept: agentsh session accept %s\n", s.ID)
+		fmt.Fprintf(w, "  Reject: agentsh session reject %s\n", s.ID)
+	}
+	if s.Shadow != nil {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Shadow workspace:")
+		fmt.Fprintf(w, "  Work:   %s\n", s.Shadow.Work)
+		fmt.Fprintf(w, "  Real:   %s\n", s.Shadow.Real)
 		fmt.Fprintf(w, "  Diff:   agentsh session diff %s\n", s.ID)
 		fmt.Fprintf(w, "  Accept: agentsh session accept %s\n", s.ID)
 		fmt.Fprintf(w, "  Reject: agentsh session reject %s\n", s.ID)

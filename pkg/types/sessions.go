@@ -45,6 +45,7 @@ type WorkspaceMode string
 const (
 	WorkspaceModeDirect  WorkspaceMode = "direct"
 	WorkspaceModeOverlay WorkspaceMode = "overlay"
+	WorkspaceModeShadow  WorkspaceMode = "shadow"
 )
 
 type OverlayInfo struct {
@@ -64,14 +65,31 @@ type CreateOverlayOptions struct {
 	KeepOnDestroy bool     `json:"keep_on_destroy,omitempty"`
 }
 
+type ShadowInfo struct {
+	Enabled    bool       `json:"enabled"`
+	State      string     `json:"state,omitempty"`
+	Real       string     `json:"real,omitempty"`
+	Work       string     `json:"work,omitempty"`
+	CreatedAt  time.Time  `json:"created_at,omitempty"`
+	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
+	RejectedAt *time.Time `json:"rejected_at,omitempty"`
+}
+
+type CreateShadowOptions struct {
+	DiffExclude   []string `json:"diff_exclude,omitempty"`
+	AcceptExclude []string `json:"accept_exclude,omitempty"`
+	KeepOnDestroy bool     `json:"keep_on_destroy,omitempty"`
+}
+
 type Session struct {
 	ID               string       `json:"id"`
 	State            SessionState `json:"state"`
 	CreatedAt        time.Time    `json:"created_at"`
 	Workspace        string       `json:"workspace"`
-	WorkspaceMount   string       `json:"workspace_mount,omitempty"` // FUSE/overlay mount point (if active)
+	WorkspaceMount   string       `json:"workspace_mount,omitempty"` // effective workspace path (FUSE/overlay/shadow if active)
 	WorkspaceMode    string       `json:"workspace_mode,omitempty"`
 	Overlay          *OverlayInfo `json:"overlay,omitempty"`
+	Shadow           *ShadowInfo  `json:"shadow,omitempty"`
 	Policy           string       `json:"policy"`
 	Profile          string       `json:"profile,omitempty"`
 	Mounts           []MountInfo  `json:"mounts,omitempty"`
@@ -141,8 +159,9 @@ type CreateSessionRequest struct {
 	DetectProjectRoot *bool                 `json:"detect_project_root,omitempty"` // Override server default
 	ProjectRoot       string                `json:"project_root,omitempty"`        // Explicit override
 	RealPaths         *bool                 `json:"real_paths,omitempty"`          // Use actual host paths instead of /workspace
-	WorkspaceMode     string                `json:"workspace_mode,omitempty"`      // "direct" (default) or "overlay"
+	WorkspaceMode     string                `json:"workspace_mode,omitempty"`      // "direct" (default), "overlay", or "shadow"
 	Overlay           *CreateOverlayOptions `json:"overlay,omitempty"`
+	Shadow            *CreateShadowOptions  `json:"shadow,omitempty"`
 }
 
 type SessionPatchRequest struct {

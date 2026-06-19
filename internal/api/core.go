@@ -25,6 +25,7 @@ import (
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/signal"
 	"github.com/agentsh/agentsh/internal/workspace/overlay"
+	"github.com/agentsh/agentsh/internal/workspace/shadow"
 	"github.com/agentsh/agentsh/internal/wrapperlog"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/go-chi/chi/v5"
@@ -628,6 +629,9 @@ func (a *App) setupOverlayWorkspace(ctx context.Context, s *session.Session, req
 	if mode == string(types.WorkspaceModeDirect) {
 		return nil
 	}
+	if mode == string(types.WorkspaceModeShadow) {
+		return a.setupShadowWorkspace(ctx, s, req)
+	}
 	if mode != string(types.WorkspaceModeOverlay) {
 		return fmt.Errorf("unsupported workspace_mode %q", req.WorkspaceMode)
 	}
@@ -681,6 +685,62 @@ func (a *App) setupOverlayWorkspace(ctx context.Context, s *session.Session, req
 	return nil
 }
 
+func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req types.CreateSessionRequest) error {
+	if runtime.GOOS != "linux" {
+		return fmt.Errorf("shadow workspaces are only supported on Linux")
+	}
+	if !a.cfg.Sessions.WorkspaceShadow.Enabled {
+		return fmt.Errorf("workspace_mode=shadow requested but sessions.workspace_shadow.enabled is false")
+	}
+
+	diffExcludes := a.cfg.Sessions.WorkspaceShadow.DiffExcludes
+	acceptExcludes := a.cfg.Sessions.WorkspaceShadow.AcceptExcludes
+	if req.Shadow != nil {
+		if len(req.Shadow.DiffExclude) > 0 {
+			diffExcludes = req.Shadow.DiffExclude
+		}
+		if len(req.Shadow.AcceptExclude) > 0 {
+			acceptExcludes = req.Shadow.AcceptExclude
+		}
+	}
+	acceptChown := true
+	if a.cfg.Sessions.WorkspaceShadow.AcceptChown != nil {
+		acceptChown = *a.cfg.Sessions.WorkspaceShadow.AcceptChown
+	}
+	sw, err := shadow.Create(ctx, s.ID, s.Workspace, shadow.Options{
+		BaseDir:        a.cfg.Sessions.WorkspaceShadow.BaseDir,
+		DiffExcludes:   diffExcludes,
+		AcceptExcludes: acceptExcludes,
+		AcceptChown:    acceptChown,
+	})
+	if err != nil {
+		return err
+	}
+	s.SetShadow(sw)
+	keepOnDestroy := req.Shadow != nil && req.Shadow.KeepOnDestroy
+	destroyAction := a.cfg.Sessions.WorkspaceShadow.DestroyAction
+	s.SetWorkspaceUnmount(func() error {
+		if keepOnDestroy || destroyAction == "keep" {
+			return sw.Close(context.Background())
+		}
+		return sw.Reject(context.Background())
+	})
+
+	ev := types.Event{
+		ID:        uuid.NewString(),
+		Timestamp: time.Now().UTC(),
+		Type:      "shadow_created",
+		SessionID: s.ID,
+		Fields: map[string]any{
+			"real": sw.Real,
+			"work": sw.Work,
+		},
+	}
+	_ = a.store.AppendEvent(ctx, ev)
+	a.broker.Publish(ev)
+	return nil
+}
+
 func (a *App) buildPolicyVarsForSession(req types.CreateSessionRequest, s *session.Session, shouldDetect bool) map[string]string {
 	policyVars := make(map[string]string)
 	realWorkspace := s.Workspace
@@ -712,6 +772,12 @@ func (a *App) buildPolicyVarsForSession(req types.CreateSessionRequest, s *sessi
 	}
 	if policyVars["GIT_ROOT"] == "" && policyVars["PROJECT_ROOT"] != "" {
 		policyVars["GIT_ROOT"] = policyVars["PROJECT_ROOT"]
+	}
+	if s.WorkspaceMode == string(types.WorkspaceModeShadow) {
+		policyVars["REAL_PROJECT_ROOT"] = realWorkspace
+		if sw := s.ShadowWorkspace(); sw != nil {
+			policyVars["AGENTSH_SESSION_ROOT"] = filepath.Dir(sw.Work)
+		}
 	}
 	if req.Home != "" {
 		policyVars["HOME"] = req.Home

@@ -56,6 +56,14 @@ let
           accept_chown = cfg.sessions.workspaceOverlay.acceptChown;
           destroy_action = cfg.sessions.workspaceOverlay.destroyAction;
         };
+        workspace_shadow = {
+          enabled = cfg.sessions.workspaceShadow.enable;
+          base_dir = cfg.sessions.workspaceShadow.baseDir;
+          diff_excludes = cfg.sessions.workspaceShadow.diffExcludes;
+          accept_excludes = cfg.sessions.workspaceShadow.acceptExcludes;
+          accept_chown = cfg.sessions.workspaceShadow.acceptChown;
+          destroy_action = cfg.sessions.workspaceShadow.destroyAction;
+        };
       };
 
       sandbox = {
@@ -231,6 +239,41 @@ in
           default = "/var/lib/agentsh/overlays";
         };
         defaultExcludes = mkOption {
+          type = types.listOf types.str;
+          default = [
+            ".git"
+            ".direnv"
+          ];
+        };
+        acceptChown = mkOption {
+          type = types.bool;
+          default = true;
+        };
+        destroyAction = mkOption {
+          type = types.enum [
+            "reject"
+            "keep"
+          ];
+          default = "reject";
+        };
+      };
+      workspaceShadow = {
+        enable = mkOption {
+          type = types.bool;
+          default = false;
+        };
+        baseDir = mkOption {
+          type = types.str;
+          default = "/var/lib/agentsh/workspaces";
+        };
+        diffExcludes = mkOption {
+          type = types.listOf types.str;
+          default = [
+            ".git"
+            ".direnv"
+          ];
+        };
+        acceptExcludes = mkOption {
           type = types.listOf types.str;
           default = [
             ".git"

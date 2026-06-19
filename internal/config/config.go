@@ -317,6 +317,9 @@ type SessionsConfig struct {
 	// WorkspaceOverlay configures optional overlayfs-backed workspaces.
 	WorkspaceOverlay WorkspaceOverlayConfig `yaml:"workspace_overlay"`
 
+	// WorkspaceShadow configures VM-local copied workspaces.
+	WorkspaceShadow WorkspaceShadowConfig `yaml:"workspace_shadow"`
+
 	// Checkpoints configures workspace checkpoint/rollback functionality.
 	Checkpoints CheckpointConfig `yaml:"checkpoints"`
 }
@@ -327,6 +330,15 @@ type WorkspaceOverlayConfig struct {
 	DefaultExcludes []string `yaml:"default_excludes"`
 	AcceptChown     *bool    `yaml:"accept_chown"`
 	DestroyAction   string   `yaml:"destroy_action"` // reject|keep
+}
+
+type WorkspaceShadowConfig struct {
+	Enabled        bool     `yaml:"enabled"`
+	BaseDir        string   `yaml:"base_dir"`
+	DiffExcludes   []string `yaml:"diff_excludes"`
+	AcceptExcludes []string `yaml:"accept_excludes"`
+	AcceptChown    *bool    `yaml:"accept_chown"`
+	DestroyAction  string   `yaml:"destroy_action"` // reject|keep
 }
 
 // CheckpointConfig configures workspace checkpoint and rollback.
@@ -1577,6 +1589,7 @@ func resolveRelativePaths(cfg *Config, baseDir string) {
 	cfg.Audit.Storage.SQLitePath = resolve(cfg.Audit.Storage.SQLitePath)
 	cfg.Sessions.BaseDir = resolve(cfg.Sessions.BaseDir)
 	cfg.Sessions.WorkspaceOverlay.BaseDir = resolve(cfg.Sessions.WorkspaceOverlay.BaseDir)
+	cfg.Sessions.WorkspaceShadow.BaseDir = resolve(cfg.Sessions.WorkspaceShadow.BaseDir)
 }
 
 // getDefaultDataDir returns the appropriate data directory based on config source.
@@ -1724,6 +1737,22 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	}
 	if cfg.Sessions.WorkspaceOverlay.DestroyAction == "" {
 		cfg.Sessions.WorkspaceOverlay.DestroyAction = "reject"
+	}
+	if cfg.Sessions.WorkspaceShadow.BaseDir == "" {
+		cfg.Sessions.WorkspaceShadow.BaseDir = filepath.Join(cfg.Sessions.BaseDir, "workspaces")
+	}
+	if len(cfg.Sessions.WorkspaceShadow.DiffExcludes) == 0 {
+		cfg.Sessions.WorkspaceShadow.DiffExcludes = []string{".git", ".direnv"}
+	}
+	if len(cfg.Sessions.WorkspaceShadow.AcceptExcludes) == 0 {
+		cfg.Sessions.WorkspaceShadow.AcceptExcludes = []string{".git", ".direnv"}
+	}
+	if cfg.Sessions.WorkspaceShadow.AcceptChown == nil {
+		t := true
+		cfg.Sessions.WorkspaceShadow.AcceptChown = &t
+	}
+	if cfg.Sessions.WorkspaceShadow.DestroyAction == "" {
+		cfg.Sessions.WorkspaceShadow.DestroyAction = "reject"
 	}
 	if cfg.Sandbox.FUSE.MountBaseDir == "" {
 		cfg.Sandbox.FUSE.MountBaseDir = cfg.Sessions.BaseDir
@@ -2302,6 +2331,12 @@ func validateConfig(cfg *Config) error {
 		// ok; "" is normalized by applyDefaults.
 	default:
 		return fmt.Errorf("invalid sessions.workspace_overlay.destroy_action %q: must be one of reject or keep", cfg.Sessions.WorkspaceOverlay.DestroyAction)
+	}
+	switch cfg.Sessions.WorkspaceShadow.DestroyAction {
+	case "", "reject", "keep":
+		// ok; "" is normalized by applyDefaults.
+	default:
+		return fmt.Errorf("invalid sessions.workspace_shadow.destroy_action %q: must be one of reject or keep", cfg.Sessions.WorkspaceShadow.DestroyAction)
 	}
 	switch cfg.Sandbox.Network.InterceptMode {
 	case "", "all", "tcp_only", "monitor":
