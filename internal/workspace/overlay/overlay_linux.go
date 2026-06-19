@@ -129,6 +129,15 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 		return nil, fmt.Errorf("chmod workdir: %w", err)
 	}
 
+	excludes := cleanExcludes(opts.Excludes)
+	if len(excludes) == 0 {
+		excludes = []string{".git", ".direnv"}
+	}
+	if err := materializeUpperDirs(realAbs, upper, uid, gid, excludes); err != nil {
+		_ = os.RemoveAll(sessionDir)
+		return nil, fmt.Errorf("materialize upper dirs: %w", err)
+	}
+
 	mountOpts := strings.Join([]string{
 		"lowerdir=" + realAbs,
 		"upperdir=" + upper,
@@ -138,11 +147,6 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(sessionDir)
 		return nil, fmt.Errorf("mount overlay: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-
-	excludes := cleanExcludes(opts.Excludes)
-	if len(excludes) == 0 {
-		excludes = []string{".git", ".direnv"}
 	}
 
 	return &Workspace{
@@ -274,6 +278,68 @@ func owner(info fs.FileInfo) (int, int) {
 		return int(st.Uid), int(st.Gid)
 	}
 	return os.Getuid(), os.Getgid()
+}
+
+func materializeUpperDirs(realRoot, upperRoot string, uid, gid int, excludes []string) error {
+	excludeSet := make(map[string]struct{}, len(excludes))
+	for _, ex := range excludes {
+		ex = filepath.Clean(strings.Trim(ex, string(filepath.Separator)))
+		if ex != "." && ex != "" {
+			excludeSet[ex] = struct{}{}
+		}
+	}
+
+	return filepath.WalkDir(realRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			// Live virtiofs workspaces can race with user changes. Skip unreadable or
+			// vanished subtrees rather than failing overlay creation for one path.
+			if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
+				return nil
+			}
+			return err
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(realRoot, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		rel = filepath.Clean(rel)
+		if shouldSkipUpperDir(rel, excludeSet) {
+			return filepath.SkipDir
+		}
+		mode := fs.FileMode(0o755)
+		if info, statErr := d.Info(); statErr == nil {
+			mode = info.Mode().Perm()
+			if mode == 0 {
+				mode = 0o755
+			}
+		}
+		target := filepath.Join(upperRoot, rel)
+		if err := os.MkdirAll(target, mode); err != nil {
+			return err
+		}
+		if err := os.Chown(target, uid, gid); err != nil {
+			return err
+		}
+		if err := os.Chmod(target, mode); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func shouldSkipUpperDir(rel string, excludeSet map[string]struct{}) bool {
+	for ex := range excludeSet {
+		if rel == ex || strings.HasPrefix(rel, ex+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func cleanExcludes(in []string) []string {
