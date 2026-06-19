@@ -24,11 +24,12 @@ type approvalUIEndpoint struct {
 }
 
 type approvalUIRequest struct {
-	Op       string          `json:"op"`
-	ID       string          `json:"id,omitempty"`
-	Decision string          `json:"decision,omitempty"`
-	Reason   string          `json:"reason,omitempty"`
-	Event    json.RawMessage `json:"event,omitempty"`
+	Op              string          `json:"op"`
+	ID              string          `json:"id,omitempty"`
+	QuestionnaireID string          `json:"questionnaire_id,omitempty"`
+	Decision        string          `json:"decision,omitempty"`
+	Reason          string          `json:"reason,omitempty"`
+	Event           json.RawMessage `json:"event,omitempty"`
 }
 
 type approvalUIResponse struct {
@@ -36,6 +37,7 @@ type approvalUIResponse struct {
 	Error     string `json:"error,omitempty"`
 	Approvals any    `json:"approvals,omitempty"`
 	Event     any    `json:"event,omitempty"`
+	Answer    any    `json:"answer,omitempty"`
 }
 
 func (a *App) startApprovalUIEndpoint(sessionID string, callerUID int) (*approvalUIEndpoint, error) {
@@ -209,6 +211,19 @@ func (ui *approvalUIEndpoint) handleRequest(req approvalUIRequest) approvalUIRes
 	switch strings.ToLower(strings.TrimSpace(req.Op)) {
 	case "list":
 		return approvalUIResponse{OK: true, Approvals: ui.app.approvals.ListPendingForSession(ui.sessionID)}
+	case "get_question_answer":
+		qid := strings.TrimSpace(req.QuestionnaireID)
+		if qid == "" {
+			return approvalUIResponse{OK: false, Error: "missing questionnaire id"}
+		}
+		if ui.app.sessionEvents == nil {
+			return approvalUIResponse{OK: true}
+		}
+		answer, ok := ui.app.sessionEvents.GetAnswer(ui.sessionID, qid)
+		if !ok {
+			return approvalUIResponse{OK: true}
+		}
+		return approvalUIResponse{OK: true, Answer: answer}
 	case "publish_event":
 		ev, err := decodeSessionEvent(req.Event)
 		if err != nil {

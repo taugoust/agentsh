@@ -316,6 +316,7 @@ func (a *App) Router() http.Handler {
 			r.Post("/approvals/{id}", a.resolveApproval)
 			r.Get("/session-events", a.listSessionEvents)
 			r.Post("/session-events/{id}/ack", a.ackSessionEvent)
+			r.Post("/session-events/{id}/answer", a.answerSessionEvent)
 		})
 
 		r.Group(func(r chi.Router) {
