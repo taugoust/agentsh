@@ -111,8 +111,10 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 	args = append(args, withTrailingSeparator(realAbs), withTrailingSeparator(work))
 	cmd := exec.CommandContext(ctx, "rsync", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		_ = os.RemoveAll(sessionDir)
-		return nil, fmt.Errorf("copy shadow workspace: %w: %s", err, strings.TrimSpace(string(out)))
+		if !isRsyncVanished(err) {
+			_ = os.RemoveAll(sessionDir)
+			return nil, fmt.Errorf("copy shadow workspace: %w: %s", err, strings.TrimSpace(string(out)))
+		}
 	}
 
 	return &Workspace{
@@ -168,8 +170,7 @@ func (w *Workspace) Accept(ctx context.Context) error {
 	args = append(args, withTrailingSeparator(w.Work), withTrailingSeparator(w.Real))
 	cmd := exec.CommandContext(ctx, "rsync", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		var ee *exec.ExitError
-		if !errors.As(err, &ee) || ee.ExitCode() != 24 {
+		if !isRsyncVanished(err) {
 			return fmt.Errorf("accept shadow workspace: %w: %s", err, strings.TrimSpace(string(out)))
 		}
 	}
@@ -201,6 +202,11 @@ func (w *Workspace) Close(ctx context.Context) error {
 	}
 	w.State = StateClosed
 	return nil
+}
+
+func isRsyncVanished(err error) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == 24
 }
 
 func owner(info fs.FileInfo) (int, int) {
