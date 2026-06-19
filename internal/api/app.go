@@ -68,7 +68,8 @@ type App struct {
 	apiKeyAuth *auth.APIKeyAuth
 	oidcAuth   *auth.OIDCAuth
 
-	approvals *approvals.Manager
+	approvals     *approvals.Manager
+	sessionEvents *sessionEventStore
 
 	approvalUIMu sync.Mutex
 	approvalUIs  map[string]*approvalUIEndpoint
@@ -178,19 +179,20 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 	}
 
 	app := &App{
-		cfg:          cfg,
-		sessions:     sessions,
-		store:        store,
-		policy:       engine,
-		broker:       broker,
-		dbBypass:     dbevents.NewBypassEmitter(storeEmitter{store: store, broker: broker}),
-		cgroupMgr:    appCgroupMgr,
-		apiKeyAuth:   apiKeyAuth,
-		oidcAuth:     oidcAuth,
-		approvals:    approvalsMgr,
-		metrics:      metricsCollector,
-		platform:     plat,
-		policyLoader: policyLoader,
+		cfg:           cfg,
+		sessions:      sessions,
+		store:         store,
+		policy:        engine,
+		broker:        broker,
+		dbBypass:      dbevents.NewBypassEmitter(storeEmitter{store: store, broker: broker}),
+		cgroupMgr:     appCgroupMgr,
+		apiKeyAuth:    apiKeyAuth,
+		oidcAuth:      oidcAuth,
+		approvals:     approvalsMgr,
+		sessionEvents: newSessionEventStore(),
+		metrics:       metricsCollector,
+		platform:      plat,
+		policyLoader:  policyLoader,
 	}
 
 	// Compute the server-process WAIT_KILLABLE_RECV decision once at
@@ -312,6 +314,8 @@ func (a *App) Router() http.Handler {
 			r.Use(a.requireRoles("approver", "admin"))
 			r.Get("/approvals", a.listApprovals)
 			r.Post("/approvals/{id}", a.resolveApproval)
+			r.Get("/session-events", a.listSessionEvents)
+			r.Post("/session-events/{id}/ack", a.ackSessionEvent)
 		})
 
 		r.Group(func(r chi.Router) {

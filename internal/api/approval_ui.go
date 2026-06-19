@@ -24,16 +24,18 @@ type approvalUIEndpoint struct {
 }
 
 type approvalUIRequest struct {
-	Op       string `json:"op"`
-	ID       string `json:"id,omitempty"`
-	Decision string `json:"decision,omitempty"`
-	Reason   string `json:"reason,omitempty"`
+	Op       string          `json:"op"`
+	ID       string          `json:"id,omitempty"`
+	Decision string          `json:"decision,omitempty"`
+	Reason   string          `json:"reason,omitempty"`
+	Event    json.RawMessage `json:"event,omitempty"`
 }
 
 type approvalUIResponse struct {
 	OK        bool   `json:"ok"`
 	Error     string `json:"error,omitempty"`
 	Approvals any    `json:"approvals,omitempty"`
+	Event     any    `json:"event,omitempty"`
 }
 
 func (a *App) startApprovalUIEndpoint(sessionID string, callerUID int) (*approvalUIEndpoint, error) {
@@ -207,6 +209,20 @@ func (ui *approvalUIEndpoint) handleRequest(req approvalUIRequest) approvalUIRes
 	switch strings.ToLower(strings.TrimSpace(req.Op)) {
 	case "list":
 		return approvalUIResponse{OK: true, Approvals: ui.app.approvals.ListPendingForSession(ui.sessionID)}
+	case "publish_event":
+		ev, err := decodeSessionEvent(req.Event)
+		if err != nil {
+			return approvalUIResponse{OK: false, Error: "invalid event"}
+		}
+		ev.SessionID = ui.sessionID
+		if strings.TrimSpace(ev.Type) == "" {
+			return approvalUIResponse{OK: false, Error: "missing event type"}
+		}
+		if strings.TrimSpace(ev.Title) == "" {
+			ev.Title = ev.Type
+		}
+		published := ui.app.publishSessionEvent(ev)
+		return approvalUIResponse{OK: true, Event: published}
 	case "resolve":
 		id := strings.TrimSpace(req.ID)
 		if id == "" {
