@@ -448,15 +448,17 @@ func trustedExecveAliases(filename, rawFilename string, argv []string) []string 
 		aliases = append(aliases, s)
 	}
 
-	// The raw filename is read directly from the execve syscall before AgentSH
-	// canonicalizes symlinks. Use it only when it is itself a trusted system/Nix
-	// path, or when canonicalization did not change the path. This restores
+	// rawFilename is the absolute pre-canonicalization path. Always expose it
+	// as an alias so path-glob command rules such as ${PROJECT_ROOT}/** can match
+	// symlinked project outputs. The policy engine treats aliases containing a
+	// path separator as path-only candidates, so /tmp/rm cannot inherit a basename
+	// allow rule for `rm`.
+	add(rawFilename)
+
+	// Only trusted raw paths may add argv[0]/basename aliases. This restores
 	// policy semantics for /nix/store/.../bin/rm -> .../bin/coreutils without
 	// allowing /tmp/rm -> /tmp/malware to inherit an `rm` allow rule.
 	rawTrusted := trustedRawExecveAlias(filename, rawFilename)
-	if rawTrusted {
-		add(rawFilename)
-	}
 
 	if len(argv) == 0 {
 		return aliases

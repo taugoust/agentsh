@@ -1432,10 +1432,15 @@ func (e *Engine) CheckExecveWithAliases(filename string, aliases []string, argv 
 	return dec
 }
 
-func execveCommandCandidates(filename string, aliases []string) []string {
+type execveCommandCandidate struct {
+	value    string
+	pathOnly bool
+}
+
+func execveCommandCandidates(filename string, aliases []string) []execveCommandCandidate {
 	seen := make(map[string]struct{}, 1+len(aliases))
-	out := make([]string, 0, 1+len(aliases))
-	add := func(s string) {
+	out := make([]execveCommandCandidate, 0, 1+len(aliases))
+	add := func(s string, pathOnly bool) {
 		s = strings.TrimSpace(s)
 		if s == "" {
 			return
@@ -1445,18 +1450,22 @@ func execveCommandCandidates(filename string, aliases []string) []string {
 			return
 		}
 		seen[key] = struct{}{}
-		out = append(out, s)
+		out = append(out, execveCommandCandidate{value: s, pathOnly: pathOnly})
 	}
-	add(filename)
+	add(filename, false)
 	for _, a := range aliases {
-		add(a)
+		// Path aliases are used only for exact/path-glob rules. Do not let an
+		// untrusted raw path such as /tmp/rm satisfy a basename allow rule for
+		// "rm". Trusted callers that want basename semantics add an explicit
+		// basename alias (e.g. "rm") separately.
+		add(a, strings.Contains(a, string(filepath.Separator)))
 	}
 	return out
 }
 
-func execveCandidateMatchesRule(candidate string, r compiledCommandRule) bool {
-	cmdLower := strings.ToLower(candidate)
-	cmdBase := strings.ToLower(filepath.Base(candidate))
+func execveCandidateMatchesRule(candidate execveCommandCandidate, r compiledCommandRule) bool {
+	cmdLower := strings.ToLower(candidate.value)
+	cmdBase := strings.ToLower(filepath.Base(candidate.value))
 
 	// Check full path matches first (more specific)
 	if _, ok := r.fullPaths[cmdLower]; ok {
@@ -1465,9 +1474,13 @@ func execveCandidateMatchesRule(candidate string, r compiledCommandRule) bool {
 
 	// Check path glob patterns
 	for _, g := range r.pathGlobs {
-		if g.Match(cmdLower) || g.Match(candidate) {
+		if g.Match(cmdLower) || g.Match(candidate.value) {
 			return true
 		}
+	}
+
+	if candidate.pathOnly {
+		return false
 	}
 
 	// Check basename matches (less specific, legacy behavior)
@@ -1477,7 +1490,7 @@ func execveCandidateMatchesRule(candidate string, r compiledCommandRule) bool {
 
 	// Check basename glob patterns
 	for _, g := range r.basenameGlobs {
-		if g.Match(cmdBase) || g.Match(filepath.Base(candidate)) {
+		if g.Match(cmdBase) || g.Match(filepath.Base(candidate.value)) {
 			return true
 		}
 	}

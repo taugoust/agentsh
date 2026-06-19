@@ -6,6 +6,7 @@ package unix
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +16,23 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
+
+func TestResolveExecveRelativePath(t *testing.T) {
+	oldwd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.Chdir(oldwd)) })
+
+	dir := t.TempDir()
+	require.NoError(t, os.Chdir(dir))
+
+	got, err := resolveExecveRelativePath(os.Getpid(), "./test-runs/hello")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(dir, "test-runs", "hello"), got)
+
+	got, err = resolveExecveRelativePath(os.Getpid(), "result/bin/tool")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(dir, "result", "bin", "tool"), got)
+}
 
 // mockPolicy implements PolicyChecker for testing
 type mockPolicy struct {

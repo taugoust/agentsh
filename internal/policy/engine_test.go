@@ -250,13 +250,52 @@ func TestEngine_CheckExecve_AliasesPreserveRuleOrder(t *testing.T) {
 	require.Equal(t, types.DecisionDeny, dec.EffectiveDecision)
 	require.Equal(t, "default-deny-execve", dec.Rule)
 
+	// A raw path alias alone is path-only, so it must not satisfy a basename
+	// rule for "rm".
 	dec = e.CheckExecveWithAliases(canonical, []string{raw}, []string{"rm", "file.txt"}, 0)
+	require.Equal(t, types.DecisionDeny, dec.EffectiveDecision)
+	require.Equal(t, "default-deny-execve", dec.Rule)
+
+	// Trusted callers add an explicit basename alias when it is safe to preserve
+	// basename semantics for symlinked/multicall tools.
+	dec = e.CheckExecveWithAliases(canonical, []string{raw, "rm"}, []string{"rm", "file.txt"}, 0)
 	require.Equal(t, types.DecisionAllow, dec.EffectiveDecision)
 	require.Equal(t, "allow-rm", dec.Rule)
 
-	dec = e.CheckExecveWithAliases(canonical, []string{raw}, []string{"rm", "-rf", "/"}, 0)
+	dec = e.CheckExecveWithAliases(canonical, []string{raw, "rm"}, []string{"rm", "-rf", "/"}, 0)
 	require.Equal(t, types.DecisionDeny, dec.EffectiveDecision)
 	require.Equal(t, "deny-destructive-rm", dec.Rule)
+}
+
+func TestEngine_CheckExecve_PathAliasMatchesPathGlobButNotBasename(t *testing.T) {
+	p := &Policy{
+		Version: 1,
+		Name:    "test-path-alias",
+		CommandRules: []CommandRule{
+			{
+				Name:     "allow-rm",
+				Commands: []string{"rm"},
+				Decision: "allow",
+				Context:  DefaultContext(),
+			},
+			{
+				Name:     "allow-project",
+				Commands: []string{"/workspace/**"},
+				Decision: "allow",
+				Context:  DefaultContext(),
+			},
+		},
+	}
+	e, err := NewEngine(p, false, true)
+	require.NoError(t, err)
+
+	dec := e.CheckExecveWithAliases("/tmp/malware", []string{"/tmp/rm"}, []string{"rm"}, 0)
+	require.Equal(t, types.DecisionDeny, dec.EffectiveDecision)
+	require.Equal(t, "default-deny-execve", dec.Rule)
+
+	dec = e.CheckExecveWithAliases("/nix/store/abc-pkg/bin/tool", []string{"/workspace/result/bin/tool"}, []string{"./result/bin/tool"}, 0)
+	require.Equal(t, types.DecisionAllow, dec.EffectiveDecision)
+	require.Equal(t, "allow-project", dec.Rule)
 }
 
 func TestEngine_CheckExecve_FullPathMatch(t *testing.T) {

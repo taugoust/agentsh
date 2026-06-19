@@ -393,8 +393,24 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 		}
 	}
 
+	// Resolve relative execve paths against the tracee cwd before policy checks.
+	// This lets command policy express workspace execution as ${PROJECT_ROOT}/**
+	// instead of brittle relative globs such as ./result/bin/*.
+	if !filepath.IsAbs(filename) {
+		filename, err = resolveExecveRelativePath(pid, filename)
+		if err != nil {
+			if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
+				slog.Error("execve handler: deny response failed", "pid", pid, "error", err)
+			}
+			return
+		}
+	}
+
 	// Canonicalize filename: resolve symlinks, /proc/self/root, etc.
 	// This defeats path manipulation attacks (e.g., /proc/self/root/usr/bin/npx).
+	// rawFilename is the absolute pre-canonical path; the policy engine treats it
+	// as a path-only alias, so it can match ${PROJECT_ROOT}/** without satisfying
+	// basename allow rules such as "rm".
 	rawFilename := filename
 	if resolved, err := filepath.EvalSymlinks(filename); err == nil {
 		filename = resolved
@@ -895,6 +911,21 @@ func getParentPID(pid int) int {
 	// fields[0] is state, fields[1] is ppid
 	ppid, _ := strconv.Atoi(fields[1])
 	return ppid
+}
+
+func resolveExecveRelativePath(pid int, filename string) (string, error) {
+	if filename == "" {
+		return "", fmt.Errorf("empty execve filename")
+	}
+	if filepath.IsAbs(filename) {
+		return filename, nil
+	}
+	cwdPath := fmt.Sprintf("/proc/%d/cwd", pid)
+	cwd, err := os.Readlink(cwdPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve cwd: %w", err)
+	}
+	return filepath.Join(cwd, filename), nil
 }
 
 // resolveExecveatPath resolves the actual executable path for execveat syscalls.

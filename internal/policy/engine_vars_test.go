@@ -159,13 +159,14 @@ func TestNewEngineWithVariables_CommandRulesCommandExpansion(t *testing.T) {
 				Decision: "deny",
 			},
 			{
-				Name: "allow-project-result-binaries",
-				Commands: []string{
-					"${PROJECT_ROOT}/result/bin/*",
-					"result/bin/*",
-					"./result/bin/*",
-				},
+				Name:     "allow-project-root-executables",
+				Commands: []string{"${PROJECT_ROOT}/**"},
 				Decision: "allow",
+			},
+			{
+				Name:     "approve-unknown-nix-store-executables",
+				Commands: []string{"/nix/store/*/bin/*"},
+				Decision: "approve",
 			},
 		},
 	}
@@ -179,18 +180,23 @@ func TestNewEngineWithVariables_CommandRulesCommandExpansion(t *testing.T) {
 
 	decision := engine.CheckCommand("/var/lib/agentsh/workspaces/session-123/work/result/bin/txlat", []string{"--help"})
 	assert.Equal(t, "allow", string(decision.PolicyDecision))
-	assert.Equal(t, "allow-project-result-binaries", decision.Rule)
+	assert.Equal(t, "allow-project-root-executables", decision.Rule)
 
-	decision = engine.CheckExecve("result/bin/txlat", []string{"result/bin/txlat", "--help"}, 0)
+	decision = engine.CheckExecveWithAliases(
+		"/nix/store/hash-project/bin/txlat",
+		[]string{"/var/lib/agentsh/workspaces/session-123/work/result/bin/txlat"},
+		[]string{"./result/bin/txlat", "--help"},
+		0,
+	)
 	assert.Equal(t, "allow", string(decision.PolicyDecision))
-	assert.Equal(t, "allow-project-result-binaries", decision.Rule)
-
-	decision = engine.CheckExecve("./result/bin/txlat", []string{"./result/bin/txlat", "--help"}, 0)
-	assert.Equal(t, "allow", string(decision.PolicyDecision))
-	assert.Equal(t, "allow-project-result-binaries", decision.Rule)
+	assert.Equal(t, "allow-project-root-executables", decision.Rule)
 
 	decision = engine.CheckCommand("/var/lib/agentsh/workspaces/session-456/work/result/bin/txlat", []string{"--help"})
 	assert.Equal(t, "deny", string(decision.PolicyDecision))
+
+	decision = engine.CheckExecve("/nix/store/hash-tool/bin/some-tool", []string{"some-tool"}, 0)
+	assert.Equal(t, "approve", string(decision.PolicyDecision))
+	assert.Equal(t, "approve-unknown-nix-store-executables", decision.Rule)
 }
 
 func TestNewEngineWithVariables_NetworkRulesDomainExpansion(t *testing.T) {
