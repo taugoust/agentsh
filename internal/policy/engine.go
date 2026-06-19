@@ -440,8 +440,22 @@ func expandPolicy(p *Policy, vars map[string]string) (*Policy, error) {
 		expanded.NetworkRules[i] = expandedRule
 	}
 
-	// Copy other rules as-is (command rules unlikely to need variables)
-	expanded.CommandRules = append([]CommandRule(nil), p.CommandRules...)
+	// Expand command rules. This lets policies scope executable path globs to
+	// session-specific locations such as ${PROJECT_ROOT}/result/bin/*.
+	expanded.CommandRules = make([]CommandRule, len(p.CommandRules))
+	for i, rule := range p.CommandRules {
+		expandedRule := rule
+		expandedRule.Commands = make([]string, len(rule.Commands))
+		for j, command := range rule.Commands {
+			expandedCommand, err := ExpandVariables(command, vars)
+			if err != nil {
+				return nil, fmt.Errorf("command rule %q command %q: %w", rule.Name, command, err)
+			}
+			expandedRule.Commands[j] = expandedCommand
+		}
+		expanded.CommandRules[i] = expandedRule
+	}
+
 	expanded.RegistryRules = append([]RegistryRule(nil), p.RegistryRules...)
 	expanded.UnixRules = append([]UnixSocketRule(nil), p.UnixRules...)
 

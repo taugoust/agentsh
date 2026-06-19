@@ -148,6 +148,51 @@ func TestDenyPrecedenceWhenHomeEqualsProjectRoot(t *testing.T) {
 	}
 }
 
+func TestNewEngineWithVariables_CommandRulesCommandExpansion(t *testing.T) {
+	p := &Policy{
+		Version: 1,
+		Name:    "test",
+		CommandRules: []CommandRule{
+			{
+				Name:     "deny-dangerous",
+				Commands: []string{"dangerous-tool"},
+				Decision: "deny",
+			},
+			{
+				Name: "allow-project-result-binaries",
+				Commands: []string{
+					"${PROJECT_ROOT}/result/bin/*",
+					"result/bin/*",
+					"./result/bin/*",
+				},
+				Decision: "allow",
+			},
+		},
+	}
+
+	vars := map[string]string{
+		"PROJECT_ROOT": "/var/lib/agentsh/workspaces/session-123/work",
+	}
+
+	engine, err := NewEngineWithVariables(p, false, true, vars)
+	require.NoError(t, err)
+
+	decision := engine.CheckCommand("/var/lib/agentsh/workspaces/session-123/work/result/bin/txlat", []string{"--help"})
+	assert.Equal(t, "allow", string(decision.PolicyDecision))
+	assert.Equal(t, "allow-project-result-binaries", decision.Rule)
+
+	decision = engine.CheckExecve("result/bin/txlat", []string{"result/bin/txlat", "--help"}, 0)
+	assert.Equal(t, "allow", string(decision.PolicyDecision))
+	assert.Equal(t, "allow-project-result-binaries", decision.Rule)
+
+	decision = engine.CheckExecve("./result/bin/txlat", []string{"./result/bin/txlat", "--help"}, 0)
+	assert.Equal(t, "allow", string(decision.PolicyDecision))
+	assert.Equal(t, "allow-project-result-binaries", decision.Rule)
+
+	decision = engine.CheckCommand("/var/lib/agentsh/workspaces/session-456/work/result/bin/txlat", []string{"--help"})
+	assert.Equal(t, "deny", string(decision.PolicyDecision))
+}
+
 func TestNewEngineWithVariables_NetworkRulesDomainExpansion(t *testing.T) {
 	p := &Policy{
 		Version: 1,
