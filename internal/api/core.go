@@ -734,6 +734,8 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 		Fields: map[string]any{
 			"real": sw.Real,
 			"work": sw.Work,
+			"home": sw.Home,
+			"tmp":  sw.Tmp,
 		},
 	}
 	_ = a.store.AppendEvent(ctx, ev)

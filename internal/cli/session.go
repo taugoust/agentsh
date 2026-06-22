@@ -427,6 +427,8 @@ func printSessionCreated(cmd *cobra.Command, c client.CLIClient, s types.Session
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Shadow workspace:")
 		fmt.Fprintf(w, "  Work:   %s\n", s.Shadow.Work)
+		fmt.Fprintf(w, "  Home:   %s\n", s.Shadow.Home)
+		fmt.Fprintf(w, "  Tmp:    %s\n", s.Shadow.Tmp)
 		fmt.Fprintf(w, "  Real:   %s\n", s.Shadow.Real)
 		fmt.Fprintf(w, "  Diff:   agentsh session diff %s\n", s.ID)
 		fmt.Fprintf(w, "  Accept: agentsh session accept %s\n", s.ID)

@@ -40,6 +40,8 @@ type Workspace struct {
 	ID        string
 	Real      string
 	Work      string
+	Home      string
+	Tmp       string
 	OwnerUID  int
 	OwnerGID  int
 	CreatedAt time.Time
@@ -83,7 +85,9 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 	}
 	sessionDir := filepath.Join(baseAbs, id)
 	work := filepath.Join(sessionDir, "work")
-	for _, p := range []string{realAbs, baseAbs, work} {
+	home := filepath.Join(sessionDir, "home")
+	tmp := filepath.Join(sessionDir, "tmp")
+	for _, p := range []string{realAbs, baseAbs, work, home, tmp} {
 		if strings.Contains(p, ",") {
 			return nil, fmt.Errorf("shadow paths containing comma are not supported: %s", p)
 		}
@@ -94,8 +98,16 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 	if err := os.MkdirAll(work, 0o755); err != nil {
 		return nil, fmt.Errorf("create shadow workdir: %w", err)
 	}
-	if err := os.Chown(work, uid, gid); err != nil {
-		return nil, fmt.Errorf("chown shadow workdir: %w", err)
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		return nil, fmt.Errorf("create shadow home: %w", err)
+	}
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		return nil, fmt.Errorf("create shadow tmp: %w", err)
+	}
+	for _, dir := range []string{work, home, tmp} {
+		if err := os.Chown(dir, uid, gid); err != nil {
+			return nil, fmt.Errorf("chown shadow dir %s: %w", dir, err)
+		}
 	}
 
 	excludes := cleanExcludes(opts.DiffExcludes)
@@ -121,6 +133,8 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 		ID:             id,
 		Real:           realAbs,
 		Work:           work,
+		Home:           home,
+		Tmp:            tmp,
 		OwnerUID:       uid,
 		OwnerGID:       gid,
 		CreatedAt:      time.Now().UTC(),

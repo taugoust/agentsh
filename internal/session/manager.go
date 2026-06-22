@@ -350,6 +350,8 @@ func (s *Session) Snapshot() types.Session {
 			State:      s.Shadow.State,
 			Real:       s.Shadow.Real,
 			Work:       s.Shadow.Work,
+			Home:       s.Shadow.Home,
+			Tmp:        s.Shadow.Tmp,
 			CreatedAt:  s.Shadow.CreatedAt,
 			AcceptedAt: s.ShadowAcceptedAt,
 			RejectedAt: s.ShadowRejectedAt,

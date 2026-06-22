@@ -164,8 +164,15 @@ func TestNewEngineWithVariables_CommandRulesCommandExpansion(t *testing.T) {
 				Decision: "allow",
 			},
 			{
-				Name:     "approve-unknown-nix-store-executables",
+				Name:     "allow-nested-nix-store-executables",
 				Commands: []string{"/nix/store/*/bin/*"},
+				Context:  ContextConfig{MinDepth: 1, MaxDepth: -1},
+				Decision: "allow",
+			},
+			{
+				Name:     "approve-direct-unknown-nix-store-executables",
+				Commands: []string{"/nix/store/*/bin/*"},
+				Context:  ContextConfig{MinDepth: 0, MaxDepth: 0},
 				Decision: "approve",
 			},
 		},
@@ -196,7 +203,11 @@ func TestNewEngineWithVariables_CommandRulesCommandExpansion(t *testing.T) {
 
 	decision = engine.CheckExecve("/nix/store/hash-tool/bin/some-tool", []string{"some-tool"}, 0)
 	assert.Equal(t, "approve", string(decision.PolicyDecision))
-	assert.Equal(t, "approve-unknown-nix-store-executables", decision.Rule)
+	assert.Equal(t, "approve-direct-unknown-nix-store-executables", decision.Rule)
+
+	decision = engine.CheckExecve("/nix/store/hash-tool/bin/some-tool", []string{"some-tool"}, 1)
+	assert.Equal(t, "allow", string(decision.PolicyDecision))
+	assert.Equal(t, "allow-nested-nix-store-executables", decision.Rule)
 }
 
 func TestNewEngineWithVariables_NetworkRulesDomainExpansion(t *testing.T) {

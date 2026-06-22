@@ -70,6 +70,8 @@ type ShadowInfo struct {
 	State      string     `json:"state,omitempty"`
 	Real       string     `json:"real,omitempty"`
 	Work       string     `json:"work,omitempty"`
+	Home       string     `json:"home,omitempty"`
+	Tmp        string     `json:"tmp,omitempty"`
 	CreatedAt  time.Time  `json:"created_at,omitempty"`
 	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
 	RejectedAt *time.Time `json:"rejected_at,omitempty"`

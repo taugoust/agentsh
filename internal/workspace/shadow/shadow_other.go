@@ -29,6 +29,8 @@ type Workspace struct {
 	ID        string
 	Real      string
 	Work      string
+	Home      string
+	Tmp       string
 	OwnerUID  int
 	OwnerGID  int
 	CreatedAt time.Time
