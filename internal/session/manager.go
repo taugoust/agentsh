@@ -1136,6 +1136,7 @@ func (m *Manager) ReapExpired(now time.Time, sessionTimeout, idleTimeout time.Du
 		createdAt := s.CreatedAt
 		last := s.LastActivity
 		id := s.ID
+		state := s.State
 		s.mu.Unlock()
 
 		expired := false
@@ -1143,7 +1144,12 @@ func (m *Manager) ReapExpired(now time.Time, sessionTimeout, idleTimeout time.Du
 			expired = true
 		}
 		if !expired && idleTimeout > 0 && now.Sub(last) > idleTimeout {
-			expired = true
+			// Long-running commands and wrapped agents are marked busy while
+			// their controlling process/notify handler is alive. Do not reap
+			// them for idleness; the absolute session timeout still applies.
+			if state != types.SessionStateBusy {
+				expired = true
+			}
 		}
 		if expired {
 			expiredIDs = append(expiredIDs, id)

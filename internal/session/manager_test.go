@@ -77,6 +77,46 @@ func TestManager_ReapExpired_SessionTimeoutWins(t *testing.T) {
 	}
 }
 
+func TestManager_ReapExpired_DoesNotIdleReapBusySession(t *testing.T) {
+	m := NewManager(10)
+	ws := t.TempDir()
+
+	s, err := m.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := s.CreatedAt
+
+	unlock := s.LockExec()
+	defer unlock()
+
+	if got := m.ReapExpired(base.Add(31*time.Minute), 0, 30*time.Minute); len(got) != 0 {
+		t.Fatalf("expected busy session not to be idle-reaped, got %+v", got)
+	}
+	if _, ok := m.Get(s.ID); !ok {
+		t.Fatalf("expected busy session still present")
+	}
+}
+
+func TestManager_ReapExpired_SessionTimeoutStillReapsBusySession(t *testing.T) {
+	m := NewManager(10)
+	ws := t.TempDir()
+
+	s, err := m.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := s.CreatedAt
+
+	unlock := s.LockExec()
+	defer unlock()
+
+	got := m.ReapExpired(base.Add(61*time.Minute), 1*time.Hour, 30*time.Minute)
+	if len(got) != 1 || got[0].ID != s.ID {
+		t.Fatalf("expected session_timeout to reap busy session %s, got %+v", s.ID, got)
+	}
+}
+
 func TestCreateWithProfile(t *testing.T) {
 	m := NewManager(10)
 

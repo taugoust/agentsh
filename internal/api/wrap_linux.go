@@ -174,8 +174,22 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID
 		}
 	}
 
+	// Treat the wrapped agent as active session work for the lifetime of the
+	// notify handler. Without this, long-running pi-auto sessions can be reaped
+	// by idle timeout even while the wrapped agent process is still running.
+	var unlockSession func()
+	if s != nil {
+		unlockSession = s.LockExec()
+		if wrapperPID > 0 {
+			s.SetCurrentProcessPID(wrapperPID)
+		}
+	}
+
 	go func() {
 		defer notifyFD.Close()
+		if unlockSession != nil {
+			defer unlockSession()
+		}
 		if cleanup != nil {
 			defer runCleanup()
 		}
