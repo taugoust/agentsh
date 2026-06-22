@@ -45,6 +45,30 @@ func TestBashStartupScript_DisablesBuiltins(t *testing.T) {
 	}
 }
 
+func TestBashStartupScript_KeepsCommandBuiltin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("bash startup script tests require Unix shell")
+	}
+	scriptPath := filepath.Join("..", "..", "packaging", "bash_startup.sh")
+	absScript, err := filepath.Abs(scriptPath)
+	if err != nil {
+		t.Fatalf("failed to get absolute path: %v", err)
+	}
+	if _, err := os.Stat(absScript); os.IsNotExist(err) {
+		t.Fatalf("bash_startup.sh not found at %s", absScript)
+	}
+
+	cmd := exec.Command("bash", "-c", "type command && command true")
+	cmd.Env = append(os.Environ(), "BASH_ENV="+absScript)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expected command builtin to remain usable, err=%v output=%s", err, output)
+	}
+	if !strings.Contains(string(output), "command is a shell builtin") {
+		t.Fatalf("expected command to be a shell builtin, got: %s", output)
+	}
+}
+
 // TestBashStartupScript_SyntaxValid verifies the bash_startup.sh script has valid bash syntax.
 func TestBashStartupScript_SyntaxValid(t *testing.T) {
 	if runtime.GOOS == "windows" {
