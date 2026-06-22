@@ -57,15 +57,19 @@ func TestRulesetBuilder_NetworkAccess(t *testing.T) {
 	}
 }
 
-func TestRulesetBuilder_WriteAccessMask_IncludesMakeSock(t *testing.T) {
-	// Write-allowed paths must support Unix domain socket creation (MAKE_SOCK).
-	// Without this, bind() for Unix sockets in /tmp etc. fails with EACCES
-	// even when the path is in the Landlock write list.
+func TestRulesetBuilder_WriteAccessMask_IncludesCreationRights(t *testing.T) {
+	// Write-allowed paths must support normal writable-directory creation rights.
+	// Without MAKE_SOCK, bind() for Unix sockets in /tmp etc. fails with EACCES.
+	// Without MAKE_SYM, Nix cache updates like flake-registry symlink creation
+	// under $XDG_CACHE_HOME fail with EACCES.
 	b := NewRulesetBuilder(3)
 	mask := b.buildWriteAccessMask()
 
 	if mask&LANDLOCK_ACCESS_FS_MAKE_SOCK == 0 {
 		t.Error("writeAccessMask missing MAKE_SOCK — Unix socket creation blocked in write-allowed paths")
+	}
+	if mask&LANDLOCK_ACCESS_FS_MAKE_SYM == 0 {
+		t.Error("writeAccessMask missing MAKE_SYM — symlink creation blocked in write-allowed paths")
 	}
 	// Sanity: verify other expected bits are present
 	if mask&LANDLOCK_ACCESS_FS_WRITE_FILE == 0 {

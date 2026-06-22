@@ -309,7 +309,8 @@ func (b *RulesetBuilder) buildFSAccessMask() uint64 {
 
 // buildWriteAccessMask returns the access rights granted to write-allowed paths.
 // Includes read (writable paths must be readable), file/dir creation, removal,
-// and socket creation (needed for Unix domain sockets in /tmp etc.).
+// symlink creation (needed by Nix caches), and socket creation (needed for Unix
+// domain sockets in /tmp etc.).
 func (b *RulesetBuilder) buildWriteAccessMask() uint64 {
 	access := uint64(LANDLOCK_ACCESS_FS_WRITE_FILE |
 		LANDLOCK_ACCESS_FS_READ_FILE |
@@ -318,6 +319,7 @@ func (b *RulesetBuilder) buildWriteAccessMask() uint64 {
 		LANDLOCK_ACCESS_FS_REMOVE_DIR |
 		LANDLOCK_ACCESS_FS_MAKE_REG |
 		LANDLOCK_ACCESS_FS_MAKE_DIR |
+		LANDLOCK_ACCESS_FS_MAKE_SYM |
 		LANDLOCK_ACCESS_FS_MAKE_SOCK)
 	if b.abi >= 3 {
 		access |= LANDLOCK_ACCESS_FS_TRUNCATE
