@@ -218,10 +218,14 @@ func (h *HybridClient) ListApprovals(ctx context.Context) ([]map[string]any, err
 
 // ResolveApproval resolves an approval. Uses gRPC if available.
 func (h *HybridClient) ResolveApproval(ctx context.Context, id, decision, reason string) error {
+	return h.ResolveApprovalWithScope(ctx, id, decision, reason, "")
+}
+
+func (h *HybridClient) ResolveApprovalWithScope(ctx context.Context, id, decision, reason, scope string) error {
 	if h != nil && h.grpc != nil {
-		return h.grpc.ResolveApproval(ctx, id, decision, reason)
+		return h.grpc.ResolveApprovalWithScope(ctx, id, decision, reason, scope)
 	}
-	return h.Client.ResolveApproval(ctx, id, decision, reason)
+	return h.Client.ResolveApprovalWithScope(ctx, id, decision, reason, scope)
 }
 
 // PolicyTest tests policy. Uses gRPC if available.

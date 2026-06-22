@@ -554,6 +554,9 @@ func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*
 	if !ok {
 		return nil, status.Error(codes.NotFound, "session not found")
 	}
+	if s.app.approvals != nil {
+		s.app.approvals.ClearSession(ctx, id)
+	}
 	_ = sess.CloseNetNS()
 	_ = sess.CloseProxy()
 	_ = sess.UnmountWorkspace()
@@ -767,8 +770,16 @@ func (s *grpcServer) ResolveApproval(ctx context.Context, in *structpb.Struct) (
 	}
 	decision, _ := reqMap["decision"].(string)
 	reason, _ := reqMap["reason"].(string)
+	scopeText, _ := reqMap["scope"].(string)
 	approved := strings.EqualFold(decision, "approve") || strings.EqualFold(decision, "allow")
-	if ok := s.app.approvals.Resolve(id, approved, reason); !ok {
+	if !approved && !strings.EqualFold(decision, "deny") && !strings.EqualFold(decision, "reject") {
+		return nil, status.Error(codes.InvalidArgument, "invalid decision")
+	}
+	scope, err := approvals.NormalizeResolutionScope(scopeText)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if ok := s.app.approvals.ResolveWithScope(id, approved, reason, scope); !ok {
 		return nil, status.Error(codes.NotFound, "approval not found")
 	}
 	return jsonToProto(map[string]any{"ok": true})

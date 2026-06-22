@@ -203,6 +203,54 @@ func TestMaybeApproveNoApprovalsLeavesDecision(t *testing.T) {
 	}
 }
 
+func TestMaybeApproveUsesSessionScopedDecision(t *testing.T) {
+	mgr := approvals.New("remote", time.Minute, nil)
+	scope, _ := approvals.NewNetworkScope("example.com", 443)
+	mgr.SetScoped(context.Background(), "s1", "cmd1", scope, true, "ok", "r")
+	p := &Proxy{sessionID: "s1", approvals: mgr}
+	dec := policy.Decision{
+		PolicyDecision:    types.DecisionApprove,
+		EffectiveDecision: types.DecisionApprove,
+		Rule:              "r",
+	}
+	got := p.maybeApprove(context.Background(), "cmd2", dec, "network", "example.com:443")
+	if got.EffectiveDecision != types.DecisionAllow {
+		t.Fatalf("expected scoped approval to allow, got %v", got.EffectiveDecision)
+	}
+}
+
+func TestMaybeApproveUsesSessionScopedDeny(t *testing.T) {
+	mgr := approvals.New("remote", time.Minute, nil)
+	scope, _ := approvals.NewNetworkScope("example.com", 443)
+	mgr.SetScoped(context.Background(), "s1", "cmd1", scope, false, "no", "r")
+	p := &Proxy{sessionID: "s1", approvals: mgr}
+	dec := policy.Decision{
+		PolicyDecision:    types.DecisionApprove,
+		EffectiveDecision: types.DecisionApprove,
+		Rule:              "r",
+	}
+	got := p.maybeApprove(context.Background(), "cmd2", dec, "network", "example.com:443")
+	if got.EffectiveDecision != types.DecisionDeny {
+		t.Fatalf("expected scoped denial to deny, got %v", got.EffectiveDecision)
+	}
+}
+
+func TestMaybeApproveHardDenyWinsOverScopedAllow(t *testing.T) {
+	mgr := approvals.New("remote", time.Minute, nil)
+	scope, _ := approvals.NewNetworkScope("example.com", 443)
+	mgr.SetScoped(context.Background(), "s1", "cmd1", scope, true, "ok", "r")
+	p := &Proxy{sessionID: "s1", approvals: mgr}
+	dec := policy.Decision{
+		PolicyDecision:    types.DecisionDeny,
+		EffectiveDecision: types.DecisionDeny,
+		Rule:              "hard-deny",
+	}
+	got := p.maybeApprove(context.Background(), "cmd2", dec, "network", "example.com:443")
+	if got.EffectiveDecision != types.DecisionDeny || got.Rule != "hard-deny" {
+		t.Fatalf("expected hard deny unchanged, got %+v", got)
+	}
+}
+
 func TestEmitConnectRedirectEvent(t *testing.T) {
 	em := &stubEmitter{}
 	p := &Proxy{

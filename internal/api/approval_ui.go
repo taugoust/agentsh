@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/agentsh/agentsh/internal/approvals"
 )
 
 type approvalUIEndpoint struct {
@@ -28,6 +30,7 @@ type approvalUIRequest struct {
 	ID              string          `json:"id,omitempty"`
 	QuestionnaireID string          `json:"questionnaire_id,omitempty"`
 	Decision        string          `json:"decision,omitempty"`
+	Scope           string          `json:"scope,omitempty"`
 	Reason          string          `json:"reason,omitempty"`
 	Event           json.RawMessage `json:"event,omitempty"`
 }
@@ -248,7 +251,11 @@ func (ui *approvalUIEndpoint) handleRequest(req approvalUIRequest) approvalUIRes
 		if !approved && decision != "deny" && decision != "reject" {
 			return approvalUIResponse{OK: false, Error: fmt.Sprintf("invalid decision %q", req.Decision)}
 		}
-		if ok := ui.app.approvals.ResolveForSession(ui.sessionID, id, approved, req.Reason); !ok {
+		scope, err := approvals.NormalizeResolutionScope(req.Scope)
+		if err != nil {
+			return approvalUIResponse{OK: false, Error: err.Error()}
+		}
+		if ok := ui.app.approvals.ResolveForSessionWithScope(ui.sessionID, id, approved, req.Reason, scope); !ok {
 			return approvalUIResponse{OK: false, Error: "approval not found for session"}
 		}
 		return approvalUIResponse{OK: true}

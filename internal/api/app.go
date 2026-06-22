@@ -806,6 +806,9 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.closeApprovalUI(id)
+	if a.approvals != nil {
+		a.approvals.ClearSession(r.Context(), id)
+	}
 	_ = s.CloseDBProxy()
 	_ = s.CloseNetNS()
 	_ = s.CloseProxy()
@@ -1431,13 +1434,23 @@ func (a *App) resolveApproval(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req struct {
 		Decision string `json:"decision"` // "approve" or "deny"
+		Scope    string `json:"scope"`
 		Reason   string `json:"reason"`
 	}
 	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
 		return
 	}
 	approved := strings.EqualFold(req.Decision, "approve") || strings.EqualFold(req.Decision, "allow")
-	if ok := a.approvals.Resolve(id, approved, req.Reason); !ok {
+	if !approved && !strings.EqualFold(req.Decision, "deny") && !strings.EqualFold(req.Decision, "reject") {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid decision"})
+		return
+	}
+	scope, err := approvals.NormalizeResolutionScope(req.Scope)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	if ok := a.approvals.ResolveWithScope(id, approved, req.Reason, scope); !ok {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "approval not found"})
 		return
 	}

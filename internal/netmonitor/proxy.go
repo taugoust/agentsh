@@ -387,7 +387,7 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 
 	ctx := req.Context()
 	dec := p.checkNetwork(ctx, host, port)
-	dec = p.maybeApprove(ctx, commandID, dec, "network", host)
+	dec = p.maybeApprove(ctx, commandID, dec, "network", net.JoinHostPort(host, strconv.Itoa(port)))
 	connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, host, port, dec, map[string]any{
 		"method":      req.Method,
 		"resolved_ip": resolvedIP,
@@ -545,6 +545,21 @@ func (p *Proxy) maybeApprove(ctx context.Context, commandID string, dec policy.D
 	if p.approvals == nil {
 		return dec
 	}
+	scope, hasScope := approvalScopeFor(kind, target)
+	if hasScope {
+		if scoped, ok := p.approvals.CheckScoped(ctx, p.sessionID, commandID, scope); ok {
+			if scoped.Approved {
+				dec.EffectiveDecision = types.DecisionAllow
+			} else {
+				dec.EffectiveDecision = types.DecisionDeny
+			}
+			return dec
+		}
+	}
+	fields := map[string]any(nil)
+	if hasScope {
+		fields = requestFieldsForScope(scope)
+	}
 	req := approvals.Request{
 		ID:        "approval-" + uuid.NewString(),
 		SessionID: p.sessionID,
@@ -553,6 +568,7 @@ func (p *Proxy) maybeApprove(ctx context.Context, commandID string, dec policy.D
 		Target:    target,
 		Rule:      dec.Rule,
 		Message:   dec.Message,
+		Fields:    fields,
 	}
 	res, err := p.approvals.RequestApproval(ctx, req)
 	if dec.Approval != nil {

@@ -467,11 +467,19 @@ func (c *GRPCClient) ListApprovals(ctx context.Context) ([]map[string]any, error
 }
 
 func (c *GRPCClient) ResolveApproval(ctx context.Context, id, decision, reason string) error {
-	in, err := jsonToStruct(map[string]any{
+	return c.ResolveApprovalWithScope(ctx, id, decision, reason, "")
+}
+
+func (c *GRPCClient) ResolveApprovalWithScope(ctx context.Context, id, decision, reason, scope string) error {
+	body := map[string]any{
 		"id":       id,
 		"decision": decision,
 		"reason":   reason,
-	})
+	}
+	if scope != "" {
+		body["scope"] = scope
+	}
+	in, err := jsonToStruct(body)
 	if err != nil {
 		return err
 	}

@@ -36,7 +36,20 @@ type Request struct {
 type Resolution struct {
 	Approved bool      `json:"approved"`
 	Reason   string    `json:"reason,omitempty"`
+	Scope    string    `json:"scope,omitempty"`
 	At       time.Time `json:"at"`
+}
+
+type ScopedDecision struct {
+	SessionID string     `json:"session_id"`
+	Kind      string     `json:"kind"`
+	Key       string     `json:"key"`
+	Label     string     `json:"label,omitempty"`
+	Approved  bool       `json:"approved"`
+	Reason    string     `json:"reason,omitempty"`
+	Rule      string     `json:"rule,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 type Manager struct {
@@ -55,6 +68,7 @@ type Manager struct {
 
 	mu      sync.Mutex
 	pending map[string]*pending
+	scoped  map[string]map[string]ScopedDecision // sessionID -> scopeKey -> decision
 
 	promptMu sync.Mutex
 
@@ -81,6 +95,7 @@ func New(mode string, timeout time.Duration, emit Emitter) *Manager {
 		timeout:       timeout,
 		emit:          emit,
 		pending:       make(map[string]*pending),
+		scoped:        make(map[string]map[string]ScopedDecision),
 		sessionCounts: make(map[string]int),
 		maxPerSession: 10, // Default: max 10 concurrent approvals per session
 	}
@@ -190,17 +205,29 @@ func (m *Manager) listPendingLocked(sessionID string) []Request {
 }
 
 func (m *Manager) Resolve(id string, approved bool, reason string) bool {
-	return m.resolveForSession("", id, approved, reason)
+	return m.ResolveWithScope(id, approved, reason, ScopeOnce)
+}
+
+func (m *Manager) ResolveWithScope(id string, approved bool, reason string, scope string) bool {
+	return m.resolveForSession("", id, approved, reason, scope)
 }
 
 func (m *Manager) ResolveForSession(sessionID string, id string, approved bool, reason string) bool {
+	return m.ResolveForSessionWithScope(sessionID, id, approved, reason, ScopeOnce)
+}
+
+func (m *Manager) ResolveForSessionWithScope(sessionID string, id string, approved bool, reason string, scope string) bool {
 	if sessionID == "" {
 		return false
 	}
-	return m.resolveForSession(sessionID, id, approved, reason)
+	return m.resolveForSession(sessionID, id, approved, reason, scope)
 }
 
-func (m *Manager) resolveForSession(sessionID string, id string, approved bool, reason string) bool {
+func (m *Manager) resolveForSession(sessionID string, id string, approved bool, reason string, scope string) bool {
+	scope, err := NormalizeResolutionScope(scope)
+	if err != nil {
+		return false
+	}
 	m.mu.Lock()
 	p, ok := m.pending[id]
 	if ok && sessionID != "" && p.req.SessionID != sessionID {
@@ -213,7 +240,7 @@ func (m *Manager) resolveForSession(sessionID string, id string, approved bool, 
 	if !ok {
 		return false
 	}
-	res := Resolution{Approved: approved, Reason: reason, At: time.Now().UTC()}
+	res := Resolution{Approved: approved, Reason: reason, Scope: scope, At: time.Now().UTC()}
 	select {
 	case p.ch <- res:
 	default:
@@ -228,7 +255,7 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 		count := m.sessionCounts[req.SessionID]
 		if count >= m.maxPerSession {
 			m.rateMu.Unlock()
-			return Resolution{Approved: false, Reason: "rate limit exceeded", At: time.Now().UTC()},
+			return Resolution{Approved: false, Reason: "rate limit exceeded", Scope: ScopeOnce, At: time.Now().UTC()},
 				fmt.Errorf("too many pending approvals for session %s (max %d)", req.SessionID, m.maxPerSession)
 		}
 		m.sessionCounts[req.SessionID] = count + 1
@@ -272,7 +299,7 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 				_ = m.Resolve(req.ID, false, err.Error())
 				return
 			}
-			_ = m.Resolve(req.ID, res.Approved, res.Reason)
+			_ = m.ResolveWithScope(req.ID, res.Approved, res.Reason, res.Scope)
 		}()
 	}
 
@@ -293,23 +320,126 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 		if cancelPrompt != nil {
 			cancelPrompt()
 		}
+		if res.Scope == "" {
+			res.Scope = ScopeOnce
+		}
 		m.emitEvent(ctx, "approval_resolved", req, &res)
+		m.setScopedFromRequest(ctx, req, res)
 		return res, nil
 	case <-ctx.Done():
 		if cancelPrompt != nil {
 			cancelPrompt()
 		}
 		m.Resolve(req.ID, false, "context canceled")
-		m.emitEvent(ctx, "approval_resolved", req, &Resolution{Approved: false, Reason: "context canceled", At: time.Now().UTC()})
-		return Resolution{Approved: false, Reason: "context canceled", At: time.Now().UTC()}, ctx.Err()
+		m.emitEvent(ctx, "approval_resolved", req, &Resolution{Approved: false, Reason: "context canceled", Scope: ScopeOnce, At: time.Now().UTC()})
+		return Resolution{Approved: false, Reason: "context canceled", Scope: ScopeOnce, At: time.Now().UTC()}, ctx.Err()
 	case <-timer.C:
 		if cancelPrompt != nil {
 			cancelPrompt()
 		}
 		m.Resolve(req.ID, false, "approval timeout")
-		m.emitEvent(ctx, "approval_resolved", req, &Resolution{Approved: false, Reason: "approval timeout", At: time.Now().UTC()})
-		return Resolution{Approved: false, Reason: "approval timeout", At: time.Now().UTC()}, fmt.Errorf("approval timeout")
+		m.emitEvent(ctx, "approval_resolved", req, &Resolution{Approved: false, Reason: "approval timeout", Scope: ScopeOnce, At: time.Now().UTC()})
+		return Resolution{Approved: false, Reason: "approval timeout", Scope: ScopeOnce, At: time.Now().UTC()}, fmt.Errorf("approval timeout")
 	}
+}
+
+func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID string, scope Scope) (ScopedDecision, bool) {
+	if sessionID == "" || !validScope(scope) {
+		return ScopedDecision{}, false
+	}
+	now := time.Now().UTC()
+	m.mu.Lock()
+	bySession := m.scoped[sessionID]
+	dec, ok := bySession[scope.Key]
+	if ok && dec.ExpiresAt != nil && dec.ExpiresAt.Before(now) {
+		delete(bySession, scope.Key)
+		ok = false
+	}
+	m.mu.Unlock()
+	if !ok {
+		return ScopedDecision{}, false
+	}
+	m.emitScopedEvent(ctx, "approval_scope_used", commandID, dec)
+	return dec, true
+}
+
+func (m *Manager) SetScoped(ctx context.Context, sessionID string, commandID string, scope Scope, approved bool, reason string, rule string) bool {
+	if sessionID == "" || !validScope(scope) {
+		return false
+	}
+	dec := ScopedDecision{
+		SessionID: sessionID,
+		Kind:      scope.Kind,
+		Key:       scope.Key,
+		Label:     scope.Label,
+		Approved:  approved,
+		Reason:    reason,
+		Rule:      rule,
+		CreatedAt: time.Now().UTC(),
+	}
+	m.mu.Lock()
+	if m.scoped == nil {
+		m.scoped = make(map[string]map[string]ScopedDecision)
+	}
+	if m.scoped[sessionID] == nil {
+		m.scoped[sessionID] = make(map[string]ScopedDecision)
+	}
+	m.scoped[sessionID][scope.Key] = dec
+	m.mu.Unlock()
+	m.emitScopedEvent(ctx, "approval_scope_granted", commandID, dec)
+	return true
+}
+
+func (m *Manager) ClearSession(ctx context.Context, sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	m.mu.Lock()
+	decisions := make([]ScopedDecision, 0, len(m.scoped[sessionID]))
+	for _, dec := range m.scoped[sessionID] {
+		decisions = append(decisions, dec)
+	}
+	delete(m.scoped, sessionID)
+	m.mu.Unlock()
+	for _, dec := range decisions {
+		m.emitScopedEvent(ctx, "approval_scope_cleared", "", dec)
+	}
+}
+
+func (m *Manager) setScopedFromRequest(ctx context.Context, req Request, res Resolution) {
+	scope, err := NormalizeResolutionScope(res.Scope)
+	if err != nil || scope != ScopeSession {
+		return
+	}
+	approvalScope, ok := scopeFromFields(req.Fields)
+	if !ok {
+		return
+	}
+	m.SetScoped(ctx, req.SessionID, req.CommandID, approvalScope, res.Approved, res.Reason, req.Rule)
+}
+
+func (m *Manager) emitScopedEvent(ctx context.Context, evType string, commandID string, dec ScopedDecision) {
+	if m.emit == nil {
+		return
+	}
+	fields := map[string]any{
+		"kind":        dec.Kind,
+		"scope_key":   dec.Key,
+		"scope_label": dec.Label,
+		"approved":    dec.Approved,
+		"rule":        dec.Rule,
+		"reason":      dec.Reason,
+	}
+	ev := types.Event{
+		ID:        uuid.NewString(),
+		Timestamp: time.Now().UTC(),
+		Type:      evType,
+		SessionID: dec.SessionID,
+		CommandID: commandID,
+		Fields:    fields,
+	}
+	_ = m.emit.AppendEvent(ctx, ev)
+	m.emit.Publish(ev)
 }
 
 func (m *Manager) emitEvent(ctx context.Context, evType string, req Request, res *Resolution) {
@@ -329,6 +459,7 @@ func (m *Manager) emitEvent(ctx context.Context, evType string, req Request, res
 	if res != nil {
 		fields["approved"] = res.Approved
 		fields["reason"] = res.Reason
+		fields["scope"] = res.Scope
 		fields["resolved_at"] = res.At.Format(time.RFC3339Nano)
 	}
 	ev := types.Event{

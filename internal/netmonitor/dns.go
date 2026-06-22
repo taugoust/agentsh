@@ -240,6 +240,21 @@ func (d *DNSInterceptor) maybeApprove(ctx context.Context, commandID string, dec
 	if d.approvals == nil {
 		return dec
 	}
+	scope, hasScope := approvalScopeFor(kind, target)
+	if hasScope {
+		if scoped, ok := d.approvals.CheckScoped(ctx, d.sessionID, commandID, scope); ok {
+			if scoped.Approved {
+				dec.EffectiveDecision = types.DecisionAllow
+			} else {
+				dec.EffectiveDecision = types.DecisionDeny
+			}
+			return dec
+		}
+	}
+	fields := map[string]any(nil)
+	if hasScope {
+		fields = requestFieldsForScope(scope)
+	}
 	req := approvals.Request{
 		ID:        "approval-" + uuid.NewString(),
 		SessionID: d.sessionID,
@@ -248,6 +263,7 @@ func (d *DNSInterceptor) maybeApprove(ctx context.Context, commandID string, dec
 		Target:    target,
 		Rule:      dec.Rule,
 		Message:   dec.Message,
+		Fields:    fields,
 	}
 	res, err := d.approvals.RequestApproval(ctx, req)
 	if dec.Approval != nil {
@@ -343,9 +359,9 @@ func buildDNSRedirectResponse(query []byte, ip net.IP) []byte {
 	binary.BigEndian.PutUint16(resp[2:4], flags)
 
 	// Set counts: QDCOUNT=1, ANCOUNT=1, NSCOUNT=0, ARCOUNT=0
-	binary.BigEndian.PutUint16(resp[4:6], 1)  // QDCOUNT
-	binary.BigEndian.PutUint16(resp[6:8], 1)  // ANCOUNT
-	binary.BigEndian.PutUint16(resp[8:10], 0) // NSCOUNT
+	binary.BigEndian.PutUint16(resp[4:6], 1)   // QDCOUNT
+	binary.BigEndian.PutUint16(resp[6:8], 1)   // ANCOUNT
+	binary.BigEndian.PutUint16(resp[8:10], 0)  // NSCOUNT
 	binary.BigEndian.PutUint16(resp[10:12], 0) // ARCOUNT
 
 	// Build answer section

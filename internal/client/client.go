@@ -229,7 +229,14 @@ func (c *Client) ListApprovals(ctx context.Context) ([]map[string]any, error) {
 }
 
 func (c *Client) ResolveApproval(ctx context.Context, id string, decision string, reason string) error {
+	return c.ResolveApprovalWithScope(ctx, id, decision, reason, "")
+}
+
+func (c *Client) ResolveApprovalWithScope(ctx context.Context, id string, decision string, reason string, scope string) error {
 	body := map[string]any{"decision": decision, "reason": reason}
+	if scope != "" {
+		body["scope"] = scope
+	}
 	return c.doJSON(ctx, http.MethodPost, "/api/v1/approvals/"+url.PathEscape(id), nil, body, nil)
 }
 

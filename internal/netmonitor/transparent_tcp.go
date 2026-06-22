@@ -244,6 +244,21 @@ func (t *TransparentTCP) maybeApprove(ctx context.Context, commandID string, dec
 	if t.approvals == nil {
 		return dec
 	}
+	scope, hasScope := approvalScopeFor(kind, target)
+	if hasScope {
+		if scoped, ok := t.approvals.CheckScoped(ctx, t.sessionID, commandID, scope); ok {
+			if scoped.Approved {
+				dec.EffectiveDecision = types.DecisionAllow
+			} else {
+				dec.EffectiveDecision = types.DecisionDeny
+			}
+			return dec
+		}
+	}
+	fields := map[string]any(nil)
+	if hasScope {
+		fields = requestFieldsForScope(scope)
+	}
 	req := approvals.Request{
 		ID:        "approval-" + uuid.NewString(),
 		SessionID: t.sessionID,
@@ -252,6 +267,7 @@ func (t *TransparentTCP) maybeApprove(ctx context.Context, commandID string, dec
 		Target:    target,
 		Rule:      dec.Rule,
 		Message:   dec.Message,
+		Fields:    fields,
 	}
 	res, err := t.approvals.RequestApproval(ctx, req)
 	if dec.Approval != nil {

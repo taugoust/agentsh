@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/agentsh/agentsh/internal/client"
@@ -33,6 +34,7 @@ func newApproveCmd() *cobra.Command {
 	var allow bool
 	var deny bool
 	var reason string
+	var scope string
 	resolveCmd := &cobra.Command{
 		Use:   "resolve APPROVAL_ID",
 		Short: "Approve or deny a pending approval",
@@ -50,7 +52,18 @@ func newApproveCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := c.ResolveApproval(cmd.Context(), args[0], decision, reason); err != nil {
+			if scope != "" {
+				type scopedResolver interface {
+					ResolveApprovalWithScope(ctx context.Context, id string, decision string, reason string, scope string) error
+				}
+				sr, ok := c.(scopedResolver)
+				if !ok {
+					return fmt.Errorf("client does not support approval scope")
+				}
+				if err := sr.ResolveApprovalWithScope(cmd.Context(), args[0], decision, reason, scope); err != nil {
+					return err
+				}
+			} else if err := c.ResolveApproval(cmd.Context(), args[0], decision, reason); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
@@ -60,6 +73,7 @@ func newApproveCmd() *cobra.Command {
 	resolveCmd.Flags().BoolVar(&allow, "allow", false, "Approve")
 	resolveCmd.Flags().BoolVar(&deny, "deny", false, "Deny")
 	resolveCmd.Flags().StringVar(&reason, "reason", "", "Reason (optional)")
+	resolveCmd.Flags().StringVar(&scope, "scope", "", "Approval scope: once or session (default once)")
 	cmd.AddCommand(resolveCmd)
 
 	return cmd
