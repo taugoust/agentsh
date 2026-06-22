@@ -39,12 +39,13 @@ func newSessionCreateCmd() *cobra.Command {
 	var workspaceMode string
 	var overlayMode bool
 	var shadowMode bool
+	var shadowKeepOnDestroy bool
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new session",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
 			if err != nil {
 				return err
 			}
@@ -58,6 +59,12 @@ func newSessionCreateCmd() *cobra.Command {
 				req.WorkspaceMode = string(types.WorkspaceModeOverlay)
 			} else if workspaceMode != "" {
 				req.WorkspaceMode = workspaceMode
+			}
+			if shadowKeepOnDestroy {
+				if req.WorkspaceMode != string(types.WorkspaceModeShadow) {
+					return fmt.Errorf("--shadow-keep-on-destroy requires --shadow or --workspace-mode shadow")
+				}
+				req.Shadow = &types.CreateShadowOptions{KeepOnDestroy: true}
 			}
 			if cmd.Flags().Changed("real-paths") {
 				req.RealPaths = &realPaths
@@ -82,6 +89,7 @@ func newSessionCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct, overlay, or shadow")
 	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
 	cmd.Flags().BoolVar(&shadowMode, "shadow", false, "Use shadow workspace mode")
+	cmd.Flags().BoolVar(&shadowKeepOnDestroy, "shadow-keep-on-destroy", false, "Keep shadow workspace on session destroy/expiry for later accept/reject")
 	return cmd
 }
 

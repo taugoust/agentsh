@@ -231,12 +231,12 @@ func TestGetFloatVal(t *testing.T) {
 	}
 }
 
-func TestSessionCreateCmd_HasJSONFlag(t *testing.T) {
+func TestSessionCreateCmd_HasExpectedFlags(t *testing.T) {
 	cmd := newSessionCreateCmd()
 
-	// Check --json flag exists
-	jsonFlag := cmd.Flags().Lookup("json")
-	if jsonFlag == nil {
-		t.Error("expected --json flag on session create command")
+	for _, name := range []string{"json", "shadow", "shadow-keep-on-destroy"} {
+		if flag := cmd.Flags().Lookup(name); flag == nil {
+			t.Errorf("expected --%s flag on session create command", name)
+		}
 	}
 }
