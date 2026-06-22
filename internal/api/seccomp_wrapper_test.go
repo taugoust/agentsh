@@ -10,6 +10,7 @@ import (
 	"github.com/agentsh/agentsh/internal/events"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
+	"github.com/agentsh/agentsh/internal/workspace/shadow"
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
@@ -438,6 +439,36 @@ func TestSeccompWrapperConfig_WaitKillable_JSON(t *testing.T) {
 				t.Fatalf("expected %q in %s", tc.wantSubstr, s)
 			}
 		})
+	}
+}
+
+func TestAppendShadowRuntimeLandlockPaths(t *testing.T) {
+	workspace := t.TempDir()
+	s, err := session.NewManager(1).CreateWithID("session-test", workspace, "default")
+	if err != nil {
+		t.Fatalf("CreateWithID: %v", err)
+	}
+	s.SetShadow(&shadow.Workspace{
+		ID:   "session-test",
+		Real: "/real/project",
+		Work: "/var/lib/agentsh/workspaces/session-test/work",
+		Home: "/var/lib/agentsh/workspaces/session-test/home",
+		Tmp:  "/var/lib/agentsh/workspaces/session-test/tmp",
+	})
+
+	cfg := seccompWrapperConfig{
+		AllowRead:  []string{"/existing/read"},
+		AllowWrite: []string{"/existing/write"},
+	}
+	appendShadowRuntimeLandlockPaths(&cfg, s)
+
+	for _, want := range []string{"/var/lib/agentsh/workspaces/session-test/home", "/var/lib/agentsh/workspaces/session-test/tmp"} {
+		if !containsPath(cfg.AllowRead, want) {
+			t.Fatalf("AllowRead missing %q: %#v", want, cfg.AllowRead)
+		}
+		if !containsPath(cfg.AllowWrite, want) {
+			t.Fatalf("AllowWrite missing %q: %#v", want, cfg.AllowWrite)
+		}
 	}
 }
 
