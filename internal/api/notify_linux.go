@@ -20,6 +20,7 @@ import (
 	"github.com/agentsh/agentsh/internal/netmonitor"
 	unixmon "github.com/agentsh/agentsh/internal/netmonitor/unix"
 	"github.com/agentsh/agentsh/internal/policy"
+	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
@@ -192,7 +193,7 @@ func notifyHandlerRecover(sessID string, store eventStore, broker eventBroker) {
 // *unixmon.BlockListConfig). A nil or zero-ActionByNr value is treated as
 // "no block-list notify routing needed" — safe for errno/kill modes which are
 // kernel-side.
-func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error) {
+func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, approvalsMgr *approvals.Manager, sess *session.Session) {
 	if parentSock == nil {
 		return
 	}
@@ -273,7 +274,7 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 		emitter := &notifyEmitterAdapter{store: store, broker: broker}
 
 		// Create file handler if configured
-		fileHandler := createFileHandler(fileMonitorCfg, pol, emitter, landlockEnabled)
+		fileHandler := createFileHandler(fileMonitorCfg, pol, emitter, landlockEnabled, approvalsMgr, sess)
 
 		// Type-assert and set emitter on execve handler if configured
 		var h *unixmon.ExecveHandler

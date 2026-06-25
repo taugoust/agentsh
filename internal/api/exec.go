@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/approvals"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
@@ -28,14 +29,16 @@ const (
 type extraProcConfig struct {
 	extraFiles       []*os.File
 	env              map[string]string
-	envInject        map[string]string // Operator-trusted env vars that bypass policy filtering
-	notifyParentSock *os.File          // Parent socket to receive seccomp notify fd (Linux only)
-	notifySessionID  string            // Session ID for notify handler
-	notifyStore      eventStore        // Event store for notify handler
-	notifyBroker     eventBroker       // Event broker for notify handler
-	notifyPolicy     *policy.Engine    // Policy engine for notify handler
-	execveHandler    any               // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
-	blockList        any               // Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
+	envInject        map[string]string  // Operator-trusted env vars that bypass policy filtering
+	notifyParentSock *os.File           // Parent socket to receive seccomp notify fd (Linux only)
+	notifySessionID  string             // Session ID for notify handler
+	notifyStore      eventStore         // Event store for notify handler
+	notifyBroker     eventBroker        // Event broker for notify handler
+	notifyPolicy     *policy.Engine     // Policy engine for notify handler
+	notifyApprovals  *approvals.Manager // Approval manager for notify handler
+	notifySession    *session.Session   // Session for notify handler context
+	execveHandler    any                // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
+	blockList        any                // Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
 
 	// File monitor config
 	fileMonitorCfg  config.SandboxSeccompFileMonitorConfig
@@ -830,7 +833,7 @@ func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid
 		extra.wrapperLogParent = nil
 	}
 	if extra.notifyParentSock != nil {
-		startNotifyHandler(ctx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady)
+		startNotifyHandler(ctx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, extra.notifyApprovals, extra.notifySession)
 	}
 	if extra.signalParentSock != nil && extra.signalEngine != nil {
 		if extra.signalRegistry != nil {

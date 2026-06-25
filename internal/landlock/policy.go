@@ -100,6 +100,43 @@ func DeriveReadPathsFromPolicy(p *policy.Policy) []string {
 	return paths
 }
 
+// DeriveApproveReadPathsFromPolicy extracts Landlock read path prefixes for
+// approvable file rules, excluding prefixes that overlap explicit deny rules.
+func DeriveApproveReadPathsFromPolicy(p *policy.Policy) []string {
+	return deriveFilePathsFromPolicy(p, "approve", fileRuleHasReadOp, true)
+}
+
+// DeriveApproveWritePathsFromPolicy extracts Landlock write path prefixes for
+// approvable file rules, excluding prefixes that overlap explicit deny rules.
+func DeriveApproveWritePathsFromPolicy(p *policy.Policy) []string {
+	return deriveFilePathsFromPolicy(p, "approve", fileRuleHasWriteOp, true)
+}
+
+// DeriveApproveExecutePathsFromPolicy extracts Landlock execute path prefixes
+// for approvable command rules.
+func DeriveApproveExecutePathsFromPolicy(p *policy.Policy) []string {
+	if p == nil {
+		return nil
+	}
+	pathSet := make(map[string]struct{})
+	for _, rule := range p.CommandRules {
+		if strings.ToLower(rule.Decision) != "approve" {
+			continue
+		}
+		for _, cmd := range rule.Commands {
+			cmd = strings.TrimSpace(cmd)
+			if cmd == "" || !strings.Contains(cmd, "/") {
+				continue
+			}
+			dir := extractBaseDir(cmd)
+			if dir != "" && dir != "." && dir != "/" {
+				pathSet[dir] = struct{}{}
+			}
+		}
+	}
+	return pathSetToSlice(pathSet)
+}
+
 // DeriveWritePathsFromPolicy extracts directory paths from policy file rules with write access.
 func DeriveWritePathsFromPolicy(p *policy.Policy) []string {
 	if p == nil {
@@ -147,6 +184,107 @@ func DeriveWritePathsFromPolicy(p *policy.Policy) []string {
 		paths = append(paths, p)
 	}
 
+	return paths
+}
+
+func deriveFilePathsFromPolicy(p *policy.Policy, decision string, opMatch func(policy.FileRule) bool, excludeDenyOverlap bool) []string {
+	if p == nil {
+		return nil
+	}
+	pathSet := make(map[string]struct{})
+	denyDirs := denyFileRuleBaseDirs(p)
+	for _, rule := range p.FileRules {
+		if strings.ToLower(rule.Decision) != decision {
+			continue
+		}
+		if !opMatch(rule) {
+			continue
+		}
+		for _, pathPattern := range rule.Paths {
+			pathPattern = strings.TrimSpace(pathPattern)
+			if pathPattern == "" {
+				continue
+			}
+			dir := extractBaseDir(pathPattern)
+			if dir == "" || dir == "." || dir == "/" {
+				continue
+			}
+			if excludeDenyOverlap && overlapsAnyPathPrefix(dir, denyDirs) {
+				continue
+			}
+			pathSet[dir] = struct{}{}
+		}
+	}
+	return pathSetToSlice(pathSet)
+}
+
+func fileRuleHasReadOp(rule policy.FileRule) bool {
+	if len(rule.Operations) == 0 {
+		return true
+	}
+	for _, op := range rule.Operations {
+		switch strings.ToLower(op) {
+		case "read", "open", "stat", "list", "readlink", "access", "*":
+			return true
+		}
+	}
+	return false
+}
+
+func fileRuleHasWriteOp(rule policy.FileRule) bool {
+	for _, op := range rule.Operations {
+		switch strings.ToLower(op) {
+		case "write", "create", "mkdir", "delete", "rmdir", "rename", "link", "symlink", "chmod", "chown", "mknod", "*":
+			return true
+		}
+	}
+	return false
+}
+
+func denyFileRuleBaseDirs(p *policy.Policy) []string {
+	if p == nil {
+		return nil
+	}
+	var dirs []string
+	for _, rule := range p.FileRules {
+		if strings.ToLower(rule.Decision) != "deny" {
+			continue
+		}
+		for _, pathPattern := range rule.Paths {
+			pathPattern = strings.TrimSpace(pathPattern)
+			if pathPattern == "" {
+				continue
+			}
+			dir := extractBaseDir(pathPattern)
+			if dir != "" && dir != "." {
+				dirs = append(dirs, dir)
+			}
+		}
+	}
+	return dirs
+}
+
+func overlapsAnyPathPrefix(candidate string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if pathPrefixesOverlap(candidate, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathPrefixesOverlap(a, b string) bool {
+	if a == "/" || b == "/" || a == b {
+		return true
+	}
+	return strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
+}
+
+func pathSetToSlice(pathSet map[string]struct{}) []string {
+	paths := make([]string, 0, len(pathSet))
+	for p := range pathSet {
+		paths = append(paths, p)
+	}
 	return paths
 }
 

@@ -91,6 +91,7 @@ func (a *App) compileDBPolicyForSession(ctx context.Context, s *session.Session,
 	if base == nil {
 		return a.policy, nil, "", nil
 	}
+	base = withSessionParentTraversalRules(base, policyVars)
 	rs, warns, err := loadDBRuleSet(base)
 	if err != nil {
 		return nil, nil, "", err
@@ -127,6 +128,94 @@ func (a *App) compileDBPolicyForSession(ctx context.Context, s *session.Session,
 		return nil, nil, "", err
 	}
 	return engine, rs, stateDir, nil
+}
+
+func withSessionParentTraversalRules(p *policy.Policy, policyVars map[string]string) *policy.Policy {
+	if p == nil {
+		return nil
+	}
+	paths := sessionParentTraversalPaths(policyVars)
+	if len(paths) == 0 {
+		return p
+	}
+	clone := clonePolicy(p)
+	rules := []policy.FileRule{
+		{
+			Name:        "allow-session-parent-context-files",
+			Description: "Allow reading AgentSH/Pi context files in parent directories of the effective session workspace",
+			Paths:       sessionParentContextFilePaths(paths),
+			Operations:  []string{"read", "open", "stat", "readlink", "access"},
+			Decision:    "allow",
+		},
+		{
+			Name:        "allow-session-parent-directory-open",
+			Description: "Allow opening parent directories of the effective session workspace for context discovery",
+			Paths:       sessionParentDirectoryOpenPaths(paths),
+			Operations:  []string{"open"},
+			Decision:    "allow",
+		},
+		{
+			Name:        "allow-session-parent-path-traversal",
+			Description: "Allow metadata traversal of parent directories for the effective session workspace",
+			Paths:       paths,
+			Operations:  []string{"stat", "readlink", "access"},
+			Decision:    "allow",
+		},
+	}
+	clone.FileRules = append(rules, clone.FileRules...)
+	return clone
+}
+
+func sessionParentContextFilePaths(parentPaths []string) []string {
+	if len(parentPaths) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(parentPaths)*2)
+	for _, dir := range parentPaths {
+		out = append(out,
+			filepath.Join(dir, "AGENTS.md"),
+			filepath.Join(dir, "AGENTS.local.md"),
+		)
+	}
+	return out
+}
+
+func sessionParentDirectoryOpenPaths(parentPaths []string) []string {
+	out := make([]string, 0, len(parentPaths))
+	for _, dir := range parentPaths {
+		if dir != string(filepath.Separator) {
+			out = append(out, dir)
+		}
+	}
+	return out
+}
+
+func sessionParentTraversalPaths(policyVars map[string]string) []string {
+	if len(policyVars) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	addAncestors := func(p string) {
+		if p == "" || !filepath.IsAbs(p) {
+			return
+		}
+		p = filepath.Clean(p)
+		for dir := filepath.Dir(p); dir != "."; dir = filepath.Dir(dir) {
+			if _, ok := seen[dir]; ok {
+				break
+			}
+			seen[dir] = struct{}{}
+			out = append(out, dir)
+			if dir == string(filepath.Separator) {
+				break
+			}
+		}
+	}
+	addAncestors(policyVars["PROJECT_ROOT"])
+	addAncestors(policyVars["GIT_ROOT"])
+	sort.Strings(out)
+	return out
 }
 
 func (a *App) startSessionDBProxy(ctx context.Context, s *session.Session, rs *dbpolicy.RuleSet, stateDir string) error {

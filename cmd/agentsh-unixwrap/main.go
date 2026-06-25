@@ -97,6 +97,18 @@ func main() {
 	}
 	args := applyArgv0Override(os.Args[2:], os.Getenv("AGENTSH_UNIXWRAP_ARGV0"))
 
+	// Do all remaining wrapper-owned filesystem work before installing the
+	// seccomp user-notify filter. With file monitoring enabled, the filter also
+	// traps this wrapper process until exec; if we build Landlock rules or probe
+	// the ptracer library after the ACK, those wrapper syscalls can require file
+	// approvals before Pi has even started its approval relay, deadlocking launch.
+	setupPtracerPreload(cfg.ServerPID, yamaActive)
+	if cfg.LandlockEnabled && cfg.LandlockABI > 0 {
+		if err := applyLandlock(cfg); err != nil {
+			log.Printf("landlock: %v (continuing without)", err)
+		}
+	}
+
 	// Build filter config.
 	onBlock, _ := seccompkg.ParseOnBlock(cfg.OnBlock)
 	filterCfg := unixmon.FilterConfig{
@@ -189,13 +201,6 @@ func main() {
 		_ = unix.Close(sigSockFD)
 	}
 
-	// Apply Landlock filesystem restrictions before exec.
-	if cfg.LandlockEnabled && cfg.LandlockABI > 0 {
-		if err := applyLandlock(cfg); err != nil {
-			log.Printf("landlock: %v (continuing without)", err)
-		}
-	}
-
 	// Ptrace sync handshake: when the server will attach ptrace after our
 	// seccomp setup, we signal READY and wait for GO before exec. This
 	// prevents ptrace from interfering with seccomp filter installation.
@@ -224,16 +229,6 @@ func main() {
 
 	// Close notify socket - done with all handshakes
 	_ = unix.Close(sockFD)
-
-	// Set up LD_PRELOAD for the ptracer library so that child processes
-	// call PR_SET_PTRACER(server_pid). Without this, ProcessVMReadv fails
-	// for children under Yama ptrace_scope=1, breaking seccomp path resolution.
-	// Only needed when seccomp notify is active (notifFD >= 0) AND Yama is
-	// active — on non-Yama kernels the LD_PRELOAD is irrelevant and would
-	// only emit confusing "ptracer: lib not found" noise (issue #281).
-	if notifFD >= 0 {
-		setupPtracerPreload(cfg.ServerPID, yamaActive)
-	}
 
 	// Block SIGURG on this OS thread to prevent Go's ~10ms async preemption
 	// from interrupting seccomp_do_user_notification during execve.

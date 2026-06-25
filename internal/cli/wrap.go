@@ -26,6 +26,7 @@ func newWrapCmd() *cobra.Command {
 	var policy string
 	var root string
 	var workspaceMode string
+	var home string
 	var overlayMode bool
 	var report bool
 
@@ -53,6 +54,7 @@ Examples:
 				policy:        policy,
 				root:          root,
 				workspaceMode: workspaceMode,
+				home:          home,
 				overlayMode:   overlayMode,
 				report:        report,
 				agentCmd:      args[0],
@@ -65,6 +67,7 @@ Examples:
 	cmd.Flags().StringVar(&policy, "policy", "agent-default", "Policy name")
 	cmd.Flags().StringVar(&root, "root", "", "Workspace root (default: current directory)")
 	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct or overlay")
+	cmd.Flags().StringVar(&home, "home", "", "Home directory for policy variable expansion (default: current user home)")
 	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
 	cmd.Flags().BoolVar(&report, "report", true, "Generate session report on exit")
 
@@ -76,6 +79,7 @@ type wrapOptions struct {
 	policy        string
 	root          string
 	workspaceMode string
+	home          string
 	overlayMode   bool
 	report        bool
 	agentCmd      string
@@ -165,7 +169,13 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 	// directory so the child process starts inside the mount. This ensures even
 	// non-shell agents that don't cd themselves will operate through FUSE.
 	if workDir != "" {
-		agentProc.Env = append(agentProc.Env, fmt.Sprintf("AGENTSH_WORKSPACE_MOUNT=%s", workDir))
+		agentProc.Env = setWrapEnv(agentProc.Env, "AGENTSH_WORKSPACE_MOUNT", workDir)
+		// Keep PWD consistent with Dir. Some runtimes/config loaders consult the
+		// environment PWD before process.cwd()/getcwd(), and a stale symlinked
+		// source path (e.g. /Users/... -> /mnt/virtiofs/...) can trigger file
+		// approvals before the agent UI has started.
+		agentProc.Env = setWrapEnv(agentProc.Env, "PWD", workDir)
+		agentProc.Env = setWrapEnv(agentProc.Env, "OLDPWD", workDir)
 		agentProc.Dir = workDir
 	}
 
@@ -363,6 +373,18 @@ func buildWrapEnv(base []string, sessionID string, serverAddr string, bypassShel
 	return env
 }
 
+func setWrapEnv(base []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(base)+1)
+	for _, e := range base {
+		if strings.HasPrefix(e, prefix) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, fmt.Sprintf("%s=%s", key, value))
+}
+
 func appendWrapNetworkProxyEnv(base []string, proxyURL string) []string {
 	if strings.TrimSpace(proxyURL) == "" {
 		return base
@@ -451,10 +473,14 @@ func fetchSessionForWrap(
 		if opts.sessionID != "" {
 			return c.GetSession(ctx, opts.sessionID)
 		}
+		home := opts.home
+		if home == "" {
+			home = userHomeDir()
+		}
 		req := types.CreateSessionRequest{
 			Workspace: workspace,
 			Policy:    opts.policy,
-			Home:      userHomeDir(),
+			Home:      home,
 		}
 		if opts.overlayMode {
 			req.WorkspaceMode = string(types.WorkspaceModeOverlay)

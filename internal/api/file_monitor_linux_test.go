@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/agentsh/agentsh/internal/approvals"
 
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/events"
@@ -23,7 +26,7 @@ func boolPtr(v bool) *bool { return &v }
 
 func TestCreateFileHandler_Disabled(t *testing.T) {
 	cfg := config.SandboxSeccompFileMonitorConfig{Enabled: boolPtr(false)}
-	h := createFileHandler(cfg, nil, nil, false)
+	h := createFileHandler(cfg, nil, nil, false, nil, nil)
 	assert.Nil(t, h)
 }
 
@@ -32,7 +35,7 @@ func TestCreateFileHandler_Enabled(t *testing.T) {
 		Enabled:            boolPtr(true),
 		EnforceWithoutFUSE: boolPtr(true),
 	}
-	h := createFileHandler(cfg, nil, nil, false)
+	h := createFileHandler(cfg, nil, nil, false, nil, nil)
 	assert.NotNil(t, h)
 }
 
@@ -41,11 +44,11 @@ func TestCreateFileHandler_NilPolicy(t *testing.T) {
 		Enabled:            boolPtr(true),
 		EnforceWithoutFUSE: boolPtr(true),
 	}
-	h := createFileHandler(cfg, nil, nil, false)
+	h := createFileHandler(cfg, nil, nil, false, nil, nil)
 	require.NotNil(t, h)
 
 	// With nil policy, Handle should return ActionContinue
-	result, _ := h.Handle(unixmon.FileRequest{
+	result, _ := h.Handle(context.Background(), unixmon.FileRequest{
 		PID:       1,
 		Path:      "/any/path",
 		Operation: "open",
@@ -76,10 +79,10 @@ func TestCreateFileHandler_EnforceWithoutFUSE(t *testing.T) {
 			Enabled:            boolPtr(true),
 			EnforceWithoutFUSE: boolPtr(false), // audit-only
 		}
-		h := createFileHandler(cfg, engine, nil, false)
+		h := createFileHandler(cfg, engine, nil, false, nil, nil)
 		require.NotNil(t, h)
 
-		result, _ := h.Handle(unixmon.FileRequest{
+		result, _ := h.Handle(context.Background(), unixmon.FileRequest{
 			PID:       1,
 			Path:      "/etc/shadow",
 			Operation: "open",
@@ -93,10 +96,10 @@ func TestCreateFileHandler_EnforceWithoutFUSE(t *testing.T) {
 			Enabled:            boolPtr(true),
 			EnforceWithoutFUSE: boolPtr(true), // enforcing
 		}
-		h := createFileHandler(cfg, engine, nil, false)
+		h := createFileHandler(cfg, engine, nil, false, nil, nil)
 		require.NotNil(t, h)
 
-		result, _ := h.Handle(unixmon.FileRequest{
+		result, _ := h.Handle(context.Background(), unixmon.FileRequest{
 			PID:       1,
 			Path:      "/etc/shadow",
 			Operation: "open",
@@ -132,14 +135,14 @@ func TestFilePolicyEngineWrapper_CheckFile(t *testing.T) {
 	w := &filePolicyEngineWrapper{engine: engine}
 
 	t.Run("allow_decision", func(t *testing.T) {
-		dec := w.CheckFile("/home/user/file.txt", "open")
+		dec := w.CheckFile(context.Background(), "/home/user/file.txt", "open")
 		assert.Equal(t, "allow", dec.Decision)
 		assert.Equal(t, "allow", dec.EffectiveDecision)
 		assert.Equal(t, "allow-home", dec.Rule)
 	})
 
 	t.Run("deny_decision", func(t *testing.T) {
-		dec := w.CheckFile("/etc/shadow", "open")
+		dec := w.CheckFile(context.Background(), "/etc/shadow", "open")
 		assert.Equal(t, "deny", dec.Decision)
 		assert.Equal(t, "deny", dec.EffectiveDecision)
 		assert.Equal(t, "deny-etc", dec.Rule)
@@ -147,14 +150,14 @@ func TestFilePolicyEngineWrapper_CheckFile(t *testing.T) {
 	})
 
 	t.Run("default_allow_for_unmatched_read", func(t *testing.T) {
-		dec := w.CheckFile("/var/log/syslog", "open")
+		dec := w.CheckFile(context.Background(), "/var/log/syslog", "open")
 		assert.Equal(t, "allow", dec.Decision)
 		assert.Equal(t, "allow", dec.EffectiveDecision)
 		assert.Equal(t, "default-allow-reads", dec.Rule)
 	})
 
 	t.Run("default_deny_for_unmatched_write", func(t *testing.T) {
-		dec := w.CheckFile("/var/log/syslog", "write")
+		dec := w.CheckFile(context.Background(), "/var/log/syslog", "write")
 		assert.Equal(t, "deny", dec.Decision)
 		assert.Equal(t, "deny", dec.EffectiveDecision)
 		assert.Equal(t, "default-deny-files", dec.Rule)
@@ -228,4 +231,76 @@ func TestMountFUSEForSession_RegistersMountPointNotSourcePath(t *testing.T) {
 	require.NoError(t, s.UnmountWorkspace())
 	assert.False(t, reg.IsUnderFUSEMount(s.ID, mountPoint),
 		"mount point %q should be deregistered after unmount", mountPoint)
+}
+
+func TestFilePolicyEngineWrapper_ApproveRequestsAndCachesSessionScope(t *testing.T) {
+	pol := &policy.Policy{Version: 1, Name: "approve-file", FileRules: []policy.FileRule{
+		{Name: "approve-env", Paths: []string{"/workspace/.env"}, Operations: []string{"open"}, Decision: "approve"},
+	}}
+	engine, err := policy.NewEngine(pol, true, true)
+	require.NoError(t, err)
+	sess, err := session.NewManager(1).Create(t.TempDir(), "default")
+	require.NoError(t, err)
+	mgr := approvals.New("api", time.Second, nil)
+	w := &filePolicyEngineWrapper{engine: engine, approvals: mgr, sessionID: sess.ID, session: sess}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan unixmon.FilePolicyDecision, 1)
+	go func() { done <- w.CheckFile(ctx, "/workspace/.env", "open") }()
+
+	req := waitPendingFileApproval(t, mgr, sess.ID)
+	if req.Kind != "file" || req.Target != "/workspace/.env" || req.Fields["operation"] != "open" || req.Fields["path"] != "/workspace/.env" {
+		t.Fatalf("unexpected approval request: %#v", req)
+	}
+	if ok := mgr.ResolveForSessionWithScope(sess.ID, req.ID, true, "ok", approvals.ScopeSession); !ok {
+		t.Fatal("failed to resolve approval")
+	}
+	dec := <-done
+	assert.Equal(t, "approve", dec.Decision)
+	assert.Equal(t, "allow", dec.EffectiveDecision)
+
+	dec = w.CheckFile(context.Background(), "/workspace/.env", "stat")
+	assert.Equal(t, "allow", dec.EffectiveDecision)
+	assert.Empty(t, mgr.ListPendingForSession(sess.ID), "session-scoped file approval should be cached")
+}
+
+func TestFilePolicyEngineWrapper_ApproveDenialAndTimeoutDeny(t *testing.T) {
+	pol := &policy.Policy{Version: 1, Name: "approve-file", FileRules: []policy.FileRule{
+		{Name: "approve-env", Paths: []string{"/workspace/.env"}, Operations: []string{"open"}, Decision: "approve"},
+	}}
+	engine, err := policy.NewEngine(pol, true, true)
+	require.NoError(t, err)
+	sess, err := session.NewManager(1).Create(t.TempDir(), "default")
+	require.NoError(t, err)
+
+	mgr := approvals.New("api", time.Second, nil)
+	w := &filePolicyEngineWrapper{engine: engine, approvals: mgr, sessionID: sess.ID, session: sess}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan unixmon.FilePolicyDecision, 1)
+	go func() { done <- w.CheckFile(ctx, "/workspace/.env", "open") }()
+	req := waitPendingFileApproval(t, mgr, sess.ID)
+	if ok := mgr.ResolveForSession(sess.ID, req.ID, false, "no"); !ok {
+		t.Fatal("failed to deny approval")
+	}
+	assert.Equal(t, "deny", (<-done).EffectiveDecision)
+
+	shortMgr := approvals.New("api", 10*time.Millisecond, nil)
+	w = &filePolicyEngineWrapper{engine: engine, approvals: shortMgr, sessionID: sess.ID, session: sess}
+	assert.Equal(t, "deny", w.CheckFile(context.Background(), "/workspace/.env", "open").EffectiveDecision)
+}
+
+func waitPendingFileApproval(t *testing.T, mgr *approvals.Manager, sessionID string) approvals.Request {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		pending := mgr.ListPendingForSession(sessionID)
+		if len(pending) > 0 {
+			return pending[0]
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for file approval")
+	return approvals.Request{}
 }

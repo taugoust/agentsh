@@ -3,6 +3,7 @@
 package unix
 
 import (
+	"context"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -49,7 +50,7 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			policy := denyAll(tc.path)
 			handler := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true) // enforce=true
-			res, _ := handler.Handle(FileRequest{
+			res, _ := handler.Handle(context.Background(), FileRequest{
 				PID: 1234, Syscall: tc.syscall, Path: tc.path, Operation: tc.op, Flags: tc.flags, SessionID: "sess-1",
 			})
 			if res.Action != tc.want {
@@ -65,7 +66,7 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 			"/usr/lib/app/secret.key": {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-app-secrets"},
 		}}
 		handler := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true)
-		res, _ := handler.Handle(FileRequest{
+		res, _ := handler.Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/usr/lib/app/secret.key",
 			Operation: "open", Flags: unix.O_RDONLY, SessionID: "sess-1",
 		})
@@ -83,7 +84,7 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 		policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
 			"/proc/self": {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-proc-sys"},
 		}}
-		res, _ := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(FileRequest{
+		res, _ := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/proc/self", Operation: "open",
 			Flags: unix.O_RDONLY | unix.O_DIRECTORY, SessionID: "sess-1",
 		})
@@ -98,7 +99,7 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 		policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
 			"/proc/self/maps": {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-proc-sys"},
 		}}
-		res, _ := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(FileRequest{
+		res, _ := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/proc/self/maps", Operation: "open",
 			Flags: unix.O_RDONLY, SessionID: "sess-1",
 		})
@@ -110,7 +111,7 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 	// Writes to a system dir node are still enforced.
 	t.Run("write to dir node is still denied", func(t *testing.T) {
 		policy := denyAll("/etc/new.conf")
-		res, _ := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(FileRequest{
+		res, _ := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/etc/new.conf", Operation: "write",
 			Flags: unix.O_WRONLY | unix.O_CREAT, SessionID: "sess-1",
 		})
@@ -123,7 +124,7 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 	// trace that policy denied but file_monitor allowed it.
 	t.Run("override emits shadow-deny event", func(t *testing.T) {
 		policy := denyAll("/lib")
-		res, ev := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(FileRequest{
+		res, ev := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/lib", Operation: "open",
 			Flags: unix.O_RDONLY | unix.O_DIRECTORY, SessionID: "sess-1",
 		})
@@ -142,7 +143,7 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 	// the override runs, so it must NOT be marked as a loader-safe shadow-deny.
 	t.Run("enforce=false does not take the override path", func(t *testing.T) {
 		policy := denyAll("/lib")
-		res, ev := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, false).Handle(FileRequest{
+		res, ev := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, false).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/lib", Operation: "open",
 			Flags: unix.O_RDONLY | unix.O_DIRECTORY, SessionID: "sess-1",
 		})

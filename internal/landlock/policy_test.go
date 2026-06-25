@@ -463,3 +463,52 @@ func TestDeriveReadPaths(t *testing.T) {
 		t.Error("/etc should not be included (from denied rule that matches /etc/passwd)")
 	}
 }
+
+func TestDeriveApprovePathsFromPolicy(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("landlock tests use Unix paths")
+	}
+	p := &policy.Policy{FileRules: []policy.FileRule{
+		{Name: "approve-env", Paths: []string{"/repo/.env"}, Operations: []string{"open", "stat"}, Decision: "approve"},
+		{Name: "approve-out", Paths: []string{"/repo/out/**"}, Operations: []string{"write"}, Decision: "approve"},
+		{Name: "allow-other", Paths: []string{"/repo/allowed/**"}, Operations: []string{"read"}, Decision: "allow"},
+	}}
+	read := map[string]bool{}
+	for _, p := range DeriveApproveReadPathsFromPolicy(p) {
+		read[p] = true
+	}
+	write := map[string]bool{}
+	for _, p := range DeriveApproveWritePathsFromPolicy(p) {
+		write[p] = true
+	}
+	if !read["/repo"] {
+		t.Fatalf("approve read paths missing /repo: %#v", read)
+	}
+	if !write["/repo/out"] {
+		t.Fatalf("approve write paths missing /repo/out: %#v", write)
+	}
+	if read["/repo/allowed"] || write["/repo/allowed"] {
+		t.Fatalf("allow rule leaked into approve paths: read=%#v write=%#v", read, write)
+	}
+}
+
+func TestDeriveApprovePaths_ExplicitDenyOverlapWins(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("landlock tests use Unix paths")
+	}
+	p := &policy.Policy{FileRules: []policy.FileRule{
+		{Name: "approve-secrets", Paths: []string{"/repo/secrets/**"}, Operations: []string{"read"}, Decision: "approve"},
+		{Name: "deny-token", Paths: []string{"/repo/secrets/token"}, Operations: []string{"read"}, Decision: "deny"},
+		{Name: "approve-safe", Paths: []string{"/repo/safe/**"}, Operations: []string{"read"}, Decision: "approve"},
+	}}
+	found := map[string]bool{}
+	for _, p := range DeriveApproveReadPathsFromPolicy(p) {
+		found[p] = true
+	}
+	if found["/repo/secrets"] {
+		t.Fatalf("deny-overlapping approve path should not be widened: %#v", found)
+	}
+	if !found["/repo/safe"] {
+		t.Fatalf("non-overlapping approve path missing: %#v", found)
+	}
+}

@@ -580,7 +580,67 @@ func (a *App) deriveLandlockAllowPaths(s *session.Session) (execute, read, write
 	execute = append(execute, landlock.DeriveExecutePathsFromFileRules(pol)...)
 	read = landlock.DeriveReadPathsFromPolicy(pol)
 	write = landlock.DeriveWritePathsFromPolicy(pol)
+	if a.dynamicFileApprovalsActive() {
+		execute = append(execute, filterLandlockApprovePaths(landlock.DeriveApproveExecutePathsFromPolicy(pol), a.cfg.Landlock.DenyPaths)...)
+		read = append(read, filterLandlockApprovePaths(landlock.DeriveApproveReadPathsFromPolicy(pol), a.cfg.Landlock.DenyPaths)...)
+		write = append(write, filterLandlockApprovePaths(landlock.DeriveApproveWritePathsFromPolicy(pol), a.cfg.Landlock.DenyPaths)...)
+	}
 	return execute, read, write
+}
+
+func (a *App) dynamicFileApprovalsActive() bool {
+	if a == nil || a.cfg == nil || a.approvals == nil {
+		return false
+	}
+	if !a.cfg.Approvals.Enabled || a.cfg.Approvals.Mode == "" {
+		return false
+	}
+	fm := a.cfg.Sandbox.Seccomp.FileMonitor
+	if !config.FileMonitorBoolWithDefault(fm.Enabled, false) {
+		return false
+	}
+	if !config.FileMonitorBoolWithDefault(fm.EnforceWithoutFUSE, false) {
+		return false
+	}
+	return true
+}
+
+func filterLandlockApprovePaths(paths []string, denyPaths []string) []string {
+	if len(paths) == 0 || len(denyPaths) == 0 {
+		return paths
+	}
+	out := paths[:0]
+	for _, p := range paths {
+		if !landlockPathOverlapsAny(p, denyPaths) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func landlockPathOverlapsAny(p string, denyPaths []string) bool {
+	for _, deny := range denyPaths {
+		if landlockPathPrefixesOverlap(p, deny) {
+			return true
+		}
+	}
+	return false
+}
+
+func landlockPathPrefixesOverlap(a, b string) bool {
+	a = strings.TrimRight(filepath.Clean(a), string(filepath.Separator))
+	b = strings.TrimRight(filepath.Clean(b), string(filepath.Separator))
+	if a == "" {
+		a = string(filepath.Separator)
+	}
+	if b == "" {
+		b = string(filepath.Separator)
+	}
+	if a == string(filepath.Separator) || b == string(filepath.Separator) || a == b {
+		return true
+	}
+	sep := string(filepath.Separator)
+	return strings.HasPrefix(a, b+sep) || strings.HasPrefix(b, a+sep)
 }
 
 // signalFilterEnabled reports whether wrap-init should create a signal

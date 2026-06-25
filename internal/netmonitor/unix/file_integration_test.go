@@ -37,7 +37,7 @@ func TestFileHandler_FullPipeline(t *testing.T) {
 			SessionID: "sess-1",
 		}
 
-		result, ev := handler.Handle(req)
+		result, ev := handler.Handle(context.Background(), req)
 		if ev != nil {
 			_ = emit.AppendEvent(context.Background(), *ev)
 		}
@@ -72,7 +72,7 @@ func TestFileHandler_FullPipeline(t *testing.T) {
 			SessionID: "sess-1",
 		}
 
-		result, ev := handler.Handle(req)
+		result, ev := handler.Handle(context.Background(), req)
 		if ev != nil {
 			_ = emit.AppendEvent(context.Background(), *ev)
 		}
@@ -110,7 +110,7 @@ func TestFileHandler_FullPipeline(t *testing.T) {
 			SessionID: "sess-1",
 		}
 
-		result, ev := handler.Handle(req)
+		result, ev := handler.Handle(context.Background(), req)
 		if ev != nil {
 			_ = emit.AppendEvent(context.Background(), *ev)
 		}
@@ -142,7 +142,7 @@ func TestFileHandler_FullPipeline(t *testing.T) {
 			SessionID: "sess-1",
 		}
 
-		result, ev := handler.Handle(req)
+		result, ev := handler.Handle(context.Background(), req)
 		if ev != nil {
 			_ = emit.AppendEvent(context.Background(), *ev)
 		}
@@ -174,7 +174,7 @@ func TestFileHandler_FullPipeline(t *testing.T) {
 			SessionID: "sess-1",
 		}
 
-		result, ev := handler.Handle(req)
+		result, ev := handler.Handle(context.Background(), req)
 		if ev != nil {
 			_ = emit.AppendEvent(context.Background(), *ev)
 		}
@@ -221,7 +221,7 @@ func TestEmulatedOpen_AllowRoutesToAddFD(t *testing.T) {
 		SessionID: "sess-emu",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emit.AppendEvent(context.Background(), *ev)
 	}
@@ -272,7 +272,7 @@ func TestEmulatedOpen_DenyReturnsEACCES(t *testing.T) {
 		SessionID: "sess-emu",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emit.AppendEvent(context.Background(), *ev)
 	}
@@ -407,7 +407,7 @@ func TestEmulatedOpen_WriteOperation(t *testing.T) {
 		SessionID: "sess-emu",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emit.AppendEvent(context.Background(), *ev)
 	}
@@ -491,7 +491,7 @@ func TestEmulatedOpen_ShellRedirect(t *testing.T) {
 		SessionID: "sess-emu",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emit.AppendEvent(context.Background(), *ev)
 	}
@@ -595,7 +595,7 @@ func TestEmulatedOpen_FullDecisionMatrix(t *testing.T) {
 				SessionID: "sess-matrix",
 			}
 
-			result, _ := handler.Handle(req)
+			result, _ := handler.Handle(context.Background(), req)
 			assert.Equal(t, tt.wantAction, result.Action, "action mismatch")
 			assert.Equal(t, tt.wantErrno, result.Errno, "errno mismatch")
 		})
@@ -744,7 +744,7 @@ func TestFileHandler_OperationMapping(t *testing.T) {
 				SessionID: "sess-op",
 			}
 
-			result, ev := handler.Handle(req)
+			result, ev := handler.Handle(context.Background(), req)
 			if ev != nil {
 				_ = emit.AppendEvent(context.Background(), *ev)
 			}

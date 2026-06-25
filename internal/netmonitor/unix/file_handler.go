@@ -3,6 +3,7 @@
 package unix
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -14,7 +15,7 @@ import (
 
 // FilePolicyChecker evaluates file policy decisions.
 type FilePolicyChecker interface {
-	CheckFile(path, operation string) FilePolicyDecision
+	CheckFile(ctx context.Context, path, operation string) FilePolicyDecision
 }
 
 // FilePolicyDecision represents a file policy check result.
@@ -72,6 +73,11 @@ func (h *FileHandler) EmulateOpen() bool {
 	return h.emulateOpen
 }
 
+// Enforce returns whether the file monitor is in enforcement mode.
+func (h *FileHandler) Enforce() bool {
+	return h != nil && h.enforce
+}
+
 // Handle evaluates a file request against policy and returns the enforcement result
 // and an optional audit event. The caller is responsible for emitting the event.
 //
@@ -79,7 +85,11 @@ func (h *FileHandler) EmulateOpen() bool {
 //  1. No policy -> allow with "no_policy" event.
 //  2. Path under FUSE mount -> audit-only (FUSE handles enforcement).
 //  3. Otherwise -> full enforcement based on policy decision and enforce flag.
-func (h *FileHandler) Handle(req FileRequest) (FileResult, *types.Event) {
+func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, *types.Event) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	// 0. Pseudo-paths (pipe:[...], socket:[...], anon_inode:[...]) resolve
 	//    from /proc/<pid>/fd/<N> for non-filesystem fds. They are not
 	//    filesystem objects and cannot match path-based policy rules —
@@ -114,24 +124,24 @@ func (h *FileHandler) Handle(req FileRequest) (FileResult, *types.Event) {
 	//    Only defers when the resolved syscall path is actually under a FUSE
 	//    mount point (e.g., sessions/{id}/mount-0), not a source path.
 	if h.registry != nil && h.registry.IsUnderFUSEMount(req.SessionID, req.Path) {
-		dec := h.policy.CheckFile(req.Path, req.Operation)
+		dec := h.policy.CheckFile(ctx, req.Path, req.Operation)
 		shadowDeny := dec.EffectiveDecision == "deny"
 		return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, shadowDeny)
 	}
 
 	// 3. Full enforcement path.
-	dec := h.policy.CheckFile(req.Path, req.Operation)
+	dec := h.policy.CheckFile(ctx, req.Path, req.Operation)
 
 	// For dual-path syscalls (rename, link), also check the second path.
 	if req.Path2 != "" {
-		dec2 := h.policy.CheckFile(req.Path2, req.Operation)
-		// If either path is denied, the combined decision is deny.
-		if dec2.EffectiveDecision == "deny" {
+		dec2 := h.policy.CheckFile(ctx, req.Path2, req.Operation)
+		// If either path is restrictive, the combined decision is restrictive.
+		if dec2.EffectiveDecision != "allow" {
 			dec = dec2
 		}
 	}
 
-	if dec.EffectiveDecision == "deny" {
+	if dec.EffectiveDecision != "allow" {
 		if !h.enforce {
 			// Audit-only mode: log but allow.
 			return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, false)
@@ -164,7 +174,8 @@ func (h *FileHandler) Handle(req FileRequest) (FileResult, *types.Event) {
 				return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, true)
 			}
 		}
-		// Enforced deny.
+		// Enforced deny for any restrictive decision that has not already been
+		// resolved to allow by an approval-aware adapter.
 		return FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}, h.buildFileEvent(req, dec, true, false)
 	}
 

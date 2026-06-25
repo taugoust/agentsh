@@ -3,13 +3,17 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 
+	"github.com/agentsh/agentsh/internal/approvals"
 	"github.com/agentsh/agentsh/internal/capabilities"
 	"github.com/agentsh/agentsh/internal/config"
 	unixmon "github.com/agentsh/agentsh/internal/netmonitor/unix"
 	"github.com/agentsh/agentsh/internal/policy"
+	"github.com/agentsh/agentsh/internal/session"
+	"github.com/agentsh/agentsh/pkg/types"
 )
 
 var (
@@ -26,29 +30,81 @@ func getMountRegistry() *unixmon.MountRegistry {
 
 // filePolicyEngineWrapper adapts policy.Engine to unixmon.FilePolicyChecker.
 type filePolicyEngineWrapper struct {
-	engine *policy.Engine
+	engine    *policy.Engine
+	approvals *approvals.Manager
+	sessionID string
+	session   *session.Session
 }
 
-func (w *filePolicyEngineWrapper) CheckFile(path, operation string) unixmon.FilePolicyDecision {
+func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation string) unixmon.FilePolicyDecision {
 	dec := w.engine.CheckFile(path, operation)
-	return unixmon.FilePolicyDecision{
+	out := unixmon.FilePolicyDecision{
 		Decision:          string(dec.PolicyDecision),
 		EffectiveDecision: string(dec.EffectiveDecision),
 		Rule:              dec.Rule,
 		Message:           dec.Message,
 	}
+	if dec.PolicyDecision != types.DecisionApprove || dec.EffectiveDecision != types.DecisionApprove {
+		return out
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if w.approvals == nil || w.sessionID == "" {
+		out.EffectiveDecision = string(types.DecisionDeny)
+		return out
+	}
+	scope, ok := approvals.NewFileScope(operation, path)
+	if !ok {
+		out.EffectiveDecision = string(types.DecisionDeny)
+		return out
+	}
+	commandID := ""
+	if w.session != nil {
+		commandID = w.session.CurrentCommandID()
+	}
+	if cached, ok := w.approvals.CheckScoped(ctx, w.sessionID, commandID, scope); ok {
+		if cached.Approved {
+			out.EffectiveDecision = string(types.DecisionAllow)
+		} else {
+			out.EffectiveDecision = string(types.DecisionDeny)
+		}
+		return out
+	}
+	fields := approvals.ScopeFields(scope)
+	fields["operation"] = operation
+	fields["path"] = path
+	res, err := w.approvals.RequestApproval(ctx, approvals.Request{
+		SessionID: w.sessionID,
+		CommandID: commandID,
+		Kind:      "file",
+		Target:    path,
+		Rule:      dec.Rule,
+		Message:   dec.Message,
+		Fields:    fields,
+	})
+	if err != nil || !res.Approved {
+		out.EffectiveDecision = string(types.DecisionDeny)
+		return out
+	}
+	out.EffectiveDecision = string(types.DecisionAllow)
+	return out
 }
 
 // createFileHandler creates a FileHandler from configuration.
 // landlockEnabled indicates whether Landlock enforcement is configured (not just kernel-available).
-func createFileHandler(cfg config.SandboxSeccompFileMonitorConfig, pol *policy.Engine, emitter unixmon.Emitter, landlockEnabled bool) *unixmon.FileHandler {
+func createFileHandler(cfg config.SandboxSeccompFileMonitorConfig, pol *policy.Engine, emitter unixmon.Emitter, landlockEnabled bool, approvalsMgr *approvals.Manager, sess *session.Session) *unixmon.FileHandler {
 	if !config.FileMonitorBoolWithDefault(cfg.Enabled, false) {
 		return nil
 	}
 
 	var policyChecker unixmon.FilePolicyChecker
 	if pol != nil {
-		policyChecker = &filePolicyEngineWrapper{engine: pol}
+		sessionID := ""
+		if sess != nil {
+			sessionID = sess.ID
+		}
+		policyChecker = &filePolicyEngineWrapper{engine: pol, approvals: approvalsMgr, sessionID: sessionID, session: sess}
 	}
 
 	registry := getMountRegistry()

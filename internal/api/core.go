@@ -227,6 +227,8 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 		notifyParentSock: sp.parent,
 		notifySessionID:  sessionID,
 		notifyPolicy:     sessionPolicy,
+		notifyApprovals:  a.approvals,
+		notifySession:    s,
 		notifyStore:      a.store,
 		notifyBroker:     a.broker,
 		origCommand:      origCommand, // Store original command for signal registry

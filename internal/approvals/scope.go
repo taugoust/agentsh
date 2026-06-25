@@ -3,6 +3,7 @@ package approvals
 import (
 	"fmt"
 	"net"
+	"path"
 	"strconv"
 	"strings"
 )
@@ -90,6 +91,40 @@ func scopeFromFields(fields map[string]any) (Scope, bool) {
 		return Scope{}, false
 	}
 	return Scope{Kind: kind, Key: key, Label: label}, true
+}
+
+// NewFileScope builds a canonical file approval scope from an already-resolved
+// path. Operations are normalized into stable classes where doing so preserves
+// policy semantics, to avoid repeated prompts for equivalent read-like access.
+func NewFileScope(operation, filePath string) (Scope, bool) {
+	operation = normalizeFileScopeOperation(operation)
+	filePath = strings.TrimSpace(filePath)
+	if operation == "" || filePath == "" {
+		return Scope{}, false
+	}
+	filePath = path.Clean(filePath)
+	if filePath == "." {
+		return Scope{}, false
+	}
+	key := "file:" + operation + ":" + filePath
+	return Scope{Kind: "file", Key: key, Label: operation + " " + filePath}, true
+}
+
+func normalizeFileScopeOperation(operation string) string {
+	switch strings.ToLower(strings.TrimSpace(operation)) {
+	case "open", "read", "stat", "list", "readlink", "access":
+		return "read"
+	case "write", "create", "mkdir", "delete", "rmdir", "rename", "link", "symlink", "chmod", "chown", "mknod":
+		return strings.ToLower(strings.TrimSpace(operation))
+	default:
+		return strings.ToLower(strings.TrimSpace(operation))
+	}
+}
+
+// ScopeFields returns the wire/audit fields that identify a scope. Callers may
+// add kind-specific fields to the returned map.
+func ScopeFields(scope Scope) map[string]any {
+	return scopeFields(scope)
 }
 
 func scopeFields(scope Scope) map[string]any {

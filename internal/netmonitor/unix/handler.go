@@ -510,8 +510,12 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 	if args.Nr == unix.SYS_OPENAT2 && fileArgs.HowPtr != 0 {
 		howFlags, howMode, err := readOpenHowWithFallback(pid, fileArgs.HowPtr)
 		if err != nil {
-			slog.Debug("file handler: failed to read open_how, allowing", "pid", pid, "error", err)
-			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
+			slog.Debug("file handler: failed to read open_how", "pid", pid, "error", err, "enforce", h.Enforce())
+			if h.Enforce() {
+				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
+					slog.Error("file handler: deny response failed after open_how read error", "pid", pid, "error", err)
+				}
+			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("file handler: continue response failed", "pid", pid, "error", err)
 			}
 			return
@@ -528,8 +532,12 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 			path, err = resolvePathAtWithFallback(pid, fileArgs.Dirfd, fileArgs.PathPtr)
 		}
 		if err != nil {
-			slog.Debug("file handler: failed to resolve path, allowing", "pid", pid, "error", err)
-			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
+			slog.Debug("file handler: failed to resolve path", "pid", pid, "error", err, "enforce", h.Enforce())
+			if h.Enforce() {
+				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
+					slog.Error("file handler: deny response failed after path resolution error", "pid", pid, "error", err)
+				}
+			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("file handler: continue response failed", "pid", pid, "error", err)
 			}
 			return
@@ -544,8 +552,12 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 			p2, err = resolvePathAtWithFallback(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
 		}
 		if err != nil {
-			slog.Debug("file handler: failed to resolve second path, allowing", "pid", pid, "error", err)
-			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
+			slog.Debug("file handler: failed to resolve second path", "pid", pid, "error", err, "enforce", h.Enforce())
+			if h.Enforce() {
+				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
+					slog.Error("file handler: deny response failed after second path resolution error", "pid", pid, "error", err)
+				}
+			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("file handler: continue response failed", "pid", pid, "error", err)
 			}
 			return
@@ -566,7 +578,7 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 		SessionID: sessID,
 	}
 
-	result, ev := h.Handle(frequest)
+	result, ev := h.Handle(goCtx, frequest)
 
 	if result.Action == ActionDeny {
 		if err := NotifRespondDeny(int(fd), req.ID, result.Errno); err != nil {
@@ -656,14 +668,13 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 			path, err = resolvePathAtWithFallback(pid, fileArgs.Dirfd, fileArgs.PathPtr)
 		}
 		if err != nil {
-			if !isReadOnlyFileOp(args.Nr, fileArgs.Flags) {
-				slog.Warn("emulated file handler: path resolution failed for write, file policy not enforced",
+			if h.Enforce() {
+				slog.Warn("emulated file handler: path resolution failed, denying in enforced mode",
 					"pid", pid, "error", err, "session_id", sessID)
-			} else {
-				slog.Debug("emulated file handler: path resolution failed for read, falling back to CONTINUE",
-					"pid", pid, "error", err)
-			}
-			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
+				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
+					slog.Error("emulated file handler: deny response failed after path resolution error", "pid", pid, "error", err)
+				}
+			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("emulated file handler: continue response failed", "pid", pid, "error", err)
 			}
 			return
@@ -679,9 +690,13 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 			p2, err = resolvePathAtWithFallback(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
 		}
 		if err != nil {
-			slog.Warn("emulated file handler: second path resolution failed for mutating op, file policy not enforced",
-				"pid", pid, "error", err, "syscall", args.Nr, "session_id", sessID)
-			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
+			slog.Warn("emulated file handler: second path resolution failed for mutating op",
+				"pid", pid, "error", err, "syscall", args.Nr, "session_id", sessID, "enforce", h.Enforce())
+			if h.Enforce() {
+				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
+					slog.Error("emulated file handler: deny response failed after second path resolution error", "pid", pid, "error", err)
+				}
+			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("emulated file handler: continue response failed", "pid", pid, "error", err)
 			}
 			return
@@ -725,7 +740,7 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 		}
 	}
 
-	result, ev := h.Handle(frequest)
+	result, ev := h.Handle(goCtx, frequest)
 
 	// Defer event emission so it runs after the notify response, avoiding
 	// blocking the traced process on audit I/O.

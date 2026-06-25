@@ -18,7 +18,7 @@ type mockFilePolicy struct {
 	decisions map[string]FilePolicyDecision // path -> decision
 }
 
-func (m *mockFilePolicy) CheckFile(path, operation string) FilePolicyDecision {
+func (m *mockFilePolicy) CheckFile(_ context.Context, path, operation string) FilePolicyDecision {
 	if dec, ok := m.decisions[path]; ok {
 		return dec
 	}
@@ -64,7 +64,7 @@ func TestFileHandler_AllowWithoutFUSE(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emitter.AppendEvent(context.Background(), *ev)
 	}
@@ -122,7 +122,7 @@ func TestFileHandler_DenyWithoutFUSE(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emitter.AppendEvent(context.Background(), *ev)
 	}
@@ -166,7 +166,7 @@ func TestFileHandler_AuditOnlyUnderFUSE(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emitter.AppendEvent(context.Background(), *ev)
 	}
@@ -218,7 +218,7 @@ func TestFileHandler_EnforceDisabled(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emitter.AppendEvent(context.Background(), *ev)
 	}
@@ -268,7 +268,7 @@ func TestFileHandler_Rename(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emitter.AppendEvent(context.Background(), *ev)
 	}
@@ -321,7 +321,7 @@ func TestFileHandler_RenameDenyOnSecondPath(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, _ := handler.Handle(req)
+	result, _ := handler.Handle(context.Background(), req)
 
 	if result.Action != ActionDeny {
 		t.Errorf("expected ActionDeny (second path denied), got %s", result.Action)
@@ -344,7 +344,7 @@ func TestFileHandler_NilPolicy(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, ev := handler.Handle(req)
+	result, ev := handler.Handle(context.Background(), req)
 	if ev != nil {
 		_ = emitter.AppendEvent(context.Background(), *ev)
 	}
@@ -387,7 +387,7 @@ func TestFileHandler_NilEmitter(t *testing.T) {
 	}
 
 	// Should not panic
-	result, _ := handler.Handle(req)
+	result, _ := handler.Handle(context.Background(), req)
 	assert.Equal(t, ActionContinue, result.Action)
 }
 
@@ -413,7 +413,7 @@ func TestFileHandler_NilEmitterDeny(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, _ := handler.Handle(req)
+	result, _ := handler.Handle(context.Background(), req)
 	assert.Equal(t, ActionDeny, result.Action)
 	assert.Equal(t, int32(unix.EACCES), result.Errno)
 }
@@ -440,7 +440,7 @@ func TestFileHandler_NilRegistry(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, _ := handler.Handle(req)
+	result, _ := handler.Handle(context.Background(), req)
 	// Should deny (not treated as FUSE path)
 	assert.Equal(t, ActionDeny, result.Action)
 	assert.Equal(t, int32(unix.EACCES), result.Errno)
@@ -458,7 +458,7 @@ func TestFileHandler_NilPolicyAndEmitter(t *testing.T) {
 	}
 
 	// Should not panic, should allow
-	result, _ := handler.Handle(req)
+	result, _ := handler.Handle(context.Background(), req)
 	assert.Equal(t, ActionContinue, result.Action)
 }
 
@@ -494,7 +494,7 @@ func TestFileHandler_ProcSelfFD_ResolvesToTarget(t *testing.T) {
 		SessionID: "sess-1",
 	}
 
-	result, _ := handler.Handle(req)
+	result, _ := handler.Handle(context.Background(), req)
 	// Resolved to temp file path (not in deny list) → allowed
 	assert.Equal(t, ActionContinue, result.Action)
 }
@@ -536,7 +536,7 @@ func TestFileHandler_PseudoPath_AllowedUnconditionally(t *testing.T) {
 			Operation: "stat",
 			SessionID: "sess-1",
 		}
-		result, _ := handler.Handle(req)
+		result, _ := handler.Handle(context.Background(), req)
 		assert.Equal(t, ActionContinue, result.Action, "pseudo-path %q should be allowed", pp)
 	}
 }
@@ -568,7 +568,7 @@ func TestFileHandler_ReadOnlyOpen_SkipsEmulation(t *testing.T) {
 		Flags:     uint32(unix.O_RDONLY | unix.O_CLOEXEC),
 		SessionID: "sess-test",
 	}
-	result, _ := handler.Handle(req)
+	result, _ := handler.Handle(context.Background(), req)
 	assert.Equal(t, ActionContinue, result.Action,
 		"read-only open must get ActionContinue even with emulation enabled")
 }
@@ -645,4 +645,22 @@ func TestEmulationPath_ResolvePathAtFailure_ReadVsWrite(t *testing.T) {
 				"flags 0x%x should use CONTINUE so writes happen as the tracee", flags)
 		}
 	})
+}
+
+func TestFileHandler_RestrictiveNonDenyDecisionDeniesWhenEnforced(t *testing.T) {
+	policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
+		"/workspace/.env": {Decision: "approve", EffectiveDecision: "approve", Rule: "approve-env"},
+	}}
+	handler := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true)
+	result, _ := handler.Handle(context.Background(), FileRequest{
+		PID:       1234,
+		Syscall:   int32(unix.SYS_OPENAT),
+		Path:      "/workspace/.env",
+		Operation: "open",
+		Flags:     unix.O_RDONLY,
+		SessionID: "sess-1",
+	})
+	if result.Action != ActionDeny || result.Errno != int32(unix.EACCES) {
+		t.Fatalf("approve effective decision should fail closed without approval adapter, got action=%s errno=%d", result.Action, result.Errno)
+	}
 }
