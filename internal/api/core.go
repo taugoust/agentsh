@@ -1060,6 +1060,13 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	approvalErr := error(nil)
 	pkgApprovalDenied := false
 	if pre.PolicyDecision == types.DecisionApprove && pre.EffectiveDecision == types.DecisionApprove && a.approvals != nil {
+		fields := map[string]any{
+			"command": req.Command,
+			"args":    req.Args,
+		}
+		if req.Actor != nil {
+			fields["actor"] = req.Actor
+		}
 		apr := approvals.Request{
 			ID:        "approval-" + uuid.NewString(),
 			SessionID: id,
@@ -1068,10 +1075,7 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 			Target:    req.Command,
 			Rule:      pre.Rule,
 			Message:   pre.Message,
-			Fields: map[string]any{
-				"command": req.Command,
-				"args":    req.Args,
-			},
+			Fields:    fields,
 		}
 		res, err := a.approvals.RequestApproval(ctx, apr)
 		approvalErr = err
@@ -1101,6 +1105,14 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 				pre.Message = verdict.Summary
 			case pkgcheck.VerdictApprove:
 				if a.approvals != nil {
+					fields := map[string]any{
+						"source":   "package_check",
+						"action":   string(verdict.Action),
+						"findings": len(verdict.Findings),
+					}
+					if req.Actor != nil {
+						fields["actor"] = req.Actor
+					}
 					apr := approvals.Request{
 						ID:        "pkg-" + uuid.NewString(),
 						SessionID: id,
@@ -1108,11 +1120,7 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 						Kind:      "package",
 						Target:    verdict.Summary,
 						Message:   verdict.Summary,
-						Fields: map[string]any{
-							"source":   "package_check",
-							"action":   string(verdict.Action),
-							"findings": len(verdict.Findings),
-						},
+						Fields:    fields,
 					}
 					res, aprErr := a.approvals.RequestApproval(ctx, apr)
 					if aprErr != nil {
@@ -1140,6 +1148,13 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 		}
 	}
 
+	preFields := map[string]any{
+		"command": originalCmd,
+		"args":    originalArgs,
+	}
+	if req.Actor != nil {
+		preFields["actor"] = req.Actor
+	}
 	preEv := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: start,
@@ -1155,10 +1170,7 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 			Approval:          pre.Approval,
 			Redirect:          pre.Redirect,
 		},
-		Fields: map[string]any{
-			"command": originalCmd,
-			"args":    originalArgs,
-		},
+		Fields: preFields,
 	}
 	s.InjectTraceContext(preEv.Fields)
 	_ = a.store.AppendEvent(ctx, preEv)

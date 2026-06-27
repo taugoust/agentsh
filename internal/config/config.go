@@ -949,6 +949,12 @@ type DevelopmentConfig struct {
 	DisableAuth   bool `yaml:"disable_auth"`
 	DisablePolicy bool `yaml:"disable_policy"`
 
+	// AllowUnauthenticatedUnixApprovals permits approval endpoints without
+	// API auth only for requests explicitly marked as arriving over a local Unix
+	// socket. It is intentionally not configurable via YAML; detached
+	// per-session supervisors enable it after binding a 0600 session-local socket.
+	AllowUnauthenticatedUnixApprovals bool `yaml:"-"`
+
 	PProf DevelopmentPProfConfig `yaml:"pprof"`
 }
 

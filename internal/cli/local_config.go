@@ -11,16 +11,24 @@ import (
 // the path and its source.
 // Search order:
 // 1. AGENTSH_CONFIG env var
-// 2. User-local config (~/.config/agentsh/config.yaml or platform equivalent)
-// 3. System-wide config (/etc/agentsh/config.yaml or platform equivalent)
-// 4. macOS app bundle Resources (fallback for Homebrew Cask installs)
+// 2. ./config.yml or ./config.yaml in the current directory
+// 3. User-local config (~/.config/agentsh/config.yaml or platform equivalent)
+// 4. System-wide config (/etc/agentsh/config.yaml or platform equivalent)
+// 5. macOS app bundle Resources (fallback for Homebrew Cask installs)
 func findConfigPath() (string, config.ConfigSource) {
 	// 1. Check env var first
 	if v := os.Getenv("AGENTSH_CONFIG"); v != "" {
 		return v, config.ConfigSourceEnv
 	}
 
-	// 2. Check user-local config
+	// 2. Check current directory for source-tree/local development.
+	for _, name := range []string{"config.yml", "config.yaml"} {
+		if _, err := os.Stat(name); err == nil {
+			return name, config.ConfigSourceEnv
+		}
+	}
+
+	// 3. Check user-local config
 	userConfigDir := config.GetUserConfigDir()
 	for _, name := range []string{"config.yaml", "config.yml"} {
 		userConfig := filepath.Join(userConfigDir, name)
@@ -29,7 +37,7 @@ func findConfigPath() (string, config.ConfigSource) {
 		}
 	}
 
-	// 3. Check system-wide config
+	// 4. Check system-wide config
 	systemConfigDir := config.GetConfigDir()
 	for _, name := range []string{"config.yaml", "config.yml"} {
 		systemConfig := filepath.Join(systemConfigDir, name)
@@ -38,7 +46,7 @@ func findConfigPath() (string, config.ConfigSource) {
 		}
 	}
 
-	// 4. Check macOS app bundle Resources
+	// 5. Check macOS app bundle Resources
 	if bundleDir := config.GetBundleResourcesDir(); bundleDir != "" {
 		for _, name := range []string{"config.yaml", "config.yml"} {
 			bundleConfig := filepath.Join(bundleDir, name)
@@ -48,7 +56,7 @@ func findConfigPath() (string, config.ConfigSource) {
 		}
 	}
 
-	// 5. Fall back to system default (even if doesn't exist)
+	// 6. Fall back to system default (even if doesn't exist)
 	return filepath.Join(systemConfigDir, "config.yaml"), config.ConfigSourceSystem
 }
 

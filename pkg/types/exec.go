@@ -15,6 +15,10 @@ type ExecRequest struct {
 	// IncludeEvents controls how much event detail is returned in the ExecResponse.
 	// Valid values: "all" (default), "summary", "blocked", "none".
 	IncludeEvents string `json:"include_events,omitempty"`
+
+	// Actor identifies the trusted-parent/subagent/tool caller that initiated
+	// the request. It is optional and is copied into approval/audit metadata.
+	Actor map[string]any `json:"actor,omitempty"`
 }
 
 type ExecResponse struct {

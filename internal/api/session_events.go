@@ -173,6 +173,56 @@ func (a *App) publishSessionEvent(ev sessionEvent) sessionEvent {
 	return a.sessionEvents.Publish(ev)
 }
 
+func (a *App) publishSessionEventForSession(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing session id"})
+		return
+	}
+	if _, ok := a.sessions.Get(id); !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "session not found"})
+		return
+	}
+	var ev sessionEvent
+	if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid event"})
+		return
+	}
+	ev.SessionID = id
+	if strings.TrimSpace(ev.Type) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing event type"})
+		return
+	}
+	if strings.TrimSpace(ev.Title) == "" {
+		ev.Title = ev.Type
+	}
+	published := a.publishSessionEvent(ev)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "event": published})
+}
+
+func (a *App) getSessionQuestionAnswerForSession(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	qid := strings.TrimSpace(chi.URLParam(r, "qid"))
+	if id == "" || qid == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing session id or questionnaire id"})
+		return
+	}
+	if _, ok := a.sessions.Get(id); !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "session not found"})
+		return
+	}
+	if a.sessionEvents == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	answer, ok := a.sessionEvents.GetAnswer(id, qid)
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answer": answer})
+}
+
 func (a *App) listSessionEvents(w http.ResponseWriter, r *http.Request) {
 	if a.sessionEvents == nil {
 		writeJSON(w, http.StatusOK, []sessionEvent{})

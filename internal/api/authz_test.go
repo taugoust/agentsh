@@ -125,6 +125,31 @@ func TestApprovalsEndpointsForbiddenWhenDevelopmentDisableAuth(t *testing.T) {
 	}
 }
 
+func TestApprovalsEndpointsAllowedForOptInUnixSupervisor(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Auth.Type = "none"
+	cfg.Development.DisableAuth = true
+	cfg.Development.AllowUnauthenticatedUnixApprovals = true
+	cfg.Health.Path = "/health"
+	cfg.Health.ReadinessPath = "/ready"
+	cfg.Metrics.Enabled = false
+
+	sessions := session.NewManager(10)
+	engine, err := policy.NewEngine(&policy.Policy{Version: 1, Name: "test"}, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	h := MarkUnixSocketRequests(app.Router())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/approvals", nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for opted-in Unix supervisor request, got %d", rr.Code)
+	}
+}
+
 func TestOIDCAuthModeWithValidToken(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Auth.Type = "oidc"

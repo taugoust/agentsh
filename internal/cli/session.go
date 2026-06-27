@@ -17,8 +17,10 @@ func newSessionCmd() *cobra.Command {
 		Short: "Manage sessions",
 	}
 
+	cmd.AddCommand(newSessionStartCmd())
 	cmd.AddCommand(newSessionCreateCmd())
 	cmd.AddCommand(newSessionListCmd())
+	cmd.AddCommand(newSessionStopCmd())
 	cmd.AddCommand(newSessionInfoCmd())
 	cmd.AddCommand(newSessionUpdateCmd())
 	cmd.AddCommand(newSessionDiffCmd())
@@ -105,6 +107,16 @@ func newSessionListCmd() *cobra.Command {
 			}
 			sessions, err := c.ListSessions(cmd.Context())
 			if err != nil {
+				if isConnectionError(err) {
+					metas, listErr := listSupervisorMetadata()
+					if listErr != nil {
+						return listErr
+					}
+					if len(metas) == 0 {
+						return fmt.Errorf("agentsh daemon unavailable at %s and no usable detached supervisors were found under %s (stale metadata, missing supervisor.sock, and dead PIDs are ignored); start one with: agentsh session start --detach --workspace . --workspace-mode shadow --json", cfg.serverAddr, detachedSessionsRoot())
+					}
+					return printJSON(cmd, metas)
+				}
 				return err
 			}
 			return printJSON(cmd, sessions)

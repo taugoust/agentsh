@@ -251,7 +251,26 @@ func (a *App) Close() {
 
 type ctxKey string
 
-const ctxKeyRole ctxKey = "role"
+const (
+	ctxKeyRole       ctxKey = "role"
+	ctxKeyUnixSocket ctxKey = "unix_socket"
+)
+
+// MarkUnixSocketRequests annotates requests served by a Unix-socket listener.
+// The authz layer uses this to keep detached supervisor approval endpoints
+// available on the private session socket without also opening them on any TCP
+// listener that may exist for health/debug plumbing.
+func MarkUnixSocketRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), ctxKeyUnixSocket, true)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func isUnixSocketRequest(r *http.Request) bool {
+	v, _ := r.Context().Value(ctxKeyUnixSocket).(bool)
+	return v
+}
 
 func (a *App) Router() http.Handler {
 	r := chi.NewRouter()
@@ -300,6 +319,8 @@ func (a *App) Router() http.Handler {
 		r.Post("/sessions/{id}/exec/stream", a.execInSessionStream)
 		r.Get("/sessions/{id}/pty", a.execInSessionPTYWS)
 		r.Get("/sessions/{id}/events", a.streamEvents)
+		r.Post("/sessions/{id}/session-events", a.publishSessionEventForSession)
+		r.Get("/sessions/{id}/session-events/question-answers/{qid}", a.getSessionQuestionAnswerForSession)
 		r.Get("/sessions/{id}/history", a.sessionHistory)
 		r.Get("/sessions/{id}/overlay/diff", a.diffOverlay)
 		r.Get("/sessions/{id}/proxy", a.getProxyStatus)
@@ -307,6 +328,14 @@ func (a *App) Router() http.Handler {
 		r.Post("/sessions/{id}/kill/{cmdID}", a.killCommand)
 		r.Post("/sessions/{id}/wrap-init", a.wrapInit)
 		r.Put("/sessions/{id}/trace-context", a.setTraceContext)
+
+		// Experimental trusted-parent-Pi tool API. These endpoints are intended
+		// for local detached supervisors over unix:// sockets, but use the same
+		// session, workspace, and policy machinery as the rest of the REST API.
+		r.Post("/sessions/{id}/tools/exec_bash", a.execBashTool)
+		r.Post("/sessions/{id}/tools/read_file", a.readFileTool)
+		r.Post("/sessions/{id}/tools/write_file", a.writeFileTool)
+		r.Post("/sessions/{id}/tools/edit_file", a.editFileTool)
 
 		r.Get("/events/search", a.searchEvents)
 
@@ -492,8 +521,13 @@ func (a *App) requireRoles(roles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if a.cfg.Development.DisableAuth || strings.EqualFold(a.cfg.Auth.Type, "none") {
+				if a.cfg.Development.AllowUnauthenticatedUnixApprovals && isUnixSocketRequest(r) {
+					next.ServeHTTP(w, r)
+					return
+				}
 				// Safety: if auth is disabled, do not allow access to approval endpoints.
 				// Otherwise an agent could self-approve by calling the approvals API.
+				// Detached supervisors opt in to the Unix-socket-only exception above.
 				writeJSON(w, http.StatusForbidden, map[string]any{
 					"error": "approvals endpoints require auth (set auth.type=api_key and use separate agent/approver keys)",
 				})

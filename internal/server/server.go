@@ -111,10 +111,14 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 
 	// Safety: approvals via API require authentication. Otherwise an agent could self-approve
-	// by calling the approvals endpoints on localhost.
+	// by calling the approvals endpoints on localhost. Detached per-session supervisors
+	// opt into an exception where approval endpoints are served only over the private,
+	// session-local Unix socket; TCP approval routes remain forbidden by api.requireRoles.
 	if cfg.Approvals.Enabled && strings.EqualFold(strings.TrimSpace(cfg.Approvals.Mode), "api") {
 		if cfg.Development.DisableAuth || strings.EqualFold(strings.TrimSpace(cfg.Auth.Type), "none") {
-			return nil, fmt.Errorf("approvals.mode=api requires auth.type=api_key (auth is disabled)")
+			if !cfg.Development.AllowUnauthenticatedUnixApprovals {
+				return nil, fmt.Errorf("approvals.mode=api requires auth.type=api_key (auth is disabled)")
+			}
 		}
 	}
 
@@ -860,7 +864,7 @@ func New(cfg *config.Config) (*Server, error) {
 		srv.unixLn = unixLn
 		srv.unixPath = unixPath
 		srv.unixServer = &http.Server{
-			Handler:           handler,
+			Handler:           api.MarkUnixSocketRequests(handler),
 			ReadHeaderTimeout: 15 * time.Second,
 			ReadTimeout:       readTimeout,
 			WriteTimeout:      writeTimeout,
