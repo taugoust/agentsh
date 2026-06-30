@@ -87,6 +87,29 @@ func TestResolveWorkingDir_Default_OutsideReject(t *testing.T) {
 	}
 }
 
+func TestResolveWorkingDir_Default_AcceptsRealWorkspaceMountCwd(t *testing.T) {
+	m := session.NewManager(10)
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, "subdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := m.CreateWithID("test-exec-real-cwd-default", ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mount := s.WorkspaceMountPath()
+	want := filepath.Join(mount, "subdir")
+	real, err := resolveWorkingDir(s, want)
+	if err != nil {
+		t.Fatalf("resolveWorkingDir: %v", err)
+	}
+	if real != want {
+		t.Fatalf("real = %q, want %q", real, want)
+	}
+}
+
 func TestResolveWorkingDir_RootVirtualRoot(t *testing.T) {
 	m := session.NewManager(10)
 	ws := t.TempDir()

@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentsh/agentsh/internal/client"
 	"github.com/agentsh/agentsh/internal/config"
+	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/server"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
@@ -118,7 +119,7 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) {
 
 func newSessionStartCmd() *cobra.Command {
 	var detach bool
-	var workspace string
+	var workspaces []string
 	var policy string
 	var outputJSON bool
 	var workspaceMode string
@@ -148,7 +149,10 @@ subagents, and credential broker features.`,
 			if policy == "" {
 				policy = "agent-default"
 			}
-			res, err := startDetachedSupervisorSession(cmd.Context(), workspace, workspaceMode, policy)
+			if len(workspaces) == 0 {
+				workspaces = []string{"."}
+			}
+			res, err := startDetachedSupervisorSession(cmd.Context(), workspaces, workspaceMode, policy)
 			if err != nil {
 				return err
 			}
@@ -163,26 +167,37 @@ subagents, and credential broker features.`,
 		},
 	}
 	cmd.Flags().BoolVar(&detach, "detach", false, "Start a detached per-session supervisor")
-	cmd.Flags().StringVar(&workspace, "workspace", ".", "Workspace directory")
+	cmd.Flags().StringArrayVar(&workspaces, "workspace", nil, "Workspace directory (repeatable for shadow multi-root sessions)")
 	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", string(types.WorkspaceModeShadow), "Workspace mode: shadow or direct")
 	cmd.Flags().StringVar(&policy, "policy", "agent-default", "Policy name")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	return cmd
 }
 
-func startDetachedSupervisorSession(ctx context.Context, workspace, workspaceMode, policyName string) (*detachedSessionStartResult, error) {
-	realWorkspace, err := filepath.Abs(workspace)
-	if err != nil {
-		return nil, fmt.Errorf("workspace abs: %w", err)
+func startDetachedSupervisorSession(ctx context.Context, workspaces []string, workspaceMode, policyName string) (*detachedSessionStartResult, error) {
+	if len(workspaces) == 0 {
+		workspaces = []string{"."}
 	}
-	if resolved, err := filepath.EvalSymlinks(realWorkspace); err == nil {
-		realWorkspace = resolved
+	realWorkspaces := make([]string, 0, len(workspaces))
+	for _, workspace := range workspaces {
+		realWorkspace, err := filepath.Abs(workspace)
+		if err != nil {
+			return nil, fmt.Errorf("workspace abs: %w", err)
+		}
+		if resolved, err := filepath.EvalSymlinks(realWorkspace); err == nil {
+			realWorkspace = resolved
+		}
+		if st, err := os.Stat(realWorkspace); err != nil {
+			return nil, fmt.Errorf("workspace stat: %w", err)
+		} else if !st.IsDir() {
+			return nil, fmt.Errorf("workspace must be a directory")
+		}
+		realWorkspaces = append(realWorkspaces, realWorkspace)
 	}
-	if st, err := os.Stat(realWorkspace); err != nil {
-		return nil, fmt.Errorf("workspace stat: %w", err)
-	} else if !st.IsDir() {
-		return nil, fmt.Errorf("workspace must be a directory")
+	if len(realWorkspaces) > 1 && workspaceMode != string(types.WorkspaceModeShadow) {
+		return nil, fmt.Errorf("multiple workspaces require workspace_mode=shadow")
 	}
+	realWorkspace := realWorkspaces[0]
 
 	sessionID := "session-" + uuid.NewString()
 	stateDir := filepath.Join(config.GetUserStateDir(), "sessions", sessionID)
@@ -219,11 +234,16 @@ func startDetachedSupervisorSession(ctx context.Context, workspace, workspaceMod
 	pid := cmd.Process.Pid
 	_ = cmd.Process.Release()
 
-	c := client.NewWithTimeout("unix://"+sockPath, "", time.Second)
-	if err := waitForSupervisor(ctx, sockPath, c); err != nil {
+	waitClient := client.NewWithTimeout("unix://"+sockPath, "", time.Second)
+	if err := waitForSupervisor(ctx, sockPath, waitClient); err != nil {
 		_ = signalProcess(pid, os.Kill)
 		return nil, err
 	}
+	// Session creation can copy large shadow workspaces with rsync. Keep the
+	// supervisor readiness probe short, but use a much longer timeout for the
+	// actual create request so multi-root pi-auto sessions do not fail while the
+	// shadow workspace is still being materialized.
+	c := client.NewWithTimeout("unix://"+sockPath, "", 30*time.Minute)
 
 	req := types.CreateSessionRequest{
 		ID:            sessionID,
@@ -231,6 +251,11 @@ func startDetachedSupervisorSession(ctx context.Context, workspace, workspaceMod
 		Policy:        policyName,
 		WorkspaceMode: workspaceMode,
 		Home:          userHomeDir(),
+	}
+	if len(realWorkspaces) > 1 {
+		for _, path := range realWorkspaces {
+			req.WorkspaceRoots = append(req.WorkspaceRoots, types.WorkspaceRoot{Path: path})
+		}
 	}
 	if workspaceMode == string(types.WorkspaceModeShadow) {
 		req.Shadow = &types.CreateShadowOptions{KeepOnDestroy: true}
@@ -250,6 +275,12 @@ func startDetachedSupervisorSession(ctx context.Context, workspace, workspaceMod
 	if worktree == "" {
 		worktree = sess.Workspace
 	}
+	var metaRoots []detached.WorkspaceRoot
+	if sess.Shadow != nil {
+		for _, root := range sess.Shadow.Roots {
+			metaRoots = append(metaRoots, detached.WorkspaceRoot{Name: root.Name, Real: root.Real, Work: root.Work})
+		}
+	}
 	meta := supervisorMetadata{
 		SessionID:       sessionID,
 		ID:              sessionID,
@@ -259,6 +290,7 @@ func startDetachedSupervisorSession(ctx context.Context, workspace, workspaceMod
 		RealWorkspace:   realWorkspace,
 		WorkspaceMode:   sess.WorkspaceMode,
 		Worktree:        worktree,
+		WorkspaceRoots:  metaRoots,
 		RuntimeHome:     sess.RuntimeHome,
 		RuntimeTmp:      sess.RuntimeTmp,
 		SupervisorSock:  sockPath,

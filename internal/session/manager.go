@@ -353,6 +353,14 @@ func (s *Session) Snapshot() types.Session {
 	}
 	var shadowInfo *types.ShadowInfo
 	if s.Shadow != nil {
+		var roots []types.ShadowRootInfo
+		for _, root := range s.Shadow.Roots {
+			roots = append(roots, types.ShadowRootInfo{
+				Name: root.Name,
+				Real: root.Real,
+				Work: root.Work,
+			})
+		}
 		shadowInfo = &types.ShadowInfo{
 			Enabled:    true,
 			State:      s.Shadow.State,
@@ -360,6 +368,7 @@ func (s *Session) Snapshot() types.Session {
 			Work:       s.Shadow.Work,
 			Home:       s.Shadow.Home,
 			Tmp:        s.Shadow.Tmp,
+			Roots:      roots,
 			CreatedAt:  s.Shadow.CreatedAt,
 			AcceptedAt: s.ShadowAcceptedAt,
 			RejectedAt: s.ShadowRejectedAt,

@@ -723,7 +723,15 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 	if a.cfg.Sessions.WorkspaceShadow.AcceptChown != nil {
 		acceptChown = *a.cfg.Sessions.WorkspaceShadow.AcceptChown
 	}
-	sw, err := shadow.Create(ctx, s.ID, s.Workspace, shadow.Options{
+	var rootSpecs []shadow.RootSpec
+	if len(req.WorkspaceRoots) > 0 {
+		for _, root := range req.WorkspaceRoots {
+			rootSpecs = append(rootSpecs, shadow.RootSpec{Name: root.Name, Path: root.Path})
+		}
+	} else {
+		rootSpecs = []shadow.RootSpec{{Path: s.Workspace}}
+	}
+	sw, err := shadow.CreateMulti(ctx, s.ID, rootSpecs, shadow.Options{
 		BaseDir:        a.cfg.Sessions.WorkspaceShadow.BaseDir,
 		DiffExcludes:   diffExcludes,
 		AcceptExcludes: acceptExcludes,
@@ -748,10 +756,11 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 		Type:      "shadow_created",
 		SessionID: s.ID,
 		Fields: map[string]any{
-			"real": sw.Real,
-			"work": sw.Work,
-			"home": sw.Home,
-			"tmp":  sw.Tmp,
+			"real":  sw.Real,
+			"work":  sw.Work,
+			"home":  sw.Home,
+			"tmp":   sw.Tmp,
+			"roots": sw.Roots,
 		},
 	}
 	_ = a.store.AppendEvent(ctx, ev)
@@ -974,6 +983,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 			return types.Session{}, http.StatusInternalServerError, fmt.Errorf("load policy: %w", err)
 		}
 		basePolicy = pol
+	}
+
+	if strings.TrimSpace(req.Workspace) == "" && len(req.WorkspaceRoots) > 0 {
+		req.Workspace = req.WorkspaceRoots[0].Path
 	}
 
 	var s *session.Session

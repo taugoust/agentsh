@@ -14,20 +14,27 @@ const ProtocolVersion = 1
 
 var ErrMetadataInvalid = errors.New("invalid detached supervisor metadata")
 
+type WorkspaceRoot struct {
+	Name string `json:"name"`
+	Real string `json:"real"`
+	Work string `json:"work"`
+}
+
 type Metadata struct {
-	SessionID       string    `json:"session_id"`
-	ID              string    `json:"id,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	State           string    `json:"state"`
-	Policy          string    `json:"policy"`
-	RealWorkspace   string    `json:"real_workspace"`
-	WorkspaceMode   string    `json:"workspace_mode"`
-	Worktree        string    `json:"worktree"`
-	RuntimeHome     string    `json:"runtime_home,omitempty"`
-	RuntimeTmp      string    `json:"runtime_tmp,omitempty"`
-	SupervisorSock  string    `json:"supervisor_sock"`
-	OwnerPID        int       `json:"owner_pid"`
-	ProtocolVersion int       `json:"protocol_version"`
+	SessionID       string          `json:"session_id"`
+	ID              string          `json:"id,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	State           string          `json:"state"`
+	Policy          string          `json:"policy"`
+	RealWorkspace   string          `json:"real_workspace"`
+	WorkspaceMode   string          `json:"workspace_mode"`
+	Worktree        string          `json:"worktree"`
+	WorkspaceRoots  []WorkspaceRoot `json:"workspace_roots,omitempty"`
+	RuntimeHome     string          `json:"runtime_home,omitempty"`
+	RuntimeTmp      string          `json:"runtime_tmp,omitempty"`
+	SupervisorSock  string          `json:"supervisor_sock"`
+	OwnerPID        int             `json:"owner_pid"`
+	ProtocolVersion int             `json:"protocol_version"`
 }
 
 type DiscoveryOptions struct {

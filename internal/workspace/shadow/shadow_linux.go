@@ -34,6 +34,17 @@ type Options struct {
 	AcceptChown    bool
 }
 
+type RootSpec struct {
+	Name string
+	Path string
+}
+
+type Root struct {
+	Name string
+	Real string
+	Work string
+}
+
 type Workspace struct {
 	mu sync.Mutex
 
@@ -42,6 +53,7 @@ type Workspace struct {
 	Work      string
 	Home      string
 	Tmp       string
+	Roots     []Root
 	OwnerUID  int
 	OwnerGID  int
 	CreatedAt time.Time
@@ -53,31 +65,60 @@ type Workspace struct {
 }
 
 func Create(ctx context.Context, id string, real string, opts Options) (*Workspace, error) {
+	return CreateMulti(ctx, id, []RootSpec{{Path: real}}, opts)
+}
+
+func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options) (*Workspace, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
-	if strings.TrimSpace(real) == "" {
-		return nil, fmt.Errorf("workspace is required")
+	if len(specs) == 0 {
+		return nil, fmt.Errorf("at least one workspace root is required")
 	}
 	if strings.TrimSpace(opts.BaseDir) == "" {
 		return nil, fmt.Errorf("shadow base dir is required")
 	}
 
-	realAbs, err := filepath.Abs(real)
-	if err != nil {
-		return nil, fmt.Errorf("workspace abs: %w", err)
+	roots := make([]Root, 0, len(specs))
+	seenNames := map[string]struct{}{}
+	seenReal := map[string]struct{}{}
+	ownerUID, ownerGID := -1, -1
+	for i, spec := range specs {
+		realAbs, err := filepath.Abs(spec.Path)
+		if err != nil {
+			return nil, fmt.Errorf("workspace root %q abs: %w", spec.Path, err)
+		}
+		if resolved, err := filepath.EvalSymlinks(realAbs); err == nil {
+			realAbs = resolved
+		}
+		st, err := os.Stat(realAbs)
+		if err != nil {
+			return nil, fmt.Errorf("workspace root %q stat: %w", spec.Path, err)
+		}
+		if !st.IsDir() {
+			return nil, fmt.Errorf("workspace root %q must be a directory", spec.Path)
+		}
+		if i == 0 {
+			ownerUID, ownerGID = owner(st)
+		}
+		if _, ok := seenReal[realAbs]; ok {
+			return nil, fmt.Errorf("duplicate workspace root path: %s", realAbs)
+		}
+		seenReal[realAbs] = struct{}{}
+
+		name := cleanRootName(spec.Name)
+		if name == "" {
+			name = cleanRootName(filepath.Base(realAbs))
+		}
+		if name == "" || name == "." || name == ".." || strings.ContainsRune(name, filepath.Separator) {
+			return nil, fmt.Errorf("invalid workspace root name %q", spec.Name)
+		}
+		if _, ok := seenNames[name]; ok {
+			return nil, fmt.Errorf("duplicate workspace root name %q; use explicit names", name)
+		}
+		seenNames[name] = struct{}{}
+		roots = append(roots, Root{Name: name, Real: realAbs})
 	}
-	if resolved, err := filepath.EvalSymlinks(realAbs); err == nil {
-		realAbs = resolved
-	}
-	st, err := os.Stat(realAbs)
-	if err != nil {
-		return nil, fmt.Errorf("workspace stat: %w", err)
-	}
-	if !st.IsDir() {
-		return nil, fmt.Errorf("workspace must be a directory")
-	}
-	uid, gid := owner(st)
 
 	baseAbs, err := filepath.Abs(opts.BaseDir)
 	if err != nil {
@@ -87,9 +128,14 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 	work := filepath.Join(sessionDir, "work")
 	home := filepath.Join(sessionDir, "home")
 	tmp := filepath.Join(sessionDir, "tmp")
-	for _, p := range []string{realAbs, baseAbs, work, home, tmp} {
+	for _, p := range []string{baseAbs, work, home, tmp} {
 		if strings.Contains(p, ",") {
 			return nil, fmt.Errorf("shadow paths containing comma are not supported: %s", p)
+		}
+	}
+	for _, root := range roots {
+		if strings.Contains(root.Real, ",") {
+			return nil, fmt.Errorf("shadow paths containing comma are not supported: %s", root.Real)
 		}
 	}
 	if err := os.RemoveAll(sessionDir); err != nil {
@@ -105,7 +151,7 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 		return nil, fmt.Errorf("create shadow tmp: %w", err)
 	}
 	for _, dir := range []string{work, home, tmp} {
-		if err := os.Chown(dir, uid, gid); err != nil {
+		if err := os.Chown(dir, ownerUID, ownerGID); err != nil {
 			return nil, fmt.Errorf("chown shadow dir %s: %w", dir, err)
 		}
 	}
@@ -119,24 +165,41 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 		acceptExcludes = []string{".git", ".direnv"}
 	}
 
-	args := []string{"-a", "--delete", "--chown=" + strconv.Itoa(uid) + ":" + strconv.Itoa(gid)}
-	args = append(args, withTrailingSeparator(realAbs), withTrailingSeparator(work))
-	cmd := exec.CommandContext(ctx, "rsync", args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		if !isRsyncVanished(err) {
-			_ = os.RemoveAll(sessionDir)
-			return nil, fmt.Errorf("copy shadow workspace: %w: %s", err, strings.TrimSpace(string(out)))
+	multi := len(roots) > 1 || strings.TrimSpace(specs[0].Name) != ""
+	for i := range roots {
+		dest := work
+		if multi {
+			dest = filepath.Join(work, roots[i].Name)
+			if err := os.MkdirAll(dest, 0o755); err != nil {
+				_ = os.RemoveAll(sessionDir)
+				return nil, fmt.Errorf("create shadow root %s: %w", roots[i].Name, err)
+			}
+			if err := os.Chown(dest, ownerUID, ownerGID); err != nil {
+				_ = os.RemoveAll(sessionDir)
+				return nil, fmt.Errorf("chown shadow root %s: %w", roots[i].Name, err)
+			}
 		}
+		args := []string{"-a", "--delete", "--chown=" + strconv.Itoa(ownerUID) + ":" + strconv.Itoa(ownerGID)}
+		args = append(args, withTrailingSeparator(roots[i].Real), withTrailingSeparator(dest))
+		cmd := exec.CommandContext(ctx, "rsync", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			if !isRsyncVanished(err) {
+				_ = os.RemoveAll(sessionDir)
+				return nil, fmt.Errorf("copy shadow workspace root %s: %w: %s", roots[i].Name, err, strings.TrimSpace(string(out)))
+			}
+		}
+		roots[i].Work = dest
 	}
 
 	return &Workspace{
 		ID:             id,
-		Real:           realAbs,
+		Real:           roots[0].Real,
 		Work:           work,
 		Home:           home,
 		Tmp:            tmp,
-		OwnerUID:       uid,
-		OwnerGID:       gid,
+		Roots:          roots,
+		OwnerUID:       ownerUID,
+		OwnerGID:       ownerGID,
 		CreatedAt:      time.Now().UTC(),
 		State:          StateActive,
 		diffExcludes:   excludes,
@@ -151,21 +214,33 @@ func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 	if w.State != StateActive {
 		return nil, ErrInactive
 	}
-	args := []string{"-ruN"}
-	for _, ex := range w.diffExcludes {
-		args = append(args, "--exclude="+ex)
+	roots := w.Roots
+	if len(roots) == 0 {
+		roots = []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
 	}
-	args = append(args, w.Real, w.Work)
-	cmd := exec.CommandContext(ctx, "diff", args...)
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		return out, nil
+	var combined bytes.Buffer
+	for _, root := range roots {
+		if len(roots) > 1 {
+			fmt.Fprintf(&combined, "diff --shadow-root %s\n", root.Name)
+		}
+		args := []string{"-ruN"}
+		for _, ex := range w.diffExcludes {
+			args = append(args, "--exclude="+ex)
+		}
+		args = append(args, root.Real, root.Work)
+		cmd := exec.CommandContext(ctx, "diff", args...)
+		out, err := cmd.CombinedOutput()
+		combined.Write(out)
+		if err == nil {
+			continue
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+			continue
+		}
+		return combined.Bytes(), fmt.Errorf("diff shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
 	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 1 {
-		return out, nil
-	}
-	return out, fmt.Errorf("diff shadow workspace: %w: %s", err, strings.TrimSpace(string(out)))
+	return combined.Bytes(), nil
 }
 
 func (w *Workspace) Accept(ctx context.Context) error {
@@ -174,18 +249,24 @@ func (w *Workspace) Accept(ctx context.Context) error {
 	if w.State != StateActive {
 		return ErrInactive
 	}
-	args := []string{"-a", "--delete"}
-	for _, ex := range w.acceptExcludes {
-		args = append(args, "--exclude="+ex)
+	roots := w.Roots
+	if len(roots) == 0 {
+		roots = []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
 	}
-	if w.acceptChown && w.OwnerUID >= 0 && w.OwnerGID >= 0 {
-		args = append(args, "--chown="+strconv.Itoa(w.OwnerUID)+":"+strconv.Itoa(w.OwnerGID))
-	}
-	args = append(args, withTrailingSeparator(w.Work), withTrailingSeparator(w.Real))
-	cmd := exec.CommandContext(ctx, "rsync", args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		if !isRsyncVanished(err) {
-			return fmt.Errorf("accept shadow workspace: %w: %s", err, strings.TrimSpace(string(out)))
+	for _, root := range roots {
+		args := []string{"-a", "--delete"}
+		for _, ex := range w.acceptExcludes {
+			args = append(args, "--exclude="+ex)
+		}
+		if w.acceptChown && w.OwnerUID >= 0 && w.OwnerGID >= 0 {
+			args = append(args, "--chown="+strconv.Itoa(w.OwnerUID)+":"+strconv.Itoa(w.OwnerGID))
+		}
+		args = append(args, withTrailingSeparator(root.Work), withTrailingSeparator(root.Real))
+		cmd := exec.CommandContext(ctx, "rsync", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			if !isRsyncVanished(err) {
+				return fmt.Errorf("accept shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
+			}
 		}
 	}
 	if err := os.RemoveAll(filepath.Dir(w.Work)); err != nil {
@@ -228,6 +309,15 @@ func owner(info fs.FileInfo) (int, int) {
 		return int(st.Uid), int(st.Gid)
 	}
 	return os.Getuid(), os.Getgid()
+}
+
+func cleanRootName(name string) string {
+	name = strings.TrimSpace(name)
+	name = filepath.Clean(name)
+	if name == "." {
+		return ""
+	}
+	return name
 }
 
 func cleanExcludes(in []string) []string {

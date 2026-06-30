@@ -65,16 +65,23 @@ type CreateOverlayOptions struct {
 	KeepOnDestroy bool     `json:"keep_on_destroy,omitempty"`
 }
 
+type ShadowRootInfo struct {
+	Name string `json:"name"`
+	Real string `json:"real"`
+	Work string `json:"work"`
+}
+
 type ShadowInfo struct {
-	Enabled    bool       `json:"enabled"`
-	State      string     `json:"state,omitempty"`
-	Real       string     `json:"real,omitempty"`
-	Work       string     `json:"work,omitempty"`
-	Home       string     `json:"home,omitempty"`
-	Tmp        string     `json:"tmp,omitempty"`
-	CreatedAt  time.Time  `json:"created_at,omitempty"`
-	AcceptedAt *time.Time `json:"accepted_at,omitempty"`
-	RejectedAt *time.Time `json:"rejected_at,omitempty"`
+	Enabled    bool             `json:"enabled"`
+	State      string           `json:"state,omitempty"`
+	Real       string           `json:"real,omitempty"`
+	Work       string           `json:"work,omitempty"`
+	Home       string           `json:"home,omitempty"`
+	Tmp        string           `json:"tmp,omitempty"`
+	Roots      []ShadowRootInfo `json:"roots,omitempty"`
+	CreatedAt  time.Time        `json:"created_at,omitempty"`
+	AcceptedAt *time.Time       `json:"accepted_at,omitempty"`
+	RejectedAt *time.Time       `json:"rejected_at,omitempty"`
 }
 
 type CreateShadowOptions struct {
@@ -154,9 +161,15 @@ type SessionResult struct {
 	Error    string        `json:"error,omitempty"`
 }
 
+type WorkspaceRoot struct {
+	Name string `json:"name,omitempty"`
+	Path string `json:"path"`
+}
+
 type CreateSessionRequest struct {
 	ID                string                `json:"id,omitempty"`
 	Workspace         string                `json:"workspace,omitempty"`
+	WorkspaceRoots    []WorkspaceRoot       `json:"workspace_roots,omitempty"`
 	Policy            string                `json:"policy,omitempty"`
 	Profile           string                `json:"profile,omitempty"`
 	Home              string                `json:"home,omitempty"`                // User's home directory for ${HOME} policy expansion

@@ -1061,20 +1061,22 @@ func codeFromHTTP(code int) codes.Code {
 
 // CreateSessionRequestCompat matches the HTTP create session JSON.
 type CreateSessionRequestCompat struct {
-	ID                string `json:"id"`
-	Workspace         string `json:"workspace"`
-	Policy            string `json:"policy"`
-	Profile           string `json:"profile,omitempty"`
-	Home              string `json:"home,omitempty"`
-	DetectProjectRoot *bool  `json:"detect_project_root,omitempty"`
-	ProjectRoot       string `json:"project_root,omitempty"`
-	RealPaths         *bool  `json:"real_paths,omitempty"`
+	ID                string                `json:"id"`
+	Workspace         string                `json:"workspace"`
+	WorkspaceRoots    []types.WorkspaceRoot `json:"workspace_roots,omitempty"`
+	Policy            string                `json:"policy"`
+	Profile           string                `json:"profile,omitempty"`
+	Home              string                `json:"home,omitempty"`
+	DetectProjectRoot *bool                 `json:"detect_project_root,omitempty"`
+	ProjectRoot       string                `json:"project_root,omitempty"`
+	RealPaths         *bool                 `json:"real_paths,omitempty"`
 }
 
 func (c CreateSessionRequestCompat) ToTypes() types.CreateSessionRequest {
 	return types.CreateSessionRequest{
 		ID:                c.ID,
 		Workspace:         c.Workspace,
+		WorkspaceRoots:    c.WorkspaceRoots,
 		Policy:            c.Policy,
 		Profile:           c.Profile,
 		Home:              c.Home,

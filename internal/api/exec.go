@@ -628,28 +628,38 @@ func resolveWorkingDir(s *session.Session, reqWorkingDir string) (string, error)
 	if vroot == "" {
 		vroot = "/workspace" // fail closed for uninitialized sessions
 	}
+	root := s.WorkspaceMountPath()
+	rootClean := filepath.Clean(root)
+	var real string
 	if !session.IsUnderRoot(virtual, vroot) {
 		if vroot == "/workspace" {
-			// Default mode: reject outside-workspace paths (preserves pre-real-paths behavior)
-			return "", fmt.Errorf("working_dir must be under /workspace")
+			// Trusted parent Pi often sends its real process cwd (the shadow worktree)
+			// rather than the session virtual cwd (/workspace). Accept real cwd values
+			// that are inside the effective workspace mount, but still reject any other
+			// absolute path in default virtual-root mode.
+			realCandidate := filepath.Clean(filepath.FromSlash(virtual))
+			if !session.IsRealPathUnder(realCandidate, rootClean) {
+				return "", fmt.Errorf("working_dir must be under /workspace")
+			}
+			real = realCandidate
+		} else {
+			// Real-paths mode: pass through as-is for policy/seccomp enforcement
+			return virtual, nil
 		}
-		// Real-paths mode: pass through as-is for policy/seccomp enforcement
-		return virtual, nil
+	} else {
+		rel := session.TrimRootPrefix(virtual, vroot)
+		rel = strings.TrimPrefix(rel, "/")
+
+		// Security: Ensure rel is not an absolute path (could escape on Windows)
+		relPath := filepath.FromSlash(rel)
+		if filepath.IsAbs(relPath) {
+			return "", fmt.Errorf("working_dir contains absolute path component")
+		}
+
+		real = filepath.Join(root, relPath)
+		real = filepath.Clean(real)
 	}
-	rel := session.TrimRootPrefix(virtual, vroot)
-	rel = strings.TrimPrefix(rel, "/")
 
-	// Security: Ensure rel is not an absolute path (could escape on Windows)
-	relPath := filepath.FromSlash(rel)
-	if filepath.IsAbs(relPath) {
-		return "", fmt.Errorf("working_dir contains absolute path component")
-	}
-
-	root := s.WorkspaceMountPath()
-	real := filepath.Join(root, relPath)
-	real = filepath.Clean(real)
-
-	rootClean := filepath.Clean(root)
 	if !session.IsRealPathUnder(real, rootClean) {
 		return "", fmt.Errorf("working_dir escapes workspace mount")
 	}
