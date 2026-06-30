@@ -125,8 +125,11 @@
                 --suffix PATH : "$out/bin:${runtimePath}"
               wrapProgram $out/bin/agentsh-shell-shim \
                 --suffix PATH : "$out/bin:${runtimePath}"
-              wrapProgram $out/bin/agentsh-stub \
-                --suffix PATH : "$out/bin:${runtimePath}"
+              # Do not wrap agentsh-stub: execve interception redirects
+              # supervised workloads to this exact binary. A makeWrapper shell
+              # script would exec the hidden .agentsh-stub-wrapped binary,
+              # which is then seen as a second, untrusted exec and can be
+              # denied before the approval workflow starts.
               wrapProgram $out/bin/agentsh-rlimit-exec \
                 --suffix PATH : "$out/bin:${runtimePath}"
               wrapProgram $out/bin/agentsh-macwrap \
@@ -142,8 +145,11 @@
                 --suffix PATH : "$out/bin:${runtimePath}"
               wrapProgram $out/bin/agentsh-shell-shim \
                 --suffix PATH : "$out/bin:${runtimePath}"
-              wrapProgram $out/bin/agentsh-stub \
-                --suffix PATH : "$out/bin:${runtimePath}"
+              # Do not wrap agentsh-stub: execve interception redirects
+              # supervised workloads to this exact binary. A makeWrapper shell
+              # script would exec the hidden .agentsh-stub-wrapped binary,
+              # which is then seen as a second, untrusted exec and can be
+              # denied before the approval workflow starts.
               wrapProgram $out/bin/agentsh-unixwrap \
                 --suffix PATH : "$out/bin:${runtimePath}"
             '';
