@@ -443,7 +443,7 @@ func (a *App) enforceToolFilePolicy(ctx context.Context, s *session.Session, ope
 		if a.approvals == nil {
 			return http.StatusForbidden, errors.New("operation requires approval but approvals are not enabled")
 		}
-		scope, ok := approvals.NewFileScope(operation, virtualPath)
+		scope, ok, scopeOptions := fileApprovalScopeOptions(operation, virtualPath, dec.Rule)
 		if !ok {
 			return http.StatusForbidden, errors.New("operation requires approval but no valid approval scope exists")
 		}
@@ -456,6 +456,7 @@ func (a *App) enforceToolFilePolicy(ctx context.Context, s *session.Session, ope
 		for k, v := range approvals.ScopeFields(scope) {
 			fields[k] = v
 		}
+		fields["scope_options"] = scopeOptions
 		res, err := a.approvals.RequestApproval(ctx, approvals.Request{
 			ID:        "approval-" + uuid.NewString(),
 			SessionID: s.ID,

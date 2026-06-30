@@ -54,7 +54,7 @@ func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation
 		out.EffectiveDecision = string(types.DecisionDeny)
 		return out
 	}
-	scope, ok := approvals.NewFileScope(operation, path)
+	scope, ok, scopeOptions := fileApprovalScopeOptions(operation, path, dec.Rule)
 	if !ok {
 		out.EffectiveDecision = string(types.DecisionDeny)
 		return out
@@ -74,6 +74,7 @@ func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation
 	fields := approvals.ScopeFields(scope)
 	fields["operation"] = operation
 	fields["path"] = path
+	fields["scope_options"] = scopeOptions
 	res, err := w.approvals.RequestApproval(ctx, approvals.Request{
 		SessionID: w.sessionID,
 		CommandID: commandID,

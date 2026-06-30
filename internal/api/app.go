@@ -1468,9 +1468,16 @@ func (a *App) resolveApproval(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	var req struct {
-		Decision string `json:"decision"` // "approve" or "deny"
-		Scope    string `json:"scope"`
-		Reason   string `json:"reason"`
+		Decision       string `json:"decision"` // "approve" or "deny"
+		Scope          string `json:"scope"`
+		Reason         string `json:"reason"`
+		ScopeKind      string `json:"scope_kind"`
+		ScopeKey       string `json:"scope_key"`
+		ScopeLabel     string `json:"scope_label"`
+		ScopeOperation string `json:"scope_operation"`
+		ScopePath      string `json:"scope_path"`
+		ScopeRule      string `json:"scope_rule"`
+		ScopePrefix    bool   `json:"scope_prefix"`
 	}
 	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
 		return
@@ -1485,7 +1492,16 @@ func (a *App) resolveApproval(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	if ok := a.approvals.ResolveWithScope(id, approved, req.Reason, scope); !ok {
+	target := approvals.Scope{
+		Kind:      strings.TrimSpace(req.ScopeKind),
+		Key:       strings.TrimSpace(req.ScopeKey),
+		Label:     strings.TrimSpace(req.ScopeLabel),
+		Operation: strings.TrimSpace(req.ScopeOperation),
+		Path:      strings.TrimSpace(req.ScopePath),
+		Rule:      strings.TrimSpace(req.ScopeRule),
+		Prefix:    req.ScopePrefix,
+	}
+	if ok := a.approvals.ResolveWithScopeTarget(id, approved, req.Reason, scope, target); !ok {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "approval not found"})
 		return
 	}

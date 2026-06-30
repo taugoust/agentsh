@@ -32,6 +32,13 @@ type approvalUIRequest struct {
 	Decision        string          `json:"decision,omitempty"`
 	Scope           string          `json:"scope,omitempty"`
 	Reason          string          `json:"reason,omitempty"`
+	ScopeKind       string          `json:"scope_kind,omitempty"`
+	ScopeKey        string          `json:"scope_key,omitempty"`
+	ScopeLabel      string          `json:"scope_label,omitempty"`
+	ScopeOperation  string          `json:"scope_operation,omitempty"`
+	ScopePath       string          `json:"scope_path,omitempty"`
+	ScopeRule       string          `json:"scope_rule,omitempty"`
+	ScopePrefix     bool            `json:"scope_prefix,omitempty"`
 	Event           json.RawMessage `json:"event,omitempty"`
 }
 
@@ -255,7 +262,16 @@ func (ui *approvalUIEndpoint) handleRequest(req approvalUIRequest) approvalUIRes
 		if err != nil {
 			return approvalUIResponse{OK: false, Error: err.Error()}
 		}
-		if ok := ui.app.approvals.ResolveForSessionWithScope(ui.sessionID, id, approved, req.Reason, scope); !ok {
+		target := approvals.Scope{
+			Kind:      strings.TrimSpace(req.ScopeKind),
+			Key:       strings.TrimSpace(req.ScopeKey),
+			Label:     strings.TrimSpace(req.ScopeLabel),
+			Operation: strings.TrimSpace(req.ScopeOperation),
+			Path:      strings.TrimSpace(req.ScopePath),
+			Rule:      strings.TrimSpace(req.ScopeRule),
+			Prefix:    req.ScopePrefix,
+		}
+		if ok := ui.app.approvals.ResolveForSessionWithScopeTarget(ui.sessionID, id, approved, req.Reason, scope, target); !ok {
 			return approvalUIResponse{OK: false, Error: "approval not found for session"}
 		}
 		return approvalUIResponse{OK: true}

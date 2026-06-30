@@ -15,9 +15,13 @@ const (
 
 // Scope identifies the canonical target a session-scoped approval applies to.
 type Scope struct {
-	Kind  string
-	Key   string
-	Label string
+	Kind      string
+	Key       string
+	Label     string
+	Operation string
+	Path      string
+	Rule      string
+	Prefix    bool
 }
 
 // NormalizeResolutionScope returns the canonical resolution scope. An empty
@@ -84,19 +88,33 @@ func scopeFromFields(fields map[string]any) (Scope, bool) {
 	kind, _ := fields["scope_kind"].(string)
 	key, _ := fields["scope_key"].(string)
 	label, _ := fields["scope_label"].(string)
+	operation, _ := fields["scope_operation"].(string)
+	pathValue, _ := fields["scope_path"].(string)
+	rule, _ := fields["scope_rule"].(string)
+	prefix, _ := fields["scope_prefix"].(bool)
 	kind = strings.TrimSpace(kind)
 	key = strings.TrimSpace(key)
 	label = strings.TrimSpace(label)
+	operation = normalizeFileScopeOperation(operation)
+	pathValue = strings.TrimSpace(pathValue)
+	if pathValue != "" {
+		pathValue = path.Clean(pathValue)
+	}
+	rule = strings.TrimSpace(rule)
 	if kind == "" || key == "" {
 		return Scope{}, false
 	}
-	return Scope{Kind: kind, Key: key, Label: label}, true
+	return Scope{Kind: kind, Key: key, Label: label, Operation: operation, Path: pathValue, Rule: rule, Prefix: prefix}, true
 }
 
 // NewFileScope builds a canonical file approval scope from an already-resolved
 // path. Operations are normalized into stable classes where doing so preserves
 // policy semantics, to avoid repeated prompts for equivalent read-like access.
 func NewFileScope(operation, filePath string) (Scope, bool) {
+	return NewFileScopeWithRule(operation, filePath, "")
+}
+
+func NewFileScopeWithRule(operation, filePath, rule string) (Scope, bool) {
 	operation = normalizeFileScopeOperation(operation)
 	filePath = strings.TrimSpace(filePath)
 	if operation == "" || filePath == "" {
@@ -107,7 +125,22 @@ func NewFileScope(operation, filePath string) (Scope, bool) {
 		return Scope{}, false
 	}
 	key := "file:" + operation + ":" + filePath
-	return Scope{Kind: "file", Key: key, Label: operation + " " + filePath}, true
+	return Scope{Kind: "file", Key: key, Label: operation + " " + filePath, Operation: operation, Path: filePath, Rule: strings.TrimSpace(rule)}, true
+}
+
+func NewFileTreeScope(operation, dirPath, rule string) (Scope, bool) {
+	operation = normalizeFileScopeOperation(operation)
+	dirPath = strings.TrimSpace(dirPath)
+	if operation == "" || dirPath == "" {
+		return Scope{}, false
+	}
+	dirPath = path.Clean(dirPath)
+	if dirPath == "." {
+		return Scope{}, false
+	}
+	rule = strings.TrimSpace(rule)
+	key := "file-tree:" + operation + ":" + rule + ":" + dirPath
+	return Scope{Kind: "file-tree", Key: key, Label: operation + " directory " + dirPath, Operation: operation, Path: dirPath, Rule: rule, Prefix: true}, true
 }
 
 func normalizeFileScopeOperation(operation string) string {
@@ -128,11 +161,24 @@ func ScopeFields(scope Scope) map[string]any {
 }
 
 func scopeFields(scope Scope) map[string]any {
-	return map[string]any{
+	fields := map[string]any{
 		"scope_kind":  scope.Kind,
 		"scope_key":   scope.Key,
 		"scope_label": scope.Label,
 	}
+	if scope.Operation != "" {
+		fields["scope_operation"] = scope.Operation
+	}
+	if scope.Path != "" {
+		fields["scope_path"] = scope.Path
+	}
+	if scope.Rule != "" {
+		fields["scope_rule"] = scope.Rule
+	}
+	if scope.Prefix {
+		fields["scope_prefix"] = true
+	}
+	return fields
 }
 
 func validScope(scope Scope) bool {

@@ -38,6 +38,14 @@ type Resolution struct {
 	Reason   string    `json:"reason,omitempty"`
 	Scope    string    `json:"scope,omitempty"`
 	At       time.Time `json:"at"`
+
+	ScopeKind      string `json:"scope_kind,omitempty"`
+	ScopeKey       string `json:"scope_key,omitempty"`
+	ScopeLabel     string `json:"scope_label,omitempty"`
+	ScopeOperation string `json:"scope_operation,omitempty"`
+	ScopePath      string `json:"scope_path,omitempty"`
+	ScopeRule      string `json:"scope_rule,omitempty"`
+	ScopePrefix    bool   `json:"scope_prefix,omitempty"`
 }
 
 type ScopedDecision struct {
@@ -48,6 +56,9 @@ type ScopedDecision struct {
 	Approved  bool       `json:"approved"`
 	Reason    string     `json:"reason,omitempty"`
 	Rule      string     `json:"rule,omitempty"`
+	Operation string     `json:"operation,omitempty"`
+	Path      string     `json:"path,omitempty"`
+	Prefix    bool       `json:"prefix,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
@@ -209,7 +220,11 @@ func (m *Manager) Resolve(id string, approved bool, reason string) bool {
 }
 
 func (m *Manager) ResolveWithScope(id string, approved bool, reason string, scope string) bool {
-	return m.resolveForSession("", id, approved, reason, scope)
+	return m.resolveForSession("", id, approved, reason, scope, Scope{})
+}
+
+func (m *Manager) ResolveWithScopeTarget(id string, approved bool, reason string, scope string, target Scope) bool {
+	return m.resolveForSession("", id, approved, reason, scope, target)
 }
 
 func (m *Manager) ResolveForSession(sessionID string, id string, approved bool, reason string) bool {
@@ -220,10 +235,17 @@ func (m *Manager) ResolveForSessionWithScope(sessionID string, id string, approv
 	if sessionID == "" {
 		return false
 	}
-	return m.resolveForSession(sessionID, id, approved, reason, scope)
+	return m.resolveForSession(sessionID, id, approved, reason, scope, Scope{})
 }
 
-func (m *Manager) resolveForSession(sessionID string, id string, approved bool, reason string, scope string) bool {
+func (m *Manager) ResolveForSessionWithScopeTarget(sessionID string, id string, approved bool, reason string, scope string, target Scope) bool {
+	if sessionID == "" {
+		return false
+	}
+	return m.resolveForSession(sessionID, id, approved, reason, scope, target)
+}
+
+func (m *Manager) resolveForSession(sessionID string, id string, approved bool, reason string, scope string, target Scope) bool {
 	scope, err := NormalizeResolutionScope(scope)
 	if err != nil {
 		return false
@@ -241,6 +263,15 @@ func (m *Manager) resolveForSession(sessionID string, id string, approved bool, 
 		return false
 	}
 	res := Resolution{Approved: approved, Reason: reason, Scope: scope, At: time.Now().UTC()}
+	if validScope(target) {
+		res.ScopeKind = target.Kind
+		res.ScopeKey = target.Key
+		res.ScopeLabel = target.Label
+		res.ScopeOperation = target.Operation
+		res.ScopePath = target.Path
+		res.ScopeRule = target.Rule
+		res.ScopePrefix = target.Prefix
+	}
 	select {
 	case p.ch <- res:
 	default:
@@ -355,12 +386,56 @@ func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID s
 		delete(bySession, scope.Key)
 		ok = false
 	}
+	if !ok && scope.Kind == "file" {
+		dec, ok = findFileTreeScopedDecision(bySession, scope, now)
+	}
 	m.mu.Unlock()
 	if !ok {
 		return ScopedDecision{}, false
 	}
 	m.emitScopedEvent(ctx, "approval_scope_used", commandID, dec)
 	return dec, true
+}
+
+func findFileTreeScopedDecision(decisions map[string]ScopedDecision, requested Scope, now time.Time) (ScopedDecision, bool) {
+	for key, dec := range decisions {
+		if dec.Kind != "file-tree" {
+			continue
+		}
+		if dec.ExpiresAt != nil && dec.ExpiresAt.Before(now) {
+			delete(decisions, key)
+			continue
+		}
+		if dec.Operation == "" || requested.Operation == "" || dec.Operation != requested.Operation {
+			continue
+		}
+		// Directory approvals are deliberately rule-aware: approving a broad
+		// outside-workspace read must not satisfy a more-specific sensitive rule
+		// (for example .env/credential access) under the same directory.
+		if dec.Rule == "" || requested.Rule == "" || dec.Rule != requested.Rule {
+			continue
+		}
+		if fileTreeContains(dec.Path, requested.Path) {
+			return dec, true
+		}
+	}
+	return ScopedDecision{}, false
+}
+
+func fileTreeContains(dirPath, filePath string) bool {
+	dirPath = strings.TrimSpace(dirPath)
+	filePath = strings.TrimSpace(filePath)
+	if dirPath == "" || filePath == "" {
+		return false
+	}
+	dirPath = strings.TrimSuffix(dirPath, "/")
+	if dirPath == "" {
+		dirPath = "/"
+	}
+	if dirPath == filePath || dirPath == "/" {
+		return true
+	}
+	return strings.HasPrefix(filePath, dirPath+"/")
 }
 
 func (m *Manager) SetScoped(ctx context.Context, sessionID string, commandID string, scope Scope, approved bool, reason string, rule string) bool {
@@ -374,7 +449,10 @@ func (m *Manager) SetScoped(ctx context.Context, sessionID string, commandID str
 		Label:     scope.Label,
 		Approved:  approved,
 		Reason:    reason,
-		Rule:      rule,
+		Rule:      firstNonEmpty(scope.Rule, rule),
+		Operation: scope.Operation,
+		Path:      scope.Path,
+		Prefix:    scope.Prefix,
 		CreatedAt: time.Now().UTC(),
 	}
 	m.mu.Lock()
@@ -388,6 +466,15 @@ func (m *Manager) SetScoped(ctx context.Context, sessionID string, commandID str
 	m.mu.Unlock()
 	m.emitScopedEvent(ctx, "approval_scope_granted", commandID, dec)
 	return true
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (m *Manager) ClearSession(ctx context.Context, sessionID string) {
@@ -411,11 +498,29 @@ func (m *Manager) setScopedFromRequest(ctx context.Context, req Request, res Res
 	if err != nil || scope != ScopeSession {
 		return
 	}
-	approvalScope, ok := scopeFromFields(req.Fields)
+	approvalScope, ok := scopeFromResolution(res)
+	if !ok {
+		approvalScope, ok = scopeFromFields(req.Fields)
+	}
 	if !ok {
 		return
 	}
 	m.SetScoped(ctx, req.SessionID, req.CommandID, approvalScope, res.Approved, res.Reason, req.Rule)
+}
+
+func scopeFromResolution(res Resolution) (Scope, bool) {
+	if strings.TrimSpace(res.ScopeKind) == "" || strings.TrimSpace(res.ScopeKey) == "" {
+		return Scope{}, false
+	}
+	return Scope{
+		Kind:      strings.TrimSpace(res.ScopeKind),
+		Key:       strings.TrimSpace(res.ScopeKey),
+		Label:     strings.TrimSpace(res.ScopeLabel),
+		Operation: normalizeFileScopeOperation(res.ScopeOperation),
+		Path:      strings.TrimSpace(res.ScopePath),
+		Rule:      strings.TrimSpace(res.ScopeRule),
+		Prefix:    res.ScopePrefix,
+	}, true
 }
 
 func (m *Manager) emitScopedEvent(ctx context.Context, evType string, commandID string, dec ScopedDecision) {
@@ -429,6 +534,15 @@ func (m *Manager) emitScopedEvent(ctx context.Context, evType string, commandID 
 		"approved":    dec.Approved,
 		"rule":        dec.Rule,
 		"reason":      dec.Reason,
+	}
+	if dec.Operation != "" {
+		fields["operation"] = dec.Operation
+	}
+	if dec.Path != "" {
+		fields["path"] = dec.Path
+	}
+	if dec.Prefix {
+		fields["prefix"] = true
 	}
 	ev := types.Event{
 		ID:        uuid.NewString(),
