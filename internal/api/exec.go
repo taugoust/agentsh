@@ -699,7 +699,7 @@ func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.S
 			hostMap[k] = v
 		}
 	}
-	copyKeys := []string{"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM"}
+	copyKeys := []string{"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME"}
 	for _, k := range copyKeys {
 		if v, ok := hostMap[k]; ok && v != "" {
 			minimal[k] = v

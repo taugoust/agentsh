@@ -99,6 +99,39 @@ func TestPiToolFileEndpoints_RejectTraversalAndDuplicateEdit(t *testing.T) {
 	}
 }
 
+func TestPiToolExecBash_UsesNonLoginShell(t *testing.T) {
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+
+	ws := filepath.Join(t.TempDir(), "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	app := newTestApp(t, sessions, store)
+	rr := httptest.NewRecorder()
+	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(`{"command":"if shopt -q login_shell; then echo login; else echo non-login; fi"}`)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("exec_bash status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	var resp toolResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result type = %T", resp.Result)
+	}
+	if got := result["stdout"]; got != "non-login\n" {
+		t.Fatalf("stdout = %#v, want non-login", got)
+	}
+}
+
 func TestPiToolExecBash_ValidatesRequestWithoutSpawning(t *testing.T) {
 	st := newSQLiteStore(t)
 	store := composite.New(st, st)

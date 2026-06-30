@@ -85,8 +85,11 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		includeEvents = "summary"
 	}
 	execReq := types.ExecRequest{
-		Command:       "bash",
-		Args:          []string{"-lc", req.Command},
+		Command: "bash",
+		// Do not use a login shell here. On NixOS, /etc/profile rebuilds PATH from
+		// HOME/USER and can discard the supervisor's controlled tool PATH (git, rg,
+		// etc.), especially now that AgentSH provides a session-local HOME.
+		Args:          []string{"-c", req.Command},
 		Timeout:       timeout,
 		WorkingDir:    req.Cwd,
 		Env:           req.Env,

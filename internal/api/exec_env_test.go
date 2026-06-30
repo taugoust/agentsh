@@ -77,6 +77,31 @@ func TestBuildPolicyEnv_UsesSessionRuntimeHome(t *testing.T) {
 	}
 }
 
+func TestBuildPolicyEnv_PreservesUserIdentity(t *testing.T) {
+	sessions := session.NewManager(10)
+	ws := filepath.Join(t.TempDir(), "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gotMap := envSliceToMapMust(buildPolicyEnv(policy.ResolvedEnvPolicy{}, []string{
+		"PATH=/usr/bin",
+		"USER=theo",
+		"LOGNAME=theo",
+	}, sess, nil))
+
+	if gotMap["USER"] != "theo" {
+		t.Fatalf("USER = %q, want theo", gotMap["USER"])
+	}
+	if gotMap["LOGNAME"] != "theo" {
+		t.Fatalf("LOGNAME = %q, want theo", gotMap["LOGNAME"])
+	}
+}
+
 func TestMergeEnv_StripsHostSecrets(t *testing.T) {
 	sessions := session.NewManager(10)
 	ws := filepath.Join(t.TempDir(), "ws")
