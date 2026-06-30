@@ -64,6 +64,11 @@ let
           accept_chown = cfg.sessions.workspaceShadow.acceptChown;
           destroy_action = cfg.sessions.workspaceShadow.destroyAction;
         };
+        detached_supervisors = {
+          enable = cfg.sessions.detachedSupervisors.enable;
+          roots = cfg.sessions.detachedSupervisors.roots;
+          request_timeout = cfg.sessions.detachedSupervisors.requestTimeout;
+        };
       };
 
       sandbox = {
@@ -290,6 +295,23 @@ in
             "keep"
           ];
           default = "reject";
+        };
+      };
+      detachedSupervisors = {
+        enable = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Discover detached per-session supervisors and aggregate their approvals/session events through the daemon API.";
+        };
+        roots = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+          description = "Detached supervisor metadata roots to discover.";
+        };
+        requestTimeout = mkOption {
+          type = types.str;
+          default = "500ms";
+          description = "Per-detached-supervisor API request timeout.";
         };
       };
     };

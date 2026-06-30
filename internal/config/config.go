@@ -320,6 +320,10 @@ type SessionsConfig struct {
 	// WorkspaceShadow configures VM-local copied workspaces.
 	WorkspaceShadow WorkspaceShadowConfig `yaml:"workspace_shadow"`
 
+	// DetachedSupervisors configures discovery of per-session detached supervisor
+	// daemons whose approval/session-event queues should be surfaced by this daemon.
+	DetachedSupervisors DetachedSupervisorsConfig `yaml:"detached_supervisors"`
+
 	// Checkpoints configures workspace checkpoint/rollback functionality.
 	Checkpoints CheckpointConfig `yaml:"checkpoints"`
 }
@@ -339,6 +343,22 @@ type WorkspaceShadowConfig struct {
 	AcceptExcludes []string `yaml:"accept_excludes"`
 	AcceptChown    *bool    `yaml:"accept_chown"`
 	DestroyAction  string   `yaml:"destroy_action"` // reject|keep
+}
+
+// DetachedSupervisorsConfig configures daemon-side discovery/proxying of
+// detached per-session supervisors.
+type DetachedSupervisorsConfig struct {
+	// Support both enable and enabled in YAML. Existing config blocks mostly use
+	// enabled, while the detached-supervisor proposal used enable.
+	Enable  bool `yaml:"enable"`
+	Enabled bool `yaml:"enabled"`
+
+	Roots          []string `yaml:"roots"`
+	RequestTimeout string   `yaml:"request_timeout"`
+}
+
+func (c DetachedSupervisorsConfig) IsEnabled() bool {
+	return c.Enable || c.Enabled
 }
 
 // CheckpointConfig configures workspace checkpoint and rollback.
@@ -1759,6 +1779,9 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	}
 	if cfg.Sessions.WorkspaceShadow.DestroyAction == "" {
 		cfg.Sessions.WorkspaceShadow.DestroyAction = "reject"
+	}
+	if cfg.Sessions.DetachedSupervisors.RequestTimeout == "" {
+		cfg.Sessions.DetachedSupervisors.RequestTimeout = "500ms"
 	}
 	if cfg.Sandbox.FUSE.MountBaseDir == "" {
 		cfg.Sandbox.FUSE.MountBaseDir = cfg.Sessions.BaseDir

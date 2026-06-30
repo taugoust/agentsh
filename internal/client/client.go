@@ -312,19 +312,34 @@ func (c *Client) StreamSessionEvents(ctx context.Context, sessionID string) (io.
 	return resp.Body, nil
 }
 
+// DoRawJSON sends a JSON request using the raw body as-is and decodes the JSON
+// response into out. It is intended for proxy paths that must preserve request
+// fields not modeled by the typed client helpers.
+func (c *Client) DoRawJSON(ctx context.Context, method, path string, rawBody []byte, out any) error {
+	return c.doJSONRaw(ctx, method, path, nil, rawBody, out)
+}
+
 func (c *Client) doJSON(ctx context.Context, method, path string, q url.Values, body any, out any) error {
+	var raw []byte
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		raw = b
+	}
+	return c.doJSONRaw(ctx, method, path, q, raw, out)
+}
+
+func (c *Client) doJSONRaw(ctx context.Context, method, path string, q url.Values, rawBody []byte, out any) error {
 	u := c.baseURL + path
 	if q != nil && len(q) > 0 {
 		u += "?" + q.Encode()
 	}
 
 	var r io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		r = bytes.NewReader(b)
+	if rawBody != nil {
+		r = bytes.NewReader(rawBody)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, u, r)
@@ -332,7 +347,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, q url.Values, 
 		return err
 	}
 	c.addAuth(req)
-	if body != nil {
+	if rawBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 

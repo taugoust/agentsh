@@ -346,6 +346,7 @@ func (a *App) Router() http.Handler {
 			r.Get("/session-events", a.listSessionEvents)
 			r.Post("/session-events/{id}/ack", a.ackSessionEvent)
 			r.Post("/session-events/{id}/answer", a.answerSessionEvent)
+			r.Get("/detached-supervisors", a.listDetachedSupervisors)
 		})
 
 		r.Group(func(r chi.Router) {
@@ -1454,19 +1455,38 @@ func (a *App) getOutputChunk(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) listApprovals(w http.ResponseWriter, r *http.Request) {
-	if a.approvals == nil {
-		writeJSON(w, http.StatusOK, []any{})
-		return
+	out := make([]any, 0)
+	if a.approvals != nil {
+		for _, item := range a.approvals.ListPending() {
+			out = append(out, item)
+		}
 	}
-	writeJSON(w, http.StatusOK, a.approvals.ListPending())
+	out = append(out, a.listDetachedApprovals(r.Context())...)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (a *App) resolveApproval(w http.ResponseWriter, r *http.Request) {
-	if a.approvals == nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "approvals not enabled"})
+	id := chi.URLParam(r, "id")
+	raw, err := readRawJSONBody(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
-	id := chi.URLParam(r, "id")
+	if status, body, handled := a.resolveApprovalLocal(id, raw); handled {
+		writeJSON(w, status, body)
+		return
+	}
+	if a.forwardDetachedRaw(r.Context(), escapedAPIPath("approvals", id), raw) {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	writeJSON(w, http.StatusNotFound, map[string]any{"error": "approval not found"})
+}
+
+func (a *App) resolveApprovalLocal(id string, raw []byte) (int, map[string]any, bool) {
+	if a.approvals == nil {
+		return 0, nil, false
+	}
 	var req struct {
 		Decision       string `json:"decision"` // "approve" or "deny"
 		Scope          string `json:"scope"`
@@ -1479,18 +1499,16 @@ func (a *App) resolveApproval(w http.ResponseWriter, r *http.Request) {
 		ScopeRule      string `json:"scope_rule"`
 		ScopePrefix    bool   `json:"scope_prefix"`
 	}
-	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
-		return
+	if err := decodeRawJSON(raw, &req); err != nil {
+		return http.StatusBadRequest, map[string]any{"error": "invalid json"}, true
 	}
 	approved := strings.EqualFold(req.Decision, "approve") || strings.EqualFold(req.Decision, "allow")
 	if !approved && !strings.EqualFold(req.Decision, "deny") && !strings.EqualFold(req.Decision, "reject") {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid decision"})
-		return
+		return http.StatusBadRequest, map[string]any{"error": "invalid decision"}, true
 	}
 	scope, err := approvals.NormalizeResolutionScope(req.Scope)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		return
+		return http.StatusBadRequest, map[string]any{"error": err.Error()}, true
 	}
 	target := approvals.Scope{
 		Kind:      strings.TrimSpace(req.ScopeKind),
@@ -1502,10 +1520,9 @@ func (a *App) resolveApproval(w http.ResponseWriter, r *http.Request) {
 		Prefix:    req.ScopePrefix,
 	}
 	if ok := a.approvals.ResolveWithScopeTarget(id, approved, req.Reason, scope, target); !ok {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "approval not found"})
-		return
+		return 0, nil, false
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	return http.StatusOK, map[string]any{"ok": true}, true
 }
 
 func parseEventQuery(r *http.Request) (types.EventQuery, error) {

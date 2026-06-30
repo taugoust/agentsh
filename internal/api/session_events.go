@@ -224,11 +224,14 @@ func (a *App) getSessionQuestionAnswerForSession(w http.ResponseWriter, r *http.
 }
 
 func (a *App) listSessionEvents(w http.ResponseWriter, r *http.Request) {
-	if a.sessionEvents == nil {
-		writeJSON(w, http.StatusOK, []sessionEvent{})
-		return
+	out := make([]any, 0)
+	if a.sessionEvents != nil {
+		for _, ev := range a.sessionEvents.ListPending() {
+			out = append(out, ev)
+		}
 	}
-	writeJSON(w, http.StatusOK, a.sessionEvents.ListPending())
+	out = append(out, a.listDetachedSessionEvents(r.Context())...)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (a *App) ackSessionEvent(w http.ResponseWriter, r *http.Request) {
@@ -237,11 +240,15 @@ func (a *App) ackSessionEvent(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing event id"})
 		return
 	}
-	if a.sessionEvents == nil || !a.sessionEvents.Ack(id) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session event not found"})
+	if a.sessionEvents != nil && a.sessionEvents.Ack(id) {
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	if a.forwardDetachedRaw(r.Context(), escapedAPIPath("session-events", id, "ack"), []byte(`{}`)) {
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "session event not found"})
 }
 
 func (a *App) answerSessionEvent(w http.ResponseWriter, r *http.Request) {
@@ -250,21 +257,27 @@ func (a *App) answerSessionEvent(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing event id"})
 		return
 	}
-	var answer sessionQuestionAnswer
-	if err := json.NewDecoder(r.Body).Decode(&answer); err != nil {
+	raw, err := readRawJSONBody(r)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid answer"})
 		return
 	}
-	if a.sessionEvents == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session event not found"})
+	if a.sessionEvents != nil {
+		var answer sessionQuestionAnswer
+		if err := decodeRawJSON(raw, &answer); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid answer"})
+			return
+		}
+		if stored, ok := a.sessionEvents.Answer(id, answer); ok {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answer": stored})
+			return
+		}
+	}
+	if a.forwardDetachedRaw(r.Context(), escapedAPIPath("session-events", id, "answer"), raw) {
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		return
 	}
-	stored, ok := a.sessionEvents.Answer(id, answer)
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "question event not found"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answer": stored})
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": "question event not found"})
 }
 
 func decodeSessionEvent(raw json.RawMessage) (sessionEvent, error) {
