@@ -387,6 +387,9 @@ func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID s
 		ok = false
 	}
 	if !ok && scope.Kind == "file" {
+		dec, ok = findFileDirScopedDecision(bySession, scope, now)
+	}
+	if !ok && scope.Kind == "file" {
 		dec, ok = findFileTreeScopedDecision(bySession, scope, now)
 	}
 	m.mu.Unlock()
@@ -397,9 +400,17 @@ func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID s
 	return dec, true
 }
 
+func findFileDirScopedDecision(decisions map[string]ScopedDecision, requested Scope, now time.Time) (ScopedDecision, bool) {
+	return findFileScopedDecision(decisions, requested, now, "file-dir", fileDirContains)
+}
+
 func findFileTreeScopedDecision(decisions map[string]ScopedDecision, requested Scope, now time.Time) (ScopedDecision, bool) {
+	return findFileScopedDecision(decisions, requested, now, "file-tree", fileTreeContains)
+}
+
+func findFileScopedDecision(decisions map[string]ScopedDecision, requested Scope, now time.Time, kind string, contains func(string, string) bool) (ScopedDecision, bool) {
 	for key, dec := range decisions {
-		if dec.Kind != "file-tree" {
+		if dec.Kind != kind {
 			continue
 		}
 		if dec.ExpiresAt != nil && dec.ExpiresAt.Before(now) {
@@ -415,11 +426,31 @@ func findFileTreeScopedDecision(decisions map[string]ScopedDecision, requested S
 		if dec.Rule == "" || requested.Rule == "" || dec.Rule != requested.Rule {
 			continue
 		}
-		if fileTreeContains(dec.Path, requested.Path) {
+		if contains(dec.Path, requested.Path) {
 			return dec, true
 		}
 	}
 	return ScopedDecision{}, false
+}
+
+func fileDirContains(dirPath, filePath string) bool {
+	dirPath = strings.TrimSpace(dirPath)
+	filePath = strings.TrimSpace(filePath)
+	if dirPath == "" || filePath == "" {
+		return false
+	}
+	dirPath = strings.TrimSuffix(dirPath, "/")
+	if dirPath == "" {
+		dirPath = "/"
+	}
+	if dirPath == filePath || dirPath == "/" {
+		return true
+	}
+	if !strings.HasPrefix(filePath, dirPath+"/") {
+		return false
+	}
+	rel := strings.TrimPrefix(filePath, dirPath+"/")
+	return rel != "" && !strings.Contains(rel, "/")
 }
 
 func fileTreeContains(dirPath, filePath string) bool {

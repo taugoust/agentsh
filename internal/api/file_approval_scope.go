@@ -19,9 +19,13 @@ func fileApprovalScopeOptions(operation, filePath, rule string) (approvals.Scope
 	if info, err := os.Stat(filepath.FromSlash(cleanPath)); err != nil || !info.IsDir() {
 		dirPath = path.Dir(cleanPath)
 	}
+	dir, dirOK := approvals.NewFileDirScope(operation, dirPath, rule)
 	tree, treeOK := approvals.NewFileTreeScope(operation, dirPath, rule)
 
 	options := []map[string]any{approvals.ScopeFields(exact)}
+	if dirOK && dir.Key != exact.Key {
+		options = append(options, approvals.ScopeFields(dir))
+	}
 	if treeOK && tree.Key != exact.Key {
 		options = append(options, approvals.ScopeFields(tree))
 	}
