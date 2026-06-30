@@ -52,6 +52,13 @@ type Session struct {
 	Env         map[string]string
 	History     []string
 
+	// RuntimeHome/RuntimeTmp are session-local directories used as HOME/TMPDIR
+	// for AgentSH-spawned tool processes. They are intentionally distinct from
+	// the operator's real home so shells and tools do not accidentally read host
+	// dotfiles or credentials.
+	RuntimeHome string
+	RuntimeTmp  string
+
 	// Lifecycle fields
 	stats   types.SessionStats
 	endedAt *time.Time
@@ -64,6 +71,7 @@ type Session struct {
 	execMu            sync.Mutex
 
 	workspaceUnmount func() error
+	runtimeCleanup   func() error
 
 	proxyURL   string // Network proxy URL (for HTTP_PROXY env vars)
 	proxyClose func() error
@@ -382,6 +390,8 @@ func (s *Session) Snapshot() types.Session {
 		TOTPSecret:       s.TOTPSecret,
 		ProjectRoot:      s.ProjectRoot,
 		GitRoot:          s.GitRoot,
+		RuntimeHome:      s.RuntimeHome,
+		RuntimeTmp:       s.RuntimeTmp,
 	}
 }
 
@@ -588,6 +598,37 @@ func (s *Session) SetWorkspaceUnmount(fn func() error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.workspaceUnmount = fn
+}
+
+func (s *Session) SetRuntimePaths(home, tmp string, cleanup func() error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.RuntimeHome = home
+	s.RuntimeTmp = tmp
+	s.runtimeCleanup = cleanup
+}
+
+func (s *Session) RuntimeHomePath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.RuntimeHome
+}
+
+func (s *Session) RuntimeTmpPath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.RuntimeTmp
+}
+
+func (s *Session) CloseRuntime() error {
+	s.mu.Lock()
+	fn := s.runtimeCleanup
+	s.runtimeCleanup = nil
+	s.mu.Unlock()
+	if fn != nil {
+		return fn()
+	}
+	return nil
 }
 
 func (s *Session) UnmountWorkspace() error {

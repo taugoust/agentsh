@@ -23,6 +23,8 @@ type Metadata struct {
 	RealWorkspace   string    `json:"real_workspace"`
 	WorkspaceMode   string    `json:"workspace_mode"`
 	Worktree        string    `json:"worktree"`
+	RuntimeHome     string    `json:"runtime_home,omitempty"`
+	RuntimeTmp      string    `json:"runtime_tmp,omitempty"`
 	SupervisorSock  string    `json:"supervisor_sock"`
 	OwnerPID        int       `json:"owner_pid"`
 	ProtocolVersion int       `json:"protocol_version"`

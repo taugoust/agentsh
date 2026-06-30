@@ -103,6 +103,8 @@ type Session struct {
 	TOTPSecret       string       `json:"-"` // Hidden from JSON/API, used for TOTP approval mode
 	ProjectRoot      string       `json:"project_root,omitempty"`
 	GitRoot          string       `json:"git_root,omitempty"`
+	RuntimeHome      string       `json:"runtime_home,omitempty"`
+	RuntimeTmp       string       `json:"runtime_tmp,omitempty"`
 }
 
 // MountInfo describes an active mount in a session.

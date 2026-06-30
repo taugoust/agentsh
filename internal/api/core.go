@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/approvals"
@@ -547,6 +548,11 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 	// Apply real-paths mode if requested
 	a.applyRealPaths(s, req.RealPaths)
 
+	if err := a.setupRuntimeEnvironment(ctx, s); err != nil {
+		a.cleanupCreatedSession(s)
+		return types.Session{}, http.StatusInternalServerError, err
+	}
+
 	policyVars := map[string]string{}
 	if req.ProjectRoot != "" {
 		policyVars["PROJECT_ROOT"] = req.ProjectRoot
@@ -559,6 +565,12 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 		policyVars["HOME"] = req.Home
 	} else if home := os.Getenv("HOME"); home != "" {
 		policyVars["HOME"] = home
+	}
+	if agentHome := s.RuntimeHomePath(); agentHome != "" {
+		policyVars["AGENT_HOME"] = agentHome
+	}
+	if agentTmp := s.RuntimeTmpPath(); agentTmp != "" {
+		policyVars["AGENT_TMP"] = agentTmp
 	}
 	if basePolicyDoc != nil {
 		enforceApprovals := a.cfg.Approvals.Enabled && a.cfg.Approvals.Mode != ""
@@ -599,9 +611,11 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 		Type:      "session_created",
 		SessionID: s.ID,
 		Fields: map[string]any{
-			"profile":     req.Profile,
-			"base_policy": basePolicy,
-			"mounts":      len(profile.Mounts),
+			"profile":      req.Profile,
+			"base_policy":  basePolicy,
+			"mounts":       len(profile.Mounts),
+			"runtime_home": s.RuntimeHomePath(),
+			"runtime_tmp":  s.RuntimeTmpPath(),
 		},
 	}
 	_ = a.store.AppendEvent(ctx, ev)
@@ -745,6 +759,82 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 	return nil
 }
 
+func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session) error {
+	if s == nil {
+		return nil
+	}
+	if s.Shadow != nil && s.Shadow.Home != "" && s.Shadow.Tmp != "" {
+		runtimeDirs := []string{s.Shadow.Home, s.Shadow.Tmp, filepath.Join(s.Shadow.Home, ".config"), filepath.Join(s.Shadow.Home, ".cache"), filepath.Join(s.Shadow.Home, ".local"), filepath.Join(s.Shadow.Home, ".local", "state"), filepath.Join(s.Shadow.Home, ".local", "share")}
+		for _, dir := range runtimeDirs {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				return fmt.Errorf("create runtime dir %s: %w", dir, err)
+			}
+			_ = os.Chmod(dir, 0o700)
+		}
+		if uid, gid, ok := ownerOfPath(s.Workspace); ok && os.Geteuid() == 0 {
+			for _, dir := range runtimeDirs {
+				if err := os.Chown(dir, uid, gid); err != nil {
+					return fmt.Errorf("chown runtime dir %s: %w", dir, err)
+				}
+			}
+		}
+		s.SetRuntimePaths(s.Shadow.Home, s.Shadow.Tmp, nil)
+		return nil
+	}
+
+	base := a.cfg.Sessions.WorkspaceShadow.BaseDir
+	if strings.TrimSpace(base) == "" && strings.TrimSpace(a.cfg.Sessions.BaseDir) != "" {
+		base = filepath.Join(a.cfg.Sessions.BaseDir, "workspaces")
+	}
+	if strings.TrimSpace(base) == "" {
+		base = filepath.Join(os.TempDir(), "agentsh-workspaces")
+	}
+	runtimeDir := filepath.Join(base, s.ID)
+	home := filepath.Join(runtimeDir, "home")
+	tmp := filepath.Join(runtimeDir, "tmp")
+	runtimeDirs := []string{runtimeDir, home, tmp, filepath.Join(home, ".config"), filepath.Join(home, ".cache"), filepath.Join(home, ".local"), filepath.Join(home, ".local", "state"), filepath.Join(home, ".local", "share")}
+	for _, dir := range runtimeDirs {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("create runtime dir %s: %w", dir, err)
+		}
+		_ = os.Chmod(dir, 0o700)
+	}
+	if uid, gid, ok := ownerOfPath(s.Workspace); ok && os.Geteuid() == 0 {
+		for _, dir := range runtimeDirs {
+			if err := os.Chown(dir, uid, gid); err != nil {
+				return fmt.Errorf("chown runtime dir %s: %w", dir, err)
+			}
+		}
+	}
+	s.SetRuntimePaths(home, tmp, func() error { return os.RemoveAll(runtimeDir) })
+
+	ev := types.Event{
+		ID:        uuid.NewString(),
+		Timestamp: time.Now().UTC(),
+		Type:      "runtime_created",
+		SessionID: s.ID,
+		Fields: map[string]any{
+			"home": home,
+			"tmp":  tmp,
+		},
+	}
+	_ = a.store.AppendEvent(ctx, ev)
+	a.broker.Publish(ev)
+	return nil
+}
+
+func ownerOfPath(path string) (int, int, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, false
+	}
+	return int(st.Uid), int(st.Gid), true
+}
+
 func (a *App) buildPolicyVarsForSession(req types.CreateSessionRequest, s *session.Session, shouldDetect bool) map[string]string {
 	policyVars := make(map[string]string)
 	realWorkspace := s.Workspace
@@ -787,6 +877,12 @@ func (a *App) buildPolicyVarsForSession(req types.CreateSessionRequest, s *sessi
 		policyVars["HOME"] = req.Home
 	} else if home := os.Getenv("HOME"); home != "" {
 		policyVars["HOME"] = home
+	}
+	if agentHome := s.RuntimeHomePath(); agentHome != "" {
+		policyVars["AGENT_HOME"] = agentHome
+	}
+	if agentTmp := s.RuntimeTmpPath(); agentTmp != "" {
+		policyVars["AGENT_TMP"] = agentTmp
 	}
 	return policyVars
 }
@@ -899,6 +995,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		a.cleanupCreatedSession(s)
 		return types.Session{}, http.StatusBadRequest, err
 	}
+	if err := a.setupRuntimeEnvironment(ctx, s); err != nil {
+		a.cleanupCreatedSession(s)
+		return types.Session{}, http.StatusInternalServerError, err
+	}
 	policyVars = a.buildPolicyVarsForSession(req, s, shouldDetect)
 
 	enforceApprovals := a.cfg.Approvals.Enabled && a.cfg.Approvals.Mode != ""
@@ -947,6 +1047,8 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 			"policy":       s.Policy,
 			"project_root": s.ProjectRoot,
 			"git_root":     s.GitRoot,
+			"runtime_home": s.RuntimeHomePath(),
+			"runtime_tmp":  s.RuntimeTmpPath(),
 		},
 	}
 	_ = a.store.AppendEvent(ctx, ev)

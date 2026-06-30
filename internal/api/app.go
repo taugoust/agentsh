@@ -847,6 +847,7 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 	_ = s.CloseNetNS()
 	_ = s.CloseProxy()
 	_ = s.UnmountWorkspace()
+	_ = s.CloseRuntime()
 	a.purgeTrashForSession(s)
 	_ = a.sessions.Destroy(id)
 

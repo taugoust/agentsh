@@ -699,7 +699,7 @@ func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.S
 			hostMap[k] = v
 		}
 	}
-	copyKeys := []string{"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "HOME"}
+	copyKeys := []string{"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM"}
 	for _, k := range copyKeys {
 		if v, ok := hostMap[k]; ok && v != "" {
 			minimal[k] = v
@@ -707,6 +707,18 @@ func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.S
 	}
 	if _, ok := minimal["PATH"]; !ok {
 		minimal["PATH"] = "/usr/bin:/bin"
+	}
+	if home := s.RuntimeHomePath(); home != "" {
+		minimal["HOME"] = home
+		minimal["XDG_CONFIG_HOME"] = filepath.Join(home, ".config")
+		minimal["XDG_CACHE_HOME"] = filepath.Join(home, ".cache")
+		minimal["XDG_STATE_HOME"] = filepath.Join(home, ".local", "state")
+		minimal["XDG_DATA_HOME"] = filepath.Join(home, ".local", "share")
+	}
+	if tmp := s.RuntimeTmpPath(); tmp != "" {
+		minimal["TMPDIR"] = tmp
+		minimal["TEMP"] = tmp
+		minimal["TMP"] = tmp
 	}
 
 	// Session proxies

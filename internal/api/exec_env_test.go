@@ -38,6 +38,45 @@ func TestMergeEnv_MarksInSession(t *testing.T) {
 	}
 }
 
+func TestBuildPolicyEnv_UsesSessionRuntimeHome(t *testing.T) {
+	sessions := session.NewManager(10)
+	ws := filepath.Join(t.TempDir(), "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(t.TempDir(), "agent-home")
+	tmp := filepath.Join(t.TempDir(), "agent-tmp")
+	sess.SetRuntimePaths(home, tmp, nil)
+
+	gotMap := envSliceToMapMust(buildPolicyEnv(policy.ResolvedEnvPolicy{}, []string{
+		"HOME=/Users/theo",
+		"PATH=/usr/bin",
+	}, sess, nil))
+
+	if gotMap["HOME"] != home {
+		t.Fatalf("HOME = %q, want runtime home %q", gotMap["HOME"], home)
+	}
+	if gotMap["XDG_CONFIG_HOME"] != filepath.Join(home, ".config") {
+		t.Fatalf("XDG_CONFIG_HOME = %q", gotMap["XDG_CONFIG_HOME"])
+	}
+	if gotMap["XDG_CACHE_HOME"] != filepath.Join(home, ".cache") {
+		t.Fatalf("XDG_CACHE_HOME = %q", gotMap["XDG_CACHE_HOME"])
+	}
+	if gotMap["XDG_STATE_HOME"] != filepath.Join(home, ".local", "state") {
+		t.Fatalf("XDG_STATE_HOME = %q", gotMap["XDG_STATE_HOME"])
+	}
+	if gotMap["XDG_DATA_HOME"] != filepath.Join(home, ".local", "share") {
+		t.Fatalf("XDG_DATA_HOME = %q", gotMap["XDG_DATA_HOME"])
+	}
+	if gotMap["TMPDIR"] != tmp || gotMap["TEMP"] != tmp || gotMap["TMP"] != tmp {
+		t.Fatalf("tmp env = TMPDIR:%q TEMP:%q TMP:%q, want %q", gotMap["TMPDIR"], gotMap["TEMP"], gotMap["TMP"], tmp)
+	}
+}
+
 func TestMergeEnv_StripsHostSecrets(t *testing.T) {
 	sessions := session.NewManager(10)
 	ws := filepath.Join(t.TempDir(), "ws")
@@ -246,8 +285,8 @@ func TestBuildPolicyEnv_BothProxiesSetIndependently(t *testing.T) {
 	}
 
 	// Set both proxies with different URLs
-	sess.SetProxy("http://127.0.0.1:8080", func() error { return nil })     // Network proxy
-	sess.SetLLMProxy("http://127.0.0.1:9090", func() error { return nil })  // LLM proxy
+	sess.SetProxy("http://127.0.0.1:8080", func() error { return nil })    // Network proxy
+	sess.SetLLMProxy("http://127.0.0.1:9090", func() error { return nil }) // LLM proxy
 
 	gotMap := envSliceToMapMust(buildPolicyEnv(policy.ResolvedEnvPolicy{}, nil, sess, nil))
 

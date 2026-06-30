@@ -259,6 +259,8 @@ func startDetachedSupervisorSession(ctx context.Context, workspace, workspaceMod
 		RealWorkspace:   realWorkspace,
 		WorkspaceMode:   sess.WorkspaceMode,
 		Worktree:        worktree,
+		RuntimeHome:     sess.RuntimeHome,
+		RuntimeTmp:      sess.RuntimeTmp,
 		SupervisorSock:  sockPath,
 		OwnerPID:        pid,
 		ProtocolVersion: supervisorProtocolVersion,

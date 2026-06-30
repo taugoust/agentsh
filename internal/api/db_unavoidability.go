@@ -352,6 +352,7 @@ func (a *App) cleanupCreatedSession(s *session.Session) {
 	_ = s.CloseProxy()
 	_ = s.CloseLLMProxy()
 	_ = s.UnmountWorkspace()
+	_ = s.CloseRuntime()
 	_ = a.sessions.Destroy(s.ID)
 }
 
