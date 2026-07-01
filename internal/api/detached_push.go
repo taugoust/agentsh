@@ -115,6 +115,31 @@ func (a *App) getDetachedSessionQuestionAnswer(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answer": answer})
 }
 
+func (a *App) listDetachedSessionApprovals(w http.ResponseWriter, r *http.Request) {
+	sessionID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if sessionID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing session id"})
+		return
+	}
+	if !a.authorizeDetachedToken(w, r, sessionID) {
+		return
+	}
+	now := time.Now().UTC()
+	a.detachedApprovals.mu.Lock()
+	defer a.detachedApprovals.mu.Unlock()
+	out := make([]approvals.Request, 0)
+	for id, req := range a.detachedApprovals.pending {
+		if req.ExpiresAt.Before(now) {
+			delete(a.detachedApprovals.pending, id)
+			continue
+		}
+		if req.SessionID == sessionID {
+			out = append(out, req)
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (a *App) registerDetachedApproval(w http.ResponseWriter, r *http.Request) {
 	sessionID := strings.TrimSpace(chi.URLParam(r, "id"))
 	if sessionID == "" {
@@ -169,6 +194,37 @@ func (a *App) getDetachedApprovalResolution(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "resolved": true, "resolution": res})
 }
 
+func (a *App) resolveDetachedApprovalFromSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := strings.TrimSpace(chi.URLParam(r, "id"))
+	approvalID := strings.TrimSpace(chi.URLParam(r, "approvalID"))
+	if sessionID == "" || approvalID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing session id or approval id"})
+		return
+	}
+	if !a.authorizeDetachedToken(w, r, sessionID) {
+		return
+	}
+	res, err := decodeApprovalResolutionBody(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	a.detachedApprovals.mu.Lock()
+	req, ok := a.detachedApprovals.pending[approvalID]
+	if ok && req.SessionID == sessionID {
+		delete(a.detachedApprovals.pending, approvalID)
+		a.detachedApprovals.resolutions[approvalID] = res
+	} else {
+		ok = false
+	}
+	a.detachedApprovals.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "approval not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (a *App) listPushedDetachedApprovals() []any {
 	if a == nil || a.detachedApprovals == nil {
 		return nil
@@ -211,6 +267,14 @@ func (a *App) resolvePushedDetachedApproval(id string, raw []byte) (int, map[str
 type errApprovalInvalidDecision struct{}
 
 func (errApprovalInvalidDecision) Error() string { return "invalid decision" }
+
+func decodeApprovalResolutionBody(r *http.Request) (approvals.Resolution, error) {
+	raw, err := readRawJSONBody(r)
+	if err != nil {
+		return approvals.Resolution{}, err
+	}
+	return decodeApprovalResolution(raw)
+}
 
 func decodeApprovalResolution(raw []byte) (approvals.Resolution, error) {
 	var req struct {

@@ -347,8 +347,10 @@ func (a *App) Router() http.Handler {
 
 		r.Post("/detached-sessions/{id}/session-events", a.publishDetachedSessionEvent)
 		r.Get("/detached-sessions/{id}/session-events/question-answers/{qid}", a.getDetachedSessionQuestionAnswer)
+		r.Get("/detached-sessions/{id}/approvals", a.listDetachedSessionApprovals)
 		r.Post("/detached-sessions/{id}/approvals", a.registerDetachedApproval)
 		r.Get("/detached-sessions/{id}/approvals/{approvalID}/resolution", a.getDetachedApprovalResolution)
+		r.Post("/detached-sessions/{id}/approvals/{approvalID}/resolution", a.resolveDetachedApprovalFromSession)
 
 		r.Group(func(r chi.Router) {
 			r.Use(a.requireRoles("approver", "admin"))
