@@ -46,6 +46,22 @@ func TestPiToolFileEndpoints_WriteReadEdit(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("edit_file status = %d body = %s", rr.Code, rr.Body.String())
 	}
+	var editResp toolResponse
+	if err := json.NewDecoder(rr.Body).Decode(&editResp); err != nil {
+		t.Fatal(err)
+	}
+	editResult, ok := editResp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("edit result type = %T", editResp.Result)
+	}
+	diff, ok := editResult["diff"].(string)
+	if !ok || !strings.Contains(diff, "-hello world") || !strings.Contains(diff, "+hello agentsh") {
+		t.Fatalf("edit diff = %#v", editResult["diff"])
+	}
+	details, ok := editResult["details"].(map[string]any)
+	if !ok || details["diff"] != diff {
+		t.Fatalf("edit details = %#v, want matching diff", editResult["details"])
+	}
 
 	readBody := `{"path":"src/a.txt"}`
 	rr = httptest.NewRecorder()

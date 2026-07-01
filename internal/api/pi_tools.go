@@ -19,6 +19,7 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/pmezard/go-difflib/difflib"
 )
 
 const (
@@ -250,13 +251,39 @@ func (a *App) editFileTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, statusForFileError(err), err.Error())
 		return
 	}
+	diff := ""
+	if utf8.Valid(data) && utf8.Valid(newData) {
+		diff = unifiedEditDiff(rp.Virtual, string(data), string(newData))
+	}
 	a.emitToolEvent(r.Context(), id, "tool_edit_file", "write", rp.Virtual, req.Actor, map[string]any{"bytes_written": len(newData)})
-	writeJSON(w, http.StatusOK, toolResponse{OK: true, Result: map[string]any{
+	result := map[string]any{
 		"path":          rp.Virtual,
 		"real_path":     rp.Real,
 		"bytes_written": len(newData),
 		"replacements":  1,
-	}})
+	}
+	if diff != "" {
+		result["diff"] = diff
+		result["details"] = map[string]any{"diff": diff}
+	}
+	writeJSON(w, http.StatusOK, toolResponse{OK: true, Result: result})
+}
+
+func unifiedEditDiff(path, oldText, newText string) string {
+	if oldText == newText {
+		return ""
+	}
+	diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+		A:        difflib.SplitLines(oldText),
+		B:        difflib.SplitLines(newText),
+		FromFile: "a/" + strings.TrimPrefix(path, "/"),
+		ToFile:   "b/" + strings.TrimPrefix(path, "/"),
+		Context:  3,
+	})
+	if err != nil {
+		return ""
+	}
+	return diff
 }
 
 func (a *App) prepareWriteFileTool(ctx context.Context, sessionID string, req fileToolRequest, operation string) (resolvedToolPath, []byte, int, error) {
