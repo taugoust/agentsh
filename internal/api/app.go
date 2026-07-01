@@ -342,6 +342,7 @@ func (a *App) Router() http.Handler {
 		r.Post("/sessions/{id}/tools/read_file", a.readFileTool)
 		r.Post("/sessions/{id}/tools/write_file", a.writeFileTool)
 		r.Post("/sessions/{id}/tools/edit_file", a.editFileTool)
+		r.Post("/sessions/{id}/tools/spawn_subagent", a.spawnSubagentTool)
 
 		r.Get("/events/search", a.searchEvents)
 
