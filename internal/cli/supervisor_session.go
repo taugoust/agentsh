@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -174,6 +176,14 @@ subagents, and credential broker features.`,
 	return cmd
 }
 
+func randomDetachedEventToken() string {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return uuid.NewString() + uuid.NewString()
+	}
+	return hex.EncodeToString(b[:])
+}
+
 func startDetachedSupervisorSession(ctx context.Context, workspaces []string, workspaceMode, policyName string) (*detachedSessionStartResult, error) {
 	if len(workspaces) == 0 {
 		workspaces = []string{"."}
@@ -221,8 +231,12 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	if abs, absErr := filepath.Abs(configPath); absErr == nil {
 		configPath = abs
 	}
+	eventToken := randomDetachedEventToken()
 	args := []string{"supervisor", "run", "--state-dir", stateDir, "--socket", sockPath, "--config", configPath}
 	cmd := exec.Command(exe, args...)
+	cmd.Env = append(os.Environ(),
+		"AGENTSH_DETACHED_EVENT_TOKEN="+eventToken,
+	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.Stdin = nil
@@ -294,6 +308,7 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 		RuntimeHome:     sess.RuntimeHome,
 		RuntimeTmp:      sess.RuntimeTmp,
 		SupervisorSock:  sockPath,
+		EventToken:      eventToken,
 		OwnerPID:        pid,
 		ProtocolVersion: supervisorProtocolVersion,
 	}

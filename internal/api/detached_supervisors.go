@@ -124,6 +124,7 @@ func (a *App) listDetachedArray(ctx context.Context, path string) []any {
 	}
 
 	type result struct {
+		sup   detachedSupervisor
 		items []any
 	}
 	ch := make(chan result, len(supervisors))
@@ -138,7 +139,7 @@ func (a *App) listDetachedArray(ctx context.Context, path string) []any {
 				slog.Debug("detached supervisor query failed", "session_id", sup.Meta.SessionID, "path", path, "error", err)
 				return
 			}
-			ch <- result{items: items}
+			ch <- result{sup: sup, items: items}
 		}()
 	}
 	wg.Wait()
@@ -146,17 +147,87 @@ func (a *App) listDetachedArray(ctx context.Context, path string) []any {
 
 	var out []any
 	for res := range ch {
+		a.recordDetachedRoutes(res.sup, res.items)
 		out = append(out, res.items...)
 	}
 	return out
 }
 
+func (a *App) recordDetachedRoutes(sup detachedSupervisor, items []any) {
+	if a == nil || len(items) == 0 {
+		return
+	}
+	a.detachedRouteMu.Lock()
+	defer a.detachedRouteMu.Unlock()
+	if a.detachedRoutes == nil {
+		a.detachedRoutes = make(map[string]detachedSupervisor)
+	}
+	for _, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, ok := m["id"].(string)
+		id = strings.TrimSpace(id)
+		if ok && id != "" {
+			a.detachedRoutes[id] = sup
+		}
+	}
+}
+
+func (a *App) lookupDetachedRoute(id string) (detachedSupervisor, bool) {
+	if a == nil || strings.TrimSpace(id) == "" {
+		return detachedSupervisor{}, false
+	}
+	a.detachedRouteMu.Lock()
+	defer a.detachedRouteMu.Unlock()
+	sup, ok := a.detachedRoutes[strings.TrimSpace(id)]
+	return sup, ok
+}
+
+func detachedForwardID(path string) string {
+	path = strings.TrimPrefix(path, "/api/v1/")
+	for _, prefix := range []string{"approvals/", "session-events/"} {
+		if !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(path, prefix)
+		id := rest
+		if i := strings.IndexByte(id, '/'); i >= 0 {
+			id = id[:i]
+		}
+		unescaped, err := url.PathUnescape(id)
+		if err != nil {
+			return id
+		}
+		return unescaped
+	}
+	return ""
+}
+
+func (a *App) postDetachedRawLogged(ctx context.Context, sup detachedSupervisor, path string, raw []byte) bool {
+	if err := a.postDetachedRaw(ctx, sup, path, raw); err == nil {
+		return true
+	} else if !isHTTPNotFound(err) && !isHTTPBadRequest(err) {
+		slog.Debug("detached supervisor post failed", "session_id", sup.Meta.SessionID, "path", path, "error", err)
+	}
+	return false
+}
+
 func (a *App) forwardDetachedRaw(ctx context.Context, path string, raw []byte) bool {
-	for _, sup := range a.discoverDetachedSupervisors() {
-		if err := a.postDetachedRaw(ctx, sup, path, raw); err == nil {
+	id := detachedForwardID(path)
+	if sup, ok := a.lookupDetachedRoute(id); ok {
+		if a.postDetachedRawLogged(ctx, sup, path, raw) {
 			return true
-		} else if !isHTTPNotFound(err) && !isHTTPBadRequest(err) {
-			slog.Debug("detached supervisor post failed", "session_id", sup.Meta.SessionID, "path", path, "error", err)
+		}
+	}
+
+	for _, sup := range a.discoverDetachedSupervisors() {
+		if routed, ok := a.lookupDetachedRoute(id); ok && routed.Socket == sup.Socket {
+			continue
+		}
+		if a.postDetachedRawLogged(ctx, sup, path, raw) {
+			return true
 		}
 	}
 	return false

@@ -314,6 +314,77 @@ func TestDetachedSupervisorFailuresDoNotBreakGlobalEndpoints(t *testing.T) {
 	}
 }
 
+func TestDetachedSessionsPushEventsAndApprovalsWithToken(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "sess-push")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := detached.WriteMetadata(stateDir, detached.Metadata{
+		SessionID:       "sess-push",
+		ID:              "sess-push",
+		CreatedAt:       time.Now().UTC(),
+		State:           "active",
+		Policy:          "default",
+		WorkspaceMode:   "shadow",
+		RealWorkspace:   "/work/sess-push",
+		EventToken:      "tok-push",
+		OwnerPID:        os.Getpid(),
+		ProtocolVersion: detached.ProtocolVersion,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h := newDetachedAggregationTestApp(t, []string{root}, "20ms")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/detached-sessions/sess-push/session-events", strings.NewReader(`{"id":"ev-push","type":"agent.turn.completed","title":"ready","message":"done"}`))
+	req.Header.Set("X-AgentSH-Session-Event-Token", "tok-push")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("push event status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = doApproverRequest(h, http.MethodGet, "/api/v1/session-events", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list events status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "ev-push") {
+		t.Fatalf("pushed event missing from central list: %s", rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/detached-sessions/sess-push/approvals", strings.NewReader(`{"id":"apr-push","kind":"file","target":"/tmp/x"}`))
+	req.Header.Set("X-AgentSH-Session-Event-Token", "tok-push")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("push approval status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = doApproverRequest(h, http.MethodGet, "/api/v1/approvals", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list approvals status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "apr-push") {
+		t.Fatalf("pushed approval missing from central list: %s", rr.Body.String())
+	}
+
+	rr = doApproverRequest(h, http.MethodPost, "/api/v1/approvals/apr-push", `{"decision":"approve","scope":"once","reason":"ok"}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("resolve pushed approval status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/detached-sessions/sess-push/approvals/apr-push/resolution", nil)
+	req.Header.Set("X-AgentSH-Session-Event-Token", "tok-push")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("get pushed resolution status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"resolved":true`) {
+		t.Fatalf("expected resolved approval: %s", rr.Body.String())
+	}
+}
+
 func TestSessionEventEndpointsRequireApproverRole(t *testing.T) {
 	h := newDetachedAggregationTestApp(t, nil, "20ms")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/session-events", nil)

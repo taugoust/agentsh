@@ -223,7 +223,7 @@ sandbox:
 	if cfg.Sandbox.FUSE.Audit.TrashPath != ".agentsh_trash" {
 		t.Fatalf("audit.trash_path default: got %q", cfg.Sandbox.FUSE.Audit.TrashPath)
 	}
-	if cfg.Sandbox.FUSE.Audit.TTL != "7d" {
+	if cfg.Sandbox.FUSE.Audit.TTL != "168h" {
 		t.Fatalf("audit.ttl default: got %q", cfg.Sandbox.FUSE.Audit.TTL)
 	}
 	if cfg.Sandbox.FUSE.Audit.Quota != "5GB" {

@@ -166,7 +166,7 @@ sandbox:
       enabled: true
       mode: "monitor"             # monitor|soft_block|soft_delete|strict
       trash_path: ".agentsh_trash"
-      ttl: "7d"
+      ttl: "168h"
       quota: "5GB"
       strict_on_audit_failure: false
       max_event_queue: 1024

@@ -118,7 +118,7 @@ func newTrashPurgeCmd() *cobra.Command {
 		},
 	}
 	addTrashPathFlag(cmd)
-	cmd.Flags().String("ttl", "", "TTL (e.g. 7d, 24h); empty disables")
+	cmd.Flags().String("ttl", "", "TTL (e.g. 168h, 24h); empty disables")
 	cmd.Flags().String("quota", "", "Quota cap (e.g. 5GB); empty disables")
 	cmd.Flags().String("session", "", "Only purge entries for a session")
 	return cmd

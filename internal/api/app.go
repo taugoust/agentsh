@@ -71,6 +71,10 @@ type App struct {
 	approvals     *approvals.Manager
 	sessionEvents *sessionEventStore
 
+	detachedRouteMu   sync.Mutex
+	detachedRoutes    map[string]detachedSupervisor
+	detachedApprovals *detachedApprovalStore
+
 	approvalUIMu sync.Mutex
 	approvalUIs  map[string]*approvalUIEndpoint
 
@@ -179,20 +183,22 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 	}
 
 	app := &App{
-		cfg:           cfg,
-		sessions:      sessions,
-		store:         store,
-		policy:        engine,
-		broker:        broker,
-		dbBypass:      dbevents.NewBypassEmitter(storeEmitter{store: store, broker: broker}),
-		cgroupMgr:     appCgroupMgr,
-		apiKeyAuth:    apiKeyAuth,
-		oidcAuth:      oidcAuth,
-		approvals:     approvalsMgr,
-		sessionEvents: newSessionEventStore(),
-		metrics:       metricsCollector,
-		platform:      plat,
-		policyLoader:  policyLoader,
+		cfg:               cfg,
+		sessions:          sessions,
+		store:             store,
+		policy:            engine,
+		broker:            broker,
+		dbBypass:          dbevents.NewBypassEmitter(storeEmitter{store: store, broker: broker}),
+		cgroupMgr:         appCgroupMgr,
+		apiKeyAuth:        apiKeyAuth,
+		oidcAuth:          oidcAuth,
+		approvals:         approvalsMgr,
+		sessionEvents:     newSessionEventStore(),
+		detachedRoutes:    make(map[string]detachedSupervisor),
+		detachedApprovals: newDetachedApprovalStore(),
+		metrics:           metricsCollector,
+		platform:          plat,
+		policyLoader:      policyLoader,
 	}
 
 	// Compute the server-process WAIT_KILLABLE_RECV decision once at
@@ -339,6 +345,11 @@ func (a *App) Router() http.Handler {
 
 		r.Get("/events/search", a.searchEvents)
 
+		r.Post("/detached-sessions/{id}/session-events", a.publishDetachedSessionEvent)
+		r.Get("/detached-sessions/{id}/session-events/question-answers/{qid}", a.getDetachedSessionQuestionAnswer)
+		r.Post("/detached-sessions/{id}/approvals", a.registerDetachedApproval)
+		r.Get("/detached-sessions/{id}/approvals/{approvalID}/resolution", a.getDetachedApprovalResolution)
+
 		r.Group(func(r chi.Router) {
 			r.Use(a.requireRoles("approver", "admin"))
 			r.Get("/approvals", a.listApprovals)
@@ -381,23 +392,22 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 	if a.cfg.Development.DisableAuth || strings.EqualFold(a.cfg.Auth.Type, "none") {
 		return next
 	}
-	// Always allow health/readiness probes without auth so local tooling (including CLI auto-start)
-	// can reliably detect server availability.
-	if a.cfg.Health.Path != "" || a.cfg.Health.ReadinessPath != "" {
-		healthPath := a.cfg.Health.Path
-		readyPath := a.cfg.Health.ReadinessPath
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL != nil {
-				switch r.URL.Path {
-				case healthPath, readyPath:
-					next.ServeHTTP(w, r)
-					return
-				}
+	healthPath := a.cfg.Health.Path
+	readyPath := a.cfg.Health.ReadinessPath
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL != nil {
+			switch r.URL.Path {
+			case healthPath, readyPath:
+				next.ServeHTTP(w, r)
+				return
 			}
-			a.authMiddlewareProtected(next).ServeHTTP(w, r)
-		})
-	}
-	return a.authMiddlewareProtected(next)
+			if isDetachedTokenEndpoint(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		a.authMiddlewareProtected(next).ServeHTTP(w, r)
+	})
 }
 
 func (a *App) authMiddlewareProtected(next http.Handler) http.Handler {
@@ -1461,6 +1471,7 @@ func (a *App) listApprovals(w http.ResponseWriter, r *http.Request) {
 			out = append(out, item)
 		}
 	}
+	out = append(out, a.listPushedDetachedApprovals()...)
 	out = append(out, a.listDetachedApprovals(r.Context())...)
 	writeJSON(w, http.StatusOK, out)
 }
@@ -1473,6 +1484,10 @@ func (a *App) resolveApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if status, body, handled := a.resolveApprovalLocal(id, raw); handled {
+		writeJSON(w, status, body)
+		return
+	}
+	if status, body, handled := a.resolvePushedDetachedApproval(id, raw); handled {
 		writeJSON(w, status, body)
 		return
 	}

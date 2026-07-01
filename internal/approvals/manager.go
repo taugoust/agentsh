@@ -319,6 +319,7 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 	m.mu.Unlock()
 
 	m.emitEvent(ctx, "approval_requested", req, nil)
+	m.maybeStartDetachedBridge(ctx, req)
 
 	var cancelPrompt context.CancelFunc
 	promptCtx := ctx

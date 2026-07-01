@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func TestMetadataCreateRead(t *testing.T) {
 	if gotStateDir != stateDir {
 		t.Fatalf("stateDir = %q, want %q", gotStateDir, stateDir)
 	}
-	if got != meta {
+	if !reflect.DeepEqual(got, meta) {
 		t.Fatalf("metadata mismatch\ngot:  %#v\nwant: %#v", got, meta)
 	}
 }

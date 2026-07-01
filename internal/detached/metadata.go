@@ -33,6 +33,7 @@ type Metadata struct {
 	RuntimeHome     string          `json:"runtime_home,omitempty"`
 	RuntimeTmp      string          `json:"runtime_tmp,omitempty"`
 	SupervisorSock  string          `json:"supervisor_sock"`
+	EventToken      string          `json:"event_token,omitempty"`
 	OwnerPID        int             `json:"owner_pid"`
 	ProtocolVersion int             `json:"protocol_version"`
 }

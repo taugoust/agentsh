@@ -1793,7 +1793,7 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 		cfg.Sandbox.FUSE.Audit.TrashPath = ".agentsh_trash"
 	}
 	if cfg.Sandbox.FUSE.Audit.TTL == "" {
-		cfg.Sandbox.FUSE.Audit.TTL = "7d"
+		cfg.Sandbox.FUSE.Audit.TTL = "168h"
 	}
 	if cfg.Sandbox.FUSE.Audit.Quota == "" {
 		cfg.Sandbox.FUSE.Audit.Quota = "5GB"
