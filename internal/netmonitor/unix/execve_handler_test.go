@@ -270,7 +270,7 @@ func TestExecveHandler_Action(t *testing.T) {
 		assert.Equal(t, "deny", result.Decision)
 	})
 
-	t.Run("approve produces ActionRedirect", func(t *testing.T) {
+	t.Run("approve requests approval and continues when approved", func(t *testing.T) {
 		cfg := ExecveHandlerConfig{}
 		pol := &mockPolicy{decision: PolicyDecision{
 			Decision:          "approve",
@@ -280,7 +280,9 @@ func TestExecveHandler_Action(t *testing.T) {
 		}}
 		dt := NewDepthTracker()
 		dt.RegisterSession(1000, "sess-1")
+		approver := &mockApprover{approved: true}
 		h := NewExecveHandler(cfg, pol, dt, nil)
+		h.SetApprover(approver)
 
 		result, _ := h.Handle(context.Background(), ExecveContext{
 			PID:       1001,
@@ -289,9 +291,41 @@ func TestExecveHandler_Action(t *testing.T) {
 			Argv:      []string{"rm", "-rf", "/important"},
 		})
 
-		require.False(t, result.Allow)
-		assert.Equal(t, ActionRedirect, result.Action)
+		require.True(t, approver.called)
+		assert.Equal(t, "sess-1", approver.gotReq.SessionID)
+		assert.Equal(t, "/usr/bin/rm", approver.gotReq.Command)
+		assert.Equal(t, []string{"rm", "-rf", "/important"}, approver.gotReq.Args)
+		require.True(t, result.Allow)
+		assert.Equal(t, ActionContinue, result.Action)
 		assert.Equal(t, "approve", result.Decision)
+	})
+
+	t.Run("approve denies when user denies", func(t *testing.T) {
+		cfg := ExecveHandlerConfig{}
+		pol := &mockPolicy{decision: PolicyDecision{
+			Decision:          "approve",
+			EffectiveDecision: "approve",
+			Rule:              "needs-approval",
+			Message:           "requires human approval",
+		}}
+		dt := NewDepthTracker()
+		dt.RegisterSession(1000, "sess-1")
+		approver := &mockApprover{approved: false}
+		h := NewExecveHandler(cfg, pol, dt, nil)
+		h.SetApprover(approver)
+
+		result, _ := h.Handle(context.Background(), ExecveContext{
+			PID:       1001,
+			ParentPID: 1000,
+			Filename:  "/usr/bin/rm",
+			Argv:      []string{"rm", "-rf", "/important"},
+		})
+
+		require.True(t, approver.called)
+		require.False(t, result.Allow)
+		assert.Equal(t, ActionDeny, result.Action)
+		assert.Equal(t, int32(unix.EACCES), result.Errno)
+		assert.Equal(t, "approval denied", result.Reason)
 	})
 
 	t.Run("redirect produces ActionRedirect", func(t *testing.T) {

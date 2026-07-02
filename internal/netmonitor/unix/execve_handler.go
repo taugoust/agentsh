@@ -316,10 +316,6 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 			chosenDecision = payloadDecision
 		}
 
-		if h.depthTracker != nil {
-			h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
-		}
-
 		effectiveDecision := chosenDecision.EffectiveDecision
 		if effectiveDecision == "" {
 			effectiveDecision = chosenDecision.Decision
@@ -327,9 +323,17 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 
 		switch effectiveDecision {
 		case "allow":
+			if h.depthTracker != nil {
+				h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+			}
 			result := ExecveResult{Allow: true, Action: ActionContinue, Rule: chosenDecision.Rule, Decision: chosenDecision.Decision}
 			return result, h.buildEvent(ctx, result, chosenDecision.Rule)
-		case "approve", "redirect":
+		case "approve":
+			return h.handlePolicyApproval(goCtx, ctx, chosenDecision)
+		case "redirect":
+			if h.depthTracker != nil {
+				h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+			}
 			result := ExecveResult{
 				Allow:    false,
 				Action:   ActionRedirect,
@@ -390,16 +394,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		return result, h.buildEvent(ctx, result, decision.Rule)
 
 	case "approve":
-		// Redirect to agentsh-stub for approval workflow
-		result := ExecveResult{
-			Allow:    false,
-			Action:   ActionRedirect,
-			Rule:     decision.Rule,
-			Reason:   decision.Message,
-			Decision: decision.Decision,
-			Redirect: decision.Redirect,
-		}
-		return result, h.buildEvent(ctx, result, decision.Rule)
+		return h.handlePolicyApproval(goCtx, ctx, decision)
 
 	case "redirect":
 		// Redirect execve to agentsh-stub
@@ -424,6 +419,77 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		}
 		return result, h.buildEvent(ctx, result, "unknown")
 	}
+}
+
+func (h *ExecveHandler) handlePolicyApproval(goCtx context.Context, ctx ExecveContext, decision PolicyDecision) (ExecveResult, *types.Event) {
+	if goCtx == nil {
+		goCtx = context.Background()
+	}
+	if h.approver == nil {
+		result := ExecveResult{
+			Allow:    false,
+			Action:   ActionDeny,
+			Rule:     decision.Rule,
+			Reason:   "approval required but no approver is configured",
+			Errno:    int32(unix.EACCES),
+			Decision: decision.Decision,
+		}
+		return result, h.buildEvent(ctx, result, decision.Rule)
+	}
+
+	timeout := h.cfg.ApprovalTimeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	approvalCtx, cancel := context.WithTimeout(goCtx, timeout)
+	approved, err := h.approver.RequestExecApproval(approvalCtx, ApprovalRequest{
+		SessionID: ctx.SessionID,
+		Command:   ctx.Filename,
+		Args:      ctx.Argv,
+		Reason:    decision.Message,
+		Rule:      decision.Rule,
+	})
+	cancel()
+	if err != nil {
+		isTimeout := err == context.DeadlineExceeded || err == context.Canceled
+		if isTimeout && h.cfg.ApprovalTimeoutAction == "allow" {
+			if h.depthTracker != nil {
+				h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+			}
+			result := ExecveResult{Allow: true, Action: ActionContinue, Rule: decision.Rule, Reason: decision.Message, Decision: decision.Decision}
+			return result, h.buildEvent(ctx, result, decision.Rule)
+		}
+		reason := "approval error"
+		if isTimeout {
+			reason = "approval timeout"
+		}
+		result := ExecveResult{
+			Allow:    false,
+			Action:   ActionDeny,
+			Rule:     decision.Rule,
+			Reason:   reason,
+			Errno:    int32(unix.EACCES),
+			Decision: decision.Decision,
+		}
+		return result, h.buildEvent(ctx, result, decision.Rule)
+	}
+	if !approved {
+		result := ExecveResult{
+			Allow:    false,
+			Action:   ActionDeny,
+			Rule:     decision.Rule,
+			Reason:   "approval denied",
+			Errno:    int32(unix.EACCES),
+			Decision: decision.Decision,
+		}
+		return result, h.buildEvent(ctx, result, decision.Rule)
+	}
+
+	if h.depthTracker != nil {
+		h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+	}
+	result := ExecveResult{Allow: true, Action: ActionContinue, Rule: decision.Rule, Reason: decision.Message, Decision: decision.Decision}
+	return result, h.buildEvent(ctx, result, decision.Rule)
 }
 
 func (h *ExecveHandler) checkExecveWithAliases(ctx ExecveContext, filename string, argv []string) PolicyDecision {

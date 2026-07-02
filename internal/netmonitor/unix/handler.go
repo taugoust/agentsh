@@ -268,7 +268,7 @@ func ServeNotifyWithExecve(ctx context.Context, fd *os.File, sessID string, pol 
 		// Route to appropriate handler
 		if IsExecveSyscall(syscallNr) && execveHandler != nil {
 			slog.Debug("ServeNotifyWithExecve: routing to execve handler", "session_id", sessID, "pid", req.Pid)
-			handleExecveNotification(ctx, scmpFD, req, execveHandler)
+			handleExecveNotification(ctx, scmpFD, req, execveHandler, sessID)
 			continue
 		}
 
@@ -340,7 +340,7 @@ func ServeNotifyWithExecve(ctx context.Context, fd *os.File, sessID string, pol 
 // handleExecveNotification processes an execve/execveat notification.
 // It reads the filename and argv from the tracee process, builds an ExecveContext,
 // and calls the handler to make a decision.
-func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *seccomp.ScmpNotifReq, h *ExecveHandler) {
+func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *seccomp.ScmpNotifReq, h *ExecveHandler, sessID string) {
 	// Extract syscall args
 	args := SyscallArgs{
 		Nr:   int32(req.Data.Syscall),
@@ -436,6 +436,7 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 		RawFilename: rawFilename,
 		Argv:        argv,
 		Truncated:   truncated,
+		SessionID:   sessID,
 	}
 
 	result, ev := h.Handle(goCtx, ectx)
