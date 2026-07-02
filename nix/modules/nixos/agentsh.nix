@@ -126,6 +126,12 @@ let
       policies = {
         dir = cfg.policies.dir;
         default = cfg.policies.default;
+        project_overlays = {
+          enabled = cfg.policies.projectOverlays.enable;
+          paths = cfg.policies.projectOverlays.paths;
+          require_approval = cfg.policies.projectOverlays.requireApproval;
+          on_denied = cfg.policies.projectOverlays.onDenied;
+        };
       };
 
       proxy = {
@@ -478,6 +484,24 @@ in
       default = mkOption {
         type = types.str;
         default = "default";
+      };
+      projectOverlays = {
+        enable = mkEnableOption "project-local AgentSH policy overlays";
+        paths = mkOption {
+          type = types.listOf types.str;
+          default = [ ".agentsh/policy-overlays/*.yaml" ];
+        };
+        requireApproval = mkOption {
+          type = types.bool;
+          default = true;
+        };
+        onDenied = mkOption {
+          type = types.enum [
+            "fail"
+            "ignore"
+          ];
+          default = "fail";
+        };
       };
     };
 

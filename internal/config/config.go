@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	seccompPkg "github.com/agentsh/agentsh/internal/seccomp"
@@ -882,17 +883,48 @@ func (c *SigningConfig) Validate() error {
 
 // PoliciesConfig configures policy loading.
 type PoliciesConfig struct {
-	Dir               string          `yaml:"dir"`
-	Default           string          `yaml:"default"`
-	Allowed           []string        `yaml:"allowed"`
-	ManifestPath      string          `yaml:"manifest_path"`
-	Signing           SigningConfig   `yaml:"signing"`
-	EnvPolicy         EnvPolicyConfig `yaml:"env_policy"`
-	EnvShimPath       string          `yaml:"env_shim_path"`
-	ReloadInterval    string          `yaml:"reload_interval"`
-	DetectProjectRoot *bool           `yaml:"detect_project_root"` // nil means true (default enabled)
-	ProjectMarkers    []string        `yaml:"project_markers"`     // Override default markers
-	SymlinkEscape     string          `yaml:"symlink_escape"`      // "evaluate"/"deny"
+	Dir               string                `yaml:"dir"`
+	Default           string                `yaml:"default"`
+	Allowed           []string              `yaml:"allowed"`
+	ManifestPath      string                `yaml:"manifest_path"`
+	Signing           SigningConfig         `yaml:"signing"`
+	EnvPolicy         EnvPolicyConfig       `yaml:"env_policy"`
+	EnvShimPath       string                `yaml:"env_shim_path"`
+	ReloadInterval    string                `yaml:"reload_interval"`
+	DetectProjectRoot *bool                 `yaml:"detect_project_root"` // nil means true (default enabled)
+	ProjectMarkers    []string              `yaml:"project_markers"`     // Override default markers
+	SymlinkEscape     string                `yaml:"symlink_escape"`      // "evaluate"/"deny"
+	ProjectOverlays   ProjectOverlaysConfig `yaml:"project_overlays"`
+}
+
+// ProjectOverlaysConfig controls project-local policy overlay discovery.
+type ProjectOverlaysConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	Paths           []string `yaml:"paths"`
+	RequireApproval bool     `yaml:"require_approval"`
+	OnDenied        string   `yaml:"on_denied"` // "fail" or "ignore"
+
+	requireApprovalSet bool `yaml:"-"`
+}
+
+// UnmarshalYAML records whether require_approval was explicitly set so defaults
+// can keep the public bool schema while still defaulting to true.
+func (c *ProjectOverlaysConfig) UnmarshalYAML(value *yaml.Node) error {
+	type raw ProjectOverlaysConfig
+	var r raw
+	if err := value.Decode(&r); err != nil {
+		return err
+	}
+	if value.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(value.Content); i += 2 {
+			if value.Content[i].Value == "require_approval" {
+				r.requireApprovalSet = true
+				break
+			}
+		}
+	}
+	*c = ProjectOverlaysConfig(r)
+	return nil
 }
 
 // SymlinkEscapeDeny reports whether the workspace-escape blanket deny
@@ -2062,6 +2094,17 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	if cfg.Policies.Default == "" {
 		cfg.Policies.Default = "default"
 	}
+	if cfg.Policies.ProjectOverlays.Enabled {
+		if len(cfg.Policies.ProjectOverlays.Paths) == 0 {
+			cfg.Policies.ProjectOverlays.Paths = []string{".agentsh/policy-overlays/*.yaml"}
+		}
+		if cfg.Policies.ProjectOverlays.OnDenied == "" {
+			cfg.Policies.ProjectOverlays.OnDenied = "fail"
+		}
+		if !cfg.Policies.ProjectOverlays.requireApprovalSet {
+			cfg.Policies.ProjectOverlays.RequireApproval = true
+		}
+	}
 	if cfg.Metrics.Path == "" {
 		cfg.Metrics.Path = "/metrics"
 	}
@@ -2344,6 +2387,25 @@ func validateConfig(cfg *Config) error {
 		// "" gets normalized to "evaluate" by SymlinkEscapeDeny().
 	default:
 		return fmt.Errorf("invalid policies.symlink_escape %q: must be one of \"evaluate\" or \"deny\"", cfg.Policies.SymlinkEscape)
+	}
+	if cfg.Policies.ProjectOverlays.Enabled {
+		switch cfg.Policies.ProjectOverlays.OnDenied {
+		case "fail", "ignore":
+		default:
+			return fmt.Errorf("invalid policies.project_overlays.on_denied %q: must be one of \"fail\" or \"ignore\"", cfg.Policies.ProjectOverlays.OnDenied)
+		}
+		for _, p := range cfg.Policies.ProjectOverlays.Paths {
+			if p == "" {
+				return fmt.Errorf("policies.project_overlays.paths must not contain empty entries")
+			}
+			if filepath.IsAbs(p) {
+				return fmt.Errorf("policies.project_overlays.paths entry %q must be relative", p)
+			}
+			clean := filepath.Clean(p)
+			if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+				return fmt.Errorf("policies.project_overlays.paths entry %q must not traverse outside the project root", p)
+			}
+		}
 	}
 	switch cfg.Sandbox.Seccomp.Syscalls.OnBlock {
 	case "", "errno", "kill", "log", "log_and_kill":

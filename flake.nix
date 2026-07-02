@@ -186,6 +186,46 @@
         agentsh = self.nixosModules.default;
       };
 
+      checks = forAllSystems (
+        pkgs:
+        let
+          inherit (pkgs) lib stdenv;
+        in
+        {
+          go-unit-tests = pkgs.buildGoModule {
+            pname = "agentsh-go-unit-tests";
+            version = "unstable-2026-06-17";
+            src = self;
+            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+
+            nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.pkg-config
+            ];
+            buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.libseccomp
+            ];
+            env.CGO_ENABLED = if stdenv.hostPlatform.isLinux then "1" else "0";
+
+            buildPhase = ''
+              runHook preBuild
+              runHook postBuild
+            '';
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/policy -run 'Test(DiscoverProjectOverlays|LoadOverlay|MergePolicyOverlays)'
+              go test ./internal/config -run 'TestProjectOverlays'
+              runHook postCheck
+            '';
+            installPhase = ''
+              runHook preInstall
+              mkdir -p $out
+              touch $out/passed
+              runHook postInstall
+            '';
+          };
+        }
+      );
+
       devShells = forAllSystems (
         pkgs:
         let

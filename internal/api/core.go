@@ -896,6 +896,156 @@ func (a *App) buildPolicyVarsForSession(req types.CreateSessionRequest, s *sessi
 	return policyVars
 }
 
+func resolveRealProjectRoot(req types.CreateSessionRequest, shouldDetect bool, markers []string) (string, error) {
+	workspace := req.Workspace
+	if strings.TrimSpace(workspace) == "" && len(req.WorkspaceRoots) > 0 {
+		workspace = req.WorkspaceRoots[0].Path
+	}
+	if strings.TrimSpace(req.ProjectRoot) != "" {
+		abs, err := filepath.Abs(req.ProjectRoot)
+		if err != nil {
+			return "", err
+		}
+		if eval, err := filepath.EvalSymlinks(abs); err == nil {
+			return eval, nil
+		}
+		return filepath.Clean(abs), nil
+	}
+	if strings.TrimSpace(workspace) == "" {
+		return "", nil
+	}
+	if shouldDetect {
+		roots, err := policy.DetectProjectRoots(workspace, markers)
+		if err != nil {
+			return "", err
+		}
+		return roots.ProjectRoot, nil
+	}
+	abs, err := filepath.Abs(workspace)
+	if err != nil {
+		return "", err
+	}
+	if eval, err := filepath.EvalSymlinks(abs); err == nil {
+		return eval, nil
+	}
+	return filepath.Clean(abs), nil
+}
+
+func projectOverlayConfigForPolicy(cfg config.ProjectOverlaysConfig) policy.ProjectOverlaysConfig {
+	return policy.ProjectOverlaysConfig{
+		Enabled:         cfg.Enabled,
+		Paths:           append([]string(nil), cfg.Paths...),
+		RequireApproval: cfg.RequireApproval,
+		OnDenied:        cfg.OnDenied,
+	}
+}
+
+func summarizeProjectOverlays(files []policy.OverlayFile) map[string]any {
+	summary := map[string]any{
+		"files": len(files),
+	}
+	var names, relPaths, filePaths, commands []string
+	counts := map[string]int{}
+	for _, f := range files {
+		names = append(names, f.Overlay.Name)
+		relPaths = append(relPaths, f.RelPath)
+		counts["file_rules"] += len(f.Overlay.FileRules)
+		counts["command_rules"] += len(f.Overlay.CommandRules)
+		counts["network_rules"] += len(f.Overlay.NetworkRules)
+		counts["unix_socket_rules"] += len(f.Overlay.UnixRules)
+		counts["signal_rules"] += len(f.Overlay.SignalRules)
+		counts["dns_redirects"] += len(f.Overlay.DnsRedirectRules)
+		counts["connect_redirects"] += len(f.Overlay.ConnectRedirectRules)
+		counts["package_rules"] += len(f.Overlay.PackageRules)
+		for _, r := range f.Overlay.FileRules {
+			filePaths = append(filePaths, r.Paths...)
+		}
+		for _, r := range f.Overlay.CommandRules {
+			commands = append(commands, r.Commands...)
+		}
+	}
+	summary["overlay_names"] = names
+	summary["overlay_paths"] = relPaths
+	summary["rule_counts"] = counts
+	if len(filePaths) > 0 {
+		summary["file_paths"] = firstNStrings(filePaths, 12)
+	}
+	if len(commands) > 0 {
+		summary["commands"] = firstNStrings(commands, 12)
+	}
+	return summary
+}
+
+func firstNStrings(in []string, n int) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, min(len(in), n))
+	for _, v := range in {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+		if len(out) >= n {
+			break
+		}
+	}
+	return out
+}
+
+func (a *App) approveProjectOverlays(ctx context.Context, sessionID, projectRoot, basePolicyName string, files []policy.OverlayFile) (bool, error) {
+	if len(files) == 0 {
+		return false, nil
+	}
+	cfg := a.cfg.Policies.ProjectOverlays
+	if cfg.RequireApproval {
+		if !a.cfg.Approvals.Enabled || a.approvals == nil {
+			return false, fmt.Errorf("project policy overlays require approval, but approvals are unavailable")
+		}
+		fields := summarizeProjectOverlays(files)
+		fields["project_root"] = projectRoot
+		fields["base_policy"] = basePolicyName
+		res, err := a.approvals.RequestApproval(ctx, approvals.Request{
+			ID:        "approval-" + uuid.NewString(),
+			SessionID: sessionID,
+			Kind:      "policy_overlay",
+			Target:    projectRoot,
+			Message:   "Approve project-local AgentSH policy overlays for this session",
+			Fields:    fields,
+		})
+		if err != nil {
+			return false, err
+		}
+		if !res.Approved {
+			return false, fmt.Errorf("project policy overlays denied: %s", res.Reason)
+		}
+	}
+	return true, nil
+}
+
+func overlayPolicies(files []policy.OverlayFile) []policy.PolicyOverlay {
+	overlays := make([]policy.PolicyOverlay, 0, len(files))
+	for _, f := range files {
+		overlays = append(overlays, f.Overlay)
+	}
+	return overlays
+}
+
+func overlayRelPaths(files []policy.OverlayFile) []string {
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		out = append(out, f.RelPath)
+	}
+	return out
+}
+
+func overlayNames(files []policy.OverlayFile) []string {
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		out = append(out, f.Overlay.Name)
+	}
+	return out
+}
+
 func mapPathPrefix(path, oldRoot, newRoot string) string {
 	if path == "" || oldRoot == "" || newRoot == "" || oldRoot == newRoot {
 		return path
@@ -930,10 +1080,18 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		shouldDetect = *req.DetectProjectRoot
 	}
 
+	if strings.TrimSpace(req.Workspace) == "" && len(req.WorkspaceRoots) > 0 {
+		req.Workspace = req.WorkspaceRoots[0].Path
+	}
+
 	// Build variables map for policy expansion after session workspace setup.
 	// Overlay sessions need PROJECT_ROOT/GIT_ROOT to point at the merged workspace,
 	// but the overlay path is only known after the session ID exists.
 	var policyVars map[string]string
+	var projectOverlayProjectRoot string
+	var projectOverlayFiles []policy.OverlayFile
+	var approvedProjectOverlayFiles []policy.OverlayFile
+	var effectivePolicyHash string
 
 	// Load policy from configured policy files. Policy compilation is deferred
 	// until after session creation so generated DB unavoidability rules can
@@ -985,8 +1143,23 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		basePolicy = pol
 	}
 
-	if strings.TrimSpace(req.Workspace) == "" && len(req.WorkspaceRoots) > 0 {
-		req.Workspace = req.WorkspaceRoots[0].Path
+	if a.cfg.Policies.ProjectOverlays.Enabled && basePolicy != nil {
+		markers := a.cfg.Policies.GetProjectMarkers()
+		if markers == nil {
+			markers = policy.DefaultProjectMarkers()
+		}
+		realProjectRoot, err := resolveRealProjectRoot(req, shouldDetect, markers)
+		if err != nil {
+			return types.Session{}, http.StatusBadRequest, fmt.Errorf("resolve project root for policy overlays: %w", err)
+		}
+		projectOverlayProjectRoot = realProjectRoot
+		if realProjectRoot != "" {
+			files, err := policy.DiscoverProjectOverlays(realProjectRoot, projectOverlayConfigForPolicy(a.cfg.Policies.ProjectOverlays))
+			if err != nil {
+				return types.Session{}, http.StatusBadRequest, fmt.Errorf("discover project policy overlays: %w", err)
+			}
+			projectOverlayFiles = files
+		}
 	}
 
 	var s *session.Session
@@ -1002,6 +1175,38 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 			code = http.StatusConflict
 		}
 		return types.Session{}, code, sessionErr
+	}
+
+	if len(projectOverlayFiles) > 0 {
+		if a.cfg.Policies.ProjectOverlays.RequireApproval && (!a.cfg.Approvals.Enabled || a.approvals == nil) {
+			a.cleanupCreatedSession(s)
+			return types.Session{}, http.StatusForbidden, fmt.Errorf("project policy overlays require approval, but approvals are unavailable")
+		}
+		approved, err := a.approveProjectOverlays(ctx, s.ID, projectOverlayProjectRoot, policyName, projectOverlayFiles)
+		if err != nil {
+			if a.cfg.Policies.ProjectOverlays.OnDenied == "ignore" {
+				slog.Warn("project policy overlays ignored", "session_id", s.ID, "error", err)
+			} else {
+				a.cleanupCreatedSession(s)
+				return types.Session{}, http.StatusForbidden, err
+			}
+		} else if approved {
+			merged, err := policy.MergePolicyOverlays(basePolicy, overlayPolicies(projectOverlayFiles))
+			if err != nil {
+				a.cleanupCreatedSession(s)
+				return types.Session{}, http.StatusBadRequest, fmt.Errorf("merge project policy overlays: %w", err)
+			}
+			basePolicy = merged
+			approvedProjectOverlayFiles = projectOverlayFiles
+		}
+	}
+	if basePolicy != nil {
+		if hash, err := policy.HashEffectivePolicy(basePolicy); err == nil {
+			effectivePolicyHash = hash
+		} else {
+			a.cleanupCreatedSession(s)
+			return types.Session{}, http.StatusInternalServerError, fmt.Errorf("hash effective policy: %w", err)
+		}
 	}
 
 	if err := a.setupOverlayWorkspace(ctx, s, req); err != nil {
@@ -1056,12 +1261,17 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		Type:      "session_created",
 		SessionID: s.ID,
 		Fields: map[string]any{
-			"workspace":    s.Workspace,
-			"policy":       s.Policy,
-			"project_root": s.ProjectRoot,
-			"git_root":     s.GitRoot,
-			"runtime_home": s.RuntimeHomePath(),
-			"runtime_tmp":  s.RuntimeTmpPath(),
+			"workspace":                    s.Workspace,
+			"policy":                       s.Policy,
+			"base_policy":                  policyName,
+			"project_root":                 s.ProjectRoot,
+			"git_root":                     s.GitRoot,
+			"runtime_home":                 s.RuntimeHomePath(),
+			"runtime_tmp":                  s.RuntimeTmpPath(),
+			"project_policy_overlay_root":  projectOverlayProjectRoot,
+			"project_policy_overlay_paths": overlayRelPaths(approvedProjectOverlayFiles),
+			"project_policy_overlay_names": overlayNames(approvedProjectOverlayFiles),
+			"effective_policy_hash":        effectivePolicyHash,
 		},
 	}
 	_ = a.store.AppendEvent(ctx, ev)
@@ -1738,9 +1948,11 @@ func (a *App) ensureFUSEMount(ctx context.Context, s *session.Session) {
 	slog.Info("ensureFUSEMount: FUSE available, proceeding with mount", "session_id", s.ID)
 
 	// Load the session's policy engine for FUSE policy adapter.
-	// Must use NewEngineWithVariables to expand ${PROJECT_ROOT} etc.
-	var engine *policy.Engine
-	if a.cfg.Policies.Dir != "" {
+	// Prefer the immutable per-session engine created at session startup (it may
+	// include approved project overlays). Fall back to rebuilding only for older
+	// sessions that predate per-session engines.
+	engine := s.PolicyEngine()
+	if engine == nil && a.cfg.Policies.Dir != "" {
 		policyPath, pErr := policy.ResolvePolicyPath(a.cfg.Policies.Dir, s.Policy)
 		if pErr == nil {
 			policyData, rErr := os.ReadFile(policyPath)
