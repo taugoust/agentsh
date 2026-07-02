@@ -23,11 +23,26 @@ func fileApprovalScopeOptions(operation, filePath, rule string) (approvals.Scope
 	tree, treeOK := approvals.NewFileTreeScope(operation, dirPath, rule)
 
 	options := []map[string]any{approvals.ScopeFields(exact)}
-	if dirOK && dir.Key != exact.Key {
-		options = append(options, approvals.ScopeFields(dir))
+	seen := map[string]bool{exact.Key: true}
+	appendOption := func(scope approvals.Scope, ok bool) {
+		if !ok || seen[scope.Key] {
+			return
+		}
+		seen[scope.Key] = true
+		options = append(options, approvals.ScopeFields(scope))
 	}
-	if treeOK && tree.Key != exact.Key {
-		options = append(options, approvals.ScopeFields(tree))
+	appendOption(dir, dirOK)
+	appendOption(tree, treeOK)
+
+	// When a model first touches one subdirectory, offer the containing
+	// directory tree as an additional session scope. This lets the operator
+	// approve the common parent for subsequent sibling subdirectory accesses
+	// without granting broader access than that immediate parent.
+	parentDir := path.Dir(dirPath)
+	if parentDir != dirPath && parentDir != "." && parentDir != "/" {
+		parentTree, parentTreeOK := approvals.NewFileTreeScope(operation, parentDir, rule)
+		appendOption(parentTree, parentTreeOK)
 	}
+
 	return exact, true, options
 }
