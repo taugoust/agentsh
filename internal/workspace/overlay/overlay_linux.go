@@ -16,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/agentsh/agentsh/internal/workspace/cleanup"
 )
 
 const (
@@ -134,7 +136,7 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 		excludes = []string{".git", ".direnv"}
 	}
 	if err := materializeUpperDirs(realAbs, upper, uid, gid, excludes); err != nil {
-		_ = os.RemoveAll(sessionDir)
+		_ = cleanup.RemoveAllWritable(sessionDir)
 		return nil, fmt.Errorf("materialize upper dirs: %w", err)
 	}
 
@@ -145,7 +147,7 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 	}, ",")
 	cmd := exec.CommandContext(ctx, "mount", "-t", "overlay", "overlay", "-o", mountOpts, merged)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		_ = os.RemoveAll(sessionDir)
+		_ = cleanup.RemoveAllWritable(sessionDir)
 		return nil, fmt.Errorf("mount overlay: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
@@ -224,7 +226,7 @@ func (w *Workspace) Accept(ctx context.Context) error {
 	if err := w.unmountLocked(ctx); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(filepath.Dir(w.Upper)); err != nil {
+	if err := cleanup.RemoveAllWritable(filepath.Dir(w.Upper)); err != nil {
 		return fmt.Errorf("remove overlay dir: %w", err)
 	}
 	w.State = StateAccepted
@@ -240,7 +242,7 @@ func (w *Workspace) Reject(ctx context.Context) error {
 	if err := w.unmountLocked(ctx); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(filepath.Dir(w.Upper)); err != nil {
+	if err := cleanup.RemoveAllWritable(filepath.Dir(w.Upper)); err != nil {
 		return fmt.Errorf("remove overlay dir: %w", err)
 	}
 	w.State = StateRejected

@@ -25,6 +25,7 @@ import (
 	"github.com/agentsh/agentsh/internal/policy/signing"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/signal"
+	"github.com/agentsh/agentsh/internal/workspace/cleanup"
 	"github.com/agentsh/agentsh/internal/workspace/overlay"
 	"github.com/agentsh/agentsh/internal/workspace/shadow"
 	"github.com/agentsh/agentsh/internal/wrapperlog"
@@ -815,7 +816,7 @@ func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session) e
 			}
 		}
 	}
-	s.SetRuntimePaths(home, tmp, func() error { return os.RemoveAll(runtimeDir) })
+	s.SetRuntimePaths(home, tmp, func() error { return cleanup.RemoveAllWritable(runtimeDir) })
 
 	ev := types.Event{
 		ID:        uuid.NewString(),

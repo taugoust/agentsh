@@ -16,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/agentsh/agentsh/internal/workspace/cleanup"
 )
 
 const (
@@ -138,7 +140,7 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 			return nil, fmt.Errorf("shadow paths containing comma are not supported: %s", root.Real)
 		}
 	}
-	if err := os.RemoveAll(sessionDir); err != nil {
+	if err := cleanup.RemoveAllWritable(sessionDir); err != nil {
 		return nil, fmt.Errorf("remove old shadow dir: %w", err)
 	}
 	if err := os.MkdirAll(work, 0o755); err != nil {
@@ -171,11 +173,11 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 		if multi {
 			dest = filepath.Join(work, roots[i].Name)
 			if err := os.MkdirAll(dest, 0o755); err != nil {
-				_ = os.RemoveAll(sessionDir)
+				_ = cleanup.RemoveAllWritable(sessionDir)
 				return nil, fmt.Errorf("create shadow root %s: %w", roots[i].Name, err)
 			}
 			if err := os.Chown(dest, ownerUID, ownerGID); err != nil {
-				_ = os.RemoveAll(sessionDir)
+				_ = cleanup.RemoveAllWritable(sessionDir)
 				return nil, fmt.Errorf("chown shadow root %s: %w", roots[i].Name, err)
 			}
 		}
@@ -184,7 +186,7 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 		cmd := exec.CommandContext(ctx, "rsync", args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if !isRsyncVanished(err) {
-				_ = os.RemoveAll(sessionDir)
+				_ = cleanup.RemoveAllWritable(sessionDir)
 				return nil, fmt.Errorf("copy shadow workspace root %s: %w: %s", roots[i].Name, err, strings.TrimSpace(string(out)))
 			}
 		}
@@ -269,7 +271,7 @@ func (w *Workspace) Accept(ctx context.Context) error {
 			}
 		}
 	}
-	if err := os.RemoveAll(filepath.Dir(w.Work)); err != nil {
+	if err := cleanup.RemoveAllWritable(filepath.Dir(w.Work)); err != nil {
 		return fmt.Errorf("remove shadow dir: %w", err)
 	}
 	w.State = StateAccepted
@@ -282,7 +284,7 @@ func (w *Workspace) Reject(ctx context.Context) error {
 	if w.State != StateActive {
 		return nil
 	}
-	if err := os.RemoveAll(filepath.Dir(w.Work)); err != nil {
+	if err := cleanup.RemoveAllWritable(filepath.Dir(w.Work)); err != nil {
 		return fmt.Errorf("remove shadow dir: %w", err)
 	}
 	w.State = StateRejected
