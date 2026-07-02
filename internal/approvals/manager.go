@@ -318,6 +318,8 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 	m.pending[req.ID] = p
 	m.mu.Unlock()
 
+	ExtendCommandTimeoutForApproval(ctx, m.timeout)
+
 	m.emitEvent(ctx, "approval_requested", req, nil)
 	m.maybeStartDetachedBridge(ctx, req)
 

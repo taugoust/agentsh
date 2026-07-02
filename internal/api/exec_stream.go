@@ -245,7 +245,7 @@ type emitFunc func(event string, payload map[string]any) error
 
 func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, policyLimit time.Duration, emit emitFunc, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
 	timeout := chooseCommandTimeout(req, policyLimit)
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := withExtendableCommandTimeout(ctx, timeout)
 	defer cancel()
 
 	if handled, code, out, errOut := s.Builtin(req); handled {
@@ -385,8 +385,8 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 		if stderrPipeW != nil {
 			stderrPipeW.Close()
 		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return 124, nil, nil, 0, 0, false, false, types.ExecResources{}, ctx.Err()
+		if commandTimedOut(ctx) {
+			return 124, nil, nil, 0, 0, false, false, types.ExecResources{}, context.DeadlineExceeded
 		}
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, ctx.Err()
 	}
@@ -559,8 +559,8 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 			if ctx.Err() != nil {
 				_ = killProcessGroup(pgid)
 			}
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, ctx.Err()
+			if commandTimedOut(ctx) {
+				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, context.DeadlineExceeded
 			}
 			if errors.Is(ctx.Err(), context.Canceled) {
 				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
@@ -625,8 +625,8 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 			if ctx.Err() != nil {
 				_ = killProcessGroup(pgid)
 			}
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, ctx.Err()
+			if commandTimedOut(ctx) {
+				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, context.DeadlineExceeded
 			}
 			if errors.Is(ctx.Err(), context.Canceled) {
 				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
@@ -661,8 +661,8 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 		_ = killProcessGroup(pgid)
 	}
 
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, ctx.Err()
+	if commandTimedOut(ctx) {
+		return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, context.DeadlineExceeded
 	}
 	if waitErr == nil {
 		return 0, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, err

@@ -120,3 +120,29 @@ func TestManagerDefaultMode(t *testing.T) {
 		t.Errorf("default mode = %q, want local_tty", mgr.mode)
 	}
 }
+
+func TestRequestApproval_ExtendsCommandTimeout(t *testing.T) {
+	m := New("api", 250*time.Millisecond, nil)
+	var got time.Duration
+	ctx := WithCommandTimeoutExtension(context.Background(), func(extra time.Duration) {
+		got += extra
+	})
+
+	go func() {
+		for {
+			pending := m.ListPending()
+			if len(pending) > 0 {
+				m.Resolve(pending[0].ID, true, "ok")
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	if _, err := m.RequestApproval(ctx, Request{SessionID: "s4", Kind: "command", Target: "echo"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != 250*time.Millisecond {
+		t.Fatalf("extension = %s, want 250ms", got)
+	}
+}
