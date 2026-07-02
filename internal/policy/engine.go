@@ -655,22 +655,27 @@ func (e *Engine) checkCommand(command string, args []string, execveEnforcementAc
 			// If the original (or a previously-derived) invocation is a
 			// shell-c form that we recognize as a wrapper-bypass attempt
 			// (`exec -a name target`, `nohup --help target`,
-			// `nice --adjustment=N target`, etc.), fail closed: the
-			// operator's allow-shell rule wasn't written to cover
-			// wrappers we can't collapse, and falling through to that
-			// rule would leak the deny.
+			// `nice --adjustment=N target`, etc.), fail closed when we do
+			// not have runtime execve enforcement. With seccomp/ptrace execve
+			// enforcement active, the wrapper can run under the shell rule and
+			// any inner executable is checked precisely by CheckExecve. This
+			// avoids rejecting benign wrapper-looking shell forms (for example
+			// `command -v a || command -v b`) on Linux while preserving the
+			// fail-closed behavior for platforms without inner exec policing.
 			if shellparse.IsShellCBypassAttempt(cur, curArgs) {
-				msg := "bypass attempt via unparsable shell-c wrapper"
-				if reason := shellparse.BypassReason(cur, curArgs); reason != "" {
-					msg = "bypass attempt: " + reason
-				}
-				denyDec := e.wrapDecision(string(types.DecisionDeny), "shellc-wrapper-bypass", msg, nil)
-				if dec := denyDec; decisionStrictness(dec.PolicyDecision) > resultStrictness {
-					if dec.PolicyDecision == types.DecisionAudit || dec.PolicyDecision == types.DecisionApprove {
-						dec.EnvPolicy = result.EnvPolicy
+				if !execveEnforcementActive {
+					msg := "bypass attempt via unparsable shell-c wrapper"
+					if reason := shellparse.BypassReason(cur, curArgs); reason != "" {
+						msg = "bypass attempt: " + reason
 					}
-					result = dec
-					resultStrictness = decisionStrictness(dec.PolicyDecision)
+					denyDec := e.wrapDecision(string(types.DecisionDeny), "shellc-wrapper-bypass", msg, nil)
+					if dec := denyDec; decisionStrictness(dec.PolicyDecision) > resultStrictness {
+						if dec.PolicyDecision == types.DecisionAudit || dec.PolicyDecision == types.DecisionApprove {
+							dec.EnvPolicy = result.EnvPolicy
+						}
+						result = dec
+						resultStrictness = decisionStrictness(dec.PolicyDecision)
+					}
 				}
 			} else if e.hasRestrictiveCommandRule && shellparse.IsOpaqueShellC(cur, curArgs) {
 				// Opaque scripts (metachars, pipes, subshells, globs, …) can

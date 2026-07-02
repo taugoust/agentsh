@@ -76,3 +76,42 @@ func TestCheckCommand_DerivableDenyStillDeniedWhenExecveEnforced(t *testing.T) {
 		t.Fatalf("got %s rule=%q, want deny rule=deny-shutdown (derivable deny must survive execve relaxation)", dec.PolicyDecision, dec.Rule)
 	}
 }
+
+// With execve enforcement active, wrapper-bypass-looking shell-c forms are not
+// pre-denied: their inner execve calls are policed at runtime. Without execve
+// enforcement, the legacy fail-closed shellc-wrapper-bypass denial remains.
+func TestCheckCommand_WrapperBypassAllowedWhenExecveEnforced(t *testing.T) {
+	e := newInterceptionTestEngine(t)
+
+	cases := []string{
+		"exec -a fake shutdown now",
+		"command -v node || command -v bun || command -v nix || true",
+	}
+	for _, script := range cases {
+		t.Run(script+"/execve-on", func(t *testing.T) {
+			dec := e.CheckCommandWithExecve("/bin/sh", []string{"-c", script}, true, ShellCOpaqueEnforce)
+			if dec.Rule == "shellc-wrapper-bypass" {
+				t.Fatalf("pre-denied as shellc-wrapper-bypass with execve enforcement active; want shell allow and runtime execve policing")
+			}
+			if dec.PolicyDecision != types.DecisionAllow {
+				t.Fatalf("got %s rule=%q, want allow", dec.PolicyDecision, dec.Rule)
+			}
+		})
+
+		t.Run(script+"/execve-off", func(t *testing.T) {
+			dec := e.CheckCommandWithExecve("/bin/sh", []string{"-c", script}, false, ShellCOpaqueEnforce)
+			if dec.PolicyDecision != types.DecisionDeny || dec.Rule != "shellc-wrapper-bypass" {
+				t.Fatalf("got %s rule=%q, want deny shellc-wrapper-bypass", dec.PolicyDecision, dec.Rule)
+			}
+		})
+	}
+}
+
+func TestCheckExecve_DeniesWrapperBypassPayloadAtRuntime(t *testing.T) {
+	e := newInterceptionTestEngine(t)
+
+	dec := e.CheckExecve("/sbin/shutdown", []string{"fake", "now"}, 1)
+	if dec.PolicyDecision != types.DecisionDeny || dec.Rule != "deny-shutdown" {
+		t.Fatalf("got %s rule=%q, want runtime execve deny rule=deny-shutdown", dec.PolicyDecision, dec.Rule)
+	}
+}
