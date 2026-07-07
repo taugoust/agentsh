@@ -52,12 +52,16 @@ type Session struct {
 	Env         map[string]string
 	History     []string
 
-	// RuntimeHome/RuntimeTmp are session-local directories used as HOME/TMPDIR
-	// for AgentSH-spawned tool processes. They are intentionally distinct from
-	// the operator's real home so shells and tools do not accidentally read host
-	// dotfiles or credentials.
-	RuntimeHome string
-	RuntimeTmp  string
+	// RuntimeHome/RuntimeTmp are session-local directories used for AgentSH/Pi
+	// runtime state and TMPDIR. ProcessHome is the HOME exposed to spawned
+	// commands; it defaults to RuntimeHome but can be configured to the operator's
+	// real home for supervised sessions.
+	RuntimeHome     string
+	RuntimeTmp      string
+	ProcessHome     string
+	RuntimeHomeMode string
+	EnvBaseMode     string
+	EnvInherit      []string
 
 	// Lifecycle fields
 	stats   types.SessionStats
@@ -401,6 +405,10 @@ func (s *Session) Snapshot() types.Session {
 		GitRoot:          s.GitRoot,
 		RuntimeHome:      s.RuntimeHome,
 		RuntimeTmp:       s.RuntimeTmp,
+		ProcessHome:      s.ProcessHome,
+		RuntimeHomeMode:  s.RuntimeHomeMode,
+		EnvBaseMode:      s.EnvBaseMode,
+		EnvInherit:       append([]string{}, s.EnvInherit...),
 	}
 }
 
@@ -610,11 +618,30 @@ func (s *Session) SetWorkspaceUnmount(fn func() error) {
 }
 
 func (s *Session) SetRuntimePaths(home, tmp string, cleanup func() error) {
+	s.SetRuntimePathsWithProcessHome(home, tmp, home, "isolated", cleanup)
+}
+
+func (s *Session) SetRuntimePathsWithProcessHome(runtimeHome, tmp, processHome, homeMode string, cleanup func() error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.RuntimeHome = home
+	s.RuntimeHome = runtimeHome
 	s.RuntimeTmp = tmp
+	if processHome == "" {
+		processHome = runtimeHome
+	}
+	s.ProcessHome = processHome
+	if homeMode == "" {
+		homeMode = "isolated"
+	}
+	s.RuntimeHomeMode = homeMode
 	s.runtimeCleanup = cleanup
+}
+
+func (s *Session) SetEnvRuntimeConfig(baseMode string, inherit []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.EnvBaseMode = baseMode
+	s.EnvInherit = append([]string{}, inherit...)
 }
 
 func (s *Session) RuntimeHomePath() string {
@@ -627,6 +654,39 @@ func (s *Session) RuntimeTmpPath() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.RuntimeTmp
+}
+
+func (s *Session) ProcessHomePath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ProcessHome != "" {
+		return s.ProcessHome
+	}
+	return s.RuntimeHome
+}
+
+func (s *Session) RuntimeHomeModeValue() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.RuntimeHomeMode != "" {
+		return s.RuntimeHomeMode
+	}
+	return "isolated"
+}
+
+func (s *Session) EnvBaseModeValue() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.EnvBaseMode != "" {
+		return s.EnvBaseMode
+	}
+	return "minimal"
+}
+
+func (s *Session) EnvInheritPatterns() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string{}, s.EnvInherit...)
 }
 
 func (s *Session) CloseRuntime() error {

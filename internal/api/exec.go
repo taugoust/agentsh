@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -701,6 +702,32 @@ func resolveWorkingDir(s *session.Session, reqWorkingDir string) (string, error)
 	return resolved, nil
 }
 
+func envNameMatches(pattern, name string) bool {
+	if pattern == name {
+		return true
+	}
+	matched, err := filepath.Match(pattern, name)
+	return err == nil && matched
+}
+
+func shouldInheritEnv(name string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if envNameMatches(pattern, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func sortedEnvNames(values map[string]string) []string {
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.Session, overrides map[string]string) ([]string, error) {
 	minimal := map[string]string{}
 	hostMap := map[string]string{}
@@ -709,21 +736,40 @@ func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.S
 			hostMap[k] = v
 		}
 	}
-	copyKeys := []string{"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME"}
-	for _, k := range copyKeys {
-		if v, ok := hostMap[k]; ok && v != "" {
-			minimal[k] = v
+	if s != nil && s.EnvBaseModeValue() == "inherit_allowed" {
+		for k, v := range hostMap {
+			if v != "" {
+				minimal[k] = v
+			}
+		}
+	} else {
+		copyKeys := []string{"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME"}
+		for _, k := range copyKeys {
+			if v, ok := hostMap[k]; ok && v != "" {
+				minimal[k] = v
+			}
+		}
+	}
+	if s != nil {
+		for _, k := range sortedEnvNames(hostMap) {
+			if v := hostMap[k]; v != "" && shouldInheritEnv(k, s.EnvInheritPatterns()) {
+				minimal[k] = v
+			}
 		}
 	}
 	if _, ok := minimal["PATH"]; !ok {
 		minimal["PATH"] = "/usr/bin:/bin"
 	}
-	if home := s.RuntimeHomePath(); home != "" {
-		minimal["HOME"] = home
-		minimal["XDG_CONFIG_HOME"] = filepath.Join(home, ".config")
-		minimal["XDG_CACHE_HOME"] = filepath.Join(home, ".cache")
-		minimal["XDG_STATE_HOME"] = filepath.Join(home, ".local", "state")
-		minimal["XDG_DATA_HOME"] = filepath.Join(home, ".local", "share")
+	if s != nil {
+		if home := s.ProcessHomePath(); home != "" {
+			minimal["HOME"] = home
+			if s.RuntimeHomeModeValue() == "isolated" {
+				minimal["XDG_CONFIG_HOME"] = filepath.Join(home, ".config")
+				minimal["XDG_CACHE_HOME"] = filepath.Join(home, ".cache")
+				minimal["XDG_STATE_HOME"] = filepath.Join(home, ".local", "state")
+				minimal["XDG_DATA_HOME"] = filepath.Join(home, ".local", "share")
+			}
+		}
 	}
 	if tmp := s.RuntimeTmpPath(); tmp != "" {
 		minimal["TMPDIR"] = tmp

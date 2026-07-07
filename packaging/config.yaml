@@ -36,6 +36,12 @@ sessions:
   default_timeout: "1h"
   default_idle_timeout: "15m"
   cleanup_interval: "5m"
+  # Runtime/process environment defaults for spawned commands.
+  # runtime_home_mode: isolated (session-local HOME) | real (operator HOME)
+  runtime_home_mode: "isolated"
+  # env_base_mode: minimal (curated base env) | inherit_allowed (offer host env to env policy)
+  env_base_mode: "minimal"
+  env_inherit: []
 
 # Audit logging
 audit:

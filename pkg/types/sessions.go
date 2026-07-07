@@ -112,6 +112,10 @@ type Session struct {
 	GitRoot          string       `json:"git_root,omitempty"`
 	RuntimeHome      string       `json:"runtime_home,omitempty"`
 	RuntimeTmp       string       `json:"runtime_tmp,omitempty"`
+	ProcessHome      string       `json:"process_home,omitempty"`
+	RuntimeHomeMode  string       `json:"runtime_home_mode,omitempty"`
+	EnvBaseMode      string       `json:"env_base_mode,omitempty"`
+	EnvInherit       []string     `json:"env_inherit,omitempty"`
 }
 
 // MountInfo describes an active mount in a session.
@@ -173,6 +177,9 @@ type CreateSessionRequest struct {
 	Policy            string                `json:"policy,omitempty"`
 	Profile           string                `json:"profile,omitempty"`
 	Home              string                `json:"home,omitempty"`                // User's home directory for ${HOME} policy expansion
+	RuntimeHomeMode   string                `json:"runtime_home_mode,omitempty"`   // Process HOME mode: "isolated" (default) or "real"
+	EnvBaseMode       string                `json:"env_base_mode,omitempty"`       // Child env base: "minimal" (default) or "inherit_allowed"
+	EnvInherit        []string              `json:"env_inherit,omitempty"`         // Env names/patterns to offer in addition to minimal base
 	DetectProjectRoot *bool                 `json:"detect_project_root,omitempty"` // Override server default
 	ProjectRoot       string                `json:"project_root,omitempty"`        // Explicit override
 	RealPaths         *bool                 `json:"real_paths,omitempty"`          // Use actual host paths instead of /workspace

@@ -125,6 +125,9 @@ func newSessionStartCmd() *cobra.Command {
 	var policy string
 	var outputJSON bool
 	var workspaceMode string
+	var runtimeHomeMode string
+	var envBaseMode string
+	var envInherit []string
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start a session",
@@ -154,7 +157,7 @@ subagents, and credential broker features.`,
 			if len(workspaces) == 0 {
 				workspaces = []string{"."}
 			}
-			res, err := startDetachedSupervisorSession(cmd.Context(), workspaces, workspaceMode, policy)
+			res, err := startDetachedSupervisorSession(cmd.Context(), workspaces, workspaceMode, policy, runtimeHomeMode, envBaseMode, envInherit)
 			if err != nil {
 				return err
 			}
@@ -172,6 +175,9 @@ subagents, and credential broker features.`,
 	cmd.Flags().StringArrayVar(&workspaces, "workspace", nil, "Workspace directory (repeatable for shadow multi-root sessions)")
 	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", string(types.WorkspaceModeShadow), "Workspace mode: shadow or direct")
 	cmd.Flags().StringVar(&policy, "policy", "agent-default", "Policy name")
+	cmd.Flags().StringVar(&runtimeHomeMode, "runtime-home", "", "Process HOME mode: isolated or real")
+	cmd.Flags().StringVar(&envBaseMode, "env-base", "", "Child env base: minimal or inherit_allowed")
+	cmd.Flags().StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	return cmd
 }
@@ -184,7 +190,7 @@ func randomDetachedEventToken() string {
 	return hex.EncodeToString(b[:])
 }
 
-func startDetachedSupervisorSession(ctx context.Context, workspaces []string, workspaceMode, policyName string) (*detachedSessionStartResult, error) {
+func startDetachedSupervisorSession(ctx context.Context, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string) (*detachedSessionStartResult, error) {
 	if len(workspaces) == 0 {
 		workspaces = []string{"."}
 	}
@@ -260,11 +266,14 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	c := client.NewWithTimeout("unix://"+sockPath, "", 30*time.Minute)
 
 	req := types.CreateSessionRequest{
-		ID:            sessionID,
-		Workspace:     realWorkspace,
-		Policy:        policyName,
-		WorkspaceMode: workspaceMode,
-		Home:          userHomeDir(),
+		ID:              sessionID,
+		Workspace:       realWorkspace,
+		Policy:          policyName,
+		WorkspaceMode:   workspaceMode,
+		Home:            userHomeDir(),
+		RuntimeHomeMode: runtimeHomeMode,
+		EnvBaseMode:     envBaseMode,
+		EnvInherit:      envInherit,
 	}
 	if len(realWorkspaces) > 1 {
 		for _, path := range realWorkspaces {
@@ -307,6 +316,10 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 		WorkspaceRoots:  metaRoots,
 		RuntimeHome:     sess.RuntimeHome,
 		RuntimeTmp:      sess.RuntimeTmp,
+		ProcessHome:     sess.ProcessHome,
+		RuntimeHomeMode: sess.RuntimeHomeMode,
+		EnvBaseMode:     sess.EnvBaseMode,
+		EnvInherit:      sess.EnvInherit,
 		SupervisorSock:  sockPath,
 		EventToken:      eventToken,
 		OwnerPID:        pid,

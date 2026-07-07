@@ -115,7 +115,7 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 			seccompCfg.Workspace = workspace
 
 			seccompCfg.AllowExecute, seccompCfg.AllowRead, seccompCfg.AllowWrite = a.deriveLandlockAllowPaths(s)
-			appendShadowRuntimeLandlockPaths(&seccompCfg, s)
+			appendRuntimeLandlockPaths(&seccompCfg, s)
 			seccompCfg.AllowExecute = append(seccompCfg.AllowExecute, a.cfg.Landlock.AllowExecute...)
 			seccompCfg.AllowRead = append(seccompCfg.AllowRead, a.cfg.Landlock.AllowRead...)
 			seccompCfg.AllowWrite = append(seccompCfg.AllowWrite, a.cfg.Landlock.AllowWrite...)
@@ -133,25 +133,21 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 	return seccompCfg
 }
 
-func appendShadowRuntimeLandlockPaths(seccompCfg *seccompWrapperConfig, s *session.Session) {
+func appendRuntimeLandlockPaths(seccompCfg *seccompWrapperConfig, s *session.Session) {
 	if seccompCfg == nil || s == nil {
 		return
 	}
-	sw := s.ShadowWorkspace()
-	if sw == nil {
-		return
+	// Runtime state can live outside the accepted project workspace (shadow home,
+	// detached direct-mode runtime dirs, etc.). The policy engine can authorize
+	// these paths, but Landlock must receive concrete per-session paths up front;
+	// otherwise startup writes like $PI_CODING_AGENT_DIR/sessions fail with EACCES
+	// before user-space file policy can help.
+	if home := s.RuntimeHomePath(); home != "" {
+		seccompCfg.AllowRead = append(seccompCfg.AllowRead, home)
+		seccompCfg.AllowWrite = append(seccompCfg.AllowWrite, home)
 	}
-	// Shadow sessions keep agent runtime state outside the accepted project
-	// workspace. The policy engine can authorize these paths, but Landlock must
-	// receive concrete per-session paths up front; otherwise startup writes like
-	// $PI_CODING_AGENT_DIR/sessions fail with EACCES before user-space file
-	// policy can help.
-	if sw.Home != "" {
-		seccompCfg.AllowRead = append(seccompCfg.AllowRead, sw.Home)
-		seccompCfg.AllowWrite = append(seccompCfg.AllowWrite, sw.Home)
-	}
-	if sw.Tmp != "" {
-		seccompCfg.AllowRead = append(seccompCfg.AllowRead, sw.Tmp)
-		seccompCfg.AllowWrite = append(seccompCfg.AllowWrite, sw.Tmp)
+	if tmp := s.RuntimeTmpPath(); tmp != "" {
+		seccompCfg.AllowRead = append(seccompCfg.AllowRead, tmp)
+		seccompCfg.AllowWrite = append(seccompCfg.AllowWrite, tmp)
 	}
 }

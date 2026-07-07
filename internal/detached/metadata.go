@@ -32,6 +32,10 @@ type Metadata struct {
 	WorkspaceRoots  []WorkspaceRoot `json:"workspace_roots,omitempty"`
 	RuntimeHome     string          `json:"runtime_home,omitempty"`
 	RuntimeTmp      string          `json:"runtime_tmp,omitempty"`
+	ProcessHome     string          `json:"process_home,omitempty"`
+	RuntimeHomeMode string          `json:"runtime_home_mode,omitempty"`
+	EnvBaseMode     string          `json:"env_base_mode,omitempty"`
+	EnvInherit      []string        `json:"env_inherit,omitempty"`
 	SupervisorSock  string          `json:"supervisor_sock"`
 	EventToken      string          `json:"event_token,omitempty"`
 	OwnerPID        int             `json:"owner_pid"`

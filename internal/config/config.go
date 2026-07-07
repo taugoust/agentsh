@@ -315,6 +315,16 @@ type SessionsConfig struct {
 	// host and sandbox environments.
 	RealPaths bool `yaml:"real_paths"`
 
+	// RuntimeHomeMode controls the HOME exposed to spawned commands: "isolated"
+	// uses the session runtime home (default), "real" uses the request/user home.
+	RuntimeHomeMode string `yaml:"runtime_home_mode"`
+
+	// EnvBaseMode controls the base environment offered to env policy filtering:
+	// "minimal" (default) or "inherit_allowed".
+	EnvBaseMode string `yaml:"env_base_mode"`
+	// EnvInherit are env names/globs offered in addition to the minimal base.
+	EnvInherit []string `yaml:"env_inherit"`
+
 	// WorkspaceOverlay configures optional overlayfs-backed workspaces.
 	WorkspaceOverlay WorkspaceOverlayConfig `yaml:"workspace_overlay"`
 
@@ -2428,6 +2438,18 @@ func validateConfig(cfg *Config) error {
 		// ok; "" is normalized by applyDefaults.
 	default:
 		return fmt.Errorf("invalid sessions.workspace_shadow.destroy_action %q: must be one of reject or keep", cfg.Sessions.WorkspaceShadow.DestroyAction)
+	}
+	switch cfg.Sessions.RuntimeHomeMode {
+	case "", "isolated", "real":
+		// ok; "" is normalized at session creation.
+	default:
+		return fmt.Errorf("invalid sessions.runtime_home_mode %q: must be one of isolated or real", cfg.Sessions.RuntimeHomeMode)
+	}
+	switch cfg.Sessions.EnvBaseMode {
+	case "", "minimal", "inherit_allowed":
+		// ok; "" is normalized at session creation.
+	default:
+		return fmt.Errorf("invalid sessions.env_base_mode %q: must be one of minimal or inherit_allowed", cfg.Sessions.EnvBaseMode)
 	}
 	switch cfg.Sandbox.Network.InterceptMode {
 	case "", "all", "tcp_only", "monitor":

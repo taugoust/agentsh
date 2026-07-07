@@ -79,6 +79,15 @@ func (c *GRPCClient) CreateSessionWithRequest(ctx context.Context, req types.Cre
 	if req.Home != "" {
 		reqBody["home"] = req.Home
 	}
+	if req.RuntimeHomeMode != "" {
+		reqBody["runtime_home_mode"] = req.RuntimeHomeMode
+	}
+	if req.EnvBaseMode != "" {
+		reqBody["env_base_mode"] = req.EnvBaseMode
+	}
+	if len(req.EnvInherit) > 0 {
+		reqBody["env_inherit"] = req.EnvInherit
+	}
 	if req.RealPaths != nil {
 		reqBody["real_paths"] = *req.RealPaths
 	}

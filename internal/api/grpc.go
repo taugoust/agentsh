@@ -1067,6 +1067,9 @@ type CreateSessionRequestCompat struct {
 	Policy            string                `json:"policy"`
 	Profile           string                `json:"profile,omitempty"`
 	Home              string                `json:"home,omitempty"`
+	RuntimeHomeMode   string                `json:"runtime_home_mode,omitempty"`
+	EnvBaseMode       string                `json:"env_base_mode,omitempty"`
+	EnvInherit        []string              `json:"env_inherit,omitempty"`
 	DetectProjectRoot *bool                 `json:"detect_project_root,omitempty"`
 	ProjectRoot       string                `json:"project_root,omitempty"`
 	RealPaths         *bool                 `json:"real_paths,omitempty"`
@@ -1080,6 +1083,9 @@ func (c CreateSessionRequestCompat) ToTypes() types.CreateSessionRequest {
 		Policy:            c.Policy,
 		Profile:           c.Profile,
 		Home:              c.Home,
+		RuntimeHomeMode:   c.RuntimeHomeMode,
+		EnvBaseMode:       c.EnvBaseMode,
+		EnvInherit:        c.EnvInherit,
 		DetectProjectRoot: c.DetectProjectRoot,
 		ProjectRoot:       c.ProjectRoot,
 		RealPaths:         c.RealPaths,

@@ -77,6 +77,70 @@ func TestBuildPolicyEnv_UsesSessionRuntimeHome(t *testing.T) {
 	}
 }
 
+func TestBuildPolicyEnv_RuntimeHomeModeRealAndEnvInherit(t *testing.T) {
+	sessions := session.NewManager(10)
+	ws := filepath.Join(t.TempDir(), "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeHome := filepath.Join(t.TempDir(), "agent-home")
+	tmp := filepath.Join(t.TempDir(), "agent-tmp")
+	realHome := filepath.Join(t.TempDir(), "real-home")
+	sess.SetRuntimePathsWithProcessHome(runtimeHome, tmp, realHome, "real", nil)
+	sess.SetEnvRuntimeConfig("minimal", []string{"SSH_AUTH_SOCK"})
+
+	gotMap := envSliceToMapMust(buildPolicyEnv(policy.ResolvedEnvPolicy{Allow: []string{"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "SSH_AUTH_SOCK", "XDG_CONFIG_HOME"}}, []string{
+		"HOME=/Users/theo",
+		"PATH=/usr/bin",
+		"SSH_AUTH_SOCK=/tmp/agent.sock",
+		"XDG_CONFIG_HOME=/Users/theo/.config",
+	}, sess, nil))
+
+	if gotMap["HOME"] != realHome {
+		t.Fatalf("HOME = %q, want real home %q", gotMap["HOME"], realHome)
+	}
+	if gotMap["SSH_AUTH_SOCK"] != "/tmp/agent.sock" {
+		t.Fatalf("SSH_AUTH_SOCK = %q", gotMap["SSH_AUTH_SOCK"])
+	}
+	if gotMap["XDG_CONFIG_HOME"] != "" {
+		t.Fatalf("XDG_CONFIG_HOME should not be synthesized in runtime_home_mode=real, got %q", gotMap["XDG_CONFIG_HOME"])
+	}
+	if gotMap["TMPDIR"] != tmp {
+		t.Fatalf("TMPDIR = %q, want %q", gotMap["TMPDIR"], tmp)
+	}
+}
+
+func TestBuildPolicyEnv_InheritAllowedStillUsesPolicyFilter(t *testing.T) {
+	sessions := session.NewManager(10)
+	ws := filepath.Join(t.TempDir(), "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.SetEnvRuntimeConfig("inherit_allowed", nil)
+
+	gotMap := envSliceToMapMust(buildPolicyEnv(policy.ResolvedEnvPolicy{Allow: []string{"PATH", "HOME", "CUSTOM_ALLOWED"}}, []string{
+		"PATH=/usr/bin",
+		"HOME=/host-home",
+		"CUSTOM_ALLOWED=yes",
+		"CUSTOM_DENIED=no",
+	}, sess, nil))
+
+	if gotMap["CUSTOM_ALLOWED"] != "yes" {
+		t.Fatalf("CUSTOM_ALLOWED = %q", gotMap["CUSTOM_ALLOWED"])
+	}
+	if _, ok := gotMap["CUSTOM_DENIED"]; ok {
+		t.Fatalf("CUSTOM_DENIED should be filtered by env policy")
+	}
+}
+
 func TestBuildPolicyEnv_PreservesUserIdentity(t *testing.T) {
 	sessions := session.NewManager(10)
 	ws := filepath.Join(t.TempDir(), "ws")

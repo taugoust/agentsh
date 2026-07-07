@@ -414,14 +414,15 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		"PI_CODING_AGENT_DIR":            childAgentDir,
 		"PI_CODING_AGENT_SESSION_DIR":    childSessionDir,
 	})
-	if s.RuntimeHome != "" {
-		env = withEnvOverrides(env, map[string]string{
-			"HOME":            s.RuntimeHome,
-			"XDG_CACHE_HOME":  filepath.Join(s.RuntimeHome, ".cache"),
-			"XDG_DATA_HOME":   filepath.Join(s.RuntimeHome, ".local", "share"),
-			"XDG_STATE_HOME":  filepath.Join(s.RuntimeHome, ".local", "state"),
-			"XDG_CONFIG_HOME": filepath.Join(s.RuntimeHome, ".config"),
-		})
+	if home := s.ProcessHomePath(); home != "" {
+		overrides := map[string]string{"HOME": home}
+		if s.RuntimeHomeModeValue() == "isolated" {
+			overrides["XDG_CACHE_HOME"] = filepath.Join(home, ".cache")
+			overrides["XDG_DATA_HOME"] = filepath.Join(home, ".local", "share")
+			overrides["XDG_STATE_HOME"] = filepath.Join(home, ".local", "state")
+			overrides["XDG_CONFIG_HOME"] = filepath.Join(home, ".config")
+		}
+		env = withEnvOverrides(env, overrides)
 	}
 	if s.RuntimeTmp != "" {
 		env = withEnvOverrides(env, map[string]string{"TMPDIR": s.RuntimeTmp, "TEMP": s.RuntimeTmp, "TMP": s.RuntimeTmp})

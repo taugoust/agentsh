@@ -460,7 +460,7 @@ func TestAppendShadowRuntimeLandlockPaths(t *testing.T) {
 		AllowRead:  []string{"/existing/read"},
 		AllowWrite: []string{"/existing/write"},
 	}
-	appendShadowRuntimeLandlockPaths(&cfg, s)
+	appendRuntimeLandlockPaths(&cfg, s)
 
 	for _, want := range []string{"/var/lib/agentsh/workspaces/session-test/home", "/var/lib/agentsh/workspaces/session-test/tmp"} {
 		if !containsPath(cfg.AllowRead, want) {

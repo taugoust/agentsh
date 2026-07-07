@@ -39,6 +39,9 @@ func newSessionCreateCmd() *cobra.Command {
 	var outputJSON bool
 	var realPaths bool
 	var workspaceMode string
+	var runtimeHomeMode string
+	var envBaseMode string
+	var envInherit []string
 	var overlayMode bool
 	var shadowMode bool
 	var shadowKeepOnDestroy bool
@@ -68,6 +71,15 @@ func newSessionCreateCmd() *cobra.Command {
 				}
 				req.Shadow = &types.CreateShadowOptions{KeepOnDestroy: true}
 			}
+			if runtimeHomeMode != "" {
+				req.RuntimeHomeMode = runtimeHomeMode
+			}
+			if envBaseMode != "" {
+				req.EnvBaseMode = envBaseMode
+			}
+			if len(envInherit) > 0 {
+				req.EnvInherit = envInherit
+			}
 			if cmd.Flags().Changed("real-paths") {
 				req.RealPaths = &realPaths
 			}
@@ -89,6 +101,9 @@ func newSessionCreateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	cmd.Flags().BoolVar(&realPaths, "real-paths", false, "Use real host paths instead of /workspace")
 	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct, overlay, or shadow")
+	cmd.Flags().StringVar(&runtimeHomeMode, "runtime-home", "", "Process HOME mode: isolated or real")
+	cmd.Flags().StringVar(&envBaseMode, "env-base", "", "Child env base: minimal or inherit_allowed")
+	cmd.Flags().StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
 	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
 	cmd.Flags().BoolVar(&shadowMode, "shadow", false, "Use shadow workspace mode")
 	cmd.Flags().BoolVar(&shadowKeepOnDestroy, "shadow-keep-on-destroy", false, "Keep shadow workspace on session destroy/expiry for later accept/reject")

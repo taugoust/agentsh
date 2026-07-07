@@ -549,7 +549,18 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 	// Apply real-paths mode if requested
 	a.applyRealPaths(s, req.RealPaths)
 
-	if err := a.setupRuntimeEnvironment(ctx, s); err != nil {
+	runtimeHomeMode, err := sessionRuntimeHomeMode(req, a.cfg)
+	if err != nil {
+		a.cleanupCreatedSession(s)
+		return types.Session{}, http.StatusBadRequest, err
+	}
+	envBaseMode, err := sessionEnvBaseMode(req, a.cfg)
+	if err != nil {
+		a.cleanupCreatedSession(s)
+		return types.Session{}, http.StatusBadRequest, err
+	}
+	s.SetEnvRuntimeConfig(envBaseMode, sessionEnvInherit(req, a.cfg))
+	if err := a.setupRuntimeEnvironment(ctx, s, req.Home, runtimeHomeMode); err != nil {
 		a.cleanupCreatedSession(s)
 		return types.Session{}, http.StatusInternalServerError, err
 	}
@@ -612,11 +623,15 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 		Type:      "session_created",
 		SessionID: s.ID,
 		Fields: map[string]any{
-			"profile":      req.Profile,
-			"base_policy":  basePolicy,
-			"mounts":       len(profile.Mounts),
-			"runtime_home": s.RuntimeHomePath(),
-			"runtime_tmp":  s.RuntimeTmpPath(),
+			"profile":           req.Profile,
+			"base_policy":       basePolicy,
+			"mounts":            len(profile.Mounts),
+			"runtime_home":      s.RuntimeHomePath(),
+			"runtime_tmp":       s.RuntimeTmpPath(),
+			"process_home":      s.ProcessHomePath(),
+			"runtime_home_mode": s.RuntimeHomeModeValue(),
+			"env_base_mode":     s.EnvBaseModeValue(),
+			"env_inherit":       s.EnvInheritPatterns(),
 		},
 	}
 	_ = a.store.AppendEvent(ctx, ev)
@@ -769,9 +784,78 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 	return nil
 }
 
-func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session) error {
+func normalizeRuntimeHomeMode(mode string) (string, error) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		return "isolated", nil
+	}
+	switch mode {
+	case "isolated", "real":
+		return mode, nil
+	default:
+		return "", fmt.Errorf("unsupported runtime_home_mode %q", mode)
+	}
+}
+
+func normalizeEnvBaseMode(mode string) (string, error) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		return "minimal", nil
+	}
+	switch mode {
+	case "minimal", "inherit_allowed":
+		return mode, nil
+	default:
+		return "", fmt.Errorf("unsupported env_base_mode %q", mode)
+	}
+}
+
+func realProcessHome(requestedHome string) (string, error) {
+	if home := strings.TrimSpace(requestedHome); home != "" {
+		return home, nil
+	}
+	if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
+		return home, nil
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return strings.TrimSpace(home), nil
+	}
+	return "", fmt.Errorf("runtime_home_mode=real requires a home directory")
+}
+
+func sessionRuntimeHomeMode(req types.CreateSessionRequest, cfg *config.Config) (string, error) {
+	mode := req.RuntimeHomeMode
+	if strings.TrimSpace(mode) == "" && cfg != nil {
+		mode = cfg.Sessions.RuntimeHomeMode
+	}
+	return normalizeRuntimeHomeMode(mode)
+}
+
+func sessionEnvBaseMode(req types.CreateSessionRequest, cfg *config.Config) (string, error) {
+	mode := req.EnvBaseMode
+	if strings.TrimSpace(mode) == "" && cfg != nil {
+		mode = cfg.Sessions.EnvBaseMode
+	}
+	return normalizeEnvBaseMode(mode)
+}
+
+func sessionEnvInherit(req types.CreateSessionRequest, cfg *config.Config) []string {
+	if len(req.EnvInherit) > 0 {
+		return append([]string{}, req.EnvInherit...)
+	}
+	if cfg != nil && len(cfg.Sessions.EnvInherit) > 0 {
+		return append([]string{}, cfg.Sessions.EnvInherit...)
+	}
+	return nil
+}
+
+func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session, requestedHome, runtimeHomeMode string) error {
 	if s == nil {
 		return nil
+	}
+	mode, err := normalizeRuntimeHomeMode(runtimeHomeMode)
+	if err != nil {
+		return err
 	}
 	if s.Shadow != nil && s.Shadow.Home != "" && s.Shadow.Tmp != "" {
 		runtimeDirs := []string{s.Shadow.Home, s.Shadow.Tmp, filepath.Join(s.Shadow.Home, ".config"), filepath.Join(s.Shadow.Home, ".cache"), filepath.Join(s.Shadow.Home, ".local"), filepath.Join(s.Shadow.Home, ".local", "state"), filepath.Join(s.Shadow.Home, ".local", "share")}
@@ -788,7 +872,14 @@ func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session) e
 				}
 			}
 		}
-		s.SetRuntimePaths(s.Shadow.Home, s.Shadow.Tmp, nil)
+		processHome := s.Shadow.Home
+		if mode == "real" {
+			processHome, err = realProcessHome(requestedHome)
+			if err != nil {
+				return err
+			}
+		}
+		s.SetRuntimePathsWithProcessHome(s.Shadow.Home, s.Shadow.Tmp, processHome, mode, nil)
 		return nil
 	}
 
@@ -802,6 +893,13 @@ func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session) e
 	runtimeDir := filepath.Join(base, s.ID)
 	home := filepath.Join(runtimeDir, "home")
 	tmp := filepath.Join(runtimeDir, "tmp")
+	processHome := home
+	if mode == "real" {
+		processHome, err = realProcessHome(requestedHome)
+		if err != nil {
+			return err
+		}
+	}
 	runtimeDirs := []string{runtimeDir, home, tmp, filepath.Join(home, ".config"), filepath.Join(home, ".cache"), filepath.Join(home, ".local"), filepath.Join(home, ".local", "state"), filepath.Join(home, ".local", "share")}
 	for _, dir := range runtimeDirs {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -816,7 +914,7 @@ func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session) e
 			}
 		}
 	}
-	s.SetRuntimePaths(home, tmp, func() error { return cleanup.RemoveAllWritable(runtimeDir) })
+	s.SetRuntimePathsWithProcessHome(home, tmp, processHome, mode, func() error { return cleanup.RemoveAllWritable(runtimeDir) })
 
 	ev := types.Event{
 		ID:        uuid.NewString(),
@@ -824,8 +922,10 @@ func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session) e
 		Type:      "runtime_created",
 		SessionID: s.ID,
 		Fields: map[string]any{
-			"home": home,
-			"tmp":  tmp,
+			"home":              home,
+			"tmp":               tmp,
+			"process_home":      processHome,
+			"runtime_home_mode": mode,
 		},
 	}
 	_ = a.store.AppendEvent(ctx, ev)
@@ -1214,7 +1314,18 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		a.cleanupCreatedSession(s)
 		return types.Session{}, http.StatusBadRequest, err
 	}
-	if err := a.setupRuntimeEnvironment(ctx, s); err != nil {
+	runtimeHomeMode, err := sessionRuntimeHomeMode(req, a.cfg)
+	if err != nil {
+		a.cleanupCreatedSession(s)
+		return types.Session{}, http.StatusBadRequest, err
+	}
+	envBaseMode, err := sessionEnvBaseMode(req, a.cfg)
+	if err != nil {
+		a.cleanupCreatedSession(s)
+		return types.Session{}, http.StatusBadRequest, err
+	}
+	s.SetEnvRuntimeConfig(envBaseMode, sessionEnvInherit(req, a.cfg))
+	if err := a.setupRuntimeEnvironment(ctx, s, req.Home, runtimeHomeMode); err != nil {
 		a.cleanupCreatedSession(s)
 		return types.Session{}, http.StatusInternalServerError, err
 	}
@@ -1269,6 +1380,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 			"git_root":                     s.GitRoot,
 			"runtime_home":                 s.RuntimeHomePath(),
 			"runtime_tmp":                  s.RuntimeTmpPath(),
+			"process_home":                 s.ProcessHomePath(),
+			"runtime_home_mode":            s.RuntimeHomeModeValue(),
+			"env_base_mode":                s.EnvBaseModeValue(),
+			"env_inherit":                  s.EnvInheritPatterns(),
 			"project_policy_overlay_root":  projectOverlayProjectRoot,
 			"project_policy_overlay_paths": overlayRelPaths(approvedProjectOverlayFiles),
 			"project_policy_overlay_names": overlayNames(approvedProjectOverlayFiles),
