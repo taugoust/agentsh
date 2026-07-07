@@ -456,8 +456,24 @@ func expandPolicy(p *Policy, vars map[string]string) (*Policy, error) {
 		expanded.CommandRules[i] = expandedRule
 	}
 
+	// Expand Unix socket rules. This lets policies allow session-specific socket
+	// paths such as ${SSH_AUTH_SOCK} after env inheritance has made the socket
+	// path available to the policy compiler.
+	expanded.UnixRules = make([]UnixSocketRule, len(p.UnixRules))
+	for i, rule := range p.UnixRules {
+		expandedRule := rule
+		expandedRule.Paths = make([]string, len(rule.Paths))
+		for j, path := range rule.Paths {
+			expandedPath, err := ExpandVariables(path, vars)
+			if err != nil {
+				return nil, fmt.Errorf("unix socket rule %q path %q: %w", rule.Name, path, err)
+			}
+			expandedRule.Paths[j] = expandedPath
+		}
+		expanded.UnixRules[i] = expandedRule
+	}
+
 	expanded.RegistryRules = append([]RegistryRule(nil), p.RegistryRules...)
-	expanded.UnixRules = append([]UnixSocketRule(nil), p.UnixRules...)
 
 	return &expanded, nil
 }

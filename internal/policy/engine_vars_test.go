@@ -210,6 +210,36 @@ func TestNewEngineWithVariables_CommandRulesCommandExpansion(t *testing.T) {
 	assert.Equal(t, "allow-nested-nix-store-executables", decision.Rule)
 }
 
+func TestNewEngineWithVariables_UnixSocketRulePathExpansion(t *testing.T) {
+	p := &Policy{
+		Version: 1,
+		Name:    "test",
+		UnixRules: []UnixSocketRule{
+			{
+				Name:       "allow-ssh-agent",
+				Paths:      []string{"${SSH_AUTH_SOCK}"},
+				Operations: []string{"connect"},
+				Decision:   "allow",
+			},
+		},
+	}
+
+	vars := map[string]string{
+		"SSH_AUTH_SOCK": "/Users/taugoust/.ssh/agent/s.example",
+	}
+
+	engine, err := NewEngineWithVariables(p, false, true, vars)
+	require.NoError(t, err)
+
+	decision := engine.CheckUnixSocket("/Users/taugoust/.ssh/agent/s.example", "connect")
+	assert.Equal(t, "allow", string(decision.PolicyDecision))
+	assert.Equal(t, "allow-ssh-agent", decision.Rule)
+
+	decision = engine.CheckUnixSocket("/Users/taugoust/.ssh/agent/other", "connect")
+	assert.Equal(t, "deny", string(decision.PolicyDecision))
+	assert.Equal(t, "default-deny-unix", decision.Rule)
+}
+
 func TestNewEngineWithVariables_NetworkRulesDomainExpansion(t *testing.T) {
 	p := &Policy{
 		Version: 1,
