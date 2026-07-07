@@ -292,32 +292,7 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 
 	pre := s.app.policyEngineFor(sess).CheckCommandWithExecve(execReq.Command, execReq.Args, s.app.execveEnforcementActive(), s.app.shellCOpaqueMode())
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&execReq.Command, &execReq.Args, pre)
-	approvalErr := error(nil)
-	if pre.PolicyDecision == types.DecisionApprove && pre.EffectiveDecision == types.DecisionApprove && s.app.approvals != nil {
-		apr := approvals.Request{
-			ID:        "approval-" + uuid.NewString(),
-			SessionID: req.SessionID,
-			CommandID: cmdID,
-			Kind:      "command",
-			Target:    execReq.Command,
-			Rule:      pre.Rule,
-			Message:   pre.Message,
-			Fields: map[string]any{
-				"command": execReq.Command,
-				"args":    execReq.Args,
-			},
-		}
-		res, err := s.app.approvals.RequestApproval(stream.Context(), apr)
-		approvalErr = err
-		if pre.Approval != nil {
-			pre.Approval.ID = apr.ID
-		}
-		if err != nil || !res.Approved {
-			pre.EffectiveDecision = types.DecisionDeny
-		} else {
-			pre.EffectiveDecision = types.DecisionAllow
-		}
-	}
+	approvalErr := s.app.applyCommandApproval(stream.Context(), req.SessionID, cmdID, originalCmd, originalArgs, execReq.Actor, &pre)
 	preEv := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: start,

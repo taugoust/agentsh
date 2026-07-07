@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agentsh/agentsh/internal/approvals"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
@@ -59,32 +58,7 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 
 	pre := a.policyEngineFor(s).CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
-	approvalErr := error(nil)
-	if pre.PolicyDecision == types.DecisionApprove && pre.EffectiveDecision == types.DecisionApprove && a.approvals != nil {
-		apr := approvals.Request{
-			ID:        "approval-" + uuid.NewString(),
-			SessionID: id,
-			CommandID: cmdID,
-			Kind:      "command",
-			Target:    req.Command,
-			Rule:      pre.Rule,
-			Message:   pre.Message,
-			Fields: map[string]any{
-				"command": req.Command,
-				"args":    req.Args,
-			},
-		}
-		res, err := a.approvals.RequestApproval(r.Context(), apr)
-		approvalErr = err
-		if pre.Approval != nil {
-			pre.Approval.ID = apr.ID
-		}
-		if err != nil || !res.Approved {
-			pre.EffectiveDecision = types.DecisionDeny
-		} else {
-			pre.EffectiveDecision = types.DecisionAllow
-		}
-	}
+	approvalErr := a.applyCommandApproval(r.Context(), id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
 	preEv := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: start,

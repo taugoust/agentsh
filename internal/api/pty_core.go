@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/agentsh/agentsh/internal/policy"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/agentsh/agentsh/internal/approvals"
+	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/pty"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
@@ -59,32 +58,7 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 
 	pre := a.policyEngineFor(sess).CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
-	approvalErr := error(nil)
-	if pre.PolicyDecision == types.DecisionApprove && pre.EffectiveDecision == types.DecisionApprove && a.approvals != nil {
-		apr := approvals.Request{
-			ID:        "approval-" + uuid.NewString(),
-			SessionID: sessionID,
-			CommandID: cmdID,
-			Kind:      "command",
-			Target:    req.Command,
-			Rule:      pre.Rule,
-			Message:   pre.Message,
-			Fields: map[string]any{
-				"command": req.Command,
-				"args":    req.Args,
-			},
-		}
-		res, err := a.approvals.RequestApproval(ctx, apr)
-		approvalErr = err
-		if pre.Approval != nil {
-			pre.Approval.ID = apr.ID
-		}
-		if err != nil || !res.Approved {
-			pre.EffectiveDecision = types.DecisionDeny
-		} else {
-			pre.EffectiveDecision = types.DecisionAllow
-		}
-	}
+	approvalErr := a.applyCommandApproval(ctx, sessionID, cmdID, originalCmd, originalArgs, nil, &pre)
 
 	preEv := types.Event{
 		ID:        uuid.NewString(),

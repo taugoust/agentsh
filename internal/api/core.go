@@ -1498,37 +1498,8 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 
 	pre := a.policyEngineFor(s).CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
-	approvalErr := error(nil)
+	approvalErr := a.applyCommandApproval(ctx, id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
 	pkgApprovalDenied := false
-	if pre.PolicyDecision == types.DecisionApprove && pre.EffectiveDecision == types.DecisionApprove && a.approvals != nil {
-		fields := map[string]any{
-			"command": req.Command,
-			"args":    req.Args,
-		}
-		if req.Actor != nil {
-			fields["actor"] = req.Actor
-		}
-		apr := approvals.Request{
-			ID:        "approval-" + uuid.NewString(),
-			SessionID: id,
-			CommandID: cmdID,
-			Kind:      "command",
-			Target:    req.Command,
-			Rule:      pre.Rule,
-			Message:   pre.Message,
-			Fields:    fields,
-		}
-		res, err := a.approvals.RequestApproval(ctx, apr)
-		approvalErr = err
-		if pre.Approval != nil {
-			pre.Approval.ID = apr.ID
-		}
-		if err != nil || !res.Approved {
-			pre.EffectiveDecision = types.DecisionDeny
-		} else {
-			pre.EffectiveDecision = types.DecisionAllow
-		}
-	}
 
 	// Package install check (after command policy check and approval, before event emission).
 	if a.pkgChecker != nil && pre.EffectiveDecision != types.DecisionDeny {

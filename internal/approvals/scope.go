@@ -1,6 +1,8 @@
 package approvals
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"path"
@@ -79,6 +81,42 @@ func NewNetworkScopeFromTarget(target string, defaultPort int) (Scope, bool) {
 		return NewNetworkScope(target, defaultPort)
 	}
 	return Scope{}, false
+}
+
+// NewCommandScope builds a canonical command approval scope for an exact
+// command invocation. The key is a stable hash of command + argv so session
+// approvals do not accidentally widen to different arguments.
+func NewCommandScope(command string, args []string, rule string) (Scope, bool) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return Scope{}, false
+	}
+	argv := append([]string{command}, args...)
+	keyMaterial := strings.Join(argv, "\x00")
+	sum := sha256.Sum256([]byte(keyMaterial))
+	return Scope{
+		Kind:      "command",
+		Key:       "command:" + hex.EncodeToString(sum[:]),
+		Label:     formatCommandScopeLabel(argv),
+		Operation: "exec",
+		Rule:      strings.TrimSpace(rule),
+	}, true
+}
+
+func formatCommandScopeLabel(argv []string) string {
+	parts := make([]string, 0, len(argv))
+	for _, part := range argv {
+		if part == "" || strings.ContainsAny(part, " \t\r\n\"'\\$`") {
+			parts = append(parts, strconv.Quote(part))
+		} else {
+			parts = append(parts, part)
+		}
+	}
+	label := strings.Join(parts, " ")
+	if len(label) > 240 {
+		label = label[:237] + "..."
+	}
+	return label
 }
 
 func scopeFromFields(fields map[string]any) (Scope, bool) {
