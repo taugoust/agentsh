@@ -406,6 +406,18 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 		}
 	}
 
+	if execPathMissing(filename, execveArgs) {
+		// execvp-style PATH searches try each candidate with execve(2). Missing
+		// candidates must be allowed to reach the kernel so it can return ENOENT
+		// and let libc continue searching; turning them into policy EACCES makes
+		// harmless commands fail with "Permission denied" and can prompt for bogus
+		// paths like /nix/store/...-util-linux/bin/gofmt.
+		if err := NotifRespondContinue(int(fd), req.ID); err != nil {
+			slog.Debug("execve handler: continue missing candidate failed", "pid", pid, "path", filename, "error", err)
+		}
+		return
+	}
+
 	// Canonicalize filename: resolve symlinks, /proc/self/root, etc.
 	// This defeats path manipulation attacks (e.g., /proc/self/root/usr/bin/npx).
 	// rawFilename is the absolute pre-canonical path; the policy engine treats it
@@ -927,6 +939,17 @@ func getParentPID(pid int) int {
 	// fields[0] is state, fields[1] is ppid
 	ppid, _ := strconv.Atoi(fields[1])
 	return ppid
+}
+
+func execPathMissing(filename string, args ExecveArgs) bool {
+	const AT_EMPTY_PATH = 0x1000
+	if args.IsExecveat && args.Flags&AT_EMPTY_PATH != 0 {
+		// execveat(AT_EMPTY_PATH) executes the fd itself; its readlink path may be
+		// deleted or synthetic, so path stat is not authoritative.
+		return false
+	}
+	_, err := os.Stat(filename)
+	return os.IsNotExist(err)
 }
 
 func resolveExecveRelativePath(pid int, filename string) (string, error) {

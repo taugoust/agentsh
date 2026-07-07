@@ -17,6 +17,23 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func TestExecPathMissing(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "tool")
+	if err := os.WriteFile(file, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if execPathMissing(file, ExecveArgs{}) {
+		t.Fatalf("existing file reported missing")
+	}
+	if !execPathMissing(filepath.Join(dir, "missing"), ExecveArgs{}) {
+		t.Fatalf("missing file not reported missing")
+	}
+	if execPathMissing(filepath.Join(dir, "missing"), ExecveArgs{IsExecveat: true, Flags: 0x1000}) {
+		t.Fatalf("execveat AT_EMPTY_PATH should not use path existence")
+	}
+}
+
 func TestResolveExecveRelativePath(t *testing.T) {
 	oldwd, err := os.Getwd()
 	require.NoError(t, err)
