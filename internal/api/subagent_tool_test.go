@@ -76,3 +76,43 @@ func TestSubagentDepthFromActor(t *testing.T) {
 		t.Fatalf("depth = %d, want 3", got)
 	}
 }
+
+func TestAppendSubagentTaskArgsPiJSON(t *testing.T) {
+	got := appendSubagentTaskArgs([]string{"--mode", "json", "-p"}, subagentItemRequest{
+		Task:  "inspect README",
+		Model: "test-model",
+		Tools: []string{"read", "grep"},
+	}, "pi-json", "/tmp/prompt.md")
+	want := []string{"--mode", "json", "-p", "--model", "test-model", "--tools", "read,grep", "--append-system-prompt", "/tmp/prompt.md", "inspect README"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %#v, want %#v", got, want)
+	}
+}
+
+func TestAppendSubagentTaskArgsTextRuntimeStaysGeneric(t *testing.T) {
+	got := appendSubagentTaskArgs([]string{"--flag"}, subagentItemRequest{
+		Task:  "inspect README",
+		Model: "test-model",
+		Tools: []string{"read"},
+	}, "text", "/tmp/prompt.md")
+	want := []string{"--flag", "inspect README"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %#v, want %#v", got, want)
+	}
+}
+
+func TestWithEnvOverridesReplacesExisting(t *testing.T) {
+	got := withEnvOverrides([]string{"A=old", "B=keep", "AGENTSH_TOKEN=secret"}, map[string]string{"A": "new", "C": "add"})
+	m := map[string]string{}
+	for _, item := range got {
+		for i, ch := range item {
+			if ch == '=' {
+				m[item[:i]] = item[i+1:]
+				break
+			}
+		}
+	}
+	if m["A"] != "new" || m["B"] != "keep" || m["C"] != "add" {
+		t.Fatalf("env overrides not applied: %#v", got)
+	}
+}

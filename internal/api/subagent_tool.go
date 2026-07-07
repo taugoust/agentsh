@@ -37,6 +37,7 @@ type spawnSubagentToolRequest struct {
 	Tasks        []subagentItemRequest `json:"tasks,omitempty"`
 	Chain        []subagentItemRequest `json:"chain,omitempty"`
 	TimeoutMS    int64                 `json:"timeout_ms,omitempty"`
+	Stream       bool                  `json:"stream,omitempty"`
 	Actor        piToolActor           `json:"actor,omitempty"`
 }
 
@@ -120,24 +121,41 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	a.emitToolEvent(r.Context(), sessionID, "tool_spawn_subagent_start", "spawn_subagent", "", req.Actor, map[string]any{
-		"mode": mode,
-		"tasks": len(specs),
+		"mode":    mode,
+		"tasks":   len(specs),
 		"runtime": runtime.Name,
 	})
 	started := time.Now()
-	result, code, err := a.runSubagentMode(ctx, s, runtime, mode, specs, req.Actor)
+	var stream *subagentStreamer
+	if req.Stream {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeToolError(w, http.StatusInternalServerError, "streaming unsupported by response writer")
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+		stream = &subagentStreamer{w: w, flusher: flusher}
+		stream.Emit("subagent_start", map[string]any{"mode": mode, "tasks": len(specs), "runtime": runtime.Name})
+	}
+	result, code, err := a.runSubagentMode(ctx, s, runtime, mode, specs, req.Actor, stream)
 	result.Summary = result.Final
 	status := code
 	if status == 0 {
 		status = http.StatusOK
 	}
 	a.emitToolEvent(r.Context(), sessionID, "tool_spawn_subagent_end", "spawn_subagent", "", req.Actor, map[string]any{
-		"mode": mode,
-		"tasks": len(specs),
-		"runtime": runtime.Name,
+		"mode":        mode,
+		"tasks":       len(specs),
+		"runtime":     runtime.Name,
 		"duration_ms": time.Since(started).Milliseconds(),
-		"error": errString(err),
+		"error":       errString(err),
 	})
+	if stream != nil {
+		stream.Emit("done", map[string]any{"ok": err == nil, "result": result, "error": errString(err)})
+		return
+	}
 	if err != nil && len(result.Results) == 0 {
 		writeToolError(w, status, err.Error())
 		return
@@ -268,10 +286,13 @@ func validateSubagentItem(item subagentItemRequest) error {
 	return nil
 }
 
-func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor) (spawnSubagentResult, int, error) {
+func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor, stream *subagentStreamer) (spawnSubagentResult, int, error) {
 	switch mode {
 	case "single":
-		res := a.runSingleSubagent(ctx, s, runtime, specs[0], "subagent", 0, actor)
+		res := a.runSingleSubagent(ctx, s, runtime, specs[0], "subagent", 0, actor, stream)
+		if stream != nil {
+			stream.Emit("subagent_result", map[string]any{"label": res.Label, "result": res})
+		}
 		out := spawnSubagentResult{Mode: mode, Final: res.Final, Results: []subagentResult{res}}
 		if res.ExitCode != 0 || res.StopReason == "error" || res.StopReason == "timeout" {
 			return out, http.StatusOK, errors.New(resultErrorSummary(res))
@@ -282,7 +303,10 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		previous := ""
 		for i, spec := range specs {
 			spec.Task = strings.ReplaceAll(spec.Task, "{previous}", previous)
-			res := a.runSingleSubagent(ctx, s, runtime, spec, fmt.Sprintf("step %d", i+1), i+1, actor)
+			res := a.runSingleSubagent(ctx, s, runtime, spec, fmt.Sprintf("step %d", i+1), i+1, actor, stream)
+			if stream != nil {
+				stream.Emit("subagent_result", map[string]any{"label": res.Label, "step": i + 1, "result": res})
+			}
 			results = append(results, res)
 			if res.ExitCode != 0 || res.StopReason == "error" || res.StopReason == "timeout" {
 				return spawnSubagentResult{Mode: mode, Final: resultErrorSummary(res), Results: results}, http.StatusOK, errors.New(resultErrorSummary(res))
@@ -305,7 +329,10 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 				defer wg.Done()
 				sem <- struct{}{}
 				defer func() { <-sem }()
-				results[i] = a.runSingleSubagent(ctx, s, runtime, spec, fmt.Sprintf("task %d", i+1), 0, actor)
+				results[i] = a.runSingleSubagent(ctx, s, runtime, spec, fmt.Sprintf("task %d", i+1), 0, actor, stream)
+				if stream != nil {
+					stream.Emit("subagent_result", map[string]any{"label": results[i].Label, "index": i, "result": results[i]})
+				}
 			}()
 		}
 		wg.Wait()
@@ -332,7 +359,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 	}
 }
 
-func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, spec subagentItemRequest, label string, step int, actor piToolActor) subagentResult {
+func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, spec subagentItemRequest, label string, step int, actor piToolActor, stream *subagentStreamer) subagentResult {
 	started := time.Now()
 	subagentID := "subagent-" + uuid.NewString()
 	cwd, virtualCwd, err := resolveSubagentCwd(s, spec.Cwd)
@@ -344,29 +371,71 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		res.DurationMS = time.Since(started).Milliseconds()
 		return res
 	}
+	if stream != nil {
+		stream.Emit("subagent_child_start", map[string]any{"label": label, "subagent_id": subagentID, "task": spec.Task, "cwd": virtualCwd, "model": spec.Model, "tools": spec.Tools})
+	}
+
+	childAgentDir, err := prepareSubagentAgentDir(s, subagentID)
+	if err != nil {
+		res.ExitCode = 1
+		res.StopReason = "error"
+		res.Error = err.Error()
+		res.DurationMS = time.Since(started).Milliseconds()
+		return res
+	}
+	childSessionDir := filepath.Join(childAgentDir, "sessions")
+
+	var promptFile string
+	var promptDir string
+	if strings.TrimSpace(spec.SystemPrompt) != "" && runtime.Protocol == "pi-json" {
+		promptFile, promptDir, err = writeSubagentSystemPrompt(s, subagentID, spec.SystemPrompt)
+		if err != nil {
+			res.ExitCode = 1
+			res.StopReason = "error"
+			res.Error = err.Error()
+			res.DurationMS = time.Since(started).Milliseconds()
+			return res
+		}
+		defer os.RemoveAll(promptDir)
+	}
+
 	args := append([]string{}, runtime.Args...)
 	stdin := ""
 	env := sanitizedSubagentEnv(os.Environ())
 	childDepth := subagentDepthFromActor(actor) + 1
-	env = append(env,
-		"AGENTSH_SESSION_ID="+s.ID,
-		"AGENTSH_SUBAGENT_ID="+subagentID,
-		"AGENTSH_SUBAGENT_DEPTH="+strconv.Itoa(childDepth),
-		"AGENTSH_SUBAGENT_CWD="+virtualCwd,
-		"AGENTSH_SUBAGENT_MODEL="+spec.Model,
-		"AGENTSH_SUBAGENT_TOOLS="+strings.Join(spec.Tools, ","),
-		"AGENTSH_SUBAGENT_SYSTEM_PROMPT="+spec.SystemPrompt,
-	)
+	env = withEnvOverrides(env, map[string]string{
+		"AGENTSH_SESSION_ID":             s.ID,
+		"AGENTSH_SUBAGENT_ID":            subagentID,
+		"AGENTSH_SUBAGENT_DEPTH":         strconv.Itoa(childDepth),
+		"AGENTSH_SUBAGENT_CWD":           virtualCwd,
+		"AGENTSH_SUBAGENT_MODEL":         spec.Model,
+		"AGENTSH_SUBAGENT_TOOLS":         strings.Join(spec.Tools, ","),
+		"AGENTSH_SUBAGENT_SYSTEM_PROMPT": spec.SystemPrompt,
+		"PI_CODING_AGENT_DIR":            childAgentDir,
+		"PI_CODING_AGENT_SESSION_DIR":    childSessionDir,
+	})
+	if s.RuntimeHome != "" {
+		env = withEnvOverrides(env, map[string]string{
+			"HOME":            s.RuntimeHome,
+			"XDG_CACHE_HOME":  filepath.Join(s.RuntimeHome, ".cache"),
+			"XDG_DATA_HOME":   filepath.Join(s.RuntimeHome, ".local", "share"),
+			"XDG_STATE_HOME":  filepath.Join(s.RuntimeHome, ".local", "state"),
+			"XDG_CONFIG_HOME": filepath.Join(s.RuntimeHome, ".config"),
+		})
+	}
+	if s.RuntimeTmp != "" {
+		env = withEnvOverrides(env, map[string]string{"TMPDIR": s.RuntimeTmp, "TEMP": s.RuntimeTmp, "TMP": s.RuntimeTmp})
+	}
 	if runtime.SocketURL != "" {
-		env = append(env, "AGENTSH_SESSION_SUPERVISOR="+runtime.SocketURL)
+		env = withEnvOverrides(env, map[string]string{"AGENTSH_SESSION_SUPERVISOR": runtime.SocketURL})
 	}
 	switch runtime.TaskMode {
 	case "arg":
-		args = appendSubagentTaskArgs(args, spec)
+		args = appendSubagentTaskArgs(args, spec, runtime.Protocol, promptFile)
 	case "stdin":
 		stdin = spec.Task
 	case "env":
-		env = append(env, "AGENTSH_SUBAGENT_TASK="+spec.Task)
+		env = withEnvOverrides(env, map[string]string{"AGENTSH_SUBAGENT_TASK": spec.Task})
 	case "json-stdin":
 		payload, _ := json.Marshal(map[string]any{"task": spec.Task, "systemPrompt": spec.SystemPrompt, "model": spec.Model, "tools": spec.Tools, "cwd": virtualCwd, "actor": map[string]any(actor)})
 		stdin = string(payload)
@@ -381,8 +450,8 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	var stdout, stderr cappedBuffer
 	stdout.limit = maxSubagentTextBytes
 	stderr.limit = maxSubagentTextBytes
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = subagentOutputWriter(&stdout, stream, subagentID, label, "stdout")
+	cmd.Stderr = subagentOutputWriter(&stderr, stream, subagentID, label, "stderr")
 	runErr := cmd.Run()
 	res.Stdout = stdout.String()
 	res.Stderr = stderr.String()
@@ -408,7 +477,18 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	return res
 }
 
-func appendSubagentTaskArgs(args []string, spec subagentItemRequest) []string {
+func appendSubagentTaskArgs(args []string, spec subagentItemRequest, protocol string, promptFile string) []string {
+	if protocol == "pi-json" {
+		if strings.TrimSpace(spec.Model) != "" {
+			args = append(args, "--model", spec.Model)
+		}
+		if len(spec.Tools) > 0 {
+			args = append(args, "--tools", strings.Join(spec.Tools, ","))
+		}
+		if promptFile != "" {
+			args = append(args, "--append-system-prompt", promptFile)
+		}
+	}
 	return append(args, spec.Task)
 }
 
@@ -452,12 +532,12 @@ func validateSubagentCwdPath(s *session.Session, realPath, virtualPath string) (
 
 func sanitizedSubagentEnv(in []string) []string {
 	blocked := map[string]bool{
-		"AGENTSH_API_KEY": true,
-		"AGENTSH_APPROVER_KEY": true,
-		"AGENTSH_APPROVER_API_KEY": true,
+		"AGENTSH_API_KEY":           true,
+		"AGENTSH_APPROVER_KEY":      true,
+		"AGENTSH_APPROVER_API_KEY":  true,
 		"AGENTSH_APPROVER_KEY_FILE": true,
-		"AGENTSH_ADMIN_TOKEN": true,
-		"AGENTSH_TOKEN": true,
+		"AGENTSH_ADMIN_TOKEN":       true,
+		"AGENTSH_TOKEN":             true,
 	}
 	out := make([]string, 0, len(in))
 	for _, item := range in {
@@ -471,6 +551,146 @@ func sanitizedSubagentEnv(in []string) []string {
 		out = append(out, item)
 	}
 	return out
+}
+
+func withEnvOverrides(in []string, overrides map[string]string) []string {
+	if len(overrides) == 0 {
+		return in
+	}
+	out := make([]string, 0, len(in)+len(overrides))
+	for _, item := range in {
+		key := item
+		if idx := strings.IndexByte(item, '='); idx >= 0 {
+			key = item[:idx]
+		}
+		if _, ok := overrides[key]; ok {
+			continue
+		}
+		out = append(out, item)
+	}
+	for key, value := range overrides {
+		out = append(out, key+"="+value)
+	}
+	return out
+}
+
+func subagentBaseAgentDir(s *session.Session) string {
+	_, sessEnv, _ := s.GetCwdEnvHistory()
+	if raw := strings.TrimSpace(sessEnv["PI_CODING_AGENT_DIR"]); raw != "" {
+		return raw
+	}
+	if raw := strings.TrimSpace(os.Getenv("PI_CODING_AGENT_DIR")); raw != "" {
+		return raw
+	}
+	if s.RuntimeHome != "" {
+		return filepath.Join(s.RuntimeHome, "pi-agent")
+	}
+	return filepath.Join(os.TempDir(), "agentsh-pi-agent")
+}
+
+func prepareSubagentAgentDir(s *session.Session, subagentID string) (string, error) {
+	base := subagentBaseAgentDir(s)
+	childAgentDir := filepath.Join(base, "subagents", subagentID, "agent")
+	childSessionDir := filepath.Join(childAgentDir, "sessions")
+	if err := os.MkdirAll(childSessionDir, 0o700); err != nil {
+		return "", fmt.Errorf("create subagent Pi state: %w", err)
+	}
+	_ = os.Chmod(childAgentDir, 0o700)
+	_ = os.Chmod(childSessionDir, 0o700)
+
+	for _, name := range []string{"settings.json", "models.json", "auth.json", "oauth.json", "AGENTS.md", "SYSTEM.md", "APPEND_SYSTEM.md"} {
+		src := filepath.Join(base, name)
+		dst := filepath.Join(childAgentDir, name)
+		info, err := os.Stat(src)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if err := copyRegularFile(dst, src, info.Mode().Perm()); err != nil {
+			return "", fmt.Errorf("copy Pi config %s: %w", name, err)
+		}
+	}
+	return childAgentDir, nil
+}
+
+func copyRegularFile(dst, src string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
+}
+
+func writeSubagentSystemPrompt(s *session.Session, subagentID, prompt string) (filePath string, dir string, err error) {
+	root := s.RuntimeTmp
+	if root == "" {
+		root = os.TempDir()
+	}
+	dir, err = os.MkdirTemp(root, "agentsh-subagent-prompt-"+subagentID+"-")
+	if err != nil {
+		return "", "", fmt.Errorf("create subagent prompt dir: %w", err)
+	}
+	filePath = filepath.Join(dir, "system-prompt.md")
+	if err := os.WriteFile(filePath, []byte(prompt), 0o600); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", "", fmt.Errorf("write subagent system prompt: %w", err)
+	}
+	return filePath, dir, nil
+}
+
+type subagentStreamer struct {
+	mu      sync.Mutex
+	w       http.ResponseWriter
+	flusher http.Flusher
+}
+
+func (s *subagentStreamer) Emit(event string, fields map[string]any) {
+	if s == nil {
+		return
+	}
+	payload := make(map[string]any, len(fields)+1)
+	payload["event"] = event
+	for k, v := range fields {
+		payload[k] = v
+	}
+	line, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, _ = s.w.Write(append(line, '\n'))
+	s.flusher.Flush()
+}
+
+type subagentChunkWriter struct {
+	stream     *subagentStreamer
+	subagentID string
+	label      string
+	name       string
+}
+
+func subagentOutputWriter(buf *cappedBuffer, stream *subagentStreamer, subagentID, label, name string) io.Writer {
+	if stream == nil {
+		return buf
+	}
+	return io.MultiWriter(buf, subagentChunkWriter{stream: stream, subagentID: subagentID, label: label, name: name})
+}
+
+func (w subagentChunkWriter) Write(p []byte) (int, error) {
+	if len(p) > 0 {
+		w.stream.Emit(w.name, map[string]any{"subagent_id": w.subagentID, "label": w.label, "data": string(p)})
+	}
+	return len(p), nil
 }
 
 type cappedBuffer struct {
