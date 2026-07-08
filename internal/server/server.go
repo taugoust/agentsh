@@ -867,7 +867,13 @@ func New(cfg *config.Config) (*Server, error) {
 			Handler:           api.MarkUnixSocketRequests(handler),
 			ReadHeaderTimeout: 15 * time.Second,
 			ReadTimeout:       readTimeout,
-			WriteTimeout:      writeTimeout,
+			// Do not apply the global HTTP write timeout to the trusted local
+			// supervisor socket. Go's WriteTimeout is an absolute response
+			// lifetime limit, not an idle timeout; long-lived streaming tool
+			// calls such as spawn_subagent can legitimately exceed it and would
+			// otherwise have their request context canceled while still making
+			// progress.
+			WriteTimeout: 0,
 		}
 	}
 unixDone:
