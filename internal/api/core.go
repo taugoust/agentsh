@@ -1757,6 +1757,7 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	}
 
 	stderrB, stderrTotal, softSuggestions := addSoftDeleteHints(fileOps, stderrB, stderrTotal)
+	stderrB, stderrTotal, approvalSuggestions := addExecveApprovalHints(blockedOps, stderrB, stderrTotal)
 
 	res := types.ExecResult{
 		ExitCode:         exitCode,
@@ -1803,11 +1804,12 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 		Guidance:  guidanceForResponse(req, res, blockedOps, s.EffectiveVirtualRoot()),
 	}
 	addRedirectGuidance(resp, pre, originalCmd, originalArgs)
-	if len(softSuggestions) > 0 {
+	if len(softSuggestions) > 0 || len(approvalSuggestions) > 0 {
 		if resp.Guidance == nil {
 			resp.Guidance = &types.ExecGuidance{Status: "ok"}
 		}
 		resp.Guidance.Suggestions = append(resp.Guidance.Suggestions, softSuggestions...)
+		resp.Guidance.Suggestions = append(resp.Guidance.Suggestions, approvalSuggestions...)
 	}
 	_ = a.store.SaveOutput(ctx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
 	applyIncludeEvents(resp, includeEvents)

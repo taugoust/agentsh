@@ -1052,6 +1052,48 @@ func applyIncludeEvents(resp *types.ExecResponse, include string) {
 	}
 }
 
+func isExecveApprovalTimeout(ev types.Event) bool {
+	if ev.Type != "execve" || ev.Policy == nil {
+		return false
+	}
+	return ev.Policy.Decision == types.DecisionApprove &&
+		ev.Policy.EffectiveDecision == types.DecisionDeny &&
+		strings.Contains(strings.ToLower(ev.Policy.Message), "approval timeout")
+}
+
+// addExecveApprovalHints appends clear hints when a nested execve approval timed out.
+func addExecveApprovalHints(blockedOps []types.Event, stderrB []byte, stderrTotal int64) ([]byte, int64, []types.Suggestion) {
+	var suggestions []types.Suggestion
+	for _, ev := range blockedOps {
+		if !isExecveApprovalTimeout(ev) {
+			continue
+		}
+		target := ev.RawFilename
+		if target == "" {
+			target = ev.Filename
+		}
+		if target == "" {
+			target = "nested command"
+		}
+		argv := strings.Join(ev.Argv, " ")
+		if argv == "" {
+			argv = target
+		}
+		rule := "unknown"
+		if ev.Policy.Rule != "" {
+			rule = ev.Policy.Rule
+		}
+		hint := fmt.Sprintf("agentsh: nested exec approval timed out (rule=%s): %s\n", rule, argv)
+		stderrB = append(stderrB, []byte(hint)...)
+		stderrTotal += int64(len(hint))
+		suggestions = append(suggestions, types.Suggestion{
+			Action: "retry_after_approval",
+			Reason: fmt.Sprintf("nested execve of %s required approval but timed out; retry and approve promptly, or increase sandbox.seccomp.execve.approval_timeout", target),
+		})
+	}
+	return stderrB, stderrTotal, suggestions
+}
+
 // addSoftDeleteHints appends restore hints to stderr and returns suggestions for guidance.
 func addSoftDeleteHints(fileOps []types.Event, stderrB []byte, stderrTotal int64) ([]byte, int64, []types.Suggestion) {
 	var softSuggestions []types.Suggestion
@@ -1147,7 +1189,10 @@ func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps
 			g.BlockedOperation = ev.Type
 		}
 		g.BlockedTarget = target
-		if rule != "" {
+		if isExecveApprovalTimeout(ev) {
+			g.Reason = "nested execve approval timed out"
+			g.Retryable = true
+		} else if rule != "" {
 			g.Reason = fmt.Sprintf("blocked by policy (rule=%s)", rule)
 		} else if dec != "" {
 			g.Reason = fmt.Sprintf("blocked by policy (decision=%s)", dec)

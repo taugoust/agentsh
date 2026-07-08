@@ -93,7 +93,11 @@ let
           wrapper_bin = cfg.sandbox.unixSockets.wrapperBin;
         };
         seccomp = {
-          execve.enabled = cfg.sandbox.seccomp.execve.enable;
+          execve = {
+            enabled = cfg.sandbox.seccomp.execve.enable;
+            approval_timeout = cfg.sandbox.seccomp.execve.approvalTimeout;
+            approval_timeout_action = cfg.sandbox.seccomp.execve.approvalTimeoutAction;
+          };
           file_monitor = {
             enabled = cfg.sandbox.seccomp.fileMonitor.enable;
             enforce_without_fuse = cfg.sandbox.seccomp.fileMonitor.enforceWithoutFUSE;
@@ -375,9 +379,24 @@ in
       };
 
       seccomp = {
-        execve.enable = mkOption {
-          type = types.bool;
-          default = false;
+        execve = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+          };
+          approvalTimeout = mkOption {
+            type = types.str;
+            default = "10s";
+            description = "How long seccomp execve interception waits for approval before applying approvalTimeoutAction.";
+          };
+          approvalTimeoutAction = mkOption {
+            type = types.enum [
+              "deny"
+              "allow"
+            ];
+            default = "deny";
+            description = "Action to take when seccomp execve approval times out.";
+          };
         };
         fileMonitor = {
           enable = mkOption {
