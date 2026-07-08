@@ -117,6 +117,20 @@ type approvalRequesterAdapter struct {
 }
 
 func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req unixmon.ApprovalRequest) (bool, error) {
+	fields := map[string]any{
+		"command": req.Command,
+		"args":    req.Args,
+		"source":  "execve",
+	}
+	if scope, ok := approvals.NewCommandScope(req.Command, req.Args, req.Rule); ok {
+		if cached, ok := a.mgr.CheckScoped(ctx, req.SessionID, "", scope); ok {
+			return cached.Approved, nil
+		}
+		for k, v := range approvals.ScopeFields(scope) {
+			fields[k] = v
+		}
+	}
+
 	apr := approvals.Request{
 		ID:        "approval-" + uuid.NewString(),
 		SessionID: req.SessionID,
@@ -124,11 +138,7 @@ func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req 
 		Target:    req.Command,
 		Rule:      req.Rule,
 		Message:   req.Reason,
-		Fields: map[string]any{
-			"command": req.Command,
-			"args":    req.Args,
-			"source":  "execve",
-		},
+		Fields:    fields,
 	}
 	res, err := a.mgr.RequestApproval(ctx, apr)
 	if err != nil {
