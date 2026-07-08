@@ -77,9 +77,10 @@ type Manager struct {
 	// webauthnApprover handles WebAuthn approval challenges (webauthn mode only)
 	webauthnApprover *WebAuthnApprover
 
-	mu      sync.Mutex
-	pending map[string]*pending
-	scoped  map[string]map[string]ScopedDecision // sessionID -> scopeKey -> decision
+	mu            sync.Mutex
+	pending       map[string]*pending
+	scoped        map[string]map[string]ScopedDecision              // sessionID -> scopeKey -> decision
+	commandScoped map[string]map[string]map[string]ScopedDecision  // sessionID -> commandID -> scopeKey -> decision
 
 	promptMu sync.Mutex
 
@@ -107,6 +108,7 @@ func New(mode string, timeout time.Duration, emit Emitter) *Manager {
 		emit:          emit,
 		pending:       make(map[string]*pending),
 		scoped:        make(map[string]map[string]ScopedDecision),
+		commandScoped: make(map[string]map[string]map[string]ScopedDecision),
 		sessionCounts: make(map[string]int),
 		maxPerSession: 10, // Default: max 10 concurrent approvals per session
 	}
@@ -383,6 +385,15 @@ func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID s
 	}
 	now := time.Now().UTC()
 	m.mu.Lock()
+	if commandID != "" {
+		if byCommand := m.commandScoped[sessionID][commandID]; byCommand != nil {
+			if dec, ok := byCommand[scope.Key]; ok {
+				m.mu.Unlock()
+				m.emitScopedEvent(ctx, "approval_command_scope_used", commandID, dec)
+				return dec, true
+			}
+		}
+	}
 	bySession := m.scoped[sessionID]
 	dec, ok := bySession[scope.Key]
 	if ok && dec.ExpiresAt != nil && dec.ExpiresAt.Before(now) {
@@ -502,6 +513,39 @@ func (m *Manager) SetScoped(ctx context.Context, sessionID string, commandID str
 	return true
 }
 
+func (m *Manager) SetCommandScoped(ctx context.Context, sessionID string, commandID string, scope Scope, approved bool, reason string, rule string) bool {
+	if sessionID == "" || commandID == "" || !validScope(scope) {
+		return false
+	}
+	dec := ScopedDecision{
+		SessionID: sessionID,
+		Kind:      scope.Kind,
+		Key:       scope.Key,
+		Label:     scope.Label,
+		Approved:  approved,
+		Reason:    reason,
+		Rule:      firstNonEmpty(scope.Rule, rule),
+		Operation: scope.Operation,
+		Path:      scope.Path,
+		Prefix:    scope.Prefix,
+		CreatedAt: time.Now().UTC(),
+	}
+	m.mu.Lock()
+	if m.commandScoped == nil {
+		m.commandScoped = make(map[string]map[string]map[string]ScopedDecision)
+	}
+	if m.commandScoped[sessionID] == nil {
+		m.commandScoped[sessionID] = make(map[string]map[string]ScopedDecision)
+	}
+	if m.commandScoped[sessionID][commandID] == nil {
+		m.commandScoped[sessionID][commandID] = make(map[string]ScopedDecision)
+	}
+	m.commandScoped[sessionID][commandID][scope.Key] = dec
+	m.mu.Unlock()
+	m.emitScopedEvent(ctx, "approval_command_scope_granted", commandID, dec)
+	return true
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -521,6 +565,7 @@ func (m *Manager) ClearSession(ctx context.Context, sessionID string) {
 		decisions = append(decisions, dec)
 	}
 	delete(m.scoped, sessionID)
+	delete(m.commandScoped, sessionID)
 	m.mu.Unlock()
 	for _, dec := range decisions {
 		m.emitScopedEvent(ctx, "approval_scope_cleared", "", dec)
@@ -529,7 +574,7 @@ func (m *Manager) ClearSession(ctx context.Context, sessionID string) {
 
 func (m *Manager) setScopedFromRequest(ctx context.Context, req Request, res Resolution) {
 	scope, err := NormalizeResolutionScope(res.Scope)
-	if err != nil || scope != ScopeSession {
+	if err != nil {
 		return
 	}
 	approvalScope, ok := scopeFromResolution(res)
@@ -539,7 +584,12 @@ func (m *Manager) setScopedFromRequest(ctx context.Context, req Request, res Res
 	if !ok {
 		return
 	}
-	m.SetScoped(ctx, req.SessionID, req.CommandID, approvalScope, res.Approved, res.Reason, req.Rule)
+	switch scope {
+	case ScopeSession:
+		m.SetScoped(ctx, req.SessionID, req.CommandID, approvalScope, res.Approved, res.Reason, req.Rule)
+	case ScopeOnce:
+		m.SetCommandScoped(ctx, req.SessionID, req.CommandID, approvalScope, res.Approved, res.Reason, req.Rule)
+	}
 }
 
 func scopeFromResolution(res Resolution) (Scope, bool) {

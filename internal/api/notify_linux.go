@@ -113,17 +113,22 @@ func (w *policyEngineWrapper) toUnixPolicyDecision(dec policy.Decision) unixmon.
 
 // approvalRequesterAdapter adapts approvals.Manager to unixmon.ApprovalRequester.
 type approvalRequesterAdapter struct {
-	mgr *approvals.Manager
+	mgr           *approvals.Manager
+	commandIDFunc func() string
 }
 
 func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req unixmon.ApprovalRequest) (bool, error) {
+	commandID := ""
+	if a.commandIDFunc != nil {
+		commandID = a.commandIDFunc()
+	}
 	fields := map[string]any{
 		"command": req.Command,
 		"args":    req.Args,
 		"source":  "execve",
 	}
 	if scope, ok := approvals.NewCommandScope(req.Command, req.Args, req.Rule); ok {
-		if cached, ok := a.mgr.CheckScoped(ctx, req.SessionID, "", scope); ok {
+		if cached, ok := a.mgr.CheckScoped(ctx, req.SessionID, commandID, scope); ok {
 			return cached.Approved, nil
 		}
 		for k, v := range approvals.ScopeFields(scope) {
@@ -134,6 +139,7 @@ func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req 
 	apr := approvals.Request{
 		ID:        "approval-" + uuid.NewString(),
 		SessionID: req.SessionID,
+		CommandID: commandID,
 		Kind:      "command",
 		Target:    req.Command,
 		Rule:      req.Rule,
@@ -292,6 +298,13 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 			h, _ = execveHandler.(*unixmon.ExecveHandler)
 			if h != nil {
 				h.SetEmitter(emitter)
+				if approvalsMgr != nil {
+					var commandIDFunc func() string
+					if sess != nil {
+						commandIDFunc = sess.CurrentCommandID
+					}
+					h.SetApprover(&approvalRequesterAdapter{mgr: approvalsMgr, commandIDFunc: commandIDFunc})
+				}
 				// Register the wrapper as session root for depth tracking
 				// The wrapper's exec will be the first command (depth 0)
 				if wrapperPID > 0 {
