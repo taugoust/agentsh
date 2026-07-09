@@ -1,7 +1,7 @@
 # Command `Approve for session` scopes exact argv instead of executable
 
 ## Status
-Open.
+Resolved.
 
 ## Problem
 `Approve for session` for a command currently behaves like “approve this exact invocation for the session”. Repeated prompts still appear for the same tool when argv changes, e.g. repeated `sqlite3` invocations in one Pi/AgentSH session.
@@ -58,3 +58,11 @@ Add tests covering at least:
 - a different executable still prompts;
 - exact-invocation approval, if retained, remains narrow;
 - Nix-store executable paths are scoped by resolved executable path, not argv.
+
+## Resolution
+Resolved by changing the default/plain command session approval scope from exact `command + argv` to executable identity.
+
+The implementation keeps exact-invocation command scopes as an explicit narrow option via `scope_options`, while backwards-compatible/plain `Approve for session` stores the executable scope. Direct command approval and Linux execve approval both use the same scope helper, so repeated invocations of the same executable with different argv are covered without allowing a different executable.
+
+Commits:
+- `921b6aa8` (`fix(approvals): scope command session approvals by executable`) implemented executable-scoped command approvals, retained exact-invocation scope options, and added regression tests for same-executable/different-argv, different-executable prompts, Nix-store executable paths, and exact-invocation narrowness.

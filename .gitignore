@@ -31,3 +31,8 @@ internal/netmonitor/ebpf/vmlinux.h
 build/
 /agentsh-unixwrap
 /agentsh-stub
+
+# Local agent planning notes
+/plans/
+/plan.md
+/issues/plans/
