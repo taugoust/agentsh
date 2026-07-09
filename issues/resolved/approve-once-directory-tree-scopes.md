@@ -1,7 +1,7 @@
 # Support `Approve once` for directory/tree file approval scopes
 
 ## Status
-Open.
+Resolved.
 
 ## Problem
 File approval prompts can offer directory-level scope options such as first-level directory access and recursive directory-tree access, but those broad scopes only behave correctly for `scope=session` approvals.
@@ -71,3 +71,11 @@ Add tests covering at least:
 
 ## Rough priority
 High.
+
+## Resolution
+Resolved by making command-scoped (`scope=once`) file approval lookup apply the same `file-dir` and `file-tree` containment checks that session-scoped lookup already used.
+
+`Approve once` can now target a first-level directory or recursive directory tree for the current command/tool call only. The implementation preserves exact-key matching, rule-aware directory/tree matching, command isolation, denial semantics, and emits `approval_command_scope_used` when a command-scoped directory/tree decision is consumed.
+
+Commits:
+- `28e3d176` (`fix(approvals): honor once directory file scopes`) added command-scoped directory/tree containment lookup and regression tests for recursive tree once, first-level directory once, command isolation, rule mismatch, denied decisions, and existing session tree behavior.
