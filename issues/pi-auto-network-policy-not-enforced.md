@@ -8,6 +8,27 @@ Detached supervisors now print a prominent warning when the source config enable
 
 Partial hardening has landed for adjacent bugs: cgroup hooks now activate for eBPF-only configs, and exec runners fail closed on cgroup/eBPF post-start hook errors. The core detached network-enforcement gap remains open.
 
+## Progress
+
+Landed and pushed:
+
+- `ae703757 fix(detached): warn on unsupported network enforcement` keeps `pi-auto` usable while warning about detached network enforcement mismatch.
+- `b22c4ffb docs(issues): plan detached network enforcement` records the helper/delegated-cgroup/proxy plan.
+
+Drafted locally, not committed yet:
+
+- net-only / attach-only cgroup probe foundation in `internal/limits/*`: when attach-only is permitted, probe child cgroup placement without touching `cgroup.subtree_control`, avoiding the `+cpu`/`+memory` poisoning observed on `matebook`; Nix go-unit check passed for this slice.
+- opt-in detached supervisor launcher scaffold for `systemd-run --user --collect -p Delegate=yes` with metadata for the systemd unit; currently gated behind `AGENTSH_DETACHED_SUPERVISOR_SYSTEMD_RUN`, not default-enabled; Nix go-unit check passed after this slice.
+
+Not implemented yet:
+
+- privileged network helper;
+- eBPF redirect/gate helper API;
+- proxy integration for synchronous hostname approval;
+- pinned bpffs links/maps and cleanup/reaper;
+- enforcement-tier reporting in session metadata / `policy-test`;
+- end-to-end detached network regression check.
+
 ## Problem
 In a `pi-autonomous` detached/shadow session, AgentSH policy can say that an unknown HTTPS connection requires approval, but the actual command can still connect successfully without any approval prompt or network audit event.
 
