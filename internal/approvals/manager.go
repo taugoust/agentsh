@@ -79,8 +79,8 @@ type Manager struct {
 
 	mu            sync.Mutex
 	pending       map[string]*pending
-	scoped        map[string]map[string]ScopedDecision              // sessionID -> scopeKey -> decision
-	commandScoped map[string]map[string]map[string]ScopedDecision  // sessionID -> commandID -> scopeKey -> decision
+	scoped        map[string]map[string]ScopedDecision            // sessionID -> scopeKey -> decision
+	commandScoped map[string]map[string]map[string]ScopedDecision // sessionID -> commandID -> scopeKey -> decision
 
 	promptMu sync.Mutex
 
@@ -391,6 +391,18 @@ func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID s
 				m.mu.Unlock()
 				m.emitScopedEvent(ctx, "approval_command_scope_used", commandID, dec)
 				return dec, true
+			}
+			if scope.Kind == "file" {
+				if dec, ok := findFileDirScopedDecision(byCommand, scope, now); ok {
+					m.mu.Unlock()
+					m.emitScopedEvent(ctx, "approval_command_scope_used", commandID, dec)
+					return dec, true
+				}
+				if dec, ok := findFileTreeScopedDecision(byCommand, scope, now); ok {
+					m.mu.Unlock()
+					m.emitScopedEvent(ctx, "approval_command_scope_used", commandID, dec)
+					return dec, true
+				}
 			}
 		}
 	}
