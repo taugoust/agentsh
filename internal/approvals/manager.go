@@ -274,6 +274,13 @@ func (m *Manager) resolveForSession(sessionID string, id string, approved bool, 
 		res.ScopeRule = target.Rule
 		res.ScopePrefix = target.Prefix
 	}
+	if scope == ScopeSession {
+		if granted, ok := ScopeFromResolution(res); ok {
+			m.resolvePendingCoveredBySessionScope(p.req, granted, res)
+		} else if granted, ok := ScopeFromRequest(p.req); ok {
+			m.resolvePendingCoveredBySessionScope(p.req, granted, res)
+		}
+	}
 	select {
 	case p.ch <- res:
 	default:
@@ -589,22 +596,143 @@ func (m *Manager) setScopedFromRequest(ctx context.Context, req Request, res Res
 	if err != nil {
 		return
 	}
-	approvalScope, ok := scopeFromResolution(res)
+	approvalScope, ok := ScopeFromResolution(res)
 	if !ok {
-		approvalScope, ok = scopeFromFields(req.Fields)
+		approvalScope, ok = ScopeFromRequest(req)
 	}
 	if !ok {
 		return
 	}
 	switch scope {
 	case ScopeSession:
-		m.SetScoped(ctx, req.SessionID, req.CommandID, approvalScope, res.Approved, res.Reason, req.Rule)
+		if m.SetScoped(ctx, req.SessionID, req.CommandID, approvalScope, res.Approved, res.Reason, req.Rule) {
+			m.resolvePendingCoveredBySessionScope(req, approvalScope, res)
+		}
 	case ScopeOnce:
 		m.SetCommandScoped(ctx, req.SessionID, req.CommandID, approvalScope, res.Approved, res.Reason, req.Rule)
 	}
 }
 
-func scopeFromResolution(res Resolution) (Scope, bool) {
+func (m *Manager) resolvePendingCoveredBySessionScope(source Request, granted Scope, sourceRes Resolution) {
+	if source.SessionID == "" || !validScope(granted) {
+		return
+	}
+	now := time.Now().UTC()
+	res := Resolution{
+		Approved:       sourceRes.Approved,
+		Reason:         sourceRes.Reason,
+		Scope:          ScopeSession,
+		At:             now,
+		ScopeKind:      granted.Kind,
+		ScopeKey:       granted.Key,
+		ScopeLabel:     granted.Label,
+		ScopeOperation: granted.Operation,
+		ScopePath:      granted.Path,
+		ScopeRule:      granted.Rule,
+		ScopePrefix:    granted.Prefix,
+	}
+	if strings.TrimSpace(res.Reason) == "" {
+		res.Reason = "covered by session approval"
+	}
+
+	covered := make([]*pending, 0)
+	m.mu.Lock()
+	for id, p := range m.pending {
+		if p == nil || id == source.ID || p.req.SessionID != source.SessionID {
+			continue
+		}
+		if p.req.ExpiresAt.Before(now) {
+			continue
+		}
+		if RequestCoveredByScope(p.req, granted) {
+			delete(m.pending, id)
+			covered = append(covered, p)
+		}
+	}
+	m.mu.Unlock()
+
+	for _, p := range covered {
+		select {
+		case p.ch <- res:
+		default:
+		}
+	}
+}
+
+// RequestCoveredByScope reports whether a pending request asks for a scope that
+// is satisfied by the granted session scope. It understands the default scope
+// fields and any scope_options advertised to approval UIs.
+func RequestCoveredByScope(req Request, granted Scope) bool {
+	for _, requested := range scopesFromRequest(req) {
+		if scopeCovers(granted, requested) {
+			return true
+		}
+	}
+	return false
+}
+
+// ScopeFromRequest returns the default scope advertised by an approval request.
+func ScopeFromRequest(req Request) (Scope, bool) {
+	return scopeFromFields(req.Fields)
+}
+
+func scopesFromRequest(req Request) []Scope {
+	if req.Fields == nil {
+		return nil
+	}
+	out := make([]Scope, 0, 1)
+	seen := make(map[string]bool)
+	add := func(fields map[string]any) {
+		if scope, ok := scopeFromFields(fields); ok && !seen[scope.Key] {
+			seen[scope.Key] = true
+			out = append(out, scope)
+		}
+	}
+	add(req.Fields)
+	switch options := req.Fields["scope_options"].(type) {
+	case []map[string]any:
+		for _, fields := range options {
+			add(fields)
+		}
+	case []any:
+		for _, option := range options {
+			if fields, ok := option.(map[string]any); ok {
+				add(fields)
+			}
+		}
+	}
+	return out
+}
+
+func scopeCovers(granted Scope, requested Scope) bool {
+	if !validScope(granted) || !validScope(requested) {
+		return false
+	}
+	if granted.Key == requested.Key {
+		return true
+	}
+	if requested.Kind != "file" {
+		return false
+	}
+	if granted.Operation == "" || requested.Operation == "" || granted.Operation != requested.Operation {
+		return false
+	}
+	if granted.Rule == "" || requested.Rule == "" || granted.Rule != requested.Rule {
+		return false
+	}
+	switch granted.Kind {
+	case "file-dir":
+		return fileDirContains(granted.Path, requested.Path)
+	case "file-tree":
+		return fileTreeContains(granted.Path, requested.Path)
+	default:
+		return false
+	}
+}
+
+// ScopeFromResolution returns the scope target explicitly selected in an
+// approval resolution, when present.
+func ScopeFromResolution(res Resolution) (Scope, bool) {
 	if strings.TrimSpace(res.ScopeKind) == "" || strings.TrimSpace(res.ScopeKey) == "" {
 		return Scope{}, false
 	}

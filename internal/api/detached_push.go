@@ -26,6 +26,66 @@ func newDetachedApprovalStore() *detachedApprovalStore {
 	}
 }
 
+func (s *detachedApprovalStore) resolve(approvalID, sessionID string, res approvals.Resolution) bool {
+	if s == nil {
+		return false
+	}
+	approvalID = strings.TrimSpace(approvalID)
+	if approvalID == "" {
+		return false
+	}
+	scope, err := approvals.NormalizeResolutionScope(res.Scope)
+	if err != nil {
+		return false
+	}
+	res.Scope = scope
+	now := time.Now().UTC()
+	if res.At.IsZero() {
+		res.At = now
+	}
+	sessionID = strings.TrimSpace(sessionID)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	req, ok := s.pending[approvalID]
+	if !ok {
+		return false
+	}
+	if sessionID != "" && req.SessionID != sessionID {
+		return false
+	}
+	delete(s.pending, approvalID)
+	s.resolutions[approvalID] = res
+	s.resolveCoveredBySessionScopeLocked(req, res, now)
+	return true
+}
+
+func (s *detachedApprovalStore) resolveCoveredBySessionScopeLocked(source approvals.Request, res approvals.Resolution, now time.Time) {
+	if res.Scope != approvals.ScopeSession || strings.TrimSpace(source.SessionID) == "" {
+		return
+	}
+	granted, ok := approvals.ScopeFromResolution(res)
+	if !ok {
+		granted, ok = approvals.ScopeFromRequest(source)
+	}
+	if !ok {
+		return
+	}
+	for id, req := range s.pending {
+		if id == source.ID || req.SessionID != source.SessionID {
+			continue
+		}
+		if !req.ExpiresAt.IsZero() && req.ExpiresAt.Before(now) {
+			delete(s.pending, id)
+			continue
+		}
+		if approvals.RequestCoveredByScope(req, granted) {
+			delete(s.pending, id)
+			s.resolutions[id] = res
+		}
+	}
+}
+
 func isDetachedTokenEndpoint(path string) bool {
 	return strings.HasPrefix(path, "/api/v1/detached-sessions/")
 }
@@ -209,16 +269,7 @@ func (a *App) resolveDetachedApprovalFromSession(w http.ResponseWriter, r *http.
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	a.detachedApprovals.mu.Lock()
-	req, ok := a.detachedApprovals.pending[approvalID]
-	if ok && req.SessionID == sessionID {
-		delete(a.detachedApprovals.pending, approvalID)
-		a.detachedApprovals.resolutions[approvalID] = res
-	} else {
-		ok = false
-	}
-	a.detachedApprovals.mu.Unlock()
-	if !ok {
+	if ok := a.detachedApprovals.resolve(approvalID, sessionID, res); !ok {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "approval not found"})
 		return
 	}
@@ -251,14 +302,7 @@ func (a *App) resolvePushedDetachedApproval(id string, raw []byte) (int, map[str
 	if err != nil {
 		return http.StatusBadRequest, map[string]any{"error": err.Error()}, true
 	}
-	a.detachedApprovals.mu.Lock()
-	_, ok := a.detachedApprovals.pending[id]
-	if ok {
-		delete(a.detachedApprovals.pending, id)
-		a.detachedApprovals.resolutions[id] = res
-	}
-	a.detachedApprovals.mu.Unlock()
-	if !ok {
+	if !a.detachedApprovals.resolve(id, "", res) {
 		return 0, nil, false
 	}
 	return http.StatusOK, map[string]any{"ok": true}, true
