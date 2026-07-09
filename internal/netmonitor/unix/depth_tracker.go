@@ -40,6 +40,15 @@ func (dt *DepthTracker) RegisterSession(pid int, sessionID string) {
 // If the PID already has state (e.g., from RegisterSession or re-exec),
 // it preserves the session ID when the parent is unknown.
 func (dt *DepthTracker) RecordExecve(pid int, parentPID int) {
+	dt.RecordExecveWithSession(pid, parentPID, "")
+}
+
+// RecordExecveWithSession records a new process like RecordExecve, but uses
+// fallbackSessionID when the tracked parent/self state has no session. Seccomp
+// notify handlers know the owning AgentSH session independently of ancestry;
+// preserving that session prevents nested exec approvals from becoming
+// sessionless when the first tracked parent was discovered without ancestry.
+func (dt *DepthTracker) RecordExecveWithSession(pid int, parentPID int, fallbackSessionID string) {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -52,13 +61,13 @@ func (dt *DepthTracker) RecordExecve(pid int, parentPID int) {
 			// Re-exec: preserve session ID and depth from existing state
 			dt.state[pid] = ExecveState{
 				Depth:     existing.Depth,
-				SessionID: existing.SessionID,
+				SessionID: firstNonEmptyString(existing.SessionID, fallbackSessionID),
 			}
 		} else {
 			// Truly unknown - start at depth 0
 			dt.state[pid] = ExecveState{
 				Depth:     0,
-				SessionID: "",
+				SessionID: fallbackSessionID,
 			}
 		}
 		return
@@ -66,8 +75,17 @@ func (dt *DepthTracker) RecordExecve(pid int, parentPID int) {
 
 	dt.state[pid] = ExecveState{
 		Depth:     parentState.Depth + 1,
-		SessionID: parentState.SessionID,
+		SessionID: firstNonEmptyString(parentState.SessionID, fallbackSessionID),
 	}
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // Get returns the state for a PID.

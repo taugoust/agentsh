@@ -160,7 +160,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		state, ok := h.depthTracker.Get(ctx.ParentPID)
 		if ok {
 			ctx.Depth = state.Depth + 1
-			ctx.SessionID = state.SessionID
+			ctx.SessionID = firstNonEmptyString(state.SessionID, ctx.SessionID)
 		} else {
 			// Parent not tracked - check if current PID has state
 			// This handles two cases:
@@ -175,7 +175,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 					// Re-exec in same PID - preserve depth
 					ctx.Depth = selfState.Depth
 				}
-				ctx.SessionID = selfState.SessionID
+				ctx.SessionID = firstNonEmptyString(selfState.SessionID, ctx.SessionID)
 			}
 		}
 	}
@@ -184,7 +184,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 	if h.isInternalBypass(ctx.Filename) {
 		// Record for depth tracking so children inherit correct depth
 		if h.depthTracker != nil {
-			h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+			h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 		}
 		result := ExecveResult{Allow: true, Action: ActionContinue, Rule: "internal_bypass", Decision: "allow"}
 		// Log every execve per design doc, including internal bypass
@@ -324,7 +324,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		switch effectiveDecision {
 		case "allow":
 			if h.depthTracker != nil {
-				h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+				h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 			}
 			result := ExecveResult{Allow: true, Action: ActionContinue, Rule: chosenDecision.Rule, Decision: chosenDecision.Decision}
 			return result, h.buildEvent(ctx, result, chosenDecision.Rule)
@@ -332,7 +332,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 			return h.handlePolicyApproval(goCtx, ctx, chosenDecision)
 		case "redirect":
 			if h.depthTracker != nil {
-				h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+				h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 			}
 			result := ExecveResult{
 				Allow:    false,
@@ -353,7 +353,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		result := ExecveResult{Allow: true, Action: ActionContinue, Rule: "no_policy", Decision: "allow"}
 		// Record for depth tracking even without policy
 		if h.depthTracker != nil {
-			h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+			h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 		}
 		// Log every execve per design doc, including when no policy
 		return result, h.buildEvent(ctx, result, "no_policy")
@@ -377,7 +377,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		// Allowed by effective decision (includes shadow approve/audit/redirect)
 		// Record this PID for depth tracking
 		if h.depthTracker != nil {
-			h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+			h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 		}
 		result := ExecveResult{Allow: true, Action: ActionContinue, Rule: decision.Rule, Decision: decision.Decision}
 		return result, h.buildEvent(ctx, result, decision.Rule)
@@ -454,7 +454,7 @@ func (h *ExecveHandler) handlePolicyApproval(goCtx context.Context, ctx ExecveCo
 		isTimeout := err == context.DeadlineExceeded || err == context.Canceled
 		if isTimeout && h.cfg.ApprovalTimeoutAction == "allow" {
 			if h.depthTracker != nil {
-				h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+				h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 			}
 			result := ExecveResult{Allow: true, Action: ActionContinue, Rule: decision.Rule, Reason: decision.Message, Decision: decision.Decision}
 			return result, h.buildEvent(ctx, result, decision.Rule)
@@ -486,7 +486,7 @@ func (h *ExecveHandler) handlePolicyApproval(goCtx context.Context, ctx ExecveCo
 	}
 
 	if h.depthTracker != nil {
-		h.depthTracker.RecordExecve(ctx.PID, ctx.ParentPID)
+		h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 	}
 	result := ExecveResult{Allow: true, Action: ActionContinue, Rule: decision.Rule, Reason: decision.Message, Decision: decision.Decision}
 	return result, h.buildEvent(ctx, result, decision.Rule)

@@ -257,6 +257,7 @@
                     BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
                   go test ./internal/approvals -run 'Test(SessionCommandScopeResolutionCoversConcurrentPendingApprovals|ExactCommandScopeResolutionOnlyCoversMatchingConcurrentPendingApproval)'
                   go test ./internal/api -run 'Test(ResolveApprovalLocal_PiSelectedExecutableSessionScopeResolvesConcurrentPending|ApprovalUIResolve_PiSelectedExecutableSessionScopeResolvesConcurrentPending|DetachedSessionsPushedCommandSessionScopeResolvesCoveredPending)$'
+                  go test ./internal/netmonitor/unix -run 'TestExecveHandler_Action/approve_preserves_notify_session_for_nested_exec_when_parent_was_first_seen_without_ancestry'
                   runHook postCheck
                 '';
                 installPhase = ''
