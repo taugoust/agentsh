@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -83,11 +84,41 @@ func NewNetworkScopeFromTarget(target string, defaultPort int) (Scope, bool) {
 	return Scope{}, false
 }
 
-// NewCommandScope builds a canonical command approval scope for an exact
-// command invocation. The key is a stable hash of command + argv so session
-// approvals do not accidentally widen to different arguments.
+// NewCommandScope builds the default canonical command approval scope. The
+// default session target is the executable/command identity, not the full argv,
+// so approving a command for the session applies to later invocations of the
+// same executable under the same policy rule.
 func NewCommandScope(command string, args []string, rule string) (Scope, bool) {
-	command = strings.TrimSpace(command)
+	return NewCommandExecutableScope(command, rule)
+}
+
+// NewCommandExecutableScope builds a canonical command approval scope for an
+// executable/command identity. The key deliberately excludes argv so session
+// approvals cover later invocations of the same executable, but includes the
+// policy rule to avoid satisfying unrelated command approval rules.
+func NewCommandExecutableScope(command string, rule string) (Scope, bool) {
+	command = normalizeCommandExecutable(command)
+	if command == "" {
+		return Scope{}, false
+	}
+	rule = strings.TrimSpace(rule)
+	keyMaterial := strings.Join([]string{rule, command}, "\x00")
+	sum := sha256.Sum256([]byte(keyMaterial))
+	return Scope{
+		Kind:      "command",
+		Key:       "command-executable:" + hex.EncodeToString(sum[:]),
+		Label:     command,
+		Operation: "exec",
+		Path:      command,
+		Rule:      rule,
+	}, true
+}
+
+// NewCommandInvocationScope builds a canonical command approval scope for an
+// exact command invocation. The key is a stable hash of command + argv so exact
+// session approvals do not widen to different arguments.
+func NewCommandInvocationScope(command string, args []string, rule string) (Scope, bool) {
+	command = normalizeCommandExecutable(command)
 	if command == "" {
 		return Scope{}, false
 	}
@@ -96,11 +127,23 @@ func NewCommandScope(command string, args []string, rule string) (Scope, bool) {
 	sum := sha256.Sum256([]byte(keyMaterial))
 	return Scope{
 		Kind:      "command",
-		Key:       "command:" + hex.EncodeToString(sum[:]),
+		Key:       "command-invocation:" + hex.EncodeToString(sum[:]),
 		Label:     formatCommandScopeLabel(argv),
 		Operation: "exec",
+		Path:      command,
 		Rule:      strings.TrimSpace(rule),
 	}, true
+}
+
+func normalizeCommandExecutable(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return ""
+	}
+	if filepath.IsAbs(command) || strings.ContainsRune(command, filepath.Separator) {
+		command = filepath.Clean(command)
+	}
+	return command
 }
 
 func formatCommandScopeLabel(argv []string) string {

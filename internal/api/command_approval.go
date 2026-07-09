@@ -22,7 +22,7 @@ func (a *App) applyCommandApproval(ctx context.Context, sessionID, cmdID string,
 		fields["actor"] = actor
 	}
 
-	if scope, ok := approvals.NewCommandScope(command, args, pre.Rule); ok {
+	if scope, ok, scopeOptions := commandApprovalScopeOptions(command, args, pre.Rule); ok {
 		if cached, ok := a.approvals.CheckScoped(ctx, sessionID, cmdID, scope); ok {
 			if cached.Approved {
 				pre.EffectiveDecision = types.DecisionAllow
@@ -31,9 +31,20 @@ func (a *App) applyCommandApproval(ctx context.Context, sessionID, cmdID string,
 			}
 			return nil
 		}
+		if invocation, invocationOK := approvals.NewCommandInvocationScope(command, args, pre.Rule); invocationOK {
+			if cached, ok := a.approvals.CheckScoped(ctx, sessionID, cmdID, invocation); ok {
+				if cached.Approved {
+					pre.EffectiveDecision = types.DecisionAllow
+				} else {
+					pre.EffectiveDecision = types.DecisionDeny
+				}
+				return nil
+			}
+		}
 		for k, v := range approvals.ScopeFields(scope) {
 			fields[k] = v
 		}
+		fields["scope_options"] = scopeOptions
 	}
 
 	apr := approvals.Request{

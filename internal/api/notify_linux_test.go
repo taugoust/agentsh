@@ -6,14 +6,104 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/approvals"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/events"
+	unixmon "github.com/agentsh/agentsh/internal/netmonitor/unix"
 	"github.com/agentsh/agentsh/pkg/types"
 	"golang.org/x/sys/unix"
 )
+
+func TestApprovalRequesterAdapter_ExecutableSessionScopeAllowsDifferentArgs(t *testing.T) {
+	mgr := approvals.New("api", time.Minute, nil)
+	adapter := &approvalRequesterAdapter{mgr: mgr}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	command := "/nix/store/abc-sqlite-3.45/bin/sqlite3"
+	rule := "approve-unknown-nix-store-executables"
+	done := make(chan struct {
+		approved bool
+		err      error
+	}, 1)
+	go func() {
+		approved, err := adapter.RequestExecApproval(ctx, unixmon.ApprovalRequest{
+			SessionID: "s1",
+			Command:   command,
+			Args:      []string{"sqlite3", "events.db", "select * from events limit 10"},
+			Reason:    "approval required",
+			Rule:      rule,
+		})
+		done <- struct {
+			approved bool
+			err      error
+		}{approved: approved, err: err}
+	}()
+
+	req := waitPendingCommandApproval(t, ctx, mgr, "s1")
+	if req.Fields["scope_path"] != command || req.Fields["scope_label"] != command {
+		t.Fatalf("default scope should be executable path, fields=%#v", req.Fields)
+	}
+	if key, _ := req.Fields["scope_key"].(string); !strings.HasPrefix(key, "command-executable:") {
+		t.Fatalf("scope_key = %q, want executable scope", key)
+	}
+	if !mgr.ResolveForSessionWithScope("s1", req.ID, true, "ok", approvals.ScopeSession) {
+		t.Fatal("ResolveForSessionWithScope returned false")
+	}
+	select {
+	case res := <-done:
+		if res.err != nil || !res.approved {
+			t.Fatalf("first approval result approved=%v err=%v", res.approved, res.err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for first approval: %v", ctx.Err())
+	}
+
+	approved, err := adapter.RequestExecApproval(ctx, unixmon.ApprovalRequest{
+		SessionID: "s1",
+		Command:   command,
+		Args:      []string{"sqlite3", "-readonly", "events.db", "select * from events limit 50"},
+		Reason:    "approval required",
+		Rule:      rule,
+	})
+	if err != nil || !approved {
+		t.Fatalf("second approval result approved=%v err=%v", approved, err)
+	}
+	if pending := mgr.ListPendingForSession("s1"); len(pending) != 0 {
+		t.Fatalf("unexpected pending approval for same executable: %+v", pending)
+	}
+
+	differentDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.RequestExecApproval(ctx, unixmon.ApprovalRequest{
+			SessionID: "s1",
+			Command:   "/nix/store/def-postgresql/bin/psql",
+			Args:      []string{"psql", "events.db", "select 1"},
+			Reason:    "approval required",
+			Rule:      rule,
+		})
+		differentDone <- err
+	}()
+	differentReq := waitPendingCommandApproval(t, ctx, mgr, "s1")
+	if differentReq.Target == command {
+		t.Fatalf("different executable did not prompt separately: %+v", differentReq)
+	}
+	if !mgr.ResolveForSession("s1", differentReq.ID, false, "no") {
+		t.Fatal("ResolveForSession returned false")
+	}
+	select {
+	case err := <-differentDone:
+		if err != nil {
+			t.Fatalf("different approval returned error: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for different approval: %v", ctx.Err())
+	}
+}
 
 func TestStartNotifyHandler_GracefulErrorExit(t *testing.T) {
 	// Create a unix socketpair so RecvFD can be attempted.

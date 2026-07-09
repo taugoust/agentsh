@@ -127,13 +127,19 @@ func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req 
 		"args":    req.Args,
 		"source":  "execve",
 	}
-	if scope, ok := approvals.NewCommandScope(req.Command, req.Args, req.Rule); ok {
+	if scope, ok, scopeOptions := commandApprovalScopeOptions(req.Command, req.Args, req.Rule); ok {
 		if cached, ok := a.mgr.CheckScoped(ctx, req.SessionID, commandID, scope); ok {
 			return cached.Approved, nil
+		}
+		if invocation, invocationOK := approvals.NewCommandInvocationScope(req.Command, req.Args, req.Rule); invocationOK {
+			if cached, ok := a.mgr.CheckScoped(ctx, req.SessionID, commandID, invocation); ok {
+				return cached.Approved, nil
+			}
 		}
 		for k, v := range approvals.ScopeFields(scope) {
 			fields[k] = v
 		}
+		fields["scope_options"] = scopeOptions
 	}
 
 	apr := approvals.Request{
