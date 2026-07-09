@@ -7,26 +7,29 @@ import (
 	"github.com/agentsh/agentsh/internal/config"
 )
 
-func TestConfigureSupervisorMVPRejectsConfiguredNetworkEnforcement(t *testing.T) {
+func TestDetachedSupervisorMVPWarnsConfiguredNetworkEnforcement(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Sandbox.Network.Enabled = true
 	cfg.Sandbox.Network.Transparent.Enabled = true
 	cfg.Sandbox.Network.EBPF.Enforce = true
 	cfg.Sandbox.Network.EBPF.Required = true
 
-	err := configureSupervisorMVP(cfg, t.TempDir(), t.TempDir()+"/supervisor.sock")
-	if err == nil {
-		t.Fatal("expected detached supervisor config to reject unsupported network enforcement")
+	msg := detachedSupervisorNetworkEnforcementWarning(cfg)
+	if msg == "" {
+		t.Fatal("expected detached supervisor config warning")
 	}
-	msg := err.Error()
 	for _, want := range []string{
 		"sandbox.network.transparent.enabled",
 		"sandbox.network.ebpf.enforce",
 		"sandbox.network.ebpf.required",
 	} {
 		if !strings.Contains(msg, want) {
-			t.Fatalf("error %q missing %q", msg, want)
+			t.Fatalf("warning %q missing %q", msg, want)
 		}
+	}
+
+	if err := configureSupervisorMVP(cfg, t.TempDir(), t.TempDir()+"/supervisor.sock"); err != nil {
+		t.Fatalf("configureSupervisorMVP should warn and continue: %v", err)
 	}
 }
 

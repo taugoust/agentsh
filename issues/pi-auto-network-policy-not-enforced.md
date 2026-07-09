@@ -3,6 +3,11 @@
 ## Status
 Open.
 
+## Current mitigation
+Detached supervisors now print a prominent warning when the source config enables network enforcement that the current detached MVP disables. This keeps `pi-auto` usable while making the safety gap visible.
+
+Partial hardening has landed for adjacent bugs: cgroup hooks now activate for eBPF-only configs, and exec runners fail closed on cgroup/eBPF post-start hook errors. The core detached network-enforcement gap remains open.
+
 ## Problem
 In a `pi-autonomous` detached/shadow session, AgentSH policy can say that an unknown HTTPS connection requires approval, but the actual command can still connect successfully without any approval prompt or network audit event.
 
@@ -99,14 +104,14 @@ A user or agent may believe unknown network access is approval-gated, while `cur
 
 ## Fix direction
 
-The immediate safe behavior is fail-closed, not silent network bypass:
+The immediate compatibility behavior is warning loudly rather than failing startup, because `pi-auto` currently depends on detached supervisors for both local and SSH use.
 
-- reject detached supervisor startup before spawning when the source config contains network enforcement that the detached MVP would disable (`sandbox.network.transparent.enabled`, `sandbox.network.ebpf.enforce`, or `sandbox.network.ebpf.required`);
-- keep the defensive child-side rejection in `supervisor run`;
+The real fix still needs a supported detached network-enforcement design (for example a privileged parent/daemon handoff, transparent proxy support, or another mechanism). Landlock network on the tested kernel is available but too coarse here: the current wrapper only allows or blocks TCP generally, not per-host dynamic approval.
+
+Already-landed partial hardening:
+
 - activate `cgroupHook` for eBPF-only configs; and
 - propagate post-start hook errors as command failures instead of logging-and-continuing.
-
-Longer-term work, if detached `pi-auto` should support interactive unknown-network approvals, needs a real detached network enforcement design (for example a privileged parent/daemon handoff, transparent proxy support, or another mechanism). Landlock network on the tested kernel is available but too coarse here: the current wrapper only allows or blocks TCP generally, not per-host dynamic approval.
 
 Relevant files to inspect:
 

@@ -76,8 +76,8 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error
 	if cfg == nil {
 		return fmt.Errorf("config is nil")
 	}
-	if err := validateDetachedSupervisorMVPSourceConfig(cfg); err != nil {
-		return err
+	if warning := detachedSupervisorNetworkEnforcementWarning(cfg); warning != "" {
+		fmt.Fprintf(os.Stderr, "agentsh: warning: %s\n", warning)
 	}
 
 	// Stage 1 is a user-owned, single-session supervisor. Keep the existing
@@ -130,11 +130,11 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error
 	return nil
 }
 
-func validateDetachedSupervisorMVPSourceConfig(cfg *config.Config) error {
+func detachedSupervisorNetworkEnforcementWarning(cfg *config.Config) string {
 	if features := detachedSupervisorUnsupportedNetworkFeatures(cfg); len(features) > 0 {
-		return fmt.Errorf("detached supervisor MVP cannot safely disable configured network enforcement (%s); use a daemon-backed session or disable these settings for detached sessions", strings.Join(features, ", "))
+		return fmt.Sprintf("detached supervisor MVP is disabling configured network enforcement (%s); network policy checks may report approvals/denies that are not enforced at runtime in detached sessions", strings.Join(features, ", "))
 	}
-	return nil
+	return ""
 }
 
 func detachedSupervisorUnsupportedNetworkFeatures(cfg *config.Config) []string {
@@ -276,8 +276,8 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	if err != nil {
 		return nil, err
 	}
-	if err := validateDetachedSupervisorMVPSourceConfig(preflightCfg); err != nil {
-		return nil, err
+	if warning := detachedSupervisorNetworkEnforcementWarning(preflightCfg); warning != "" {
+		fmt.Fprintf(os.Stderr, "agentsh: warning: %s\n", warning)
 	}
 	eventToken := randomDetachedEventToken()
 	args := []string{"supervisor", "run", "--state-dir", stateDir, "--socket", sockPath, "--config", configPath}
