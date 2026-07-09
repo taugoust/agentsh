@@ -17,22 +17,32 @@ The repeated prompt displayed the same resolved executable path:
 Similar repeated prompts were also observed for `gofmt`, though that still needs a focused reproduction.
 
 ## Root cause
-Session-scoped command approvals were cached correctly for later checks, but concurrent approval requests that were already pending before the first approval resolution were left in the pending queue.
+Two related bugs caused repeated prompts.
+
+First, session-scoped command approvals were cached correctly for later checks, but concurrent approval requests that were already pending before the first approval resolution were left in the pending queue.
 
 Pi prompts pending approvals serially, so after approving one `sqlite3` request for the session, Pi could immediately show the next already-pending `sqlite3` request. That looked like the session approval was ignored even though subsequent newly-created checks would use the cached executable scope.
 
 The detached pushed-approval store had the same pending-queue behavior.
 
-## Resolution
-Fixed by `4ba4c1e2` (`fix(approvals): resolve pending covered session prompts`).
+Second, loop/nested execve approvals could become sessionless. The seccomp notify handler knew the session ID, but exec depth tracking could record an outer shell process with an empty session when its parent ancestry was not tracked. Child execs such as looped `sqlite3` inherited that empty tracked session, so Pi showed command approvals with no `Session:` line and `Approve for session` could not be cached for the actual session.
 
-The fix resolves/removes other pending approvals in the same session when a new session-scoped approval covers them, including detached pushed approvals. Regression coverage was added for:
+## Resolution
+Fixed by:
+
+- `4ba4c1e2` (`fix(approvals): resolve pending covered session prompts`)
+- `ee78b17a` (`fix(execve): preserve session for nested approvals`)
+
+The first fix resolves/removes other pending approvals in the same session when a new session-scoped approval covers them, including detached pushed approvals. The second fix preserves the known notify-handler session as a fallback for nested execve depth tracking.
+
+Regression coverage was added for:
 
 - manager-level concurrent command approvals covered by executable session scope;
 - exact invocation scopes remaining narrow;
 - local REST approval resolution with Pi-selected executable session scope;
 - legacy approval UI resolution with Pi-selected executable session scope;
-- detached pushed approvals covered by executable session scope.
+- detached pushed approvals covered by executable session scope;
+- nested/loop execve approval preserving the session ID when the first tracked parent was discovered without ancestry.
 
 A dedicated Nix flake check, `approval-regression-tests`, now runs these approval regressions.
 
