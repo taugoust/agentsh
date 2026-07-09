@@ -35,4 +35,8 @@ build/
 # Local agent planning notes
 /plans/
 /plan.md
+
+# Issue tracker files are intentionally tracked. Keep local plans ignored.
+!/issues/
+!/issues/**
 /issues/plans/
