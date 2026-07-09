@@ -106,12 +106,105 @@ A user or agent may believe unknown network access is approval-gated, while `cur
 
 The immediate compatibility behavior is warning loudly rather than failing startup, because `pi-auto` currently depends on detached supervisors for both local and SSH use.
 
-The real fix still needs a supported detached network-enforcement design (for example a privileged parent/daemon handoff, transparent proxy support, or another mechanism). Landlock network on the tested kernel is available but too coarse here: the current wrapper only allows or blocks TCP generally, not per-host dynamic approval.
+The real fix is to keep detached/session-local supervisors, but split privileged kernel-network setup into a small helper. Detached supervisors should remain unprivileged and own session lifecycle, policy, approvals, shadow workspace, and Pi/tool execution. The helper should only attach/update/clean network enforcement for cgroups.
 
 Already-landed partial hardening:
 
 - activate `cgroupHook` for eBPF-only configs; and
 - propagate post-start hook errors as command failures instead of logging-and-continuing.
+
+## Plan
+
+### 1. Separate cgroup delegation from eBPF privilege
+
+Detached network enforcement needs two different capabilities:
+
+- a writable cgroup subtree for placing Pi/tool processes; and
+- privileged eBPF/network setup for enforcing outbound policy.
+
+On `matebook`, `systemd-run --user -p Delegate=yes ...` proved that the first part can work without root: a user service can create child cgroups and move processes into them. eBPF still reports missing `CAP_BPF`/`CAP_SYS_ADMIN`, so the privileged helper is only for the second part.
+
+### 2. Fix net-only cgroup probing
+
+Cgroup network eBPF attach does not need resource controllers (`+cpu`, `+memory`, etc.). AgentSH should not gate network-only enforcement on resource-controller probing.
+
+Observed probe bug on `matebook`:
+
+- attach-only cgroup placement works before enabling controllers;
+- AgentSH's probe writes `+cpu`, then `+memory` fails with `EOPNOTSUPP`;
+- after `+cpu`, writing to child `cgroup.procs` fails with `EOPNOTSUPP`.
+
+Fix: for net-only / attach-only mode, create a leaf cgroup and attach/move PIDs without touching `cgroup.subtree_control`. Keep scratch-child resource-controller probing only for resource-limit features.
+
+### 3. Launch detached supervisors with user cgroup delegation where available
+
+Prefer starting detached supervisors via the user manager:
+
+```sh
+systemd-run --user --collect -p Delegate=yes agentsh supervisor run ...
+```
+
+This gives the supervisor a writable delegated subtree while keeping it unprivileged. For SSH use, handle user-manager availability explicitly (`XDG_RUNTIME_DIR`, lingering, remote user systemd). If delegation is unavailable, fall back to lower enforcement tiers or degraded warning.
+
+### 4. Add a narrow privileged network helper
+
+Introduce a small helper/service that:
+
+- runs with the minimal required privileges/caps for BPF/network setup;
+- loads only AgentSH's fixed, built-in BPF programs;
+- never accepts arbitrary BPF bytecode or privileged fds from clients;
+- attaches `bpf_link`s to requested cgroups;
+- updates allow/deny/redirect maps on supervisor request;
+- owns cleanup/reaping; and
+- never runs Pi/tools or arbitrary commands.
+
+On NixOS machines, this can be installed as a system service. On home-manager-only machines with `sudo`, support a sudo-launched per-session helper path if feasible. With no helper available, do not claim full network enforcement.
+
+### 5. Protect the helper from same-UID agent tools
+
+Supervisor and Pi/tools run as the same Unix user, so `SO_PEERCRED` UID is not enough. The helper control socket and BPF map fds must be unreachable from agent-controlled processes.
+
+Required boundaries:
+
+- helper authenticates clients with Unix credentials plus PID/cgroup checks and session nonce;
+- helper verifies requested target cgroup is inside the caller's delegated subtree;
+- supervisor never passes BPF/map/link fds to tools;
+- helper socket path/fd is hidden from tools, e.g. via mount namespace/fd hygiene; and
+- all helper/control fds are `CLOEXEC`.
+
+### 6. Use proxy-based approval semantics
+
+Pure cgroup eBPF cannot wait for human approval and sees IP:port, not hostname. Full `approve-unknown-https` semantics require a userspace proxy in the path.
+
+Target high-assurance design:
+
+- cgroup eBPF gates/redirects outbound TCP to an AgentSH proxy;
+- proxy sees hostname/SNI/HTTP CONNECT metadata;
+- proxy evaluates network policy and handles approvals synchronously; and
+- direct bypass is denied/fails closed.
+
+Without proxy support, unknown destinations should become deny/fail-closed with an approve-then-rerun UX, not silent allow.
+
+### 7. Use pinned BPF resources for restart tolerance
+
+Use `bpf_link` and pin links/maps under a per-session bpffs path such as:
+
+```text
+/sys/fs/bpf/agentsh/<session>/...
+```
+
+Pinned resources let enforcement survive helper/supervisor restarts. Cleanup should follow session/cgroup lifetime, not helper process lifetime.
+
+### 8. Implement an enforcement-tier ladder
+
+At session start, select and record the strongest available enforcement tier:
+
+1. helper + eBPF redirect/gate + proxy: full network policy and approvals;
+2. user namespace / network namespace + nftables + proxy, where available;
+3. Landlock TCP pin-to-proxy + seccomp blocking UDP/raw/QUIC bypasses: degraded TCP-focused safety;
+4. no enforcement: refuse autonomous networked mode, loopback-only mode, or explicit degraded warning.
+
+`policy-test`, session metadata, and session start output should report the active enforcement tier so policy/runtime divergence is visible.
 
 Relevant files to inspect:
 
