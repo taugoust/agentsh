@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/client"
@@ -54,7 +55,9 @@ func newSupervisorRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			configureSupervisorMVP(cfg, stateDir, sockPath)
+			if err := configureSupervisorMVP(cfg, stateDir, sockPath); err != nil {
+				return err
+			}
 			srv, err := server.New(cfg)
 			if err != nil {
 				return err
@@ -69,7 +72,14 @@ func newSupervisorRunCmd() *cobra.Command {
 	return cmd
 }
 
-func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) {
+func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error {
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
+	if err := validateDetachedSupervisorMVPSourceConfig(cfg); err != nil {
+		return err
+	}
+
 	// Stage 1 is a user-owned, single-session supervisor. Keep the existing
 	// seccomp/wrap path, but explicitly disable the heavyweight/global pieces
 	// called out as MVP non-goals.
@@ -117,6 +127,31 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) {
 	cfg.PackageChecks.Enabled = false
 	cfg.Skillcheck.Enabled = false
 	cfg.ThreatFeeds.Enabled = false
+	return nil
+}
+
+func validateDetachedSupervisorMVPSourceConfig(cfg *config.Config) error {
+	if features := detachedSupervisorUnsupportedNetworkFeatures(cfg); len(features) > 0 {
+		return fmt.Errorf("detached supervisor MVP cannot safely disable configured network enforcement (%s); use a daemon-backed session or disable these settings for detached sessions", strings.Join(features, ", "))
+	}
+	return nil
+}
+
+func detachedSupervisorUnsupportedNetworkFeatures(cfg *config.Config) []string {
+	if cfg == nil {
+		return nil
+	}
+	var features []string
+	if cfg.Sandbox.Network.Enabled && cfg.Sandbox.Network.Transparent.Enabled {
+		features = append(features, "sandbox.network.transparent.enabled")
+	}
+	if cfg.Sandbox.Network.EBPF.Enforce {
+		features = append(features, "sandbox.network.ebpf.enforce")
+	}
+	if cfg.Sandbox.Network.EBPF.Required {
+		features = append(features, "sandbox.network.ebpf.required")
+	}
+	return features
 }
 
 func newSessionStartCmd() *cobra.Command {
@@ -236,6 +271,13 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	configPath, _ := findConfigPath()
 	if abs, absErr := filepath.Abs(configPath); absErr == nil {
 		configPath = abs
+	}
+	preflightCfg, _, err := loadLocalConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateDetachedSupervisorMVPSourceConfig(preflightCfg); err != nil {
+		return nil, err
 	}
 	eventToken := randomDetachedEventToken()
 	args := []string{"supervisor", "run", "--state-dir", stateDir, "--socket", sockPath, "--config", configPath}

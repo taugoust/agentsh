@@ -41,3 +41,21 @@ func TestApplyCgroupV2_EBPFEnabledRequiresCgroupManager(t *testing.T) {
 		t.Fatalf("expected CgroupUnavailableError, got %T: %v", err, err)
 	}
 }
+
+func TestCgroupHookActivatesForEBPFOnlyConfig(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Sandbox.Network.EBPF.Enabled = true
+
+	app := &App{cfg: cfg}
+	if hook := app.cgroupHook("sess", "cmd", policy.Limits{}); hook == nil {
+		t.Fatal("expected cgroup hook when eBPF is enabled without cgroup resource limits")
+	}
+}
+
+func TestCgroupHookNilWhenNoCgroupConsumers(t *testing.T) {
+	cfg := &config.Config{}
+	app := &App{cfg: cfg}
+	if hook := app.cgroupHook("sess", "cmd", policy.Limits{}); hook != nil {
+		t.Fatal("expected nil hook when cgroups and eBPF are disabled")
+	}
+}

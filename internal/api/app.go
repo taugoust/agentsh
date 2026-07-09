@@ -1004,10 +1004,18 @@ func (a *App) execInSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) cgroupHook(sessionID string, cmdID string, limits policy.Limits) postStartHook {
-	// Return nil (not a no-op function) when cgroups are disabled.
-	// This prevents exec.go from activating ptrace-stopped mode unnecessarily,
-	// which can cause issues in environments where ptrace isn't fully supported.
-	if a == nil || a.cfg == nil || !a.cfg.Sandbox.Cgroups.Enabled {
+	// Return nil (not a no-op function) when neither resource limits nor
+	// cgroup-attached eBPF need a command cgroup. eBPF can be enabled without
+	// cgroup resource limits (attach-only mode), so do not gate solely on
+	// sandbox.cgroups.enabled.
+	if a == nil || a.cfg == nil {
+		return nil
+	}
+	needsCgroup := a.cfg.Sandbox.Cgroups.Enabled ||
+		a.cfg.Sandbox.Network.EBPF.Enabled ||
+		a.cfg.Sandbox.Network.EBPF.Enforce ||
+		a.cfg.Sandbox.Network.EBPF.Required
+	if !needsCgroup {
 		return nil
 	}
 	return func(pid int) (func() error, error) {

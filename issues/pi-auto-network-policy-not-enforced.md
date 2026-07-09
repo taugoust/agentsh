@@ -90,13 +90,23 @@ This undermines `pi-auto` safety and may also hide the real cause of subagent ha
 
 A user or agent may believe unknown network access is approval-gated, while `curl`/package managers can reach unknown hosts without any approval or audit trail.
 
-## Suspected areas
+## Confirmed root causes
 
-- Detached supervisor/session startup may not initialize or carry the cgroup manager needed for eBPF enforcement.
-- `internal/api/app.go` `cgroupHook` / `internal/api/cgroups.go` may not be invoked for detached supervisor exec paths, or failures may be ignored.
-- `runCommandWithResources` may continue after cgroup/eBPF hook failure even when `sandbox.network.ebpf.required = true`.
-- eBPF attachment/collector events may not be wired into detached per-session supervisors.
-- Commands run through `nix run ... curl` may leave the expected cgroup before the actual network connect.
+- Detached Stage 1 supervisors explicitly disable cgroups, `sandbox.network`, transparent networking, and eBPF in `internal/cli/supervisor_session.go` (`configureSupervisorMVP`). That made the detached supervisor's runtime behavior diverge from the original host config and from policy-test output.
+- A normal user-owned supervisor on `matebook` cannot create/attach child cgroups under its login-session cgroup, and `agentsh detect` reports eBPF unavailable due missing `CAP_BPF`/`CAP_SYS_ADMIN`. Direct detached eBPF enforcement is therefore not available in that context today.
+- `internal/api/app.go` `cgroupHook` was gated only on `sandbox.cgroups.enabled`, even though `applyCgroupV2` supports eBPF-only/attach-only operation.
+- `runCommandWithResources` and `runCommandWithResourcesStreamingEmit` ignored post-start hook errors in multiple paths, so commands could continue after cgroup/eBPF setup failure even when enforcement should fail closed.
+
+## Fix direction
+
+The immediate safe behavior is fail-closed, not silent network bypass:
+
+- reject detached supervisor startup before spawning when the source config contains network enforcement that the detached MVP would disable (`sandbox.network.transparent.enabled`, `sandbox.network.ebpf.enforce`, or `sandbox.network.ebpf.required`);
+- keep the defensive child-side rejection in `supervisor run`;
+- activate `cgroupHook` for eBPF-only configs; and
+- propagate post-start hook errors as command failures instead of logging-and-continuing.
+
+Longer-term work, if detached `pi-auto` should support interactive unknown-network approvals, needs a real detached network enforcement design (for example a privileged parent/daemon handoff, transparent proxy support, or another mechanism). Landlock network on the tested kernel is available but too coarse here: the current wrapper only allows or blocks TCP generally, not per-host dynamic approval.
 
 Relevant files to inspect:
 

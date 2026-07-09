@@ -475,11 +475,19 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid ptrace attach: %w", attachErr)
 			}
 
-			// 4. Run hook while process stopped (cgroup/eBPF setup)
+			// 4. Run hook while process stopped (cgroup/eBPF setup).
+			// applyCgroupV2 returns nil when degradation is explicitly allowed, so
+			// any hook error must fail closed rather than silently running outside
+			// the expected cgroup/eBPF controls.
 			if hook != nil {
 				if cleanup, hookErr := hook(cmd.Process.Pid); hookErr != nil {
-					slog.Warn("hybrid mode: cgroup/eBPF hook failed (continuing without resource controls)",
-						"error", hookErr, "pid", cmd.Process.Pid)
+					close(ptraceDone)
+					handlerCancel()
+					_ = killProcess(cmd.Process.Pid)
+					_ = killProcessGroup(pgid)
+					pipeWG.Wait()
+					cmd.Process.Release()
+					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("post-start hook: %w", hookErr)
 				} else if cleanup != nil {
 					defer func() { _ = cleanup() }()
 				}
@@ -563,7 +571,14 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace attach: %w", attachErr)
 			}
 			if hook != nil {
-				if cleanup, hookErr := hook(cmd.Process.Pid); hookErr == nil && cleanup != nil {
+				if cleanup, hookErr := hook(cmd.Process.Pid); hookErr != nil {
+					close(ptraceDone)
+					_ = killProcess(cmd.Process.Pid)
+					_ = killProcessGroup(pgid)
+					pipeWG.Wait()
+					cmd.Process.Release()
+					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("post-start hook: %w", hookErr)
+				} else if cleanup != nil {
 					defer func() { _ = cleanup() }()
 				}
 			}
@@ -608,7 +623,12 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if hook != nil {
 			// Seccomp stopped-start: process started with PTRACE_TRACEME
-			if cleanup, hookErr := hook(cmd.Process.Pid); hookErr == nil && cleanup != nil {
+			if cleanup, hookErr := hook(cmd.Process.Pid); hookErr != nil {
+				_ = killProcess(cmd.Process.Pid)
+				_ = killProcessGroup(pgid)
+				_ = cmd.Wait()
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("post-start hook: %w", hookErr)
+			} else if cleanup != nil {
 				defer func() { _ = cleanup() }()
 			}
 			if resumeErr := resumeTracedProcess(cmd.Process.Pid); resumeErr != nil {
