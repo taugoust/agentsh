@@ -15,8 +15,16 @@ type CheckResult struct {
 	Suggestion string // e.g., "Set sandbox.unix_sockets.enabled: false"
 }
 
+type CheckOptions struct {
+	ExternalEBPFHelper bool
+}
+
 // CheckAll on non-Linux platforms is a no-op since the Linux-specific
 // sandbox features are not applicable.
-func CheckAll(_ *config.Config) error {
+func CheckAll(cfg *config.Config) error {
+	return CheckAllWithOptions(cfg, CheckOptions{})
+}
+
+func CheckAllWithOptions(_ *config.Config, _ CheckOptions) error {
 	return nil
 }

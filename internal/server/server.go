@@ -30,6 +30,7 @@ import (
 	limitspkg "github.com/agentsh/agentsh/internal/limits"
 	"github.com/agentsh/agentsh/internal/mcpregistry"
 	"github.com/agentsh/agentsh/internal/metrics"
+	"github.com/agentsh/agentsh/internal/nethelper"
 	"github.com/agentsh/agentsh/internal/ocsf"
 	"github.com/agentsh/agentsh/internal/pkgcheck"
 	"github.com/agentsh/agentsh/internal/policy"
@@ -125,7 +126,11 @@ func New(cfg *config.Config) (*Server, error) {
 	// Check that required kernel capabilities are available for enabled features.
 	// This catches issues like running in a VM/container that doesn't support
 	// ptrace, seccomp user-notify, or eBPF.
-	if err := capabilities.CheckAll(cfg); err != nil {
+	helperCredentialConfigured := strings.TrimSpace(os.Getenv(nethelper.EnvHelperInstanceCredential)) != "" ||
+		strings.TrimSpace(os.Getenv(nethelper.EnvSessionNonce)) != "" ||
+		strings.TrimSpace(os.Getenv(nethelper.EnvCredentialFile)) != ""
+	externalEBPFHelper := strings.TrimSpace(os.Getenv(nethelper.EnvSocket)) != "" && helperCredentialConfigured
+	if err := capabilities.CheckAllWithOptions(cfg, capabilities.CheckOptions{ExternalEBPFHelper: externalEBPFHelper}); err != nil {
 		return nil, err
 	}
 

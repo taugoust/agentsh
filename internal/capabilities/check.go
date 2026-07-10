@@ -115,9 +115,23 @@ func realCheckWrapperBinary(binaryPath string) CheckResult {
 	}
 }
 
+// CheckOptions describes trusted external enforcement mechanisms that replace
+// capability checks in the current unprivileged process. Runtime preflight must
+// still authenticate and exercise the helper before enforcement is reported.
+type CheckOptions struct {
+	ExternalEBPFHelper bool
+}
+
 // CheckAll runs all capability checks based on enabled features in the config.
 // It returns nil if all checks pass, or an error describing all failures.
 func CheckAll(cfg *config.Config) error {
+	return CheckAllWithOptions(cfg, CheckOptions{})
+}
+
+// CheckAllWithOptions runs capability checks while accounting for installed
+// external helpers. An external helper replaces only this process's eBPF load
+// and attach capabilities; it does not turn configuration into runtime proof.
+func CheckAllWithOptions(cfg *config.Config, opts CheckOptions) error {
 	if cfg == nil {
 		return nil
 	}
@@ -168,7 +182,7 @@ func CheckAll(cfg *config.Config) error {
 	}
 
 	// Check network.ebpf.enabled -> requires eBPF
-	if cfg.Sandbox.Network.EBPF.Enabled {
+	if cfg.Sandbox.Network.EBPF.Enabled && !opts.ExternalEBPFHelper {
 		result := checkeBPF()
 		result.ConfigKey = "sandbox.network.ebpf.enabled"
 		result.Suggestion = "Set 'sandbox.network.ebpf.enabled: false' in your config"
@@ -179,7 +193,7 @@ func CheckAll(cfg *config.Config) error {
 
 	// Check ebpf cgroup attach feasibility (eBPF kernel support + attach-capable cgroup mode).
 	// Only recorded as a fatal failure when ebpf.required=true; enabled=true alone is best-effort.
-	if cfg.Sandbox.Network.EBPF.Enabled || cfg.Sandbox.Network.EBPF.Enforce || cfg.Sandbox.Network.EBPF.Required {
+	if (cfg.Sandbox.Network.EBPF.Enabled || cfg.Sandbox.Network.EBPF.Enforce || cfg.Sandbox.Network.EBPF.Required) && !opts.ExternalEBPFHelper {
 		// Populate the cgroup probe cache using the same cgroup settings the server
 		// will use at runtime. A generic /proc/self/cgroup probe is misleading for
 		// systemd services with DelegateSubgroup/base_path configured: the login
