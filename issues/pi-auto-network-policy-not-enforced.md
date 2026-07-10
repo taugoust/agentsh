@@ -19,15 +19,24 @@ Drafted locally, not committed yet:
 
 - net-only / attach-only cgroup probe foundation in `internal/limits/*`: when attach-only is permitted, probe child cgroup placement without touching `cgroup.subtree_control`, avoiding the `+cpu`/`+memory` poisoning observed on `matebook`; Nix go-unit check passed for this slice.
 - opt-in detached supervisor launcher scaffold for `systemd-run --user --collect -p Delegate=yes` with metadata for the systemd unit; currently gated behind `AGENTSH_DETACHED_SUPERVISOR_SYSTEMD_RUN`, not default-enabled; Nix go-unit check passed after this slice.
+- helper protocol/client/server skeleton in `internal/nethelper`: strict JSON validation, no bytecode/fd fields, Unix-socket client/server, SO_PEERCRED capture on Linux, fail-closed default authorizer, and supervisor client plumbing.
+- helper authorization now checks SO_PEERCRED PID/UID/GID, the per-user helper-instance credential, PID/start-time plus pidfd identity where available, registered command cgroup path/ID ownership, kernel-backed `/proc/<pid>/cgroup`, and real cgroupfs containment under the supervisor delegated subtree; lexical containment remains only for controlled tests.
+- hidden `agentsh nethelper serve --socket ...` now requires the installed root service, named systemd credential, and socket activation; its Linux `KernelBackend` loads only AgentSH's embedded cgroup connect/sendmsg programs, attaches helper-owned links, updates helper-owned allow/deny/default-deny maps, pins maps/links under the protected bpffs subtree, and reaps registered/orphaned resources only when ownership is proven.
+- detached strict-network behavior now preserves `ebpf.required`/`ebpf.enforce` instead of disabling them; setup failures fail closed, while non-strict/best-effort detached networking still degrades with warnings.
+- supervisor command cgroup setup can call a configured helper socket (`AGENTSH_NETHELPER_SOCKET`) and update a proxy-only default-deny gate request; helper control env is scrubbed from tool environments, and `systemd-run` launches explicitly pass the helper socket only to the supervisor service.
+- detached metadata/reporting distinguishes no enforcement, cgroup-delegated-only, and helper-requested degraded states without setting `network_policy_enforced=true`.
+- helper control-plane hardening now includes strict helper socket path checks (absolute path, protected parent, socket type, 0600 mode, expected root ownership), systemd socket activation, named systemd-credential loading, case-insensitive scrubbing of helper env from tool environments, and a hidden `agentsh nethelper cleanup-pins` recovery command.
+- helper restart recovery now reloads existing pinned bpffs maps/links on a subsequent authorized register for the same session cgroup, so a restarted helper can update/cleanup surviving pinned enforcement state; malformed/partial pins fail closed and can be removed explicitly with `cleanup-pins`.
+- `debug policy-test --op net_connect` now includes a `runtime_enforcement` object (and human output section) with tier/status, proxy path, per-command direct-bypass blocking notes, fail-closed setup status, and transparent-redirect support=false.
+- detached reporting now distinguishes `helper-ebpf-gate` degraded from the proxy-required tier and only permits `helper-ebpf-proxy`/`network_policy_enforced=true` after the active supervisor preflight succeeds.
 
-Not implemented yet:
+Still incomplete:
 
-- privileged network helper;
-- eBPF redirect/gate helper API;
-- proxy integration for synchronous hostname approval;
-- pinned bpffs links/maps and cleanup/reaper;
-- enforcement-tier reporting in session metadata / `policy-test`;
-- end-to-end detached network regression check.
+- a reviewed AgentSH NixOS module now defines the root helper/socket, per-UID runtime credential copy, bpffs pins, restricted capabilities/service sandbox, and delegated transient user-supervisor launch; the installed same-UID command-jail and adversarial boundary/preflight checks are still unproven, so packaging alone does not permit `network_policy_enforced=true`;
+- full same-UID bypass analysis remains open: the helper performs kernel PID/cgroup/subtree checks and stricter socket validation, while detached metadata/API now record requested/readiness/current status, explicit preflight evidence, and per-command attachment evidence; `network_policy_enforced` remains false until socket/fd/credential hiding, raw-socket denial, and proxy bypass controls are proven in the installed service configuration;
+- eBPF transparent redirect program is still not implemented; `BuiltinModeCgroupProxyRedirect` is a compileable protocol mode that the Linux backend rejects fail-closed. Current working mode remains proxy-or-block cgroup gate (loopback proxy allowed, direct external connects default-denied when the supervisor supplies a proxy/default-deny map), so non-proxy-aware tools fail closed rather than being transparently redirected;
+- restart recovery, stable supervisor identity, deterministic registration reaping, and validated orphan-pin cleanup are implemented locally but remain unverified against helper/supervisor crash timing on the installed target kernel;
+- end-to-end detached network regression check remains to be added/run.
 
 ## Problem
 In a `pi-autonomous` detached/shadow session, AgentSH policy can say that an unknown HTTPS connection requires approval, but the actual command can still connect successfully without any approval prompt or network audit event.
