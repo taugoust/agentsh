@@ -1,7 +1,7 @@
 # pi-auto network policy approval is not enforced at runtime
 
 ## Status
-Open for the Home Manager-only TUM DOS deployment and removal of an obsolete strict-startup warning. Strict local sessions are working on both `matebook` and `virby-vm`.
+Open only for the direct-local Home Manager-only DOS bootstrap, clearer early-exit diagnostics, and the remaining rollout/recovery pilots. Strict local sessions work on `matebook` and `virby-vm`; the on-demand remote `pi --ssh`/`pi-auto --ssh` lifecycle is implemented, and the user has confirmed the remote SSH path works against `graham` without a persistent root installation.
 
 ## Deployment status (2026-07-10)
 
@@ -32,35 +32,41 @@ Two post-deployment sessions independently recorded strict live evidence:
 
 Both report `requested/readiness/status = strict/ready/ready`, tier `helper-ebpf-proxy-required`, and `network_policy_enforced = true`. Their active preflights prove delegated attach-only cgroups, authenticated helper attachment, pinned and locked default-deny maps, exact proxy-only access, command-jail isolation, blocked direct TCP/UDP/QUIC/raw sockets, the fail-closed barrier, and cleanup.
 
-### Strict startup warning — obsolete noise
+### Strict startup warning — resolved
 
-Successful strict sessions still print this pre-preflight migration warning:
+AgentSH `926af140` removes the successful-path migration warning from `detachedSupervisorNetworkEnforcementWarning`. Strict intent is now quiet; degraded best-effort behavior and real launch/preflight failures retain diagnostics. This does not force `network_policy_enforced=true` or weaken the disposable active preflight.
+
+### TUM DOS Home Manager hosts — remote SSH path working
+
+The persistent installer design was replaced with one lease-scoped helper per top-level remote Pi lifecycle. AgentSH `926af140` provides root-only `nethelper bootstrap`, authenticated `release`, transient systemd hardening, fixed per-UID/per-lease runtime and bpffs paths, setup-only `CAP_CHOWN`, expiry, and conservative stale-state reaping. The full strict lifecycle passed the privileged Virby smoke, including the delegated supervisor and disposable BPF/proxy/command-jail/bypass/cleanup preflight.
+
+`nix-config` `8bad828` enables strict DOS cgroup/network/eBPF intent and wires a shared trusted-parent bootstrap into both `pi --ssh` and `pi-auto --ssh`. Sudo runs through an allocated remote TTY before the sandbox exists, so Pi/AgentSH never capture the password. No `/etc` unit, root profile, Home Manager sudo activation, persistent credential, or fleet-wide root installation is created. `pi-auto --ssh` retains its bounded helper and a dedicated SSH control connection through shadow review/resume and releases them after accept/reject. Missing bootstrap, helper, delegation, or preflight aborts rather than falling back.
+
+The user reports that the deployed `--ssh` path works against the x86_64 DOS host `graham`. Native parent-Pi `fetch` was also removed from the last macOS supervised bundle in `nix-config` `a2fa3db`; `pi-agent-extensions` `b0b2c24` independently refuses to register it in any supervised session.
+
+### TUM DOS Home Manager hosts — direct local invocation still open
+
+A plain invocation inside `graham` currently fails as follows:
 
 ```text
-agentsh: warning: detached supervisor is preserving required/enforced eBPF network setup (sandbox.network.enabled, sandbox.network.transparent.enabled, sandbox.network.ebpf.enabled, sandbox.network.ebpf.enforce, sandbox.network.ebpf.required); strict session startup will refuse unless the disposable cgroup/helper/proxy/command-jail/bypass preflight reports ready, and every command remains behind the fail-closed setup barrier
+ssh graham ~/Workspace/nix-config ❯ pi
+timed out waiting for supervisor socket /scratch/theo/.local/share/agentsh/sessions/session-d56cbd6c-4730-4ae5-a9ef-4d5ce68229bf/supervisor.sock
 ```
 
-It comes from `detachedSupervisorNetworkEnforcementWarning` in `internal/cli/supervisor_session.go`. This warning was useful while detached networking was unsupported, but configured strict networking is now the expected path and the active preflight is authoritative. Do not warn merely because strict settings are being preserved. Keep explicit diagnostics for degraded best-effort behavior and surface actual launch/preflight failures; if useful, move the successful-path explanation to debug/verbose output.
+This is fail-closed rather than a network bypass: local mode does not call the SSH bootstrap library, while DOS intentionally has no persistent helper. The strict detached supervisor therefore exits before creating its socket because no authenticated helper/delegated runtime was supplied, and the launcher currently hides that early failure behind a generic socket timeout. Plain local `pi-auto` has the same lifecycle gap.
 
-### TUM DOS Home Manager hosts — sudo system helper required
+The follow-up should add a local counterpart to the trusted bootstrap, gated to eligible Linux/Home Manager hosts. It should invoke terminal-connected sudo before session/sandbox creation, use the existing immutable AgentSH lease/bootstrap/result validation, pass only the protected socket and credential-file paths to the delegated user supervisor, and release after local `pi` cleanup. Local `pi-auto` additionally needs to persist only non-secret lease metadata through retained shadow review/resume and release on accept/reject or bounded expiry. Persistent NixOS helpers must continue to be detected and reused without prompting, and every failure must remain fail-closed. No Go/eBPF redesign is needed.
 
-The current `hosts/work/dos.nix` configuration explicitly disables detached-supervisor discovery, cgroups, network enforcement, and eBPF. Home Manager can install the unprivileged AgentSH/Pi client configuration, but it cannot safely own the required root service.
-
-These hosts need an explicit, trusted sudo bootstrap on each machine that:
-
-- installs a root-owned, socket-activated nethelper for the actual `theo` UID;
-- uses a host-local root-owned credential source and the protected per-UID runtime copy;
-- pins an immutable AgentSH package with a root GC root rather than executing `~/.nix-profile/bin/agentsh` as root;
-- ensures bpffs, cgroup v2, user-manager delegation/lingering, systemd credentials, and unprivileged namespaces are available; and
-- leaves ordinary `pi`/`pi-auto` sessions unprivileged and free of per-session sudo prompts.
-
-Do not run sudo from Home Manager activation. Add an explicit install/status/uninstall command, pilot it on one x86_64 and one AArch64 DOS host, and only enable strict DOS policy after the active preflight passes. Deploy the root system units separately on every host; the shared home directory is not sufficient.
+The launcher should also surface the transient supervisor's real early-exit/unit diagnostic instead of only timing out on `supervisor.sock`.
 
 ## Remaining work
 
-- [ ] Remove or downgrade the successful strict-startup warning without weakening fail-closed startup or failure diagnostics.
-- [ ] Implement the portable sudo-installed DOS helper and Home Manager client wiring.
-- [ ] Pilot DOS deployment on one x86_64 and one AArch64 host before fleet rollout.
+- [x] Remove the obsolete successful strict-startup warning without weakening fail-closed diagnostics.
+- [x] Implement and validate the no-install ephemeral helper primitive and remote `pi --ssh`/`pi-auto --ssh` wiring.
+- [x] Confirm the remote SSH path on the x86_64 DOS host `graham`.
+- [ ] Add the trusted direct-local ephemeral bootstrap to DOS `pi` and `pi-auto`.
+- [ ] Replace the generic supervisor-socket timeout with the underlying early-exit diagnostic.
+- [ ] Pilot on an AArch64 DOS host and finish explicit SSH-loss/helper-crash/expiry recovery checks before broader rollout.
 
 ## Historical implementation log
 
@@ -230,7 +236,7 @@ Prefer starting detached supervisors via the user manager:
 systemd-run --user --collect -p Delegate=yes agentsh supervisor run ...
 ```
 
-This gives the supervisor a writable delegated subtree while keeping it unprivileged. For SSH use, handle user-manager availability explicitly (`XDG_RUNTIME_DIR`, lingering, remote user systemd). If delegation is unavailable, fall back to lower enforcement tiers or degraded warning.
+This gives the supervisor a writable delegated subtree while keeping it unprivileged. For strict SSH or direct-local use, handle user-manager availability explicitly (`XDG_RUNTIME_DIR`, the live login/keepalive, and remote user systemd). If delegation is unavailable, strict startup must refuse rather than fall back.
 
 ### 4. Add a narrow privileged network helper
 
@@ -244,7 +250,7 @@ Introduce a small helper/service that:
 - owns cleanup/reaping; and
 - never runs Pi/tools or arbitrary commands.
 
-On NixOS machines, this can be installed as a system service. On Home Manager-only machines with `sudo`, use an explicit trusted bootstrap to install the same root-owned, socket-activated per-UID service; do not launch a fresh privileged helper from every Pi session or invoke sudo from Home Manager activation. With no installed helper available, do not claim full network enforcement.
+On managed NixOS machines, install one socket-activated root helper per UID and reuse it without prompting. On Home Manager-only machines with sudo, do not install persistent root state: a trusted outer wrapper creates one fixed, transient, authenticated helper lease per top-level Pi lifecycle before the sandbox starts. Sudo owns the terminal password exchange directly; the unprivileged delegated supervisor and all commands/subagents in that lifecycle share the lease. Concurrent invocations use separate leases. Release is authenticated and refused while registrations remain; expiry/crash paths retain pinned default-deny state until validated cleanup. A missing helper/bootstrap/delegation/preflight always refuses strict startup.
 
 ### 5. Protect the helper from same-UID agent tools
 
