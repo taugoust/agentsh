@@ -1053,7 +1053,7 @@ func (a *App) proveNetworkPreExecRefusal(ctx context.Context, sess *session.Sess
 	_, markerErr := os.Lstat(markerPath)
 	markerAbsent := errors.Is(markerErr, os.ErrNotExist)
 	if !hookSawStoppedChild || !markerAbsent || !errors.Is(runErr, forcedRefusal) || exitCode != 127 {
-		return false, "forced setup failure did not prove that the disposable child remained stopped"
+		return false, fmt.Sprintf("forced setup failure did not prove that the disposable child remained stopped (hook_observed=%t marker_absent=%t expected_error=%t exit_code=%d error=%v)", hookSawStoppedChild, markerAbsent, errors.Is(runErr, forcedRefusal), exitCode, runErr)
 	}
 	return true, ""
 }
