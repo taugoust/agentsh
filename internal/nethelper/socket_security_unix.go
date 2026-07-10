@@ -35,7 +35,7 @@ func validateSocketParent(dir string) error {
 	if info.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("helper socket directory %s must not be group/world writable", dir)
 	}
-	if err := validateOwnerCurrentOrRoot(info, "helper socket directory "+dir); err != nil {
+	if err := validateOwnerCurrentOrRoot(info, dir, "helper socket directory "+dir); err != nil {
 		return err
 	}
 	resolved, err := filepath.EvalSymlinks(dir)
@@ -93,13 +93,13 @@ func validateClientSocketPath(socketPath string) error {
 	return validateSocketFileSecurity(socketPath)
 }
 
-func validateOwnerCurrentOrRoot(info os.FileInfo, what string) error {
+func validateOwnerCurrentOrRoot(info os.FileInfo, path, what string) error {
 	st, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || st == nil {
 		return fmt.Errorf("%s ownership is unavailable", what)
 	}
 	uid := uint32(os.Getuid())
-	if st.Uid != uid && st.Uid != 0 {
+	if st.Uid != uid && st.Uid != 0 && !protectedUnmappedRootOwner(path, st.Uid) {
 		return fmt.Errorf("%s must be owned by uid %d or root, got uid %d", what, uid, st.Uid)
 	}
 	return nil
