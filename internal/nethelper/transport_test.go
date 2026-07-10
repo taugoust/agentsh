@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -12,6 +13,16 @@ import (
 	"testing"
 	"time"
 )
+
+func shortSocketPath(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "agentsh-nethelper-test-")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, "helper.sock")
+}
 
 type recordingBackend struct {
 	mu        sync.Mutex
@@ -47,7 +58,7 @@ func TestClientServerRoundTrip(t *testing.T) {
 	}
 	backend := &recordingBackend{}
 	server := NewServer(backend, AllowAuthorizer{})
-	socket := filepath.Join(t.TempDir(), "helper.sock")
+	socket := shortSocketPath(t)
 	ln, err := ListenUnix(socket)
 	if err != nil {
 		t.Fatalf("ListenUnix: %v", err)
@@ -101,6 +112,51 @@ func TestClientServerRoundTrip(t *testing.T) {
 	defer backend.mu.Unlock()
 	if len(backend.registers) != 1 || len(backend.updates) != 1 || len(backend.cleanups) != 1 {
 		t.Fatalf("backend calls: registers=%d updates=%d cleanups=%d", len(backend.registers), len(backend.updates), len(backend.cleanups))
+	}
+}
+
+func TestClientServerReleaseStopsAfterResponse(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix sockets unsupported on windows")
+	}
+	const credential = "0123456789abcdef0123456789abcdef"
+	server := NewServer(&recordingBackend{}, AllowAuthorizer{})
+	server.InstanceController = NewEphemeralInstanceController(EphemeralInstanceControllerOptions{
+		LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
+		HelperInstanceCredential: credential,
+		ExpectedUID:              uint32(os.Getuid()),
+		ExpectedGID:              uint32(os.Getgid()),
+		EnforceGID:               true,
+		Registrations:            fixedRegistrationCount(0),
+	})
+	socket := shortSocketPath(t)
+	ln, err := ListenUnix(socket)
+	if err != nil {
+		t.Fatalf("ListenUnix: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	server.Stop = cancel
+	done := make(chan error, 1)
+	go func() { done <- server.ServeListener(ctx, ln) }()
+
+	client := NewClient(socket)
+	client.Timeout = 2 * time.Second
+	resp, err := client.ReleaseInstance(context.Background(), ReleaseInstanceRequest{
+		ProtocolVersion:          CurrentProtocolVersion,
+		RequestID:                "release-1",
+		LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
+		HelperInstanceCredential: credential,
+	})
+	if err != nil {
+		t.Fatalf("ReleaseInstance: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("release response: %+v", resp)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not stop after release response")
 	}
 }
 

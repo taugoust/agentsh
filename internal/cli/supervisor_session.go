@@ -187,8 +187,10 @@ func detachedSupervisorNetworkEnforcementWarning(cfg *config.Config) string {
 		return ""
 	}
 	if detachedSupervisorStrictNetworkEnforcement(cfg) {
-		features := detachedSupervisorUnsupportedNetworkFeatures(cfg)
-		return fmt.Sprintf("detached supervisor is preserving required/enforced eBPF network setup (%s); strict session startup will refuse unless the disposable cgroup/helper/proxy/command-jail/bypass preflight reports ready, and every command remains behind the fail-closed setup barrier", strings.Join(features, ", "))
+		// Preserving strict networking is the supported path. The active preflight
+		// is authoritative and reports actionable failures; configured intent by
+		// itself is not a warning condition.
+		return ""
 	}
 	if features := detachedSupervisorUnsupportedNetworkFeatures(cfg); len(features) > 0 {
 		return fmt.Sprintf("detached supervisor MVP is disabling best-effort network enforcement (%s); %s", strings.Join(features, ", "), detachedSupervisorNetworkPolicyRuntimeGap)

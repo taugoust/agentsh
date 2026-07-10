@@ -10,32 +10,26 @@ import (
 
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/detached"
+	"github.com/agentsh/agentsh/internal/nethelper"
 )
 
-func TestDetachedSupervisorMVPWarnsConfiguredNetworkEnforcement(t *testing.T) {
+func TestDetachedSupervisorStrictNetworkHasNoMigrationWarning(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Sandbox.Network.Enabled = true
 	cfg.Sandbox.Network.Transparent.Enabled = true
 	cfg.Sandbox.Network.EBPF.Enforce = true
 	cfg.Sandbox.Network.EBPF.Required = true
 
-	msg := detachedSupervisorNetworkEnforcementWarning(cfg)
-	if msg == "" {
-		t.Fatal("expected detached supervisor config warning")
-	}
-	for _, want := range []string{
-		"sandbox.network.transparent.enabled",
-		"sandbox.network.ebpf.enforce",
-		"sandbox.network.ebpf.required",
-	} {
-		if !strings.Contains(msg, want) {
-			t.Fatalf("warning %q missing %q", msg, want)
-		}
+	if msg := detachedSupervisorNetworkEnforcementWarning(cfg); msg != "" {
+		t.Fatalf("supported strict configuration produced warning %q", msg)
 	}
 
 	stateDir := t.TempDir()
 	if err := configureSupervisorMVP(cfg, stateDir, filepath.Join(stateDir, "supervisor.sock")); err != nil {
-		t.Fatalf("configureSupervisorMVP should warn and continue: %v", err)
+		t.Fatalf("configureSupervisorMVP should preserve strict network setup: %v", err)
+	}
+	if !cfg.Sandbox.Network.Enabled || !cfg.Sandbox.Network.EBPF.Enabled || !cfg.Sandbox.Network.EBPF.Enforce || !cfg.Sandbox.Network.EBPF.Required {
+		t.Fatalf("strict network configuration was not preserved: %+v", cfg.Sandbox.Network)
 	}
 }
 
@@ -398,11 +392,11 @@ func TestDetachedSupervisorSystemdUnitSanitizesSessionID(t *testing.T) {
 
 func testDetachedSupervisorLaunchRequest() detachedSupervisorLaunchRequest {
 	return detachedSupervisorLaunchRequest{
-		Exe:        "agentsh",
-		Args:       detachedSupervisorRunArgs("state", "sock", "config.yml"),
-		Env:        []string{"PATH=bin", "AGENTSH_DETACHED_EVENT_TOKEN=token"},
-		Dir:        "workspace",
-		SessionID:  "session-123",
+		Exe:            "agentsh",
+		Args:           detachedSupervisorRunArgs("state", "sock", "config.yml"),
+		Env:            []string{"PATH=bin", "AGENTSH_DETACHED_EVENT_TOKEN=token"},
+		Dir:            "workspace",
+		SessionID:      "session-123",
 		ServiceEnv:     []string{"AGENTSH_DETACHED_EVENT_TOKEN=token", "AGENTSH_NETHELPER_CREDENTIAL_FILE=credential-file"},
 		ServiceEnvFile: filepath.Join(string(filepath.Separator), "state", "supervisor.env"),
 	}

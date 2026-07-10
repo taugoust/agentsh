@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/agentsh/agentsh/internal/nethelper"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
@@ -17,10 +19,13 @@ const nethelperSystemdCredentialName = "agentsh-nethelper-instance-credential"
 func newNethelperCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "nethelper",
-		Short:  "Run the installed privileged network helper",
+		Short:  "Run the privileged network helper",
 		Hidden: true,
 	}
 	cmd.AddCommand(newNethelperServeCmd())
+	cmd.AddCommand(newNethelperLeaseIDCmd())
+	cmd.AddCommand(newNethelperBootstrapCmd())
+	cmd.AddCommand(newNethelperReleaseCmd())
 	cmd.AddCommand(newNethelperCleanupPinsCmd())
 	return cmd
 }
@@ -85,9 +90,10 @@ func newNethelperServeCmd() *cobra.Command {
 	var expectedUID int
 	var expectedGID int
 	var pinRoot string
+	var ephemeralLease string
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Serve the installed AgentSH network helper socket",
+		Short: "Serve an AgentSH privileged network helper socket",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(socketPath) == "" {
 				return fmt.Errorf("--socket is required")
@@ -104,6 +110,24 @@ func newNethelperServeCmd() *cobra.Command {
 			}
 			if err := nethelper.ValidatePrivilegedServiceUser(); err != nil {
 				return err
+			}
+			ephemeralLease = strings.TrimSpace(ephemeralLease)
+			var ephemeralPaths nethelper.EphemeralLeasePaths
+			if ephemeralLease != "" {
+				if expectedGID < 0 {
+					return fmt.Errorf("--gid is required in ephemeral serve mode")
+				}
+				var err error
+				ephemeralPaths, err = nethelper.ValidateEphemeralServiceInvocation(uint32(expectedUID), ephemeralLease)
+				if err != nil {
+					return err
+				}
+				if filepath.Clean(socketPath) != ephemeralPaths.SocketPath {
+					return fmt.Errorf("ephemeral helper socket path does not match its fixed lease path")
+				}
+				if filepath.Clean(pinRoot) != ephemeralPaths.PinRoot {
+					return fmt.Errorf("ephemeral helper pin root does not match its fixed lease path")
+				}
 			}
 			credential, err := resolveNethelperInstanceCredential()
 			if err != nil {
@@ -159,17 +183,53 @@ func newNethelperServeCmd() *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "agentsh nethelper startup reaper: %s\n", warning)
 			}
 
+			authorizer := nethelper.NewSupervisorAuthorizer(authOpts)
+			server := nethelper.NewServer(nethelper.NewKernelBackendWithOptions(backendOpts), authorizer)
+
+			if ephemeralLease != "" {
+				listener, err := nethelper.ListenEphemeralUnixForUID(ephemeralPaths.SocketPath, uint32(expectedUID), uint32(expectedGID))
+				if err != nil {
+					return err
+				}
+				if err := nethelper.DropEphemeralSetupCapabilities(); err != nil {
+					_ = listener.Close()
+					_ = os.Remove(ephemeralPaths.SocketPath)
+					return err
+				}
+				serveCtx, cancel := context.WithCancel(ctx)
+				controller := nethelper.NewEphemeralInstanceController(nethelper.EphemeralInstanceControllerOptions{
+					LeaseID:                  ephemeralLease,
+					HelperInstanceCredential: credential,
+					ExpectedUID:              uint32(expectedUID),
+					ExpectedGID:              uint32(expectedGID),
+					EnforceGID:               true,
+					Registrations:            authorizer,
+				})
+				server.InstanceController = controller
+				server.Stop = cancel
+				fmt.Fprintf(cmd.OutOrStdout(), "agentsh ephemeral nethelper listening on unix://%s\n", socketPath)
+				serveErr := server.ServeListener(serveCtx, listener)
+				cancel()
+				_ = listener.Close()
+				_ = os.Remove(ephemeralPaths.SocketPath)
+				if controller.Released() {
+					if err := cleanupReleasedEphemeralLease(ephemeralPaths, uint32(expectedUID)); err != nil {
+						return err
+					}
+					if errors.Is(serveErr, context.Canceled) {
+						return nil
+					}
+				}
+				return serveErr
+			}
+
 			activationListener, activated, err := nethelper.ListenSystemdActivationForUID(socketPath, uint32(expectedUID))
 			if err != nil {
 				return err
 			}
 			if !activated {
-				return fmt.Errorf("nethelper serve requires the installed systemd socket unit")
+				return fmt.Errorf("nethelper serve requires systemd socket activation")
 			}
-			server := nethelper.NewServer(
-				nethelper.NewKernelBackendWithOptions(backendOpts),
-				nethelper.NewSupervisorAuthorizer(authOpts),
-			)
 			fmt.Fprintf(cmd.OutOrStdout(), "agentsh nethelper listening on unix://%s\n", socketPath)
 			return server.ServeListener(ctx, activationListener)
 		},
@@ -178,6 +238,67 @@ func newNethelperServeCmd() *cobra.Command {
 	cmd.Flags().IntVar(&expectedUID, "uid", -1, "Expected supervisor Unix UID (required)")
 	cmd.Flags().IntVar(&expectedGID, "gid", -1, "Expected supervisor Unix GID (-1 disables explicit GID check)")
 	cmd.Flags().StringVar(&pinRoot, "pin-root", nethelper.DefaultBPFFSPinRoot(), "Root-owned AgentSH bpffs subtree for helper map/link pins")
+	cmd.Flags().StringVar(&ephemeralLease, "ephemeral-lease", "", "Fixed lease ID for a transient SSH-bootstrap helper")
+	return cmd
+}
+
+func newNethelperLeaseIDCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "lease-id",
+		Short: "Generate an ephemeral nethelper lease identifier",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "lease-%s\n", uuid.NewString())
+			return err
+		},
+	}
+}
+
+func newNethelperReleaseCmd() *cobra.Command {
+	var socketPath string
+	var credentialFile string
+	var leaseID string
+	var outputJSON bool
+	cmd := &cobra.Command{
+		Use:   "release",
+		Short: "Release one ephemeral nethelper lease",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := nethelper.ValidateEphemeralLeaseID(strings.TrimSpace(leaseID)); err != nil {
+				return err
+			}
+			credential, err := readSupervisorNethelperCredentialFile(credentialFile)
+			if err != nil {
+				return fmt.Errorf("load ephemeral helper credential: %w", err)
+			}
+			if err := validateNethelperInstanceCredential(credential); err != nil {
+				return err
+			}
+			client := nethelper.NewClient(strings.TrimSpace(socketPath))
+			resp, err := client.ReleaseInstance(cmd.Context(), nethelper.ReleaseInstanceRequest{
+				ProtocolVersion:          nethelper.CurrentProtocolVersion,
+				RequestID:                "release-" + uuid.NewString(),
+				LeaseID:                  strings.TrimSpace(leaseID),
+				HelperInstanceCredential: credential,
+			})
+			credential = ""
+			if err != nil {
+				return err
+			}
+			if outputJSON {
+				return printJSON(cmd, resp)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "released ephemeral nethelper lease %s\n", resp.LeaseID)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&socketPath, "socket", "", "Ephemeral helper Unix socket path")
+	cmd.Flags().StringVar(&credentialFile, "credential-file", "", "UID-owned ephemeral helper credential file")
+	cmd.Flags().StringVar(&leaseID, "lease", "", "Ephemeral helper lease ID")
+	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output JSON")
+	_ = cmd.MarkFlagRequired("socket")
+	_ = cmd.MarkFlagRequired("credential-file")
+	_ = cmd.MarkFlagRequired("lease")
 	return cmd
 }
 

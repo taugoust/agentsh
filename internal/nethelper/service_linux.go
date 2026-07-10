@@ -11,7 +11,7 @@ import (
 // fixed BPF backend runs as root, outside the same-UID tool boundary.
 func ValidatePrivilegedServiceUser() error {
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("nethelper serve must run as root under the installed system service")
+		return fmt.Errorf("nethelper serve must run as root under a supported systemd service")
 	}
 	return nil
 }

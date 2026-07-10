@@ -501,6 +501,45 @@ type CleanupSessionResponse struct {
 	Error           string   `json:"error,omitempty"`
 }
 
+// ReleaseInstanceRequest asks an ephemeral helper to stop after all registered
+// command cgroups have been cleaned. It is a fixed lifecycle operation: it
+// cannot name pins, units, processes, or arbitrary cleanup targets.
+type ReleaseInstanceRequest struct {
+	ProtocolVersion          int    `json:"protocol_version,omitempty"`
+	RequestID                string `json:"request_id,omitempty"`
+	LeaseID                  string `json:"lease_id"`
+	HelperInstanceCredential string `json:"helper_instance_credential"`
+}
+
+// Validate rejects malformed or unauthenticated release requests.
+func (r ReleaseInstanceRequest) Validate() error {
+	if err := validateProtocolVersion(r.ProtocolVersion); err != nil {
+		return err
+	}
+	if r.RequestID != "" {
+		if err := validateID("request_id", r.RequestID); err != nil {
+			return err
+		}
+	}
+	if err := validateID("lease_id", r.LeaseID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(r.HelperInstanceCredential) == "" {
+		return fmt.Errorf("helper_instance_credential is required")
+	}
+	return validateWireCredential("helper_instance_credential", r.HelperInstanceCredential)
+}
+
+// ReleaseInstanceResponse confirms that an ephemeral helper accepted release.
+// The helper stops only after this response has been written to the caller.
+type ReleaseInstanceResponse struct {
+	ProtocolVersion int    `json:"protocol_version,omitempty"`
+	RequestID       string `json:"request_id,omitempty"`
+	LeaseID         string `json:"lease_id,omitempty"`
+	OK              bool   `json:"ok"`
+	Error           string `json:"error,omitempty"`
+}
+
 // DecodeRegisterSessionCgroupRequestJSON decodes a registration request using
 // strict JSON field checking, then validates it.
 func DecodeRegisterSessionCgroupRequestJSON(data []byte) (RegisterSessionCgroupRequest, error) {
@@ -525,6 +564,16 @@ func DecodeUpdatePolicyMapRequestJSON(data []byte) (UpdatePolicyMapRequest, erro
 // field checking, then validates it.
 func DecodeCleanupSessionRequestJSON(data []byte) (CleanupSessionRequest, error) {
 	var req CleanupSessionRequest
+	if err := decodeStrictJSON(data, &req); err != nil {
+		return req, err
+	}
+	return req, req.Validate()
+}
+
+// DecodeReleaseInstanceRequestJSON strictly decodes an ephemeral-helper
+// release request.
+func DecodeReleaseInstanceRequestJSON(data []byte) (ReleaseInstanceRequest, error) {
+	var req ReleaseInstanceRequest
 	if err := decodeStrictJSON(data, &req); err != nil {
 		return req, err
 	}

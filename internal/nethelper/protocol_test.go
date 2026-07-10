@@ -234,6 +234,35 @@ func TestValidateRejectsDangerousOrInvalidRequests(t *testing.T) {
 	}
 }
 
+func TestReleaseInstanceRequestStrictValidation(t *testing.T) {
+	req := ReleaseInstanceRequest{
+		ProtocolVersion:          CurrentProtocolVersion,
+		RequestID:                "release-1",
+		LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
+		HelperInstanceCredential: "0123456789abcdef0123456789abcdef",
+	}
+	wire, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeReleaseInstanceRequestJSON(wire)
+	if err != nil {
+		t.Fatalf("DecodeReleaseInstanceRequestJSON: %v", err)
+	}
+	if got.LeaseID != req.LeaseID || got.HelperInstanceCredential != req.HelperInstanceCredential {
+		t.Fatalf("round trip mismatch: got %+v", got)
+	}
+	for _, invalid := range []string{
+		`{"lease_id":"lease-1","helper_instance_credential":""}`,
+		`{"lease_id":"lease-1","helper_instance_credential":"abc","unit":"root.service"}`,
+		`{"lease_id":"lease-1","helper_instance_credential":"abc","pin_root":"/sys/fs/bpf"}`,
+	} {
+		if _, err := DecodeReleaseInstanceRequestJSON([]byte(invalid)); err == nil {
+			t.Fatalf("accepted invalid release request: %s", invalid)
+		}
+	}
+}
+
 func TestCleanupSessionRequestJSONRoundTripDefaults(t *testing.T) {
 	req := CleanupSessionRequest{
 		ProtocolVersion: CurrentProtocolVersion,

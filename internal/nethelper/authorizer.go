@@ -357,6 +357,17 @@ func requestHelperCredential(req RegisterSessionCgroupRequest) string {
 	return strings.TrimSpace(req.SessionNonce)
 }
 
+// ActiveRegistrationCount reports pending, active, or cleanup-pending command
+// registrations. Ephemeral instance release is allowed only when this is zero.
+func (a *SupervisorAuthorizer) ActiveRegistrationCount() int {
+	if a == nil {
+		return 0
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.registrations)
+}
+
 func (a *SupervisorAuthorizer) stableProcessIdentityRequired() bool {
 	return a != nil && (a.opts.RequireStableProcessIdentity || a.opts.RequireKernelCgroupChecks)
 }

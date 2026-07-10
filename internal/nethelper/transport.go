@@ -46,11 +46,12 @@ const (
 	OperationRegisterSessionCgroup Operation = "register_session_cgroup"
 	OperationUpdatePolicyMap       Operation = "update_policy_map"
 	OperationCleanupSession        Operation = "cleanup_session"
+	OperationReleaseInstance       Operation = "release_instance"
 )
 
 func (op Operation) Valid() bool {
 	switch op {
-	case OperationRegisterSessionCgroup, OperationUpdatePolicyMap, OperationCleanupSession:
+	case OperationRegisterSessionCgroup, OperationUpdatePolicyMap, OperationCleanupSession, OperationReleaseInstance:
 		return true
 	default:
 		return false
@@ -136,6 +137,12 @@ type Authorizer interface {
 	AuthorizeCleanup(context.Context, PeerInfo, CleanupSessionRequest) error
 }
 
+// InstanceController owns the fixed lifecycle of one ephemeral helper lease.
+// Persistent helpers leave this unset and reject release_instance requests.
+type InstanceController interface {
+	ReleaseInstance(context.Context, PeerInfo, ReleaseInstanceRequest) (ReleaseInstanceResponse, error)
+}
+
 type authorizerLifecycle interface {
 	CompleteRegister(RegisterSessionCgroupRequest, uint64) (string, error)
 	RollbackRegister(string, string)
@@ -199,12 +206,21 @@ func (FailClosedBackend) CleanupSession(_ context.Context, _ PeerInfo, req Clean
 // Go-created listener and accepted fds are close-on-exec; the protocol never
 // receives SCM_RIGHTS messages and never passes helper-owned fds to clients.
 type Server struct {
-	Backend      Backend
-	Authorizer   Authorizer
+	Backend            Backend
+	Authorizer         Authorizer
+	InstanceController InstanceController
+	// Stop is called after an authorized release_instance response write is
+	// attempted. A client disconnect must not strand an already accepted lease
+	// release. Ephemeral serve mode uses it to cancel the listener context.
+	Stop         func()
 	MaxBytes     int64
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	ReapInterval time.Duration
+}
+
+type stopAfterResponse struct {
+	response any
 }
 
 func NewServer(backend Backend, authorizer Authorizer) *Server {
@@ -407,10 +423,18 @@ func (s *Server) ServeConn(ctx context.Context, conn net.Conn) {
 	peer := peerInfo(conn)
 	defer peer.closeIdentity()
 	resp := s.dispatch(ctx, peer, data)
+	stop := false
+	if wrapped, ok := resp.(stopAfterResponse); ok {
+		resp = wrapped.response
+		stop = true
+	}
 	if s.WriteTimeout > 0 {
 		_ = conn.SetWriteDeadline(time.Now().Add(s.WriteTimeout))
 	}
 	_ = json.NewEncoder(conn).Encode(resp)
+	if stop && s.Stop != nil {
+		s.Stop()
+	}
 }
 
 func (s *Server) writeGenericError(conn net.Conn, err error) {
@@ -497,6 +521,20 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 			lifecycle.CompleteCleanup(req, out.OK)
 		}
 		return out
+	case OperationReleaseInstance:
+		req, err := DecodeReleaseInstanceRequestJSON(env.Request)
+		if err != nil {
+			return ReleaseInstanceResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+		}
+		if s.InstanceController == nil {
+			return ReleaseInstanceResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, OK: false, Error: "nethelper instance release is not configured"}
+		}
+		resp, err := s.InstanceController.ReleaseInstance(ctx, peer, req)
+		out := ensureReleaseResponse(req, resp, err)
+		if out.OK {
+			return stopAfterResponse{response: out}
+		}
+		return out
 	default:
 		return ErrorResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: fmt.Sprintf("invalid operation %q", env.Operation)}
 	}
@@ -549,6 +587,25 @@ func ensureCleanupResponse(req CleanupSessionRequest, resp CleanupSessionRespons
 	}
 	if resp.SessionID == "" {
 		resp.SessionID = req.SessionID
+	}
+	if err != nil {
+		resp.OK = false
+		if resp.Error == "" {
+			resp.Error = err.Error()
+		}
+	}
+	return resp
+}
+
+func ensureReleaseResponse(req ReleaseInstanceRequest, resp ReleaseInstanceResponse, err error) ReleaseInstanceResponse {
+	if resp.ProtocolVersion == 0 {
+		resp.ProtocolVersion = CurrentProtocolVersion
+	}
+	if resp.RequestID == "" {
+		resp.RequestID = req.RequestID
+	}
+	if resp.LeaseID == "" {
+		resp.LeaseID = req.LeaseID
 	}
 	if err != nil {
 		resp.OK = false
@@ -661,6 +718,31 @@ func (c *Client) CleanupSession(ctx context.Context, req CleanupSessionRequest) 
 		return resp, responseError(resp.Error)
 	}
 	c.forgetRegistration(req.SessionID, req.CgroupPath, req.CgroupID)
+	return resp, nil
+}
+
+// ReleaseInstance asks an ephemeral helper to stop after all command
+// registrations are gone. Persistent helpers reject this operation.
+func (c *Client) ReleaseInstance(ctx context.Context, req ReleaseInstanceRequest) (ReleaseInstanceResponse, error) {
+	if err := req.Validate(); err != nil {
+		return ReleaseInstanceResponse{}, err
+	}
+	var resp ReleaseInstanceResponse
+	if err := c.roundTrip(ctx, OperationReleaseInstance, req, &resp); err != nil {
+		return resp, err
+	}
+	if resp.ProtocolVersion != CurrentProtocolVersion {
+		return resp, fmt.Errorf("nethelper response protocol_version=%d, want %d", resp.ProtocolVersion, CurrentProtocolVersion)
+	}
+	if resp.RequestID != strings.TrimSpace(req.RequestID) {
+		return resp, fmt.Errorf("nethelper response request_id does not match request")
+	}
+	if resp.LeaseID != strings.TrimSpace(req.LeaseID) {
+		return resp, fmt.Errorf("nethelper response lease_id does not match request")
+	}
+	if !resp.OK {
+		return resp, responseError(resp.Error)
+	}
 	return resp, nil
 }
 
