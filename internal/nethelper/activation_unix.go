@@ -62,13 +62,10 @@ func listenSystemdActivation(socketPath string, expectedUID uint32, allowRootOwn
 	if err != nil {
 		return nil, false, fmt.Errorf("stat systemd activation fd: %w", err)
 	}
-	pathInfo, err := os.Stat(socketPath)
-	if err != nil {
-		return nil, false, fmt.Errorf("stat configured activation socket: %w", err)
-	}
-	if !os.SameFile(fdInfo, pathInfo) {
-		return nil, false, fmt.Errorf("systemd activation fd is not the configured socket inode")
-	}
+	// Do not compare fstat(fd) with stat(socketPath): on Linux the live
+	// AF_UNIX socket uses a socketfs inode while its pathname is a distinct
+	// filesystem socket inode. Path ownership/canonicalization above and the
+	// kernel-reported bound address below establish the activation identity.
 	if fdInfo.Mode()&os.ModeSocket == 0 {
 		return nil, false, fmt.Errorf("systemd activation fd is not a socket")
 	}
