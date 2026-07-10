@@ -57,6 +57,18 @@ const (
 	ModeMinimal      = "minimal"
 )
 
+// DetectInterceptionCapabilities probes only the mechanisms used to select the
+// socket-family/socket-rule interception engine. Unlike DetectSecurityCapabilities,
+// it deliberately does not run the cgroup resource-controller probe: runtime warning
+// paths must not mutate a delegated service cgroup after an attach-only manager has
+// established its topology.
+func DetectInterceptionCapabilities() *SecurityCapabilities {
+	return &SecurityCapabilities{
+		Seccomp: checkSeccompUserNotify().Available,
+		Ptrace:  checkPtrace().Available,
+	}
+}
+
 // DetectSecurityCapabilities probes the system for available security primitives.
 func DetectSecurityCapabilities() *SecurityCapabilities {
 	caps := &SecurityCapabilities{}

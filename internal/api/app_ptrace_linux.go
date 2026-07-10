@@ -90,7 +90,7 @@ func (a *App) initPtraceTracer() {
 			slog.Info("socket-family blocking: wired FamilyChecker on ptrace tracer",
 				"families", len(families))
 		}
-		caps := capabilities.DetectSecurityCapabilities()
+		caps := capabilities.DetectInterceptionCapabilities()
 		engine := selectFamilyBlockingEngine(families, &a.cfg.Sandbox, caps)
 		if engine == familyEngineNone && len(families) > 0 {
 			slog.Warn("socket-family blocking is configured but no enforcement engine is available; families will not be blocked",
@@ -258,7 +258,7 @@ func (a *App) warnIfFamiliesOrphan() {
 	if err != nil || len(families) == 0 {
 		return
 	}
-	caps := capabilities.DetectSecurityCapabilities()
+	caps := capabilities.DetectInterceptionCapabilities()
 	if selectFamilyBlockingEngine(families, &a.cfg.Sandbox, caps) == familyEngineNone {
 		slog.Warn("socket-family blocking is configured but no enforcement engine is available on this host "+
 			"(seccomp and ptrace both unavailable or disabled); families will not be blocked",
@@ -271,7 +271,7 @@ func (a *App) warnIfFamiliesOrphan() {
 // Called from initPtraceTracer when ptrace is disabled, to cover the
 // case where seccomp is also absent or the wrapper will not run.
 func (a *App) warnIfSocketRulesOrphan() {
-	_ = a.warnIfSocketRulesOrphanWithCaps(capabilities.DetectSecurityCapabilities())
+	_ = a.warnIfSocketRulesOrphanWithCaps(capabilities.DetectInterceptionCapabilities())
 }
 
 func (a *App) warnIfSocketRulesOrphanWithCaps(caps *capabilities.SecurityCapabilities) bool {
