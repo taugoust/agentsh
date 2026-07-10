@@ -304,12 +304,24 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 		"AGENTSH_NETHELPER_SESSION_NONCE=must-not-enter-systemd-properties",
 		"AGENTSH_NETHELPER_CREDENTIAL_FILE=" + credentialFile,
 		detached.EnvNetworkEnforcementRequested + "=strict",
+		"AGENTSH_SUBAGENT_COMMAND=/nix/store/pi/bin/pi",
+		"AGENTSH_SUBAGENT_ARGS=--mode json -p --no-session",
+		"AGENTSH_SUBAGENT_TASK_MODE=arg",
+		"AGENTSH_SUBAGENT_PROTOCOL=pi-json",
+		"AGENTSH_SUBAGENT_MAX_DEPTH=3",
+		"AGENTSH_SUBAGENT_RUNTIME=pi",
 	})
 	want := []string{
 		"AGENTSH_DETACHED_EVENT_TOKEN=token",
 		"AGENTSH_NETHELPER_CREDENTIAL_FILE=" + credentialFile,
 		"AGENTSH_NETHELPER_SOCKET=" + filepath.Join("run", "agentsh", "nethelper.sock"),
 		detached.EnvNetworkEnforcementRequested + "=strict",
+		"AGENTSH_SUBAGENT_COMMAND=/nix/store/pi/bin/pi",
+		"AGENTSH_SUBAGENT_ARGS=--mode json -p --no-session",
+		"AGENTSH_SUBAGENT_TASK_MODE=arg",
+		"AGENTSH_SUBAGENT_PROTOCOL=pi-json",
+		"AGENTSH_SUBAGENT_MAX_DEPTH=3",
+		"AGENTSH_SUBAGENT_RUNTIME=pi",
 	}
 	if !reflect.DeepEqual(env, want) {
 		t.Fatalf("service env = %#v, want %#v", env, want)

@@ -229,12 +229,25 @@ func detachedSupervisorPendingNetworkEnforcement(cfg *config.Config) *detached.N
 	return report
 }
 
+var detachedSupervisorRuntimeEnvKeys = []string{
+	"AGENTSH_SUBAGENT_COMMAND",
+	"AGENTSH_SUBAGENT_ARGS",
+	"AGENTSH_SUBAGENT_TASK_MODE",
+	"AGENTSH_SUBAGENT_PROTOCOL",
+	"AGENTSH_SUBAGENT_MAX_DEPTH",
+	"AGENTSH_SUBAGENT_RUNTIME",
+}
+
 func detachedSupervisorServiceEnv(eventToken string, env []string) []string {
 	serviceEnv := []string{"AGENTSH_DETACHED_EVENT_TOKEN=" + eventToken}
 	// Never put the helper credential value in systemd-run argv or transient
 	// unit properties. Installed services pass only the protected credential
-	// file path; the supervisor reads it before serving requests.
-	for _, key := range []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, detached.EnvNetworkEnforcementRequested} {
+	// file path; the supervisor reads it before serving requests. The generic
+	// subagent runtime configuration is non-secret control-plane data and must
+	// cross the systemd-run boundary so spawn_subagent works in detached mode.
+	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, detached.EnvNetworkEnforcementRequested}
+	keys = append(keys, detachedSupervisorRuntimeEnvKeys...)
+	for _, key := range keys {
 		if value, ok := lookupEnvAssignment(env, key); ok && strings.TrimSpace(value) != "" {
 			serviceEnv = append(serviceEnv, key+"="+strings.TrimSpace(value))
 		}
