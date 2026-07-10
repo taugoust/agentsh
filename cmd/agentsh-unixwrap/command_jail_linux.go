@@ -417,14 +417,14 @@ func dropCommandJailPrivileges() error {
 }
 
 func verifyCommandJailPrivileges() error {
-	noNewPrivileges, err := unix.PrctlRetInt(unix.PR_GET_NO_NEW_PRIVS, 0)
+	noNewPrivileges, err := unix.PrctlRetInt(unix.PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0)
 	if err != nil {
 		return fmt.Errorf("verify no_new_privs: %w", err)
 	}
 	if noNewPrivileges != 1 {
 		return errors.New("no_new_privs was not retained")
 	}
-	dumpable, err := unix.PrctlRetInt(unix.PR_GET_DUMPABLE, 0)
+	dumpable, err := unix.PrctlRetInt(unix.PR_GET_DUMPABLE, 0, 0, 0, 0)
 	if err != nil {
 		return fmt.Errorf("verify non-dumpable jail init: %w", err)
 	}

@@ -540,7 +540,7 @@ func validatePinnedExactMap(m *ebpf.Map, name string, cgroupID uint64) error {
 	return nil
 }
 
-func validatePinnedLPM4Map(m *ebpf.Map, name string, addrBits, cgroupID uint64) error {
+func validatePinnedLPM4Map(m *ebpf.Map, name string, addrBits uint32, cgroupID uint64) error {
 	if m == nil {
 		return fmt.Errorf("%s map missing", name)
 	}
@@ -566,7 +566,7 @@ func validatePinnedLPM4Map(m *ebpf.Map, name string, addrBits, cgroupID uint64) 
 	return nil
 }
 
-func validatePinnedLPM6Map(m *ebpf.Map, name string, addrBits, cgroupID uint64) error {
+func validatePinnedLPM6Map(m *ebpf.Map, name string, addrBits uint32, cgroupID uint64) error {
 	if m == nil {
 		return fmt.Errorf("%s map missing", name)
 	}
