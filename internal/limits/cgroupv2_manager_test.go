@@ -146,6 +146,9 @@ func TestManagerApply_AttachOnly_EmptyLimits_Succeeds(t *testing.T) {
 	if !strings.HasPrefix(cg.Path, own+"/") {
 		t.Fatalf("attach-only cgroup path: %q (want prefix %q)", cg.Path, own)
 	}
+	if got := f.chmods[cg.Path]; got != 0o755 {
+		t.Fatalf("explicit command cgroup mode: got %04o, want 0755", got)
+	}
 	// PID was written.
 	data, _ := f.ReadFile(cg.Path + "/cgroup.procs")
 	if string(data) != "4242" {

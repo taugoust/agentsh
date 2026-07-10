@@ -19,6 +19,7 @@ type cgroupFS interface {
 	ReadFile(path string) ([]byte, error)
 	WriteFile(path string, data []byte, perm os.FileMode) error
 	Mkdir(path string, perm os.FileMode) error
+	Chmod(path string, mode os.FileMode) error
 	Remove(path string) error
 	Stat(path string) (os.FileInfo, error)
 	ReadDir(path string) ([]os.DirEntry, error)
@@ -38,6 +39,10 @@ func (osCgroupFS) WriteFile(path string, data []byte, perm os.FileMode) error {
 
 func (osCgroupFS) Mkdir(path string, perm os.FileMode) error {
 	return os.Mkdir(path, perm)
+}
+
+func (osCgroupFS) Chmod(path string, mode os.FileMode) error {
+	return os.Chmod(path, mode)
 }
 
 func (osCgroupFS) Remove(path string) error {

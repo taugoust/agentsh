@@ -22,6 +22,9 @@ type fakeCgroupFS struct {
 	files map[string]*fakeEntry
 	// writeErrs optionally returns a specific error for WriteFile(path) or OpenFile(path) calls.
 	writeErrs map[string]error
+	// chmods records explicit mode normalization after Mkdir. This matters because
+	// the production supervisor runs with a restrictive process umask.
+	chmods map[string]os.FileMode
 	// openErrs mirrors writeErrs but for OpenFile (subtree_control writes).
 	openErrs map[string]error
 	// openWriteErrsOnce injects a one-shot error into fakeWriter.WriteString
@@ -63,6 +66,7 @@ func newFakeCgroupFS() *fakeCgroupFS {
 	return &fakeCgroupFS{
 		files:                   map[string]*fakeEntry{"/sys/fs/cgroup": {isDir: true}},
 		writeErrs:               map[string]error{},
+		chmods:                  map[string]os.FileMode{},
 		openErrs:                map[string]error{},
 		openWriteErrsOnce:       map[string]error{},
 		openWriteContentErrs:    map[string]error{},
@@ -141,6 +145,15 @@ func (f *fakeCgroupFS) Mkdir(p string, perm os.FileMode) error {
 		return &fs.PathError{Op: "mkdir", Path: p, Err: syscall.ENOENT}
 	}
 	f.files[p] = &fakeEntry{isDir: true}
+	return nil
+}
+
+func (f *fakeCgroupFS) Chmod(p string, mode os.FileMode) error {
+	p = path.Clean(p)
+	if _, ok := f.files[p]; !ok {
+		return &fs.PathError{Op: "chmod", Path: p, Err: syscall.ENOENT}
+	}
+	f.chmods[p] = mode
 	return nil
 }
 

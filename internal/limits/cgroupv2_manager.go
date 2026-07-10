@@ -78,8 +78,22 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 		safe := sanitizeCgroupName(name)
 		dir := filepath.Join(parent, safe)
 
-		if err := m.fs.Mkdir(dir, 0o755); err != nil && !errors.Is(err, syscall.EEXIST) {
-			return nil, fmt.Errorf("mkdir cgroup (mode=%s, dir=%s): %w", m.probe.Mode, dir, err)
+		createdDir := false
+		if err := m.fs.Mkdir(dir, 0o755); err != nil {
+			if !errors.Is(err, syscall.EEXIST) {
+				return nil, fmt.Errorf("mkdir cgroup (mode=%s, dir=%s): %w", m.probe.Mode, dir, err)
+			}
+		} else {
+			createdDir = true
+		}
+		// The detached supervisor intentionally runs with UMask=0077. Normalize
+		// only a cgroup created by this call so the separately hardened root
+		// helper can open it without a broad DAC-bypass capability.
+		if createdDir {
+			if err := m.fs.Chmod(dir, 0o755); err != nil {
+				_ = m.fs.Remove(dir)
+				return nil, fmt.Errorf("chmod cgroup for helper access (mode=%s, dir=%s): %w", m.probe.Mode, dir, err)
+			}
 		}
 		if err := m.fs.WriteFile(filepath.Join(dir, "cgroup.procs"), []byte(strconv.Itoa(pid)), 0o644); err != nil {
 			detail := m.attachFailureDetail(parent, dir, pid)
@@ -101,6 +115,12 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 		// The dir already existed — this call did not create it, so the
 		// EPERM-cleanup below must not remove it.
 		createdDir = false
+	}
+	if createdDir {
+		if err := m.fs.Chmod(dir, 0o755); err != nil {
+			_ = m.fs.Remove(dir)
+			return nil, fmt.Errorf("chmod cgroup for helper access (mode=%s, dir=%s): %w", m.probe.Mode, dir, err)
+		}
 	}
 
 	writeLimit := func(file string, val []byte) error {
