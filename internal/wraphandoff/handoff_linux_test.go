@@ -134,7 +134,7 @@ func TestNotifyHandoffRoundTripWithWrapperPID(t *testing.T) {
 		_ = w.Close()
 	})
 
-	sendErr := sendNotifyFDAsync(client, int(r.Fd()), Metadata{WrapperPID: 4321})
+	sendErr := sendNotifyFDAsync(client, int(r.Fd()), Metadata{WrapperPID: 4321, CommandJail: true})
 
 	setReadDeadline(t, server)
 	fd, meta, hasMeta, err := RecvNotifyFD(server)
@@ -148,6 +148,9 @@ func TestNotifyHandoffRoundTripWithWrapperPID(t *testing.T) {
 	}
 	if meta.WrapperPID != 4321 {
 		t.Fatalf("WrapperPID = %d, want 4321", meta.WrapperPID)
+	}
+	if !meta.CommandJail {
+		t.Fatal("expected command-jail capability metadata")
 	}
 }
 

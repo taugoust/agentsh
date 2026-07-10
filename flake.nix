@@ -199,10 +199,15 @@
             vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.gnumake
+              pkgs.llvm
+              pkgs.llvmPackages.clang-unwrapped
               pkgs.pkg-config
             ];
             buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.libbpf
               pkgs.libseccomp
+              pkgs.linuxHeaders
             ];
             env.CGO_ENABLED = if stdenv.hostPlatform.isLinux then "1" else "0";
 
@@ -210,10 +215,17 @@
               runHook preBuild
               runHook postBuild
             '';
+            preCheck = lib.optionalString stdenv.hostPlatform.isLinux ''
+              make -C internal/netmonitor/ebpf clean all \
+                BPF_CLANG=${pkgs.llvmPackages.clang-unwrapped}/bin/clang \
+                BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
+            '';
             checkPhase = ''
               runHook preCheck
               go test ./internal/policy -run 'Test(DiscoverProjectOverlays|LoadOverlay|MergePolicyOverlays)'
               go test ./internal/config -run 'TestProjectOverlays'
+              go test ./internal/nethelper
+              go test ./internal/detached ./internal/detachedreport
               runHook postCheck
             '';
             installPhase = ''

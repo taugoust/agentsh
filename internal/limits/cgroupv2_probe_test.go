@@ -4,6 +4,7 @@ package limits
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -582,17 +583,16 @@ func TestProbe_LeafMove_MkdirDeniedFallsBack(t *testing.T) {
 func TestProbe_AttachOnly_ReachedWhenPermitted(t *testing.T) {
 	f := newFakeCgroupFS()
 	seedHealthyRoot(f)
-	// Own cgroup advertises controllers but rejects subtree_control writes
-	// for memory — mirrors the stock-Docker scope-cgroup symptom.
+	// Own cgroup advertises controllers but rejects subtree_control writes for
+	// memory. In attach-only/net-only mode the probe should not touch
+	// subtree_control at all.
 	own := "/sys/fs/cgroup/system.slice/agentsh.service"
-	f.seedFile(own+"/cgroup.controllers", "cpu memory pids")
-	f.seedFile(own+"/cgroup.subtree_control", "")
-	f.failSubtreeWrite(own+"/cgroup.subtree_control", "+memory", syscall.ENOTSUP)
-	// Top-level slice also refuses controller enable so the probe doesn't
-	// fall back to that path.
+	subtreeControl := filepath.Join(own, "cgroup.subtree_control")
+	f.seedFile(filepath.Join(own, "cgroup.controllers"), "cpu memory pids")
+	f.seedFile(subtreeControl, "")
+	f.failSubtreeWrite(subtreeControl, "+memory", syscall.ENOTSUP)
 	f.failSubtreeWrite("/sys/fs/cgroup/cgroup.subtree_control", "+memory", syscall.ENOTSUP)
-	// Seed cgroup.procs in own so the attach-only feasibility probe can write there.
-	f.seedFile(own+"/cgroup.procs", "")
+	f.seedFile(filepath.Join(own, "cgroup.procs"), "")
 
 	res, err := ProbeCgroupsV2(context.Background(), f, own, true /*permitAttachOnly*/)
 	if err != nil {
@@ -601,8 +601,84 @@ func TestProbe_AttachOnly_ReachedWhenPermitted(t *testing.T) {
 	if res.Mode != ModeAttachOnly {
 		t.Fatalf("mode: got %q, want %q (reason=%q)", res.Mode, ModeAttachOnly, res.Reason)
 	}
-	if !strings.Contains(res.Reason, "memory") {
-		t.Errorf("reason should name the failed controller: %q", res.Reason)
+	if !strings.Contains(res.Reason, "skipped resource controller probing") {
+		t.Errorf("reason should explain resource-controller probing was skipped: %q", res.Reason)
+	}
+	data, err := f.ReadFile(subtreeControl)
+	if err != nil {
+		t.Fatalf("read subtree_control: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "" {
+		t.Fatalf("attach-only probe mutated subtree_control: %q", data)
+	}
+}
+
+func TestManager_AttachOnly_ControllerPoisonDoesNotBreakPidAttach(t *testing.T) {
+	f := newFakeCgroupFS()
+	seedHealthyRoot(f)
+	own := "/sys/fs/cgroup/system.slice/agentsh.service"
+	subtreeControl := filepath.Join(own, "cgroup.subtree_control")
+	f.seedFile(filepath.Join(own, "cgroup.controllers"), "cpu memory pids")
+	f.seedFile(subtreeControl, "")
+	f.seedFile(filepath.Join(own, "cgroup.procs"), "")
+	f.poisonCgroupProcsAfterSubtreeWrite(subtreeControl, "+cpu", syscall.ENOTSUP)
+	f.failSubtreeWrite(subtreeControl, "+memory", syscall.ENOTSUP)
+	f.failSubtreeWrite("/sys/fs/cgroup/cgroup.subtree_control", "+memory", syscall.ENOTSUP)
+
+	m, err := newCgroupManagerFS(context.Background(), f, own, true /*permitAttachOnly*/)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	if m.Probe().Mode != ModeAttachOnly {
+		t.Fatalf("mode: got %q, want %q (reason=%q)", m.Probe().Mode, ModeAttachOnly, m.Probe().Reason)
+	}
+	cg, err := m.Apply("agentsh-sess-cmd", 4242, CgroupV2Limits{})
+	if err != nil {
+		t.Fatalf("apply attach-only: %v", err)
+	}
+	if cg == nil {
+		t.Fatal("expected attach-only cgroup handle")
+	}
+	data, err := f.ReadFile(filepath.Join(cg.Path, "cgroup.procs"))
+	if err != nil {
+		t.Fatalf("read command cgroup.procs: %v", err)
+	}
+	if string(data) != "4242" {
+		t.Fatalf("command cgroup.procs: got %q, want 4242", data)
+	}
+	data, err = f.ReadFile(subtreeControl)
+	if err != nil {
+		t.Fatalf("read subtree_control: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "" {
+		t.Fatalf("attach-only manager mutated subtree_control: %q", data)
+	}
+}
+
+func TestProbe_StrictResourcePathStillAttemptsControllerEnable(t *testing.T) {
+	f := newFakeCgroupFS()
+	seedHealthyRoot(f)
+	own := "/sys/fs/cgroup/system.slice/agentsh.service"
+	subtreeControl := filepath.Join(own, "cgroup.subtree_control")
+	f.seedFile(filepath.Join(own, "cgroup.controllers"), "cpu memory pids")
+	f.seedFile(subtreeControl, "")
+	f.poisonCgroupProcsAfterSubtreeWrite(subtreeControl, "+cpu", syscall.ENOTSUP)
+	f.failSubtreeWrite(subtreeControl, "+memory", syscall.ENOTSUP)
+	f.failSubtreeWrite("/sys/fs/cgroup/cgroup.subtree_control", "+memory", syscall.ENOTSUP)
+
+	res, err := ProbeCgroupsV2(context.Background(), f, own, false /*permitAttachOnly*/)
+	if err != nil {
+		t.Fatalf("probe: %v", err)
+	}
+	if res.Mode != ModeUnavailable {
+		t.Fatalf("mode: got %q, want %q (reason=%q)", res.Mode, ModeUnavailable, res.Reason)
+	}
+	data, err := f.ReadFile(subtreeControl)
+	if err != nil {
+		t.Fatalf("read subtree_control: %v", err)
+	}
+	if !strings.Contains(strings.TrimSpace(string(data)), "cpu") {
+		t.Fatalf("strict resource probe should still attempt +cpu; subtree_control=%q", data)
 	}
 }
 
@@ -626,16 +702,16 @@ func TestProbe_AttachOnly_FilteredWhenNotPermitted(t *testing.T) {
 
 // TestProbe_AttachOnly_FilteredWhenFeasibilityFails verifies that when
 // permitAttachOnly=true but the attach-only feasibility probe itself fails
-// (e.g. mkdir under own is denied), the result is ModeUnavailable and the
-// reason explains that attach-only was also infeasible.
+// (e.g. mkdir under own is denied), the result is ModeUnavailable without
+// falling through to resource-controller probing.
 func TestProbe_AttachOnly_FilteredWhenFeasibilityFails(t *testing.T) {
 	f := newFakeCgroupFS()
 	seedHealthyRoot(f)
 	own := "/sys/fs/cgroup/system.slice/agentsh.service"
-	f.seedFile(own+"/cgroup.controllers", "cpu memory pids")
-	f.seedFile(own+"/cgroup.subtree_control", "")
-	// Make the subtree_control write fail so nested/top-level both fail.
-	f.failSubtreeWrite(own+"/cgroup.subtree_control", "+memory", syscall.ENOTSUP)
+	subtreeControl := filepath.Join(own, "cgroup.subtree_control")
+	f.seedFile(filepath.Join(own, "cgroup.controllers"), "cpu memory pids")
+	f.seedFile(subtreeControl, "")
+	f.failSubtreeWrite(subtreeControl, "+memory", syscall.ENOTSUP)
 	f.failSubtreeWrite("/sys/fs/cgroup/cgroup.subtree_control", "+memory", syscall.ENOTSUP)
 	// Block mkdir under own so the attach-only feasibility probe also fails.
 	f.mkdirErrUnder[own] = syscall.EACCES
@@ -647,8 +723,15 @@ func TestProbe_AttachOnly_FilteredWhenFeasibilityFails(t *testing.T) {
 	if res.Mode != ModeUnavailable {
 		t.Fatalf("mode: got %q, want %q (reason=%q)", res.Mode, ModeUnavailable, res.Reason)
 	}
-	if !strings.Contains(res.Reason, "attach-only also infeasible") {
-		t.Fatalf("reason should contain 'attach-only also infeasible': %q", res.Reason)
+	if !strings.Contains(res.Reason, "attach-only cgroup placement unavailable") {
+		t.Fatalf("reason should explain attach-only infeasibility: %q", res.Reason)
+	}
+	data, err := f.ReadFile(subtreeControl)
+	if err != nil {
+		t.Fatalf("read subtree_control: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "" {
+		t.Fatalf("attach-only failure should not mutate subtree_control: %q", data)
 	}
 }
 
@@ -675,26 +758,32 @@ func TestProbe_TopLevelMemoryMaxNotWritable_DowngradesFromTopLevel(t *testing.T)
 	}
 }
 
-func TestProbe_TopLevelMemoryMaxNotWritable_UpgradesToAttachOnly(t *testing.T) {
+func TestProbe_TopLevelMemoryMaxNotWritable_AttachOnlySkipsResourceProbe(t *testing.T) {
 	f := newFakeCgroupFS()
 	seedHealthyRoot(f)
 	own := "/sys/fs/cgroup/system.slice/agentsh.service"
-	f.seedFile(own+"/cgroup.controllers", "cpu memory pids")
-	f.seedFile(own+"/cgroup.subtree_control", "")
-	f.openErrs[own+"/cgroup.subtree_control:write"] = syscall.EBUSY
-	f.seedFile(DefaultSliceDir+"/memory.max", "max")
+	subtreeControl := filepath.Join(own, "cgroup.subtree_control")
+	f.seedFile(filepath.Join(own, "cgroup.controllers"), "cpu memory pids")
+	f.seedFile(subtreeControl, "")
+	f.openErrs[subtreeControl+":write"] = syscall.EBUSY
+	f.seedFile(filepath.Join(DefaultSliceDir, "memory.max"), "max")
 	f.writeErrUnder[DefaultSliceDir] = syscall.EPERM
 
-	// permitAttachOnly=true: attach feasibility checks `own`, which allows mkdir +
-	// cgroup.procs writes, so the result upgrades to attach-only.
-	res, err := ProbeCgroupsV2(context.Background(), f, own, true)
+	res, err := ProbeCgroupsV2(context.Background(), f, own, true /*permitAttachOnly*/)
 	if err != nil {
 		t.Fatalf("probe: %v", err)
 	}
 	if res.Mode != ModeAttachOnly {
 		t.Fatalf("mode: got %q, want ModeAttachOnly", res.Mode)
 	}
-	if !strings.Contains(res.Reason, "memory.max not writable") {
-		t.Errorf("reason should contain 'memory.max not writable' (maybeUpgradeToAttachOnly preserves original reason): %q", res.Reason)
+	if strings.Contains(res.Reason, "memory.max not writable") {
+		t.Errorf("attach-only preflight should skip resource-limit probing; reason=%q", res.Reason)
+	}
+	data, err := f.ReadFile(subtreeControl)
+	if err != nil {
+		t.Fatalf("read subtree_control: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "" {
+		t.Fatalf("attach-only probe mutated subtree_control: %q", data)
 	}
 }

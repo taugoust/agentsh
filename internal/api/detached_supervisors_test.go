@@ -205,6 +205,67 @@ func doApproverRequest(h http.Handler, method, path, body string) *httptest.Resp
 	return rr
 }
 
+func TestDetachedSupervisorsListReportsNetworkEnforcement(t *testing.T) {
+	root := t.TempDir()
+	f := startFakeDetachedSupervisor(t, t.TempDir(), "sess-network")
+	stateDir := filepath.Join(root, f.session)
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := detached.WriteMetadata(stateDir, detached.Metadata{
+		SessionID:       f.session,
+		ID:              f.session,
+		CreatedAt:       time.Now().UTC(),
+		State:           "running",
+		Policy:          "default",
+		WorkspaceMode:   "shadow",
+		RealWorkspace:   "/work/" + f.session,
+		SupervisorSock:  f.sock,
+		OwnerPID:        os.Getpid(),
+		ProtocolVersion: detached.ProtocolVersion,
+		NetworkEnforcement: &detached.NetworkEnforcement{
+			Status:                detached.NetworkEnforcementStatusDegraded,
+			Tier:                  detached.NetworkEnforcementTierCgroupDelegated,
+			NetworkPolicyEnforced: false,
+			CgroupDelegated:       true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h := newDetachedAggregationTestApp(t, []string{root}, "200ms")
+
+	rr := doApproverRequest(h, http.MethodGet, "/api/v1/detached-supervisors", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var got []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(got) = %d, want 1: %#v", len(got), got)
+	}
+	network, ok := got[0]["network_enforcement"].(map[string]any)
+	if !ok {
+		t.Fatalf("network_enforcement = %#v, want object", got[0]["network_enforcement"])
+	}
+	if network["status"] != string(detached.NetworkEnforcementStatusDegraded) {
+		t.Fatalf("status = %#v", network["status"])
+	}
+	if network["tier"] != string(detached.NetworkEnforcementTierCgroupDelegated) {
+		t.Fatalf("tier = %#v", network["tier"])
+	}
+	if network["network_policy_enforced"] != false {
+		t.Fatalf("network_policy_enforced = %#v, want false", network["network_policy_enforced"])
+	}
+	if network["cgroup_delegated"] != true {
+		t.Fatalf("cgroup_delegated = %#v, want true", network["cgroup_delegated"])
+	}
+	if got[0]["network_enforcement_source"] != "metadata-snapshot-stale" || got[0]["network_enforcement_live"] != false {
+		t.Fatalf("network evidence source = %#v live=%#v, want stale metadata snapshot", got[0]["network_enforcement_source"], got[0]["network_enforcement_live"])
+	}
+}
+
 func TestDetachedSupervisorsAggregateSessionEventsAndForwardAckAnswer(t *testing.T) {
 	root := t.TempDir()
 	f1 := startFakeDetachedSupervisor(t, t.TempDir(), "sess-1")

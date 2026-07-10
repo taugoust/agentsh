@@ -60,13 +60,30 @@ func main() {
 	// noise on every wrapper invocation on most distros (issue #281).
 	yamaActive := isYamaActive()
 	if cfg.ServerPID > 0 && yamaActive {
-		if err := unix.Prctl(unix.PR_SET_PTRACER, uintptr(cfg.ServerPID), 0, 0, 0); err != nil {
-			log.Printf("PR_SET_PTRACER(%d): %v (Yama active, ProcessVMReadv may fail)", cfg.ServerPID, err)
+		ptracerTarget := uintptr(cfg.ServerPID)
+		if cfg.CommandJail != nil && cfg.CommandJail.Required {
+			// A process in the private PID namespace cannot name the supervisor
+			// outside that namespace. PR_SET_PTRACER_ANY is safe here because
+			// hostile tools are confined to private PID namespaces and cannot name
+			// host PIDs; it lets the trusted host supervisor service seccomp reads.
+			ptracerTarget = ^uintptr(0)
+			_ = os.Setenv("AGENTSH_PTRACER_ANY", "1")
+		}
+		if err := unix.Prctl(unix.PR_SET_PTRACER, ptracerTarget, 0, 0, 0); err != nil {
+			log.Printf("PR_SET_PTRACER: %v (Yama active, ProcessVMReadv may fail)", err)
 		}
 	}
 
-	// Resolve syscall names to numbers.
-	blockedNrs, skipped := seccompkg.ResolveSyscalls(cfg.BlockedSyscalls)
+	// Resolve syscall names to numbers. Namespace, mount, privilege-drop,
+	// close-range, and second-stage seccomp calls are needed by the trusted jail
+	// init after the enforcement ACK. The jailed command inherits a second filter,
+	// no capabilities, and no_new_privs, so these setup exceptions do not let it
+	// undo the parent-owned boundary.
+	blockedSyscalls := cfg.BlockedSyscalls
+	if cfg.CommandJail != nil && cfg.CommandJail.Required {
+		blockedSyscalls = withoutCommandJailSetupSyscalls(blockedSyscalls)
+	}
+	blockedNrs, skipped := seccompkg.ResolveSyscalls(blockedSyscalls)
 	if len(skipped) > 0 {
 		log.Printf("warning: skipped unknown syscalls: %v", skipped)
 	}
@@ -108,6 +125,11 @@ func main() {
 			log.Printf("landlock: %v (continuing without)", err)
 		}
 	}
+	if cfg.CommandJail != nil && cfg.CommandJail.Required {
+		if err := prepareCommandJail(cfg.CommandJail, cmdPath); err != nil {
+			fatalf("prepare command jail: %v", err)
+		}
+	}
 
 	// Build filter config.
 	onBlock, _ := seccompkg.ParseOnBlock(cfg.OnBlock)
@@ -129,6 +151,9 @@ func main() {
 	// Install seccomp filter.
 	filt, err := unixmon.InstallFilterWithConfig(filterCfg)
 	if errors.Is(err, unixmon.ErrUnsupported) {
+		if cfg.CommandJail != nil && cfg.CommandJail.Required {
+			fatalf("strict command jail requires a working seccomp notify ACK barrier: %v", err)
+		}
 		log.Printf("seccomp user-notify unsupported; exiting 0 for monitor-only")
 		os.Exit(0)
 	}
@@ -146,7 +171,7 @@ func main() {
 	// early and fail with a clear error instead of silently breaking.
 	if notifFD >= 0 {
 		if err := unixmon.ProbeNotifReceive(notifFD); err != nil {
-			if cfg.FileMonitorEnabled || cfg.ExecveEnabled {
+			if cfg.FileMonitorEnabled || cfg.ExecveEnabled || (cfg.CommandJail != nil && cfg.CommandJail.Required) {
 				// These features trap critical syscalls (openat, execve).
 				// Without a working notification handler, the command cannot
 				// function at all — fail fast with a clear error.
@@ -173,16 +198,27 @@ func main() {
 		if err := sendFD(sockFD, notifFD); err != nil {
 			fatalf("send fd: %v", err)
 		}
+		if cfg.CommandJail != nil && cfg.CommandJail.Required {
+			n, capabilityErr := unix.Write(sockFD, []byte{'J'})
+			if capabilityErr != nil || n != 1 {
+				if capabilityErr == nil {
+					capabilityErr = fmt.Errorf("wrote %d bytes, want 1", n)
+				}
+				fatalf("send command-jail capability: %v", capabilityErr)
+			}
+		}
 
-		// Wait for ACK from the server confirming it has received the notify fd
-		// and started the handler. This prevents a race where we exec before the
-		// handler is ready to process seccomp notifications.
-		if err := waitForACK(func(b []byte) (int, error) { return unix.Read(sockFD, b) }); err != nil {
+		// Wait for ACK from the server confirming it has received the notify fd,
+		// installed the command cgroup/network gate, and started the handler.
+		// A bounded raw-socket timeout keeps a crashed parent fail-closed.
+		_ = unix.SetsockoptTimeval(sockFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: 30})
+		if err := waitForControlByte(func(b []byte) (int, error) { return unix.Read(sockFD, b) }, 0x01); err != nil {
 			fatalf("ACK handshake failed: %v", err)
 		}
+		_ = unix.SetsockoptTimeval(sockFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
 	}
 
-	// Install signal filter if enabled and we have a signal socket
+	// Install signal filter if enabled and we have a signal socket.
 	sigSockFD, _ := signalSockFD()
 	if cfg.SignalFilterEnabled && sigSockFD >= 0 {
 		sigCfg := signal.DefaultSignalFilterConfig()
@@ -212,23 +248,10 @@ func main() {
 		// Set 30s receive timeout to prevent hanging if server crashes.
 		_ = unix.SetsockoptTimeval(sockFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: 30})
 		// Wait for GO byte, retrying on EINTR. Validate the byte value.
-		goBuf := make([]byte, 1)
-		if err := waitForACK(func(b []byte) (int, error) {
-			n, err := unix.Read(sockFD, b)
-			if n == 1 {
-				goBuf[0] = b[0]
-			}
-			return n, err
-		}); err != nil {
+		if err := waitForControlByte(func(b []byte) (int, error) { return unix.Read(sockFD, b) }, 'G'); err != nil {
 			fatalf("wait for GO byte (30s timeout): %v", err)
 		}
-		if goBuf[0] != 'G' {
-			fatalf("unexpected GO byte: got 0x%02x, expected 'G'", goBuf[0])
-		}
 	}
-
-	// Close notify socket - done with all handshakes
-	_ = unix.Close(sockFD)
 
 	// Block SIGURG on this OS thread to prevent Go's ~10ms async preemption
 	// from interrupting seccomp_do_user_notification during execve.
@@ -246,6 +269,17 @@ func main() {
 		blockSIGURG()
 	}
 
+	if cfg.CommandJail != nil && cfg.CommandJail.Required {
+		exitCode, err := runCommandJailStage(sockFD)
+		if err != nil {
+			fatalf("command jail: %v", err)
+		}
+		os.Exit(exitCode)
+	}
+
+	// No command-jail READY/GO phase is expected on this path.
+	_ = unix.Close(sockFD)
+
 	// Exec the real command. cmdPath and args were pre-resolved at the
 	// top of main(), before the seccomp filter was installed, so
 	// resolveCommandPath's exec.LookPath probes (newfstatat /
@@ -254,6 +288,19 @@ func main() {
 	if err := syscall.Exec(cmdPath, args, os.Environ()); err != nil {
 		fatalf("exec %s failed: %v", cmd, err)
 	}
+}
+
+func withoutCommandJailSetupSyscalls(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		switch strings.TrimSpace(name) {
+		case "mount", "umount", "umount2", "prctl", "capset", "clone", "clone3", "seccomp", "close_range":
+			continue
+		default:
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // applyArgv0Override returns the argv slice to pass to syscall.Exec,
@@ -318,6 +365,22 @@ func sendFD(sock int, fd int) error {
 // error or unexpected byte count. The readFn abstraction enables deterministic
 // testing of the EINTR retry path.
 func waitForACK(readFn func([]byte) (int, error)) error {
+	_, err := readControlByte(readFn)
+	return err
+}
+
+func waitForControlByte(readFn func([]byte) (int, error), expected byte) error {
+	got, err := readControlByte(readFn)
+	if err != nil {
+		return err
+	}
+	if got != expected {
+		return fmt.Errorf("unexpected control byte: got 0x%02x, expected 0x%02x", got, expected)
+	}
+	return nil
+}
+
+func readControlByte(readFn func([]byte) (int, error)) (byte, error) {
 	buf := make([]byte, 1)
 	for {
 		n, err := readFn(buf)
@@ -325,12 +388,12 @@ func waitForACK(readFn func([]byte) (int, error)) error {
 			if errors.Is(err, syscall.EINTR) {
 				continue
 			}
-			return fmt.Errorf("read: %w", err)
+			return 0, fmt.Errorf("read: %w", err)
 		}
 		if n != 1 {
-			return fmt.Errorf("expected 1 ACK byte, got %d (server may have closed connection)", n)
+			return 0, fmt.Errorf("expected 1 ACK byte, got %d (server may have closed connection)", n)
 		}
-		return nil
+		return buf[0], nil
 	}
 }
 

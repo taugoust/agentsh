@@ -3,6 +3,9 @@ package api
 import (
 	"fmt"
 	"net"
+	"net/netip"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,34 +19,74 @@ var (
 	resolveDomainWithTTL = resolveDomainTTL
 )
 
-// buildProxyOnlyAllowedEndpoints returns the minimal direct-connect allowlist
-// used when an explicit session proxy is available. In this mode eBPF enforces
-// "proxy-or-block": direct external connects from the wrapped cgroup are denied
-// by default, while proxy-aware clients can reach loopback proxies and let the
-// user-space proxy evaluate allow/approve/deny network policy.
-func buildProxyOnlyAllowedEndpoints(_ ...string) ([]ebpf.AllowKey, []ebpf.AllowCIDR) {
-	var v4 ebpf.AllowCIDR
-	v4.Family = 2
-	v4.PrefixLen = 32
-	v4.Dport = 0
-	copy(v4.Addr[:4], net.ParseIP("127.0.0.1").To4())
+// buildProxyOnlyAllowedEndpoints returns exact TCP address+port rules for the
+// explicitly configured AgentSH proxy listeners. Proxy-required mode must not
+// allow a loopback CIDR, an arbitrary loopback port, UDP, or a byte-swapped IPv4
+// compatibility address.
+func buildProxyOnlyAllowedEndpoints(rawURLs ...string) ([]ebpf.AllowKey, []ebpf.AllowCIDR, error) {
+	entries := make([]ebpf.AllowKey, 0, len(rawURLs))
+	for _, rawURL := range rawURLs {
+		if strings.TrimSpace(rawURL) == "" {
+			continue
+		}
+		addrPort, err := exactLoopbackProxyAddrPort(rawURL)
+		if err != nil {
+			return nil, nil, err
+		}
+		var key ebpf.AllowKey
+		key.Protocol = 6 // IPPROTO_TCP
+		key.Dport = addrPort.Port()
+		addr := addrPort.Addr().Unmap()
+		if addr.Is4() {
+			key.Family = 2
+			v4 := addr.As4()
+			copy(key.Addr[:4], v4[:])
+		} else {
+			key.Family = 10
+			v6 := addr.As16()
+			copy(key.Addr[:], v6[:])
+		}
+		entries = append(entries, key)
+	}
+	entries = dedupAllowKeys(entries)
+	if len(entries) == 0 {
+		return nil, nil, fmt.Errorf("proxy-required mode has no exact proxy endpoint")
+	}
+	return entries, nil, nil
+}
 
-	// bpf_sock_addr.user_ip4 is a __u32 copied into the LPM key in native
-	// memory order. Include the little-endian byte representation as well as
-	// the normal network-order bytes so loopback matches on all kernels.
-	var v4le ebpf.AllowCIDR
-	v4le.Family = 2
-	v4le.PrefixLen = 32
-	v4le.Dport = 0
-	v4le.Addr[0], v4le.Addr[1], v4le.Addr[2], v4le.Addr[3] = 1, 0, 0, 127
-
-	var v6 ebpf.AllowCIDR
-	v6.Family = 10
-	v6.PrefixLen = 128
-	v6.Dport = 0
-	copy(v6.Addr[:], net.ParseIP("::1").To16())
-
-	return nil, []ebpf.AllowCIDR{v4, v4le, v6}
+func exactLoopbackProxyAddrPort(rawURL string) (netip.AddrPort, error) {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("parse proxy URL: %w", err)
+	}
+	if u.Scheme != "http" || u.Host == "" || u.User != nil || u.Opaque != "" {
+		return netip.AddrPort{}, fmt.Errorf("proxy URL must be an unauthenticated http URL with an explicit host and port")
+	}
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return netip.AddrPort{}, fmt.Errorf("proxy URL must identify a listener endpoint, not a path, query, or fragment")
+	}
+	host := u.Hostname()
+	portText := u.Port()
+	if host == "" || portText == "" {
+		return netip.AddrPort{}, fmt.Errorf("proxy URL must contain an exact IP address and port")
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("proxy host %q must be an exact IP address: %w", host, err)
+	}
+	if addr.Zone() != "" {
+		return netip.AddrPort{}, fmt.Errorf("proxy address must not contain an IPv6 zone")
+	}
+	addr = addr.Unmap()
+	if !addr.IsLoopback() {
+		return netip.AddrPort{}, fmt.Errorf("proxy address %s must be loopback", addr)
+	}
+	port, err := strconv.ParseUint(portText, 10, 16)
+	if err != nil || port == 0 {
+		return netip.AddrPort{}, fmt.Errorf("proxy port %q must be between 1 and 65535", portText)
+	}
+	return netip.AddrPortFrom(addr, uint16(port)), nil
 }
 
 // buildAllowedEndpoints converts policy/network rules into ebpf allowlist entries and CIDRs.
@@ -236,7 +279,7 @@ func dedupAllowKeys(in []ebpf.AllowKey) []ebpf.AllowKey {
 	seen := make(map[string]struct{}, len(in))
 	out := make([]ebpf.AllowKey, 0, len(in))
 	for _, k := range in {
-		key := fmt.Sprintf("%d-%d-%x", k.Family, k.Dport, k.Addr)
+		key := fmt.Sprintf("%d-%d-%d-%x", k.Family, k.Protocol, k.Dport, k.Addr)
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -250,7 +293,7 @@ func dedupCIDRs(in []ebpf.AllowCIDR) []ebpf.AllowCIDR {
 	seen := make(map[string]struct{}, len(in))
 	out := make([]ebpf.AllowCIDR, 0, len(in))
 	for _, k := range in {
-		key := fmt.Sprintf("%d-%d-%x", k.Family, k.PrefixLen, k.Addr)
+		key := fmt.Sprintf("%d-%d-%d-%d-%x", k.Family, k.Protocol, k.PrefixLen, k.Dport, k.Addr)
 		if _, ok := seen[key]; ok {
 			continue
 		}

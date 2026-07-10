@@ -8,9 +8,21 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/agentsh/agentsh/pkg/types"
 )
 
 const ProtocolVersion = 1
+
+const (
+	// EnvNetworkEnforcementRequested carries launcher intent into the detached
+	// supervisor after configureSupervisorMVP disables unsupported best-effort
+	// features. It is not evidence of readiness.
+	EnvNetworkEnforcementRequested = "AGENTSH_DETACHED_NETWORK_ENFORCEMENT_REQUESTED"
+	// EnvSupervisorLaunchMode is diagnostic context only. Cgroup readiness is
+	// still derived from the runtime cgroup probe rather than this value.
+	EnvSupervisorLaunchMode = "AGENTSH_DETACHED_SUPERVISOR_LAUNCH_MODE"
+)
 
 var ErrMetadataInvalid = errors.New("invalid detached supervisor metadata")
 
@@ -20,26 +32,58 @@ type WorkspaceRoot struct {
 	Work string `json:"work"`
 }
 
+type NetworkEnforcementStatus = types.NetworkEnforcementStatus
+
+type NetworkEnforcementRequest = types.NetworkEnforcementRequest
+
+type NetworkEnforcementTier = types.NetworkEnforcementTier
+
+type NetworkPreflightEvidence = types.NetworkPreflightEvidence
+
+type NetworkAttachmentEvidence = types.NetworkAttachmentEvidence
+
+type NetworkEnforcement = types.NetworkEnforcement
+
+const (
+	NetworkEnforcementStatusNone     = types.NetworkEnforcementStatusNone
+	NetworkEnforcementStatusDegraded = types.NetworkEnforcementStatusDegraded
+	NetworkEnforcementStatusReady    = types.NetworkEnforcementStatusReady
+	NetworkEnforcementStatusActive   = types.NetworkEnforcementStatusActive
+	NetworkEnforcementStatusFailed   = types.NetworkEnforcementStatusFailed
+
+	NetworkEnforcementRequestNone       = types.NetworkEnforcementRequestNone
+	NetworkEnforcementRequestBestEffort = types.NetworkEnforcementRequestBestEffort
+	NetworkEnforcementRequestStrict     = types.NetworkEnforcementRequestStrict
+
+	NetworkEnforcementTierNone                   = types.NetworkEnforcementTierNone
+	NetworkEnforcementTierCgroupDelegated        = types.NetworkEnforcementTierCgroupDelegated
+	NetworkEnforcementTierHelperEBPFGate         = types.NetworkEnforcementTierHelperEBPFGate
+	NetworkEnforcementTierHelperEBPFProxy         = types.NetworkEnforcementTierHelperEBPFProxy
+	NetworkEnforcementTierHelperEBPFProxyRequired = types.NetworkEnforcementTierHelperEBPFProxyRequired
+)
+
 type Metadata struct {
-	SessionID       string          `json:"session_id"`
-	ID              string          `json:"id,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	State           string          `json:"state"`
-	Policy          string          `json:"policy"`
-	RealWorkspace   string          `json:"real_workspace"`
-	WorkspaceMode   string          `json:"workspace_mode"`
-	Worktree        string          `json:"worktree"`
-	WorkspaceRoots  []WorkspaceRoot `json:"workspace_roots,omitempty"`
-	RuntimeHome     string          `json:"runtime_home,omitempty"`
-	RuntimeTmp      string          `json:"runtime_tmp,omitempty"`
-	ProcessHome     string          `json:"process_home,omitempty"`
-	RuntimeHomeMode string          `json:"runtime_home_mode,omitempty"`
-	EnvBaseMode     string          `json:"env_base_mode,omitempty"`
-	EnvInherit      []string        `json:"env_inherit,omitempty"`
-	SupervisorSock  string          `json:"supervisor_sock"`
-	EventToken      string          `json:"event_token,omitempty"`
-	OwnerPID        int             `json:"owner_pid"`
-	ProtocolVersion int             `json:"protocol_version"`
+	SessionID          string              `json:"session_id"`
+	ID                 string              `json:"id,omitempty"`
+	CreatedAt          time.Time           `json:"created_at"`
+	State              string              `json:"state"`
+	Policy             string              `json:"policy"`
+	RealWorkspace      string              `json:"real_workspace"`
+	WorkspaceMode      string              `json:"workspace_mode"`
+	Worktree           string              `json:"worktree"`
+	WorkspaceRoots     []WorkspaceRoot     `json:"workspace_roots,omitempty"`
+	RuntimeHome        string              `json:"runtime_home,omitempty"`
+	RuntimeTmp         string              `json:"runtime_tmp,omitempty"`
+	ProcessHome        string              `json:"process_home,omitempty"`
+	RuntimeHomeMode    string              `json:"runtime_home_mode,omitempty"`
+	EnvBaseMode        string              `json:"env_base_mode,omitempty"`
+	EnvInherit         []string            `json:"env_inherit,omitempty"`
+	SupervisorSock     string              `json:"supervisor_sock"`
+	EventToken         string              `json:"event_token,omitempty"`
+	SystemdUnit        string              `json:"systemd_unit,omitempty"`
+	OwnerPID           int                 `json:"owner_pid"`
+	NetworkEnforcement *NetworkEnforcement `json:"network_enforcement,omitempty"`
+	ProtocolVersion    int                 `json:"protocol_version"`
 }
 
 type DiscoveryOptions struct {
@@ -53,6 +97,11 @@ func MetadataPath(stateDir string) string {
 }
 
 func WriteMetadata(stateDir string, meta Metadata) error {
+	if meta.NetworkEnforcement != nil {
+		network := *meta.NetworkEnforcement
+		network.Normalize()
+		meta.NetworkEnforcement = &network
+	}
 	b, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
@@ -77,6 +126,9 @@ func ReadMetadataFromRoot(root string, sessionID string) (Metadata, string, erro
 	}
 	if meta.SessionID == "" {
 		return Metadata{}, stateDir, fmt.Errorf("%w for %s at %s: missing session_id", ErrMetadataInvalid, sessionID, path)
+	}
+	if meta.NetworkEnforcement != nil {
+		meta.NetworkEnforcement.Normalize()
 	}
 	return meta, stateDir, nil
 }
@@ -112,6 +164,41 @@ func ListMetadataFromRoot(root string, opts DiscoveryOptions) ([]Metadata, error
 		out = append(out, meta)
 	}
 	return out, nil
+}
+
+// StaleNetworkEnforcementSnapshot returns a startup metadata object that is
+// safe to show when the live supervisor API could not be queried. Startup
+// evidence is historical: it can explain the last observed tier but can never
+// preserve ready/active or network_policy_enforced=true.
+func StaleNetworkEnforcementSnapshot(report *NetworkEnforcement) *NetworkEnforcement {
+	if report == nil {
+		return nil
+	}
+	snapshot := *report
+	snapshot.BlockedTrafficClasses = append([]string(nil), report.BlockedTrafficClasses...)
+	if report.Attachment != nil {
+		attachment := *report.Attachment
+		attachment.ProxyEndpointIDs = append([]string(nil), report.Attachment.ProxyEndpointIDs...)
+		attachment.BlockedTrafficClasses = append([]string(nil), report.Attachment.BlockedTrafficClasses...)
+		snapshot.Attachment = &attachment
+	}
+	if report.Preflight != nil {
+		preflight := *report.Preflight
+		snapshot.Preflight = &preflight
+	}
+	switch snapshot.Status {
+	case NetworkEnforcementStatusFailed:
+		snapshot.Readiness = NetworkEnforcementStatusFailed
+	case NetworkEnforcementStatusNone:
+		snapshot.Readiness = NetworkEnforcementStatusNone
+	default:
+		snapshot.Status = NetworkEnforcementStatusDegraded
+		snapshot.Readiness = NetworkEnforcementStatusDegraded
+	}
+	snapshot.NetworkPolicyEnforced = false
+	snapshot.Warning = "detached metadata is a stale startup snapshot; live supervisor runtime evidence is unavailable"
+	snapshot.Normalize()
+	return &snapshot
 }
 
 func ValidateUsable(meta Metadata, pidAlive func(int) bool) error {

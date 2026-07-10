@@ -1,6 +1,7 @@
 package detached
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -143,6 +144,111 @@ func TestMetadataStableJSONShape(t *testing.T) {
 `, meta.CreatedAt.Format(time.RFC3339Nano), meta.RealWorkspace, meta.Worktree, meta.SupervisorSock)
 	if string(b) != want {
 		t.Fatalf("metadata JSON shape changed\ngot:\n%s\nwant:\n%s", string(b), want)
+	}
+}
+
+func TestMetadataNetworkEnforcementJSONFields(t *testing.T) {
+	root := t.TempDir()
+	meta := testMetadata(t, root, "session-network")
+	meta.NetworkEnforcement = &NetworkEnforcement{
+		Requested:             NetworkEnforcementRequestBestEffort,
+		Readiness:             NetworkEnforcementStatusDegraded,
+		Status:                NetworkEnforcementStatusDegraded,
+		Tier:                  NetworkEnforcementTierCgroupDelegated,
+		NetworkPolicyEnforced: false,
+		CgroupDelegated:       true,
+		Warning:               "network policy is not enforced",
+		Detail:                "delegated cgroup only",
+	}
+	stateDir := filepath.Join(root, meta.SessionID)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteMetadata(stateDir, meta); err != nil {
+		t.Fatalf("WriteMetadata: %v", err)
+	}
+
+	got, _, err := ReadMetadataFromRoot(root, meta.SessionID)
+	if err != nil {
+		t.Fatalf("ReadMetadataFromRoot: %v", err)
+	}
+	if !reflect.DeepEqual(got.NetworkEnforcement, meta.NetworkEnforcement) {
+		t.Fatalf("network enforcement mismatch\ngot:  %#v\nwant: %#v", got.NetworkEnforcement, meta.NetworkEnforcement)
+	}
+
+	b, err := os.ReadFile(MetadataPath(stateDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("metadata JSON: %v", err)
+	}
+	raw, ok := doc["network_enforcement"].(map[string]any)
+	if !ok {
+		t.Fatalf("network_enforcement = %#v, want object", doc["network_enforcement"])
+	}
+	checks := map[string]any{
+		"requested":               string(NetworkEnforcementRequestBestEffort),
+		"readiness":               string(NetworkEnforcementStatusDegraded),
+		"status":                  string(NetworkEnforcementStatusDegraded),
+		"tier":                    string(NetworkEnforcementTierCgroupDelegated),
+		"network_policy_enforced": false,
+		"cgroup_delegated":        true,
+		"warning":                 "network policy is not enforced",
+		"detail":                  "delegated cgroup only",
+	}
+	for key, want := range checks {
+		if got := raw[key]; got != want {
+			t.Fatalf("network_enforcement.%s = %#v, want %#v", key, got, want)
+		}
+	}
+}
+
+func TestMetadataNeverSerializesUnprovenNetworkPolicyEnforced(t *testing.T) {
+	root := t.TempDir()
+	meta := testMetadata(t, root, "session-unproven-network")
+	meta.NetworkEnforcement = &NetworkEnforcement{
+		Requested:             NetworkEnforcementRequestStrict,
+		Readiness:             NetworkEnforcementStatusReady,
+		Status:                NetworkEnforcementStatusReady,
+		Tier:                  NetworkEnforcementTierHelperEBPFProxyRequired,
+		NetworkPolicyEnforced: true,
+		CgroupDelegated:       true,
+		HelperConfigured:      true,
+		HelperAuthenticated:   true,
+		ToolBoundaryActive:    true,
+		ProxyReady:            true,
+		DirectBypassBlocked:   true,
+		FailClosedSetup:       true,
+		// No disposable preflight or complete unsupported-traffic evidence.
+	}
+	stateDir := filepath.Join(root, meta.SessionID)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteMetadata(stateDir, meta); err != nil {
+		t.Fatalf("WriteMetadata: %v", err)
+	}
+	got, _, err := ReadMetadataFromRoot(root, meta.SessionID)
+	if err != nil {
+		t.Fatalf("ReadMetadataFromRoot: %v", err)
+	}
+	if got.NetworkEnforcement == nil || got.NetworkEnforcement.NetworkPolicyEnforced {
+		t.Fatalf("network enforcement = %#v, want unproven claim forced false", got.NetworkEnforcement)
+	}
+}
+
+func TestReadMetadataBackwardsCompatibleWithoutNetworkEnforcement(t *testing.T) {
+	root := t.TempDir()
+	writeRawMetadata(t, root, "session-old", []byte(`{"session_id":"session-old","owner_pid":0,"protocol_version":1}`))
+
+	got, _, err := ReadMetadataFromRoot(root, "session-old")
+	if err != nil {
+		t.Fatalf("ReadMetadataFromRoot old metadata: %v", err)
+	}
+	if got.NetworkEnforcement != nil {
+		t.Fatalf("NetworkEnforcement = %#v, want nil for old metadata", got.NetworkEnforcement)
 	}
 }
 

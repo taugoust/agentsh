@@ -30,11 +30,21 @@ func readSupervisorMetadataFromRoot(root string, sessionID string) (supervisorMe
 }
 
 func listSupervisorMetadata() ([]supervisorMetadata, error) {
-	return listSupervisorMetadataFromRoot(detachedSessionsRoot(), supervisorDiscoveryOptions{
+	metas, err := listSupervisorMetadataFromRoot(detachedSessionsRoot(), supervisorDiscoveryOptions{
 		RequireSocket: true,
 		CheckPID:      true,
 		PIDAlive:      supervisorPIDAlive,
 	})
+	if err != nil {
+		return nil, err
+	}
+	// Discovery callers need routing metadata, never the detached bridge
+	// credential. Keep it confined to the mode-0600 on-disk record.
+	for i := range metas {
+		metas[i].EventToken = ""
+		metas[i].NetworkEnforcement = detached.StaleNetworkEnforcementSnapshot(metas[i].NetworkEnforcement)
+	}
+	return metas, nil
 }
 
 func listSupervisorMetadataFromRoot(root string, opts supervisorDiscoveryOptions) ([]supervisorMetadata, error) {

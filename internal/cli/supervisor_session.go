@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +18,8 @@ import (
 	"github.com/agentsh/agentsh/internal/client"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/detached"
+	"github.com/agentsh/agentsh/internal/detachedreport"
+	"github.com/agentsh/agentsh/internal/nethelper"
 	"github.com/agentsh/agentsh/internal/server"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
@@ -25,6 +30,20 @@ type detachedSessionStartResult struct {
 	supervisorMetadata
 	Session  types.Session `json:"session"`
 	StateDir string        `json:"state_dir"`
+}
+
+// MarshalJSON keeps the detached event credential in mode-0600 supervisor
+// metadata without returning it to session-start callers. Helper credentials
+// are never represented by this response type at all.
+func (r detachedSessionStartResult) MarshalJSON() ([]byte, error) {
+	meta := r.supervisorMetadata
+	meta.EventToken = ""
+	type wire struct {
+		supervisorMetadata
+		Session  types.Session `json:"session"`
+		StateDir string        `json:"state_dir"`
+	}
+	return json.Marshal(wire{supervisorMetadata: meta, Session: r.Session, StateDir: r.StateDir})
 }
 
 func newSupervisorCmd() *cobra.Command {
@@ -55,6 +74,15 @@ func newSupervisorRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := loadSupervisorNethelperCredential(); err != nil {
+				if detachedSupervisorStrictNetworkEnforcement(cfg) {
+					return fmt.Errorf("strict detached helper credential unavailable: %w", err)
+				}
+				fmt.Fprintf(os.Stderr, "agentsh: warning: nethelper credential unavailable; continuing without the helper in degraded mode: %v\n", err)
+				for _, key := range []string{nethelper.EnvSocket, nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, nethelper.EnvCredentialFile} {
+					_ = os.Unsetenv(key)
+				}
+			}
 			if err := configureSupervisorMVP(cfg, stateDir, sockPath); err != nil {
 				return err
 			}
@@ -79,10 +107,13 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error
 	if warning := detachedSupervisorNetworkEnforcementWarning(cfg); warning != "" {
 		fmt.Fprintf(os.Stderr, "agentsh: warning: %s\n", warning)
 	}
+	strictNetwork := detachedSupervisorStrictNetworkEnforcement(cfg)
 
 	// Stage 1 is a user-owned, single-session supervisor. Keep the existing
-	// seccomp/wrap path, but explicitly disable the heavyweight/global pieces
-	// called out as MVP non-goals.
+	// seccomp/wrap path, but explicitly disable heavyweight/global pieces unless
+	// the source config requires eBPF enforcement. Required/enforced eBPF is now
+	// preserved so command setup fails closed instead of silently allowing direct
+	// network access.
 	cfg.Server.HTTP.Addr = "127.0.0.1:0"
 	cfg.Server.GRPC.Enabled = false
 	cfg.Server.UnixSocket.Enabled = true
@@ -116,12 +147,27 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error
 	cfg.Audit.Watchtower.Enabled = false
 	cfg.Audit.Integrity.Enabled = false
 
-	cfg.Sandbox.Cgroups.Enabled = false
-	cfg.Sandbox.Network.Enabled = false
-	cfg.Sandbox.Network.Transparent.Enabled = false
-	cfg.Sandbox.Network.EBPF.Enabled = false
-	cfg.Sandbox.Network.EBPF.Enforce = false
-	cfg.Sandbox.Network.EBPF.Required = false
+	if strictNetwork {
+		// Detached strict-network mode needs a command cgroup for BPF attachment
+		// but should not require resource-controller delegation. Leaving
+		// sandbox.cgroups.enabled=false lets the cgroup probe use attach-only mode;
+		// eBPF flags below still cause the cgroup hook to run. The source daemon's
+		// base_path commonly names a root system service cgroup; a delegated user
+		// supervisor must discover its own transient-unit cgroup instead of trying
+		// to create children under that unrelated, non-writable path.
+		cfg.Sandbox.Cgroups.Enabled = false
+		cfg.Sandbox.Cgroups.BasePath = ""
+		cfg.Sandbox.Network.Enabled = true
+		cfg.Sandbox.Network.Transparent.Enabled = false
+		cfg.Sandbox.Network.EBPF.Enabled = true
+	} else {
+		cfg.Sandbox.Cgroups.Enabled = false
+		cfg.Sandbox.Network.Enabled = false
+		cfg.Sandbox.Network.Transparent.Enabled = false
+		cfg.Sandbox.Network.EBPF.Enabled = false
+		cfg.Sandbox.Network.EBPF.Enforce = false
+		cfg.Sandbox.Network.EBPF.Required = false
+	}
 	cfg.Sandbox.FUSE.Enabled = false
 	cfg.Proxy.Mode = "disabled"
 	cfg.PackageChecks.Enabled = false
@@ -130,11 +176,127 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error
 	return nil
 }
 
+const detachedSupervisorNetworkPolicyRuntimeGap = "network policy checks may report approvals/denies that are not enforced at runtime in detached sessions"
+
+func detachedSupervisorStrictNetworkEnforcement(cfg *config.Config) bool {
+	return cfg != nil && (cfg.Sandbox.Network.EBPF.Required || cfg.Sandbox.Network.EBPF.Enforce)
+}
+
 func detachedSupervisorNetworkEnforcementWarning(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	if detachedSupervisorStrictNetworkEnforcement(cfg) {
+		features := detachedSupervisorUnsupportedNetworkFeatures(cfg)
+		return fmt.Sprintf("detached supervisor is preserving required/enforced eBPF network setup (%s); strict session startup will refuse unless the disposable cgroup/helper/proxy/command-jail/bypass preflight reports ready, and every command remains behind the fail-closed setup barrier", strings.Join(features, ", "))
+	}
 	if features := detachedSupervisorUnsupportedNetworkFeatures(cfg); len(features) > 0 {
-		return fmt.Sprintf("detached supervisor MVP is disabling configured network enforcement (%s); network policy checks may report approvals/denies that are not enforced at runtime in detached sessions", strings.Join(features, ", "))
+		return fmt.Sprintf("detached supervisor MVP is disabling best-effort network enforcement (%s); %s", strings.Join(features, ", "), detachedSupervisorNetworkPolicyRuntimeGap)
 	}
 	return ""
+}
+
+func detachedSupervisorNetworkRequest(cfg *config.Config) detached.NetworkEnforcementRequest {
+	if detachedSupervisorStrictNetworkEnforcement(cfg) {
+		return detached.NetworkEnforcementRequestStrict
+	}
+	if len(detachedSupervisorUnsupportedNetworkFeatures(cfg)) > 0 {
+		return detached.NetworkEnforcementRequestBestEffort
+	}
+	return detached.NetworkEnforcementRequestNone
+}
+
+func detachedSupervisorPendingNetworkEnforcement(cfg *config.Config) *detached.NetworkEnforcement {
+	requested := detachedSupervisorNetworkRequest(cfg)
+	status := detached.NetworkEnforcementStatusNone
+	detail := "no runtime network gate was requested"
+	warning := "no runtime network gate is active; policy decisions do not imply traffic enforcement"
+	if requested != detached.NetworkEnforcementRequestNone {
+		status = detached.NetworkEnforcementStatusDegraded
+		detail = "runtime preflight has not completed"
+		warning = "network policy enforcement is not proven from launch configuration"
+	}
+	report := &detached.NetworkEnforcement{
+		Requested: requested,
+		Readiness: status,
+		Status:    status,
+		Tier:      detached.NetworkEnforcementTierNone,
+		CheckedAt: time.Now().UTC(),
+		Detail:    detail,
+		Warning:   warning,
+	}
+	report.Normalize()
+	return report
+}
+
+func detachedSupervisorServiceEnv(eventToken string, env []string) []string {
+	serviceEnv := []string{"AGENTSH_DETACHED_EVENT_TOKEN=" + eventToken}
+	// Never put the helper credential value in systemd-run argv or transient
+	// unit properties. Installed services pass only the protected credential
+	// file path; the supervisor reads it before serving requests.
+	for _, key := range []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, detached.EnvNetworkEnforcementRequested} {
+		if value, ok := lookupEnvAssignment(env, key); ok && strings.TrimSpace(value) != "" {
+			serviceEnv = append(serviceEnv, key+"="+strings.TrimSpace(value))
+		}
+	}
+	return serviceEnv
+}
+
+func loadSupervisorNethelperCredential() error {
+	credential := strings.TrimSpace(os.Getenv(nethelper.EnvHelperInstanceCredential))
+	if credential == "" {
+		credential = strings.TrimSpace(os.Getenv(nethelper.EnvSessionNonce))
+	}
+	if credential == "" {
+		credentialFile := strings.TrimSpace(os.Getenv(nethelper.EnvCredentialFile))
+		if credentialFile == "" {
+			_ = os.Unsetenv(nethelper.EnvSessionNonce)
+			return nil
+		}
+		var err error
+		credential, err = readSupervisorNethelperCredentialFile(credentialFile)
+		if err != nil {
+			return fmt.Errorf("load nethelper instance credential: %w", err)
+		}
+	}
+	if err := validateNethelperInstanceCredential(credential); err != nil {
+		return err
+	}
+	if err := os.Setenv(nethelper.EnvHelperInstanceCredential, credential); err != nil {
+		return fmt.Errorf("retain nethelper instance credential until server initialization: %w", err)
+	}
+	_ = os.Unsetenv(nethelper.EnvSessionNonce)
+	// api.NewApp captures the value into the trusted App and unsets both the
+	// value and source path before a command can execute.
+	return nil
+}
+
+func readSupervisorNethelperCredentialFile(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("credential file path is required")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("stat credential file %s: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("credential file %s must not be a symlink", path)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("credential file %s must be a regular file", path)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return "", fmt.Errorf("credential file %s must not be group/world readable", path)
+	}
+	if err := validateSupervisorCredentialFileOwner(info); err != nil {
+		return "", fmt.Errorf("validate credential file %s: %w", path, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read credential file %s: %w", path, err)
+	}
+	return strings.TrimSpace(string(data)), nil
 }
 
 func detachedSupervisorUnsupportedNetworkFeatures(cfg *config.Config) []string {
@@ -142,8 +304,14 @@ func detachedSupervisorUnsupportedNetworkFeatures(cfg *config.Config) []string {
 		return nil
 	}
 	var features []string
+	if cfg.Sandbox.Network.Enabled {
+		features = append(features, "sandbox.network.enabled")
+	}
 	if cfg.Sandbox.Network.Enabled && cfg.Sandbox.Network.Transparent.Enabled {
 		features = append(features, "sandbox.network.transparent.enabled")
+	}
+	if cfg.Sandbox.Network.EBPF.Enabled {
+		features = append(features, "sandbox.network.ebpf.enabled")
 	}
 	if cfg.Sandbox.Network.EBPF.Enforce {
 		features = append(features, "sandbox.network.ebpf.enforce")
@@ -170,9 +338,11 @@ func newSessionStartCmd() *cobra.Command {
 
 Experimental Stage 1 detached mode starts a per-session AgentSH supervisor
 owned by the current user. The supervisor writes metadata.json and listens on a
-session-local supervisor.sock. This MVP intentionally disables cgroups, eBPF,
-transparent networking, overlay workspaces, FUSE/COW, trusted-parent Pi,
-subagents, and credential broker features.`,
+session-local supervisor.sock. This MVP disables unsupported best-effort
+network/cgroup features, preserves required/enforced eBPF as a fail-closed
+setup path, and refuses strict startup unless runtime evidence is ready.
+Overlay workspaces, FUSE/COW, trusted-parent Pi, subagents, and credential
+broker features remain out of scope.`,
 		Example: `  agentsh session start --detach --workspace . --workspace-mode shadow --json
   agentsh wrap --server unix://$SUPERVISOR_SOCK --session $SESSION_ID -- echo hi`,
 
@@ -202,6 +372,9 @@ subagents, and credential broker features.`,
 			fmt.Fprintf(cmd.OutOrStdout(), "Session %s started\n", res.SessionID)
 			fmt.Fprintf(cmd.OutOrStdout(), "  Supervisor: unix://%s\n", res.SupervisorSock)
 			fmt.Fprintf(cmd.OutOrStdout(), "  Worktree:   %s\n", res.Worktree)
+			for _, line := range detachedreport.HumanLines(res.NetworkEnforcement, "  ") {
+				fmt.Fprintln(cmd.OutOrStdout(), line)
+			}
 			fmt.Fprintf(cmd.OutOrStdout(), "\nWrap with:\n  agentsh wrap --server unix://%s --session %s -- <cmd>\n", res.SupervisorSock, res.SessionID)
 			return nil
 		},
@@ -280,26 +453,83 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 		fmt.Fprintf(os.Stderr, "agentsh: warning: %s\n", warning)
 	}
 	eventToken := randomDetachedEventToken()
-	args := []string{"supervisor", "run", "--state-dir", stateDir, "--socket", sockPath, "--config", configPath}
-	cmd := exec.Command(exe, args...)
-	cmd.Env = append(os.Environ(),
-		"AGENTSH_DETACHED_EVENT_TOKEN="+eventToken,
+	parentEnv := os.Environ()
+	helperCredential, _ := lookupEnvAssignment(parentEnv, nethelper.EnvHelperInstanceCredential)
+	if strings.TrimSpace(helperCredential) == "" {
+		helperCredential, _ = lookupEnvAssignment(parentEnv, nethelper.EnvSessionNonce)
+	}
+	credentialFile, _ := lookupEnvAssignment(parentEnv, nethelper.EnvCredentialFile)
+	launcherEnv := withoutEnvAssignments(parentEnv,
+		"AGENTSH_DETACHED_EVENT_TOKEN",
+		nethelper.EnvHelperInstanceCredential,
+		nethelper.EnvSessionNonce,
+		nethelper.EnvCredentialFile,
+		detached.EnvNetworkEnforcementRequested,
+		detached.EnvSupervisorLaunchMode,
 	)
+	launcherEnv = append(launcherEnv,
+		"AGENTSH_DETACHED_EVENT_TOKEN="+eventToken,
+		detached.EnvNetworkEnforcementRequested+"="+string(detachedSupervisorNetworkRequest(preflightCfg)),
+	)
+	if strings.TrimSpace(helperCredential) != "" {
+		launcherEnv = append(launcherEnv, nethelper.EnvHelperInstanceCredential+"="+strings.TrimSpace(helperCredential))
+	}
+	if strings.TrimSpace(credentialFile) != "" {
+		launcherEnv = append(launcherEnv, nethelper.EnvCredentialFile+"="+strings.TrimSpace(credentialFile))
+	}
+	serviceEnv := detachedSupervisorServiceEnv(eventToken, launcherEnv)
+	serviceEnvFile := filepath.Join(stateDir, "supervisor.env")
+	launch := buildDetachedSupervisorLaunch(detachedSupervisorLaunchRequest{
+		Exe:            exe,
+		Args:           detachedSupervisorRunArgs(stateDir, sockPath, configPath),
+		Env:            launcherEnv,
+		Dir:            realWorkspace,
+		SessionID:      sessionID,
+		ServiceEnv:     serviceEnv,
+		ServiceEnvFile: serviceEnvFile,
+	})
+	if launch.UsesSystemd {
+		serviceEnv = withoutEnvAssignments(serviceEnv, detached.EnvSupervisorLaunchMode)
+		serviceEnv = append(serviceEnv, detached.EnvSupervisorLaunchMode+"=systemd-user-delegated")
+		if err := writeDetachedSupervisorEnvironmentFile(serviceEnvFile, serviceEnv); err != nil {
+			return nil, err
+		}
+		// The transient unit has no restart policy. Keep the protected file only
+		// through launch/session handshake, then remove this extra credential copy.
+		defer os.Remove(serviceEnvFile)
+	}
+	cmd := exec.Command(launch.Path, launch.Args...)
+	cmd.Env = launch.Env
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.Stdin = nil
-	cmd.Dir = realWorkspace
-	setDetachedProcessAttrs(cmd)
+	cmd.Dir = launch.Dir
+	if !launch.UsesSystemd {
+		setDetachedProcessAttrs(cmd)
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start supervisor: %w", err)
 	}
 	pid := cmd.Process.Pid
+	ownerPID := pid
+	if !launch.OwnerPIDFromCommand {
+		ownerPID = 0
+	}
 	_ = cmd.Process.Release()
 
 	waitClient := client.NewWithTimeout("unix://"+sockPath, "", time.Second)
 	if err := waitForSupervisor(ctx, sockPath, waitClient); err != nil {
-		_ = signalProcess(pid, os.Kill)
+		if launch.SystemdUnit != "" {
+			_ = stopDetachedSupervisorSystemdUnit(ctx, launch.SystemdUnit)
+		} else {
+			_ = signalProcess(pid, os.Kill)
+		}
 		return nil, err
+	}
+	if launch.UsesSystemd {
+		// systemd consumed EnvironmentFile before exec. Remove it before any
+		// disposable or user command can enter the session.
+		_ = os.Remove(serviceEnvFile)
 	}
 	// Session creation can copy large shadow workspaces with rsync. Keep the
 	// supervisor readiness probe short, but use a much longer timeout for the
@@ -330,7 +560,11 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	}
 	sess, err := c.CreateSessionWithRequest(ctx, req)
 	if err != nil {
-		_ = signalProcess(pid, os.Kill)
+		if launch.SystemdUnit != "" {
+			_ = stopDetachedSupervisorSystemdUnit(ctx, launch.SystemdUnit)
+		} else {
+			_ = signalProcess(pid, os.Kill)
+		}
 		return nil, fmt.Errorf("create supervised session: %w", err)
 	}
 	worktree := sess.WorkspaceMount
@@ -340,6 +574,26 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	if worktree == "" {
 		worktree = sess.Workspace
 	}
+
+	networkEnforcement, handshakeErr := detachedSupervisorRuntimeHandshake(ctx, c, sessionID)
+	if handshakeErr != nil {
+		networkEnforcement = detachedSupervisorPendingNetworkEnforcement(preflightCfg)
+		if detachedSupervisorStrictNetworkEnforcement(preflightCfg) {
+			networkEnforcement.Status = detached.NetworkEnforcementStatusFailed
+		} else {
+			networkEnforcement.Status = detached.NetworkEnforcementStatusDegraded
+		}
+		networkEnforcement.CheckedAt = time.Now().UTC()
+		networkEnforcement.Detail = "runtime enforcement handshake failed: " + handshakeErr.Error()
+		if detachedSupervisorStrictNetworkEnforcement(preflightCfg) {
+			networkEnforcement.Readiness = detached.NetworkEnforcementStatusFailed
+			networkEnforcement.Warning = "strict detached startup will be refused because runtime network readiness could not be observed"
+		} else {
+			networkEnforcement.Warning = "runtime network readiness could not be observed; continuing in degraded mode because strict enforcement was not requested"
+		}
+		networkEnforcement.Normalize()
+	}
+
 	var metaRoots []detached.WorkspaceRoot
 	if sess.Shadow != nil {
 		for _, root := range sess.Shadow.Roots {
@@ -347,31 +601,73 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 		}
 	}
 	meta := supervisorMetadata{
-		SessionID:       sessionID,
-		ID:              sessionID,
-		CreatedAt:       time.Now().UTC(),
-		State:           "active",
-		Policy:          sess.Policy,
-		RealWorkspace:   realWorkspace,
-		WorkspaceMode:   sess.WorkspaceMode,
-		Worktree:        worktree,
-		WorkspaceRoots:  metaRoots,
-		RuntimeHome:     sess.RuntimeHome,
-		RuntimeTmp:      sess.RuntimeTmp,
-		ProcessHome:     sess.ProcessHome,
-		RuntimeHomeMode: sess.RuntimeHomeMode,
-		EnvBaseMode:     sess.EnvBaseMode,
-		EnvInherit:      sess.EnvInherit,
-		SupervisorSock:  sockPath,
-		EventToken:      eventToken,
-		OwnerPID:        pid,
-		ProtocolVersion: supervisorProtocolVersion,
+		SessionID:          sessionID,
+		ID:                 sessionID,
+		CreatedAt:          time.Now().UTC(),
+		State:              "active",
+		Policy:             sess.Policy,
+		RealWorkspace:      realWorkspace,
+		WorkspaceMode:      sess.WorkspaceMode,
+		Worktree:           worktree,
+		WorkspaceRoots:     metaRoots,
+		RuntimeHome:        sess.RuntimeHome,
+		RuntimeTmp:         sess.RuntimeTmp,
+		ProcessHome:        sess.ProcessHome,
+		RuntimeHomeMode:    sess.RuntimeHomeMode,
+		EnvBaseMode:        sess.EnvBaseMode,
+		EnvInherit:         sess.EnvInherit,
+		SupervisorSock:     sockPath,
+		EventToken:         eventToken,
+		SystemdUnit:        launch.SystemdUnit,
+		OwnerPID:           ownerPID,
+		NetworkEnforcement: networkEnforcement,
+		ProtocolVersion:    supervisorProtocolVersion,
+	}
+	if detachedSupervisorStrictNetworkEnforcement(preflightCfg) && (networkEnforcement == nil || !networkEnforcement.Ready()) {
+		if networkEnforcement == nil {
+			networkEnforcement = detachedSupervisorPendingNetworkEnforcement(preflightCfg)
+			meta.NetworkEnforcement = networkEnforcement
+		}
+		networkEnforcement.Status = detached.NetworkEnforcementStatusFailed
+		networkEnforcement.Readiness = detached.NetworkEnforcementStatusFailed
+		networkEnforcement.CheckedAt = time.Now().UTC()
+		networkEnforcement.Warning = "strict detached startup refused because runtime enforcement is not ready"
+		networkEnforcement.Normalize()
+		meta.State = "failed"
+		meta.EventToken = ""
+		_ = writeSupervisorMetadata(stateDir, meta)
+		_ = c.DestroySession(context.Background(), sessionID)
+		if launch.SystemdUnit != "" {
+			_ = stopDetachedSupervisorSystemdUnit(ctx, launch.SystemdUnit)
+		} else {
+			_ = signalProcess(pid, os.Kill)
+		}
+		return nil, fmt.Errorf("strict detached network startup refused: status=%s tier=%s: %s", networkEnforcement.Status, networkEnforcement.Tier, networkEnforcement.Detail)
 	}
 	if err := writeSupervisorMetadata(stateDir, meta); err != nil {
-		_ = signalProcess(pid, os.Kill)
+		if launch.SystemdUnit != "" {
+			_ = stopDetachedSupervisorSystemdUnit(ctx, launch.SystemdUnit)
+		} else {
+			_ = signalProcess(pid, os.Kill)
+		}
 		return nil, err
 	}
 	return &detachedSessionStartResult{supervisorMetadata: meta, Session: sess, StateDir: stateDir}, nil
+}
+
+func detachedSupervisorRuntimeHandshake(ctx context.Context, c *client.Client, sessionID string) (*detached.NetworkEnforcement, error) {
+	if c == nil {
+		return nil, fmt.Errorf("supervisor client is nil")
+	}
+	handshakeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var report detached.NetworkEnforcement
+	path := "/api/v1/sessions/" + url.PathEscape(sessionID) + "/network-enforcement/preflight"
+	if err := c.DoRawJSON(handshakeCtx, http.MethodPost, path, []byte(`{}`), &report); err != nil {
+		return nil, err
+	}
+	report.Normalize()
+	return &report, nil
 }
 
 func waitForSupervisor(ctx context.Context, sockPath string, c *client.Client) error {
@@ -415,10 +711,13 @@ func newSessionStopCmd() *cobra.Command {
 				return err
 			}
 			_ = c.DestroySession(cmd.Context(), id)
-			if meta.OwnerPID > 0 {
+			if meta.SystemdUnit != "" {
+				_ = stopDetachedSupervisorSystemdUnit(cmd.Context(), meta.SystemdUnit)
+			} else if meta.OwnerPID > 0 {
 				_ = signalProcess(meta.OwnerPID, os.Kill)
 			}
 			meta.State = "stopped"
+			meta.EventToken = ""
 			if _, stateDir, err := readSupervisorMetadata(id); err == nil {
 				_ = writeSupervisorMetadata(stateDir, meta)
 			}

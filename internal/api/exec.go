@@ -16,6 +16,8 @@ import (
 
 	"github.com/agentsh/agentsh/internal/approvals"
 	"github.com/agentsh/agentsh/internal/config"
+	"github.com/agentsh/agentsh/internal/detached"
+	"github.com/agentsh/agentsh/internal/nethelper"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/signal"
@@ -68,6 +70,11 @@ type extraProcConfig struct {
 	// Only true when ptrace is active AND seccomp notify features are enabled.
 	ptraceSync bool
 
+	// commandBoundary starts the trusted wrapper as PID 1 in the fixed Linux
+	// command namespaces. The wrapper later installs masks and privilege drops
+	// before the final GO release.
+	commandBoundary *types.LinuxCommandJailRequirements
+
 	// Wrapper log routing (issue #415): pipe carrying unixwrap
 	// diagnostics into the server log. wrapperLogChild is the write end
 	// inherited by the wrapper via extraFiles; the parent's copy is
@@ -88,6 +95,42 @@ type eventBroker interface {
 }
 
 type postStartHook func(pid int) (cleanup func() error, err error)
+
+func extraProcessFiles(extra *extraProcConfig) []*os.File {
+	if extra == nil {
+		return nil
+	}
+	return extra.extraFiles
+}
+
+func closeExtraProcessFiles(extra *extraProcConfig) {
+	if extra == nil {
+		return
+	}
+	for _, file := range extra.extraFiles {
+		if file != nil {
+			_ = file.Close()
+		}
+	}
+	extra.extraFiles = nil
+	extra.wrapperLogChild = nil
+}
+
+func closePreStartProcessFiles(extra *extraProcConfig) {
+	if extra == nil {
+		return
+	}
+	closeExtraProcessFiles(extra)
+	if extra.notifyParentSock != nil {
+		_ = extra.notifyParentSock.Close()
+		extra.notifyParentSock = nil
+	}
+	if extra.signalParentSock != nil {
+		_ = extra.signalParentSock.Close()
+		extra.signalParentSock = nil
+	}
+	extra.closeWrapperLogPipe()
+}
 
 // emitSeccompBlockedIfSIGSYS checks if the error indicates a SIGSYS (seccomp kill)
 // and emits a seccomp_blocked event if so.
@@ -140,6 +183,13 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 	ctx, cancel := withExtendableCommandTimeout(ctx, timeout)
 	defer cancel()
 
+	extraOwnershipTransferred := false
+	defer func() {
+		if !extraOwnershipTransferred {
+			closePreStartProcessFiles(extra)
+		}
+	}()
+
 	if handled, code, out, errOut := s.Builtin(req); handled {
 		return code, out, errOut, int64(len(out)), int64(len(errOut)), false, false, types.ExecResources{}, nil
 	}
@@ -150,6 +200,10 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 	if err != nil {
 		msg := []byte(err.Error() + "\n")
 		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, nil
+	}
+	if barrierErr := validatePreExecBarrierPath(hook, tracer, extra); barrierErr != nil {
+		closePreStartProcessFiles(extra)
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, barrierErr
 	}
 
 	// When ptrace is active, use exec.Command (not CommandContext) because we
@@ -186,9 +240,17 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 	} else {
 		cmd.SysProcAttr = getSysProcAttr()
 	}
+	var commandBoundary *types.LinuxCommandJailRequirements
+	if extra != nil {
+		commandBoundary = extra.commandBoundary
+	}
+	if boundaryErr := configureCommandBoundaryProcess(cmd.SysProcAttr, commandBoundary); boundaryErr != nil {
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, boundaryErr
+	}
 
-	env, err := buildPolicyEnv(envPol, os.Environ(), s, req.Env)
+	env, err := buildCommandEnvironment(cfg, envPol, os.Environ(), s, req.Env, extra)
 	if err != nil {
+		closePreStartProcessFiles(extra)
 		msg := []byte(err.Error() + "\n")
 		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, nil
 	}
@@ -201,56 +263,6 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 		}
 	}
 	slog.Debug("exec env built", "command", req.Command, "has_AGENTSH_IN_SESSION", hasInSession, "env_count", len(env))
-	if envPol.BlockIteration {
-		env = maybeAddShimEnv(env, envPol, cfg)
-	}
-	if extra != nil && len(extra.env) > 0 {
-		for k, v := range extra.env {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
-	// Add env_inject (operator-trusted, bypasses policy filtering)
-	// On POSIX, the first matching key wins, so we must remove existing keys
-	// before appending injected values to ensure they take effect.
-	if extra != nil && len(extra.envInject) > 0 {
-		// Build set of keys to inject (case-sensitive on POSIX)
-		injectKeys := make(map[string]bool)
-		for k := range extra.envInject {
-			injectKeys[k] = true
-		}
-		// Filter out existing entries that will be overridden
-		filtered := env[:0]
-		for _, e := range env {
-			if k, _, ok := strings.Cut(e, "="); ok && injectKeys[k] {
-				continue // Skip - will be replaced by injected value
-			}
-			filtered = append(filtered, e)
-		}
-		env = filtered
-		// Now append injected values
-		for k, v := range extra.envInject {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
-	// Add service env vars (fake credentials, bypass policy filtering).
-	// These must come after env_inject; collisions are caught at session start.
-	if svcEnv := s.ServiceEnvVars(); len(svcEnv) > 0 {
-		svcKeys := make(map[string]bool, len(svcEnv))
-		for k := range svcEnv {
-			svcKeys[k] = true
-		}
-		filtered := env[:0]
-		for _, e := range env {
-			if k, _, ok := strings.Cut(e, "="); ok && svcKeys[k] {
-				continue
-			}
-			filtered = append(filtered, e)
-		}
-		env = filtered
-		for k, v := range svcEnv {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
 	cmd.Env = env
 	slog.Debug("exec env final", "command", req.Command, "env_count", len(env), "has_extra", extra != nil, "envInject_count", func() int {
 		if extra != nil {
@@ -316,6 +328,13 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, ctx.Err()
 	}
 
+	barrier := newPreExecBarrier(hook)
+	defer func() {
+		if cleanupErr := barrier.Cleanup(); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("post-start cleanup: %w", cleanupErr))
+		}
+	}()
+
 	if err := cmd.Start(); err != nil {
 		slog.Debug("exec command start failed", "command", req.Command, "error", err)
 		extra.closeWrapperLogPipe()
@@ -376,6 +395,14 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 		// If we started with ptrace (stopped), run the hook BEFORE resuming.
 		// This ensures eBPF/cgroups are attached before the process executes.
 		hasWrapperHandlers := extra != nil && (extra.notifyParentSock != nil || (extra.signalParentSock != nil && extra.signalEngine != nil))
+		wrapperHandlersStarted := false
+		var commandBoundaryReady chan error
+		if tracer == nil && commandBoundaryRequired(extra) {
+			commandBoundaryReady = make(chan error, 1)
+			startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, commandBoundaryReady)
+			extraOwnershipTransferred = true
+			wrapperHandlersStarted = true
+		}
 		if tracer != nil && hasWrapperHandlers {
 			// HYBRID MODE: ptrace for execve interception + seccomp wrapper for sockets/files/Landlock.
 			// The wrapper must complete seccomp setup BEFORE ptrace attaches to prevent deadlock.
@@ -398,6 +425,7 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 				ptraceReady = make(chan error, 1)
 			}
 			startWrapperHandlers(handlerCtx, extra, cmd.Process.Pid, pgid, ptraceReady)
+			extraOwnershipTransferred = true
 
 			// 2. Wait for wrapper to signal READY (only when ptrace sync is enabled).
 			if extra.ptraceSync {
@@ -430,48 +458,26 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid ptrace attach: %w", attachErr)
 			}
 
-			// 4. Run hook while process stopped (cgroup/eBPF setup).
-			// applyCgroupV2 returns nil when degradation is explicitly allowed, so
-			// any hook error must fail closed rather than silently running outside
-			// the expected cgroup/eBPF controls.
-			if hook != nil {
-				if cleanup, hookErr := hook(cmd.Process.Pid); hookErr != nil {
-					close(ptraceDone)
-					handlerCancel()
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("post-start hook: %w", hookErr)
-				} else if cleanup != nil {
-					defer func() { _ = cleanup() }()
-				}
-			}
-
-			// 5. Resume wrapper and send GO byte.
-			if resume != nil {
-				if resumeErr := resume(); resumeErr != nil {
-					close(ptraceDone)
-					handlerCancel()
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace resume: %w", resumeErr)
-				}
-			}
-
-			// 6. Send GO byte (only when ptrace sync is enabled).
+			// 4-6. Enforce the cgroup/helper boundary exactly once, then resume
+			// and send GO in that order. No release step runs after a hook error.
+			releaseSteps := []preExecReleaseStep{{name: "ptrace resume", run: resume}}
 			if extra.ptraceSync {
-				if _, err := extra.notifyParentSock.Write([]byte{'G'}); err != nil {
-					close(ptraceDone)
-					handlerCancel()
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid GO byte write: %w", err)
-				}
+				releaseSteps = append(releaseSteps, preExecReleaseStep{
+					name: "hybrid GO byte write",
+					run: func() error {
+						return writePreExecControlByte(extra.notifyParentSock, 'G')
+					},
+				})
+			}
+			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
+				close(ptraceDone)
+				handlerCancel()
+				_ = killProcess(cmd.Process.Pid)
+				_ = killProcessGroup(pgid)
+				_ = waitExit()
+				pipeWG.Wait()
+				cmd.Process.Release()
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 
 			// 7. Wait for exit via ptrace exit channel
@@ -527,27 +533,14 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 				cmd.Process.Release()
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace attach: %w", attachErr)
 			}
-			if hook != nil {
-				if cleanup, hookErr := hook(cmd.Process.Pid); hookErr != nil {
-					close(ptraceDone)
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("post-start hook: %w", hookErr)
-				} else if cleanup != nil {
-					defer func() { _ = cleanup() }()
-				}
-			}
-			if resume != nil {
-				if resumeErr := resume(); resumeErr != nil {
-					close(ptraceDone)
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace resume: %w", resumeErr)
-				}
+			if releaseErr := barrier.Release(cmd.Process.Pid, preExecReleaseStep{name: "ptrace resume", run: resume}); releaseErr != nil {
+				close(ptraceDone)
+				_ = killProcess(cmd.Process.Pid)
+				_ = killProcessGroup(pgid)
+				_ = waitExit()
+				pipeWG.Wait()
+				cmd.Process.Release()
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 
 			// Tracer-managed wait: block on exit channel instead of cmd.Wait()
@@ -581,25 +574,26 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if hook != nil {
-			// Seccomp stopped-start: process started with PTRACE_TRACEME
-			if cleanup, hookErr := hook(cmd.Process.Pid); hookErr != nil {
+			// Seccomp stopped-start: enforce before detaching PTRACE_TRACEME.
+			releaseSteps := []preExecReleaseStep{{name: "resume traced process", run: func() error {
+				return resumeTracedProcess(cmd.Process.Pid)
+			}}}
+			releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
+			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
 				_ = cmd.Wait()
-				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("post-start hook: %w", hookErr)
-			} else if cleanup != nil {
-				defer func() { _ = cleanup() }()
-			}
-			// Resume the traced process - it was stopped at first instruction
-			if resumeErr := resumeTracedProcess(cmd.Process.Pid); resumeErr != nil {
-				// Failed to resume - kill the process and return error
-				_ = killProcess(cmd.Process.Pid)
-				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("resume traced process: %w", resumeErr)
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 		}
 
-		// Start wrapper handlers (wrapper-only path + hybrid fallback).
-		startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, nil)
+		// Start wrapper handlers on paths that do not need command-jail READY/GO
+		// synchronization. Strict command-boundary handlers were started while
+		// the wrapper was still stopped so READY cannot race the parent.
+		if !wrapperHandlersStarted {
+			startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, nil)
+			extraOwnershipTransferred = true
+		}
 	}
 
 	waitStart := time.Now()
@@ -777,6 +771,7 @@ func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.S
 			}
 		}
 	}
+	scrubReservedSupervisorEnv(minimal)
 	if _, ok := minimal["PATH"]; !ok {
 		minimal["PATH"] = "/usr/bin:/bin"
 	}
@@ -834,11 +829,133 @@ func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.S
 	for k, v := range overrides {
 		add[k] = v
 	}
+	scrubReservedSupervisorEnv(add)
 
 	add["AGENTSH_IN_SESSION"] = "1"
 
 	baseSlice := mapToEnvSlice(minimal)
 	return policy.BuildEnv(pol, baseSlice, add)
+}
+
+func buildCommandEnvironment(cfg *config.Config, envPol policy.ResolvedEnvPolicy, hostEnv []string, s *session.Session, overrides map[string]string, extra *extraProcConfig) ([]string, error) {
+	env, err := buildPolicyEnv(envPol, hostEnv, s, overrides)
+	if err != nil {
+		return nil, err
+	}
+	if envPol.BlockIteration {
+		env = maybeAddShimEnv(env, envPol, cfg)
+	}
+	if extra != nil {
+		env = overlayTrustedEnv(env, extra.envInject)
+	}
+	if s != nil {
+		env = overlayTrustedEnv(env, s.ServiceEnvVars())
+	}
+	// Remove every request/inherited/operator/service attempt at naming wrapper
+	// control descriptors or state before adding the supervisor-owned values.
+	env = scrubEnvKeysFold(env, wrapperControlEnvKeys()...)
+	if extra != nil {
+		// Wrapper control values are supervisor-owned and must win after every
+		// request/operator/service merge. The wrapper scrubs them before user exec.
+		env = overlayTrustedEnv(env, extra.env)
+	}
+	// This is deliberately last. Request env, inherited env, env_inject, service
+	// env, and wrapper additions all pass through the same case-insensitive scrub.
+	return scrubReservedSupervisorEnvSlice(env), nil
+}
+
+func overlayTrustedEnv(env []string, values map[string]string) []string {
+	if len(values) == 0 {
+		return env
+	}
+	keys := make(map[string]struct{}, len(values))
+	for key := range values {
+		keys[strings.ToUpper(strings.TrimSpace(key))] = struct{}{}
+	}
+	out := env[:0]
+	for _, entry := range env {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok {
+			if _, replace := keys[strings.ToUpper(strings.TrimSpace(key))]; replace {
+				continue
+			}
+		}
+		out = append(out, entry)
+	}
+	for key, value := range values {
+		out = append(out, fmt.Sprintf("%s=%s", key, value))
+	}
+	return out
+}
+
+func scrubReservedSupervisorEnv(env map[string]string) {
+	for key := range env {
+		if isReservedSupervisorEnvKey(key) {
+			delete(env, key)
+		}
+	}
+}
+
+func scrubReservedSupervisorEnvSlice(env []string) []string {
+	return scrubEnvKeysFold(env, reservedSupervisorEnvKeys()...)
+}
+
+func scrubEnvKeysFold(env []string, blockedKeys ...string) []string {
+	blocked := make(map[string]struct{}, len(blockedKeys))
+	for _, key := range blockedKeys {
+		blocked[strings.ToUpper(strings.TrimSpace(key))] = struct{}{}
+	}
+	out := env[:0]
+	for _, entry := range env {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok {
+			if _, remove := blocked[strings.ToUpper(strings.TrimSpace(key))]; remove {
+				continue
+			}
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func wrapperControlEnvKeys() []string {
+	return []string{
+		"AGENTSH_NOTIFY_SOCK_FD",
+		"AGENTSH_SIGNAL_SOCK_FD",
+		"AGENTSH_SECCOMP_CONFIG",
+		"AGENTSH_PTRACE_SYNC",
+		"AGENTSH_UNIXWRAP_ARGV0",
+		"AGENTSH_WRAPPER_LOG_FD",
+		"AGENTSH_APPROVAL_UI_SOCKET",
+		"AGENTSH_INTERNAL_COMMAND_JAIL_STAGE",
+		"AGENTSH_INTERNAL_COMMAND_JAIL_MOUNTS",
+		"AGENTSH_INTERNAL_COMMAND_JAIL_EXEC_PATH",
+	}
+}
+
+func isReservedSupervisorEnvKey(key string) bool {
+	for _, reserved := range reservedSupervisorEnvKeys() {
+		if strings.EqualFold(strings.TrimSpace(key), reserved) {
+			return true
+		}
+	}
+	return false
+}
+
+func reservedSupervisorEnvKeys() []string {
+	return []string{
+		nethelper.EnvSocket,
+		nethelper.EnvHelperInstanceCredential,
+		nethelper.EnvSessionNonce,
+		nethelper.EnvCredentialFile,
+		"AGENTSH_DETACHED_EVENT_TOKEN",
+		"AGENTSH_DETACHED_EVENT_URL",
+		"AGENTSH_INTERNAL_COMMAND_JAIL_STAGE",
+		"AGENTSH_INTERNAL_COMMAND_JAIL_MOUNTS",
+		"AGENTSH_INTERNAL_COMMAND_JAIL_EXEC_PATH",
+		detached.EnvNetworkEnforcementRequested,
+		detached.EnvSupervisorLaunchMode,
+	}
 }
 
 func mapToEnvSlice(m map[string]string) []string {
@@ -920,8 +1037,12 @@ func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid
 		_ = startWrapperLogDrain(extra.wrapperLogParent, slog.Default(), extra.notifySessionID, extra.origCommand)
 		extra.wrapperLogParent = nil
 	}
+	// The child owns duplicated ExtraFiles after Start. Close every parent-side
+	// child copy before handlers run so no wrapper/control descriptor is retained
+	// accidentally or reused by a later command.
+	closeExtraProcessFiles(extra)
 	if extra.notifyParentSock != nil {
-		startNotifyHandler(ctx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, extra.notifyApprovals, extra.notifySession)
+		startNotifyHandler(ctx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession)
 	}
 	if extra.signalParentSock != nil && extra.signalEngine != nil {
 		if extra.signalRegistry != nil {

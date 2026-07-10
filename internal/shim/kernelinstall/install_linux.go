@@ -5,8 +5,10 @@ package kernelinstall
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/client"
@@ -183,6 +186,9 @@ func callWrapInit(p InstallParams) (types.WrapInitResponse, error) {
 // internal/cli/wrap_linux.go, with the signal-filter second socketpair
 // intentionally omitted (documented shim-mode limitation).
 func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
+	if err := validateCommandJailResponse(resp); err != nil {
+		return Result{Action: ResultFailClosed, Reason: err.Error()}, nil
+	}
 	wrapperBin := resp.WrapperBinary
 	notifySocket := resp.NotifySocket
 
@@ -196,6 +202,8 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 
 	parentFile := os.NewFile(uintptr(fds[0]), "notify-parent")
 	childFile := os.NewFile(uintptr(fds[1]), "notify-child")
+	controlTimeout := unix.NsecToTimeval(notifySetupStatusTimeout.Nanoseconds())
+	_ = unix.SetsockoptTimeval(int(parentFile.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &controlTimeout)
 
 	// Clear CLOEXEC on the child fd so it survives exec into the wrapper.
 	if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(fds[1]), unix.F_SETFD, 0); errno != 0 {
@@ -235,6 +243,15 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	if err := configureCommandJailProcess(cmd.SysProcAttr, resp.CommandJail); err != nil {
+		parentFile.Close()
+		childFile.Close()
+		if logFile != nil {
+			logFile.Close()
+		}
+		return Result{Action: ResultFailClosed, Reason: err.Error()}, nil
+	}
 	// ExtraFiles[0] becomes fd 3 in the child (0=stdin,1=stdout,2=stderr,3=ExtraFiles[0])
 	cmd.ExtraFiles = []*os.File{childFile}
 	if logFile != nil {
@@ -276,6 +293,25 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 		}, nil
 	}
 
+	// A strict wrapper advertises command-jail support before blocking on ACK.
+	// Consume that byte before the centralized server barrier and propagate the
+	// result with the wrapper PID. Missing support is a version/configuration
+	// mismatch and must leave the command ACK-blocked.
+	commandJail := false
+	if resp.CommandJail != nil {
+		if capabilityErr := readCommandJailControlByte(parentFile, 'J'); capabilityErr != nil {
+			unix.Close(notifyFD)
+			parentFile.Close()
+			_ = cmd.Process.Kill()
+			_ = waitWrapper(cmd)
+			return Result{
+				Action: ResultFailClosed,
+				Reason: fmt.Sprintf("wait for command-jail capability failed: %v", capabilityErr),
+			}, nil
+		}
+		commandJail = true
+	}
+
 	// Forward the notify fd to the server's Unix listener socket.
 	// IMPORTANT: if forwarding fails, do NOT send the ACK.  Sending the ACK
 	// would let the wrapper execve the user's command with no live policy
@@ -283,7 +319,7 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	// the wrapper's waitForACK read returns EOF/error, causing the wrapper to
 	// exit with a fatal log.  Then wait for the wrapper and return
 	// ResultFailClosed so the shim aborts rather than running the command.
-	if fwdErr := forwardNotifyFDWithPID(notifySocket, notifyFD, cmd.Process.Pid); fwdErr != nil {
+	if fwdErr := forwardNotifyFDWithPID(notifySocket, notifyFD, cmd.Process.Pid, commandJail); fwdErr != nil {
 		unix.Close(notifyFD)
 		slog.Error("kernelinstall: failed to forward notify fd — closing parent fd to abort wrapper", "error", fwdErr)
 		// Close parentFile: wrapper's waitForACK will see EOF/EBADF and fatal.
@@ -297,11 +333,35 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	}
 	unix.Close(notifyFD)
 
-	// Send ACK byte (0x01) to the wrapper so it knows the handler is ready
-	// before it executes the user's command.  This prevents a race where the
-	// wrapper execs before the server's seccomp notify handler is up.
-	if _, err := parentFile.Write([]byte{1}); err != nil {
-		slog.Debug("kernelinstall: ACK write failed (wrapper may have exited)", "error", err)
+	// Send ACK byte (0x01) only after the server has confirmed cgroup/eBPF and
+	// notify-handler setup. Any failed or short write keeps this path fail-closed;
+	// never report ResultExec after an ambiguous barrier release.
+	n, ackErr := parentFile.Write([]byte{1})
+	if ackErr != nil || n != 1 {
+		parentFile.Close()
+		_ = cmd.Process.Kill()
+		_ = waitWrapper(cmd)
+		if ackErr == nil {
+			ackErr = io.ErrShortWrite
+		}
+		return Result{
+			Action: ResultFailClosed,
+			Reason: fmt.Sprintf("release wrapper ACK barrier failed (wrote %d byte): %v", n, ackErr),
+		}, nil
+	}
+	if resp.CommandJail != nil {
+		if readyErr := readCommandJailControlByte(parentFile, 'R'); readyErr != nil {
+			parentFile.Close()
+			_ = cmd.Process.Kill()
+			_ = waitWrapper(cmd)
+			return Result{Action: ResultFailClosed, Reason: fmt.Sprintf("wait for command-jail READY failed: %v", readyErr)}, nil
+		}
+		if goErr := writeCommandJailControlByte(parentFile, 'G'); goErr != nil {
+			parentFile.Close()
+			_ = cmd.Process.Kill()
+			_ = waitWrapper(cmd)
+			return Result{Action: ResultFailClosed, Reason: fmt.Sprintf("release command-jail GO barrier failed: %v", goErr)}, nil
+		}
 	}
 	parentFile.Close()
 
@@ -315,6 +375,86 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 		ExecEnv:         env,
 		WrapperExitCode: exitCode,
 	}, nil
+}
+
+func validateCommandJailResponse(resp types.WrapInitResponse) error {
+	var wire struct {
+		CommandJail *struct {
+			Required bool `json:"required"`
+		} `json:"command_jail"`
+	}
+	configJSON := strings.TrimSpace(resp.WrapperEnv["AGENTSH_SECCOMP_CONFIG"])
+	if configJSON == "" {
+		configJSON = strings.TrimSpace(resp.SeccompConfig)
+	}
+	if configJSON != "" {
+		if err := json.Unmarshal([]byte(configJSON), &wire); err != nil {
+			return fmt.Errorf("decode command-jail wrapper configuration: %w", err)
+		}
+	}
+	configRequiresJail := wire.CommandJail != nil && wire.CommandJail.Required
+	if resp.CommandJail == nil {
+		if configRequiresJail {
+			return fmt.Errorf("server requires a command jail but omitted Linux launch requirements")
+		}
+		return nil
+	}
+	if !resp.CommandJail.Complete() {
+		return fmt.Errorf("server returned incomplete Linux command-jail requirements")
+	}
+	if !configRequiresJail {
+		return fmt.Errorf("server returned command-jail launch requirements without a required wrapper jail")
+	}
+	return nil
+}
+
+func configureCommandJailProcess(attr *syscall.SysProcAttr, requirements *types.LinuxCommandJailRequirements) error {
+	if requirements == nil {
+		return nil
+	}
+	if !requirements.Complete() || attr == nil {
+		return fmt.Errorf("strict command boundary requirements are incomplete")
+	}
+	if len(attr.UidMappings) != 0 || len(attr.GidMappings) != 0 || attr.Credential != nil {
+		return fmt.Errorf("strict command boundary cannot compose with existing credentials or mappings")
+	}
+	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
+	attr.Pdeathsig = syscall.SIGKILL
+	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Geteuid(), Size: 1}}
+	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getegid(), Size: 1}}
+	attr.GidMappingsEnableSetgroups = false
+	return nil
+}
+
+func readCommandJailControlByte(file *os.File, expected byte) error {
+	buf := []byte{0}
+	for {
+		n, err := file.Read(buf)
+		if err != nil && errors.Is(err, syscall.EINTR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return fmt.Errorf("read %d control bytes, want 1", n)
+		}
+		if buf[0] != expected {
+			return fmt.Errorf("unexpected control byte 0x%02x, want 0x%02x", buf[0], expected)
+		}
+		return nil
+	}
+}
+
+func writeCommandJailControlByte(file *os.File, value byte) error {
+	n, err := file.Write([]byte{value})
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 // waitWrapper calls cmd.Wait and extracts the exit code.
@@ -397,9 +537,9 @@ func runPtraceHandshake(p InstallParams, resp types.WrapInitResponse) (Result, e
 		// $0="--", $1=Argv0 (for exec -a), $2=RealShell, $3+=ShellArgs
 		shellArgs = make([]string, 0, 3+len(p.ShellArgs))
 		shellArgs = append(shellArgs, p.RealShell, "-c", wrapScript, "--")
-		shellArgs = append(shellArgs, p.Argv0)         // $1: argv0 for exec -a
-		shellArgs = append(shellArgs, p.RealShell)     // $2: binary (after shift, $1)
-		shellArgs = append(shellArgs, p.ShellArgs...)  // $3+: shell args
+		shellArgs = append(shellArgs, p.Argv0)        // $1: argv0 for exec -a
+		shellArgs = append(shellArgs, p.RealShell)    // $2: binary (after shift, $1)
+		shellArgs = append(shellArgs, p.ShellArgs...) // $3+: shell args
 	} else {
 		// Common case: exec the real shell directly; argv[0] = binary path.
 		// exec "$@" is POSIX and works on dash, bash, and busybox ash.
@@ -410,8 +550,8 @@ func runPtraceHandshake(p InstallParams, resp types.WrapInitResponse) (Result, e
 		// $0="--", $1=RealShell, $2+=ShellArgs
 		shellArgs = make([]string, 0, 2+len(p.ShellArgs))
 		shellArgs = append(shellArgs, p.RealShell, "-c", wrapScript, "--")
-		shellArgs = append(shellArgs, p.RealShell)     // $1: binary (exec "$@" → first arg)
-		shellArgs = append(shellArgs, p.ShellArgs...)  // $2+: shell args
+		shellArgs = append(shellArgs, p.RealShell)    // $1: binary (exec "$@" → first arg)
+		shellArgs = append(shellArgs, p.ShellArgs...) // $2+: shell args
 	}
 	cmd.Args = shellArgs
 
@@ -555,7 +695,7 @@ func recvNotifyFD(sock *os.File) (int, error) {
 
 // forwardNotifyFDWithPID connects to the server's Unix listener socket, sends
 // the notify fd plus wrapper PID metadata, and waits for server setup status.
-func forwardNotifyFDWithPID(socketPath string, notifyFD int, wrapperPID int) error {
+func forwardNotifyFDWithPID(socketPath string, notifyFD int, wrapperPID int, commandJail bool) error {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", socketPath, err)
@@ -567,7 +707,10 @@ func forwardNotifyFDWithPID(socketPath string, notifyFD int, wrapperPID int) err
 		return fmt.Errorf("not a unix connection")
 	}
 
-	if err := wraphandoff.SendNotifyFD(unixConn, notifyFD, wraphandoff.Metadata{WrapperPID: wrapperPID}); err != nil {
+	if err := wraphandoff.SendNotifyFD(unixConn, notifyFD, wraphandoff.Metadata{
+		WrapperPID:  wrapperPID,
+		CommandJail: commandJail,
+	}); err != nil {
 		return err
 	}
 	if err := unixConn.SetReadDeadline(time.Now().Add(notifySetupStatusTimeout)); err != nil {
@@ -652,15 +795,43 @@ func assembleWrapperEnv(base []string, argv0 string, wrapperEnv, envInject map[s
 }
 
 func filterShimInternalEnv(env []string) []string {
+	reserved := []string{
+		signalSockFDKey,
+		argv0EnvKey,
+		wrapperlog.EnvKey,
+		"AGENTSH_NOTIFY_SOCK_FD",
+		"AGENTSH_SECCOMP_CONFIG",
+		"AGENTSH_PTRACE_SYNC",
+		"AGENTSH_APPROVAL_UI_SOCKET",
+		"AGENTSH_INTERNAL_COMMAND_JAIL_STAGE",
+		"AGENTSH_INTERNAL_COMMAND_JAIL_MOUNTS",
+		"AGENTSH_INTERNAL_COMMAND_JAIL_EXEC_PATH",
+		"AGENTSH_NETHELPER_SOCKET",
+		"AGENTSH_NETHELPER_INSTANCE_CREDENTIAL",
+		"AGENTSH_NETHELPER_SESSION_NONCE",
+		"AGENTSH_NETHELPER_CREDENTIAL_FILE",
+		"AGENTSH_DETACHED_EVENT_TOKEN",
+		"AGENTSH_DETACHED_EVENT_URL",
+		"AGENTSH_DETACHED_NETWORK_ENFORCEMENT_REQUESTED",
+		"AGENTSH_DETACHED_SUPERVISOR_LAUNCH_MODE",
+	}
 	out := make([]string, 0, len(env))
-	signalPrefix := signalSockFDKey + "="
-	argv0Prefix := argv0EnvKey + "="
-	logFDPrefix := wrapperlog.EnvKey + "="
-	for _, e := range env {
-		if strings.HasPrefix(e, signalPrefix) || strings.HasPrefix(e, argv0Prefix) || strings.HasPrefix(e, logFDPrefix) {
+	for _, entry := range env {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			out = append(out, entry)
 			continue
 		}
-		out = append(out, e)
+		blocked := false
+		for _, name := range reserved {
+			if strings.EqualFold(strings.TrimSpace(key), name) {
+				blocked = true
+				break
+			}
+		}
+		if !blocked {
+			out = append(out, entry)
+		}
 	}
 	return out
 }

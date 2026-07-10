@@ -119,9 +119,47 @@ type Session struct {
 	// Injected into spawned processes bypassing policy filtering.
 	// Nil if no services declare inject.env.
 	serviceEnvVars map[string]string
+
+	// networkEnforcement contains observed runtime evidence. It is never
+	// populated from policy intent alone.
+	networkEnforcement *types.NetworkEnforcement
 }
 
 // SetPolicyEngine stores the session-specific policy engine with expanded variables.
+// SetNetworkEnforcement replaces the session's observed network evidence.
+func (s *Session) SetNetworkEnforcement(report *types.NetworkEnforcement) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.networkEnforcement = cloneNetworkEnforcement(report)
+}
+
+// NetworkEnforcement returns a copy of the current observed network evidence.
+func (s *Session) NetworkEnforcement() *types.NetworkEnforcement {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return cloneNetworkEnforcement(s.networkEnforcement)
+}
+
+func cloneNetworkEnforcement(report *types.NetworkEnforcement) *types.NetworkEnforcement {
+	if report == nil {
+		return nil
+	}
+	clone := *report
+	clone.BlockedTrafficClasses = append([]string(nil), report.BlockedTrafficClasses...)
+	if report.Preflight != nil {
+		preflight := *report.Preflight
+		clone.Preflight = &preflight
+	}
+	if report.Attachment != nil {
+		attachment := *report.Attachment
+		attachment.ProxyEndpointIDs = append([]string(nil), report.Attachment.ProxyEndpointIDs...)
+		attachment.BlockedTrafficClasses = append([]string(nil), report.Attachment.BlockedTrafficClasses...)
+		clone.Attachment = &attachment
+	}
+	clone.Normalize()
+	return &clone
+}
+
 func (s *Session) SetPolicyEngine(engine *policy.Engine) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -382,6 +420,7 @@ func (s *Session) Snapshot() types.Session {
 	if workspaceMode == "" {
 		workspaceMode = string(types.WorkspaceModeDirect)
 	}
+	networkEnforcement := cloneNetworkEnforcement(s.networkEnforcement)
 
 	return types.Session{
 		ID:               s.ID,
@@ -407,8 +446,9 @@ func (s *Session) Snapshot() types.Session {
 		RuntimeTmp:       s.RuntimeTmp,
 		ProcessHome:      s.ProcessHome,
 		RuntimeHomeMode:  s.RuntimeHomeMode,
-		EnvBaseMode:      s.EnvBaseMode,
-		EnvInherit:       append([]string{}, s.EnvInherit...),
+		EnvBaseMode:        s.EnvBaseMode,
+		EnvInherit:         append([]string{}, s.EnvInherit...),
+		NetworkEnforcement: networkEnforcement,
 	}
 }
 

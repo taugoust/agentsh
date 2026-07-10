@@ -352,6 +352,7 @@ func TestAcceptNotifyFD_UsesMetadataWrapperPIDForCgroupBeforeAck(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Sandbox.Cgroups.Enabled = true
 	cfg.Sandbox.Network.EBPF.Enabled = true
+	cfg.Sandbox.Network.EBPF.Enforce = true
 	app, mgr := newTestAppForWrap(t, cfg)
 	s, err := mgr.Create(t.TempDir(), "default")
 	if err != nil {
@@ -393,7 +394,64 @@ func TestAcceptNotifyFD_UsesMetadataWrapperPIDForCgroupBeforeAck(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, 0, false, nil)
+		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, 0, true, nil)
+	}()
+
+	conn := dialUnixConn(t, socketPath)
+	pipeR, pipeW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = pipeR.Close()
+		_ = pipeW.Close()
+	})
+
+	if err := wraphandoff.SendNotifyFD(conn, int(pipeR.Fd()), wraphandoff.Metadata{WrapperPID: 7777, CommandJail: true}); err != nil {
+		t.Fatalf("send handoff: %v", err)
+	}
+	if err := wraphandoff.ReadStatus(conn); err != nil {
+		t.Fatalf("read status: %v", err)
+	}
+
+	if got := <-setupCalled; got != 7777 {
+		t.Fatalf("cgroup setup pid = %d, want 7777", got)
+	}
+	<-startCalled
+	waitForTestDone(t, done)
+}
+
+func TestAcceptNotifyFD_RejectsStrictShimWithoutCommandJailCapability(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Sandbox.Cgroups.Enabled = true
+	cfg.Sandbox.Network.EBPF.Required = true
+	app, mgr := newTestAppForWrap(t, cfg)
+	s, err := mgr.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	prevSetup := wrapCgroupSetupForNotifyHook
+	setupCalled := make(chan struct{}, 1)
+	wrapCgroupSetupForNotifyHook = func(context.Context, *App, *session.Session, string, int) (func() error, error) {
+		setupCalled <- struct{}{}
+		return func() error { return nil }, nil
+	}
+	t.Cleanup(func() { wrapCgroupSetupForNotifyHook = prevSetup })
+	called := withNotifyHandoffHook(t)
+
+	socketDir := t.TempDir()
+	socketPath := filepath.Join(socketDir, "notify.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen unix socket: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, 0, true, nil)
 	}()
 
 	conn := dialUnixConn(t, socketPath)
@@ -409,15 +467,21 @@ func TestAcceptNotifyFD_UsesMetadataWrapperPIDForCgroupBeforeAck(t *testing.T) {
 	if err := wraphandoff.SendNotifyFD(conn, int(pipeR.Fd()), wraphandoff.Metadata{WrapperPID: 7777}); err != nil {
 		t.Fatalf("send handoff: %v", err)
 	}
-	if err := wraphandoff.ReadStatus(conn); err != nil {
-		t.Fatalf("read status: %v", err)
+	if err := wraphandoff.ReadStatus(conn); err == nil {
+		t.Fatal("expected server rejection status")
 	}
-
-	if got := <-setupCalled; got != 7777 {
-		t.Fatalf("cgroup setup pid = %d, want 7777", got)
-	}
-	<-startCalled
 	waitForTestDone(t, done)
+
+	select {
+	case <-setupCalled:
+		t.Fatal("centralized setup barrier must not run without command-jail capability")
+	default:
+	}
+	select {
+	case <-called:
+		t.Fatal("notify handler must not start without command-jail capability")
+	default:
+	}
 }
 
 func TestAcceptNotifyFD_RejectsMetadataPIDThatIsNotPeerChild(t *testing.T) {

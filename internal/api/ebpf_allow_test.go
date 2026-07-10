@@ -63,29 +63,35 @@ func TestBuildAllowedEndpoints_NonStrictOnWildcard(t *testing.T) {
 	}
 }
 
-func TestBuildProxyOnlyAllowedEndpoints_LoopbackOnly(t *testing.T) {
-	entries, cidrs := buildProxyOnlyAllowedEndpoints("http://127.0.0.1:18081", "http://127.0.0.1:19091")
-	if len(entries) != 0 {
-		t.Fatalf("expected no exact entries for proxy-only mode, got %d", len(entries))
+func TestBuildProxyOnlyAllowedEndpoints_ExactTCPListeners(t *testing.T) {
+	entries, cidrs, err := buildProxyOnlyAllowedEndpoints("http://127.0.0.1:18081", "http://[::1]:19091")
+	if err != nil {
+		t.Fatalf("build exact proxy endpoints: %v", err)
 	}
-	if len(cidrs) != 3 {
-		t.Fatalf("expected IPv4 network-order, IPv4 native-order, and IPv6 loopback CIDRs, got %d", len(cidrs))
+	if len(entries) != 2 {
+		t.Fatalf("expected two exact proxy entries, got %d", len(entries))
+	}
+	if len(cidrs) != 0 {
+		t.Fatalf("proxy-required mode must not contain broad loopback CIDRs: %+v", cidrs)
 	}
 	seen4 := false
 	seen6 := false
-	for _, c := range cidrs {
-		if c.Dport != 0 {
-			t.Fatalf("proxy-only loopback CIDR should allow any loopback port, got dport=%d", c.Dport)
+	for _, entry := range entries {
+		if entry.Protocol != 6 {
+			t.Fatalf("proxy endpoint protocol = %d, want TCP", entry.Protocol)
 		}
-		if c.Family == 2 && c.PrefixLen == 32 && net.IP(c.Addr[:4]).Equal(net.ParseIP("127.0.0.1")) {
+		switch {
+		case entry.Family == 2 && entry.Dport == 18081 && net.IP(entry.Addr[:4]).Equal(net.ParseIP("127.0.0.1")):
 			seen4 = true
-		}
-		if c.Family == 10 && c.PrefixLen == 128 && net.IP(c.Addr[:]).Equal(net.ParseIP("::1")) {
+		case entry.Family == 10 && entry.Dport == 19091 && net.IP(entry.Addr[:]).Equal(net.ParseIP("::1")):
 			seen6 = true
+		}
+		if entry.Family == 2 && net.IP(entry.Addr[:4]).Equal(net.ParseIP("1.0.0.127")) {
+			t.Fatal("byte-swapped 1.0.0.127 workaround must not be present")
 		}
 	}
 	if !seen4 || !seen6 {
-		t.Fatalf("expected loopback v4/v6 CIDRs, seen4=%v seen6=%v cidrs=%+v", seen4, seen6, cidrs)
+		t.Fatalf("expected exact IPv4 and IPv6 proxy listeners, entries=%+v", entries)
 	}
 }
 

@@ -54,6 +54,16 @@ type seccompWrapperConfig struct {
 
 	// Server PID for PR_SET_PTRACER (Yama ptrace_scope=1 workaround)
 	ServerPID int `json:"server_pid,omitempty"`
+
+	// CommandJail is set only for strict Linux tool commands. The wrapper must
+	// fail closed if it cannot establish every requested namespace/mount guard.
+	CommandJail *commandJailConfig `json:"command_jail,omitempty"`
+}
+
+type commandJailConfig struct {
+	Required        bool     `json:"required"`
+	HideDirectories []string `json:"hide_directories,omitempty"`
+	HidePaths       []string `json:"hide_paths,omitempty"`
 }
 
 type seccompWrapperParams struct {
@@ -89,6 +99,9 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 		slog.Warn("seccomp: failed to resolve socket_rules; socket rules will not be blocked", "error", err)
 	} else {
 		seccompCfg.SocketRules = rules
+	}
+	if commandJailRequired(a.cfg) {
+		appendProxyRequiredUnsupportedTrafficRules(&seccompCfg)
 	}
 
 	fmDefault := config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE, false)
@@ -131,6 +144,139 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 	}
 
 	return seccompCfg
+}
+
+// appendProxyRequiredUnsupportedTrafficRules closes protocol paths that the
+// four cgroup connect/sendmsg hooks do not themselves cover. These kernel-side
+// errno rules are inherited by the jailed command. Together with the exact TCP
+// proxy map they define proxy-required behavior: direct TCP and UDP/QUIC are
+// denied by eBPF, while raw IP, packet, ICMP datagram, CAN, and Bluetooth socket
+// creation is denied by seccomp before untrusted code can use it.
+func appendProxyRequiredUnsupportedTrafficRules(cfg *seccompWrapperConfig) {
+	if cfg == nil {
+		return
+	}
+	const (
+		afINET       = 2
+		afINET6      = 10
+		afPACKET     = 17
+		afCAN        = 29
+		afBLUETOOTH  = 31
+		sockDGRAM    = 2
+		sockRAW      = 3
+		ipprotoICMP  = 1
+		ipprotoICMP6 = 58
+	)
+
+	ensureFamilyDenied := func(family int, name string) {
+		found := false
+		for i := range cfg.BlockedFamilies {
+			if cfg.BlockedFamilies[i].Family != family {
+				continue
+			}
+			// Strict proxy-required rules override a weaker operator/audit action.
+			// Merely noticing an existing `log` rule here would report raw-socket
+			// prevention while the userspace handler still allowed the socket.
+			cfg.BlockedFamilies[i].Action = seccompkg.OnBlockErrno
+			if cfg.BlockedFamilies[i].Name == "" {
+				cfg.BlockedFamilies[i].Name = name
+			}
+			found = true
+		}
+		if !found {
+			cfg.BlockedFamilies = append(cfg.BlockedFamilies, seccompkg.BlockedFamily{
+				Family: family,
+				Name:   name,
+				Action: seccompkg.OnBlockErrno,
+			})
+		}
+	}
+	for _, family := range []struct {
+		number int
+		name   string
+	}{
+		{afPACKET, "AF_PACKET"},
+		{afCAN, "AF_CAN"},
+		{afBLUETOOTH, "AF_BLUETOOTH"},
+	} {
+		ensureFamilyDenied(family.number, family.name)
+	}
+
+	addRule := func(name, familyName string, family, socketType int, typeName string, protocol *int, protocolName string) {
+		found := false
+		for i := range cfg.SocketRules {
+			existing := &cfg.SocketRules[i]
+			if existing.Family != family || existing.Type == nil || *existing.Type != socketType {
+				continue
+			}
+			protocolMatches := protocol == nil && existing.Protocol == nil
+			if protocol != nil && existing.Protocol != nil && *existing.Protocol == *protocol {
+				protocolMatches = true
+			}
+			if !protocolMatches {
+				continue
+			}
+			existing.Action = seccompkg.OnBlockErrno
+			found = true
+		}
+		if found {
+			return
+		}
+		typ := socketType
+		rule := seccompkg.SocketRule{
+			Name:       name,
+			Family:     family,
+			FamilyName: familyName,
+			Type:       &typ,
+			TypeName:   typeName,
+			Action:     seccompkg.OnBlockErrno,
+		}
+		if protocol != nil {
+			proto := *protocol
+			rule.Protocol = &proto
+			rule.ProtocolName = protocolName
+		}
+		cfg.SocketRules = append(cfg.SocketRules, rule)
+	}
+
+	addRule("agentsh-proxy-required-raw-ipv4", "AF_INET", afINET, sockRAW, "SOCK_RAW", nil, "")
+	addRule("agentsh-proxy-required-raw-ipv6", "AF_INET6", afINET6, sockRAW, "SOCK_RAW", nil, "")
+	icmp := ipprotoICMP
+	icmp6 := ipprotoICMP6
+	addRule("agentsh-proxy-required-icmp-dgram-ipv4", "AF_INET", afINET, sockDGRAM, "SOCK_DGRAM", &icmp, "IPPROTO_ICMP")
+	addRule("agentsh-proxy-required-icmp-dgram-ipv6", "AF_INET6", afINET6, sockDGRAM, "SOCK_DGRAM", &icmp6, "IPPROTO_ICMPV6")
+}
+
+// proxyRequiredRawSocketRulesConfigured verifies the fixed kernel-side
+// creation denials that complement the cgroup connect/sendmsg gate. This is
+// checked before disposable preflight execution so RawSocketBlockConfigured is
+// never inferred merely from a socket(2) probe failing for some other reason.
+func proxyRequiredRawSocketRulesConfigured(cfg *seccompWrapperConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	const (
+		afINET    = 2
+		afINET6   = 10
+		afPACKET  = 17
+		sockRAW   = 3
+	)
+	packetDenied := false
+	for _, family := range cfg.BlockedFamilies {
+		if family.Family == afPACKET && family.Action == seccompkg.OnBlockErrno {
+			packetDenied = true
+			break
+		}
+	}
+	rawDenied := func(family int) bool {
+		for _, rule := range cfg.SocketRules {
+			if rule.Family == family && rule.Type != nil && *rule.Type == sockRAW && rule.Protocol == nil && rule.Action == seccompkg.OnBlockErrno {
+				return true
+			}
+		}
+		return false
+	}
+	return packetDenied && rawDenied(afINET) && rawDenied(afINET6)
 }
 
 func appendRuntimeLandlockPaths(seccompCfg *seccompWrapperConfig, s *session.Session) {

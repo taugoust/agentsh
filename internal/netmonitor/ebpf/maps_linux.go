@@ -4,6 +4,7 @@ package ebpf
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 	"sync/atomic"
 
@@ -53,51 +54,102 @@ type lpm4Key struct {
 	Prefixlen uint32
 	Pad0      uint32
 	CgroupID  uint64
-	Addr      [4]byte
+	Protocol  uint8
+	Pad1      uint8
 	Dport     uint16
-	Pad1      uint16
+	Addr      [4]byte
 }
 
 type lpm6Key struct {
 	Prefixlen uint32
 	Pad0      uint32
 	CgroupID  uint64
-	Addr      [16]byte
+	Protocol  uint8
+	Pad1      uint8
 	Dport     uint16
-	Pad1      [6]byte
+	Addr      [16]byte
+	Pad2      [4]byte
 }
 
-const lpmPrefixPaddingBits = 32
+const (
+	lpmPrefixPaddingBits          = 32
+	lpmSelectorPrefixBits         = lpmPrefixPaddingBits + 64 + 8 + 8 + 16
+	policyStateDefaultAllow uint8 = 0
+	policyStateDefaultDeny  uint8 = 1
+	policyStateLocked       uint8 = 2
+)
 
-func lpmPrefixLen(addrBits uint32, withPort bool) uint32 {
-	bits := uint32(lpmPrefixPaddingBits) + 64 + addrBits
-	if withPort {
-		bits += 16
+func lpmPrefixLen(addrBits uint32, _ bool) uint32 {
+	return uint32(lpmSelectorPrefixBits) + addrBits
+}
+
+// LockPolicy puts cgroupID into deny-all update state. Attach paths use this
+// before linking any program, and policy replacement uses it before removing or
+// adding entries. A failed replacement therefore remains fail closed.
+func LockPolicy(coll *ebpf.Collection, cgroupID uint64) error {
+	if coll == nil {
+		return fmt.Errorf("nil collection")
 	}
-	return bits
+	if cgroupID == 0 {
+		return fmt.Errorf("cgroup id is required")
+	}
+	defdeny, ok := coll.Maps["default_deny"]
+	if !ok || defdeny == nil {
+		return fmt.Errorf("default_deny map missing")
+	}
+	if err := defdeny.Put(cgroupID, policyStateLocked); err != nil {
+		return fmt.Errorf("lock network policy: %w", err)
+	}
+	return nil
 }
 
-// PopulateAllowlist loads allowed/denied endpoints, CIDRs, and default_deny into the collection maps.
+// PopulateAllowlist atomically publishes a replacement policy from the BPF
+// program's perspective. It first locks the cgroup into deny-all state, replaces
+// every exact/LPM entry, and only then publishes default-allow or default-deny.
+// Any error leaves the cgroup locked and therefore fail closed.
 func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey, allowCIDRs []AllowCIDR, deny []AllowKey, denyCIDRs []AllowCIDR, defaultDeny bool) error {
 	if coll == nil {
 		return fmt.Errorf("nil collection")
 	}
-	allowMap, ok := coll.Maps["allowlist"]
-	if !ok {
+	if err := validatePolicyEntries(cgroupID, allow, allowCIDRs, "allow"); err != nil {
+		return err
+	}
+	if err := validatePolicyEntries(cgroupID, deny, denyCIDRs, "deny"); err != nil {
+		return err
+	}
+	defdeny := coll.Maps["default_deny"]
+	if defdeny == nil {
+		return fmt.Errorf("default_deny map missing")
+	}
+
+	// Publish deny-all before inspecting or changing any other policy map. A
+	// missing/corrupt map handle therefore cannot leave an attached cgroup in an
+	// allow state while userspace reports an update failure.
+	if err := LockPolicy(coll, cgroupID); err != nil {
+		return err
+	}
+	allowMap := coll.Maps["allowlist"]
+	if allowMap == nil {
 		return fmt.Errorf("allowlist map missing")
 	}
-	denyMap, ok := coll.Maps["denylist"]
-	if !ok {
+	denyMap := coll.Maps["denylist"]
+	if denyMap == nil {
 		return fmt.Errorf("denylist map missing")
-	}
-	defdeny, ok := coll.Maps["default_deny"]
-	if !ok {
-		return fmt.Errorf("default_deny map missing")
 	}
 	lpm4 := coll.Maps["lpm4_allow"]
 	lpm6 := coll.Maps["lpm6_allow"]
 	lpm4deny := coll.Maps["lpm4_deny"]
 	lpm6deny := coll.Maps["lpm6_deny"]
+	for name, policyMap := range map[string]*ebpf.Map{
+		"lpm4_allow": lpm4,
+		"lpm6_allow": lpm6,
+		"lpm4_deny":  lpm4deny,
+		"lpm6_deny":  lpm6deny,
+	} {
+		if policyMap == nil {
+			return fmt.Errorf("%s map missing", name)
+		}
+	}
 
 	// Clear existing LPM entries for this cgroup.
 	if lpm4 != nil {
@@ -106,7 +158,9 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 		var v uint8
 		for iter.Next(&k, &v) {
 			if k.CgroupID == cgroupID {
-				_ = lpm4.Delete(k)
+				if err := lpm4.Delete(k); err != nil && !isNoEntry(err) {
+					return fmt.Errorf("delete lpm4 allow: %w", err)
+				}
 			}
 		}
 		if err := iter.Err(); err != nil {
@@ -119,15 +173,47 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 		var v uint8
 		for iter.Next(&k, &v) {
 			if k.CgroupID == cgroupID {
-				_ = lpm6.Delete(k)
+				if err := lpm6.Delete(k); err != nil && !isNoEntry(err) {
+					return fmt.Errorf("delete lpm6 allow: %w", err)
+				}
 			}
 		}
 		if err := iter.Err(); err != nil {
 			return fmt.Errorf("iterate lpm6: %w", err)
 		}
 	}
+	if lpm4deny != nil {
+		iter := lpm4deny.Iterate()
+		var k lpm4Key
+		var v uint8
+		for iter.Next(&k, &v) {
+			if k.CgroupID == cgroupID {
+				if err := lpm4deny.Delete(k); err != nil && !isNoEntry(err) {
+					return fmt.Errorf("delete lpm4 deny: %w", err)
+				}
+			}
+		}
+		if err := iter.Err(); err != nil {
+			return fmt.Errorf("iterate lpm4 deny: %w", err)
+		}
+	}
+	if lpm6deny != nil {
+		iter := lpm6deny.Iterate()
+		var k lpm6Key
+		var v uint8
+		for iter.Next(&k, &v) {
+			if k.CgroupID == cgroupID {
+				if err := lpm6deny.Delete(k); err != nil && !isNoEntry(err) {
+					return fmt.Errorf("delete lpm6 deny: %w", err)
+				}
+			}
+		}
+		if err := iter.Err(); err != nil {
+			return fmt.Errorf("iterate lpm6 deny: %w", err)
+		}
+	}
 
-	// Remove existing entries for this cgroup first to avoid stale allows after policy changes.
+	// Remove existing entries for this cgroup first to avoid stale rules after policy changes.
 	iter := allowMap.Iterate()
 	var k AllowKey
 	var v uint8
@@ -144,7 +230,9 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 	for iter.Next(&k, &v) {
 		allowTotalBefore++
 		if k.CgroupID == cgroupID {
-			_ = allowMap.Delete(k) // best effort
+			if err := allowMap.Delete(k); err != nil && !isNoEntry(err) {
+				return fmt.Errorf("delete allowlist: %w", err)
+			}
 			allowRemoved++
 		}
 	}
@@ -157,7 +245,9 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 	for iter.Next(&k, &v) {
 		denyTotalBefore++
 		if k.CgroupID == cgroupID {
-			_ = denyMap.Delete(k)
+			if err := denyMap.Delete(k); err != nil && !isNoEntry(err) {
+				return fmt.Errorf("delete denylist: %w", err)
+			}
 			denyRemoved++
 		}
 	}
@@ -187,23 +277,25 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 
 	// Load CIDRs into LPM tries.
 	for _, c := range allowCIDRs {
-		if c.Family == 2 && lpm4 != nil {
+		if c.Family == 2 {
 			var key lpm4Key
 			key.Prefixlen = lpmPrefixLen(c.PrefixLen, c.Dport != 0)
 			key.CgroupID = cgroupID
-			copy(key.Addr[:], c.Addr[:4])
+			key.Protocol = c.Protocol
 			key.Dport = c.Dport
+			copy(key.Addr[:], c.Addr[:4])
 			val := uint8(1)
 			if err := lpm4.Put(key, val); err != nil {
 				return fmt.Errorf("put lpm4 allow: %w", err)
 			}
 			lpmAllowInserted++
-		} else if c.Family == 10 && lpm6 != nil {
+		} else if c.Family == 10 {
 			var key lpm6Key
 			key.Prefixlen = lpmPrefixLen(c.PrefixLen, c.Dport != 0)
 			key.CgroupID = cgroupID
-			copy(key.Addr[:], c.Addr[:])
+			key.Protocol = c.Protocol
 			key.Dport = c.Dport
+			copy(key.Addr[:], c.Addr[:])
 			val := uint8(1)
 			if err := lpm6.Put(key, val); err != nil {
 				return fmt.Errorf("put lpm6 allow: %w", err)
@@ -229,23 +321,25 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 		}
 	}
 	for _, c := range denyCIDRs {
-		if c.Family == 2 && lpm4deny != nil {
+		if c.Family == 2 {
 			var key lpm4Key
 			key.Prefixlen = lpmPrefixLen(c.PrefixLen, c.Dport != 0)
 			key.CgroupID = cgroupID
-			copy(key.Addr[:], c.Addr[:4])
+			key.Protocol = c.Protocol
 			key.Dport = c.Dport
+			copy(key.Addr[:], c.Addr[:4])
 			val := uint8(1)
 			if err := lpm4deny.Put(key, val); err != nil {
 				return fmt.Errorf("put lpm4 deny: %w", err)
 			}
 			lpmDenyInserted++
-		} else if c.Family == 10 && lpm6deny != nil {
+		} else if c.Family == 10 {
 			var key lpm6Key
 			key.Prefixlen = lpmPrefixLen(c.PrefixLen, c.Dport != 0)
 			key.CgroupID = cgroupID
-			copy(key.Addr[:], c.Addr[:])
+			key.Protocol = c.Protocol
 			key.Dport = c.Dport
+			copy(key.Addr[:], c.Addr[:])
 			val := uint8(1)
 			if err := lpm6deny.Put(key, val); err != nil {
 				return fmt.Errorf("put lpm6 deny: %w", err)
@@ -270,10 +364,10 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 		}
 	}
 
-	// default_deny keyed by cgroup id
-	var defVal uint8 = 0
+	// Publish the completed policy only after every map replacement succeeds.
+	defVal := policyStateDefaultAllow
 	if defaultDeny {
-		defVal = 1
+		defVal = policyStateDefaultDeny
 	}
 	if err := defdeny.Put(cgroupID, defVal); err != nil {
 		return fmt.Errorf("set default_deny: %w", err)
@@ -292,53 +386,297 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 	return nil
 }
 
-// CleanupAllowlist removes allowlist entries and default-deny flag for a cgroup.
+func validatePolicyEntries(cgroupID uint64, exact []AllowKey, cidrs []AllowCIDR, kind string) error {
+	for i, entry := range exact {
+		if entry.CgroupID != 0 && entry.CgroupID != cgroupID {
+			return fmt.Errorf("%s exact entry %d carries a different cgroup id", kind, i)
+		}
+		if entry.Family != 2 && entry.Family != 10 {
+			return fmt.Errorf("%s exact entry %d has unsupported family %d", kind, i, entry.Family)
+		}
+		if !validPolicyProtocol(entry.Protocol) {
+			return fmt.Errorf("%s exact entry %d has unsupported protocol %d", kind, i, entry.Protocol)
+		}
+		if entry.Family == 2 && !zeroBytes(entry.Addr[4:]) {
+			return fmt.Errorf("%s exact IPv4 entry %d has non-zero trailing address bytes", kind, i)
+		}
+	}
+	for i, entry := range cidrs {
+		if entry.CgroupID != 0 && entry.CgroupID != cgroupID {
+			return fmt.Errorf("%s CIDR entry %d carries a different cgroup id", kind, i)
+		}
+		if !validPolicyProtocol(entry.Protocol) {
+			return fmt.Errorf("%s CIDR entry %d has unsupported protocol %d", kind, i, entry.Protocol)
+		}
+		switch entry.Family {
+		case 2:
+			if entry.PrefixLen > 32 {
+				return fmt.Errorf("%s IPv4 CIDR entry %d has prefix %d", kind, i, entry.PrefixLen)
+			}
+			if !zeroBytes(entry.Addr[4:]) {
+				return fmt.Errorf("%s IPv4 CIDR entry %d has non-zero trailing address bytes", kind, i)
+			}
+			var raw [4]byte
+			copy(raw[:], entry.Addr[:4])
+			addr := netip.AddrFrom4(raw)
+			if netip.PrefixFrom(addr, int(entry.PrefixLen)).Masked().Addr() != addr {
+				return fmt.Errorf("%s IPv4 CIDR entry %d is not masked", kind, i)
+			}
+		case 10:
+			if entry.PrefixLen > 128 {
+				return fmt.Errorf("%s IPv6 CIDR entry %d has prefix %d", kind, i, entry.PrefixLen)
+			}
+			addr := netip.AddrFrom16(entry.Addr)
+			if netip.PrefixFrom(addr, int(entry.PrefixLen)).Masked().Addr() != addr {
+				return fmt.Errorf("%s IPv6 CIDR entry %d is not masked", kind, i)
+			}
+		default:
+			return fmt.Errorf("%s CIDR entry %d has unsupported family %d", kind, i, entry.Family)
+		}
+	}
+	return nil
+}
+
+func validPolicyProtocol(protocol uint8) bool {
+	return protocol == 0 || protocol == 6 || protocol == 17
+}
+
+func zeroBytes(value []byte) bool {
+	for _, b := range value {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidatePinnedPolicyState verifies the contents of a per-registration map set
+// before pinned links are reused. Every entry must belong to cgroupID, values
+// must use the fixed schema, and the policy state must already be default-deny
+// or locked. A missing/default-allow state is unsafe to reuse after a crash.
+func ValidatePinnedPolicyState(coll *ebpf.Collection, cgroupID uint64) error {
+	if coll == nil || cgroupID == 0 {
+		return fmt.Errorf("pinned policy collection and cgroup id are required")
+	}
+	defaultMap := coll.Maps["default_deny"]
+	if defaultMap == nil {
+		return fmt.Errorf("default_deny map missing")
+	}
+	var defaultEntries int
+	iter := defaultMap.Iterate()
+	var defaultCgroup uint64
+	var state uint8
+	for iter.Next(&defaultCgroup, &state) {
+		defaultEntries++
+		if defaultCgroup != cgroupID {
+			return fmt.Errorf("default_deny contains unexpected cgroup id %d", defaultCgroup)
+		}
+		if state != policyStateDefaultDeny && state != policyStateLocked {
+			return fmt.Errorf("default_deny has unsafe state %d for cgroup %d", state, cgroupID)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("iterate default_deny: %w", err)
+	}
+	if defaultEntries != 1 {
+		return fmt.Errorf("default_deny contains %d entries, want exactly one", defaultEntries)
+	}
+	for _, item := range []struct {
+		name string
+		m    *ebpf.Map
+	}{
+		{name: "allowlist", m: coll.Maps["allowlist"]},
+		{name: "denylist", m: coll.Maps["denylist"]},
+	} {
+		if err := validatePinnedExactMap(item.m, item.name, cgroupID); err != nil {
+			return err
+		}
+	}
+	for _, item := range []struct {
+		name     string
+		m        *ebpf.Map
+		addrBits uint32
+	}{
+		{name: "lpm4_allow", m: coll.Maps["lpm4_allow"], addrBits: 32},
+		{name: "lpm4_deny", m: coll.Maps["lpm4_deny"], addrBits: 32},
+	} {
+		if err := validatePinnedLPM4Map(item.m, item.name, item.addrBits, cgroupID); err != nil {
+			return err
+		}
+	}
+	for _, item := range []struct {
+		name     string
+		m        *ebpf.Map
+		addrBits uint32
+	}{
+		{name: "lpm6_allow", m: coll.Maps["lpm6_allow"], addrBits: 128},
+		{name: "lpm6_deny", m: coll.Maps["lpm6_deny"], addrBits: 128},
+	} {
+		if err := validatePinnedLPM6Map(item.m, item.name, item.addrBits, cgroupID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validatePinnedExactMap(m *ebpf.Map, name string, cgroupID uint64) error {
+	if m == nil {
+		return fmt.Errorf("%s map missing", name)
+	}
+	iter := m.Iterate()
+	var key AllowKey
+	var value uint8
+	for iter.Next(&key, &value) {
+		if key.CgroupID != cgroupID || value != 1 {
+			return fmt.Errorf("%s contains an entry outside the registered cgroup schema", name)
+		}
+		if err := validatePolicyEntries(cgroupID, []AllowKey{key}, nil, name); err != nil {
+			return err
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("iterate %s: %w", name, err)
+	}
+	return nil
+}
+
+func validatePinnedLPM4Map(m *ebpf.Map, name string, addrBits, cgroupID uint64) error {
+	if m == nil {
+		return fmt.Errorf("%s map missing", name)
+	}
+	iter := m.Iterate()
+	var key lpm4Key
+	var value uint8
+	for iter.Next(&key, &value) {
+		if key.CgroupID != cgroupID || value != 1 || !validPolicyProtocol(key.Protocol) {
+			return fmt.Errorf("%s contains an entry outside the registered cgroup schema", name)
+		}
+		if key.Prefixlen < lpmPrefixLen(0, true) || key.Prefixlen > lpmPrefixLen(addrBits, true) {
+			return fmt.Errorf("%s contains invalid prefix length %d", name, key.Prefixlen)
+		}
+		bits := key.Prefixlen - lpmPrefixLen(0, true)
+		addr := netip.AddrFrom4(key.Addr)
+		if netip.PrefixFrom(addr, int(bits)).Masked().Addr() != addr {
+			return fmt.Errorf("%s contains an unmasked address", name)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("iterate %s: %w", name, err)
+	}
+	return nil
+}
+
+func validatePinnedLPM6Map(m *ebpf.Map, name string, addrBits, cgroupID uint64) error {
+	if m == nil {
+		return fmt.Errorf("%s map missing", name)
+	}
+	iter := m.Iterate()
+	var key lpm6Key
+	var value uint8
+	for iter.Next(&key, &value) {
+		if key.CgroupID != cgroupID || value != 1 || !validPolicyProtocol(key.Protocol) {
+			return fmt.Errorf("%s contains an entry outside the registered cgroup schema", name)
+		}
+		if key.Prefixlen < lpmPrefixLen(0, true) || key.Prefixlen > lpmPrefixLen(addrBits, true) {
+			return fmt.Errorf("%s contains invalid prefix length %d", name, key.Prefixlen)
+		}
+		bits := key.Prefixlen - lpmPrefixLen(0, true)
+		addr := netip.AddrFrom16(key.Addr)
+		if netip.PrefixFrom(addr, int(bits)).Masked().Addr() != addr {
+			return fmt.Errorf("%s contains an unmasked address", name)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("iterate %s: %w", name, err)
+	}
+	return nil
+}
+
+// CleanupAllowlist locks cgroupID in deny-all state and removes its policy
+// entries. It intentionally does not delete the state entry: callers must
+// detach all links before closing/removing maps, so cleanup cannot create an
+// allow-all interval while a link is still active.
 func CleanupAllowlist(coll *ebpf.Collection, cgroupID uint64) error {
 	if coll == nil {
 		return nil
 	}
-	allow, ok := coll.Maps["allowlist"]
-	if ok {
-		iter := allow.Iterate()
-		var k AllowKey
-		var v uint8
-		for iter.Next(&k, &v) {
-			if k.CgroupID == cgroupID {
-				_ = allow.Delete(k) // best effort
+	if err := LockPolicy(coll, cgroupID); err != nil {
+		return err
+	}
+	if err := clearExactEntries(coll.Maps["allowlist"], cgroupID, "allowlist"); err != nil {
+		return err
+	}
+	if err := clearExactEntries(coll.Maps["denylist"], cgroupID, "denylist"); err != nil {
+		return err
+	}
+	if err := clearLPM4Entries(coll.Maps["lpm4_allow"], cgroupID, "lpm4_allow"); err != nil {
+		return err
+	}
+	if err := clearLPM6Entries(coll.Maps["lpm6_allow"], cgroupID, "lpm6_allow"); err != nil {
+		return err
+	}
+	if err := clearLPM4Entries(coll.Maps["lpm4_deny"], cgroupID, "lpm4_deny"); err != nil {
+		return err
+	}
+	return clearLPM6Entries(coll.Maps["lpm6_deny"], cgroupID, "lpm6_deny")
+}
+
+func clearExactEntries(m *ebpf.Map, cgroupID uint64, name string) error {
+	if m == nil {
+		return nil
+	}
+	iter := m.Iterate()
+	var key AllowKey
+	var value uint8
+	for iter.Next(&key, &value) {
+		if key.CgroupID == cgroupID {
+			if err := m.Delete(key); err != nil && !isNoEntry(err) {
+				return fmt.Errorf("delete %s: %w", name, err)
 			}
 		}
-		if err := iter.Err(); err != nil {
-			return err
-		}
 	}
-	if lpm4, ok := coll.Maps["lpm4_allow"]; ok {
-		iter := lpm4.Iterate()
-		var k lpm4Key
-		var v uint8
-		for iter.Next(&k, &v) {
-			if k.CgroupID == cgroupID {
-				_ = lpm4.Delete(k)
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("iterate %s: %w", name, err)
+	}
+	return nil
+}
+
+func clearLPM4Entries(m *ebpf.Map, cgroupID uint64, name string) error {
+	if m == nil {
+		return nil
+	}
+	iter := m.Iterate()
+	var key lpm4Key
+	var value uint8
+	for iter.Next(&key, &value) {
+		if key.CgroupID == cgroupID {
+			if err := m.Delete(key); err != nil && !isNoEntry(err) {
+				return fmt.Errorf("delete %s: %w", name, err)
 			}
 		}
-		if err := iter.Err(); err != nil {
-			return err
-		}
 	}
-	if lpm6, ok := coll.Maps["lpm6_allow"]; ok {
-		iter := lpm6.Iterate()
-		var k lpm6Key
-		var v uint8
-		for iter.Next(&k, &v) {
-			if k.CgroupID == cgroupID {
-				_ = lpm6.Delete(k)
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("iterate %s: %w", name, err)
+	}
+	return nil
+}
+
+func clearLPM6Entries(m *ebpf.Map, cgroupID uint64, name string) error {
+	if m == nil {
+		return nil
+	}
+	iter := m.Iterate()
+	var key lpm6Key
+	var value uint8
+	for iter.Next(&key, &value) {
+		if key.CgroupID == cgroupID {
+			if err := m.Delete(key); err != nil && !isNoEntry(err) {
+				return fmt.Errorf("delete %s: %w", name, err)
 			}
 		}
-		if err := iter.Err(); err != nil {
-			return err
-		}
 	}
-	if defdeny, ok := coll.Maps["default_deny"]; ok {
-		_ = defdeny.Delete(cgroupID)
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("iterate %s: %w", name, err)
 	}
 	return nil
 }
@@ -363,6 +701,9 @@ func AddTemporaryAllowRule(coll *ebpf.Collection, cgroupID uint64, key AllowKey)
 		return fmt.Errorf("allowlist map missing")
 	}
 
+	if err := validatePolicyEntries(cgroupID, []AllowKey{key}, nil, "temporary allow"); err != nil {
+		return err
+	}
 	k := key
 	k.CgroupID = cgroupID
 	val := uint8(1)

@@ -48,6 +48,8 @@ func getSysProcAttr() *syscall.SysProcAttr {
 	}
 }
 
+func preExecStoppedStartSupported() bool { return false }
+
 // getSysProcAttrStopped returns SysProcAttr for starting a process in stopped state.
 // On Windows, ptrace is not available, so this returns the same as getSysProcAttr.
 // The race condition mitigation is not available on Windows.

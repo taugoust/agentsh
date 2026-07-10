@@ -1174,6 +1174,10 @@ func TestWrapInit_ForcesNotifyHandoffWhenEBPFRequiresPreAckCgroup(t *testing.T) 
 	var parsed seccompWrapperConfig
 	require.NoError(t, json.Unmarshal([]byte(resp.SeccompConfig), &parsed))
 	require.True(t, parsed.UnixSocketEnabled, "pre-ACK cgroup/eBPF setup requires a user-notify handoff before wrapper exec")
+	require.NotNil(t, parsed.CommandJail, "client-spawned agent wrap must receive the strict in-wrapper jail config")
+	require.True(t, parsed.CommandJail.Required)
+	require.NotNil(t, resp.CommandJail, "client-spawned agent wrap must receive Linux launch requirements")
+	require.True(t, resp.CommandJail.Complete())
 }
 
 func TestWrapInit_SeccompConfigContent_MitigationSetsForwardSocketRules(t *testing.T) {

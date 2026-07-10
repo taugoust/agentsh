@@ -5,7 +5,6 @@ package api
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"syscall"
@@ -16,6 +15,8 @@ import (
 // getSysProcAttrStopped returns SysProcAttr that starts the process in a stopped
 // state using ptrace. This allows attaching eBPF/cgroups before the process
 // executes any instructions, closing the race condition window.
+func preExecStoppedStartSupported() bool { return true }
+
 func getSysProcAttrStopped() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
 		Setpgid: true,
@@ -26,35 +27,31 @@ func getSysProcAttrStopped() *syscall.SysProcAttr {
 // resumeTracedProcess resumes a process that was started with Ptrace=true.
 // The process is stopped at the first instruction; this detaches ptrace
 // and allows it to continue execution.
-// Handles race conditions where the tracee exits before detach:
-// - ECHILD on Wait4: tracee already reaped
-// - ws.Exited()/ws.Signaled(): tracee ran and exited
-// - ESRCH on PtraceDetach: tracee died between wait and detach
+// Any missing, exited, or non-stopped tracee is an enforcement-release error;
+// callers must not report a successful barrier after losing control of the child.
 func resumeTracedProcess(pid int) error {
 	if pid <= 0 {
-		return nil
+		return fmt.Errorf("invalid stopped process pid %d", pid)
 	}
 	// Wait for the traced process to be in stopped state
 	var ws syscall.WaitStatus
 	_, err := syscall.Wait4(pid, &ws, syscall.WALL, nil)
 	if err != nil {
 		if errors.Is(err, syscall.ECHILD) {
-			slog.Debug("traced process already reaped", "pid", pid)
-			return nil
+			return fmt.Errorf("stopped process was reaped before enforcement release: %w", err)
 		}
 		return fmt.Errorf("wait for traced process: %w", err)
 	}
-	// If the process already exited or was signaled, no detach needed
 	if ws.Exited() || ws.Signaled() {
-		slog.Debug("traced process exited before detach",
-			"pid", pid, "exited", ws.Exited(), "signaled", ws.Signaled())
-		return nil
+		return fmt.Errorf("stopped process exited before enforcement release (exited=%t signaled=%t)", ws.Exited(), ws.Signaled())
 	}
-	// Detach from the process, allowing it to continue
+	if !ws.Stopped() {
+		return fmt.Errorf("process did not enter a ptrace stop before enforcement release")
+	}
+	// Detach from the process, allowing it to continue.
 	if err := syscall.PtraceDetach(pid); err != nil {
 		if errors.Is(err, syscall.ESRCH) {
-			slog.Debug("traced process gone during detach", "pid", pid)
-			return nil
+			return fmt.Errorf("stopped process vanished before enforcement release: %w", err)
 		}
 		return fmt.Errorf("ptrace detach: %w", err)
 	}

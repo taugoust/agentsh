@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/UserExistsError/conpty"
+	"github.com/agentsh/agentsh/pkg/types"
 )
 
 // ErrConPtyUnavailable is returned when ConPTY is not available on the system.
@@ -40,7 +41,11 @@ type StartRequest struct {
 	Dir   string
 	Env   []string
 
-	InitialSize Winsize
+	InitialSize     Winsize
+	ExtraFiles      []*os.File
+	CommandBoundary *types.LinuxCommandJailRequirements
+
+	PreExec func(pid int, resume func() error) (cleanup func() error, err error)
 }
 
 // Session represents a PTY session on Windows using ConPTY.
@@ -203,6 +208,9 @@ func New() *Engine { return &Engine{} }
 
 // Start creates a new PTY session with the given command.
 func (e *Engine) Start(ctx context.Context, req StartRequest) (*Session, error) {
+	if req.PreExec != nil || req.CommandBoundary != nil || len(req.ExtraFiles) > 0 {
+		return nil, ErrPreExecBarrierUnavailable
+	}
 	if !conpty.IsConPtyAvailable() {
 		return nil, ErrConPtyUnavailable
 	}

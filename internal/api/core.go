@@ -19,6 +19,7 @@ import (
 	"github.com/agentsh/agentsh/internal/approvals"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/events"
+	"github.com/agentsh/agentsh/internal/nethelper"
 	"github.com/agentsh/agentsh/internal/pkgcheck"
 	"github.com/agentsh/agentsh/internal/platform"
 	"github.com/agentsh/agentsh/internal/policy"
@@ -74,6 +75,7 @@ type macSandboxMachServicesConfig struct {
 type wrapperSetupResult struct {
 	wrappedReq types.ExecRequest
 	extraCfg   *extraProcConfig
+	setupErr   error
 }
 
 // setupSeccompWrapper configures the command to run through agentsh-unixwrap for seccomp enforcement.
@@ -90,9 +92,25 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 		return &wrapperSetupResult{wrappedReq: req, extraCfg: nil}
 	}
 
-	// agentsh-unixwrap is Linux-only (uses seccomp-bpf)
+	jailRequired := commandJailRequired(a.cfg)
+	// The proxy-required tier depends on the fixed Linux namespace/seccomp
+	// command boundary. Non-Linux platforms must reject strict execution here;
+	// they must not rely on a later cgroup hook (or a caller ignoring it) to turn
+	// an unsupported boundary into a best-effort launch.
 	if runtime.GOOS != "linux" {
+		if jailRequired {
+			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail is unavailable on %s", runtime.GOOS)}
+		}
 		return earlyReturn()
+	}
+
+	if jailRequired {
+		if err := hardenSupervisorForCommandBoundary(); err != nil {
+			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command boundary unavailable: %w", err)}
+		}
+	}
+	if jailRequired && a.ptraceTracer != nil {
+		return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail is unavailable with ptrace execution; refusing to run without the same-UID boundary")}
 	}
 
 	// Full ptrace mode: skip wrapper (ptrace handles everything).
@@ -106,7 +124,7 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 	origArgs := append([]string{}, req.Args...)
 
 	unixEnabled := a.cfg.Sandbox.UnixSockets.Enabled != nil && *a.cfg.Sandbox.UnixSockets.Enabled
-	if !unixEnabled {
+	if !unixEnabled && !jailRequired {
 		return earlyReturn()
 	}
 
@@ -115,8 +133,11 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 		wrapperBin = "agentsh-unixwrap"
 	}
 
-	// Check if wrapper binary exists before proceeding (CGO-disabled builds won't have it)
+	// Check if wrapper binary exists before proceeding (CGO-disabled builds won't have it).
 	if _, err := exec.LookPath(wrapperBin); err != nil {
+		if jailRequired {
+			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail requires %q: %w", wrapperBin, err)}
+		}
 		slog.Warn("seccomp wrapper unavailable: wrapper binary not found (running without seccomp enforcement)",
 			"wrapper_bin", wrapperBin,
 			"session_id", sessionID)
@@ -125,7 +146,10 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 
 	sp := createUnixSocketPair()
 	if sp == nil {
-		// Log that seccomp wrapping failed - this is security-relevant
+		if jailRequired {
+			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail requires a wrapper control socket")}
+		}
+		// Log that seccomp wrapping failed - this is security-relevant.
 		slog.Warn("seccomp wrapper disabled: failed to create notify socket pair",
 			"session_id", sessionID,
 			"command", origCommand)
@@ -174,19 +198,29 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 		}
 	}
 
-	// Pass seccomp configuration to the wrapper
+	// Pass seccomp and command-jail configuration to the wrapper.
 	seccompCfg := a.buildSeccompWrapperConfig(s, seccompWrapperParams{
-		// Mirror wrap.go: the wrapper installs unix-socket notify rules from
-		// the OR of seccomp.unix_socket.enabled and top-level
-		// unix_sockets.enabled. Reading only the seccomp field here made the
-		// exec path disagree with the wrap path (issue #369 Gap B).
-		UnixSocketEnabled:   a.cfg.Sandbox.UnixSocketNotifyEnabled(),
+		// Strict mode forces a notify handoff even when ordinary Unix-socket
+		// monitoring is disabled. Every strict command therefore reaches the
+		// same ACK barrier before command-jail entry.
+		UnixSocketEnabled:   a.cfg.Sandbox.UnixSocketNotifyEnabled() || jailRequired,
 		SignalFilterEnabled: signalFilterActive,
 		ExecveEnabled:       execveEnabled,
 	})
-	if cfgJSON, err := json.Marshal(seccompCfg); err == nil {
-		wrappedReq.Env["AGENTSH_SECCOMP_CONFIG"] = string(cfgJSON)
+	if jailRequired {
+		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, a.nethelperCredentialFile)
 	}
+	cfgJSON, marshalErr := json.Marshal(seccompCfg)
+	if marshalErr != nil {
+		_ = sp.parent.Close()
+		_ = sp.child.Close()
+		if sigSP != nil {
+			_ = sigSP.parent.Close()
+			_ = sigSP.child.Close()
+		}
+		return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("encode wrapper boundary configuration: %w", marshalErr)}
+	}
+	wrappedReq.Env["AGENTSH_SECCOMP_CONFIG"] = string(cfgJSON)
 
 	wrappedReq.Command = wrapperBin
 	wrappedReq.Args = append([]string{"--", origCommand}, origArgs...)
@@ -202,8 +236,8 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 		blockListUsesNotify(seccompCfg.BlockedSyscalls, seccompCfg.OnBlock) ||
 		blockedFamiliesUseNotifyForSeccomp(a.cfg.Sandbox.Seccomp) ||
 		seccompSocketRulesUseNotify(a.cfg.Sandbox.Seccomp)
-	// AGENTSH_PTRACE_SYNC goes into envInject (not env) so it overrides any
-	// user-supplied value. envInject deduplicates keys before appending.
+	// AGENTSH_PTRACE_SYNC is added to the wrapper-owned env below so it wins
+	// after request, env_inject, and service environment merges.
 	ptraceSyncValue := "0"
 	if a.ptraceTracer != nil && hasNotifyFeatures {
 		ptraceSyncValue = "1"
@@ -211,12 +245,13 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 	if seccompJSON, ok := wrappedReq.Env["AGENTSH_SECCOMP_CONFIG"]; ok {
 		extraEnv["AGENTSH_SECCOMP_CONFIG"] = seccompJSON
 	}
+	extraEnv["AGENTSH_PTRACE_SYNC"] = ptraceSyncValue
 
 	envInject := mergeEnvInject(a.cfg, sessionPolicy)
 	if envInject == nil {
 		envInject = make(map[string]string)
 	}
-	envInject["AGENTSH_PTRACE_SYNC"] = ptraceSyncValue
+	delete(envInject, "AGENTSH_PTRACE_SYNC")
 	// The wrapper log fd is set authoritatively in wrappedReq.Env /
 	// extraCfg.env by the pipe block below; an operator env_inject copy
 	// would shadow it in the child env (issue #415).
@@ -237,6 +272,7 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 		fileMonitorCfg:   a.cfg.Sandbox.Seccomp.FileMonitor,
 		landlockEnabled:  a.cfg.Landlock.Enabled,
 		ptraceSync:       a.ptraceTracer != nil && hasNotifyFeatures,
+		commandBoundary:  commandJailRequirements(jailRequired),
 		cmdResolver:      a.cmdResolver,
 		sessionTracker:   a.sessionTracker,
 		blockList:        a.buildBlockListConfigFor(sessionID),
@@ -282,6 +318,104 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 	}
 
 	return &wrapperSetupResult{wrappedReq: wrappedReq, extraCfg: extraCfg}
+}
+
+func commandJailRequired(cfg *config.Config) bool {
+	return cfg != nil && (cfg.Sandbox.Network.EBPF.Required || cfg.Sandbox.Network.EBPF.Enforce)
+}
+
+func commandJailRequirements(required bool) *types.LinuxCommandJailRequirements {
+	if !required {
+		return nil
+	}
+	return &types.LinuxCommandJailRequirements{
+		Required:             true,
+		UserNamespace:        true,
+		MountNamespace:       true,
+		PIDNamespace:         true,
+		CgroupNamespace:      true,
+		IPCNamespace:         true,
+		MapCurrentUserToRoot: true,
+		ParentDeathSignal:    "SIGKILL",
+		PrivateProc:          true,
+		HideCgroupFS:         true,
+		HideControlPaths:     true,
+		CloseNonStdioFDs:     true,
+		DropCapabilities:     true,
+		NoNewPrivileges:      true,
+	}
+}
+
+func buildCommandJailConfig(cfg *config.Config, nethelperCredentialFile string) *commandJailConfig {
+	jail := &commandJailConfig{Required: true}
+	if cfg == nil {
+		return jail
+	}
+
+	if helperSocket := strings.TrimSpace(os.Getenv(nethelper.EnvSocket)); helperSocket != "" {
+		jail.HideDirectories = append(jail.HideDirectories, filepath.Dir(helperSocket))
+	}
+	if credentialFile := strings.TrimSpace(nethelperCredentialFile); credentialFile != "" && filepath.IsAbs(credentialFile) {
+		// Hide the containing control directory so credential rotation cannot
+		// reveal a replacement file after the mount boundary is established.
+		jail.HideDirectories = append(jail.HideDirectories, filepath.Dir(credentialFile))
+	}
+	if logPath := strings.TrimSpace(cfg.Logging.Output); logPath != "" {
+		if info, err := os.Lstat(logPath); err == nil && info.Mode().IsRegular() {
+			jail.HidePaths = append(jail.HidePaths, logPath)
+		}
+	}
+	controlPaths := []string{
+		cfg.Server.UnixSocket.Path,
+		cfg.Server.TLS.KeyFile,
+		cfg.Auth.APIKey.KeysFile,
+		cfg.Audit.Output,
+		cfg.Audit.Storage.SQLitePath,
+		cfg.Audit.Integrity.KeyFile,
+		cfg.Audit.Encryption.KeyFile,
+	}
+	if sqlitePath := strings.TrimSpace(cfg.Audit.Storage.SQLitePath); sqlitePath != "" {
+		controlPaths = append(controlPaths, sqlitePath+"-wal", sqlitePath+"-shm")
+	}
+	for _, path := range controlPaths {
+		if info, err := os.Lstat(path); err == nil && !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			jail.HidePaths = append(jail.HidePaths, path)
+		}
+	}
+	if base := strings.TrimSpace(cfg.Sessions.BaseDir); base != "" {
+		stateDir := filepath.Dir(base)
+		for _, name := range []string{"metadata.json", "supervisor.sock", "supervisor.env", "events.jsonl", "events.db", "events.db-wal", "events.db-shm"} {
+			path := filepath.Join(stateDir, name)
+			if info, err := os.Lstat(path); err == nil && !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+				jail.HidePaths = append(jail.HidePaths, path)
+			}
+		}
+		logsDir := filepath.Join(stateDir, "logs")
+		if info, err := os.Lstat(logsDir); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			jail.HideDirectories = append(jail.HideDirectories, logsDir)
+		}
+	}
+	jail.HideDirectories = cleanUniqueAbsolutePaths(jail.HideDirectories)
+	jail.HidePaths = cleanUniqueAbsolutePaths(jail.HidePaths)
+	return jail
+}
+
+func cleanUniqueAbsolutePaths(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" || !filepath.IsAbs(path) {
+			continue
+		}
+		path = filepath.Clean(path)
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		out = append(out, path)
+	}
+	return out
 }
 
 // resolveProfile looks up a mount profile and validates it.
@@ -647,6 +781,21 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 		}
 		// Update session with resolved mounts
 		s.Mounts = mounts
+	}
+
+	// Profile sessions use the same explicit proxy-required network path as
+	// ordinary sessions. Without this, an enforced profile command would have no
+	// exact approval-capable endpoint to allow through its cgroup gate.
+	if a.cfg.Sandbox.Network.Enabled || commandJailRequired(a.cfg) {
+		if err := a.startExplicitProxy(ctx, s); err != nil {
+			if commandJailRequired(a.cfg) {
+				a.cleanupCreatedSession(s)
+				return types.Session{}, http.StatusInternalServerError, fmt.Errorf("start network proxy required for eBPF enforcement: %w", err)
+			}
+		}
+	}
+	if a.cfg.Proxy.Mode == "embedded" || a.cfg.Proxy.IsMCPOnly() {
+		a.startLLMProxy(ctx, s)
 	}
 
 	return s.Snapshot(), http.StatusCreated, nil
@@ -1443,8 +1592,13 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 			a.broker.Publish(okEv)
 		}
 	}
-	if a.cfg.Sandbox.Network.Enabled {
-		a.startExplicitProxy(ctx, s)
+	if a.cfg.Sandbox.Network.Enabled || commandJailRequired(a.cfg) {
+		if err := a.startExplicitProxy(ctx, s); err != nil {
+			if commandJailRequired(a.cfg) {
+				a.cleanupCreatedSession(s)
+				return types.Session{}, http.StatusInternalServerError, fmt.Errorf("start network proxy required for eBPF enforcement: %w", err)
+			}
+		}
 	}
 
 	// Start embedded LLM proxy if configured
@@ -1664,6 +1818,10 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 
 	// Set up seccomp wrapper (Linux) for syscall enforcement
 	wrapperResult := a.setupSeccompWrapper(req, id, s)
+	if wrapperResult.setupErr != nil {
+		a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
+		return nil, http.StatusServiceUnavailable, fmt.Errorf("pre-exec boundary unavailable: %w", wrapperResult.setupErr)
+	}
 	wrappedReq := wrapperResult.wrappedReq
 	extraCfg := wrapperResult.extraCfg
 
@@ -1690,6 +1848,9 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	limits := a.policyEngineFor(s).Limits()
 	cmdDecision := a.policyEngineFor(s).CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
 	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResources(ctx, s, cmdID, wrappedReq, a.cfg, cmdDecision.EnvPolicy, limits.CommandTimeout, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id)
+	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
+		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
+	}
 
 	// Check if process was killed by seccomp (SIGSYS) and emit event
 	emitSeccompBlockedIfSIGSYS(ctx, a.store, a.broker, id, cmdID, execErr)

@@ -24,6 +24,7 @@ import (
 	"github.com/agentsh/agentsh/internal/mcpinspect"
 	"github.com/agentsh/agentsh/internal/mcpregistry"
 	"github.com/agentsh/agentsh/internal/metrics"
+	"github.com/agentsh/agentsh/internal/nethelper"
 	"github.com/agentsh/agentsh/internal/netmonitor"
 	ebpftrace "github.com/agentsh/agentsh/internal/netmonitor/ebpf"
 	"github.com/agentsh/agentsh/internal/netmonitor/redirect"
@@ -64,6 +65,12 @@ type App struct {
 	dbBypass *dbevents.BypassEmitter
 
 	cgroupMgr cgroupManager // issue #197: per-process cgroup manager, nil on non-Linux
+
+	// nethelperCredential is captured before any command can start and removed
+	// from the process environment. nethelperCredentialFile is non-secret path
+	// context retained only so the strict command jail can hide its source.
+	nethelperCredential     string
+	nethelperCredentialFile string
 
 	apiKeyAuth *auth.APIKeyAuth
 	oidcAuth   *auth.OIDCAuth
@@ -135,6 +142,15 @@ type App struct {
 }
 
 func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Store, engine *policy.Engine, broker *events.Broker, apiKeyAuth *auth.APIKeyAuth, oidcAuth *auth.OIDCAuth, approvalsMgr *approvals.Manager, metricsCollector *metrics.Collector, policyLoader PolicyLoader, cgroupMgr *limits.CgroupManager) *App {
+	nethelperCredential := strings.TrimSpace(os.Getenv(nethelper.EnvHelperInstanceCredential))
+	if nethelperCredential == "" {
+		nethelperCredential = strings.TrimSpace(os.Getenv(nethelper.EnvSessionNonce))
+	}
+	nethelperCredentialFile := strings.TrimSpace(os.Getenv(nethelper.EnvCredentialFile))
+	for _, key := range []string{nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, nethelper.EnvCredentialFile} {
+		_ = os.Unsetenv(key)
+	}
+
 	// Apply EBPF map size overrides once per process (global maps); no-op if zero values.
 	ebpftrace.SetMapSizeOverrides(
 		uint32(cfg.Sandbox.Network.EBPF.MapAllowEntries),
@@ -183,22 +199,24 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 	}
 
 	app := &App{
-		cfg:               cfg,
-		sessions:          sessions,
-		store:             store,
-		policy:            engine,
-		broker:            broker,
-		dbBypass:          dbevents.NewBypassEmitter(storeEmitter{store: store, broker: broker}),
-		cgroupMgr:         appCgroupMgr,
-		apiKeyAuth:        apiKeyAuth,
-		oidcAuth:          oidcAuth,
-		approvals:         approvalsMgr,
-		sessionEvents:     newSessionEventStore(),
-		detachedRoutes:    make(map[string]detachedSupervisor),
-		detachedApprovals: newDetachedApprovalStore(),
-		metrics:           metricsCollector,
-		platform:          plat,
-		policyLoader:      policyLoader,
+		cfg:                     cfg,
+		sessions:                sessions,
+		store:                   store,
+		policy:                  engine,
+		broker:                  broker,
+		dbBypass:                dbevents.NewBypassEmitter(storeEmitter{store: store, broker: broker}),
+		cgroupMgr:               appCgroupMgr,
+		nethelperCredential:     nethelperCredential,
+		nethelperCredentialFile: nethelperCredentialFile,
+		apiKeyAuth:              apiKeyAuth,
+		oidcAuth:                oidcAuth,
+		approvals:               approvalsMgr,
+		sessionEvents:           newSessionEventStore(),
+		detachedRoutes:          make(map[string]detachedSupervisor),
+		detachedApprovals:       newDetachedApprovalStore(),
+		metrics:                 metricsCollector,
+		platform:                plat,
+		policyLoader:            policyLoader,
 	}
 
 	// Compute the server-process WAIT_KILLABLE_RECV decision once at
@@ -253,6 +271,7 @@ func (a *App) SetSessionTracker(t interface {
 // Close releases resources held by the app (e.g., ptrace tracer).
 func (a *App) Close() {
 	a.closePtraceTracer()
+	a.nethelperCredential = ""
 }
 
 type ctxKey string
@@ -318,6 +337,8 @@ func (a *App) Router() http.Handler {
 		r.Post("/sessions", a.createSession)
 		r.Get("/sessions", a.listSessions)
 		r.Get("/sessions/{id}", a.getSession)
+		r.Get("/sessions/{id}/network-enforcement", a.getSessionNetworkEnforcement)
+		r.Post("/sessions/{id}/network-enforcement/preflight", a.preflightSessionNetworkEnforcement)
 		r.Patch("/sessions/{id}", a.patchSession)
 		r.Delete("/sessions/{id}", a.destroySession)
 
@@ -571,10 +592,14 @@ func (a *App) createSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, code, map[string]any{"error": err.Error()})
 		return
 	}
+	a.refreshNetworkEnforcement(snap.ID)
+	if sess, ok := a.sessions.Get(snap.ID); ok {
+		snap = sess.Snapshot()
+	}
 	writeJSON(w, code, snap)
 }
 
-func (a *App) startExplicitProxy(ctx context.Context, s *session.Session) {
+func (a *App) startExplicitProxy(ctx context.Context, s *session.Session) error {
 	em := storeEmitter{store: a.store, broker: a.broker}
 	pr, proxyURL, err := netmonitor.StartProxy(a.cfg.Sandbox.Network.ProxyListenAddr, s.ID, s, a.policy, a.approvals, em, a.dbBypass)
 	if err != nil {
@@ -589,7 +614,24 @@ func (a *App) startExplicitProxy(ctx context.Context, s *session.Session) {
 		}
 		_ = a.store.AppendEvent(ctx, fail)
 		a.broker.Publish(fail)
-		return
+		return err
+	}
+	proxyAddrPort, endpointErr := exactLoopbackProxyAddrPort(proxyURL)
+	if endpointErr != nil {
+		_ = pr.Close()
+		fail := types.Event{
+			ID:        uuid.NewString(),
+			Timestamp: time.Now().UTC(),
+			Type:      "net_proxy_failed",
+			SessionID: s.ID,
+			Fields: map[string]any{
+				"error":  endpointErr.Error(),
+				"reason": "proxy listener is not an exact loopback IP address and port",
+			},
+		}
+		_ = a.store.AppendEvent(ctx, fail)
+		a.broker.Publish(fail)
+		return endpointErr
 	}
 	s.SetProxy(proxyURL, pr.Close)
 	okEv := types.Event{
@@ -598,11 +640,15 @@ func (a *App) startExplicitProxy(ctx context.Context, s *session.Session) {
 		Type:      "net_proxy_started",
 		SessionID: s.ID,
 		Fields: map[string]any{
-			"proxy_url": proxyURL,
+			"proxy_url":         proxyURL,
+			"proxy_endpoint_id": proxyAddrPort.String(),
+			"proxy_ready":       true,
+			"transport":         "tcp",
 		},
 	}
 	_ = a.store.AppendEvent(ctx, okEv)
 	a.broker.Publish(okEv)
+	return nil
 }
 
 func (a *App) startLLMProxy(ctx context.Context, s *session.Session) {
@@ -797,6 +843,7 @@ func (a *App) listSessions(w http.ResponseWriter, r *http.Request) {
 	all := a.sessions.List()
 	out := make([]types.Session, 0, len(all))
 	for _, s := range all {
+		a.refreshNetworkEnforcement(s.ID)
 		out = append(out, s.Snapshot())
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -809,6 +856,7 @@ func (a *App) getSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
 		return
 	}
+	a.refreshNetworkEnforcement(id)
 	writeJSON(w, http.StatusOK, s.Snapshot())
 }
 
@@ -1020,7 +1068,15 @@ func (a *App) cgroupHook(sessionID string, cmdID string, limits policy.Limits) p
 	}
 	return func(pid int) (func() error, error) {
 		em := storeEmitter{store: a.store, broker: a.broker}
-		return applyCgroupV2(context.Background(), em, a, sessionID, cmdID, pid, limits, a.metrics, a.policy)
+		cleanup, err := applyCgroupV2(context.Background(), em, a, sessionID, cmdID, pid, limits, a.metrics, a.policy)
+		if err != nil {
+			a.recordNetworkEnforcementFailure(sessionID, cmdID, err)
+			// applyCgroupV2 may return cleanup for a partially-created command
+			// cgroup. The barrier runner kills/reaps the stopped child before
+			// invoking it, so never discard that cleanup on setup failure.
+			return cleanup, err
+		}
+		return cleanup, nil
 	}
 }
 
@@ -1730,6 +1786,9 @@ func (a *App) policyTest(w http.ResponseWriter, r *http.Request) {
 		"policy_decision": string(decision.PolicyDecision),
 		"rule":            decision.Rule,
 		"reason":          decision.Message,
+	}
+	if runtimeReport := a.policyTestRuntimeEnforcement(req.SessionID, op); runtimeReport != nil {
+		result["runtime_enforcement"] = runtimeReport
 	}
 
 	if decision.Redirect != nil {

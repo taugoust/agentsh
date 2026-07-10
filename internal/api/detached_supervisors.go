@@ -233,11 +233,15 @@ func (a *App) forwardDetachedRaw(ctx context.Context, path string, raw []byte) b
 	return false
 }
 
+func staleDetachedNetworkSnapshot(report *detached.NetworkEnforcement) *detached.NetworkEnforcement {
+	return detached.StaleNetworkEnforcementSnapshot(report)
+}
+
 func (a *App) listDetachedSupervisors(w http.ResponseWriter, r *http.Request) {
 	supervisors := a.discoverDetachedSupervisors()
 	out := make([]map[string]any, 0, len(supervisors))
 	for _, sup := range supervisors {
-		out = append(out, map[string]any{
+		item := map[string]any{
 			"session_id":      sup.Meta.SessionID,
 			"state":           sup.Meta.State,
 			"policy":          sup.Meta.Policy,
@@ -246,7 +250,19 @@ func (a *App) listDetachedSupervisors(w http.ResponseWriter, r *http.Request) {
 			"supervisor_sock": sup.Meta.SupervisorSock,
 			"owner_pid":       sup.Meta.OwnerPID,
 			"created_at":      sup.Meta.CreatedAt,
-		})
+		}
+		var live detached.NetworkEnforcement
+		if err := a.queryDetachedJSON(r.Context(), sup, escapedAPIPath("sessions", sup.Meta.SessionID, "network-enforcement"), &live); err == nil {
+			live.Normalize()
+			item["network_enforcement"] = &live
+			item["network_enforcement_source"] = "supervisor-runtime"
+			item["network_enforcement_live"] = true
+		} else if sup.Meta.NetworkEnforcement != nil {
+			item["network_enforcement"] = staleDetachedNetworkSnapshot(sup.Meta.NetworkEnforcement)
+			item["network_enforcement_source"] = "metadata-snapshot-stale"
+			item["network_enforcement_live"] = false
+		}
+		out = append(out, item)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

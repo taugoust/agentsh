@@ -37,8 +37,10 @@ func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
 }
 
 func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
-	// No-op on non-Linux platforms
-	return nil
+	if notifyFD != nil {
+		_ = notifyFD.Close()
+	}
+	return errWrapNotSupported
 }
 
 func startSignalHandlerForWrap(ctx context.Context, signalFD *os.File, sessionID string, a *App, s *session.Session) {
@@ -56,7 +58,7 @@ func getConnPeerCreds(conn *net.UnixConn) peerCreds {
 }
 
 func validateWrapperPIDForNotify(wrapperPID, peerPID int, peerUID uint32) error {
-	return nil
+	return errWrapNotSupported
 }
 
 func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socketPath string, sessionID string, expectedUID int) {

@@ -16,6 +16,7 @@ import (
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/events"
 	"github.com/agentsh/agentsh/internal/limits"
+	"github.com/agentsh/agentsh/internal/nethelper"
 	ebpftrace "github.com/agentsh/agentsh/internal/netmonitor/ebpf"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
@@ -71,6 +72,10 @@ func withEBPFHooks(t *testing.T) {
 	t.Helper()
 	prevCheck := ebpfCheckSupport
 	prevAttach := ebpfAttachConnectToCgroup
+	prevFailClosedAttach := ebpfAttachConnectToCgroupFailClosed
+	ebpfAttachConnectToCgroupFailClosed = func(path string) (*ebpf.Collection, func() error, error) {
+		return ebpfAttachConnectToCgroup(path)
+	}
 	prevStart := ebpfStartCollector
 	prevCgroupID := ebpfCgroupID
 	prevPopulate := ebpfPopulateAllowlist
@@ -78,6 +83,7 @@ func withEBPFHooks(t *testing.T) {
 	t.Cleanup(func() {
 		ebpfCheckSupport = prevCheck
 		ebpfAttachConnectToCgroup = prevAttach
+		ebpfAttachConnectToCgroupFailClosed = prevFailClosedAttach
 		ebpfStartCollector = prevStart
 		ebpfCgroupID = prevCgroupID
 		ebpfPopulateAllowlist = prevPopulate
@@ -126,9 +132,15 @@ func TestApplyCgroupV2_CleansCgroupWhenRequiredEBPFUnsupported(t *testing.T) {
 		return ebpftrace.SupportStatus{Supported: false, Reason: "test unsupported"}
 	}
 
-	_, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
 	if err == nil {
 		t.Fatal("expected required ebpf error")
+	}
+	if cleanup == nil {
+		t.Fatal("expected cleanup after setup refusal")
+	}
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		t.Fatalf("cleanup after setup refusal: %v", cleanupErr)
 	}
 	if _, statErr := os.Stat(cgPath); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("expected cgroup cleanup after required ebpf failure, stat err = %v", statErr)
@@ -157,7 +169,7 @@ func TestApplyCgroupV2_CleansCgroupWhenRequiredAttachFails(t *testing.T) {
 		return nil, errors.New("collector should not start after attach failure")
 	}
 
-	_, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
 	if err == nil {
 		t.Fatal("expected required ebpf attach error")
 	}
@@ -166,6 +178,12 @@ func TestApplyCgroupV2_CleansCgroupWhenRequiredAttachFails(t *testing.T) {
 	}
 	if got := startCollectorCalls.Load(); got != 0 {
 		t.Fatalf("collector start calls = %d, want 0 after attach failure", got)
+	}
+	if cleanup == nil {
+		t.Fatal("expected cleanup after setup refusal")
+	}
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		t.Fatalf("cleanup after setup refusal: %v", cleanupErr)
 	}
 	if _, statErr := os.Stat(cgPath); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("expected cgroup cleanup after required attach failure, stat err = %v", statErr)
@@ -196,12 +214,18 @@ func TestApplyCgroupV2_DetachesAndCleansCgroupWhenRequiredCollectorStartFails(t 
 		return nil, errors.New("collector failed")
 	}
 
-	_, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
 	if err == nil {
 		t.Fatal("expected required ebpf collector error")
 	}
 	if got := detachCalls.Load(); got != 1 {
 		t.Fatalf("detach calls = %d, want 1", got)
+	}
+	if cleanup == nil {
+		t.Fatal("expected cleanup after setup refusal")
+	}
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		t.Fatalf("cleanup after setup refusal: %v", cleanupErr)
 	}
 	if _, statErr := os.Stat(cgPath); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("expected cgroup cleanup after required collector failure, stat err = %v", statErr)
@@ -260,17 +284,23 @@ func TestApplyCgroupV2_CleansEBPFResourcesWhenOptionalEnforceCollectorStartFails
 	if got := populateCalls.Load(); got != 1 {
 		t.Fatalf("populate calls = %d, want 1", got)
 	}
-	if got := cleanupAllowlistCalls.Load(); got != 1 {
-		t.Fatalf("cleanup allowlist calls = %d, want 1 after optional collector failure", got)
+	if got := cleanupAllowlistCalls.Load(); got != 0 {
+		t.Fatalf("cleanup allowlist calls = %d, want 0 while enforcement remains active", got)
 	}
-	if got := detachCalls.Load(); got != 1 {
-		t.Fatalf("detach calls = %d, want 1", got)
+	if got := detachCalls.Load(); got != 0 {
+		t.Fatalf("detach calls = %d, want 0 while enforcement remains active", got)
 	}
 	if _, statErr := os.Stat(cgPath); statErr != nil {
 		t.Fatalf("optional collector failure should leave cgroup for normal cleanup, stat err = %v", statErr)
 	}
 	if err := cleanup(); err != nil {
 		t.Fatalf("cleanup: %v", err)
+	}
+	if got := cleanupAllowlistCalls.Load(); got != 1 {
+		t.Fatalf("cleanup allowlist calls after command = %d, want 1", got)
+	}
+	if got := detachCalls.Load(); got != 1 {
+		t.Fatalf("detach calls after command = %d, want 1", got)
 	}
 }
 
@@ -306,7 +336,7 @@ func TestApplyCgroupV2_DetachesAndCleansCgroupWhenRequiredEnforceCgroupIDFails(t
 		return nil, errors.New("collector should not start before enforcement setup")
 	}
 
-	_, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
 	if err == nil {
 		t.Fatal("expected required ebpf enforcement error")
 	}
@@ -322,6 +352,12 @@ func TestApplyCgroupV2_DetachesAndCleansCgroupWhenRequiredEnforceCgroupIDFails(t
 	if got := detachCalls.Load(); got != 1 {
 		t.Fatalf("detach calls = %d, want 1", got)
 	}
+	if cleanup == nil {
+		t.Fatal("expected cleanup after setup refusal")
+	}
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		t.Fatalf("cleanup after setup refusal: %v", cleanupErr)
+	}
 	if _, statErr := os.Stat(cgPath); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("expected cgroup cleanup after required enforce setup failure, stat err = %v", statErr)
 	}
@@ -329,6 +365,9 @@ func TestApplyCgroupV2_DetachesAndCleansCgroupWhenRequiredEnforceCgroupIDFails(t
 
 func TestApplyCgroupV2_DetachesAndCleansCgroupWhenRequiredEnforcePopulateFails(t *testing.T) {
 	withEBPFHooks(t)
+	withDomainResolverHook(t, func(domain string, maxTTL time.Duration) ([]net.IP, time.Duration) {
+		return []net.IP{net.ParseIP("203.0.113.10")}, time.Second
+	})
 
 	cfg := &config.Config{}
 	cfg.Sandbox.Cgroups.Enabled = true
@@ -337,6 +376,7 @@ func TestApplyCgroupV2_DetachesAndCleansCgroupWhenRequiredEnforcePopulateFails(t
 	cfg.Sandbox.Network.EBPF.Enforce = true
 	cgPath := filepath.Join(t.TempDir(), "agentsh-test-cgroup")
 	app := newAppWithFakeCgroupManager(t, cfg, cgPath)
+	engine := networkPolicyEngineForCgroupTest(t)
 
 	var detachCalls atomic.Int32
 	var populateCalls atomic.Int32
@@ -367,7 +407,7 @@ func TestApplyCgroupV2_DetachesAndCleansCgroupWhenRequiredEnforcePopulateFails(t
 		return nil, errors.New("collector should not start before enforcement setup")
 	}
 
-	_, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, engine)
 	if err == nil {
 		t.Fatal("expected required ebpf enforcement error")
 	}
@@ -385,6 +425,12 @@ func TestApplyCgroupV2_DetachesAndCleansCgroupWhenRequiredEnforcePopulateFails(t
 	}
 	if got := detachCalls.Load(); got != 1 {
 		t.Fatalf("detach calls = %d, want 1", got)
+	}
+	if cleanup == nil {
+		t.Fatal("expected cleanup after setup refusal")
+	}
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		t.Fatalf("cleanup after setup refusal: %v", cleanupErr)
 	}
 	if _, statErr := os.Stat(cgPath); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("expected cgroup cleanup after required populate failure, stat err = %v", statErr)
@@ -721,5 +767,136 @@ func TestDefaultWrapCgroupSetup_Unavailable_Required_HardFails(t *testing.T) {
 	var unavailErr *limits.CgroupUnavailableError
 	if !errors.As(err, &unavailErr) {
 		t.Errorf("error type: got %T, want *CgroupUnavailableError", err)
+	}
+}
+
+type apiNethelperBackend struct {
+	registerReq nethelper.RegisterSessionCgroupRequest
+	updateReq   nethelper.UpdatePolicyMapRequest
+	cleanupReq  nethelper.CleanupSessionRequest
+	registers   atomic.Int32
+	updates     atomic.Int32
+	cleanups    atomic.Int32
+}
+
+func (b *apiNethelperBackend) RegisterSessionCgroup(_ context.Context, _ nethelper.PeerInfo, req nethelper.RegisterSessionCgroupRequest) (nethelper.RegisterSessionCgroupResponse, error) {
+	b.registerReq = req
+	b.registers.Add(1)
+	return nethelper.RegisterSessionCgroupResponse{
+		OK:             true,
+		Tier:           req.Tier.Normalized(),
+		Mode:           req.Mode.Normalized(),
+		CgroupID:       99,
+		RegistrationID: "test-registration",
+		PinPath:        filepath.Join(string(filepath.Separator), "sys", "fs", "bpf", "agentsh", "test-registration"),
+	}, nil
+}
+
+func (b *apiNethelperBackend) UpdatePolicyMap(_ context.Context, _ nethelper.PeerInfo, req nethelper.UpdatePolicyMapRequest) (nethelper.UpdatePolicyMapResponse, error) {
+	b.updateReq = req
+	b.updates.Add(1)
+	return nethelper.UpdatePolicyMapResponse{OK: true, DefaultDeny: req.DefaultDeny, AllowEntries: len(req.Allow), DenyEntries: len(req.Deny)}, nil
+}
+
+func (b *apiNethelperBackend) CleanupSession(_ context.Context, _ nethelper.PeerInfo, req nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error) {
+	b.cleanupReq = req
+	b.cleanups.Add(1)
+	return nethelper.CleanupSessionResponse{OK: true}, nil
+}
+
+func startAPITestNethelper(t *testing.T, backend *apiNethelperBackend) string {
+	t.Helper()
+	socket := filepath.Join(t.TempDir(), "nethelper.sock")
+	ln, err := nethelper.ListenUnix(socket)
+	if err != nil {
+		t.Fatalf("ListenUnix: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	server := nethelper.NewServer(backend, nethelper.AllowAuthorizer{})
+	go func() { _ = server.ServeListener(ctx, ln) }()
+	return socket
+}
+
+func TestApplyCgroupV2_UsesNethelperProxyGateWhenConfigured(t *testing.T) {
+	cgPath := filepath.Join(t.TempDir(), "agentsh-test-cgroup")
+	cfg := &config.Config{}
+	cfg.Sandbox.Network.Enabled = true
+	cfg.Sandbox.Network.EBPF.Enabled = true
+	cfg.Sandbox.Network.EBPF.Enforce = true
+	app := newAppWithFakeCgroupManager(t, cfg, cgPath)
+	sess, err := app.sessions.CreateWithID("sess", t.TempDir(), "agent-default")
+	if err != nil {
+		t.Fatalf("CreateWithID: %v", err)
+	}
+	sess.SetProxy("http://127.0.0.1:18080", func() error { return nil })
+
+	backend := &apiNethelperBackend{}
+	t.Setenv(nethelper.EnvSocket, startAPITestNethelper(t, backend))
+	t.Setenv(nethelper.EnvHelperInstanceCredential, "instance-credential-test")
+
+	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	if err != nil {
+		t.Fatalf("applyCgroupV2: %v", err)
+	}
+	if cleanup == nil {
+		t.Fatal("expected cleanup")
+	}
+	if got := backend.registers.Load(); got != 1 {
+		t.Fatalf("register calls = %d, want 1", got)
+	}
+	if backend.registerReq.HelperInstanceCredential != "instance-credential-test" {
+		t.Fatalf("helper instance credential = %q", backend.registerReq.HelperInstanceCredential)
+	}
+	if backend.registerReq.Tier != nethelper.EnforcementTierHelperEBPFProxyRequired {
+		t.Fatalf("tier = %q", backend.registerReq.Tier)
+	}
+	if backend.registerReq.Proxy == nil || backend.registerReq.Proxy.Port != 18080 {
+		t.Fatalf("proxy metadata = %+v", backend.registerReq.Proxy)
+	}
+	if got := backend.updates.Load(); got != 1 {
+		t.Fatalf("update calls = %d, want 1", got)
+	}
+	if !backend.updateReq.DefaultDeny {
+		t.Fatal("proxy gate update must default deny direct external connects")
+	}
+	if len(backend.updateReq.Allow) != 1 {
+		t.Fatalf("proxy gate allow entries = %+v, want one exact listener", backend.updateReq.Allow)
+	}
+	allow := backend.updateReq.Allow[0]
+	if allow.IP != "127.0.0.1" || allow.CIDR != "" || allow.Port != 18080 || allow.Protocol != nethelper.TransportProtocolTCP {
+		t.Fatalf("proxy gate allow entry = %+v, want exact 127.0.0.1:18080/tcp", allow)
+	}
+	if err := cleanup(); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if got := backend.cleanups.Load(); got != 1 {
+		t.Fatalf("cleanup calls = %d, want 1", got)
+	}
+}
+
+func TestApplyCgroupV2_NethelperFailureFailsClosedWhenEnforced(t *testing.T) {
+	cgPath := filepath.Join(t.TempDir(), "agentsh-test-cgroup")
+	cfg := &config.Config{}
+	cfg.Sandbox.Network.EBPF.Enabled = true
+	cfg.Sandbox.Network.EBPF.Enforce = true
+	app := newAppWithFakeCgroupManager(t, cfg, cgPath)
+	t.Setenv(nethelper.EnvSocket, filepath.Join(t.TempDir(), "missing.sock"))
+
+	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	if err == nil {
+		t.Fatal("expected enforced nethelper setup failure")
+	}
+	if !strings.Contains(err.Error(), "nethelper eBPF setup failed") {
+		t.Fatalf("err = %v", err)
+	}
+	if cleanup == nil {
+		t.Fatal("setup failure must return post-reap cgroup cleanup")
+	}
+	if cleanupErr := cleanup(); cleanupErr != nil {
+		t.Fatalf("cleanup after setup failure: %v", cleanupErr)
+	}
+	if _, statErr := os.Stat(cgPath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("expected cgroup cleanup after helper failure, stat err = %v", statErr)
 	}
 }

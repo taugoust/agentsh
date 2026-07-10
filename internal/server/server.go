@@ -500,8 +500,8 @@ func New(cfg *config.Config) (*Server, error) {
 				slog.Warn("cgroup v2 probe failed; per-command limits unavailable", "error", err)
 			} else {
 				probe := mgr.Probe()
-				if cfg.Sandbox.Network.EBPF.Required && probe.Mode == limitspkg.ModeUnavailable {
-					return nil, fmt.Errorf("ebpf.required=true but cgroup probe is unavailable: %s", probe.Reason)
+				if (cfg.Sandbox.Network.EBPF.Required || cfg.Sandbox.Network.EBPF.Enforce) && probe.Mode == limitspkg.ModeUnavailable {
+					return nil, fmt.Errorf("ebpf required/enforced but cgroup probe is unavailable: %s", probe.Reason)
 				}
 				cgroupMgr = mgr
 				modeEvent := types.Event{

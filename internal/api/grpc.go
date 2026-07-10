@@ -24,23 +24,25 @@ import (
 )
 
 const (
-	grpcServiceName           = "agentsh.v1.Agentsh"
-	grpcMethodCreateSession   = "/agentsh.v1.Agentsh/CreateSession"
-	grpcMethodListSessions    = "/agentsh.v1.Agentsh/ListSessions"
-	grpcMethodGetSession      = "/agentsh.v1.Agentsh/GetSession"
-	grpcMethodDestroySession  = "/agentsh.v1.Agentsh/DestroySession"
-	grpcMethodPatchSession    = "/agentsh.v1.Agentsh/PatchSession"
-	grpcMethodExec            = "/agentsh.v1.Agentsh/Exec"
-	grpcMethodExecStream      = "/agentsh.v1.Agentsh/ExecStream"
-	grpcMethodKillCommand     = "/agentsh.v1.Agentsh/KillCommand"
-	grpcMethodEventsTail      = "/agentsh.v1.Agentsh/EventsTail"
-	grpcMethodQueryEvents     = "/agentsh.v1.Agentsh/QueryEvents"
-	grpcMethodSearchEvents    = "/agentsh.v1.Agentsh/SearchEvents"
-	grpcMethodOutputChunk     = "/agentsh.v1.Agentsh/OutputChunk"
-	grpcMethodListApprovals   = "/agentsh.v1.Agentsh/ListApprovals"
-	grpcMethodResolveApproval = "/agentsh.v1.Agentsh/ResolveApproval"
-	grpcMethodPolicyTest      = "/agentsh.v1.Agentsh/PolicyTest"
-	defaultGRPCAPIKeyMetadata = "x-api-key"
+	grpcServiceName                       = "agentsh.v1.Agentsh"
+	grpcMethodCreateSession               = "/agentsh.v1.Agentsh/CreateSession"
+	grpcMethodListSessions                = "/agentsh.v1.Agentsh/ListSessions"
+	grpcMethodGetSession                  = "/agentsh.v1.Agentsh/GetSession"
+	grpcMethodDestroySession              = "/agentsh.v1.Agentsh/DestroySession"
+	grpcMethodPatchSession                = "/agentsh.v1.Agentsh/PatchSession"
+	grpcMethodGetNetworkEnforcement       = "/agentsh.v1.Agentsh/GetNetworkEnforcement"
+	grpcMethodPreflightNetworkEnforcement = "/agentsh.v1.Agentsh/PreflightNetworkEnforcement"
+	grpcMethodExec                        = "/agentsh.v1.Agentsh/Exec"
+	grpcMethodExecStream                  = "/agentsh.v1.Agentsh/ExecStream"
+	grpcMethodKillCommand                 = "/agentsh.v1.Agentsh/KillCommand"
+	grpcMethodEventsTail                  = "/agentsh.v1.Agentsh/EventsTail"
+	grpcMethodQueryEvents                 = "/agentsh.v1.Agentsh/QueryEvents"
+	grpcMethodSearchEvents                = "/agentsh.v1.Agentsh/SearchEvents"
+	grpcMethodOutputChunk                 = "/agentsh.v1.Agentsh/OutputChunk"
+	grpcMethodListApprovals               = "/agentsh.v1.Agentsh/ListApprovals"
+	grpcMethodResolveApproval             = "/agentsh.v1.Agentsh/ResolveApproval"
+	grpcMethodPolicyTest                  = "/agentsh.v1.Agentsh/PolicyTest"
+	defaultGRPCAPIKeyMetadata             = "x-api-key"
 )
 
 type grpcServer struct {
@@ -54,6 +56,8 @@ type AgentshGRPCServer interface {
 	GetSession(context.Context, *structpb.Struct) (*structpb.Struct, error)
 	DestroySession(context.Context, *structpb.Struct) (*structpb.Struct, error)
 	PatchSession(context.Context, *structpb.Struct) (*structpb.Struct, error)
+	GetNetworkEnforcement(context.Context, *structpb.Struct) (*structpb.Struct, error)
+	PreflightNetworkEnforcement(context.Context, *structpb.Struct) (*structpb.Struct, error)
 
 	// Command execution
 	Exec(context.Context, *structpb.Struct) (*structpb.Struct, error)
@@ -86,6 +90,8 @@ func RegisterGRPC(s *grpc.Server, app *App) {
 			{MethodName: "GetSession", Handler: grpcHandleGetSession},
 			{MethodName: "DestroySession", Handler: grpcHandleDestroySession},
 			{MethodName: "PatchSession", Handler: grpcHandlePatchSession},
+			{MethodName: "GetNetworkEnforcement", Handler: grpcHandleGetNetworkEnforcement},
+			{MethodName: "PreflightNetworkEnforcement", Handler: grpcHandlePreflightNetworkEnforcement},
 			{MethodName: "Exec", Handler: grpcHandleExec},
 			{MethodName: "KillCommand", Handler: grpcHandleKillCommand},
 			{MethodName: "QueryEvents", Handler: grpcHandleQueryEvents},
@@ -191,6 +197,14 @@ func grpcHandleDestroySession(srv any, ctx context.Context, dec func(any) error,
 
 func grpcHandlePatchSession(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	return grpcUnaryHandler(grpcMethodPatchSession, (*grpcServer).PatchSession)(srv, ctx, dec, interceptor)
+}
+
+func grpcHandleGetNetworkEnforcement(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+	return grpcUnaryHandler(grpcMethodGetNetworkEnforcement, (*grpcServer).GetNetworkEnforcement)(srv, ctx, dec, interceptor)
+}
+
+func grpcHandlePreflightNetworkEnforcement(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+	return grpcUnaryHandler(grpcMethodPreflightNetworkEnforcement, (*grpcServer).PreflightNetworkEnforcement)(srv, ctx, dec, interceptor)
 }
 
 func grpcHandleKillCommand(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
@@ -357,6 +371,16 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		return status.Error(codes.PermissionDenied, "command denied by policy")
 	}
 
+	// Prepare the wrapper/jail before emitting command_started. A boundary
+	// setup failure must remain an execution refusal.
+	wrapperResult := s.app.setupSeccompWrapper(execReq, req.SessionID, sess)
+	if wrapperResult.setupErr != nil {
+		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, wrapperResult.setupErr)
+		return status.Errorf(codes.FailedPrecondition, "pre-exec boundary unavailable: %v", wrapperResult.setupErr)
+	}
+	wrappedReq := wrapperResult.wrappedReq
+	extraCfg := wrapperResult.extraCfg
+
 	startEv := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: start,
@@ -371,11 +395,6 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	sess.InjectTraceContext(startEv.Fields)
 	_ = s.app.store.AppendEvent(stream.Context(), startEv)
 	s.app.broker.Publish(startEv)
-
-	// Set up seccomp wrapper (Linux) for syscall enforcement
-	wrapperResult := s.app.setupSeccompWrapper(execReq, req.SessionID, sess)
-	wrappedReq := wrapperResult.wrappedReq
-	extraCfg := wrapperResult.extraCfg
 
 	emit := func(event string, payload map[string]any) error {
 		payload["event"] = event
@@ -401,6 +420,9 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		s.app.ptraceTracer,
 		req.SessionID,
 	)
+	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
+		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, execErr)
+	}
 	_ = s.app.store.SaveOutput(stream.Context(), req.SessionID, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
 
 	// Check if process was killed by seccomp (SIGSYS) and emit event
@@ -487,6 +509,7 @@ func (s *grpcServer) ListSessions(ctx context.Context, in *structpb.Struct) (*st
 	all := s.app.sessions.List()
 	out := make([]types.Session, 0, len(all))
 	for _, sess := range all {
+		s.app.refreshNetworkEnforcement(sess.ID)
 		out = append(out, sess.Snapshot())
 	}
 	return jsonToProto(out)
@@ -509,6 +532,7 @@ func (s *grpcServer) GetSession(ctx context.Context, in *structpb.Struct) (*stru
 	if !ok {
 		return nil, status.Error(codes.NotFound, "session not found")
 	}
+	s.app.refreshNetworkEnforcement(id)
 	return jsonToProto(sess.Snapshot())
 }
 
@@ -583,6 +607,54 @@ func (s *grpcServer) PatchSession(ctx context.Context, in *structpb.Struct) (*st
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return jsonToProto(sess.Snapshot())
+}
+
+func (s *grpcServer) GetNetworkEnforcement(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+	if s == nil || s.app == nil {
+		return nil, status.Error(codes.Internal, "server not initialized")
+	}
+	id, err := grpcSessionID(in)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := s.app.sessions.Get(id); !ok {
+		return nil, status.Error(codes.NotFound, "session not found")
+	}
+	return jsonToProto(s.app.refreshNetworkEnforcement(id))
+}
+
+func (s *grpcServer) PreflightNetworkEnforcement(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+	if s == nil || s.app == nil {
+		return nil, status.Error(codes.Internal, "server not initialized")
+	}
+	id, err := grpcSessionID(in)
+	if err != nil {
+		return nil, err
+	}
+	sess, ok := s.app.sessions.Get(id)
+	if !ok {
+		return nil, status.Error(codes.NotFound, "session not found")
+	}
+	if sess.Snapshot().State == types.SessionStateBusy {
+		return nil, status.Error(codes.FailedPrecondition, "network enforcement preflight requires an idle session")
+	}
+	return jsonToProto(s.app.runNetworkEnforcementPreflight(ctx, id))
+}
+
+func grpcSessionID(in *structpb.Struct) (string, error) {
+	var reqMap map[string]any
+	if err := json.Unmarshal(mustProtoJSON(in), &reqMap); err != nil {
+		return "", status.Error(codes.InvalidArgument, "invalid request")
+	}
+	id, _ := reqMap["id"].(string)
+	if strings.TrimSpace(id) == "" {
+		id, _ = reqMap["session_id"].(string)
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", status.Error(codes.InvalidArgument, "id is required")
+	}
+	return id, nil
 }
 
 func (s *grpcServer) KillCommand(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
@@ -829,6 +901,9 @@ func (s *grpcServer) PolicyTest(ctx context.Context, in *structpb.Struct) (*stru
 		"rule":            decision.Rule,
 		"reason":          decision.Message,
 	}
+	if runtimeReport := s.app.policyTestRuntimeEnforcement(sessionID, op); runtimeReport != nil {
+		result["runtime_enforcement"] = runtimeReport
+	}
 	if decision.Redirect != nil {
 		result["redirect"] = map[string]any{
 			"command": decision.Redirect.Command,
@@ -988,6 +1063,10 @@ func (a *App) grpcCreateSession(ctx context.Context, reqJSON []byte) (*structpb.
 	sess, httpCode, err := a.createSessionCore(ctx, req.ToTypes())
 	if err != nil {
 		return nil, status.Error(codeFromHTTP(httpCode), err.Error())
+	}
+	a.refreshNetworkEnforcement(sess.ID)
+	if live, ok := a.sessions.Get(sess.ID); ok {
+		sess = live.Snapshot()
 	}
 	out := &structpb.Struct{}
 	b, _ := json.Marshal(sess)

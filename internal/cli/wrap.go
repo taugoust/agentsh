@@ -138,9 +138,11 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
 		wrapCfg, err = setupWrapInterception(ctx, c, sessID, agentPath, opts.agentArgs, cfg)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "agentsh: interception setup failed, running without interception: %v\n", err)
-			// Fall through to direct launch
+			return fmt.Errorf("interception setup failed; refusing an unguarded client-spawned command: %w", err)
 		}
+	}
+	if wrapCfg != nil && wrapCfg.cleanup != nil {
+		defer wrapCfg.cleanup()
 	}
 
 	// 4. Build the agent command
@@ -239,6 +241,20 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 			}
 		}
 
+		// Complete the notify-fd handoff synchronously. The wrapper is blocked on
+		// ACK and cannot exec user code until this returns success. On failure,
+		// kill and reap it without ever releasing the ACK barrier.
+		if wrapCfg.postStart != nil {
+			if err := wrapCfg.postStart(agentProc.Process.Pid); err != nil {
+				_ = agentProc.Process.Kill()
+				_ = agentProc.Wait()
+				signal.Stop(sigCh)
+				close(sigCh)
+				<-sigDone
+				return fmt.Errorf("wrapper pre-exec handoff failed: %w", err)
+			}
+		}
+
 		mechanism := "seccomp"
 		if runtime.GOOS == "darwin" {
 			mechanism = "ES"
@@ -250,10 +266,6 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 		}
 		if !wrapCfg.foregroundTTY {
 			fmt.Fprintf(os.Stderr, "agentsh: agent %s started with %s interception (pid: %d)\n", opts.agentCmd, mechanism, agentProc.Process.Pid)
-		}
-		// Forward the notify fd to the server in the background
-		if wrapCfg.postStart != nil {
-			go wrapCfg.postStart(agentProc.Process.Pid)
 		}
 	} else {
 		fmt.Fprintf(os.Stderr, "agentsh: agent %s started (pid: %d)\n", opts.agentCmd, agentProc.Process.Pid)
@@ -295,6 +307,9 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 	}
 
 	if exitCode != 0 {
+		if wrapCfg != nil && wrapCfg.cleanup != nil {
+			wrapCfg.cleanup()
+		}
 		os.Exit(exitCode)
 	}
 	return nil
@@ -307,10 +322,11 @@ type wrapLaunchConfig struct {
 	env           []string
 	extraFiles    []*os.File
 	sysProcAttr   *syscall.SysProcAttr
-	postStart     func(childPID int) // Called after process start to forward notify fd with child PID
-	postWait      func()             // Called after the process exits (e.g., to reclaim terminal)
-	keepAlive     io.Closer          // Held open during shell lifetime (e.g., ptrace handshake conn)
-	foregroundTTY bool               // Child owns the terminal foreground process group after Start.
+	postStart     func(childPID int) error // Completes notify handoff while the wrapper is ACK-blocked
+	postWait      func()                   // Called after the process exits (e.g., to reclaim terminal)
+	cleanup       func()                   // Closes parent-side launch/control resources once
+	keepAlive     io.Closer                // Held open during shell lifetime (e.g., ptrace handshake conn)
+	foregroundTTY bool                     // Child owns the terminal foreground process group after Start.
 	// ptracePostStart is called after the child is started with the child PID.
 	// It performs the ptrace handshake (send PID, wait for ACK).
 	ptracePostStart func(childPID int) error
@@ -325,6 +341,9 @@ func setupWrapInterception(ctx context.Context, c client.CLIClient, sessID strin
 		AgentCommand: agentPath,
 		AgentArgs:    agentArgs,
 		CallerUID:    os.Getuid(),
+		// Make the client-spawned path explicit. Strict servers return fixed
+		// LinuxCommandJailRequirements for both this mode and shell-shim mode.
+		Mode: "agent",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("wrap-init: %w", err)
@@ -336,6 +355,9 @@ func setupWrapInterception(ctx context.Context, c client.CLIClient, sessID strin
 	// system-wide via the System Extension (macOS) or driver (Windows).
 	if !wrapResp.PtraceMode && wrapResp.WrapperBinary == "" && runtime.GOOS == "linux" {
 		return nil, fmt.Errorf("server returned empty wrapper binary")
+	}
+	if wrapResp.CommandJail != nil && runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("server requires a Linux command jail on %s", runtime.GOOS)
 	}
 
 	// Delegate to platform-specific code for socket pair creation and fd management

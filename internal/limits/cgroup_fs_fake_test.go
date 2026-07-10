@@ -44,6 +44,14 @@ type fakeCgroupFS struct {
 	// ancestor directory equals a key. Used to simulate hosts where a child
 	// cgroup can be created but its memory.max is not writable (#411).
 	writeErrUnder map[string]error
+	// writeErrNameUnder injects an error returned by WriteFile for paths with a
+	// specific basename under a matching ancestor directory. This lets tests
+	// model controller writes that poison cgroup.procs without breaking limit
+	// file writes under the same subtree.
+	writeErrNameUnder map[string]map[string]error
+	// subtreeWritePoisonProcs injects a cgroup.procs write error under the
+	// subtree_control parent after a specific subtree_control write succeeds.
+	subtreeWritePoisonProcs map[string]error
 }
 
 type fakeEntry struct {
@@ -53,13 +61,15 @@ type fakeEntry struct {
 
 func newFakeCgroupFS() *fakeCgroupFS {
 	return &fakeCgroupFS{
-		files:                map[string]*fakeEntry{"/sys/fs/cgroup": {isDir: true}},
-		writeErrs:            map[string]error{},
-		openErrs:             map[string]error{},
-		openWriteErrsOnce:    map[string]error{},
-		openWriteContentErrs: map[string]error{},
-		mkdirErrUnder:        map[string]error{},
-		writeErrUnder:        map[string]error{},
+		files:                   map[string]*fakeEntry{"/sys/fs/cgroup": {isDir: true}},
+		writeErrs:               map[string]error{},
+		openErrs:                map[string]error{},
+		openWriteErrsOnce:       map[string]error{},
+		openWriteContentErrs:    map[string]error{},
+		mkdirErrUnder:           map[string]error{},
+		writeErrUnder:           map[string]error{},
+		writeErrNameUnder:       map[string]map[string]error{},
+		subtreeWritePoisonProcs: map[string]error{},
 	}
 }
 
@@ -95,7 +105,13 @@ func (f *fakeCgroupFS) ReadFile(p string) ([]byte, error) {
 
 func (f *fakeCgroupFS) WriteFile(p string, data []byte, perm os.FileMode) error {
 	p = path.Clean(p)
+	base := path.Base(p)
 	for anc := path.Dir(p); anc != "/" && anc != "."; anc = path.Dir(anc) {
+		if byName, ok := f.writeErrNameUnder[anc]; ok {
+			if err, ok := byName[base]; ok {
+				return &fs.PathError{Op: "write", Path: p, Err: err}
+			}
+		}
 		if err, ok := f.writeErrUnder[anc]; ok {
 			return &fs.PathError{Op: "write", Path: p, Err: err}
 		}
@@ -215,6 +231,15 @@ func (w *fakeWriter) WriteString(s string) (int, error) {
 		sep = " "
 	}
 	e.content = append(e.content, []byte(sep+token)...)
+	if err, ok := w.fs.subtreeWritePoisonProcs[key+":"+s]; ok {
+		parent := path.Dir(w.path)
+		byName := w.fs.writeErrNameUnder[parent]
+		if byName == nil {
+			byName = map[string]error{}
+			w.fs.writeErrNameUnder[parent] = byName
+		}
+		byName["cgroup.procs"] = err
+	}
 	return len(s), nil
 }
 
@@ -226,8 +251,8 @@ type fakeFileInfo struct {
 	isDir bool
 }
 
-func (f *fakeFileInfo) Name() string      { return f.name }
-func (f *fakeFileInfo) Size() int64       { return f.size }
+func (f *fakeFileInfo) Name() string { return f.name }
+func (f *fakeFileInfo) Size() int64  { return f.size }
 func (f *fakeFileInfo) Mode() os.FileMode {
 	if f.isDir {
 		return os.ModeDir | 0o755
@@ -243,8 +268,8 @@ type fakeDirEntry struct {
 	isDir bool
 }
 
-func (d *fakeDirEntry) Name() string               { return d.name }
-func (d *fakeDirEntry) IsDir() bool                { return d.isDir }
+func (d *fakeDirEntry) Name() string { return d.name }
+func (d *fakeDirEntry) IsDir() bool  { return d.isDir }
 func (d *fakeDirEntry) Type() os.FileMode {
 	if d.isDir {
 		return os.ModeDir
@@ -262,6 +287,10 @@ func (d *fakeDirEntry) Info() (os.FileInfo, error) {
 // controller token (e.g. "+memory") without affecting writes for other tokens.
 func (f *fakeCgroupFS) failSubtreeWrite(p string, content string, err error) {
 	f.openWriteContentErrs[path.Clean(p)+":write:"+content] = err
+}
+
+func (f *fakeCgroupFS) poisonCgroupProcsAfterSubtreeWrite(p string, content string, err error) {
+	f.subtreeWritePoisonProcs[path.Clean(p)+":write:"+content] = err
 }
 
 // assertSubtreeControl returns an error unless path's content contains all of

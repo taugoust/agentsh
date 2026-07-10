@@ -28,6 +28,7 @@ func NewRoot(version string) *cobra.Command {
 	cmd.AddCommand(newServerCmd())
 	cmd.AddCommand(newSessionCmd())
 	cmd.AddCommand(newSupervisorCmd())
+	cmd.AddCommand(newNethelperCmd())
 	cmd.AddCommand(newDetachedReviewCmd("diff"))
 	cmd.AddCommand(newDetachedReviewCmd("accept"))
 	cmd.AddCommand(newDetachedReviewCmd("reject"))

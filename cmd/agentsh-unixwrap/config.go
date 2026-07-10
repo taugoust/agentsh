@@ -52,6 +52,16 @@ type WrapperConfig struct {
 
 	// Server PID for PR_SET_PTRACER (Yama ptrace_scope=1 workaround)
 	ServerPID int `json:"server_pid,omitempty"`
+
+	// CommandJail defines the fail-closed same-UID command boundary. It is
+	// supplied only by the trusted supervisor for strict tool commands.
+	CommandJail *CommandJailConfig `json:"command_jail,omitempty"`
+}
+
+type CommandJailConfig struct {
+	Required        bool     `json:"required"`
+	HideDirectories []string `json:"hide_directories,omitempty"`
+	HidePaths       []string `json:"hide_paths,omitempty"`
 }
 
 // loadConfig reads the wrapper config from environment.

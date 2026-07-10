@@ -14,13 +14,15 @@ import (
 )
 
 const (
-	protocolMagic byte = 0xA7
-	StatusReject  byte = 0
-	StatusOK      byte = 1
+	protocolMagic           byte = 0xA7
+	metadataCommandJail     byte = 1 << 0
+	StatusReject            byte = 0
+	StatusOK                byte = 1
 )
 
 type Metadata struct {
-	WrapperPID int
+	WrapperPID  int
+	CommandJail bool
 }
 
 func SendNotifyFD(conn *net.UnixConn, notifyFD int, meta Metadata) error {
@@ -31,9 +33,12 @@ func SendNotifyFD(conn *net.UnixConn, notifyFD int, meta Metadata) error {
 		return fmt.Errorf("invalid notify fd %d", notifyFD)
 	}
 
-	payload := make([]byte, 5)
+	payload := make([]byte, 6)
 	payload[0] = protocolMagic
 	binary.LittleEndian.PutUint32(payload[1:], uint32(meta.WrapperPID))
+	if meta.CommandJail {
+		payload[5] |= metadataCommandJail
+	}
 	rights := unix.UnixRights(notifyFD)
 	n, oobn, err := conn.WriteMsgUnix(payload, rights, nil)
 	if err != nil {
@@ -91,6 +96,7 @@ func RecvNotifyFD(conn *net.UnixConn) (*os.File, Metadata, bool, error) {
 	hasMeta := n >= 5 && buf[0] == protocolMagic
 	if hasMeta {
 		meta.WrapperPID = int(binary.LittleEndian.Uint32(buf[1:5]))
+		meta.CommandJail = n >= 6 && buf[5]&metadataCommandJail != 0
 	}
 	return os.NewFile(uintptr(fd), "wrap-notif-fd"), meta, hasMeta, nil
 }

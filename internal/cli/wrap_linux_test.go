@@ -12,7 +12,42 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/wraphandoff"
+	"github.com/agentsh/agentsh/pkg/types"
+	"golang.org/x/sys/unix"
 )
+
+func TestConfigureWrapCommandBoundaryAppliesFixedLinuxLaunchAttributes(t *testing.T) {
+	attr := &syscall.SysProcAttr{}
+	requirements := &types.LinuxCommandJailRequirements{
+		Required:             true,
+		UserNamespace:        true,
+		MountNamespace:       true,
+		PIDNamespace:         true,
+		CgroupNamespace:      true,
+		IPCNamespace:         true,
+		MapCurrentUserToRoot: true,
+		ParentDeathSignal:    "SIGKILL",
+		PrivateProc:          true,
+		HideCgroupFS:         true,
+		HideControlPaths:     true,
+		CloseNonStdioFDs:     true,
+		DropCapabilities:     true,
+		NoNewPrivileges:      true,
+	}
+	if err := configureWrapCommandBoundary(attr, requirements); err != nil {
+		t.Fatalf("configure wrap command boundary: %v", err)
+	}
+	wantFlags := uintptr(unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC)
+	if attr.Cloneflags&wantFlags != wantFlags {
+		t.Fatalf("clone flags = %#x, want all %#x", attr.Cloneflags, wantFlags)
+	}
+	if attr.Pdeathsig != syscall.SIGKILL {
+		t.Fatalf("parent-death signal = %v, want SIGKILL", attr.Pdeathsig)
+	}
+	if len(attr.UidMappings) != 1 || len(attr.GidMappings) != 1 || attr.GidMappingsEnableSetgroups {
+		t.Fatalf("uid/gid mappings are incomplete: uid=%+v gid=%+v setgroups=%t", attr.UidMappings, attr.GidMappings, attr.GidMappingsEnableSetgroups)
+	}
+}
 
 func TestStripEnvKey(t *testing.T) {
 	in := []string{"A=1", "AGENTSH_WRAPPER_LOG_FD=9", "B=2", "AGENTSH_WRAPPER_LOG_FD=10"}
@@ -52,7 +87,7 @@ func TestForwardNotifyFDWithPIDWaitsForServerOK(t *testing.T) {
 			return
 		}
 		_ = fd.Close()
-		if !hasMeta || meta.WrapperPID != 2468 {
+		if !hasMeta || meta.WrapperPID != 2468 || !meta.CommandJail {
 			serverDone <- fmt.Errorf("metadata = %+v, hasMeta=%v", meta, hasMeta)
 			return
 		}
@@ -66,7 +101,7 @@ func TestForwardNotifyFDWithPIDWaitsForServerOK(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 
-	if err := forwardNotifyFDWithPID(socketPath, int(r.Fd()), 2468); err != nil {
+	if err := forwardNotifyFDWithPID(socketPath, int(r.Fd()), 2468, true); err != nil {
 		t.Fatalf("forward: %v", err)
 	}
 
@@ -121,7 +156,7 @@ func TestForwardNotifyFDWithPIDRejectStatusReturnsError(t *testing.T) {
 	defer r.Close()
 	defer w.Close()
 
-	if err := forwardNotifyFDWithPID(socketPath, int(r.Fd()), 2468); err == nil {
+	if err := forwardNotifyFDWithPID(socketPath, int(r.Fd()), 2468, false); err == nil {
 		t.Fatal("expected reject status error")
 	}
 
@@ -183,7 +218,7 @@ func TestForwardNotifyFDWithPIDTimeoutReturnsError(t *testing.T) {
 
 	forwardDone := make(chan error, 1)
 	go func() {
-		forwardDone <- forwardNotifyFDWithPID(socketPath, int(r.Fd()), 2468)
+		forwardDone <- forwardNotifyFDWithPID(socketPath, int(r.Fd()), 2468, false)
 	}()
 
 	select {

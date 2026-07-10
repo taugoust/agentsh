@@ -34,7 +34,10 @@ func forwardConnectEvents(ctx context.Context, in <-chan ebpf.ConnectEvent, emit
 			var remote string
 			var ipStr string
 			if ev.Family == 2 { // AF_INET
-				ip := net.IPv4(byte(ev.DstIPv4>>24), byte(ev.DstIPv4>>16), byte(ev.DstIPv4>>8), byte(ev.DstIPv4))
+				// DstIPv4 was decoded little-endian from the network-order bytes
+				// emitted by BPF. Read low-to-high so 127.0.0.1 is never reported
+				// as the old byte-swapped 1.0.0.127 compatibility address.
+				ip := net.IPv4(byte(ev.DstIPv4), byte(ev.DstIPv4>>8), byte(ev.DstIPv4>>16), byte(ev.DstIPv4>>24))
 				ipStr = ip.String()
 				remote = net.JoinHostPort(ipStr, itoa(ev.Dport))
 			} else {

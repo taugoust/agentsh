@@ -142,6 +142,23 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming not supported"})
+		return
+	}
+
+	// Prepare every required wrapper/jail resource before reporting that the
+	// command started. A setup refusal is an execution refusal, not a start.
+	wrapperResult := a.setupSeccompWrapper(req, id, s)
+	if wrapperResult.setupErr != nil {
+		a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": fmt.Sprintf("pre-exec boundary unavailable: %v", wrapperResult.setupErr)})
+		return
+	}
+	wrappedReq := wrapperResult.wrappedReq
+	extraCfg := wrapperResult.extraCfg
+
 	startEv := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: start,
@@ -157,27 +174,20 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 	_ = a.store.AppendEvent(r.Context(), startEv)
 	a.broker.Publish(startEv)
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming not supported"})
-		return
-	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	// Set up seccomp wrapper (Linux) for syscall enforcement
-	wrapperResult := a.setupSeccompWrapper(req, id, s)
-	wrappedReq := wrapperResult.wrappedReq
-	extraCfg := wrapperResult.extraCfg
-
 	limits := a.policyEngineFor(s).Limits()
 	emit := func(event string, payload map[string]any) error {
 		return writeSSE(w, flusher, event, payload)
 	}
 	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResourcesStreamingEmit(r.Context(), s, cmdID, wrappedReq, a.cfg, limits.CommandTimeout, emit, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id)
+	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
+		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
+	}
 	_ = a.store.SaveOutput(r.Context(), id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
 
 	// Check if process was killed by seccomp (SIGSYS) and emit event
@@ -222,6 +232,13 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 	ctx, cancel := withExtendableCommandTimeout(ctx, timeout)
 	defer cancel()
 
+	extraOwnershipTransferred := false
+	defer func() {
+		if !extraOwnershipTransferred {
+			closePreStartProcessFiles(extra)
+		}
+	}()
+
 	if handled, code, out, errOut := s.Builtin(req); handled {
 		if len(out) > 0 {
 			_ = emit("stdout", map[string]any{"command_id": cmdID, "stream": "stdout", "data": string(out)})
@@ -239,6 +256,10 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 		msg := []byte(err.Error() + "\n")
 		_ = emit("stderr", map[string]any{"command_id": cmdID, "stream": "stderr", "data": string(msg)})
 		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, nil
+	}
+	if barrierErr := validatePreExecBarrierPath(hook, tracer, extra); barrierErr != nil {
+		closePreStartProcessFiles(extra)
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, barrierErr
 	}
 
 	var cmd *exec.Cmd
@@ -267,31 +288,18 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 	} else {
 		cmd.SysProcAttr = getSysProcAttr()
 	}
-
-	env, _ := buildPolicyEnv(policy.ResolvedEnvPolicy{}, os.Environ(), s, req.Env)
-	// Add extra environment variables from seccomp wrapper config
-	if extra != nil && len(extra.env) > 0 {
-		for k, v := range extra.env {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
+	var commandBoundary *types.LinuxCommandJailRequirements
+	if extra != nil {
+		commandBoundary = extra.commandBoundary
 	}
-	// Add service env vars (fake credentials, bypass policy filtering).
-	if svcEnv := s.ServiceEnvVars(); len(svcEnv) > 0 {
-		svcKeys := make(map[string]bool, len(svcEnv))
-		for k := range svcEnv {
-			svcKeys[k] = true
-		}
-		filtered := env[:0]
-		for _, e := range env {
-			if k, _, ok := strings.Cut(e, "="); ok && svcKeys[k] {
-				continue
-			}
-			filtered = append(filtered, e)
-		}
-		env = filtered
-		for k, v := range svcEnv {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
+	if boundaryErr := configureCommandBoundaryProcess(cmd.SysProcAttr, commandBoundary); boundaryErr != nil {
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, boundaryErr
+	}
+
+	env, envErr := buildCommandEnvironment(cfg, policy.ResolvedEnvPolicy{}, os.Environ(), s, req.Env, extra)
+	if envErr != nil {
+		closePreStartProcessFiles(extra)
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("build command environment: %w", envErr)
 	}
 	cmd.Env = env
 
@@ -365,6 +373,13 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, ctx.Err()
 	}
 
+	barrier := newPreExecBarrier(hook)
+	defer func() {
+		if cleanupErr := barrier.Cleanup(); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("post-start cleanup: %w", cleanupErr))
+		}
+	}()
+
 	if err := cmd.Start(); err != nil {
 		extra.closeWrapperLogPipe()
 		if stdoutPipeR != nil {
@@ -421,6 +436,14 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 		pgid = getProcessGroupID(cmd.Process.Pid)
 
 		hasWrapperHandlers := extra != nil && (extra.notifyParentSock != nil || (extra.signalParentSock != nil && extra.signalEngine != nil))
+		wrapperHandlersStarted := false
+		var commandBoundaryReady chan error
+		if tracer == nil && commandBoundaryRequired(extra) {
+			commandBoundaryReady = make(chan error, 1)
+			startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, commandBoundaryReady)
+			extraOwnershipTransferred = true
+			wrapperHandlersStarted = true
+		}
 		if tracer != nil && hasWrapperHandlers {
 			// HYBRID MODE: ptrace for execve interception + seccomp wrapper for sockets/files/Landlock.
 			// The wrapper must complete seccomp setup BEFORE ptrace attaches to prevent deadlock.
@@ -443,6 +466,7 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 				ptraceReady = make(chan error, 1)
 			}
 			startWrapperHandlers(handlerCtx, extra, cmd.Process.Pid, pgid, ptraceReady)
+			extraOwnershipTransferred = true
 
 			// 2. Wait for wrapper to signal READY (only when ptrace sync is enabled).
 			if extra.ptraceSync {
@@ -475,48 +499,26 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid ptrace attach: %w", attachErr)
 			}
 
-			// 4. Run hook while process stopped (cgroup/eBPF setup).
-			// applyCgroupV2 returns nil when degradation is explicitly allowed, so
-			// any hook error must fail closed rather than silently running outside
-			// the expected cgroup/eBPF controls.
-			if hook != nil {
-				if cleanup, hookErr := hook(cmd.Process.Pid); hookErr != nil {
-					close(ptraceDone)
-					handlerCancel()
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("post-start hook: %w", hookErr)
-				} else if cleanup != nil {
-					defer func() { _ = cleanup() }()
-				}
-			}
-
-			// 5. Resume wrapper and send GO byte.
-			if resume != nil {
-				if resumeErr := resume(); resumeErr != nil {
-					close(ptraceDone)
-					handlerCancel()
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace resume: %w", resumeErr)
-				}
-			}
-
-			// 6. Send GO byte (only when ptrace sync is enabled).
+			// 4-6. Enforce once, then resume and send GO. Release steps are
+			// never attempted after a cgroup/helper setup failure.
+			releaseSteps := []preExecReleaseStep{{name: "ptrace resume", run: resume}}
 			if extra.ptraceSync {
-				if _, err := extra.notifyParentSock.Write([]byte{'G'}); err != nil {
-					close(ptraceDone)
-					handlerCancel()
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid GO byte write: %w", err)
-				}
+				releaseSteps = append(releaseSteps, preExecReleaseStep{
+					name: "hybrid GO byte write",
+					run: func() error {
+						return writePreExecControlByte(extra.notifyParentSock, 'G')
+					},
+				})
+			}
+			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
+				close(ptraceDone)
+				handlerCancel()
+				_ = killProcess(cmd.Process.Pid)
+				_ = killProcessGroup(pgid)
+				_ = waitExit()
+				pipeWG.Wait()
+				cmd.Process.Release()
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 
 			// 7. Wait for exit via ptrace exit channel
@@ -570,27 +572,14 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 				cmd.Process.Release()
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace attach: %w", attachErr)
 			}
-			if hook != nil {
-				if cleanup, hookErr := hook(cmd.Process.Pid); hookErr != nil {
-					close(ptraceDone)
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("post-start hook: %w", hookErr)
-				} else if cleanup != nil {
-					defer func() { _ = cleanup() }()
-				}
-			}
-			if resume != nil {
-				if resumeErr := resume(); resumeErr != nil {
-					close(ptraceDone)
-					_ = killProcess(cmd.Process.Pid)
-					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
-					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace resume: %w", resumeErr)
-				}
+			if releaseErr := barrier.Release(cmd.Process.Pid, preExecReleaseStep{name: "ptrace resume", run: resume}); releaseErr != nil {
+				close(ptraceDone)
+				_ = killProcess(cmd.Process.Pid)
+				_ = killProcessGroup(pgid)
+				_ = waitExit()
+				pipeWG.Wait()
+				cmd.Process.Release()
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 
 			// Tracer-managed wait: block on exit channel instead of cmd.Wait()
@@ -622,23 +611,23 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if hook != nil {
-			// Seccomp stopped-start: process started with PTRACE_TRACEME
-			if cleanup, hookErr := hook(cmd.Process.Pid); hookErr != nil {
+			// Seccomp stopped-start: enforce before detaching PTRACE_TRACEME.
+			releaseSteps := []preExecReleaseStep{{name: "resume traced process", run: func() error {
+				return resumeTracedProcess(cmd.Process.Pid)
+			}}}
+			releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
+			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
 				_ = cmd.Wait()
-				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("post-start hook: %w", hookErr)
-			} else if cleanup != nil {
-				defer func() { _ = cleanup() }()
-			}
-			if resumeErr := resumeTracedProcess(cmd.Process.Pid); resumeErr != nil {
-				_ = killProcess(cmd.Process.Pid)
-				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("resume traced process: %w", resumeErr)
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 		}
 
-		// Start wrapper handlers (wrapper-only path + hybrid fallback).
-		startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, nil)
+		if !wrapperHandlersStarted {
+			startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, nil)
+			extraOwnershipTransferred = true
+		}
 	}
 
 	waitStart := time.Now()

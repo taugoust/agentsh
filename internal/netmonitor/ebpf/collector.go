@@ -91,7 +91,7 @@ func (c *Collector) loop() {
 			continue
 		}
 		var ev ConnectEvent
-		if len(record.RawSample) >= 49 { // 49 bytes needed for blocked flag
+		if len(record.RawSample) >= 53 { // blocked follows the 16-byte dst union at offset 52
 			copyToEvent(&ev, record.RawSample)
 
 			// Evaluate connect redirect if configured
@@ -122,14 +122,14 @@ func copyToEvent(ev *ConnectEvent, data []byte) {
 	ev.Dport = le16(data[26:])
 	ev.Family = data[28]
 	ev.Protocol = data[29]
-	if len(data) >= 48 {
-		copy(ev.DstIPv6[:], data[32:48]) // always copy 16 bytes
-		if len(data) >= 40 {
-			ev.DstIPv4 = le32(data[36:]) // overlap ok for v4
-		}
+	// clang aligns the destination union to offset 36 after the six-byte pad.
+	// The union occupies 16 bytes and the blocked byte follows at offset 52.
+	if len(data) >= 52 {
+		copy(ev.DstIPv6[:], data[36:52])
+		ev.DstIPv4 = le32(data[36:40])
 	}
-	if len(data) > 48 {
-		ev.Blocked = data[48]
+	if len(data) > 52 {
+		ev.Blocked = data[52]
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -215,7 +216,7 @@ func notifyHandlerRecover(sessID string, store eventStore, broker eventBroker) {
 // *unixmon.BlockListConfig). A nil or zero-ActionByNr value is treated as
 // "no block-list notify routing needed" — safe for errno/kill modes which are
 // kernel-side.
-func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, approvalsMgr *approvals.Manager, sess *session.Session) {
+func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session) {
 	if parentSock == nil {
 		return
 	}
@@ -277,6 +278,28 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 		// shorten the later READY byte read below (which expects 30s).
 		if err := unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{}); err != nil {
 			slog.Debug("failed to clear SO_RCVTIMEO on notify socket", "error", err, "session_id", sessID)
+		}
+
+		if commandJailRequired {
+			capabilityTimeout := unix.NsecToTimeval((30 * time.Second).Nanoseconds())
+			_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &capabilityTimeout)
+			capability := []byte{0}
+			for {
+				n, capabilityErr := parentSock.Read(capability)
+				if capabilityErr != nil && errors.Is(capabilityErr, syscall.EINTR) {
+					continue
+				}
+				if capabilityErr != nil {
+					slog.Debug("command-jail capability read failed", "error", capabilityErr, "session_id", sessID)
+					return
+				}
+				if n != 1 || capability[0] != 'J' {
+					slog.Debug("command-jail capability rejected", "bytes", n, "value", capability[0], "session_id", sessID)
+					return
+				}
+				break
+			}
+			_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
 		}
 
 		// Close the notify FD when context is cancelled to unblock any stuck
@@ -372,9 +395,15 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 			}
 		}
 
-		// Send ACK to wrapper so it knows the notify handler is ready before exec.
-		if _, err := parentSock.Write([]byte{1}); err != nil {
-			slog.Debug("notify: ACK write to wrapper failed", "error", err, "session_id", sessID)
+		// Send ACK only after the notify handler prerequisites are ready. A failed
+		// or short write must not advance to READY/GO or user execution.
+		n, ackErr := parentSock.Write([]byte{1})
+		if ackErr != nil || n != 1 {
+			if ackErr == nil {
+				ackErr = io.ErrShortWrite
+			}
+			slog.Debug("notify: ACK write to wrapper failed", "error", ackErr, "session_id", sessID)
+			return
 		}
 
 		// Start ServeNotifyWithExecve BEFORE reading READY to ensure notifications

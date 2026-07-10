@@ -87,6 +87,43 @@ func TestMustAtoi(t *testing.T) {
 	}
 }
 
+func TestParseProxyAuthorityUsesExactDestinationPort(t *testing.T) {
+	host, hostPort, port, err := parseProxyAuthority("127.0.0.1:18443", 443, true)
+	if err != nil {
+		t.Fatalf("parse CONNECT authority: %v", err)
+	}
+	if host != "127.0.0.1" || hostPort != "127.0.0.1:18443" || port != 18443 {
+		t.Fatalf("parsed authority = host %q endpoint %q port %d", host, hostPort, port)
+	}
+
+	host, hostPort, port, err = parseProxyAuthority("example.test", 80, false)
+	if err != nil {
+		t.Fatalf("parse HTTP authority: %v", err)
+	}
+	if host != "example.test" || hostPort != "example.test:80" || port != 80 {
+		t.Fatalf("default HTTP authority = host %q endpoint %q port %d", host, hostPort, port)
+	}
+}
+
+func TestParseProxyAuthorityRejectsMalformedOrServicePorts(t *testing.T) {
+	for _, authority := range []string{"example.test", "example.test:https", "example.test:0", "example.test:70000", "bad host:443", "[fe80::1%eth0]:443"} {
+		if _, _, _, err := parseProxyAuthority(authority, 443, true); err == nil {
+			t.Fatalf("CONNECT authority %q was accepted", authority)
+		}
+	}
+}
+
+func TestMaybeApproveWithoutResolverFailsClosed(t *testing.T) {
+	p := &Proxy{}
+	dec := p.maybeApprove(context.Background(), "cmd", policy.Decision{
+		PolicyDecision:    types.DecisionApprove,
+		EffectiveDecision: types.DecisionApprove,
+	}, "network", "example.test:443")
+	if dec.EffectiveDecision != types.DecisionDeny {
+		t.Fatalf("effective decision = %q, want deny", dec.EffectiveDecision)
+	}
+}
+
 func TestResolveAndEmitDNSIPBypassesLookup(t *testing.T) {
 	p := &Proxy{emit: &stubEmitter{}}
 	ip := p.resolveAndEmitDNS(context.Background(), "cmd", "127.0.0.1")

@@ -8,8 +8,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 
+	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
 )
@@ -27,7 +29,14 @@ type StartRequest struct {
 	Dir   string
 	Env   []string
 
-	InitialSize Winsize
+	InitialSize     Winsize
+	ExtraFiles      []*os.File
+	CommandBoundary *types.LinuxCommandJailRequirements
+
+	// PreExec runs while the Linux child is stopped. The callback owns the
+	// one-shot enforcement/READY/GO sequence and must call resume exactly once
+	// after setup succeeds. A non-nil callback is fail-closed on other platforms.
+	PreExec func(pid int, resume func() error) (cleanup func() error, err error)
 }
 
 type Session struct {
@@ -38,6 +47,10 @@ type Session struct {
 	outDone chan struct{}
 
 	pid int
+
+	cleanupOnce sync.Once
+	cleanup     func() error
+	cleanupErr  error
 }
 
 func (s *Session) Output() <-chan []byte { return s.outCh }
@@ -47,6 +60,18 @@ func (s *Session) PID() int {
 		return 0
 	}
 	return s.pid
+}
+
+func (s *Session) runCleanup() error {
+	if s == nil {
+		return nil
+	}
+	s.cleanupOnce.Do(func() {
+		if s.cleanup != nil {
+			s.cleanupErr = s.cleanup()
+		}
+	})
+	return s.cleanupErr
 }
 
 func (s *Session) Write(p []byte) (int, error) {
@@ -84,14 +109,15 @@ func (s *Session) Wait() (exitCode int, err error) {
 	if s.outDone != nil {
 		<-s.outDone
 	}
+	cleanupErr := s.runCleanup()
 	if err == nil {
-		return 0, nil
+		return 0, cleanupErr
 	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
-		return ee.ExitCode(), nil
+		return ee.ExitCode(), cleanupErr
 	}
-	return 127, err
+	return 127, errors.Join(err, cleanupErr)
 }
 
 type Engine struct{}
@@ -129,10 +155,23 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*Session, error) 
 		// Use stdin (fd 0) as controlling TTY after the child maps slave onto stdio.
 		Ctty: 0,
 	}
+	if req.CommandBoundary != nil && req.PreExec == nil {
+		_ = master.Close()
+		_ = slave.Close()
+		return nil, ErrPreExecBarrierUnavailable
+	}
+	if err := configureStoppedStart(cmd.SysProcAttr, req.PreExec != nil, req.CommandBoundary); err != nil {
+		_ = master.Close()
+		_ = slave.Close()
+		return nil, err
+	}
 
 	cmd.Stdin = slave
 	cmd.Stdout = slave
 	cmd.Stderr = slave
+	if len(req.ExtraFiles) > 0 {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, req.ExtraFiles...)
+	}
 
 	outCh := make(chan []byte, 16)
 	outDone := make(chan struct{})
@@ -147,6 +186,26 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*Session, error) 
 	}
 	if cmd.Process != nil {
 		sess.pid = cmd.Process.Pid
+	}
+	if req.PreExec != nil {
+		cleanup, hookErr := req.PreExec(sess.pid, func() error { return resumeStoppedProcess(sess.pid) })
+		if hookErr != nil {
+			// Keep the child stopped, kill and reap it, then remove partial
+			// cgroup/helper resources. Cgroup removal before reap would fail.
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			if cleanup != nil {
+				if cleanupErr := cleanup(); cleanupErr != nil {
+					hookErr = errors.Join(hookErr, cleanupErr)
+				}
+			}
+			_ = master.Close()
+			_ = slave.Close()
+			close(outCh)
+			close(outDone)
+			return nil, hookErr
+		}
+		sess.cleanup = cleanup
 	}
 
 	// Parent no longer needs the slave FD.

@@ -270,6 +270,7 @@ func TestSetupWrapInterception_CallsWrapInit(t *testing.T) {
 	assert.Equal(t, "/bin/echo", mc.wrapInitReq.AgentCommand)
 	assert.Equal(t, []string{"hello"}, mc.wrapInitReq.AgentArgs)
 	assert.Equal(t, os.Getuid(), mc.wrapInitReq.CallerUID)
+	assert.Equal(t, "agent", mc.wrapInitReq.Mode, "client-spawned wrap mode must be explicit")
 
 	// Verify the launch config (OS-specific assertions)
 	if runtime.GOOS == "linux" {

@@ -37,7 +37,15 @@ var (
 )
 
 type wrapNotifyMetadata struct {
-	WrapperPID int
+	WrapperPID  int
+	CommandJail bool
+}
+
+type wrapExecLockContextKey struct{}
+
+func wrapExecLockHeld(ctx context.Context) bool {
+	held, _ := ctx.Value(wrapExecLockContextKey{}).(bool)
+	return held
 }
 
 // wrapInit handles POST /api/v1/sessions/{id}/wrap-init.
@@ -126,6 +134,17 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	// The handler will be cleaned up when the session ends or the connection closes.
 	ctx := context.Background()
 
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "agent"
+	}
+	if mode != "agent" && mode != "shim" {
+		return types.WrapInitResponse{}, http.StatusBadRequest, fmt.Errorf("unsupported wrap mode %q", req.Mode)
+	}
+	// Normalize the mode before policy and launch-contract decisions so an old
+	// empty client request is exactly equivalent to the explicit agent mode.
+	req.Mode = mode
+
 	// Shim mode: pre-check the agent command against policy before issuing
 	// the wrapper. The shim's kernel-install path replaces the existing
 	// `agentsh exec` flow with `wrap-init` + direct wrapper exec, which
@@ -186,18 +205,44 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		}
 	}
 
-	// Windows uses driver-based interception, not seccomp
+	// A strict proxy-required configuration needs the Linux command jail on
+	// every client-spawned wrap path. Driver/ES interception does not implement
+	// this same-UID network boundary, so fail closed rather than omitting the
+	// launch requirements from the response.
+	if commandJailRequired(a.cfg) && runtime.GOOS != "linux" {
+		return types.WrapInitResponse{}, http.StatusServiceUnavailable,
+			fmt.Errorf("strict command jail is unavailable on %s", runtime.GOOS)
+	}
+
+	// Windows uses driver-based interception when strict Linux network
+	// enforcement was not requested.
 	if runtime.GOOS == "windows" {
 		return a.wrapInitWindows(ctx, s, sessionID, req)
 	}
 
-	// Only supported on Linux (seccomp) otherwise
+	// Only supported on Linux (seccomp) otherwise.
 	if runtime.GOOS != "linux" {
 		return types.WrapInitResponse{}, http.StatusBadRequest, errWrapNotSupported
 	}
 
 	if req.CallerUID < 0 {
 		return types.WrapInitResponse{}, http.StatusBadRequest, fmt.Errorf("invalid caller uid: %d", req.CallerUID)
+	}
+
+	// Both `agentsh wrap` (agent mode) and shell-shim wrapping are
+	// client-spawned command paths. A strict server must return the same fixed
+	// Linux launch contract for both; limiting this to shim mode would let the
+	// ordinary CLI launch outside the PID/mount/cgroup boundary.
+	toolJailRequired := commandJailRequired(a.cfg)
+	if toolJailRequired {
+		if err := hardenSupervisorForCommandBoundary(); err != nil {
+			return types.WrapInitResponse{}, http.StatusServiceUnavailable,
+				fmt.Errorf("strict command boundary unavailable: %w", err)
+		}
+	}
+	if toolJailRequired && a.ptraceTracer != nil {
+		return types.WrapInitResponse{}, http.StatusServiceUnavailable,
+			fmt.Errorf("strict command jail is unavailable with ptrace wrap mode")
 	}
 
 	// Ptrace mode: skip seccomp wrapper entirely. Create a socket for PID handshake.
@@ -436,6 +481,9 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		SignalFilterEnabled: signalFilterEnabled,
 		ExecveEnabled:       execveEnabled,
 	})
+	if toolJailRequired {
+		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, a.nethelperCredentialFile)
+	}
 
 	// Ensure the parent directory of the about-to-be-execed command is
 	// in AllowExecute. Without this, any Landlock-enabled session
@@ -465,7 +513,10 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 
 	var approvalUI *approvalUIEndpoint
 	var approvalUISocketPath string
-	if req.Mode != "shim" && a.approvals != nil {
+	// A same-UID command jail must not expose another supervisor control socket.
+	// Strict wrapped agents use the trusted detached/API approval bridge instead
+	// of receiving the local approval-UI socket path.
+	if req.Mode != "shim" && !toolJailRequired && a.approvals != nil {
 		approvalUI, err = a.startApprovalUIEndpoint(sessionID, req.CallerUID)
 		if err != nil {
 			_ = listener.Close()
@@ -525,6 +576,7 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		SignalSocket:          signalSocketPath,
 		ApprovalUISocket:      approvalUISocketPath,
 		WrapperEnv:            wrapperEnv,
+		CommandJail:           commandJailRequirements(toolJailRequired),
 		// env_inject is delivered to the client for it to overlay onto the
 		// executed command's environment (the server does not spawn the
 		// process on this path). Operator-trusted; bypasses policy filtering,
@@ -818,6 +870,9 @@ func resolvedSocketRulesUseNotify(rules []seccomppkg.SocketRule) bool {
 // plumbed for clarity and to make the per-invocation contract explicit in the
 // call site.
 func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketPath string, sessionID string, s *session.Session, execveEnabled bool, expectedUID int, shimMode bool, approvalUI *approvalUIEndpoint) {
+	// Retained on the internal signature for lifecycle diagnostics/tests; strict
+	// boundary selection is deliberately mode-independent.
+	_ = shimMode
 	defer listener.Close()
 	// Clean up the entire private temp directory containing the socket
 	defer os.RemoveAll(filepath.Dir(socketPath))
@@ -893,7 +948,35 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 		wrapperPID = meta.WrapperPID
 	}
 
+	commandBoundary := commandJailRequirements(commandJailRequired(a.cfg))
+	if commandBoundary != nil {
+		if !commandBoundary.Complete() || !hasMeta || !meta.CommandJail {
+			_ = notifyFD.Close()
+			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
+				slog.Debug("wrap: failed to write command-jail setup rejection", "session_id", sessionID, "error", statusErr)
+			}
+			slog.Warn("wrap: rejecting notify fd without the required command-jail capability",
+				"session_id", sessionID, "wrapper_pid", wrapperPID, "has_metadata", hasMeta, "command_jail", meta.CommandJail)
+			return
+		}
+		if !wrapNeedsCgroupBeforeAck(a, s) {
+			_ = notifyFD.Close()
+			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
+				slog.Debug("wrap: failed to write command-jail barrier rejection", "session_id", sessionID, "error", statusErr)
+			}
+			slog.Warn("wrap: strict command jail has no centralized pre-exec enforcement hook", "session_id", sessionID, "wrapper_pid", wrapperPID)
+			return
+		}
+	}
+
 	var cleanup func() error
+	var strictUnlock func()
+	strictLockTransferred := false
+	defer func() {
+		if strictUnlock != nil && !strictLockTransferred {
+			strictUnlock()
+		}
+	}()
 	if wrapNeedsCgroupBeforeAck(a, s) {
 		if !hasMeta || meta.WrapperPID <= 0 {
 			_ = notifyFD.Close()
@@ -912,16 +995,38 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 				"session_id", sessionID, "wrapper_pid", meta.WrapperPID, "peer_pid", notifyPeerPID, "peer_uid", notifyPeerUID, "error", err)
 			return
 		}
-		cgroupCleanup, err := wrapCgroupSetupForNotifyHook(ctx, a, s, sessionID, wrapperPID)
-		if err != nil {
+		if commandBoundary != nil && s != nil {
+			// Serialize before helper attachment/report transitions, not after ACK.
+			// Otherwise another command can overwrite CurrentCommandID or runtime
+			// evidence while this wrapper is still blocked in setup.
+			strictUnlock = s.LockExec()
+			ctx = context.WithValue(ctx, wrapExecLockContextKey{}, true)
+		}
+		barrier := newPreExecBarrier(func(pid int) (func() error, error) {
+			return wrapCgroupSetupForNotifyHook(ctx, a, s, sessionID, pid)
+		})
+		if err := barrier.Enforce(wrapperPID); err != nil {
 			_ = notifyFD.Close()
 			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
 				slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
 			}
-			slog.Warn("wrap: cgroup setup before ack failed", "session_id", sessionID, "wrapper_pid", wrapperPID, "error", err)
+			if cleanupErr := barrier.Cleanup(); cleanupErr != nil {
+				err = errors.Join(err, cleanupErr)
+			}
+			slog.Warn("wrap: centralized pre-exec setup before ack failed", "session_id", sessionID, "wrapper_pid", wrapperPID, "error", err)
 			return
 		}
-		cleanup = cgroupCleanup
+		cleanup = barrier.CleanupFunc()
+		if strictUnlock != nil {
+			boundaryCleanup := cleanup
+			var releaseOnce sync.Once
+			cleanup = func() error {
+				cleanupErr := boundaryCleanup()
+				releaseOnce.Do(strictUnlock)
+				return cleanupErr
+			}
+			strictLockTransferred = true
+		}
 	}
 
 	slog.Info("wrap: received notify fd", "session_id", sessionID, "fd", notifyFD.Fd(), "wrapper_pid", wrapperPID)
@@ -930,6 +1035,13 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 	if err := startNotifyHandlerForWrapHook(ctx, notifyFD, sessionID, a, execveEnabled, wrapperPID, s, cleanup); err != nil {
 		if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
 			slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
+		}
+		// Reject first: the relay then closes its socketpair without ACK, the
+		// wrapper exits, and cgroup cleanup can observe an unpopulated command.
+		if cleanup != nil {
+			if cleanupErr := cleanup(); cleanupErr != nil {
+				err = errors.Join(err, cleanupErr)
+			}
 		}
 		slog.Warn("wrap: notify handler failed before ack", "session_id", sessionID, "wrapper_pid", wrapperPID, "error", err)
 		return
@@ -1005,6 +1117,9 @@ func defaultWrapCgroupSetupForNotify(ctx context.Context, a *App, s *session.Ses
 		lim = engine.Limits()
 	}
 	cmdID := "wrap-" + uuid.NewString()
+	if s != nil {
+		s.SetCurrentCommandID(cmdID)
+	}
 	em := storeEmitter{store: a.store, broker: a.broker}
 	cleanup, err := applyCgroupV2(ctx, em, a, sessionID, cmdID, wrapperPID, lim, a.metrics, engine)
 	if err != nil {
@@ -1014,12 +1129,12 @@ func defaultWrapCgroupSetupForNotify(ctx context.Context, a *App, s *session.Ses
 		case errors.As(err, &limUnavail):
 			// Operator asked for resource limits in a host that can only do
 			// attach-only (ModeAttachOnly). Surface the contradiction.
-			return nil, err
+			return cleanup, err
 		case errors.As(err, &unavail):
 			// Cgroup enforcement is unavailable entirely. Soft-fail unless
 			// the operator has marked ebpf as required.
-			if a.cfg.Sandbox.Network.EBPF.Required {
-				return nil, err
+			if a.cfg.Sandbox.Network.EBPF.Required || a.cfg.Sandbox.Network.EBPF.Enforce {
+				return cleanup, err
 			}
 			slog.Warn("ebpf: wrap cgroup setup unavailable, continuing without enforcement",
 				"reason", unavail.Reason,
@@ -1027,7 +1142,7 @@ func defaultWrapCgroupSetupForNotify(ctx context.Context, a *App, s *session.Ses
 			)
 			return func() error { return nil }, nil
 		default:
-			return nil, err
+			return cleanup, err
 		}
 	}
 	return cleanup, nil

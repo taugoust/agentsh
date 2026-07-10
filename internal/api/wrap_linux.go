@@ -64,7 +64,10 @@ func recvNotifyFDForWrap(conn *net.UnixConn) (*os.File, wrapNotifyMetadata, bool
 	if err != nil {
 		return nil, wrapNotifyMetadata{}, false, err
 	}
-	return notifyFD, wrapNotifyMetadata{WrapperPID: meta.WrapperPID}, hasMeta, nil
+	return notifyFD, wrapNotifyMetadata{
+		WrapperPID:  meta.WrapperPID,
+		CommandJail: meta.CommandJail,
+	}, hasMeta, nil
 }
 
 func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
@@ -150,9 +153,9 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID
 					"session_id", sessionID,
 					"hint", "check kernel.yama.ptrace_scope, ensure CAP_SYS_PTRACE, "+
 						"or set sandbox.seccomp.file_monitor.enabled: false")
-				// Clean up resources that would normally be handled by the goroutine.
+				// The caller must reject the ACK chain before cgroup cleanup so the
+				// wrapper can exit and its command cgroup can become unpopulated.
 				notifyFD.Close()
-				runCleanup()
 				if cleanupSymlink != nil {
 					cleanupSymlink()
 				}
@@ -179,7 +182,12 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID
 	// by idle timeout even while the wrapped agent process is still running.
 	var unlockSession func()
 	if s != nil {
-		unlockSession = s.LockExec()
+		// Strict client-spawned wraps acquire the session execution lock before
+		// cgroup/helper setup and transfer its release through cleanup. Other wrap
+		// modes retain the historical handler-lifetime lock here.
+		if !wrapExecLockHeld(ctx) {
+			unlockSession = s.LockExec()
+		}
 		if wrapperPID > 0 {
 			s.SetCurrentProcessPID(wrapperPID)
 		}

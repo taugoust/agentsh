@@ -91,31 +91,32 @@ type CreateShadowOptions struct {
 }
 
 type Session struct {
-	ID               string       `json:"id"`
-	State            SessionState `json:"state"`
-	CreatedAt        time.Time    `json:"created_at"`
-	Workspace        string       `json:"workspace"`
-	WorkspaceMount   string       `json:"workspace_mount,omitempty"` // effective workspace path (FUSE/overlay/shadow if active)
-	WorkspaceMode    string       `json:"workspace_mode,omitempty"`
-	Overlay          *OverlayInfo `json:"overlay,omitempty"`
-	Shadow           *ShadowInfo  `json:"shadow,omitempty"`
-	Policy           string       `json:"policy"`
-	Profile          string       `json:"profile,omitempty"`
-	Mounts           []MountInfo  `json:"mounts,omitempty"`
-	Cwd              string       `json:"cwd"`
-	VirtualRoot      string       `json:"virtual_root,omitempty"`
-	ProxyURL         string       `json:"proxy_url,omitempty"`
-	LLMProxyURL      string       `json:"llm_proxy_url,omitempty"`
-	DBProxySocketDir string       `json:"db_proxy_socket_dir,omitempty"`
-	TOTPSecret       string       `json:"-"` // Hidden from JSON/API, used for TOTP approval mode
-	ProjectRoot      string       `json:"project_root,omitempty"`
-	GitRoot          string       `json:"git_root,omitempty"`
-	RuntimeHome      string       `json:"runtime_home,omitempty"`
-	RuntimeTmp       string       `json:"runtime_tmp,omitempty"`
-	ProcessHome      string       `json:"process_home,omitempty"`
-	RuntimeHomeMode  string       `json:"runtime_home_mode,omitempty"`
-	EnvBaseMode      string       `json:"env_base_mode,omitempty"`
-	EnvInherit       []string     `json:"env_inherit,omitempty"`
+	ID                 string              `json:"id"`
+	State              SessionState        `json:"state"`
+	CreatedAt          time.Time           `json:"created_at"`
+	Workspace          string              `json:"workspace"`
+	WorkspaceMount     string              `json:"workspace_mount,omitempty"` // effective workspace path (FUSE/overlay/shadow if active)
+	WorkspaceMode      string              `json:"workspace_mode,omitempty"`
+	Overlay            *OverlayInfo        `json:"overlay,omitempty"`
+	Shadow             *ShadowInfo         `json:"shadow,omitempty"`
+	Policy             string              `json:"policy"`
+	Profile            string              `json:"profile,omitempty"`
+	Mounts             []MountInfo         `json:"mounts,omitempty"`
+	Cwd                string              `json:"cwd"`
+	VirtualRoot        string              `json:"virtual_root,omitempty"`
+	ProxyURL           string              `json:"proxy_url,omitempty"`
+	LLMProxyURL        string              `json:"llm_proxy_url,omitempty"`
+	DBProxySocketDir   string              `json:"db_proxy_socket_dir,omitempty"`
+	TOTPSecret         string              `json:"-"` // Hidden from JSON/API, used for TOTP approval mode
+	ProjectRoot        string              `json:"project_root,omitempty"`
+	GitRoot            string              `json:"git_root,omitempty"`
+	RuntimeHome        string              `json:"runtime_home,omitempty"`
+	RuntimeTmp         string              `json:"runtime_tmp,omitempty"`
+	ProcessHome        string              `json:"process_home,omitempty"`
+	RuntimeHomeMode    string              `json:"runtime_home_mode,omitempty"`
+	EnvBaseMode        string              `json:"env_base_mode,omitempty"`
+	EnvInherit         []string            `json:"env_inherit,omitempty"`
+	NetworkEnforcement *NetworkEnforcement `json:"network_enforcement,omitempty"`
 }
 
 // MountInfo describes an active mount in a session.
@@ -228,6 +229,36 @@ type EnvPolicyWire struct {
 	Deny  []string `json:"deny,omitempty"`
 }
 
+// LinuxCommandJailRequirements is the fixed launch and in-wrapper contract for
+// a same-UID tool boundary. Callers must reject an incomplete required
+// contract; they must not silently select a subset of these controls.
+type LinuxCommandJailRequirements struct {
+	Required             bool   `json:"required"`
+	UserNamespace        bool   `json:"user_namespace"`
+	MountNamespace       bool   `json:"mount_namespace"`
+	PIDNamespace         bool   `json:"pid_namespace"`
+	CgroupNamespace      bool   `json:"cgroup_namespace"`
+	IPCNamespace         bool   `json:"ipc_namespace"`
+	MapCurrentUserToRoot bool   `json:"map_current_user_to_root"`
+	ParentDeathSignal    string `json:"parent_death_signal"`
+	PrivateProc          bool   `json:"private_proc"`
+	HideCgroupFS         bool   `json:"hide_cgroupfs"`
+	HideControlPaths     bool   `json:"hide_control_paths"`
+	CloseNonStdioFDs     bool   `json:"close_non_stdio_fds"`
+	DropCapabilities     bool   `json:"drop_capabilities"`
+	NoNewPrivileges      bool   `json:"no_new_privileges"`
+}
+
+// Complete reports whether every fixed command-jail requirement is present.
+func (r *LinuxCommandJailRequirements) Complete() bool {
+	return r != nil && r.Required &&
+		r.UserNamespace && r.MountNamespace && r.PIDNamespace &&
+		r.CgroupNamespace && r.IPCNamespace && r.MapCurrentUserToRoot &&
+		r.ParentDeathSignal == "SIGKILL" && r.PrivateProc &&
+		r.HideCgroupFS && r.HideControlPaths && r.CloseNonStdioFDs &&
+		r.DropCapabilities && r.NoNewPrivileges
+}
+
 // WrapInitResponse returns the seccomp wrapper configuration to the caller.
 //
 // To decide whether to install kernel filters, the caller MUST inspect the
@@ -240,15 +271,16 @@ type EnvPolicyWire struct {
 // server that knows nothing about Mode==shim still returns its standard
 // populated response, which the caller installs from.
 type WrapInitResponse struct {
-	PtraceMode            bool              `json:"ptrace_mode,omitempty"`
-	SafeToBypassShellShim bool              `json:"safe_to_bypass_shell_shim"`
-	WrapperBinary         string            `json:"wrapper_binary"`
-	StubBinary            string            `json:"stub_binary,omitempty"`
-	SeccompConfig         string            `json:"seccomp_config"`
-	NotifySocket          string            `json:"notify_socket"`
-	SignalSocket          string            `json:"signal_socket,omitempty"`
-	ApprovalUISocket      string            `json:"approval_ui_socket,omitempty"`
-	WrapperEnv            map[string]string `json:"wrapper_env"`
+	PtraceMode            bool                          `json:"ptrace_mode,omitempty"`
+	SafeToBypassShellShim bool                          `json:"safe_to_bypass_shell_shim"`
+	WrapperBinary         string                        `json:"wrapper_binary"`
+	StubBinary            string                        `json:"stub_binary,omitempty"`
+	SeccompConfig         string                        `json:"seccomp_config"`
+	NotifySocket          string                        `json:"notify_socket"`
+	SignalSocket          string                        `json:"signal_socket,omitempty"`
+	ApprovalUISocket      string                        `json:"approval_ui_socket,omitempty"`
+	WrapperEnv            map[string]string             `json:"wrapper_env"`
+	CommandJail           *LinuxCommandJailRequirements `json:"command_jail,omitempty"`
 	// EnvInject carries operator-configured sandbox.env_inject values for the
 	// client (shell shim / CLI wrap) to overlay onto the executed command's
 	// environment. On the client-spawned wrap path the server does not build

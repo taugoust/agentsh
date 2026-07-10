@@ -6,6 +6,8 @@ import (
 	"syscall"
 )
 
+func preExecStoppedStartSupported() bool { return false }
+
 // getSysProcAttrStopped returns SysProcAttr for process creation.
 // On macOS, ptrace-based stopped start is not supported, so we just
 // return the regular SysProcAttr with Setpgid.
