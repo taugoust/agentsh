@@ -104,9 +104,15 @@ let
     name: instance:
     nameValuePair "agentsh-nethelper-${name}" {
       description = "AgentSH privileged network helper socket for ${instance.user}";
-      wantedBy = [ "sockets.target" ];
+      # Provisioning consumes the installed SOPS credential after basic.target.
+      # Opt this socket out of the implicit Before=sockets.target dependency so
+      # it can start later without creating basic.target ordering cycles.
+      wantedBy = [ "multi-user.target" ];
       requires = [ "agentsh-nethelper-provision-${name}.service" ];
       after = [ "agentsh-nethelper-provision-${name}.service" ];
+      before = [ "shutdown.target" ];
+      conflicts = [ "shutdown.target" ];
+      unitConfig.DefaultDependencies = false;
       socketConfig = {
         ListenStream = nethelperSocketPath instance;
         Accept = false;
