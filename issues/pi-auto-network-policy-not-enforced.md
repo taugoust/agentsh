@@ -1,16 +1,72 @@
 # pi-auto network policy approval is not enforced at runtime
 
 ## Status
-Open.
+Open for the Home Manager-only TUM DOS deployment and removal of an obsolete strict-startup warning. Strict local sessions are working on both `matebook` and `virby-vm`.
 
-## Current mitigation
-Detached supervisors now print a prominent warning when the source config enables network enforcement that the current detached MVP disables. This keeps `pi-auto` usable while making the safety gap visible.
+## Deployment status (2026-07-10)
 
-Partial hardening has landed for adjacent bugs: cgroup hooks now activate for eBPF-only configs, and exec runners fail closed on cgroup/eBPF post-start hook errors. The core detached network-enforcement gap remains open.
+### `matebook` local — working
 
-## Progress
+The installed NixOS topology now uses the per-UID root nethelper, a delegated transient user supervisor, the strict command jail, and the proxy-required eBPF gate. A fresh normal `pi` session reports live strict network evidence and the user has observed prompts for unknown network destinations.
 
-Landed and pushed:
+Deployed revisions:
+
+- AgentSH `90f6adcba9f024d7f85551ee4f471539493b64ed`;
+- `pi-agent-extensions` `1df2e40ff94319180321262d31143c8cea2a3c6e`;
+- `nix-config` `b748ae4` (`Add proper network sandboxing`).
+
+The earlier detached attach-only/resource-limit mismatch was fixed by not requesting CPU, memory, or PID controllers that this topology cannot enforce; command, idle, and session timeouts remain active. Detached subagent runtime settings now also cross the transient-systemd boundary.
+
+This proves that the Matebook-local deployment reaches the live approval UI.
+
+### `virby-vm` — working
+
+The original Virby failure happened before socket creation: strict eBPF was configured, but the VM had no per-UID nethelper or delegated transient-supervisor environment. The unprivileged supervisor exited its capability check immediately, while the launcher only surfaced a socket timeout.
+
+`nix-config` commit `22e79f6` (`fix(virby): deploy strict network helper`) added the UID 501 helper/socket, encrypted runtime credential provisioning, user lingering/delegation, the generated helper profile, and removal of native parent-Pi `fetch`. After rebuilding, the user confirmed that normal `pi` startup works.
+
+Two post-deployment sessions independently recorded strict live evidence:
+
+- `session-39ed0ff8-f9d8-4261-8b49-85446caa2907`;
+- `session-defeeccf-7721-4742-93a9-3042ffbce9d6`.
+
+Both report `requested/readiness/status = strict/ready/ready`, tier `helper-ebpf-proxy-required`, and `network_policy_enforced = true`. Their active preflights prove delegated attach-only cgroups, authenticated helper attachment, pinned and locked default-deny maps, exact proxy-only access, command-jail isolation, blocked direct TCP/UDP/QUIC/raw sockets, the fail-closed barrier, and cleanup.
+
+### Strict startup warning — obsolete noise
+
+Successful strict sessions still print this pre-preflight migration warning:
+
+```text
+agentsh: warning: detached supervisor is preserving required/enforced eBPF network setup (sandbox.network.enabled, sandbox.network.transparent.enabled, sandbox.network.ebpf.enabled, sandbox.network.ebpf.enforce, sandbox.network.ebpf.required); strict session startup will refuse unless the disposable cgroup/helper/proxy/command-jail/bypass preflight reports ready, and every command remains behind the fail-closed setup barrier
+```
+
+It comes from `detachedSupervisorNetworkEnforcementWarning` in `internal/cli/supervisor_session.go`. This warning was useful while detached networking was unsupported, but configured strict networking is now the expected path and the active preflight is authoritative. Do not warn merely because strict settings are being preserved. Keep explicit diagnostics for degraded best-effort behavior and surface actual launch/preflight failures; if useful, move the successful-path explanation to debug/verbose output.
+
+### TUM DOS Home Manager hosts — sudo system helper required
+
+The current `hosts/work/dos.nix` configuration explicitly disables detached-supervisor discovery, cgroups, network enforcement, and eBPF. Home Manager can install the unprivileged AgentSH/Pi client configuration, but it cannot safely own the required root service.
+
+These hosts need an explicit, trusted sudo bootstrap on each machine that:
+
+- installs a root-owned, socket-activated nethelper for the actual `theo` UID;
+- uses a host-local root-owned credential source and the protected per-UID runtime copy;
+- pins an immutable AgentSH package with a root GC root rather than executing `~/.nix-profile/bin/agentsh` as root;
+- ensures bpffs, cgroup v2, user-manager delegation/lingering, systemd credentials, and unprivileged namespaces are available; and
+- leaves ordinary `pi`/`pi-auto` sessions unprivileged and free of per-session sudo prompts.
+
+Do not run sudo from Home Manager activation. Add an explicit install/status/uninstall command, pilot it on one x86_64 and one AArch64 DOS host, and only enable strict DOS policy after the active preflight passes. Deploy the root system units separately on every host; the shared home directory is not sufficient.
+
+## Remaining work
+
+- [ ] Remove or downgrade the successful strict-startup warning without weakening fail-closed startup or failure diagnostics.
+- [ ] Implement the portable sudo-installed DOS helper and Home Manager client wiring.
+- [ ] Pilot DOS deployment on one x86_64 and one AArch64 host before fleet rollout.
+
+## Historical implementation log
+
+The entries below are retained as the implementation history from before installed Matebook acceptance. Statements such as “drafted locally” and “still incomplete” describe that earlier snapshot and are superseded by the deployment status above.
+
+Earlier landed and pushed:
 
 - `ae703757 fix(detached): warn on unsupported network enforcement` keeps `pi-auto` usable while warning about detached network enforcement mismatch.
 - `b22c4ffb docs(issues): plan detached network enforcement` records the helper/delegated-cgroup/proxy plan.
@@ -188,7 +244,7 @@ Introduce a small helper/service that:
 - owns cleanup/reaping; and
 - never runs Pi/tools or arbitrary commands.
 
-On NixOS machines, this can be installed as a system service. On home-manager-only machines with `sudo`, support a sudo-launched per-session helper path if feasible. With no helper available, do not claim full network enforcement.
+On NixOS machines, this can be installed as a system service. On Home Manager-only machines with `sudo`, use an explicit trusted bootstrap to install the same root-owned, socket-activated per-UID service; do not launch a fresh privileged helper from every Pi session or invoke sudo from Home Manager activation. With no installed helper available, do not claim full network enforcement.
 
 ### 5. Protect the helper from same-UID agent tools
 
