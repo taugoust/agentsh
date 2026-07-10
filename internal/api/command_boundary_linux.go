@@ -12,9 +12,11 @@ import (
 )
 
 func hardenSupervisorForCommandBoundary() error {
-	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
-		return fmt.Errorf("set supervisor non-dumpable: %w", err)
-	}
+	// Do not set the supervisor non-dumpable here. Go must write the child's
+	// uid_map/gid_map after clone(CLONE_NEWUSER), and Linux rejects those writes
+	// when the mapping parent made itself non-dumpable. Strict tool processes are
+	// instead isolated from the supervisor by their private PID/proc and mount
+	// namespaces; the command-jail init makes itself non-dumpable before exec.
 	return nil
 }
 
