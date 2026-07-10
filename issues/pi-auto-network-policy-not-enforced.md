@@ -1,7 +1,7 @@
 # pi-auto network policy approval is not enforced at runtime
 
 ## Status
-Open only for the direct-local Home Manager-only DOS bootstrap, clearer early-exit diagnostics, and the remaining rollout/recovery pilots. Strict local sessions work on `matebook` and `virby-vm`; the on-demand remote `pi --ssh`/`pi-auto --ssh` lifecycle is implemented, and the user has confirmed the remote SSH path works against `graham` without a persistent root installation.
+Open for the direct-local Home Manager-only DOS bootstrap, clearer early-exit diagnostics, the remaining rollout/recovery pilots, and the concrete consistency/recovery follow-ups below. Strict local sessions work on `matebook` and `virby-vm`; the on-demand remote `pi --ssh`/`pi-auto --ssh` lifecycle is implemented, and the user has confirmed the remote SSH path works against `graham` without a persistent root installation.
 
 ## Deployment status (2026-07-10)
 
@@ -67,6 +67,38 @@ The launcher should also surface the transient supervisor's real early-exit/unit
 - [ ] Add the trusted direct-local ephemeral bootstrap to DOS `pi` and `pi-auto`.
 - [ ] Replace the generic supervisor-socket timeout with the underlying early-exit diagnostic.
 - [ ] Pilot on an AArch64 DOS host and finish explicit SSH-loss/helper-crash/expiry recovery checks before broader rollout.
+- [ ] Reconcile the top-level and nested session network-enforcement reports.
+- [ ] Replace fragile SSH argv reconstruction with an encoded or stdin-delimited remote invocation.
+- [ ] Reuse the exact immutable AgentSH binary selected during helper probing for remote session/review/cleanup commands.
+- [ ] Add an explicit `pi-auto` helper-cleanup recovery operation after a finalized accept/reject.
+- [ ] Allow authenticated `pi-auto` recovery when its local SSH control socket is lost but the remote lease remains live.
+- [ ] Set transparent-network intent to false everywhere until transparent redirect is implemented and proven.
+
+## Additional concrete follow-up findings
+
+### 1. Conflicting enforcement snapshots
+
+Strict session-start output can report the authoritative top-level `network_enforcement` as `ready` with `network_policy_enforced=true` while the embedded `session.network_enforcement` still contains its initial `degraded`/`false` snapshot. This was visible in the successful ephemeral-helper smoke. Clients that read the nested object can therefore reject a genuinely ready session or report contradictory state. Session serialization should publish one refreshed evidence object, or clearly version/name the initial snapshot so it cannot be mistaken for current evidence.
+
+### 2. Fragile remote argument transport
+
+The `pi-supervised` and `pi-auto` wrappers currently use the equivalent of `ssh host sh -s -- "$@"`. OpenSSH reconstructs those arguments as a remote shell command rather than preserving the local argv boundary. Workspace paths containing whitespace or shell metacharacters can be split or interpreted before the stdin script starts. Helper paths happen to be fixed and validated, but user-selected project paths are not restricted to shell-safe characters. Send structured data over stdin, use a safely encoded payload, or quote every argument with a transport whose decoding has tests; do not rely on OpenSSH preserving argv.
+
+### 3. Immutable binary selection is not end-to-end
+
+Ephemeral probing validates and records a specific immutable `/nix/store/.../bin/agentsh`, and sudo bootstrap/release use that path. Remote session start, session stop, `pi-auto` review, and some cleanup paths still invoke plain `agentsh` through a later remote `PATH` lookup. A profile switch or path difference can select a different AgentSH revision than the helper protocol peer that was validated. For ephemeral leases, persist and use the exact selected binary for every lifecycle command. Persistent-helper mode should similarly resolve one immutable client path before session creation.
+
+### 4. No recovery operation after finalized review
+
+If remote `pi-auto accept` or `reject` succeeds but authenticated helper release subsequently fails, the wrapper correctly retains fail-closed state and its dedicated SSH login. However, the AgentSH shadow session may already be finalized, so rerunning accept/reject can fail before reaching release. Add an idempotent `pi-auto cleanup`/lease-release path that validates remembered non-secret metadata, confirms the session has no active registrations, stops any surviving supervisor, releases the helper, closes the control connection, and clears local state only after success.
+
+### 5. Lost local SSH control socket blocks recovery
+
+Ephemeral remote `pi-auto` records a short-lived local `/tmp` ControlMaster socket to keep the DOS login/user manager alive through review and resume. A local reboot, `/tmp` cleanup, or master-process loss makes current resume/review fail closed even if the authenticated root helper and remote supervisor are still alive. Add a bounded recovery flow that opens a new dedicated SSH login, validates the remembered helper socket/credential path and lease identity without exposing the credential value, rewrites the local control-path state, and only then permits resume/review. If the remote supervisor is already gone, recovery should release safely rather than create a replacement helper for stale state.
+
+### 6. Transparent-network intent is inconsistent
+
+DOS now correctly sets `transparent.enabled=false`, and live strict evidence reports `transparent_redirect=false`; the secure tier is `helper-ebpf-proxy-required`. Some managed NixOS configuration still requests transparent mode, notably `modules/nixos/agentsh-pi-host.nix` and `hosts/work/mbp/virby-guest/agentsh.nix`, even though the Linux backend does not implement transparent redirect. This creates intent/reporting drift and may accidentally select an unvalidated path when support evolves. Set it to false across deployed configurations until a real redirect implementation has its own acceptance tests and evidence tier.
 
 ## Historical implementation log
 
