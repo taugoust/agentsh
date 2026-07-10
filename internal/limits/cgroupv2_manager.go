@@ -6,8 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -80,7 +82,9 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 			return nil, fmt.Errorf("mkdir cgroup (mode=%s, dir=%s): %w", m.probe.Mode, dir, err)
 		}
 		if err := m.fs.WriteFile(filepath.Join(dir, "cgroup.procs"), []byte(strconv.Itoa(pid)), 0o644); err != nil {
-			return nil, fmt.Errorf("attach pid (mode=%s, dir=%s): %w", m.probe.Mode, dir, err)
+			detail := m.attachFailureDetail(parent, dir, pid)
+			_ = m.fs.Remove(dir)
+			return nil, fmt.Errorf("attach pid (mode=%s, dir=%s, %s): %w", m.probe.Mode, dir, detail, err)
 		}
 		return &CgroupV2{Path: dir}, nil
 	}
@@ -146,6 +150,30 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 }
 
 // parentDir returns the directory under which per-command cgroups are created.
+func (m *CgroupManager) attachFailureDetail(parent, target string, pid int) string {
+	readCgroupFile := func(dir, name string) string {
+		data, err := m.fs.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return "error:" + err.Error()
+		}
+		return strings.TrimSpace(string(data))
+	}
+	procPath := filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(pid), "cgroup")
+	procCgroup := ""
+	if data, err := os.ReadFile(procPath); err != nil {
+		procCgroup = "error:" + err.Error()
+	} else {
+		procCgroup = strings.Join(strings.Fields(string(data)), ",")
+	}
+	return fmt.Sprintf("pid_cgroup=%q parent_type=%q parent_subtree=%q target_type=%q target_subtree=%q",
+		procCgroup,
+		readCgroupFile(parent, "cgroup.type"),
+		readCgroupFile(parent, "cgroup.subtree_control"),
+		readCgroupFile(target, "cgroup.type"),
+		readCgroupFile(target, "cgroup.subtree_control"),
+	)
+}
+
 func (m *CgroupManager) parentDir() string {
 	if m.probe.Mode == ModeTopLevel {
 		return m.probe.SliceDir
