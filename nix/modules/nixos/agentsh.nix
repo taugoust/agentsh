@@ -19,7 +19,8 @@ let
 
   yaml = pkgs.formats.yaml { };
 
-  safeAbsolutePath = path:
+  safeAbsolutePath =
+    path:
     lib.hasPrefix "/" path
     && builtins.match "^[A-Za-z0-9_./+@-]+$" path != null
     && !lib.hasInfix "/../" path
@@ -27,33 +28,48 @@ let
     && !lib.hasInfix "/./" path
     && !lib.hasSuffix "/." path;
   nethelperRuntimeDir = instance: "/run/agentsh/nethelper/${toString instance.uid}";
-  nethelperSocketPath = instance:
-    if instance.socketPath != null then instance.socketPath else "${nethelperRuntimeDir instance}/nethelper.sock";
+  nethelperSocketPath =
+    instance:
+    if instance.socketPath != null then
+      instance.socketPath
+    else
+      "${nethelperRuntimeDir instance}/nethelper.sock";
   nethelperCredentialPath = instance: "${nethelperRuntimeDir instance}/instance-credential";
-  nethelperPinRoot = instance:
-    if instance.pinRoot != null then instance.pinRoot else "/sys/fs/bpf/agentsh/nethelper/${toString instance.uid}";
-  nethelperCapabilities = instance:
-    [ "CAP_BPF" "CAP_NET_ADMIN" "CAP_PERFMON" ]
+  nethelperPinRoot =
+    instance:
+    if instance.pinRoot != null then
+      instance.pinRoot
+    else
+      "/sys/fs/bpf/agentsh/nethelper/${toString instance.uid}";
+  nethelperCapabilities =
+    instance:
+    [
+      "CAP_BPF"
+      "CAP_NET_ADMIN"
+      "CAP_PERFMON"
+    ]
     ++ lib.optional instance.allowCompatSysAdmin "CAP_SYS_ADMIN";
 
-  nethelperProfile = lib.concatStringsSep "\n" (lib.mapAttrsToList (
-    name: instance: ''
+  nethelperProfile = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (name: instance: ''
       if [ "$(${pkgs.coreutils}/bin/id -u)" = ${lib.escapeShellArg (toString instance.uid)} ]; then
         export AGENTSH_DETACHED_SUPERVISOR_SYSTEMD_RUN=1
         export AGENTSH_NETHELPER_SOCKET=${lib.escapeShellArg (nethelperSocketPath instance)}
         export AGENTSH_NETHELPER_CREDENTIAL_FILE=${lib.escapeShellArg (nethelperCredentialPath instance)}
       fi
-    ''
-  ) cfg.nethelper.instances);
+    '') cfg.nethelper.instances
+  );
 
   nethelperProvisionServices = mapAttrs' (
     name: instance:
     nameValuePair "agentsh-nethelper-provision-${name}" {
       description = "Provision protected AgentSH nethelper runtime for ${instance.user}";
-      before = [ "agentsh-nethelper-${name}.socket" "agentsh-nethelper-${name}.service" ];
-      after = [ "sys-fs-bpf.mount" ];
-      requires = [ "sys-fs-bpf.mount" ];
+      before = [
+        "agentsh-nethelper-${name}.socket"
+        "agentsh-nethelper-${name}.service"
+      ];
       requiredBy = [ "agentsh-nethelper-${name}.socket" ];
+      unitConfig.AssertPathIsMountPoint = "/sys/fs/bpf";
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
@@ -65,7 +81,10 @@ let
         PrivateTmp = true;
         ProtectHome = true;
         ProtectSystem = "strict";
-        ReadWritePaths = [ "/run" "/sys/fs/bpf" ];
+        ReadWritePaths = [
+          "/run"
+          "/sys/fs/bpf"
+        ];
         RestrictAddressFamilies = [ "AF_UNIX" ];
         RestrictNamespaces = true;
         UMask = "0077";
@@ -106,8 +125,14 @@ let
     name: instance:
     nameValuePair "agentsh-nethelper-${name}" {
       description = "AgentSH root network helper for ${instance.user}";
-      requires = [ "agentsh-nethelper-${name}.socket" "agentsh-nethelper-provision-${name}.service" ];
-      after = [ "agentsh-nethelper-${name}.socket" "agentsh-nethelper-provision-${name}.service" "sys-fs-bpf.mount" ];
+      requires = [
+        "agentsh-nethelper-${name}.socket"
+        "agentsh-nethelper-provision-${name}.service"
+      ];
+      after = [
+        "agentsh-nethelper-${name}.socket"
+        "agentsh-nethelper-provision-${name}.service"
+      ];
       unitConfig = {
         AssertPathIsMountPoint = "/sys/fs/bpf";
       };
@@ -144,7 +169,10 @@ let
         ProtectKernelTunables = true;
         ProcSubset = "all";
         ProtectSystem = "strict";
-        ReadOnlyPaths = [ "/run" "/sys/fs/cgroup" ];
+        ReadOnlyPaths = [
+          "/run"
+          "/sys/fs/cgroup"
+        ];
         ReadWritePaths = [ (nethelperPinRoot instance) ];
         RestrictAddressFamilies = [ "AF_UNIX" ];
         SocketBindDeny = "any";
@@ -156,7 +184,12 @@ let
         MemoryDenyWriteExecute = true;
         RemoveIPC = true;
         SystemCallArchitectures = "native";
-        SystemCallFilter = [ "@system-service" "bpf" "perf_event_open" "pidfd_open" ];
+        SystemCallFilter = [
+          "@system-service"
+          "bpf"
+          "perf_event_open"
+          "pidfd_open"
+        ];
         SystemCallErrorNumber = "EPERM";
         UMask = "0077";
       };
@@ -714,37 +747,41 @@ in
           the detached preflight must prove the command boundary and bypass
           checks on the deployed host.
         '';
-        type = types.attrsOf (types.submodule ({ name, ... }: {
-          options = {
-            user = mkOption {
-              type = types.str;
-              description = "Unix user allowed to connect to this helper instance.";
-            };
-            uid = mkOption {
-              type = types.int;
-              description = "Numeric Unix UID verified against SO_PEERCRED.";
-            };
-            credentialFile = mkOption {
-              type = types.str;
-              description = "Root-readable source file containing the helper-instance credential (for example, /run/secrets/agentsh-nethelper).";
-            };
-            socketPath = mkOption {
-              type = types.nullOr types.str;
-              default = null;
-              description = "Absolute helper socket path below /run/agentsh/nethelper/<uid>; defaults to nethelper.sock in that protected runtime directory.";
-            };
-            pinRoot = mkOption {
-              type = types.nullOr types.str;
-              default = null;
-              description = "Protected bpffs pin root at or below /sys/fs/bpf/agentsh/nethelper/<uid>.";
-            };
-            allowCompatSysAdmin = mkOption {
-              type = types.bool;
-              default = false;
-              description = "Add CAP_SYS_ADMIN for older kernels that cannot load the fixed programs with CAP_BPF/CAP_NET_ADMIN/CAP_PERFMON alone.";
-            };
-          };
-        }));
+        type = types.attrsOf (
+          types.submodule (
+            { name, ... }: {
+              options = {
+                user = mkOption {
+                  type = types.str;
+                  description = "Unix user allowed to connect to this helper instance.";
+                };
+                uid = mkOption {
+                  type = types.int;
+                  description = "Numeric Unix UID verified against SO_PEERCRED.";
+                };
+                credentialFile = mkOption {
+                  type = types.str;
+                  description = "Root-readable source file containing the helper-instance credential (for example, /run/secrets/agentsh-nethelper).";
+                };
+                socketPath = mkOption {
+                  type = types.nullOr types.str;
+                  default = null;
+                  description = "Absolute helper socket path below /run/agentsh/nethelper/<uid>; defaults to nethelper.sock in that protected runtime directory.";
+                };
+                pinRoot = mkOption {
+                  type = types.nullOr types.str;
+                  default = null;
+                  description = "Protected bpffs pin root at or below /sys/fs/bpf/agentsh/nethelper/<uid>.";
+                };
+                allowCompatSysAdmin = mkOption {
+                  type = types.bool;
+                  default = false;
+                  description = "Add CAP_SYS_ADMIN for older kernels that cannot load the fixed programs with CAP_BPF/CAP_NET_ADMIN/CAP_PERFMON alone.";
+                };
+              };
+            }
+          )
+        );
       };
     };
 
@@ -781,42 +818,52 @@ in
         message = "services.agentsh.nethelper.instances must contain at least one per-user helper when nethelper.enable is true.";
       }
       {
-        assertion = !cfg.nethelper.enable || (let
-          instances = lib.attrValues cfg.nethelper.instances;
-          uids = map (instance: instance.uid) instances;
-          users = map (instance: instance.user) instances;
-          credentialFiles = map (instance: instance.credentialFile) instances;
-        in
-          builtins.length uids == builtins.length (lib.unique uids)
-          && builtins.length users == builtins.length (lib.unique users)
-          && builtins.length credentialFiles == builtins.length (lib.unique credentialFiles));
+        assertion =
+          !cfg.nethelper.enable
+          || (
+            let
+              instances = lib.attrValues cfg.nethelper.instances;
+              uids = map (instance: instance.uid) instances;
+              users = map (instance: instance.user) instances;
+              credentialFiles = map (instance: instance.credentialFile) instances;
+            in
+            builtins.length uids == builtins.length (lib.unique uids)
+            && builtins.length users == builtins.length (lib.unique users)
+            && builtins.length credentialFiles == builtins.length (lib.unique credentialFiles)
+          );
         message = "services.agentsh.nethelper.instances must use unique users, numeric uids, and credential source paths.";
       }
-    ] ++ lib.optionals cfg.nethelper.enable (lib.mapAttrsToList (name: instance: {
-      assertion =
-        builtins.match "^[A-Za-z0-9_-]+$" name != null
-        && instance.uid >= 0
-        && builtins.hasAttr instance.user config.users.users
-        && config.users.users.${instance.user}.uid != null
-        && config.users.users.${instance.user}.uid == instance.uid
-        && safeAbsolutePath instance.credentialFile
-        && !lib.hasPrefix builtins.storeDir instance.credentialFile
-        && safeAbsolutePath (nethelperSocketPath instance)
-        && lib.hasPrefix "${nethelperRuntimeDir instance}/" (nethelperSocketPath instance)
-        && safeAbsolutePath (nethelperPinRoot instance)
-        && (
-          nethelperPinRoot instance == "/sys/fs/bpf/agentsh/nethelper/${toString instance.uid}"
-          || lib.hasPrefix "/sys/fs/bpf/agentsh/nethelper/${toString instance.uid}/" (nethelperPinRoot instance)
-        );
-      message = "Invalid services.agentsh.nethelper.instances.${name}: use a systemd-safe key, an existing user with an explicit matching uid, a socket below the per-uid runtime directory, a pin root below the per-uid AgentSH bpffs root, and an absolute traversal-free credential path outside the Nix store.";
-    }) cfg.nethelper.instances);
+    ]
+    ++ lib.optionals cfg.nethelper.enable (
+      lib.mapAttrsToList (name: instance: {
+        assertion =
+          builtins.match "^[A-Za-z0-9_-]+$" name != null
+          && instance.uid >= 0
+          && builtins.hasAttr instance.user config.users.users
+          && config.users.users.${instance.user}.uid != null
+          && config.users.users.${instance.user}.uid == instance.uid
+          && safeAbsolutePath instance.credentialFile
+          && !lib.hasPrefix builtins.storeDir instance.credentialFile
+          && safeAbsolutePath (nethelperSocketPath instance)
+          && lib.hasPrefix "${nethelperRuntimeDir instance}/" (nethelperSocketPath instance)
+          && safeAbsolutePath (nethelperPinRoot instance)
+          && (
+            nethelperPinRoot instance == "/sys/fs/bpf/agentsh/nethelper/${toString instance.uid}"
+            || lib.hasPrefix "/sys/fs/bpf/agentsh/nethelper/${toString instance.uid}/" (
+              nethelperPinRoot instance
+            )
+          );
+        message = "Invalid services.agentsh.nethelper.instances.${name}: use a systemd-safe key, an existing user with an explicit matching uid, a socket below the per-uid runtime directory, a pin root below the per-uid AgentSH bpffs root, and an absolute traversal-free credential path outside the Nix store.";
+      }) cfg.nethelper.instances
+    );
 
     environment.systemPackages = [ cfg.package ];
 
     environment.etc = {
       "agentsh/config.yml".source = configFile;
       "agentsh/policies".source = cfg.policies.source;
-    } // optionalAttrs cfg.nethelper.enable {
+    }
+    // optionalAttrs cfg.nethelper.enable {
       "profile.d/agentsh-nethelper.sh" = {
         mode = "0644";
         text = ''
@@ -852,19 +899,10 @@ in
           TasksAccounting = true;
         };
       };
-    } // optionalAttrs cfg.nethelper.enable (nethelperProvisionServices // nethelperServices);
+    }
+    // optionalAttrs cfg.nethelper.enable (nethelperProvisionServices // nethelperServices);
 
     systemd.sockets = mkIf cfg.nethelper.enable nethelperSockets;
 
-    systemd.mounts = lib.optionals cfg.nethelper.enable [
-      {
-        description = "BPF filesystem for AgentSH pinned network gates";
-        what = "bpffs";
-        where = "/sys/fs/bpf";
-        type = "bpf";
-        options = "nosuid,nodev,noexec,mode=0700";
-        wantedBy = [ "multi-user.target" ];
-      }
-    ];
   };
 }
