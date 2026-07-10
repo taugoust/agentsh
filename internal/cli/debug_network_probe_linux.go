@@ -20,21 +20,21 @@ import (
 // trusted supervisor. It contains observations, paths, and endpoint IDs, never
 // helper credentials or detached event tokens.
 type networkRuntimeProbeResult struct {
-	MarkerWritten               bool `json:"marker_written"`
-	ProxyConnectProven          bool `json:"proxy_connect_proven"`
-	LocalDirectTCPBlocked       bool `json:"local_direct_tcp_blocked"`
-	UDPBlocked                  bool `json:"udp_blocked"`
-	RawSocketsBlocked           bool `json:"raw_sockets_blocked"`
-	PrivateProcProven           bool `json:"private_proc_proven"`
-	CgroupFSHidden              bool `json:"cgroupfs_hidden"`
-	HelperSocketHidden          bool `json:"helper_socket_hidden"`
-	CredentialSourceHidden      bool `json:"credential_source_hidden"`
-	ControlPathsHidden          bool `json:"control_paths_hidden"`
-	ReservedEnvScrubbed         bool `json:"reserved_env_scrubbed"`
-	InheritedDescriptorsClosed bool `json:"inherited_descriptors_closed"`
-	NoNewPrivileges             bool `json:"no_new_privs"`
-	CapabilitiesDropped         bool `json:"capabilities_dropped"`
-	Detail                      string `json:"detail,omitempty"`
+	MarkerWritten              bool   `json:"marker_written"`
+	ProxyConnectProven         bool   `json:"proxy_connect_proven"`
+	LocalDirectTCPBlocked      bool   `json:"local_direct_tcp_blocked"`
+	UDPBlocked                 bool   `json:"udp_blocked"`
+	RawSocketsBlocked          bool   `json:"raw_sockets_blocked"`
+	PrivateProcProven          bool   `json:"private_proc_proven"`
+	CgroupFSHidden             bool   `json:"cgroupfs_hidden"`
+	HelperSocketHidden         bool   `json:"helper_socket_hidden"`
+	CredentialSourceHidden     bool   `json:"credential_source_hidden"`
+	ControlPathsHidden         bool   `json:"control_paths_hidden"`
+	ReservedEnvScrubbed        bool   `json:"reserved_env_scrubbed"`
+	InheritedDescriptorsClosed bool   `json:"inherited_descriptors_closed"`
+	NoNewPrivileges            bool   `json:"no_new_privs"`
+	CapabilitiesDropped        bool   `json:"capabilities_dropped"`
+	Detail                     string `json:"detail,omitempty"`
 }
 
 func newDebugNetworkRuntimeProbeCmd() *cobra.Command {
@@ -212,7 +212,7 @@ func rawSocketBlocked() bool {
 			_ = syscall.Close(fd)
 			return false
 		}
-		return gatePermissionDenied(err)
+		return rawSocketCreationDenied(err)
 	}
 	// AF_PACKET (17) and IPPROTO_ICMPV6 (58) are stable Linux UAPI values.
 	// Protocol zero is enough to prove AF_PACKET creation is denied; the strict
@@ -220,6 +220,13 @@ func rawSocketBlocked() bool {
 	return blocked(syscall.AF_INET, syscall.IPPROTO_ICMP) &&
 		blocked(syscall.AF_INET6, 58) &&
 		blocked(17, 0)
+}
+
+func rawSocketCreationDenied(err error) bool {
+	// Fixed proxy-required socket tuple/family rules deliberately use the
+	// socket-filter errno EAFNOSUPPORT. Cgroup connect/sendmsg denials use
+	// EPERM/EACCES, so keep this broader interpretation local to socket(2).
+	return gatePermissionDenied(err) || errors.Is(err, syscall.EAFNOSUPPORT)
 }
 
 func privateProcObserved(supervisorPID int) bool {

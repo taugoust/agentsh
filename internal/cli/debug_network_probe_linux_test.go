@@ -18,3 +18,16 @@ func TestGatePermissionDeniedRequiresKernelDenial(t *testing.T) {
 		}
 	}
 }
+
+func TestRawSocketCreationDeniedAcceptsFixedSeccompErrno(t *testing.T) {
+	for _, err := range []error{syscall.EPERM, syscall.EACCES, syscall.EAFNOSUPPORT} {
+		if !rawSocketCreationDenied(err) {
+			t.Fatalf("raw socket denial %v was not accepted", err)
+		}
+	}
+	for _, err := range []error{nil, syscall.EPROTONOSUPPORT, syscall.EINVAL, errors.New("unrelated")} {
+		if rawSocketCreationDenied(err) {
+			t.Fatalf("unrelated error %v counted as raw socket denial evidence", err)
+		}
+	}
+}
