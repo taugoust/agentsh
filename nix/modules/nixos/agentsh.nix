@@ -781,7 +781,7 @@ in
         message = "services.agentsh.nethelper.instances must contain at least one per-user helper when nethelper.enable is true.";
       }
       {
-        assertion = !cfg.nethelper.enable || let
+        assertion = !cfg.nethelper.enable || (let
           instances = lib.attrValues cfg.nethelper.instances;
           uids = map (instance: instance.uid) instances;
           users = map (instance: instance.user) instances;
@@ -789,7 +789,7 @@ in
         in
           builtins.length uids == builtins.length (lib.unique uids)
           && builtins.length users == builtins.length (lib.unique users)
-          && builtins.length credentialFiles == builtins.length (lib.unique credentialFiles);
+          && builtins.length credentialFiles == builtins.length (lib.unique credentialFiles));
         message = "services.agentsh.nethelper.instances must use unique users, numeric uids, and credential source paths.";
       }
     ] ++ lib.optionals cfg.nethelper.enable (lib.mapAttrsToList (name: instance: {
