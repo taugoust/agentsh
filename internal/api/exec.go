@@ -229,20 +229,22 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 	}
 	cmd.Dir = workdir
 
-	// Determine process start mode:
-	// - ptrace tracer active: start normally, tracer attaches via PTRACE_SEIZE
-	// - cgroup hook without tracer: start stopped via PTRACE_TRACEME
-	// - no interception: start normally
-	if tracer != nil {
-		cmd.SysProcAttr = getSysProcAttr()
-	} else if hook != nil {
-		cmd.SysProcAttr = getSysProcAttrStopped()
-	} else {
-		cmd.SysProcAttr = getSysProcAttr()
-	}
 	var commandBoundary *types.LinuxCommandJailRequirements
 	if extra != nil {
 		commandBoundary = extra.commandBoundary
+	}
+	// Determine process start mode:
+	// - ptrace tracer active: start normally, tracer attaches via PTRACE_SEIZE
+	// - ordinary cgroup hook without tracer: stop at exec via PTRACE_TRACEME
+	// - strict command jail: start the trusted wrapper normally; its ACK/READY/GO
+	//   protocol blocks requested user code until the hook and jail both succeed
+	// - no interception: start normally
+	if tracer != nil {
+		cmd.SysProcAttr = getSysProcAttr()
+	} else if hook != nil && !commandBoundaryRequired(extra) {
+		cmd.SysProcAttr = getSysProcAttrStopped()
+	} else {
+		cmd.SysProcAttr = getSysProcAttr()
 	}
 	if boundaryErr := configureCommandBoundaryProcess(cmd.SysProcAttr, commandBoundary); boundaryErr != nil {
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, boundaryErr
@@ -574,10 +576,15 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if hook != nil {
-			// Seccomp stopped-start: enforce before detaching PTRACE_TRACEME.
-			releaseSteps := []preExecReleaseStep{{name: "resume traced process", run: func() error {
-				return resumeTracedProcess(cmd.Process.Pid)
-			}}}
+			// Ordinary commands are held at a ptrace exec stop. A strict command
+			// jail instead runs only the trusted wrapper, which cannot exec the
+			// requested command until its ACK/READY/GO barrier is released.
+			releaseSteps := make([]preExecReleaseStep, 0, 3)
+			if !commandBoundaryRequired(extra) {
+				releaseSteps = append(releaseSteps, preExecReleaseStep{name: "resume traced process", run: func() error {
+					return resumeTracedProcess(cmd.Process.Pid)
+				}})
+			}
 			releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
 			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
 				_ = killProcess(cmd.Process.Pid)

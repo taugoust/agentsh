@@ -280,17 +280,18 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 	}
 	cmd.Dir = workdir
 
-	// Determine process start mode (same as non-streaming path)
-	if tracer != nil {
-		cmd.SysProcAttr = getSysProcAttr()
-	} else if hook != nil {
-		cmd.SysProcAttr = getSysProcAttrStopped()
-	} else {
-		cmd.SysProcAttr = getSysProcAttr()
-	}
 	var commandBoundary *types.LinuxCommandJailRequirements
 	if extra != nil {
 		commandBoundary = extra.commandBoundary
+	}
+	// Match the non-streaming path: ordinary hooks use a ptrace exec stop,
+	// while a strict jail runs only its trusted wrapper before ACK/READY/GO.
+	if tracer != nil {
+		cmd.SysProcAttr = getSysProcAttr()
+	} else if hook != nil && !commandBoundaryRequired(extra) {
+		cmd.SysProcAttr = getSysProcAttrStopped()
+	} else {
+		cmd.SysProcAttr = getSysProcAttr()
 	}
 	if boundaryErr := configureCommandBoundaryProcess(cmd.SysProcAttr, commandBoundary); boundaryErr != nil {
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, boundaryErr
@@ -611,10 +612,12 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if hook != nil {
-			// Seccomp stopped-start: enforce before detaching PTRACE_TRACEME.
-			releaseSteps := []preExecReleaseStep{{name: "resume traced process", run: func() error {
-				return resumeTracedProcess(cmd.Process.Pid)
-			}}}
+			releaseSteps := make([]preExecReleaseStep, 0, 3)
+			if !commandBoundaryRequired(extra) {
+				releaseSteps = append(releaseSteps, preExecReleaseStep{name: "resume traced process", run: func() error {
+					return resumeTracedProcess(cmd.Process.Pid)
+				}})
+			}
 			releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
 			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
 				_ = killProcess(cmd.Process.Pid)
