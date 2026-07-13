@@ -232,6 +232,10 @@ func detachedSupervisorPendingNetworkEnforcement(cfg *config.Config) *detached.N
 }
 
 var detachedSupervisorRuntimeEnvKeys = []string{
+	// This is a protected path, not credential material. Child Pi processes need
+	// the same lifecycle-local auth/config root as the trusted parent so Pi's
+	// auth-file lock can coordinate OAuth refreshes across concurrent children.
+	"PI_CODING_AGENT_DIR",
 	"AGENTSH_SUBAGENT_COMMAND",
 	"AGENTSH_SUBAGENT_ARGS",
 	"AGENTSH_SUBAGENT_TASK_MODE",

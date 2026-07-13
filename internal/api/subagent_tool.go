@@ -375,7 +375,7 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		stream.Emit("subagent_child_start", map[string]any{"label": label, "subagent_id": subagentID, "task": spec.Task, "cwd": virtualCwd, "model": spec.Model, "tools": spec.Tools})
 	}
 
-	childAgentDir, err := prepareSubagentAgentDir(s, subagentID)
+	childAgentDir, childSessionDir, err := prepareSubagentPiDirs(s, subagentID)
 	if err != nil {
 		res.ExitCode = 1
 		res.StopReason = "error"
@@ -383,7 +383,6 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		res.DurationMS = time.Since(started).Milliseconds()
 		return res
 	}
-	childSessionDir := filepath.Join(childAgentDir, "sessions")
 
 	var promptFile string
 	var promptDir string
@@ -589,46 +588,31 @@ func subagentBaseAgentDir(s *session.Session) string {
 	return filepath.Join(os.TempDir(), "agentsh-pi-agent")
 }
 
-func prepareSubagentAgentDir(s *session.Session, subagentID string) (string, error) {
-	base := subagentBaseAgentDir(s)
-	childAgentDir := filepath.Join(base, "subagents", subagentID, "agent")
-	childSessionDir := filepath.Join(childAgentDir, "sessions")
+func prepareSubagentPiDirs(s *session.Session, subagentID string) (agentDir string, sessionDir string, err error) {
+	base := filepath.Clean(subagentBaseAgentDir(s))
+	if !filepath.IsAbs(base) {
+		return "", "", errors.New("subagent Pi agent directory must be absolute")
+	}
+	info, statErr := os.Stat(base)
+	if statErr != nil {
+		return "", "", fmt.Errorf("inspect subagent Pi agent directory: %w", statErr)
+	}
+	if !info.IsDir() {
+		return "", "", errors.New("subagent Pi agent directory is not a directory")
+	}
+
+	// Share the lifecycle-local config/auth root with trusted child Pi processes.
+	// In particular, all Pi instances must address auth.json through the same
+	// pathname so proper-lockfile serializes rotating OAuth refreshes. Session
+	// state remains child-specific and --no-session prevents history persistence.
+	childStateDir := filepath.Join(base, "subagents", subagentID)
+	childSessionDir := filepath.Join(childStateDir, "sessions")
 	if err := os.MkdirAll(childSessionDir, 0o700); err != nil {
-		return "", fmt.Errorf("create subagent Pi state: %w", err)
+		return "", "", fmt.Errorf("create subagent Pi state: %w", err)
 	}
-	_ = os.Chmod(childAgentDir, 0o700)
+	_ = os.Chmod(childStateDir, 0o700)
 	_ = os.Chmod(childSessionDir, 0o700)
-
-	for _, name := range []string{"settings.json", "models.json", "auth.json", "oauth.json", "AGENTS.md", "SYSTEM.md", "APPEND_SYSTEM.md"} {
-		src := filepath.Join(base, name)
-		dst := filepath.Join(childAgentDir, name)
-		info, err := os.Stat(src)
-		if err != nil || !info.Mode().IsRegular() {
-			continue
-		}
-		if err := copyRegularFile(dst, src, info.Mode().Perm()); err != nil {
-			return "", fmt.Errorf("copy Pi config %s: %w", name, err)
-		}
-	}
-	return childAgentDir, nil
-}
-
-func copyRegularFile(dst, src string, mode os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	_, copyErr := io.Copy(out, in)
-	closeErr := out.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	return closeErr
+	return base, childSessionDir, nil
 }
 
 func writeSubagentSystemPrompt(s *session.Session, subagentID, prompt string) (filePath string, dir string, err error) {

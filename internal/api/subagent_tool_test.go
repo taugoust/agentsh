@@ -1,8 +1,12 @@
 package api
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/agentsh/agentsh/internal/session"
 )
 
 func TestValidateSpawnSubagentRequestModes(t *testing.T) {
@@ -98,6 +102,49 @@ func TestAppendSubagentTaskArgsTextRuntimeStaysGeneric(t *testing.T) {
 	want := []string{"--flag", "inspect README"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %#v, want %#v", got, want)
+	}
+}
+
+func TestPrepareSubagentPiDirsSharesAuthRootAndIsolatesSessions(t *testing.T) {
+	base := t.TempDir()
+	if err := os.WriteFile(filepath.Join(base, "auth.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PI_CODING_AGENT_DIR", base)
+	s := &session.Session{}
+
+	agentDir1, sessionDir1, err := prepareSubagentPiDirs(s, "subagent-one")
+	if err != nil {
+		t.Fatalf("prepare first child dirs: %v", err)
+	}
+	agentDir2, sessionDir2, err := prepareSubagentPiDirs(s, "subagent-two")
+	if err != nil {
+		t.Fatalf("prepare second child dirs: %v", err)
+	}
+	if agentDir1 != base || agentDir2 != base {
+		t.Fatalf("children must share lifecycle auth/config root: %q, %q; want %q", agentDir1, agentDir2, base)
+	}
+	if sessionDir1 == sessionDir2 {
+		t.Fatalf("children unexpectedly share session state: %q", sessionDir1)
+	}
+	for _, dir := range []string{sessionDir1, sessionDir2} {
+		info, statErr := os.Stat(dir)
+		if statErr != nil {
+			t.Fatalf("stat child session dir: %v", statErr)
+		}
+		if got := info.Mode().Perm(); got != 0o700 {
+			t.Fatalf("child session dir mode = %o, want 700", got)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(base, "subagents", "subagent-one", "agent", "auth.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("auth credential was copied into a child-specific path: %v", statErr)
+	}
+}
+
+func TestPrepareSubagentPiDirsRejectsRelativeAgentDir(t *testing.T) {
+	t.Setenv("PI_CODING_AGENT_DIR", "relative/pi-agent")
+	if _, _, err := prepareSubagentPiDirs(&session.Session{}, "subagent-one"); err == nil {
+		t.Fatal("expected relative Pi agent directory to be rejected")
 	}
 }
 
