@@ -166,9 +166,9 @@ func ApplyFallback(dec Decision, canBlock bool) Decision {
 
 	// No fallback specified, return audit as safe default
 	return Decision{
-		Action:  DecisionAudit,
-		Rule:    dec.Rule,
-		Message: dec.Message + " (platform cannot enforce)",
+		Action:   DecisionAudit,
+		Rule:     dec.Rule,
+		Message:  dec.Message + " (platform cannot enforce)",
 		Fallback: dec.Fallback,
 	}
 }

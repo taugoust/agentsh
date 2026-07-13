@@ -64,9 +64,9 @@ func (e *BrokerEventEmitter) EmitNetworkACLEvent(ctx context.Context, event Netw
 			"rule_source":  event.RuleSource,
 			"user_action":  event.UserAction,
 		},
-		Remote:   event.Target,
-		Domain:   event.Target,
-		Path:     event.ProcessPath,
+		Remote: event.Target,
+		Domain: event.Target,
+		Path:   event.ProcessPath,
 	}
 
 	// Set decision in policy if appropriate

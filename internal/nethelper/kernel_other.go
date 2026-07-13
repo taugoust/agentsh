@@ -7,9 +7,9 @@ package nethelper
 type KernelBackendOptions struct {
 	PinRoot               string
 	TrustBoundaryComplete bool
-	PinOwnerUID            uint32
-	TargetUID              uint32
-	EnforceTargetUID       bool
+	PinOwnerUID           uint32
+	TargetUID             uint32
+	EnforceTargetUID      bool
 }
 
 // DefaultBPFFSPinRoot is empty off Linux because bpffs/cgroup eBPF is unavailable.

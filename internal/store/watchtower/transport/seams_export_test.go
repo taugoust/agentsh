@@ -276,6 +276,7 @@ func LogGoawayMessageForTest(t *Transport) bool {
 // integration tests can assert the round-22 lifecycle (cancel + nil
 // out the field) without touching unexported state.
 func TeardownRecvForTest(t *Transport) { t.teardownRecv() }
+
 // so external tests can exercise the drain path without driving the
 // full Run loop. Used by the roborev #6143 regression test that
 // verifies post-sentinel buffered records are NOT flushed during

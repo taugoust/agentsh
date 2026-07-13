@@ -90,4 +90,3 @@ func scopeOptionKeys(options []map[string]any) map[string]bool {
 	}
 	return keys
 }
-

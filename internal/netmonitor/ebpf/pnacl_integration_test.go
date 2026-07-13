@@ -441,7 +441,7 @@ func TestIntegration_PNACLMonitor_AllowOnceThenApprove(t *testing.T) {
 
 	mu.Lock()
 	t.Logf("Allow count: %d, Approval count: %d", allowCount, approvalCount)
-	assert.Equal(t, 2, allowCount) // Both allowed
+	assert.Equal(t, 2, allowCount)    // Both allowed
 	assert.Equal(t, 1, approvalCount) // Second required approval
 	mu.Unlock()
 }

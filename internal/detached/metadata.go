@@ -55,9 +55,9 @@ const (
 	NetworkEnforcementRequestBestEffort = types.NetworkEnforcementRequestBestEffort
 	NetworkEnforcementRequestStrict     = types.NetworkEnforcementRequestStrict
 
-	NetworkEnforcementTierNone                   = types.NetworkEnforcementTierNone
-	NetworkEnforcementTierCgroupDelegated        = types.NetworkEnforcementTierCgroupDelegated
-	NetworkEnforcementTierHelperEBPFGate         = types.NetworkEnforcementTierHelperEBPFGate
+	NetworkEnforcementTierNone                    = types.NetworkEnforcementTierNone
+	NetworkEnforcementTierCgroupDelegated         = types.NetworkEnforcementTierCgroupDelegated
+	NetworkEnforcementTierHelperEBPFGate          = types.NetworkEnforcementTierHelperEBPFGate
 	NetworkEnforcementTierHelperEBPFProxy         = types.NetworkEnforcementTierHelperEBPFProxy
 	NetworkEnforcementTierHelperEBPFProxyRequired = types.NetworkEnforcementTierHelperEBPFProxyRequired
 )

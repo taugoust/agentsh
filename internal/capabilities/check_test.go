@@ -494,12 +494,12 @@ func TestCheckAll_ErrorFormat(t *testing.T) {
 // Table-driven test for single feature checks
 func TestCheckAll_SingleFeatureChecks(t *testing.T) {
 	tests := []struct {
-		name          string
-		setupMocks    func()
-		config        *config.Config
-		wantErr       bool
-		errContains   []string
-		cleanupMocks  func()
+		name         string
+		setupMocks   func()
+		config       *config.Config
+		wantErr      bool
+		errContains  []string
+		cleanupMocks func()
 	}{
 		{
 			name: "unix_sockets enabled, seccomp available",

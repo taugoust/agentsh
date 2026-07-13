@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/agentsh/agentsh/internal/platform/darwin/sbpl"
 	"github.com/agentsh/agentsh/internal/platform/darwin/sandboxext"
+	"github.com/agentsh/agentsh/internal/platform/darwin/sbpl"
 	"github.com/agentsh/agentsh/internal/policy"
 )
 

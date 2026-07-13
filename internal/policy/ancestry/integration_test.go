@@ -82,11 +82,11 @@ func TestProcessTreeIntegration_WithInfoProvider(t *testing.T) {
 		InfoProvider: func(pid int) (*ProcessInfo, error) {
 			infoCalled = true
 			return &ProcessInfo{
-				PID:      pid,
-				PPID:     1,
-				Comm:     "test_command",
-				ExePath:  "/usr/bin/test",
-				Cmdline:  []string{"/usr/bin/test", "--flag"},
+				PID:     pid,
+				PPID:    1,
+				Comm:    "test_command",
+				ExePath: "/usr/bin/test",
+				Cmdline: []string{"/usr/bin/test", "--flag"},
 			}, nil
 		},
 	}

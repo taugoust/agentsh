@@ -109,8 +109,8 @@ func (m *SandboxManager) Create(config platform.SandboxConfig) (platform.Sandbox
 	}
 
 	sandbox := &Sandbox{
-		id:            id,
-		config:        config,
+		id:             id,
+		config:         config,
 		isolationLevel: m.isolationLevel,
 	}
 

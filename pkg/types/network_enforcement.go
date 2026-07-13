@@ -75,7 +75,7 @@ type NetworkPreflightEvidence struct {
 	LocalDirectTCPBlocked      bool                     `json:"local_direct_tcp_blocked"`
 	UDPBlocked                 bool                     `json:"udp_blocked"`
 	RawSocketsBlocked          bool                     `json:"raw_sockets_blocked"`
-	UnsupportedTrafficProven  bool                     `json:"unsupported_traffic_proven"`
+	UnsupportedTrafficProven   bool                     `json:"unsupported_traffic_proven"`
 	FailClosedBarrierProven    bool                     `json:"fail_closed_barrier_proven"`
 	ChildStoppedDuringSetup    bool                     `json:"child_stopped_during_setup"`
 	RefusalLeftChildStopped    bool                     `json:"refusal_left_child_stopped"`
@@ -154,7 +154,7 @@ type NetworkAttachmentEvidence struct {
 	CommandDNSRequired        bool                     `json:"command_dns_required"`
 	RawSocketBlockConfigured  bool                     `json:"raw_socket_blocking_configured"`
 	RawSocketsBlocked         bool                     `json:"raw_sockets_blocked"`
-	UnsupportedTrafficAction string                   `json:"unsupported_traffic_action,omitempty"`
+	UnsupportedTrafficAction  string                   `json:"unsupported_traffic_action,omitempty"`
 	BlockedTrafficClasses     []string                 `json:"blocked_traffic_classes,omitempty"`
 	UnsupportedTrafficBlocked bool                     `json:"unsupported_traffic_blocked"`
 	TransparentRedirect       bool                     `json:"transparent_redirect"`
@@ -229,7 +229,7 @@ type NetworkEnforcement struct {
 	CommandDNSRequired        bool                       `json:"command_dns_required"`
 	RawSocketBlockConfigured  bool                       `json:"raw_socket_blocking_configured"`
 	RawSocketsBlocked         bool                       `json:"raw_sockets_blocked"`
-	UnsupportedTrafficAction string                     `json:"unsupported_traffic_action,omitempty"`
+	UnsupportedTrafficAction  string                     `json:"unsupported_traffic_action,omitempty"`
 	BlockedTrafficClasses     []string                   `json:"blocked_traffic_classes,omitempty"`
 	UnsupportedTrafficBlocked bool                       `json:"unsupported_traffic_blocked"`
 	FailClosedSetup           bool                       `json:"fail_closed_setup"`

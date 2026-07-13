@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	protocolMagic           byte = 0xA7
-	metadataCommandJail     byte = 1 << 0
-	StatusReject            byte = 0
-	StatusOK                byte = 1
+	protocolMagic       byte = 0xA7
+	metadataCommandJail byte = 1 << 0
+	StatusReject        byte = 0
+	StatusOK            byte = 1
 )
 
 type Metadata struct {

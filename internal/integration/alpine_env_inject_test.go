@@ -297,7 +297,7 @@ func startAlpineServerContainer(t *testing.T, ctx context.Context, agentshBin, u
 		Image:        "alpine:3.21",
 		ExposedPorts: []string{"18080/tcp"},
 		// Install bash for testing (Alpine uses ash by default)
-		Cmd: []string{"/bin/sh", "-c", "apk add --no-cache bash && /usr/local/bin/agentsh server --config /config.yaml"},
+		Cmd:        []string{"/bin/sh", "-c", "apk add --no-cache bash && /usr/local/bin/agentsh server --config /config.yaml"},
 		Mounts:     binds,
 		Privileged: true,
 		CapAdd:     []string{"SYS_ADMIN"},

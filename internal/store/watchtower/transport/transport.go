@@ -49,11 +49,11 @@ type CompressMetrics interface {
 
 type noopMetrics struct{}
 
-func (noopMetrics) SetAckHighWatermark(int64)                            {}
-func (noopMetrics) IncAnomalousAck(string)                               {}
-func (noopMetrics) IncResendNeeded()                                     {}
-func (noopMetrics) IncAckRegressionLoss()                                {}
-func (noopMetrics) IncDroppedInvalidFrame(metrics.WTPInvalidFrameReason) {}
+func (noopMetrics) SetAckHighWatermark(int64)                              {}
+func (noopMetrics) IncAnomalousAck(string)                                 {}
+func (noopMetrics) IncResendNeeded()                                       {}
+func (noopMetrics) IncAckRegressionLoss()                                  {}
+func (noopMetrics) IncDroppedInvalidFrame(metrics.WTPInvalidFrameReason)   {}
 func (noopMetrics) IncSessionInitFailures(metrics.WTPSessionFailureReason) {}
 
 type noopCompressMetrics struct{}

@@ -256,10 +256,10 @@ func proxyRequiredRawSocketRulesConfigured(cfg *seccompWrapperConfig) bool {
 		return false
 	}
 	const (
-		afINET    = 2
-		afINET6   = 10
-		afPACKET  = 17
-		sockRAW   = 3
+		afINET   = 2
+		afINET6  = 10
+		afPACKET = 17
+		sockRAW  = 3
 	)
 	packetDenied := false
 	for _, family := range cfg.BlockedFamilies {

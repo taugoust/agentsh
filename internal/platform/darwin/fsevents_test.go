@@ -123,10 +123,10 @@ func TestFSEventsMonitor_StartStop(t *testing.T) {
 
 func TestFSEventsMonitor_handleEvent(t *testing.T) {
 	tests := []struct {
-		name      string
-		fsEvent   fsnotify.Event
-		wantType  string
-		wantOp    string
+		name     string
+		fsEvent  fsnotify.Event
+		wantType string
+		wantOp   string
 	}{
 		{
 			name:     "create",

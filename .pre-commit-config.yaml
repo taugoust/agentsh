@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: agentsh-go-format
+        name: AgentSH Go formatting
+        entry: >-
+          bash -euo pipefail -c 'system="$(nix eval --raw --impure --expr builtins.currentSystem)"; nix build "path:$PWD#checks.${system}.go-format" --no-link'
+        language: system
+        pass_filenames: false
+        files: '\.go$'

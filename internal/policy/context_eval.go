@@ -31,8 +31,8 @@ type compiledContext struct {
 }
 
 type compiledOverride struct {
-	argsAllow []glob.Glob
-	argsDeny  []glob.Glob
+	argsAllow   []glob.Glob
+	argsDeny    []glob.Glob
 	defDecision string
 }
 

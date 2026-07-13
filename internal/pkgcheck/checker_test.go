@@ -343,8 +343,8 @@ type fakeResolver struct {
 	plan *InstallPlan
 }
 
-func (f *fakeResolver) Name() string                          { return "fake-resolver" }
-func (f *fakeResolver) CanResolve(_ string, _ []string) bool  { return true }
+func (f *fakeResolver) Name() string                         { return "fake-resolver" }
+func (f *fakeResolver) CanResolve(_ string, _ []string) bool { return true }
 func (f *fakeResolver) Resolve(_ context.Context, _ string, _ []string) (*InstallPlan, error) {
 	return f.plan, nil
 }

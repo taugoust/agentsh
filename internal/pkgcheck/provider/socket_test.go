@@ -239,7 +239,6 @@ func TestSocketProvider_BreakerOpensAfterRepeatedFailures(t *testing.T) {
 	assert.Equal(t, hitsAfterTwoCalls, serverHits, "third call must not hit the server")
 }
 
-
 func TestSocketProvider_MalformedResponseTripsBreaker(t *testing.T) {
 	// Server always returns 200 with garbage body — every CheckBatch fails
 	// with a decode error. Decode is now inside callWithBreaker, so two

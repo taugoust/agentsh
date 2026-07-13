@@ -841,7 +841,7 @@ func TestShimReadinessGate_GRPCTransport_ProbesGRPCAddr(t *testing.T) {
 		"AGENTSH_TRANSPORT=grpc",
 		"AGENTSH_GRPC_ADDR=" + ln.Addr().String(),
 		"AGENTSH_SERVER=http://127.0.0.1:1", // unreachable — should be ignored
-		"AGENTSH_BIN=/nonexistent/agentsh",   // known-bad so enforcement fails deterministically
+		"AGENTSH_BIN=/nonexistent/agentsh",  // known-bad so enforcement fails deterministically
 	}
 
 	var stderr bytes.Buffer
@@ -1093,11 +1093,11 @@ func TestServerIsLocal(t *testing.T) {
 
 func TestServerIsLocal_HostnameResolution(t *testing.T) {
 	tests := []struct {
-		name   string
-		addr   string
-		addrs  []string
-		err    error
-		want   bool
+		name  string
+		addr  string
+		addrs []string
+		err   error
+		want  bool
 	}{
 		{
 			name:  "loopback alias",
