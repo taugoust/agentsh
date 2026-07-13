@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/workspace/cleanup"
+	"github.com/agentsh/agentsh/internal/workspace/runtimebin"
 )
 
 const (
@@ -49,7 +50,11 @@ type Workspace struct {
 	CreatedAt time.Time
 	State     string
 
-	acceptChown bool
+	acceptChown          bool
+	diffExecutable       string
+	mountpointExecutable string
+	rsyncExecutable      string
+	umountExecutable     string
 }
 
 func Create(ctx context.Context, id string, real string, opts Options) (*Workspace, error) {
@@ -100,6 +105,30 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 		}
 	}
 
+	// Resolve every external lifecycle dependency before creating or mounting
+	// session state. Hermetic builds resolve only from their packaged runtime
+	// closure, independently of the detached supervisor's ambient PATH.
+	rsyncExecutable, err := runtimebin.Resolve("rsync")
+	if err != nil {
+		return nil, fmt.Errorf("resolve overlay rsync: %w", err)
+	}
+	diffExecutable, err := runtimebin.Resolve("diff")
+	if err != nil {
+		return nil, fmt.Errorf("resolve overlay diff: %w", err)
+	}
+	mountExecutable, err := runtimebin.Resolve("mount")
+	if err != nil {
+		return nil, fmt.Errorf("resolve overlay mount: %w", err)
+	}
+	mountpointExecutable, err := runtimebin.Resolve("mountpoint")
+	if err != nil {
+		return nil, fmt.Errorf("resolve overlay mountpoint: %w", err)
+	}
+	umountExecutable, err := runtimebin.Resolve("umount")
+	if err != nil {
+		return nil, fmt.Errorf("resolve overlay umount: %w", err)
+	}
+
 	if err := os.MkdirAll(sessionDir, 0o711); err != nil {
 		return nil, fmt.Errorf("create overlay session dir: %w", err)
 	}
@@ -145,24 +174,28 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 		"upperdir=" + upper,
 		"workdir=" + work,
 	}, ",")
-	cmd := exec.CommandContext(ctx, "mount", "-t", "overlay", "overlay", "-o", mountOpts, merged)
+	cmd := exec.CommandContext(ctx, mountExecutable, "-t", "overlay", "overlay", "-o", mountOpts, merged)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = cleanup.RemoveAllWritable(sessionDir)
 		return nil, fmt.Errorf("mount overlay: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
 	return &Workspace{
-		ID:          id,
-		Real:        realAbs,
-		Upper:       upper,
-		Work:        work,
-		Merged:      merged,
-		OwnerUID:    uid,
-		OwnerGID:    gid,
-		Excludes:    excludes,
-		CreatedAt:   time.Now().UTC(),
-		State:       StateActive,
-		acceptChown: opts.AcceptChown,
+		ID:                   id,
+		Real:                 realAbs,
+		Upper:                upper,
+		Work:                 work,
+		Merged:               merged,
+		OwnerUID:             uid,
+		OwnerGID:             gid,
+		Excludes:             excludes,
+		CreatedAt:            time.Now().UTC(),
+		State:                StateActive,
+		acceptChown:          opts.AcceptChown,
+		diffExecutable:       diffExecutable,
+		mountpointExecutable: mountpointExecutable,
+		rsyncExecutable:      rsyncExecutable,
+		umountExecutable:     umountExecutable,
 	}, nil
 }
 
@@ -172,12 +205,16 @@ func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 	if w.State != StateActive {
 		return nil, ErrInactive
 	}
+	diffExecutable, err := overlayExecutable(w.diffExecutable, "diff")
+	if err != nil {
+		return nil, fmt.Errorf("resolve overlay diff: %w", err)
+	}
 	args := []string{"-ruN"}
 	for _, ex := range w.Excludes {
 		args = append(args, "--exclude="+ex)
 	}
 	args = append(args, w.Real, w.Merged)
-	cmd := exec.CommandContext(ctx, "diff", args...)
+	cmd := exec.CommandContext(ctx, diffExecutable, args...)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return out, nil
@@ -205,6 +242,10 @@ func (w *Workspace) Accept(ctx context.Context) error {
 	if w.State != StateActive {
 		return ErrInactive
 	}
+	rsyncExecutable, err := overlayExecutable(w.rsyncExecutable, "rsync")
+	if err != nil {
+		return fmt.Errorf("resolve overlay rsync: %w", err)
+	}
 	args := []string{"-a", "--delete"}
 	for _, ex := range w.Excludes {
 		args = append(args, "--exclude="+ex)
@@ -213,7 +254,7 @@ func (w *Workspace) Accept(ctx context.Context) error {
 		args = append(args, "--chown="+strconv.Itoa(w.OwnerUID)+":"+strconv.Itoa(w.OwnerGID))
 	}
 	args = append(args, withTrailingSeparator(w.Merged), withTrailingSeparator(w.Real))
-	cmd := exec.CommandContext(ctx, "rsync", args...)
+	cmd := exec.CommandContext(ctx, rsyncExecutable, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		var ee *exec.ExitError
 		// rsync exit code 24 means files vanished while being transferred. That can
@@ -263,16 +304,31 @@ func (w *Workspace) Close(ctx context.Context) error {
 }
 
 func (w *Workspace) unmountLocked(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "umount", w.Merged)
+	umountExecutable, err := overlayExecutable(w.umountExecutable, "umount")
+	if err != nil {
+		return fmt.Errorf("resolve overlay umount: %w", err)
+	}
+	mountpointExecutable, err := overlayExecutable(w.mountpointExecutable, "mountpoint")
+	if err != nil {
+		return fmt.Errorf("resolve overlay mountpoint: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, umountExecutable, w.Merged)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Treat already-unmounted as success when mountpoint says it is not mounted.
-		check := exec.CommandContext(ctx, "mountpoint", "-q", w.Merged)
+		check := exec.CommandContext(ctx, mountpointExecutable, "-q", w.Merged)
 		if check.Run() != nil {
 			return nil
 		}
 		return fmt.Errorf("unmount overlay: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func overlayExecutable(configured, name string) (string, error) {
+	if strings.TrimSpace(configured) != "" {
+		return configured, nil
+	}
+	return runtimebin.Resolve(name)
 }
 
 func owner(info fs.FileInfo) (int, int) {

@@ -79,6 +79,9 @@
               "-w"
               "-X main.version=${version}"
               "-X main.commit=${rev}"
+            ]
+            ++ lib.optionals stdenv.hostPlatform.isLinux [
+              "-X github.com/agentsh/agentsh/internal/workspace/runtimebin.packagedPath=${runtimePath}"
             ];
 
             preBuild = lib.optionalString stdenv.hostPlatform.isLinux ''
@@ -226,6 +229,7 @@
               go test ./internal/config -run 'TestProjectOverlays'
               go test ./internal/nethelper
               go test ./internal/detached ./internal/detachedreport
+              go test ./internal/workspace/runtimebin ./internal/workspace/shadow ./internal/workspace/overlay
               runHook postCheck
             '';
             installPhase = ''

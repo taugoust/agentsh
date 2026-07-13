@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/workspace/cleanup"
+	"github.com/agentsh/agentsh/internal/workspace/runtimebin"
 )
 
 const (
@@ -61,9 +62,11 @@ type Workspace struct {
 	CreatedAt time.Time
 	State     string
 
-	diffExcludes   []string
-	acceptExcludes []string
-	acceptChown    bool
+	diffExcludes    []string
+	acceptExcludes  []string
+	acceptChown     bool
+	diffExecutable  string
+	rsyncExecutable string
 }
 
 func Create(ctx context.Context, id string, real string, opts Options) (*Workspace, error) {
@@ -140,6 +143,19 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 			return nil, fmt.Errorf("shadow paths containing comma are not supported: %s", root.Real)
 		}
 	}
+
+	// Resolve lifecycle dependencies before creating or removing any session
+	// state. Hermetic builds return absolute paths from their packaged runtime
+	// closure and do not depend on the detached supervisor's ambient PATH.
+	rsyncExecutable, err := runtimebin.Resolve("rsync")
+	if err != nil {
+		return nil, fmt.Errorf("resolve shadow workspace rsync: %w", err)
+	}
+	diffExecutable, err := runtimebin.Resolve("diff")
+	if err != nil {
+		return nil, fmt.Errorf("resolve shadow workspace diff: %w", err)
+	}
+
 	if err := cleanup.RemoveAllWritable(sessionDir); err != nil {
 		return nil, fmt.Errorf("remove old shadow dir: %w", err)
 	}
@@ -183,7 +199,7 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 		}
 		args := []string{"-a", "--delete", "--chown=" + strconv.Itoa(ownerUID) + ":" + strconv.Itoa(ownerGID)}
 		args = append(args, withTrailingSeparator(roots[i].Real), withTrailingSeparator(dest))
-		cmd := exec.CommandContext(ctx, "rsync", args...)
+		cmd := exec.CommandContext(ctx, rsyncExecutable, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if !isRsyncVanished(err) {
 				_ = cleanup.RemoveAllWritable(sessionDir)
@@ -194,19 +210,21 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 	}
 
 	return &Workspace{
-		ID:             id,
-		Real:           roots[0].Real,
-		Work:           work,
-		Home:           home,
-		Tmp:            tmp,
-		Roots:          roots,
-		OwnerUID:       ownerUID,
-		OwnerGID:       ownerGID,
-		CreatedAt:      time.Now().UTC(),
-		State:          StateActive,
-		diffExcludes:   excludes,
-		acceptExcludes: acceptExcludes,
-		acceptChown:    opts.AcceptChown,
+		ID:              id,
+		Real:            roots[0].Real,
+		Work:            work,
+		Home:            home,
+		Tmp:             tmp,
+		Roots:           roots,
+		OwnerUID:        ownerUID,
+		OwnerGID:        ownerGID,
+		CreatedAt:       time.Now().UTC(),
+		State:           StateActive,
+		diffExcludes:    excludes,
+		acceptExcludes:  acceptExcludes,
+		acceptChown:     opts.AcceptChown,
+		diffExecutable:  diffExecutable,
+		rsyncExecutable: rsyncExecutable,
 	}, nil
 }
 
@@ -220,6 +238,10 @@ func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 	if len(roots) == 0 {
 		roots = []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
 	}
+	diffExecutable, err := workspaceExecutable(w.diffExecutable, "diff")
+	if err != nil {
+		return nil, fmt.Errorf("resolve shadow workspace diff: %w", err)
+	}
 	var combined bytes.Buffer
 	for _, root := range roots {
 		if len(roots) > 1 {
@@ -230,7 +252,7 @@ func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 			args = append(args, "--exclude="+ex)
 		}
 		args = append(args, root.Real, root.Work)
-		cmd := exec.CommandContext(ctx, "diff", args...)
+		cmd := exec.CommandContext(ctx, diffExecutable, args...)
 		out, err := cmd.CombinedOutput()
 		combined.Write(out)
 		if err == nil {
@@ -251,6 +273,10 @@ func (w *Workspace) Accept(ctx context.Context) error {
 	if w.State != StateActive {
 		return ErrInactive
 	}
+	rsyncExecutable, err := workspaceExecutable(w.rsyncExecutable, "rsync")
+	if err != nil {
+		return fmt.Errorf("resolve shadow workspace rsync: %w", err)
+	}
 	roots := w.Roots
 	if len(roots) == 0 {
 		roots = []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
@@ -264,7 +290,7 @@ func (w *Workspace) Accept(ctx context.Context) error {
 			args = append(args, "--chown="+strconv.Itoa(w.OwnerUID)+":"+strconv.Itoa(w.OwnerGID))
 		}
 		args = append(args, withTrailingSeparator(root.Work), withTrailingSeparator(root.Real))
-		cmd := exec.CommandContext(ctx, "rsync", args...)
+		cmd := exec.CommandContext(ctx, rsyncExecutable, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if !isRsyncVanished(err) {
 				return fmt.Errorf("accept shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
@@ -299,6 +325,13 @@ func (w *Workspace) Close(ctx context.Context) error {
 	}
 	w.State = StateClosed
 	return nil
+}
+
+func workspaceExecutable(configured, name string) (string, error) {
+	if strings.TrimSpace(configured) != "" {
+		return configured, nil
+	}
+	return runtimebin.Resolve(name)
 }
 
 func isRsyncVanished(err error) bool {
