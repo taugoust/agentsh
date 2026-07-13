@@ -240,6 +240,37 @@
             '';
           };
 
+          workspace-runtime-tests = pkgs.buildGoModule {
+            pname = "agentsh-workspace-runtime-tests";
+            version = "unstable-2026-06-17";
+            src = self;
+            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+
+            env = {
+              CGO_ENABLED = "0";
+              GOTELEMETRY = "off";
+            };
+
+            buildPhase = ''
+              runHook preBuild
+              runHook postBuild
+            '';
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/workspace/runtimebin ./internal/workspace/shadow ./internal/workspace/overlay
+              GOOS=linux go build ./internal/workspace/...
+              GOOS=darwin go build ./internal/workspace/...
+              GOOS=windows go build ./internal/workspace/...
+              runHook postCheck
+            '';
+            installPhase = ''
+              runHook preInstall
+              mkdir -p $out
+              touch $out/passed
+              runHook postInstall
+            '';
+          };
+
           approval-regression-tests =
             if stdenv.hostPlatform.isLinux then
               pkgs.buildGoModule {

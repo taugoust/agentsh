@@ -25,10 +25,12 @@ This project cross-compiles to Linux, macOS, and Windows. Follow these rules.
 | Signals | Full POSIX | Full POSIX | Limited |
 | $0 / argv[0] | Works | Works | Different |
 
-## Testing
+## Nix-native build and test workflow
 
-- Run `GOOS=windows go build ./...` to verify Windows compilation
-- Tests using Unix sockets, POSIX signals, or shell features should skip on Windows
+- Run repository builds and tests through flake outputs, for example `nix build --no-link .#agentsh`, a focused `.#checks.<system>.<name>` output, or `nix flake check`.
+- Do not invoke `go build` or `go test` directly, including through `nix develop -c`. If focused validation is missing, add a deterministic flake check instead of bypassing Nix.
+- Put `GOOS` cross-compilation coverage inside a flake check; do not run ad hoc cross-build commands from an agent session.
+- Tests using Unix sockets, POSIX signals, or shell features should skip on Windows.
 - Use `t.TempDir()` for test directories (auto-cleaned)
 
 ## CI-Specific Issues
