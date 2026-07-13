@@ -1,9 +1,9 @@
 # pi-auto network policy approval is not enforced at runtime
 
 ## Status
-Open for the direct-local Home Manager-only DOS bootstrap, clearer early-exit diagnostics, the remaining rollout/recovery pilots, and the concrete consistency/recovery follow-ups below. Strict local sessions work on `matebook` and `virby-vm`; the on-demand remote `pi --ssh`/`pi-auto --ssh` lifecycle is implemented, and the user has confirmed the remote SSH path works against `graham` without a persistent root installation.
+Open for clearer early-exit diagnostics, the remaining rollout/recovery pilots, and the concrete consistency/recovery follow-ups below. Strict local sessions work with persistent helpers on `matebook` and `virby-vm`; local Home Manager-only Linux and remote `pi --ssh`/`pi-auto --ssh` can create bounded ephemeral helpers, and the user has confirmed both the remote path against `graham` and plain local Pi startup.
 
-## Deployment status (2026-07-10)
+## Deployment status (updated 2026-07-13)
 
 ### `matebook` local — working
 
@@ -44,27 +44,27 @@ The persistent installer design was replaced with one lease-scoped helper per to
 
 The user reports that the deployed `--ssh` path works against the x86_64 DOS host `graham`. Native parent-Pi `fetch` was also removed from the last macOS supervised bundle in `nix-config` `a2fa3db`; `pi-agent-extensions` `b0b2c24` independently refuses to register it in any supervised session.
 
-### TUM DOS Home Manager hosts — direct local invocation still open
+### Direct local invocation — working
 
-A plain invocation inside `graham` currently fails as follows:
+The original direct invocation on `graham` failed closed before socket creation because local mode did not bootstrap a helper:
 
 ```text
 ssh graham ~/Workspace/nix-config ❯ pi
 timed out waiting for supervisor socket /scratch/theo/.local/share/agentsh/sessions/session-d56cbd6c-4730-4ae5-a9ef-4d5ce68229bf/supervisor.sock
 ```
 
-This is fail-closed rather than a network bypass: local mode does not call the SSH bootstrap library, while DOS intentionally has no persistent helper. The strict detached supervisor therefore exits before creating its socket because no authenticated helper/delegated runtime was supplied, and the launcher currently hides that early failure behind a generic socket timeout. Plain local `pi-auto` has the same lifecycle gap.
+The `nix-config` commit `Fix direct usage with pi --ssh` adds a generic local Linux lifecycle to the shared trusted-parent library and wires it into both `pi` and `pi-auto`. It validates and silently reuses a protected persistent per-UID helper when available. Otherwise it invokes terminal-connected sudo before session/sandbox creation, validates the immutable AgentSH bootstrap result, passes only the socket and credential-file paths to the delegated supervisor, and removes those controls from the parent Pi environment. Plain `pi` stops the session and releases an ephemeral helper on exit. Local `pi-auto` records only non-secret lease metadata, retains the helper through shadow review/resume, and releases it after accept/reject; mutating fallback is refused while a managed helper session remains.
 
-The follow-up should add a local counterpart to the trusted bootstrap, gated to eligible Linux/Home Manager hosts. It should invoke terminal-connected sudo before session/sandbox creation, use the existing immutable AgentSH lease/bootstrap/result validation, pass only the protected socket and credential-file paths to the delegated user supervisor, and release after local `pi` cleanup. Local `pi-auto` additionally needs to persist only non-secret lease metadata through retained shadow review/resume and release on accept/reject or bounded expiry. Persistent NixOS helpers must continue to be detected and reused without prompting, and every failure must remain fail-closed. No Go/eBPF redesign is needed.
+The first Virby test correctly fell back to an ephemeral helper and exposed a separate persistent provisioning bug: a NixOS switch restarted `agentsh-nethelper-taugoust.socket` and its helper service, but the `RemainAfterExit` provisioning oneshot stayed active and did not recreate the user-readable runtime credential. The AgentSH `fix(nethelper): reprovision credential on socket restart` commit makes provisioning `PartOf` the socket, so every socket stop/restart also stops/reruns provisioning before the socket listens. After rebuilding, the provision service and socket entered together, the protected credential returned with UID/GID `501:0` and mode `0400`, the socket had `501:0` and mode `0600`, and the user confirmed plain Pi startup works while reusing the persistent helper.
 
-The launcher should also surface the transient supervisor's real early-exit/unit diagnostic instead of only timing out on `supervisor.sock`.
+Failures remain fail-closed. The launcher should still surface a transient supervisor's real early-exit/unit diagnostic instead of only timing out on `supervisor.sock`.
 
 ## Remaining work
 
 - [x] Remove the obsolete successful strict-startup warning without weakening fail-closed diagnostics.
 - [x] Implement and validate the no-install ephemeral helper primitive and remote `pi --ssh`/`pi-auto --ssh` wiring.
 - [x] Confirm the remote SSH path on the x86_64 DOS host `graham`.
-- [ ] Add the trusted direct-local ephemeral bootstrap to DOS `pi` and `pi-auto`.
+- [x] Add the trusted direct-local ephemeral bootstrap to Linux `pi` and `pi-auto`, while reusing healthy persistent helpers.
 - [ ] Replace the generic supervisor-socket timeout with the underlying early-exit diagnostic.
 - [ ] Pilot on an AArch64 DOS host and finish explicit SSH-loss/helper-crash/expiry recovery checks before broader rollout.
 - [ ] Reconcile the top-level and nested session network-enforcement reports.

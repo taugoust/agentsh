@@ -68,6 +68,10 @@ let
         "agentsh-nethelper-${name}.socket"
         "agentsh-nethelper-${name}.service"
       ];
+      # A NixOS switch can restart the socket/helper while this RemainAfterExit
+      # oneshot still appears active. Propagate that restart so the protected
+      # user-readable runtime credential is recreated before the socket listens.
+      partOf = [ "agentsh-nethelper-${name}.socket" ];
       requiredBy = [ "agentsh-nethelper-${name}.socket" ];
       unitConfig.AssertPathIsMountPoint = "/sys/fs/bpf";
       serviceConfig = {
