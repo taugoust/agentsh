@@ -47,8 +47,8 @@ As a result, `nix flake check` is not a meaningful regression suite for AgentSH.
   - `detached-supervisor-transport-timeout-sprawl.md`
   - `detached-supervisor-metadata-lifecycle.md`
   - `approval-resolution-race-semantics.md`
-  - `subagent-terminal-state-model.md`
-  - `subagent-process-tree-cancellation.md`
+  - `resolved/subagent-terminal-state-model.md`
+  - `resolved/subagent-process-tree-cancellation.md`
   - `shadow-workspace-review-atomicity.md`
   - `exec-runner-duplication-http-stream.md`
   - `ptrace-approve-ux-gap.md`

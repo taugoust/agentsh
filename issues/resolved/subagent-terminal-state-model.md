@@ -1,7 +1,7 @@
 # Normalize AgentSH subagent terminal states
 
 ## Status
-Open.
+Resolved.
 
 ## Problem
 Subagent results mix exit codes, `StopReason` strings, `Error`, stderr, parsed final text, and top-level HTTP errors. This does not distinguish completed, failed tool, failed model, failed protocol, timed out, user cancelled, parent request cancelled, supervisor shutdown, or child process failure.
@@ -16,3 +16,8 @@ Introduce a typed terminal-state enum plus structured details: exit code, signal
 
 ## Rough priority
 High.
+
+## Resolution
+Resolved by AgentSH `b82b6116` (`feat(subagent): add deterministic terminal lifecycle`). It introduced typed terminal states, failure kinds, cancellation and termination fields, retryability, bounded sanitized diagnostics, and a protocol-specific Pi adapter behind the generic orchestration layer. Focused Nix checks cover timeout versus cancellation, protocol/model failures, typed result propagation, and aggregation.
+
+Distinct parent, user, client, and supervisor cancellation-source propagation remains tracked separately in `issues/subagent-cancellation-reason-propagation.md`.

@@ -1,7 +1,7 @@
 # Guarantee deterministic streamed subagent `done` events
 
 ## Status
-Open.
+Resolved.
 
 ## Problem
 For streamed `spawn_subagent`, callers should receive exactly one terminal `done` event whenever the HTTP connection is still writable. Today terminal emission is tied to the top-level happy/error path and may be skipped or malformed on panics, early validation after headers, response writer errors, or partial runtime failures.
@@ -16,3 +16,6 @@ Give `subagentStreamer` an explicit terminal guard and error state. Ensure all p
 
 ## Rough priority
 Medium.
+
+## Resolution
+Resolved by AgentSH `b82b6116` (`feat(subagent): add deterministic terminal lifecycle`). `subagentStreamer` now guards terminal emission so a writable stream receives exactly one `done` event, while write failures are retained as protocol outcomes instead of being silently ignored. Focused Nix checks cover normal completion, early failure, duplicate terminal attempts, EOF without `done`, malformed events, cancellation, and parallel/chain ordering.
