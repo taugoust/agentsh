@@ -271,6 +271,51 @@
             '';
           };
 
+          subagent-reliability-tests = pkgs.buildGoModule {
+            pname = "agentsh-subagent-reliability-tests";
+            version = "unstable-2026-06-17";
+            src = self;
+            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+
+            nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.gnumake
+              pkgs.llvm
+              pkgs.llvmPackages.clang-unwrapped
+              pkgs.pkg-config
+            ];
+            buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.fuse3
+              pkgs.libbpf
+              pkgs.libseccomp
+              pkgs.linuxHeaders
+            ];
+            env = {
+              CGO_ENABLED = if stdenv.hostPlatform.isLinux then "1" else "0";
+              GOTELEMETRY = "off";
+            };
+
+            buildPhase = ''
+              runHook preBuild
+              runHook postBuild
+            '';
+            preCheck = lib.optionalString stdenv.hostPlatform.isLinux ''
+              make -C internal/netmonitor/ebpf clean all \
+                BPF_CLANG=${pkgs.llvmPackages.clang-unwrapped}/bin/clang \
+                BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
+            '';
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/api -run '^Test(Subagent|ValidateSpawnSubagentRequest|SplitCommandArgs|ParsePiJSONFinal|AppendSubagentTaskArgs|PrepareSubagentPiDirs|WithEnvOverrides)'
+              runHook postCheck
+            '';
+            installPhase = ''
+              runHook preInstall
+              mkdir -p $out
+              touch $out/passed
+              runHook postInstall
+            '';
+          };
+
           approval-regression-tests =
             if stdenv.hostPlatform.isLinux then
               pkgs.buildGoModule {

@@ -60,28 +60,30 @@ type subagentRuntimeConfig struct {
 }
 
 type subagentResult struct {
-	Label      string   `json:"label"`
-	Task       string   `json:"task"`
-	ExitCode   int      `json:"exit_code"`
-	StopReason string   `json:"stop_reason"`
-	Final      string   `json:"final"`
-	Stdout     string   `json:"stdout,omitempty"`
-	Stderr     string   `json:"stderr,omitempty"`
-	DurationMS int64    `json:"duration_ms"`
-	Model      string   `json:"model,omitempty"`
-	Tools      []string `json:"tools,omitempty"`
-	Cwd        string   `json:"cwd,omitempty"`
-	Runtime    string   `json:"runtime,omitempty"`
-	Command    string   `json:"command,omitempty"`
-	Args       []string `json:"args,omitempty"`
-	Error      string   `json:"error,omitempty"`
+	Label      string           `json:"label"`
+	Task       string           `json:"task"`
+	ExitCode   int              `json:"exit_code"`
+	StopReason string           `json:"stop_reason"`
+	Terminal   subagentTerminal `json:"terminal"`
+	Final      string           `json:"final"`
+	Stdout     string           `json:"stdout,omitempty"`
+	Stderr     string           `json:"stderr,omitempty"`
+	DurationMS int64            `json:"duration_ms"`
+	Model      string           `json:"model,omitempty"`
+	Tools      []string         `json:"tools,omitempty"`
+	Cwd        string           `json:"cwd,omitempty"`
+	Runtime    string           `json:"runtime,omitempty"`
+	Command    string           `json:"command,omitempty"`
+	Args       []string         `json:"args,omitempty"`
+	Error      string           `json:"error,omitempty"`
 }
 
 type spawnSubagentResult struct {
-	Mode    string           `json:"mode"`
-	Final   string           `json:"final"`
-	Summary string           `json:"summary"`
-	Results []subagentResult `json:"results"`
+	Mode     string           `json:"mode"`
+	Final    string           `json:"final"`
+	Summary  string           `json:"summary"`
+	Terminal subagentTerminal `json:"terminal"`
+	Results  []subagentResult `json:"results"`
 }
 
 func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +119,7 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	if req.TimeoutMS > 0 {
 		timeout = time.Duration(req.TimeoutMS) * time.Millisecond
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	ctx, cancel := context.WithTimeoutCause(r.Context(), timeout, errSubagentRequestTimeout)
 	defer cancel()
 
 	a.emitToolEvent(r.Context(), sessionID, "tool_spawn_subagent_start", "spawn_subagent", "", req.Actor, map[string]any{
@@ -136,31 +138,69 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.WriteHeader(http.StatusOK)
-		stream = &subagentStreamer{w: w, flusher: flusher}
-		stream.Emit("subagent_start", map[string]any{"mode": mode, "tasks": len(specs), "runtime": runtime.Name})
+		stream = newSubagentStreamer(w, flusher)
 	}
-	result, code, err := a.runSubagentMode(ctx, s, runtime, mode, specs, req.Actor, stream)
+
+	var result spawnSubagentResult
+	var code int
+	var runErr error
+	if stream != nil {
+		defer func() {
+			if recover() != nil {
+				runErr = errors.New("subagent request failed unexpectedly")
+				if result.Mode == "" {
+					result.Mode = mode
+				}
+				if result.Final == "" {
+					result.Final = runErr.Error()
+				}
+				result.Terminal = failedSubagentTerminal(subagentFailureUnknown, 1, "", subagentTerminationNatural, true, runErr.Error())
+			}
+			if result.Terminal.State == "" {
+				result.Terminal = aggregateSubagentTerminal(result.Results, runErr)
+			}
+			result.Summary = result.Final
+			protocolOK := runErr == nil || len(result.Results) > 0
+			_ = stream.Done(map[string]any{"ok": protocolOK, "result": result, "error": errString(runErr)})
+		}()
+	}
+	if stream != nil {
+		if emitErr := stream.Emit("subagent_start", map[string]any{"mode": mode, "tasks": len(specs), "runtime": runtime.Name}); emitErr != nil {
+			runErr = errors.New("subagent stream is not writable")
+			code = http.StatusInternalServerError
+			result = spawnSubagentResult{Mode: mode, Final: runErr.Error(), Terminal: failedSubagentTerminal(subagentFailureTransport, 1, "", subagentTerminationNatural, true, runErr.Error())}
+		} else {
+			result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, mode, specs, req.Actor, stream)
+		}
+	} else {
+		result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, mode, specs, req.Actor, nil)
+	}
+	if result.Terminal.State == "" {
+		result.Terminal = aggregateSubagentTerminal(result.Results, runErr)
+	}
 	result.Summary = result.Final
 	status := code
 	if status == 0 {
 		status = http.StatusOK
 	}
 	a.emitToolEvent(r.Context(), sessionID, "tool_spawn_subagent_end", "spawn_subagent", "", req.Actor, map[string]any{
-		"mode":        mode,
-		"tasks":       len(specs),
-		"runtime":     runtime.Name,
-		"duration_ms": time.Since(started).Milliseconds(),
-		"error":       errString(err),
+		"mode":           mode,
+		"tasks":          len(specs),
+		"runtime":        runtime.Name,
+		"duration_ms":    time.Since(started).Milliseconds(),
+		"terminal_state": result.Terminal.State,
+		"failure_kind":   result.Terminal.FailureKind,
+		"error":          errString(runErr),
 	})
+	protocolOK := runErr == nil || len(result.Results) > 0
 	if stream != nil {
-		stream.Emit("done", map[string]any{"ok": err == nil, "result": result, "error": errString(err)})
 		return
 	}
-	if err != nil && len(result.Results) == 0 {
-		writeToolError(w, status, err.Error())
+	if runErr != nil && len(result.Results) == 0 {
+		writeToolError(w, status, runErr.Error())
 		return
 	}
-	writeJSON(w, status, toolResponse{OK: err == nil, Result: result, Error: errString(err)})
+	writeJSON(w, status, toolResponse{OK: protocolOK, Result: result, Error: errString(runErr)})
 }
 
 func subagentRuntimeFromEnv(a *App) (subagentRuntimeConfig, error) {
@@ -286,15 +326,30 @@ func validateSubagentItem(item subagentItemRequest) error {
 	return nil
 }
 
+func (a *App) runSubagentModeSafely(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor, stream *subagentStreamer) (result spawnSubagentResult, code int, err error) {
+	defer func() {
+		if recover() != nil {
+			err = errors.New("subagent runtime failed unexpectedly")
+			code = http.StatusInternalServerError
+			result = spawnSubagentResult{
+				Mode:     mode,
+				Final:    err.Error(),
+				Terminal: failedSubagentTerminal(subagentFailureUnknown, 1, "", subagentTerminationNatural, true, err.Error()),
+			}
+		}
+	}()
+	return a.runSubagentMode(ctx, s, runtime, mode, specs, actor, stream)
+}
+
 func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor, stream *subagentStreamer) (spawnSubagentResult, int, error) {
 	switch mode {
 	case "single":
 		res := a.runSingleSubagent(ctx, s, runtime, specs[0], "subagent", 0, actor, stream)
 		if stream != nil {
-			stream.Emit("subagent_result", map[string]any{"label": res.Label, "result": res})
+			_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "result": res})
 		}
-		out := spawnSubagentResult{Mode: mode, Final: res.Final, Results: []subagentResult{res}}
-		if res.ExitCode != 0 || res.StopReason == "error" || res.StopReason == "timeout" {
+		out := spawnSubagentResult{Mode: mode, Final: res.Final, Terminal: res.Terminal, Results: []subagentResult{res}}
+		if subagentResultFailed(res) {
 			return out, http.StatusOK, errors.New(resultErrorSummary(res))
 		}
 		return out, http.StatusOK, nil
@@ -305,11 +360,11 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 			spec.Task = strings.ReplaceAll(spec.Task, "{previous}", previous)
 			res := a.runSingleSubagent(ctx, s, runtime, spec, fmt.Sprintf("step %d", i+1), i+1, actor, stream)
 			if stream != nil {
-				stream.Emit("subagent_result", map[string]any{"label": res.Label, "step": i + 1, "result": res})
+				_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "step": i + 1, "result": res})
 			}
 			results = append(results, res)
-			if res.ExitCode != 0 || res.StopReason == "error" || res.StopReason == "timeout" {
-				return spawnSubagentResult{Mode: mode, Final: resultErrorSummary(res), Results: results}, http.StatusOK, errors.New(resultErrorSummary(res))
+			if subagentResultFailed(res) {
+				return spawnSubagentResult{Mode: mode, Final: resultErrorSummary(res), Terminal: res.Terminal, Results: results}, http.StatusOK, errors.New(resultErrorSummary(res))
 			}
 			previous = res.Final
 		}
@@ -317,7 +372,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		if len(results) > 0 {
 			final = results[len(results)-1].Final
 		}
-		return spawnSubagentResult{Mode: mode, Final: final, Results: results}, http.StatusOK, nil
+		return spawnSubagentResult{Mode: mode, Final: final, Terminal: aggregateSubagentTerminal(results, nil), Results: results}, http.StatusOK, nil
 	case "parallel":
 		results := make([]subagentResult, len(specs))
 		sem := make(chan struct{}, maxSubagentConcurrency)
@@ -327,11 +382,17 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				results[i] = a.runSingleSubagent(ctx, s, runtime, spec, fmt.Sprintf("task %d", i+1), 0, actor, stream)
+				label := fmt.Sprintf("task %d", i+1)
+				select {
+				case sem <- struct{}{}:
+					defer func() { <-sem }()
+					results[i] = a.runSingleSubagent(ctx, s, runtime, spec, label, 0, actor, stream)
+				case <-ctx.Done():
+					results[i] = subagentResult{Label: label, Task: spec.Task, Model: spec.Model, Tools: spec.Tools, Runtime: runtime.Name, Command: runtime.Command}
+					setSubagentTerminal(&results[i], cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), "", subagentTerminationNatural))
+				}
 				if stream != nil {
-					stream.Emit("subagent_result", map[string]any{"label": results[i].Label, "index": i, "result": results[i]})
+					_ = stream.Emit("subagent_result", map[string]any{"label": results[i].Label, "index": i, "result": results[i]})
 				}
 			}()
 		}
@@ -339,7 +400,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		parts := make([]string, 0, len(results))
 		var failed []string
 		for _, res := range results {
-			if res.ExitCode != 0 || res.StopReason == "error" || res.StopReason == "timeout" {
+			if subagentResultFailed(res) {
 				failed = append(failed, resultErrorSummary(res))
 			}
 			preview := res.Final
@@ -349,13 +410,14 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 			parts = append(parts, fmt.Sprintf("[%s] %s", res.Label, truncateString(preview, 500)))
 		}
 		final := strings.Join(parts, "\n\n")
-		out := spawnSubagentResult{Mode: mode, Final: final, Results: results}
+		out := spawnSubagentResult{Mode: mode, Final: final, Terminal: aggregateSubagentTerminal(results, nil), Results: results}
 		if len(failed) > 0 {
 			return out, http.StatusOK, fmt.Errorf("%d/%d subagents failed: %s", len(failed), len(results), strings.Join(failed, "; "))
 		}
 		return out, http.StatusOK, nil
 	default:
-		return spawnSubagentResult{}, http.StatusBadRequest, fmt.Errorf("unsupported subagent mode %q", mode)
+		err := fmt.Errorf("unsupported subagent mode %q", mode)
+		return spawnSubagentResult{Mode: mode, Final: err.Error(), Terminal: failedSubagentTerminal(subagentFailureConfiguration, 1, "", subagentTerminationNatural, false, err.Error())}, http.StatusBadRequest, err
 	}
 }
 
@@ -365,21 +427,19 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	cwd, virtualCwd, err := resolveSubagentCwd(s, spec.Cwd)
 	res := subagentResult{Label: label, Task: spec.Task, Model: spec.Model, Tools: spec.Tools, Cwd: virtualCwd, Runtime: runtime.Name, Command: runtime.Command}
 	if err != nil {
-		res.ExitCode = 1
-		res.StopReason = "error"
 		res.Error = err.Error()
+		setSubagentTerminal(&res, failedSubagentTerminal(subagentFailureConfiguration, 1, "", subagentTerminationNatural, false, err.Error()))
 		res.DurationMS = time.Since(started).Milliseconds()
 		return res
 	}
 	if stream != nil {
-		stream.Emit("subagent_child_start", map[string]any{"label": label, "subagent_id": subagentID, "task": spec.Task, "cwd": virtualCwd, "model": spec.Model, "tools": spec.Tools})
+		_ = stream.Emit("subagent_child_start", map[string]any{"label": label, "subagent_id": subagentID, "task": spec.Task, "cwd": virtualCwd, "model": spec.Model, "tools": spec.Tools})
 	}
 
 	childAgentDir, childSessionDir, err := prepareSubagentPiDirs(s, subagentID)
 	if err != nil {
-		res.ExitCode = 1
-		res.StopReason = "error"
 		res.Error = err.Error()
+		setSubagentTerminal(&res, failedSubagentTerminal(subagentFailureConfiguration, 1, "", subagentTerminationNatural, false, err.Error()))
 		res.DurationMS = time.Since(started).Milliseconds()
 		return res
 	}
@@ -389,9 +449,8 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	if strings.TrimSpace(spec.SystemPrompt) != "" && runtime.Protocol == "pi-json" {
 		promptFile, promptDir, err = writeSubagentSystemPrompt(s, subagentID, spec.SystemPrompt)
 		if err != nil {
-			res.ExitCode = 1
-			res.StopReason = "error"
 			res.Error = err.Error()
+			setSubagentTerminal(&res, failedSubagentTerminal(subagentFailureConfiguration, 1, "", subagentTerminationNatural, false, err.Error()))
 			res.DurationMS = time.Since(started).Milliseconds()
 			return res
 		}
@@ -403,15 +462,14 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	env := sanitizedSubagentEnv(os.Environ())
 	childDepth := subagentDepthFromActor(actor) + 1
 	env = withEnvOverrides(env, map[string]string{
-		"AGENTSH_SESSION_ID":             s.ID,
-		"AGENTSH_SUBAGENT_ID":            subagentID,
-		"AGENTSH_SUBAGENT_DEPTH":         strconv.Itoa(childDepth),
-		"AGENTSH_SUBAGENT_CWD":           virtualCwd,
-		"AGENTSH_SUBAGENT_MODEL":         spec.Model,
-		"AGENTSH_SUBAGENT_TOOLS":         strings.Join(spec.Tools, ","),
-		"AGENTSH_SUBAGENT_SYSTEM_PROMPT": spec.SystemPrompt,
-		"PI_CODING_AGENT_DIR":            childAgentDir,
-		"PI_CODING_AGENT_SESSION_DIR":    childSessionDir,
+		"AGENTSH_SESSION_ID":          s.ID,
+		"AGENTSH_SUBAGENT_ID":         subagentID,
+		"AGENTSH_SUBAGENT_DEPTH":      strconv.Itoa(childDepth),
+		"AGENTSH_SUBAGENT_CWD":        virtualCwd,
+		"AGENTSH_SUBAGENT_MODEL":      spec.Model,
+		"AGENTSH_SUBAGENT_TOOLS":      strings.Join(spec.Tools, ","),
+		"PI_CODING_AGENT_DIR":         childAgentDir,
+		"PI_CODING_AGENT_SESSION_DIR": childSessionDir,
 	})
 	if home := s.ProcessHomePath(); home != "" {
 		overrides := map[string]string{"HOME": home}
@@ -441,7 +499,7 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		stdin = string(payload)
 	}
 	res.Args = args
-	cmd := exec.CommandContext(ctx, runtime.Command, args...)
+	cmd := exec.Command(runtime.Command, args...)
 	cmd.Dir = cwd
 	cmd.Env = env
 	if stdin != "" {
@@ -452,28 +510,53 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	stderr.limit = maxSubagentTextBytes
 	cmd.Stdout = subagentOutputWriter(&stdout, stream, subagentID, label, "stdout")
 	cmd.Stderr = subagentOutputWriter(&stderr, stream, subagentID, label, "stderr")
-	runErr := cmd.Run()
+	process := runOwnedSubagentProcess(ctx, cmd, subagentTerminationGracePeriod)
 	res.Stdout = stdout.String()
 	res.Stderr = stderr.String()
 	res.DurationMS = time.Since(started).Milliseconds()
-	res.Final = parseSubagentFinal(runtime.Protocol, res.Stdout)
+	protocolOutcome := parseSubagentProtocolOutcome(runtime.Protocol, res.Stdout)
+	res.Final = protocolOutcome.Final
+
 	if ctx.Err() != nil {
-		res.ExitCode = 124
-		res.StopReason = "timeout"
-		res.Error = ctx.Err().Error()
+		setSubagentTerminal(&res, cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), process.Signal, process.Termination))
 		return res
 	}
-	if runErr != nil {
-		res.ExitCode = exitCode(runErr)
-		res.StopReason = "error"
-		res.Error = runErr.Error()
+	if process.RunError != nil {
+		res.Error = process.RunError.Error()
+		kind := subagentFailureProcess
+		retryable := true
+		var execErr *exec.Error
+		if errors.As(process.RunError, &execErr) {
+			kind = subagentFailureConfiguration
+			retryable = false
+		} else if likelySubagentAuthFailure(res.Error, res.Stderr) {
+			kind = subagentFailureAuth
+			retryable = false
+		} else if protocolOutcome.Failed() {
+			kind = protocolOutcome.FailureKind
+			retryable = kind == subagentFailureProtocol || kind == subagentFailureCompaction
+			if protocolOutcome.ErrorMessage != "" {
+				res.Error = protocolOutcome.ErrorMessage
+			}
+		}
+		setSubagentTerminal(&res, failedSubagentTerminal(kind, exitCode(process.RunError), process.Signal, process.Termination, retryable, res.Error))
 		if res.Final == "" {
 			res.Final = resultErrorSummary(res)
 		}
 		return res
 	}
-	res.ExitCode = 0
-	res.StopReason = "completed"
+	if protocolOutcome.Failed() {
+		res.Error = protocolOutcome.ErrorMessage
+		retryable := protocolOutcome.FailureKind == subagentFailureProtocol || protocolOutcome.FailureKind == subagentFailureCompaction
+		setSubagentTerminal(&res, failedSubagentTerminal(protocolOutcome.FailureKind, 1, process.Signal, process.Termination, retryable, res.Error))
+		return res
+	}
+	if !protocolOutcome.Completed {
+		res.Error = "subagent output protocol did not reach completion"
+		setSubagentTerminal(&res, failedSubagentTerminal(subagentFailureProtocol, 1, process.Signal, process.Termination, true, res.Error))
+		return res
+	}
+	setSubagentTerminal(&res, completedSubagentTerminal(0, process.Termination))
 	return res
 }
 
@@ -632,15 +715,31 @@ func writeSubagentSystemPrompt(s *session.Session, subagentID, prompt string) (f
 	return filePath, dir, nil
 }
 
+var errSubagentStreamTerminal = errors.New("subagent stream is already terminal")
+
 type subagentStreamer struct {
-	mu      sync.Mutex
-	w       http.ResponseWriter
-	flusher http.Flusher
+	mu       sync.Mutex
+	w        http.ResponseWriter
+	flusher  http.Flusher
+	terminal bool
+	err      error
 }
 
-func (s *subagentStreamer) Emit(event string, fields map[string]any) {
+func newSubagentStreamer(w http.ResponseWriter, flusher http.Flusher) *subagentStreamer {
+	return &subagentStreamer{w: w, flusher: flusher}
+}
+
+func (s *subagentStreamer) Emit(event string, fields map[string]any) error {
+	return s.emit(event, fields, false)
+}
+
+func (s *subagentStreamer) Done(fields map[string]any) error {
+	return s.emit("done", fields, true)
+}
+
+func (s *subagentStreamer) emit(event string, fields map[string]any, terminal bool) error {
 	if s == nil {
-		return
+		return nil
 	}
 	payload := make(map[string]any, len(fields)+1)
 	payload["event"] = event
@@ -649,12 +748,35 @@ func (s *subagentStreamer) Emit(event string, fields map[string]any) {
 	}
 	line, err := json.Marshal(payload)
 	if err != nil {
-		return
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
+	}
+	if s.terminal {
+		return errSubagentStreamTerminal
+	}
+	if terminal {
+		s.terminal = true
+	}
+	if _, err := s.w.Write(append(line, '\n')); err != nil {
+		s.err = err
+		return err
+	}
+	s.flusher.Flush()
+	return nil
+}
+
+func (s *subagentStreamer) Err() error {
+	if s == nil {
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, _ = s.w.Write(append(line, '\n'))
-	s.flusher.Flush()
+	return s.err
 }
 
 type subagentChunkWriter struct {
@@ -673,7 +795,7 @@ func subagentOutputWriter(buf *cappedBuffer, stream *subagentStreamer, subagentI
 
 func (w subagentChunkWriter) Write(p []byte) (int, error) {
 	if len(p) > 0 {
-		w.stream.Emit(w.name, map[string]any{"subagent_id": w.subagentID, "label": w.label, "data": string(p)})
+		_ = w.stream.Emit(w.name, map[string]any{"subagent_id": w.subagentID, "label": w.label, "data": string(p)})
 	}
 	return len(p), nil
 }
@@ -705,65 +827,6 @@ func (b *cappedBuffer) String() string {
 	return b.buf.String()
 }
 
-func parseSubagentFinal(protocol, stdout string) string {
-	switch protocol {
-	case "pi-json":
-		if text := parsePiJSONFinal(stdout); text != "" {
-			return text
-		}
-	}
-	return strings.TrimSpace(stdout)
-}
-
-func parsePiJSONFinal(stdout string) string {
-	var final string
-	for _, line := range strings.Split(stdout, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var ev map[string]any
-		if err := json.Unmarshal([]byte(line), &ev); err != nil {
-			continue
-		}
-		if typ, _ := ev["type"].(string); typ != "message_end" && typ != "message_update" && typ != "message_start" {
-			continue
-		}
-		msg, _ := ev["message"].(map[string]any)
-		if msg == nil {
-			continue
-		}
-		if role, _ := msg["role"].(string); role != "assistant" {
-			continue
-		}
-		if text := messageContentText(msg["content"]); text != "" {
-			final = text
-		}
-	}
-	return strings.TrimSpace(final)
-}
-
-func messageContentText(content any) string {
-	switch v := content.(type) {
-	case string:
-		return v
-	case []any:
-		parts := make([]string, 0, len(v))
-		for _, item := range v {
-			if obj, ok := item.(map[string]any); ok {
-				if typ, _ := obj["type"].(string); typ == "text" || typ == "text_delta" || typ == "markdown" {
-					if text, _ := obj["text"].(string); text != "" {
-						parts = append(parts, text)
-					}
-				}
-			}
-		}
-		return strings.Join(parts, "")
-	default:
-		return ""
-	}
-}
-
 func exitCode(err error) int {
 	if err == nil {
 		return 0
@@ -786,7 +849,7 @@ func resultErrorSummary(res subagentResult) string {
 	if msg == "" {
 		msg = fmt.Sprintf("subagent exited with code %d", res.ExitCode)
 	}
-	return fmt.Sprintf("%s %s: %s", res.Label, res.StopReason, truncateString(strings.TrimSpace(msg), 1000))
+	return fmt.Sprintf("%s %s: %s", res.Label, res.StopReason, truncateString(sanitizeSubagentDiagnostic(msg), 1000))
 }
 
 func errString(err error) string {

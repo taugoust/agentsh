@@ -1,12 +1,22 @@
 package api
 
 import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentsh/agentsh/internal/session"
+	"github.com/agentsh/agentsh/internal/store/composite"
 )
 
 func TestValidateSpawnSubagentRequestModes(t *testing.T) {
@@ -162,4 +172,171 @@ func TestWithEnvOverridesReplacesExisting(t *testing.T) {
 	if m["A"] != "new" || m["B"] != "keep" || m["C"] != "add" {
 		t.Fatalf("env overrides not applied: %#v", got)
 	}
+}
+
+func decodeSubagentStreamEvents(t *testing.T, body string) []map[string]any {
+	t.Helper()
+	var events []map[string]any
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	for scanner.Scan() {
+		if strings.TrimSpace(scanner.Text()) == "" {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("decode stream event: %v\n%s", err, scanner.Text())
+		}
+		events = append(events, event)
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan stream: %v", err)
+	}
+	return events
+}
+
+func terminalStateFromDone(t *testing.T, done map[string]any) (string, string) {
+	t.Helper()
+	result, ok := done["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("done result type = %T", done["result"])
+	}
+	terminal, ok := result["terminal"].(map[string]any)
+	if !ok {
+		t.Fatalf("terminal type = %T", result["terminal"])
+	}
+	state, _ := terminal["state"].(string)
+	cause, _ := terminal["cancellation_cause"].(string)
+	return state, cause
+}
+
+func TestSubagentStreamEndpointTerminalContract(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is unavailable")
+	}
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	agentDir := filepath.Join(root, "pi-agent")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(agentDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(root, "child.sh")
+	script := `if [ -n "$AGENTSH_SUBAGENT_SYSTEM_PROMPT" ]; then
+  printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"system prompt leaked through environment"}}'
+  exit 9
+fi
+case "$1" in
+  fail)
+    printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"model failed"}}'
+    exit 7
+    ;;
+  timeout)
+    trap 'exit 0' TERM
+    while :; do sleep 1; done
+    ;;
+  *)
+    printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"complete"}],"stopReason":"stop"}}'
+    ;;
+esac
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("AGENTSH_SUBAGENT_COMMAND", sh)
+	t.Setenv("AGENTSH_SUBAGENT_ARGS", strconv.Quote(scriptPath))
+	t.Setenv("AGENTSH_SUBAGENT_TASK_MODE", "arg")
+	t.Setenv("AGENTSH_SUBAGENT_PROTOCOL", "pi-json")
+	t.Setenv("AGENTSH_SUBAGENT_MAX_DEPTH", "1")
+	t.Setenv("PI_CODING_AGENT_DIR", agentDir)
+
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+	sess, err := sessions.Create(workspace, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := newTestApp(t, sessions, store)
+	handler := app.Router()
+
+	for _, tc := range []struct {
+		name      string
+		body      string
+		wantState string
+		wantCause string
+	}{
+		{name: "completed", body: `{"task":"complete","systemPrompt":"system-prompt-sentinel","stream":true}`, wantState: "completed"},
+		{name: "failed task is protocol success", body: `{"task":"fail","stream":true}`, wantState: "failed"},
+		{name: "timeout", body: `{"task":"timeout","stream":true,"timeout_ms":50}`, wantState: "timed_out", wantCause: "request_timeout"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent", strings.NewReader(tc.body))
+			handler.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
+			}
+			events := decodeSubagentStreamEvents(t, rr.Body.String())
+			doneCount := 0
+			var done map[string]any
+			for index, event := range events {
+				if event["event"] == "done" {
+					doneCount++
+					done = event
+					if index != len(events)-1 {
+						t.Fatalf("event emitted after done: %#v", events[index+1:])
+					}
+				}
+			}
+			if doneCount != 1 {
+				t.Fatalf("done count = %d, events=%#v", doneCount, events)
+			}
+			if ok, _ := done["ok"].(bool); !ok {
+				t.Fatalf("executed child task must be a protocol success: %#v", done)
+			}
+			state, cause := terminalStateFromDone(t, done)
+			if state != tc.wantState || cause != tc.wantCause {
+				t.Fatalf("terminal state=%q cause=%q, want state=%q cause=%q", state, cause, tc.wantState, tc.wantCause)
+			}
+		})
+	}
+
+	t.Run("client cancellation", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		ctx, cancel := context.WithCancel(context.Background())
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent", strings.NewReader(`{"task":"timeout","stream":true}`)).WithContext(ctx)
+		doneServing := make(chan struct{})
+		go func() {
+			defer close(doneServing)
+			handler.ServeHTTP(rr, req)
+		}()
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+		select {
+		case <-doneServing:
+		case <-time.After(3 * time.Second):
+			t.Fatal("timed out waiting for cancelled stream handler")
+		}
+		events := decodeSubagentStreamEvents(t, rr.Body.String())
+		var done map[string]any
+		for _, event := range events {
+			if event["event"] == "done" {
+				if done != nil {
+					t.Fatalf("duplicate done events: %#v", events)
+				}
+				done = event
+			}
+		}
+		if done == nil {
+			t.Fatalf("missing done event: %#v", events)
+		}
+		state, cause := terminalStateFromDone(t, done)
+		if state != "cancelled" || cause != "client_disconnected" {
+			t.Fatalf("terminal state=%q cause=%q", state, cause)
+		}
+	})
 }
