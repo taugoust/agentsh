@@ -76,3 +76,17 @@ func TestSubagentTextProtocolStaysGeneric(t *testing.T) {
 		t.Fatalf("text protocol outcome = %+v", outcome)
 	}
 }
+
+func TestSubagentTextProtocolRejectsTerminalControlOnlyOutput(t *testing.T) {
+	outcome := parseSubagentProtocolOutcome("text", "\x1bP$q q\x1b\\\x1b[6 q")
+	if outcome.Completed || outcome.FailureKind != subagentFailureProtocol || outcome.Final != "" {
+		t.Fatalf("terminal-control-only outcome = %+v", outcome)
+	}
+}
+
+func TestSubagentTextProtocolStripsTerminalControlsFromVisibleOutput(t *testing.T) {
+	outcome := parseSubagentProtocolOutcome("text", "\x1bP$q q\x1b\\\x1b[31mvisible result\x1b[0m\x1b[6 q")
+	if !outcome.Completed || outcome.Failed() || outcome.Final != "visible result" {
+		t.Fatalf("visible terminal output outcome = %+v", outcome)
+	}
+}
