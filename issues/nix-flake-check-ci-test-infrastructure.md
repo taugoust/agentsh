@@ -159,7 +159,6 @@ Avoid documenting or implying real-host/personal-environment tests in AgentSH. I
    - platform-specific tests live under the relevant system's `checks` output;
    - Linux privileged/kernel behavior should use deterministic NixOS VM checks where possible;
    - macOS coverage is limited to basic build/pure checks that do not require EndpointSecurity Framework, system extensions, signing workflows, GUI notification behavior, or host-specific setup;
-   - Windows coverage is out of scope;
    - impure, flaky, live-network, or secret-dependent tests do not belong in AgentSH `checks`.
 
 3. Make generated eBPF artifacts a first-class Nix build dependency for checks that need them.

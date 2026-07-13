@@ -12,7 +12,7 @@ Subagents are launched with `exec.CommandContext`, which reliably kills the dire
 - Existing related issues: `issues/subagent-cancellation-reason-propagation.md`, `issues/subagent-terminal-state-model.md`.
 
 ## Proposed direction
-Run each subagent under a small process supervisor abstraction shared with normal exec: create a process group/job object, terminate group on context cancellation, bound graceful shutdown, reap children, and report whether cancellation was timeout/user/supervisor initiated.
+Run each subagent under a small process supervisor abstraction shared with normal exec: create an owned process group, terminate the group on context cancellation, bound graceful shutdown, reap children, and report whether cancellation was timeout/user/supervisor initiated.
 
 ## Rough priority
 High.
