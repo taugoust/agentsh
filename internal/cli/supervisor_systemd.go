@@ -111,6 +111,15 @@ func chooseDetachedSupervisorSystemdRun(req detachedSupervisorLaunchRequest) (st
 }
 
 func buildSystemdRunDetachedSupervisorArgs(unit, workDir, serviceEnvFile string, serviceEnv []string, exe string, supervisorArgs []string) []string {
+	privateTmp := "yes"
+	if detachedSupervisorNeedsHostTmp(serviceEnv) {
+		// OpenSSH creates forwarded-agent sockets below the host /tmp. A private
+		// tmp namespace would retain the path in the environment while hiding the
+		// socket itself. Keep host /tmp visible only for this explicit lifecycle;
+		// AgentSH and outer sandbox policies still grant connect access solely to
+		// the exact SSH_AUTH_SOCK path.
+		privateTmp = "no"
+	}
 	args := []string{
 		"--user",
 		"--collect",
@@ -121,7 +130,7 @@ func buildSystemdRunDetachedSupervisorArgs(unit, workDir, serviceEnvFile string,
 		"-p", "TimeoutStopSec=10s",
 		"-p", "UMask=0077",
 		"-p", "NoNewPrivileges=yes",
-		"-p", "PrivateTmp=yes",
+		"-p", "PrivateTmp=" + privateTmp,
 		"-p", "KeyringMode=private",
 		"-p", "LimitCORE=0",
 		"-p", "OOMPolicy=stop",
@@ -143,6 +152,16 @@ func buildSystemdRunDetachedSupervisorArgs(unit, workDir, serviceEnvFile string,
 	args = append(args, "--", exe)
 	args = append(args, supervisorArgs...)
 	return args
+}
+
+func detachedSupervisorNeedsHostTmp(serviceEnv []string) bool {
+	sock, ok := lookupEnvAssignment(serviceEnv, "SSH_AUTH_SOCK")
+	if !ok || strings.TrimSpace(sock) == "" {
+		return false
+	}
+	clean := filepath.Clean(strings.TrimSpace(sock))
+	return strings.HasPrefix(clean, string(filepath.Separator)+"tmp"+string(filepath.Separator)) ||
+		strings.HasPrefix(clean, string(filepath.Separator)+"var"+string(filepath.Separator)+"tmp"+string(filepath.Separator))
 }
 
 func isSensitiveSupervisorAssignment(assignment string) bool {

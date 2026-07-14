@@ -244,7 +244,7 @@ var detachedSupervisorRuntimeEnvKeys = []string{
 	"AGENTSH_SUBAGENT_RUNTIME",
 }
 
-func detachedSupervisorServiceEnv(eventToken string, env []string) []string {
+func detachedSupervisorServiceEnv(eventToken string, env, inheritPatterns []string) []string {
 	serviceEnv := []string{"AGENTSH_DETACHED_EVENT_TOKEN=" + eventToken}
 	// Never put the helper credential value in systemd-run argv or transient
 	// unit properties. Installed services pass only the protected credential
@@ -253,12 +253,42 @@ func detachedSupervisorServiceEnv(eventToken string, env []string) []string {
 	// cross the systemd-run boundary so spawn_subagent works in detached mode.
 	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, detached.EnvNetworkEnforcementRequested}
 	keys = append(keys, detachedSupervisorRuntimeEnvKeys...)
+	seen := map[string]struct{}{"AGENTSH_DETACHED_EVENT_TOKEN": {}}
 	for _, key := range keys {
 		if value, ok := lookupEnvAssignment(env, key); ok && strings.TrimSpace(value) != "" {
 			serviceEnv = append(serviceEnv, key+"="+strings.TrimSpace(value))
+			seen[key] = struct{}{}
 		}
 	}
+	// A systemd-launched detached supervisor does not otherwise inherit the
+	// caller's environment. Carry only values explicitly requested through
+	// --env-inherit so session creation can both expose them to allowed commands
+	// and expand policy variables such as ${SSH_AUTH_SOCK} to the exact path.
+	for _, assignment := range env {
+		name, value, ok := strings.Cut(assignment, "=")
+		if !ok || name == "" || value == "" || !detachedSupervisorEnvRequested(name, inheritPatterns) {
+			continue
+		}
+		if _, ok := seen[name]; ok || isSensitiveSupervisorAssignment(assignment) {
+			continue
+		}
+		serviceEnv = append(serviceEnv, assignment)
+		seen[name] = struct{}{}
+	}
 	return serviceEnv
+}
+
+func detachedSupervisorEnvRequested(name string, patterns []string) bool {
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == name {
+			return true
+		}
+		if matched, err := filepath.Match(pattern, name); err == nil && matched {
+			return true
+		}
+	}
+	return false
 }
 
 func loadSupervisorNethelperCredential() error {
@@ -496,7 +526,7 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	if strings.TrimSpace(credentialFile) != "" {
 		launcherEnv = append(launcherEnv, nethelper.EnvCredentialFile+"="+strings.TrimSpace(credentialFile))
 	}
-	serviceEnv := detachedSupervisorServiceEnv(eventToken, launcherEnv)
+	serviceEnv := detachedSupervisorServiceEnv(eventToken, launcherEnv, envInherit)
 	serviceEnvFile := filepath.Join(stateDir, "supervisor.env")
 	launch := buildDetachedSupervisorLaunch(detachedSupervisorLaunchRequest{
 		Exe:            exe,

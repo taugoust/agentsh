@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -305,7 +306,7 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 		"AGENTSH_SUBAGENT_PROTOCOL=pi-json",
 		"AGENTSH_SUBAGENT_MAX_DEPTH=3",
 		"AGENTSH_SUBAGENT_RUNTIME=pi",
-	})
+	}, nil)
 	want := []string{
 		"AGENTSH_DETACHED_EVENT_TOKEN=token",
 		"AGENTSH_NETHELPER_CREDENTIAL_FILE=" + credentialFile,
@@ -318,6 +319,24 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 		"AGENTSH_SUBAGENT_PROTOCOL=pi-json",
 		"AGENTSH_SUBAGENT_MAX_DEPTH=3",
 		"AGENTSH_SUBAGENT_RUNTIME=pi",
+	}
+	if !reflect.DeepEqual(env, want) {
+		t.Fatalf("service env = %#v, want %#v", env, want)
+	}
+}
+
+func TestDetachedSupervisorServiceEnvIncludesExplicitInheritedValues(t *testing.T) {
+	env := detachedSupervisorServiceEnv("token", []string{
+		"PATH=bin",
+		"SSH_AUTH_SOCK=/tmp/ssh-example/agent.123",
+		"GIT_SSH_COMMAND=ssh -o IdentitiesOnly=no",
+		"UNREQUESTED_SECRET=must-not-cross-systemd-boundary",
+		"AGENTSH_DETACHED_EVENT_TOKEN=must-not-override-token",
+	}, []string{"SSH_AUTH_SOCK", "GIT_*", "AGENTSH_DETACHED_EVENT_TOKEN"})
+	want := []string{
+		"AGENTSH_DETACHED_EVENT_TOKEN=token",
+		"SSH_AUTH_SOCK=/tmp/ssh-example/agent.123",
+		"GIT_SSH_COMMAND=ssh -o IdentitiesOnly=no",
 	}
 	if !reflect.DeepEqual(env, want) {
 		t.Fatalf("service env = %#v, want %#v", env, want)
@@ -382,6 +401,32 @@ func TestBuildDetachedSupervisorLaunchBuildsSystemdRunCommand(t *testing.T) {
 	wantArgs = append(wantArgs, req.Args...)
 	if !reflect.DeepEqual(launch.Args, wantArgs) {
 		t.Fatalf("Args = %#v, want %#v", launch.Args, wantArgs)
+	}
+}
+
+func TestBuildSystemdRunDetachedSupervisorArgsKeepsForwardedAgentSocketVisible(t *testing.T) {
+	args := buildSystemdRunDetachedSupervisorArgs(
+		"unit",
+		"workspace",
+		"/state/supervisor.env",
+		[]string{"SSH_AUTH_SOCK=/tmp/ssh-example/agent.123"},
+		"agentsh",
+		nil,
+	)
+	if !slices.Contains(args, "PrivateTmp=no") {
+		t.Fatalf("args = %#v, want PrivateTmp=no", args)
+	}
+
+	args = buildSystemdRunDetachedSupervisorArgs(
+		"unit",
+		"workspace",
+		"/state/supervisor.env",
+		[]string{"SSH_AUTH_SOCK=/run/user/501/agent.sock"},
+		"agentsh",
+		nil,
+	)
+	if !slices.Contains(args, "PrivateTmp=yes") {
+		t.Fatalf("args = %#v, want PrivateTmp=yes for a socket outside /tmp", args)
 	}
 }
 
