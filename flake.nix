@@ -260,6 +260,7 @@
               runHook preCheck
               go test ./internal/policy -run 'Test(DiscoverProjectOverlays|LoadOverlay|MergePolicyOverlays)'
               go test ./internal/config -run 'TestProjectOverlays'
+              go test ./internal/cli -run '^TestFindDetachedSupervisorConfigPath_'
               go test ./internal/nethelper
               go test ./internal/detached ./internal/detachedreport
               go test ./internal/workspace/runtimebin ./internal/workspace/shadow ./internal/workspace/overlay

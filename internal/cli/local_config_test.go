@@ -103,6 +103,46 @@ func TestFindConfigPath_EnvVarNonexistent(t *testing.T) {
 	}
 }
 
+func TestFindDetachedSupervisorConfigPath_IgnoresWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	projectConfig := filepath.Join(projectDir, "config.yml")
+	if err := os.WriteFile(projectConfig, []byte("policies:\n  dir: ./project-policies\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("AGENTSH_CONFIG", "")
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv("USERPROFILE", filepath.Join(root, "home"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "xdg-config"))
+	t.Setenv("APPDATA", filepath.Join(root, "appdata"))
+	t.Chdir(projectDir)
+
+	path, source := findDetachedSupervisorConfigPath()
+	if path == "config.yml" || path == projectConfig {
+		t.Fatalf("findDetachedSupervisorConfigPath() selected workspace config %q", path)
+	}
+	if source == config.ConfigSourceEnv {
+		t.Fatalf("findDetachedSupervisorConfigPath() source = %v, want installed config source", source)
+	}
+}
+
+func TestFindDetachedSupervisorConfigPath_ExplicitEnvOptsIn(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yml")
+	t.Setenv("AGENTSH_CONFIG", configPath)
+
+	path, source := findDetachedSupervisorConfigPath()
+	if path != configPath {
+		t.Fatalf("findDetachedSupervisorConfigPath() path = %q, want %q", path, configPath)
+	}
+	if source != config.ConfigSourceEnv {
+		t.Fatalf("findDetachedSupervisorConfigPath() source = %v, want ConfigSourceEnv", source)
+	}
+}
+
 func TestLoadLocalConfig_ExplicitPath(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "explicit.yaml")

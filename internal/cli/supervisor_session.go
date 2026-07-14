@@ -460,7 +460,7 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	if err != nil {
 		return nil, fmt.Errorf("locate executable: %w", err)
 	}
-	configPath, _ := findConfigPath()
+	configPath, _ := findDetachedSupervisorConfigPath()
 	if abs, absErr := filepath.Abs(configPath); absErr == nil {
 		configPath = abs
 	}

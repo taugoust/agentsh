@@ -7,28 +7,41 @@ import (
 	"github.com/agentsh/agentsh/internal/config"
 )
 
-// findConfigPath searches for config file in priority order and returns
-// the path and its source.
-// Search order:
-// 1. AGENTSH_CONFIG env var
-// 2. ./config.yml or ./config.yaml in the current directory
-// 3. User-local config (~/.config/agentsh/config.yaml or platform equivalent)
-// 4. System-wide config (/etc/agentsh/config.yaml or platform equivalent)
-// 5. macOS app bundle Resources (fallback for Homebrew Cask installs)
+// findConfigPath searches for a config file in priority order and returns
+// the path and its source. General local commands allow a config in the current
+// directory as a convenience for source-tree development.
 func findConfigPath() (string, config.ConfigSource) {
-	// 1. Check env var first
+	return findConfigPathWithWorkingDirectory(true)
+}
+
+// findDetachedSupervisorConfigPath deliberately excludes the current working
+// directory. For `session start --detach`, that directory is normally the
+// workspace being sandboxed and must not be allowed to replace the operator's
+// AgentSH config or policy directory. AGENTSH_CONFIG remains the explicit
+// opt-in for source-tree and other custom configurations.
+func findDetachedSupervisorConfigPath() (string, config.ConfigSource) {
+	return findConfigPathWithWorkingDirectory(false)
+}
+
+// findConfigPathWithWorkingDirectory searches in this order:
+//  1. AGENTSH_CONFIG
+//  2. ./config.yml or ./config.yaml, when includeWorkingDirectory is true
+//  3. User-local config (~/.config/agentsh/config.yaml or platform equivalent)
+//  4. System-wide config (/etc/agentsh/config.yaml or platform equivalent)
+//  5. macOS app bundle Resources (fallback for Homebrew Cask installs)
+func findConfigPathWithWorkingDirectory(includeWorkingDirectory bool) (string, config.ConfigSource) {
 	if v := os.Getenv("AGENTSH_CONFIG"); v != "" {
 		return v, config.ConfigSourceEnv
 	}
 
-	// 2. Check current directory for source-tree/local development.
-	for _, name := range []string{"config.yml", "config.yaml"} {
-		if _, err := os.Stat(name); err == nil {
-			return name, config.ConfigSourceEnv
+	if includeWorkingDirectory {
+		for _, name := range []string{"config.yml", "config.yaml"} {
+			if _, err := os.Stat(name); err == nil {
+				return name, config.ConfigSourceEnv
+			}
 		}
 	}
 
-	// 3. Check user-local config
 	userConfigDir := config.GetUserConfigDir()
 	for _, name := range []string{"config.yaml", "config.yml"} {
 		userConfig := filepath.Join(userConfigDir, name)
@@ -37,7 +50,6 @@ func findConfigPath() (string, config.ConfigSource) {
 		}
 	}
 
-	// 4. Check system-wide config
 	systemConfigDir := config.GetConfigDir()
 	for _, name := range []string{"config.yaml", "config.yml"} {
 		systemConfig := filepath.Join(systemConfigDir, name)
@@ -46,7 +58,6 @@ func findConfigPath() (string, config.ConfigSource) {
 		}
 	}
 
-	// 5. Check macOS app bundle Resources
 	if bundleDir := config.GetBundleResourcesDir(); bundleDir != "" {
 		for _, name := range []string{"config.yaml", "config.yml"} {
 			bundleConfig := filepath.Join(bundleDir, name)
@@ -56,7 +67,6 @@ func findConfigPath() (string, config.ConfigSource) {
 		}
 	}
 
-	// 6. Fall back to system default (even if doesn't exist)
 	return filepath.Join(systemConfigDir, "config.yaml"), config.ConfigSourceSystem
 }
 

@@ -171,22 +171,6 @@ sandbox:
       strict_on_audit_failure: false
       max_event_queue: 1024
       hash_small_files_under: "1MB"
-    # Kernel cache timeouts (higher = better perf, less fresh)
-    entry_timeout: "1s"
-    attr_timeout: "1s"
-    negative_timeout: "0s"
-    
-    # Read performance
-    max_readahead: 131072          # 128KB
-    async_read: true
-    
-    # Write performance (keep false for audit accuracy)
-    writeback_cache: false
-    
-    # Event batching
-    event_batch_size: 100
-    event_batch_delay: "10ms"
-    
   # Network proxy settings
   network:
     enabled: true
