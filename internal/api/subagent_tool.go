@@ -60,22 +60,29 @@ type subagentRuntimeConfig struct {
 }
 
 type subagentResult struct {
-	Label      string           `json:"label"`
-	Task       string           `json:"task"`
-	ExitCode   int              `json:"exit_code"`
-	StopReason string           `json:"stop_reason"`
-	Terminal   subagentTerminal `json:"terminal"`
-	Final      string           `json:"final"`
-	Stdout     string           `json:"stdout,omitempty"`
-	Stderr     string           `json:"stderr,omitempty"`
-	DurationMS int64            `json:"duration_ms"`
-	Model      string           `json:"model,omitempty"`
-	Tools      []string         `json:"tools,omitempty"`
-	Cwd        string           `json:"cwd,omitempty"`
-	Runtime    string           `json:"runtime,omitempty"`
-	Command    string           `json:"command,omitempty"`
-	Args       []string         `json:"args,omitempty"`
-	Error      string           `json:"error,omitempty"`
+	Label               string                       `json:"label"`
+	Task                string                       `json:"task"`
+	ExitCode            int                          `json:"exit_code"`
+	StopReason          string                       `json:"stop_reason"`
+	ModelStopReason     string                       `json:"model_stop_reason,omitempty"`
+	Terminal            subagentTerminal             `json:"terminal"`
+	Final               string                       `json:"final"`
+	ProtocolSettled     bool                         `json:"protocol_settled,omitempty"`
+	ProtocolDiagnostics []subagentProtocolDiagnostic `json:"protocol_diagnostics,omitempty"`
+	Stdout              string                       `json:"stdout,omitempty"`
+	StdoutTruncated     bool                         `json:"stdout_truncated,omitempty"`
+	StdoutTotalBytes    int64                        `json:"stdout_total_bytes,omitempty"`
+	Stderr              string                       `json:"stderr,omitempty"`
+	StderrTruncated     bool                         `json:"stderr_truncated,omitempty"`
+	StderrTotalBytes    int64                        `json:"stderr_total_bytes,omitempty"`
+	DurationMS          int64                        `json:"duration_ms"`
+	Model               string                       `json:"model,omitempty"`
+	Tools               []string                     `json:"tools,omitempty"`
+	Cwd                 string                       `json:"cwd,omitempty"`
+	Runtime             string                       `json:"runtime,omitempty"`
+	Command             string                       `json:"command,omitempty"`
+	Args                []string                     `json:"args,omitempty"`
+	Error               string                       `json:"error,omitempty"`
 }
 
 type spawnSubagentResult struct {
@@ -508,14 +515,35 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	var stdout, stderr cappedBuffer
 	stdout.limit = maxSubagentTextBytes
 	stderr.limit = maxSubagentTextBytes
-	cmd.Stdout = subagentOutputWriter(&stdout, stream, subagentID, label, "stdout")
-	cmd.Stderr = subagentOutputWriter(&stderr, stream, subagentID, label, "stderr")
+	var protocolReducer *piProtocolReducer
+	var protocolWriter io.Writer
+	if runtime.Protocol == "pi-json" {
+		protocolReducer = newPiProtocolReducer()
+		protocolWriter = protocolReducer
+	}
+	cmd.Stdout = subagentOutputWriter(&stdout, protocolWriter, stream, subagentID, label, "stdout")
+	cmd.Stderr = subagentOutputWriter(&stderr, nil, stream, subagentID, label, "stderr")
 	process := runOwnedSubagentProcess(ctx, cmd, subagentTerminationGracePeriod)
-	res.Stdout = stdout.String()
-	res.Stderr = stderr.String()
+	stderrText := stderr.String()
+	if stream == nil {
+		res.Stdout = stdout.String()
+		res.Stderr = stderrText
+	}
+	res.StdoutTruncated = stdout.truncated
+	res.StdoutTotalBytes = stdout.total
+	res.StderrTruncated = stderr.truncated
+	res.StderrTotalBytes = stderr.total
 	res.DurationMS = time.Since(started).Milliseconds()
-	protocolOutcome := parseSubagentProtocolOutcome(runtime.Protocol, res.Stdout)
+	var protocolOutcome subagentProtocolOutcome
+	if protocolReducer != nil {
+		protocolOutcome = protocolReducer.outcome()
+	} else {
+		protocolOutcome = parseSubagentProtocolOutcome(runtime.Protocol, stdout.String())
+	}
 	res.Final = protocolOutcome.Final
+	res.ModelStopReason = protocolOutcome.StopReason
+	res.ProtocolSettled = protocolOutcome.Settled
+	res.ProtocolDiagnostics = protocolOutcome.Diagnostics
 
 	if ctx.Err() != nil {
 		setSubagentTerminal(&res, cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), process.Signal, process.Termination))
@@ -529,7 +557,7 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		if errors.As(process.RunError, &execErr) {
 			kind = subagentFailureConfiguration
 			retryable = false
-		} else if likelySubagentAuthFailure(res.Error, res.Stderr) {
+		} else if likelySubagentAuthFailure(res.Error, stderrText) {
 			kind = subagentFailureAuth
 			retryable = false
 		} else if protocolOutcome.Failed() {
@@ -786,11 +814,18 @@ type subagentChunkWriter struct {
 	name       string
 }
 
-func subagentOutputWriter(buf *cappedBuffer, stream *subagentStreamer, subagentID, label, name string) io.Writer {
-	if stream == nil {
-		return buf
+func subagentOutputWriter(buf *cappedBuffer, protocol io.Writer, stream *subagentStreamer, subagentID, label, name string) io.Writer {
+	writers := []io.Writer{buf}
+	if protocol != nil {
+		writers = append(writers, protocol)
 	}
-	return io.MultiWriter(buf, subagentChunkWriter{stream: stream, subagentID: subagentID, label: label, name: name})
+	if stream != nil {
+		writers = append(writers, subagentChunkWriter{stream: stream, subagentID: subagentID, label: label, name: name})
+	}
+	if len(writers) == 1 {
+		return writers[0]
+	}
+	return io.MultiWriter(writers...)
 }
 
 func (w subagentChunkWriter) Write(p []byte) (int, error) {
@@ -800,28 +835,40 @@ func (w subagentChunkWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// cappedBuffer is a raw diagnostic ring. Protocol correctness must not depend
+// on it: it retains the most recent bytes while the event-aware reducer keeps
+// authoritative terminal state independently.
 type cappedBuffer struct {
 	buf       bytes.Buffer
 	limit     int
+	total     int64
 	truncated bool
 }
 
 func (b *cappedBuffer) Write(p []byte) (int, error) {
-	if b.limit <= 0 {
-		return len(p), nil
-	}
-	remaining := b.limit - b.buf.Len()
-	if remaining > 0 {
-		if len(p) <= remaining {
-			_, _ = b.buf.Write(p)
-		} else {
-			_, _ = b.buf.Write(p[:remaining])
+	written := len(p)
+	b.total += int64(written)
+	if b.limit <= 0 || written == 0 {
+		if written > 0 {
 			b.truncated = true
 		}
-	} else {
+		return written, nil
+	}
+	if written >= b.limit {
+		b.buf.Reset()
+		_, _ = b.buf.Write(p[written-b.limit:])
+		b.truncated = b.total > int64(b.limit)
+		return written, nil
+	}
+	if overflow := b.buf.Len() + written - b.limit; overflow > 0 {
+		b.buf.Next(overflow)
 		b.truncated = true
 	}
-	return len(p), nil
+	_, _ = b.buf.Write(p)
+	if b.total > int64(b.limit) {
+		b.truncated = true
+	}
+	return written, nil
 }
 func (b *cappedBuffer) String() string {
 	return b.buf.String()

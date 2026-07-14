@@ -2,12 +2,20 @@ package api
 
 import "strings"
 
+type subagentProtocolDiagnostic struct {
+	Kind  string `json:"kind"`
+	Event string `json:"event,omitempty"`
+	Bytes int64  `json:"bytes,omitempty"`
+}
+
 type subagentProtocolOutcome struct {
 	Final        string
 	Completed    bool
 	FailureKind  subagentFailureKind
 	StopReason   string
 	ErrorMessage string
+	Settled      bool
+	Diagnostics  []subagentProtocolDiagnostic
 }
 
 func (outcome subagentProtocolOutcome) Failed() bool {

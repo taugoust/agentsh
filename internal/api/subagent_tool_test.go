@@ -76,9 +76,30 @@ func TestSplitCommandArgs(t *testing.T) {
 func TestParsePiJSONFinal(t *testing.T) {
 	stdout := `{"type":"message_start","message":{"role":"assistant","content":[{"type":"text","text":"draft"}]}}
 {"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"final"}]}}
+{"type":"agent_settled"}
 `
 	if got := parseSubagentFinal("pi-json", stdout); got != "final" {
 		t.Fatalf("final = %q, want final", got)
+	}
+}
+
+func TestCappedBufferRetainsSlidingTail(t *testing.T) {
+	var buffer cappedBuffer
+	buffer.limit = 5
+	_, _ = buffer.Write([]byte("abc"))
+	_, _ = buffer.Write([]byte("defg"))
+	if got := buffer.String(); got != "cdefg" {
+		t.Fatalf("sliding tail = %q, want cdefg", got)
+	}
+	if !buffer.truncated || buffer.total != 7 {
+		t.Fatalf("sliding metadata: truncated=%v total=%d", buffer.truncated, buffer.total)
+	}
+	_, _ = buffer.Write([]byte("0123456789"))
+	if got := buffer.String(); got != "56789" {
+		t.Fatalf("oversized write tail = %q, want 56789", got)
+	}
+	if buffer.total != 17 {
+		t.Fatalf("sliding total = %d, want 17", buffer.total)
 	}
 }
 
@@ -226,19 +247,32 @@ func TestSubagentStreamEndpointTerminalContract(t *testing.T) {
 	scriptPath := filepath.Join(root, "child.sh")
 	script := `if [ -n "$AGENTSH_SUBAGENT_SYSTEM_PROMPT" ]; then
   printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"system prompt leaked through environment"}}'
+  printf '%s\n' '{"type":"agent_settled"}'
   exit 9
 fi
 case "$1" in
   fail)
     printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"model failed"}}'
+    printf '%s\n' '{"type":"agent_settled"}'
     exit 7
     ;;
   timeout)
     trap 'exit 0' TERM
     while :; do sleep 1; done
     ;;
+  large)
+    i=0
+    while [ "$i" -lt 2200 ]; do
+      printf '{"type":"message_update","padding":"%01000d"}\n' 0
+      i=$((i + 1))
+    done
+    printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"complete"}],"stopReason":"stop"}}'
+    printf '{"type":"agent_end","messages":"%03000000d"}\n' 0
+    printf '%s\n' '{"type":"agent_settled"}'
+    ;;
   *)
     printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"complete"}],"stopReason":"stop"}}'
+    printf '%s\n' '{"type":"agent_settled"}'
     ;;
 esac
 `
@@ -270,6 +304,7 @@ esac
 		wantCause string
 	}{
 		{name: "completed", body: `{"task":"complete","systemPrompt":"system-prompt-sentinel","stream":true}`, wantState: "completed"},
+		{name: "large progress retains final", body: `{"task":"large","stream":true}`, wantState: "completed"},
 		{name: "failed task is protocol success", body: `{"task":"fail","stream":true}`, wantState: "failed"},
 		{name: "timeout", body: `{"task":"timeout","stream":true,"timeout_ms":50}`, wantState: "timed_out", wantCause: "request_timeout"},
 	} {
@@ -301,6 +336,26 @@ esac
 			state, cause := terminalStateFromDone(t, done)
 			if state != tc.wantState || cause != tc.wantCause {
 				t.Fatalf("terminal state=%q cause=%q, want state=%q cause=%q", state, cause, tc.wantState, tc.wantCause)
+			}
+			if tc.name == "large progress retains final" {
+				result := done["result"].(map[string]any)
+				children, ok := result["results"].([]any)
+				if !ok || len(children) != 1 {
+					t.Fatalf("large result children = %#v", result["results"])
+				}
+				child, ok := children[0].(map[string]any)
+				if !ok {
+					t.Fatalf("large child type = %T", children[0])
+				}
+				if child["final"] != "complete" || child["protocol_settled"] != true || child["model_stop_reason"] != "stop" {
+					t.Fatalf("large child lost final protocol state: %#v", child)
+				}
+				if child["stdout_truncated"] != true || child["stdout_total_bytes"].(float64) <= float64(maxSubagentTextBytes) {
+					t.Fatalf("large child did not report raw ring truncation: %#v", child)
+				}
+				if _, exists := child["stdout"]; exists {
+					t.Fatalf("streamed terminal result duplicated raw stdout: %#v", child)
+				}
 			}
 		})
 	}
