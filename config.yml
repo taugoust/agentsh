@@ -149,6 +149,10 @@ sessions:
   
   # Cleanup interval
   cleanup_interval: "1m"
+
+  # Maximum bytes retained in each session-owned remote output artifact
+  output_artifacts:
+    max_bytes: 16777216  # 16 MiB
   
   # Session metadata retention after termination
   metadata_retention: "24h"

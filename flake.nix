@@ -169,16 +169,19 @@
         {
           default = agentsh;
           agentsh = agentsh;
-          formatted-go-source = pkgs.runCommand "agentsh-formatted-go-source" {
-            nativeBuildInputs = [ pkgs.go ];
-          } ''
-            mkdir -p "$out"
-            cp -R ${self}/. "$out/"
-            chmod -R u+w "$out"
-            find "$out" -type f -name '*.go' \
-              -not -path "$out/vendor/*" \
-              -exec gofmt -w {} +
-          '';
+          formatted-go-source =
+            pkgs.runCommand "agentsh-formatted-go-source"
+              {
+                nativeBuildInputs = [ pkgs.go ];
+              }
+              ''
+                mkdir -p "$out"
+                cp -R ${self}/. "$out/"
+                chmod -R u+w "$out"
+                find "$out" -type f -name '*.go' \
+                  -not -path "$out/vendor/*" \
+                  -exec gofmt -w {} +
+              '';
         }
       );
 
@@ -203,6 +206,36 @@
         pkgs:
         let
           inherit (pkgs) lib stdenv;
+          moduleTestPackage =
+            pkgs.runCommand "agentsh-module-test-package"
+              {
+                meta.mainProgram = "agentsh";
+              }
+              ''
+                mkdir -p "$out/bin"
+                touch "$out/bin/agentsh"
+              '';
+          evalOutputArtifactsModule =
+            maxBytes:
+            nixpkgs.lib.nixosSystem {
+              system = stdenv.hostPlatform.system;
+              modules = [
+                self.nixosModules.default
+                ({ ... }: {
+                  system.stateVersion = "25.11";
+                  services.agentsh = {
+                    enable = true;
+                    package = moduleTestPackage;
+                    policies.source = moduleTestPackage;
+                  }
+                  // lib.optionalAttrs (maxBytes != null) {
+                    sessions.outputArtifacts.maxBytes = maxBytes;
+                  };
+                })
+              ];
+            };
+          defaultOutputArtifactsModule = evalOutputArtifactsModule null;
+          customOutputArtifactsModule = evalOutputArtifactsModule 33554432;
         in
         {
           go-format =
@@ -259,7 +292,9 @@
             checkPhase = ''
               runHook preCheck
               go test ./internal/policy -run 'Test(DiscoverProjectOverlays|LoadOverlay|MergePolicyOverlays)'
-              go test ./internal/config -run 'TestProjectOverlays'
+              go test ./internal/config -run 'Test(ProjectOverlays|OutputArtifacts)'
+              go test ./internal/session -run '^(TestOutputArtifact_|TestConfigureOutputArtifacts|TestSession_Cleanup$)'
+              go test ./internal/api -run '^(TestCommandOutputArtifactCapture_.*|TestValidateOutputArtifactRequest|TestPersistSubagentFinalArtifact_.*|TestReadTextLineWindow_.*|TestPiToolReadFile_ShadowAllowsOnlyExactRegisteredOutputArtifact|TestPiToolExecBash_RemoteArtifactRetainsBeyondResponseCap|TestDefaultMaxOutputBytes_IsTwoMiB|TestCreateSession_AssignsRuntimeHomeAndTmp)$'
               go test ./internal/cli -run '^(TestFindDetachedSupervisorConfigPath_|TestDetachedSupervisorServiceEnv|TestBuildSystemdRunDetachedSupervisorArgs)'
               go test ./internal/nethelper
               go test ./internal/detached ./internal/detachedreport
@@ -292,9 +327,9 @@
             checkPhase = ''
               runHook preCheck
               go test ./internal/workspace/runtimebin ./internal/workspace/shadow ./internal/workspace/overlay
-              GOOS=linux go build ./internal/workspace/...
-              GOOS=darwin go build ./internal/workspace/...
-              GOOS=windows go build ./internal/workspace/...
+              GOOS=linux go build ./internal/workspace/... ./internal/session
+              GOOS=darwin go build ./internal/workspace/... ./internal/session
+              GOOS=windows go build ./internal/workspace/... ./internal/session
               runHook postCheck
             '';
             installPhase = ''
@@ -349,6 +384,31 @@
               runHook postInstall
             '';
           };
+
+          nixos-output-artifacts-module =
+            if stdenv.hostPlatform.isLinux then
+              assert
+                defaultOutputArtifactsModule.config.services.agentsh.sessions.outputArtifacts.maxBytes == 16777216;
+              assert
+                customOutputArtifactsModule.config.services.agentsh.sessions.outputArtifacts.maxBytes == 33554432;
+              pkgs.runCommand "agentsh-nixos-output-artifacts-module-test"
+                {
+                  nativeBuildInputs = [ pkgs.yq-go ];
+                }
+                ''
+                  set -euo pipefail
+                  yq -e '.sessions.output_artifacts.max_bytes == 16777216' \
+                    ${defaultOutputArtifactsModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sessions.output_artifacts.max_bytes == 33554432' \
+                    ${customOutputArtifactsModule.config.environment.etc."agentsh/config.yml".source}
+                  mkdir -p "$out"
+                  touch "$out/passed"
+                ''
+            else
+              pkgs.runCommand "agentsh-nixos-output-artifacts-module-test-skipped" { } ''
+                mkdir -p "$out"
+                touch "$out/skipped-non-linux"
+              '';
 
           approval-regression-tests =
             if stdenv.hostPlatform.isLinux then

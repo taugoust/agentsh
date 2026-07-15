@@ -785,7 +785,7 @@ func (s *grpcServer) OutputChunk(ctx context.Context, in *structpb.Struct) (*str
 		"total_bytes": total,
 		"truncated":   truncated,
 		"data":        string(chunk),
-		"has_more":    offset+int64(len(chunk)) < total,
+		"has_more":    len(chunk) > 0 && offset+int64(len(chunk)) < total,
 	})
 }
 

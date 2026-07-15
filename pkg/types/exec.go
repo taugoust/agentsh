@@ -12,6 +12,11 @@ type ExecRequest struct {
 	Stdin        string            `json:"stdin,omitempty"`
 	StreamOutput bool              `json:"stream_output,omitempty"`
 
+	// OutputArtifact asks AgentSH to retain a bounded, session-owned copy when
+	// output exceeds the caller's presentation budget. It is optional and is
+	// primarily used by trusted parent-Pi tool integrations.
+	OutputArtifact *OutputArtifactRequest `json:"output_artifact,omitempty"`
+
 	// IncludeEvents controls how much event detail is returned in the ExecResponse.
 	// Valid values: "all" (default), "summary", "blocked", "none".
 	IncludeEvents string `json:"include_events,omitempty"`
@@ -47,9 +52,24 @@ type ExecResult struct {
 	StdoutTotalBytes int64 `json:"stdout_total_bytes,omitempty"`
 	StderrTotalBytes int64 `json:"stderr_total_bytes,omitempty"`
 
+	OutputArtifact *OutputArtifactResult `json:"output_artifact,omitempty"`
+
 	DurationMs int64       `json:"duration_ms"`
 	Error      *ExecError  `json:"error,omitempty"`
 	Pagination *Pagination `json:"pagination,omitempty"`
+}
+
+type OutputArtifactRequest struct {
+	PersistOverBytes int64 `json:"persist_over_bytes,omitempty"`
+	PersistOverLines int64 `json:"persist_over_lines,omitempty"`
+}
+
+type OutputArtifactResult struct {
+	Path         string `json:"path,omitempty"`
+	Bytes        int64  `json:"bytes,omitempty"`
+	TotalBytes   int64  `json:"total_bytes,omitempty"`
+	Complete     bool   `json:"complete"`
+	ErrorMessage string `json:"error,omitempty"`
 }
 
 type Pagination struct {

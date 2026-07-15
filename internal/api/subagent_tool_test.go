@@ -270,6 +270,13 @@ case "$1" in
     printf '{"type":"agent_end","messages":"%03000000d"}\n' 0
     printf '%s\n' '{"type":"agent_settled"}'
     ;;
+  artifact)
+    printf '%s' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"HIDDEN-ARTIFACT-THINKING"},{"type":"text","text":"'
+    i=0
+    while [ "$i" -lt 5000 ]; do printf 'x'; i=$((i + 1)); done
+    printf '%s\n' 'ARTIFACT-TAIL"}],"stopReason":"stop"}}'
+    printf '%s\n' '{"type":"agent_settled"}'
+    ;;
   *)
     printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"complete"}],"stopReason":"stop"}}'
     printf '%s\n' '{"type":"agent_settled"}'
@@ -294,6 +301,17 @@ esac
 	if err != nil {
 		t.Fatal(err)
 	}
+	runtimeHome := filepath.Join(root, "runtime-home")
+	runtimeTmp := filepath.Join(root, "runtime-tmp")
+	for _, dir := range []string{runtimeHome, runtimeTmp} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sess.SetRuntimePaths(runtimeHome, runtimeTmp, nil)
+	if err := sess.ConfigureOutputArtifacts(16 * 1024 * 1024); err != nil {
+		t.Fatal(err)
+	}
 	app := newTestApp(t, sessions, store)
 	handler := app.Router()
 
@@ -305,6 +323,7 @@ esac
 	}{
 		{name: "completed", body: `{"task":"complete","systemPrompt":"system-prompt-sentinel","stream":true}`, wantState: "completed"},
 		{name: "large progress retains final", body: `{"task":"large","stream":true}`, wantState: "completed"},
+		{name: "long final gets remote artifact", body: `{"task":"artifact","stream":true,"result_artifact_threshold_bytes":4096}`, wantState: "completed"},
 		{name: "failed task is protocol success", body: `{"task":"fail","stream":true}`, wantState: "failed"},
 		{name: "timeout", body: `{"task":"timeout","stream":true,"timeout_ms":50}`, wantState: "timed_out", wantCause: "request_timeout"},
 	} {
@@ -336,6 +355,25 @@ esac
 			state, cause := terminalStateFromDone(t, done)
 			if state != tc.wantState || cause != tc.wantCause {
 				t.Fatalf("terminal state=%q cause=%q, want state=%q cause=%q", state, cause, tc.wantState, tc.wantCause)
+			}
+			if tc.name == "long final gets remote artifact" {
+				result := done["result"].(map[string]any)
+				children := result["results"].([]any)
+				child := children[0].(map[string]any)
+				path, _ := child["full_result_path"].(string)
+				if path == "" || child["final_truncated"] != true || child["artifact_complete"] != true {
+					t.Fatalf("long final artifact metadata = %#v", child)
+				}
+				artifact, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.HasSuffix(string(artifact), "ARTIFACT-TAIL") || len(artifact) <= 4096 {
+					t.Fatalf("long final artifact content length=%d suffix=%q", len(artifact), string(artifact[max(0, len(artifact)-32):]))
+				}
+				if strings.Contains(string(artifact), "HIDDEN-ARTIFACT-THINKING") {
+					t.Fatal("subagent thinking leaked into remote artifact")
+				}
 			}
 			if tc.name == "large progress retains final" {
 				result := done["result"].(map[string]any)

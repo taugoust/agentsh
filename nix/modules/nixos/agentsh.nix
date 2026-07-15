@@ -238,6 +238,7 @@ let
 
       sessions = {
         base_dir = cfg.sessions.baseDir;
+        output_artifacts.max_bytes = cfg.sessions.outputArtifacts.maxBytes;
         workspace_overlay = {
           enabled = cfg.sessions.workspaceOverlay.enable;
           base_dir = cfg.sessions.workspaceOverlay.baseDir;
@@ -432,6 +433,11 @@ in
       baseDir = mkOption {
         type = types.str;
         default = "/var/lib/agentsh/sessions";
+      };
+      outputArtifacts.maxBytes = mkOption {
+        type = types.ints.positive;
+        default = 16 * 1024 * 1024;
+        description = "Maximum bytes retained in each session-owned remote output artifact.";
       };
       workspaceOverlay = {
         enable = mkOption {

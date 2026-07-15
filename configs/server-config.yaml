@@ -36,6 +36,8 @@ audit:
 
 sessions:
   base_dir: "/var/lib/agentsh/sessions"
+  output_artifacts:
+    max_bytes: 16777216
 
 # LLM Proxy configuration
 proxy:

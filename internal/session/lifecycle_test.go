@@ -570,7 +570,7 @@ func TestSession_Cleanup(t *testing.T) {
 	s, _ := m.Create(dir, "default")
 
 	// Set up closers that track if they were called
-	var netNSClosed, proxyClosed, unmounted bool
+	var netNSClosed, proxyClosed, unmounted, runtimeClosed bool
 
 	s.SetNetNS("test-ns", func() error {
 		netNSClosed = true
@@ -582,6 +582,19 @@ func TestSession_Cleanup(t *testing.T) {
 	})
 	s.SetWorkspaceUnmount(func() error {
 		unmounted = true
+		return nil
+	})
+	runtimeRoot := t.TempDir()
+	runtimeHome := filepath.Join(runtimeRoot, "home")
+	runtimeTmp := filepath.Join(runtimeRoot, "tmp")
+	if err := os.MkdirAll(runtimeHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(runtimeTmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s.SetRuntimePaths(runtimeHome, runtimeTmp, func() error {
+		runtimeClosed = true
 		return nil
 	})
 
@@ -596,6 +609,9 @@ func TestSession_Cleanup(t *testing.T) {
 	}
 	if !unmounted {
 		t.Error("expected workspace to be unmounted")
+	}
+	if !runtimeClosed {
+		t.Error("expected session runtime to be closed")
 	}
 }
 

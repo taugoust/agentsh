@@ -301,9 +301,15 @@ type RotationConfig struct {
 	Compress   bool `yaml:"compress"`
 }
 
+const DefaultOutputArtifactMaxBytes int64 = 16 * 1024 * 1024
+
 type SessionsConfig struct {
 	BaseDir     string `yaml:"base_dir"`
 	MaxSessions int    `yaml:"max_sessions"`
+
+	// OutputArtifacts configures session-owned files used to retain bounded
+	// remote tool output outside the workspace.
+	OutputArtifacts OutputArtifactsConfig `yaml:"output_artifacts"`
 
 	// Optional defaults (duration strings). If set, these act as additional caps on top of policy resource_limits.
 	DefaultTimeout     string `yaml:"default_timeout"`
@@ -337,6 +343,10 @@ type SessionsConfig struct {
 
 	// Checkpoints configures workspace checkpoint/rollback functionality.
 	Checkpoints CheckpointConfig `yaml:"checkpoints"`
+}
+
+type OutputArtifactsConfig struct {
+	MaxBytes int64 `yaml:"max_bytes"`
 }
 
 type WorkspaceOverlayConfig struct {
@@ -1792,6 +1802,9 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	if cfg.Sessions.CleanupInterval == "" {
 		cfg.Sessions.CleanupInterval = "1m"
 	}
+	if cfg.Sessions.OutputArtifacts.MaxBytes == 0 {
+		cfg.Sessions.OutputArtifacts.MaxBytes = DefaultOutputArtifactMaxBytes
+	}
 	if cfg.Sessions.WorkspaceOverlay.BaseDir == "" {
 		cfg.Sessions.WorkspaceOverlay.BaseDir = filepath.Join(cfg.Sessions.BaseDir, "overlays")
 	}
@@ -2426,6 +2439,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.Sandbox.FUSE.Audit.MaxEventQueue < 0 {
 		return fmt.Errorf("sandbox.fuse.audit.max_event_queue must be >= 0")
+	}
+	if cfg.Sessions.OutputArtifacts.MaxBytes <= 0 {
+		return fmt.Errorf("sessions.output_artifacts.max_bytes must be > 0")
 	}
 	switch cfg.Sessions.WorkspaceOverlay.DestroyAction {
 	case "", "reject", "keep":

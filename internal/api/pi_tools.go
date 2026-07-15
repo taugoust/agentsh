@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -30,13 +29,15 @@ const (
 type piToolActor map[string]any
 
 type execBashToolRequest struct {
-	Command       string            `json:"command"`
-	Cwd           string            `json:"cwd,omitempty"`
-	TimeoutMS     int64             `json:"timeout_ms,omitempty"`
-	Env           map[string]string `json:"env,omitempty"`
-	Stdin         string            `json:"stdin,omitempty"`
-	IncludeEvents string            `json:"include_events,omitempty"`
-	Actor         piToolActor       `json:"actor,omitempty"`
+	Command                string            `json:"command"`
+	Cwd                    string            `json:"cwd,omitempty"`
+	TimeoutMS              int64             `json:"timeout_ms,omitempty"`
+	Env                    map[string]string `json:"env,omitempty"`
+	Stdin                  string            `json:"stdin,omitempty"`
+	IncludeEvents          string            `json:"include_events,omitempty"`
+	PersistOutputOverBytes int64             `json:"persist_output_over_bytes,omitempty"`
+	PersistOutputOverLines int64             `json:"persist_output_over_lines,omitempty"`
+	Actor                  piToolActor       `json:"actor,omitempty"`
 }
 
 type fileToolRequest struct {
@@ -46,6 +47,8 @@ type fileToolRequest struct {
 	Encoding   string      `json:"encoding,omitempty"`
 	CreateDirs bool        `json:"create_dirs,omitempty"`
 	MaxBytes   int64       `json:"max_bytes,omitempty"`
+	Offset     int         `json:"offset,omitempty"`
+	Limit      int         `json:"limit,omitempty"`
 	OldText    string      `json:"oldText,omitempty"`
 	NewText    string      `json:"newText,omitempty"`
 	Actor      piToolActor `json:"actor,omitempty"`
@@ -58,9 +61,10 @@ type toolResponse struct {
 }
 
 type resolvedToolPath struct {
-	Real        string
-	Virtual     string
-	InWorkspace bool
+	Real           string
+	Virtual        string
+	InWorkspace    bool
+	OutputArtifact bool
 }
 
 func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
@@ -85,18 +89,30 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 	if includeEvents == "" {
 		includeEvents = "summary"
 	}
+	var outputArtifactRequest *types.OutputArtifactRequest
+	if req.PersistOutputOverBytes != 0 || req.PersistOutputOverLines != 0 {
+		outputArtifactRequest = &types.OutputArtifactRequest{
+			PersistOverBytes: req.PersistOutputOverBytes,
+			PersistOverLines: req.PersistOutputOverLines,
+		}
+		if err := validateOutputArtifactRequest(outputArtifactRequest); err != nil {
+			writeToolError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	execReq := types.ExecRequest{
 		Command: "bash",
 		// Do not use a login shell here. On NixOS, /etc/profile rebuilds PATH from
 		// HOME/USER and can discard the supervisor's controlled tool PATH (git, rg,
 		// etc.), especially now that AgentSH provides a session-local HOME.
-		Args:          []string{"-c", req.Command},
-		Timeout:       timeout,
-		WorkingDir:    req.Cwd,
-		Env:           req.Env,
-		Stdin:         req.Stdin,
-		IncludeEvents: includeEvents,
-		Actor:         map[string]any(req.Actor),
+		Args:           []string{"-c", req.Command},
+		Timeout:        timeout,
+		WorkingDir:     req.Cwd,
+		Env:            req.Env,
+		Stdin:          req.Stdin,
+		IncludeEvents:  includeEvents,
+		OutputArtifact: outputArtifactRequest,
+		Actor:          map[string]any(req.Actor),
 	}
 	resp, code, err := a.execInSessionCore(r.Context(), id, execReq)
 	if err != nil {
@@ -107,17 +123,30 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 	if status == 0 {
 		status = http.StatusOK
 	}
-	writeJSON(w, status, toolResponse{OK: code >= 200 && code < 300, Result: map[string]any{
-		"command_id":       resp.CommandID,
-		"session_id":       resp.SessionID,
-		"exit_code":        resp.Result.ExitCode,
-		"stdout":           resp.Result.Stdout,
-		"stderr":           resp.Result.Stderr,
-		"duration_ms":      resp.Result.DurationMs,
-		"stdout_truncated": resp.Result.StdoutTruncated,
-		"stderr_truncated": resp.Result.StderrTruncated,
-		"exec_response":    resp,
-	}})
+	result := map[string]any{
+		"command_id":         resp.CommandID,
+		"session_id":         resp.SessionID,
+		"exit_code":          resp.Result.ExitCode,
+		"stdout":             resp.Result.Stdout,
+		"stderr":             resp.Result.Stderr,
+		"duration_ms":        resp.Result.DurationMs,
+		"stdout_truncated":   resp.Result.StdoutTruncated,
+		"stderr_truncated":   resp.Result.StderrTruncated,
+		"stdout_total_bytes": resp.Result.StdoutTotalBytes,
+		"stderr_total_bytes": resp.Result.StderrTotalBytes,
+		"exec_response":      resp,
+	}
+	if artifact := resp.Result.OutputArtifact; artifact != nil {
+		result["output_artifact"] = artifact
+		result["full_output_path"] = artifact.Path
+		result["artifact_bytes"] = artifact.Bytes
+		result["artifact_total_bytes"] = artifact.TotalBytes
+		result["artifact_complete"] = artifact.Complete
+		if artifact.ErrorMessage != "" {
+			result["artifact_error"] = artifact.ErrorMessage
+		}
+	}
+	writeJSON(w, status, toolResponse{OK: code >= 200 && code < 300, Result: result})
 }
 
 func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
@@ -126,51 +155,61 @@ func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
 	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
 		return
 	}
-	s, rp, code, err := a.resolveToolFileRequest(r.Context(), id, req.Path, req.Cwd, "read", req.Actor)
+	s, rp, code, err := a.resolveToolFileRequest(r.Context(), id, req.Path, req.Cwd, "read", req.Actor, true)
 	if err != nil {
 		writeToolError(w, code, err.Error())
 		return
 	}
-	_ = s
-	limit := req.MaxBytes
-	if limit <= 0 {
-		limit = defaultToolReadLimitBytes
+	maxBytes := req.MaxBytes
+	if maxBytes <= 0 {
+		maxBytes = defaultToolReadLimitBytes
 	}
-	if limit > maxToolFileBytes {
-		limit = maxToolFileBytes
+	if maxBytes > maxToolFileBytes {
+		maxBytes = maxToolFileBytes
 	}
-	f, err := os.Open(rp.Real)
+	var f *os.File
+	var info os.FileInfo
+	if rp.OutputArtifact {
+		f, info, err = s.OpenOutputArtifact(rp.Real)
+	} else {
+		f, err = os.Open(rp.Real)
+		if err == nil {
+			info, err = f.Stat()
+		}
+	}
 	if err != nil {
-		writeToolError(w, statusForFileError(err), err.Error())
+		status := statusForFileError(err)
+		if rp.OutputArtifact && status == http.StatusInternalServerError {
+			status = http.StatusForbidden
+		}
+		writeToolError(w, status, err.Error())
 		return
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	window, err := readTextLineWindow(f, req.Offset, req.Limit, maxBytes)
 	if err != nil {
 		writeToolError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	truncated := int64(len(data)) > limit
-	if truncated {
-		data = data[:limit]
-	}
-	info, statErr := os.Stat(rp.Real)
-	if statErr != nil {
-		writeToolError(w, statusForFileError(statErr), statErr.Error())
-		return
-	}
 	result := map[string]any{
-		"path":      rp.Virtual,
-		"real_path": rp.Real,
-		"size":      info.Size(),
-		"truncated": truncated || info.Size() > int64(len(data)),
+		"path":           rp.Virtual,
+		"real_path":      rp.Real,
+		"size":           info.Size(),
+		"truncated":      window.Truncated,
+		"byte_truncated": window.ByteTruncated,
+		"start_line":     window.StartLine,
+		"end_line":       window.EndLine,
+		"max_bytes":      maxBytes,
 	}
-	if utf8.Valid(data) {
+	if window.NextOffset > 0 {
+		result["next_offset"] = window.NextOffset
+	}
+	if utf8.Valid(window.Content) {
 		result["encoding"] = "utf-8"
-		result["content"] = string(data)
+		result["content"] = string(window.Content)
 	} else {
 		result["encoding"] = "base64"
-		result["content"] = base64.StdEncoding.EncodeToString(data)
+		result["content"] = base64.StdEncoding.EncodeToString(window.Content)
 	}
 	writeJSON(w, http.StatusOK, toolResponse{OK: true, Result: result})
 }
@@ -214,7 +253,7 @@ func (a *App) editFileTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusBadRequest, "oldText is required")
 		return
 	}
-	s, rp, code, err := a.resolveToolFileRequest(r.Context(), id, req.Path, req.Cwd, "read", req.Actor)
+	s, rp, code, err := a.resolveToolFileRequest(r.Context(), id, req.Path, req.Cwd, "read", req.Actor, false)
 	if err != nil {
 		writeToolError(w, code, err.Error())
 		return
@@ -330,10 +369,23 @@ func (a *App) prepareWriteFileTool(ctx context.Context, sessionID string, req fi
 	return rp, data, http.StatusOK, nil
 }
 
-func (a *App) resolveToolFileRequest(ctx context.Context, sessionID, reqPath, reqCwd, operation string, actor piToolActor) (*session.Session, resolvedToolPath, int, error) {
+func (a *App) resolveToolFileRequest(ctx context.Context, sessionID, reqPath, reqCwd, operation string, actor piToolActor, allowOutputArtifact bool) (*session.Session, resolvedToolPath, int, error) {
 	s, ok := a.sessions.Get(sessionID)
 	if !ok {
 		return nil, resolvedToolPath{}, http.StatusNotFound, errors.New("session not found")
+	}
+	// Output artifacts are server-created, bounded files whose exact identity is
+	// registered on the session. Permit only that exact read capability before
+	// applying the normal shadow/overlay workspace boundary; no RuntimeTmp
+	// directory or prefix is made generally readable.
+	if allowOutputArtifact && operation == "read" {
+		if artifactPath, registered := s.RegisteredOutputArtifactPath(reqPath); registered {
+			return s, resolvedToolPath{
+				Real:           artifactPath,
+				Virtual:        filepath.ToSlash(artifactPath),
+				OutputArtifact: true,
+			}, http.StatusOK, nil
+		}
 	}
 	rp, err := resolveToolPath(s, reqPath, reqCwd)
 	if err != nil {

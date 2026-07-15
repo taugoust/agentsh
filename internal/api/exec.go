@@ -26,7 +26,7 @@ import (
 
 const (
 	defaultCommandTimeout = 5 * time.Minute
-	defaultMaxOutputBytes = 1 * 1024 * 1024 // 1MB per stream in response + sqlite
+	defaultMaxOutputBytes = 2 * 1024 * 1024 // 2 MiB per stream in response + sqlite
 )
 
 type extraProcConfig struct {
@@ -42,6 +42,10 @@ type extraProcConfig struct {
 	notifySession    *session.Session   // Session for notify handler context
 	execveHandler    any                // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
 	blockList        any                // Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
+
+	// outputArtifact receives the complete combined stdout/stderr write stream
+	// for trusted callers that requested a bounded remote overflow artifact.
+	outputArtifact *commandOutputArtifactCapture
 
 	// File monitor config
 	fileMonitorCfg  config.SandboxSeccompFileMonitorConfig
@@ -191,6 +195,10 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 	}()
 
 	if handled, code, out, errOut := s.Builtin(req); handled {
+		if extra != nil && extra.outputArtifact != nil {
+			_ = extra.outputArtifact.Append(out)
+			_ = extra.outputArtifact.Append(errOut)
+		}
 		return code, out, errOut, int64(len(out)), int64(len(errOut)), false, false, types.ExecResources{}, nil
 	}
 
@@ -280,8 +288,12 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 		cmd.Stdin = strings.NewReader(req.Stdin)
 	}
 
-	stdoutW := newCaptureWriter(defaultMaxOutputBytes, nil)
-	stderrW := newCaptureWriter(defaultMaxOutputBytes, nil)
+	var artifactChunk func([]byte) error
+	if extra != nil && extra.outputArtifact != nil {
+		artifactChunk = extra.outputArtifact.Append
+	}
+	stdoutW := newCaptureWriter(defaultMaxOutputBytes, artifactChunk)
+	stderrW := newCaptureWriter(defaultMaxOutputBytes, artifactChunk)
 
 	// For ptrace mode, use explicit pipes so we can drain them independently
 	// of cmd.Wait() (which we skip to avoid the Wait4 race). For non-ptrace,

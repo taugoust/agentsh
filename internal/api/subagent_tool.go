@@ -29,16 +29,17 @@ const (
 )
 
 type spawnSubagentToolRequest struct {
-	Task         string                `json:"task,omitempty"`
-	SystemPrompt string                `json:"systemPrompt,omitempty"`
-	Model        string                `json:"model,omitempty"`
-	Tools        []string              `json:"tools,omitempty"`
-	Cwd          string                `json:"cwd,omitempty"`
-	Tasks        []subagentItemRequest `json:"tasks,omitempty"`
-	Chain        []subagentItemRequest `json:"chain,omitempty"`
-	TimeoutMS    int64                 `json:"timeout_ms,omitempty"`
-	Stream       bool                  `json:"stream,omitempty"`
-	Actor        piToolActor           `json:"actor,omitempty"`
+	Task                         string                `json:"task,omitempty"`
+	SystemPrompt                 string                `json:"systemPrompt,omitempty"`
+	Model                        string                `json:"model,omitempty"`
+	Tools                        []string              `json:"tools,omitempty"`
+	Cwd                          string                `json:"cwd,omitempty"`
+	Tasks                        []subagentItemRequest `json:"tasks,omitempty"`
+	Chain                        []subagentItemRequest `json:"chain,omitempty"`
+	TimeoutMS                    int64                 `json:"timeout_ms,omitempty"`
+	ResultArtifactThresholdBytes int64                 `json:"result_artifact_threshold_bytes,omitempty"`
+	Stream                       bool                  `json:"stream,omitempty"`
+	Actor                        piToolActor           `json:"actor,omitempty"`
 }
 
 type subagentItemRequest struct {
@@ -83,6 +84,13 @@ type subagentResult struct {
 	Command             string                       `json:"command,omitempty"`
 	Args                []string                     `json:"args,omitempty"`
 	Error               string                       `json:"error,omitempty"`
+	FullResultPath      string                       `json:"full_result_path,omitempty"`
+	FinalTruncated      bool                         `json:"final_truncated,omitempty"`
+	FinalTotalBytes     int64                        `json:"final_total_bytes,omitempty"`
+	FinalInlineBytes    int64                        `json:"final_inline_bytes,omitempty"`
+	ArtifactBytes       int64                        `json:"artifact_bytes,omitempty"`
+	ArtifactComplete    *bool                        `json:"artifact_complete,omitempty"`
+	ArtifactError       string                       `json:"artifact_error,omitempty"`
 }
 
 type spawnSubagentResult struct {
@@ -120,6 +128,10 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.TimeoutMS < 0 {
 		writeToolError(w, http.StatusBadRequest, "timeout_ms must be non-negative")
+		return
+	}
+	if req.ResultArtifactThresholdBytes < 0 || req.ResultArtifactThresholdBytes > maxSubagentTextBytes {
+		writeToolError(w, http.StatusBadRequest, fmt.Sprintf("result_artifact_threshold_bytes must be between 0 and %d", maxSubagentTextBytes))
 		return
 	}
 	timeout := defaultSubagentTimeout
@@ -177,10 +189,10 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 			code = http.StatusInternalServerError
 			result = spawnSubagentResult{Mode: mode, Final: runErr.Error(), Terminal: failedSubagentTerminal(subagentFailureTransport, 1, "", subagentTerminationNatural, true, runErr.Error())}
 		} else {
-			result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, mode, specs, req.Actor, stream)
+			result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, mode, specs, req.Actor, req.ResultArtifactThresholdBytes, stream)
 		}
 	} else {
-		result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, mode, specs, req.Actor, nil)
+		result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, mode, specs, req.Actor, req.ResultArtifactThresholdBytes, nil)
 	}
 	if result.Terminal.State == "" {
 		result.Terminal = aggregateSubagentTerminal(result.Results, runErr)
@@ -333,7 +345,7 @@ func validateSubagentItem(item subagentItemRequest) error {
 	return nil
 }
 
-func (a *App) runSubagentModeSafely(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor, stream *subagentStreamer) (result spawnSubagentResult, code int, err error) {
+func (a *App) runSubagentModeSafely(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (result spawnSubagentResult, code int, err error) {
 	defer func() {
 		if recover() != nil {
 			err = errors.New("subagent runtime failed unexpectedly")
@@ -345,13 +357,13 @@ func (a *App) runSubagentModeSafely(ctx context.Context, s *session.Session, run
 			}
 		}
 	}()
-	return a.runSubagentMode(ctx, s, runtime, mode, specs, actor, stream)
+	return a.runSubagentMode(ctx, s, runtime, mode, specs, actor, artifactThresholdBytes, stream)
 }
 
-func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor, stream *subagentStreamer) (spawnSubagentResult, int, error) {
+func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (spawnSubagentResult, int, error) {
 	switch mode {
 	case "single":
-		res := a.runSingleSubagent(ctx, s, runtime, specs[0], "subagent", 0, actor, stream)
+		res := a.runSingleSubagent(ctx, s, runtime, specs[0], "subagent", 0, actor, artifactThresholdBytes, stream)
 		if stream != nil {
 			_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "result": res})
 		}
@@ -365,7 +377,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		previous := ""
 		for i, spec := range specs {
 			spec.Task = strings.ReplaceAll(spec.Task, "{previous}", previous)
-			res := a.runSingleSubagent(ctx, s, runtime, spec, fmt.Sprintf("step %d", i+1), i+1, actor, stream)
+			res := a.runSingleSubagent(ctx, s, runtime, spec, fmt.Sprintf("step %d", i+1), i+1, actor, artifactThresholdBytes, stream)
 			if stream != nil {
 				_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "step": i + 1, "result": res})
 			}
@@ -393,7 +405,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 				select {
 				case sem <- struct{}{}:
 					defer func() { <-sem }()
-					results[i] = a.runSingleSubagent(ctx, s, runtime, spec, label, 0, actor, stream)
+					results[i] = a.runSingleSubagent(ctx, s, runtime, spec, label, 0, actor, artifactThresholdBytes, stream)
 				case <-ctx.Done():
 					results[i] = subagentResult{Label: label, Task: spec.Task, Model: spec.Model, Tools: spec.Tools, Runtime: runtime.Name, Command: runtime.Command}
 					setSubagentTerminal(&results[i], cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), "", subagentTerminationNatural))
@@ -428,7 +440,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 	}
 }
 
-func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, spec subagentItemRequest, label string, step int, actor piToolActor, stream *subagentStreamer) subagentResult {
+func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, spec subagentItemRequest, label string, step int, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) subagentResult {
 	started := time.Now()
 	subagentID := "subagent-" + uuid.NewString()
 	cwd, virtualCwd, err := resolveSubagentCwd(s, spec.Cwd)
@@ -585,6 +597,7 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		return res
 	}
 	setSubagentTerminal(&res, completedSubagentTerminal(0, process.Termination))
+	a.persistSubagentFinalArtifact(s, &res, runtime.Protocol, artifactThresholdBytes)
 	return res
 }
 

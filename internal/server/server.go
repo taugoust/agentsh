@@ -1201,6 +1201,7 @@ func (s *Server) Close() error {
 			_ = sess.CloseNetNS()
 			_ = sess.CloseProxy()
 			_ = sess.UnmountWorkspace()
+			_ = sess.CloseRuntime()
 		}
 	}
 	if s.store != nil {
@@ -1240,6 +1241,7 @@ func (s *Server) reapOnce(now time.Time) {
 		_ = sess.CloseNetNS()
 		_ = sess.CloseProxy()
 		_ = sess.UnmountWorkspace()
+		_ = sess.CloseRuntime()
 
 		expiredBy := "unknown"
 		createdAt, last := sess.Timestamps()

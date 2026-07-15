@@ -1,16 +1,19 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
+	"github.com/agentsh/agentsh/pkg/types"
 )
 
 func TestPiToolFileEndpoints_WriteReadEdit(t *testing.T) {
@@ -148,6 +151,92 @@ func TestPiToolExecBash_UsesNonLoginShell(t *testing.T) {
 	}
 }
 
+func TestPiToolExecBash_RemoteArtifactRetainsBeyondResponseCap(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("bash artifact integration requires a POSIX shell")
+	}
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+	ws := filepath.Join(t.TempDir(), "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	runtimeHome := filepath.Join(runtimeRoot, "home")
+	runtimeTmp := filepath.Join(runtimeRoot, "tmp")
+	for _, dir := range []string{runtimeHome, runtimeTmp} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sess.SetRuntimePaths(runtimeHome, runtimeTmp, nil)
+	if err := sess.ConfigureOutputArtifacts(4 * 1024 * 1024); err != nil {
+		t.Fatal(err)
+	}
+
+	app := newTestApp(t, sessions, store)
+	body := `{"command":"yes x | head -c 2200000","persist_output_over_bytes":51200,"persist_output_over_lines":200}`
+	rr := httptest.NewRecorder()
+	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("exec_bash status = %d body = %.1000s", rr.Code, rr.Body.String())
+	}
+	var resp toolResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result type = %T", resp.Result)
+	}
+	path, _ := result["full_output_path"].(string)
+	if path == "" {
+		t.Fatalf("missing remote full_output_path: %#v", result)
+	}
+	if got := int64(result["artifact_total_bytes"].(float64)); got != 2_200_000 {
+		t.Fatalf("artifact total bytes = %d", got)
+	}
+	if got := int64(result["artifact_bytes"].(float64)); got != 2_200_000 {
+		t.Fatalf("artifact bytes = %d", got)
+	}
+	if complete, _ := result["artifact_complete"].(bool); !complete {
+		t.Fatalf("artifact unexpectedly incomplete: %#v", result)
+	}
+	if truncated, _ := result["stdout_truncated"].(bool); !truncated {
+		t.Fatalf("2.2 MiB stdout did not cross 2 MiB response cap: %#v", result)
+	}
+	stdout, _ := result["stdout"].(string)
+	if len(stdout) != defaultMaxOutputBytes {
+		t.Fatalf("retained response stdout = %d bytes, want %d", len(stdout), defaultMaxOutputBytes)
+	}
+	if got := int64(result["stdout_total_bytes"].(float64)); got != 2_200_000 {
+		t.Fatalf("stdout total bytes = %d", got)
+	}
+	commandID, _ := result["command_id"].(string)
+	stored, storedTotal, storedTruncated, err := store.ReadOutputChunk(context.Background(), commandID, "stdout", 0, 3*1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != defaultMaxOutputBytes || storedTotal != 2_200_000 || !storedTruncated {
+		t.Fatalf("stored capture len=%d total=%d truncated=%v", len(stored), storedTotal, storedTruncated)
+	}
+	if info, err := os.Stat(path); err != nil || info.Size() != 2_200_000 {
+		t.Fatalf("remote artifact stat = %v, err=%v", info, err)
+	}
+
+	readBody, _ := json.Marshal(map[string]string{"path": path})
+	readRecorder := httptest.NewRecorder()
+	app.Router().ServeHTTP(readRecorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/read_file", strings.NewReader(string(readBody))))
+	if readRecorder.Code != http.StatusOK {
+		t.Fatalf("registered artifact read status = %d body = %s", readRecorder.Code, readRecorder.Body.String())
+	}
+}
+
 func TestPiToolExecBash_ValidatesRequestWithoutSpawning(t *testing.T) {
 	st := newSQLiteStore(t)
 	store := composite.New(st, st)
@@ -167,5 +256,101 @@ func TestPiToolExecBash_ValidatesRequestWithoutSpawning(t *testing.T) {
 	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(`{"command":""}`)))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("exec_bash validation status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestPiToolReadFile_ShadowAllowsOnlyExactRegisteredOutputArtifact(t *testing.T) {
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+
+	ws := filepath.Join(t.TempDir(), "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.WorkspaceMode = string(types.WorkspaceModeShadow)
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	runtimeHome := filepath.Join(runtimeRoot, "home")
+	runtimeTmp := filepath.Join(runtimeRoot, "tmp")
+	for _, dir := range []string{runtimeHome, runtimeTmp} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sess.SetRuntimePaths(runtimeHome, runtimeTmp, nil)
+	if err := sess.ConfigureOutputArtifacts(1024); err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := sess.WriteOutputArtifact("stdout", strings.NewReader("remote output"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unregistered := filepath.Join(runtimeTmp, "unregistered.log")
+	if err := os.WriteFile(unregistered, []byte("must stay private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	app := newTestApp(t, sessions, store)
+	h := app.Router()
+	postRead := func(path string) *httptest.ResponseRecorder {
+		t.Helper()
+		body, err := json.Marshal(map[string]string{"path": path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/read_file", strings.NewReader(string(body))))
+		return rr
+	}
+
+	rr := postRead(artifact.Path)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("registered artifact status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	var resp toolResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok || result["content"] != "remote output" {
+		t.Fatalf("registered artifact result = %#v", resp.Result)
+	}
+
+	for _, path := range []string{unregistered, filepath.Dir(artifact.Path), artifact.Path + ".other"} {
+		rr = postRead(path)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("unregistered path %q status = %d body = %s", path, rr.Code, rr.Body.String())
+		}
+	}
+
+	writeBody, err := json.Marshal(map[string]string{"path": artifact.Path, "content": "replace"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/write_file", strings.NewReader(string(writeBody))))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("artifact write status = %d body = %s", rr.Code, rr.Body.String())
+	}
+
+	editBody, err := json.Marshal(map[string]string{"path": artifact.Path, "oldText": "remote", "newText": "local"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/edit_file", strings.NewReader(string(editBody))))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("artifact edit status = %d body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestDefaultMaxOutputBytes_IsTwoMiB(t *testing.T) {
+	const want = 2 * 1024 * 1024
+	if defaultMaxOutputBytes != want {
+		t.Fatalf("defaultMaxOutputBytes = %d, want %d", defaultMaxOutputBytes, want)
 	}
 }

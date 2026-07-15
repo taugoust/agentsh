@@ -32,6 +32,12 @@ type Session struct {
 	mu                sync.Mutex
 	cwdEscapeWarnOnce sync.Once // #377: latches the one-time symlink-cwd-escape diagnostic
 
+	outputArtifactsMu      sync.Mutex
+	outputArtifacts        map[string]outputArtifactRegistration
+	outputArtifactRoot     string
+	outputArtifactMaxBytes int64
+	outputArtifactsClosed  bool
+
 	ID                string
 	State             types.SessionState
 	CreatedAt         time.Time
@@ -662,8 +668,11 @@ func (s *Session) SetRuntimePaths(home, tmp string, cleanup func() error) {
 }
 
 func (s *Session) SetRuntimePathsWithProcessHome(runtimeHome, tmp, processHome, homeMode string, cleanup func() error) {
+	// Runtime paths are normally assigned once. If they are replaced, discard
+	// any artifacts owned by the previous runtime before forgetting its root.
+	_ = s.closeOutputArtifacts()
+
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.RuntimeHome = runtimeHome
 	s.RuntimeTmp = tmp
 	if processHome == "" {
@@ -675,6 +684,9 @@ func (s *Session) SetRuntimePathsWithProcessHome(runtimeHome, tmp, processHome, 
 	}
 	s.RuntimeHomeMode = homeMode
 	s.runtimeCleanup = cleanup
+	s.mu.Unlock()
+
+	s.resetOutputArtifactRuntime()
 }
 
 func (s *Session) SetEnvRuntimeConfig(baseMode string, inherit []string) {
@@ -734,10 +746,12 @@ func (s *Session) CloseRuntime() error {
 	fn := s.runtimeCleanup
 	s.runtimeCleanup = nil
 	s.mu.Unlock()
-	if fn != nil {
-		return fn()
+
+	artifactErr := s.closeOutputArtifacts()
+	if fn == nil {
+		return artifactErr
 	}
-	return nil
+	return errors.Join(artifactErr, fn())
 }
 
 func (s *Session) UnmountWorkspace() error {
@@ -1412,4 +1426,7 @@ func (s *Session) cleanup() {
 
 	// Unmount workspace (legacy single-mount)
 	s.UnmountWorkspace()
+
+	// Remove the session-local home/tmp tree, including output artifacts.
+	s.CloseRuntime()
 }

@@ -1572,7 +1572,7 @@ func (a *App) getOutputChunk(w http.ResponseWriter, r *http.Request) {
 		"total_bytes": total,
 		"truncated":   truncated,
 		"data":        string(chunk),
-		"has_more":    offset+int64(len(chunk)) < total,
+		"has_more":    len(chunk) > 0 && offset+int64(len(chunk)) < total,
 	})
 }
 

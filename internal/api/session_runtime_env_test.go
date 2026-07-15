@@ -19,6 +19,7 @@ func TestCreateSession_AssignsRuntimeHomeAndTmp(t *testing.T) {
 	sessions := session.NewManager(10)
 	app := newTestApp(t, sessions, store)
 	app.cfg.Sessions.WorkspaceShadow.BaseDir = filepath.Join(t.TempDir(), "workspaces")
+	app.cfg.Sessions.OutputArtifacts.MaxBytes = 5
 
 	ws := filepath.Join(t.TempDir(), "ws")
 	if err := os.MkdirAll(ws, 0o755); err != nil {
@@ -56,6 +57,17 @@ func TestCreateSession_AssignsRuntimeHomeAndTmp(t *testing.T) {
 		if !info.IsDir() {
 			t.Fatalf("runtime path is not dir: %s", dir)
 		}
+	}
+	created, ok := sessions.Get(out.ID)
+	if !ok {
+		t.Fatal("created session not found")
+	}
+	artifact, err := created.WriteOutputArtifact("config-bound", strings.NewReader("123456"))
+	if err != nil {
+		t.Fatalf("WriteOutputArtifact: %v", err)
+	}
+	if artifact.BytesWritten != 5 || !artifact.Truncated {
+		t.Fatalf("configured artifact bound was not applied: %+v", artifact)
 	}
 }
 

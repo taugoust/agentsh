@@ -1006,6 +1006,13 @@ func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session, r
 	if err != nil {
 		return err
 	}
+	artifactMaxBytes := config.DefaultOutputArtifactMaxBytes
+	if a.cfg != nil && a.cfg.Sessions.OutputArtifacts.MaxBytes > 0 {
+		artifactMaxBytes = a.cfg.Sessions.OutputArtifacts.MaxBytes
+	}
+	if err := s.ConfigureOutputArtifacts(artifactMaxBytes); err != nil {
+		return fmt.Errorf("configure output artifacts: %w", err)
+	}
 	if s.Shadow != nil && s.Shadow.Home != "" && s.Shadow.Tmp != "" {
 		runtimeDirs := []string{s.Shadow.Home, s.Shadow.Tmp, filepath.Join(s.Shadow.Home, ".config"), filepath.Join(s.Shadow.Home, ".cache"), filepath.Join(s.Shadow.Home, ".local"), filepath.Join(s.Shadow.Home, ".local", "state"), filepath.Join(s.Shadow.Home, ".local", "share")}
 		for _, dir := range runtimeDirs {
@@ -1620,6 +1627,9 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	if strings.TrimSpace(req.Command) == "" {
 		return nil, http.StatusBadRequest, errors.New("command is required")
 	}
+	if err := validateOutputArtifactRequest(req.OutputArtifact); err != nil {
+		return nil, http.StatusBadRequest, err
+	}
 
 	cmdID := "cmd-" + uuid.NewString()
 	start := time.Now().UTC()
@@ -1824,6 +1834,13 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	}
 	wrappedReq := wrapperResult.wrappedReq
 	extraCfg := wrapperResult.extraCfg
+	outputArtifactCapture := newCommandOutputArtifactCapture(s, cmdID, req.OutputArtifact)
+	if outputArtifactCapture != nil {
+		if extraCfg == nil {
+			extraCfg = &extraProcConfig{}
+		}
+		extraCfg.outputArtifact = outputArtifactCapture
+	}
 
 	// macOS: sandbox wrapper with XPC control
 	if runtime.GOOS == "darwin" && a.cfg.Sandbox.XPC.Enabled && a.cfg.Sandbox.XPC.Mode == "enforce" {
@@ -1848,6 +1865,7 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	limits := a.policyEngineFor(s).Limits()
 	cmdDecision := a.policyEngineFor(s).CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
 	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResources(ctx, s, cmdID, wrappedReq, a.cfg, cmdDecision.EnvPolicy, limits.CommandTimeout, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id)
+	outputArtifact := outputArtifactCapture.Finish()
 	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
 	}
@@ -1928,6 +1946,7 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 		StderrTruncated:  stderrTrunc,
 		StdoutTotalBytes: stdoutTotal,
 		StderrTotalBytes: stderrTotal,
+		OutputArtifact:   outputArtifact,
 		DurationMs:       int64(end.Sub(start).Milliseconds()),
 	}
 	if execErr != nil {
