@@ -15,9 +15,41 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
 )
+
+func TestSubagentExecutionTimeoutDefaultsAndOverrides(t *testing.T) {
+	app := &App{cfg: &config.Config{}}
+	got, err := app.subagentExecutionTimeout(0)
+	if err != nil || got != 2*time.Hour {
+		t.Fatalf("default timeout = %s, err=%v; want %s", got, err, 2*time.Hour)
+	}
+
+	app.cfg.Sessions.Subagents.DefaultTimeout = "45m"
+	got, err = app.subagentExecutionTimeout(0)
+	if err != nil || got != 45*time.Minute {
+		t.Fatalf("configured timeout = %s, err=%v; want %s", got, err, 45*time.Minute)
+	}
+
+	got, err = app.subagentExecutionTimeout(125)
+	if err != nil || got != 125*time.Millisecond {
+		t.Fatalf("request timeout = %s, err=%v; want %s", got, err, 125*time.Millisecond)
+	}
+
+	got, err = app.subagentExecutionTimeout(int64((3 * time.Hour) / time.Millisecond))
+	if err != nil || got != 45*time.Minute {
+		t.Fatalf("request above configured ceiling = %s, err=%v; want %s", got, err, 45*time.Minute)
+	}
+
+	if _, err = app.subagentExecutionTimeout(-1); err == nil {
+		t.Fatal("negative timeout_ms was accepted")
+	}
+	if _, err = app.subagentExecutionTimeout(1 << 62); err == nil {
+		t.Fatal("overflowing timeout_ms was accepted")
+	}
+}
 
 func TestValidateSpawnSubagentRequestModes(t *testing.T) {
 	for _, tc := range []struct {
@@ -316,16 +348,20 @@ esac
 	handler := app.Router()
 
 	for _, tc := range []struct {
-		name      string
-		body      string
-		wantState string
-		wantCause string
+		name            string
+		body            string
+		wantState       string
+		wantCause       string
+		wantTimeoutMS   int64
+		wantChildStates []string
 	}{
-		{name: "completed", body: `{"task":"complete","systemPrompt":"system-prompt-sentinel","stream":true}`, wantState: "completed"},
-		{name: "large progress retains final", body: `{"task":"large","stream":true}`, wantState: "completed"},
-		{name: "long final gets remote artifact", body: `{"task":"artifact","stream":true,"result_artifact_threshold_bytes":4096}`, wantState: "completed"},
-		{name: "failed task is protocol success", body: `{"task":"fail","stream":true}`, wantState: "failed"},
-		{name: "timeout", body: `{"task":"timeout","stream":true,"timeout_ms":50}`, wantState: "timed_out", wantCause: "request_timeout"},
+		{name: "completed", body: `{"task":"complete","systemPrompt":"system-prompt-sentinel","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
+		{name: "large progress retains final", body: `{"task":"large","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
+		{name: "long final gets remote artifact", body: `{"task":"artifact","stream":true,"result_artifact_threshold_bytes":4096}`, wantState: "completed", wantTimeoutMS: 7_200_000},
+		{name: "failed task is protocol success", body: `{"task":"fail","stream":true}`, wantState: "failed", wantTimeoutMS: 7_200_000},
+		{name: "timeout", body: `{"task":"timeout","stream":true,"timeout_ms":50}`, wantState: "timed_out", wantCause: "request_timeout", wantTimeoutMS: 50, wantChildStates: []string{"timed_out"}},
+		{name: "parallel preserves completed sibling on timeout", body: `{"tasks":[{"task":"quick"},{"task":"timeout"}],"stream":true,"timeout_ms":250}`, wantState: "timed_out", wantCause: "request_timeout", wantTimeoutMS: 250, wantChildStates: []string{"completed", "timed_out"}},
+		{name: "chain preserves completed step on timeout", body: `{"chain":[{"task":"quick"},{"task":"timeout"}],"stream":true,"timeout_ms":250}`, wantState: "timed_out", wantCause: "request_timeout", wantTimeoutMS: 250, wantChildStates: []string{"completed", "timed_out"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
@@ -336,8 +372,12 @@ esac
 			}
 			events := decodeSubagentStreamEvents(t, rr.Body.String())
 			doneCount := 0
+			var startEvent map[string]any
 			var done map[string]any
 			for index, event := range events {
+				if event["event"] == "subagent_start" {
+					startEvent = event
+				}
 				if event["event"] == "done" {
 					doneCount++
 					done = event
@@ -349,12 +389,29 @@ esac
 			if doneCount != 1 {
 				t.Fatalf("done count = %d, events=%#v", doneCount, events)
 			}
+			if got, _ := startEvent["timeout_ms"].(float64); int64(got) != tc.wantTimeoutMS {
+				t.Fatalf("subagent_start timeout_ms = %v, want %d", startEvent["timeout_ms"], tc.wantTimeoutMS)
+			}
 			if ok, _ := done["ok"].(bool); !ok {
 				t.Fatalf("executed child task must be a protocol success: %#v", done)
 			}
 			state, cause := terminalStateFromDone(t, done)
 			if state != tc.wantState || cause != tc.wantCause {
 				t.Fatalf("terminal state=%q cause=%q, want state=%q cause=%q", state, cause, tc.wantState, tc.wantCause)
+			}
+			if len(tc.wantChildStates) > 0 {
+				result := done["result"].(map[string]any)
+				children := result["results"].([]any)
+				if len(children) != len(tc.wantChildStates) {
+					t.Fatalf("child count = %d, want %d: %#v", len(children), len(tc.wantChildStates), children)
+				}
+				for index, want := range tc.wantChildStates {
+					child := children[index].(map[string]any)
+					terminal := child["terminal"].(map[string]any)
+					if terminal["state"] != want {
+						t.Fatalf("child %d terminal state = %v, want %s: %#v", index, terminal["state"], want, child)
+					}
+				}
 			}
 			if tc.name == "long final gets remote artifact" {
 				result := done["result"].(map[string]any)

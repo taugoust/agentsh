@@ -207,7 +207,7 @@ let
   ) cfg.nethelper.instances;
 
   configFile = yaml.generate "agentsh-config.yml" (
-    {
+    lib.recursiveUpdate {
       server = {
         http.addr = cfg.server.http.addr;
         unix_socket = {
@@ -239,6 +239,7 @@ let
       sessions = {
         base_dir = cfg.sessions.baseDir;
         output_artifacts.max_bytes = cfg.sessions.outputArtifacts.maxBytes;
+        subagents.default_timeout = cfg.sessions.subagents.defaultTimeout;
         workspace_overlay = {
           enabled = cfg.sessions.workspaceOverlay.enable;
           base_dir = cfg.sessions.workspaceOverlay.baseDir;
@@ -337,8 +338,7 @@ let
         mode = cfg.approvals.mode;
         timeout = cfg.approvals.timeout;
       };
-    }
-    // cfg.extraConfig
+    } cfg.extraConfig
   );
 in
 {
@@ -438,6 +438,11 @@ in
         type = types.ints.positive;
         default = 16 * 1024 * 1024;
         description = "Maximum bytes retained in each session-owned remote output artifact.";
+      };
+      subagents.defaultTimeout = mkOption {
+        type = types.str;
+        default = "2h";
+        description = "Default and maximum AgentSH-owned execution deadline for supervised child Pi processes; requests may select a shorter timeout.";
       };
       workspaceOverlay = {
         enable = mkOption {

@@ -215,8 +215,8 @@
                 mkdir -p "$out/bin"
                 touch "$out/bin/agentsh"
               '';
-          evalOutputArtifactsModule =
-            maxBytes:
+          evalSessionRuntimeModule =
+            maxBytes: subagentTimeout:
             nixpkgs.lib.nixosSystem {
               system = stdenv.hostPlatform.system;
               modules = [
@@ -227,15 +227,23 @@
                     enable = true;
                     package = moduleTestPackage;
                     policies.source = moduleTestPackage;
+                    extraConfig.sessions.default_idle_timeout = "9h";
                   }
-                  // lib.optionalAttrs (maxBytes != null) {
-                    sessions.outputArtifacts.maxBytes = maxBytes;
-                  };
+                  //
+                    lib.recursiveUpdate
+                      (lib.optionalAttrs (maxBytes != null) {
+                        sessions.outputArtifacts.maxBytes = maxBytes;
+                      })
+                      (
+                        lib.optionalAttrs (subagentTimeout != null) {
+                          sessions.subagents.defaultTimeout = subagentTimeout;
+                        }
+                      );
                 })
               ];
             };
-          defaultOutputArtifactsModule = evalOutputArtifactsModule null;
-          customOutputArtifactsModule = evalOutputArtifactsModule 33554432;
+          defaultSessionRuntimeModule = evalSessionRuntimeModule null null;
+          customSessionRuntimeModule = evalSessionRuntimeModule 33554432 "45m";
         in
         {
           go-format =
@@ -292,7 +300,7 @@
             checkPhase = ''
               runHook preCheck
               go test ./internal/policy -run 'Test(DiscoverProjectOverlays|LoadOverlay|MergePolicyOverlays)'
-              go test ./internal/config -run 'Test(ProjectOverlays|OutputArtifacts)'
+              go test ./internal/config -run 'Test(ProjectOverlays|OutputArtifacts|Subagents)'
               go test ./internal/session -run '^(TestOutputArtifact_|TestConfigureOutputArtifacts|TestSession_Cleanup$)'
               go test ./internal/api -run '^(TestCommandOutputArtifactCapture_.*|TestValidateOutputArtifactRequest|TestPersistSubagentFinalArtifact_.*|TestReadTextLineWindow_.*|TestPiToolReadFile_ShadowAllowsOnlyExactRegisteredOutputArtifact|TestPiToolExecBash_RemoteArtifactRetainsBeyondResponseCap|TestDefaultMaxOutputBytes_IsTwoMiB|TestCreateSession_AssignsRuntimeHomeAndTmp)$'
               go test ./internal/cli -run '^(TestFindDetachedSupervisorConfigPath_|TestDetachedSupervisorServiceEnv|TestBuildSystemdRunDetachedSupervisorArgs)'
@@ -388,9 +396,13 @@
           nixos-output-artifacts-module =
             if stdenv.hostPlatform.isLinux then
               assert
-                defaultOutputArtifactsModule.config.services.agentsh.sessions.outputArtifacts.maxBytes == 16777216;
+                defaultSessionRuntimeModule.config.services.agentsh.sessions.outputArtifacts.maxBytes == 16777216;
               assert
-                customOutputArtifactsModule.config.services.agentsh.sessions.outputArtifacts.maxBytes == 33554432;
+                defaultSessionRuntimeModule.config.services.agentsh.sessions.subagents.defaultTimeout == "2h";
+              assert
+                customSessionRuntimeModule.config.services.agentsh.sessions.outputArtifacts.maxBytes == 33554432;
+              assert
+                customSessionRuntimeModule.config.services.agentsh.sessions.subagents.defaultTimeout == "45m";
               pkgs.runCommand "agentsh-nixos-output-artifacts-module-test"
                 {
                   nativeBuildInputs = [ pkgs.yq-go ];
@@ -398,9 +410,15 @@
                 ''
                   set -euo pipefail
                   yq -e '.sessions.output_artifacts.max_bytes == 16777216' \
-                    ${defaultOutputArtifactsModule.config.environment.etc."agentsh/config.yml".source}
+                    ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sessions.subagents.default_timeout == "2h"' \
+                    ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sessions.default_idle_timeout == "9h"' \
+                    ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
                   yq -e '.sessions.output_artifacts.max_bytes == 33554432' \
-                    ${customOutputArtifactsModule.config.environment.etc."agentsh/config.yml".source}
+                    ${customSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sessions.subagents.default_timeout == "45m"' \
+                    ${customSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
                   mkdir -p "$out"
                   touch "$out/passed"
                 ''

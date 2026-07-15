@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -25,7 +26,6 @@ const (
 	maxSubagentParallelTasks = 8
 	maxSubagentConcurrency   = 4
 	maxSubagentTextBytes     = 2 * 1024 * 1024
-	defaultSubagentTimeout   = 30 * time.Minute
 )
 
 type spawnSubagentToolRequest struct {
@@ -101,6 +101,28 @@ type spawnSubagentResult struct {
 	Results  []subagentResult `json:"results"`
 }
 
+func (a *App) subagentExecutionTimeout(timeoutMS int64) (time.Duration, error) {
+	if timeoutMS < 0 {
+		return 0, errors.New("timeout_ms must be non-negative")
+	}
+	configured := config.DefaultSubagentTimeout
+	if a != nil && a.cfg != nil {
+		configured = a.cfg.Sessions.Subagents.DefaultTimeoutDuration()
+	}
+	if timeoutMS == 0 {
+		return configured, nil
+	}
+	maxMilliseconds := int64(time.Duration(1<<63-1) / time.Millisecond)
+	if timeoutMS > maxMilliseconds {
+		return 0, errors.New("timeout_ms is too large")
+	}
+	requested := time.Duration(timeoutMS) * time.Millisecond
+	if requested < configured {
+		return requested, nil
+	}
+	return configured, nil
+}
+
 func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "id")
 	s, ok := a.sessions.Get(sessionID)
@@ -126,25 +148,23 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusForbidden, fmt.Sprintf("subagent recursion depth %d exceeds max %d", depth+1, runtime.MaxDepth))
 		return
 	}
-	if req.TimeoutMS < 0 {
-		writeToolError(w, http.StatusBadRequest, "timeout_ms must be non-negative")
+	timeout, err := a.subagentExecutionTimeout(req.TimeoutMS)
+	if err != nil {
+		writeToolError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if req.ResultArtifactThresholdBytes < 0 || req.ResultArtifactThresholdBytes > maxSubagentTextBytes {
 		writeToolError(w, http.StatusBadRequest, fmt.Sprintf("result_artifact_threshold_bytes must be between 0 and %d", maxSubagentTextBytes))
 		return
 	}
-	timeout := defaultSubagentTimeout
-	if req.TimeoutMS > 0 {
-		timeout = time.Duration(req.TimeoutMS) * time.Millisecond
-	}
 	ctx, cancel := context.WithTimeoutCause(r.Context(), timeout, errSubagentRequestTimeout)
 	defer cancel()
 
 	a.emitToolEvent(r.Context(), sessionID, "tool_spawn_subagent_start", "spawn_subagent", "", req.Actor, map[string]any{
-		"mode":    mode,
-		"tasks":   len(specs),
-		"runtime": runtime.Name,
+		"mode":       mode,
+		"tasks":      len(specs),
+		"runtime":    runtime.Name,
+		"timeout_ms": timeout.Milliseconds(),
 	})
 	started := time.Now()
 	var stream *subagentStreamer
@@ -184,7 +204,7 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	if stream != nil {
-		if emitErr := stream.Emit("subagent_start", map[string]any{"mode": mode, "tasks": len(specs), "runtime": runtime.Name}); emitErr != nil {
+		if emitErr := stream.Emit("subagent_start", map[string]any{"mode": mode, "tasks": len(specs), "runtime": runtime.Name, "timeout_ms": timeout.Milliseconds()}); emitErr != nil {
 			runErr = errors.New("subagent stream is not writable")
 			code = http.StatusInternalServerError
 			result = spawnSubagentResult{Mode: mode, Final: runErr.Error(), Terminal: failedSubagentTerminal(subagentFailureTransport, 1, "", subagentTerminationNatural, true, runErr.Error())}

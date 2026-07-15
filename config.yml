@@ -153,6 +153,10 @@ sessions:
   # Maximum bytes retained in each session-owned remote output artifact
   output_artifacts:
     max_bytes: 16777216  # 16 MiB
+
+  # AgentSH-owned default/maximum execution deadline for supervised child Pi processes
+  subagents:
+    default_timeout: "2h"
   
   # Session metadata retention after termination
   metadata_retention: "24h"

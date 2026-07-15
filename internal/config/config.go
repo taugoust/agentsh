@@ -301,7 +301,11 @@ type RotationConfig struct {
 	Compress   bool `yaml:"compress"`
 }
 
-const DefaultOutputArtifactMaxBytes int64 = 16 * 1024 * 1024
+const (
+	DefaultOutputArtifactMaxBytes int64 = 16 * 1024 * 1024
+	DefaultSubagentTimeout              = 2 * time.Hour
+	DefaultSubagentTimeoutString        = "2h"
+)
 
 type SessionsConfig struct {
 	BaseDir     string `yaml:"base_dir"`
@@ -310,6 +314,9 @@ type SessionsConfig struct {
 	// OutputArtifacts configures session-owned files used to retain bounded
 	// remote tool output outside the workspace.
 	OutputArtifacts OutputArtifactsConfig `yaml:"output_artifacts"`
+
+	// Subagents configures AgentSH-owned child Pi execution limits.
+	Subagents SubagentsConfig `yaml:"subagents"`
 
 	// Optional defaults (duration strings). If set, these act as additional caps on top of policy resource_limits.
 	DefaultTimeout     string `yaml:"default_timeout"`
@@ -347,6 +354,19 @@ type SessionsConfig struct {
 
 type OutputArtifactsConfig struct {
 	MaxBytes int64 `yaml:"max_bytes"`
+}
+
+type SubagentsConfig struct {
+	// DefaultTimeout is also the maximum; requests may choose a shorter deadline.
+	DefaultTimeout string `yaml:"default_timeout"`
+}
+
+func (c SubagentsConfig) DefaultTimeoutDuration() time.Duration {
+	timeout, err := time.ParseDuration(c.DefaultTimeout)
+	if err != nil || timeout <= 0 {
+		return DefaultSubagentTimeout
+	}
+	return timeout
 }
 
 type WorkspaceOverlayConfig struct {
@@ -1805,6 +1825,9 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	if cfg.Sessions.OutputArtifacts.MaxBytes == 0 {
 		cfg.Sessions.OutputArtifacts.MaxBytes = DefaultOutputArtifactMaxBytes
 	}
+	if cfg.Sessions.Subagents.DefaultTimeout == "" {
+		cfg.Sessions.Subagents.DefaultTimeout = DefaultSubagentTimeoutString
+	}
 	if cfg.Sessions.WorkspaceOverlay.BaseDir == "" {
 		cfg.Sessions.WorkspaceOverlay.BaseDir = filepath.Join(cfg.Sessions.BaseDir, "overlays")
 	}
@@ -2442,6 +2465,12 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.Sessions.OutputArtifacts.MaxBytes <= 0 {
 		return fmt.Errorf("sessions.output_artifacts.max_bytes must be > 0")
+	}
+	if raw := cfg.Sessions.Subagents.DefaultTimeout; raw != "" {
+		timeout, err := time.ParseDuration(raw)
+		if err != nil || timeout <= 0 {
+			return fmt.Errorf("sessions.subagents.default_timeout must be a positive duration")
+		}
 	}
 	switch cfg.Sessions.WorkspaceOverlay.DestroyAction {
 	case "", "reject", "keep":
