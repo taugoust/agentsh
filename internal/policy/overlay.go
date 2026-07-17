@@ -182,6 +182,9 @@ func (o PolicyOverlay) Validate() error {
 	if err := rejectDuplicateOverlayRuleNames(o); err != nil {
 		return err
 	}
+	if err := rejectProjectOverlayBoundaries(o); err != nil {
+		return err
+	}
 	probe := Policy{
 		Version:              1,
 		Name:                 "overlay-" + o.Name,
@@ -202,6 +205,35 @@ func (o PolicyOverlay) Validate() error {
 
 func (o PolicyOverlay) ruleCount() int {
 	return len(o.FileRules) + len(o.NetworkRules) + len(o.CommandRules) + len(o.UnixRules) + len(o.SignalRules) + len(o.DnsRedirectRules) + len(o.ConnectRedirectRules) + len(o.PackageRules)
+}
+
+func rejectProjectOverlayBoundaries(o PolicyOverlay) error {
+	for _, rule := range o.FileRules {
+		if rule.ProjectOverlayBoundary {
+			return fmt.Errorf("file_rules rule %q must not set project_overlay_boundary", rule.Name)
+		}
+	}
+	for _, rule := range o.NetworkRules {
+		if rule.ProjectOverlayBoundary {
+			return fmt.Errorf("network_rules rule %q must not set project_overlay_boundary", rule.Name)
+		}
+	}
+	for _, rule := range o.CommandRules {
+		if rule.ProjectOverlayBoundary {
+			return fmt.Errorf("command_rules rule %q must not set project_overlay_boundary", rule.Name)
+		}
+	}
+	for _, rule := range o.UnixRules {
+		if rule.ProjectOverlayBoundary {
+			return fmt.Errorf("unix_socket_rules rule %q must not set project_overlay_boundary", rule.Name)
+		}
+	}
+	for _, rule := range o.SignalRules {
+		if rule.ProjectOverlayBoundary {
+			return fmt.Errorf("signal_rules rule %q must not set project_overlay_boundary", rule.Name)
+		}
+	}
+	return nil
 }
 
 func rejectDuplicateOverlayRuleNames(o PolicyOverlay) error {
@@ -254,34 +286,65 @@ func rejectDuplicateOverlayRuleNames(o PolicyOverlay) error {
 	return nil
 }
 
-// MergePolicyOverlays returns a cloned base policy with overlay rules merged so
-// explicit base denies remain earlier while overlay allow rules precede terminal
-// catch-all/default denies.
+// MergePolicyOverlays returns a cloned base policy with overlay rules merged
+// before each trusted base policy's explicit project-overlay boundary. Policies
+// without an explicit boundary retain the legacy behavior of inserting before a
+// terminal catch-all/default deny.
 func MergePolicyOverlays(base *Policy, overlays []PolicyOverlay) (*Policy, error) {
 	if base == nil {
 		return nil, fmt.Errorf("base policy is nil")
 	}
 	merged := clonePolicyForOverlay(base)
+	knownRules := clonePolicyForOverlay(base)
+	var added PolicyOverlay
 	for _, overlay := range overlays {
 		if err := overlay.Validate(); err != nil {
 			return nil, fmt.Errorf("overlay %q: %w", overlay.Name, err)
 		}
-		if err := rejectBaseRuleNameConflicts(merged, overlay); err != nil {
+		if err := rejectBaseRuleNameConflicts(knownRules, overlay); err != nil {
 			return nil, fmt.Errorf("overlay %q: %w", overlay.Name, err)
 		}
-		merged.FileRules = insertFileRulesBeforeTerminalDeny(merged.FileRules, overlay.FileRules)
-		merged.CommandRules = insertCommandRulesBeforeTerminalDeny(merged.CommandRules, overlay.CommandRules)
-		merged.NetworkRules = insertNetworkRulesBeforeTerminalDeny(merged.NetworkRules, overlay.NetworkRules)
-		merged.UnixRules = insertUnixRulesBeforeTerminalDeny(merged.UnixRules, overlay.UnixRules)
-		merged.SignalRules = insertSignalRulesBeforeTerminalDeny(merged.SignalRules, overlay.SignalRules)
-		merged.DnsRedirectRules = append(merged.DnsRedirectRules, overlay.DnsRedirectRules...)
-		merged.ConnectRedirectRules = append(merged.ConnectRedirectRules, overlay.ConnectRedirectRules...)
-		merged.PackageRules = append(merged.PackageRules, overlay.PackageRules...)
+		appendOverlayRuleLists(knownRules, overlay)
+		appendPolicyOverlayRuleLists(&added, overlay)
 	}
+
+	// Insert each family's complete overlay block once. Besides preserving the
+	// deterministic overlay-file order, this prevents a terminal-shaped rule in
+	// one overlay from becoming the insertion point for a later overlay.
+	merged.FileRules = insertFileOverlayRules(merged.FileRules, added.FileRules)
+	merged.CommandRules = insertCommandOverlayRules(merged.CommandRules, added.CommandRules)
+	merged.NetworkRules = insertNetworkOverlayRules(merged.NetworkRules, added.NetworkRules)
+	merged.UnixRules = insertUnixOverlayRules(merged.UnixRules, added.UnixRules)
+	merged.SignalRules = insertSignalOverlayRules(merged.SignalRules, added.SignalRules)
+	merged.DnsRedirectRules = append(merged.DnsRedirectRules, added.DnsRedirectRules...)
+	merged.ConnectRedirectRules = append(merged.ConnectRedirectRules, added.ConnectRedirectRules...)
+	merged.PackageRules = append(merged.PackageRules, added.PackageRules...)
 	if err := merged.Validate(); err != nil {
 		return nil, fmt.Errorf("validate merged policy: %w", err)
 	}
 	return merged, nil
+}
+
+func appendPolicyOverlayRuleLists(dst *PolicyOverlay, src PolicyOverlay) {
+	dst.FileRules = append(dst.FileRules, src.FileRules...)
+	dst.NetworkRules = append(dst.NetworkRules, src.NetworkRules...)
+	dst.CommandRules = append(dst.CommandRules, src.CommandRules...)
+	dst.UnixRules = append(dst.UnixRules, src.UnixRules...)
+	dst.SignalRules = append(dst.SignalRules, src.SignalRules...)
+	dst.DnsRedirectRules = append(dst.DnsRedirectRules, src.DnsRedirectRules...)
+	dst.ConnectRedirectRules = append(dst.ConnectRedirectRules, src.ConnectRedirectRules...)
+	dst.PackageRules = append(dst.PackageRules, src.PackageRules...)
+}
+
+func appendOverlayRuleLists(dst *Policy, src PolicyOverlay) {
+	dst.FileRules = append(dst.FileRules, src.FileRules...)
+	dst.NetworkRules = append(dst.NetworkRules, src.NetworkRules...)
+	dst.CommandRules = append(dst.CommandRules, src.CommandRules...)
+	dst.UnixRules = append(dst.UnixRules, src.UnixRules...)
+	dst.SignalRules = append(dst.SignalRules, src.SignalRules...)
+	dst.DnsRedirectRules = append(dst.DnsRedirectRules, src.DnsRedirectRules...)
+	dst.ConnectRedirectRules = append(dst.ConnectRedirectRules, src.ConnectRedirectRules...)
+	dst.PackageRules = append(dst.PackageRules, src.PackageRules...)
 }
 
 func clonePolicyForOverlay(p *Policy) *Policy {
@@ -390,17 +453,28 @@ func connectRuleNames(rs []ConnectRedirectRule) []string {
 	return out
 }
 
-func insertFileRulesBeforeTerminalDeny(base []FileRule, added []FileRule) []FileRule {
+func projectOverlayInsertionIndex[T any](base []T, isBoundary, isTerminalDeny func(T) bool) int {
+	for i, rule := range base {
+		if isBoundary(rule) {
+			return i
+		}
+	}
+	for i, rule := range base {
+		if isTerminalDeny(rule) {
+			return i
+		}
+	}
+	return len(base)
+}
+
+func insertFileOverlayRules(base []FileRule, added []FileRule) []FileRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := len(base)
-	for i, rule := range base {
-		if isTerminalFileDeny(rule) {
-			idx = i
-			break
-		}
-	}
+	idx := projectOverlayInsertionIndex(base,
+		func(rule FileRule) bool { return rule.ProjectOverlayBoundary },
+		isTerminalFileDeny,
+	)
 	out := make([]FileRule, 0, len(base)+len(added))
 	out = append(out, base[:idx]...)
 	out = append(out, added...)
@@ -408,17 +482,14 @@ func insertFileRulesBeforeTerminalDeny(base []FileRule, added []FileRule) []File
 	return out
 }
 
-func insertCommandRulesBeforeTerminalDeny(base []CommandRule, added []CommandRule) []CommandRule {
+func insertCommandOverlayRules(base []CommandRule, added []CommandRule) []CommandRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := len(base)
-	for i, rule := range base {
-		if isTerminalCommandDeny(rule) {
-			idx = i
-			break
-		}
-	}
+	idx := projectOverlayInsertionIndex(base,
+		func(rule CommandRule) bool { return rule.ProjectOverlayBoundary },
+		isTerminalCommandDeny,
+	)
 	out := make([]CommandRule, 0, len(base)+len(added))
 	out = append(out, base[:idx]...)
 	out = append(out, added...)
@@ -426,17 +497,14 @@ func insertCommandRulesBeforeTerminalDeny(base []CommandRule, added []CommandRul
 	return out
 }
 
-func insertNetworkRulesBeforeTerminalDeny(base []NetworkRule, added []NetworkRule) []NetworkRule {
+func insertNetworkOverlayRules(base []NetworkRule, added []NetworkRule) []NetworkRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := len(base)
-	for i, rule := range base {
-		if isTerminalNetworkDeny(rule) {
-			idx = i
-			break
-		}
-	}
+	idx := projectOverlayInsertionIndex(base,
+		func(rule NetworkRule) bool { return rule.ProjectOverlayBoundary },
+		isTerminalNetworkDeny,
+	)
 	out := make([]NetworkRule, 0, len(base)+len(added))
 	out = append(out, base[:idx]...)
 	out = append(out, added...)
@@ -444,17 +512,14 @@ func insertNetworkRulesBeforeTerminalDeny(base []NetworkRule, added []NetworkRul
 	return out
 }
 
-func insertUnixRulesBeforeTerminalDeny(base []UnixSocketRule, added []UnixSocketRule) []UnixSocketRule {
+func insertUnixOverlayRules(base []UnixSocketRule, added []UnixSocketRule) []UnixSocketRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := len(base)
-	for i, rule := range base {
-		if isTerminalUnixDeny(rule) {
-			idx = i
-			break
-		}
-	}
+	idx := projectOverlayInsertionIndex(base,
+		func(rule UnixSocketRule) bool { return rule.ProjectOverlayBoundary },
+		isTerminalUnixDeny,
+	)
 	out := make([]UnixSocketRule, 0, len(base)+len(added))
 	out = append(out, base[:idx]...)
 	out = append(out, added...)
@@ -462,17 +527,14 @@ func insertUnixRulesBeforeTerminalDeny(base []UnixSocketRule, added []UnixSocket
 	return out
 }
 
-func insertSignalRulesBeforeTerminalDeny(base []SignalRule, added []SignalRule) []SignalRule {
+func insertSignalOverlayRules(base []SignalRule, added []SignalRule) []SignalRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := len(base)
-	for i, rule := range base {
-		if isTerminalSignalDeny(rule) {
-			idx = i
-			break
-		}
-	}
+	idx := projectOverlayInsertionIndex(base,
+		func(rule SignalRule) bool { return rule.ProjectOverlayBoundary },
+		isTerminalSignalDeny,
+	)
 	out := make([]SignalRule, 0, len(base)+len(added))
 	out = append(out, base[:idx]...)
 	out = append(out, added...)
