@@ -39,6 +39,10 @@ func normalizeExecOutcome(started bool, exitCode int, err error) *types.ExecOutc
 	default:
 		o.Code, o.FailureKind = "E_COMMAND_FAILED", types.ExecFailureInternal
 	}
+	if jailFailure := commandJailFailureFrom(err); jailFailure != nil {
+		o.Code = jailFailure.code()
+		applyCommandAttemptDiagnostics(o, 1, []types.ExecAttemptDiagnostic{jailFailure.diagnostic(1)})
+	}
 	return o
 }
 

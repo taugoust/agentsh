@@ -418,7 +418,10 @@ func (b *RulesetBuilder) isDenied(path string) bool {
 	return false
 }
 
-// Enforce applies the ruleset to the current process.
+// Enforce applies the ruleset to the calling OS thread and its future
+// descendants. Callers that will exec must keep their goroutine pinned to this
+// thread; Landlock restrictions are not process-wide across an existing thread
+// group.
 func Enforce(rulesetFd int) error {
 	// Set no_new_privs first (required)
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {

@@ -4,15 +4,29 @@ import (
 	"bufio"
 	"log/slog"
 	"os"
+	"regexp"
+	"strings"
+	"sync"
+	"unicode"
+	"unicode/utf8"
+)
+
+const (
+	maxWrapperDiagnosticLines = 4
+	maxWrapperDiagnosticBytes = 1024
+)
+
+var (
+	wrapperAuthRE   = regexp.MustCompile(`(?i)(authorization[=: ]+(?:bearer|basic)[ ]+)[^ ]+`)
+	wrapperSecretRE = regexp.MustCompile(`(?i)((?:access[_-]?token|api[_-]?key|token|secret|signature|password)[=:])[^	 ,;]+`)
+	wrapperQueryRE  = regexp.MustCompile(`(?i)([?&](?:access_token|api[_-]?key|key|token|secret|signature|sig|password)=)[^&# ]*`)
+	wrapperPathRE   = regexp.MustCompile(`(^|[ =])/[^	 ,;]+`)
 )
 
 // closeWrapperLogPipe releases both wrapper-log pipe ends on exec paths
 // that fail before startWrapperHandlers runs (pre-start cancel,
 // cmd.Start() failure). Safe to call multiple times and on configs
-// without a log pipe. The pre-existing notify/signal socketpairs are
-// deliberately left to their finalizers on these paths (see
-// buildWrapperSetup); the pipe is closed here because it is new on
-// this branch and cheap to handle (issue #415).
+// without a log pipe.
 func (e *extraProcConfig) closeWrapperLogPipe() {
 	if e == nil {
 		return
@@ -27,29 +41,86 @@ func (e *extraProcConfig) closeWrapperLogPipe() {
 	}
 }
 
-// startWrapperLogDrain forwards agentsh-unixwrap diagnostic lines from
-// the wrapper log pipe into the server log (issue #415). The wrapper
-// sets FD_CLOEXEC on its end, so EOF arrives when it execs the real
-// command (or exits) — the goroutine is short-lived by construction.
-// Lines are forwarded verbatim as an attr; no re-parsing or re-leveling,
-// so "wait_killable=..." stays greppable at the default level.
-//
-// The returned channel closes when the drain finishes (test hook).
-func startWrapperLogDrain(r *os.File, logger *slog.Logger, sessionID, command string) <-chan struct{} {
-	done := make(chan struct{})
+type wrapperLogCapture struct {
+	done chan struct{}
+
+	mu    sync.Mutex
+	lines []string
+}
+
+func newWrapperLogCapture() *wrapperLogCapture {
+	return &wrapperLogCapture{done: make(chan struct{})}
+}
+
+func (c *wrapperLogCapture) record(line string) {
+	if c == nil || !strings.Contains(strings.ToLower(line), "command jail") {
+		return
+	}
+	line = sanitizeWrapperDiagnostic(line)
+	if line == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lines = append(c.lines, line)
+	if len(c.lines) > maxWrapperDiagnosticLines {
+		c.lines = append([]string(nil), c.lines[len(c.lines)-maxWrapperDiagnosticLines:]...)
+	}
+	for len(strings.Join(c.lines, " | ")) > maxWrapperDiagnosticBytes && len(c.lines) > 1 {
+		c.lines = c.lines[1:]
+	}
+}
+
+func (c *wrapperLogCapture) tail() string {
+	if c == nil {
+		return ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return strings.Join(c.lines, " | ")
+}
+
+func sanitizeWrapperDiagnostic(value string) string {
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && r != '\t' {
+			return -1
+		}
+		return r
+	}, value)
+	value = wrapperAuthRE.ReplaceAllString(value, `${1}[REDACTED]`)
+	value = wrapperSecretRE.ReplaceAllString(value, `${1}[REDACTED]`)
+	value = wrapperQueryRE.ReplaceAllString(value, `${1}[REDACTED]`)
+	value = wrapperPathRE.ReplaceAllString(value, `${1}[path]`)
+	value = strings.TrimSpace(value)
+	for len(value) > maxWrapperDiagnosticBytes {
+		_, size := utf8.DecodeLastRuneInString(value)
+		value = value[:len(value)-size]
+	}
+	return value
+}
+
+// startWrapperLogCaptureDrain forwards agentsh-unixwrap diagnostics to the
+// operator log and retains only a small sanitized command-jail fatal tail for
+// typed pre-GO failure evidence. The capture closes after the pipe reaches EOF.
+func startWrapperLogCaptureDrain(r *os.File, logger *slog.Logger, sessionID, command string) *wrapperLogCapture {
+	capture := newWrapperLogCapture()
 	go func() {
-		defer close(done)
+		defer close(capture.done)
 		defer r.Close()
 		sc := bufio.NewScanner(r)
 		for sc.Scan() {
-			logger.Info("unixwrap", "session_id", sessionID, "command", command, "line", sc.Text())
+			line := sc.Text()
+			logger.Info("unixwrap", "session_id", sessionID, "command", command, "line", line)
+			capture.record(line)
 		}
-		// Normal exit is EOF (wrapper exec'd or died). Anything else —
-		// e.g. bufio.ErrTooLong past the 64KiB token cap — silently
-		// stops draining, so leave a trace for operators.
 		if err := sc.Err(); err != nil {
 			logger.Debug("unixwrap log drain stopped early", "session_id", sessionID, "error", err)
 		}
 	}()
-	return done
+	return capture
+}
+
+// startWrapperLogDrain preserves the original test/helper API.
+func startWrapperLogDrain(r *os.File, logger *slog.Logger, sessionID, command string) <-chan struct{} {
+	return startWrapperLogCaptureDrain(r, logger, sessionID, command).done
 }

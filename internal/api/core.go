@@ -1972,43 +1972,26 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	origCommand := req.Command
 	origArgs := append([]string{}, req.Args...)
 
-	// Set up seccomp wrapper (Linux) for syscall enforcement
-	wrapperResult := a.setupSeccompWrapperWithPolicy(req, id, s, engine)
-	if wrapperResult.setupErr != nil {
-		a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
-		message := "pre-exec boundary unavailable: " + wrapperResult.setupErr.Error()
-		resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
-			Result: types.ExecResult{ExitCode: 127, DurationMs: int64(time.Since(start) / time.Millisecond),
-				Error:   &types.ExecError{Code: "E_PRE_EXEC_BOUNDARY", Message: message},
-				Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_PRE_EXEC_BOUNDARY", Message: message, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
-			Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
-		}
-		return resp, http.StatusServiceUnavailable, nil
-	}
-	wrappedReq := wrapperResult.wrappedReq
-	extraCfg := wrapperResult.extraCfg
 	outputArtifactCapture := newCommandOutputArtifactCapture(s, cmdID, req.OutputArtifact)
-	if outputArtifactCapture != nil {
-		if extraCfg == nil {
-			extraCfg = &extraProcConfig{}
+	configureAttempt := func(extraCfg *extraProcConfig) *extraProcConfig {
+		if outputArtifactCapture != nil {
+			if extraCfg == nil {
+				extraCfg = &extraProcConfig{}
+			}
+			extraCfg.outputArtifact = outputArtifactCapture
 		}
-		extraCfg.outputArtifact = outputArtifactCapture
-	}
-	if opts.sensitive {
-		if extraCfg == nil {
-			extraCfg = &extraProcConfig{}
+		if opts.sensitive {
+			if extraCfg == nil {
+				extraCfg = &extraProcConfig{}
+			}
+			extraCfg.stdoutCaptureBytes = opts.stdoutCaptureBytes
+			extraCfg.stderrCaptureBytes = opts.stderrCaptureBytes
+			setExecveAuditRedaction(extraCfg.execveHandler, true)
 		}
-		extraCfg.stdoutCaptureBytes = opts.stdoutCaptureBytes
-		extraCfg.stderrCaptureBytes = opts.stderrCaptureBytes
-		setExecveAuditRedaction(extraCfg.execveHandler, true)
-	}
-	if extraCfg != nil {
-		setExecveProvenance(extraCfg.execveHandler, opts.provenance)
-	}
-
-	// macOS: sandbox wrapper with XPC control
-	if runtime.GOOS == "darwin" && a.cfg.Sandbox.XPC.Enabled && a.cfg.Sandbox.XPC.Mode == "enforce" {
-		a.wrapWithMacSandbox(&wrappedReq, origCommand, origArgs, s)
+		if extraCfg != nil {
+			setExecveProvenance(extraCfg.execveHandler, opts.provenance)
+		}
+		return extraCfg
 	}
 
 	commandStarted := false
@@ -2020,11 +2003,71 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		s.InjectTraceContext(startEv.Fields)
 		_ = a.store.AppendEvent(ctx, startEv)
 		a.broker.Publish(startEv)
-
 	}
 
-	cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
-	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, wrappedReq, a.cfg, cmdDecision.EnvPolicy, timeoutResolution.Duration, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
+	var (
+		wrappedReq               types.ExecRequest
+		extraCfg                 *extraProcConfig
+		envPolicy                policy.ResolvedEnvPolicy
+		envPolicyResolved        bool
+		exitCode                 int
+		stdoutB, stderrB         []byte
+		stdoutTotal, stderrTotal int64
+		stdoutTrunc, stderrTrunc bool
+		resources                types.ExecResources
+		execErr                  error
+		attemptCount             int
+		attemptDiagnostics       []types.ExecAttemptDiagnostic
+	)
+	for {
+		attemptCount++
+		// Wrapper setup is per-attempt: retry never reuses socketpairs, handler
+		// state, a command cgroup, or a helper registration. Policy and approval
+		// above are intentionally not replayed.
+		wrapperResult := a.setupSeccompWrapperWithPolicy(req, id, s, engine)
+		if wrapperResult.setupErr != nil {
+			a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
+			if attemptCount == 1 {
+				message := "pre-exec boundary unavailable: " + wrapperResult.setupErr.Error()
+				resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
+					Result: types.ExecResult{ExitCode: 127, DurationMs: int64(time.Since(start) / time.Millisecond),
+						Error:   &types.ExecError{Code: "E_PRE_EXEC_BOUNDARY", Message: message},
+						Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_PRE_EXEC_BOUNDARY", Message: message, AttemptCount: 1, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
+					Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+				}
+				return resp, http.StatusServiceUnavailable, nil
+			}
+			exitCode = 127
+			execErr = markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr))
+			attemptDiagnostics = append(attemptDiagnostics, types.ExecAttemptDiagnostic{Attempt: attemptCount, ProtocolStage: "command_boundary_setup"})
+			break
+		}
+		wrappedReq = wrapperResult.wrappedReq
+		extraCfg = configureAttempt(wrapperResult.extraCfg)
+
+		// macOS: sandbox wrapper with XPC control.
+		if runtime.GOOS == "darwin" && a.cfg.Sandbox.XPC.Enabled && a.cfg.Sandbox.XPC.Mode == "enforce" {
+			a.wrapWithMacSandbox(&wrappedReq, origCommand, origArgs, s)
+		}
+		if !envPolicyResolved {
+			cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+			envPolicy = cmdDecision.EnvPolicy
+			envPolicyResolved = true
+		}
+
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
+		failure := commandJailFailureFrom(execErr)
+		if failure == nil {
+			break
+		}
+		diagnostic := failure.diagnostic(attemptCount)
+		attemptDiagnostics = append(attemptDiagnostics, diagnostic)
+		retrying := shouldRetryCommandJailAttempt(ctx, attemptCount, execErr)
+		a.emitCommandJailAttempt(id, cmdID, diagnostic, retrying)
+		if !retrying {
+			break
+		}
+	}
 	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(ctx)
 	defer cancelTerminalPersistence()
 
@@ -2042,7 +2085,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		stdoutB = nil
 		stderrB = nil
 	}
-	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
+	if commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
 	}
 
@@ -2186,6 +2229,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		res.Error = &types.ExecError{Code: code, Message: execErr.Error()}
 
 	}
+	applyCommandAttemptDiagnostics(outcome, attemptCount, attemptDiagnostics)
 	if stdoutTrunc && stdoutTotal > int64(len(stdoutB)) {
 		res.Pagination = &types.Pagination{
 			CurrentOffset: 0,

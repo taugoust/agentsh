@@ -4,6 +4,8 @@ package api
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -17,6 +19,55 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 	"golang.org/x/sys/unix"
 )
+
+type commandJailREADYReader struct {
+	n   int
+	b   byte
+	err error
+}
+
+func (r commandJailREADYReader) Read(p []byte) (int, error) {
+	if r.n > 0 && len(p) > 0 {
+		p[0] = r.b
+	}
+	return r.n, r.err
+}
+
+func TestReadCommandJailREADYStrictFraming(t *testing.T) {
+	tests := []struct {
+		name      string
+		reader    io.Reader
+		wantBytes int
+		wantErr   error
+	}{
+		{name: "ready", reader: strings.NewReader("R"), wantBytes: 1},
+		{name: "ready with terminal EOF", reader: commandJailREADYReader{n: 1, b: 'R', err: io.EOF}, wantBytes: 1},
+		{name: "EOF", reader: strings.NewReader(""), wantBytes: 0, wantErr: io.EOF},
+		{name: "zero without error", reader: commandJailREADYReader{}, wantBytes: 0, wantErr: io.ErrUnexpectedEOF},
+		{name: "unexpected byte", reader: strings.NewReader("X"), wantBytes: 1, wantErr: errors.New("unexpected READY byte")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			n, err := readCommandJailREADY(tc.reader)
+			if n != tc.wantBytes {
+				t.Fatalf("bytes = %d, want %d", n, tc.wantBytes)
+			}
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if tc.wantErr == io.EOF || tc.wantErr == io.ErrUnexpectedEOF {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("error = %v, want %v", err, tc.wantErr)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.wantErr.Error()) {
+				t.Fatalf("error = %v, want substring %q", err, tc.wantErr)
+			}
+		})
+	}
+}
 
 func TestApprovalRequesterAdapter_ExecutableSessionScopeAllowsDifferentArgs(t *testing.T) {
 	mgr := approvals.New("api", time.Minute, nil)

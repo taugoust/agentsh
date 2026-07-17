@@ -163,19 +163,6 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prepare every required wrapper/jail resource before reporting that the
-	// command started. A setup refusal is an execution refusal, not a start.
-	wrapperResult := a.setupSeccompWrapperWithPolicy(req, id, s, engine)
-	if wrapperResult.setupErr != nil {
-		a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
-		message := fmt.Sprintf("pre-exec boundary unavailable: %v", wrapperResult.setupErr)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": message, "outcome": &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Code: "E_PRE_EXEC_BOUNDARY", Message: message}})
-		return
-	}
-	wrappedReq := wrapperResult.wrappedReq
-	extraCfg := wrapperResult.extraCfg
-	cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
-
 	commandStarted := false
 	onStarted := func() {
 		commandStarted = true
@@ -197,16 +184,66 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 		return writeSSE(w, flusher, event, payload)
 	}
 
-	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResourcesStreamingEmitResolvedTimeout(r.Context(), s, cmdID, wrappedReq, a.cfg, cmdDecision.EnvPolicy, timeoutResolution.Duration, emit, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
+	var (
+		wrappedReq               types.ExecRequest
+		extraCfg                 *extraProcConfig
+		envPolicy                policy.ResolvedEnvPolicy
+		envPolicyResolved        bool
+		exitCode                 int
+		stdoutB, stderrB         []byte
+		stdoutTotal, stderrTotal int64
+		stdoutTrunc, stderrTrunc bool
+		resources                types.ExecResources
+		execErr                  error
+		attemptCount             int
+		attemptDiagnostics       []types.ExecAttemptDiagnostic
+	)
+	for {
+		attemptCount++
+		// Setup is per-attempt; policy and approval above are not replayed.
+		wrapperResult := a.setupSeccompWrapperWithPolicy(req, id, s, engine)
+		if wrapperResult.setupErr != nil {
+			a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
+			if attemptCount == 1 {
+				message := fmt.Sprintf("pre-exec boundary unavailable: %v", wrapperResult.setupErr)
+				writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": message, "outcome": &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Code: "E_PRE_EXEC_BOUNDARY", Message: message, AttemptCount: 1}})
+				return
+			}
+			exitCode = 127
+			execErr = markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr))
+			attemptDiagnostics = append(attemptDiagnostics, types.ExecAttemptDiagnostic{Attempt: attemptCount, ProtocolStage: "command_boundary_setup"})
+			break
+		}
+		wrappedReq = wrapperResult.wrappedReq
+		extraCfg = wrapperResult.extraCfg
+		if !envPolicyResolved {
+			cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+			envPolicy = cmdDecision.EnvPolicy
+			envPolicyResolved = true
+		}
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesStreamingEmitResolvedTimeout(r.Context(), s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, emit, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
+		failure := commandJailFailureFrom(execErr)
+		if failure == nil {
+			break
+		}
+		diagnostic := failure.diagnostic(attemptCount)
+		attemptDiagnostics = append(attemptDiagnostics, diagnostic)
+		retrying := shouldRetryCommandJailAttempt(r.Context(), attemptCount, execErr)
+		a.emitCommandJailAttempt(id, cmdID, diagnostic, retrying)
+		if !retrying {
+			break
+		}
+	}
 	if !commandStarted {
 		outcome := normalizeExecOutcome(false, exitCode, execErr)
+		applyCommandAttemptDiagnostics(outcome, attemptCount, attemptDiagnostics)
 		writeJSON(w, execFailureHTTPStatus(outcome), map[string]any{"command_id": cmdID, "command_timeout": timeoutResolution.Metadata, "outcome": outcome, "error": outcome.Message})
 		return
 	}
 	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(r.Context())
 	defer cancelTerminalPersistence()
 
-	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
+	if commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
 	}
 	_ = a.store.SaveOutput(terminalCtx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
@@ -244,6 +281,7 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 
 	// Final event for the client includes effective timeout and typed terminal state.
 	terminalOutcome := normalizeExecOutcome(true, exitCode, execErr)
+	applyCommandAttemptDiagnostics(terminalOutcome, attemptCount, attemptDiagnostics)
 	done := map[string]any{
 
 		"command_id":       cmdID,
@@ -442,7 +480,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 
 	barrier := newPreExecBarrier(hook)
 	defer func() {
-		if cleanupErr := barrier.Cleanup(); cleanupErr != nil {
+		if cleanupErr := barrier.Cleanup(); cleanupErr != nil && !errors.Is(err, cleanupErr) {
 			err = errors.Join(err, fmt.Errorf("post-start cleanup: %w", cleanupErr))
 		}
 	}()
@@ -486,6 +524,8 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 	}
 
 	pgid := 0
+	var handlerLifecycle *wrapperHandlerLifecycle
+	defer func() { handlerLifecycle.cancelHandlers() }()
 	if cmd.Process != nil {
 		s.SetCurrentProcessPID(cmd.Process.Pid)
 		// Register PID→command_id for ESF event attribution.
@@ -511,7 +551,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		var commandBoundaryReady chan error
 		if tracer == nil && commandBoundaryRequired(extra) {
 			commandBoundaryReady = make(chan error, 1)
-			startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, commandBoundaryReady)
+			handlerLifecycle = startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, commandBoundaryReady)
 			extraOwnershipTransferred = true
 			wrapperHandlersStarted = true
 		}
@@ -536,7 +576,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			if extra.ptraceSync {
 				ptraceReady = make(chan error, 1)
 			}
-			startWrapperHandlers(handlerCtx, extra, cmd.Process.Pid, pgid, ptraceReady)
+			handlerLifecycle = startWrapperHandlers(handlerCtx, extra, cmd.Process.Pid, pgid, ptraceReady)
 			extraOwnershipTransferred = true
 
 			// 2. Wait for wrapper to signal READY (only when ptrace sync is enabled).
@@ -692,16 +732,14 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			}
 			releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
 			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
-				_ = killProcess(cmd.Process.Pid)
-				_ = killProcessGroup(pgid)
-				_ = cmd.Wait()
+				releaseErr = finalizeCommandBoundaryFailure(cmd, pgid, barrier, handlerLifecycle, releaseErr)
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 		}
 
 		notifyStarted()
 		if !wrapperHandlersStarted {
-			startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, nil)
+			handlerLifecycle = startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, nil)
 			extraOwnershipTransferred = true
 		}
 	}

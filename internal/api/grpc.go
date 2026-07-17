@@ -380,17 +380,6 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		return status.Error(codes.PermissionDenied, "command denied by policy")
 	}
 
-	// Prepare the wrapper/jail before emitting command_started. A boundary
-	// setup failure must remain an execution refusal.
-	wrapperResult := s.app.setupSeccompWrapperWithPolicy(execReq, req.SessionID, sess, engine)
-	if wrapperResult.setupErr != nil {
-		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, wrapperResult.setupErr)
-		return status.Errorf(codes.FailedPrecondition, "E_PRE_EXEC_BOUNDARY: pre-exec boundary unavailable: %v", wrapperResult.setupErr)
-	}
-	wrappedReq := wrapperResult.wrappedReq
-	extraCfg := wrapperResult.extraCfg
-	cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, s.app.execveEnforcementActive(), s.app.shellCOpaqueMode())
-
 	emit := func(event string, payload map[string]any) error {
 		payload["event"] = event
 		out := &structpb.Struct{}
@@ -412,19 +401,67 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		_ = emit("start", map[string]any{"command_id": cmdID, "command_started": true, "command_timeout": timeoutResolution.Metadata})
 	}
 
-	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResourcesStreamingEmitResolvedTimeout(
-		stream.Context(), sess, cmdID, wrappedReq, s.app.cfg, cmdDecision.EnvPolicy, timeoutResolution.Duration, emit,
-		s.app.cgroupHook(req.SessionID, cmdID, limits), extraCfg, s.app.ptraceTracer, req.SessionID, onStarted,
+	var (
+		wrappedReq               types.ExecRequest
+		extraCfg                 *extraProcConfig
+		envPolicy                policy.ResolvedEnvPolicy
+		envPolicyResolved        bool
+		exitCode                 int
+		stdoutB, stderrB         []byte
+		stdoutTotal, stderrTotal int64
+		stdoutTrunc, stderrTrunc bool
+		resources                types.ExecResources
+		execErr                  error
+		attemptCount             int
+		attemptDiagnostics       []types.ExecAttemptDiagnostic
 	)
+	for {
+		attemptCount++
+		wrapperResult := s.app.setupSeccompWrapperWithPolicy(execReq, req.SessionID, sess, engine)
+		if wrapperResult.setupErr != nil {
+			s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, wrapperResult.setupErr)
+			if attemptCount == 1 {
+				return status.Errorf(codes.FailedPrecondition, "E_PRE_EXEC_BOUNDARY: pre-exec boundary unavailable: %v", wrapperResult.setupErr)
+			}
+			exitCode = 127
+			execErr = markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr))
+			attemptDiagnostics = append(attemptDiagnostics, types.ExecAttemptDiagnostic{Attempt: attemptCount, ProtocolStage: "command_boundary_setup"})
+			break
+		}
+		wrappedReq = wrapperResult.wrappedReq
+		extraCfg = wrapperResult.extraCfg
+		if !envPolicyResolved {
+			cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, s.app.execveEnforcementActive(), s.app.shellCOpaqueMode())
+			envPolicy = cmdDecision.EnvPolicy
+			envPolicyResolved = true
+		}
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesStreamingEmitResolvedTimeout(
+			stream.Context(), sess, cmdID, wrappedReq, s.app.cfg, envPolicy, timeoutResolution.Duration, emit,
+			s.app.cgroupHook(req.SessionID, cmdID, limits), extraCfg, s.app.ptraceTracer, req.SessionID, onStarted,
+		)
+		failure := commandJailFailureFrom(execErr)
+		if failure == nil {
+			break
+		}
+		diagnostic := failure.diagnostic(attemptCount)
+		attemptDiagnostics = append(attemptDiagnostics, diagnostic)
+		retrying := shouldRetryCommandJailAttempt(stream.Context(), attemptCount, execErr)
+		s.app.emitCommandJailAttempt(req.SessionID, cmdID, diagnostic, retrying)
+		if !retrying {
+			break
+		}
+	}
 	if !commandStarted {
 		outcome := normalizeExecOutcome(false, exitCode, execErr)
+		applyCommandAttemptDiagnostics(outcome, attemptCount, attemptDiagnostics)
+		_ = emit("refused", map[string]any{"command_id": cmdID, "command_started": false, "outcome": outcome, "command_timeout": timeoutResolution.Metadata})
 		return status.Error(grpcCodeForOutcome(outcome), outcome.Code+": "+outcome.Message)
 	}
 
 	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(stream.Context())
 	defer cancelTerminalPersistence()
 
-	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
+	if commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
 		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, execErr)
 	}
 	_ = s.app.store.SaveOutput(terminalCtx, req.SessionID, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
@@ -461,6 +498,7 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	s.app.broker.Publish(endEv)
 
 	terminalOutcome := normalizeExecOutcome(true, exitCode, execErr)
+	applyCommandAttemptDiagnostics(terminalOutcome, attemptCount, attemptDiagnostics)
 	done := map[string]any{
 		"command_id": cmdID,
 

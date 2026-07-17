@@ -60,6 +60,19 @@ func getProcessGroupID(pid int) int {
 	return pgid
 }
 
+func processExitEvidence(ps *os.ProcessState) (*int, string) {
+	if ps == nil {
+		return nil, ""
+	}
+	if status, ok := ps.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+		return nil, status.Signal().String()
+	}
+	if code := ps.ExitCode(); code >= 0 {
+		return &code, ""
+	}
+	return nil, ""
+}
+
 // resourcesFromProcessState extracts resource usage from process state.
 func resourcesFromProcessState(ps *os.ProcessState) types.ExecResources {
 	if ps == nil {

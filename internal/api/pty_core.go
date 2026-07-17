@@ -34,6 +34,10 @@ type ptyRun struct {
 
 	req ptyStartParams
 	ps  *pty.Session
+
+	handlers     *wrapperHandlerLifecycle
+	attemptCount int
+	attempts     []types.ExecAttemptDiagnostic
 }
 
 func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams) (*ptyRun, int, error) {
@@ -59,7 +63,8 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 	}
 	sess.SetCurrentCommandID(cmdID)
 
-	pre := a.policyEngineFor(sess).CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+	engine := a.policyEngineFor(sess)
+	pre := engine.CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
 	approvalErr := a.applyCommandApproval(ctx, sessionID, cmdID, originalCmd, originalArgs, nil, &pre)
 
@@ -132,27 +137,13 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 		defer unlock()
 		return nil, http.StatusBadRequest, err
 	}
-	wrapperResult := a.setupSeccompWrapper(types.ExecRequest{
+	execReq := types.ExecRequest{
 		Command:    req.Command,
 		Args:       req.Args,
 		Argv0:      req.Argv0,
 		WorkingDir: req.WorkingDir,
 		Env:        req.Env,
-	}, sessionID, sess)
-	if wrapperResult.setupErr != nil {
-		a.recordNetworkEnforcementFailure(sessionID, cmdID, wrapperResult.setupErr)
-		defer unlock()
-		return nil, http.StatusServiceUnavailable, fmt.Errorf("pre-exec boundary unavailable: %w", wrapperResult.setupErr)
 	}
-	wrappedReq := wrapperResult.wrappedReq
-	extraCfg := wrapperResult.extraCfg
-	env, envErr := buildCommandEnvironment(a.cfg, policy.ResolvedEnvPolicy{}, os.Environ(), sess, wrappedReq.Env, extraCfg)
-	if envErr != nil {
-		defer unlock()
-		closePreStartProcessFiles(extraCfg)
-		return nil, http.StatusInternalServerError, fmt.Errorf("build PTY environment: %w", envErr)
-	}
-
 	rows := req.Rows
 	cols := req.Cols
 	if rows == 0 {
@@ -162,63 +153,103 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 		cols = 80
 	}
 
-	limits := a.policyEngineFor(sess).Limits()
-	hook := a.cgroupHook(sessionID, cmdID, limits)
-	if barrierErr := validatePreExecBarrierPath(hook, nil, extraCfg); barrierErr != nil {
-		a.recordNetworkEnforcementFailure(sessionID, cmdID, barrierErr)
-		defer unlock()
-		closePreStartProcessFiles(extraCfg)
-		return nil, http.StatusServiceUnavailable, barrierErr
-	}
-	barrier := newPreExecBarrier(hook)
-	extraOwnershipTransferred := false
-	var preExec func(int, func() error) (func() error, error)
-	if hook != nil {
-		preExec = func(pid int, resume func() error) (func() error, error) {
-			var ready chan error
-			if commandBoundaryRequired(extraCfg) {
-				ready = make(chan error, 1)
-			}
-			startWrapperHandlers(ctx, extraCfg, pid, getProcessGroupID(pid), ready)
-			extraOwnershipTransferred = true
-			releaseSteps := []preExecReleaseStep{{name: "resume stopped PTY process", run: resume}}
-			releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extraCfg, ready)...)
-			return barrier.CleanupFunc(), barrier.Release(pid, releaseSteps...)
+	limits := engine.Limits()
+	var (
+		ps                 *pty.Session
+		handlers           *wrapperHandlerLifecycle
+		attemptCount       int
+		attemptDiagnostics []types.ExecAttemptDiagnostic
+	)
+	for {
+		attemptCount++
+		wrapperResult := a.setupSeccompWrapperWithPolicy(execReq, sessionID, sess, engine)
+		if wrapperResult.setupErr != nil {
+			a.recordNetworkEnforcementFailure(sessionID, cmdID, wrapperResult.setupErr)
+			defer unlock()
+			return nil, http.StatusServiceUnavailable, fmt.Errorf("pre-exec boundary unavailable: %w", wrapperResult.setupErr)
 		}
-	}
+		wrappedReq := wrapperResult.wrappedReq
+		extraCfg := wrapperResult.extraCfg
+		env, envErr := buildCommandEnvironment(a.cfg, policy.ResolvedEnvPolicy{}, os.Environ(), sess, wrappedReq.Env, extraCfg)
+		if envErr != nil {
+			defer unlock()
+			closePreStartProcessFiles(extraCfg)
+			return nil, http.StatusInternalServerError, fmt.Errorf("build PTY environment: %w", envErr)
+		}
 
-	var commandBoundary *types.LinuxCommandJailRequirements
-	if extraCfg != nil {
-		commandBoundary = extraCfg.commandBoundary
-	}
-	ps, err := pty.New().Start(ctx, pty.StartRequest{
-		Command:         wrappedReq.Command,
-		Args:            wrappedReq.Args,
-		Argv0:           strings.TrimSpace(wrappedReq.Argv0),
-		Dir:             workdir,
-		Env:             env,
-		ExtraFiles:      extraProcessFiles(extraCfg),
-		CommandBoundary: commandBoundary,
-		PreExec:         preExec,
-		InitialSize: pty.Winsize{
-			Rows: rows,
-			Cols: cols,
-		},
-	})
-	if err != nil {
-		if commandBoundaryRequired(extraCfg) {
-			a.recordNetworkEnforcementFailure(sessionID, cmdID, err)
+		hook := a.cgroupHook(sessionID, cmdID, limits)
+		if barrierErr := validatePreExecBarrierPath(hook, nil, extraCfg); barrierErr != nil {
+			a.recordNetworkEnforcementFailure(sessionID, cmdID, barrierErr)
+			defer unlock()
+			closePreStartProcessFiles(extraCfg)
+			return nil, http.StatusServiceUnavailable, barrierErr
 		}
-		defer unlock()
+		barrier := newPreExecBarrier(hook)
+		extraOwnershipTransferred := false
+		handlers = nil
+		var preExec func(int, func() error) (func() error, error)
+		if hook != nil {
+			preExec = func(pid int, resume func() error) (func() error, error) {
+				var ready chan error
+				if commandBoundaryRequired(extraCfg) {
+					ready = make(chan error, 1)
+				}
+				handlers = startWrapperHandlers(ctx, extraCfg, pid, getProcessGroupID(pid), ready)
+				extraOwnershipTransferred = true
+				releaseSteps := []preExecReleaseStep{{name: "resume stopped PTY process", run: resume}}
+				releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extraCfg, ready)...)
+				return barrier.CleanupFunc(), barrier.Release(pid, releaseSteps...)
+			}
+		}
+
+		var commandBoundary *types.LinuxCommandJailRequirements
+		if extraCfg != nil {
+			commandBoundary = extraCfg.commandBoundary
+		}
+		ps, err = pty.New().Start(ctx, pty.StartRequest{
+			Command:         wrappedReq.Command,
+			Args:            wrappedReq.Args,
+			Argv0:           strings.TrimSpace(wrappedReq.Argv0),
+			Dir:             workdir,
+			Env:             env,
+			ExtraFiles:      extraProcessFiles(extraCfg),
+			CommandBoundary: commandBoundary,
+			PreExec:         preExec,
+			FinalizePreExecFailure: func(processState *os.ProcessState, waitErr, cleanupErr, preExecErr error) error {
+				return finalizePTYCommandBoundaryFailure(processState, waitErr, cleanupErr, handlers, preExecErr)
+			},
+			PreExecFailureGrace: commandJailNaturalExitGrace,
+			InitialSize: pty.Winsize{
+				Rows: rows,
+				Cols: cols,
+			},
+		})
+		if err == nil {
+			if !extraOwnershipTransferred {
+				handlers = startWrapperHandlers(ctx, extraCfg, ps.PID(), getProcessGroupID(ps.PID()), nil)
+			}
+			break
+		}
 		if !extraOwnershipTransferred {
 			closePreStartProcessFiles(extraCfg)
 		}
+		failure := commandJailFailureFrom(err)
+		if failure != nil {
+			diagnostic := failure.diagnostic(attemptCount)
+			attemptDiagnostics = append(attemptDiagnostics, diagnostic)
+			retrying := shouldRetryCommandJailAttempt(ctx, attemptCount, err)
+			a.emitCommandJailAttempt(sessionID, cmdID, diagnostic, retrying)
+			if retrying {
+				continue
+			}
+		}
+		if commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(err) {
+			a.recordNetworkEnforcementFailure(sessionID, cmdID, err)
+		}
+		defer unlock()
 		return nil, http.StatusInternalServerError, err
 	}
 	sess.SetCurrentProcessPID(ps.PID())
-	if !extraOwnershipTransferred {
-		startWrapperHandlers(ctx, extraCfg, ps.PID(), getProcessGroupID(ps.PID()), nil)
-	}
 
 	startEv := types.Event{
 		ID:        uuid.NewString(),
@@ -227,20 +258,24 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 		SessionID: sessionID,
 		CommandID: cmdID,
 		Fields: map[string]any{
-			"command": req.Command,
-			"args":    req.Args,
+			"command":       req.Command,
+			"args":          req.Args,
+			"attempt_count": attemptCount,
 		},
 	}
 	_ = a.store.AppendEvent(ctx, startEv)
 	a.broker.Publish(startEv)
 
 	return &ptyRun{
-		sessionID: sessionID,
-		unlock:    unlock,
-		cmdID:     cmdID,
-		started:   start,
-		req:       req,
-		ps:        ps,
+		sessionID:    sessionID,
+		unlock:       unlock,
+		cmdID:        cmdID,
+		started:      start,
+		req:          req,
+		ps:           ps,
+		handlers:     handlers,
+		attemptCount: attemptCount,
+		attempts:     attemptDiagnostics,
 	}, http.StatusOK, nil
 }
 
@@ -248,8 +283,10 @@ func (a *App) finishPTY(ctx context.Context, run *ptyRun, exitCode int, started 
 	if a == nil || run == nil {
 		return
 	}
+	defer run.handlers.cancelHandlers()
 	end := time.Now().UTC()
 	outcome := normalizeExecOutcome(true, exitCode, err)
+	applyCommandAttemptDiagnostics(outcome, run.attemptCount, run.attempts)
 	endEv := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: end,
@@ -263,6 +300,7 @@ func (a *App) finishPTY(ctx context.Context, run *ptyRun, exitCode int, started 
 			"dispatch_state":  outcome.DispatchState,
 			"failure_kind":    outcome.FailureKind,
 			"outcome_code":    outcome.Code,
+			"attempt_count":   outcome.AttemptCount,
 		},
 	}
 	if err != nil {

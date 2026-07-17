@@ -57,15 +57,32 @@ const (
 	ExecFailureInternal       ExecFailureKind = "internal"
 )
 
+type ExecAttemptDiagnostic struct {
+	Attempt         int    `json:"attempt"`
+	ProtocolStage   string `json:"protocol_stage,omitempty"`
+	ReadyBytes      int    `json:"ready_bytes"`
+	ReadError       string `json:"read_error,omitempty"`
+	GOAttempted     bool   `json:"go_attempted"`
+	WrapperExitCode *int   `json:"wrapper_exit_code,omitempty"`
+	WrapperSignal   string `json:"wrapper_signal,omitempty"`
+	WrapperLogTail  string `json:"wrapper_log_tail,omitempty"`
+	ProcessReaped   bool   `json:"process_reaped"`
+	HandlersJoined  bool   `json:"handlers_joined"`
+	CleanupComplete bool   `json:"cleanup_complete"`
+	CleanupError    string `json:"cleanup_error,omitempty"`
+}
+
 type ExecOutcome struct {
-	CommandStarted      bool            `json:"command_started"`
-	DispatchState       string          `json:"dispatch_state"`
-	FailureKind         ExecFailureKind `json:"failure_kind"`
-	Retryable           bool            `json:"retryable"`
-	Code                string          `json:"code,omitempty"`
-	Message             string          `json:"message,omitempty"`
-	QueueDurationMs     int64           `json:"queue_duration_ms,omitempty"`
-	ExecutionDurationMs int64           `json:"execution_duration_ms,omitempty"`
+	CommandStarted      bool                    `json:"command_started"`
+	DispatchState       string                  `json:"dispatch_state"`
+	FailureKind         ExecFailureKind         `json:"failure_kind"`
+	Retryable           bool                    `json:"retryable"`
+	Code                string                  `json:"code,omitempty"`
+	Message             string                  `json:"message,omitempty"`
+	AttemptCount        int                     `json:"attempt_count,omitempty"`
+	Attempts            []ExecAttemptDiagnostic `json:"attempts,omitempty"`
+	QueueDurationMs     int64                   `json:"queue_duration_ms,omitempty"`
+	ExecutionDurationMs int64                   `json:"execution_duration_ms,omitempty"`
 }
 
 type ExecResult struct {

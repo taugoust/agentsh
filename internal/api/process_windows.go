@@ -77,6 +77,16 @@ func filetimeToMs(ft syscall.Filetime) int64 {
 	return ns100 / 10000
 }
 
+func processExitEvidence(ps *os.ProcessState) (*int, string) {
+	if ps == nil {
+		return nil, ""
+	}
+	if code := ps.ExitCode(); code >= 0 {
+		return &code, ""
+	}
+	return nil, ""
+}
+
 // resourcesFromProcessState extracts resource usage from process state.
 // On Windows, Rusage contains UserTime and KernelTime as FILETIME values.
 // Peak memory is not available through ProcessState - it would require

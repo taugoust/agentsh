@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/creack/pty"
@@ -37,6 +38,12 @@ type StartRequest struct {
 	// one-shot enforcement/READY/GO sequence and must call resume exactly once
 	// after setup succeeds. A non-nil callback is fail-closed on other platforms.
 	PreExec func(pid int, resume func() error) (cleanup func() error, err error)
+
+	// FinalizePreExecFailure runs after the failed child is killed/reaped,
+	// cleanup has completed, and all PTY descriptors/channels are closed. It can
+	// attach process and cleanup evidence to the returned typed error.
+	FinalizePreExecFailure func(processState *os.ProcessState, waitErr, cleanupErr, preExecErr error) error
+	PreExecFailureGrace    time.Duration
 }
 
 type Session struct {
@@ -192,17 +199,33 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*Session, error) 
 		if hookErr != nil {
 			// Keep the child stopped, kill and reap it, then remove partial
 			// cgroup/helper resources. Cgroup removal before reap would fail.
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			if cleanup != nil {
-				if cleanupErr := cleanup(); cleanupErr != nil {
-					hookErr = errors.Join(hookErr, cleanupErr)
+			waitDone := make(chan error, 1)
+			go func() { waitDone <- cmd.Wait() }()
+			var waitErr error
+			if req.PreExecFailureGrace > 0 {
+				select {
+				case waitErr = <-waitDone:
+				case <-time.After(req.PreExecFailureGrace):
+					_ = cmd.Process.Kill()
+					waitErr = <-waitDone
 				}
+			} else {
+				_ = cmd.Process.Kill()
+				waitErr = <-waitDone
+			}
+			var cleanupErr error
+			if cleanup != nil {
+				cleanupErr = cleanup()
 			}
 			_ = master.Close()
 			_ = slave.Close()
 			close(outCh)
 			close(outDone)
+			if req.FinalizePreExecFailure != nil {
+				hookErr = req.FinalizePreExecFailure(cmd.ProcessState, waitErr, cleanupErr, hookErr)
+			} else if cleanupErr != nil {
+				hookErr = errors.Join(hookErr, cleanupErr)
+			}
 			return nil, hookErr
 		}
 		sess.cleanup = cleanup

@@ -53,6 +53,44 @@ type mountedFilesystem struct {
 	FSType string `json:"fs_type"`
 }
 
+type commandJailSetupOps struct {
+	makeMountsPrivate  func() error
+	installMounts      func() error
+	enforceLandlock    func()
+	dropPrivileges     func() error
+	installSeccomp     func() error
+	protectDescriptors func() error
+	verifyPrivileges   func() error
+}
+
+// completeCommandJailSetup preserves the security-sensitive ordering between
+// privileged mount setup and irreversible per-thread restrictions. In
+// particular, Landlock must be applied after the mount topology is complete,
+// but before capabilities are dropped and READY can be sent.
+func completeCommandJailSetup(ops commandJailSetupOps) error {
+	for _, step := range []func() error{
+		ops.makeMountsPrivate,
+		ops.installMounts,
+		func() error {
+			if ops.enforceLandlock != nil {
+				ops.enforceLandlock()
+			}
+			return nil
+		},
+		ops.dropPrivileges,
+		ops.installSeccomp,
+		ops.protectDescriptors,
+		ops.verifyPrivileges,
+	} {
+		if step != nil {
+			if err := step(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // prepareCommandJail inventories sensitive mount types before the seccomp
 // filter is installed. The command runner creates the wrapper directly in the
 // namespace boundary; doing that here, after the cgroup ACK, would require
@@ -91,7 +129,10 @@ func prepareCommandJail(cfg *CommandJailConfig, commandPath string) error {
 	return nil
 }
 
-func runCommandJailStage(controlFD int) (int, error) {
+func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRuleset) (int, error) {
+	if preparedLandlock != nil {
+		defer preparedLandlock.close()
+	}
 	if unix.Getpid() != 1 {
 		return 127, errors.New("refusing untrusted command-jail stage marker outside a new PID namespace")
 	}
@@ -108,9 +149,6 @@ func runCommandJailStage(controlFD int) (int, error) {
 	if cfg.CommandJail == nil || !cfg.CommandJail.Required {
 		return 127, errors.New("command-jail stage lacks a required jail configuration")
 	}
-	if err := unix.Mount("", string(filepath.Separator), "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		return 127, fmt.Errorf("make mount propagation private: %w", err)
-	}
 
 	cmd := os.Args[2]
 	cmdPath := os.Getenv(commandJailExecPathEnv)
@@ -119,21 +157,31 @@ func runCommandJailStage(controlFD int) (int, error) {
 	}
 	args := applyArgv0Override(os.Args[2:], os.Getenv("AGENTSH_UNIXWRAP_ARGV0"))
 
-	if err := installCommandJailMounts(cfg.CommandJail); err != nil {
+	if err := completeCommandJailSetup(commandJailSetupOps{
+		makeMountsPrivate: func() error {
+			if err := unix.Mount("", string(filepath.Separator), "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
+				return fmt.Errorf("stage=mount_propagation_private: make mount propagation private: %w", err)
+			}
+			return nil
+		},
+		installMounts: func() error { return installCommandJailMounts(cfg.CommandJail) },
+		// Landlock rejects mount topology changes. Apply the ruleset only after
+		// all trusted command-jail mounts are complete, while still on the OS
+		// thread pinned in main, so the final child reliably inherits the domain.
+		enforceLandlock: func() { enforcePreparedLandlock(preparedLandlock) },
+		dropPrivileges:  dropCommandJailPrivileges,
+		installSeccomp:  installCommandJailSeccomp,
+		protectDescriptors: func() error {
+			if err := markNonStdioCloseOnExec(); err != nil {
+				return fmt.Errorf("protect command descriptors: %w", err)
+			}
+			return nil
+		},
+		verifyPrivileges: verifyCommandJailPrivileges,
+	}); err != nil {
 		return 127, err
 	}
-	if err := dropCommandJailPrivileges(); err != nil {
-		return 127, err
-	}
-	if err := installCommandJailSeccomp(); err != nil {
-		return 127, err
-	}
-	if err := markNonStdioCloseOnExec(); err != nil {
-		return 127, fmt.Errorf("protect command descriptors: %w", err)
-	}
-	if err := verifyCommandJailPrivileges(); err != nil {
-		return 127, err
-	}
+	preparedLandlock = nil
 
 	env := scrubCommandJailEnv(os.Environ())
 	if err := commandJailReadyAndWaitForGO(controlFD); err != nil {

@@ -517,6 +517,16 @@ func isNetworkPreExecFailure(err error) bool {
 	return false
 }
 
+func shouldRecordNetworkEnforcementFailure(err error) bool {
+	if failure := commandJailFailureFrom(err); failure != nil && failure.provenCleanPreGO() {
+		// The wrapper never attempted GO and every per-attempt resource was
+		// reaped/joined/removed. Session-scoped preflight readiness remains valid;
+		// only helper/setup or uncertain cleanup failures are sticky.
+		return false
+	}
+	return isNetworkPreExecFailure(err)
+}
+
 func (a *App) recordNetworkEnforcementFailure(sessionID, commandID string, err error) {
 	if a == nil || a.sessions == nil {
 		return

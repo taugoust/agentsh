@@ -53,14 +53,17 @@ func (a *signalEmitterAdapter) Emit(ctx context.Context, eventType events.EventT
 // The handler runs until ctx is cancelled or the fd is closed.
 func startSignalHandler(ctx context.Context, parentSock *os.File, sessID string, supervisorPID int,
 	engine *signal.Engine, registry *signal.PIDRegistry,
-	store eventStore, broker eventBroker, commandIDFunc func() string) {
+	store eventStore, broker eventBroker, commandIDFunc func() string) <-chan struct{} {
 
+	done := make(chan struct{})
 	if parentSock == nil || engine == nil {
-		return
+		close(done)
+		return done
 	}
 
 	// Run the entire receive and serve logic in a goroutine to return immediately
 	go func() {
+		defer close(done)
 		defer parentSock.Close()
 
 		// Set SO_RCVTIMEO directly on the socket. unixmon.RecvFD calls recvmsg
@@ -108,6 +111,7 @@ func startSignalHandler(ctx context.Context, parentSock *os.File, sessID string,
 		handler := signal.NewHandler(engine, registry, emitter)
 		serveSignalNotify(ctx, signalFD, handler)
 	}()
+	return done
 }
 
 // serveSignalNotify runs the signal notification loop.

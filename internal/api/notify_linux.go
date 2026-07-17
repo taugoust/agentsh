@@ -231,13 +231,16 @@ func notifyHandlerRecover(sessID string, store eventStore, broker eventBroker) {
 // *unixmon.BlockListConfig). A nil or zero-ActionByNr value is treated as
 // "no block-list notify routing needed" — safe for errno/kill modes which are
 // kernel-side.
-func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session) {
+func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session) <-chan struct{} {
+	done := make(chan struct{})
 	if parentSock == nil {
-		return
+		close(done)
+		return done
 	}
 
 	// Run the entire receive and serve logic in a goroutine to return immediately
 	go func() {
+		defer close(done)
 		defer notifyHandlerRecover(sessID, store, broker)
 		defer parentSock.Close()
 		// Ensure ptraceReady is always signaled on all exit paths to prevent
@@ -457,22 +460,11 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 			if err := unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &readyTv); err != nil {
 				slog.Debug("failed to set SO_RCVTIMEO for READY read", "error", err, "session_id", sessID)
 			}
-			readyBuf := make([]byte, 1)
-			// Retry on EINTR (signal interruption during read).
-			var readyErr error
-			for {
-				_, readyErr = parentSock.Read(readyBuf)
-				if readyErr != nil && errors.Is(readyErr, syscall.EINTR) {
-					continue
-				}
-				break
-			}
+			readyBytes, readyErr := readCommandJailREADY(parentSock)
 			// Clear SO_RCVTIMEO so it doesn't leak to any later reads.
 			_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
 			if readyErr != nil {
-				ptraceReady <- fmt.Errorf("read READY byte: %w", readyErr)
-			} else if readyBuf[0] != 'R' {
-				ptraceReady <- fmt.Errorf("unexpected READY byte: got 0x%02x, expected 'R'", readyBuf[0])
+				ptraceReady <- newCommandJailReadyFailure(readyBytes, readyErr)
 			} else {
 				ptraceReady <- nil
 			}
@@ -480,4 +472,28 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 
 		<-serveDone // wait for ServeNotifyWithExecve to finish
 	}()
+	return done
+}
+
+func readCommandJailREADY(r io.Reader) (int, error) {
+	if r == nil {
+		return 0, io.ErrUnexpectedEOF
+	}
+	buf := []byte{0}
+	for {
+		n, err := r.Read(buf)
+		if err != nil && errors.Is(err, syscall.EINTR) {
+			continue
+		}
+		if n == 1 {
+			if buf[0] != 'R' {
+				return 1, fmt.Errorf("unexpected READY byte: got 0x%02x, expected 'R'", buf[0])
+			}
+			return 1, nil
+		}
+		if err == nil {
+			err = io.ErrUnexpectedEOF
+		}
+		return n, fmt.Errorf("read READY byte: %w", err)
+	}
 }

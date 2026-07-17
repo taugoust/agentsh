@@ -90,8 +90,9 @@ type extraProcConfig struct {
 	// inherited by the wrapper via extraFiles; the parent's copy is
 	// closed in startWrapperHandlers so the drain goroutine sees EOF
 	// when the wrapper execs (its own copy is CLOEXEC).
-	wrapperLogParent *os.File
-	wrapperLogChild  *os.File
+	wrapperLogParent  *os.File
+	wrapperLogChild   *os.File
+	wrapperLogCapture *wrapperLogCapture
 }
 
 // eventStore is the interface for storing events.
@@ -400,7 +401,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 
 	barrier := newPreExecBarrier(hook)
 	defer func() {
-		if cleanupErr := barrier.Cleanup(); cleanupErr != nil {
+		if cleanupErr := barrier.Cleanup(); cleanupErr != nil && !errors.Is(err, cleanupErr) {
 			err = errors.Join(err, fmt.Errorf("post-start cleanup: %w", cleanupErr))
 		}
 	}()
@@ -446,6 +447,8 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 	}
 
 	pgid := 0
+	var handlerLifecycle *wrapperHandlerLifecycle
+	defer func() { handlerLifecycle.cancelHandlers() }()
 	if cmd.Process != nil {
 		s.SetCurrentProcessPID(cmd.Process.Pid)
 		// Register PID→command_id for ESF event attribution.
@@ -473,7 +476,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 		var commandBoundaryReady chan error
 		if tracer == nil && commandBoundaryRequired(extra) {
 			commandBoundaryReady = make(chan error, 1)
-			startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, commandBoundaryReady)
+			handlerLifecycle = startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, commandBoundaryReady)
 			extraOwnershipTransferred = true
 			wrapperHandlersStarted = true
 		}
@@ -498,7 +501,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			if extra.ptraceSync {
 				ptraceReady = make(chan error, 1)
 			}
-			startWrapperHandlers(handlerCtx, extra, cmd.Process.Pid, pgid, ptraceReady)
+			handlerLifecycle = startWrapperHandlers(handlerCtx, extra, cmd.Process.Pid, pgid, ptraceReady)
 			extraOwnershipTransferred = true
 
 			// 2. Wait for wrapper to signal READY (only when ptrace sync is enabled).
@@ -663,9 +666,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			}
 			releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
 			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
-				_ = killProcess(cmd.Process.Pid)
-				_ = killProcessGroup(pgid)
-				_ = cmd.Wait()
+				releaseErr = finalizeCommandBoundaryFailure(cmd, pgid, barrier, handlerLifecycle, releaseErr)
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 		}
@@ -676,7 +677,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 		// synchronization. Strict command-boundary handlers were started while
 		// the wrapper was still stopped so READY cannot race the parent.
 		if !wrapperHandlersStarted {
-			startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, nil)
+			handlerLifecycle = startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, nil)
 			extraOwnershipTransferred = true
 		}
 	}
@@ -1142,11 +1143,64 @@ func mergeEnv(base []string, s *session.Session, overrides map[string]string) []
 	return env
 }
 
+type wrapperHandlerLifecycle struct {
+	cancel     context.CancelFunc
+	notifyDone <-chan struct{}
+	signalDone <-chan struct{}
+	logCapture *wrapperLogCapture
+}
+
+func (l *wrapperHandlerLifecycle) cancelHandlers() {
+	if l != nil && l.cancel != nil {
+		l.cancel()
+	}
+}
+
+func (l *wrapperHandlerLifecycle) stopAndWait(timeout time.Duration) bool {
+	if l == nil {
+		return true
+	}
+	l.cancelHandlers()
+	var channels []<-chan struct{}
+	if l.notifyDone != nil {
+		channels = append(channels, l.notifyDone)
+	}
+	if l.signalDone != nil {
+		channels = append(channels, l.signalDone)
+	}
+	if l.logCapture != nil && l.logCapture.done != nil {
+		channels = append(channels, l.logCapture.done)
+	}
+	if len(channels) == 0 {
+		return true
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for _, done := range channels {
+		select {
+		case <-done:
+		case <-timer.C:
+			return false
+		}
+	}
+	return true
+}
+
+func (l *wrapperHandlerLifecycle) wrapperLogTail() string {
+	if l == nil || l.logCapture == nil {
+		return ""
+	}
+	return l.logCapture.tail()
+}
+
 // startWrapperHandlers starts the seccomp notify handler and signal filter handler
 // if configured. Used by both regular exec and hybrid ptrace+wrapper mode.
-func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid int, ptraceReady chan<- error) {
+func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid int, ptraceReady chan<- error) *wrapperHandlerLifecycle {
+	handlerCtx, cancel := context.WithCancel(ctx)
+	lifecycle := &wrapperHandlerLifecycle{cancel: cancel}
 	if extra == nil {
-		return
+		cancel()
+		return lifecycle
 	}
 	// Wrapper log routing (issue #415): the child now owns its dup of
 	// the write end; close ours so the drain goroutine gets EOF at the
@@ -1157,7 +1211,9 @@ func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid
 		extra.wrapperLogChild = nil
 	}
 	if extra.wrapperLogParent != nil {
-		_ = startWrapperLogDrain(extra.wrapperLogParent, slog.Default(), extra.notifySessionID, extra.origCommand)
+		capture := startWrapperLogCaptureDrain(extra.wrapperLogParent, slog.Default(), extra.notifySessionID, extra.origCommand)
+		extra.wrapperLogCapture = capture
+		lifecycle.logCapture = capture
 		extra.wrapperLogParent = nil
 	}
 	// The child owns duplicated ExtraFiles after Start. Close every parent-side
@@ -1165,16 +1221,17 @@ func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid
 	// accidentally or reused by a later command.
 	closeExtraProcessFiles(extra)
 	if extra.notifyParentSock != nil {
-		startNotifyHandler(ctx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession)
+		lifecycle.notifyDone = startNotifyHandler(handlerCtx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession)
 	}
 	if extra.signalParentSock != nil && extra.signalEngine != nil {
 		if extra.signalRegistry != nil {
 			extra.signalRegistry.Register(pid, pgid, extra.origCommand)
 		}
-		startSignalHandler(ctx, extra.signalParentSock, extra.notifySessionID, pid,
+		lifecycle.signalDone = startSignalHandler(handlerCtx, extra.signalParentSock, extra.notifySessionID, pid,
 			extra.signalEngine, extra.signalRegistry,
 			extra.notifyStore, extra.notifyBroker, extra.signalCommandID)
 	}
+	return lifecycle
 }
 
 // mergeEnvInject merges env_inject from global config and policy.

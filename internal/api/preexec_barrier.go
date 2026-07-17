@@ -86,10 +86,14 @@ func (b *preExecBarrier) Release(pid int, steps ...preExecReleaseStep) error {
 				continue
 			}
 			if err := step.run(); err != nil {
+				code := "E_PRE_EXEC_RELEASE"
+				if jailFailure := commandJailFailureFrom(err); jailFailure != nil {
+					code = jailFailure.code()
+				}
 				if step.name == "" {
-					b.releaseErr = markPreExecEnforcementError("E_PRE_EXEC_RELEASE", err)
+					b.releaseErr = markPreExecEnforcementError(code, err)
 				} else {
-					b.releaseErr = markPreExecEnforcementError("E_PRE_EXEC_RELEASE", fmt.Errorf("%s: %w", step.name, err))
+					b.releaseErr = markPreExecEnforcementError(code, fmt.Errorf("%s: %w", step.name, err))
 				}
 				return
 			}
@@ -186,7 +190,19 @@ func commandBoundaryReleaseSteps(ctx context.Context, extra *extraProcConfig, re
 		return nil
 	}
 	return []preExecReleaseStep{
-		{name: "wait for command-jail READY", run: func() error { return waitPreExecReady(ctx, ready) }},
-		{name: "release command-jail GO barrier", run: func() error { return writePreExecControlByte(extra.notifyParentSock, 'G') }},
+		{name: "wait for command-jail READY", run: func() error {
+			err := waitPreExecReady(ctx, ready)
+			if err == nil || commandJailFailureFrom(err) != nil {
+				return err
+			}
+			return newCommandJailReadyFailure(-1, err)
+		}},
+		{name: "release command-jail GO barrier", run: func() error {
+			err := writePreExecControlByte(extra.notifyParentSock, 'G')
+			if err == nil {
+				return nil
+			}
+			return newCommandJailGOFailure(err)
+		}},
 	}
 }

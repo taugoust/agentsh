@@ -120,9 +120,23 @@ func main() {
 	// the ptracer library after the ACK, those wrapper syscalls can require file
 	// approvals before Pi has even started its approval relay, deadlocking launch.
 	setupPtracerPreload(cfg.ServerPID, yamaActive)
+
+	// Landlock domains are per-thread. Pin before preparing the ruleset and stay
+	// pinned through seccomp setup and the final exec/fork so a Go scheduler
+	// migration cannot make enforcement intermittent. In strict command-jail
+	// mode the ruleset is built now, but restrict_self is deliberately deferred
+	// until after the trusted mount topology is complete: Landlock rejects mount
+	// propagation changes even for a process with CAP_SYS_ADMIN.
+	var preparedLandlock *preparedLandlockRuleset
 	if cfg.LandlockEnabled && cfg.LandlockABI > 0 {
-		if err := applyLandlock(cfg); err != nil {
+		runtime.LockOSThread()
+		preparedLandlock, err = prepareLandlock(cfg)
+		if err != nil {
 			log.Printf("landlock: %v (continuing without)", err)
+			preparedLandlock = nil
+		} else if cfg.CommandJail == nil || !cfg.CommandJail.Required {
+			enforcePreparedLandlock(preparedLandlock)
+			preparedLandlock = nil
 		}
 	}
 	if cfg.CommandJail != nil && cfg.CommandJail.Required {
@@ -270,7 +284,7 @@ func main() {
 	}
 
 	if cfg.CommandJail != nil && cfg.CommandJail.Required {
-		exitCode, err := runCommandJailStage(sockFD)
+		exitCode, err := runCommandJailStage(sockFD, preparedLandlock)
 		if err != nil {
 			fatalf("command jail: %v", err)
 		}
@@ -421,7 +435,13 @@ func blockSIGURG() {
 	}
 }
 
-func applyLandlock(cfg *WrapperConfig) error {
+type preparedLandlockRuleset struct {
+	fd        int
+	abi       int
+	workspace string
+}
+
+func prepareLandlock(cfg *WrapperConfig) (*preparedLandlockRuleset, error) {
 	builder := landlock.NewRulesetBuilder(cfg.LandlockABI)
 
 	if cfg.Workspace != "" {
@@ -445,16 +465,29 @@ func applyLandlock(cfg *WrapperConfig) error {
 		builder.AddDenyPath(p)
 	}
 
-	rulesetFd, err := builder.Build()
+	rulesetFD, err := builder.Build()
 	if err != nil {
-		return fmt.Errorf("build ruleset: %w", err)
+		return nil, fmt.Errorf("build ruleset: %w", err)
 	}
-	defer unix.Close(rulesetFd)
+	return &preparedLandlockRuleset{fd: rulesetFD, abi: cfg.LandlockABI, workspace: cfg.Workspace}, nil
+}
 
-	if err := landlock.Enforce(rulesetFd); err != nil {
-		return fmt.Errorf("enforce: %w", err)
+func (p *preparedLandlockRuleset) close() {
+	if p == nil || p.fd < 0 {
+		return
 	}
+	_ = unix.Close(p.fd)
+	p.fd = -1
+}
 
-	log.Printf("landlock: restrictions applied (abi=%d, workspace=%s)", cfg.LandlockABI, cfg.Workspace)
-	return nil
+func enforcePreparedLandlock(prepared *preparedLandlockRuleset) {
+	if prepared == nil {
+		return
+	}
+	defer prepared.close()
+	if err := landlock.Enforce(prepared.fd); err != nil {
+		log.Printf("landlock: enforce: %v (continuing without)", err)
+		return
+	}
+	log.Printf("landlock: restrictions applied (abi=%d, workspace=%s)", prepared.abi, prepared.workspace)
 }

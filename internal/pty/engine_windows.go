@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/UserExistsError/conpty"
 	"github.com/agentsh/agentsh/pkg/types"
@@ -45,7 +46,9 @@ type StartRequest struct {
 	ExtraFiles      []*os.File
 	CommandBoundary *types.LinuxCommandJailRequirements
 
-	PreExec func(pid int, resume func() error) (cleanup func() error, err error)
+	PreExec                func(pid int, resume func() error) (cleanup func() error, err error)
+	FinalizePreExecFailure func(processState *os.ProcessState, waitErr, cleanupErr, preExecErr error) error
+	PreExecFailureGrace    time.Duration
 }
 
 // Session represents a PTY session on Windows using ConPTY.

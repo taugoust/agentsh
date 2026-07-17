@@ -49,6 +49,37 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
+func TestWrapperLogCaptureRetainsBoundedSanitizedCommandJailFatal(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	var buf syncBuffer
+	capture := startWrapperLogCaptureDrain(r, slog.New(slog.NewTextHandler(&buf, nil)), "sess-1", "bash")
+	_, _ = w.WriteString("landlock: restrictions applied workspace=/private/workspace\n")
+	_, _ = w.WriteString("command jail: stage=mount_propagation_private path=/private/control token=top-secret: operation not permitted\n")
+	_ = w.Close()
+	select {
+	case <-capture.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("capture did not finish")
+	}
+	tail := capture.tail()
+	for _, forbidden := range []string{"top-secret", "/private/control", "/private/workspace"} {
+		if strings.Contains(tail, forbidden) {
+			t.Fatalf("diagnostic leaked %q: %s", forbidden, tail)
+		}
+	}
+	for _, want := range []string{"command jail", "stage=mount_propagation_private", "[REDACTED]", "[path]", "operation not permitted"} {
+		if !strings.Contains(tail, want) {
+			t.Fatalf("diagnostic missing %q: %s", want, tail)
+		}
+	}
+	if len(tail) > maxWrapperDiagnosticBytes {
+		t.Fatalf("diagnostic length = %d", len(tail))
+	}
+}
+
 func TestStartWrapperLogDrain_ForwardsLinesToLogger(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {
