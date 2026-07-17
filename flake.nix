@@ -269,6 +269,34 @@
                 touch "$out/passed"
               '';
 
+          approval-resolution-race-tests = pkgs.buildGoModule {
+            pname = "agentsh-approval-resolution-race-tests";
+            version = "unstable-2026-06-17";
+            src = self;
+            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+
+            env = {
+              CGO_ENABLED = "0";
+              GOTELEMETRY = "off";
+            };
+
+            buildPhase = ''
+              runHook preBuild
+              runHook postBuild
+            '';
+            checkPhase = ''
+              runHook preCheck
+              go test -v -count=1 ./internal/approvals
+              runHook postCheck
+            '';
+            installPhase = ''
+              runHook preInstall
+              mkdir -p $out
+              touch $out/passed
+              runHook postInstall
+            '';
+          };
+
           go-unit-tests = pkgs.buildGoModule {
             pname = "agentsh-go-unit-tests";
             version = "unstable-2026-06-17";

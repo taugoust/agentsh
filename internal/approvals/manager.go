@@ -90,9 +90,23 @@ type Manager struct {
 	maxPerSession int            // max concurrent approvals per session (0 = unlimited)
 }
 
+type terminalCause uint8
+
+const (
+	terminalCauseDecision terminalCause = iota + 1
+	terminalCauseCanceled
+	terminalCauseTimedOut
+)
+
+type terminalResolution struct {
+	resolution Resolution
+	cause      terminalCause
+}
+
 type pending struct {
-	req Request
-	ch  chan Resolution
+	req      Request
+	done     chan struct{}
+	terminal *terminalResolution
 }
 
 func New(mode string, timeout time.Duration, emit Emitter) *Manager {
@@ -252,17 +266,28 @@ func (m *Manager) resolveForSession(sessionID string, id string, approved bool, 
 	if err != nil {
 		return false
 	}
-	m.mu.Lock()
-	p, ok := m.pending[id]
-	if ok && sessionID != "" && p.req.SessionID != sessionID {
-		ok = false
-	}
-	if ok {
-		delete(m.pending, id)
-	}
-	m.mu.Unlock()
+	p, terminal, ok := m.resolveDecisionForSession(sessionID, id, approved, reason, scope, target)
 	if !ok {
 		return false
+	}
+	res := terminal.resolution
+	if scope == ScopeSession {
+		if granted, ok := ScopeFromResolution(res); ok {
+			m.resolvePendingCoveredBySessionScope(p.req, granted, res)
+		} else if granted, ok := ScopeFromRequest(p.req); ok {
+			m.resolvePendingCoveredBySessionScope(p.req, granted, res)
+		}
+	}
+	return true
+}
+
+func (m *Manager) resolveDecisionForSession(sessionID string, id string, approved bool, reason string, scope string, target Scope) (*pending, terminalResolution, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.pending[id]
+	if !ok || p == nil || sessionID != "" && p.req.SessionID != sessionID {
+		return nil, terminalResolution{}, false
 	}
 	res := Resolution{Approved: approved, Reason: reason, Scope: scope, At: time.Now().UTC()}
 	if validScope(target) {
@@ -274,18 +299,94 @@ func (m *Manager) resolveForSession(sessionID string, id string, approved bool, 
 		res.ScopeRule = target.Rule
 		res.ScopePrefix = target.Prefix
 	}
-	if scope == ScopeSession {
-		if granted, ok := ScopeFromResolution(res); ok {
-			m.resolvePendingCoveredBySessionScope(p.req, granted, res)
-		} else if granted, ok := ScopeFromRequest(p.req); ok {
-			m.resolvePendingCoveredBySessionScope(p.req, granted, res)
-		}
+	terminal := terminalResolution{resolution: res, cause: terminalCauseDecision}
+	if !m.terminalizePendingLocked(id, p, terminal) {
+		return nil, terminalResolution{}, false
 	}
-	select {
-	case p.ch <- res:
-	default:
+	return p, terminal, true
+}
+
+func (m *Manager) terminalizePendingLocked(id string, p *pending, terminal terminalResolution) bool {
+	current, ok := m.pending[id]
+	if !ok || current != p || p == nil || p.terminal != nil {
+		return false
 	}
+	p.terminal = &terminal
+	delete(m.pending, id)
+	close(p.done)
 	return true
+}
+
+func (m *Manager) claimOrObservePending(p *pending, cause terminalCause) terminalResolution {
+	m.mu.Lock()
+	if p.terminal != nil {
+		terminal := *p.terminal
+		m.mu.Unlock()
+		return terminal
+	}
+	if current, ok := m.pending[p.req.ID]; !ok || current != p {
+		m.mu.Unlock()
+		panic("approval pending entry removed without a terminal resolution")
+	}
+
+	var reason string
+	switch cause {
+	case terminalCauseCanceled:
+		reason = "context canceled"
+	case terminalCauseTimedOut:
+		reason = "approval timeout"
+	default:
+		m.mu.Unlock()
+		panic("invalid non-decision approval resolution cause")
+	}
+	terminal := terminalResolution{
+		resolution: Resolution{
+			Approved: false,
+			Reason:   reason,
+			Scope:    ScopeOnce,
+			At:       time.Now().UTC(),
+		},
+		cause: cause,
+	}
+	if !m.terminalizePendingLocked(p.req.ID, p, terminal) {
+		m.mu.Unlock()
+		panic("failed to terminalize pending approval")
+	}
+	m.mu.Unlock()
+	return terminal
+}
+
+func (m *Manager) observePending(p *pending) terminalResolution {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if p == nil || p.terminal == nil {
+		panic("approval completed without a terminal resolution")
+	}
+	return *p.terminal
+}
+
+func (m *Manager) waitForPendingResolution(ctx context.Context, p *pending, timeout <-chan time.Time) terminalResolution {
+	select {
+	case <-p.done:
+		return m.observePending(p)
+	case <-ctx.Done():
+		return m.claimOrObservePending(p, terminalCauseCanceled)
+	case <-timeout:
+		return m.claimOrObservePending(p, terminalCauseTimedOut)
+	}
+}
+
+func terminalError(ctx context.Context, cause terminalCause) error {
+	switch cause {
+	case terminalCauseDecision:
+		return nil
+	case terminalCauseCanceled:
+		return ctx.Err()
+	case terminalCauseTimedOut:
+		return fmt.Errorf("approval timeout")
+	default:
+		panic("unknown approval terminal cause")
+	}
 }
 
 func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution, error) {
@@ -313,6 +414,7 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 			m.rateMu.Unlock()
 		}
 	}
+	defer decrementRate() // Always decrement on exit after incrementing
 
 	now := time.Now().UTC()
 	if req.ID == "" {
@@ -321,9 +423,14 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 	req.CreatedAt = now
 	req.ExpiresAt = now.Add(m.timeout)
 
-	p := &pending{req: req, ch: make(chan Resolution, 1)}
+	p := &pending{req: req, done: make(chan struct{})}
 
 	m.mu.Lock()
+	if _, exists := m.pending[req.ID]; exists {
+		m.mu.Unlock()
+		err := fmt.Errorf("approval ID %q is already pending", req.ID)
+		return Resolution{Approved: false, Reason: err.Error(), Scope: ScopeOnce, At: now}, err
+	}
 	m.pending[req.ID] = p
 	m.mu.Unlock()
 
@@ -339,6 +446,9 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 		go func() {
 			res, err := m.prompt(promptCtx, req)
 			if err != nil {
+				if promptCtx.Err() != nil {
+					return
+				}
 				_ = m.Resolve(req.ID, false, err.Error())
 				return
 			}
@@ -347,7 +457,7 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 	}
 
 	if m.mode == "local_tty" {
-		// Fall through to select; prompt resolution will deliver on p.ch.
+		// Fall through to the wait; prompt resolution will close p.done.
 	}
 
 	timeout := time.Until(req.ExpiresAt)
@@ -356,34 +466,17 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
-	defer decrementRate() // Always decrement on exit
 
-	select {
-	case res := <-p.ch:
-		if cancelPrompt != nil {
-			cancelPrompt()
-		}
-		if res.Scope == "" {
-			res.Scope = ScopeOnce
-		}
-		m.emitEvent(ctx, "approval_resolved", req, &res)
-		m.setScopedFromRequest(ctx, req, res)
-		return res, nil
-	case <-ctx.Done():
-		if cancelPrompt != nil {
-			cancelPrompt()
-		}
-		m.Resolve(req.ID, false, "context canceled")
-		m.emitEvent(ctx, "approval_resolved", req, &Resolution{Approved: false, Reason: "context canceled", Scope: ScopeOnce, At: time.Now().UTC()})
-		return Resolution{Approved: false, Reason: "context canceled", Scope: ScopeOnce, At: time.Now().UTC()}, ctx.Err()
-	case <-timer.C:
-		if cancelPrompt != nil {
-			cancelPrompt()
-		}
-		m.Resolve(req.ID, false, "approval timeout")
-		m.emitEvent(ctx, "approval_resolved", req, &Resolution{Approved: false, Reason: "approval timeout", Scope: ScopeOnce, At: time.Now().UTC()})
-		return Resolution{Approved: false, Reason: "approval timeout", Scope: ScopeOnce, At: time.Now().UTC()}, fmt.Errorf("approval timeout")
+	terminal := m.waitForPendingResolution(ctx, p, timer.C)
+	if cancelPrompt != nil {
+		cancelPrompt()
 	}
+	res := terminal.resolution
+	m.emitEvent(ctx, "approval_resolved", req, &res)
+	if terminal.cause == terminalCauseDecision {
+		m.setScopedFromRequest(ctx, req, res)
+	}
+	return res, terminalError(ctx, terminal.cause)
 }
 
 func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID string, scope Scope) (ScopedDecision, bool) {
@@ -617,26 +710,8 @@ func (m *Manager) resolvePendingCoveredBySessionScope(source Request, granted Sc
 	if source.SessionID == "" || !validScope(granted) {
 		return
 	}
-	now := time.Now().UTC()
-	res := Resolution{
-		Approved:       sourceRes.Approved,
-		Reason:         sourceRes.Reason,
-		Scope:          ScopeSession,
-		At:             now,
-		ScopeKind:      granted.Kind,
-		ScopeKey:       granted.Key,
-		ScopeLabel:     granted.Label,
-		ScopeOperation: granted.Operation,
-		ScopePath:      granted.Path,
-		ScopeRule:      granted.Rule,
-		ScopePrefix:    granted.Prefix,
-	}
-	if strings.TrimSpace(res.Reason) == "" {
-		res.Reason = "covered by session approval"
-	}
-
-	covered := make([]*pending, 0)
 	m.mu.Lock()
+	now := time.Now().UTC()
 	for id, p := range m.pending {
 		if p == nil || id == source.ID || p.req.SessionID != source.SessionID {
 			continue
@@ -644,19 +719,31 @@ func (m *Manager) resolvePendingCoveredBySessionScope(source Request, granted Sc
 		if p.req.ExpiresAt.Before(now) {
 			continue
 		}
-		if RequestCoveredByScope(p.req, granted) {
-			delete(m.pending, id)
-			covered = append(covered, p)
+		if !RequestCoveredByScope(p.req, granted) {
+			continue
 		}
+		res := Resolution{
+			Approved:       sourceRes.Approved,
+			Reason:         sourceRes.Reason,
+			Scope:          ScopeSession,
+			At:             now,
+			ScopeKind:      granted.Kind,
+			ScopeKey:       granted.Key,
+			ScopeLabel:     granted.Label,
+			ScopeOperation: granted.Operation,
+			ScopePath:      granted.Path,
+			ScopeRule:      granted.Rule,
+			ScopePrefix:    granted.Prefix,
+		}
+		if strings.TrimSpace(res.Reason) == "" {
+			res.Reason = "covered by session approval"
+		}
+		m.terminalizePendingLocked(id, p, terminalResolution{
+			resolution: res,
+			cause:      terminalCauseDecision,
+		})
 	}
 	m.mu.Unlock()
-
-	for _, p := range covered {
-		select {
-		case p.ch <- res:
-		default:
-		}
-	}
 }
 
 // RequestCoveredByScope reports whether a pending request asks for a scope that
