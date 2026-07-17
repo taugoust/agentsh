@@ -24,9 +24,10 @@ type Policy struct {
 	DnsRedirectRules     []DnsRedirectRule     `yaml:"dns_redirects,omitempty"`
 	ConnectRedirectRules []ConnectRedirectRule `yaml:"connect_redirects,omitempty"`
 
-	ResourceLimits ResourceLimits `yaml:"resource_limits"`
-	EnvPolicy      EnvPolicy      `yaml:"env_policy"`
-	Audit          AuditSettings  `yaml:"audit"`
+	ResourceLimits ResourceLimits     `yaml:"resource_limits"`
+	EnvPolicy      EnvPolicy          `yaml:"env_policy"`
+	Direnv         DirenvImportPolicy `yaml:"direnv,omitempty"`
+	Audit          AuditSettings      `yaml:"audit"`
 
 	EnvInject map[string]string `yaml:"env_inject"`
 
@@ -240,6 +241,22 @@ type EnvPolicy struct {
 	MaxBytes       int      `yaml:"max_bytes"`
 	MaxKeys        int      `yaml:"max_keys"`
 	BlockIteration bool     `yaml:"block_iteration"`
+}
+
+// DirenvImportPolicy is a separate import boundary for server-owned direnv
+// refreshes. It deliberately does not broaden EnvPolicy, which continues to
+// govern request and ordinary session environment updates.
+type DirenvImportPolicy struct {
+	Enabled           bool     `yaml:"enabled"`
+	Allow             []string `yaml:"allow"`
+	Deny              []string `yaml:"deny"`
+	MaxKeys           int      `yaml:"max_keys"`
+	MaxValueBytes     int      `yaml:"max_value_bytes"`
+	MaxBytes          int      `yaml:"max_bytes"`
+	MaxStdoutBytes    int      `yaml:"max_stdout_bytes"`
+	MaxStderrBytes    int      `yaml:"max_stderr_bytes"`
+	QueueTimeout      duration `yaml:"queue_timeout"`
+	EvaluationTimeout duration `yaml:"evaluation_timeout"`
 }
 
 type AuditSettings struct {
@@ -480,6 +497,9 @@ func (p Policy) Validate() error {
 	}
 	if p.Name == "" {
 		return fmt.Errorf("name is required")
+	}
+	if err := ValidateDirenvImportPolicy(p.Direnv); err != nil {
+		return fmt.Errorf("direnv: %w", err)
 	}
 
 	for i, m := range p.Metadata {

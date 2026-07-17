@@ -79,8 +79,13 @@ type Session struct {
 	currentTraceID    string // W3C trace context: trace ID (32 hex chars)
 	currentSpanID     string // W3C trace context: parent span ID (16 hex chars)
 	currentTraceFlags string // W3C trace context: trace flags (2 hex chars, e.g. "01")
-	execGate          chan struct{}
 	execGateOnce      sync.Once
+	execGate          chan struct{}
+
+	// direnvEnv is server-owned sensitive state. It is merged into child
+	// commands but never copied into types.Session snapshots.
+	direnvEnv        map[string]string
+	direnvGeneration uint64
 
 	workspaceUnmount func() error
 	runtimeCleanup   func() error
@@ -1279,6 +1284,42 @@ func (s *Session) FirstCwdEscapeWarn() bool {
 	first := false
 	s.cwdEscapeWarnOnce.Do(func() { first = true })
 	return first
+}
+
+// DirenvEnvironment returns a private copy for child-environment construction.
+// Callers must not serialize or log the returned values.
+func (s *Session) DirenvEnvironment() (map[string]string, uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]string, len(s.direnvEnv))
+	for k, v := range s.direnvEnv {
+		out[k] = v
+	}
+	return out, s.direnvGeneration
+}
+
+// ReplaceDirenvEnvironment atomically installs one complete generation.
+func (s *Session) ReplaceDirenvEnvironment(next map[string]string) (generation uint64, changed bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(next) == len(s.direnvEnv) {
+		equal := true
+		for k, v := range next {
+			if old, ok := s.direnvEnv[k]; !ok || old != v {
+				equal = false
+				break
+			}
+		}
+		if equal {
+			return s.direnvGeneration, false
+		}
+	}
+	s.direnvEnv = make(map[string]string, len(next))
+	for k, v := range next {
+		s.direnvEnv[k] = v
+	}
+	s.direnvGeneration++
+	return s.direnvGeneration, true
 }
 
 func (s *Session) GetCwdEnvHistory() (cwd string, env map[string]string, history []string) {

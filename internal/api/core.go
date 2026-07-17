@@ -1624,7 +1624,32 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 	return s.Snapshot(), http.StatusCreated, nil
 }
 
+type internalExecOptions struct {
+	sensitive          bool
+	stdoutCaptureBytes int64
+	stderrCaptureBytes int64
+	queueTimeout       time.Duration
+	evaluationTimeout  time.Duration
+	onAdmitted         func()
+	onSensitiveResult  func(internalSensitiveExecResult)
+}
+
+type internalSensitiveExecResult struct {
+	ExitCode        int
+	Stdout          []byte
+	Stderr          []byte
+	StdoutTotal     int64
+	StderrTotal     int64
+	StdoutTruncated bool
+	StderrTruncated bool
+	ExecErr         error
+}
+
 func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRequest) (*types.ExecResponse, int, error) {
+	return a.execInSessionCoreWithOptions(ctx, id, req, internalExecOptions{})
+}
+
+func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req types.ExecRequest, opts internalExecOptions) (*types.ExecResponse, int, error) {
 	if a.ptraceFailed.Load() {
 		return nil, http.StatusServiceUnavailable, errors.New("ptrace tracer exited unexpectedly; refusing to execute commands without enforcement")
 	}
@@ -1641,7 +1666,13 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 
 	cmdID := "cmd-" + uuid.NewString()
 	queuedAt := time.Now().UTC()
-	unlock, admissionErr := s.LockExecContext(ctx)
+	queueCtx := ctx
+	var cancelQueue context.CancelFunc
+	if opts.queueTimeout > 0 {
+		queueCtx, cancelQueue = context.WithTimeout(ctx, opts.queueTimeout)
+		defer cancelQueue()
+	}
+	unlock, admissionErr := s.LockExecContext(queueCtx)
 	queueDuration := time.Since(queuedAt)
 	if admissionErr != nil {
 		kind := types.ExecFailureCancellation
@@ -1659,6 +1690,14 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 		return resp, http.StatusRequestTimeout, nil
 	}
 	defer unlock()
+	if opts.onAdmitted != nil {
+		opts.onAdmitted()
+	}
+	if opts.evaluationTimeout > 0 {
+		var cancelEval context.CancelFunc
+		ctx, cancelEval = context.WithTimeout(ctx, opts.evaluationTimeout)
+		defer cancelEval()
+	}
 	start := time.Now().UTC()
 	s.SetCurrentCommandID(cmdID)
 
@@ -1891,6 +1930,13 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 		}
 		extraCfg.outputArtifact = outputArtifactCapture
 	}
+	if opts.sensitive {
+		if extraCfg == nil {
+			extraCfg = &extraProcConfig{}
+		}
+		extraCfg.stdoutCaptureBytes = opts.stdoutCaptureBytes
+		extraCfg.stderrCaptureBytes = opts.stderrCaptureBytes
+	}
 
 	// macOS: sandbox wrapper with XPC control
 	if runtime.GOOS == "darwin" && a.cfg.Sandbox.XPC.Enabled && a.cfg.Sandbox.XPC.Mode == "enforce" {
@@ -1912,6 +1958,19 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	cmdDecision := a.policyEngineFor(s).CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
 	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResources(ctx, s, cmdID, wrappedReq, a.cfg, cmdDecision.EnvPolicy, limits.CommandTimeout, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
 	outputArtifact := outputArtifactCapture.Finish()
+	if opts.sensitive {
+		if opts.onSensitiveResult != nil {
+			opts.onSensitiveResult(internalSensitiveExecResult{
+				ExitCode: exitCode, Stdout: stdoutB, Stderr: stderrB,
+				StdoutTotal: stdoutTotal, StderrTotal: stderrTotal,
+				StdoutTruncated: stdoutTrunc, StderrTruncated: stderrTrunc, ExecErr: execErr,
+			})
+		}
+		// Parsing/commit is complete while admission is still held. Drop both
+		// streams before any generic response, guidance, event, or persistence path.
+		stdoutB = nil
+		stderrB = nil
+	}
 	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
 	}
@@ -2078,7 +2137,18 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 		resp.Guidance.Suggestions = append(resp.Guidance.Suggestions, softSuggestions...)
 		resp.Guidance.Suggestions = append(resp.Guidance.Suggestions, approvalSuggestions...)
 	}
-	_ = a.store.SaveOutput(ctx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
+	if !opts.sensitive {
+		_ = a.store.SaveOutput(ctx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
+	} else {
+		// Values stay inside the callback above; never expose them through the
+		// internal response accidentally used by a future wire handler.
+		resp.Result.Stdout = ""
+		resp.Result.Stderr = ""
+		resp.Result.StdoutTotalBytes = 0
+		resp.Result.StderrTotalBytes = 0
+		resp.Result.StdoutTruncated = false
+		resp.Result.StderrTruncated = false
+	}
 	applyIncludeEvents(resp, includeEvents)
 	statusCode := http.StatusOK
 	if !outcome.CommandStarted {
