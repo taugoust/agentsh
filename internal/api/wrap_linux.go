@@ -78,7 +78,7 @@ func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
 // Unlike the exec path where the notify fd comes from a socketpair, here it comes
 // from the CLI via a Unix socket connection.
 func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
-	emitter := &notifyEmitterAdapter{store: a.store, broker: a.broker}
+	emitter := &notifyEmitterAdapter{store: a.store, broker: a.broker, sensitive: s.CurrentExecutionSensitive}
 
 	// Prefer session-specific policy engine (has expanded ${PROJECT_ROOT} etc.)
 	// over app-level engine, matching the exec path pattern in core.go.

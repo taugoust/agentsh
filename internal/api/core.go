@@ -1627,6 +1627,45 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 	return a.sessionSnapshot(s), http.StatusCreated, nil
 }
 
+const sensitiveArgumentRedaction = "[REDACTED]"
+
+func auditArgumentValues(args []string, sensitive bool) []string {
+	if !sensitive {
+		return args
+	}
+	if len(args) == 0 {
+		return nil
+	}
+	return []string{sensitiveArgumentRedaction}
+}
+
+func redactSensitiveExecEvent(ev types.Event, sensitive bool) types.Event {
+	if !sensitive {
+		return ev
+	}
+	ev.Argv = auditArgumentValues(ev.Argv, true)
+	if len(ev.Fields) == 0 {
+		return ev
+	}
+	fields := make(map[string]any, len(ev.Fields))
+	for key, value := range ev.Fields {
+		switch key {
+		case "args", "argv", "from_args", "to_args":
+			fields[key] = []string{sensitiveArgumentRedaction}
+		default:
+			fields[key] = value
+		}
+	}
+	ev.Fields = fields
+	return ev
+}
+
+func setExecveAuditRedaction(handler any, sensitive bool) {
+	if h, ok := handler.(interface{ SetRedactArgv(bool) }); ok && h != nil {
+		h.SetRedactArgv(sensitive)
+	}
+}
+
 type internalExecOptions struct {
 	sensitive          bool
 	stdoutCaptureBytes int64
@@ -1713,6 +1752,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	}
 	start := time.Now().UTC()
 	s.SetCurrentCommandID(cmdID)
+	s.SetCurrentExecutionSensitive(opts.sensitive)
 
 	if commandJailRequired(a.cfg) {
 		report := a.refreshNetworkEnforcement(id)
@@ -1820,7 +1860,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 
 	preFields := map[string]any{
 		"command": originalCmd,
-		"args":    originalArgs,
+		"args":    auditArgumentValues(originalArgs, opts.sensitive),
 	}
 	if req.Actor != nil {
 		preFields["actor"] = req.Actor
@@ -1862,9 +1902,9 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			},
 			Fields: map[string]any{
 				"from_command": originalCmd,
-				"from_args":    originalArgs,
+				"from_args":    auditArgumentValues(originalArgs, opts.sensitive),
 				"to_command":   req.Command,
-				"to_args":      req.Args,
+				"to_args":      auditArgumentValues(req.Args, opts.sensitive),
 			},
 		}
 		s.InjectTraceContext(redirEv.Fields)
@@ -1952,6 +1992,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		}
 		extraCfg.stdoutCaptureBytes = opts.stdoutCaptureBytes
 		extraCfg.stderrCaptureBytes = opts.stderrCaptureBytes
+		setExecveAuditRedaction(extraCfg.execveHandler, true)
 	}
 
 	// macOS: sandbox wrapper with XPC control
@@ -1964,7 +2005,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		commandStarted = true
 		startedAt := time.Now().UTC()
 		startEv := types.Event{ID: uuid.NewString(), Timestamp: startedAt, Type: "command_started", SessionID: id, CommandID: cmdID, CommandTimeout: &timeoutResolution.Metadata,
-			Fields: map[string]any{"command": origCommand, "args": origArgs}}
+			Fields: map[string]any{"command": origCommand, "args": auditArgumentValues(origArgs, opts.sensitive)}}
 		s.InjectTraceContext(startEv.Fields)
 		_ = a.store.AppendEvent(ctx, startEv)
 		a.broker.Publish(startEv)

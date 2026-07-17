@@ -75,13 +75,14 @@ type Session struct {
 	stats   types.SessionStats
 	endedAt *time.Time
 
-	currentCommandID  string
-	currentProcPID    int
-	currentTraceID    string // W3C trace context: trace ID (32 hex chars)
-	currentSpanID     string // W3C trace context: parent span ID (16 hex chars)
-	currentTraceFlags string // W3C trace context: trace flags (2 hex chars, e.g. "01")
-	execGateOnce      sync.Once
-	execGate          chan struct{}
+	currentCommandID          string
+	currentProcPID            int
+	currentExecutionSensitive bool
+	currentTraceID            string // W3C trace context: trace ID (32 hex chars)
+	currentSpanID             string // W3C trace context: parent span ID (16 hex chars)
+	currentTraceFlags         string // W3C trace context: trace flags (2 hex chars, e.g. "01")
+	execGateOnce              sync.Once
+	execGate                  chan struct{}
 
 	// direnvEnv is server-owned sensitive state. It is merged into child
 	// commands but never copied into types.Session snapshots.
@@ -509,6 +510,7 @@ func (s *Session) LockExecContext(ctx context.Context) (func(), error) {
 		s.State = types.SessionStateReady
 		s.currentCommandID = ""
 		s.currentProcPID = 0
+		s.currentExecutionSensitive = false
 		s.currentTraceID = ""
 		s.currentSpanID = ""
 		s.currentTraceFlags = ""
@@ -528,6 +530,22 @@ func (s *Session) CurrentCommandID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.currentCommandID
+}
+
+// SetCurrentExecutionSensitive marks the admitted execution tree as containing
+// sensitive data whose argument values must not leave policy enforcement.
+func (s *Session) SetCurrentExecutionSensitive(sensitive bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentExecutionSensitive = sensitive
+}
+
+// CurrentExecutionSensitive reports whether the currently admitted execution
+// tree requires argument redaction. Session execution admission is serialized.
+func (s *Session) CurrentExecutionSensitive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentExecutionSensitive
 }
 
 func (s *Session) SetCurrentProcessPID(pid int) {

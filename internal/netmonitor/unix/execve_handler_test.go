@@ -838,6 +838,32 @@ func TestExecveHandler_TransparentUnwrap_NonTransparent(t *testing.T) {
 	assert.Equal(t, "allow-git", result.Rule)
 }
 
+func TestExecveHandler_SensitiveNestedArgvRedactedAfterPolicy(t *testing.T) {
+	const secret = "distinctive-direnv-nested-secret-7f51"
+	pol := &mockAliasPolicy{decision: PolicyDecision{
+		Decision: "allow", EffectiveDecision: "allow", Rule: "allow-nested-helper",
+	}}
+	h := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, &mockEmitter{})
+	h.SetRedactArgv(true)
+
+	_, event := h.Handle(nil, ExecveContext{
+		PID: 42, ParentPID: 41, SessionID: "sensitive-refresh", Depth: 1,
+		Filename: "/workspace/bin/nested-helper",
+		Argv:     []string{"nested-helper", "--token", secret},
+	})
+	require.Equal(t, []string{"nested-helper", "--token", secret}, pol.argv)
+	require.NotNil(t, event)
+	require.Equal(t, []string{"[REDACTED]"}, event.Argv)
+
+	ordinary := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, &mockEmitter{})
+	_, ordinaryEvent := ordinary.Handle(nil, ExecveContext{
+		PID: 44, ParentPID: 43, SessionID: "ordinary", Depth: 1,
+		Filename: "/workspace/bin/nested-helper", Argv: []string{"nested-helper", "visible"},
+	})
+	require.NotNil(t, ordinaryEvent)
+	require.Equal(t, []string{"nested-helper", "visible"}, ordinaryEvent.Argv)
+}
+
 func TestExecveHandler_TransparentUnwrap_AuditFields(t *testing.T) {
 	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
 		"/usr/bin/env": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-env"},

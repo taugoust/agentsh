@@ -122,7 +122,7 @@ func (r *ptraceHandlerRouter) HandleExecve(ctx context.Context, ec ptrace.ExecCo
 		Fields: map[string]any{
 			"pid":       ec.PID,
 			"filename":  ec.Filename,
-			"argv":      ec.Argv,
+			"argv":      auditArgumentValues(ec.Argv, s.CurrentExecutionSensitive()),
 			"depth":     ec.Depth,
 			"decision":  string(decision.EffectiveDecision),
 			"rule":      decision.Rule,

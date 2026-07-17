@@ -147,7 +147,12 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	}
 	script := filepath.Join(bin, "direnv")
 	secret := "refresh-value-must-not-egress"
-	body := "#!/bin/sh\nprintf '%s' '{\"DEV_SHELL\":\"ready\",\"HOME\":\"" + secret + "\",\"PROJECT_TOKEN\":\"" + secret + "\"}'\n"
+	nestedSecret := "distinctive-direnv-nested-argv-secret-7f51"
+	nested := filepath.Join(bin, "nested-direnv-helper")
+	if err := os.WriteFile(nested, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "#!/bin/sh\n" + nested + " '" + nestedSecret + "'\nprintf '%s' '{\"DEV_SHELL\":\"ready\",\"HOME\":\"" + secret + "\",\"PROJECT_TOKEN\":\"" + secret + "\"}'\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -181,8 +186,8 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	}
 	for _, event := range events {
 		encoded, _ := json.Marshal(event)
-		if strings.Contains(string(encoded), secret) {
-			t.Fatalf("event leaked environment: %s", encoded)
+		if strings.Contains(string(encoded), secret) || strings.Contains(string(encoded), nestedSecret) {
+			t.Fatalf("event leaked sensitive refresh data: %s", encoded)
 		}
 		if event.Type == "command_started" {
 			if chunk, _, _, readErr := store.ReadOutputChunk(context.Background(), event.CommandID, "stdout", 0, 1024); readErr == nil || len(chunk) != 0 {

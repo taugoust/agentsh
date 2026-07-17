@@ -104,6 +104,7 @@ type ExecveHandler struct {
 	depthTracker         *DepthTracker
 	emitter              ExecveEmitter
 	approver             ApprovalRequester
+	redactArgv           bool
 	stubSymlinkPath      string // Short symlink path pointing to agentsh-stub
 	transparentOverrides *netmonitor.TransparentOverrides
 }
@@ -127,6 +128,12 @@ func (h *ExecveHandler) SetEmitter(emitter ExecveEmitter) {
 // SetApprover sets the approval requester for the handler.
 func (h *ExecveHandler) SetApprover(approver ApprovalRequester) {
 	h.approver = approver
+}
+
+// SetRedactArgv removes argument values from events after policy has inspected
+// the real argv. Enforcement and approval matching continue to use real values.
+func (h *ExecveHandler) SetRedactArgv(redact bool) {
+	h.redactArgv = redact
 }
 
 // SetStubSymlinkPath sets the path to the short symlink used for execve redirect.
@@ -608,6 +615,10 @@ func (h *ExecveHandler) buildEvent(ctx ExecveContext, result ExecveResult, rule 
 		effectiveDecision = types.DecisionDeny
 	}
 
+	argv := ctx.Argv
+	if h.redactArgv && len(argv) > 0 {
+		argv = []string{"[REDACTED]"}
+	}
 	return &types.Event{
 		ID:             fmt.Sprintf("execve-%d-%d", ctx.PID, time.Now().UnixNano()),
 		Timestamp:      time.Now().UTC(),
@@ -618,7 +629,7 @@ func (h *ExecveHandler) buildEvent(ctx ExecveContext, result ExecveResult, rule 
 		Depth:          ctx.Depth,
 		Filename:       ctx.Filename,
 		RawFilename:    ctx.RawFilename,
-		Argv:           ctx.Argv,
+		Argv:           argv,
 		Truncated:      ctx.Truncated,
 		UnwrappedFrom:  ctx.UnwrappedFrom,
 		PayloadCommand: ctx.PayloadCommand,

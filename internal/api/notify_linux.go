@@ -36,16 +36,21 @@ const recvFDTimeout = 10 * time.Second
 
 // notifyEmitterAdapter adapts the API's event store/broker to the unix handler's Emitter interface.
 type notifyEmitterAdapter struct {
-	store  eventStore
-	broker eventBroker
+	store     eventStore
+	broker    eventBroker
+	sensitive func() bool
+}
+
+func (a *notifyEmitterAdapter) redact(ev types.Event) types.Event {
+	return redactSensitiveExecEvent(ev, a.sensitive != nil && a.sensitive())
 }
 
 func (a *notifyEmitterAdapter) AppendEvent(ctx context.Context, ev types.Event) error {
-	return a.store.AppendEvent(ctx, ev)
+	return a.store.AppendEvent(ctx, a.redact(ev))
 }
 
 func (a *notifyEmitterAdapter) Publish(ev types.Event) {
-	a.broker.Publish(ev)
+	a.broker.Publish(a.redact(ev))
 }
 
 // createExecveHandler creates an ExecveHandler from the configuration.
@@ -116,6 +121,7 @@ func (w *policyEngineWrapper) toUnixPolicyDecision(dec policy.Decision) unixmon.
 type approvalRequesterAdapter struct {
 	mgr           *approvals.Manager
 	commandIDFunc func() string
+	sensitive     func() bool
 }
 
 func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req unixmon.ApprovalRequest) (bool, error) {
@@ -123,9 +129,10 @@ func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req 
 	if a.commandIDFunc != nil {
 		commandID = a.commandIDFunc()
 	}
+	sensitive := a.sensitive != nil && a.sensitive()
 	fields := map[string]any{
 		"command": req.Command,
-		"args":    req.Args,
+		"args":    auditArgumentValues(req.Args, sensitive),
 		"source":  "execve",
 	}
 	if scope, ok, scopeOptions := commandApprovalScopeOptions(req.Command, req.Args, req.Rule); ok {
@@ -317,6 +324,9 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 		}()
 
 		emitter := &notifyEmitterAdapter{store: store, broker: broker}
+		if sess != nil {
+			emitter.sensitive = sess.CurrentExecutionSensitive
+		}
 
 		// Create file handler if configured
 		fileHandler := createFileHandler(fileMonitorCfg, pol, emitter, landlockEnabled, approvalsMgr, sess)
@@ -332,7 +342,11 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 					if sess != nil {
 						commandIDFunc = sess.CurrentCommandID
 					}
-					h.SetApprover(&approvalRequesterAdapter{mgr: approvalsMgr, commandIDFunc: commandIDFunc})
+					adapter := &approvalRequesterAdapter{mgr: approvalsMgr, commandIDFunc: commandIDFunc}
+					if sess != nil {
+						adapter.sensitive = sess.CurrentExecutionSensitive
+					}
+					h.SetApprover(adapter)
 				}
 				// Register the wrapper as session root for depth tracking
 				// The wrapper's exec will be the first command (depth 0)
