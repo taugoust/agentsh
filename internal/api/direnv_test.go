@@ -99,6 +99,29 @@ func TestCommandOutputArtifactCapture_DirenvAtomicFiltering(t *testing.T) {
 	}
 }
 
+func TestDirenvFileWithinWorkspaceDoesNotSearchParents(t *testing.T) {
+	parent := t.TempDir()
+	workspace := filepath.Join(parent, "workspace")
+	nested := filepath.Join(workspace, "nested", "deeper")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(parent, ".envrc"), []byte("outside\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	found, err := direnvFileWithinWorkspace(nested, workspace)
+	if err != nil || found {
+		t.Fatalf("outside parent .envrc: found=%t err=%v", found, err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".envrc"), []byte("inside\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	found, err = direnvFileWithinWorkspace(nested, workspace)
+	if err != nil || !found {
+		t.Fatalf("workspace .envrc: found=%t err=%v", found, err)
+	}
+}
+
 func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake direnv fixture requires a POSIX executable script")
@@ -108,6 +131,9 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	sessions := session.NewManager(10)
 	ws := filepath.Join(t.TempDir(), "workspace")
 	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".envrc"), []byte("# test fixture\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	sess, err := sessions.Create(ws, "default")

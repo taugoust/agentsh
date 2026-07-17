@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -67,8 +69,33 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if _, err := resolveWorkingDir(s, req.Cwd); err != nil {
+	workdir, err := resolveWorkingDir(s, req.Cwd)
+	if err != nil {
 		writeToolError(w, http.StatusBadRequest, "invalid direnv working directory")
+		return
+	}
+	// direnv normally searches every ancestor up to the filesystem root. In a
+	// supervised session that both escapes the workspace import boundary and
+	// turns harmless probes such as /.envrc into approval prompts. Search only
+	// through the effective workspace. If no .envrc exists there, clear any
+	// prior imported snapshot without dispatching direnv at all.
+	hasEnvrc, discoveryErr := direnvFileWithinWorkspace(workdir, s.WorkspaceMountPath())
+	if discoveryErr != nil {
+		_, generation := s.DirenvEnvironment()
+		result := refreshDirenvResult{State: "unavailable", Generation: generation}
+		writeJSON(w, http.StatusOK, toolResponse{OK: false, Result: result})
+		return
+	}
+	if !hasEnvrc {
+		old, _ := s.DirenvEnvironment()
+		generation, _ := s.ReplaceDirenvEnvironment(map[string]string{})
+		result := refreshDirenvResult{State: "no_envrc", UnsetCount: len(old), Generation: generation}
+		actor := piToolActor{"kind": "extension", "label": "Pi direnv refresh"}
+		a.emitToolEvent(r.Context(), id, "tool_refresh_direnv", "refresh", "", actor, map[string]any{
+			"state": result.State, "set_count": 0, "unset_count": result.UnsetCount,
+			"rejected_count": 0, "generation": result.Generation, "duration_ms": 0,
+		})
+		writeJSON(w, http.StatusOK, toolResponse{OK: true, Result: result})
 		return
 	}
 
@@ -115,6 +142,29 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 		"rejected_count": result.RejectedCount, "generation": result.Generation, "duration_ms": result.DurationMS,
 	})
 	writeJSON(w, http.StatusOK, toolResponse{OK: result.State == "loaded" || result.State == "unchanged" || result.State == "no_envrc", Result: result})
+}
+
+func direnvFileWithinWorkspace(workdir, workspaceRoot string) (bool, error) {
+	current := filepath.Clean(workdir)
+	root := filepath.Clean(workspaceRoot)
+	if !session.IsRealPathUnder(current, root) {
+		return false, fmt.Errorf("direnv working directory escapes workspace")
+	}
+	for {
+		if _, err := os.Lstat(filepath.Join(current, ".envrc")); err == nil {
+			return true, nil
+		} else if !os.IsNotExist(err) {
+			return false, err
+		}
+		if current == root {
+			return false, nil
+		}
+		parent := filepath.Dir(current)
+		if parent == current || !session.IsRealPathUnder(parent, root) {
+			return false, nil
+		}
+		current = parent
+	}
 }
 
 func evaluateDirenvResult(cfg policy.ResolvedDirenvImportPolicy, s *session.Session, old map[string]string, generation uint64, run internalSensitiveExecResult) refreshDirenvResult {
