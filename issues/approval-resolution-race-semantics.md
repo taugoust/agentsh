@@ -1,7 +1,15 @@
 # Make approval resolution races single-winner
 
 ## Status
-Open.
+Implemented on `fix/approval-resolution-race`; awaiting integration.
+
+## Implementation
+
+AgentSH commit `914c9a4b` gives every pending approval an immutable terminal state selected exactly once under the manager lock. Explicit decisions, cancellation, timeout, and session-scope coverage now share that transition; losing resolvers cannot replace the winner or emit contradictory results. Duplicate pending IDs are rejected rather than replacing another request.
+
+Deterministic manager-level tests cover both race orderings, event truth, scoped decisions, duplicate IDs, session coverage, and cleanup. The focused approval Nix check, Go formatting check, and AgentSH package build pass on aarch64-linux.
+
+Keep this issue open until the feature branch is integrated. Move it to `issues/resolved/` after the merged commit is known.
 
 ## Problem
 Approval timeout/cancellation paths can emit a denial resolution even if another resolver won the race just before the timeout branch runs. This can produce misleading audit events and ambiguous user feedback around cancellation versus explicit approval/denial.
