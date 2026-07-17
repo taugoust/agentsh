@@ -143,6 +143,37 @@ agentsh exec --project-root /path/to/project SESSION -- cmd
 }
 ```
 
+## Project Overlay Insertion Boundaries
+
+Policy rules use first-match ordering. A trusted base policy can mark the first
+fallback rule in an ordered rule family with `project_overlay_boundary: true`:
+
+```yaml
+file_rules:
+  - name: approve-sensitive-credentials
+    paths: ["${HOME}/.credentials/**"]
+    operations: ["*"]
+    decision: approve
+
+  - name: approve-outside-workspace-writes
+    project_overlay_boundary: true
+    paths: ["**"]
+    operations: [write, create, delete, rename]
+    decision: approve
+```
+
+Validated project-local file rules are inserted immediately before the marked
+rule. Base rules above the boundary remain authoritative, while project rules
+can take precedence over generic fallback approvals and defaults at and below
+the boundary.
+
+The marker is supported on top-level file, command, network, Unix-socket, and
+signal rules. A base policy may have at most one marker in each rule family.
+Project overlay files cannot set the marker. If a base policy has no explicit
+marker, AgentSH retains the compatibility behavior of inserting project rules
+before a recognized terminal catch-all deny, or appending them when no terminal
+deny is represented as a rule.
+
 ## Platform-Specific Policies
 
 agentsh provides separate policy files for Unix/macOS and Windows:

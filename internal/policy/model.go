@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -88,6 +89,10 @@ type FileRule struct {
 	Message     string   `yaml:"message"`
 	Timeout     duration `yaml:"timeout"`
 
+	// ProjectOverlayBoundary inserts validated project-local file rules
+	// immediately before this trusted base-policy rule.
+	ProjectOverlayBoundary bool `yaml:"project_overlay_boundary,omitempty"`
+
 	// Redirect configuration for file operations
 	RedirectTo   string `yaml:"redirect_to,omitempty"`   // Target directory for redirected files
 	PreserveTree bool   `yaml:"preserve_tree,omitempty"` // Preserve directory structure under target
@@ -102,6 +107,10 @@ type NetworkRule struct {
 	Decision    string   `yaml:"decision"`
 	Message     string   `yaml:"message"`
 	Timeout     duration `yaml:"timeout"`
+
+	// ProjectOverlayBoundary inserts validated project-local network rules
+	// immediately before this trusted base-policy rule.
+	ProjectOverlayBoundary bool `yaml:"project_overlay_boundary,omitempty"`
 }
 
 type CommandRule struct {
@@ -111,8 +120,13 @@ type CommandRule struct {
 	ArgsPatterns []string         `yaml:"args_patterns"`
 	Decision     string           `yaml:"decision"`
 	Message      string           `yaml:"message"`
+	Timeout      duration         `yaml:"timeout"`
 	RedirectTo   *CommandRedirect `yaml:"redirect_to,omitempty"`
 	Context      ContextConfig    `yaml:"context"`
+
+	// ProjectOverlayBoundary inserts validated project-local command rules
+	// immediately before this trusted base-policy rule.
+	ProjectOverlayBoundary bool `yaml:"project_overlay_boundary,omitempty"`
 
 	EnvAllow          []string `yaml:"env_allow"`
 	EnvDeny           []string `yaml:"env_deny"`
@@ -128,20 +142,39 @@ type CommandRedirect struct {
 	Environment map[string]string `yaml:"environment,omitempty"` // Environment overrides
 }
 
-// UnmarshalYAML implements custom unmarshaling for CommandRule to set default context.
+var commandRuleYAMLFields = map[string]struct{}{
+	"name": {}, "description": {}, "commands": {}, "args_patterns": {},
+	"decision": {}, "message": {}, "timeout": {}, "redirect_to": {},
+	"context": {}, "project_overlay_boundary": {}, "env_allow": {},
+	"env_deny": {}, "env_max_bytes": {}, "env_max_keys": {},
+	"env_block_iteration": {},
+}
+
+var commandRedirectYAMLFields = map[string]struct{}{
+	"command": {}, "args": {}, "args_append": {}, "environment": {},
+}
+
+// UnmarshalYAML implements custom unmarshaling for CommandRule to set the
+// default context while preserving strict nested field validation.
 func (r *CommandRule) UnmarshalYAML(value *yaml.Node) error {
-	// First set the default context (all depths)
-	r.Context = DefaultContext()
-
-	// Define a type alias to avoid infinite recursion
-	type rawCommandRule CommandRule
-	raw := (*rawCommandRule)(r)
-
-	if err := value.Decode(raw); err != nil {
+	if err := validateYAMLMappingFields(value, "policy.CommandRule", commandRuleYAMLFields); err != nil {
 		return err
 	}
-
+	type rawCommandRule CommandRule
+	raw := rawCommandRule{Context: DefaultContext()}
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*r = CommandRule(raw)
 	return nil
+}
+
+func (r *CommandRedirect) UnmarshalYAML(value *yaml.Node) error {
+	if err := validateYAMLMappingFields(value, "policy.CommandRedirect", commandRedirectYAMLFields); err != nil {
+		return err
+	}
+	type rawCommandRedirect CommandRedirect
+	return value.Decode((*rawCommandRedirect)(r))
 }
 
 // UnixSocketRule controls AF_UNIX socket operations such as connect/bind/listen.
@@ -154,6 +187,10 @@ type UnixSocketRule struct {
 	Decision    string   `yaml:"decision"`   // allow|deny|approve
 	Message     string   `yaml:"message"`
 	Timeout     duration `yaml:"timeout"`
+
+	// ProjectOverlayBoundary inserts validated project-local Unix-socket rules
+	// immediately before this trusted base-policy rule.
+	ProjectOverlayBoundary bool `yaml:"project_overlay_boundary,omitempty"`
 }
 
 // RegistryRule controls Windows registry access (Windows-only).
@@ -181,6 +218,10 @@ type SignalRule struct {
 	RedirectTo  string           `yaml:"redirect_to"` // For redirect: target signal
 	Message     string           `yaml:"message"`
 	Timeout     duration         `yaml:"timeout"`
+
+	// ProjectOverlayBoundary inserts validated project-local signal rules
+	// immediately before this trusted base-policy rule.
+	ProjectOverlayBoundary bool `yaml:"project_overlay_boundary,omitempty"`
 }
 
 // SignalTargetSpec defines the target of a signal rule.
@@ -473,6 +514,98 @@ type TransparentCommandsConfig struct {
 	Remove []string `yaml:"remove,omitempty"` // Remove from built-in defaults
 }
 
+func validateProjectOverlayBoundaries(p Policy) error {
+	validate := func(family string, names []string) error {
+		if len(names) > 1 {
+			return fmt.Errorf("%s: project_overlay_boundary may appear at most once (found on %q)", family, names)
+		}
+		if len(names) == 1 && names[0] == "" {
+			return fmt.Errorf("%s: a project_overlay_boundary rule must have a name", family)
+		}
+		return nil
+	}
+
+	fileNames := make([]string, 0, 1)
+	for _, rule := range p.FileRules {
+		if rule.ProjectOverlayBoundary {
+			fileNames = append(fileNames, rule.Name)
+		}
+	}
+	if err := validate("file_rules", fileNames); err != nil {
+		return err
+	}
+
+	networkNames := make([]string, 0, 1)
+	for _, rule := range p.NetworkRules {
+		if rule.ProjectOverlayBoundary {
+			networkNames = append(networkNames, rule.Name)
+		}
+	}
+	if err := validate("network_rules", networkNames); err != nil {
+		return err
+	}
+
+	commandNames := make([]string, 0, 1)
+	for _, rule := range p.CommandRules {
+		if rule.ProjectOverlayBoundary {
+			commandNames = append(commandNames, rule.Name)
+		}
+	}
+	if err := validate("command_rules", commandNames); err != nil {
+		return err
+	}
+
+	unixNames := make([]string, 0, 1)
+	for _, rule := range p.UnixRules {
+		if rule.ProjectOverlayBoundary {
+			unixNames = append(unixNames, rule.Name)
+		}
+	}
+	if err := validate("unix_socket_rules", unixNames); err != nil {
+		return err
+	}
+
+	signalNames := make([]string, 0, 1)
+	for _, rule := range p.SignalRules {
+		if rule.ProjectOverlayBoundary {
+			signalNames = append(signalNames, rule.Name)
+		}
+	}
+	if err := validate("signal_rules", signalNames); err != nil {
+		return err
+	}
+
+	contextNames := make([]string, 0, len(p.ProcessContexts))
+	for name := range p.ProcessContexts {
+		contextNames = append(contextNames, name)
+	}
+	sort.Strings(contextNames)
+	for _, name := range contextNames {
+		context := p.ProcessContexts[name]
+		for _, rule := range context.FileRules {
+			if rule.ProjectOverlayBoundary {
+				return fmt.Errorf("process_contexts[%q].file_rules rule %q: project_overlay_boundary is supported only on top-level rules", name, rule.Name)
+			}
+		}
+		for _, rule := range context.NetworkRules {
+			if rule.ProjectOverlayBoundary {
+				return fmt.Errorf("process_contexts[%q].network_rules rule %q: project_overlay_boundary is supported only on top-level rules", name, rule.Name)
+			}
+		}
+		for _, rule := range context.CommandRules {
+			if rule.ProjectOverlayBoundary {
+				return fmt.Errorf("process_contexts[%q].command_rules rule %q: project_overlay_boundary is supported only on top-level rules", name, rule.Name)
+			}
+		}
+		for _, rule := range context.UnixRules {
+			if rule.ProjectOverlayBoundary {
+				return fmt.Errorf("process_contexts[%q].unix_socket_rules rule %q: project_overlay_boundary is supported only on top-level rules", name, rule.Name)
+			}
+		}
+	}
+	return nil
+}
+
 // Validate performs minimal semantic validation of a policy.
 func (p Policy) Validate() error {
 	if p.Version <= 0 {
@@ -489,6 +622,10 @@ func (p Policy) Validate() error {
 		if m.Source == "" {
 			return fmt.Errorf("metadata[%d]: source is required", i)
 		}
+	}
+
+	if err := validateProjectOverlayBoundaries(p); err != nil {
+		return err
 	}
 
 	// Validate DNS redirect rules
