@@ -47,6 +47,11 @@ type extraProcConfig struct {
 	// for trusted callers that requested a bounded remote overflow artifact.
 	outputArtifact *commandOutputArtifactCapture
 
+	// Server-selected sensitive captures are bounded independently and are never
+	// persisted. Zero retains the normal response capture limit.
+	stdoutCaptureBytes int64
+	stderrCaptureBytes int64
+
 	// File monitor config
 	fileMonitorCfg  config.SandboxSeccompFileMonitorConfig
 	landlockEnabled bool // Whether Landlock enforcement is configured
@@ -292,8 +297,16 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 	if extra != nil && extra.outputArtifact != nil {
 		artifactChunk = extra.outputArtifact.Append
 	}
-	stdoutW := newCaptureWriter(defaultMaxOutputBytes, artifactChunk)
-	stderrW := newCaptureWriter(defaultMaxOutputBytes, artifactChunk)
+	stdoutLimit := int64(defaultMaxOutputBytes)
+	stderrLimit := int64(defaultMaxOutputBytes)
+	if extra != nil && extra.stdoutCaptureBytes > 0 {
+		stdoutLimit = extra.stdoutCaptureBytes
+	}
+	if extra != nil && extra.stderrCaptureBytes > 0 {
+		stderrLimit = extra.stderrCaptureBytes
+	}
+	stdoutW := newCaptureWriter(stdoutLimit, artifactChunk)
+	stderrW := newCaptureWriter(stderrLimit, artifactChunk)
 
 	// For ptrace mode, use explicit pipes so we can drain them independently
 	// of cmd.Wait() (which we skip to avoid the Wait4 race). For non-ptrace,
@@ -853,7 +866,34 @@ func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.S
 	add["AGENTSH_IN_SESSION"] = "1"
 
 	baseSlice := mapToEnvSlice(minimal)
-	return policy.BuildEnv(pol, baseSlice, add)
+	env, err := policy.BuildEnv(pol, baseSlice, add)
+	if err != nil {
+		return nil, err
+	}
+	// Direnv imports have their own policy boundary and intentionally bypass the
+	// ordinary request/session env allowlist. They remain private session state.
+	if s != nil {
+		direnvEnv, _ := s.DirenvEnvironment()
+		for key := range direnvEnv {
+			if policy.DirenvImportImmutableDenied(key) {
+				delete(direnvEnv, key)
+			}
+		}
+		env = overlayTrustedEnv(env, direnvEnv)
+	}
+	if pol.MaxKeys > 0 && len(env) > pol.MaxKeys {
+		return nil, fmt.Errorf("env exceeds max_keys (%d) after direnv merge", pol.MaxKeys)
+	}
+	if pol.MaxBytes > 0 {
+		total := 0
+		for _, entry := range env {
+			total += len(entry) + 1
+		}
+		if total > pol.MaxBytes {
+			return nil, fmt.Errorf("env exceeds max_bytes (%d) after direnv merge", pol.MaxBytes)
+		}
+	}
+	return env, nil
 }
 
 func buildCommandEnvironment(cfg *config.Config, envPol policy.ResolvedEnvPolicy, hostEnv []string, s *session.Session, overrides map[string]string, extra *extraProcConfig) ([]string, error) {
