@@ -10,6 +10,9 @@ import "google/protobuf/struct.proto";
 // Requests and responses use the same JSON shapes as the HTTP API:
 // - CreateSession: {"id": "...", "workspace": "...", "policy": "..."}
 // - Exec: {"session_id":"...", "command":"...", "args":[...], "working_dir":"...", "timeout":"...", "stdin":"...", "env":{...}, "include_events":"summary|all|blocked|none"}
+// Empty timeout strings mean omission; non-empty values must be Go durations
+// of at least 1ms. Exec and ExecStream expose resolved command_timeout metadata,
+// including the single cumulative approval_extension_ms allowance when enabled.
 service Agentsh {
   // Session management
   rpc CreateSession(google.protobuf.Struct) returns (google.protobuf.Struct);

@@ -68,6 +68,12 @@ The command returns one JSON object. Top-level fields include the detached super
       "created_at": "2026-06-27T12:13:14.123456789Z"
     },
     "policy": "agent-default",
+    "command_timeout": {
+      "default_ms": 900000,
+      "maximum_ms": 900000,
+      "approval_extension_ms": 300000,
+      "source": "policy"
+    },
     "cwd": "/workspace",
     "virtual_root": "/workspace",
     "project_root": "/.../workspace/session-.../work",
@@ -250,6 +256,12 @@ Response result:
   "duration_ms": 1234,
   "stdout_truncated": false,
   "stderr_truncated": false,
+  "command_timeout": {
+    "requested_ms": 120000,
+    "effective_ms": 120000,
+    "approval_extension_ms": 300000,
+    "source": "explicit_request"
+  },
   "exec_response": {"...": "full existing ExecResponse"}
 }
 ```
@@ -261,6 +273,8 @@ Implementation notes:
 - Uses the session worktree and existing command policy/precheck machinery.
 - Runtime supervision is only as strong as the reported evidence. Strict detached eBPF uses the cgroup/helper setup barrier but startup refuses until all readiness prerequisites are proven; non-strict unsupported features degrade explicitly. Transparent networking and FUSE/overlay remain disabled.
 - `actor` is copied into command approval/audit metadata where the existing exec path carries request metadata.
+- Runtime approvals share one bounded extension allowance. The first positive extension fixes the maximum deadline at the initial effective deadline plus that allowance (normally `approvals.timeout`); sequential approvals cannot accumulate additional allowances. `command_timeout.approval_extension_ms` reports the bound when approvals are enabled.
+- Pi's command transport slack must be greater than `approval_extension_ms` plus a cleanup/response margin. The transport deadline must not expire while AgentSH is killing descendants, persisting terminal state, and returning the response.
 
 ### `read_file`
 

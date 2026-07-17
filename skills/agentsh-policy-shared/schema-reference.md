@@ -378,7 +378,7 @@ Rules that match a `passthrough` service cannot use `db_user`, `database`, or `a
 | disk_write_bps_max | int64 | Max disk write bytes/sec |
 | net_bandwidth_mbps | int | Max network bandwidth Mbps |
 | pids_max | int | Max process count |
-| command_timeout | duration | Max time per command |
+| command_timeout | duration | Default/maximum ordinary-command runtime; positive values must be at least 1ms (omitted/zero uses the fallback) |
 | session_timeout | duration | Max session lifetime |
 | idle_timeout | duration | Kill after idle period |
 

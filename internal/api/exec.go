@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/approvals"
+	"github.com/agentsh/agentsh/internal/commandtimeout"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/nethelper"
@@ -25,7 +26,7 @@ import (
 )
 
 const (
-	defaultCommandTimeout = 5 * time.Minute
+	defaultCommandTimeout = commandtimeout.Fallback
 	defaultMaxOutputBytes = 2 * 1024 * 1024 // 2 MiB per stream in response + sqlite
 )
 
@@ -105,6 +106,26 @@ type eventBroker interface {
 
 type postStartHook func(pid int) (cleanup func() error, err error)
 
+// watchProcessGroupCancellation promptly kills the whole ordinary-command
+// process group when its context ends. Waiting until cmd.Wait returns is too
+// late when a descendant inherited an os/exec capture pipe: Wait can remain
+// blocked until that descendant exits on its own.
+func watchProcessGroupCancellation(ctx context.Context, pid, pgid int) func() {
+	if ctx == nil || pid <= 0 || pgid <= 0 {
+		return func() {}
+	}
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = killProcessGroup(pgid)
+			_ = killProcess(pid)
+		case <-done:
+		}
+	}()
+	return func() { close(done) }
+}
+
 func extraProcessFiles(extra *extraProcConfig) []*os.File {
 	if extra == nil {
 		return nil
@@ -169,28 +190,30 @@ func emitSeccompBlockedIfSIGSYS(ctx context.Context, store eventStore, broker ev
 	}
 }
 
-func chooseCommandTimeout(req types.ExecRequest, policyLimit time.Duration) time.Duration {
-	timeout := defaultCommandTimeout
-	if policyLimit > 0 {
-		timeout = policyLimit
+func runCommandWithResources(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, envPol policy.ResolvedEnvPolicy, policyLimit time.Duration, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
+	resolution, resolveErr := resolveCommandTimeout(req, policyLimit)
+	if resolveErr != nil {
+		closePreStartProcessFiles(extra)
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, resolveErr
 	}
-	if req.Timeout == "" {
-		return timeout
-	}
-	d, err := time.ParseDuration(req.Timeout)
-	if err != nil || d <= 0 {
-		return timeout
-	}
-	if policyLimit > 0 && d > policyLimit {
-		return policyLimit
-	}
-	return d
+	return runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, req, cfg, envPol, resolution.Duration, hook, extra, tracer, sessionID)
 }
 
-func runCommandWithResources(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, envPol policy.ResolvedEnvPolicy, policyLimit time.Duration, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
-	timeout := chooseCommandTimeout(req, policyLimit)
+func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, envPol policy.ResolvedEnvPolicy, timeout time.Duration, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
 	ctx, cancel := withExtendableCommandTimeout(ctx, timeout)
 	defer cancel()
+	defer func() {
+		if !commandTimedOut(ctx) || errors.Is(err, errCommandTimeout) {
+			return
+		}
+		const message = "command timed out\n"
+		exitCode = 124
+		stderr = append(stderr, message...)
+		stderrTotal += int64(len(message))
+		stdoutTrunc = true
+		stderrTrunc = true
+		err = errCommandTimeout
+	}()
 
 	extraOwnershipTransferred := false
 	defer func() {
@@ -350,7 +373,7 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 			stderrPipeW.Close()
 		}
 		if commandTimedOut(ctx) {
-			return 124, nil, nil, 0, 0, false, false, types.ExecResources{}, context.DeadlineExceeded
+			return 124, nil, nil, 0, 0, false, false, types.ExecResources{}, errCommandTimeout
 		}
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, ctx.Err()
 	}
@@ -418,6 +441,10 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 			notifySessionRegistered()
 		}
 		pgid = getProcessGroupID(cmd.Process.Pid)
+		if tracer == nil {
+			stopCancellationWatch := watchProcessGroupCancellation(ctx, cmd.Process.Pid, pgid)
+			defer stopCancellationWatch()
+		}
 
 		// If we started with ptrace (stopped), run the hook BEFORE resuming.
 		// This ensures eBPF/cgroups are attached before the process executes.
@@ -530,9 +557,9 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
-				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, context.DeadlineExceeded
+				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
 			}
-			if errors.Is(ctx.Err(), context.Canceled) {
+			if ctx.Err() != nil {
 				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
@@ -594,9 +621,9 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
-				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, context.DeadlineExceeded
+				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
 			}
-			if errors.Is(ctx.Err(), context.Canceled) {
+			if ctx.Err() != nil {
 				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
@@ -644,7 +671,10 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 	}
 
 	if commandTimedOut(ctx) {
-		return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, context.DeadlineExceeded
+		return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
+	}
+	if ctx.Err() != nil {
+		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
 	}
 	if waitErr == nil {
 		return 0, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, err

@@ -288,11 +288,17 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	if !ok {
 		return status.Error(codes.NotFound, "session not found")
 	}
-
 	cmdID := "cmd-" + uuid.NewString()
 	start := time.Now().UTC()
 	unlock := sess.LockExec()
 	defer unlock()
+
+	engine := s.app.policyEngineFor(sess)
+	limits := engine.Limits()
+	timeoutResolution, err := s.app.resolveCommandTimeout(execReq, limits.CommandTimeout)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
 	sess.SetCurrentCommandID(cmdID)
 
 	// Propagate W3C trace context for distributed tracing correlation
@@ -304,7 +310,7 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		}
 	}
 
-	pre := s.app.policyEngineFor(sess).CheckCommandWithExecve(execReq.Command, execReq.Args, s.app.execveEnforcementActive(), s.app.shellCOpaqueMode())
+	pre := engine.CheckCommandWithExecve(execReq.Command, execReq.Args, s.app.execveEnforcementActive(), s.app.shellCOpaqueMode())
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&execReq.Command, &execReq.Args, pre)
 	approvalErr := s.app.applyCommandApproval(stream.Context(), req.SessionID, cmdID, originalCmd, originalArgs, execReq.Actor, &pre)
 	preEv := types.Event{
@@ -373,20 +379,22 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 
 	// Prepare the wrapper/jail before emitting command_started. A boundary
 	// setup failure must remain an execution refusal.
-	wrapperResult := s.app.setupSeccompWrapper(execReq, req.SessionID, sess)
+	wrapperResult := s.app.setupSeccompWrapperWithPolicy(execReq, req.SessionID, sess, engine)
 	if wrapperResult.setupErr != nil {
 		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, wrapperResult.setupErr)
 		return status.Errorf(codes.FailedPrecondition, "pre-exec boundary unavailable: %v", wrapperResult.setupErr)
 	}
 	wrappedReq := wrapperResult.wrappedReq
 	extraCfg := wrapperResult.extraCfg
+	cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, s.app.execveEnforcementActive(), s.app.shellCOpaqueMode())
 
 	startEv := types.Event{
-		ID:        uuid.NewString(),
-		Timestamp: start,
-		Type:      "command_started",
-		SessionID: req.SessionID,
-		CommandID: cmdID,
+		ID:             uuid.NewString(),
+		Timestamp:      start,
+		Type:           "command_started",
+		SessionID:      req.SessionID,
+		CommandID:      cmdID,
+		CommandTimeout: &timeoutResolution.Metadata,
 		Fields: map[string]any{
 			"command": execReq.Command,
 			"args":    execReq.Args,
@@ -406,35 +414,48 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		return stream.SendMsg(out)
 	}
 
-	limits := s.app.policyEngineFor(sess).Limits()
-	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResourcesStreamingEmit(
+	if err := emit("start", map[string]any{
+		"command_id":      cmdID,
+		"session_id":      req.SessionID,
+		"command_timeout": timeoutResolution.Metadata,
+	}); err != nil {
+		closePreStartProcessFiles(extraCfg)
+		return err
+	}
+	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResourcesStreamingEmitResolvedTimeout(
 		stream.Context(),
 		sess,
 		cmdID,
 		wrappedReq,
 		s.app.cfg,
-		limits.CommandTimeout,
+		cmdDecision.EnvPolicy,
+		timeoutResolution.Duration,
 		emit,
 		s.app.cgroupHook(req.SessionID, cmdID, limits),
 		extraCfg,
 		s.app.ptraceTracer,
 		req.SessionID,
 	)
+	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(stream.Context())
+	defer cancelTerminalPersistence()
 	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
 		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, execErr)
 	}
-	_ = s.app.store.SaveOutput(stream.Context(), req.SessionID, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
+	_ = s.app.store.SaveOutput(terminalCtx, req.SessionID, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
 
 	// Check if process was killed by seccomp (SIGSYS) and emit event
-	emitSeccompBlockedIfSIGSYS(stream.Context(), s.app.store, s.app.broker, req.SessionID, cmdID, execErr)
+	emitSeccompBlockedIfSIGSYS(terminalCtx, s.app.store, s.app.broker, req.SessionID, cmdID, execErr)
 
+	terminationReason, resultError := executionTermination(execErr)
 	end := time.Now().UTC()
 	endEv := types.Event{
-		ID:        uuid.NewString(),
-		Timestamp: end,
-		Type:      "command_finished",
-		SessionID: req.SessionID,
-		CommandID: cmdID,
+		ID:                uuid.NewString(),
+		Timestamp:         end,
+		Type:              "command_finished",
+		SessionID:         req.SessionID,
+		CommandID:         cmdID,
+		CommandTimeout:    &timeoutResolution.Metadata,
+		TerminationReason: terminationReason,
 		Fields: map[string]any{
 			"exit_code":      exitCode,
 			"duration_ms":    int64(end.Sub(start).Milliseconds()),
@@ -446,16 +467,28 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	if execErr != nil {
 		endEv.Fields["error"] = execErr.Error()
 	}
+	if terminationReason != "" {
+		endEv.Fields["termination_reason"] = terminationReason
+	}
 	sess.InjectTraceContext(endEv.Fields)
-	_ = s.app.store.AppendEvent(stream.Context(), endEv)
+	_ = s.app.store.AppendEvent(terminalCtx, endEv)
 	s.app.broker.Publish(endEv)
 
-	_ = emit("done", map[string]any{
+	done := map[string]any{
+		"command_id":       cmdID,
 		"exit_code":        exitCode,
 		"duration_ms":      int64(end.Sub(start).Milliseconds()),
 		"stdout_truncated": stdoutTrunc,
 		"stderr_truncated": stderrTrunc,
-	})
+		"command_timeout":  timeoutResolution.Metadata,
+	}
+	if terminationReason != "" {
+		done["termination_reason"] = terminationReason
+	}
+	if resultError != nil {
+		done["error"] = resultError
+	}
+	_ = emit("done", done)
 
 	return nil
 }
@@ -510,7 +543,7 @@ func (s *grpcServer) ListSessions(ctx context.Context, in *structpb.Struct) (*st
 	out := make([]types.Session, 0, len(all))
 	for _, sess := range all {
 		s.app.refreshNetworkEnforcement(sess.ID)
-		out = append(out, sess.Snapshot())
+		out = append(out, s.app.sessionSnapshot(sess))
 	}
 	return jsonToProto(out)
 }
@@ -533,7 +566,7 @@ func (s *grpcServer) GetSession(ctx context.Context, in *structpb.Struct) (*stru
 		return nil, status.Error(codes.NotFound, "session not found")
 	}
 	s.app.refreshNetworkEnforcement(id)
-	return jsonToProto(sess.Snapshot())
+	return jsonToProto(s.app.sessionSnapshot(sess))
 }
 
 func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
@@ -606,7 +639,7 @@ func (s *grpcServer) PatchSession(ctx context.Context, in *structpb.Struct) (*st
 	if err := sess.ApplyPatch(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return jsonToProto(sess.Snapshot())
+	return jsonToProto(s.app.sessionSnapshot(sess))
 }
 
 func (s *grpcServer) GetNetworkEnforcement(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
@@ -1066,7 +1099,7 @@ func (a *App) grpcCreateSession(ctx context.Context, reqJSON []byte) (*structpb.
 	}
 	a.refreshNetworkEnforcement(sess.ID)
 	if live, ok := a.sessions.Get(sess.ID); ok {
-		sess = live.Snapshot()
+		sess = a.sessionSnapshot(live)
 	}
 	out := &structpb.Struct{}
 	b, _ := json.Marshal(sess)

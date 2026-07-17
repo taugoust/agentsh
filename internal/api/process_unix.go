@@ -46,14 +46,16 @@ func getSysProcAttr() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{Setpgid: true}
 }
 
-// getProcessGroupID returns the process group ID for a given process.
+// getProcessGroupID returns the process group ID for a given process. Callers
+// make the child a new process-group leader (ordinary exec uses Setpgid; PTY
+// uses Setsid), so its PID is the known PGID if Getpgid races with leader exit.
 func getProcessGroupID(pid int) int {
 	if pid <= 0 {
 		return 0
 	}
 	pgid, err := syscall.Getpgid(pid)
 	if err != nil {
-		return 0
+		return pid
 	}
 	return pgid
 }

@@ -1,8 +1,12 @@
 package api
 
 import (
+	"time"
+
+	"github.com/agentsh/agentsh/internal/commandtimeout"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
+	"github.com/agentsh/agentsh/pkg/types"
 )
 
 // policyEngineFor returns the effective policy engine to consult for the given
@@ -26,6 +30,28 @@ func (a *App) policyEngineFor(s *session.Session) *policy.Engine {
 		}
 	}
 	return a.Policy()
+}
+
+// sessionSnapshot adds only the effective ordinary-command timeout contract to
+// the session's public snapshot. In particular, it does not expose the rest of
+// the effective policy. Looking up the engine here keeps get/list snapshots
+// live for sessions that use the process-global policy fallback.
+func (a *App) sessionSnapshot(s *session.Session) types.Session {
+	if s == nil {
+		return types.Session{CommandTimeout: commandtimeout.SessionMetadata(0)}
+	}
+	limit := commandTimeoutPolicyLimit(a.policyEngineFor(s))
+	snapshot := s.Snapshot()
+	snapshot.CommandTimeout = commandtimeout.SessionMetadata(limit)
+	snapshot.CommandTimeout.ApprovalExtensionMS = approvalExtensionMilliseconds(a.approvals)
+	return snapshot
+}
+
+func commandTimeoutPolicyLimit(engine *policy.Engine) time.Duration {
+	if engine == nil {
+		return 0
+	}
+	return engine.Limits().CommandTimeout
 }
 
 // Policy returns the current process-global policy engine. Read under

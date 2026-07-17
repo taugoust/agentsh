@@ -91,32 +91,33 @@ type CreateShadowOptions struct {
 }
 
 type Session struct {
-	ID                 string              `json:"id"`
-	State              SessionState        `json:"state"`
-	CreatedAt          time.Time           `json:"created_at"`
-	Workspace          string              `json:"workspace"`
-	WorkspaceMount     string              `json:"workspace_mount,omitempty"` // effective workspace path (FUSE/overlay/shadow if active)
-	WorkspaceMode      string              `json:"workspace_mode,omitempty"`
-	Overlay            *OverlayInfo        `json:"overlay,omitempty"`
-	Shadow             *ShadowInfo         `json:"shadow,omitempty"`
-	Policy             string              `json:"policy"`
-	Profile            string              `json:"profile,omitempty"`
-	Mounts             []MountInfo         `json:"mounts,omitempty"`
-	Cwd                string              `json:"cwd"`
-	VirtualRoot        string              `json:"virtual_root,omitempty"`
-	ProxyURL           string              `json:"proxy_url,omitempty"`
-	LLMProxyURL        string              `json:"llm_proxy_url,omitempty"`
-	DBProxySocketDir   string              `json:"db_proxy_socket_dir,omitempty"`
-	TOTPSecret         string              `json:"-"` // Hidden from JSON/API, used for TOTP approval mode
-	ProjectRoot        string              `json:"project_root,omitempty"`
-	GitRoot            string              `json:"git_root,omitempty"`
-	RuntimeHome        string              `json:"runtime_home,omitempty"`
-	RuntimeTmp         string              `json:"runtime_tmp,omitempty"`
-	ProcessHome        string              `json:"process_home,omitempty"`
-	RuntimeHomeMode    string              `json:"runtime_home_mode,omitempty"`
-	EnvBaseMode        string              `json:"env_base_mode,omitempty"`
-	EnvInherit         []string            `json:"env_inherit,omitempty"`
-	NetworkEnforcement *NetworkEnforcement `json:"network_enforcement,omitempty"`
+	ID                 string                `json:"id"`
+	State              SessionState          `json:"state"`
+	CreatedAt          time.Time             `json:"created_at"`
+	Workspace          string                `json:"workspace"`
+	WorkspaceMount     string                `json:"workspace_mount,omitempty"` // effective workspace path (FUSE/overlay/shadow if active)
+	WorkspaceMode      string                `json:"workspace_mode,omitempty"`
+	Overlay            *OverlayInfo          `json:"overlay,omitempty"`
+	Shadow             *ShadowInfo           `json:"shadow,omitempty"`
+	Policy             string                `json:"policy"`
+	Profile            string                `json:"profile,omitempty"`
+	Mounts             []MountInfo           `json:"mounts,omitempty"`
+	Cwd                string                `json:"cwd"`
+	VirtualRoot        string                `json:"virtual_root,omitempty"`
+	ProxyURL           string                `json:"proxy_url,omitempty"`
+	LLMProxyURL        string                `json:"llm_proxy_url,omitempty"`
+	DBProxySocketDir   string                `json:"db_proxy_socket_dir,omitempty"`
+	TOTPSecret         string                `json:"-"` // Hidden from JSON/API, used for TOTP approval mode
+	ProjectRoot        string                `json:"project_root,omitempty"`
+	GitRoot            string                `json:"git_root,omitempty"`
+	RuntimeHome        string                `json:"runtime_home,omitempty"`
+	RuntimeTmp         string                `json:"runtime_tmp,omitempty"`
+	ProcessHome        string                `json:"process_home,omitempty"`
+	RuntimeHomeMode    string                `json:"runtime_home_mode,omitempty"`
+	EnvBaseMode        string                `json:"env_base_mode,omitempty"`
+	EnvInherit         []string              `json:"env_inherit,omitempty"`
+	NetworkEnforcement *NetworkEnforcement   `json:"network_enforcement,omitempty"`
+	CommandTimeout     SessionCommandTimeout `json:"command_timeout"`
 }
 
 // MountInfo describes an active mount in a session.

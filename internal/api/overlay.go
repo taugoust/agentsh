@@ -80,7 +80,7 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = a.store.AppendEvent(r.Context(), ev)
 		a.broker.Publish(ev)
-		writeJSON(w, http.StatusOK, s.Snapshot())
+		writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 		return
 	}
 	if err := ow.Accept(r.Context()); err != nil {
@@ -105,7 +105,7 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = a.store.AppendEvent(r.Context(), ev)
 	a.broker.Publish(ev)
-	writeJSON(w, http.StatusOK, s.Snapshot())
+	writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 }
 
 func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +140,7 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = a.store.AppendEvent(r.Context(), ev)
 		a.broker.Publish(ev)
-		writeJSON(w, http.StatusOK, s.Snapshot())
+		writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 		return
 	}
 	if err := ow.Reject(r.Context()); err != nil {
@@ -161,5 +161,5 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = a.store.AppendEvent(r.Context(), ev)
 	a.broker.Publish(ev)
-	writeJSON(w, http.StatusOK, s.Snapshot())
+	writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 }

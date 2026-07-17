@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,7 +32,7 @@ type piToolActor map[string]any
 type execBashToolRequest struct {
 	Command                string            `json:"command"`
 	Cwd                    string            `json:"cwd,omitempty"`
-	TimeoutMS              int64             `json:"timeout_ms,omitempty"`
+	TimeoutMS              *int64            `json:"timeout_ms,omitempty"`
 	Env                    map[string]string `json:"env,omitempty"`
 	Stdin                  string            `json:"stdin,omitempty"`
 	IncludeEvents          string            `json:"include_events,omitempty"`
@@ -77,13 +78,18 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusBadRequest, "command is required")
 		return
 	}
-	if req.TimeoutMS < 0 {
-		writeToolError(w, http.StatusBadRequest, "timeout_ms must be non-negative")
-		return
-	}
 	timeout := ""
-	if req.TimeoutMS > 0 {
-		timeout = (time.Duration(req.TimeoutMS) * time.Millisecond).String()
+	if req.TimeoutMS != nil {
+		if *req.TimeoutMS <= 0 {
+			writeToolError(w, http.StatusBadRequest, "timeout_ms must be greater than zero")
+			return
+		}
+		maxMilliseconds := int64(math.MaxInt64) / int64(time.Millisecond)
+		if *req.TimeoutMS > maxMilliseconds {
+			writeToolError(w, http.StatusBadRequest, "timeout_ms is too large")
+			return
+		}
+		timeout = (time.Duration(*req.TimeoutMS) * time.Millisecond).String()
 	}
 	includeEvents := req.IncludeEvents
 	if includeEvents == "" {
@@ -134,7 +140,14 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		"stderr_truncated":   resp.Result.StderrTruncated,
 		"stdout_total_bytes": resp.Result.StdoutTotalBytes,
 		"stderr_total_bytes": resp.Result.StderrTotalBytes,
+		"command_timeout":    resp.Result.CommandTimeout,
 		"exec_response":      resp,
+	}
+	if resp.Result.TerminationReason != "" {
+		result["termination_reason"] = resp.Result.TerminationReason
+	}
+	if resp.Result.Error != nil {
+		result["error"] = resp.Result.Error
 	}
 	if artifact := resp.Result.OutputArtifact; artifact != nil {
 		result["output_artifact"] = artifact
