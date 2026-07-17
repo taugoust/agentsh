@@ -81,9 +81,14 @@ type wrapperSetupResult struct {
 // Returns the wrapped request and extra process config, or nil extraCfg if wrapping is disabled.
 // Note: agentsh-unixwrap is Linux-only; this function returns early on other platforms.
 func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *session.Session) *wrapperSetupResult {
+	return a.setupSeccompWrapperWithPolicy(req, sessionID, s, a.policyEngineFor(s))
+}
+
+// setupSeccompWrapperWithPolicy keeps one admitted command on the same policy
+// snapshot used for its timeout resolution and command checks.
+func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID string, s *session.Session, sessionPolicy *policy.Engine) *wrapperSetupResult {
 	// Helper: return early without seccomp wrapping but with envInject applied.
 	earlyReturn := func() *wrapperSetupResult {
-		sessionPolicy := a.policyEngineFor(s)
 		envInject := mergeEnvInject(a.cfg, sessionPolicy)
 		if len(envInject) > 0 || a.cmdResolver != nil || a.sessionTracker != nil {
 			return &wrapperSetupResult{wrappedReq: req, extraCfg: &extraProcConfig{envInject: envInject, cmdResolver: a.cmdResolver, sessionTracker: a.sessionTracker}}
@@ -160,10 +165,8 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 		wrappedReq.Env = map[string]string{}
 	}
 
-	// Use session-specific policy engine (with expanded ${PROJECT_ROOT} etc.)
-	// for seccomp handlers, falling back to global policy if unavailable.
-	sessionPolicy := a.policyEngineFor(s)
-
+	// sessionPolicy is the admitted command's effective engine (including
+	// per-session variable expansion when configured).
 	envFD := 3 // first ExtraFile
 	wrappedReq.Env["AGENTSH_NOTIFY_SOCK_FD"] = strconv.Itoa(envFD)
 
@@ -804,7 +807,7 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 		a.startLLMProxy(ctx, s)
 	}
 
-	return s.Snapshot(), http.StatusCreated, nil
+	return a.sessionSnapshot(s), http.StatusCreated, nil
 }
 
 func (a *App) setupOverlayWorkspace(ctx context.Context, s *session.Session, req types.CreateSessionRequest) error {
@@ -1621,7 +1624,7 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		a.startLLMProxy(ctx, s)
 	}
 
-	return s.Snapshot(), http.StatusCreated, nil
+	return a.sessionSnapshot(s), http.StatusCreated, nil
 }
 
 type internalExecOptions struct {
@@ -1693,6 +1696,16 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	if opts.onAdmitted != nil {
 		opts.onAdmitted()
 	}
+
+	// Resolve all command-time policy from one snapshot taken only after this
+	// execution has been admitted. A queued policy swap therefore affects the
+	// whole command consistently, never just its metadata or one check.
+	engine := a.policyEngineFor(s)
+	limits := engine.Limits()
+	timeoutResolution, err := a.resolveCommandTimeout(req, limits.CommandTimeout)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
 	if opts.evaluationTimeout > 0 {
 		var cancelEval context.CancelFunc
 		ctx, cancelEval = context.WithTimeout(ctx, opts.evaluationTimeout)
@@ -1741,7 +1754,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		includeEvents = "all"
 	}
 
-	pre := a.policyEngineFor(s).CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+	pre := engine.CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
 	approvalErr := a.applyCommandApproval(ctx, id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
 	pkgApprovalDenied := false
@@ -1875,9 +1888,12 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			Timestamp: start,
 			Request:   req,
 			Result: types.ExecResult{
-				ExitCode:   126,
-				DurationMs: int64(time.Since(start).Milliseconds()),
-				Outcome:    &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureDenied, Retryable: false, Code: code, Message: "command denied by policy", QueueDurationMs: int64(queueDuration / time.Millisecond)},
+
+				ExitCode:       126,
+				CommandTimeout: timeoutResolution.Metadata,
+				DurationMs:     int64(time.Since(start).Milliseconds()),
+				Outcome:        &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureDenied, Retryable: false, Code: code, Message: "command denied by policy", QueueDurationMs: int64(queueDuration / time.Millisecond)},
+
 				Error: &types.ExecError{
 					Code:       code,
 					Message:    "command denied by policy",
@@ -1909,7 +1925,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	origArgs := append([]string{}, req.Args...)
 
 	// Set up seccomp wrapper (Linux) for syscall enforcement
-	wrapperResult := a.setupSeccompWrapper(req, id, s)
+	wrapperResult := a.setupSeccompWrapperWithPolicy(req, id, s, engine)
 	if wrapperResult.setupErr != nil {
 		a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
 		message := "pre-exec boundary unavailable: " + wrapperResult.setupErr.Error()
@@ -1947,16 +1963,19 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	onStarted := func() {
 		commandStarted = true
 		startedAt := time.Now().UTC()
-		startEv := types.Event{ID: uuid.NewString(), Timestamp: startedAt, Type: "command_started", SessionID: id, CommandID: cmdID,
+		startEv := types.Event{ID: uuid.NewString(), Timestamp: startedAt, Type: "command_started", SessionID: id, CommandID: cmdID, CommandTimeout: &timeoutResolution.Metadata,
 			Fields: map[string]any{"command": origCommand, "args": origArgs}}
 		s.InjectTraceContext(startEv.Fields)
 		_ = a.store.AppendEvent(ctx, startEv)
 		a.broker.Publish(startEv)
+
 	}
 
-	limits := a.policyEngineFor(s).Limits()
-	cmdDecision := a.policyEngineFor(s).CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
-	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResources(ctx, s, cmdID, wrappedReq, a.cfg, cmdDecision.EnvPolicy, limits.CommandTimeout, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
+	cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, wrappedReq, a.cfg, cmdDecision.EnvPolicy, timeoutResolution.Duration, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
+	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(ctx)
+	defer cancelTerminalPersistence()
+
 	outputArtifact := outputArtifactCapture.Finish()
 	if opts.sensitive {
 		if opts.onSensitiveResult != nil {
@@ -1976,15 +1995,18 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	}
 
 	// Check if process was killed by seccomp (SIGSYS) and emit event
-	emitSeccompBlockedIfSIGSYS(ctx, a.store, a.broker, id, cmdID, execErr)
+	emitSeccompBlockedIfSIGSYS(terminalCtx, a.store, a.broker, id, cmdID, execErr)
 
+	terminationReason, resultError := executionTermination(execErr)
 	end := time.Now().UTC()
 	endEv := types.Event{
-		ID:        uuid.NewString(),
-		Timestamp: end,
-		Type:      "command_finished",
-		SessionID: id,
-		CommandID: cmdID,
+		ID:                uuid.NewString(),
+		Timestamp:         end,
+		Type:              "command_finished",
+		SessionID:         id,
+		CommandID:         cmdID,
+		CommandTimeout:    &timeoutResolution.Metadata,
+		TerminationReason: terminationReason,
 		Fields: map[string]any{
 			"exit_code":      exitCode,
 			"duration_ms":    int64(end.Sub(start).Milliseconds()),
@@ -1996,11 +2018,14 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	if execErr != nil {
 		endEv.Fields["error"] = execErr.Error()
 	}
+	if terminationReason != "" {
+		endEv.Fields["termination_reason"] = terminationReason
+	}
 	s.InjectTraceContext(endEv.Fields)
-	_ = a.store.AppendEvent(ctx, endEv)
+	_ = a.store.AppendEvent(terminalCtx, endEv)
 	a.broker.Publish(endEv)
 
-	collected, _ := a.store.QueryEvents(ctx, types.EventQuery{
+	collected, _ := a.store.QueryEvents(terminalCtx, types.EventQuery{
 		CommandID: cmdID,
 		Limit:     5000,
 		Asc:       true,
@@ -2057,16 +2082,20 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		outcome.Message = fmt.Sprintf("command exited with code %d", exitCode)
 	}
 	res := types.ExecResult{
-		ExitCode:         exitCode,
-		Stdout:           string(stdoutB),
-		Stderr:           string(stderrB),
-		StdoutTruncated:  stdoutTrunc,
-		StderrTruncated:  stderrTrunc,
-		StdoutTotalBytes: stdoutTotal,
-		StderrTotalBytes: stderrTotal,
-		OutputArtifact:   outputArtifact,
-		DurationMs:       int64(end.Sub(start).Milliseconds()),
-		Outcome:          outcome,
+
+		ExitCode:          exitCode,
+		Stdout:            string(stdoutB),
+		Stderr:            string(stderrB),
+		StdoutTruncated:   stdoutTrunc,
+		StderrTruncated:   stderrTrunc,
+		StdoutTotalBytes:  stdoutTotal,
+		StderrTotalBytes:  stderrTotal,
+		OutputArtifact:    outputArtifact,
+		DurationMs:        int64(end.Sub(start).Milliseconds()),
+		CommandTimeout:    timeoutResolution.Metadata,
+		TerminationReason: terminationReason,
+		Outcome:           outcome,
+		Error:             resultError,
 	}
 	if execErr != nil {
 		code := "E_COMMAND_FAILED"
@@ -2091,15 +2120,19 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			outcome.CommandStarted = false
 			outcome.DispatchState = "start_failed"
 			outcome.FailureKind = types.ExecFailureStart
-		case errors.Is(execErr, context.DeadlineExceeded):
+		case errors.Is(execErr, errCommandTimeout):
 			code = "E_COMMAND_TIMEOUT"
 			outcome.FailureKind = types.ExecFailureCommandTimeout
+		case errors.Is(execErr, context.DeadlineExceeded):
+			code = "E_CALLER_DEADLINE"
+			outcome.FailureKind = types.ExecFailureCancellation
 		case errors.Is(execErr, context.Canceled):
 			code = "E_CALLER_CANCELLED"
 			outcome.FailureKind = types.ExecFailureCancellation
 		}
 		outcome.Code = code
 		res.Error = &types.ExecError{Code: code, Message: execErr.Error()}
+
 	}
 	if stdoutTrunc && stdoutTotal > int64(len(stdoutB)) {
 		res.Pagination = &types.Pagination{
@@ -2138,7 +2171,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		resp.Guidance.Suggestions = append(resp.Guidance.Suggestions, approvalSuggestions...)
 	}
 	if !opts.sensitive {
-		_ = a.store.SaveOutput(ctx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
+		_ = a.store.SaveOutput(terminalCtx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
 	} else {
 		// Values stay inside the callback above; never expose them through the
 		// internal response accidentally used by a future wire handler.

@@ -631,6 +631,9 @@ func (p Policy) Validate() error {
 	if p.Name == "" {
 		return fmt.Errorf("name is required")
 	}
+	if timeout := p.ResourceLimits.CommandTimeout.Duration; timeout > 0 && timeout < time.Millisecond {
+		return fmt.Errorf("positive resource_limits.command_timeout must be at least 1ms")
+	}
 	if err := ValidateDirenvImportPolicy(p.Direnv); err != nil {
 		return fmt.Errorf("direnv: %w", err)
 	}

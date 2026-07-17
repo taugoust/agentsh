@@ -619,7 +619,7 @@ func (a *App) createSession(w http.ResponseWriter, r *http.Request) {
 	}
 	a.refreshNetworkEnforcement(snap.ID)
 	if sess, ok := a.sessions.Get(snap.ID); ok {
-		snap = sess.Snapshot()
+		snap = a.sessionSnapshot(sess)
 	}
 	writeJSON(w, code, snap)
 }
@@ -869,7 +869,7 @@ func (a *App) listSessions(w http.ResponseWriter, r *http.Request) {
 	out := make([]types.Session, 0, len(all))
 	for _, s := range all {
 		a.refreshNetworkEnforcement(s.ID)
-		out = append(out, s.Snapshot())
+		out = append(out, a.sessionSnapshot(s))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -882,7 +882,7 @@ func (a *App) getSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.refreshNetworkEnforcement(id)
-	writeJSON(w, http.StatusOK, s.Snapshot())
+	writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 }
 
 func (a *App) patchSession(w http.ResponseWriter, r *http.Request) {
@@ -916,7 +916,7 @@ func (a *App) patchSession(w http.ResponseWriter, r *http.Request) {
 	_ = a.store.AppendEvent(r.Context(), ev)
 	a.broker.Publish(ev)
 
-	writeJSON(w, http.StatusOK, s.Snapshot())
+	writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 }
 
 func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
@@ -1401,7 +1401,7 @@ func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps
 	if res.Error != nil {
 		msg = strings.ToLower(res.Error.Message)
 	}
-	if strings.Contains(msg, "timed out") || strings.Contains(msg, "deadline exceeded") {
+	if res.TerminationReason == types.TerminationReasonCommandTimeout {
 		g.Retryable = true
 		g.Reason = "command timed out"
 		g.Suggestions = append(g.Suggestions, types.Suggestion{

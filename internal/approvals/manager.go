@@ -95,6 +95,17 @@ type pending struct {
 	ch  chan Resolution
 }
 
+// CommandTimeoutExtensionAllowance returns the maximum cumulative runtime
+// allowance one command may receive for approval waits. The command timeout
+// owner applies this allowance at most once, even if the command encounters
+// multiple sequential approvals.
+func (m *Manager) CommandTimeoutExtensionAllowance() time.Duration {
+	if m == nil {
+		return 0
+	}
+	return m.timeout
+}
+
 func New(mode string, timeout time.Duration, emit Emitter) *Manager {
 	if mode == "" {
 		mode = "local_tty"

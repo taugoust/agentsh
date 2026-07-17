@@ -69,7 +69,7 @@ func TestRunCommandStreamingAuthoritativeStartSharedBySSEAndGRPC(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			started := false
-			exitCode, _, _, _, _, _, _, _, runErr := runCommandWithResourcesStreamingEmit(context.Background(), sess, "cmd-stream-outcome", tc.req, &config.Config{}, 0, func(string, map[string]any) error { return nil }, nil, nil, nil, "", func() { started = true })
+			exitCode, _, _, _, _, _, _, _, runErr := runCommandWithResourcesStreamingEmit(context.Background(), sess, "cmd-stream-outcome", tc.req, &config.Config{}, policy.ResolvedEnvPolicy{}, 0, func(string, map[string]any) error { return nil }, nil, nil, nil, "", func() { started = true })
 			outcome := normalizeExecOutcome(started, exitCode, runErr)
 			if started != tc.wantStarted || outcome.Code != tc.wantCode {
 				t.Fatalf("started=%t outcome=%+v err=%v", started, outcome, runErr)

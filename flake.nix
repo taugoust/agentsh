@@ -336,6 +336,52 @@
             '';
           });
 
+          command-timeout-tests = pkgs.buildGoModule {
+            pname = "agentsh-command-timeout-tests";
+            version = "unstable-2026-06-17";
+            src = self;
+            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+
+            nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.gnumake
+              pkgs.llvm
+              pkgs.llvmPackages.clang-unwrapped
+              pkgs.pkg-config
+            ];
+            buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.libbpf
+              pkgs.libseccomp
+              pkgs.linuxHeaders
+            ];
+            env = {
+              CGO_ENABLED = if stdenv.hostPlatform.isLinux then "1" else "0";
+              GOTELEMETRY = "off";
+            };
+
+            buildPhase = ''
+              runHook preBuild
+              runHook postBuild
+            '';
+            preCheck = lib.optionalString stdenv.hostPlatform.isLinux ''
+              make -C internal/netmonitor/ebpf clean all \
+                BPF_CLANG=${pkgs.llvmPackages.clang-unwrapped}/bin/clang \
+                BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
+            '';
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/api -run '^(TestCommandTimeout.*|TestCommandOutputArtifactCapture_DirenvEnvironmentPrecedenceAndProtectedFilter)$'
+              go test ./internal/approvals -run '^TestRequestApproval_ExtendsCommandTimeout$'
+              go test ./internal/policy -run '^(TestPolicyValidateCommandTimeoutMinimum|TestPolicyLoadRejectsSubMillisecondCommandTimeout|TestEngine_Limits)$'
+              runHook postCheck
+            '';
+            installPhase = ''
+              runHook preInstall
+              mkdir -p $out
+              touch $out/passed
+              runHook postInstall
+            '';
+          };
+
           workspace-runtime-tests = pkgs.buildGoModule {
             pname = "agentsh-workspace-runtime-tests";
             version = "unstable-2026-06-17";

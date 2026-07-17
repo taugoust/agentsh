@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/commandtimeout"
 	"github.com/agentsh/agentsh/internal/pathutil"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/proxy/credsub"
@@ -439,6 +440,10 @@ func (s *Session) Snapshot() types.Session {
 		workspaceMode = string(types.WorkspaceModeDirect)
 	}
 	networkEnforcement := cloneNetworkEnforcement(s.networkEnforcement)
+	policyCommandTimeout := time.Duration(0)
+	if s.policyEngine != nil {
+		policyCommandTimeout = s.policyEngine.Limits().CommandTimeout
+	}
 
 	return types.Session{
 		ID:                 s.ID,
@@ -467,6 +472,7 @@ func (s *Session) Snapshot() types.Session {
 		EnvBaseMode:        s.EnvBaseMode,
 		EnvInherit:         append([]string{}, s.EnvInherit...),
 		NetworkEnforcement: networkEnforcement,
+		CommandTimeout:     commandtimeout.SessionMetadata(policyCommandTimeout),
 	}
 }
 

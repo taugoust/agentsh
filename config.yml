@@ -259,31 +259,8 @@ sandbox:
     # - Systemd/service recommended (root): a dedicated absolute cgroupfs path
     # base_path: "/sys/fs/cgroup/agentsh"
 
-# =============================================================================
-# RESOURCE LIMITS (defaults, can override per-session)
-# =============================================================================
-
-resource_limits:
-  # Memory
-  max_memory_mb: 2048
-  max_swap_mb: 0
-  
-  # CPU (percentage of one core)
-  max_cpu_percent: 80
-  
-  # Disk I/O (bytes per second)
-  max_disk_read_bps: 104857600     # 100 MB/s
-  max_disk_write_bps: 52428800     # 50 MB/s
-  
-  # Network (bits per second)
-  max_network_bps: 104857600       # 100 Mbps
-  
-  # Process limits
-  max_pids: 100
-  max_open_files: 1024
-  
-  # Time limits
-  command_timeout: "5m"
+# Ordinary command timeouts are configured in policy files under
+# resource_limits.command_timeout; top-level daemon resource_limits are ignored.
 
 # =============================================================================
 # LLM PROXY
@@ -419,7 +396,8 @@ approvals:
   # - local_tty: prompt on server /dev/tty (safe for local dev)
   # - api: approvals resolved via /api/v1/approvals/* (requires auth.type=api_key to prevent self-approval)
   mode: "local_tty"
-  # How long to wait for approval
+  # How long to wait for approval. For one ordinary command this is also the
+  # single cumulative runtime extension allowance; sequential approvals share it.
   timeout: "5m"
   
   # Notification method: "none", "webhook", "slack", "email"

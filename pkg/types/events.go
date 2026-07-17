@@ -30,6 +30,10 @@ type Event struct {
 	PID       int         `json:"pid,omitempty"`
 	Policy    *PolicyInfo `json:"policy,omitempty"`
 
+	// CommandTimeout is populated on ordinary command lifecycle events.
+	CommandTimeout    *CommandTimeout `json:"command_timeout,omitempty"`
+	TerminationReason string          `json:"termination_reason,omitempty"`
+
 	// Process context (for execve events)
 	ParentPID int `json:"parent_pid,omitempty"`
 	Depth     int `json:"depth,omitempty"`

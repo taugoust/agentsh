@@ -80,10 +80,12 @@ type ExecResult struct {
 
 	OutputArtifact *OutputArtifactResult `json:"output_artifact,omitempty"`
 
-	DurationMs int64        `json:"duration_ms"`
-	Outcome    *ExecOutcome `json:"outcome,omitempty"`
-	Error      *ExecError   `json:"error,omitempty"`
-	Pagination *Pagination  `json:"pagination,omitempty"`
+	DurationMs        int64          `json:"duration_ms"`
+	CommandTimeout    CommandTimeout `json:"command_timeout"`
+	TerminationReason string         `json:"termination_reason,omitempty"`
+	Outcome           *ExecOutcome   `json:"outcome,omitempty"`
+	Error             *ExecError     `json:"error,omitempty"`
+	Pagination        *Pagination    `json:"pagination,omitempty"`
 }
 
 type OutputArtifactRequest struct {

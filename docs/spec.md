@@ -1459,6 +1459,30 @@ GET    /api/v1/sessions/{id}/output/{cmd_id}  Get command output (pagination)
 POST   /api/v1/sessions/{id}/kill/{cmd_id}    Kill running command
 ```
 
+A positive policy `resource_limits.command_timeout` is both the default and
+maximum for ordinary commands and must be at least 1 ms. Omitted or zero policy
+values retain the 5-minute fallback default with no policy maximum. Empty
+REST/gRPC timeout strings are treated as omission for compatibility; non-empty
+timeout strings and Pi `exec_bash.timeout_ms` values must be at least 1 ms.
+Values above a policy maximum are capped.
+
+A runtime approval may hold one command beyond its initial effective deadline,
+but the extension is cumulatively bounded. The first positive approval
+extension fixes the absolute maximum deadline at the initial deadline plus that
+single allowance (normally the configured `approvals.timeout`); later approval
+requests share the allowance and cannot accumulate more time. Session snapshots,
+Exec results, and stream start/done payloads report the bound as
+`approval_extension_ms` when approvals are enabled. Session snapshots also
+expose `command_timeout.default_ms`, optional `maximum_ms`, and source. Per-exec
+metadata exposes `requested_ms` (when supplied), `effective_ms`, and one source:
+`policy_default`, `explicit_request`, `policy_cap`, or `fallback`.
+
+Pi's command transport deadline must include slack greater than the reported
+approval-extension allowance plus a cleanup/response margin. Setting transport
+slack to only `effective_ms`, or to exactly the approval allowance, can cancel
+the request before AgentSH kills descendants, persists terminal state, and
+returns the typed result.
+
 #### Events
 
 ```
@@ -1513,6 +1537,7 @@ Content-Type: application/json
   "created": "2024-12-15T10:30:00Z",
   "workspace": "/home/user/project",
   "profile": "claude-agent",
+  "command_timeout": {"default_ms": 300000, "maximum_ms": 300000, "approval_extension_ms": 300000, "source": "policy"},
   "mounts": [
     {"path": "/home/user/project", "policy": "workspace-rw", "mount_point": "/sessions/abc123/mount-0"},
     {"path": "/home/user/.config", "policy": "config-readonly", "mount_point": "/sessions/abc123/mount-1"}
