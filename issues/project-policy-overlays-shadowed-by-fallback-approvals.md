@@ -1,10 +1,21 @@
 # Make project policy overlays precede generic fallback approvals
 
 ## Status
-Open.
+Implemented on feature branches; awaiting deployment validation on a fresh supervised FPGA session.
 
 ## Priority
 High. Project overlays load successfully but cannot provide their intended low-noise allow/deny/approval behavior under realistic supervised policies. This also weakens overlay deny rules into generic approval prompts.
+
+## Implementation status
+
+- AgentSH `eb57bd87` adds an explicit trusted-base `project_overlay_boundary`, preserves deterministic multi-overlay ordering, rejects untrusted/nested boundaries, and adds realistic first-match regression coverage.
+- The same AgentSH commit makes custom command/context YAML decoding reject unknown fields without breaking aliases or merge keys, and restores the existing command-rule `timeout` schema.
+- `nix-config` `3d9168c` marks the supervised file/command/network fallbacks, the autonomous command/network fallbacks, and the manual-agent network fallback; it pins AgentSH `eb57bd87`.
+- AgentSH focused unit/format checks and the aarch64-linux package build passed.
+- The downstream aarch64-linux boundary check validates all three generated policies with the pinned AgentSH binary and proves each family has exactly the intended boundary. The `pi-supervised` and `pi-auto` packages build, and the `theo@rose` Home Manager configuration evaluates.
+- The equivalent x86_64-linux check was evaluated but could not be built from the aarch64-linux validation host because that Nix daemon had no x86_64-linux builder configured; no source/test failure occurred.
+
+Remaining validation is operational: deploy the pinned revisions, start a new session so the overlay is reloaded, and repeat the non-destructive Xilinx/Vivado probes. The issue should move to `issues/resolved/` only after those probes resolve through the project rules rather than generic fallbacks.
 
 ## Problem
 
@@ -63,7 +74,7 @@ A separate prompt for `/home/theo/.config-rose/nix/nix.conf` is not evidence for
 
 Reproductions should confirm session metadata contains the expected `project_policy_overlay_names` before assigning a failure to merge precedence.
 
-## Source findings
+## Original source findings
 
 `internal/policy/overlay.go` currently uses:
 
