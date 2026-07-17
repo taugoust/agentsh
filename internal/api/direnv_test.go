@@ -99,6 +99,30 @@ func TestCommandOutputArtifactCapture_DirenvAtomicFiltering(t *testing.T) {
 	}
 }
 
+func TestCommandOutputArtifactCapture_DirenvRevokesStalePolicyAndServiceValues(t *testing.T) {
+	cfg := testDirenvEngine(t).DirenvImportPolicy()
+	s := &session.Session{}
+	s.ReplaceDirenvEnvironment(map[string]string{
+		"KEEP":          "current",
+		"POLICY_STALE":  "old-policy-value",
+		"SERVICE_STALE": "old-direnv-value",
+	})
+
+	cfg.Deny = []string{"POLICY_*"}
+	s.SetServiceEnvVars(map[string]string{"service_stale": "supervisor-owned"})
+	old, generation := s.DirenvEnvironment()
+	next, generation, removed := pruneDirenvEnvironment(cfg, s, old)
+	if removed != 2 || generation != 2 || !reflect.DeepEqual(next, map[string]string{"KEEP": "current"}) {
+		t.Fatalf("policy/service transition = next=%#v generation=%d removed=%d", next, generation, removed)
+	}
+
+	cfg.Enabled = false
+	next, generation, removed = pruneDirenvEnvironment(cfg, s, next)
+	if removed != 1 || generation != 3 || len(next) != 0 {
+		t.Fatalf("disabled transition = next=%#v generation=%d removed=%d", next, generation, removed)
+	}
+}
+
 func TestDirenvFileWithinWorkspaceDoesNotSearchParents(t *testing.T) {
 	parent := t.TempDir()
 	workspace := filepath.Join(parent, "workspace")

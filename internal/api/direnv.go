@@ -62,9 +62,10 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 	engine := a.policyEngineFor(s)
 	cfg := engine.DirenvImportPolicy()
 	if !cfg.Enabled {
-		_, generation := s.DirenvEnvironment()
+		old, _ := s.DirenvEnvironment()
+		_, generation, revoked := pruneDirenvEnvironment(cfg, s, old)
 		writeJSON(w, http.StatusForbidden, toolResponse{
-			OK: false, Result: refreshDirenvResult{State: "policy_denied", Generation: generation},
+			OK: false, Result: refreshDirenvResult{State: "policy_denied", UnsetCount: revoked, Generation: generation},
 			Error: "direnv refresh is disabled by policy",
 		})
 		return
@@ -114,11 +115,14 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 		queueTimeout: cfg.QueueTimeout, evaluationTimeout: cfg.EvaluationTimeout,
 		onAdmitted: func() {
 			old, generation = s.DirenvEnvironment()
+			old, generation, result.UnsetCount = pruneDirenvEnvironment(cfg, s, old)
 			result.Generation = generation
 		},
 		onSensitiveResult: func(run internalSensitiveExecResult) {
 			callbackRan = true
+			revoked := result.UnsetCount
 			result = evaluateDirenvResult(cfg, s, old, generation, run)
+			result.UnsetCount += revoked
 		},
 	})
 	result.DurationMS = time.Since(start).Milliseconds()
@@ -165,6 +169,25 @@ func direnvFileWithinWorkspace(workdir, workspaceRoot string) (bool, error) {
 		}
 		current = parent
 	}
+}
+
+// pruneDirenvEnvironment revokes values imported by an older generation when
+// the current policy no longer allows them or the supervisor now owns the key.
+// Callers that dispatch a refresh must do this after execution admission so the
+// stale values cannot enter the refresh command's own environment.
+func pruneDirenvEnvironment(cfg policy.ResolvedDirenvImportPolicy, s *session.Session, old map[string]string) (map[string]string, uint64, int) {
+	next := cloneStringMap(old)
+	serviceEnv := s.ServiceEnvVars()
+	removed := 0
+	for name := range old {
+		if cfg.Enabled && policy.DirenvImportAllowed(cfg, name) && !containsKeyFold(serviceEnv, name) {
+			continue
+		}
+		deleteFold(next, name)
+		removed++
+	}
+	generation, _ := s.ReplaceDirenvEnvironment(next)
+	return next, generation, removed
 }
 
 func evaluateDirenvResult(cfg policy.ResolvedDirenvImportPolicy, s *session.Session, old map[string]string, generation uint64, run internalSensitiveExecResult) refreshDirenvResult {
