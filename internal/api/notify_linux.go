@@ -106,6 +106,14 @@ func (w *policyEngineWrapper) CheckExecveWithAliases(filename string, aliases []
 	return w.toUnixPolicyDecision(w.engine.CheckExecveWithAliases(filename, aliases, argv, depth))
 }
 
+func (w *policyEngineWrapper) CheckExecveWithProvenance(filename string, argv []string, depth int, provenance string) unixmon.PolicyDecision {
+	return w.toUnixPolicyDecision(w.engine.CheckExecveWithAliasesProvenance(filename, nil, argv, depth, policy.CommandProvenance(provenance)))
+}
+
+func (w *policyEngineWrapper) CheckExecveWithAliasesAndProvenance(filename string, aliases []string, argv []string, depth int, provenance string) unixmon.PolicyDecision {
+	return w.toUnixPolicyDecision(w.engine.CheckExecveWithAliasesProvenance(filename, aliases, argv, depth, policy.CommandProvenance(provenance)))
+}
+
 func (w *policyEngineWrapper) toUnixPolicyDecision(dec policy.Decision) unixmon.PolicyDecision {
 	// Return both PolicyDecision (for logging) and EffectiveDecision (for enforcement)
 	return unixmon.PolicyDecision{

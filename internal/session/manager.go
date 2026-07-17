@@ -78,6 +78,7 @@ type Session struct {
 	currentCommandID          string
 	currentProcPID            int
 	currentExecutionSensitive bool
+	currentCommandProvenance  policy.CommandProvenance
 	currentTraceID            string // W3C trace context: trace ID (32 hex chars)
 	currentSpanID             string // W3C trace context: parent span ID (16 hex chars)
 	currentTraceFlags         string // W3C trace context: trace flags (2 hex chars, e.g. "01")
@@ -511,6 +512,7 @@ func (s *Session) LockExecContext(ctx context.Context) (func(), error) {
 		s.currentCommandID = ""
 		s.currentProcPID = 0
 		s.currentExecutionSensitive = false
+		s.currentCommandProvenance = policy.CommandProvenanceNone
 		s.currentTraceID = ""
 		s.currentSpanID = ""
 		s.currentTraceFlags = ""
@@ -546,6 +548,20 @@ func (s *Session) CurrentExecutionSensitive() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.currentExecutionSensitive
+}
+
+// SetCurrentCommandProvenance records server-owned execution provenance for
+// runtime exec interception. It is reset when execution admission is released.
+func (s *Session) SetCurrentCommandProvenance(provenance policy.CommandProvenance) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentCommandProvenance = provenance
+}
+
+func (s *Session) CurrentCommandProvenance() policy.CommandProvenance {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentCommandProvenance
 }
 
 func (s *Session) SetCurrentProcessPID(pid int) {

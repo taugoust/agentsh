@@ -111,7 +111,7 @@ func (r *ptraceHandlerRouter) HandleExecve(ctx context.Context, ec ptrace.ExecCo
 	if depth < 0 {
 		depth = 0
 	}
-	decision := pe.CheckExecve(ec.Filename, ec.Argv, depth)
+	decision := pe.CheckExecveWithAliasesProvenance(ec.Filename, nil, ec.Argv, depth, s.CurrentCommandProvenance())
 
 	// Emit audit event
 	ev := types.Event{

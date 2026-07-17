@@ -111,7 +111,8 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 		Actor: map[string]any{"kind": "extension", "label": "Pi direnv refresh"},
 	}
 	resp, code, err := a.execInSessionCoreWithOptions(r.Context(), id, execReq, internalExecOptions{
-		sensitive: true, stdoutCaptureBytes: int64(cfg.MaxStdoutBytes), stderrCaptureBytes: int64(cfg.MaxStderrBytes),
+		sensitive: true, provenance: policy.CommandProvenanceDirenvRefresh,
+		stdoutCaptureBytes: int64(cfg.MaxStdoutBytes), stderrCaptureBytes: int64(cfg.MaxStderrBytes),
 		queueTimeout: cfg.QueueTimeout, evaluationTimeout: cfg.EvaluationTimeout,
 		onAdmitted: func() {
 			old, generation = s.DirenvEnvironment()

@@ -24,6 +24,17 @@ func testDirenvEngine(t *testing.T) *policy.Engine {
 version: 1
 name: direnv-test
 command_rules:
+  - name: allow-server-direnv-export
+    commands: ["direnv"]
+    args_patterns: ["^export json$"]
+    internal_provenance: direnv_refresh
+    context: [direct]
+    decision: allow
+  - name: deny-generic-direnv-export
+    commands: ["direnv"]
+    args_patterns: ["^export json$"]
+    context: [direct]
+    decision: deny
   - name: allow-test-commands
     commands: ["*"]
     decision: allow
@@ -183,6 +194,13 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	app := newTestApp(t, sessions, store)
+
+	generic := httptest.NewRecorder()
+	app.Router().ServeHTTP(generic, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(`{"command":"direnv","args":["export","json"],"working_dir":"/workspace","actor":{"kind":"extension","label":"Pi direnv refresh"}}`)))
+	if generic.Code != http.StatusForbidden {
+		t.Fatalf("generic exec spoofed refresh provenance: status=%d body=%s", generic.Code, generic.Body.String())
+	}
+
 	rr := httptest.NewRecorder()
 	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv", strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension","label":"test"}}`)))
 	if rr.Code != http.StatusOK {

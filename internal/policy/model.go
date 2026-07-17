@@ -125,6 +125,10 @@ type CommandRule struct {
 	RedirectTo   *CommandRedirect `yaml:"redirect_to,omitempty"`
 	Context      ContextConfig    `yaml:"context"`
 
+	// InternalProvenance restricts this rule to a server-originated execution
+	// path. It cannot be supplied by an ExecRequest.
+	InternalProvenance string `yaml:"internal_provenance,omitempty"`
+
 	// ProjectOverlayBoundary inserts validated project-local command rules
 	// immediately before this trusted base-policy rule.
 	ProjectOverlayBoundary bool `yaml:"project_overlay_boundary,omitempty"`
@@ -146,7 +150,7 @@ type CommandRedirect struct {
 var commandRuleYAMLFields = map[string]struct{}{
 	"name": {}, "description": {}, "commands": {}, "args_patterns": {},
 	"decision": {}, "message": {}, "timeout": {}, "redirect_to": {},
-	"context": {}, "project_overlay_boundary": {}, "env_allow": {},
+	"context": {}, "internal_provenance": {}, "project_overlay_boundary": {}, "env_allow": {},
 	"env_deny": {}, "env_max_bytes": {}, "env_max_keys": {},
 	"env_block_iteration": {},
 }

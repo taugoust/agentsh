@@ -1666,8 +1666,15 @@ func setExecveAuditRedaction(handler any, sensitive bool) {
 	}
 }
 
+func setExecveProvenance(handler any, provenance policy.CommandProvenance) {
+	if h, ok := handler.(interface{ SetProvenance(string) }); ok && h != nil {
+		h.SetProvenance(string(provenance))
+	}
+}
+
 type internalExecOptions struct {
 	sensitive          bool
+	provenance         policy.CommandProvenance
 	stdoutCaptureBytes int64
 	stderrCaptureBytes int64
 	queueTimeout       time.Duration
@@ -1753,6 +1760,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	start := time.Now().UTC()
 	s.SetCurrentCommandID(cmdID)
 	s.SetCurrentExecutionSensitive(opts.sensitive)
+	s.SetCurrentCommandProvenance(opts.provenance)
 
 	if commandJailRequired(a.cfg) {
 		report := a.refreshNetworkEnforcement(id)
@@ -1794,7 +1802,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		includeEvents = "all"
 	}
 
-	pre := engine.CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+	pre := engine.CheckCommandWithExecveProvenance(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode(), opts.provenance)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
 	approvalErr := a.applyCommandApproval(ctx, id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
 	pkgApprovalDenied := false
@@ -1993,6 +2001,9 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		extraCfg.stdoutCaptureBytes = opts.stdoutCaptureBytes
 		extraCfg.stderrCaptureBytes = opts.stderrCaptureBytes
 		setExecveAuditRedaction(extraCfg.execveHandler, true)
+	}
+	if extraCfg != nil {
+		setExecveProvenance(extraCfg.execveHandler, opts.provenance)
 	}
 
 	// macOS: sandbox wrapper with XPC control

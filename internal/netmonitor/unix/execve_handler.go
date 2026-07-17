@@ -68,6 +68,16 @@ type PolicyCheckerWithAliases interface {
 	CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) PolicyDecision
 }
 
+// PolicyCheckerWithProvenance accepts server-owned execution provenance. The
+// value is configured directly on the handler and never read from the tracee.
+type PolicyCheckerWithProvenance interface {
+	CheckExecveWithProvenance(filename string, argv []string, depth int, provenance string) PolicyDecision
+}
+
+type PolicyCheckerWithAliasesAndProvenance interface {
+	CheckExecveWithAliasesAndProvenance(filename string, aliases []string, argv []string, depth int, provenance string) PolicyDecision
+}
+
 // PolicyDecision represents a policy check result
 type PolicyDecision struct {
 	Decision          string // The policy decision (allow, deny, approve, audit, redirect)
@@ -105,6 +115,7 @@ type ExecveHandler struct {
 	emitter              ExecveEmitter
 	approver             ApprovalRequester
 	redactArgv           bool
+	provenance           string
 	stubSymlinkPath      string // Short symlink path pointing to agentsh-stub
 	transparentOverrides *netmonitor.TransparentOverrides
 }
@@ -134,6 +145,11 @@ func (h *ExecveHandler) SetApprover(approver ApprovalRequester) {
 // the real argv. Enforcement and approval matching continue to use real values.
 func (h *ExecveHandler) SetRedactArgv(redact bool) {
 	h.redactArgv = redact
+}
+
+// SetProvenance configures server-owned provenance for this execution tree.
+func (h *ExecveHandler) SetProvenance(provenance string) {
+	h.provenance = provenance
 }
 
 // SetStubSymlinkPath sets the path to the short symlink used for execve redirect.
@@ -279,7 +295,7 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		ctx.PayloadCommand = payloadCmd
 
 		// Evaluate the payload command against policy
-		payloadDecision := h.policy.CheckExecve(payloadCmd, payloadArgs, ctx.Depth)
+		payloadDecision := h.checkExecve(ctx.Depth, payloadCmd, payloadArgs)
 		payloadEffective := payloadDecision.EffectiveDecision
 		if payloadEffective == "" {
 			payloadEffective = payloadDecision.Decision
@@ -499,11 +515,24 @@ func (h *ExecveHandler) handlePolicyApproval(goCtx context.Context, ctx ExecveCo
 	return result, h.buildEvent(ctx, result, decision.Rule)
 }
 
-func (h *ExecveHandler) checkExecveWithAliases(ctx ExecveContext, filename string, argv []string) PolicyDecision {
-	if checker, ok := h.policy.(PolicyCheckerWithAliases); ok && filename == ctx.Filename {
-		return checker.CheckExecveWithAliases(filename, trustedExecveAliases(ctx.Filename, ctx.RawFilename, ctx.Argv), argv, ctx.Depth)
+func (h *ExecveHandler) checkExecve(depth int, filename string, argv []string) PolicyDecision {
+	if checker, ok := h.policy.(PolicyCheckerWithProvenance); ok {
+		return checker.CheckExecveWithProvenance(filename, argv, depth, h.provenance)
 	}
-	return h.policy.CheckExecve(filename, argv, ctx.Depth)
+	return h.policy.CheckExecve(filename, argv, depth)
+}
+
+func (h *ExecveHandler) checkExecveWithAliases(ctx ExecveContext, filename string, argv []string) PolicyDecision {
+	if filename == ctx.Filename {
+		aliases := trustedExecveAliases(ctx.Filename, ctx.RawFilename, ctx.Argv)
+		if checker, ok := h.policy.(PolicyCheckerWithAliasesAndProvenance); ok {
+			return checker.CheckExecveWithAliasesAndProvenance(filename, aliases, argv, ctx.Depth, h.provenance)
+		}
+		if checker, ok := h.policy.(PolicyCheckerWithAliases); ok {
+			return checker.CheckExecveWithAliases(filename, aliases, argv, ctx.Depth)
+		}
+	}
+	return h.checkExecve(ctx.Depth, filename, argv)
 }
 
 func trustedExecveAliases(filename, rawFilename string, argv []string) []string {

@@ -6,6 +6,29 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
+func TestEngine_InternalDirenvProvenanceRequiredForCommandAndExecve(t *testing.T) {
+	p := &Policy{Version: 1, Name: "internal-provenance", CommandRules: []CommandRule{
+		{Name: "allow-server-direnv-export", Commands: []string{"direnv"}, ArgsPatterns: []string{`^(direnv )?export json$`}, Decision: "allow", Context: ContextConfig{MinDepth: 0, MaxDepth: 0}, InternalProvenance: string(CommandProvenanceDirenvRefresh)},
+		{Name: "deny-generic-direnv-export", Commands: []string{"direnv"}, Decision: "deny", Context: ContextConfig{MinDepth: 0, MaxDepth: 0}},
+	}}
+	e, err := NewEngine(p, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	generic := e.CheckCommandWithExecve("direnv", []string{"export", "json"}, true, ShellCOpaqueEnforce)
+	internal := e.CheckCommandWithExecveProvenance("direnv", []string{"export", "json"}, true, ShellCOpaqueEnforce, CommandProvenanceDirenvRefresh)
+	if generic.Rule != "deny-generic-direnv-export" || internal.Rule != "allow-server-direnv-export" {
+		t.Fatalf("command decisions: generic=%s internal=%s", generic.Rule, internal.Rule)
+	}
+
+	generic = e.CheckExecve("/usr/bin/direnv", []string{"direnv", "export", "json"}, 0)
+	internal = e.CheckExecveWithAliasesProvenance("/usr/bin/direnv", nil, []string{"direnv", "export", "json"}, 0, CommandProvenanceDirenvRefresh)
+	if generic.Rule != "deny-generic-direnv-export" || internal.Rule != "allow-server-direnv-export" {
+		t.Fatalf("execve decisions: generic=%s internal=%s", generic.Rule, internal.Rule)
+	}
+}
+
 func TestEngine_CheckCommand_BasenameMatch(t *testing.T) {
 	// Legacy behavior: commands without paths match by basename
 	p := &Policy{

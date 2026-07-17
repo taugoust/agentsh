@@ -23,6 +23,15 @@ import (
 // const) so tests can lower it to exercise the cap-exceeded fail-closed path.
 var maxShellCDeriveDepth = 4
 
+// CommandProvenance identifies a server-originated execution path. Values are
+// supplied only through internal API options, never through ExecRequest JSON.
+type CommandProvenance string
+
+const (
+	CommandProvenanceNone          CommandProvenance = ""
+	CommandProvenanceDirenvRefresh CommandProvenance = "direnv_refresh"
+)
+
 // ThreatCheckResult holds the outcome of a threat feed lookup.
 type ThreatCheckResult struct {
 	FeedName      string
@@ -202,6 +211,9 @@ func NewEngine(p *Policy, enforceApprovals bool, enforceRedirects bool) (*Engine
 	}
 
 	for _, r := range p.CommandRules {
+		if r.InternalProvenance != "" && r.InternalProvenance != string(CommandProvenanceDirenvRefresh) {
+			return nil, fmt.Errorf("command rule %q has unknown internal_provenance %q", r.Name, r.InternalProvenance)
+		}
 		cr := compiledCommandRule{
 			rule:      r,
 			basenames: map[string]struct{}{},
@@ -641,7 +653,7 @@ func ParseShellCOpaqueMode(s string) ShellCOpaqueMode {
 // restrictive command rule is present). See CheckCommandWithExecve for callers
 // on an execve-policed execution path.
 func (e *Engine) CheckCommand(command string, args []string) Decision {
-	return e.checkCommand(command, args, false, ShellCOpaqueEnforce)
+	return e.checkCommand(command, args, false, ShellCOpaqueEnforce, CommandProvenanceNone)
 }
 
 // CheckCommandWithExecve is CheckCommand for callers whose execution path has
@@ -650,11 +662,17 @@ func (e *Engine) CheckCommand(command string, args []string) Decision {
 // the opaque shell-c pre-deny is skipped — the script runs and its inner
 // commands are enforced precisely at exec time. Issue #375.
 func (e *Engine) CheckCommandWithExecve(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode) Decision {
-	return e.checkCommand(command, args, execveEnforcementActive, opaqueMode)
+	return e.CheckCommandWithExecveProvenance(command, args, execveEnforcementActive, opaqueMode, CommandProvenanceNone)
 }
 
-func (e *Engine) checkCommand(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode) Decision {
-	result, _ := e.matchCommandRules(command, args)
+// CheckCommandWithExecveProvenance evaluates a command with server-owned
+// execution provenance. Public request handlers must use CommandProvenanceNone.
+func (e *Engine) CheckCommandWithExecveProvenance(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode, provenance CommandProvenance) Decision {
+	return e.checkCommand(command, args, execveEnforcementActive, opaqueMode, provenance)
+}
+
+func (e *Engine) checkCommand(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode, provenance CommandProvenance) Decision {
+	result, _ := e.matchCommandRules(command, args, provenance)
 	// For `<shell> -c "<simple-cmd>"` invocations, also evaluate the
 	// underlying binary so a rule like `deny bin=shutdown` fires for
 	// `sh -c "shutdown now"`. An EXPLICITLY matched rule at any derivation
@@ -725,7 +743,7 @@ func (e *Engine) checkCommand(command string, args []string, execveEnforcementAc
 			break
 		}
 		cur, curArgs = derivedCmd, derivedArgs
-		dec, matched := e.matchCommandRules(cur, curArgs)
+		dec, matched := e.matchCommandRules(cur, curArgs, provenance)
 		if !matched {
 			continue
 		}
@@ -792,7 +810,7 @@ func decisionStrictness(d types.Decision) int {
 // When no rule matched, matched=false and the returned Decision is the
 // default-deny fall-through (kept here so callers that don't care about
 // match status continue to see deny-by-default).
-func (e *Engine) matchCommandRules(command string, args []string) (Decision, bool) {
+func (e *Engine) matchCommandRules(command string, args []string, provenance CommandProvenance) (Decision, bool) {
 	cmdLower := strings.ToLower(command)
 	cmdBase := strings.ToLower(filepath.Base(command))
 	// The shim install renames the original shell to <name>.real and places
@@ -807,6 +825,9 @@ func (e *Engine) matchCommandRules(command string, args []string) (Decision, boo
 	cmdBaseNorm := strings.TrimSuffix(cmdBase, ".real")
 
 	for _, r := range e.compiledCommandRules {
+		if r.rule.InternalProvenance != "" && r.rule.InternalProvenance != string(provenance) {
+			continue
+		}
 		// Pre-check is always depth 0 (direct command from user)
 		// Skip rules that don't apply to direct commands
 		if !r.rule.Context.MatchesDepth(0) {
@@ -1390,7 +1411,7 @@ func (e *Engine) EvaluateConnectRedirect(hostPort string) *ConnectRedirectResult
 // Returns the decision from the first matching rule, or default deny if none match.
 // The depth parameter represents the ancestry depth: 0 = direct (user-typed), 1+ = nested (script-spawned).
 func (e *Engine) CheckExecve(filename string, argv []string, depth int) Decision {
-	return e.CheckExecveWithAliases(filename, nil, argv, depth)
+	return e.CheckExecveWithAliasesProvenance(filename, nil, argv, depth, CommandProvenanceNone)
 }
 
 // CheckExecveWithAliases is like CheckExecve, but also matches command rules
@@ -1400,9 +1421,18 @@ func (e *Engine) CheckExecve(filename string, argv []string, depth int) Decision
 // canonical executable is `/nix/store/.../bin/coreutils` but the raw exec path
 // was `/nix/store/.../bin/rm`.
 func (e *Engine) CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) Decision {
+	return e.CheckExecveWithAliasesProvenance(filename, aliases, argv, depth, CommandProvenanceNone)
+}
+
+// CheckExecveWithAliasesProvenance is the runtime-exec counterpart to
+// CheckCommandWithExecveProvenance.
+func (e *Engine) CheckExecveWithAliasesProvenance(filename string, aliases []string, argv []string, depth int, provenance CommandProvenance) Decision {
 	candidates := execveCommandCandidates(filename, aliases)
 
 	for _, r := range e.compiledCommandRules {
+		if r.rule.InternalProvenance != "" && r.rule.InternalProvenance != string(provenance) {
+			continue
+		}
 		// Check depth/context constraint first
 		if !r.rule.Context.MatchesDepth(depth) {
 			continue

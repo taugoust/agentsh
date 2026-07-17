@@ -100,6 +100,7 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID
 			execveHandler, _ = h.(*unixmon.ExecveHandler)
 			if execveHandler != nil {
 				execveHandler.SetEmitter(emitter)
+				execveHandler.SetProvenance(string(s.CurrentCommandProvenance()))
 
 				// Register wrapper process for depth tracking
 				if wrapperPID > 0 {
