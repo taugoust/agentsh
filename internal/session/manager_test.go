@@ -1,6 +1,8 @@
 package session
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -96,6 +98,34 @@ func TestManager_ReapExpired_DoesNotIdleReapBusySession(t *testing.T) {
 	if _, ok := m.Get(s.ID); !ok {
 		t.Fatalf("expected busy session still present")
 	}
+}
+
+func TestLockExecContextCancelledQueueNeverAcquiresLater(t *testing.T) {
+	m := NewManager(10)
+	s, err := m.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock := s.LockExec()
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		queuedUnlock, err := s.LockExecContext(ctx)
+		if queuedUnlock != nil {
+			queuedUnlock()
+		}
+		result <- err
+	}()
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("queued admission error=%v", err)
+	}
+	unlock()
+	second, err := s.LockExecContext(context.Background())
+	if err != nil {
+		t.Fatalf("fresh admission failed: %v", err)
+	}
+	second()
 }
 
 func TestManager_ReapExpired_SessionTimeoutStillReapsBusySession(t *testing.T) {

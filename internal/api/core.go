@@ -19,7 +19,6 @@ import (
 	"github.com/agentsh/agentsh/internal/approvals"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/events"
-	"github.com/agentsh/agentsh/internal/nethelper"
 	"github.com/agentsh/agentsh/internal/pkgcheck"
 	"github.com/agentsh/agentsh/internal/platform"
 	"github.com/agentsh/agentsh/internal/policy"
@@ -208,7 +207,8 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 		ExecveEnabled:       execveEnabled,
 	})
 	if jailRequired {
-		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, a.nethelperCredentialFile)
+		binding := a.nethelperBindingSnapshot()
+		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, binding.SocketPath, binding.CredentialFile, a.nethelperRecoveryTokenFile)
 	}
 	cfgJSON, marshalErr := json.Marshal(seccompCfg)
 	if marshalErr != nil {
@@ -346,19 +346,25 @@ func commandJailRequirements(required bool) *types.LinuxCommandJailRequirements 
 	}
 }
 
-func buildCommandJailConfig(cfg *config.Config, nethelperCredentialFile string) *commandJailConfig {
+func buildCommandJailConfig(cfg *config.Config, nethelperSocket, nethelperCredentialFile, recoveryTokenFile string) *commandJailConfig {
 	jail := &commandJailConfig{Required: true}
-	if cfg == nil {
-		return jail
-	}
-
-	if helperSocket := strings.TrimSpace(os.Getenv(nethelper.EnvSocket)); helperSocket != "" {
+	if helperSocket := strings.TrimSpace(nethelperSocket); helperSocket != "" {
 		jail.HideDirectories = append(jail.HideDirectories, filepath.Dir(helperSocket))
 	}
 	if credentialFile := strings.TrimSpace(nethelperCredentialFile); credentialFile != "" && filepath.IsAbs(credentialFile) {
 		// Hide the containing control directory so credential rotation cannot
 		// reveal a replacement file after the mount boundary is established.
 		jail.HideDirectories = append(jail.HideDirectories, filepath.Dir(credentialFile))
+	}
+	if tokenFile := strings.TrimSpace(recoveryTokenFile); tokenFile != "" && filepath.IsAbs(tokenFile) {
+		// Hide the whole fixed wrapper-control container, not merely today's
+		// token inode, so same-UID commands cannot race replacement or discover
+		// future recovery authority.
+		jail.HideDirectories = append(jail.HideDirectories, filepath.Dir(tokenFile))
+	}
+	if cfg == nil {
+		jail.HideDirectories = cleanUniqueAbsolutePaths(jail.HideDirectories)
+		return jail
 	}
 	if logPath := strings.TrimSpace(cfg.Logging.Output); logPath != "" {
 		if info, err := os.Lstat(logPath); err == nil && info.Mode().IsRegular() {
@@ -1321,6 +1327,8 @@ func mapPathPrefix(path, oldRoot, newRoot string) string {
 }
 
 func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequest) (types.Session, int, error) {
+	a.sessionTopologyMu.Lock()
+	defer a.sessionTopologyMu.Unlock()
 	// Handle profile-based session creation
 	if req.Profile != "" {
 		return a.createSessionWithProfile(ctx, req)
@@ -1632,10 +1640,44 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	}
 
 	cmdID := "cmd-" + uuid.NewString()
-	start := time.Now().UTC()
-	unlock := s.LockExec()
+	queuedAt := time.Now().UTC()
+	unlock, admissionErr := s.LockExecContext(ctx)
+	queueDuration := time.Since(queuedAt)
+	if admissionErr != nil {
+		kind := types.ExecFailureCancellation
+		code := "E_CALLER_CANCELLED"
+		if errors.Is(admissionErr, context.DeadlineExceeded) {
+			kind = types.ExecFailureQueueTimeout
+			code = "E_QUEUE_TIMEOUT"
+		}
+		resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: queuedAt, Request: req,
+			Result: types.ExecResult{ExitCode: 127, DurationMs: int64(queueDuration / time.Millisecond),
+				Error:   &types.ExecError{Code: code, Message: admissionErr.Error()},
+				Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: kind, Retryable: false, Code: code, Message: admissionErr.Error(), QueueDurationMs: int64(queueDuration / time.Millisecond)}},
+			Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+		}
+		return resp, http.StatusRequestTimeout, nil
+	}
 	defer unlock()
+	start := time.Now().UTC()
 	s.SetCurrentCommandID(cmdID)
+
+	if commandJailRequired(a.cfg) {
+		report := a.refreshNetworkEnforcement(id)
+		if report == nil || !report.Ready() {
+			message := "strict network enforcement is not ready; command was not executed"
+			if report != nil && strings.TrimSpace(report.Detail) != "" {
+				message += ": " + report.Detail
+			}
+			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
+				Result: types.ExecResult{ExitCode: 127, DurationMs: int64(time.Since(start) / time.Millisecond),
+					Error:   &types.ExecError{Code: "E_NETWORK_ENFORCEMENT_NOT_READY", Message: message},
+					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_NETWORK_ENFORCEMENT_NOT_READY", Message: message, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
+				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			}
+			return resp, http.StatusServiceUnavailable, nil
+		}
+	}
 
 	// Propagate W3C trace context for distributed tracing correlation
 	tp := traceparentFromContext(ctx)
@@ -1796,6 +1838,7 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 			Result: types.ExecResult{
 				ExitCode:   126,
 				DurationMs: int64(time.Since(start).Milliseconds()),
+				Outcome:    &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureDenied, Retryable: false, Code: code, Message: "command denied by policy", QueueDurationMs: int64(queueDuration / time.Millisecond)},
 				Error: &types.ExecError{
 					Code:       code,
 					Message:    "command denied by policy",
@@ -1830,7 +1873,14 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	wrapperResult := a.setupSeccompWrapper(req, id, s)
 	if wrapperResult.setupErr != nil {
 		a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
-		return nil, http.StatusServiceUnavailable, fmt.Errorf("pre-exec boundary unavailable: %w", wrapperResult.setupErr)
+		message := "pre-exec boundary unavailable: " + wrapperResult.setupErr.Error()
+		resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
+			Result: types.ExecResult{ExitCode: 127, DurationMs: int64(time.Since(start) / time.Millisecond),
+				Error:   &types.ExecError{Code: "E_PRE_EXEC_BOUNDARY", Message: message},
+				Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_PRE_EXEC_BOUNDARY", Message: message, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
+			Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+		}
+		return resp, http.StatusServiceUnavailable, nil
 	}
 	wrappedReq := wrapperResult.wrappedReq
 	extraCfg := wrapperResult.extraCfg
@@ -1847,24 +1897,20 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 		a.wrapWithMacSandbox(&wrappedReq, origCommand, origArgs, s)
 	}
 
-	startEv := types.Event{
-		ID:        uuid.NewString(),
-		Timestamp: start,
-		Type:      "command_started",
-		SessionID: id,
-		CommandID: cmdID,
-		Fields: map[string]any{
-			"command": origCommand,
-			"args":    origArgs,
-		},
+	commandStarted := false
+	onStarted := func() {
+		commandStarted = true
+		startedAt := time.Now().UTC()
+		startEv := types.Event{ID: uuid.NewString(), Timestamp: startedAt, Type: "command_started", SessionID: id, CommandID: cmdID,
+			Fields: map[string]any{"command": origCommand, "args": origArgs}}
+		s.InjectTraceContext(startEv.Fields)
+		_ = a.store.AppendEvent(ctx, startEv)
+		a.broker.Publish(startEv)
 	}
-	s.InjectTraceContext(startEv.Fields)
-	_ = a.store.AppendEvent(ctx, startEv)
-	a.broker.Publish(startEv)
 
 	limits := a.policyEngineFor(s).Limits()
 	cmdDecision := a.policyEngineFor(s).CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
-	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResources(ctx, s, cmdID, wrappedReq, a.cfg, cmdDecision.EnvPolicy, limits.CommandTimeout, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id)
+	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResources(ctx, s, cmdID, wrappedReq, a.cfg, cmdDecision.EnvPolicy, limits.CommandTimeout, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
 	outputArtifact := outputArtifactCapture.Finish()
 	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
@@ -1938,6 +1984,19 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	stderrB, stderrTotal, softSuggestions := addSoftDeleteHints(fileOps, stderrB, stderrTotal)
 	stderrB, stderrTotal, approvalSuggestions := addExecveApprovalHints(blockedOps, stderrB, stderrTotal)
 
+	dispatchState := "not_dispatched"
+	if commandStarted {
+		dispatchState = "started"
+	}
+	outcome := &types.ExecOutcome{
+		CommandStarted: commandStarted, DispatchState: dispatchState, FailureKind: types.ExecFailureNone,
+		QueueDurationMs: int64(queueDuration / time.Millisecond), ExecutionDurationMs: int64(end.Sub(start) / time.Millisecond),
+	}
+	if exitCode != 0 && execErr == nil {
+		outcome.FailureKind = types.ExecFailureChildExit
+		outcome.Code = "E_CHILD_EXIT"
+		outcome.Message = fmt.Sprintf("command exited with code %d", exitCode)
+	}
 	res := types.ExecResult{
 		ExitCode:         exitCode,
 		Stdout:           string(stdoutB),
@@ -1948,12 +2007,40 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 		StderrTotalBytes: stderrTotal,
 		OutputArtifact:   outputArtifact,
 		DurationMs:       int64(end.Sub(start).Milliseconds()),
+		Outcome:          outcome,
 	}
 	if execErr != nil {
-		res.Error = &types.ExecError{
-			Code:    "E_COMMAND_FAILED",
-			Message: execErr.Error(),
+		code := "E_COMMAND_FAILED"
+		outcome.FailureKind = types.ExecFailureInternal
+		outcome.Message = execErr.Error()
+		var preExecErr *preExecEnforcementError
+		var preStartErr *commandPreStartError
+		var startErr *commandStartError
+		switch {
+		case errors.As(execErr, &preExecErr):
+			code = preExecErr.code
+			outcome.CommandStarted = false
+			outcome.DispatchState = "pre_exec_refused"
+			outcome.FailureKind = types.ExecFailurePreExec
+		case errors.As(execErr, &preStartErr):
+			code = preStartErr.code
+			outcome.CommandStarted = false
+			outcome.DispatchState = "pre_start_refused"
+			outcome.FailureKind = types.ExecFailureValidation
+		case errors.As(execErr, &startErr):
+			code = "E_COMMAND_START"
+			outcome.CommandStarted = false
+			outcome.DispatchState = "start_failed"
+			outcome.FailureKind = types.ExecFailureStart
+		case errors.Is(execErr, context.DeadlineExceeded):
+			code = "E_COMMAND_TIMEOUT"
+			outcome.FailureKind = types.ExecFailureCommandTimeout
+		case errors.Is(execErr, context.Canceled):
+			code = "E_CALLER_CANCELLED"
+			outcome.FailureKind = types.ExecFailureCancellation
 		}
+		outcome.Code = code
+		res.Error = &types.ExecError{Code: code, Message: execErr.Error()}
 	}
 	if stdoutTrunc && stdoutTotal > int64(len(stdoutB)) {
 		res.Pagination = &types.Pagination{
@@ -1993,7 +2080,11 @@ func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRe
 	}
 	_ = a.store.SaveOutput(ctx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
 	applyIncludeEvents(resp, includeEvents)
-	return resp, http.StatusOK, nil
+	statusCode := http.StatusOK
+	if !outcome.CommandStarted {
+		statusCode = execFailureHTTPStatus(outcome)
+	}
+	return resp, statusCode, nil
 }
 
 // fuseMountParams holds parameters for mountFUSEForSession.

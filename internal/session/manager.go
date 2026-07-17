@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,7 +79,8 @@ type Session struct {
 	currentTraceID    string // W3C trace context: trace ID (32 hex chars)
 	currentSpanID     string // W3C trace context: parent span ID (16 hex chars)
 	currentTraceFlags string // W3C trace context: trace flags (2 hex chars, e.g. "01")
-	execMu            sync.Mutex
+	execGate          chan struct{}
+	execGateOnce      sync.Once
 
 	workspaceUnmount func() error
 	runtimeCleanup   func() error
@@ -155,6 +157,11 @@ func cloneNetworkEnforcement(report *types.NetworkEnforcement) *types.NetworkEnf
 	if report.Preflight != nil {
 		preflight := *report.Preflight
 		clone.Preflight = &preflight
+	}
+	if report.HelperLifecycle != nil {
+		lifecycle := *report.HelperLifecycle
+		lifecycle.Capabilities = append([]string(nil), report.HelperLifecycle.Capabilities...)
+		clone.HelperLifecycle = &lifecycle
 	}
 	if report.Attachment != nil {
 		attachment := *report.Attachment
@@ -459,7 +466,29 @@ func (s *Session) Snapshot() types.Session {
 }
 
 func (s *Session) LockExec() func() {
-	s.execMu.Lock()
+	unlock, _ := s.LockExecContext(context.Background())
+	return unlock
+}
+
+// LockExecContext admits one execution only while ctx remains live. A queued
+// request cancelled by its caller is never allowed to acquire the slot later.
+func (s *Session) LockExecContext(ctx context.Context) (func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.execGateOnce.Do(func() {
+		s.execGate = make(chan struct{}, 1)
+		s.execGate <- struct{}{}
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-s.execGate:
+		if err := ctx.Err(); err != nil {
+			s.execGate <- struct{}{}
+			return nil, err
+		}
+	}
 	s.mu.Lock()
 	s.State = types.SessionStateBusy
 	s.LastActivity = time.Now().UTC()
@@ -474,8 +503,8 @@ func (s *Session) LockExec() func() {
 		s.currentTraceFlags = ""
 		s.LastActivity = time.Now().UTC()
 		s.mu.Unlock()
-		s.execMu.Unlock()
-	}
+		s.execGate <- struct{}{}
+	}, nil
 }
 
 func (s *Session) SetCurrentCommandID(commandID string) {

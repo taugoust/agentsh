@@ -71,7 +71,7 @@ func TestRunCommand_EnvInjectStdoutCapture(t *testing.T) {
 
 			exitCode, stdout, stderr, stdoutTotal, _, _, _, _, err := runCommandWithResources(
 				context.Background(), s, "cmd-envinject", req, cfg,
-				policy.ResolvedEnvPolicy{}, 0, nil, tc.extra, nil, "")
+				policy.ResolvedEnvPolicy{}, 0, nil, tc.extra, nil, "", nil)
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -114,7 +114,7 @@ func TestRunCommand_EnvInjectPreservesEnv(t *testing.T) {
 
 	exitCode, stdout, stderr, _, _, _, _, _, err := runCommandWithResources(
 		context.Background(), s, "cmd-envcheck", req, cfg,
-		policy.ResolvedEnvPolicy{}, 0, nil, extra, nil, "")
+		policy.ResolvedEnvPolicy{}, 0, nil, extra, nil, "", nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -177,7 +177,7 @@ enable -n command
 
 	exitCode, stdout, stderr, stdoutTotal, _, _, _, _, err := runCommandWithResources(
 		context.Background(), s, "cmd-bashenv", req, cfg,
-		policy.ResolvedEnvPolicy{}, 0, nil, extra, nil, "")
+		policy.ResolvedEnvPolicy{}, 0, nil, extra, nil, "", nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

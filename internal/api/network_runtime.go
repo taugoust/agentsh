@@ -95,11 +95,25 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 		}
 	}
 
-	helperSocket := strings.TrimSpace(os.Getenv(nethelper.EnvSocket))
+	binding := a.nethelperBindingSnapshot()
+	helperSocket := strings.TrimSpace(binding.SocketPath)
 	if helperSocket != "" {
 		if info, err := os.Stat(helperSocket); err == nil && info.Mode()&os.ModeSocket != 0 {
 			report.HelperConfigured = true
 		}
+	}
+
+	lifecycle, lifecycleErr := a.nethelperLifecycleEvidence(context.Background())
+	report.HelperLifecycle = lifecycle
+	if lifecycleErr != nil && binding.LeaseID != "" {
+		report.Status = types.NetworkEnforcementStatusFailed
+		report.Readiness = types.NetworkEnforcementStatusFailed
+		report.HelperConfigured = false
+		report.HelperAuthenticated = false
+		report.Detail = "authenticated nethelper lifecycle check failed: " + boundedLifecycleReason(lifecycleErr)
+		report.Warning = "strict command execution is disabled until a fresh helper preflight succeeds"
+		report.Normalize()
+		return report
 	}
 
 	var sess *session.Session
@@ -480,6 +494,10 @@ func isNetworkPreExecFailure(err error) bool {
 	if err == nil {
 		return false
 	}
+	var typed *preExecEnforcementError
+	if errors.As(err, &typed) {
+		return true
+	}
 	message := strings.ToLower(err.Error())
 	for _, marker := range []string{
 		"post-start hook",
@@ -664,6 +682,10 @@ type networkRuntimeProbeOptions struct {
 // cgroup hook, causing real helper registration, fixed-program attachment,
 // locked default-deny map update, local-only bypass probes, and helper cleanup.
 func (a *App) runNetworkEnforcementPreflight(ctx context.Context, sessionID string) *types.NetworkEnforcement {
+	return a.runNetworkEnforcementPreflightWithLock(ctx, sessionID, true)
+}
+
+func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessionID string, acquireExec bool) *types.NetworkEnforcement {
 	report := a.observedNetworkEnforcement(sessionID)
 	if report.Requested == types.NetworkEnforcementRequestNone {
 		report.Readiness = types.NetworkEnforcementStatusNone
@@ -702,8 +724,13 @@ func (a *App) runNetworkEnforcementPreflight(ctx context.Context, sessionID stri
 	report.Normalize()
 	sess.SetNetworkEnforcement(report)
 
-	unlock := sess.LockExec()
-	defer unlock()
+	if acquireExec {
+		unlock, err := sess.LockExecContext(ctx)
+		if err != nil {
+			return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "network preflight execution admission was cancelled: "+err.Error(), false)
+		}
+		defer unlock()
+	}
 
 	if runtime.GOOS != "linux" {
 		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "proxy-required preflight is only available on Linux", false)
@@ -723,13 +750,14 @@ func (a *App) runNetworkEnforcementPreflight(ctx context.Context, sessionID stri
 	if a.ptraceTracer != nil {
 		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "strict command-jail preflight cannot run with ptrace execution", false)
 	}
-	if strings.TrimSpace(a.nethelperCredential) == "" {
+	binding := a.nethelperBindingSnapshot()
+	if strings.TrimSpace(binding.Credential) == "" {
 		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the trusted supervisor has no in-memory nethelper instance credential", false)
 	}
-	if strings.TrimSpace(a.nethelperCredentialFile) == "" {
+	if strings.TrimSpace(binding.CredentialFile) == "" {
 		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the installed protected nethelper credential source was not supplied", false)
 	}
-	helperSocket := strings.TrimSpace(os.Getenv(nethelper.EnvSocket))
+	helperSocket := strings.TrimSpace(binding.SocketPath)
 	if helperSocket == "" {
 		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the privileged nethelper socket is not configured", false)
 	}
@@ -792,7 +820,7 @@ func (a *App) runNetworkEnforcementPreflight(ctx context.Context, sessionID stri
 		UDPEndpoint:       udpListener.LocalAddr().String(),
 		CgroupRoot:        report.CgroupRoot,
 		HelperSocket:      helperSocket,
-		CredentialFile:    a.nethelperCredentialFile,
+		CredentialFile:    binding.CredentialFile,
 		ControlPath:       a.cfg.Server.UnixSocket.Path,
 	}
 	if strings.TrimSpace(probeOpts.ControlPath) == "" {
@@ -881,7 +909,11 @@ func (a *App) runNetworkEnforcementPreflight(ctx context.Context, sessionID stri
 		extra,
 		nil,
 		sessionID,
+		nil,
 	)
+	// Cleanup may have completed even when execution, exit-status, or evidence
+	// decoding fails below. Persist that proof before every post-run return.
+	captureNetworkPreflightRunEvidence(preflight, report, attachment, cleanupProven)
 	if runErr != nil {
 		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "disposable runtime probe failed: "+runErr.Error(), false)
 	}
@@ -949,6 +981,24 @@ func (a *App) runNetworkEnforcementPreflight(ctx context.Context, sessionID stri
 		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, detail, false)
 	}
 	return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "disposable cgroup/helper/proxy/command-jail/bypass/cleanup preflight passed", true)
+}
+
+func captureNetworkPreflightRunEvidence(preflight *types.NetworkPreflightEvidence, report *types.NetworkEnforcement, attachment *types.NetworkAttachmentEvidence, cleanupProven bool) {
+	if preflight == nil {
+		return
+	}
+	preflight.HelperCleanupProven = cleanupProven
+	// Preserve candidate registration/cgroup/pin identity even when execution or
+	// cleanup fails before the normal evidence-copy path.
+	if attachment != nil {
+		preflight.CgroupPath = attachment.CgroupPath
+		preflight.CgroupID = attachment.CgroupID
+		preflight.RegistrationID = attachment.RegistrationID
+		preflight.Pinned = attachment.Pinned
+		if report != nil {
+			report.Attachment = attachment
+		}
+	}
 }
 
 func (a *App) prepareNetworkRuntimeProbe(sessionID string, sess *session.Session, commandID string, opts networkRuntimeProbeOptions) (types.ExecRequest, *extraProcConfig, error) {
@@ -1049,6 +1099,7 @@ func (a *App) proveNetworkPreExecRefusal(ctx context.Context, sess *session.Sess
 		extra,
 		nil,
 		sessionID,
+		nil,
 	)
 	_, markerErr := os.Lstat(markerPath)
 	markerAbsent := errors.Is(markerErr, os.ErrNotExist)
@@ -1106,7 +1157,9 @@ func (a *App) finishNetworkEnforcementPreflight(sessionID string, sess *session.
 	}
 	report.Preflight = preflight
 	report.CheckedAt = preflight.CheckedAt
-	report.Attachment = nil
+	if ready {
+		report.Attachment = nil
+	}
 	report.NetworkPolicyEnforced = false
 
 	if ready {
@@ -1231,6 +1284,195 @@ func (a *App) preflightSessionNetworkEnforcement(w http.ResponseWriter, r *http.
 		return
 	}
 	writeJSON(w, http.StatusOK, a.runNetworkEnforcementPreflight(r.Context(), sessionID))
+}
+
+func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeNethelperRecovery(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "wrapper-owned Unix recovery authority is required"})
+		return
+	}
+	sessionID := chi.URLParam(r, "id")
+	if a == nil || a.sessions == nil || a.nethelperBinding == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "nethelper binding is unavailable"})
+		return
+	}
+	a.sessionTopologyMu.Lock()
+	defer a.sessionTopologyMu.Unlock()
+	sess, ok := a.sessions.Get(sessionID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+		return
+	}
+	if a.sessions.Count() != 1 {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "nethelper rebind requires an exact single-session supervisor"})
+		return
+	}
+	var req helperRebindRequest
+	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
+		return
+	}
+	unlock, err := sess.LockExecContext(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusRequestTimeout, map[string]any{"error": "rebind execution admission cancelled"})
+		return
+	}
+	defer unlock()
+
+	oldBinding := a.nethelperBindingSnapshot()
+	if a.nethelperBinding.uncertainCandidate() != nil {
+		if err := a.resolveCandidateCleanup(r.Context()); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "candidate cleanup remains uncertain; exact cleanup confirmation and authenticated zero-registration status are required before rebinding"})
+			return
+		}
+	}
+	if req.ExpectedBindingGeneration != oldBinding.Generation {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":                       errHelperGenerationConflict.Error(),
+			"expected_binding_generation": req.ExpectedBindingGeneration,
+			"current_binding_generation":  oldBinding.Generation,
+		})
+		return
+	}
+	previous := sess.NetworkEnforcement()
+	if helperBindingCleanupUncertain(previous) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "previous helper cleanup is uncertain; retaining fail-closed registration state"})
+		return
+	}
+	if previous != nil && previous.Attachment != nil && previous.Attachment.Status == types.NetworkEnforcementStatusActive {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "a command helper attachment is active"})
+		return
+	}
+	if oldBinding.LeaseID != "" {
+		oldStatus, statusErr := a.authenticatedNethelperStatus(r.Context(), oldBinding)
+		if statusErr == nil && oldStatus.ActiveRegistrationCount != 0 {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "old helper still reports active registrations"})
+			return
+		}
+		if statusErr != nil && previous != nil && previous.Status == types.NetworkEnforcementStatusActive {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "old helper registration state is uncertain"})
+			return
+		}
+	}
+
+	var candidate nethelperBinding
+	if a.nethelperCandidateForTest != nil {
+		candidate, err = a.nethelperCandidateForTest(req, oldBinding.Generation+1)
+	} else {
+		candidate, err = a.loadCandidateNethelperBinding(req, oldBinding.Generation+1)
+	}
+	if err != nil {
+		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper validation failed: %w", err))
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": boundedLifecycleReason(err)})
+		return
+	}
+	if candidate.LeaseID == oldBinding.LeaseID || candidate.SocketPath == oldBinding.SocketPath {
+		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper must be a distinct lease and socket"))
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate helper must be a distinct lease and socket"})
+		return
+	}
+	status, err := a.authenticatedNethelperStatus(r.Context(), candidate)
+	if err != nil {
+		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper authentication failed: %w", err))
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "candidate helper authentication failed"})
+		return
+	}
+	if status.HelperKind != "ephemeral" || status.LeaseID != candidate.LeaseID || status.UnitName != candidate.UnitName ||
+		!status.CreatedAt.Equal(candidate.CreatedAt) || !status.HardExpiresAt.Equal(candidate.HardExpiresAt) {
+		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper status identity does not match bootstrap metadata"))
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate helper identity does not match bootstrap metadata"})
+		return
+	}
+	if !containsCapability(status.Capabilities, string(nethelper.OperationInstanceStatus)) || !containsCapability(status.Capabilities, string(nethelper.OperationRenewInstance)) {
+		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper lacks required lifecycle capabilities"))
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate helper lacks required lifecycle capabilities"})
+		return
+	}
+	if status.ActiveRegistrationCount != 0 {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "candidate helper has active registrations"})
+		return
+	}
+	const cleanupSlack = 10 * time.Minute
+	const recoveryThreshold = time.Hour
+	createdAt, _ := sess.Timestamps()
+	sessionLifetime := a.sessionAbsoluteTimeout
+	if sessionLifetime <= 0 || status.HardExpiresAt.Before(createdAt.Add(sessionLifetime).Add(cleanupSlack)) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate hard expiry does not cover the remaining absolute session lifetime and cleanup slack"})
+		return
+	}
+	expectedInitialSoft := candidate.HardExpiresAt
+	if candidate.RenewalRequired {
+		expectedInitialSoft = candidate.CreatedAt.Add(candidate.SoftLease)
+		if expectedInitialSoft.After(candidate.HardExpiresAt) {
+			expectedInitialSoft = candidate.HardExpiresAt
+		}
+	}
+	if status.SoftExpiresAt.After(status.HardExpiresAt) || status.SoftExpiresAt.Before(expectedInitialSoft) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate soft expiry is inconsistent with bootstrap negotiation"})
+		return
+	}
+	if candidate.RenewalRequired && status.SoftExpiresAt.Sub(time.Now().UTC()) < recoveryThreshold {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate soft expiry is below the recovery threshold"})
+		return
+	}
+	if !candidate.RenewalRequired && !status.SoftExpiresAt.Equal(status.HardExpiresAt) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "runtime-only candidate unexpectedly advertises soft expiry"})
+		return
+	}
+	candidate.Capabilities = append([]string(nil), status.Capabilities...)
+	candidate.SoftExpiresAt = status.SoftExpiresAt
+	candidate.HardExpiresAt = status.HardExpiresAt
+	candidate.RenewalGeneration = status.RenewalGeneration
+	candidate.ActiveRegistrations = status.ActiveRegistrationCount
+	candidate.LastStatus = status.Status
+	candidate.LastReason = status.Reason
+	candidate.LastCheckedAt = time.Now().UTC()
+
+	// Stage under the exclusive session execution slot. All production cgroup,
+	// command-jail, and preflight consumers read this synchronized snapshot.
+	a.nethelperBinding.replace(candidate)
+	var report *types.NetworkEnforcement
+	if a.nethelperRebindPreflightForTest != nil {
+		report = a.nethelperRebindPreflightForTest(r.Context(), sessionID)
+	} else {
+		report = a.runNetworkEnforcementPreflightWithLock(r.Context(), sessionID, false)
+	}
+	if report == nil || !report.Ready() {
+		// Retain exact registration identity only when candidate cleanup was not
+		// proven. A successfully cleaned, disposable preflight must not create a
+		// tombstone that would retry the helper's non-idempotent cleanup RPC.
+		cleanupProven := report != nil && report.Preflight != nil && report.Preflight.HelperCleanupProven
+		if !cleanupProven {
+			var attachment *types.NetworkAttachmentEvidence
+			if report != nil {
+				attachment = report.Attachment
+				if attachment == nil && report.Preflight != nil {
+					attachment = &types.NetworkAttachmentEvidence{RegistrationID: report.Preflight.RegistrationID, CgroupID: report.Preflight.CgroupID, CgroupPath: report.Preflight.CgroupPath, Pinned: report.Preflight.Pinned, Status: types.NetworkEnforcementStatusFailed}
+				}
+			}
+			a.nethelperBinding.recordUncertainCandidate(sessionID, candidate, attachment, "staged strict preflight failed")
+		}
+		a.nethelperBinding.replace(oldBinding)
+		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper strict preflight failed"))
+		report = sess.NetworkEnforcement()
+		writeJSON(w, http.StatusBadGateway, map[string]any{
+			"error":               "candidate helper strict preflight failed; previous binding retained and execution remains failed",
+			"network_enforcement": report,
+			"binding_generation":  oldBinding.Generation,
+		})
+		return
+	}
+	lifecycle, lifecycleErr := a.nethelperLifecycleEvidence(r.Context())
+	if lifecycleErr != nil || lifecycle == nil || lifecycle.Status != "active" || lifecycle.ActiveRegistrationCount != 0 {
+		a.nethelperBinding.recordUncertainCandidate(sessionID, candidate, report.Attachment, "post-preflight lifecycle status was uncertain")
+		a.nethelperBinding.replace(oldBinding)
+		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper lost authenticated status after preflight"))
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "candidate helper lost authenticated status after preflight"})
+		return
+	}
+	report.HelperLifecycle = lifecycle
+	report.Normalize()
+	sess.SetNetworkEnforcement(report)
+	writeJSON(w, http.StatusOK, report)
 }
 
 func (a *App) policyTestRuntimeEnforcement(sessionID, op string) map[string]any {

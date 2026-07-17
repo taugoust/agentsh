@@ -483,7 +483,8 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		ExecveEnabled:       execveEnabled,
 	})
 	if toolJailRequired {
-		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, a.nethelperCredentialFile)
+		binding := a.nethelperBindingSnapshot()
+		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, binding.SocketPath, binding.CredentialFile, a.nethelperRecoveryTokenFile)
 	}
 
 	// Ensure the parent directory of the about-to-be-execed command is
@@ -1000,7 +1001,16 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 			// Serialize before helper attachment/report transitions, not after ACK.
 			// Otherwise another command can overwrite CurrentCommandID or runtime
 			// evidence while this wrapper is still blocked in setup.
-			strictUnlock = s.LockExec()
+			var admissionErr error
+			strictUnlock, admissionErr = s.LockExecContext(ctx)
+			if admissionErr != nil {
+				_ = notifyFD.Close()
+				if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
+					slog.Debug("wrap: failed to write cancelled admission rejection", "session_id", sessionID, "error", statusErr)
+				}
+				slog.Warn("wrap: command-jail admission cancelled before setup", "session_id", sessionID, "error", admissionErr)
+				return
+			}
 			ctx = context.WithValue(ctx, wrapExecLockContextKey{}, true)
 		}
 		barrier := newPreExecBarrier(func(pid int) (func() error, error) {

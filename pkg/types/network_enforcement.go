@@ -199,46 +199,79 @@ func (a NetworkAttachmentEvidence) Proven() bool {
 		a.Pinned
 }
 
+// NethelperLifecycleEvidence is authenticated, non-secret helper health and
+// binding identity. Credential values and credential file contents are never
+// represented by this schema.
+type NethelperRebindRequest struct {
+	BootstrapResultPath       string `json:"bootstrap_result_path"`
+	SocketPath                string `json:"socket_path"`
+	CredentialFile            string `json:"credential_file"`
+	ExpectedLeaseID           string `json:"expected_lease_id"`
+	ExpectedBindingGeneration uint64 `json:"expected_binding_generation"`
+}
+
+type NethelperLifecycleEvidence struct {
+	SchemaVersion           int       `json:"schema_version"`
+	HelperKind              string    `json:"helper_kind,omitempty"`
+	LeaseID                 string    `json:"lease_id,omitempty"`
+	UnitName                string    `json:"unit_name,omitempty"`
+	ProtocolVersion         int       `json:"protocol_version,omitempty"`
+	Capabilities            []string  `json:"capabilities,omitempty"`
+	SoftExpiresAt           time.Time `json:"soft_expires_at,omitempty"`
+	HardExpiresAt           time.Time `json:"hard_expires_at,omitempty"`
+	SoftRemainingSeconds    int64     `json:"soft_remaining_seconds,omitempty"`
+	HardRemainingSeconds    int64     `json:"hard_remaining_seconds,omitempty"`
+	BindingGeneration       uint64    `json:"binding_generation"`
+	RenewalGeneration       uint64    `json:"renewal_generation,omitempty"`
+	ActiveRegistrationCount int       `json:"active_registration_count,omitempty"`
+	SocketLive              bool      `json:"socket_live"`
+	CredentialSourceLive    bool      `json:"credential_source_live"`
+	Status                  string    `json:"status"`
+	TerminalReason          string    `json:"terminal_reason,omitempty"`
+	LastCheckedAt           time.Time `json:"last_checked_at"`
+}
+
 // NetworkEnforcement is an evidence report, not a configuration echo.
 // Readiness remains session-scoped while Status may temporarily become active
 // for a command or failed after a refusal. NetworkPolicyEnforced is defensively
 // recomputed while marshaling and can only be true when Proven reports that
 // every required prerequisite is present.
 type NetworkEnforcement struct {
-	Requested                 NetworkEnforcementRequest  `json:"requested"`
-	Readiness                 NetworkEnforcementStatus   `json:"readiness"`
-	Status                    NetworkEnforcementStatus   `json:"status"`
-	Tier                      NetworkEnforcementTier     `json:"tier"`
-	NetworkPolicyEnforced     bool                       `json:"network_policy_enforced"`
-	CgroupDelegated           bool                       `json:"cgroup_delegated"`
-	CgroupMode                string                     `json:"cgroup_mode,omitempty"`
-	CgroupRoot                string                     `json:"cgroup_root,omitempty"`
-	HelperConfigured          bool                       `json:"helper_configured"`
-	HelperAuthenticated       bool                       `json:"helper_authenticated"`
-	ToolBoundaryActive        bool                       `json:"tool_boundary_active"`
-	ProxyReady                bool                       `json:"proxy_ready"`
-	ProxyRequired             bool                       `json:"proxy_required"`
-	ExactProxyOnly            bool                       `json:"exact_proxy_endpoint_only"`
-	AllowedTransport          string                     `json:"allowed_transport,omitempty"`
-	ProxyEndpointID           string                     `json:"proxy_endpoint_id,omitempty"`
-	DirectBypassBlocked       bool                       `json:"direct_bypass_blocked"`
-	DirectTCPBlocked          bool                       `json:"direct_tcp_blocked"`
-	LocalNonProxyTCPBlocked   bool                       `json:"local_non_proxy_tcp_blocked"`
-	UDPBlocked                bool                       `json:"udp_blocked"`
-	QUICBlocked               bool                       `json:"quic_blocked"`
-	CommandDNSRequired        bool                       `json:"command_dns_required"`
-	RawSocketBlockConfigured  bool                       `json:"raw_socket_blocking_configured"`
-	RawSocketsBlocked         bool                       `json:"raw_sockets_blocked"`
-	UnsupportedTrafficAction  string                     `json:"unsupported_traffic_action,omitempty"`
-	BlockedTrafficClasses     []string                   `json:"blocked_traffic_classes,omitempty"`
-	UnsupportedTrafficBlocked bool                       `json:"unsupported_traffic_blocked"`
-	FailClosedSetup           bool                       `json:"fail_closed_setup"`
-	TransparentRedirect       bool                       `json:"transparent_redirect"`
-	CheckedAt                 time.Time                  `json:"checked_at"`
-	Detail                    string                     `json:"detail,omitempty"`
-	Warning                   string                     `json:"warning,omitempty"`
-	Preflight                 *NetworkPreflightEvidence  `json:"preflight,omitempty"`
-	Attachment                *NetworkAttachmentEvidence `json:"attachment,omitempty"`
+	Requested                 NetworkEnforcementRequest   `json:"requested"`
+	Readiness                 NetworkEnforcementStatus    `json:"readiness"`
+	Status                    NetworkEnforcementStatus    `json:"status"`
+	Tier                      NetworkEnforcementTier      `json:"tier"`
+	NetworkPolicyEnforced     bool                        `json:"network_policy_enforced"`
+	CgroupDelegated           bool                        `json:"cgroup_delegated"`
+	CgroupMode                string                      `json:"cgroup_mode,omitempty"`
+	CgroupRoot                string                      `json:"cgroup_root,omitempty"`
+	HelperConfigured          bool                        `json:"helper_configured"`
+	HelperAuthenticated       bool                        `json:"helper_authenticated"`
+	ToolBoundaryActive        bool                        `json:"tool_boundary_active"`
+	ProxyReady                bool                        `json:"proxy_ready"`
+	ProxyRequired             bool                        `json:"proxy_required"`
+	ExactProxyOnly            bool                        `json:"exact_proxy_endpoint_only"`
+	AllowedTransport          string                      `json:"allowed_transport,omitempty"`
+	ProxyEndpointID           string                      `json:"proxy_endpoint_id,omitempty"`
+	DirectBypassBlocked       bool                        `json:"direct_bypass_blocked"`
+	DirectTCPBlocked          bool                        `json:"direct_tcp_blocked"`
+	LocalNonProxyTCPBlocked   bool                        `json:"local_non_proxy_tcp_blocked"`
+	UDPBlocked                bool                        `json:"udp_blocked"`
+	QUICBlocked               bool                        `json:"quic_blocked"`
+	CommandDNSRequired        bool                        `json:"command_dns_required"`
+	RawSocketBlockConfigured  bool                        `json:"raw_socket_blocking_configured"`
+	RawSocketsBlocked         bool                        `json:"raw_sockets_blocked"`
+	UnsupportedTrafficAction  string                      `json:"unsupported_traffic_action,omitempty"`
+	BlockedTrafficClasses     []string                    `json:"blocked_traffic_classes,omitempty"`
+	UnsupportedTrafficBlocked bool                        `json:"unsupported_traffic_blocked"`
+	FailClosedSetup           bool                        `json:"fail_closed_setup"`
+	TransparentRedirect       bool                        `json:"transparent_redirect"`
+	CheckedAt                 time.Time                   `json:"checked_at"`
+	Detail                    string                      `json:"detail,omitempty"`
+	Warning                   string                      `json:"warning,omitempty"`
+	Preflight                 *NetworkPreflightEvidence   `json:"preflight,omitempty"`
+	Attachment                *NetworkAttachmentEvidence  `json:"attachment,omitempty"`
+	HelperLifecycle           *NethelperLifecycleEvidence `json:"helper_lifecycle,omitempty"`
 }
 
 // Proven is the sole condition under which AgentSH may emit

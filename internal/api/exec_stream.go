@@ -45,7 +45,11 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 
 	cmdID := "cmd-" + uuid.NewString()
 	start := time.Now().UTC()
-	unlock := s.LockExec()
+	unlock, admissionErr := s.LockExecContext(r.Context())
+	if admissionErr != nil {
+		writeJSON(w, http.StatusRequestTimeout, map[string]any{"error": "execution admission cancelled", "command_started": false})
+		return
+	}
 	defer unlock()
 	s.SetCurrentCommandID(cmdID)
 
@@ -126,6 +130,7 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 			Result: types.ExecResult{
 				ExitCode:   126,
 				DurationMs: int64(time.Since(start).Milliseconds()),
+				Outcome:    &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureDenied, Code: code, Message: "command denied by policy"},
 				Error: &types.ExecError{
 					Code:       code,
 					Message:    "command denied by policy",
@@ -153,38 +158,39 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 	wrapperResult := a.setupSeccompWrapper(req, id, s)
 	if wrapperResult.setupErr != nil {
 		a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": fmt.Sprintf("pre-exec boundary unavailable: %v", wrapperResult.setupErr)})
+		message := fmt.Sprintf("pre-exec boundary unavailable: %v", wrapperResult.setupErr)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": message, "outcome": &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Code: "E_PRE_EXEC_BOUNDARY", Message: message}})
 		return
 	}
 	wrappedReq := wrapperResult.wrappedReq
 	extraCfg := wrapperResult.extraCfg
 
-	startEv := types.Event{
-		ID:        uuid.NewString(),
-		Timestamp: start,
-		Type:      "command_started",
-		SessionID: id,
-		CommandID: cmdID,
-		Fields: map[string]any{
-			"command": req.Command,
-			"args":    req.Args,
-		},
+	commandStarted := false
+	onStarted := func() {
+		commandStarted = true
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+		startEv := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "command_started", SessionID: id, CommandID: cmdID,
+			Fields: map[string]any{"command": req.Command, "args": req.Args}}
+		s.InjectTraceContext(startEv.Fields)
+		_ = a.store.AppendEvent(r.Context(), startEv)
+		a.broker.Publish(startEv)
+		_ = writeSSE(w, flusher, "command_started", map[string]any{"command_id": cmdID, "command_started": true})
 	}
-	s.InjectTraceContext(startEv.Fields)
-	_ = a.store.AppendEvent(r.Context(), startEv)
-	a.broker.Publish(startEv)
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
 
 	limits := a.policyEngineFor(s).Limits()
 	emit := func(event string, payload map[string]any) error {
 		return writeSSE(w, flusher, event, payload)
 	}
-	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResourcesStreamingEmit(r.Context(), s, cmdID, wrappedReq, a.cfg, limits.CommandTimeout, emit, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id)
+	exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr := runCommandWithResourcesStreamingEmit(r.Context(), s, cmdID, wrappedReq, a.cfg, limits.CommandTimeout, emit, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
+	if !commandStarted {
+		outcome := normalizeExecOutcome(false, exitCode, execErr)
+		writeJSON(w, execFailureHTTPStatus(outcome), map[string]any{"command_id": cmdID, "outcome": outcome, "error": outcome.Message})
+		return
+	}
 	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
 	}
@@ -215,19 +221,22 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 	_ = a.store.AppendEvent(r.Context(), endEv)
 	a.broker.Publish(endEv)
 
-	// Final event for the client.
+	// Final event for the client includes the same typed terminal contract as
+	// buffered execution; child exit 127 remains a started child exit.
+	terminalOutcome := normalizeExecOutcome(true, exitCode, execErr)
 	_ = writeSSE(w, flusher, "done", map[string]any{
 		"command_id":       cmdID,
 		"exit_code":        exitCode,
 		"duration_ms":      int64(end.Sub(start).Milliseconds()),
 		"stdout_truncated": stdoutTrunc,
 		"stderr_truncated": stderrTrunc,
+		"outcome":          terminalOutcome,
 	})
 }
 
 type emitFunc func(event string, payload map[string]any) error
 
-func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, policyLimit time.Duration, emit emitFunc, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
+func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, policyLimit time.Duration, emit emitFunc, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string, onStarted func()) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
 	timeout := chooseCommandTimeout(req, policyLimit)
 	ctx, cancel := withExtendableCommandTimeout(ctx, timeout)
 	defer cancel()
@@ -239,7 +248,13 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 		}
 	}()
 
+	notifyStarted := sync.OnceFunc(func() {
+		if onStarted != nil {
+			onStarted()
+		}
+	})
 	if handled, code, out, errOut := s.Builtin(req); handled {
+		notifyStarted()
 		if len(out) > 0 {
 			_ = emit("stdout", map[string]any{"command_id": cmdID, "stream": "stdout", "data": string(out)})
 		}
@@ -254,8 +269,7 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 	workdir, err := resolveWorkingDir(s, req.WorkingDir)
 	if err != nil {
 		msg := []byte(err.Error() + "\n")
-		_ = emit("stderr", map[string]any{"command_id": cmdID, "stream": "stderr", "data": string(msg)})
-		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, nil
+		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, &commandPreStartError{code: "E_INVALID_WORKING_DIRECTORY", err: err}
 	}
 	if barrierErr := validatePreExecBarrierPath(hook, tracer, extra); barrierErr != nil {
 		closePreStartProcessFiles(extra)
@@ -294,13 +308,13 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 		cmd.SysProcAttr = getSysProcAttr()
 	}
 	if boundaryErr := configureCommandBoundaryProcess(cmd.SysProcAttr, commandBoundary); boundaryErr != nil {
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, boundaryErr
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", boundaryErr)
 	}
 
 	env, envErr := buildCommandEnvironment(cfg, policy.ResolvedEnvPolicy{}, os.Environ(), s, req.Env, extra)
 	if envErr != nil {
 		closePreStartProcessFiles(extra)
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("build command environment: %w", envErr)
+		return 2, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandPreStartError{code: "E_INVALID_ENVIRONMENT", err: envErr}
 	}
 	cmd.Env = env
 
@@ -395,7 +409,7 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 		if stderrPipeW != nil {
 			stderrPipeW.Close()
 		}
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("start: %w", err)
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandStartError{err: fmt.Errorf("start: %w", err)}
 	}
 
 	// For ptrace mode: close write ends and start draining
@@ -522,6 +536,7 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 
+			notifyStarted()
 			// 7. Wait for exit via ptrace exit channel
 			waitStart := time.Now()
 			slog.Debug("exec_stream waiting for command (hybrid)", "command", req.Command, "pid", cmd.Process.Pid)
@@ -583,6 +598,7 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 
+			notifyStarted()
 			// Tracer-managed wait: block on exit channel instead of cmd.Wait()
 			waitStart := time.Now()
 			slog.Debug("exec_stream waiting for command (ptrace)", "command", req.Command, "pid", cmd.Process.Pid)
@@ -627,12 +643,16 @@ func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Sessio
 			}
 		}
 
+		notifyStarted()
 		if !wrapperHandlersStarted {
 			startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, nil)
 			extraOwnershipTransferred = true
 		}
 	}
 
+	if extra == nil {
+		notifyStarted()
+	}
 	waitStart := time.Now()
 	waitErr := cmd.Wait()
 	waitDuration := time.Since(waitStart)

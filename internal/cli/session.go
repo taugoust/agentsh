@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/agentsh/agentsh/internal/client"
@@ -29,7 +31,68 @@ func newSessionCmd() *cobra.Command {
 	cmd.AddCommand(newSessionDestroyCmd())
 	cmd.AddCommand(newSessionAttachCmd())
 	cmd.AddCommand(newSessionLogsCmd())
+	cmd.AddCommand(newSessionNethelperRebindCmd())
 
+	return cmd
+}
+
+func newSessionNethelperRebindCmd() *cobra.Command {
+	var bootstrapResult string
+	var socketPath string
+	var credentialFile string
+	var expectedLease string
+	var expectedGeneration uint64
+	var recoveryTokenFile string
+	cmd := &cobra.Command{
+		Use:   "nethelper-rebind SESSION_ID",
+		Short: "Transactionally rebind the exact session to a replacement ephemeral nethelper",
+		Long:  "Validate and authenticate replacement helper metadata, run the full strict disposable preflight, and commit only on success. The session ID is never replaced.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := getClientConfig(cmd)
+			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
+			if err != nil {
+				return err
+			}
+			rebindClient, ok := c.(interface {
+				RebindSessionNethelperAuthorized(context.Context, string, types.NethelperRebindRequest, string) (types.NetworkEnforcement, error)
+			})
+			if !ok {
+				return fmt.Errorf("selected client transport does not support the REST nethelper rebind endpoint")
+			}
+			tokenBytes, err := os.ReadFile(recoveryTokenFile)
+			if err != nil {
+				return fmt.Errorf("read wrapper recovery token: %w", err)
+			}
+			recoveryToken := strings.TrimSpace(string(tokenBytes))
+			for i := range tokenBytes {
+				tokenBytes[i] = 0
+			}
+			if len(recoveryToken) < 32 || strings.ContainsAny(recoveryToken, " \t\r\n") {
+				return fmt.Errorf("wrapper recovery token is invalid")
+			}
+			report, err := rebindClient.RebindSessionNethelperAuthorized(cmd.Context(), args[0], types.NethelperRebindRequest{
+				BootstrapResultPath:       bootstrapResult,
+				SocketPath:                socketPath,
+				CredentialFile:            credentialFile,
+				ExpectedLeaseID:           expectedLease,
+				ExpectedBindingGeneration: expectedGeneration,
+			}, recoveryToken)
+			if err != nil {
+				return err
+			}
+			return printJSON(cmd, report)
+		},
+	}
+	cmd.Flags().StringVar(&bootstrapResult, "bootstrap-result", "", "Protected candidate bootstrap.json path")
+	cmd.Flags().StringVar(&socketPath, "socket", "", "Candidate helper Unix socket path")
+	cmd.Flags().StringVar(&credentialFile, "credential-file", "", "Protected candidate credential source path")
+	cmd.Flags().StringVar(&expectedLease, "expected-lease", "", "Expected candidate lease ID")
+	cmd.Flags().Uint64Var(&expectedGeneration, "expected-generation", 0, "Current binding generation (optimistic concurrency check)")
+	cmd.Flags().StringVar(&recoveryTokenFile, "recovery-token-file", "", "Wrapper-owned private recovery token file")
+	for _, name := range []string{"bootstrap-result", "socket", "credential-file", "expected-lease", "expected-generation", "recovery-token-file"} {
+		_ = cmd.MarkFlagRequired(name)
+	}
 	return cmd
 }
 

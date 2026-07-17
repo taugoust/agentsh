@@ -37,6 +37,22 @@ const EnvSessionNonce = "AGENTSH_NETHELPER_SESSION_NONCE"
 // Tool environments must scrub this key and all credential value spellings.
 const EnvCredentialFile = "AGENTSH_NETHELPER_CREDENTIAL_FILE"
 
+// EnvBootstrapResult is non-secret bootstrap metadata captured by a detached
+// supervisor. It is scrubbed from tool environments with all helper paths.
+const EnvBootstrapResult = "AGENTSH_NETHELPER_BOOTSTRAP_RESULT"
+
+// EnvRecoveryTokenFile points only the trusted downstream wrapper/supervisor at
+// a private, wrapper-owned recovery authority file. Its contents are never
+// inherited by tools or represented in API metadata.
+const EnvRecoveryTokenFile = "AGENTSH_NETHELPER_RECOVERY_TOKEN_FILE"
+
+const (
+	// WrapperControlDirectoryName and WrapperRecoveryTokenFilename define the
+	// fixed private topology hidden from every strict command jail.
+	WrapperControlDirectoryName  = "agentsh-wrapper-control"
+	WrapperRecoveryTokenFilename = "nethelper-recovery.token"
+)
+
 // Operation names one helper RPC. Requests are intentionally small declarative
 // JSON messages. The protocol never accepts BPF bytecode, object paths, or file
 // descriptors from clients.
@@ -46,12 +62,14 @@ const (
 	OperationRegisterSessionCgroup Operation = "register_session_cgroup"
 	OperationUpdatePolicyMap       Operation = "update_policy_map"
 	OperationCleanupSession        Operation = "cleanup_session"
+	OperationInstanceStatus        Operation = "instance_status"
+	OperationRenewInstance         Operation = "renew_instance"
 	OperationReleaseInstance       Operation = "release_instance"
 )
 
 func (op Operation) Valid() bool {
 	switch op {
-	case OperationRegisterSessionCgroup, OperationUpdatePolicyMap, OperationCleanupSession, OperationReleaseInstance:
+	case OperationRegisterSessionCgroup, OperationUpdatePolicyMap, OperationCleanupSession, OperationInstanceStatus, OperationRenewInstance, OperationReleaseInstance:
 		return true
 	default:
 		return false
@@ -139,12 +157,19 @@ type Authorizer interface {
 
 // InstanceController owns the fixed lifecycle of one ephemeral helper lease.
 // Persistent helpers leave this unset and reject release_instance requests.
+type lifecycleOperationAdmitter interface {
+	AdmitLifecycleOperation() (done func(), err error)
+}
+
 type InstanceController interface {
+	InstanceStatus(context.Context, PeerInfo, InstanceStatusRequest) (InstanceStatusResponse, error)
+	RenewInstance(context.Context, PeerInfo, RenewInstanceRequest) (RenewInstanceResponse, error)
 	ReleaseInstance(context.Context, PeerInfo, ReleaseInstanceRequest) (ReleaseInstanceResponse, error)
 }
 
 type authorizerLifecycle interface {
 	CompleteRegister(RegisterSessionCgroupRequest, uint64) (string, error)
+	PreserveFailedRegister(RegisterSessionCgroupRequest, uint64) (string, error)
 	RollbackRegister(string, string)
 	CompleteCleanup(CleanupSessionRequest, bool)
 }
@@ -451,6 +476,11 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 	}
 	switch env.Operation {
 	case OperationRegisterSessionCgroup:
+		done, err := admitLifecycleOperation(s.Authorizer)
+		if err != nil {
+			return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+		}
+		defer done()
 		req, err := DecodeRegisterSessionCgroupRequestJSON(env.Request)
 		if err != nil {
 			return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
@@ -470,19 +500,35 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 		if managed {
 			registrationID, completeErr := lifecycle.CompleteRegister(req, out.CgroupID)
 			if completeErr != nil {
+				// Backend state exists now. Convert admission into an authenticated
+				// tombstone before compensation, and remove it only after the backend
+				// positively confirms cleanup.
+				preservedID, preserveErr := lifecycle.PreserveFailedRegister(req, out.CgroupID)
 				cleanupReq := CleanupSessionRequest{
 					ProtocolVersion: CurrentProtocolVersion,
 					RequestID:       req.RequestID,
 					SessionID:       req.SessionID,
+					RegistrationID:  preservedID,
 					CgroupID:        out.CgroupID,
 					CgroupPath:      req.CgroupPath,
 					Reason:          CleanupReasonRegistrationFailed,
 				}
-				_, _ = s.Backend.CleanupSession(ctx, peer, cleanupReq)
-				lifecycle.RollbackRegister(req.SessionID, req.CgroupPath)
+				cleanupResp, cleanupErr := s.Backend.CleanupSession(ctx, peer, cleanupReq)
+				cleanupSucceeded := preserveErr == nil && cleanupErr == nil && cleanupResp.OK
+				if cleanupSucceeded {
+					lifecycle.CompleteCleanup(cleanupReq, true)
+				} // Otherwise the admission/tombstone deliberately remains counted.
 				out.OK = false
 				out.NetworkPolicyEnforced = false
+				if strings.TrimSpace(req.HelperInstanceCredential) != "" {
+					out.RegistrationID = preservedID
+				}
 				out.Error = completeErr.Error()
+				if preserveErr != nil {
+					out.Error += "; preserve cleanup identity: " + preserveErr.Error()
+				} else if !cleanupSucceeded {
+					out.Error += "; compensating backend cleanup failed; registration retained for retry"
+				}
 				return out
 			}
 			// Legacy version-1 peers use session_nonce and strictly decode the
@@ -494,6 +540,11 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 		}
 		return out
 	case OperationUpdatePolicyMap:
+		done, err := admitLifecycleOperation(s.Authorizer)
+		if err != nil {
+			return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+		}
+		defer done()
 		req, err := DecodeUpdatePolicyMapRequestJSON(env.Request)
 		if err != nil {
 			return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
@@ -508,6 +559,11 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 		}
 		return out
 	case OperationCleanupSession:
+		done, err := admitLifecycleOperation(s.Authorizer)
+		if err != nil {
+			return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+		}
+		defer done()
 		req, err := DecodeCleanupSessionRequestJSON(env.Request)
 		if err != nil {
 			return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
@@ -521,6 +577,26 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 			lifecycle.CompleteCleanup(req, out.OK)
 		}
 		return out
+	case OperationInstanceStatus:
+		req, err := DecodeInstanceStatusRequestJSON(env.Request)
+		if err != nil {
+			return InstanceStatusResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+		}
+		if s.InstanceController == nil {
+			return InstanceStatusResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, OK: false, Error: "nethelper instance status is not configured"}
+		}
+		resp, err := s.InstanceController.InstanceStatus(ctx, peer, req)
+		return ensureInstanceStatusResponse(req.RequestID, req.LeaseID, resp, err)
+	case OperationRenewInstance:
+		req, err := DecodeRenewInstanceRequestJSON(env.Request)
+		if err != nil {
+			return RenewInstanceResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+		}
+		if s.InstanceController == nil {
+			return RenewInstanceResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, OK: false, Error: "nethelper instance renewal is not configured"}
+		}
+		resp, err := s.InstanceController.RenewInstance(ctx, peer, req)
+		return ensureInstanceStatusResponse(req.RequestID, req.LeaseID, resp, err)
 	case OperationReleaseInstance:
 		req, err := DecodeReleaseInstanceRequestJSON(env.Request)
 		if err != nil {
@@ -578,6 +654,13 @@ func ensureUpdateResponse(req UpdatePolicyMapRequest, resp UpdatePolicyMapRespon
 	return resp
 }
 
+func admitLifecycleOperation(authorizer Authorizer) (func(), error) {
+	if gate, ok := authorizer.(lifecycleOperationAdmitter); ok {
+		return gate.AdmitLifecycleOperation()
+	}
+	return func() {}, nil
+}
+
 func ensureCleanupResponse(req CleanupSessionRequest, resp CleanupSessionResponse, err error) CleanupSessionResponse {
 	if resp.ProtocolVersion == 0 {
 		resp.ProtocolVersion = CurrentProtocolVersion
@@ -587,6 +670,25 @@ func ensureCleanupResponse(req CleanupSessionRequest, resp CleanupSessionRespons
 	}
 	if resp.SessionID == "" {
 		resp.SessionID = req.SessionID
+	}
+	if err != nil {
+		resp.OK = false
+		if resp.Error == "" {
+			resp.Error = err.Error()
+		}
+	}
+	return resp
+}
+
+func ensureInstanceStatusResponse(requestID, leaseID string, resp InstanceStatusResponse, err error) InstanceStatusResponse {
+	if resp.ProtocolVersion == 0 {
+		resp.ProtocolVersion = CurrentProtocolVersion
+	}
+	if resp.RequestID == "" {
+		resp.RequestID = requestID
+	}
+	if resp.LeaseID == "" {
+		resp.LeaseID = leaseID
 	}
 	if err != nil {
 		resp.OK = false
@@ -719,6 +821,53 @@ func (c *Client) CleanupSession(ctx context.Context, req CleanupSessionRequest) 
 	}
 	c.forgetRegistration(req.SessionID, req.CgroupPath, req.CgroupID)
 	return resp, nil
+}
+
+func (c *Client) InstanceStatus(ctx context.Context, req InstanceStatusRequest) (InstanceStatusResponse, error) {
+	if err := req.Validate(); err != nil {
+		return InstanceStatusResponse{}, err
+	}
+	var resp InstanceStatusResponse
+	if err := c.roundTrip(ctx, OperationInstanceStatus, req, &resp); err != nil {
+		return resp, err
+	}
+	if err := validateInstanceResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.LeaseID, req.RequestID, req.LeaseID); err != nil {
+		return resp, err
+	}
+	if !resp.OK {
+		return resp, responseError(resp.Error)
+	}
+	return resp, nil
+}
+
+func (c *Client) RenewInstance(ctx context.Context, req RenewInstanceRequest) (RenewInstanceResponse, error) {
+	if err := req.Validate(); err != nil {
+		return RenewInstanceResponse{}, err
+	}
+	var resp RenewInstanceResponse
+	if err := c.roundTrip(ctx, OperationRenewInstance, req, &resp); err != nil {
+		return resp, err
+	}
+	if err := validateInstanceResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.LeaseID, req.RequestID, req.LeaseID); err != nil {
+		return resp, err
+	}
+	if !resp.OK {
+		return resp, responseError(resp.Error)
+	}
+	return resp, nil
+}
+
+func validateInstanceResponseIdentity(protocolVersion int, responseRequestID, responseLeaseID, requestID, leaseID string) error {
+	if protocolVersion != CurrentProtocolVersion {
+		return fmt.Errorf("nethelper response protocol_version=%d, want %d", protocolVersion, CurrentProtocolVersion)
+	}
+	if responseRequestID != strings.TrimSpace(requestID) {
+		return fmt.Errorf("nethelper response request_id does not match request")
+	}
+	if responseLeaseID != strings.TrimSpace(leaseID) {
+		return fmt.Errorf("nethelper response lease_id does not match request")
+	}
+	return nil
 }
 
 // ReleaseInstance asks an ephemeral helper to stop after all command
@@ -878,6 +1027,15 @@ func (c *Client) roundTrip(ctx context.Context, op Operation, req any, resp any)
 		return err
 	}
 	defer conn.Close()
+	cancelWatchDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-cancelWatchDone:
+		}
+	}()
+	defer close(cancelWatchDone)
 	if c.Timeout > 0 {
 		deadline := time.Now().Add(c.Timeout)
 		_ = conn.SetDeadline(deadline)

@@ -65,28 +65,30 @@ type SupervisorAuthorizer struct {
 	opts SupervisorAuthorizerOptions
 
 	mu            sync.Mutex
+	operations    *OperationGate
 	registrations map[string]*supervisorRegistration
 	pathOwners    map[string]string
 	cgroupOwners  map[uint64]string
 }
 
 type supervisorRegistration struct {
-	SessionID            string
-	RegistrationID       string
-	SupervisorPID        int
-	SupervisorUID        uint32
-	SupervisorGID        uint32
-	SupervisorCgroupPath string
-	SupervisorCgroupID   uint64
-	CgroupPath           string
-	AuthorizedCgroupID   uint64
-	CgroupID             uint64
-	Mode                 BuiltinMode
-	LegacyWire           bool
-	Identity             *processIdentity
-	Active               bool
-	CleanupPending       bool
-	InFlight             int
+	SessionID                 string
+	RegistrationID            string
+	SupervisorPID             int
+	SupervisorUID             uint32
+	SupervisorGID             uint32
+	SupervisorCgroupPath      string
+	SupervisorCgroupID        uint64
+	CgroupPath                string
+	AuthorizedCgroupID        uint64
+	CgroupID                  uint64
+	Mode                      BuiltinMode
+	LegacyWire                bool
+	Identity                  *processIdentity
+	Active                    bool
+	CleanupPending            bool
+	FailedRegistrationCleanup bool
+	InFlight                  int
 }
 
 // NewSupervisorAuthorizer constructs a fail-closed production authorizer when
@@ -95,10 +97,27 @@ type supervisorRegistration struct {
 func NewSupervisorAuthorizer(opts SupervisorAuthorizerOptions) *SupervisorAuthorizer {
 	return &SupervisorAuthorizer{
 		opts:          opts,
+		operations:    NewOperationGate(),
 		registrations: make(map[string]*supervisorRegistration),
 		pathOwners:    make(map[string]string),
 		cgroupOwners:  make(map[uint64]string),
 	}
+}
+
+// AdmitLifecycleOperation shares one admission state machine with instance
+// release. Dispatch must hold the returned admission through backend completion.
+func (a *SupervisorAuthorizer) AdmitLifecycleOperation() (func(), error) {
+	if a == nil {
+		return nil, fmt.Errorf("nethelper supervisor authorizer is nil")
+	}
+	return a.operations.Admit()
+}
+
+func (a *SupervisorAuthorizer) OperationGate() *OperationGate {
+	if a == nil {
+		return nil
+	}
+	return a.operations
 }
 
 func (a *SupervisorAuthorizer) AuthorizeRegister(_ context.Context, peer PeerInfo, req RegisterSessionCgroupRequest) error {
@@ -509,7 +528,38 @@ func (a *SupervisorAuthorizer) CompleteRegister(req RegisterSessionCgroupRequest
 	return reg.RegistrationID, nil
 }
 
-// RollbackRegister forgets an authorization whose backend attach failed.
+// PreserveFailedRegister records a backend attachment whose registration
+// completion failed. Admission must remain dirty until compensation is proven
+// successful; otherwise authenticated cleanup and the reaper retain the exact
+// registration, process, path, and cgroup identities needed for a later retry.
+func (a *SupervisorAuthorizer) PreserveFailedRegister(req RegisterSessionCgroupRequest, cgroupID uint64) (string, error) {
+	if a == nil || cgroupID == 0 {
+		return "", fmt.Errorf("cannot preserve failed registration without a cgroup id")
+	}
+	path, err := a.canonicalLookupPath(req.CgroupPath)
+	if err != nil {
+		return "", err
+	}
+	key := registrationKey(req.SessionID, path)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	reg := a.registrations[key]
+	if reg == nil || reg.Active || reg.CleanupPending {
+		return "", fmt.Errorf("pending failed registration was not found")
+	}
+	reg.CgroupID = cgroupID
+	reg.Active = true
+	reg.FailedRegistrationCleanup = true
+	// A conflicting backend cgroup id may be the reason completion failed. Do
+	// not displace the established owner, but retain this path-keyed tombstone.
+	if _, exists := a.cgroupOwners[cgroupID]; !exists {
+		a.cgroupOwners[cgroupID] = key
+	}
+	return reg.RegistrationID, nil
+}
+
+// RollbackRegister forgets an authorization whose backend attach failed, or
+// whose compensating backend cleanup has been proven successful.
 func (a *SupervisorAuthorizer) RollbackRegister(sessionID, cgroupPath string) {
 	if a == nil {
 		return
@@ -569,7 +619,7 @@ func (a *SupervisorAuthorizer) registrationForCompletionLocked(sessionID, cgroup
 	if cgroupID == 0 {
 		return nil, ""
 	}
-	key := a.cgroupOwners[cgroupID]
+	key := registrationKey(sessionID, cleanCgroupPath(cgroupPath))
 	reg := a.registrations[key]
 	if reg == nil || reg.SessionID != strings.TrimSpace(sessionID) || reg.CgroupID != cgroupID || reg.CgroupPath != cleanCgroupPath(cgroupPath) {
 		return nil, ""
@@ -659,6 +709,19 @@ func (a *SupervisorAuthorizer) ReapableRegistrations() []CleanupSessionRequest {
 	var requests []CleanupSessionRequest
 	for _, reg := range a.registrations {
 		if reg == nil || !reg.Active || reg.CleanupPending || reg.InFlight != 0 {
+			continue
+		}
+		if reg.FailedRegistrationCleanup {
+			reg.CleanupPending = true
+			requests = append(requests, CleanupSessionRequest{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       "reap-" + reg.RegistrationID,
+				SessionID:       reg.SessionID,
+				RegistrationID:  reg.RegistrationID,
+				CgroupID:        reg.CgroupID,
+				CgroupPath:      reg.CgroupPath,
+				Reason:          CleanupReasonRegistrationFailed,
+			})
 			continue
 		}
 		currentID, identityErr := identityResolver.CgroupID(reg.CgroupPath)

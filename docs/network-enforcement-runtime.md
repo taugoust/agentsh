@@ -73,13 +73,70 @@ The wrapper obtains a random lease ID, allocates a remote TTY so sudo owns the p
 
 Bootstrap launches a collected transient root systemd service with the persistent helper's BPF/network capabilities and hardening. `CAP_CHOWN` is available only while the root service gives its mode-`0600` Unix socket to the target UID; the process immediately removes it from its effective, permitted, and inheritable capability sets before serving. The service accepts only the fixed helper operations. It does not install files under `/etc`, create a root profile, or persist across reboot.
 
+The bootstrap runtime contract is bounded and machine-readable:
+
+```console
+agentsh nethelper capabilities --json
+sudo agentsh nethelper bootstrap --uid "$uid" --gid "$gid" --lease "$lease" --runtime 192h
+# Only renewal-capable wrappers opt in:
+sudo agentsh nethelper bootstrap --uid "$uid" --gid "$gid" --lease "$lease" --runtime 192h --soft-lease 49h
+```
+
+`--runtime` defaults to `13h` for old wrappers, must be a positive whole-second Go duration, and cannot exceed `192h`. Bootstrap schema 2 adds `started_at`, `expires_at`, `runtime_seconds`, and `bootstrap_schema_version` while retaining helper protocol version 1. `RuntimeMaxSec` and `expires_at` derive from the same start instant and duration. Capability JSON advertises `bootstrap_runtime`, `bootstrap_default_runtime_seconds`, `bootstrap_max_runtime_seconds`, and `instance_lifecycle`.
+
+Soft expiry is negotiated, never implicit. Legacy and `--runtime`-only callers set no soft lease and live until hard expiry. A renewal-capable wrapper commits with `--soft-lease 49h`; bootstrap records `soft_lease_seconds` and `renewal_required`, and the serve process receives the same duration. The authenticated renewable soft lease remains independently bounded by hard expiry. Wrapper-owned lifecycle commands are:
+
+```console
+agentsh nethelper status --socket "$socket" --credential-file "$credential_file" --lease "$lease" --json
+agentsh nethelper renew  --socket "$socket" --credential-file "$credential_file" --lease "$lease" --json
+```
+
+The corresponding protocol-v1 operations are `instance_status` and `renew_instance`. Their responses contain only helper kind, lease/unit identity, capabilities, creation/soft/hard expiry, active registration count, status/reason, and renewal generation. They authenticate the Unix peer UID/GID, lease, and instance credential; the credential is never returned. Renewal never moves the soft deadline beyond the finite hard deadline. Soft expiry stops the service, and release remains forbidden while registrations are active.
+
 The trusted wrapper passes only the lease socket and credential-file paths to a delegated transient **user** supervisor. Strict startup still requires the same disposable helper/proxy/command-jail/bypass preflight and reports the same `helper-ebpf-proxy-required` tier. The helper supports all commands and subagents in that one top-level remote Pi session; concurrent Pi invocations receive separate leases.
 
 Normal shutdown stops the detached session first, then sends the fixed authenticated `release_instance` operation. Release is refused while any command registration remains. After successful release, the helper removes maps/links, credential files, socket, and runtime state and exits so systemd collects the unit. On crashes or expiry, populated/live cgroups retain pinned default-deny links; stale reaping removes only validated pins whose owner is dead and whose cgroup is gone or unpopulated. There is no unrestricted fallback when sudo, bootstrap, delegation, or preflight fails.
 
+The wrapper creates a random token at the fixed `agentsh-wrapper-control/nethelper-recovery.token` topology; the wrapper-owned control directory is mode `0700` and the file is mode `0600`. It exports only that path as `AGENTSH_NETHELPER_RECOVERY_TOKEN_FILE` to the supervisor and retains the file for its own recovery client. The supervisor validates and retains the canonical path, reads the token once, unsets the variable, and includes the entire token container in every strict command-jail control-path mount hide. Wrapper control environment is scrubbed and non-stdio descriptors are closed before the command body runs. The token and path are never included in lifecycle metadata, command environment, output, or logs.
+
+The supervisor captures helper paths and credentials once at startup and removes the raw helper environment variables. Initial launch accepts `AGENTSH_NETHELPER_SOCKET`, `AGENTSH_NETHELPER_CREDENTIAL_FILE`, and optional `AGENTSH_NETHELPER_BOOTSTRAP_RESULT` (the protected `bootstrap.json` path); when the latter is absent it is derived beside the socket for backward compatibility. Live `network_enforcement.helper_lifecycle` evidence contains no secrets and reports authenticated status, soft/hard remaining seconds, socket/credential-source liveness, active registrations, and binding/renewal generations. A failed authenticated status check immediately makes strict evidence sticky `failed`; recreating a socket path cannot restore readiness.
+
+A wrapper may transactionally bind a replacement helper to the **same** session:
+
+```console
+agentsh session nethelper-rebind "$session_id" \
+  --bootstrap-result "$bootstrap_json" \
+  --socket "$socket" \
+  --credential-file "$credential_file" \
+  --expected-lease "$lease" \
+  --expected-generation "$generation" \
+  --recovery-token-file "$wrapper_recovery_token_file"
+```
+
+This invokes:
+
+```text
+POST /api/v1/sessions/{id}/network-enforcement/helper/rebind
+Content-Type: application/json
+
+{
+  "bootstrap_result_path": "/run/agentsh/nethelper/<uid>/<lease>/bootstrap.json",
+  "socket_path": "/run/agentsh/nethelper/<uid>/<lease>/nethelper.sock",
+  "credential_file": "/run/agentsh/nethelper/<uid>/<lease>/instance-credential",
+  "expected_lease_id": "lease-...",
+  "expected_binding_generation": 1
+}
+```
+
+The CLI sends the token only in `X-AgentSH-Nethelper-Recovery` over the configured private supervisor Unix socket. The route rejects TCP requests, generic API/session credentials, auth-disabled callers, missing tokens, and wrong tokens.
+
+The endpoint requires the detached supervisor to contain exactly one session, serializes session topology and execution, generation-checks, validates fixed protected paths and schema-2 metadata, reads the candidate credential only into memory, authenticates candidate status, rejects active/uncertain registrations, and stages the candidate for the complete strict disposable preflight. It commits and increments generation only when the report is proven ready. Otherwise it records an independent candidate cleanup tombstone containing lease/helper identity and all observed registration/cgroup/pin evidence before restoring the old binding. When registration identity was observed, rebind, release/teardown, and hard-expiry reaping remain refused until an exact authenticated cleanup RPC succeeds and authenticated candidate status then reports active state with zero registrations; a zero count alone cannot erase the tombstone. It never creates or substitutes a session ID and never releases the old helper before commit.
+
 ## Safety boundary and deployment acceptance
 
 The strict Linux wrapper establishes a user/mount/PID/cgroup command jail, private proc, hidden cgroupfs/control paths, reserved-environment scrubbing, capability drops, and `no_new_privs`, all behind the stopped-child setup barrier. `tool_boundary_active`, unsupported-traffic fields, and `network_policy_enforced` remain false unless the disposable probe observes those properties on the running host. A normal command can become `active` and enforced only when that ready preflight is still present and its own authenticated, pinned, exact-proxy attachment succeeds before resume. On exit the report returns to session-scoped `ready`; any setup or cleanup failure becomes visibly `failed` and emits command-scoped evidence.
+
+Execution responses add `result.outcome` with `command_started`, `dispatch_state`, `failure_kind`, `retryable`, semantic `code`/`message`, and queue/execution durations. `tools/exec_bash` promotes that object plus `command_started`, `error`, `error_code`, and `error_message` to its top-level result while retaining `exec_response`. A pre-exec/helper refusal has `command_started=false`; a genuine child `exit 127` has `command_started=true`, `failure_kind=child_exit`, and no infrastructure error. Context-aware execution admission prevents a cancelled queued REST/tool command from acquiring the session slot later.
 
 Deployment still owns the host acceptance checks below. Service configuration alone never bypasses preflight or upgrades a degraded report.
 

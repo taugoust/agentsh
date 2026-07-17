@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/netip"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -504,6 +505,69 @@ type CleanupSessionResponse struct {
 // ReleaseInstanceRequest asks an ephemeral helper to stop after all registered
 // command cgroups have been cleaned. It is a fixed lifecycle operation: it
 // cannot name pins, units, processes, or arbitrary cleanup targets.
+type InstanceStatusRequest struct {
+	ProtocolVersion          int    `json:"protocol_version,omitempty"`
+	RequestID                string `json:"request_id,omitempty"`
+	LeaseID                  string `json:"lease_id"`
+	HelperInstanceCredential string `json:"helper_instance_credential"`
+}
+
+func (r InstanceStatusRequest) Validate() error {
+	return validateInstanceLifecycleRequest(r.ProtocolVersion, r.RequestID, r.LeaseID, r.HelperInstanceCredential)
+}
+
+type InstanceStatusResponse struct {
+	ProtocolVersion         int       `json:"protocol_version,omitempty"`
+	RequestID               string    `json:"request_id,omitempty"`
+	Capabilities            []string  `json:"capabilities,omitempty"`
+	HelperKind              string    `json:"helper_kind"`
+	LeaseID                 string    `json:"lease_id,omitempty"`
+	UnitName                string    `json:"unit_name,omitempty"`
+	CreatedAt               time.Time `json:"created_at"`
+	SoftExpiresAt           time.Time `json:"soft_expires_at"`
+	HardExpiresAt           time.Time `json:"hard_expires_at"`
+	ActiveRegistrationCount int       `json:"active_registration_count"`
+	Status                  string    `json:"status"`
+	Reason                  string    `json:"reason,omitempty"`
+	RenewalGeneration       uint64    `json:"renewal_generation"`
+	OK                      bool      `json:"ok"`
+	Error                   string    `json:"error,omitempty"`
+}
+
+type RenewInstanceRequest struct {
+	ProtocolVersion          int    `json:"protocol_version,omitempty"`
+	RequestID                string `json:"request_id,omitempty"`
+	LeaseID                  string `json:"lease_id"`
+	HelperInstanceCredential string `json:"helper_instance_credential"`
+}
+
+func (r RenewInstanceRequest) Validate() error {
+	return validateInstanceLifecycleRequest(r.ProtocolVersion, r.RequestID, r.LeaseID, r.HelperInstanceCredential)
+}
+
+type RenewInstanceResponse = InstanceStatusResponse
+
+func validateInstanceLifecycleRequest(protocolVersion int, requestID, leaseID, credential string) error {
+	if err := validateProtocolVersion(protocolVersion); err != nil {
+		return err
+	}
+	if requestID != "" {
+		if err := validateID("request_id", requestID); err != nil {
+			return err
+		}
+	}
+	if err := validateID("lease_id", leaseID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(credential) == "" {
+		return fmt.Errorf("helper_instance_credential is required")
+	}
+	return validateWireCredential("helper_instance_credential", credential)
+}
+
+// ReleaseInstanceRequest asks an ephemeral helper to stop after all registered
+// command cgroups have been cleaned. It is a fixed lifecycle operation: it
+// cannot name pins, units, processes, or arbitrary cleanup targets.
 type ReleaseInstanceRequest struct {
 	ProtocolVersion          int    `json:"protocol_version,omitempty"`
 	RequestID                string `json:"request_id,omitempty"`
@@ -572,6 +636,22 @@ func DecodeCleanupSessionRequestJSON(data []byte) (CleanupSessionRequest, error)
 
 // DecodeReleaseInstanceRequestJSON strictly decodes an ephemeral-helper
 // release request.
+func DecodeInstanceStatusRequestJSON(data []byte) (InstanceStatusRequest, error) {
+	var req InstanceStatusRequest
+	if err := decodeStrictJSON(data, &req); err != nil {
+		return req, err
+	}
+	return req, req.Validate()
+}
+
+func DecodeRenewInstanceRequestJSON(data []byte) (RenewInstanceRequest, error) {
+	var req RenewInstanceRequest
+	if err := decodeStrictJSON(data, &req); err != nil {
+		return req, err
+	}
+	return req, req.Validate()
+}
+
 func DecodeReleaseInstanceRequestJSON(data []byte) (ReleaseInstanceRequest, error) {
 	var req ReleaseInstanceRequest
 	if err := decodeStrictJSON(data, &req); err != nil {

@@ -20,37 +20,32 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const ephemeralNethelperRuntime = 13 * time.Hour
-
-type nethelperBootstrapResult struct {
-	ProtocolVersion int       `json:"protocol_version"`
-	LeaseID         string    `json:"lease_id"`
-	UID             uint32    `json:"uid"`
-	GID             uint32    `json:"gid"`
-	UnitName        string    `json:"unit_name"`
-	SocketPath      string    `json:"socket_path"`
-	CredentialFile  string    `json:"credential_file"`
-	PinRoot         string    `json:"pin_root"`
-	ResultFile      string    `json:"result_file"`
-	ExpiresAt       time.Time `json:"expires_at"`
-}
+type nethelperBootstrapResult = nethelper.BootstrapResult
 
 func newNethelperBootstrapCmd() *cobra.Command {
 	var targetUID int
 	var targetGID int
 	var leaseID string
+	var runtimeLimit time.Duration
+	var softLease time.Duration
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "Start one temporary privileged nethelper lease",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateEphemeralNethelperRuntime(runtimeLimit); err != nil {
+				return err
+			}
+			if softLease < 0 || softLease > runtimeLimit {
+				return fmt.Errorf("--soft-lease must be zero or no greater than --runtime")
+			}
 			if targetUID <= 0 || uint64(targetUID) > uint64(^uint32(0)) {
 				return fmt.Errorf("--uid must be a positive 32-bit Unix uid")
 			}
 			if targetGID < 0 || uint64(targetGID) > uint64(^uint32(0)) {
 				return fmt.Errorf("--gid must be a non-negative 32-bit Unix gid")
 			}
-			result, err := bootstrapEphemeralNethelper(uint32(targetUID), uint32(targetGID), strings.TrimSpace(leaseID))
+			result, err := bootstrapEphemeralNethelperWithSoftLease(uint32(targetUID), uint32(targetGID), strings.TrimSpace(leaseID), runtimeLimit, softLease)
 			if err != nil {
 				return err
 			}
@@ -61,13 +56,38 @@ func newNethelperBootstrapCmd() *cobra.Command {
 	cmd.Flags().IntVar(&targetUID, "uid", -1, "Unix UID authorized to use the temporary helper")
 	cmd.Flags().IntVar(&targetGID, "gid", -1, "Primary Unix GID authorized to use the temporary helper")
 	cmd.Flags().StringVar(&leaseID, "lease", "", "Canonical lease UUID from nethelper lease-id")
+	cmd.Flags().DurationVar(&runtimeLimit, "runtime", nethelper.DefaultBootstrapRuntime, "Finite helper hard runtime (default 13h, maximum 192h)")
+	cmd.Flags().DurationVar(&softLease, "soft-lease", 0, "Opt into renewable soft expiry (zero keeps legacy hard-expiry-only behavior)")
 	_ = cmd.MarkFlagRequired("uid")
 	_ = cmd.MarkFlagRequired("gid")
 	_ = cmd.MarkFlagRequired("lease")
 	return cmd
 }
 
-func bootstrapEphemeralNethelper(uid, gid uint32, leaseID string) (result nethelperBootstrapResult, retErr error) {
+func validateEphemeralNethelperRuntime(runtimeLimit time.Duration) error {
+	if runtimeLimit <= 0 {
+		return fmt.Errorf("--runtime must be positive")
+	}
+	if runtimeLimit > nethelper.MaximumBootstrapRuntime {
+		return fmt.Errorf("--runtime exceeds maximum %s", nethelper.MaximumBootstrapRuntime)
+	}
+	if runtimeLimit%time.Second != 0 {
+		return fmt.Errorf("--runtime must be an exact number of seconds")
+	}
+	return nil
+}
+
+func bootstrapEphemeralNethelper(uid, gid uint32, leaseID string, runtimeLimit time.Duration) (result nethelperBootstrapResult, retErr error) {
+	return bootstrapEphemeralNethelperWithSoftLease(uid, gid, leaseID, runtimeLimit, 0)
+}
+
+func bootstrapEphemeralNethelperWithSoftLease(uid, gid uint32, leaseID string, runtimeLimit, softLease time.Duration) (result nethelperBootstrapResult, retErr error) {
+	if err := validateEphemeralNethelperRuntime(runtimeLimit); err != nil {
+		return result, err
+	}
+	if softLease < 0 || softLease > runtimeLimit || softLease%time.Second != 0 {
+		return result, fmt.Errorf("soft lease must be zero or an exact number of seconds within runtime")
+	}
 	if err := nethelper.ValidatePrivilegedServiceUser(); err != nil {
 		return result, err
 	}
@@ -119,7 +139,10 @@ func bootstrapEphemeralNethelper(uid, gid uint32, leaseID string) (result nethel
 	if err != nil {
 		return result, fmt.Errorf("systemd-run is required for temporary nethelper bootstrap: %w", err)
 	}
-	args := ephemeralSystemdRunArgs(paths, launcher, uid, gid)
+	// Capture one conservative start instant before systemd-run. Every published
+	// and service-side deadline derives from this exact value.
+	startedAt := time.Now().UTC().Truncate(time.Second)
+	args := ephemeralSystemdRunArgsWithSoftLease(paths, launcher, uid, gid, runtimeLimit, softLease, startedAt)
 	output, err := exec.Command(systemdRun, args...).CombinedOutput()
 	if err != nil {
 		return result, fmt.Errorf("start transient nethelper service: %w: %s", err, strings.TrimSpace(string(output)))
@@ -140,16 +163,21 @@ func bootstrapEphemeralNethelper(uid, gid uint32, leaseID string) (result nethel
 	}
 
 	result = nethelperBootstrapResult{
-		ProtocolVersion: nethelper.CurrentProtocolVersion,
-		LeaseID:         paths.LeaseID,
-		UID:             uid,
-		GID:             gid,
-		UnitName:        paths.UnitName,
-		SocketPath:      paths.SocketPath,
-		CredentialFile:  paths.CredentialFile,
-		PinRoot:         paths.PinRoot,
-		ResultFile:      paths.ResultFile,
-		ExpiresAt:       time.Now().UTC().Add(ephemeralNethelperRuntime),
+		ProtocolVersion:        nethelper.CurrentProtocolVersion,
+		BootstrapSchemaVersion: nethelper.BootstrapSchemaVersion,
+		LeaseID:                paths.LeaseID,
+		UID:                    uid,
+		GID:                    gid,
+		UnitName:               paths.UnitName,
+		SocketPath:             paths.SocketPath,
+		CredentialFile:         paths.CredentialFile,
+		PinRoot:                paths.PinRoot,
+		ResultFile:             paths.ResultFile,
+		StartedAt:              startedAt,
+		ExpiresAt:              startedAt.Add(runtimeLimit),
+		RuntimeSeconds:         int64(runtimeLimit / time.Second),
+		SoftLeaseSeconds:       int64(softLease / time.Second),
+		RenewalRequired:        softLease > 0,
 	}
 	wire, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -357,7 +385,11 @@ func newNethelperCredential() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-func ephemeralSystemdRunArgs(paths nethelper.EphemeralLeasePaths, launcher string, uid, gid uint32) []string {
+func ephemeralSystemdRunArgs(paths nethelper.EphemeralLeasePaths, launcher string, uid, gid uint32, runtimeLimit time.Duration, startedAt time.Time) []string {
+	return ephemeralSystemdRunArgsWithSoftLease(paths, launcher, uid, gid, runtimeLimit, 0, startedAt)
+}
+
+func ephemeralSystemdRunArgsWithSoftLease(paths nethelper.EphemeralLeasePaths, launcher string, uid, gid uint32, runtimeLimit, softLease time.Duration, startedAt time.Time) []string {
 	runtimeCapabilities := "CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
 	startupCapabilities := runtimeCapabilities + " CAP_CHOWN"
 	runtimeDirectory := strings.TrimPrefix(paths.RuntimeDir, "/run/")
@@ -368,7 +400,7 @@ func ephemeralSystemdRunArgs(paths nethelper.EphemeralLeasePaths, launcher strin
 		"RuntimeDirectory=" + runtimeDirectory,
 		"RuntimeDirectoryMode=0711",
 		"RuntimeDirectoryPreserve=no",
-		"RuntimeMaxSec=13h",
+		"RuntimeMaxSec=" + strconv.FormatInt(int64(runtimeLimit/time.Second), 10) + "s",
 		"TimeoutStopSec=10s",
 		"KillMode=mixed",
 		"UMask=0077",
@@ -423,7 +455,13 @@ func ephemeralSystemdRunArgs(paths nethelper.EphemeralLeasePaths, launcher strin
 		"--gid", strconv.FormatUint(uint64(gid), 10),
 		"--pin-root", paths.PinRoot,
 		"--ephemeral-lease", paths.LeaseID,
+		"--ephemeral-unit", paths.UnitName,
+		"--ephemeral-created-at", startedAt.Format(time.RFC3339),
+		"--ephemeral-hard-expiry", startedAt.Add(runtimeLimit).Format(time.RFC3339),
 	)
+	if softLease > 0 {
+		args = append(args, "--ephemeral-soft-lease", softLease.String())
+	}
 	return args
 }
 

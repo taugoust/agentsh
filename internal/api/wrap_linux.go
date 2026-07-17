@@ -186,7 +186,13 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID
 		// cgroup/helper setup and transfer its release through cleanup. Other wrap
 		// modes retain the historical handler-lifetime lock here.
 		if !wrapExecLockHeld(ctx) {
-			unlockSession = s.LockExec()
+			var admissionErr error
+			unlockSession, admissionErr = s.LockExecContext(ctx)
+			if admissionErr != nil {
+				_ = notifyFD.Close()
+				slog.Warn("wrap: execution admission cancelled", "session_id", sessionID, "error", admissionErr)
+				return admissionErr
+			}
 		}
 		if wrapperPID > 0 {
 			s.SetCurrentProcessPID(wrapperPID)

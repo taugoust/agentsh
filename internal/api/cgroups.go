@@ -357,7 +357,7 @@ func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, 
 		refreshInterval = 0
 	}
 	if ebpfRequested {
-		helperSock := strings.TrimSpace(os.Getenv(nethelper.EnvSocket))
+		helperSock := app.nethelperBindingSnapshot().SocketPath
 		if ebpfStrictSetup && helperSock == "" {
 			return setupFailure(fmt.Errorf("strict eBPF enforcement requires the installed privileged nethelper socket"))
 		}
@@ -753,7 +753,8 @@ func setupEBPFViaNethelper(ctx context.Context, emit storeEmitter, app *App, ses
 	if app == nil || app.cfg == nil {
 		return nil, fmt.Errorf("app config unavailable")
 	}
-	socketPath := strings.TrimSpace(os.Getenv(nethelper.EnvSocket))
+	binding := app.nethelperBindingSnapshot()
+	socketPath := strings.TrimSpace(binding.SocketPath)
 	if socketPath == "" {
 		return nil, fmt.Errorf("nethelper socket is not configured")
 	}
@@ -1230,18 +1231,7 @@ func warningsContain(warnings []string, fragment string) bool {
 }
 
 func nethelperInstanceCredential(app *App) string {
-	if app != nil && strings.TrimSpace(app.nethelperCredential) != "" {
-		return strings.TrimSpace(app.nethelperCredential)
-	}
-	// Environment fallback is retained for focused tests and older in-process
-	// construction paths. Detached supervisors capture and unset these values in
-	// NewApp before any tool can execute.
-	if value := strings.TrimSpace(os.Getenv(nethelper.EnvHelperInstanceCredential)); value != "" {
-		return value
-	}
-	// Deprecated compatibility only. Detached event tokens are intentionally
-	// not credentials for the independently provisioned root helper.
-	return strings.TrimSpace(os.Getenv(nethelper.EnvSessionNonce))
+	return strings.TrimSpace(app.nethelperBindingSnapshot().Credential)
 }
 
 func sanitizeCgroupTag(s string) string {

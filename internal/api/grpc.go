@@ -291,7 +291,10 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 
 	cmdID := "cmd-" + uuid.NewString()
 	start := time.Now().UTC()
-	unlock := sess.LockExec()
+	unlock, admissionErr := sess.LockExecContext(stream.Context())
+	if admissionErr != nil {
+		return status.Error(codes.Canceled, "execution admission cancelled before dispatch")
+	}
 	defer unlock()
 	sess.SetCurrentCommandID(cmdID)
 
@@ -376,25 +379,10 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	wrapperResult := s.app.setupSeccompWrapper(execReq, req.SessionID, sess)
 	if wrapperResult.setupErr != nil {
 		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, wrapperResult.setupErr)
-		return status.Errorf(codes.FailedPrecondition, "pre-exec boundary unavailable: %v", wrapperResult.setupErr)
+		return status.Errorf(codes.FailedPrecondition, "E_PRE_EXEC_BOUNDARY: pre-exec boundary unavailable: %v", wrapperResult.setupErr)
 	}
 	wrappedReq := wrapperResult.wrappedReq
 	extraCfg := wrapperResult.extraCfg
-
-	startEv := types.Event{
-		ID:        uuid.NewString(),
-		Timestamp: start,
-		Type:      "command_started",
-		SessionID: req.SessionID,
-		CommandID: cmdID,
-		Fields: map[string]any{
-			"command": execReq.Command,
-			"args":    execReq.Args,
-		},
-	}
-	sess.InjectTraceContext(startEv.Fields)
-	_ = s.app.store.AppendEvent(stream.Context(), startEv)
-	s.app.broker.Publish(startEv)
 
 	emit := func(event string, payload map[string]any) error {
 		payload["event"] = event
@@ -404,6 +392,17 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 			return status.Error(codes.Internal, "marshal stream payload")
 		}
 		return stream.SendMsg(out)
+	}
+
+	commandStarted := false
+	onStarted := func() {
+		commandStarted = true
+		startEv := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "command_started", SessionID: req.SessionID, CommandID: cmdID,
+			Fields: map[string]any{"command": execReq.Command, "args": execReq.Args}}
+		sess.InjectTraceContext(startEv.Fields)
+		_ = s.app.store.AppendEvent(stream.Context(), startEv)
+		s.app.broker.Publish(startEv)
+		_ = emit("command_started", map[string]any{"command_id": cmdID, "command_started": true})
 	}
 
 	limits := s.app.policyEngineFor(sess).Limits()
@@ -419,7 +418,12 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		extraCfg,
 		s.app.ptraceTracer,
 		req.SessionID,
+		onStarted,
 	)
+	if !commandStarted {
+		outcome := normalizeExecOutcome(false, exitCode, execErr)
+		return status.Error(grpcCodeForOutcome(outcome), outcome.Code+": "+outcome.Message)
+	}
 	if commandBoundaryRequired(extraCfg) && isNetworkPreExecFailure(execErr) {
 		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, execErr)
 	}
@@ -450,11 +454,13 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	_ = s.app.store.AppendEvent(stream.Context(), endEv)
 	s.app.broker.Publish(endEv)
 
+	terminalOutcome := normalizeExecOutcome(true, exitCode, execErr)
 	_ = emit("done", map[string]any{
 		"exit_code":        exitCode,
 		"duration_ms":      int64(end.Sub(start).Milliseconds()),
 		"stdout_truncated": stdoutTrunc,
 		"stderr_truncated": stderrTrunc,
+		"outcome":          terminalOutcome,
 	})
 
 	return nil
@@ -539,6 +545,11 @@ func (s *grpcServer) GetSession(ctx context.Context, in *structpb.Struct) (*stru
 func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
+	}
+	s.app.sessionTopologyMu.Lock()
+	defer s.app.sessionTopologyMu.Unlock()
+	if err := s.app.resolveCandidateCleanup(ctx); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "session teardown refused while helper cleanup is uncertain")
 	}
 	var reqMap map[string]any
 	if err := json.Unmarshal(mustProtoJSON(in), &reqMap); err != nil {

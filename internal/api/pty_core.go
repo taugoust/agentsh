@@ -53,7 +53,10 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 
 	cmdID := "cmd-" + uuid.NewString()
 	start := time.Now().UTC()
-	unlock := sess.LockExec()
+	unlock, admissionErr := sess.LockExecContext(ctx)
+	if admissionErr != nil {
+		return nil, http.StatusRequestTimeout, fmt.Errorf("PTY execution admission cancelled before dispatch: %w", admissionErr)
+	}
 	sess.SetCurrentCommandID(cmdID)
 
 	pre := a.policyEngineFor(sess).CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
@@ -246,6 +249,7 @@ func (a *App) finishPTY(ctx context.Context, run *ptyRun, exitCode int, started 
 		return
 	}
 	end := time.Now().UTC()
+	outcome := normalizeExecOutcome(true, exitCode, err)
 	endEv := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: end,
@@ -253,8 +257,12 @@ func (a *App) finishPTY(ctx context.Context, run *ptyRun, exitCode int, started 
 		SessionID: run.sessionID,
 		CommandID: run.cmdID,
 		Fields: map[string]any{
-			"exit_code":   exitCode,
-			"duration_ms": int64(end.Sub(started).Milliseconds()),
+			"exit_code":       exitCode,
+			"duration_ms":     int64(end.Sub(started).Milliseconds()),
+			"command_started": outcome.CommandStarted,
+			"dispatch_state":  outcome.DispatchState,
+			"failure_kind":    outcome.FailureKind,
+			"outcome_code":    outcome.Code,
 		},
 	}
 	if err != nil {

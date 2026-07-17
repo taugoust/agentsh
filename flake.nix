@@ -245,7 +245,7 @@
           defaultSessionRuntimeModule = evalSessionRuntimeModule null null;
           customSessionRuntimeModule = evalSessionRuntimeModule 33554432 "45m";
         in
-        {
+        rec {
           go-format =
             pkgs.runCommand "agentsh-go-format-check"
               {
@@ -301,9 +301,9 @@
               runHook preCheck
               go test ./internal/policy -run 'Test(DiscoverProjectOverlays|LoadOverlay|MergePolicyOverlays)'
               go test ./internal/config -run 'Test(ProjectOverlays|OutputArtifacts|Subagents)'
-              go test ./internal/session -run '^(TestOutputArtifact_|TestConfigureOutputArtifacts|TestSession_Cleanup$)'
-              go test ./internal/api -run '^(TestCommandOutputArtifactCapture_.*|TestValidateOutputArtifactRequest|TestPersistSubagentFinalArtifact_.*|TestReadTextLineWindow_.*|TestPiToolReadFile_ShadowAllowsOnlyExactRegisteredOutputArtifact|TestPiToolExecBash_RemoteArtifactRetainsBeyondResponseCap|TestDefaultMaxOutputBytes_IsTwoMiB|TestCreateSession_AssignsRuntimeHomeAndTmp)$'
-              go test ./internal/cli -run '^(TestFindDetachedSupervisorConfigPath_|TestDetachedSupervisorServiceEnv|TestBuildSystemdRunDetachedSupervisorArgs)'
+              go test ./internal/session -run '^(TestOutputArtifact_|TestConfigureOutputArtifacts|TestSession_Cleanup$|TestLockExecContextCancelledQueueNeverAcquiresLater$)'
+              go test ./internal/api -run '^(TestCommandOutputArtifactCapture_.*|TestValidateOutputArtifactRequest|TestPersistSubagentFinalArtifact_.*|TestReadTextLineWindow_.*|TestPiToolReadFile_ShadowAllowsOnlyExactRegisteredOutputArtifact|TestPiToolExecBash_(RemoteArtifactRetainsBeyondResponseCap|PreExecFailureIsPromotedAndNotStarted|ChildExit127IsStartedNotPreExec)|Test(NethelperRebind.*|RebindSerializes.*|HelperDisappearanceAfterReadyPreflightBecomesStickyFailed|FailedCandidateCleanupTombstoneBlocksRebindAndTeardown|WrapperRecoveryTokenUsesHiddenFixedPrivateTopology|RunCommand.*AuthoritativeStart|NormalizeBarrierFailureBeforeReleaseIsNotStarted)|TestDefaultMaxOutputBytes_IsTwoMiB|TestCreateSession_AssignsRuntimeHomeAndTmp)$'
+              go test ./internal/cli -run '^(TestFindDetachedSupervisorConfigPath_|TestDetachedSupervisorServiceEnv|TestBuildSystemdRunDetachedSupervisorArgs|TestEphemeralSystemdRunArgsAreFixedAndSecretFree|TestNethelperBootstrapRuntimeDefaultIsBackwardCompatible|TestEphemeralSystemdRunArgsNegotiatesSoftLease|TestValidateEphemeralNethelperRuntime)'
               go test ./internal/nethelper
               go test ./internal/detached ./internal/detachedreport
               go test ./internal/workspace/runtimebin ./internal/workspace/shadow ./internal/workspace/overlay
@@ -316,6 +316,25 @@
               runHook postInstall
             '';
           };
+
+          # Stable focused gates consumed by lifecycle integration branches.
+          nethelper-lifecycle-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-nethelper-lifecycle-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/nethelper -run 'Test(EphemeralInstanceController|ReleaseWaitsForInFlightRegistration|ReleaseTimeoutReopensLifecycleAdmission|ClientServerReleaseCancellationRecoversAdmission|FailedRegistrationCompensationRetainsAuthenticatedTombstone|BootstrapResult|DefaultBootstrapRuntime)'
+              go test ./internal/cli -run 'Test(EphemeralSystemdRunArgs|NethelperBootstrapRuntime|ValidateEphemeralNethelperRuntime)'
+              runHook postCheck
+            '';
+          });
+          nethelper-rebind-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-nethelper-rebind-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/api -run 'Test(NethelperRebind|RebindSerializes|FailedCandidateCleanup|HelperDisappearance|WrapperRecoveryToken|RunCommand.*AuthoritativeStart|NormalizeBarrierFailure|PiToolExecBash_(PreExecFailure|ChildExit127))'
+              runHook postCheck
+            '';
+          });
 
           workspace-runtime-tests = pkgs.buildGoModule {
             pname = "agentsh-workspace-runtime-tests";

@@ -151,6 +151,80 @@ func TestPiToolExecBash_UsesNonLoginShell(t *testing.T) {
 	}
 }
 
+func TestPiToolExecBash_PreExecFailureIsPromotedAndNotStarted(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("strict command jail is Linux-only")
+	}
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+	workspace := t.TempDir()
+	sess, err := sessions.Create(workspace, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := newTestApp(t, sessions, store)
+	app.cfg.Sandbox.Network.EBPF.Enforce = true
+	app.cfg.Sandbox.UnixSockets.WrapperBin = filepath.Join(t.TempDir(), "missing-wrapper")
+	marker := filepath.Join(workspace, "must-not-exist")
+	body, _ := json.Marshal(map[string]string{"command": "printf ran > " + marker})
+	rr := httptest.NewRecorder()
+	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(string(body))))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var wire struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			CommandStarted bool               `json:"command_started"`
+			Error          *types.ExecError   `json:"error"`
+			Outcome        *types.ExecOutcome `json:"outcome"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.OK || wire.Result.CommandStarted || wire.Result.Error == nil || wire.Result.Outcome == nil || wire.Result.Outcome.FailureKind != types.ExecFailurePreExec {
+		t.Fatalf("result=%+v", wire.Result)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("marker exists after pre-exec refusal: %v", err)
+	}
+}
+
+func TestPiToolExecBash_ChildExit127IsStartedNotPreExec(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("bash integration requires a POSIX shell")
+	}
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+	sess, err := sessions.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := newTestApp(t, sessions, store)
+	rr := httptest.NewRecorder()
+	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(`{"command":"exit 127"}`)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var wire struct {
+		Result struct {
+			ExitCode       int                `json:"exit_code"`
+			CommandStarted bool               `json:"command_started"`
+			Error          *types.ExecError   `json:"error"`
+			Outcome        *types.ExecOutcome `json:"outcome"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.Result.ExitCode != 127 || !wire.Result.CommandStarted || wire.Result.Error != nil || wire.Result.Outcome == nil || wire.Result.Outcome.FailureKind != types.ExecFailureChildExit {
+		t.Fatalf("result=%+v", wire.Result)
+	}
+}
+
 func TestPiToolExecBash_RemoteArtifactRetainsBeyondResponseCap(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("bash artifact integration requires a POSIX shell")

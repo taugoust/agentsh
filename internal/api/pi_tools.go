@@ -119,6 +119,9 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, code, err.Error())
 		return
 	}
+	// Preserve the established tool transport contract: semantic execution
+	// refusals retain their HTTP status and ok:false while typed outcome fields
+	// remain additive in the structured body.
 	status := code
 	if status == 0 {
 		status = http.StatusOK
@@ -135,6 +138,13 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		"stdout_total_bytes": resp.Result.StdoutTotalBytes,
 		"stderr_total_bytes": resp.Result.StderrTotalBytes,
 		"exec_response":      resp,
+		"outcome":            resp.Result.Outcome,
+		"command_started":    resp.Result.Outcome != nil && resp.Result.Outcome.CommandStarted,
+	}
+	if resp.Result.Error != nil {
+		result["error"] = resp.Result.Error
+		result["error_code"] = resp.Result.Error.Code
+		result["error_message"] = resp.Result.Error.Message
 	}
 	if artifact := resp.Result.OutputArtifact; artifact != nil {
 		result["output_artifact"] = artifact
@@ -146,7 +156,7 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 			result["artifact_error"] = artifact.ErrorMessage
 		}
 	}
-	writeJSON(w, status, toolResponse{OK: code >= 200 && code < 300, Result: result})
+	writeJSON(w, status, toolResponse{OK: status >= 200 && status < 300, Result: result})
 }
 
 func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {

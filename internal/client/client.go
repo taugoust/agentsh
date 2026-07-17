@@ -132,6 +132,27 @@ func (c *Client) DestroySession(ctx context.Context, id string) error {
 	return c.doJSON(ctx, http.MethodDelete, "/api/v1/sessions/"+url.PathEscape(id), nil, nil, nil)
 }
 
+func (c *Client) RebindSessionNethelper(ctx context.Context, id string, req types.NethelperRebindRequest) (types.NetworkEnforcement, error) {
+	return c.RebindSessionNethelperAuthorized(ctx, id, req, "")
+}
+
+func (c *Client) RebindSessionNethelperAuthorized(ctx context.Context, id string, req types.NethelperRebindRequest, recoveryToken string) (types.NetworkEnforcement, error) {
+	var out types.NetworkEnforcement
+	path := "/api/v1/sessions/" + url.PathEscape(id) + "/network-enforcement/helper/rebind"
+	raw, err := json.Marshal(req)
+	if err != nil {
+		return out, err
+	}
+	headers := http.Header{}
+	if recoveryToken != "" {
+		headers.Set("X-AgentSH-Nethelper-Recovery", recoveryToken)
+	}
+	if err := c.doJSONRawHeaders(ctx, http.MethodPost, path, nil, raw, headers, &out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
 func (c *Client) PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error) {
 	var out types.Session
 	if err := c.doJSON(ctx, http.MethodPatch, "/api/v1/sessions/"+url.PathEscape(id), nil, req, &out); err != nil {
@@ -332,6 +353,10 @@ func (c *Client) doJSON(ctx context.Context, method, path string, q url.Values, 
 }
 
 func (c *Client) doJSONRaw(ctx context.Context, method, path string, q url.Values, rawBody []byte, out any) error {
+	return c.doJSONRawHeaders(ctx, method, path, q, rawBody, nil, out)
+}
+
+func (c *Client) doJSONRawHeaders(ctx context.Context, method, path string, q url.Values, rawBody []byte, headers http.Header, out any) error {
 	u := c.baseURL + path
 	if q != nil && len(q) > 0 {
 		u += "?" + q.Encode()
@@ -347,6 +372,11 @@ func (c *Client) doJSONRaw(ctx context.Context, method, path string, q url.Value
 		return err
 	}
 	c.addAuth(req)
+	for name, values := range headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
 	if rawBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

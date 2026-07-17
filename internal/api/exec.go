@@ -98,6 +98,19 @@ type eventBroker interface {
 	Publish(ev types.Event)
 }
 
+type commandStartError struct{ err error }
+
+func (e *commandStartError) Error() string { return e.err.Error() }
+func (e *commandStartError) Unwrap() error { return e.err }
+
+type commandPreStartError struct {
+	code string
+	err  error
+}
+
+func (e *commandPreStartError) Error() string { return e.err.Error() }
+func (e *commandPreStartError) Unwrap() error { return e.err }
+
 type postStartHook func(pid int) (cleanup func() error, err error)
 
 func extraProcessFiles(extra *extraProcConfig) []*os.File {
@@ -182,7 +195,7 @@ func chooseCommandTimeout(req types.ExecRequest, policyLimit time.Duration) time
 	return d
 }
 
-func runCommandWithResources(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, envPol policy.ResolvedEnvPolicy, policyLimit time.Duration, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
+func runCommandWithResources(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, envPol policy.ResolvedEnvPolicy, policyLimit time.Duration, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string, onStarted func()) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
 	timeout := chooseCommandTimeout(req, policyLimit)
 	ctx, cancel := withExtendableCommandTimeout(ctx, timeout)
 	defer cancel()
@@ -194,7 +207,14 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 		}
 	}()
 
+	notifyStarted := sync.OnceFunc(func() {
+		if onStarted != nil {
+			onStarted()
+		}
+	})
+
 	if handled, code, out, errOut := s.Builtin(req); handled {
+		notifyStarted()
 		if extra != nil && extra.outputArtifact != nil {
 			_ = extra.outputArtifact.Append(out)
 			_ = extra.outputArtifact.Append(errOut)
@@ -207,7 +227,7 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 	workdir, err := resolveWorkingDir(s, req.WorkingDir)
 	if err != nil {
 		msg := []byte(err.Error() + "\n")
-		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, nil
+		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, &commandPreStartError{code: "E_INVALID_WORKING_DIRECTORY", err: err}
 	}
 	if barrierErr := validatePreExecBarrierPath(hook, tracer, extra); barrierErr != nil {
 		closePreStartProcessFiles(extra)
@@ -255,14 +275,14 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 		cmd.SysProcAttr = getSysProcAttr()
 	}
 	if boundaryErr := configureCommandBoundaryProcess(cmd.SysProcAttr, commandBoundary); boundaryErr != nil {
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, boundaryErr
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", boundaryErr)
 	}
 
 	env, err := buildCommandEnvironment(cfg, envPol, os.Environ(), s, req.Env, extra)
 	if err != nil {
 		closePreStartProcessFiles(extra)
 		msg := []byte(err.Error() + "\n")
-		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, nil
+		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, &commandPreStartError{code: "E_INVALID_ENVIRONMENT", err: err}
 	}
 	// Debug: log whether AGENTSH_IN_SESSION is in the environment
 	hasInSession := false
@@ -364,7 +384,7 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 		if stderrPipeW != nil {
 			stderrPipeW.Close()
 		}
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("start: %w", err)
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandStartError{err: fmt.Errorf("start: %w", err)}
 	}
 	slog.Debug("exec command started", "command", req.Command, "pid", cmd.Process.Pid)
 
@@ -494,6 +514,8 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 
+			notifyStarted()
+
 			// 7. Wait for exit via ptrace exit channel
 			waitStart := time.Now()
 			slog.Debug("exec waiting for command (hybrid)", "command", req.Command, "pid", cmd.Process.Pid)
@@ -557,6 +579,8 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 
+			notifyStarted()
+
 			// Tracer-managed wait: block on exit channel instead of cmd.Wait()
 			// to avoid Wait4(-1) race between tracer and Go runtime.
 			waitStart := time.Now()
@@ -606,6 +630,8 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 			}
 		}
 
+		notifyStarted()
+
 		// Start wrapper handlers on paths that do not need command-jail READY/GO
 		// synchronization. Strict command-boundary handlers were started while
 		// the wrapper was still stopped so READY cannot race the parent.
@@ -615,6 +641,9 @@ func runCommandWithResources(ctx context.Context, s *session.Session, cmdID stri
 		}
 	}
 
+	if extra == nil {
+		notifyStarted()
+	}
 	waitStart := time.Now()
 	slog.Debug("exec waiting for command", "command", req.Command, "pid", cmd.Process.Pid, "tracer_nil", tracer == nil, "hook_nil", hook == nil, "extra_nil", extra == nil)
 	waitErr := cmd.Wait()
@@ -846,6 +875,9 @@ func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.S
 		add[k] = v
 	}
 	for k, v := range overrides {
+		if k == "" || strings.ContainsAny(k, "=\x00") || strings.ContainsRune(v, '\x00') {
+			return nil, fmt.Errorf("invalid environment variable %q", k)
+		}
 		add[k] = v
 	}
 	scrubReservedSupervisorEnv(add)
@@ -967,6 +999,8 @@ func reservedSupervisorEnvKeys() []string {
 		nethelper.EnvHelperInstanceCredential,
 		nethelper.EnvSessionNonce,
 		nethelper.EnvCredentialFile,
+		nethelper.EnvBootstrapResult,
+		nethelper.EnvRecoveryTokenFile,
 		"AGENTSH_DETACHED_EVENT_TOKEN",
 		"AGENTSH_DETACHED_EVENT_URL",
 		"AGENTSH_INTERNAL_COMMAND_JAIL_STAGE",

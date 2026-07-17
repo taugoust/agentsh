@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -11,6 +12,25 @@ import (
 // A command runner must call Release only after the child is stopped. Release
 // runs the hook exactly once and performs trusted-wrapper/GO steps only after
 // the hook succeeds. Cleanup is likewise run at most once.
+type preExecEnforcementError struct {
+	code string
+	err  error
+}
+
+func (e *preExecEnforcementError) Error() string { return e.err.Error() }
+func (e *preExecEnforcementError) Unwrap() error { return e.err }
+
+func markPreExecEnforcementError(code string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var existing *preExecEnforcementError
+	if errors.As(err, &existing) {
+		return err
+	}
+	return &preExecEnforcementError{code: code, err: err}
+}
+
 type preExecBarrier struct {
 	hook postStartHook
 
@@ -46,7 +66,7 @@ func (b *preExecBarrier) Enforce(pid int) error {
 		// trying to remove its populated cgroup here would fail and leak it.
 		b.cleanup = cleanup
 		if err != nil {
-			b.err = fmt.Errorf("post-start hook: %w", err)
+			b.err = markPreExecEnforcementError("E_PRE_EXEC_ENFORCEMENT", fmt.Errorf("post-start hook: %w", err))
 		}
 	})
 	return b.err
@@ -67,9 +87,9 @@ func (b *preExecBarrier) Release(pid int, steps ...preExecReleaseStep) error {
 			}
 			if err := step.run(); err != nil {
 				if step.name == "" {
-					b.releaseErr = err
+					b.releaseErr = markPreExecEnforcementError("E_PRE_EXEC_RELEASE", err)
 				} else {
-					b.releaseErr = fmt.Errorf("%s: %w", step.name, err)
+					b.releaseErr = markPreExecEnforcementError("E_PRE_EXEC_RELEASE", fmt.Errorf("%s: %w", step.name, err))
 				}
 				return
 			}
@@ -108,26 +128,26 @@ func commandBoundaryRequired(extra *extraProcConfig) bool {
 func validatePreExecBarrierPath(hook postStartHook, tracer any, extra *extraProcConfig) error {
 	if commandBoundaryRequired(extra) {
 		if !extra.commandBoundary.Complete() {
-			return fmt.Errorf("strict command boundary requirements are incomplete")
+			return markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("strict command boundary requirements are incomplete"))
 		}
 		if hook == nil {
-			return fmt.Errorf("strict command boundary requires a stopped-child enforcement hook")
+			return markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("strict command boundary requires a stopped-child enforcement hook"))
 		}
 		if tracer != nil {
-			return fmt.Errorf("strict command boundary is unavailable with ptrace execution")
+			return markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("strict command boundary is unavailable with ptrace execution"))
 		}
 		if extra.notifyParentSock == nil {
-			return fmt.Errorf("strict command boundary requires a wrapper ACK/READY/GO control socket")
+			return markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("strict command boundary requires a wrapper ACK/READY/GO control socket"))
 		}
 	}
 	if hook == nil {
 		return nil
 	}
 	if !preExecStoppedStartSupported() {
-		return fmt.Errorf("pre-exec enforcement barrier is unavailable on this platform")
+		return markPreExecEnforcementError("E_PRE_EXEC_BARRIER", fmt.Errorf("pre-exec enforcement barrier is unavailable on this platform"))
 	}
 	if tracer != nil && (extra == nil || !extra.ptraceSync) {
-		return fmt.Errorf("pre-exec enforcement barrier requires wrapper READY/GO synchronization with ptrace")
+		return markPreExecEnforcementError("E_PRE_EXEC_BARRIER", fmt.Errorf("pre-exec enforcement barrier requires wrapper READY/GO synchronization with ptrace"))
 	}
 	return nil
 }

@@ -157,6 +157,14 @@ func (h *HybridClient) DestroySession(ctx context.Context, id string) error {
 }
 
 // PatchSession patches a session. Uses gRPC if available.
+func (h *HybridClient) RebindSessionNethelper(ctx context.Context, id string, req types.NethelperRebindRequest) (types.NetworkEnforcement, error) {
+	return h.Client.RebindSessionNethelper(ctx, id, req)
+}
+
+func (h *HybridClient) RebindSessionNethelperAuthorized(ctx context.Context, id string, req types.NethelperRebindRequest, recoveryToken string) (types.NetworkEnforcement, error) {
+	return h.Client.RebindSessionNethelperAuthorized(ctx, id, req, recoveryToken)
+}
+
 func (h *HybridClient) PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.PatchSession(ctx, id, req)

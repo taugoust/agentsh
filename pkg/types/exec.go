@@ -42,6 +42,32 @@ type ExecResponse struct {
 	Guidance *ExecGuidance `json:"guidance,omitempty"`
 }
 
+type ExecFailureKind string
+
+const (
+	ExecFailureNone           ExecFailureKind = "none"
+	ExecFailureChildExit      ExecFailureKind = "child_exit"
+	ExecFailureQueueTimeout   ExecFailureKind = "queue_timeout"
+	ExecFailureCancellation   ExecFailureKind = "caller_cancellation"
+	ExecFailureCommandTimeout ExecFailureKind = "command_timeout"
+	ExecFailurePreExec        ExecFailureKind = "pre_exec_enforcement"
+	ExecFailureDenied         ExecFailureKind = "policy_or_approval_denial"
+	ExecFailureStart          ExecFailureKind = "command_start"
+	ExecFailureValidation     ExecFailureKind = "request_validation"
+	ExecFailureInternal       ExecFailureKind = "internal"
+)
+
+type ExecOutcome struct {
+	CommandStarted      bool            `json:"command_started"`
+	DispatchState       string          `json:"dispatch_state"`
+	FailureKind         ExecFailureKind `json:"failure_kind"`
+	Retryable           bool            `json:"retryable"`
+	Code                string          `json:"code,omitempty"`
+	Message             string          `json:"message,omitempty"`
+	QueueDurationMs     int64           `json:"queue_duration_ms,omitempty"`
+	ExecutionDurationMs int64           `json:"execution_duration_ms,omitempty"`
+}
+
 type ExecResult struct {
 	ExitCode int    `json:"exit_code"`
 	Stdout   string `json:"stdout,omitempty"`
@@ -54,9 +80,10 @@ type ExecResult struct {
 
 	OutputArtifact *OutputArtifactResult `json:"output_artifact,omitempty"`
 
-	DurationMs int64       `json:"duration_ms"`
-	Error      *ExecError  `json:"error,omitempty"`
-	Pagination *Pagination `json:"pagination,omitempty"`
+	DurationMs int64        `json:"duration_ms"`
+	Outcome    *ExecOutcome `json:"outcome,omitempty"`
+	Error      *ExecError   `json:"error,omitempty"`
+	Pagination *Pagination  `json:"pagination,omitempty"`
 }
 
 type OutputArtifactRequest struct {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/agentsh/agentsh/internal/nethelper"
@@ -23,8 +24,11 @@ func newNethelperCmd() *cobra.Command {
 		Hidden: true,
 	}
 	cmd.AddCommand(newNethelperServeCmd())
+	cmd.AddCommand(newNethelperCapabilitiesCmd())
 	cmd.AddCommand(newNethelperLeaseIDCmd())
 	cmd.AddCommand(newNethelperBootstrapCmd())
+	cmd.AddCommand(newNethelperStatusCmd())
+	cmd.AddCommand(newNethelperRenewCmd())
 	cmd.AddCommand(newNethelperReleaseCmd())
 	cmd.AddCommand(newNethelperCleanupPinsCmd())
 	return cmd
@@ -85,12 +89,42 @@ func validateNethelperInstanceCredential(value string) error {
 	return nil
 }
 
+func newNethelperCapabilitiesCmd() *cobra.Command {
+	var outputJSON bool
+	cmd := &cobra.Command{
+		Use:   "capabilities",
+		Short: "Report local nethelper lifecycle capabilities",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result := map[string]any{
+				"protocol_version":                  nethelper.CurrentProtocolVersion,
+				"bootstrap_schema_version":          nethelper.BootstrapSchemaVersion,
+				"bootstrap_runtime":                 true,
+				"bootstrap_default_runtime_seconds": int64(nethelper.DefaultBootstrapRuntime / time.Second),
+				"bootstrap_max_runtime_seconds":     int64(nethelper.MaximumBootstrapRuntime / time.Second),
+				"instance_lifecycle":                append([]string(nil), nethelper.LifecycleCapabilities...),
+			}
+			if outputJSON {
+				return printJSON(cmd, result)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "bootstrap-runtime max=%s lifecycle=%s\n", nethelper.MaximumBootstrapRuntime, strings.Join(nethelper.LifecycleCapabilities, ","))
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output JSON")
+	return cmd
+}
+
 func newNethelperServeCmd() *cobra.Command {
 	var socketPath string
 	var expectedUID int
 	var expectedGID int
 	var pinRoot string
 	var ephemeralLease string
+	var ephemeralUnit string
+	var ephemeralCreatedAt string
+	var ephemeralHardExpiry string
+	var ephemeralSoftLease time.Duration
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve an AgentSH privileged network helper socket",
@@ -127,6 +161,12 @@ func newNethelperServeCmd() *cobra.Command {
 				}
 				if filepath.Clean(pinRoot) != ephemeralPaths.PinRoot {
 					return fmt.Errorf("ephemeral helper pin root does not match its fixed lease path")
+				}
+				if strings.TrimSpace(ephemeralUnit) == "" {
+					ephemeralUnit = ephemeralPaths.UnitName
+				}
+				if ephemeralUnit != ephemeralPaths.UnitName {
+					return fmt.Errorf("ephemeral helper unit identity does not match its fixed lease unit")
 				}
 			}
 			credential, err := resolveNethelperInstanceCredential()
@@ -196,6 +236,12 @@ func newNethelperServeCmd() *cobra.Command {
 					_ = os.Remove(ephemeralPaths.SocketPath)
 					return err
 				}
+				createdAt, hardExpiry, err := parseEphemeralLifecycleTimes(ephemeralCreatedAt, ephemeralHardExpiry)
+				if err != nil {
+					_ = listener.Close()
+					_ = os.Remove(ephemeralPaths.SocketPath)
+					return err
+				}
 				serveCtx, cancel := context.WithCancel(ctx)
 				controller := nethelper.NewEphemeralInstanceController(nethelper.EphemeralInstanceControllerOptions{
 					LeaseID:                  ephemeralLease,
@@ -204,6 +250,12 @@ func newNethelperServeCmd() *cobra.Command {
 					ExpectedGID:              uint32(expectedGID),
 					EnforceGID:               true,
 					Registrations:            authorizer,
+					Operations:               authorizer.OperationGate(),
+					SoftLease:                ephemeralSoftLease,
+					UnitName:                 ephemeralUnit,
+					CreatedAt:                createdAt,
+					HardExpiresAt:            hardExpiry,
+					Stop:                     cancel,
 				})
 				server.InstanceController = controller
 				server.Stop = cancel
@@ -239,7 +291,32 @@ func newNethelperServeCmd() *cobra.Command {
 	cmd.Flags().IntVar(&expectedGID, "gid", -1, "Expected supervisor Unix GID (-1 disables explicit GID check)")
 	cmd.Flags().StringVar(&pinRoot, "pin-root", nethelper.DefaultBPFFSPinRoot(), "Root-owned AgentSH bpffs subtree for helper map/link pins")
 	cmd.Flags().StringVar(&ephemeralLease, "ephemeral-lease", "", "Fixed lease ID for a transient SSH-bootstrap helper")
+	cmd.Flags().StringVar(&ephemeralUnit, "ephemeral-unit", "", "Fixed non-secret transient unit identity")
+	cmd.Flags().StringVar(&ephemeralCreatedAt, "ephemeral-created-at", "", "Bootstrap creation timestamp (RFC3339)")
+	cmd.Flags().StringVar(&ephemeralHardExpiry, "ephemeral-hard-expiry", "", "Bootstrap hard expiry (RFC3339)")
+	cmd.Flags().DurationVar(&ephemeralSoftLease, "ephemeral-soft-lease", 0, "Negotiated renewable soft lease (zero means hard-expiry-only compatibility mode)")
 	return cmd
+}
+
+func parseEphemeralLifecycleTimes(createdText, hardText string) (time.Time, time.Time, error) {
+	createdText = strings.TrimSpace(createdText)
+	hardText = strings.TrimSpace(hardText)
+	if createdText == "" && hardText == "" {
+		created := time.Now().UTC()
+		return created, created.Add(nethelper.DefaultBootstrapRuntime), nil
+	}
+	created, err := time.Parse(time.RFC3339, createdText)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid --ephemeral-created-at: %w", err)
+	}
+	hard, err := time.Parse(time.RFC3339, hardText)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid --ephemeral-hard-expiry: %w", err)
+	}
+	if !hard.After(created) || hard.Sub(created) > nethelper.MaximumBootstrapRuntime {
+		return time.Time{}, time.Time{}, fmt.Errorf("ephemeral lifecycle hard expiry is outside the finite bootstrap bound")
+	}
+	return created.UTC(), hard.UTC(), nil
 }
 
 func newNethelperLeaseIDCmd() *cobra.Command {
@@ -252,6 +329,79 @@ func newNethelperLeaseIDCmd() *cobra.Command {
 			return err
 		},
 	}
+}
+
+func newNethelperStatusCmd() *cobra.Command {
+	return newNethelperLifecycleClientCmd(false)
+}
+
+func newNethelperRenewCmd() *cobra.Command {
+	return newNethelperLifecycleClientCmd(true)
+}
+
+func newNethelperLifecycleClientCmd(renew bool) *cobra.Command {
+	var socketPath string
+	var credentialFile string
+	var leaseID string
+	var outputJSON bool
+	name, short := "status", "Query authenticated non-secret ephemeral helper status"
+	if renew {
+		name, short = "renew", "Renew an ephemeral helper soft lease within its hard expiry"
+	}
+	cmd := &cobra.Command{
+		Use:   name,
+		Short: short,
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			leaseID = strings.TrimSpace(leaseID)
+			if err := nethelper.ValidateEphemeralLeaseID(leaseID); err != nil {
+				return err
+			}
+			credential, err := readSupervisorNethelperCredentialFile(credentialFile)
+			if err != nil {
+				return fmt.Errorf("load ephemeral helper credential: %w", err)
+			}
+			if err := validateNethelperInstanceCredential(credential); err != nil {
+				return err
+			}
+			client := nethelper.NewClient(strings.TrimSpace(socketPath))
+			requestID := name + "-" + uuid.NewString()
+			var response nethelper.InstanceStatusResponse
+			if renew {
+				response, err = client.RenewInstance(cmd.Context(), nethelper.RenewInstanceRequest{
+					ProtocolVersion: nethelper.CurrentProtocolVersion, RequestID: requestID,
+					LeaseID: leaseID, HelperInstanceCredential: credential,
+				})
+			} else {
+				response, err = client.InstanceStatus(cmd.Context(), nethelper.InstanceStatusRequest{
+					ProtocolVersion: nethelper.CurrentProtocolVersion, RequestID: requestID,
+					LeaseID: leaseID, HelperInstanceCredential: credential,
+				})
+			}
+			credential = ""
+			if err != nil {
+				if outputJSON && response.ProtocolVersion != 0 {
+					if printErr := printJSON(cmd, response); printErr != nil {
+						return printErr
+					}
+				}
+				return err
+			}
+			if outputJSON {
+				return printJSON(cmd, response)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%s ephemeral nethelper lease %s; soft expiry %s; hard expiry %s; generation %d\n", response.Status, response.LeaseID, response.SoftExpiresAt.Format(time.RFC3339), response.HardExpiresAt.Format(time.RFC3339), response.RenewalGeneration)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&socketPath, "socket", "", "Ephemeral helper Unix socket path")
+	cmd.Flags().StringVar(&credentialFile, "credential-file", "", "UID-owned ephemeral helper credential file")
+	cmd.Flags().StringVar(&leaseID, "lease", "", "Ephemeral helper lease ID")
+	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output JSON")
+	_ = cmd.MarkFlagRequired("socket")
+	_ = cmd.MarkFlagRequired("credential-file")
+	_ = cmd.MarkFlagRequired("lease")
+	return cmd
 }
 
 func newNethelperReleaseCmd() *cobra.Command {

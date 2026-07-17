@@ -66,11 +66,21 @@ type App struct {
 
 	cgroupMgr cgroupManager // issue #197: per-process cgroup manager, nil on non-Linux
 
-	// nethelperCredential is captured before any command can start and removed
-	// from the process environment. nethelperCredentialFile is non-secret path
-	// context retained only so the strict command jail can hide its source.
-	nethelperCredential     string
-	nethelperCredentialFile string
+	// nethelperBinding is captured before any command can start. Environment is
+	// only a backwards-compatible bootstrap transport; all command-time users
+	// consume synchronized binding snapshots.
+	nethelperBinding           *nethelperBindingState
+	nethelperRecoveryToken     string
+	nethelperRecoveryTokenFile string
+	sessionAbsoluteTimeout     time.Duration
+	sessionTopologyMu          sync.RWMutex
+	// Deterministic lifecycle seams used only by package tests. Production leaves
+	// these nil and always performs protected-path validation, authenticated RPC,
+	// and the full disposable strict preflight.
+	nethelperStatusForTest          func(context.Context, nethelperBinding) (nethelper.InstanceStatusResponse, error)
+	nethelperCleanupForTest         func(context.Context, nethelperBinding, nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error)
+	nethelperCandidateForTest       func(types.NethelperRebindRequest, uint64) (nethelperBinding, error)
+	nethelperRebindPreflightForTest func(context.Context, string) *types.NetworkEnforcement
 
 	apiKeyAuth *auth.APIKeyAuth
 	oidcAuth   *auth.OIDCAuth
@@ -147,7 +157,11 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 		nethelperCredential = strings.TrimSpace(os.Getenv(nethelper.EnvSessionNonce))
 	}
 	nethelperCredentialFile := strings.TrimSpace(os.Getenv(nethelper.EnvCredentialFile))
-	for _, key := range []string{nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, nethelper.EnvCredentialFile} {
+	nethelperSocket := strings.TrimSpace(os.Getenv(nethelper.EnvSocket))
+	nethelperBootstrapResult := strings.TrimSpace(os.Getenv(nethelper.EnvBootstrapResult))
+	nethelperRecoveryTokenFile := strings.TrimSpace(os.Getenv(nethelper.EnvRecoveryTokenFile))
+	nethelperRecoveryToken, nethelperRecoveryTokenFile := readRecoveryTokenFile(nethelperRecoveryTokenFile)
+	for _, key := range []string{nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile} {
 		_ = os.Unsetenv(key)
 	}
 
@@ -199,24 +213,25 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 	}
 
 	app := &App{
-		cfg:                     cfg,
-		sessions:                sessions,
-		store:                   store,
-		policy:                  engine,
-		broker:                  broker,
-		dbBypass:                dbevents.NewBypassEmitter(storeEmitter{store: store, broker: broker}),
-		cgroupMgr:               appCgroupMgr,
-		nethelperCredential:     nethelperCredential,
-		nethelperCredentialFile: nethelperCredentialFile,
-		apiKeyAuth:              apiKeyAuth,
-		oidcAuth:                oidcAuth,
-		approvals:               approvalsMgr,
-		sessionEvents:           newSessionEventStore(),
-		detachedRoutes:          make(map[string]detachedSupervisor),
-		detachedApprovals:       newDetachedApprovalStore(),
-		metrics:                 metricsCollector,
-		platform:                plat,
-		policyLoader:            policyLoader,
+		cfg:                        cfg,
+		sessions:                   sessions,
+		store:                      store,
+		policy:                     engine,
+		broker:                     broker,
+		dbBypass:                   dbevents.NewBypassEmitter(storeEmitter{store: store, broker: broker}),
+		cgroupMgr:                  appCgroupMgr,
+		nethelperBinding:           newNethelperBindingState(nethelperSocket, nethelperCredentialFile, nethelperBootstrapResult, nethelperCredential),
+		nethelperRecoveryToken:     nethelperRecoveryToken,
+		nethelperRecoveryTokenFile: nethelperRecoveryTokenFile,
+		apiKeyAuth:                 apiKeyAuth,
+		oidcAuth:                   oidcAuth,
+		approvals:                  approvalsMgr,
+		sessionEvents:              newSessionEventStore(),
+		detachedRoutes:             make(map[string]detachedSupervisor),
+		detachedApprovals:          newDetachedApprovalStore(),
+		metrics:                    metricsCollector,
+		platform:                   plat,
+		policyLoader:               policyLoader,
 	}
 
 	// Compute the server-process WAIT_KILLABLE_RECV decision once at
@@ -262,6 +277,10 @@ func (a *App) SetCmdResolver(r interface {
 
 // SetSessionTracker attaches a session tracker for ESF PID→session registration.
 // Called on darwin after the policy socket server is started. No-op on other platforms.
+// SetSessionAbsoluteTimeout supplies the exact hard timeout used by the server
+// reaper so helper replacement lifetime validation cannot drift from teardown.
+func (a *App) SetSessionAbsoluteTimeout(timeout time.Duration) { a.sessionAbsoluteTimeout = timeout }
+
 func (a *App) SetSessionTracker(t interface {
 	RegisterProcess(sessionID string, pid, ppid int32)
 }) {
@@ -271,7 +290,11 @@ func (a *App) SetSessionTracker(t interface {
 // Close releases resources held by the app (e.g., ptrace tracer).
 func (a *App) Close() {
 	a.closePtraceTracer()
-	a.nethelperCredential = ""
+	if a.nethelperBinding != nil {
+		a.nethelperBinding.clearSecret()
+	}
+	a.nethelperRecoveryToken = ""
+	a.nethelperRecoveryTokenFile = ""
 }
 
 type ctxKey string
@@ -339,6 +362,7 @@ func (a *App) Router() http.Handler {
 		r.Get("/sessions/{id}", a.getSession)
 		r.Get("/sessions/{id}/network-enforcement", a.getSessionNetworkEnforcement)
 		r.Post("/sessions/{id}/network-enforcement/preflight", a.preflightSessionNetworkEnforcement)
+		r.Post("/sessions/{id}/network-enforcement/helper/rebind", a.rebindSessionNethelper)
 		r.Patch("/sessions/{id}", a.patchSession)
 		r.Delete("/sessions/{id}", a.destroySession)
 
@@ -895,7 +919,13 @@ func (a *App) patchSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
+	a.sessionTopologyMu.Lock()
+	defer a.sessionTopologyMu.Unlock()
 	id := chi.URLParam(r, "id")
+	if err := a.resolveCandidateCleanup(r.Context()); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "session teardown refused while helper cleanup is uncertain"})
+		return
+	}
 	s, ok := a.sessions.Get(id)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
@@ -1067,6 +1097,16 @@ func (a *App) cgroupHook(sessionID string, cmdID string, limits policy.Limits) p
 		return nil
 	}
 	return func(pid int) (func() error, error) {
+		if commandJailRequired(a.cfg) && !strings.HasPrefix(cmdID, "cmd-network-preflight-") {
+			sess, ok := a.sessions.Get(sessionID)
+			if !ok {
+				return nil, markPreExecEnforcementError("E_NETWORK_ENFORCEMENT_NOT_READY", fmt.Errorf("strict session is unavailable during pre-exec enforcement"))
+			}
+			report := sess.NetworkEnforcement()
+			if report == nil || !report.Ready() {
+				return nil, markPreExecEnforcementError("E_NETWORK_ENFORCEMENT_NOT_READY", fmt.Errorf("strict network enforcement is not ready"))
+			}
+		}
 		em := storeEmitter{store: a.store, broker: a.broker}
 		cleanup, err := applyCgroupV2(context.Background(), em, a, sessionID, cmdID, pid, limits, a.metrics, a.policy)
 		if err != nil {

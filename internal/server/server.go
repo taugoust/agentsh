@@ -744,6 +744,7 @@ func New(cfg *config.Config) (*Server, error) {
 			idleTimeout = d
 		}
 	}
+	app.SetSessionAbsoluteTimeout(sessionTimeout)
 	reapInterval := 1 * time.Minute
 	if cfg.Sessions.CleanupInterval != "" {
 		d, err := time.ParseDuration(cfg.Sessions.CleanupInterval)
@@ -1235,7 +1236,7 @@ func (s *Server) GRPCAddr() string {
 }
 
 func (s *Server) reapOnce(now time.Time) {
-	reaped := s.sessions.ReapExpired(now, s.sessionTimeout, s.idleTimeout)
+	reaped := s.app.ReapExpiredSessions(now, s.sessionTimeout, s.idleTimeout)
 	for _, sess := range reaped {
 		_ = sess.CloseDBProxy()
 		_ = sess.CloseNetNS()
