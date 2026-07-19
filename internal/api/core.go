@@ -1716,6 +1716,10 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	if err := validateOutputArtifactRequest(req.OutputArtifact); err != nil {
 		return nil, http.StatusBadRequest, err
 	}
+	parsedTimeout, err := parseCommandTimeout(req)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
 
 	cmdID := "cmd-" + uuid.NewString()
 	queuedAt := time.Now().UTC()
@@ -1752,10 +1756,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	// whole command consistently, never just its metadata or one check.
 	engine := a.policyEngineFor(s)
 	limits := engine.Limits()
-	timeoutResolution, err := a.resolveCommandTimeout(req, limits.CommandTimeout)
-	if err != nil {
-		return nil, http.StatusBadRequest, err
-	}
+	timeoutResolution := a.resolveParsedCommandTimeout(parsedTimeout, limits.CommandTimeout)
 	if opts.evaluationTimeout > 0 {
 		var cancelEval context.CancelFunc
 		ctx, cancelEval = context.WithTimeout(ctx, opts.evaluationTimeout)

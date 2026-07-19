@@ -140,20 +140,37 @@ func commandTimedOut(ctx context.Context) bool {
 	return errors.Is(context.Cause(ctx), errCommandTimeout)
 }
 
-func resolveCommandTimeout(req types.ExecRequest, policyLimit time.Duration) (commandtimeout.Resolution, error) {
+func parseCommandTimeout(req types.ExecRequest) (commandtimeout.ParsedRequest, error) {
 	if req.Timeout == "" {
-		return commandtimeout.Resolve(nil, policyLimit)
+		return commandtimeout.ParseRequest(nil)
 	}
-	return commandtimeout.Resolve(&req.Timeout, policyLimit)
+	return commandtimeout.ParseRequest(&req.Timeout)
 }
 
-func (a *App) resolveCommandTimeout(req types.ExecRequest, policyLimit time.Duration) (commandtimeout.Resolution, error) {
-	resolution, err := resolveCommandTimeout(req, policyLimit)
+func resolveParsedCommandTimeout(requested commandtimeout.ParsedRequest, policyLimit time.Duration) commandtimeout.Resolution {
+	return commandtimeout.ResolveParsed(requested, policyLimit)
+}
+
+func resolveCommandTimeout(req types.ExecRequest, policyLimit time.Duration) (commandtimeout.Resolution, error) {
+	requested, err := parseCommandTimeout(req)
 	if err != nil {
 		return commandtimeout.Resolution{}, err
 	}
+	return resolveParsedCommandTimeout(requested, policyLimit), nil
+}
+
+func (a *App) resolveParsedCommandTimeout(requested commandtimeout.ParsedRequest, policyLimit time.Duration) commandtimeout.Resolution {
+	resolution := resolveParsedCommandTimeout(requested, policyLimit)
 	resolution.Metadata.ApprovalExtensionMS = approvalExtensionMilliseconds(a.approvals)
-	return resolution, nil
+	return resolution
+}
+
+func (a *App) resolveCommandTimeout(req types.ExecRequest, policyLimit time.Duration) (commandtimeout.Resolution, error) {
+	requested, err := parseCommandTimeout(req)
+	if err != nil {
+		return commandtimeout.Resolution{}, err
+	}
+	return a.resolveParsedCommandTimeout(requested, policyLimit), nil
 }
 
 func approvalExtensionMilliseconds(manager *approvals.Manager) int64 {

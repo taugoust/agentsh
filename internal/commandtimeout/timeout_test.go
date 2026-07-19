@@ -29,6 +29,31 @@ func TestCeilMillisecondsNeverShortensDuration(t *testing.T) {
 	}
 }
 
+func TestParseRequestSeparatesCallerValidationFromPolicyResolution(t *testing.T) {
+	requested := "2s"
+	parsed, err := ParseRequest(&requested)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	capped := ResolveParsed(parsed, time.Second)
+	if capped.Duration != time.Second || capped.Metadata.Source != types.CommandTimeoutSourcePolicyCap {
+		t.Fatalf("capped resolution = %+v", capped)
+	}
+	explicit := ResolveParsed(parsed, 3*time.Second)
+	if explicit.Duration != 2*time.Second || explicit.Metadata.Source != types.CommandTimeoutSourceExplicit {
+		t.Fatalf("explicit resolution = %+v", explicit)
+	}
+
+	for _, value := range []string{"bad", "0s", "-1ms", "500us"} {
+		t.Run(value, func(t *testing.T) {
+			if _, err := ParseRequest(&value); err == nil {
+				t.Fatalf("ParseRequest(%q) succeeded", value)
+			}
+		})
+	}
+}
+
 func TestResolveRoundsFractionalMetadataUp(t *testing.T) {
 	t.Run("explicit", func(t *testing.T) {
 		requested := "1.9ms"

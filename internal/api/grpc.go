@@ -288,6 +288,10 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	if !ok {
 		return status.Error(codes.NotFound, "session not found")
 	}
+	parsedTimeout, err := parseCommandTimeout(execReq)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
 	cmdID := "cmd-" + uuid.NewString()
 	start := time.Now().UTC()
 	unlock, admissionErr := sess.LockExecContext(stream.Context())
@@ -298,10 +302,7 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 
 	engine := s.app.policyEngineFor(sess)
 	limits := engine.Limits()
-	timeoutResolution, err := s.app.resolveCommandTimeout(execReq, limits.CommandTimeout)
-	if err != nil {
-		return status.Error(codes.InvalidArgument, err.Error())
-	}
+	timeoutResolution := s.app.resolveParsedCommandTimeout(parsedTimeout, limits.CommandTimeout)
 	emit := func(event string, payload map[string]any) error {
 		payload["event"] = event
 		out := &structpb.Struct{}

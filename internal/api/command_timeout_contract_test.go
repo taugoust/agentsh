@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -438,28 +439,28 @@ func TestCommandTimeoutPolicyResolutionOccursAfterExecutionAdmission(t *testing.
 		t.Skip("env is unavailable")
 	}
 	fixture := newCommandTimeoutPolicySnapshotFixture(t)
+	unlock := fixture.session.LockExec()
+	launched := make(chan struct{})
 	admitted := make(chan struct{})
-	proceed := make(chan struct{})
 	result := make(chan *types.ExecResponse, 1)
 	errs := make(chan error, 1)
 	go func() {
+		close(launched)
 		response, _, err := fixture.app.execInSessionCoreWithOptions(context.Background(), fixture.session.ID, fixture.request(), internalExecOptions{
-			onAdmitted: func() {
-				close(admitted)
-				<-proceed
-			},
+			onAdmitted: func() { close(admitted) },
 		})
 		result <- response
 		errs <- err
 	}()
 
+	<-launched
+	fixture.app.SwapPolicy(fixture.replacement)
+	unlock()
 	select {
 	case <-admitted:
 	case <-time.After(time.Second):
-		t.Fatal("command was not admitted")
+		t.Fatal("queued command was not admitted")
 	}
-	fixture.app.SwapPolicy(fixture.replacement)
-	close(proceed)
 	response := <-result
 	if err := <-errs; err != nil {
 		t.Fatal(err)
@@ -629,31 +630,89 @@ func TestCommandTimeoutWireEmptyIsCompatibleOmission(t *testing.T) {
 	assertOmittedCommandTimeoutMetadata(t, decodedGRPCResponse.Result.CommandTimeout, time.Second)
 }
 
-func TestCommandTimeoutWireValidationBeforeLifecycle(t *testing.T) {
+func TestCommandTimeoutWireValidationPrecedesSessionAdmission(t *testing.T) {
 	app, sess, store := newCommandTimeoutTestApp(t, time.Second)
-	invalid := []string{"bad", "0s", "-1ms", "500us", "0.5ms"}
-	for _, value := range invalid {
-		body, _ := json.Marshal(map[string]any{"command": "true", "timeout": value})
-		recorder := httptest.NewRecorder()
-		app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(string(body))))
-		if recorder.Code != http.StatusBadRequest {
-			t.Fatalf("REST timeout %q status = %d body=%s", value, recorder.Code, recorder.Body.String())
-		}
+	unlock := sess.LockExec()
+	defer unlock()
 
-		grpcBody, _ := json.Marshal(map[string]any{"session_id": sess.ID, "command": "true", "timeout": value})
-		if _, err := app.grpcExec(context.Background(), grpcBody); status.Code(err) != codes.InvalidArgument {
-			t.Fatalf("gRPC timeout %q error = %v", value, err)
+	transports := []struct {
+		name   string
+		invoke func(context.Context, string) error
+	}{
+		{
+			name: "buffered REST",
+			invoke: func(ctx context.Context, value string) error {
+				body, _ := json.Marshal(map[string]any{"command": "true", "timeout": value})
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(string(body))).WithContext(ctx)
+				app.Router().ServeHTTP(recorder, request)
+				if recorder.Code != http.StatusBadRequest {
+					return fmt.Errorf("status = %d body=%s", recorder.Code, recorder.Body.String())
+				}
+				return nil
+			},
+		},
+		{
+			name: "SSE endpoint",
+			invoke: func(ctx context.Context, value string) error {
+				body, _ := json.Marshal(map[string]any{"command": "true", "timeout": value})
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(string(body))).WithContext(ctx)
+				app.Router().ServeHTTP(recorder, request)
+				if recorder.Code != http.StatusBadRequest {
+					return fmt.Errorf("status = %d body=%s", recorder.Code, recorder.Body.String())
+				}
+				return nil
+			},
+		},
+		{
+			name: "unary gRPC",
+			invoke: func(ctx context.Context, value string) error {
+				body, _ := json.Marshal(map[string]any{"session_id": sess.ID, "command": "true", "timeout": value})
+				_, err := app.grpcExec(ctx, body)
+				if status.Code(err) != codes.InvalidArgument {
+					return fmt.Errorf("error = %v", err)
+				}
+				return nil
+			},
+		},
+		{
+			name: "streaming gRPC",
+			invoke: func(ctx context.Context, value string) error {
+				request, err := structpb.NewStruct(map[string]any{"session_id": sess.ID, "command": "true", "timeout": value})
+				if err != nil {
+					return err
+				}
+				execErr := (&grpcServer{app: app}).ExecStream(request, &captureServerStream{ctx: ctx})
+				if status.Code(execErr) != codes.InvalidArgument {
+					return fmt.Errorf("error = %v", execErr)
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, value := range []string{"bad", "0s", "-1ms", "500us", "0.5ms"} {
+		for _, transport := range transports {
+			t.Run(transport.name+"/"+value, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				done := make(chan error, 1)
+				go func() { done <- transport.invoke(ctx, value) }()
+				select {
+				case err := <-done:
+					cancel()
+					if err != nil {
+						t.Fatal(err)
+					}
+				case <-time.After(250 * time.Millisecond):
+					cancel()
+					err := <-done
+					t.Fatalf("invalid timeout waited for session admission: %v", err)
+				}
+			})
 		}
 	}
 
-	streamRequest, err := structpb.NewStruct(map[string]any{"session_id": sess.ID, "command": "true", "timeout": "500us"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	streamErr := (&grpcServer{app: app}).ExecStream(streamRequest, &captureServerStream{ctx: context.Background()})
-	if status.Code(streamErr) != codes.InvalidArgument {
-		t.Fatalf("gRPC stream invalid timeout error = %v", streamErr)
-	}
 	if got := countCommandLifecycleEvents(t, store, sess.ID); got != 0 {
 		t.Fatalf("invalid wire requests emitted %d command lifecycle events", got)
 	}

@@ -42,6 +42,11 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "command is required"})
 		return
 	}
+	parsedTimeout, err := parseCommandTimeout(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
 	cmdID := "cmd-" + uuid.NewString()
 	start := time.Now().UTC()
 	unlock, admissionErr := s.LockExecContext(r.Context())
@@ -53,11 +58,7 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 
 	engine := a.policyEngineFor(s)
 	limits := engine.Limits()
-	timeoutResolution, err := a.resolveCommandTimeout(req, limits.CommandTimeout)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		return
-	}
+	timeoutResolution := a.resolveParsedCommandTimeout(parsedTimeout, limits.CommandTimeout)
 	s.SetCurrentCommandID(cmdID)
 
 	// Propagate W3C trace context for distributed tracing correlation
