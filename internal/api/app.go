@@ -77,10 +77,11 @@ type App struct {
 	// Deterministic lifecycle seams used only by package tests. Production leaves
 	// these nil and always performs protected-path validation, authenticated RPC,
 	// and the full disposable strict preflight.
-	nethelperStatusForTest          func(context.Context, nethelperBinding) (nethelper.InstanceStatusResponse, error)
-	nethelperCleanupForTest         func(context.Context, nethelperBinding, nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error)
-	nethelperCandidateForTest       func(types.NethelperRebindRequest, uint64) (nethelperBinding, error)
-	nethelperRebindPreflightForTest func(context.Context, string) *types.NetworkEnforcement
+	nethelperStatusForTest           func(context.Context, nethelperBinding) (nethelper.InstanceStatusResponse, error)
+	nethelperCleanupForTest          func(context.Context, nethelperBinding, nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error)
+	nethelperCandidateForTest        func(types.NethelperRebindRequest, uint64) (nethelperBinding, error)
+	nethelperRebindPreflightForTest  func(context.Context, string) *types.NetworkEnforcement
+	commandBoundarySetupErrorForTest error
 
 	apiKeyAuth *auth.APIKeyAuth
 	oidcAuth   *auth.OIDCAuth

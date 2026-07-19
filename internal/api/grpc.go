@@ -302,6 +302,18 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
+	emit := func(event string, payload map[string]any) error {
+		payload["event"] = event
+		out := &structpb.Struct{}
+		b, _ := json.Marshal(payload)
+		if err := protojson.Unmarshal(b, out); err != nil {
+			return status.Error(codes.Internal, "marshal stream payload")
+		}
+		return stream.SendMsg(out)
+	}
+	emitRefusal := func(outcome *types.ExecOutcome) {
+		_ = emit("refused", map[string]any{"command_id": cmdID, "command_started": false, "outcome": outcome, "command_timeout": timeoutResolution.Metadata})
+	}
 	sess.SetCurrentCommandID(cmdID)
 
 	// Propagate W3C trace context for distributed tracing correlation
@@ -375,19 +387,9 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 				code = "E_APPROVAL_TIMEOUT"
 			}
 		}
-		// Match HTTP behavior: stream call fails (no partial stream).
-		_ = code
+		outcome := &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureDenied, Code: code, Message: "command denied by policy"}
+		emitRefusal(outcome)
 		return status.Error(codes.PermissionDenied, "command denied by policy")
-	}
-
-	emit := func(event string, payload map[string]any) error {
-		payload["event"] = event
-		out := &structpb.Struct{}
-		b, _ := json.Marshal(payload)
-		if err := protojson.Unmarshal(b, out); err != nil {
-			return status.Error(codes.Internal, "marshal stream payload")
-		}
-		return stream.SendMsg(out)
 	}
 
 	commandStarted := false
@@ -421,7 +423,9 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		if wrapperResult.setupErr != nil {
 			s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, wrapperResult.setupErr)
 			if attemptCount == 1 {
-				return status.Errorf(codes.FailedPrecondition, "E_PRE_EXEC_BOUNDARY: pre-exec boundary unavailable: %v", wrapperResult.setupErr)
+				message := fmt.Sprintf("pre-exec boundary unavailable: %v", wrapperResult.setupErr)
+				emitRefusal(&types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Code: "E_PRE_EXEC_BOUNDARY", Message: message, AttemptCount: 1})
+				return status.Error(codes.FailedPrecondition, "E_PRE_EXEC_BOUNDARY: "+message)
 			}
 			exitCode = 127
 			execErr = markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr))
@@ -454,7 +458,7 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	if !commandStarted {
 		outcome := normalizeExecOutcome(false, exitCode, execErr)
 		applyCommandAttemptDiagnostics(outcome, attemptCount, attemptDiagnostics)
-		_ = emit("refused", map[string]any{"command_id": cmdID, "command_started": false, "outcome": outcome, "command_timeout": timeoutResolution.Metadata})
+		emitRefusal(outcome)
 		return status.Error(grpcCodeForOutcome(outcome), outcome.Code+": "+outcome.Message)
 	}
 

@@ -105,9 +105,12 @@ func TestHelperDisappearanceAfterReadyPreflightBecomesStickyFailed(t *testing.T)
 	}
 	app.cfg.Sandbox.Network.EBPF.Enforce = true
 	marker := filepath.Join(t.TempDir(), "must-not-run")
-	resp, _, execErr := app.execInSessionCore(context.Background(), sess.ID, types.ExecRequest{Command: "sh", Args: []string{"-c", `touch "$1"`, "sh", marker}})
+	resp, _, execErr := app.execInSessionCore(context.Background(), sess.ID, types.ExecRequest{Command: "sh", Args: []string{"-c", `touch "$1"`, "sh", marker}, Timeout: "900ms"})
 	if execErr != nil || resp == nil || resp.Result.Outcome == nil || resp.Result.Outcome.CommandStarted || resp.Result.Outcome.Code != "E_NETWORK_ENFORCEMENT_NOT_READY" {
 		t.Fatalf("exec response=%+v err=%v", resp, execErr)
+	}
+	if resp.Result.CommandTimeout.RequestedMS == nil || *resp.Result.CommandTimeout.RequestedMS != 900 || resp.Result.CommandTimeout.EffectiveMS != 900 || resp.Result.CommandTimeout.Source != types.CommandTimeoutSourceExplicit {
+		t.Fatalf("strict readiness refusal command_timeout=%+v", resp.Result.CommandTimeout)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("marker exists after helper failure: %v", err)

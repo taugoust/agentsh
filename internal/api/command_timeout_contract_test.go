@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -141,6 +142,144 @@ func TestCommandTimeoutExecBashTopLevelMetadataAndValidation(t *testing.T) {
 	}
 	if after := countCommandLifecycleEvents(t, store, sess.ID); after != before {
 		t.Fatalf("invalid exec_bash requests emitted lifecycle events: before=%d after=%d", before, after)
+	}
+}
+
+func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
+	app, sess, _ := newCommandTimeoutTestApp(t, 750*time.Millisecond)
+	app.commandBoundarySetupErrorForTest = errors.New("forced boundary setup refusal")
+
+	metadataByTransport := make(map[string]types.CommandTimeout)
+	assertRefusal := func(t *testing.T, outcome *types.ExecOutcome, terminationReason string) {
+		t.Helper()
+		if outcome == nil || outcome.CommandStarted || outcome.FailureKind != types.ExecFailurePreExec || outcome.Code != "E_PRE_EXEC_BOUNDARY" {
+			t.Fatalf("outcome = %+v, want pre-exec boundary refusal", outcome)
+		}
+		if terminationReason != "" {
+			t.Fatalf("refusal termination_reason = %q, want empty", terminationReason)
+		}
+	}
+
+	t.Run("buffered REST", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		body := `{"command":"true","timeout":"900ms"}`
+		app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(body)))
+		if recorder.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+		}
+		var response types.ExecResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		assertRefusal(t, response.Result.Outcome, response.Result.TerminationReason)
+		metadataByTransport["buffered REST"] = response.Result.CommandTimeout
+	})
+
+	t.Run("exec_bash", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		body := `{"command":"true","timeout_ms":900}`
+		app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
+		if recorder.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+		}
+		var response struct {
+			OK     bool `json:"ok"`
+			Result struct {
+				CommandTimeout    types.CommandTimeout `json:"command_timeout"`
+				ExecResponse      types.ExecResponse   `json:"exec_response"`
+				Outcome           *types.ExecOutcome   `json:"outcome"`
+				TerminationReason string               `json:"termination_reason"`
+			} `json:"result"`
+		}
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		if response.OK {
+			t.Fatalf("exec_bash refusal reported ok: %+v", response)
+		}
+		assertRefusal(t, response.Result.Outcome, response.Result.TerminationReason)
+		if !equalCommandTimeout(response.Result.CommandTimeout, response.Result.ExecResponse.Result.CommandTimeout) {
+			t.Fatalf("exec_bash timeout metadata differs: top=%+v nested=%+v", response.Result.CommandTimeout, response.Result.ExecResponse.Result.CommandTimeout)
+		}
+		metadataByTransport["exec_bash"] = response.Result.CommandTimeout
+	})
+
+	t.Run("SSE endpoint", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		body := `{"command":"true","timeout":"900ms"}`
+		app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(body)))
+		if recorder.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+		}
+		var response struct {
+			CommandTimeout    types.CommandTimeout `json:"command_timeout"`
+			Outcome           *types.ExecOutcome   `json:"outcome"`
+			TerminationReason string               `json:"termination_reason"`
+		}
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		assertRefusal(t, response.Outcome, response.TerminationReason)
+		metadataByTransport["SSE endpoint"] = response.CommandTimeout
+	})
+
+	t.Run("gRPC stream", func(t *testing.T) {
+		request, err := structpb.NewStruct(map[string]any{"session_id": sess.ID, "command": "true", "timeout": "900ms"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stream := &commandTimeoutCaptureStream{ctx: context.Background()}
+		execErr := (&grpcServer{app: app}).ExecStream(request, stream)
+		if status.Code(execErr) != codes.FailedPrecondition {
+			t.Fatalf("ExecStream error = %v", execErr)
+		}
+		refused := stream.event("refused")
+		if refused == nil || stream.event("start") != nil || stream.event("done") != nil {
+			t.Fatalf("gRPC refusal events = %#v", stream.messages)
+		}
+		outcomeWire, _ := json.Marshal(refused["outcome"])
+		var outcome types.ExecOutcome
+		if err := json.Unmarshal(outcomeWire, &outcome); err != nil {
+			t.Fatal(err)
+		}
+		assertRefusal(t, &outcome, "")
+		metadataByTransport["gRPC stream"] = decodeCommandTimeout(t, refused["command_timeout"])
+	})
+
+	t.Run("gRPC policy refusal", func(t *testing.T) {
+		denyEngine := commandTimeoutPolicySnapshotEngine(t, "deny-refusal", "deny", 750*time.Millisecond, false)
+		sess.SetPolicyEngine(denyEngine)
+		app.SwapPolicy(denyEngine)
+		app.commandBoundarySetupErrorForTest = nil
+
+		request, err := structpb.NewStruct(map[string]any{"session_id": sess.ID, "command": "true", "timeout": "900ms"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stream := &commandTimeoutCaptureStream{ctx: context.Background()}
+		execErr := (&grpcServer{app: app}).ExecStream(request, stream)
+		if status.Code(execErr) != codes.PermissionDenied {
+			t.Fatalf("ExecStream error = %v", execErr)
+		}
+		refused := stream.event("refused")
+		if refused == nil || stream.event("start") != nil || stream.event("done") != nil {
+			t.Fatalf("gRPC policy refusal events = %#v", stream.messages)
+		}
+		outcome, ok := refused["outcome"].(map[string]any)
+		if !ok || outcome["failure_kind"] != string(types.ExecFailureDenied) || outcome["code"] != "E_POLICY_DENIED" {
+			t.Fatalf("gRPC policy refusal outcome = %#v", refused["outcome"])
+		}
+		metadataByTransport["gRPC policy refusal"] = decodeCommandTimeout(t, refused["command_timeout"])
+	})
+
+	var baseline types.CommandTimeout
+	for transport, metadata := range metadataByTransport {
+		assertCommandTimeoutMetadata(t, metadata, 900, 750, types.CommandTimeoutSourcePolicyCap)
+		if baseline.Source == "" {
+			baseline = metadata
+		} else if !equalCommandTimeout(metadata, baseline) {
+			t.Fatalf("%s timeout metadata = %+v, want %+v", transport, metadata, baseline)
+		}
 	}
 }
 

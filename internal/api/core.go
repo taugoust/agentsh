@@ -87,6 +87,10 @@ func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *se
 // setupSeccompWrapperWithPolicy keeps one admitted command on the same policy
 // snapshot used for its timeout resolution and command checks.
 func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID string, s *session.Session, sessionPolicy *policy.Engine) *wrapperSetupResult {
+	if a.commandBoundarySetupErrorForTest != nil {
+		return &wrapperSetupResult{wrappedReq: req, setupErr: a.commandBoundarySetupErrorForTest}
+	}
+
 	// Helper: return early without seccomp wrapping but with envInject applied.
 	earlyReturn := func() *wrapperSetupResult {
 		envInject := mergeEnvInject(a.cfg, sessionPolicy)
@@ -1770,7 +1774,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 				message += ": " + report.Detail
 			}
 			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
-				Result: types.ExecResult{ExitCode: 127, DurationMs: int64(time.Since(start) / time.Millisecond),
+				Result: types.ExecResult{ExitCode: 127, CommandTimeout: timeoutResolution.Metadata, DurationMs: int64(time.Since(start) / time.Millisecond),
 					Error:   &types.ExecError{Code: "E_NETWORK_ENFORCEMENT_NOT_READY", Message: message},
 					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_NETWORK_ENFORCEMENT_NOT_READY", Message: message, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
 				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
@@ -2030,7 +2034,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			if attemptCount == 1 {
 				message := "pre-exec boundary unavailable: " + wrapperResult.setupErr.Error()
 				resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
-					Result: types.ExecResult{ExitCode: 127, DurationMs: int64(time.Since(start) / time.Millisecond),
+					Result: types.ExecResult{ExitCode: 127, CommandTimeout: timeoutResolution.Metadata, DurationMs: int64(time.Since(start) / time.Millisecond),
 						Error:   &types.ExecError{Code: "E_PRE_EXEC_BOUNDARY", Message: message},
 						Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_PRE_EXEC_BOUNDARY", Message: message, AttemptCount: 1, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
 					Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},

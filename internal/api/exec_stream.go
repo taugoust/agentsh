@@ -159,7 +159,7 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming not supported"})
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming not supported", "command_timeout": timeoutResolution.Metadata})
 		return
 	}
 
@@ -206,7 +206,7 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 			a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
 			if attemptCount == 1 {
 				message := fmt.Sprintf("pre-exec boundary unavailable: %v", wrapperResult.setupErr)
-				writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": message, "outcome": &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Code: "E_PRE_EXEC_BOUNDARY", Message: message, AttemptCount: 1}})
+				writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": message, "command_timeout": timeoutResolution.Metadata, "outcome": &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Code: "E_PRE_EXEC_BOUNDARY", Message: message, AttemptCount: 1}})
 				return
 			}
 			exitCode = 127
