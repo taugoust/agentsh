@@ -1,7 +1,7 @@
 # Keep fractional command deadlines consistent with millisecond metadata
 
 ## Status
-Open.
+Resolved.
 
 ## Problem
 Positive durations of at least one millisecond may still contain a fractional millisecond, such as `1.9ms`. AgentSH enforces the full `time.Duration` but serializes `requested_ms`, `effective_ms`, and session defaults/maxima with `Duration.Milliseconds()`, which truncates toward zero.
@@ -23,3 +23,6 @@ Wire and policy duration precision must match public millisecond metadata. Eithe
 
 ## Rough priority
 Low.
+
+## Resolution
+Resolved by AgentSH `d999c505` (`fix(timeout): round fractional metadata up`). AgentSH now uses one overflow-safe ceiling conversion for public millisecond metadata while retaining precise `time.Duration` values for enforcement. Requested, effective, session default/maximum, approval-extension, event, SSE, gRPC, and `exec_bash` metadata therefore never advertise a deadline shorter than the server enforces. Focused tests cover fractional requests and policy limits, capped/default metadata, session snapshots, transport parity, and maximum-duration overflow safety.

@@ -1,7 +1,7 @@
 # Preserve resolved timeout metadata on execution refusals
 
 ## Status
-Open.
+Resolved.
 
 ## Problem
 Several execution paths resolve the ordinary-command timeout and then refuse execution during strict network-readiness or wrapper setup. Their responses do not carry the resolved metadata consistently.
@@ -25,3 +25,6 @@ Every terminal response after successful timeout resolution must include that ex
 
 ## Rough priority
 Medium.
+
+## Resolution
+Resolved by AgentSH `6a9f0e42` (`fix(timeout): preserve metadata on refusals`). Strict network-readiness and command-boundary setup refusals now carry the exact timeout metadata resolved after admission. Buffered REST and unary gRPC inherit it from the core result, `exec_bash` preserves both promoted and nested metadata, SSE setup responses include it, and gRPC streams emit a typed `refused` payload before the terminal status. Pre-resolution queue/admission failures remain distinct, and refusal outcomes remain separate from command timeout and caller cancellation. Focused tests verify identical metadata across transports and strict-readiness refusal behavior.
