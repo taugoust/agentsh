@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/approvals"
+	"github.com/agentsh/agentsh/internal/commandtimeout"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
@@ -27,14 +28,14 @@ func TestCommandTimeoutSessionCreateGetListMetadata(t *testing.T) {
 	store := composite.New(sqliteStore, sqliteStore)
 	manager := session.NewManager(10)
 	app := newTestApp(t, manager, store)
-	engine := commandTimeoutTestEngine(t, 4*time.Hour)
+	engine := commandTimeoutTestEngine(t, 4*time.Hour+500*time.Microsecond)
 	app.SwapPolicy(engine)
 
 	created, code, err := app.createSessionCore(context.Background(), types.CreateSessionRequest{Workspace: t.TempDir()})
 	if err != nil || code != http.StatusCreated {
 		t.Fatalf("createSessionCore = code %d err %v", code, err)
 	}
-	assertPolicySessionTimeout(t, created.CommandTimeout, 4*time.Hour)
+	assertPolicySessionTimeout(t, created.CommandTimeout, 4*time.Hour+500*time.Microsecond)
 
 	for name, path := range map[string]string{
 		"get":  "/api/v1/sessions/" + created.ID,
@@ -56,7 +57,7 @@ func TestCommandTimeoutSessionCreateGetListMetadata(t *testing.T) {
 			} else if err := json.NewDecoder(recorder.Body).Decode(&snapshot); err != nil {
 				t.Fatalf("decode get: %v", err)
 			}
-			assertPolicySessionTimeout(t, snapshot.CommandTimeout, 4*time.Hour)
+			assertPolicySessionTimeout(t, snapshot.CommandTimeout, 4*time.Hour+500*time.Microsecond)
 			encoded, _ := json.Marshal(snapshot)
 			if strings.Contains(string(encoded), "resource_limits") || strings.Contains(string(encoded), "session_timeout") {
 				t.Fatalf("session snapshot leaked unrelated policy data: %s", encoded)
@@ -67,10 +68,10 @@ func TestCommandTimeoutSessionCreateGetListMetadata(t *testing.T) {
 
 func TestCommandTimeoutSessionReportsBoundedApprovalAllowance(t *testing.T) {
 	app, sess, _ := newCommandTimeoutTestApp(t, time.Second)
-	app.approvals = approvals.New("api", 275*time.Millisecond, nil)
+	app.approvals = approvals.New("api", 275*time.Millisecond+time.Nanosecond, nil)
 	metadata := app.sessionSnapshot(sess).CommandTimeout
-	if metadata.ApprovalExtensionMS != 275 {
-		t.Fatalf("session approval_extension_ms = %d, want 275", metadata.ApprovalExtensionMS)
+	if metadata.ApprovalExtensionMS != 276 {
+		t.Fatalf("session approval_extension_ms = %d, want 276", metadata.ApprovalExtensionMS)
 	}
 }
 
@@ -97,7 +98,7 @@ func TestCommandTimeoutExecBashTopLevelMetadataAndValidation(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash is unavailable")
 	}
-	app, sess, store := newCommandTimeoutTestApp(t, 2*time.Second)
+	app, sess, store := newCommandTimeoutTestApp(t, 2*time.Second+500*time.Microsecond)
 
 	recorder := httptest.NewRecorder()
 	body := `{"command":"printf ok","timeout_ms":4000}`
@@ -119,7 +120,7 @@ func TestCommandTimeoutExecBashTopLevelMetadataAndValidation(t *testing.T) {
 	if !response.OK || response.Result.ExitCode != 0 {
 		t.Fatalf("exec_bash response = %+v", response)
 	}
-	assertCommandTimeoutMetadata(t, response.Result.CommandTimeout, 4000, 2000, types.CommandTimeoutSourcePolicyCap)
+	assertCommandTimeoutMetadata(t, response.Result.CommandTimeout, 4000, 2001, types.CommandTimeoutSourcePolicyCap)
 	if !equalCommandTimeout(response.Result.ExecResponse.Result.CommandTimeout, response.Result.CommandTimeout) {
 		t.Fatalf("top-level metadata differs from ExecResult: top=%+v nested=%+v", response.Result.CommandTimeout, response.Result.ExecResponse.Result.CommandTimeout)
 	}
@@ -150,7 +151,7 @@ func TestCommandTimeoutBufferedTypedTerminationAndNatural124(t *testing.T) {
 	app, sess, store := newCommandTimeoutTestApp(t, 500*time.Millisecond)
 
 	response, code, err := app.execInSessionCore(context.Background(), sess.ID, types.ExecRequest{
-		Command: "sh", Args: []string{"-c", "sleep 2"}, Timeout: "80ms",
+		Command: "sh", Args: []string{"-c", "sleep 2"}, Timeout: "80.5ms",
 	})
 	if err != nil || code != http.StatusOK {
 		t.Fatalf("exec = code %d err %v", code, err)
@@ -161,7 +162,7 @@ func TestCommandTimeoutBufferedTypedTerminationAndNatural124(t *testing.T) {
 	if response.Result.Error == nil || response.Result.Error.Code != "E_COMMAND_TIMEOUT" {
 		t.Fatalf("timeout error = %+v", response.Result.Error)
 	}
-	assertCommandTimeoutMetadata(t, response.Result.CommandTimeout, 80, 80, types.CommandTimeoutSourceExplicit)
+	assertCommandTimeoutMetadata(t, response.Result.CommandTimeout, 81, 81, types.CommandTimeoutSourceExplicit)
 	assertLifecycleTimeoutMetadata(t, store, response.CommandID, response.Result.CommandTimeout, types.TerminationReasonCommandTimeout)
 
 	natural, _, err := app.execInSessionCore(context.Background(), sess.ID, types.ExecRequest{
@@ -204,7 +205,7 @@ func TestCommandTimeoutHTTPStreamStartDoneParity(t *testing.T) {
 	}
 	app, sess, store := newCommandTimeoutTestApp(t, 500*time.Millisecond)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(`{"command":"sh","args":["-c","sleep 2"],"timeout":"80ms"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(`{"command":"sh","args":["-c","sleep 2"],"timeout":"80.5ms"}`))
 	app.Router().ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("stream status = %d body=%s", recorder.Code, recorder.Body.String())
@@ -217,7 +218,7 @@ func TestCommandTimeoutHTTPStreamStartDoneParity(t *testing.T) {
 	}
 	startTimeout := decodeCommandTimeout(t, start["command_timeout"])
 	doneTimeout := decodeCommandTimeout(t, done["command_timeout"])
-	assertCommandTimeoutMetadata(t, startTimeout, 80, 80, types.CommandTimeoutSourceExplicit)
+	assertCommandTimeoutMetadata(t, startTimeout, 81, 81, types.CommandTimeoutSourceExplicit)
 	if !equalCommandTimeout(doneTimeout, startTimeout) {
 		t.Fatalf("stream timeout metadata differs: start=%+v done=%+v", startTimeout, doneTimeout)
 	}
@@ -264,7 +265,7 @@ func TestCommandTimeoutGRPCStreamStartDoneParity(t *testing.T) {
 		"session_id": sess.ID,
 		"command":    "sh",
 		"args":       []any{"-c", "sleep 2"},
-		"timeout":    "80ms",
+		"timeout":    "80.5ms",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -280,7 +281,7 @@ func TestCommandTimeoutGRPCStreamStartDoneParity(t *testing.T) {
 	}
 	startTimeout := decodeCommandTimeout(t, start["command_timeout"])
 	doneTimeout := decodeCommandTimeout(t, done["command_timeout"])
-	assertCommandTimeoutMetadata(t, startTimeout, 80, 80, types.CommandTimeoutSourceExplicit)
+	assertCommandTimeoutMetadata(t, startTimeout, 81, 81, types.CommandTimeoutSourceExplicit)
 	if !equalCommandTimeout(doneTimeout, startTimeout) || done["termination_reason"] != types.TerminationReasonCommandTimeout {
 		t.Fatalf("gRPC stream parity mismatch: start=%#v done=%#v", start, done)
 	}
@@ -635,7 +636,7 @@ func newCommandTimeoutTestApp(t *testing.T, limit time.Duration) (*App, *session
 
 func assertPolicySessionTimeout(t *testing.T, metadata types.SessionCommandTimeout, duration time.Duration) {
 	t.Helper()
-	milliseconds := duration.Milliseconds()
+	milliseconds := commandtimeout.CeilMilliseconds(duration)
 	if metadata.DefaultMS != milliseconds || metadata.MaximumMS == nil || *metadata.MaximumMS != milliseconds || metadata.Source != types.SessionCommandTimeoutSourcePolicy {
 		t.Fatalf("session command_timeout = %+v, want policy %dms", metadata, milliseconds)
 	}
@@ -650,7 +651,7 @@ func assertCommandTimeoutMetadata(t *testing.T, metadata types.CommandTimeout, r
 
 func assertOmittedCommandTimeoutMetadata(t *testing.T, metadata types.CommandTimeout, effective time.Duration) {
 	t.Helper()
-	if metadata.RequestedMS != nil || metadata.EffectiveMS != effective.Milliseconds() || metadata.Source != types.CommandTimeoutSourcePolicyDefault {
+	if metadata.RequestedMS != nil || metadata.EffectiveMS != commandtimeout.CeilMilliseconds(effective) || metadata.Source != types.CommandTimeoutSourcePolicyDefault {
 		t.Fatalf("command_timeout = %+v, want omitted policy default %s", metadata, effective)
 	}
 }

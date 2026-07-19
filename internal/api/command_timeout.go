@@ -164,11 +164,7 @@ func approvalExtensionMilliseconds(manager *approvals.Manager) int64 {
 	if allowance <= 0 {
 		return 0
 	}
-	milliseconds := int64(allowance / time.Millisecond)
-	if allowance%time.Millisecond != 0 {
-		milliseconds++
-	}
-	return milliseconds
+	return commandtimeout.CeilMilliseconds(allowance)
 }
 
 func executionTermination(execErr error) (string, *types.ExecError) {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/approvals"
+	"github.com/agentsh/agentsh/internal/commandtimeout"
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
@@ -60,6 +61,22 @@ func TestCommandTimeoutResolver(t *testing.T) {
 			wantRequested: int64Pointer(80),
 			wantSource:    types.CommandTimeoutSourceExplicit,
 		},
+		{
+			name:          "fractional explicit request rounds metadata up",
+			request:       types.ExecRequest{Timeout: "1.9ms"},
+			policy:        40 * time.Millisecond,
+			wantDuration:  1900 * time.Microsecond,
+			wantRequested: int64Pointer(2),
+			wantSource:    types.CommandTimeoutSourceExplicit,
+		},
+		{
+			name:          "fractional policy cap rounds metadata up",
+			request:       types.ExecRequest{Timeout: "2.1ms"},
+			policy:        1900 * time.Microsecond,
+			wantDuration:  1900 * time.Microsecond,
+			wantRequested: int64Pointer(3),
+			wantSource:    types.CommandTimeoutSourcePolicyCap,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -70,8 +87,9 @@ func TestCommandTimeoutResolver(t *testing.T) {
 			if resolved.Duration != test.wantDuration {
 				t.Fatalf("duration = %s, want %s", resolved.Duration, test.wantDuration)
 			}
-			if resolved.Metadata.EffectiveMS != test.wantDuration.Milliseconds() {
-				t.Fatalf("effective_ms = %d, want %d", resolved.Metadata.EffectiveMS, test.wantDuration.Milliseconds())
+			wantEffectiveMS := commandtimeout.CeilMilliseconds(test.wantDuration)
+			if resolved.Metadata.EffectiveMS != wantEffectiveMS {
+				t.Fatalf("effective_ms = %d, want %d", resolved.Metadata.EffectiveMS, wantEffectiveMS)
 			}
 			if resolved.Metadata.Source != test.wantSource {
 				t.Fatalf("source = %q, want %q", resolved.Metadata.Source, test.wantSource)
@@ -84,13 +102,13 @@ func TestCommandTimeoutResolver(t *testing.T) {
 }
 
 func TestCommandTimeoutMetadataReportsBoundedApprovalAllowance(t *testing.T) {
-	app := &App{approvals: approvals.New("api", 250*time.Millisecond, nil)}
+	app := &App{approvals: approvals.New("api", 250*time.Millisecond+time.Nanosecond, nil)}
 	resolution, err := app.resolveCommandTimeout(types.ExecRequest{Timeout: "2s"}, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolution.Metadata.ApprovalExtensionMS != 250 {
-		t.Fatalf("approval_extension_ms = %d, want 250", resolution.Metadata.ApprovalExtensionMS)
+	if resolution.Metadata.ApprovalExtensionMS != 251 {
+		t.Fatalf("approval_extension_ms = %d, want 251", resolution.Metadata.ApprovalExtensionMS)
 	}
 }
 

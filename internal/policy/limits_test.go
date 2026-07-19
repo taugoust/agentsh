@@ -17,6 +17,7 @@ func TestPolicyValidateCommandTimeoutMinimum(t *testing.T) {
 		{name: "negative keeps existing non-positive fallback semantics", timeout: -time.Nanosecond},
 		{name: "sub-millisecond positive is rejected", timeout: 999 * time.Microsecond, wantErr: true},
 		{name: "one millisecond is accepted", timeout: time.Millisecond},
+		{name: "fractional millisecond is accepted", timeout: 1900 * time.Microsecond},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -44,7 +45,7 @@ func TestPolicyLoadRejectsSubMillisecondCommandTimeout(t *testing.T) {
 			}
 		})
 	}
-	for _, value := range []string{"0s", "1ms"} {
+	for _, value := range []string{"0s", "1ms", "1.9ms"} {
 		t.Run("accept_"+value, func(t *testing.T) {
 			document := []byte("version: 1\nname: command-timeout-load\nresource_limits:\n  command_timeout: " + value + "\n")
 			if _, err := LoadFromBytes(document); err != nil {

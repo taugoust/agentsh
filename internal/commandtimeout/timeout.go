@@ -18,6 +18,17 @@ type Resolution struct {
 	Metadata types.CommandTimeout
 }
 
+// CeilMilliseconds converts a duration to public millisecond metadata without
+// reporting a shorter interval than the server enforces. The quotient/remainder
+// form avoids overflowing near time.Duration's maximum value.
+func CeilMilliseconds(duration time.Duration) int64 {
+	milliseconds := int64(duration / time.Millisecond)
+	if duration > 0 && duration%time.Millisecond != 0 {
+		milliseconds++
+	}
+	return milliseconds
+}
+
 // Resolve validates and resolves an optional caller timeout against the policy
 // default/maximum. It is pure: it does not inspect request, session, or process
 // state and has no side effects.
@@ -35,7 +46,7 @@ func Resolve(requested *string, policyLimit time.Duration) (Resolution, error) {
 		return Resolution{
 			Duration: base,
 			Metadata: types.CommandTimeout{
-				EffectiveMS: base.Milliseconds(),
+				EffectiveMS: CeilMilliseconds(base),
 				Source:      source,
 			},
 		}, nil
@@ -52,7 +63,7 @@ func Resolve(requested *string, policyLimit time.Duration) (Resolution, error) {
 		return Resolution{}, fmt.Errorf("timeout must be at least 1ms")
 	}
 
-	requestedMS := duration.Milliseconds()
+	requestedMS := CeilMilliseconds(duration)
 	effective := duration
 	source = types.CommandTimeoutSourceExplicit
 	if policyLimit > 0 && duration > policyLimit {
@@ -63,7 +74,7 @@ func Resolve(requested *string, policyLimit time.Duration) (Resolution, error) {
 		Duration: effective,
 		Metadata: types.CommandTimeout{
 			RequestedMS: &requestedMS,
-			EffectiveMS: effective.Milliseconds(),
+			EffectiveMS: CeilMilliseconds(effective),
 			Source:      source,
 		},
 	}, nil
@@ -73,7 +84,7 @@ func Resolve(requested *string, policyLimit time.Duration) (Resolution, error) {
 // an ordinary command request is made.
 func SessionMetadata(policyLimit time.Duration) types.SessionCommandTimeout {
 	if policyLimit > 0 {
-		milliseconds := policyLimit.Milliseconds()
+		milliseconds := CeilMilliseconds(policyLimit)
 		return types.SessionCommandTimeout{
 			DefaultMS: milliseconds,
 			MaximumMS: &milliseconds,
@@ -81,7 +92,7 @@ func SessionMetadata(policyLimit time.Duration) types.SessionCommandTimeout {
 		}
 	}
 	return types.SessionCommandTimeout{
-		DefaultMS: Fallback.Milliseconds(),
+		DefaultMS: CeilMilliseconds(Fallback),
 		Source:    types.SessionCommandTimeoutSourceFallback,
 	}
 }

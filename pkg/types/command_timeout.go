@@ -12,9 +12,11 @@ const (
 )
 
 // CommandTimeout describes the timeout applied to one ordinary command.
-// RequestedMS is present only when the caller supplied a timeout.
-// ApprovalExtensionMS is the maximum cumulative approval-wait allowance; all
-// approval requests for the command share this single allowance.
+// Millisecond values are rounded up so metadata never advertises a deadline
+// shorter than the duration enforced by the server. RequestedMS is present only
+// when the caller supplied a timeout. ApprovalExtensionMS is the maximum
+// cumulative approval-wait allowance; all approval requests for the command
+// share this single allowance.
 type CommandTimeout struct {
 	RequestedMS         *int64               `json:"requested_ms,omitempty"`
 	EffectiveMS         int64                `json:"effective_ms"`
@@ -32,9 +34,10 @@ const (
 )
 
 // SessionCommandTimeout is the pre-command timeout contract exposed by a
-// session snapshot. A nil MaximumMS means callers may explicitly request a
-// timeout longer than DefaultMS. ApprovalExtensionMS is a single cumulative
-// allowance, not an amount that can accumulate across approval requests.
+// session snapshot. Millisecond values are rounded up. A nil MaximumMS means
+// callers may explicitly request a timeout longer than DefaultMS.
+// ApprovalExtensionMS is a single cumulative allowance, not an amount that can
+// accumulate across approval requests.
 type SessionCommandTimeout struct {
 	DefaultMS           int64                       `json:"default_ms"`
 	MaximumMS           *int64                      `json:"maximum_ms,omitempty"`
