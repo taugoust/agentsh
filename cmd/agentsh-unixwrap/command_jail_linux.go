@@ -520,20 +520,12 @@ func installCommandJailSeccomp() error {
 		return fmt.Errorf("enable command-jail seccomp raw errors: %w", err)
 	}
 
-	// The mount view is complete before this filter is loaded. Deny every
-	// namespace/mount API that could be used to alter that view, plus same-UID
-	// process inspection and kernel control APIs that have no legitimate role in
-	// an untrusted tool command. clone/clone3 remain available for normal process
-	// creation; every descendant inherits this filter and the already-masked view.
-	blocked := []string{
-		"mount", "umount2", "pivot_root", "setns", "unshare",
-		"open_tree", "move_mount", "fsopen", "fsconfig", "fsmount", "fspick", "mount_setattr",
-		"ptrace", "process_vm_readv", "process_vm_writev", "kcmp", "pidfd_getfd",
-		"bpf", "perf_event_open", "userfaultfd",
-		"add_key", "request_key", "keyctl",
-	}
+	// The production syscall contract is defined in a build-selected helper so
+	// the feasibility VM can compile an explicitly test-only wrapper which keeps
+	// the complete outer jail but permits descendant mount construction. Normal
+	// builds retain the immutable-mount contract.
 	action := seccomp.ActErrno.SetReturnCode(int16(unix.EPERM))
-	for _, name := range blocked {
+	for _, name := range commandJailBlockedSyscalls() {
 		syscallNumber, err := seccomp.GetSyscallFromName(name)
 		if err != nil {
 			return fmt.Errorf("resolve required command-jail syscall %s: %w", name, err)

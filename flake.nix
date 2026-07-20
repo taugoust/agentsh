@@ -269,6 +269,17 @@
                 touch "$out/passed"
               '';
 
+          nested-namespace-feasibility =
+            if stdenv.hostPlatform.isLinux then
+              import ./nix/checks/nested-namespace-feasibility.nix {
+                inherit pkgs self;
+              }
+            else
+              pkgs.runCommand "agentsh-nested-namespace-feasibility-skipped" { } ''
+                mkdir -p "$out"
+                touch "$out/skipped-non-linux"
+              '';
+
           approval-resolution-race-tests = pkgs.buildGoModule {
             pname = "agentsh-approval-resolution-race-tests";
             version = "unstable-2026-06-17";
