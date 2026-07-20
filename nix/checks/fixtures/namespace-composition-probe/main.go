@@ -39,6 +39,8 @@ type wrapperConfig struct {
 	InterceptMetadata  bool        `json:"intercept_metadata,omitempty"`
 	WriteOnlyOpens     bool        `json:"write_only_opens,omitempty"`
 	BlockIOUring       bool        `json:"block_io_uring,omitempty"`
+	BlockedSyscalls    []string    `json:"blocked_syscalls,omitempty"`
+	OnBlock            string      `json:"on_block,omitempty"`
 	WaitKillable       *bool       `json:"wait_killable,omitempty"`
 	WaitKillableSource string      `json:"wait_killable_source,omitempty"`
 	LandlockEnabled    bool        `json:"landlock_enabled,omitempty"`
@@ -58,24 +60,33 @@ type jailConfig struct {
 }
 
 type feasibilityReport struct {
-	SchemaVersion     int    `json:"schema_version"`
-	Stage             string `json:"stage"`
-	Result            string `json:"result"`
-	ErrnoClass        string `json:"errno_class,omitempty"`
-	LandlockABI       int    `json:"landlock_abi"`
-	OuterNamespaceID  int    `json:"outer_namespace_id"`
-	LandlockComposes  *bool  `json:"landlock_composes,omitempty"`
-	SelectedBranch    string `json:"selected_branch,omitempty"`
-	ExitCode          int    `json:"exit_code"`
-	Notifications     int64  `json:"notifications"`
-	ExecNotifications int64  `json:"exec_notifications"`
-	FileNotifications int64  `json:"file_notifications"`
+	SchemaVersion      int    `json:"schema_version"`
+	Stage              string `json:"stage"`
+	Result             string `json:"result"`
+	ErrnoClass         string `json:"errno_class,omitempty"`
+	LandlockABI        int    `json:"landlock_abi"`
+	OuterNamespaceID   int    `json:"outer_namespace_id"`
+	LandlockComposes   *bool  `json:"landlock_composes,omitempty"`
+	SelectedBranch     string `json:"selected_branch,omitempty"`
+	ExitCode           int    `json:"exit_code"`
+	Notifications      int64  `json:"notifications"`
+	ExecNotifications  int64  `json:"exec_notifications"`
+	FileNotifications  int64  `json:"file_notifications"`
+	MountNotifications int64  `json:"mount_notifications,omitempty"`
 }
 
 type notificationCounts struct {
 	total atomic.Int64
 	exec  atomic.Int64
 	file  atomic.Int64
+	mount atomic.Int64
+}
+
+type mountBrokerConfig struct {
+	helper        string
+	allowedSource string
+	allowedRoot   string
+	active        atomic.Bool
 }
 
 func main() {
@@ -105,6 +116,12 @@ func runHarness(args []string) error {
 	outerNamespaceID := fs.Int("outer-namespace-id", 1, "outer user-namespace UID/GID mapping")
 	expectBlock := fs.Bool("expect-landlock-block", false, "require a typed EPERM-class Landlock failure")
 	expectUIDMapBlock := fs.Bool("expect-root-map-block", false, "require the current outer UID 0 mapping to block nested userns setup")
+	mountBrokerHelper := fs.String("mount-broker-helper", "", "test-only helper used to emulate mount notifications")
+	brokerSource := fs.String("broker-source", "", "only bind source accepted by the test broker")
+	brokerRoot := fs.String("broker-root", "", "only destination tree accepted by the test broker")
+	landlockWriteRoot := fs.String("landlock-write-root", "", "optional restricted Landlock write root")
+	successStage := fs.String("success-stage", "", "override the successful Landlock report stage")
+	successBranch := fs.String("success-branch", "", "override the successful Landlock branch label")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -116,6 +133,27 @@ func runHarness(args []string) error {
 		if strings.TrimSpace(value) == "" || !filepath.IsAbs(value) {
 			return fmt.Errorf("--%s must be an absolute path", name)
 		}
+	}
+	brokerEnabled := *mountBrokerHelper != "" || *brokerSource != "" || *brokerRoot != ""
+	if brokerEnabled {
+		for name, value := range map[string]string{
+			"mount-broker-helper": *mountBrokerHelper,
+			"broker-source":       *brokerSource,
+			"broker-root":         *brokerRoot,
+		} {
+			if !filepath.IsAbs(value) {
+				return fmt.Errorf("--%s must be an absolute path when mount brokering is enabled", name)
+			}
+		}
+		if !*landlockEnabled || *expectBlock || *expectUIDMapBlock {
+			return errors.New("mount brokering requires Landlock without an expected direct-mount failure")
+		}
+	}
+	if *landlockWriteRoot != "" && !filepath.IsAbs(*landlockWriteRoot) {
+		return errors.New("--landlock-write-root must be absolute")
+	}
+	if (*successStage == "") != (*successBranch == "") || (*successStage != "" && (!*landlockEnabled || *expectBlock)) {
+		return errors.New("success-stage and success-branch must be supplied together for a successful Landlock probe")
 	}
 	if *outerNamespaceID < 0 {
 		return errors.New("--outer-namespace-id must be non-negative")
@@ -133,6 +171,10 @@ func runHarness(args []string) error {
 	}
 
 	root := string(filepath.Separator)
+	writeRoots := []string{root}
+	if *landlockWriteRoot != "" {
+		writeRoots = []string{*landlockWriteRoot}
+	}
 	waitKillable := false
 	cfg := wrapperConfig{
 		UnixSocketEnabled:  true,
@@ -148,13 +190,17 @@ func runHarness(args []string) error {
 		Workspace:          root,
 		AllowExecute:       []string{root},
 		AllowRead:          []string{root},
-		AllowWrite:         []string{root},
+		AllowWrite:         writeRoots,
 		AllowNetwork:       true,
 		AllowBind:          true,
 		CommandJail: &jailConfig{
 			Required:        true,
 			HideDirectories: []string{*controlDir},
 		},
+	}
+	if brokerEnabled {
+		cfg.BlockedSyscalls = []string{"mount"}
+		cfg.OnBlock = "log"
 	}
 	configJSON, err := json.Marshal(cfg)
 	if err != nil {
@@ -176,7 +222,11 @@ func runHarness(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, *wrapper, "--", self, "payload", "--matrix", *matrix, "--control-dir", *controlDir)
+	scratchRoot := ""
+	if *landlockWriteRoot != "" {
+		scratchRoot = *landlockWriteRoot
+	}
+	cmd := exec.CommandContext(ctx, *wrapper, "--", self, "payload", "--matrix", *matrix, "--control-dir", *controlDir, "--scratch-root", scratchRoot)
 	cmd.Env = append(os.Environ(), notifyFDEnv+"=3", configEnv+"="+string(configJSON))
 	cmd.ExtraFiles = []*os.File{childSocket}
 	// A capability-free namespace UID 0 cannot create a second user namespace
@@ -222,9 +272,14 @@ func runHarness(args []string) error {
 
 	handlerCtx, stopHandler := context.WithCancel(context.Background())
 	counts := &notificationCounts{}
+	broker := &mountBrokerConfig{
+		helper:        *mountBrokerHelper,
+		allowedSource: filepath.Clean(*brokerSource),
+		allowedRoot:   filepath.Clean(*brokerRoot),
+	}
 	handlerDone := make(chan error, 1)
 	go func() {
-		handlerDone <- serveAllowNotifications(handlerCtx, notifyFile, counts)
+		handlerDone <- serveAllowNotifications(handlerCtx, notifyFile, counts, broker)
 	}()
 	if _, err := parentSocket.Write([]byte{0x01}); err != nil {
 		stopHandler()
@@ -238,6 +293,9 @@ func runHarness(args []string) error {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		return fmt.Errorf("wait for complete outer boundary READY: %w; wrapper stderr: %s", err, stderr.String())
+	}
+	if brokerEnabled {
+		broker.active.Store(true)
 	}
 	if _, err := parentSocket.Write([]byte{'G'}); err != nil {
 		stopHandler()
@@ -263,19 +321,39 @@ func runHarness(args []string) error {
 
 	exitCode := processExitCode(waitErr)
 	report := feasibilityReport{
-		SchemaVersion:     1,
-		LandlockABI:       landlockResult.ABI,
-		OuterNamespaceID:  *outerNamespaceID,
-		ExitCode:          exitCode,
-		Notifications:     counts.total.Load(),
-		ExecNotifications: counts.exec.Load(),
-		FileNotifications: counts.file.Load(),
+		SchemaVersion:      1,
+		LandlockABI:        landlockResult.ABI,
+		OuterNamespaceID:   *outerNamespaceID,
+		ExitCode:           exitCode,
+		Notifications:      counts.total.Load(),
+		ExecNotifications:  counts.exec.Load(),
+		FileNotifications:  counts.file.Load(),
+		MountNotifications: counts.mount.Load(),
 	}
 	if counts.exec.Load() == 0 || counts.file.Load() == 0 {
 		report.Stage = "seccomp_monitoring"
 		report.Result = "failed"
 		_ = json.NewEncoder(os.Stdout).Encode(report)
 		return fmt.Errorf("seccomp monitoring was not exercised: exec=%d file=%d", counts.exec.Load(), counts.file.Load())
+	}
+
+	if brokerEnabled {
+		composes := waitErr == nil
+		report.Stage = "landlock_brokered_mount"
+		report.LandlockComposes = &composes
+		report.SelectedBranch = "generic_mount_syscall_broker"
+		if waitErr != nil {
+			report.Result = "failed"
+			_ = json.NewEncoder(os.Stdout).Encode(report)
+			return fmt.Errorf("generic mount broker probe failed: %w", waitErr)
+		}
+		if counts.mount.Load() < 4 {
+			report.Result = "failed"
+			_ = json.NewEncoder(os.Stdout).Encode(report)
+			return fmt.Errorf("generic mount broker saw only %d mount notifications", counts.mount.Load())
+		}
+		report.Result = "pass"
+		return json.NewEncoder(os.Stdout).Encode(report)
 	}
 
 	if !*landlockEnabled {
@@ -304,10 +382,16 @@ func runHarness(args []string) error {
 
 	composes := waitErr == nil
 	report.Stage = "landlock_nested_mount"
+	if *successStage != "" && composes {
+		report.Stage = *successStage
+	}
 	report.LandlockComposes = &composes
 	if composes {
 		report.Result = "pass"
 		report.SelectedBranch = "landlock_composes"
+		if *successBranch != "" {
+			report.SelectedBranch = *successBranch
+		}
 		_ = json.NewEncoder(os.Stdout).Encode(report)
 		if *expectBlock {
 			return errors.New("Landlock unexpectedly permitted nested mount construction; select the composing implementation branch")
@@ -335,10 +419,11 @@ func runPayload(args []string) error {
 	fs := flag.NewFlagSet("payload", flag.ContinueOnError)
 	matrix := fs.String("matrix", "", "Bubblewrap matrix executable")
 	controlDir := fs.String("control-dir", "", "masked control directory")
+	scratchRoot := fs.String("scratch-root", "", "optional writable root for the outer mount denial probe")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if !filepath.IsAbs(*matrix) || !filepath.IsAbs(*controlDir) {
+	if !filepath.IsAbs(*matrix) || !filepath.IsAbs(*controlDir) || (*scratchRoot != "" && !filepath.IsAbs(*scratchRoot)) {
 		return errors.New("payload paths must be absolute")
 	}
 
@@ -387,7 +472,7 @@ func runPayload(args []string) error {
 	mountNS, _ := os.Readlink(filepath.Join(procRoot, "self", "ns", "mnt"))
 	emitStage("outer_namespaces", "pass", "", map[string]any{"user_namespace": userNS, "mount_namespace": mountNS})
 
-	mountTarget, err := os.MkdirTemp("", "agentsh-outer-mount-probe-")
+	mountTarget, err := os.MkdirTemp(*scratchRoot, "agentsh-outer-mount-probe-")
 	if err != nil {
 		return err
 	}
@@ -417,10 +502,11 @@ func runPayload(args []string) error {
 	return syscall.Exec(*matrix, []string{*matrix}, os.Environ())
 }
 
-func serveAllowNotifications(ctx context.Context, notifyFile *os.File, counts *notificationCounts) error {
+func serveAllowNotifications(ctx context.Context, notifyFile *os.File, counts *notificationCounts, broker *mountBrokerConfig) error {
 	fd := seccomp.ScmpFd(notifyFile.Fd())
 	execSyscalls := resolveSyscallSet([]string{"execve", "execveat"})
 	fileSyscalls := resolveSyscallSet([]string{"open", "openat", "openat2", "creat"})
+	mountSyscalls := resolveSyscallSet([]string{"mount"})
 	for {
 		select {
 		case <-ctx.Done():
@@ -446,10 +532,125 @@ func serveAllowNotifications(ctx context.Context, notifyFile *os.File, counts *n
 		if _, ok := fileSyscalls[syscallNumber]; ok {
 			counts.file.Add(1)
 		}
+		if _, ok := mountSyscalls[syscallNumber]; ok && broker.active.Load() {
+			counts.mount.Add(1)
+			if err := brokerMountRequest(int(req.Pid), req.Data.Args, broker); err != nil {
+				if respondErr := unixmon.NotifRespondDeny(int(notifyFile.Fd()), req.ID, int32(unix.EPERM)); respondErr != nil && !errors.Is(respondErr, unix.ENOENT) {
+					return fmt.Errorf("deny brokered mount after %v: %w", err, respondErr)
+				}
+				continue
+			}
+			if err := unixmon.NotifRespondValue(int(notifyFile.Fd()), req.ID, 0); err != nil && !errors.Is(err, unix.ENOENT) {
+				return fmt.Errorf("complete brokered mount: %w", err)
+			}
+			continue
+		}
 		if err := unixmon.NotifRespondContinue(int(notifyFile.Fd()), req.ID); err != nil && !errors.Is(err, unix.ENOENT) {
 			return fmt.Errorf("continue seccomp notification: %w", err)
 		}
 	}
+}
+
+func brokerMountRequest(pid int, args []uint64, broker *mountBrokerConfig) error {
+	if len(args) < 5 {
+		return errors.New("short seccomp mount argument vector")
+	}
+	source, err := readTraceeCString(pid, args[0])
+	if err != nil {
+		return fmt.Errorf("read mount source: %w", err)
+	}
+	target, err := readTraceeCString(pid, args[1])
+	if err != nil {
+		return fmt.Errorf("read mount target: %w", err)
+	}
+	filesystem, err := readTraceeCString(pid, args[2])
+	if err != nil {
+		return fmt.Errorf("read mount filesystem: %w", err)
+	}
+	data, err := readTraceeCString(pid, args[4])
+	if err != nil {
+		return fmt.Errorf("read mount data: %w", err)
+	}
+	target = filepath.Clean(target)
+	relative, err := filepath.Rel(broker.allowedRoot, target)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return fmt.Errorf("destination %q is outside broker root", target)
+	}
+	flags := args[3]
+	switch relative {
+	case "bind":
+		if filepath.Clean(source) != broker.allowedSource || filesystem != "" || flags&uint64(unix.MS_BIND) == 0 {
+			return fmt.Errorf("unapproved bind source=%q filesystem=%q flags=%#x", source, filesystem, flags)
+		}
+		if err := runMountHelper(broker.helper, pid, source, target, "", flags, data); err != nil {
+			return err
+		}
+		// The fixed source is read-only in the outer policy. Preserve that
+		// authority even though the destination is beneath a writable rule.
+		readonly := uint64(unix.MS_BIND | unix.MS_REMOUNT | unix.MS_RDONLY | unix.MS_NOSUID | unix.MS_NODEV)
+		return runMountHelper(broker.helper, pid, "", target, "", readonly, "")
+	case "tmpfs":
+		if source != "tmpfs" || filesystem != "tmpfs" || flags&uint64(unix.MS_BIND) != 0 {
+			return fmt.Errorf("unapproved tmpfs source=%q filesystem=%q flags=%#x", source, filesystem, flags)
+		}
+		return runMountHelper(broker.helper, pid, source, target, filesystem, flags|uint64(unix.MS_NOSUID|unix.MS_NODEV), data)
+	case "proc":
+		if source != "proc" || filesystem != "proc" || flags&uint64(unix.MS_BIND) != 0 {
+			return fmt.Errorf("unapproved proc source=%q filesystem=%q flags=%#x", source, filesystem, flags)
+		}
+		return runMountHelper(broker.helper, pid, source, target, filesystem, flags|uint64(unix.MS_NOSUID|unix.MS_NODEV|unix.MS_NOEXEC), data)
+	default:
+		return fmt.Errorf("unapproved broker destination %q", relative)
+	}
+}
+
+func readTraceeCString(pid int, address uint64) (string, error) {
+	if address == 0 {
+		return "", nil
+	}
+	buffer := make([]byte, 4096)
+	local := unix.Iovec{Base: &buffer[0], Len: uint64(len(buffer))}
+	remote := unix.RemoteIovec{Base: uintptr(address), Len: len(buffer)}
+	n, err := unix.ProcessVMReadv(pid, []unix.Iovec{local}, []unix.RemoteIovec{remote}, 0)
+	if err != nil {
+		return "", err
+	}
+	if nul := bytes.IndexByte(buffer[:n], 0); nul >= 0 {
+		return string(buffer[:nul]), nil
+	}
+	return "", errors.New("unterminated or oversized string")
+}
+
+func runMountHelper(helper string, pid int, source, target, filesystem string, flags uint64, data string) error {
+	namespaceFiles := make([]*os.File, 0, 3)
+	for _, namespace := range []string{"user", "pid", "mnt"} {
+		file, err := os.Open(filepath.Join("/proc", strconv.Itoa(pid), "ns", namespace))
+		if err != nil {
+			for _, opened := range namespaceFiles {
+				_ = opened.Close()
+			}
+			return fmt.Errorf("open tracee %s namespace: %w", namespace, err)
+		}
+		namespaceFiles = append(namespaceFiles, file)
+	}
+	defer func() {
+		for _, file := range namespaceFiles {
+			_ = file.Close()
+		}
+	}()
+	optional := func(value string) string {
+		if value == "" {
+			return "-"
+		}
+		return value
+	}
+	cmd := exec.Command(helper, optional(source), target, optional(filesystem), strconv.FormatUint(flags, 10), optional(data))
+	cmd.ExtraFiles = namespaceFiles
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mount helper failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 func resolveSyscallSet(names []string) map[int32]struct{} {

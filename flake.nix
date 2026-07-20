@@ -280,6 +280,17 @@
                 touch "$out/skipped-non-linux"
               '';
 
+          nested-namespace-broker-feasibility =
+            if stdenv.hostPlatform.isLinux then
+              import ./nix/checks/nested-namespace-broker-feasibility.nix {
+                inherit pkgs self;
+              }
+            else
+              pkgs.runCommand "agentsh-nested-namespace-broker-feasibility-skipped" { } ''
+                mkdir -p "$out"
+                touch "$out/skipped-non-linux"
+              '';
+
           approval-resolution-race-tests = pkgs.buildGoModule {
             pname = "agentsh-approval-resolution-race-tests";
             version = "unstable-2026-06-17";

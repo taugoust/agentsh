@@ -231,6 +231,22 @@ func NotifRespondDeny(notifFD int, id uint64, errno int32) error {
 	return nil
 }
 
+// NotifRespondValue completes an emulated syscall with the supplied return
+// value. The kernel does not execute the original syscall.
+func NotifRespondValue(notifFD int, id uint64, value int64) error {
+	resp := seccompNotifResp{id: id, val: value}
+	_, _, e := unix.Syscall(
+		unix.SYS_IOCTL,
+		uintptr(notifFD),
+		uintptr(ioctlNotifSend),
+		uintptr(unsafe.Pointer(&resp)),
+	)
+	if e != 0 {
+		return e
+	}
+	return nil
+}
+
 // NotifRespondContinue responds to a seccomp notification with CONTINUE,
 // allowing the trapped syscall to proceed as if seccomp were not installed.
 func NotifRespondContinue(notifFD int, id uint64) error {

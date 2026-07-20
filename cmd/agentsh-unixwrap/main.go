@@ -307,12 +307,10 @@ func main() {
 func withoutCommandJailSetupSyscalls(names []string) []string {
 	out := make([]string, 0, len(names))
 	for _, name := range names {
-		switch strings.TrimSpace(name) {
-		case "mount", "umount", "umount2", "prctl", "capset", "clone", "clone3", "seccomp", "close_range":
+		if commandJailSetupSyscallExempt(strings.TrimSpace(name)) {
 			continue
-		default:
-			out = append(out, name)
 		}
+		out = append(out, name)
 	}
 	return out
 }
