@@ -392,6 +392,7 @@ pkgs.testers.runNixOSTest {
             "--wrapper ${productionPackage}/bin/agentsh-unixwrap "
             "--matrix ${productionMatrix}/bin/agentsh-composition-runtime-matrix "
             "--control-dir /run/agentsh-feasibility-control --landlock "
+            "--landlock-write-root /scratch/theo/qshell-project/qshell "
             "--landlock-exact-read-root ${sourceFixture} "
             "--composition-adapter ${productionPackage}/bin/agentsh-bwrap-adapter "
             "--composition-helper ${productionPackage}/bin/agentsh-composition-mount-helper "

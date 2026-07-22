@@ -230,6 +230,10 @@ func runHarness(args []string) error {
 	if *landlockExactReadRoot != "" {
 		readRoots = append(readRoots, *landlockExactReadRoot)
 	}
+	workspace := root
+	if semanticComposition && *landlockWriteRoot != "" {
+		workspace = *landlockWriteRoot
+	}
 	waitKillable := false
 	cfg := wrapperConfig{
 		UnixSocketEnabled:  true,
@@ -242,7 +246,7 @@ func runHarness(args []string) error {
 		WaitKillableSource: "nested_namespace_feasibility_vm",
 		LandlockEnabled:    *landlockEnabled,
 		LandlockABI:        landlockResult.ABI,
-		Workspace:          root,
+		Workspace:          workspace,
 		// Keep /nix/store as an explicit Landlock rule object. Once the broker
 		// bind-mounts that tree below a detached root, the original / rule is no
 		// longer in its mount ancestry; the source-root rule preserves the base
@@ -373,9 +377,9 @@ func runHarness(args []string) error {
 			HelperPath:            *compositionHelper,
 			AdapterPath:           *compositionAdapter,
 			ScratchRoot:           *compositionScratchRoot,
-			ReadRoots:             []string{root},
-			WriteRoots:            []string{root},
-			ExecuteRoots:          []string{root},
+			ReadRoots:             readRoots,
+			WriteRoots:            writeRoots,
+			ExecuteRoots:          cfg.AllowExecute,
 			DenyRoots:             []string{*controlDir},
 			MaxPlanOperations:     256,
 			MaxDataBytes:          16 * 1024 * 1024,

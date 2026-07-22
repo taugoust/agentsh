@@ -457,6 +457,32 @@ func TestDestinationRightsCannotBroadenWritableSyntheticAncestor(t *testing.T) {
 	}
 }
 
+func TestBindWithoutBaseWriteAuthorityIsReducedToReadOnly(t *testing.T) {
+	readExecute := uint64(
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE |
+			landlock.LANDLOCK_ACCESS_FS_READ_DIR |
+			landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+	)
+	broker := &Broker{cfg: BrokerConfig{
+		WriteRoots:   []string{"/workspace"},
+		ExecuteRoots: []string{"/nix"},
+	}}
+	operation := Operation{Type: OperationBind, Source: "/nix", Target: "/nix", Recursive: true}
+	attributes := broker.bindRequiredAttributes(operation, "/nix", readExecute)
+	if attributes&unix.MOUNT_ATTR_RDONLY == 0 {
+		t.Fatalf("non-writable /nix bind attributes = %#x, want read-only", attributes)
+	}
+	if attributes&unix.MOUNT_ATTR_NOEXEC != 0 {
+		t.Fatalf("executable /nix bind attributes = %#x, did not want noexec", attributes)
+	}
+
+	broker.cfg.WriteRoots = []string{"/nix"}
+	attributes = broker.bindRequiredAttributes(operation, "/nix", readExecute|landlock.LANDLOCK_ACCESS_FS_WRITE_FILE)
+	if attributes&unix.MOUNT_ATTR_RDONLY != 0 {
+		t.Fatalf("base-policy writable bind attributes = %#x, did not want read-only", attributes)
+	}
+}
+
 func TestBrokerRejectsScratchRootAsBindSourceOrDescendant(t *testing.T) {
 	scratch := t.TempDir()
 	rootFD, err := unix.Open(string(filepath.Separator), unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)

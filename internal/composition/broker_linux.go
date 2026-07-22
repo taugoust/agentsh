@@ -1003,10 +1003,6 @@ func (b *Broker) finalMountExpectations(context *targetContext, staging string, 
 		target := stagedTarget(staging, operation.Target)
 		switch operation.Type {
 		case OperationBind:
-			required := uint64(unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV)
-			if operation.ReadOnly {
-				required |= unix.MOUNT_ATTR_RDONLY
-			}
 			source, canonical, info, err := b.openSource(context.root, operation.Source)
 			if err != nil {
 				if operation.Try && errors.Is(err, os.ErrNotExist) {
@@ -1019,9 +1015,7 @@ func (b *Broker) finalMountExpectations(context *targetContext, staging string, 
 				source.Close()
 				return nil, rightsErr
 			}
-			if !pathAllowed(canonical, b.cfg.ExecuteRoots) || rights&landlock.LANDLOCK_ACCESS_FS_EXECUTE == 0 {
-				required |= unix.MOUNT_ATTR_NOEXEC
-			}
+			required := b.bindRequiredAttributes(operation, canonical, rights)
 			expectationErr := b.addBindMountExpectations(context, expected, source, operation.Source, target, required)
 			source.Close()
 			if expectationErr != nil {
@@ -1481,7 +1475,7 @@ func (b *Broker) validateRecursiveSource(context *targetContext, source *os.File
 		if err := validateDestinationRights(childCanonical, rights, destinationRights, info, effectiveAttributes); err != nil {
 			return nil, fmt.Errorf("recursive source mount %q (%s): %w", mount.path, mount.filesystem, err)
 		}
-		if operation.Type != OperationDevBind && !operation.ReadOnly && rights&landlock.LANDLOCK_ACCESS_FS_WRITE_FILE == 0 && mount.attributes&unix.MOUNT_ATTR_RDONLY == 0 {
+		if operation.Type != OperationDevBind && rights&landlock.LANDLOCK_ACCESS_FS_WRITE_FILE == 0 && effectiveAttributes&unix.MOUNT_ATTR_RDONLY == 0 {
 			return nil, typedError("E_COMPOSITION_RIGHTS_ESCALATION", "recursive source mount %q is writable at the destination but not in base policy", mount.path)
 		}
 		if rootExecutable && rights&landlock.LANDLOCK_ACCESS_FS_EXECUTE == 0 && mount.attributes&unix.MOUNT_ATTR_NOEXEC == 0 {
@@ -1573,6 +1567,21 @@ func (b *Broker) cloneValidatedMountTree(context *targetContext, rootSource *os.
 	return nil
 }
 
+func (b *Broker) bindRequiredAttributes(operation Operation, canonical string, rights uint64) uint64 {
+	required := uint64(unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV)
+	// A writable VFS mount is unnecessary when the mandatory base Landlock
+	// domain has no write authority over its source. Preserve Bubblewrap's
+	// topology while reducing that mount to read-only instead of rejecting safe
+	// identity binds such as the Nix FHS environment's /nix -> /nix.
+	if operation.ReadOnly || !pathAllowed(canonical, b.cfg.WriteRoots) || rights&landlock.LANDLOCK_ACCESS_FS_WRITE_FILE == 0 {
+		required |= unix.MOUNT_ATTR_RDONLY
+	}
+	if !pathAllowed(canonical, b.cfg.ExecuteRoots) || rights&landlock.LANDLOCK_ACCESS_FS_EXECUTE == 0 {
+		required |= unix.MOUNT_ATTR_NOEXEC
+	}
+	return required
+}
+
 func (b *Broker) executeBind(context *targetContext, operation Operation, target string, destinationRights uint64) (uint64, bool, error) {
 	source, canonical, info, err := b.openSource(context.root, operation.Source)
 	if err != nil {
@@ -1586,16 +1595,7 @@ func (b *Broker) executeBind(context *targetContext, operation Operation, target
 	if err != nil {
 		return 0, false, err
 	}
-	if !operation.ReadOnly && (!pathAllowed(canonical, b.cfg.WriteRoots) || rights&landlock.LANDLOCK_ACCESS_FS_WRITE_FILE == 0) {
-		return 0, false, typedError("E_COMPOSITION_RIGHTS_ESCALATION", "read-write bind source %q is not base-policy writable", canonical)
-	}
-	requiredAttributes := uint64(unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV)
-	if operation.ReadOnly {
-		requiredAttributes |= unix.MOUNT_ATTR_RDONLY
-	}
-	if !pathAllowed(canonical, b.cfg.ExecuteRoots) || rights&landlock.LANDLOCK_ACCESS_FS_EXECUTE == 0 {
-		requiredAttributes |= unix.MOUNT_ATTR_NOEXEC
-	}
+	requiredAttributes := b.bindRequiredAttributes(operation, canonical, rights)
 	if err := validateDestinationRights(canonical, rights, destinationRights, info, requiredAttributes); err != nil {
 		return 0, false, err
 	}
