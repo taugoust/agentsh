@@ -11,9 +11,9 @@ Downstream architecture/contract plans:
 
 ## Status
 
-Open. AgentSH `b1479a2f` is pinned on Rose, but the absolute live canary fails after pivot because the requested QShell CWD is missing. A relative `cd qshell` form bypasses composition and executes real Bubblewrap.
+Open for Phase 6 only. Rose remains pinned to `b1479a2f`, where the last absolute canary lost the post-pivot CWD and a relative form executed real Bubblewrap. The deterministic implementation candidate is now AgentSH `ce42938d6bea6e7d644fd342f14b4b5975d2a8d1`; its integrated release gate and complete Phase 5 sequence passed locally on 2026-07-22.
 
-The user explicitly authorized publishing this formerly ignored plan. Do not resume live trial-and-error on Rose until the integrated release gate below passes.
+The user explicitly authorized publishing this formerly ignored plan. Do not describe live acceptance as complete: the candidate still must be pushed, pinned downstream, and exercised on Rose in the exact harmless-first order below.
 
 ## Constraints
 
@@ -179,6 +179,8 @@ Run through flake outputs:
 - downstream generated policy boundary checks and Rose/non-Rose evaluations.
 
 Record logs and exact output paths in the parent issue.
+
+Phase 5 passed for `ce42938d6bea6e7d644fd342f14b4b5975d2a8d1`. The canonical commands, logs, and Nix store outputs are recorded in `issues/qshell-bubblewrap-composition-live-rollout-gaps.md`. The gate additionally caught and fixed recursive composition through a preserved ancestral PID namespace by deriving its real owner with `NS_GET_USERNS`.
 
 ## Phase 6 — Controlled rollout
 

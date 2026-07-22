@@ -2,7 +2,7 @@
 
 ## Status
 
-Open. The composition backend is implemented and enabled only on Rose, but the live non-hardware acceptance command still does not reach Vivado. Do not describe the feature as production-ready or resolved.
+Open for controlled Rose acceptance. AgentSH `ce42938d6bea6e7d644fd342f14b4b5975d2a8d1` passes the replacement deterministic release gate and the complete local Phase 5 sequence. Rose is still pinned to `b1479a2f`, no new live canary has run, and Vivado has still not produced version output. Do not describe the feature as production-ready or resolved until the controlled Rose sequence passes.
 
 Latest deployed/pinned revisions at handoff:
 
@@ -12,6 +12,33 @@ Latest deployed/pinned revisions at handoff:
 - Rose-only host-ceiling enablement: `nix-config` `6eab7ff`
 
 No hardware command has been authorized or run. The only approved acceptance command is `vivado -version` after a harmless composed-shell canary succeeds.
+
+## Deterministic release candidate — 2026-07-22
+
+AgentSH `ce42938d6bea6e7d644fd342f14b4b5975d2a8d1` closes the deterministic gaps without changing the live Rose host:
+
+- command rules can require server-normalized `working_directory_roots`; request CWD and `PROJECT_ROOT` are canonicalized before matching, while descendant exec checks cannot inherit request-only CWD authority;
+- the broker records the ordered normalized plan and SHA-256 digest (`67` Bubblewrap options become `65` topology operations because `--chdir` and `--die-with-parent` are plan fields);
+- `inspect-cwd` resolves every component against the completed staged root with `openat2(RESOLVE_IN_ROOT|RESOLVE_NO_MAGICLINKS)`, verifies bind-source identity/authority, and reports typed `E_COMPOSITION_CWD_UNRESOLVED` diagnostics before pivot;
+- recursive binds retain exact writable/executable descendants without making `/scratch` itself writable; homogeneous `/nix` remains recursively read-only and Landlock remains the per-object boundary;
+- recursive composition now derives the actual PID-namespace owner with `NS_GET_USERNS`, rather than assuming the immediate parent user namespace owns a preserved ancestral PID namespace;
+- the packaged Pi/QShell gate uses generated `pi-supervised`, a real project overlay, the strict helper-backed command jail, the exact captured argv, ordinary/symlinked/separate-mount `/scratch`, all reviewed outer command forms, one recursive invocation, source command/file/metadata denial probes, and durable zero-approval audit assertions;
+- every recorded Bubblewrap exec attempt is correlated by exact PID with a `composition_plan` event whose effective action is `composition`; no real Bubblewrap continuation is accepted.
+
+Final local commands used `set -o pipefail` where output was piped through `tee`:
+
+| Gate | Result/log | Output path |
+|---|---|---|
+| `nix flake check -L --keep-going` | all 15 AgentSH checks passed; `/tmp/agentsh-qcwd-full-flake-check-final.log` | individual paths are in `/tmp/agentsh-qcwd-final-output-paths.log` |
+| `nix build -L --no-link --print-out-paths .#packages.x86_64-linux.default` | pass; `/tmp/agentsh-qcwd-package-final.log` | `/nix/store/yvnx0zzcj9d21g95j07w8skiwcfw8cpv-agentsh-unstable-2026-06-17` |
+| complete production broker VM | pass; `/tmp/agentsh-qcwd-nested-broker-recursive-owner.log` | `/nix/store/q9hapgxs7di2yiqfwi4hxg33l1y4mx7a-vm-test-run-agentsh-nested-namespace-broker-feasibility` |
+| downstream Pi/QShell gate with `--override-input agentsh path:../agentsh` | pass; `/tmp/agentsh-qshell-release-gate-final-latest.log` | `/nix/store/vvksbx5mav50j8dbbdrl7fnsir7ll8yr-vm-test-run-agentsh-qshell-composition-release-gate` |
+| downstream generated-policy boundary | pass; `/tmp/agentsh-qcwd-downstream-final-output-paths.log` | `/nix/store/0f0dv6mii1mc5pm4n6w2ybfsbwrffdnc-agentsh-project-overlay-boundaries-check` |
+| Rose/non-Rose generated config assertions | pass; `/tmp/agentsh-qcwd-rose-nonrose-evaluations-final.log` | Rose `/nix/store/q2iqf18izpl6myx8vyx1b0261x729szf-agentsh-dos-config.yaml`; non-Rose `/nix/store/n1fi3d5s846wdi1hdjlanh6afavsrb2k-agentsh-dos-config.yaml` |
+
+Representative remaining Phase 5 outputs were formatting `/nix/store/nckmfrynw94y52xksj6ap2kfh57l4ah9-agentsh-go-format-check`, unit tests `/nix/store/633nnpk9dq91klz9m6b6f3yjjw0asqna-agentsh-go-unit-tests-unstable-2026-06-17`, Linux/amd64 compile `/nix/store/b5cdgbc3wlpvr8752kgk9gr4ym1lwsyc-agentsh-linux-amd64-compile-covered-natively`, NixOS module evaluation `/nix/store/al2xcwmj767llcn12nn5ryyrd43d1lms-agentsh-nixos-output-artifacts-module-test`, Landlock mount graph `/nix/store/c5s9n0d07ybk7mh59mqw7xafacj7wv3k-vm-test-run-agentsh-landlock-mount-graph-feasibility`, recursive clone `/nix/store/mnhpgzqn6qjq1mkshw66xcqgkwp6x98c-vm-test-run-agentsh-recursive-mount-clone-feasibility`, and namespace feasibility `/nix/store/53jp989byqggjdc9q73kyd01sbyra893-vm-test-run-agentsh-nested-namespace-feasibility`.
+
+These paths record the implementation tree before this evidence-only issue edit. No Rose access, deployment, Home Manager activation, Vivado invocation, hardware access, KVM, fleet, or microVM operation occurred during this validation.
 
 ## User impact
 
