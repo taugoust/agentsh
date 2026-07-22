@@ -30,6 +30,7 @@ var commandJailReservedEnv = []string{
 	commandJailExecPathEnv,
 	"AGENTSH_NOTIFY_SOCK_FD",
 	"AGENTSH_SIGNAL_SOCK_FD",
+	"AGENTSH_COMPOSITION_SETUP_FD",
 	"AGENTSH_SECCOMP_CONFIG",
 	"AGENTSH_PTRACE_SYNC",
 	"AGENTSH_UNIXWRAP_ARGV0",
@@ -55,7 +56,9 @@ type mountedFilesystem struct {
 
 type commandJailSetupOps struct {
 	makeMountsPrivate  func() error
+	prepareComposition func() error
 	installMounts      func() error
+	publishComposition func() error
 	enforceLandlock    func()
 	dropPrivileges     func() error
 	installSeccomp     func() error
@@ -65,11 +68,14 @@ type commandJailSetupOps struct {
 
 // completeCommandJailSetup preserves the security-sensitive ordering between
 // privileged mount setup and irreversible per-thread restrictions. In
-// particular, Landlock must be applied after the mount topology is complete,
-// but before capabilities are dropped and READY can be sent.
+// particular, Landlock must be applied after the mount topology is complete.
+// The setup object packet is published only after Landlock, capability drop,
+// no_new_privs, seccomp, and descriptor protection are all verified, so its
+// authenticated sender cannot attest from a partially established boundary.
 func completeCommandJailSetup(ops commandJailSetupOps) error {
 	for _, step := range []func() error{
 		ops.makeMountsPrivate,
+		ops.prepareComposition,
 		ops.installMounts,
 		func() error {
 			if ops.enforceLandlock != nil {
@@ -81,6 +87,7 @@ func completeCommandJailSetup(ops commandJailSetupOps) error {
 		ops.installSeccomp,
 		ops.protectDescriptors,
 		ops.verifyPrivileges,
+		ops.publishComposition,
 	} {
 		if step != nil {
 			if err := step(); err != nil {
@@ -149,6 +156,13 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 	if cfg.CommandJail == nil || !cfg.CommandJail.Required {
 		return 127, errors.New("command-jail stage lacks a required jail configuration")
 	}
+	// Hide the trusted setup process from same-UID /proc inspection before it
+	// creates randomized synthetic-pool paths. Capability dropping repeats this
+	// invariant later, but waiting until then would expose the pre-Landlock pool
+	// construction window to an unrelated process with the caller's UID.
+	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
+		return 127, fmt.Errorf("protect command-jail setup process: %w", err)
+	}
 
 	cmd := os.Args[2]
 	cmdPath := os.Getenv(commandJailExecPathEnv)
@@ -157,6 +171,18 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 	}
 	args := applyArgv0Override(os.Args[2:], os.Getenv("AGENTSH_UNIXWRAP_ARGV0"))
 
+	// os/signal starts the cgo-backed signal thread on this build. Start it
+	// before installing the composition filter, which makes clone3 appear
+	// unavailable because its pointed-to flags cannot be safely inspected by
+	// cBPF.
+	// The trusted wrapper's pre-existing threads never execute payload code;
+	// the final child still inherits Landlock and seccomp from this locked
+	// thread.
+	sigCh := make(chan os.Signal, 8)
+	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2, syscall.SIGWINCH)
+	defer signal.Stop(sigCh)
+
+	var compositionSetup *compositionSetupState
 	if err := completeCommandJailSetup(commandJailSetupOps{
 		makeMountsPrivate: func() error {
 			if err := unix.Mount("", string(filepath.Separator), "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
@@ -164,13 +190,19 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 			}
 			return nil
 		},
-		installMounts: func() error { return installCommandJailMounts(cfg.CommandJail) },
+		prepareComposition: func() error {
+			var err error
+			compositionSetup, err = prepareCompositionSetup(cfg, preparedLandlock)
+			return err
+		},
+		installMounts:      func() error { return installCommandJailMounts(cfg.CommandJail) },
+		publishComposition: func() error { return publishCompositionSetup(compositionSetup) },
 		// Landlock rejects mount topology changes. Apply the ruleset only after
 		// all trusted command-jail mounts are complete, while still on the OS
 		// thread pinned in main, so the final child reliably inherits the domain.
 		enforceLandlock: func() { enforcePreparedLandlock(preparedLandlock) },
 		dropPrivileges:  dropCommandJailPrivileges,
-		installSeccomp:  installCommandJailSeccomp,
+		installSeccomp:  func() error { return installCommandJailSeccomp(cfg) },
 		protectDescriptors: func() error {
 			if err := markNonStdioCloseOnExec(); err != nil {
 				return fmt.Errorf("protect command descriptors: %w", err)
@@ -188,9 +220,6 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 		return 127, err
 	}
 	_ = unix.Close(controlFD)
-	sigCh := make(chan os.Signal, 8)
-	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2, syscall.SIGWINCH)
-	defer signal.Stop(sigCh)
 
 	child, err := os.StartProcess(cmdPath, args, &os.ProcAttr{
 		Env:   env,
@@ -510,7 +539,7 @@ func commandJailReadyAndWaitForGO(controlFD int) error {
 	return nil
 }
 
-func installCommandJailSeccomp() error {
+func installCommandJailSeccomp(cfg *WrapperConfig) error {
 	filter, err := seccomp.NewFilter(seccomp.ActAllow)
 	if err != nil {
 		return fmt.Errorf("create command-jail seccomp filter: %w", err)
@@ -532,6 +561,40 @@ func installCommandJailSeccomp() error {
 		}
 		if err := filter.AddRule(syscallNumber, action); err != nil {
 			return fmt.Errorf("deny command-jail syscall %s: %w", name, err)
+		}
+	}
+	if cfg != nil && cfg.SandboxComposition != "" {
+		clone, err := seccomp.GetSyscallFromName("clone")
+		if err != nil {
+			return fmt.Errorf("resolve composition clone syscall: %w", err)
+		}
+		for _, namespace := range []struct {
+			flag uintptr
+			name string
+		}{
+			{flag: unix.CLONE_NEWNET, name: "network"},
+			{flag: unix.CLONE_NEWTIME, name: "time"},
+		} {
+			if err := filter.AddRuleConditional(clone, action, []seccomp.ScmpCondition{{
+				Argument: 0,
+				Op:       seccomp.CompareMaskedEqual,
+				Operand1: uint64(namespace.flag),
+				Operand2: uint64(namespace.flag),
+			}}); err != nil {
+				return fmt.Errorf("deny composition %s namespace clone: %w", namespace.name, err)
+			}
+		}
+		clone3, err := seccomp.GetSyscallFromName("clone3")
+		if err != nil {
+			return fmt.Errorf("resolve composition clone3 syscall: %w", err)
+		}
+		// Return ENOSYS rather than EPERM so libc and other runtimes fall back to
+		// clone(2), whose inline flags the filter can inspect. clone3 remains
+		// unavailable to payloads, closing the CLONE_NEWUSER|CLONE_NEWNET path
+		// without breaking ordinary thread creation.
+		clone3Unavailable := seccomp.ActErrno.SetReturnCode(int16(unix.ENOSYS))
+		if err := filter.AddRule(clone3, clone3Unavailable); err != nil {
+			return fmt.Errorf("hide unsupported composition clone3: %w", err)
 		}
 	}
 	if err := filter.Load(); err != nil {

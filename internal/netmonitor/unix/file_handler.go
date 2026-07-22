@@ -28,14 +28,16 @@ type FilePolicyDecision struct {
 
 // FileRequest holds the parsed context for a file syscall notification.
 type FileRequest struct {
-	PID       int
-	Syscall   int32
-	Path      string
-	Path2     string // second path for rename/link
-	Operation string
-	Flags     uint32
-	Mode      uint32
-	SessionID string
+	PID         int
+	Syscall     int32
+	Path        string
+	Path2       string // second path for rename/link
+	SourcePath  string // composition-attributed original source path
+	SourcePath2 string
+	Operation   string
+	Flags       uint32
+	Mode        uint32
+	SessionID   string
 }
 
 // FileResult holds the outcome of handling a file syscall.
@@ -46,11 +48,12 @@ type FileResult struct {
 
 // FileHandler processes file syscall notifications against policy.
 type FileHandler struct {
-	policy      FilePolicyChecker
-	registry    *MountRegistry
-	emitter     Emitter
-	enforce     bool
-	emulateOpen bool // When true, supervisor emulates openat via AddFD
+	policy           FilePolicyChecker
+	registry         *MountRegistry
+	emitter          Emitter
+	enforce          bool
+	emulateOpen      bool // When true, supervisor emulates openat via AddFD
+	compositionPaths *CompositionPathRegistry
 }
 
 // NewFileHandler creates a new FileHandler.
@@ -76,6 +79,14 @@ func (h *FileHandler) EmulateOpen() bool {
 // Enforce returns whether the file monitor is in enforcement mode.
 func (h *FileHandler) Enforce() bool {
 	return h != nil && h.enforce
+}
+
+// SetCompositionPathRegistry enables source-aware policy attribution for mount
+// namespaces committed by the semantic composition broker.
+func (h *FileHandler) SetCompositionPathRegistry(registry *CompositionPathRegistry) {
+	if h != nil {
+		h.compositionPaths = registry
+	}
 }
 
 // Handle evaluates a file request against policy and returns the enforcement result
@@ -120,10 +131,42 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 		}
 	}
 
+	compositionCovered := false
+	if h.compositionPaths != nil {
+		attributed, covered, err := h.compositionPaths.Resolve(req.PID, req.Path)
+		if err != nil {
+			dec := FilePolicyDecision{
+				Decision: "deny", EffectiveDecision: "deny",
+				Rule:    "composition-source-attribution",
+				Message: "composition source attribution failed: " + err.Error(),
+			}
+			return FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}, h.buildFileEvent(req, dec, true, false)
+		}
+		compositionCovered = covered
+		if covered && attributed != "" && attributed != req.Path {
+			req.SourcePath = attributed
+		}
+		if req.Path2 != "" {
+			attributed2, covered2, err := h.compositionPaths.Resolve(req.PID, req.Path2)
+			if err != nil {
+				dec := FilePolicyDecision{
+					Decision: "deny", EffectiveDecision: "deny",
+					Rule:    "composition-source-attribution",
+					Message: "composition source attribution failed: " + err.Error(),
+				}
+				return FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}, h.buildFileEvent(req, dec, true, false)
+			}
+			compositionCovered = compositionCovered || covered2
+			if covered2 && attributed2 != "" && attributed2 != req.Path2 {
+				req.SourcePath2 = attributed2
+			}
+		}
+	}
+
 	// 2. Path under FUSE mount point — audit-only; FUSE handles enforcement.
 	//    Only defers when the resolved syscall path is actually under a FUSE
 	//    mount point (e.g., sessions/{id}/mount-0), not a source path.
-	if h.registry != nil && h.registry.IsUnderFUSEMount(req.SessionID, req.Path) {
+	if !compositionCovered && h.registry != nil && h.registry.IsUnderFUSEMount(req.SessionID, req.Path) {
 		dec := h.policy.CheckFile(ctx, req.Path, req.Operation)
 		shadowDeny := dec.EffectiveDecision == "deny"
 		return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, shadowDeny)
@@ -140,6 +183,20 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 			dec = dec2
 		}
 	}
+	// A bind alias must never launder a restrictive source decision through an
+	// allowed-looking destination. Evaluate every broker-attributed source and
+	// let either visible or source policy deny the operation.
+	sourceRestricted := false
+	for _, source := range []string{req.SourcePath, req.SourcePath2} {
+		if source == "" {
+			continue
+		}
+		sourceDecision := h.policy.CheckFile(ctx, source, req.Operation)
+		if sourceDecision.EffectiveDecision != "allow" {
+			dec = sourceDecision
+			sourceRestricted = true
+		}
+	}
 
 	if dec.EffectiveDecision != "allow" {
 		if !h.enforce {
@@ -151,7 +208,7 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 		// deny-by-default policy makes every dynamically-linked command fail.
 		// The ptrace enforcer effectively allows both classes below; file_monitor
 		// matches it. Read-only only — writes/creates/deletes stay enforced.
-		if isReadOnlyFileOp(req.Syscall, req.Flags) {
+		if isReadOnlyFileOp(req.Syscall, req.Flags) && !sourceRestricted {
 			// (1) Standard system DIRECTORY NODES (/, /dev, /proc/self, /etc, ...).
 			// EXACT match — does NOT extend to contents (a deny of /etc/secret
 			// still stands). Overrides ANY deny rule (catch-all or explicit) for
@@ -202,6 +259,12 @@ func (h *FileHandler) buildFileEvent(req FileRequest, dec FilePolicyDecision, bl
 	}
 	if req.Path2 != "" {
 		fields["path2"] = req.Path2
+	}
+	if req.SourcePath != "" {
+		fields["composition_source_path"] = req.SourcePath
+	}
+	if req.SourcePath2 != "" {
+		fields["composition_source_path2"] = req.SourcePath2
 	}
 
 	ev := &types.Event{

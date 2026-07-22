@@ -32,13 +32,18 @@ func legacyFlaggedOpenSyscallList() []int32 {
 	return []int32{unix.SYS_OPEN}
 }
 
+func legacyMetadataSyscallList() []int32 {
+	return []int32{unix.SYS_STAT, unix.SYS_LSTAT, unix.SYS_ACCESS, unix.SYS_READLINK}
+}
+
 // isLegacyFileSyscall returns true if nr is a legacy (non-at) file syscall.
 func isLegacyFileSyscall(nr int32) bool {
 	switch nr {
 	case unix.SYS_OPEN, unix.SYS_CREAT,
 		unix.SYS_MKDIR, unix.SYS_RMDIR, unix.SYS_UNLINK,
 		unix.SYS_RENAME, unix.SYS_LINK, unix.SYS_SYMLINK,
-		unix.SYS_CHMOD, unix.SYS_CHOWN:
+		unix.SYS_CHMOD, unix.SYS_CHOWN,
+		unix.SYS_STAT, unix.SYS_LSTAT, unix.SYS_ACCESS, unix.SYS_READLINK:
 		return true
 	default:
 		return false
@@ -133,6 +138,9 @@ func extractLegacyFileArgs(args SyscallArgs) FileArgs {
 			PathPtr: args.Arg0,
 		}
 
+	case unix.SYS_STAT, unix.SYS_LSTAT, unix.SYS_ACCESS, unix.SYS_READLINK:
+		return FileArgs{Dirfd: int32(unix.AT_FDCWD), PathPtr: args.Arg0}
+
 	default:
 		return FileArgs{}
 	}
@@ -171,6 +179,12 @@ func legacySyscallToOperation(nr int32, flags uint32) string {
 		return "chmod"
 	case unix.SYS_CHOWN:
 		return "chown"
+	case unix.SYS_STAT, unix.SYS_LSTAT:
+		return "stat"
+	case unix.SYS_ACCESS:
+		return "access"
+	case unix.SYS_READLINK:
+		return "readlink"
 	default:
 		return ""
 	}
@@ -199,6 +213,14 @@ func legacyFileSyscallName(nr int32) string {
 		return "chmod"
 	case unix.SYS_CHOWN:
 		return "chown"
+	case unix.SYS_STAT:
+		return "stat"
+	case unix.SYS_LSTAT:
+		return "lstat"
+	case unix.SYS_ACCESS:
+		return "access"
+	case unix.SYS_READLINK:
+		return "readlink"
 	default:
 		return ""
 	}

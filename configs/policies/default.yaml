@@ -166,6 +166,7 @@ file_rules:
     paths:
       - "/dev/null"
       - "/dev/zero"
+      - "/dev/full"
       - "/dev/tty"
       - "/dev/pts/**"
       - "/dev/urandom"

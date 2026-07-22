@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 	"unsafe"
 
 	seccompkg "github.com/agentsh/agentsh/internal/seccomp"
@@ -27,11 +28,40 @@ func DetectSupport() error {
 }
 
 // Filter encapsulates a loaded seccomp user-notify filter and its notify fd.
+type filterLoadDiagnostics struct {
+	once                sync.Once
+	fd                  int
+	waitKillable        bool
+	waitKillableSource  string
+	kernelProbeSupports bool
+	libseccompRuntime   string
+}
+
 type Filter struct {
 	fd               seccomp.ScmpFd
 	blockList        map[uint32]seccompkg.OnBlockAction
 	blockedFamilyMap map[uint64]seccompkg.BlockedFamily
 	socketRules      []seccompkg.SocketRule
+	loadDiagnostics  *filterLoadDiagnostics
+}
+
+// LogLoaded emits the per-exec filter diagnostic once. Metadata-intercepting
+// wrappers defer this until after the notify listener is handed to the
+// supervisor: even trusted logging/runtime code must not risk a trapped
+// metadata syscall while no process can answer it yet.
+func (f *Filter) LogLoaded() {
+	if f == nil || f.loadDiagnostics == nil {
+		return
+	}
+	diagnostics := f.loadDiagnostics
+	diagnostics.once.Do(func() {
+		slog.Info("seccomp: filter loaded",
+			"fd", diagnostics.fd,
+			"wait_killable", diagnostics.waitKillable,
+			"wait_killable_source", diagnostics.waitKillableSource,
+			"kernel_probe_supports", diagnostics.kernelProbeSupports,
+			"libseccomp_runtime", diagnostics.libseccompRuntime)
+	})
 }
 
 func (f *Filter) Close() error {
@@ -496,6 +526,12 @@ func InstallFilterWithConfig(cfg FilterConfig) (*Filter, error) {
 	}
 	filt.Release()
 
+	// Resolve every diagnostic that might cross into libc or lazy runtime state
+	// before loading a metadata-notify filter. The success log itself is deferred
+	// below when metadata interception is active.
+	libVer := libseccompRuntimeVersion()
+	kernelProbeSupports := ProbeWaitKillable()
+
 	rawFd, gotWaitKill, err := loadFilterWithRetry(prog, wantWaitKill, snapshot)
 	if err != nil {
 		return nil, err
@@ -505,27 +541,31 @@ func InstallFilterWithConfig(cfg FilterConfig) (*Filter, error) {
 	// "no notify rules, fd=-1" path is unreachable because we always
 	// pass NEW_LISTENER (kernel returns the fd even for filters
 	// without ActNotify rules — it's just never readable).
-	libVer := libseccompRuntimeVersion()
-	// kernel_probe_supports reflects the raw kernel probe, independent of
-	// the resolved decision in wait_killable. Logging both lets an
-	// operator see why an exec saw a given flag (wait_killable_source)
-	// alongside what the kernel itself reports. ProbeWaitKillable is
-	// cheap (a Uname()+parse) so calling it twice per filter install is
-	// fine. Issue #369.
-	slog.Info("seccomp: filter loaded",
-		"fd", rawFd,
-		"wait_killable", gotWaitKill,
-		"wait_killable_source", cfg.WaitKillableSource,
-		"kernel_probe_supports", ProbeWaitKillable(),
-		"libseccomp_runtime", libVer)
+	diagnostics := &filterLoadDiagnostics{
+		fd:                  rawFd,
+		waitKillable:        gotWaitKill,
+		waitKillableSource:  cfg.WaitKillableSource,
+		kernelProbeSupports: kernelProbeSupports,
+		libseccompRuntime:   libVer,
+	}
+	result := &Filter{
+		fd:               seccomp.ScmpFd(rawFd),
+		blockList:        blockListMap,
+		blockedFamilyMap: blockedFamilyMap,
+		socketRules:      socketRules,
+		loadDiagnostics:  diagnostics,
+	}
 
 	if !filterConfigNeedsNotifyFD(cfg, blockListMap, blockedFamilyMap, socketRules) {
 		// Close the now-unused listener fd. The filter is still
 		// installed; only the userspace dispatch handle is dropped.
 		_ = unix.Close(rawFd)
-		return &Filter{fd: -1, blockList: blockListMap, blockedFamilyMap: blockedFamilyMap, socketRules: socketRules}, nil
+		result.fd = -1
 	}
-	return &Filter{fd: seccomp.ScmpFd(rawFd), blockList: blockListMap, blockedFamilyMap: blockedFamilyMap, socketRules: socketRules}, nil
+	if !cfg.InterceptMetadata {
+		result.LogLoaded()
+	}
+	return result, nil
 }
 
 // familyToScmpAction maps an OnBlockAction to the libseccomp action used
@@ -613,12 +653,17 @@ func installUnixSocketNotifyRules(adder unixSocketNotifyRuleAdder, action seccom
 // user-notify when intercept_metadata is enabled. Shared with the
 // WAIT_KILLABLE_RECV behavioral probe (issue #369).
 func metadataNotifySyscalls() []seccomp.ScmpSyscall {
-	return []seccomp.ScmpSyscall{
+	syscalls := []seccomp.ScmpSyscall{
 		seccomp.ScmpSyscall(unix.SYS_STATX),
 		seccomp.ScmpSyscall(unix.SYS_NEWFSTATAT),
+		seccomp.ScmpSyscall(unix.SYS_FACCESSAT),
 		seccomp.ScmpSyscall(unix.SYS_FACCESSAT2),
 		seccomp.ScmpSyscall(unix.SYS_READLINKAT),
 	}
+	for _, syscallNumber := range legacyMetadataSyscallList() {
+		syscalls = append(syscalls, seccomp.ScmpSyscall(syscallNumber))
+	}
+	return syscalls
 }
 
 func installFileMonitorRules(adder fileMonitorRuleAdder, action seccomp.ScmpAction, writeOnlyOpens bool) (int, error) {

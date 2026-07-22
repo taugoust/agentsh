@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	seccompkg "github.com/agentsh/agentsh/internal/seccomp"
 )
@@ -40,15 +41,23 @@ type WrapperConfig struct {
 	WaitKillableSource string `json:"wait_killable_source,omitempty"`
 
 	// Landlock filesystem restrictions
-	LandlockEnabled bool     `json:"landlock_enabled,omitempty"`
-	LandlockABI     int      `json:"landlock_abi,omitempty"`
-	Workspace       string   `json:"workspace,omitempty"`
-	AllowExecute    []string `json:"allow_execute,omitempty"`
-	AllowRead       []string `json:"allow_read,omitempty"`
-	AllowWrite      []string `json:"allow_write,omitempty"`
-	DenyPaths       []string `json:"deny_paths,omitempty"`
-	AllowNetwork    bool     `json:"allow_network,omitempty"`
-	AllowBind       bool     `json:"allow_bind,omitempty"`
+	LandlockEnabled   bool     `json:"landlock_enabled,omitempty"`
+	LandlockABI       int      `json:"landlock_abi,omitempty"`
+	Workspace         string   `json:"workspace,omitempty"`
+	AllowExecute      []string `json:"allow_execute,omitempty"`
+	AllowRead         []string `json:"allow_read,omitempty"`
+	AllowWrite        []string `json:"allow_write,omitempty"`
+	DenyPaths         []string `json:"deny_paths,omitempty"`
+	HandleDeviceIOCTL bool     `json:"handle_device_ioctl,omitempty"`
+	AllowDeviceIOCTL  []string `json:"allow_device_ioctl,omitempty"`
+	AllowNetwork      bool     `json:"allow_network,omitempty"`
+	AllowBind         bool     `json:"allow_bind,omitempty"`
+
+	SandboxComposition         string `json:"sandbox_composition,omitempty"`
+	CompositionScratchRoot     string `json:"composition_scratch_root,omitempty"`
+	CompositionSyntheticMounts int    `json:"composition_synthetic_mounts,omitempty"`
+	CompositionMaxTransitions  int    `json:"composition_max_transitions,omitempty"`
+	CompositionMaxDataBytes    int64  `json:"composition_max_data_bytes,omitempty"`
 
 	// Server PID for PR_SET_PTRACER (Yama ptrace_scope=1 workaround)
 	ServerPID int `json:"server_pid,omitempty"`
@@ -82,6 +91,17 @@ func parseConfigJSON(data string) (*WrapperConfig, error) {
 	var cfg WrapperConfig
 	if err := json.Unmarshal([]byte(data), &cfg); err != nil {
 		return nil, fmt.Errorf("parse AGENTSH_SECCOMP_CONFIG: %w", err)
+	}
+	if cfg.SandboxComposition != "" {
+		if cfg.SandboxComposition != "bubblewrap-0.11.2" {
+			return nil, fmt.Errorf("unsupported sandbox composition %q", cfg.SandboxComposition)
+		}
+		if !filepath.IsAbs(cfg.CompositionScratchRoot) || filepath.Clean(cfg.CompositionScratchRoot) != cfg.CompositionScratchRoot {
+			return nil, fmt.Errorf("composition scratch root must be a clean absolute path")
+		}
+		if cfg.CompositionSyntheticMounts <= 0 || cfg.CompositionSyntheticMounts > 200 || cfg.CompositionMaxTransitions <= 0 || cfg.CompositionMaxTransitions > 200 || cfg.CompositionMaxDataBytes <= 0 {
+			return nil, fmt.Errorf("composition synthetic mount limits are invalid")
+		}
 	}
 	return &cfg, nil
 }

@@ -315,6 +315,19 @@ let
           mask_tracer_pid = cfg.sandbox.ptrace.maskTracerPid;
           on_attach_failure = cfg.sandbox.ptrace.onAttachFailure;
         };
+        composition.bubblewrap = {
+          enabled = cfg.sandbox.composition.bubblewrap.enable;
+          dialect = cfg.sandbox.composition.bubblewrap.dialect;
+          scratch_root = cfg.sandbox.composition.bubblewrap.scratchRoot;
+          max_namespace_depth = cfg.sandbox.composition.bubblewrap.maxNamespaceDepth;
+          max_namespace_transitions = cfg.sandbox.composition.bubblewrap.maxNamespaceTransitions;
+          max_plan_operations = cfg.sandbox.composition.bubblewrap.maxPlanOperations;
+          max_synthetic_mounts = cfg.sandbox.composition.bubblewrap.maxSyntheticMounts;
+          max_data_bytes = cfg.sandbox.composition.bubblewrap.maxDataBytes;
+          adapter_path = cfg.sandbox.composition.bubblewrap.adapterPath;
+          mount_helper_path = cfg.sandbox.composition.bubblewrap.mountHelperPath;
+          device_ioctl_paths = cfg.sandbox.composition.bubblewrap.deviceIOCTLPaths;
+        };
         env_inject = cfg.sandbox.envInject;
       };
 
@@ -683,6 +696,51 @@ in
         };
       };
 
+      composition.bubblewrap = {
+        enable = mkEnableOption "the Bubblewrap 0.11.2 semantic composition ceiling";
+        dialect = mkOption {
+          type = types.enum [ "0.11.2" ];
+          default = "0.11.2";
+        };
+        scratchRoot = mkOption {
+          type = types.str;
+          default = "/agentsh-composition-scratch";
+          description = "Dedicated top-level staging directory, outside trees recursively rebound by admitted plans. The module provisions it write/execute-only and sticky; randomized per-command children remain private.";
+        };
+        maxNamespaceDepth = mkOption {
+          type = types.ints.positive;
+          default = 4;
+        };
+        maxNamespaceTransitions = mkOption {
+          type = types.ints.positive;
+          default = 32;
+        };
+        maxPlanOperations = mkOption {
+          type = types.ints.positive;
+          default = 256;
+        };
+        maxSyntheticMounts = mkOption {
+          type = types.ints.positive;
+          default = 16;
+        };
+        maxDataBytes = mkOption {
+          type = types.ints.positive;
+          default = 16 * 1024 * 1024;
+        };
+        adapterPath = mkOption {
+          type = types.str;
+          default = "${cfg.package}/bin/agentsh-bwrap-adapter";
+        };
+        mountHelperPath = mkOption {
+          type = types.str;
+          default = "${cfg.package}/bin/agentsh-composition-mount-helper";
+        };
+        deviceIOCTLPaths = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+        };
+      };
+
       envInject = mkOption {
         type = types.attrsOf types.str;
         default = {
@@ -835,6 +893,28 @@ in
         message = "services.agentsh approvals.mode=api requires auth.type=api_key.";
       }
       {
+        assertion =
+          !cfg.sandbox.composition.bubblewrap.enable
+          || (
+            safeAbsolutePath cfg.sandbox.composition.bubblewrap.scratchRoot
+            && builtins.dirOf cfg.sandbox.composition.bubblewrap.scratchRoot == "/"
+            && cfg.sandbox.composition.bubblewrap.scratchRoot != "/"
+          );
+        message = "services.agentsh.sandbox.composition.bubblewrap.scratchRoot must be a dedicated top-level directory.";
+      }
+      {
+        assertion =
+          !cfg.sandbox.composition.bubblewrap.enable
+          || (
+            cfg.sandbox.seccomp.fileMonitor.enable
+            && cfg.sandbox.seccomp.fileMonitor.enforceWithoutFUSE
+            && cfg.sandbox.seccomp.fileMonitor.interceptMetadata
+            && !cfg.sandbox.seccomp.fileMonitor.writeOnlyOpens
+            && cfg.sandbox.seccomp.fileMonitor.blockIOUring
+          );
+        message = "services.agentsh.sandbox.composition.bubblewrap requires the complete source-aware file monitor contract.";
+      }
+      {
         assertion = !cfg.nethelper.enable || cfg.nethelper.instances != { };
         message = "services.agentsh.nethelper.instances must contain at least one per-user helper when nethelper.enable is true.";
       }
@@ -879,6 +959,13 @@ in
     );
 
     environment.systemPackages = [ cfg.package ];
+
+    # Both the root supervisor and client-spawned wrappers must create private
+    # children here. Deny directory listing/inotify discovery while permitting
+    # randomized mkdir, and use the sticky bit to protect distinct users.
+    systemd.tmpfiles.rules = lib.optional cfg.sandbox.composition.bubblewrap.enable (
+      "d ${cfg.sandbox.composition.bubblewrap.scratchRoot} 1733 root root -"
+    );
 
     environment.etc = {
       "agentsh/config.yml".source = configFile;

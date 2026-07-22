@@ -442,6 +442,7 @@ type SandboxConfig struct {
 	XPC         SandboxXPCConfig         `yaml:"xpc"`
 	MCP         SandboxMCPConfig         `yaml:"mcp"`
 	Ptrace      SandboxPtraceConfig      `yaml:"ptrace"`
+	Composition SandboxCompositionConfig `yaml:"composition"`
 
 	// EnvInject specifies environment variables to inject into every command execution.
 	// These bypass policy filtering as they are operator-configured (trusted).
@@ -455,6 +456,27 @@ type SandboxConfig struct {
 // Default off; fail-open. Issue #379.
 type SandboxWrapEnvPolicyConfig struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+// SandboxCompositionConfig is the operator-owned ceiling for semantic sandbox
+// composition adapters. Policy may select a mode only when its corresponding
+// host ceiling is enabled.
+type SandboxCompositionConfig struct {
+	Bubblewrap SandboxBubblewrapCompositionConfig `yaml:"bubblewrap"`
+}
+
+type SandboxBubblewrapCompositionConfig struct {
+	Enabled                 bool     `yaml:"enabled"`
+	Dialect                 string   `yaml:"dialect"`
+	MaxNamespaceDepth       int      `yaml:"max_namespace_depth"`
+	MaxNamespaceTransitions int      `yaml:"max_namespace_transitions"`
+	MaxPlanOperations       int      `yaml:"max_plan_operations"`
+	MaxSyntheticMounts      int      `yaml:"max_synthetic_mounts"`
+	MaxDataBytes            int64    `yaml:"max_data_bytes"`
+	AdapterPath             string   `yaml:"adapter_path"`
+	MountHelperPath         string   `yaml:"mount_helper_path"`
+	ScratchRoot             string   `yaml:"scratch_root"`
+	DeviceIOCTLPaths        []string `yaml:"device_ioctl_paths"`
 }
 
 // Validate checks cross-field constraints in the sandbox configuration.
@@ -2074,6 +2096,28 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 		}
 	}
 
+	// Bubblewrap composition defaults are deliberately inert until enabled by
+	// the operator and selected by policy.
+	bwComposition := &cfg.Sandbox.Composition.Bubblewrap
+	if bwComposition.Dialect == "" {
+		bwComposition.Dialect = "0.11.2"
+	}
+	if bwComposition.MaxNamespaceDepth == 0 {
+		bwComposition.MaxNamespaceDepth = 4
+	}
+	if bwComposition.MaxNamespaceTransitions == 0 {
+		bwComposition.MaxNamespaceTransitions = 32
+	}
+	if bwComposition.MaxPlanOperations == 0 {
+		bwComposition.MaxPlanOperations = 256
+	}
+	if bwComposition.MaxSyntheticMounts == 0 {
+		bwComposition.MaxSyntheticMounts = 16
+	}
+	if bwComposition.MaxDataBytes == 0 {
+		bwComposition.MaxDataBytes = 16 * 1024 * 1024
+	}
+
 	// Cross-server pattern detection defaults
 	if cfg.Sandbox.MCP.CrossServer.ReadThenSend.Window == 0 {
 		cfg.Sandbox.MCP.CrossServer.ReadThenSend.Window = 30 * time.Second
@@ -2423,6 +2467,61 @@ func isSafeFeedName(name string) bool {
 }
 
 func validateConfig(cfg *Config) error {
+	bwComposition := cfg.Sandbox.Composition.Bubblewrap
+	if bwComposition.Dialect != "0.11.2" {
+		return fmt.Errorf("invalid sandbox.composition.bubblewrap.dialect %q: only 0.11.2 is supported", bwComposition.Dialect)
+	}
+	if bwComposition.MaxNamespaceDepth <= 0 || bwComposition.MaxNamespaceTransitions <= 0 || bwComposition.MaxPlanOperations <= 0 || bwComposition.MaxSyntheticMounts <= 0 || bwComposition.MaxDataBytes <= 0 {
+		return fmt.Errorf("sandbox.composition.bubblewrap limits must all be positive")
+	}
+	if bwComposition.MaxNamespaceTransitions+bwComposition.MaxSyntheticMounts > 200 {
+		return fmt.Errorf("sandbox.composition.bubblewrap synthetic and transition pools exceed the trusted setup descriptor budget")
+	}
+	for name, path := range map[string]string{"adapter_path": bwComposition.AdapterPath, "mount_helper_path": bwComposition.MountHelperPath} {
+		if path != "" && !filepath.IsAbs(path) {
+			return fmt.Errorf("sandbox.composition.bubblewrap.%s must be absolute", name)
+		}
+	}
+	if bwComposition.ScratchRoot != "" {
+		clean := filepath.Clean(bwComposition.ScratchRoot)
+		if !filepath.IsAbs(bwComposition.ScratchRoot) || clean != bwComposition.ScratchRoot || clean == string(filepath.Separator) || filepath.Dir(clean) != string(filepath.Separator) {
+			return fmt.Errorf("sandbox.composition.bubblewrap.scratch_root must be a clean, dedicated top-level directory")
+		}
+	}
+	seenDeviceIOCTLPaths := make(map[string]struct{}, len(bwComposition.DeviceIOCTLPaths))
+	for _, path := range bwComposition.DeviceIOCTLPaths {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.IndexAny(path, "*?[") >= 0 {
+			return fmt.Errorf("sandbox.composition.bubblewrap.device_ioctl_paths entries must be clean, absolute, non-glob paths: %q", path)
+		}
+		if _, exists := seenDeviceIOCTLPaths[path]; exists {
+			return fmt.Errorf("sandbox.composition.bubblewrap.device_ioctl_paths contains duplicate %q", path)
+		}
+		seenDeviceIOCTLPaths[path] = struct{}{}
+	}
+	if bwComposition.Enabled {
+		if bwComposition.ScratchRoot == "" {
+			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires a dedicated scratch_root")
+		}
+		if !cfg.Landlock.Enabled {
+			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires landlock.enabled")
+		}
+		if !cfg.Sandbox.Seccomp.Execve.Enabled {
+			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires sandbox.seccomp.execve.enabled")
+		}
+		if !cfg.Sandbox.Network.EBPF.Required && !cfg.Sandbox.Network.EBPF.Enforce {
+			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires the strict command jail (sandbox.network.ebpf.required or enforce)")
+		}
+		fileMonitor := cfg.Sandbox.Seccomp.FileMonitor
+		metadata := FileMonitorBoolWithDefault(fileMonitor.InterceptMetadata, false)
+		if !FileMonitorBoolWithDefault(fileMonitor.Enabled, false) ||
+			!FileMonitorBoolWithDefault(fileMonitor.EnforceWithoutFUSE, false) ||
+			!metadata ||
+			FileMonitorBoolWithDefault(fileMonitor.WriteOnlyOpens, !metadata) ||
+			!FileMonitorBoolWithDefault(fileMonitor.BlockIOUring, FileMonitorBoolWithDefault(fileMonitor.EnforceWithoutFUSE, false)) {
+			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires enforced read/write and metadata file interception plus io_uring denial")
+		}
+	}
+
 	switch cfg.Sandbox.FUSE.Audit.Mode {
 	case "monitor", "soft_block", "soft_delete", "strict":
 	default:

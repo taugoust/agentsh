@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,6 +152,136 @@ func TestNotifyHandoffRoundTripWithWrapperPID(t *testing.T) {
 	}
 	if !meta.CommandJail {
 		t.Fatal("expected command-jail capability metadata")
+	}
+}
+
+func TestNotifyHandoffRoundTripWithCompositionSetup(t *testing.T) {
+	client, server := socketPairConns(t)
+	notifyR, notifyW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("notify pipe: %v", err)
+	}
+	setupR, setupW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("setup pipe: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = notifyR.Close()
+		_ = notifyW.Close()
+		_ = setupR.Close()
+		_ = setupW.Close()
+	})
+
+	sendErr := make(chan error, 1)
+	go func() {
+		sendErr <- SendNotifyFDWithSetup(client, int(notifyR.Fd()), int(setupR.Fd()), Metadata{
+			WrapperPID:  4321,
+			CommandJail: true,
+		})
+	}()
+
+	setReadDeadline(t, server)
+	handoff, err := RecvHandoff(server)
+	if err != nil {
+		t.Fatalf("recv: %v", err)
+	}
+	waitForAsync(t, "send composition handoff", sendErr)
+	t.Cleanup(handoff.Close)
+	if handoff.NotifyFD == nil || handoff.CompositionSetup == nil {
+		t.Fatalf("incomplete handoff: %+v", handoff)
+	}
+	if !handoff.HasMetadata || !handoff.Metadata.CommandJail || !handoff.Metadata.CompositionSetup || handoff.Metadata.WrapperPID != 4321 {
+		t.Fatalf("metadata = %+v, has=%v", handoff.Metadata, handoff.HasMetadata)
+	}
+	for name, file := range map[string]*os.File{"notify": handoff.NotifyFD, "setup": handoff.CompositionSetup} {
+		flags, err := unix.FcntlInt(file.Fd(), unix.F_GETFD, 0)
+		if err != nil {
+			t.Fatalf("fcntl %s: %v", name, err)
+		}
+		if flags&unix.FD_CLOEXEC == 0 {
+			t.Fatalf("%s descriptor is missing FD_CLOEXEC", name)
+		}
+	}
+}
+
+func TestSendNotifyFDRejectsMissingWrapperPID(t *testing.T) {
+	client, _ := socketPairConns(t)
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close(); _ = w.Close() })
+	if err := SendNotifyFD(client, int(r.Fd()), Metadata{}); err == nil {
+		t.Fatal("expected missing wrapper PID rejection")
+	}
+}
+
+func TestRecvHandoffRejectsOversizedPayloadAndClosesDescriptors(t *testing.T) {
+	client, server := socketPairConns(t)
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close(); _ = w.Close() })
+	before := openFDCount(t)
+	sendErr := sendFDsAsync(client, make([]byte, 64), int(r.Fd()))
+	setReadDeadline(t, server)
+	handoff, err := RecvHandoff(server)
+	if handoff != nil {
+		handoff.Close()
+	}
+	waitForAsync(t, "send oversized handoff", sendErr)
+	if err == nil || !strings.Contains(err.Error(), "payload length") {
+		t.Fatalf("oversized handoff error = %v", err)
+	}
+	if after := openFDCount(t); after != before {
+		t.Fatalf("open fd count after oversized handoff = %d, want %d", after, before)
+	}
+}
+
+func TestRecvHandoffRejectsUnknownMetadataFlags(t *testing.T) {
+	client, server := socketPairConns(t)
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close(); _ = w.Close() })
+	payload := make([]byte, 6)
+	payload[0] = protocolMagic
+	payload[1] = 1
+	payload[5] = 0x80
+	sendErr := sendFDsAsync(client, payload, int(r.Fd()))
+	setReadDeadline(t, server)
+	handoff, err := RecvHandoff(server)
+	if handoff != nil {
+		handoff.Close()
+	}
+	waitForAsync(t, "send unknown metadata", sendErr)
+	if err == nil || !strings.Contains(err.Error(), "unknown handoff metadata flags") {
+		t.Fatalf("unknown metadata error = %v", err)
+	}
+}
+
+func TestRecvHandoffRejectsCompositionBitWithoutDescriptor(t *testing.T) {
+	client, server := socketPairConns(t)
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close(); _ = w.Close() })
+	payload := make([]byte, 6)
+	payload[0] = protocolMagic
+	payload[5] = metadataCompositionSetup
+	sendErr := sendFDsAsync(client, payload, int(r.Fd()))
+
+	setReadDeadline(t, server)
+	handoff, err := RecvHandoff(server)
+	if handoff != nil {
+		handoff.Close()
+	}
+	waitForAsync(t, "send malformed composition handoff", sendErr)
+	if err == nil {
+		t.Fatal("expected composition descriptor count rejection")
 	}
 }
 

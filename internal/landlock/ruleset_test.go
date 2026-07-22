@@ -57,6 +57,43 @@ func TestRulesetBuilder_NetworkAccess(t *testing.T) {
 	}
 }
 
+func TestRulesetBuilder_DeviceIOCTLIsCompositionOptIn(t *testing.T) {
+	ordinary := NewRulesetBuilder(7)
+	if mask := ordinary.buildFSAccessMask(); mask&LANDLOCK_ACCESS_FS_IOCTL_DEV != 0 {
+		t.Fatal("ordinary ruleset unexpectedly handles IOCTL_DEV")
+	}
+
+	composition := NewRulesetBuilder(7)
+	composition.SetDeviceIOCTLPolicy(true)
+	if mask := composition.buildFSAccessMask(); mask&LANDLOCK_ACCESS_FS_IOCTL_DEV == 0 {
+		t.Fatal("composition ruleset does not handle IOCTL_DEV")
+	}
+	if mask := composition.buildWriteAccessMask(); mask&LANDLOCK_ACCESS_FS_IOCTL_DEV != 0 {
+		t.Fatal("ordinary write authority must not imply device ioctl authority")
+	}
+
+	legacy := NewRulesetBuilder(4)
+	legacy.SetDeviceIOCTLPolicy(true)
+	if mask := legacy.buildFSAccessMask(); mask&LANDLOCK_ACCESS_FS_IOCTL_DEV != 0 {
+		t.Fatal("IOCTL_DEV was enabled before ABI 5")
+	}
+}
+
+func TestRulesetBuilder_AddDeviceIOCTLPathRequiresExactPath(t *testing.T) {
+	builder := NewRulesetBuilder(7)
+	if err := builder.AddDeviceIOCTLPath("/dev/null"); err != nil {
+		t.Fatalf("AddDeviceIOCTLPath(/dev/null): %v", err)
+	}
+	if len(builder.deviceIOCTLPaths) != 1 || builder.deviceIOCTLPaths[0] != "/dev/null" {
+		t.Fatalf("device ioctl paths = %#v", builder.deviceIOCTLPaths)
+	}
+	for _, path := range []string{"dev/null", "/dev/*", "/dev/../dev/null"} {
+		if err := builder.AddDeviceIOCTLPath(path); err == nil {
+			t.Errorf("AddDeviceIOCTLPath(%q) unexpectedly succeeded", path)
+		}
+	}
+}
+
 func TestRulesetBuilder_WriteAccessMask_IncludesCreationRights(t *testing.T) {
 	// Write-allowed paths must support normal writable-directory creation rights.
 	// Without MAKE_SOCK, bind() for Unix sockets in /tmp etc. fails with EACCES.

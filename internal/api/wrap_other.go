@@ -28,17 +28,20 @@ func recvFDFromConn(sock *os.File) (*os.File, error) {
 	return nil, errWrapNotSupported
 }
 
-func recvNotifyFDForWrap(conn *net.UnixConn) (*os.File, wrapNotifyMetadata, bool, error) {
-	return nil, wrapNotifyMetadata{}, false, errWrapNotSupported
+func recvNotifyFDForWrap(conn *net.UnixConn) (*wrapNotifyHandoff, error) {
+	return nil, errWrapNotSupported
 }
 
 func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
 	return errWrapNotSupported
 }
 
-func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
 	if notifyFD != nil {
 		_ = notifyFD.Close()
+	}
+	if compositionSetup != nil {
+		_ = compositionSetup.Close()
 	}
 	return errWrapNotSupported
 }
@@ -57,7 +60,11 @@ func getConnPeerCreds(conn *net.UnixConn) peerCreds {
 	return peerCreds{}
 }
 
-func validateWrapperPIDForNotify(wrapperPID, peerPID int, peerUID uint32) error {
+func validateWrapperPIDForNotify(wrapperPID, peerPID int, peerUID uint32) (*os.File, error) {
+	return nil, errWrapNotSupported
+}
+
+func validateWrapperPIDPinForNotify(pin *os.File) error {
 	return errWrapNotSupported
 }
 

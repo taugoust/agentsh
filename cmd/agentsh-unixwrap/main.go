@@ -232,6 +232,11 @@ func main() {
 		_ = unix.SetsockoptTimeval(sockFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
 	}
 
+	// Metadata-intercepting filters defer their success log until the listener
+	// is live. This is the first point at which a logging/runtime metadata syscall
+	// can be answered rather than self-deadlocking the trusted wrapper.
+	filt.LogLoaded()
+
 	// Install signal filter if enabled and we have a signal socket.
 	sigSockFD, _ := signalSockFD()
 	if cfg.SignalFilterEnabled && sigSockFD >= 0 {
@@ -437,6 +442,7 @@ type preparedLandlockRuleset struct {
 	fd        int
 	abi       int
 	workspace string
+	objects   []landlock.RuleObject
 }
 
 func prepareLandlock(cfg *WrapperConfig) (*preparedLandlockRuleset, error) {
@@ -459,23 +465,40 @@ func prepareLandlock(cfg *WrapperConfig) (*preparedLandlockRuleset, error) {
 	for _, p := range cfg.AllowWrite {
 		_ = builder.AddWritePath(p)
 	}
+	builder.SetDeviceIOCTLPolicy(cfg.HandleDeviceIOCTL)
+	for _, p := range cfg.AllowDeviceIOCTL {
+		if err := builder.AddDeviceIOCTLPath(p); err != nil {
+			return nil, fmt.Errorf("add device ioctl path: %w", err)
+		}
+	}
 	for _, p := range cfg.DenyPaths {
 		builder.AddDenyPath(p)
 	}
 
-	rulesetFD, err := builder.Build()
+	rulesetFD, objects, err := builder.BuildRetained()
 	if err != nil {
 		return nil, fmt.Errorf("build ruleset: %w", err)
 	}
-	return &preparedLandlockRuleset{fd: rulesetFD, abi: cfg.LandlockABI, workspace: cfg.Workspace}, nil
+	return &preparedLandlockRuleset{
+		fd:        rulesetFD,
+		abi:       cfg.LandlockABI,
+		workspace: cfg.Workspace,
+		objects:   objects,
+	}, nil
 }
 
 func (p *preparedLandlockRuleset) close() {
-	if p == nil || p.fd < 0 {
+	if p == nil {
 		return
 	}
-	_ = unix.Close(p.fd)
-	p.fd = -1
+	for index := range p.objects {
+		_ = p.objects[index].Close()
+	}
+	p.objects = nil
+	if p.fd >= 0 {
+		_ = unix.Close(p.fd)
+		p.fd = -1
+	}
 }
 
 func enforcePreparedLandlock(prepared *preparedLandlockRuleset) {

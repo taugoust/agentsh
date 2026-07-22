@@ -42,6 +42,49 @@ func (m *mockFileEmitter) AppendEvent(_ context.Context, ev types.Event) error {
 
 func (m *mockFileEmitter) Publish(ev types.Event) {}
 
+func TestFileHandler_ComposedAliasUsesMostRestrictiveSourceDecision(t *testing.T) {
+	policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
+		"/visible/allowed": {
+			Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible",
+		},
+		"/source/secret": {
+			Decision: "deny", EffectiveDecision: "deny", Rule: "deny-source",
+		},
+	}}
+	emitter := &mockFileEmitter{}
+	handler := NewFileHandler(policy, NewMountRegistry(), emitter, true)
+	result, event := handler.Handle(context.Background(), FileRequest{
+		PID: os.Getpid(), Syscall: int32(unix.SYS_OPENAT),
+		Path: "/visible/allowed", SourcePath: "/source/secret",
+		Operation: "open", SessionID: "composition-test",
+	})
+	if result.Action != ActionDeny || event == nil || event.Policy == nil || event.Policy.Rule != "deny-source" {
+		t.Fatalf("result=%+v event=%+v", result, event)
+	}
+	if got := event.Fields["composition_source_path"]; got != "/source/secret" {
+		t.Fatalf("composition source audit field = %#v", got)
+	}
+}
+
+func TestFileHandler_ComposedSourceDenyIsNotLoaderSafeOverridden(t *testing.T) {
+	for _, visible := range []string{"/usr/lib/allowed-looking", "/etc"} {
+		t.Run(visible, func(t *testing.T) {
+			policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
+				visible:          {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible"},
+				"/source/secret": {Decision: "deny", EffectiveDecision: "deny", Rule: "default-deny-files"},
+			}}
+			handler := NewFileHandler(policy, NewMountRegistry(), nil, true)
+			result, _ := handler.Handle(context.Background(), FileRequest{
+				PID: os.Getpid(), Syscall: int32(unix.SYS_OPENAT), Path: visible,
+				SourcePath: "/source/secret", Operation: "open", SessionID: "composition-test",
+			})
+			if result.Action != ActionDeny {
+				t.Fatalf("source deny at loader-safe destination %q produced %+v", visible, result)
+			}
+		})
+	}
+}
+
 func TestFileHandler_AllowWithoutFUSE(t *testing.T) {
 	policy := &mockFilePolicy{
 		decisions: map[string]FilePolicyDecision{

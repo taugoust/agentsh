@@ -38,11 +38,34 @@ var (
 )
 
 type wrapNotifyMetadata struct {
-	WrapperPID  int
-	CommandJail bool
+	WrapperPID       int
+	CommandJail      bool
+	CompositionSetup bool
+}
+
+type wrapNotifyHandoff struct {
+	NotifyFD         *os.File
+	CompositionSetup *os.File
+	Metadata         wrapNotifyMetadata
+	HasMetadata      bool
+}
+
+func (h *wrapNotifyHandoff) close() {
+	if h == nil {
+		return
+	}
+	if h.NotifyFD != nil {
+		_ = h.NotifyFD.Close()
+		h.NotifyFD = nil
+	}
+	if h.CompositionSetup != nil {
+		_ = h.CompositionSetup.Close()
+		h.CompositionSetup = nil
+	}
 }
 
 type wrapExecLockContextKey struct{}
+type wrapSeccompConfigContextKey struct{}
 
 func wrapExecLockHeld(ctx context.Context) bool {
 	held, _ := ctx.Value(wrapExecLockContextKey{}).(bool)
@@ -203,6 +226,19 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		if pol != types.DecisionAllow && pol != types.DecisionAudit {
 			return types.WrapInitResponse{}, http.StatusForbidden,
 				fmt.Errorf("command requires non-shim handling by policy (rule=%s, decision=%s)", dec.Rule, pol)
+		}
+	}
+
+	// Keep this selection request-local. wrap-init returns before the wrapper
+	// connects back, so storing it on the session would let concurrent init
+	// requests overwrite—or borrow—one another's composition authority.
+	selectedComposition := ""
+	if engine := a.policyEngineFor(s); engine != nil {
+		compositionDecision := engine.CheckCommandWithExecve(req.AgentCommand, req.AgentArgs, a.execveEnforcementActive(), a.shellCOpaqueMode())
+		var code string
+		selectedComposition, code = a.selectSandboxComposition(&compositionDecision)
+		if code != "" {
+			return types.WrapInitResponse{}, http.StatusForbidden, fmt.Errorf("%s: %s", code, compositionDecision.Message)
 		}
 	}
 
@@ -478,9 +514,11 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	}
 
 	seccompCfg := a.buildSeccompWrapperConfig(s, seccompWrapperParams{
-		UnixSocketEnabled:   unixSocketEnabled,
-		SignalFilterEnabled: signalFilterEnabled,
-		ExecveEnabled:       execveEnabled,
+		UnixSocketEnabled:         unixSocketEnabled,
+		SignalFilterEnabled:       signalFilterEnabled,
+		ExecveEnabled:             execveEnabled,
+		CompositionSelectionBound: true,
+		SandboxComposition:        selectedComposition,
 	})
 	if toolJailRequired {
 		binding := a.nethelperBindingSnapshot()
@@ -505,6 +543,9 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		dir := filepath.Dir(req.AgentCommand)
 		if dir != "" && dir != "." && dir != "/" && !containsString(seccompCfg.AllowExecute, dir) {
 			seccompCfg.AllowExecute = append(seccompCfg.AllowExecute, dir)
+			if seccompCfg.SandboxComposition != "" && !containsString(seccompCfg.CompositionAllowExecute, dir) {
+				seccompCfg.CompositionAllowExecute = append(seccompCfg.CompositionAllowExecute, dir)
+			}
 		}
 	}
 
@@ -537,7 +578,8 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	// plumbed for clarity and future-proofing but changes no behavior today.
 	shimMode := req.Mode == "shim"
 	startListener := func() {
-		a.acceptNotifyFD(ctx, listener, notifySocketPath, sessionID, s, execveEnabled, req.CallerUID, shimMode, approvalUI)
+		handoffContext := context.WithValue(ctx, wrapSeccompConfigContextKey{}, seccompCfg)
+		a.acceptNotifyFD(handoffContext, listener, notifySocketPath, sessionID, s, execveEnabled, req.CallerUID, shimMode, approvalUI)
 	}
 	if a.acceptNotifyFDForTest != nil {
 		a.acceptNotifyFDForTest(startListener)
@@ -578,7 +620,7 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		SignalSocket:          signalSocketPath,
 		ApprovalUISocket:      approvalUISocketPath,
 		WrapperEnv:            wrapperEnv,
-		CommandJail:           commandJailRequirements(toolJailRequired),
+		CommandJail:           commandJailRequirements(toolJailRequired, selectedComposition),
 		// env_inject is delivered to the client for it to overlay onto the
 		// executed command's environment (the server does not spawn the
 		// process on this path). Operator-trusted; bypasses policy filtering,
@@ -624,7 +666,7 @@ func (a *App) wrapEnvPolicyWire(s *session.Session, req types.WrapInitRequest) *
 // was extracted from wrapInitCore specifically so the derivation path can
 // be tested end-to-end without standing up seccomp. See
 // TestWrap_LandlockDerivationUsesSessionPolicy.
-func (a *App) deriveLandlockAllowPaths(s *session.Session) (execute, read, write []string) {
+func (a *App) deriveLandlockBaseAllowPaths(s *session.Session) (execute, read, write []string) {
 	engine := a.policyEngineFor(s)
 	if engine == nil {
 		return nil, nil, nil
@@ -634,6 +676,16 @@ func (a *App) deriveLandlockAllowPaths(s *session.Session) (execute, read, write
 	execute = append(execute, landlock.DeriveExecutePathsFromFileRules(pol)...)
 	read = landlock.DeriveReadPathsFromPolicy(pol)
 	write = landlock.DeriveWritePathsFromPolicy(pol)
+	return execute, read, write
+}
+
+func (a *App) deriveLandlockAllowPaths(s *session.Session) (execute, read, write []string) {
+	execute, read, write = a.deriveLandlockBaseAllowPaths(s)
+	engine := a.policyEngineFor(s)
+	if engine == nil {
+		return execute, read, write
+	}
+	pol := engine.Policy()
 	if a.dynamicFileApprovalsActive() {
 		execute = append(execute, filterLandlockApprovePaths(landlock.DeriveApproveExecutePathsFromPolicy(pol), a.cfg.Landlock.DenyPaths)...)
 		read = append(read, filterLandlockApprovePaths(landlock.DeriveApproveReadPathsFromPolicy(pol), a.cfg.Landlock.DenyPaths)...)
@@ -929,7 +981,7 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 
 	unixConn := conn.(*net.UnixConn)
 
-	notifyFD, meta, hasMeta, err := recvNotifyFDForWrap(unixConn)
+	handoff, err := recvNotifyFDForWrap(unixConn)
 	if err != nil {
 		slog.Debug("wrap: failed to receive notify fd", "session_id", sessionID, "error", err)
 		if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
@@ -937,11 +989,52 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 		}
 		return
 	}
-	if notifyFD == nil {
+	if handoff == nil || handoff.NotifyFD == nil {
+		if handoff != nil {
+			handoff.close()
+		}
 		slog.Debug("wrap: received nil notify fd", "session_id", sessionID)
 		if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
 			slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
 		}
+		return
+	}
+	notifyFD := handoff.NotifyFD
+	compositionSetup := handoff.CompositionSetup
+	descriptorsTransferred := false
+	defer func() {
+		if descriptorsTransferred {
+			return
+		}
+		if notifyFD != nil {
+			_ = notifyFD.Close()
+		}
+		if compositionSetup != nil {
+			_ = compositionSetup.Close()
+		}
+	}()
+	meta := handoff.Metadata
+	hasMeta := handoff.HasMetadata
+	// The remaining function owns both descriptors until the notify handler
+	// successfully takes them over.
+	handoff.NotifyFD = nil
+	handoff.CompositionSetup = nil
+	expectedWrapperConfig, configBound := ctx.Value(wrapSeccompConfigContextKey{}).(seccompWrapperConfig)
+	compositionSelected := configBound && expectedWrapperConfig.SandboxComposition != ""
+	if !configBound {
+		// Internal tests and older in-process callers have no captured config.
+		// Production wrap-init always binds the exact serialized configuration.
+		compositionSelected = s != nil && s.CurrentSandboxComposition() != ""
+	}
+	if compositionSelected != (compositionSetup != nil) || compositionSelected && (!hasMeta || !meta.CompositionSetup) || !compositionSelected && meta.CompositionSetup {
+		_ = notifyFD.Close()
+		if compositionSetup != nil {
+			_ = compositionSetup.Close()
+		}
+		if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
+			slog.Debug("wrap: failed to write composition setup rejection", "session_id", sessionID, "error", statusErr)
+		}
+		slog.Warn("wrap: rejecting mismatched composition setup handoff", "session_id", sessionID, "selected", compositionSelected, "has_setup_fd", compositionSetup != nil, "has_metadata", hasMeta, "metadata_setup", meta.CompositionSetup)
 		return
 	}
 
@@ -972,6 +1065,7 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 	}
 
 	var cleanup func() error
+	var wrapperPIDPin *os.File
 	var strictUnlock func()
 	strictLockTransferred := false
 	defer func() {
@@ -988,14 +1082,19 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 			slog.Warn("wrap: rejecting notify fd without wrapper pid metadata", "session_id", sessionID)
 			return
 		}
-		if err := validateWrapperPIDForNotifyHook(meta.WrapperPID, notifyPeerPID, notifyPeerUID); err != nil {
+		var pinErr error
+		wrapperPIDPin, pinErr = validateWrapperPIDForNotifyHook(meta.WrapperPID, notifyPeerPID, notifyPeerUID)
+		if pinErr != nil {
 			_ = notifyFD.Close()
 			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
 				slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
 			}
 			slog.Warn("wrap: rejecting notify fd with untrusted wrapper pid metadata",
-				"session_id", sessionID, "wrapper_pid", meta.WrapperPID, "peer_pid", notifyPeerPID, "peer_uid", notifyPeerUID, "error", err)
+				"session_id", sessionID, "wrapper_pid", meta.WrapperPID, "peer_pid", notifyPeerPID, "peer_uid", notifyPeerUID, "error", pinErr)
 			return
+		}
+		if wrapperPIDPin != nil {
+			defer wrapperPIDPin.Close()
 		}
 		if commandBoundary != nil && s != nil {
 			// Serialize before helper attachment/report transitions, not after ACK.
@@ -1043,7 +1142,7 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 	slog.Info("wrap: received notify fd", "session_id", sessionID, "fd", notifyFD.Fd(), "wrapper_pid", wrapperPID)
 
 	// Start the notify handler using existing infrastructure
-	if err := startNotifyHandlerForWrapHook(ctx, notifyFD, sessionID, a, execveEnabled, wrapperPID, s, cleanup); err != nil {
+	if err := startNotifyHandlerForWrapHook(ctx, notifyFD, compositionSetup, sessionID, a, execveEnabled, wrapperPID, s, cleanup); err != nil {
 		if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
 			slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
 		}
@@ -1057,6 +1156,17 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 		slog.Warn("wrap: notify handler failed before ack", "session_id", sessionID, "wrapper_pid", wrapperPID, "error", err)
 		return
 	}
+	if wrapperPIDPin != nil {
+		if err := validateWrapperPIDPinForNotify(wrapperPIDPin); err != nil {
+			_ = notifyFD.Close()
+			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
+				slog.Debug("wrap: failed to write exited-wrapper rejection", "session_id", sessionID, "error", statusErr)
+			}
+			slog.Warn("wrap: trusted wrapper exited before setup acknowledgement", "session_id", sessionID, "wrapper_pid", wrapperPID, "error", err)
+			return
+		}
+	}
+	descriptorsTransferred = true
 	if approvalUI != nil && wrapperPID > 0 {
 		approvalUI.SetAuthorizedPID(wrapperPID)
 		slog.Debug("approval-ui: authorized wrapped process", "session_id", sessionID, "pid", wrapperPID, "socket", approvalUI.path)

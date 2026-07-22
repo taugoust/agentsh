@@ -79,6 +79,7 @@ type Session struct {
 	currentProcPID            int
 	currentExecutionSensitive bool
 	currentCommandProvenance  policy.CommandProvenance
+	currentSandboxComposition string
 	currentTraceID            string // W3C trace context: trace ID (32 hex chars)
 	currentSpanID             string // W3C trace context: parent span ID (16 hex chars)
 	currentTraceFlags         string // W3C trace context: trace flags (2 hex chars, e.g. "01")
@@ -513,6 +514,7 @@ func (s *Session) LockExecContext(ctx context.Context) (func(), error) {
 		s.currentProcPID = 0
 		s.currentExecutionSensitive = false
 		s.currentCommandProvenance = policy.CommandProvenanceNone
+		s.currentSandboxComposition = ""
 		s.currentTraceID = ""
 		s.currentSpanID = ""
 		s.currentTraceFlags = ""
@@ -562,6 +564,18 @@ func (s *Session) CurrentCommandProvenance() policy.CommandProvenance {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.currentCommandProvenance
+}
+
+func (s *Session) SetCurrentSandboxComposition(mode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentSandboxComposition = mode
+}
+
+func (s *Session) CurrentSandboxComposition() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentSandboxComposition
 }
 
 func (s *Session) SetCurrentProcessPID(pid int) {

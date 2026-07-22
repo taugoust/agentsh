@@ -259,16 +259,20 @@ func applyWrapperAvailability(domains []ProtectionDomain, secCaps *SecurityCapab
 // backwardCompatCaps builds the flat capabilities map for backward compatibility.
 func backwardCompatCaps(caps *SecurityCapabilities, domains []ProtectionDomain) map[string]any {
 	m := map[string]any{
-		"seccomp":                    caps.Seccomp,
-		"seccomp_user_notify":        caps.SeccompInstallable, // installable here (issue #388)
-		"seccomp_user_notify_kernel": caps.Seccomp,            // kernel-supported (read-only probe)
-		"seccomp_basic":              caps.SeccompBasic,
-		"landlock":                   caps.Landlock,
-		"landlock_abi":               caps.LandlockABI,
-		"landlock_network":           caps.LandlockNetwork,
-		"fuse":                       caps.FUSE,
-		"ptrace":                     caps.Ptrace,
-		"file_enforcement":           caps.FileEnforcement,
+		"seccomp":                             caps.Seccomp,
+		"seccomp_user_notify":                 caps.SeccompInstallable, // installable here (issue #388)
+		"seccomp_user_notify_kernel":          caps.Seccomp,            // kernel-supported (read-only probe)
+		"seccomp_basic":                       caps.SeccompBasic,
+		"landlock":                            caps.Landlock,
+		"landlock_abi":                        caps.LandlockABI,
+		"landlock_network":                    caps.LandlockNetwork,
+		"landlock_device_ioctl":               caps.LandlockDeviceIOCTL,
+		"landlock_scope_abstract_unix_socket": caps.LandlockAbstractUnixSocketScope,
+		"landlock_scope_signal":               caps.LandlockSignalScope,
+		"landlock_audit":                      caps.LandlockAudit,
+		"fuse":                                caps.FUSE,
+		"ptrace":                              caps.Ptrace,
+		"file_enforcement":                    caps.FileEnforcement,
 	}
 	for _, d := range domains {
 		for _, b := range d.Backends {

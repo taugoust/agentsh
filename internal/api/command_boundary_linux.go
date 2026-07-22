@@ -41,8 +41,16 @@ func configureCommandBoundaryProcess(attr *syscall.SysProcAttr, requirements *ty
 	}
 	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
 	attr.Pdeathsig = syscall.SIGKILL
-	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Geteuid(), Size: 1}}
-	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getegid(), Size: 1}}
+	namespaceID := 0
+	if requirements.MapCurrentUserToNonRoot {
+		namespaceID = 1
+		// A non-root identity loses namespaced capabilities across the wrapper
+		// exec. Preserve only the trusted setup capabilities; the wrapper drops
+		// and verifies all capability sets before READY.
+		attr.AmbientCaps = append(attr.AmbientCaps, unix.CAP_SYS_ADMIN, unix.CAP_SETPCAP)
+	}
+	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Geteuid(), Size: 1}}
+	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1}}
 	attr.GidMappingsEnableSetgroups = false
 	return nil
 }

@@ -155,20 +155,22 @@ func parseKernelVersion(release string) (int, int) {
 // (the target process/thread hasn't exited or been killed since the
 // notification was received). Returns nil if valid, ENOENT if stale.
 //
-// Tries the 5.17+ ioctl first, falls back to pre-5.17 on ENOTTY.
+// Linux UAPI currently exposes the _IOW encoding. Some older vendor kernels
+// shipped the alternate _IOWR encoding, so try the UAPI form first and retain a
+// compatibility fallback for ENOTTY/EINVAL.
 func NotifIDValid(notifFD int, notifID uint64) error {
 	id := notifID
 	_, _, errno := unix.Syscall(
 		unix.SYS_IOCTL,
 		uintptr(notifFD),
-		uintptr(ioctlNotifIDValidNew),
+		uintptr(ioctlNotifIDValidOld),
 		uintptr(unsafe.Pointer(&id)),
 	)
-	if errno == unix.ENOTTY {
+	if errno == unix.ENOTTY || errno == unix.EINVAL {
 		_, _, errno = unix.Syscall(
 			unix.SYS_IOCTL,
 			uintptr(notifFD),
-			uintptr(ioctlNotifIDValidOld),
+			uintptr(ioctlNotifIDValidNew),
 			uintptr(unsafe.Pointer(&id)),
 		)
 	}

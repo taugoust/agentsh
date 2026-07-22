@@ -143,6 +143,12 @@ func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req 
 		"args":    auditArgumentValues(req.Args, sensitive),
 		"source":  "execve",
 	}
+	if req.VisibleCommand != "" && req.VisibleCommand != req.Command {
+		fields["visible_command"] = req.VisibleCommand
+	}
+	if req.SourceCommand != "" {
+		fields["composition_source_command"] = req.SourceCommand
+	}
 	if scope, ok, scopeOptions := commandApprovalScopeOptions(req.Command, req.Args, req.Rule); ok {
 		if cached, ok := a.mgr.CheckScoped(ctx, req.SessionID, commandID, scope); ok {
 			return cached.Approved, nil
@@ -348,6 +354,9 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 			h, _ = execveHandler.(*unixmon.ExecveHandler)
 			if h != nil {
 				h.SetEmitter(emitter)
+				if fileHandler != nil {
+					fileHandler.SetCompositionPathRegistry(h.CompositionPathRegistry())
+				}
 				if approvalsMgr != nil {
 					var commandIDFunc func() string
 					if sess != nil {

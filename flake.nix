@@ -50,6 +50,7 @@
             ++ lib.optionals stdenv.hostPlatform.isLinux [
               "cmd/agentsh-stub"
               "cmd/agentsh-unixwrap"
+              "cmd/agentsh-bwrap-adapter"
             ]
             ++ lib.optionals stdenv.hostPlatform.isDarwin [
               "cmd/agentsh-stub"
@@ -90,15 +91,30 @@
                 BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
             '';
 
-            postBuild = lib.optionalString stdenv.hostPlatform.isDarwin ''
-              # Keep the main agentsh binary CGO-disabled on Darwin so cgofuse
-              # does not require macFUSE headers. Build only the Seatbelt wrapper
-              # with CGO enabled; it needs sandbox_init_with_parameters().
-              CGO_ENABLED=1 go build \
-                -ldflags='-s -w -X main.version=${version} -X main.commit=${rev}' \
-                -o agentsh-macwrap \
-                ./cmd/agentsh-macwrap
-            '';
+            postBuild =
+              lib.optionalString stdenv.hostPlatform.isLinux ''
+                $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
+                  -L${pkgs.glibc.static}/lib \
+                  cmd/agentsh-composition-mount-helper/main.c \
+                  -o agentsh-composition-mount-helper
+                $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
+                  -L${pkgs.glibc.static}/lib \
+                  cmd/agentsh-composition-ns-launcher/main.c \
+                  -o agentsh-composition-ns-launcher
+                CGO_ENABLED=0 go build \
+                  -ldflags='-s -w' \
+                  -o agentsh-bwrap-adapter-static \
+                  ./cmd/agentsh-bwrap-adapter
+              ''
+              + lib.optionalString stdenv.hostPlatform.isDarwin ''
+                # Keep the main agentsh binary CGO-disabled on Darwin so cgofuse
+                # does not require macFUSE headers. Build only the Seatbelt wrapper
+                # with CGO enabled; it needs sandbox_init_with_parameters().
+                CGO_ENABLED=1 go build \
+                  -ldflags='-s -w -X main.version=${version} -X main.commit=${rev}' \
+                  -o agentsh-macwrap \
+                  ./cmd/agentsh-macwrap
+              '';
 
             # Tests exercise kernel features such as FUSE, seccomp, eBPF,
             # ptrace, and network namespaces. Keep package builds pure and
@@ -139,6 +155,22 @@
                 --suffix PATH : "$out/bin:${runtimePath}"
             ''
             + lib.optionalString stdenv.hostPlatform.isLinux ''
+
+              install -Dm755 agentsh-bwrap-adapter-static \
+                $out/bin/agentsh-bwrap-adapter
+              install -Dm755 agentsh-composition-mount-helper \
+                $out/bin/agentsh-composition-mount-helper
+              install -Dm755 agentsh-composition-ns-launcher \
+                $out/bin/agentsh-composition-ns-launcher
+              for trusted_binary in \
+                $out/bin/agentsh-bwrap-adapter \
+                $out/bin/agentsh-composition-mount-helper \
+                $out/bin/agentsh-composition-ns-launcher; do
+                if readelf -l "$trusted_binary" | grep -q 'Requesting program interpreter'; then
+                  echo "trusted composition binary is dynamically linked: $trusted_binary" >&2
+                  exit 1
+                fi
+              done
 
               substituteInPlace $out/share/agentsh/config.yml \
                 --replace-fail '# wrapper_bin: "agentsh-unixwrap"' \
@@ -244,6 +276,26 @@
             };
           defaultSessionRuntimeModule = evalSessionRuntimeModule null null;
           customSessionRuntimeModule = evalSessionRuntimeModule 33554432 "45m";
+          compositionEnabledModule = nixpkgs.lib.nixosSystem {
+            system = stdenv.hostPlatform.system;
+            modules = [
+              self.nixosModules.default
+              ({ ... }: {
+                system.stateVersion = "25.11";
+                services.agentsh = {
+                  enable = true;
+                  package = moduleTestPackage;
+                  policies.source = moduleTestPackage;
+                  sandbox = {
+                    composition.bubblewrap.enable = true;
+                    seccomp.execve.enable = true;
+                    network.ebpf.enforce = true;
+                  };
+                  extraConfig.landlock.enabled = true;
+                };
+              })
+            ];
+          };
         in
         rec {
           go-format =
@@ -269,6 +321,44 @@
                 touch "$out/passed"
               '';
 
+          linux-amd64-compile =
+            if stdenv.hostPlatform.system == "aarch64-linux" then
+              let
+                cross = pkgs.pkgsCross.gnu64;
+              in
+              cross.buildGoModule {
+                pname = "agentsh-linux-amd64-compile";
+                version = "unstable-2026-06-17";
+                src = self;
+                vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+                subPackages = [ "internal/netmonitor/unix" ];
+                nativeBuildInputs = [
+                  pkgs.gnumake
+                  pkgs.llvmPackages.clang-unwrapped
+                  cross.pkg-config
+                ];
+                buildInputs = [
+                  cross.libbpf
+                  cross.libseccomp
+                  cross.linuxHeaders
+                ];
+                env = {
+                  CGO_ENABLED = "1";
+                  GOTELEMETRY = "off";
+                };
+                preBuild = ''
+                  make -C internal/netmonitor/ebpf clean all \
+                    BPF_CLANG=${pkgs.llvmPackages.clang-unwrapped}/bin/clang \
+                    BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
+                '';
+                doCheck = false;
+              }
+            else
+              pkgs.runCommand "agentsh-linux-amd64-compile-covered-natively" { } ''
+                mkdir -p "$out"
+                touch "$out/covered-natively"
+              '';
+
           nested-namespace-feasibility =
             if stdenv.hostPlatform.isLinux then
               import ./nix/checks/nested-namespace-feasibility.nix {
@@ -287,6 +377,28 @@
               }
             else
               pkgs.runCommand "agentsh-nested-namespace-broker-feasibility-skipped" { } ''
+                mkdir -p "$out"
+                touch "$out/skipped-non-linux"
+              '';
+
+          recursive-mount-clone-feasibility =
+            if stdenv.hostPlatform.isLinux then
+              import ./nix/checks/recursive-mount-clone-feasibility.nix {
+                inherit pkgs self;
+              }
+            else
+              pkgs.runCommand "agentsh-recursive-mount-clone-feasibility-skipped" { } ''
+                mkdir -p "$out"
+                touch "$out/skipped-non-linux"
+              '';
+
+          landlock-mount-graph-feasibility =
+            if stdenv.hostPlatform.isLinux then
+              import ./nix/checks/landlock-mount-graph-feasibility.nix {
+                inherit pkgs self;
+              }
+            else
+              pkgs.runCommand "agentsh-landlock-mount-graph-feasibility-skipped" { } ''
                 mkdir -p "$out"
                 touch "$out/skipped-non-linux"
               '';
@@ -349,11 +461,16 @@
             '';
             checkPhase = ''
               runHook preCheck
-              go test ./internal/policy -run 'Test(DiscoverProjectOverlays|LoadOverlay|MergePolicyOverlays)'
-              go test ./internal/config -run 'Test(ProjectOverlays|OutputArtifacts|Subagents)'
+              go test ./internal/composition
+              go test ./internal/wraphandoff
+              go test ./internal/netmonitor/unix -run '^Test(CompositionRedirector|CompositionPathRegistry|FileHandler_Composed|ExecveHandler_Composed|ExecveHandler_Composition|ExecveHandler_DoesNotCompose|ExecPathMissing|FilterLogLoaded|MetadataNotify)'
+              go test ./internal/policy -run 'Test(DiscoverProjectOverlays|LoadOverlay|MergePolicyOverlays|CommandRule.*SandboxComposition)'
+              go test ./internal/config -run 'Test(ProjectOverlays|OutputArtifacts|Subagents|BubblewrapComposition)'
               go test ./internal/session -run '^(TestOutputArtifact_|TestConfigureOutputArtifacts|TestSession_Cleanup$|TestLockExecContextCancelledQueueNeverAcquiresLater$)'
               go test ./internal/api -run '^(TestCommandOutputArtifactCapture_.*|TestValidateOutputArtifactRequest|TestPersistSubagentFinalArtifact_.*|TestReadTextLineWindow_.*|TestPiToolReadFile_ShadowAllowsOnlyExactRegisteredOutputArtifact|TestPiToolExecBash_(RemoteArtifactRetainsBeyondResponseCap|PreExecFailureIsPromotedAndNotStarted|ChildExit127IsStartedNotPreExec)|Test(NethelperRebind.*|RebindSerializes.*|HelperDisappearanceAfterReadyPreflightBecomesStickyFailed|FailedCandidateCleanupTombstoneBlocksRebindAndTeardown|WrapperRecoveryTokenUsesHiddenFixedPrivateTopology|RunCommand.*AuthoritativeStart|NormalizeBarrierFailureBeforeReleaseIsNotStarted)|TestDefaultMaxOutputBytes_IsTwoMiB|TestCreateSession_AssignsRuntimeHomeAndTmp)$'
-              go test ./internal/cli -run '^(TestFindDetachedSupervisorConfigPath_|TestDetachedSupervisorServiceEnv|TestBuildSystemdRunDetachedSupervisorArgs|TestEphemeralSystemdRunArgsAreFixedAndSecretFree|TestNethelperBootstrapRuntimeDefaultIsBackwardCompatible|TestEphemeralSystemdRunArgsNegotiatesSoftLease|TestValidateEphemeralNethelperRuntime)'
+              go test ./internal/api -run '^Test(AcceptNotifyFD_TransfersCompositionSetupEndpoint|StartNotifyHandlerForWrap_CleansUpAfterProbeFailure|SelectSandboxCompositionRequiresMetadataInterception|ConfigureExecveCompositionRequiresMetadataInterceptionAtRuntime)$'
+              go test ./internal/cli -run '^(TestFindDetachedSupervisorConfigPath_|TestDetachedSupervisorServiceEnv|TestBuildSystemdRunDetachedSupervisorArgs|TestEphemeralSystemdRunArgsAreFixedAndSecretFree|TestNethelperBootstrapRuntimeDefaultIsBackwardCompatible|TestEphemeralSystemdRunArgsNegotiatesSoftLease|TestValidateEphemeralNethelperRuntime|TestConfigureWrapCommandBoundaryUsesNonRootCompositionIdentity|TestForwardNotifyHandoffWithCompositionSetup)$'
+              go test ./internal/shim/kernelinstall -run '^Test(ConfigureCommandJailProcessUsesNonRootCompositionIdentity|AssembleWrapperEnvStripsCompositionSetupFD)$'
               go test ./internal/nethelper
               go test ./internal/detached ./internal/detachedreport
               go test ./internal/workspace/runtimebin ./internal/workspace/shadow ./internal/workspace/overlay
@@ -518,6 +635,8 @@
                 customSessionRuntimeModule.config.services.agentsh.sessions.outputArtifacts.maxBytes == 33554432;
               assert
                 customSessionRuntimeModule.config.services.agentsh.sessions.subagents.defaultTimeout == "45m";
+              assert builtins.elem "d /agentsh-composition-scratch 1733 root root -"
+                compositionEnabledModule.config.systemd.tmpfiles.rules;
               pkgs.runCommand "agentsh-nixos-output-artifacts-module-test"
                 {
                   nativeBuildInputs = [ pkgs.yq-go ];
@@ -530,6 +649,16 @@
                     ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
                   yq -e '.sessions.default_idle_timeout == "9h"' \
                     ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sandbox.composition.bubblewrap.enabled == false' \
+                    ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sandbox.composition.bubblewrap.scratch_root == "/agentsh-composition-scratch"' \
+                    ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sandbox.seccomp.file_monitor.intercept_metadata == true' \
+                    ${compositionEnabledModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sandbox.seccomp.file_monitor.write_only_opens == false' \
+                    ${compositionEnabledModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sandbox.seccomp.file_monitor.block_io_uring == true' \
+                    ${compositionEnabledModule.config.environment.etc."agentsh/config.yml".source}
                   yq -e '.sessions.output_artifacts.max_bytes == 33554432' \
                     ${customSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
                   yq -e '.sessions.subagents.default_timeout == "45m"' \

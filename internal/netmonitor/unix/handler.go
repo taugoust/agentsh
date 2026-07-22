@@ -179,6 +179,9 @@ func buildUnixSocketEvent(emit Emitter, session string, dec policy.Decision, pat
 // route through this loop's emit directly (unix sockets, block-list) are
 // dropped. All downstream emit consumers must nil-check before use.
 func ServeNotifyWithExecve(ctx context.Context, fd *os.File, sessID string, pol *policy.Engine, emit Emitter, execveHandler *ExecveHandler, fileHandler *FileHandler, blockList *BlockListConfig) {
+	if execveHandler != nil {
+		defer execveHandler.CloseComposition()
+	}
 	if fd == nil {
 		slog.Debug("ServeNotifyWithExecve: nil fd", "fd_nil", true)
 		return
@@ -406,7 +409,7 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 		}
 	}
 
-	if execPathMissing(filename, execveArgs) {
+	if execPathMissing(pid, filename, execveArgs) {
 		// execvp-style PATH searches try each candidate with execve(2). Missing
 		// candidates must be allowed to reach the kernel so it can return ENOENT
 		// and let libc continue searching; turning them into policy EACCES makes
@@ -452,6 +455,20 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 	}
 
 	result, ev := h.Handle(goCtx, ectx)
+	if h.shouldCompose(ectx, result) {
+		result.Action = ActionComposition
+		result.Reason = "Bubblewrap 0.11.2 semantic composition"
+		if ev != nil {
+			ev.EffectiveAction = ActionComposition
+			if ev.Policy != nil {
+				ev.Policy.Message = result.Reason
+			}
+			if ev.Fields == nil {
+				ev.Fields = make(map[string]any)
+			}
+			ev.Fields["sandbox_composition"] = "bubblewrap-0.11.2"
+		}
+	}
 
 	// Defer event emission so it runs after the seccomp notify response.
 	// This ensures the tracee is unblocked before any fsync I/O from the
@@ -465,6 +482,38 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 	}()
 
 	switch result.Action {
+	case ActionComposition:
+		if h.compositionRedirector == nil {
+			if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EPERM)); err != nil {
+				slog.Error("composition exec: deny response failed", "pid", pid, "error", err)
+			}
+			return
+		}
+		if execveArgs.IsExecveat {
+			if err := NotifRespondDeny(int(fd), req.ID, int32(unix.ENOTSUP)); err != nil {
+				slog.Error("composition execveat: deny response failed", "pid", pid, "error", err)
+			}
+			return
+		}
+		if err := h.compositionRedirector.Redirect(int(fd), req.ID, ectx, execveArgs.FilenamePtr, originalFilenameLen); err != nil {
+			if ev != nil {
+				ev.EffectiveAction = "blocked"
+				if ev.Fields == nil {
+					ev.Fields = make(map[string]any)
+				}
+				ev.Fields["composition_error"] = err.Error()
+			}
+			slog.Error("composition redirect failed, denying", "pid", pid, "error", err)
+			if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EPERM)); err != nil {
+				slog.Error("composition exec: deny response failed", "pid", pid, "error", err)
+			}
+			return
+		}
+		if err := NotifRespondContinue(int(fd), req.ID); err != nil {
+			slog.Debug("composition exec: continue response failed", "pid", pid, "error", err)
+		}
+		return
+
 	case ActionRedirect:
 		if h.stubSymlinkPath == "" {
 			slog.Error("redirect requested but no stub symlink configured, denying",
@@ -941,14 +990,22 @@ func getParentPID(pid int) int {
 	return ppid
 }
 
-func execPathMissing(filename string, args ExecveArgs) bool {
+func execPathMissing(pid int, filename string, args ExecveArgs) bool {
 	const AT_EMPTY_PATH = 0x1000
 	if args.IsExecveat && args.Flags&AT_EMPTY_PATH != 0 {
 		// execveat(AT_EMPTY_PATH) executes the fd itself; its readlink path may be
 		// deleted or synthetic, so path stat is not authoritative.
 		return false
 	}
-	_, err := os.Stat(filename)
+	// Resolve existence through the tracee's root and mount namespace. Checking
+	// the supervisor's own filename would misclassify composition-only bind
+	// destinations as missing and bypass command policy under the PATH-search
+	// ENOENT exception.
+	traceePath := filepath.Join(
+		string(filepath.Separator), "proc", strconv.Itoa(pid), "root",
+		strings.TrimPrefix(filepath.Clean(filename), string(filepath.Separator)),
+	)
+	_, err := os.Stat(traceePath)
 	return os.IsNotExist(err)
 }
 

@@ -5,13 +5,122 @@ package api
 import (
 	"encoding/json"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/agentsh/agentsh/internal/capabilities"
 	"github.com/agentsh/agentsh/internal/config"
+	unixmon "github.com/agentsh/agentsh/internal/netmonitor/unix"
+	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/pkg/types"
 )
+
+func TestSelectSandboxCompositionRequiresMetadataInterception(t *testing.T) {
+	enabled := true
+	disabled := false
+	cfg := &config.Config{}
+	cfg.Landlock.Enabled = true
+	cfg.Sandbox.Composition.Bubblewrap.Enabled = true
+	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
+	cfg.Sandbox.Network.EBPF.Required = true
+	cfg.Sandbox.Seccomp.Execve.Enabled = true
+	cfg.Sandbox.Seccomp.FileMonitor.Enabled = &enabled
+	cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE = &enabled
+	cfg.Sandbox.Seccomp.FileMonitor.WriteOnlyOpens = &disabled
+	cfg.Sandbox.Seccomp.FileMonitor.BlockIOUring = &enabled
+	cfg.Sandbox.Seccomp.FileMonitor.InterceptMetadata = &disabled
+	app := &App{cfg: cfg}
+
+	decision := &policy.Decision{
+		EffectiveDecision:  types.DecisionAllow,
+		SandboxComposition: bubblewrapCompositionMode,
+	}
+	mode, code := app.selectSandboxComposition(decision)
+	if mode != "" || code != "E_COMPOSITION_BACKEND_UNAVAILABLE" || decision.EffectiveDecision != types.DecisionDeny {
+		t.Fatalf("metadata-disabled selection mode=%q code=%q decision=%+v", mode, code, decision)
+	}
+	if !strings.Contains(decision.Message, "metadata file interception") {
+		t.Fatalf("metadata-disabled message = %q", decision.Message)
+	}
+
+	cfg.Sandbox.Seccomp.FileMonitor.InterceptMetadata = &enabled
+	decision = &policy.Decision{
+		EffectiveDecision:  types.DecisionAllow,
+		SandboxComposition: bubblewrapCompositionMode,
+	}
+	mode, code = app.selectSandboxComposition(decision)
+	if mode != bubblewrapCompositionMode || code != "" {
+		t.Fatalf("metadata-enabled selection mode=%q code=%q decision=%+v", mode, code, decision)
+	}
+}
+
+func TestConfigureExecveCompositionRequiresMetadataInterceptionAtRuntime(t *testing.T) {
+	handler := unixmon.NewExecveHandler(unixmon.ExecveHandlerConfig{}, nil, nil, nil)
+	wrapperCfg := seccompWrapperConfig{
+		SandboxComposition: bubblewrapCompositionMode,
+		LandlockEnabled:    true,
+		FileMonitorEnabled: true,
+		WriteOnlyOpens:     false,
+		BlockIOUring:       true,
+		InterceptMetadata:  false,
+	}
+	app := &App{cfg: &config.Config{}}
+	err := app.configureExecveComposition(handler, &session.Session{}, wrapperCfg, nil, 1)
+	if err == nil || !strings.Contains(err.Error(), "metadata file interception") {
+		t.Fatalf("metadata-disabled runtime error = %v", err)
+	}
+
+	wrapperCfg.InterceptMetadata = true
+	err = app.configureExecveComposition(handler, &session.Session{}, wrapperCfg, nil, 0)
+	if err == nil || !strings.Contains(err.Error(), "trusted wrapper PID") {
+		t.Fatalf("zero wrapper PID should fail sender binding, got %v", err)
+	}
+	err = app.configureExecveComposition(handler, &session.Session{}, wrapperCfg, nil, 1)
+	if err == nil || !strings.Contains(err.Error(), "setup channel") {
+		t.Fatalf("metadata-enabled runtime should advance to setup-channel check, got %v", err)
+	}
+}
+
+func TestBuildSeccompWrapperConfig_DeviceIOCTLOnlyForComposition(t *testing.T) {
+	if !capabilities.DetectLandlock().Available {
+		t.Skip("Landlock not available on this host")
+	}
+	cfg := &config.Config{}
+	cfg.Landlock.Enabled = true
+	cfg.Sandbox.Composition.Bubblewrap.DeviceIOCTLPaths = []string{"/dev/null"}
+	app := newTestAppForSeccomp(t, cfg)
+	sess := &session.Session{Workspace: "/tmp"}
+
+	ordinary := app.buildSeccompWrapperConfig(sess, seccompWrapperParams{})
+	if ordinary.HandleDeviceIOCTL || len(ordinary.AllowDeviceIOCTL) != 0 {
+		t.Fatalf("ordinary command unexpectedly handles device ioctls: %+v", ordinary)
+	}
+
+	sess.SetCurrentSandboxComposition(bubblewrapCompositionMode)
+	composition := app.buildSeccompWrapperConfig(sess, seccompWrapperParams{})
+	if !composition.HandleDeviceIOCTL {
+		t.Fatal("composition command does not handle ABI-5 device ioctls")
+	}
+	if len(composition.AllowDeviceIOCTL) != 1 || composition.AllowDeviceIOCTL[0] != "/dev/null" {
+		t.Fatalf("composition device ioctl paths = %#v", composition.AllowDeviceIOCTL)
+	}
+
+	// A wrap-init snapshot must override stale session-global state in both
+	// directions; concurrent requests cannot borrow one another's selection.
+	boundOrdinary := app.buildSeccompWrapperConfig(sess, seccompWrapperParams{CompositionSelectionBound: true})
+	if boundOrdinary.SandboxComposition != "" || boundOrdinary.HandleDeviceIOCTL {
+		t.Fatalf("explicit empty composition snapshot inherited stale session state: %+v", boundOrdinary)
+	}
+	sess.SetCurrentSandboxComposition("")
+	boundComposition := app.buildSeccompWrapperConfig(sess, seccompWrapperParams{
+		CompositionSelectionBound: true,
+		SandboxComposition:        bubblewrapCompositionMode,
+	})
+	if boundComposition.SandboxComposition != bubblewrapCompositionMode || !boundComposition.HandleDeviceIOCTL {
+		t.Fatalf("explicit composition snapshot was lost: %+v", boundComposition)
+	}
+}
 
 // TestSetupSeccompWrapper_LandlockNetwork_HonorsConfig verifies that the
 // seccompWrapperConfig JSON produced by setupSeccompWrapper reflects

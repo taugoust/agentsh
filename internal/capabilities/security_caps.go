@@ -23,23 +23,27 @@ import (
 // all" (mode selection, configuration generation) continue to read
 // Capabilities.
 type SecurityCapabilities struct {
-	Seccomp              bool   // seccomp-bpf + user-notify
-	SeccompBasic         bool   // seccomp-bpf without user-notify
-	SeccompInstallable   bool   // a real NEW_LISTENER filter install succeeds here (issue #388)
-	SeccompInstallDetail string // why install is unavailable, when SeccompInstallable is false
-	Landlock             bool   // any Landlock support
-	LandlockABI          int    // 1-5, determines features
-	LandlockNetwork      bool   // ABI v4+, kernel 6.7+
-	EBPF                 bool   // network monitoring
-	FUSE                 bool   // filesystem interception
-	Capabilities         bool   // capability-drop mechanism available (always true on Linux)
-	CapabilitiesActive   bool   // capability-drop probe reports this process has durably reduced its capability set
-	PIDNamespace         bool   // isolated PID namespace
-	Ptrace               bool   // SYS_PTRACE capability available
-	PtraceEnabled        bool   // ptrace enforcement enabled in config
-	PtraceInjectable     bool   // injected syscalls (mmap) reliably take effect here (issue #369)
-	PtraceInjectDetail   string // why injection is unreliable, when PtraceInjectable is false
-	FileEnforcement      string // "landlock", "fuse", "seccomp-notify", "none"
+	Seccomp                         bool   // seccomp-bpf + user-notify
+	SeccompBasic                    bool   // seccomp-bpf without user-notify
+	SeccompInstallable              bool   // a real NEW_LISTENER filter install succeeds here (issue #388)
+	SeccompInstallDetail            string // why install is unavailable, when SeccompInstallable is false
+	Landlock                        bool   // any Landlock support
+	LandlockABI                     int    // actual highest kernel ABI
+	LandlockNetwork                 bool   // ABI v4+
+	LandlockDeviceIOCTL             bool   // ABI v5+
+	LandlockAbstractUnixSocketScope bool   // ABI v6+
+	LandlockSignalScope             bool   // ABI v6+
+	LandlockAudit                   bool   // ABI v7+
+	EBPF                            bool   // network monitoring
+	FUSE                            bool   // filesystem interception
+	Capabilities                    bool   // capability-drop mechanism available (always true on Linux)
+	CapabilitiesActive              bool   // capability-drop probe reports this process has durably reduced its capability set
+	PIDNamespace                    bool   // isolated PID namespace
+	Ptrace                          bool   // SYS_PTRACE capability available
+	PtraceEnabled                   bool   // ptrace enforcement enabled in config
+	PtraceInjectable                bool   // injected syscalls (mmap) reliably take effect here (issue #369)
+	PtraceInjectDetail              string // why injection is unreliable, when PtraceInjectable is false
+	FileEnforcement                 string // "landlock", "fuse", "seccomp-notify", "none"
 
 	// Cached probe results (populated by DetectSecurityCapabilities, reused by buildLinuxDomains)
 	EBPFProbe   ProbeResult
@@ -78,6 +82,10 @@ func DetectSecurityCapabilities() *SecurityCapabilities {
 	caps.Landlock = llResult.Available
 	caps.LandlockABI = llResult.ABI
 	caps.LandlockNetwork = llResult.NetworkSupport
+	caps.LandlockDeviceIOCTL = llResult.DeviceIOCTLSupport
+	caps.LandlockAbstractUnixSocketScope = llResult.AbstractUnixSocketScope
+	caps.LandlockSignalScope = llResult.SignalScope
+	caps.LandlockAudit = llResult.AuditSupport
 
 	// Detect other capabilities via probes
 	caps.Seccomp = checkSeccompUserNotify().Available

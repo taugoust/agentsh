@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/capabilities"
+	"github.com/agentsh/agentsh/internal/composition"
 	unixmon "github.com/agentsh/agentsh/internal/netmonitor/unix"
 	seccomp "github.com/seccomp/libseccomp-golang"
 	"golang.org/x/sys/unix"
@@ -33,25 +34,30 @@ const notifyFDEnv = "AGENTSH_NOTIFY_SOCK_FD"
 const configEnv = "AGENTSH_SECCOMP_CONFIG"
 
 type wrapperConfig struct {
-	UnixSocketEnabled  bool        `json:"unix_socket_enabled"`
-	ExecveEnabled      bool        `json:"execve_enabled"`
-	FileMonitorEnabled bool        `json:"file_monitor_enabled"`
-	InterceptMetadata  bool        `json:"intercept_metadata,omitempty"`
-	WriteOnlyOpens     bool        `json:"write_only_opens,omitempty"`
-	BlockIOUring       bool        `json:"block_io_uring,omitempty"`
-	BlockedSyscalls    []string    `json:"blocked_syscalls,omitempty"`
-	OnBlock            string      `json:"on_block,omitempty"`
-	WaitKillable       *bool       `json:"wait_killable,omitempty"`
-	WaitKillableSource string      `json:"wait_killable_source,omitempty"`
-	LandlockEnabled    bool        `json:"landlock_enabled,omitempty"`
-	LandlockABI        int         `json:"landlock_abi,omitempty"`
-	Workspace          string      `json:"workspace,omitempty"`
-	AllowExecute       []string    `json:"allow_execute,omitempty"`
-	AllowRead          []string    `json:"allow_read,omitempty"`
-	AllowWrite         []string    `json:"allow_write,omitempty"`
-	AllowNetwork       bool        `json:"allow_network,omitempty"`
-	AllowBind          bool        `json:"allow_bind,omitempty"`
-	CommandJail        *jailConfig `json:"command_jail,omitempty"`
+	UnixSocketEnabled          bool        `json:"unix_socket_enabled"`
+	ExecveEnabled              bool        `json:"execve_enabled"`
+	FileMonitorEnabled         bool        `json:"file_monitor_enabled"`
+	InterceptMetadata          bool        `json:"intercept_metadata,omitempty"`
+	WriteOnlyOpens             bool        `json:"write_only_opens,omitempty"`
+	BlockIOUring               bool        `json:"block_io_uring,omitempty"`
+	BlockedSyscalls            []string    `json:"blocked_syscalls,omitempty"`
+	OnBlock                    string      `json:"on_block,omitempty"`
+	WaitKillable               *bool       `json:"wait_killable,omitempty"`
+	WaitKillableSource         string      `json:"wait_killable_source,omitempty"`
+	LandlockEnabled            bool        `json:"landlock_enabled,omitempty"`
+	LandlockABI                int         `json:"landlock_abi,omitempty"`
+	Workspace                  string      `json:"workspace,omitempty"`
+	AllowExecute               []string    `json:"allow_execute,omitempty"`
+	AllowRead                  []string    `json:"allow_read,omitempty"`
+	AllowWrite                 []string    `json:"allow_write,omitempty"`
+	AllowNetwork               bool        `json:"allow_network,omitempty"`
+	AllowBind                  bool        `json:"allow_bind,omitempty"`
+	SandboxComposition         string      `json:"sandbox_composition,omitempty"`
+	CompositionScratchRoot     string      `json:"composition_scratch_root,omitempty"`
+	CompositionSyntheticMounts int         `json:"composition_synthetic_mounts,omitempty"`
+	CompositionMaxTransitions  int         `json:"composition_max_transitions,omitempty"`
+	CompositionMaxDataBytes    int64       `json:"composition_max_data_bytes,omitempty"`
+	CommandJail                *jailConfig `json:"command_jail,omitempty"`
 }
 
 type jailConfig struct {
@@ -80,6 +86,32 @@ type notificationCounts struct {
 	exec  atomic.Int64
 	file  atomic.Int64
 	mount atomic.Int64
+}
+
+type compositionExecPolicy struct{}
+
+func compositionExecDecision(filename string) unixmon.PolicyDecision {
+	if filepath.Base(filename) == "agentsh-composition-denied-command" {
+		return unixmon.PolicyDecision{Decision: "deny", EffectiveDecision: "deny", Rule: "deny-composition-source-command"}
+	}
+	return unixmon.PolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "composition-vm-allow"}
+}
+
+func (compositionExecPolicy) CheckExecve(filename string, _ []string, _ int) unixmon.PolicyDecision {
+	return compositionExecDecision(filename)
+}
+
+func (compositionExecPolicy) CheckExecveWithAliases(filename string, _ []string, _ []string, _ int) unixmon.PolicyDecision {
+	return compositionExecDecision(filename)
+}
+
+type compositionFilePolicy struct{}
+
+func (compositionFilePolicy) CheckFile(_ context.Context, path, _ string) unixmon.FilePolicyDecision {
+	if path == "/etc/hosts" {
+		return unixmon.FilePolicyDecision{Decision: "deny", EffectiveDecision: "deny", Rule: "deny-source-hosts"}
+	}
+	return unixmon.FilePolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "composition-vm-allow"}
 }
 
 type mountBrokerConfig struct {
@@ -120,8 +152,12 @@ func runHarness(args []string) error {
 	brokerSource := fs.String("broker-source", "", "only bind source accepted by the test broker")
 	brokerRoot := fs.String("broker-root", "", "only destination tree accepted by the test broker")
 	landlockWriteRoot := fs.String("landlock-write-root", "", "optional restricted Landlock write root")
+	landlockExactReadRoot := fs.String("landlock-exact-read-root", "", "exact retained source root for composition")
 	successStage := fs.String("success-stage", "", "override the successful Landlock report stage")
 	successBranch := fs.String("success-branch", "", "override the successful Landlock branch label")
+	compositionAdapter := fs.String("composition-adapter", "", "production semantic Bubblewrap adapter")
+	compositionHelper := fs.String("composition-helper", "", "production semantic composition mount helper")
+	compositionScratchRoot := fs.String("composition-scratch-root", os.TempDir(), "trusted composition staging root")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -135,6 +171,18 @@ func runHarness(args []string) error {
 		}
 	}
 	brokerEnabled := *mountBrokerHelper != "" || *brokerSource != "" || *brokerRoot != ""
+	semanticComposition := *compositionAdapter != "" || *compositionHelper != ""
+	if semanticComposition {
+		if !filepath.IsAbs(*compositionAdapter) || !filepath.IsAbs(*compositionHelper) {
+			return errors.New("composition adapter and helper must both be absolute")
+		}
+		if !filepath.IsAbs(*compositionScratchRoot) || filepath.Clean(*compositionScratchRoot) != *compositionScratchRoot {
+			return errors.New("composition scratch root must be a clean absolute path")
+		}
+		if !*landlockEnabled || brokerEnabled || *expectBlock || *expectUIDMapBlock {
+			return errors.New("semantic composition requires Landlock and is exclusive with other expected branches")
+		}
+	}
 	if brokerEnabled {
 		for name, value := range map[string]string{
 			"mount-broker-helper": *mountBrokerHelper,
@@ -151,6 +199,9 @@ func runHarness(args []string) error {
 	}
 	if *landlockWriteRoot != "" && !filepath.IsAbs(*landlockWriteRoot) {
 		return errors.New("--landlock-write-root must be absolute")
+	}
+	if *landlockExactReadRoot != "" && !filepath.IsAbs(*landlockExactReadRoot) {
+		return errors.New("--landlock-exact-read-root must be absolute")
 	}
 	if (*successStage == "") != (*successBranch == "") || (*successStage != "" && (!*landlockEnabled || *expectBlock)) {
 		return errors.New("success-stage and success-branch must be supplied together for a successful Landlock probe")
@@ -175,12 +226,16 @@ func runHarness(args []string) error {
 	if *landlockWriteRoot != "" {
 		writeRoots = []string{*landlockWriteRoot}
 	}
+	readRoots := []string{root, filepath.Join(root, "nix", "store")}
+	if *landlockExactReadRoot != "" {
+		readRoots = append(readRoots, *landlockExactReadRoot)
+	}
 	waitKillable := false
 	cfg := wrapperConfig{
 		UnixSocketEnabled:  true,
 		ExecveEnabled:      true,
 		FileMonitorEnabled: true,
-		InterceptMetadata:  false,
+		InterceptMetadata:  true,
 		WriteOnlyOpens:     false,
 		BlockIOUring:       true,
 		WaitKillable:       &waitKillable,
@@ -188,11 +243,15 @@ func runHarness(args []string) error {
 		LandlockEnabled:    *landlockEnabled,
 		LandlockABI:        landlockResult.ABI,
 		Workspace:          root,
-		AllowExecute:       []string{root},
-		AllowRead:          []string{root},
-		AllowWrite:         writeRoots,
-		AllowNetwork:       true,
-		AllowBind:          true,
+		// Keep /nix/store as an explicit Landlock rule object. Once the broker
+		// bind-mounts that tree below a detached root, the original / rule is no
+		// longer in its mount ancestry; the source-root rule preserves the base
+		// execute/read authority without broadening it.
+		AllowExecute: []string{root, filepath.Join(root, "nix", "store")},
+		AllowRead:    readRoots,
+		AllowWrite:   writeRoots,
+		AllowNetwork: true,
+		AllowBind:    true,
 		CommandJail: &jailConfig{
 			Required:        true,
 			HideDirectories: []string{*controlDir},
@@ -201,6 +260,13 @@ func runHarness(args []string) error {
 	if brokerEnabled {
 		cfg.BlockedSyscalls = []string{"mount"}
 		cfg.OnBlock = "log"
+	}
+	if semanticComposition {
+		cfg.SandboxComposition = composition.Mode
+		cfg.CompositionScratchRoot = *compositionScratchRoot
+		cfg.CompositionSyntheticMounts = 16
+		cfg.CompositionMaxTransitions = 16
+		cfg.CompositionMaxDataBytes = 16 * 1024 * 1024
 	}
 	configJSON, err := json.Marshal(cfg)
 	if err != nil {
@@ -214,6 +280,16 @@ func runHarness(args []string) error {
 	parentSocket := os.NewFile(uintptr(socketFDs[0]), "feasibility-parent-control")
 	childSocket := os.NewFile(uintptr(socketFDs[1]), "feasibility-child-control")
 	defer parentSocket.Close()
+	var compositionParent, compositionChild *os.File
+	if semanticComposition {
+		compositionFDs, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+		if err != nil {
+			childSocket.Close()
+			return fmt.Errorf("create composition setup socketpair: %w", err)
+		}
+		compositionParent = os.NewFile(uintptr(compositionFDs[0]), "feasibility-composition-parent")
+		compositionChild = os.NewFile(uintptr(compositionFDs[1]), "feasibility-composition-child")
+	}
 
 	self, err := os.Executable()
 	if err != nil {
@@ -226,9 +302,13 @@ func runHarness(args []string) error {
 	if *landlockWriteRoot != "" {
 		scratchRoot = *landlockWriteRoot
 	}
-	cmd := exec.CommandContext(ctx, *wrapper, "--", self, "payload", "--matrix", *matrix, "--control-dir", *controlDir, "--scratch-root", scratchRoot)
+	cmd := exec.CommandContext(ctx, *wrapper, "--", self, "payload", "--matrix", *matrix, "--control-dir", *controlDir, "--scratch-root", scratchRoot, "--composition="+strconv.FormatBool(semanticComposition))
 	cmd.Env = append(os.Environ(), notifyFDEnv+"=3", configEnv+"="+string(configJSON))
 	cmd.ExtraFiles = []*os.File{childSocket}
+	if compositionChild != nil {
+		cmd.Env = append(cmd.Env, composition.SetupFDEnv+"=4")
+		cmd.ExtraFiles = append(cmd.ExtraFiles, compositionChild)
+	}
 	// A capability-free namespace UID 0 cannot create a second user namespace
 	// which maps its own ID on Linux 5.12+: mapping a parent-namespace UID 0
 	// requires CAP_SETFCAP. Use an otherwise equivalent non-root outer identity
@@ -252,9 +332,18 @@ func runHarness(args []string) error {
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		childSocket.Close()
+		if compositionChild != nil {
+			compositionChild.Close()
+		}
+		if compositionParent != nil {
+			compositionParent.Close()
+		}
 		return fmt.Errorf("start wrapper in outer namespaces: %w", err)
 	}
 	childSocket.Close()
+	if compositionChild != nil {
+		compositionChild.Close()
+	}
 
 	_ = unix.SetsockoptTimeval(int(parentSocket.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: 30})
 	notifyFile, err := unixmon.RecvFD(parentSocket)
@@ -278,9 +367,59 @@ func runHarness(args []string) error {
 		allowedRoot:   filepath.Clean(*brokerRoot),
 	}
 	handlerDone := make(chan error, 1)
-	go func() {
-		handlerDone <- serveAllowNotifications(handlerCtx, notifyFile, counts, broker)
-	}()
+	if semanticComposition {
+		pathRegistry := unixmon.NewCompositionPathRegistry()
+		runtimeBroker, err := composition.NewBroker(composition.BrokerConfig{
+			HelperPath:            *compositionHelper,
+			AdapterPath:           *compositionAdapter,
+			ScratchRoot:           *compositionScratchRoot,
+			ReadRoots:             []string{root},
+			WriteRoots:            []string{root},
+			ExecuteRoots:          []string{root},
+			DenyRoots:             []string{*controlDir},
+			MaxPlanOperations:     256,
+			MaxDataBytes:          16 * 1024 * 1024,
+			RequestTimeout:        30 * time.Second,
+			SetupConnection:       compositionParent,
+			SetupSenderPID:        cmd.Process.Pid,
+			SetupSenderExecutable: *wrapper,
+			SetupSyntheticRoots:   cfg.CompositionMaxTransitions,
+			SetupSyntheticRW:      cfg.CompositionSyntheticMounts,
+			PublishPathMappings:   pathRegistry.Register,
+		})
+		if err != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return err
+		}
+		redirector, err := unixmon.NewManagedCompositionRedirector(
+			*compositionAdapter,
+			runtimeBroker.ServeOne,
+			cfg.CompositionMaxTransitions,
+			4,
+			func() error { return errors.Join(runtimeBroker.Close(), pathRegistry.Close()) },
+		)
+		if err != nil {
+			_ = runtimeBroker.Close()
+			_ = pathRegistry.Close()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return err
+		}
+		execHandler := unixmon.NewExecveHandler(unixmon.ExecveHandlerConfig{MaxArgc: 512, MaxArgvBytes: 256 * 1024, OnTruncated: "deny"}, compositionExecPolicy{}, nil, nil)
+		execHandler.SetComposition(composition.Mode, *compositionAdapter, redirector)
+		execHandler.SetCompositionPathRegistry(pathRegistry)
+		fileHandler := unixmon.NewFileHandler(compositionFilePolicy{}, nil, nil, true)
+		fileHandler.SetCompositionPathRegistry(pathRegistry)
+		go func() {
+			unixmon.ServeNotifyWithExecve(handlerCtx, notifyFile, "composition-vm", nil, nil, execHandler, fileHandler, nil)
+			handlerDone <- nil
+		}()
+	} else {
+		go func() {
+			handlerDone <- serveAllowNotifications(handlerCtx, notifyFile, counts, broker)
+		}()
+	}
 	if _, err := parentSocket.Write([]byte{0x01}); err != nil {
 		stopHandler()
 		_ = cmd.Process.Kill()
@@ -330,6 +469,20 @@ func runHarness(args []string) error {
 		FileNotifications:  counts.file.Load(),
 		MountNotifications: counts.mount.Load(),
 	}
+	if semanticComposition {
+		composes := waitErr == nil
+		report.Stage = "landlock_semantic_composition_runtime"
+		report.LandlockComposes = &composes
+		report.SelectedBranch = "bubblewrap_semantic_adapter"
+		if waitErr != nil {
+			report.Result = "failed"
+			_ = json.NewEncoder(os.Stdout).Encode(report)
+			return fmt.Errorf("production semantic composition failed: %w", waitErr)
+		}
+		report.Result = "pass"
+		return json.NewEncoder(os.Stdout).Encode(report)
+	}
+
 	if counts.exec.Load() == 0 || counts.file.Load() == 0 {
 		report.Stage = "seccomp_monitoring"
 		report.Result = "failed"
@@ -415,11 +568,36 @@ func runHarness(args []string) error {
 	return nil
 }
 
+func verifyCloneNamespaceDenied(namespaceFlag uintptr, name string) error {
+	pid, _, errno := unix.RawSyscall6(
+		unix.SYS_CLONE,
+		uintptr(unix.CLONE_NEWUSER)|namespaceFlag|uintptr(unix.SIGCHLD),
+		0, 0, 0, 0, 0,
+	)
+	if errno != 0 {
+		if errors.Is(errno, unix.EPERM) {
+			return nil
+		}
+		return fmt.Errorf("clone user+%s namespace failed with %v, want EPERM", name, errno)
+	}
+	if pid == 0 {
+		// This branch is evidence of a filter regression. Avoid returning into
+		// the Go runtime after raw clone on the current stack.
+		_, _, _ = unix.RawSyscall(unix.SYS_EXIT, 99, 0, 0)
+		for {
+		}
+	}
+	var status unix.WaitStatus
+	_, _ = unix.Wait4(int(pid), &status, 0, nil)
+	return fmt.Errorf("clone unexpectedly created a user+%s namespace", name)
+}
+
 func runPayload(args []string) error {
 	fs := flag.NewFlagSet("payload", flag.ContinueOnError)
 	matrix := fs.String("matrix", "", "Bubblewrap matrix executable")
 	controlDir := fs.String("control-dir", "", "masked control directory")
 	scratchRoot := fs.String("scratch-root", "", "optional writable root for the outer mount denial probe")
+	compositionSelected := fs.Bool("composition", false, "expect composition-only namespace syscall filtering")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -498,6 +676,16 @@ func runPayload(args []string) error {
 		return fmt.Errorf("setns result=%v, want EPERM", setnsErr)
 	}
 	emitStage("external_setns", "blocked", "EPERM", nil)
+
+	if *compositionSelected {
+		if err := verifyCloneNamespaceDenied(unix.CLONE_NEWNET, "network"); err != nil {
+			return err
+		}
+		if err := verifyCloneNamespaceDenied(unix.CLONE_NEWTIME, "time"); err != nil {
+			return err
+		}
+		emitStage("payload_network_and_time_namespaces", "blocked", "EPERM", nil)
+	}
 
 	return syscall.Exec(*matrix, []string{*matrix}, os.Environ())
 }

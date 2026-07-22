@@ -4,10 +4,14 @@ package capabilities
 
 // LandlockResult holds the result of Landlock availability detection.
 type LandlockResult struct {
-	Available      bool
-	ABI            int
-	NetworkSupport bool
-	Error          string
+	Available               bool
+	ABI                     int
+	NetworkSupport          bool
+	DeviceIOCTLSupport      bool
+	AbstractUnixSocketScope bool
+	SignalScope             bool
+	AuditSupport            bool
+	Error                   string
 }
 
 func (r LandlockResult) String() string {

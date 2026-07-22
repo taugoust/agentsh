@@ -19,6 +19,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/agentsh/agentsh/internal/composition"
 	"github.com/agentsh/agentsh/internal/envinject"
 	"github.com/agentsh/agentsh/internal/wrapenv"
 	"github.com/agentsh/agentsh/internal/wraphandoff"
@@ -36,6 +37,11 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	if err := validateWrapCommandJail(wrapResp); err != nil {
 		return nil, err
 	}
+	compositionMode, err := wrapResponseCompositionMode(wrapResp)
+	if err != nil {
+		return nil, err
+	}
+	hasCompositionSetup := compositionMode != ""
 	// Ptrace mode: no wrapper binary needed. Connect to the server's socket
 	// for PID handshake via SO_PEERCRED, then launch the shell directly.
 	if wrapResp.PtraceMode {
@@ -128,8 +134,30 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 		return nil, fmt.Errorf("fcntl clear cloexec: %w", errno)
 	}
 
-	// Create a second socket pair for the signal filter fd if the server configured one.
-	// The child end is inherited as ExtraFiles[1] (fd 4).
+	// Composition uses a second connected SOCK_SEQPACKET endpoint. The parent
+	// endpoint is transferred with the notify fd to the server; the child
+	// endpoint is inherited by unixwrap, which publishes retained Landlock
+	// objects only after its trusted command-jail setup.
+	var compositionParentFile, compositionChildFile *os.File
+	if hasCompositionSetup {
+		setupFDs, setupErr := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+		if setupErr != nil {
+			parentFile.Close()
+			childFile.Close()
+			return nil, fmt.Errorf("composition setup socketpair: %w", setupErr)
+		}
+		compositionParentFile = os.NewFile(uintptr(setupFDs[0]), "composition-setup-parent")
+		compositionChildFile = os.NewFile(uintptr(setupFDs[1]), "composition-setup-child")
+		if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(setupFDs[1]), unix.F_SETFD, 0); errno != 0 {
+			parentFile.Close()
+			childFile.Close()
+			compositionParentFile.Close()
+			compositionChildFile.Close()
+			return nil, fmt.Errorf("fcntl clear cloexec composition setup: %w", errno)
+		}
+	}
+
+	// Create another socket pair for the signal filter fd if the server configured one.
 	var signalParentFile, signalChildFile *os.File
 	hasSignalSocket := wrapResp.SignalSocket != ""
 	if hasSignalSocket {
@@ -137,6 +165,10 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 		if err != nil {
 			parentFile.Close()
 			childFile.Close()
+			if compositionParentFile != nil {
+				compositionParentFile.Close()
+				compositionChildFile.Close()
+			}
 			return nil, fmt.Errorf("signal socketpair: %w", err)
 		}
 		signalParentFile = os.NewFile(uintptr(sigFds[0]), "signal-parent")
@@ -146,6 +178,10 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 		if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(sigFds[1]), unix.F_SETFD, 0); errno != 0 {
 			parentFile.Close()
 			childFile.Close()
+			if compositionParentFile != nil {
+				compositionParentFile.Close()
+				compositionChildFile.Close()
+			}
 			signalParentFile.Close()
 			signalChildFile.Close()
 			return nil, fmt.Errorf("fcntl clear cloexec signal: %w", errno)
@@ -165,6 +201,12 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 		cleanupOnce.Do(func() {
 			_ = parentFile.Close()
 			_ = childFile.Close()
+			if compositionParentFile != nil {
+				_ = compositionParentFile.Close()
+			}
+			if compositionChildFile != nil {
+				_ = compositionChildFile.Close()
+			}
 			if signalParentFile != nil {
 				_ = signalParentFile.Close()
 			}
@@ -187,12 +229,23 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	if strings.TrimSpace(wrapResp.ApprovalUISocket) != "" {
 		env = append(env, fmt.Sprintf("AGENTSH_APPROVAL_UI_SOCKET=%s", wrapResp.ApprovalUISocket))
 	}
+	nextWrapperFD := 4
+	if hasCompositionSetup {
+		env = append(env, fmt.Sprintf("%s=%d", composition.SetupFDEnv, nextWrapperFD))
+		nextWrapperFD++
+	}
 	if hasSignalSocket {
-		env = append(env, "AGENTSH_SIGNAL_SOCK_FD=4") // fd 4 = ExtraFiles[1]
+		env = append(env, fmt.Sprintf("AGENTSH_SIGNAL_SOCK_FD=%d", nextWrapperFD))
+		nextWrapperFD++
 	}
 
-	// Add wrapper env vars (seccomp config, etc.)
+	// Add wrapper env vars (seccomp config, etc.). Descriptor spellings are
+	// always selected locally from ExtraFiles and cannot be supplied by the
+	// server map or inherited environment.
 	for k, v := range wrapResp.WrapperEnv {
+		if strings.EqualFold(k, "AGENTSH_NOTIFY_SOCK_FD") || strings.EqualFold(k, "AGENTSH_SIGNAL_SOCK_FD") || strings.EqualFold(k, composition.SetupFDEnv) {
+			continue
+		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 
@@ -203,6 +256,9 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	signalSocket := wrapResp.SignalSocket
 
 	extraFiles := []*os.File{childFile}
+	if hasCompositionSetup {
+		extraFiles = append(extraFiles, compositionChildFile)
+	}
 	if hasSignalSocket {
 		extraFiles = append(extraFiles, signalChildFile)
 	}
@@ -289,8 +345,16 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 			// The server replies only after the centralized pre-exec barrier has
 			// completed cgroup/eBPF setup and notify-handler startup. A rejection
 			// or timeout leaves the wrapper ACK-blocked.
-			if err := forwardNotifyFDWithPID(notifySocket, notifyFD, childPID, commandJail); err != nil {
+			setupFD := -1
+			if compositionParentFile != nil {
+				setupFD = int(compositionParentFile.Fd())
+			}
+			if err := forwardNotifyHandoffWithPID(notifySocket, notifyFD, setupFD, childPID, commandJail); err != nil {
 				return fmt.Errorf("forward notify fd to server: %w", err)
+			}
+			if compositionParentFile != nil {
+				_ = compositionParentFile.Close()
+				compositionParentFile = nil
 			}
 			if !foregroundTTY {
 				slog.Info("wrap: notify fd accepted by server", "session_id", sessID, "socket", notifySocket, "wrapper_pid", childPID)
@@ -338,32 +402,58 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 
 // recvNotifyFD receives a file descriptor from a Unix socket using SCM_RIGHTS.
 func recvNotifyFD(sock *os.File) (int, error) {
+	if sock == nil {
+		return -1, errors.New("nil notify socket")
+	}
 	buf := make([]byte, 1)
-	oob := make([]byte, unix.CmsgSpace(4))
-	n, oobn, _, _, err := unix.Recvmsg(int(sock.Fd()), buf, oob, 0)
+	// Leave room for a deliberately malformed extra descriptor so truncation
+	// and descriptor-count mismatches can be rejected without leaking rights.
+	oob := make([]byte, unix.CmsgSpace(4*2))
+	n, oobn, flags, _, err := unix.Recvmsg(int(sock.Fd()), buf, oob, unix.MSG_CMSG_CLOEXEC)
 	if err != nil {
 		return -1, fmt.Errorf("recvmsg: %w", err)
 	}
-	if n == 0 || oobn == 0 {
-		return -1, fmt.Errorf("no fd received (n=%d, oobn=%d)", n, oobn)
+	if n != 1 || oobn == 0 {
+		return -1, fmt.Errorf("invalid notify fd packet (n=%d, oobn=%d)", n, oobn)
 	}
 	msgs, err := unix.ParseSocketControlMessage(oob[:oobn])
 	if err != nil {
 		return -1, fmt.Errorf("parse control message: %w", err)
 	}
-	for _, m := range msgs {
-		fds, err := unix.ParseUnixRights(&m)
-		if err != nil {
-			continue
-		}
-		if len(fds) > 0 {
-			return fds[0], nil
+	var received []int
+	closeReceived := func() {
+		for _, fd := range received {
+			_ = unix.Close(fd)
 		}
 	}
-	return -1, fmt.Errorf("no fd in control message")
+	for _, message := range msgs {
+		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SCM_RIGHTS {
+			closeReceived()
+			return -1, fmt.Errorf("unexpected notify ancillary level=%d type=%d", message.Header.Level, message.Header.Type)
+		}
+		fds, parseErr := unix.ParseUnixRights(&message)
+		if parseErr != nil {
+			closeReceived()
+			return -1, fmt.Errorf("parse notify descriptors: %w", parseErr)
+		}
+		received = append(received, fds...)
+	}
+	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 {
+		closeReceived()
+		return -1, errors.New("truncated notify fd packet")
+	}
+	if len(msgs) != 1 || len(received) != 1 {
+		closeReceived()
+		return -1, fmt.Errorf("expected exactly one notify descriptor, received %d", len(received))
+	}
+	return received[0], nil
 }
 
 func forwardNotifyFDWithPID(socketPath string, notifyFD int, wrapperPID int, commandJail bool) error {
+	return forwardNotifyHandoffWithPID(socketPath, notifyFD, -1, wrapperPID, commandJail)
+}
+
+func forwardNotifyHandoffWithPID(socketPath string, notifyFD, setupFD, wrapperPID int, commandJail bool) error {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", socketPath, err)
@@ -375,11 +465,15 @@ func forwardNotifyFDWithPID(socketPath string, notifyFD int, wrapperPID int, com
 		return fmt.Errorf("not a unix connection")
 	}
 
-	if err := wraphandoff.SendNotifyFD(unixConn, notifyFD, wraphandoff.Metadata{
-		WrapperPID:  wrapperPID,
-		CommandJail: commandJail,
-	}); err != nil {
-		return err
+	metadata := wraphandoff.Metadata{WrapperPID: wrapperPID, CommandJail: commandJail}
+	var sendErr error
+	if setupFD >= 0 {
+		sendErr = wraphandoff.SendNotifyFDWithSetup(unixConn, notifyFD, setupFD, metadata)
+	} else {
+		sendErr = wraphandoff.SendNotifyFD(unixConn, notifyFD, metadata)
+	}
+	if sendErr != nil {
+		return sendErr
 	}
 	if err := unixConn.SetReadDeadline(time.Now().Add(notifySetupStatusTimeout)); err != nil {
 		return fmt.Errorf("set notify setup status deadline: %w", err)
@@ -449,7 +543,47 @@ func validateWrapCommandJail(resp types.WrapInitResponse) error {
 	if !configRequiresJail {
 		return fmt.Errorf("server returned Linux command-jail launch requirements without a required wrapper jail")
 	}
+	mode, err := wrapResponseCompositionMode(resp)
+	if err != nil {
+		return err
+	}
+	if mode != "" && !resp.CommandJail.MapCurrentUserToNonRoot {
+		return fmt.Errorf("server selected %s without the required non-root namespace identity", mode)
+	}
+	if mode == "" && resp.CommandJail.MapCurrentUserToNonRoot {
+		return fmt.Errorf("server requested a non-root namespace identity without sandbox composition")
+	}
 	return nil
+}
+
+func wrapResponseCompositionMode(resp types.WrapInitResponse) (string, error) {
+	var wire struct {
+		SandboxComposition string `json:"sandbox_composition"`
+	}
+	configJSON := strings.TrimSpace(resp.WrapperEnv["AGENTSH_SECCOMP_CONFIG"])
+	if configJSON == "" {
+		configJSON = strings.TrimSpace(resp.SeccompConfig)
+	}
+	if configJSON == "" {
+		return "", nil
+	}
+	if err := json.Unmarshal([]byte(configJSON), &wire); err != nil {
+		return "", fmt.Errorf("decode sandbox-composition wrapper configuration: %w", err)
+	}
+	switch wire.SandboxComposition {
+	case "":
+		return "", nil
+	case composition.Mode:
+		if resp.PtraceMode {
+			return "", fmt.Errorf("sandbox composition is unavailable in ptrace wrap mode")
+		}
+		if resp.CommandJail == nil {
+			return "", fmt.Errorf("server selected %s without Linux command-jail requirements", wire.SandboxComposition)
+		}
+		return wire.SandboxComposition, nil
+	default:
+		return "", fmt.Errorf("unsupported sandbox composition %q", wire.SandboxComposition)
+	}
 }
 
 func configureWrapCommandBoundary(attr *syscall.SysProcAttr, requirements *types.LinuxCommandJailRequirements) error {
@@ -467,8 +601,13 @@ func configureWrapCommandBoundary(attr *syscall.SysProcAttr, requirements *types
 	}
 	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
 	attr.Pdeathsig = syscall.SIGKILL
-	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Geteuid(), Size: 1}}
-	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getegid(), Size: 1}}
+	namespaceID := 0
+	if requirements.MapCurrentUserToNonRoot {
+		namespaceID = 1
+		attr.AmbientCaps = append(attr.AmbientCaps, unix.CAP_SYS_ADMIN, unix.CAP_SETPCAP)
+	}
+	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Geteuid(), Size: 1}}
+	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1}}
 	attr.GidMappingsEnableSetgroups = false
 	return nil
 }
@@ -539,6 +678,7 @@ func stripWrapperControlEnv(env []string) []string {
 	return stripEnvKeysFold(env,
 		"AGENTSH_NOTIFY_SOCK_FD",
 		"AGENTSH_SIGNAL_SOCK_FD",
+		"AGENTSH_COMPOSITION_SETUP_FD",
 		"AGENTSH_SECCOMP_CONFIG",
 		"AGENTSH_PTRACE_SYNC",
 		"AGENTSH_APPROVAL_UI_SOCKET",

@@ -234,27 +234,29 @@ type EnvPolicyWire struct {
 // a same-UID tool boundary. Callers must reject an incomplete required
 // contract; they must not silently select a subset of these controls.
 type LinuxCommandJailRequirements struct {
-	Required             bool   `json:"required"`
-	UserNamespace        bool   `json:"user_namespace"`
-	MountNamespace       bool   `json:"mount_namespace"`
-	PIDNamespace         bool   `json:"pid_namespace"`
-	CgroupNamespace      bool   `json:"cgroup_namespace"`
-	IPCNamespace         bool   `json:"ipc_namespace"`
-	MapCurrentUserToRoot bool   `json:"map_current_user_to_root"`
-	ParentDeathSignal    string `json:"parent_death_signal"`
-	PrivateProc          bool   `json:"private_proc"`
-	HideCgroupFS         bool   `json:"hide_cgroupfs"`
-	HideControlPaths     bool   `json:"hide_control_paths"`
-	CloseNonStdioFDs     bool   `json:"close_non_stdio_fds"`
-	DropCapabilities     bool   `json:"drop_capabilities"`
-	NoNewPrivileges      bool   `json:"no_new_privileges"`
+	Required                bool   `json:"required"`
+	UserNamespace           bool   `json:"user_namespace"`
+	MountNamespace          bool   `json:"mount_namespace"`
+	PIDNamespace            bool   `json:"pid_namespace"`
+	CgroupNamespace         bool   `json:"cgroup_namespace"`
+	IPCNamespace            bool   `json:"ipc_namespace"`
+	MapCurrentUserToRoot    bool   `json:"map_current_user_to_root"`
+	MapCurrentUserToNonRoot bool   `json:"map_current_user_to_non_root,omitempty"`
+	ParentDeathSignal       string `json:"parent_death_signal"`
+	PrivateProc             bool   `json:"private_proc"`
+	HideCgroupFS            bool   `json:"hide_cgroupfs"`
+	HideControlPaths        bool   `json:"hide_control_paths"`
+	CloseNonStdioFDs        bool   `json:"close_non_stdio_fds"`
+	DropCapabilities        bool   `json:"drop_capabilities"`
+	NoNewPrivileges         bool   `json:"no_new_privileges"`
 }
 
 // Complete reports whether every fixed command-jail requirement is present.
 func (r *LinuxCommandJailRequirements) Complete() bool {
 	return r != nil && r.Required &&
 		r.UserNamespace && r.MountNamespace && r.PIDNamespace &&
-		r.CgroupNamespace && r.IPCNamespace && r.MapCurrentUserToRoot &&
+		r.CgroupNamespace && r.IPCNamespace &&
+		(r.MapCurrentUserToRoot != r.MapCurrentUserToNonRoot) &&
 		r.ParentDeathSignal == "SIGKILL" && r.PrivateProc &&
 		r.HideCgroupFS && r.HideControlPaths && r.CloseNonStdioFDs &&
 		r.DropCapabilities && r.NoNewPrivileges

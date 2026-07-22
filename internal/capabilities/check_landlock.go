@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"syscall"
-	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 // Landlock syscall numbers
@@ -56,10 +53,14 @@ type landlockRulesetAttr struct {
 
 // LandlockResult holds the result of Landlock availability detection.
 type LandlockResult struct {
-	Available      bool
-	ABI            int
-	NetworkSupport bool
-	Error          string
+	Available               bool
+	ABI                     int
+	NetworkSupport          bool
+	DeviceIOCTLSupport      bool
+	AbstractUnixSocketScope bool
+	SignalScope             bool
+	AuditSupport            bool
+	Error                   string
 }
 
 func (r LandlockResult) String() string {
@@ -70,85 +71,43 @@ func (r LandlockResult) String() string {
 	if r.NetworkSupport {
 		features = append(features, "network support")
 	}
+	if r.DeviceIOCTLSupport {
+		features = append(features, "device ioctl")
+	}
+	if r.AbstractUnixSocketScope || r.SignalScope {
+		features = append(features, "IPC/signal scopes")
+	}
+	if r.AuditSupport {
+		features = append(features, "audit controls")
+	}
 	return fmt.Sprintf("Landlock: available (%s)", strings.Join(features, ", "))
 }
 
-// DetectLandlock checks if Landlock is available and returns capability info.
+const LANDLOCK_CREATE_RULESET_VERSION = 1 << 0
+
+// DetectLandlock asks the kernel for its actual highest ABI. Feature handling
+// remains explicit; reporting a newer ABI never silently enables new rights.
 func DetectLandlock() LandlockResult {
-	// Try to detect highest supported ABI version
-	for abi := 5; abi >= 1; abi-- {
-		if tryLandlockABI(abi) {
-			return LandlockResult{
-				Available:      true,
-				ABI:            abi,
-				NetworkSupport: abi >= 4,
-			}
+	version, _, errno := syscall.Syscall(
+		SYS_LANDLOCK_CREATE_RULESET,
+		0,
+		0,
+		LANDLOCK_CREATE_RULESET_VERSION,
+	)
+	if errno != 0 || version < 1 {
+		return LandlockResult{
+			Available: false,
+			Error:     fmt.Sprintf("kernel does not support Landlock or it is disabled: %v", errno),
 		}
 	}
-
+	abi := int(version)
 	return LandlockResult{
-		Available: false,
-		Error:     "kernel does not support Landlock or it is disabled",
+		Available:               true,
+		ABI:                     abi,
+		NetworkSupport:          abi >= 4,
+		DeviceIOCTLSupport:      abi >= 5,
+		AbstractUnixSocketScope: abi >= 6,
+		SignalScope:             abi >= 6,
+		AuditSupport:            abi >= 7,
 	}
-}
-
-func tryLandlockABI(abi int) bool {
-	// Build access mask for this ABI version
-	var accessFS uint64
-
-	// ABI v1 access rights
-	accessFS = LANDLOCK_ACCESS_FS_EXECUTE |
-		LANDLOCK_ACCESS_FS_READ_FILE |
-		LANDLOCK_ACCESS_FS_READ_DIR |
-		LANDLOCK_ACCESS_FS_WRITE_FILE |
-		LANDLOCK_ACCESS_FS_REMOVE_FILE |
-		LANDLOCK_ACCESS_FS_REMOVE_DIR |
-		LANDLOCK_ACCESS_FS_MAKE_CHAR |
-		LANDLOCK_ACCESS_FS_MAKE_DIR |
-		LANDLOCK_ACCESS_FS_MAKE_REG |
-		LANDLOCK_ACCESS_FS_MAKE_SOCK |
-		LANDLOCK_ACCESS_FS_MAKE_FIFO |
-		LANDLOCK_ACCESS_FS_MAKE_BLOCK |
-		LANDLOCK_ACCESS_FS_MAKE_SYM
-
-	if abi >= 2 {
-		accessFS |= LANDLOCK_ACCESS_FS_REFER
-	}
-	if abi >= 3 {
-		accessFS |= LANDLOCK_ACCESS_FS_TRUNCATE
-	}
-
-	attr := landlockRulesetAttr{
-		AccessFS: accessFS,
-	}
-
-	// Add network access for ABI v4+
-	if abi >= 4 {
-		attr.AccessNet = LANDLOCK_ACCESS_NET_BIND_TCP |
-			LANDLOCK_ACCESS_NET_CONNECT_TCP
-	}
-
-	// Calculate size based on ABI version
-	var attrSize uintptr
-	if abi >= 4 {
-		// Full struct with network support
-		attrSize = unsafe.Sizeof(attr)
-	} else {
-		// Only AccessFS field for ABI v1-v3
-		attrSize = unsafe.Sizeof(attr.AccessFS)
-	}
-
-	fd, _, errno := syscall.Syscall(
-		SYS_LANDLOCK_CREATE_RULESET,
-		uintptr(unsafe.Pointer(&attr)),
-		attrSize,
-		0, // flags
-	)
-
-	if errno != 0 {
-		return false
-	}
-
-	unix.Close(int(fd))
-	return true
 }

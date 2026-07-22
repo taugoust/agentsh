@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync/atomic"
 	"syscall"
@@ -85,7 +87,7 @@ func withNotifyHandoffHook(t *testing.T) chan struct{} {
 
 	called := make(chan struct{})
 	prev := startNotifyHandlerForWrapHook
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
 		if cleanup != nil {
 			_ = cleanup()
 		}
@@ -101,13 +103,43 @@ func withNotifyHandoffHook(t *testing.T) chan struct{} {
 	return called
 }
 
-func withWrapperPIDValidationHook(t *testing.T, fn func(wrapperPID, peerPID int, peerUID uint32) error) {
+func withWrapperPIDValidationHook(t *testing.T, fn func(wrapperPID, peerPID int, peerUID uint32) (*os.File, error)) {
 	t.Helper()
 	prev := validateWrapperPIDForNotifyHook
 	validateWrapperPIDForNotifyHook = fn
 	t.Cleanup(func() {
 		validateWrapperPIDForNotifyHook = prev
 	})
+}
+
+func TestValidateWrapperPIDForNotifyPinsProcessLifetime(t *testing.T) {
+	command := exec.Command("sleep", "30")
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if command.ProcessState == nil {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+		}
+	}()
+	pin, err := validateWrapperPIDForNotify(command.Process.Pid, os.Getpid(), uint32(os.Geteuid()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pin.Close()
+	if err := validateWrapperPIDPinForNotify(pin); err != nil {
+		t.Fatalf("live wrapper pin: %v", err)
+	}
+	if err := command.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Wait(); err == nil {
+		t.Fatal("killed wrapper unexpectedly exited successfully")
+	}
+	if err := validateWrapperPIDPinForNotify(pin); err == nil {
+		t.Fatal("wrapper pin remained live after process exit")
+	}
 }
 
 func TestStartNotifyHandlerForWrap_CleansUpAfterProbeFailure(t *testing.T) {
@@ -131,12 +163,81 @@ func TestStartNotifyHandlerForWrap_CleansUpAfterProbeFailure(t *testing.T) {
 		return nil
 	}
 
-	if err := startNotifyHandlerForWrap(context.Background(), notifyFD, "test-session", app, false, 999999999, nil, cleanup); err == nil {
+	if err := startNotifyHandlerForWrap(context.Background(), notifyFD, nil, "test-session", app, false, 999999999, nil, cleanup); err == nil {
 		t.Fatal("expected synchronous handler startup failure")
 	}
 
 	if got := cleanupCalls.Load(); got != 1 {
 		t.Fatalf("cleanup calls = %d, want 1", got)
+	}
+}
+
+func TestAcceptNotifyFD_TransfersCompositionSetupEndpoint(t *testing.T) {
+	cfg := &config.Config{}
+	app, mgr := newTestAppForWrap(t, cfg)
+	s, err := mgr.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.SetCurrentSandboxComposition(bubblewrapCompositionMode)
+
+	called := make(chan struct{})
+	previous := startNotifyHandlerForWrapHook
+	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, gotSession *session.Session, cleanup func() error) error {
+		defer close(called)
+		if compositionSetup == nil {
+			return fmt.Errorf("composition setup endpoint is nil")
+		}
+		_ = notifyFD.Close()
+		_ = compositionSetup.Close()
+		return nil
+	}
+	t.Cleanup(func() { startNotifyHandlerForWrapHook = previous })
+
+	socketDir := t.TempDir()
+	socketPath := filepath.Join(socketDir, "notify.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, true, 0, true, nil)
+	}()
+
+	conn := dialUnixConn(t, socketPath)
+	defer conn.Close()
+	notifyR, notifyW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer notifyR.Close()
+	defer notifyW.Close()
+	setupFDs, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupParent := os.NewFile(uintptr(setupFDs[0]), "setup-parent")
+	setupChild := os.NewFile(uintptr(setupFDs[1]), "setup-child")
+	defer setupParent.Close()
+	defer setupChild.Close()
+	if err := wraphandoff.SendNotifyFDWithSetup(conn, int(notifyR.Fd()), int(setupParent.Fd()), wraphandoff.Metadata{WrapperPID: os.Getpid()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := wraphandoff.ReadStatus(conn); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("composition setup endpoint did not reach notify handler")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("acceptNotifyFD did not return")
 	}
 }
 
@@ -367,7 +468,7 @@ func TestAcceptNotifyFD_UsesMetadataWrapperPIDForCgroupBeforeAck(t *testing.T) {
 		setupCalled <- wrapperPID
 		return func() error { return nil }, nil
 	}
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
 		_ = notifyFD.Close()
 		if cleanup != nil {
 			_ = cleanup()
@@ -375,8 +476,8 @@ func TestAcceptNotifyFD_UsesMetadataWrapperPIDForCgroupBeforeAck(t *testing.T) {
 		close(startCalled)
 		return nil
 	}
-	withWrapperPIDValidationHook(t, func(wrapperPID, peerPID int, peerUID uint32) error {
-		return nil
+	withWrapperPIDValidationHook(t, func(wrapperPID, peerPID int, peerUID uint32) (*os.File, error) {
+		return nil, nil
 	})
 	t.Cleanup(func() {
 		wrapCgroupSetupForNotifyHook = prevSetup
@@ -621,8 +722,8 @@ func TestAcceptNotifyFD_RejectsWhenNotifyHandlerFailsBeforeAck(t *testing.T) {
 			return nil
 		}, nil
 	}
-	withWrapperPIDValidationHook(t, func(wrapperPID, peerPID int, peerUID uint32) error {
-		return nil
+	withWrapperPIDValidationHook(t, func(wrapperPID, peerPID int, peerUID uint32) (*os.File, error) {
+		return nil, nil
 	})
 	t.Cleanup(func() {
 		wrapCgroupSetupForNotifyHook = prevSetup

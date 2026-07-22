@@ -11,13 +11,22 @@ func TestDetectLandlock(t *testing.T) {
 	result := DetectLandlock()
 
 	// Should return a valid result (may or may not be available)
-	if result.ABI < 0 || result.ABI > 5 {
+	if result.ABI < 0 {
 		t.Errorf("unexpected ABI version: %d", result.ABI)
 	}
 
 	// Network support requires ABI v4+
 	if result.NetworkSupport && result.ABI < 4 {
 		t.Error("network support claimed but ABI < 4")
+	}
+	if result.DeviceIOCTLSupport && result.ABI < 5 {
+		t.Error("device ioctl support claimed but ABI < 5")
+	}
+	if (result.AbstractUnixSocketScope || result.SignalScope) && result.ABI < 6 {
+		t.Error("scope support claimed but ABI < 6")
+	}
+	if result.AuditSupport && result.ABI < 7 {
+		t.Error("audit support claimed but ABI < 7")
 	}
 }
 

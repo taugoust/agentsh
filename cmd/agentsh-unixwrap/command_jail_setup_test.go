@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestCompleteCommandJailSetupAppliesLandlockAfterMounts(t *testing.T) {
+func TestCompleteCommandJailSetupPublishesCompositionAfterVerifiedBoundary(t *testing.T) {
 	var got []string
 	step := func(name string) func() error {
 		return func() error {
@@ -19,7 +19,9 @@ func TestCompleteCommandJailSetupAppliesLandlockAfterMounts(t *testing.T) {
 
 	err := completeCommandJailSetup(commandJailSetupOps{
 		makeMountsPrivate:  step("mount-propagation-private"),
+		prepareComposition: step("prepare-composition"),
 		installMounts:      step("install-command-jail-mounts"),
+		publishComposition: step("publish-composition"),
 		enforceLandlock:    func() { got = append(got, "enforce-landlock") },
 		dropPrivileges:     step("drop-privileges"),
 		installSeccomp:     step("install-final-seccomp"),
@@ -32,12 +34,14 @@ func TestCompleteCommandJailSetupAppliesLandlockAfterMounts(t *testing.T) {
 
 	want := []string{
 		"mount-propagation-private",
+		"prepare-composition",
 		"install-command-jail-mounts",
 		"enforce-landlock",
 		"drop-privileges",
 		"install-final-seccomp",
 		"protect-descriptors",
 		"verify-privileges",
+		"publish-composition",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("setup order = %v, want %v", got, want)

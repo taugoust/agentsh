@@ -3,6 +3,9 @@
 package unix
 
 import (
+	"bytes"
+	"log/slog"
+	"strings"
 	"testing"
 
 	seccompkg "github.com/agentsh/agentsh/internal/seccomp"
@@ -37,6 +40,57 @@ func TestFilterClose(t *testing.T) {
 	// Test filter with fd=-1 (no notify fd case)
 	noNotifyFilter := &Filter{fd: -1}
 	require.NoError(t, noNotifyFilter.Close())
+}
+
+func TestMetadataNotifySyscallsCoverAtAndLegacyPathOperations(t *testing.T) {
+	got := make(map[int32]bool)
+	for _, syscallNumber := range metadataNotifySyscalls() {
+		got[int32(syscallNumber)] = true
+	}
+	expected := []int32{
+		int32(unix.SYS_STATX), int32(unix.SYS_NEWFSTATAT), int32(unix.SYS_FACCESSAT),
+		int32(unix.SYS_FACCESSAT2), int32(unix.SYS_READLINKAT),
+	}
+	expected = append(expected, legacyMetadataSyscallList()...)
+	for _, syscallNumber := range expected {
+		if !got[syscallNumber] {
+			t.Errorf("metadata notify set omits syscall %d", syscallNumber)
+		}
+		if !isFileSyscall(syscallNumber) || !isReadOnlyFileOp(syscallNumber, 0) {
+			t.Errorf("metadata syscall %d is not routed as read-only file policy", syscallNumber)
+		}
+	}
+}
+
+func TestFilterLogLoadedDefersMetadataDiagnosticAndEmitsOnce(t *testing.T) {
+	if err := DetectSupport(); err != nil {
+		t.Skipf("seccomp user-notify unsupported on this host: %v", err)
+	}
+	originalLoad := loadFilterSyscall
+	originalPrctl := prctlSetNoNewPrivs
+	originalLogger := slog.Default()
+	t.Cleanup(func() {
+		loadFilterSyscall = originalLoad
+		prctlSetNoNewPrivs = originalPrctl
+		slog.SetDefault(originalLogger)
+	})
+	loadFilterSyscall = func(uintptr, *unix.SockFprog) (int, error) { return 99, nil }
+	prctlSetNoNewPrivs = func() error { return nil }
+
+	var output bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	filter, err := InstallFilterWithConfig(FilterConfig{InterceptMetadata: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "seccomp: filter loaded") {
+		t.Fatalf("metadata filter logged before listener handoff: %s", output.String())
+	}
+	filter.LogLoaded()
+	filter.LogLoaded()
+	if count := strings.Count(output.String(), "seccomp: filter loaded"); count != 1 {
+		t.Fatalf("filter loaded log count = %d, output=%q", count, output.String())
+	}
 }
 
 func TestFilterConfig_WithExecve(t *testing.T) {

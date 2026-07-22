@@ -69,6 +69,7 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pre := engine.CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+	compositionErrorCode := a.applySandboxCompositionSelection(s, &pre)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
 	approvalErr := a.applyCommandApproval(r.Context(), id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
 	preEv := types.Event{
@@ -124,6 +125,9 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 	if pre.EffectiveDecision == types.DecisionDeny {
 		a.emitCommandDBBypassAttempt(r.Context(), s, id, cmdID, pre)
 		code := "E_POLICY_DENIED"
+		if compositionErrorCode != "" {
+			code = compositionErrorCode
+		}
 		if pre.PolicyDecision == types.DecisionApprove {
 			code = "E_APPROVAL_DENIED"
 			if approvalErr != nil && strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {

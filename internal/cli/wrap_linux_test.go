@@ -50,6 +50,38 @@ func TestConfigureWrapCommandBoundaryAppliesFixedLinuxLaunchAttributes(t *testin
 	}
 }
 
+func TestConfigureWrapCommandBoundaryUsesNonRootCompositionIdentity(t *testing.T) {
+	attr := &syscall.SysProcAttr{}
+	requirements := &types.LinuxCommandJailRequirements{
+		Required:                true,
+		UserNamespace:           true,
+		MountNamespace:          true,
+		PIDNamespace:            true,
+		CgroupNamespace:         true,
+		IPCNamespace:            true,
+		MapCurrentUserToNonRoot: true,
+		ParentDeathSignal:       "SIGKILL",
+		PrivateProc:             true,
+		HideCgroupFS:            true,
+		HideControlPaths:        true,
+		CloseNonStdioFDs:        true,
+		DropCapabilities:        true,
+		NoNewPrivileges:         true,
+	}
+	if err := configureWrapCommandBoundary(attr, requirements); err != nil {
+		t.Fatal(err)
+	}
+	if got := attr.UidMappings[0].ContainerID; got != 1 {
+		t.Fatalf("uid namespace identity = %d, want 1", got)
+	}
+	if got := attr.GidMappings[0].ContainerID; got != 1 {
+		t.Fatalf("gid namespace identity = %d, want 1", got)
+	}
+	if len(attr.AmbientCaps) != 2 || attr.AmbientCaps[0] != unix.CAP_SYS_ADMIN || attr.AmbientCaps[1] != unix.CAP_SETPCAP {
+		t.Fatalf("ambient setup capabilities = %v", attr.AmbientCaps)
+	}
+}
+
 func TestStripEnvKey(t *testing.T) {
 	in := []string{"A=1", "AGENTSH_WRAPPER_LOG_FD=9", "B=2", "AGENTSH_WRAPPER_LOG_FD=10"}
 	out := stripEnvKey(in, "AGENTSH_WRAPPER_LOG_FD")
@@ -113,6 +145,73 @@ func TestForwardNotifyFDWithPIDWaitsForServerOK(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for server")
+	}
+}
+
+func TestForwardNotifyHandoffWithCompositionSetup(t *testing.T) {
+	dir := t.TempDir()
+	socketPath := filepath.Join(dir, "notify.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	serverDone := make(chan error, 1)
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			serverDone <- acceptErr
+			return
+		}
+		defer conn.Close()
+		handoff, recvErr := wraphandoff.RecvHandoff(conn.(*net.UnixConn))
+		if recvErr != nil {
+			serverDone <- recvErr
+			return
+		}
+		defer handoff.Close()
+		if handoff.CompositionSetup == nil || !handoff.Metadata.CompositionSetup || handoff.Metadata.WrapperPID != 2468 {
+			serverDone <- fmt.Errorf("composition handoff = %+v", handoff)
+			return
+		}
+		if _, writeErr := handoff.CompositionSetup.Write([]byte("setup")); writeErr != nil {
+			serverDone <- writeErr
+			return
+		}
+		serverDone <- wraphandoff.WriteStatus(conn, true)
+	}()
+
+	notifyR, notifyW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer notifyR.Close()
+	defer notifyW.Close()
+	setupFDs, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupParent := os.NewFile(uintptr(setupFDs[0]), "setup-parent")
+	setupChild := os.NewFile(uintptr(setupFDs[1]), "setup-child")
+	defer setupParent.Close()
+	defer setupChild.Close()
+
+	if err := forwardNotifyHandoffWithPID(socketPath, int(notifyR.Fd()), int(setupParent.Fd()), 2468, true); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, 16)
+	n, err := setupChild.Read(buffer)
+	if err != nil || string(buffer[:n]) != "setup" {
+		t.Fatalf("setup endpoint transfer: n=%d value=%q err=%v", n, buffer[:n], err)
+	}
+	select {
+	case err := <-serverDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for composition handoff server")
 	}
 }
 

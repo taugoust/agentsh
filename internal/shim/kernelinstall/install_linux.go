@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/client"
+	"github.com/agentsh/agentsh/internal/composition"
 	"github.com/agentsh/agentsh/internal/envinject"
 	"github.com/agentsh/agentsh/internal/wrapenv"
 	"github.com/agentsh/agentsh/internal/wraphandoff"
@@ -189,6 +190,11 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	if err := validateCommandJailResponse(resp); err != nil {
 		return Result{Action: ResultFailClosed, Reason: err.Error()}, nil
 	}
+	compositionMode, err := responseCompositionMode(resp)
+	if err != nil {
+		return Result{Action: ResultFailClosed, Reason: err.Error()}, nil
+	}
+	hasCompositionSetup := compositionMode != ""
 	wrapperBin := resp.WrapperBinary
 	notifySocket := resp.NotifySocket
 
@@ -212,12 +218,44 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 		return Result{}, fmt.Errorf("fcntl clear cloexec: %w", errno)
 	}
 
+	var compositionParentFile, compositionChildFile *os.File
+	if hasCompositionSetup {
+		setupFDs, setupErr := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+		if setupErr != nil {
+			parentFile.Close()
+			childFile.Close()
+			return Result{}, fmt.Errorf("composition setup socketpair: %w", setupErr)
+		}
+		compositionParentFile = os.NewFile(uintptr(setupFDs[0]), "composition-setup-parent")
+		compositionChildFile = os.NewFile(uintptr(setupFDs[1]), "composition-setup-child")
+		if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(setupFDs[1]), unix.F_SETFD, 0); errno != 0 {
+			parentFile.Close()
+			childFile.Close()
+			compositionParentFile.Close()
+			compositionChildFile.Close()
+			return Result{}, fmt.Errorf("fcntl clear cloexec composition setup: %w", errno)
+		}
+	}
+	closeComposition := func() {
+		if compositionParentFile != nil {
+			_ = compositionParentFile.Close()
+			compositionParentFile = nil
+		}
+		if compositionChildFile != nil {
+			_ = compositionChildFile.Close()
+			compositionChildFile = nil
+		}
+	}
+
 	// Build the wrapper child environment: caller env (shim-internal markers
 	// stripped) with sandbox.env_inject overlaid, then the internal AGENTSH_*
 	// markers (notify fd, argv0 override, wrapper config). See
 	// assembleWrapperEnv for the env_inject override and AGENTSH_SIGNAL_SOCK_FD
 	// stripping rationale (issue #374).
 	env := assembleWrapperEnv(wrapenv.Filter(filterShimInternalEnv(p.Env), resp.EnvPolicy), p.Argv0, resp.WrapperEnv, resp.EnvInject)
+	if hasCompositionSetup {
+		env = append(env, composition.SetupFDEnv+"=4")
+	}
 
 	// Wrapper log routing (issue #415): point the wrapper's diagnostics
 	// at the state-dir log file. The relay's own stderr IS the user's
@@ -247,6 +285,7 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	if err := configureCommandJailProcess(cmd.SysProcAttr, resp.CommandJail); err != nil {
 		parentFile.Close()
 		childFile.Close()
+		closeComposition()
 		if logFile != nil {
 			logFile.Close()
 		}
@@ -254,16 +293,19 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	}
 	// ExtraFiles[0] becomes fd 3 in the child (0=stdin,1=stdout,2=stderr,3=ExtraFiles[0])
 	cmd.ExtraFiles = []*os.File{childFile}
+	if hasCompositionSetup {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, compositionChildFile)
+	}
 	if logFile != nil {
-		// ExtraFiles[1] = fd 4 — free in shim mode (the signal-filter
-		// socketpair is deliberately not replicated here).
+		logFD := 3 + len(cmd.ExtraFiles)
 		cmd.ExtraFiles = append(cmd.ExtraFiles, logFile)
-		cmd.Env = append(cmd.Env, wrapperlog.EnvKey+"=4")
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%d", wrapperlog.EnvKey, logFD))
 	}
 
 	if err := cmd.Start(); err != nil {
 		parentFile.Close()
 		childFile.Close()
+		closeComposition()
 		if logFile != nil {
 			logFile.Close()
 		}
@@ -272,6 +314,11 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 
 	// The wrapper owns childFile now; close our copy in the parent.
 	childFile.Close()
+	if compositionChildFile != nil {
+		_ = compositionChildFile.Close()
+		compositionChildFile = nil
+	}
+	defer closeComposition()
 	if logFile != nil {
 		logFile.Close()
 	}
@@ -319,7 +366,11 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	// the wrapper's waitForACK read returns EOF/error, causing the wrapper to
 	// exit with a fatal log.  Then wait for the wrapper and return
 	// ResultFailClosed so the shim aborts rather than running the command.
-	if fwdErr := forwardNotifyFDWithPID(notifySocket, notifyFD, cmd.Process.Pid, commandJail); fwdErr != nil {
+	setupFD := -1
+	if compositionParentFile != nil {
+		setupFD = int(compositionParentFile.Fd())
+	}
+	if fwdErr := forwardNotifyHandoffWithPID(notifySocket, notifyFD, setupFD, cmd.Process.Pid, commandJail); fwdErr != nil {
 		unix.Close(notifyFD)
 		slog.Error("kernelinstall: failed to forward notify fd — closing parent fd to abort wrapper", "error", fwdErr)
 		// Close parentFile: wrapper's waitForACK will see EOF/EBADF and fatal.
@@ -332,6 +383,10 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 		}, nil
 	}
 	unix.Close(notifyFD)
+	if compositionParentFile != nil {
+		_ = compositionParentFile.Close()
+		compositionParentFile = nil
+	}
 
 	// Send ACK byte (0x01) only after the server has confirmed cgroup/eBPF and
 	// notify-handler setup. Any failed or short write keeps this path fail-closed;
@@ -405,7 +460,44 @@ func validateCommandJailResponse(resp types.WrapInitResponse) error {
 	if !configRequiresJail {
 		return fmt.Errorf("server returned command-jail launch requirements without a required wrapper jail")
 	}
+	mode, err := responseCompositionMode(resp)
+	if err != nil {
+		return err
+	}
+	if mode != "" && !resp.CommandJail.MapCurrentUserToNonRoot {
+		return fmt.Errorf("server selected %s without the required non-root namespace identity", mode)
+	}
+	if mode == "" && resp.CommandJail.MapCurrentUserToNonRoot {
+		return fmt.Errorf("server requested a non-root namespace identity without sandbox composition")
+	}
 	return nil
+}
+
+func responseCompositionMode(resp types.WrapInitResponse) (string, error) {
+	var wire struct {
+		SandboxComposition string `json:"sandbox_composition"`
+	}
+	configJSON := strings.TrimSpace(resp.WrapperEnv["AGENTSH_SECCOMP_CONFIG"])
+	if configJSON == "" {
+		configJSON = strings.TrimSpace(resp.SeccompConfig)
+	}
+	if configJSON == "" {
+		return "", nil
+	}
+	if err := json.Unmarshal([]byte(configJSON), &wire); err != nil {
+		return "", fmt.Errorf("decode sandbox-composition wrapper configuration: %w", err)
+	}
+	switch wire.SandboxComposition {
+	case "":
+		return "", nil
+	case composition.Mode:
+		if resp.PtraceMode || resp.CommandJail == nil {
+			return "", fmt.Errorf("server selected %s without a supported command-jail wrap path", wire.SandboxComposition)
+		}
+		return wire.SandboxComposition, nil
+	default:
+		return "", fmt.Errorf("unsupported sandbox composition %q", wire.SandboxComposition)
+	}
 }
 
 func configureCommandJailProcess(attr *syscall.SysProcAttr, requirements *types.LinuxCommandJailRequirements) error {
@@ -420,8 +512,13 @@ func configureCommandJailProcess(attr *syscall.SysProcAttr, requirements *types.
 	}
 	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
 	attr.Pdeathsig = syscall.SIGKILL
-	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Geteuid(), Size: 1}}
-	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getegid(), Size: 1}}
+	namespaceID := 0
+	if requirements.MapCurrentUserToNonRoot {
+		namespaceID = 1
+		attr.AmbientCaps = append(attr.AmbientCaps, unix.CAP_SYS_ADMIN, unix.CAP_SETPCAP)
+	}
+	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Geteuid(), Size: 1}}
+	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1}}
 	attr.GidMappingsEnableSetgroups = false
 	return nil
 }
@@ -668,34 +765,58 @@ func createPipe() (int, int, error) {
 // recvNotifyFD receives a file descriptor from a Unix socket using SCM_RIGHTS.
 // Mirrors internal/cli/wrap_linux.go recvNotifyFD.
 func recvNotifyFD(sock *os.File) (int, error) {
+	if sock == nil {
+		return -1, errors.New("nil notify socket")
+	}
 	buf := make([]byte, 1)
-	oob := make([]byte, unix.CmsgSpace(4))
-	n, oobn, _, _, err := unix.Recvmsg(int(sock.Fd()), buf, oob, 0)
+	oob := make([]byte, unix.CmsgSpace(4*2))
+	n, oobn, flags, _, err := unix.Recvmsg(int(sock.Fd()), buf, oob, unix.MSG_CMSG_CLOEXEC)
 	if err != nil {
 		return -1, fmt.Errorf("recvmsg: %w", err)
 	}
-	if n == 0 || oobn == 0 {
-		return -1, fmt.Errorf("no fd received (n=%d, oobn=%d)", n, oobn)
+	if n != 1 || oobn == 0 {
+		return -1, fmt.Errorf("invalid notify fd packet (n=%d, oobn=%d)", n, oobn)
 	}
 	msgs, err := unix.ParseSocketControlMessage(oob[:oobn])
 	if err != nil {
 		return -1, fmt.Errorf("parse control message: %w", err)
 	}
-	for _, m := range msgs {
-		fds, err := unix.ParseUnixRights(&m)
-		if err != nil {
-			continue
-		}
-		if len(fds) > 0 {
-			return fds[0], nil
+	var received []int
+	closeReceived := func() {
+		for _, fd := range received {
+			_ = unix.Close(fd)
 		}
 	}
-	return -1, fmt.Errorf("no fd in control message")
+	for _, message := range msgs {
+		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SCM_RIGHTS {
+			closeReceived()
+			return -1, fmt.Errorf("unexpected notify ancillary level=%d type=%d", message.Header.Level, message.Header.Type)
+		}
+		fds, parseErr := unix.ParseUnixRights(&message)
+		if parseErr != nil {
+			closeReceived()
+			return -1, fmt.Errorf("parse notify descriptors: %w", parseErr)
+		}
+		received = append(received, fds...)
+	}
+	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 {
+		closeReceived()
+		return -1, errors.New("truncated notify fd packet")
+	}
+	if len(msgs) != 1 || len(received) != 1 {
+		closeReceived()
+		return -1, fmt.Errorf("expected exactly one notify descriptor, received %d", len(received))
+	}
+	return received[0], nil
 }
 
 // forwardNotifyFDWithPID connects to the server's Unix listener socket, sends
 // the notify fd plus wrapper PID metadata, and waits for server setup status.
 func forwardNotifyFDWithPID(socketPath string, notifyFD int, wrapperPID int, commandJail bool) error {
+	return forwardNotifyHandoffWithPID(socketPath, notifyFD, -1, wrapperPID, commandJail)
+}
+
+func forwardNotifyHandoffWithPID(socketPath string, notifyFD, setupFD, wrapperPID int, commandJail bool) error {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", socketPath, err)
@@ -707,11 +828,15 @@ func forwardNotifyFDWithPID(socketPath string, notifyFD int, wrapperPID int, com
 		return fmt.Errorf("not a unix connection")
 	}
 
-	if err := wraphandoff.SendNotifyFD(unixConn, notifyFD, wraphandoff.Metadata{
-		WrapperPID:  wrapperPID,
-		CommandJail: commandJail,
-	}); err != nil {
-		return err
+	metadata := wraphandoff.Metadata{WrapperPID: wrapperPID, CommandJail: commandJail}
+	var sendErr error
+	if setupFD >= 0 {
+		sendErr = wraphandoff.SendNotifyFDWithSetup(unixConn, notifyFD, setupFD, metadata)
+	} else {
+		sendErr = wraphandoff.SendNotifyFD(unixConn, notifyFD, metadata)
+	}
+	if sendErr != nil {
+		return sendErr
 	}
 	if err := unixConn.SetReadDeadline(time.Now().Add(notifySetupStatusTimeout)); err != nil {
 		return fmt.Errorf("set notify setup status deadline: %w", err)
@@ -779,6 +904,9 @@ func assembleWrapperEnv(base []string, argv0 string, wrapperEnv, envInject map[s
 		env = append(env, fmt.Sprintf("%s=%s", argv0EnvKey, argv0))
 	}
 	for k, v := range wrapperEnv {
+		if strings.EqualFold(k, composition.SetupFDEnv) {
+			continue
+		}
 		if k == signalSockFDKey {
 			slog.Debug("kernelinstall: stripping signal sock fd from wrapper env (shim mode limitation)")
 			continue
@@ -797,6 +925,7 @@ func assembleWrapperEnv(base []string, argv0 string, wrapperEnv, envInject map[s
 func filterShimInternalEnv(env []string) []string {
 	reserved := []string{
 		signalSockFDKey,
+		composition.SetupFDEnv,
 		argv0EnvKey,
 		wrapperlog.EnvKey,
 		"AGENTSH_NOTIFY_SOCK_FD",

@@ -327,6 +327,7 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	}
 
 	pre := engine.CheckCommandWithExecve(execReq.Command, execReq.Args, s.app.execveEnforcementActive(), s.app.shellCOpaqueMode())
+	compositionErrorCode := s.app.applySandboxCompositionSelection(sess, &pre)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&execReq.Command, &execReq.Args, pre)
 	approvalErr := s.app.applyCommandApproval(stream.Context(), req.SessionID, cmdID, originalCmd, originalArgs, execReq.Actor, &pre)
 	preEv := types.Event{
@@ -382,6 +383,9 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	if pre.EffectiveDecision == types.DecisionDeny {
 		s.app.emitCommandDBBypassAttempt(stream.Context(), sess, req.SessionID, cmdID, pre)
 		code := "E_POLICY_DENIED"
+		if compositionErrorCode != "" {
+			code = compositionErrorCode
+		}
 		if pre.PolicyDecision == types.DecisionApprove {
 			code = "E_APPROVAL_DENIED"
 			if approvalErr != nil && strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {

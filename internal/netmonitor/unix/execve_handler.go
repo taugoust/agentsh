@@ -16,9 +16,10 @@ import (
 
 // Action constants for pipeline routing decisions.
 const (
-	ActionContinue = "continue" // Allow execve in-place (zero overhead)
-	ActionRedirect = "redirect" // Redirect execve to agentsh-stub
-	ActionDeny     = "deny"     // Fail execve with errno
+	ActionContinue    = "continue"    // Allow execve in-place (zero overhead)
+	ActionRedirect    = "redirect"    // Redirect execve to agentsh-stub
+	ActionComposition = "composition" // Redirect Bubblewrap to the in-lineage adapter
+	ActionDeny        = "deny"        // Fail execve with errno
 )
 
 // ExecveHandlerConfig configures the execve handler.
@@ -33,16 +34,21 @@ type ExecveHandlerConfig struct {
 
 // ExecveContext holds context for an execve notification.
 type ExecveContext struct {
-	PID            int
-	ParentPID      int
-	Filename       string
-	RawFilename    string // Original filename before canonicalization
-	Argv           []string
-	Truncated      bool
-	SessionID      string
-	Depth          int
-	UnwrappedFrom  string // If unwrapped: the transparent wrapper command
-	PayloadCommand string // If unwrapped: the real command being evaluated
+	PID                  int
+	ParentPID            int
+	Filename             string
+	RawFilename          string // Original filename before canonicalization
+	SourceFilename       string // Broker-attributed original source for Filename
+	SourceRawFilename    string // Broker-attributed original source for RawFilename
+	Argv                 []string
+	Truncated            bool
+	SessionID            string
+	Depth                int
+	UnwrappedFrom        string // If unwrapped: the transparent wrapper command
+	PayloadCommand       string // If unwrapped: the real command being evaluated
+	SourcePayloadCommand string // Broker-attributed source for PayloadCommand
+
+	compositionPathCovered bool
 }
 
 // ExecveResult holds the result of handling an execve.
@@ -94,11 +100,13 @@ type ApprovalRequester interface {
 
 // ApprovalRequest contains information for an exec approval request.
 type ApprovalRequest struct {
-	SessionID string
-	Command   string
-	Args      []string
-	Reason    string
-	Rule      string
+	SessionID      string
+	Command        string // Canonical approval scope identity
+	VisibleCommand string
+	SourceCommand  string
+	Args           []string
+	Reason         string
+	Rule           string
 }
 
 // ExecveEmitter interface for emitting execve events.
@@ -109,15 +117,19 @@ type ExecveEmitter interface {
 
 // ExecveHandler handles execve/execveat notifications.
 type ExecveHandler struct {
-	cfg                  ExecveHandlerConfig
-	policy               PolicyChecker
-	depthTracker         *DepthTracker
-	emitter              ExecveEmitter
-	approver             ApprovalRequester
-	redactArgv           bool
-	provenance           string
-	stubSymlinkPath      string // Short symlink path pointing to agentsh-stub
-	transparentOverrides *netmonitor.TransparentOverrides
+	cfg                    ExecveHandlerConfig
+	policy                 PolicyChecker
+	depthTracker           *DepthTracker
+	emitter                ExecveEmitter
+	approver               ApprovalRequester
+	redactArgv             bool
+	provenance             string
+	stubSymlinkPath        string // Short symlink path pointing to agentsh-stub
+	transparentOverrides   *netmonitor.TransparentOverrides
+	compositionMode        string
+	compositionAdapterPath string
+	compositionRedirector  CompositionRedirector
+	compositionPaths       *CompositionPathRegistry
 }
 
 // NewExecveHandler creates a new execve handler.
@@ -162,6 +174,116 @@ func (h *ExecveHandler) SetTransparentOverrides(overrides *netmonitor.Transparen
 	h.transparentOverrides = overrides
 }
 
+// SetComposition enables the semantic Bubblewrap adapter for an admitted
+// command tree. The redirector performs only availability plumbing; it must
+// independently validate every broker request.
+func (h *ExecveHandler) SetComposition(mode, adapterPath string, redirector CompositionRedirector) {
+	h.compositionMode = mode
+	h.compositionAdapterPath = filepath.Clean(adapterPath)
+	h.compositionRedirector = redirector
+}
+
+func (h *ExecveHandler) SetCompositionPathRegistry(registry *CompositionPathRegistry) {
+	if h != nil {
+		h.compositionPaths = registry
+	}
+}
+
+func (h *ExecveHandler) CompositionPathRegistry() *CompositionPathRegistry {
+	if h == nil {
+		return nil
+	}
+	return h.compositionPaths
+}
+
+// attributeCompositionPaths resolves the executable's visible spellings
+// through the immutable mount-plan snapshot for the tracee's mount namespace.
+// Source spellings are kept separate from ordinary aliases: policy must permit
+// both identities rather than allowing an early destination rule to launder a
+// restrictive source rule.
+func (h *ExecveHandler) attributeCompositionPaths(ctx *ExecveContext) error {
+	if h == nil || h.compositionPaths == nil || ctx == nil {
+		return nil
+	}
+	ctx.SourceFilename = ""
+	ctx.SourceRawFilename = ""
+	ctx.compositionPathCovered = false
+
+	attributed, covered, err := h.compositionPaths.Resolve(ctx.PID, ctx.Filename)
+	if err != nil {
+		return fmt.Errorf("resolve executable path %q: %w", ctx.Filename, err)
+	}
+	ctx.compositionPathCovered = covered
+	if covered && attributed != "" && attributed != ctx.Filename {
+		ctx.SourceFilename = attributed
+	}
+
+	if ctx.RawFilename == "" {
+		return nil
+	}
+	if ctx.RawFilename == ctx.Filename {
+		if ctx.SourceFilename != "" {
+			ctx.SourceRawFilename = ctx.SourceFilename
+		}
+		return nil
+	}
+	attributedRaw, rawCovered, err := h.compositionPaths.Resolve(ctx.PID, ctx.RawFilename)
+	if err != nil {
+		return fmt.Errorf("resolve raw executable path %q: %w", ctx.RawFilename, err)
+	}
+	ctx.compositionPathCovered = ctx.compositionPathCovered || rawCovered
+	if rawCovered && attributedRaw != "" && attributedRaw != ctx.RawFilename {
+		ctx.SourceRawFilename = attributedRaw
+	}
+	return nil
+}
+
+func hasCompositionSourceAlias(ctx ExecveContext) bool {
+	return ctx.SourceFilename != "" || ctx.SourceRawFilename != ""
+}
+
+func (h *ExecveHandler) CloseComposition() {
+	if h == nil || h.compositionRedirector == nil {
+		return
+	}
+	_ = h.compositionRedirector.Close()
+}
+
+func isNixBubblewrap0112Executable(path string) bool {
+	path = filepath.Clean(path)
+	parts := strings.Split(strings.TrimPrefix(path, string(filepath.Separator)), string(filepath.Separator))
+	if len(parts) != 5 || parts[0] != "nix" || parts[1] != "store" || parts[3] != "bin" || parts[4] != "bwrap" {
+		return false
+	}
+	storeName := parts[2]
+	dash := strings.IndexByte(storeName, '-')
+	if dash != 32 || storeName[dash+1:] != "bubblewrap-0.11.2" {
+		return false
+	}
+	const nixBase32 = "0123456789abcdfghijklmnpqrsvwxyz"
+	for _, character := range storeName[:dash] {
+		if !strings.ContainsRune(nixBase32, character) {
+			return false
+		}
+	}
+	return true
+}
+
+func (h *ExecveHandler) shouldCompose(ctx ExecveContext, result ExecveResult) bool {
+	if h == nil || h.compositionMode != "bubblewrap-0.11.2" || h.compositionRedirector == nil || result.Action != ActionContinue || !result.Allow {
+		return false
+	}
+	if err := h.attributeCompositionPaths(&ctx); err != nil || hasCompositionSourceAlias(ctx) {
+		return false
+	}
+	// Filename is the handler's resolved executable identity. RawFilename and
+	// basename matches are deliberately insufficient: rewrite remains racy and
+	// availability-only, but the compatibility adapter is pinned to the immutable
+	// Nix Bubblewrap 0.11.2 store identity it implements. A source-substituted
+	// object at an immutable-looking destination is never rewritten.
+	return isNixBubblewrap0112Executable(ctx.Filename)
+}
+
 // RegisterSession registers the session root PID for depth tracking.
 // The root is registered at depth -1 so first command (direct) is at depth 0.
 func (h *ExecveHandler) RegisterSession(pid int, sessionID string) {
@@ -203,8 +325,21 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		}
 	}
 
-	// Check internal bypass (fast path, but still track depth)
-	if h.isInternalBypass(ctx.Filename) {
+	if err := h.attributeCompositionPaths(&ctx); err != nil {
+		result := ExecveResult{
+			Allow:    false,
+			Action:   ActionDeny,
+			Rule:     "composition-source-attribution",
+			Reason:   "composition source attribution failed: " + err.Error(),
+			Errno:    int32(unix.EACCES),
+			Decision: "deny",
+		}
+		return result, h.buildEvent(ctx, result, result.Rule)
+	}
+
+	// Check internal bypass (fast path, but still track depth). A composed bind
+	// source at an internal-looking destination must still pass command policy.
+	if !hasCompositionSourceAlias(ctx) && h.isInternalBypass(ctx.Filename) {
 		// Record for depth tracking so children inherit correct depth
 		if h.depthTracker != nil {
 			h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
@@ -242,12 +377,15 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 				timeout = 5 * time.Minute
 			}
 			approvalCtx, cancel := context.WithTimeout(goCtx, timeout)
+			approvalCommand, sourceCommand := execveApprovalIdentity(ctx)
 			approved, err := h.approver.RequestExecApproval(approvalCtx, ApprovalRequest{
-				SessionID: ctx.SessionID,
-				Command:   ctx.Filename,
-				Args:      ctx.Argv,
-				Reason:    "truncated args require approval",
-				Rule:      "truncated",
+				SessionID:      ctx.SessionID,
+				Command:        approvalCommand,
+				VisibleCommand: ctx.Filename,
+				SourceCommand:  sourceCommand,
+				Args:           ctx.Argv,
+				Reason:         "truncated args require approval",
+				Rule:           "truncated",
 			})
 			cancel()
 			if err != nil {
@@ -293,13 +431,32 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 	if unwrapDepth > 0 && h.policy != nil {
 		ctx.UnwrappedFrom = ctx.Filename
 		ctx.PayloadCommand = payloadCmd
-
-		// Evaluate the payload command against policy
-		payloadDecision := h.checkExecve(ctx.Depth, payloadCmd, payloadArgs)
-		payloadEffective := payloadDecision.EffectiveDecision
-		if payloadEffective == "" {
-			payloadEffective = payloadDecision.Decision
+		payloadPolicyCommand := payloadCmd
+		if len(payloadArgs) > 0 && filepath.Base(payloadArgs[0]) == filepath.Base(payloadCmd) {
+			// UnwrapTransparentCommand intentionally returns a basename for legacy
+			// command matching, while payloadArgs retains the original path. Use the
+			// latter for source attribution; basename command rules still match it.
+			payloadPolicyCommand = payloadArgs[0]
 		}
+
+		// Evaluate the payload command against both its visible spelling and any
+		// original composition source. This matters for transparent wrappers such
+		// as `env /alias/tool`, where the preflight decision occurs before the
+		// payload's own execve notification.
+		payloadDecision, sourcePayload, err := h.checkPayloadExecveWithComposition(ctx, payloadPolicyCommand, payloadArgs)
+		if err != nil {
+			result := ExecveResult{
+				Allow:    false,
+				Action:   ActionDeny,
+				Rule:     "composition-source-attribution",
+				Reason:   "composition source attribution failed: " + err.Error(),
+				Errno:    int32(unix.EACCES),
+				Decision: "deny",
+			}
+			return result, h.buildEvent(ctx, result, result.Rule)
+		}
+		ctx.SourcePayloadCommand = sourcePayload
+		payloadEffective := effectiveExecveDecision(payloadDecision)
 
 		// Evaluate the wrapper command against policy, including trusted aliases
 		// such as the raw pre-canonicalization filename.
@@ -333,10 +490,12 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 			return result, h.buildEvent(ctx, result, wrapperDecision.Rule)
 		}
 
-		// Both allowed — use the more restrictive decision
+		// Both allowed — use the more restrictive decision.
 		chosenDecision := wrapperDecision
+		payloadChosen := false
 		if isMoreRestrictive(payloadEffective, wrapperEffective) {
 			chosenDecision = payloadDecision
+			payloadChosen = true
 		}
 
 		effectiveDecision := chosenDecision.EffectiveDecision
@@ -352,6 +511,13 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 			result := ExecveResult{Allow: true, Action: ActionContinue, Rule: chosenDecision.Rule, Decision: chosenDecision.Decision}
 			return result, h.buildEvent(ctx, result, chosenDecision.Rule)
 		case "approve":
+			if payloadChosen {
+				approvalCommand := payloadPolicyCommand
+				if sourcePayload != "" {
+					approvalCommand = sourcePayload
+				}
+				return h.handlePolicyApprovalForCommand(goCtx, ctx, chosenDecision, approvalCommand, payloadPolicyCommand, sourcePayload)
+			}
 			return h.handlePolicyApproval(goCtx, ctx, chosenDecision)
 		case "redirect":
 			if h.depthTracker != nil {
@@ -444,7 +610,23 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 	}
 }
 
+func execveApprovalIdentity(ctx ExecveContext) (command, source string) {
+	source = ctx.SourceFilename
+	if source == "" {
+		source = ctx.SourceRawFilename
+	}
+	if source != "" {
+		return source, source
+	}
+	return ctx.Filename, ""
+}
+
 func (h *ExecveHandler) handlePolicyApproval(goCtx context.Context, ctx ExecveContext, decision PolicyDecision) (ExecveResult, *types.Event) {
+	approvalCommand, sourceCommand := execveApprovalIdentity(ctx)
+	return h.handlePolicyApprovalForCommand(goCtx, ctx, decision, approvalCommand, ctx.Filename, sourceCommand)
+}
+
+func (h *ExecveHandler) handlePolicyApprovalForCommand(goCtx context.Context, ctx ExecveContext, decision PolicyDecision, approvalCommand, visibleCommand, sourceCommand string) (ExecveResult, *types.Event) {
 	if goCtx == nil {
 		goCtx = context.Background()
 	}
@@ -466,11 +648,13 @@ func (h *ExecveHandler) handlePolicyApproval(goCtx context.Context, ctx ExecveCo
 	}
 	approvalCtx, cancel := context.WithTimeout(goCtx, timeout)
 	approved, err := h.approver.RequestExecApproval(approvalCtx, ApprovalRequest{
-		SessionID: ctx.SessionID,
-		Command:   ctx.Filename,
-		Args:      ctx.Argv,
-		Reason:    decision.Message,
-		Rule:      decision.Rule,
+		SessionID:      ctx.SessionID,
+		Command:        approvalCommand,
+		VisibleCommand: visibleCommand,
+		SourceCommand:  sourceCommand,
+		Args:           ctx.Argv,
+		Reason:         decision.Message,
+		Rule:           decision.Rule,
 	})
 	cancel()
 	if err != nil {
@@ -522,17 +706,92 @@ func (h *ExecveHandler) checkExecve(depth int, filename string, argv []string) P
 	return h.policy.CheckExecve(filename, argv, depth)
 }
 
-func (h *ExecveHandler) checkExecveWithAliases(ctx ExecveContext, filename string, argv []string) PolicyDecision {
-	if filename == ctx.Filename {
-		aliases := trustedExecveAliases(ctx.Filename, ctx.RawFilename, ctx.Argv)
-		if checker, ok := h.policy.(PolicyCheckerWithAliasesAndProvenance); ok {
-			return checker.CheckExecveWithAliasesAndProvenance(filename, aliases, argv, ctx.Depth, h.provenance)
-		}
-		if checker, ok := h.policy.(PolicyCheckerWithAliases); ok {
-			return checker.CheckExecveWithAliases(filename, aliases, argv, ctx.Depth)
-		}
+func (h *ExecveHandler) checkExecveIdentity(depth int, filename, rawFilename string, argv []string) PolicyDecision {
+	aliases := trustedExecveAliases(filename, rawFilename, argv)
+	if checker, ok := h.policy.(PolicyCheckerWithAliasesAndProvenance); ok {
+		return checker.CheckExecveWithAliasesAndProvenance(filename, aliases, argv, depth, h.provenance)
 	}
-	return h.checkExecve(ctx.Depth, filename, argv)
+	if checker, ok := h.policy.(PolicyCheckerWithAliases); ok {
+		return checker.CheckExecveWithAliases(filename, aliases, argv, depth)
+	}
+	return h.checkExecve(depth, filename, argv)
+}
+
+func (h *ExecveHandler) checkExecveWithAliases(ctx ExecveContext, filename string, argv []string) PolicyDecision {
+	if filename != ctx.Filename {
+		return h.checkExecve(ctx.Depth, filename, argv)
+	}
+
+	visible := h.checkExecveIdentity(ctx.Depth, ctx.Filename, ctx.RawFilename, argv)
+	sourceFilename := ctx.SourceFilename
+	sourceRawFilename := ctx.SourceRawFilename
+	if sourceFilename == "" {
+		sourceFilename = sourceRawFilename
+	}
+	if sourceRawFilename == "" {
+		sourceRawFilename = sourceFilename
+	}
+	if sourceFilename == "" {
+		return visible
+	}
+
+	// Evaluate the original bind source as an independent command identity.
+	// Passing it as one more alias would preserve first-match rule ordering and
+	// could therefore let an early destination allow rule hide a later source
+	// deny. Both sides must authorize the execution; the stricter result wins.
+	source := h.checkExecveIdentity(ctx.Depth, sourceFilename, sourceRawFilename, argv)
+	return moreRestrictiveExecveDecision(visible, source)
+}
+
+func (h *ExecveHandler) checkPayloadExecveWithComposition(ctx ExecveContext, filename string, argv []string) (PolicyDecision, string, error) {
+	visible := h.checkExecve(ctx.Depth, filename, argv)
+	if h.compositionPaths == nil || !filepath.IsAbs(filename) {
+		return visible, "", nil
+	}
+	attributed, covered, err := h.compositionPaths.Resolve(ctx.PID, filepath.Clean(filename))
+	if err != nil {
+		return PolicyDecision{}, "", fmt.Errorf("resolve unwrapped payload %q: %w", filename, err)
+	}
+	if !covered || attributed == "" || attributed == filename {
+		return visible, "", nil
+	}
+	source := h.checkExecve(ctx.Depth, attributed, argv)
+	return moreRestrictiveExecveDecision(visible, source), attributed, nil
+}
+
+func effectiveExecveDecision(decision PolicyDecision) string {
+	if decision.EffectiveDecision != "" {
+		return decision.EffectiveDecision
+	}
+	return decision.Decision
+}
+
+func execveDecisionRank(decision string) int {
+	switch decision {
+	case "allow":
+		return 1
+	case "audit", "soft_delete":
+		return 2
+	case "redirect":
+		return 3
+	case "approve":
+		return 4
+	case "deny":
+		return 5
+	default:
+		// An unknown policy result is handled as a denial by Handle. Rank it
+		// above known results so a valid destination allow cannot hide it.
+		return 6
+	}
+}
+
+func moreRestrictiveExecveDecision(current, candidate PolicyDecision) PolicyDecision {
+	currentRank := execveDecisionRank(effectiveExecveDecision(current))
+	candidateRank := execveDecisionRank(effectiveExecveDecision(candidate))
+	if candidateRank > currentRank || (candidateRank == currentRank && execveDecisionRank(candidate.Decision) > execveDecisionRank(current.Decision)) {
+		return candidate
+	}
+	return current
 }
 
 func trustedExecveAliases(filename, rawFilename string, argv []string) []string {
@@ -648,6 +907,25 @@ func (h *ExecveHandler) buildEvent(ctx ExecveContext, result ExecveResult, rule 
 	if h.redactArgv && len(argv) > 0 {
 		argv = []string{"[REDACTED]"}
 	}
+	var fields map[string]any
+	addField := func(key, value string) {
+		if value == "" {
+			return
+		}
+		if fields == nil {
+			fields = make(map[string]any)
+		}
+		fields[key] = value
+	}
+	addField("composition_source_filename", ctx.SourceFilename)
+	addField("composition_source_raw_filename", ctx.SourceRawFilename)
+	addField("composition_source_payload_command", ctx.SourcePayloadCommand)
+	if ctx.compositionPathCovered {
+		if fields == nil {
+			fields = make(map[string]any)
+		}
+		fields["composition_path_covered"] = true
+	}
 	return &types.Event{
 		ID:             fmt.Sprintf("execve-%d-%d", ctx.PID, time.Now().UnixNano()),
 		Timestamp:      time.Now().UTC(),
@@ -669,11 +947,15 @@ func (h *ExecveHandler) buildEvent(ctx ExecveContext, result ExecveResult, rule 
 			Message:           result.Reason,
 		},
 		EffectiveAction: action,
+		Fields:          fields,
 	}
 }
 
 // isInternalBypass checks if filename matches internal bypass patterns.
 func (h *ExecveHandler) isInternalBypass(filename string) bool {
+	if h.compositionAdapterPath != "" && filepath.Clean(filename) == h.compositionAdapterPath {
+		return true
+	}
 	base := filepath.Base(filename)
 
 	for _, pattern := range h.cfg.InternalBypass {

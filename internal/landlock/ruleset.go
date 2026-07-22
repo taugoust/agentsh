@@ -47,6 +47,7 @@ const (
 	LANDLOCK_ACCESS_FS_MAKE_SYM    = 1 << 12
 	LANDLOCK_ACCESS_FS_REFER       = 1 << 13 // ABI v2
 	LANDLOCK_ACCESS_FS_TRUNCATE    = 1 << 14 // ABI v3
+	LANDLOCK_ACCESS_FS_IOCTL_DEV   = 1 << 15 // ABI v5
 )
 
 // Landlock access rights for network (ABI v4)
@@ -95,14 +96,16 @@ func stripGlobPrefix(path string) string {
 
 // RulesetBuilder constructs a Landlock ruleset from paths.
 type RulesetBuilder struct {
-	abi          int
-	workspace    string
-	executePaths []string
-	readPaths    []string
-	writePaths   []string
-	denyPaths    []string
-	allowNetwork bool
-	allowBind    bool
+	abi               int
+	workspace         string
+	executePaths      []string
+	readPaths         []string
+	writePaths        []string
+	deviceIOCTLPaths  []string
+	denyPaths         []string
+	handleDeviceIOCTL bool
+	allowNetwork      bool
+	allowBind         bool
 }
 
 // NewRulesetBuilder creates a new ruleset builder for the given ABI version.
@@ -166,6 +169,32 @@ func (b *RulesetBuilder) AddWritePath(path string) error {
 	return nil
 }
 
+// SetDeviceIOCTLPolicy controls whether ABI-5 device ioctls are handled by
+// this ruleset. It is opt-in so ordinary command boundaries retain their
+// existing behavior; composition-selected commands enable it before exposing
+// an identity-bound /dev view.
+func (b *RulesetBuilder) SetDeviceIOCTLPolicy(handle bool) {
+	b.handleDeviceIOCTL = handle
+}
+
+// AddDeviceIOCTLPath grants the ABI-5 IOCTL_DEV right to one exact device
+// object. Read/write authority remains independently controlled by the normal
+// path rules.
+func (b *RulesetBuilder) AddDeviceIOCTLPath(path string) error {
+	if strings.IndexAny(path, "*?[") >= 0 {
+		return fmt.Errorf("device ioctl path must not contain a glob: %s", path)
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("invalid device ioctl path %s: %w", path, err)
+	}
+	if filepath.Clean(absPath) != path {
+		return fmt.Errorf("device ioctl path must be clean and absolute: %s", path)
+	}
+	b.deviceIOCTLPaths = append(b.deviceIOCTLPaths, absPath)
+	return nil
+}
+
 // AddDenyPath marks a path to be denied (by not adding it to the ruleset).
 func (b *RulesetBuilder) AddDenyPath(path string) {
 	b.denyPaths = append(b.denyPaths, path)
@@ -177,8 +206,37 @@ func (b *RulesetBuilder) SetNetworkAccess(allowConnect, allowBind bool) {
 	b.allowBind = allowBind
 }
 
-// Build creates the Landlock ruleset and returns the fd.
+// RuleObject is an exact object used to construct a Landlock path-beneath
+// rule. Composition setup retains these O_PATH descriptors so the broker and
+// the base ruleset share one object/right model instead of reinterpreting path
+// strings independently.
+type RuleObject struct {
+	Path   string
+	Rights uint64
+	File   *os.File
+}
+
+func (o *RuleObject) Close() error {
+	if o == nil || o.File == nil {
+		return nil
+	}
+	err := o.File.Close()
+	o.File = nil
+	return err
+}
+
+// Build creates the Landlock ruleset and closes retained rule descriptors.
 func (b *RulesetBuilder) Build() (int, error) {
+	fd, objects, err := b.BuildRetained()
+	for index := range objects {
+		_ = objects[index].Close()
+	}
+	return fd, err
+}
+
+// BuildRetained creates the ruleset and returns the exact O_PATH objects used
+// for its filesystem rules. The caller owns both the ruleset fd and objects.
+func (b *RulesetBuilder) BuildRetained() (int, []RuleObject, error) {
 	// Build access masks based on ABI
 	accessFS := b.buildFSAccessMask()
 
@@ -212,15 +270,32 @@ func (b *RulesetBuilder) Build() (int, error) {
 		0,
 	)
 	if errno != 0 {
-		return -1, fmt.Errorf("landlock_create_ruleset: %v", errno)
+		return -1, nil, fmt.Errorf("landlock_create_ruleset: %v", errno)
 	}
 	rulesetFd := int(fd)
+	objects := make([]RuleObject, 0, 1+len(b.executePaths)+len(b.readPaths)+len(b.writePaths)+len(b.deviceIOCTLPaths))
+	closeWithError := func(err error) (int, []RuleObject, error) {
+		for index := range objects {
+			_ = objects[index].Close()
+		}
+		_ = unix.Close(rulesetFd)
+		return -1, nil, err
+	}
+	addObject := func(path string, rights uint64) error {
+		object, err := AddPathRuleObject(rulesetFd, path, rights)
+		if err != nil {
+			return err
+		}
+		objects = append(objects, object)
+		return nil
+	}
 
-	// Add workspace rule (full access)
+	// Add workspace rule (full filesystem access except device ioctls). Device
+	// ioctl authority is always exact-object and independently configured.
 	if b.workspace != "" {
-		if err := b.addPathRule(rulesetFd, b.workspace, accessFS); err != nil {
-			unix.Close(rulesetFd)
-			return -1, fmt.Errorf("add workspace rule: %w", err)
+		workspaceAccess := accessFS &^ uint64(LANDLOCK_ACCESS_FS_IOCTL_DEV)
+		if err := addObject(b.workspace, workspaceAccess); err != nil {
+			return closeWithError(fmt.Errorf("add workspace rule: %w", err))
 		}
 	}
 
@@ -232,7 +307,7 @@ func (b *RulesetBuilder) Build() (int, error) {
 		if b.isDenied(path) {
 			continue
 		}
-		if err := b.addPathRule(rulesetFd, path, execAccess); err != nil {
+		if err := addObject(path, execAccess); err != nil {
 			// Non-fatal: path might not exist
 			continue
 		}
@@ -244,7 +319,7 @@ func (b *RulesetBuilder) Build() (int, error) {
 		if b.isDenied(path) {
 			continue
 		}
-		if err := b.addPathRule(rulesetFd, path, readAccess); err != nil {
+		if err := addObject(path, readAccess); err != nil {
 			continue
 		}
 	}
@@ -256,8 +331,19 @@ func (b *RulesetBuilder) Build() (int, error) {
 		if b.isDenied(path) {
 			continue
 		}
-		if err := b.addPathRule(rulesetFd, path, writeAccess); err != nil {
+		if err := addObject(path, writeAccess); err != nil {
 			continue
+		}
+	}
+
+	if b.abi >= 5 && b.handleDeviceIOCTL {
+		for _, path := range b.deviceIOCTLPaths {
+			if b.isDenied(path) {
+				continue
+			}
+			if err := addObject(path, LANDLOCK_ACCESS_FS_IOCTL_DEV); err != nil {
+				continue
+			}
 		}
 	}
 
@@ -266,19 +352,17 @@ func (b *RulesetBuilder) Build() (int, error) {
 	if restrictNetwork {
 		if b.allowNetwork {
 			if err := b.addNetRule(rulesetFd, LANDLOCK_ACCESS_NET_CONNECT_TCP); err != nil {
-				unix.Close(rulesetFd)
-				return -1, fmt.Errorf("add network connect rule: %w", err)
+				return closeWithError(fmt.Errorf("add network connect rule: %w", err))
 			}
 		}
 		if b.allowBind {
 			if err := b.addNetRule(rulesetFd, LANDLOCK_ACCESS_NET_BIND_TCP); err != nil {
-				unix.Close(rulesetFd)
-				return -1, fmt.Errorf("add network bind rule: %w", err)
+				return closeWithError(fmt.Errorf("add network bind rule: %w", err))
 			}
 		}
 	}
 
-	return rulesetFd, nil
+	return rulesetFd, objects, nil
 }
 
 func (b *RulesetBuilder) buildFSAccessMask() uint64 {
@@ -302,6 +386,9 @@ func (b *RulesetBuilder) buildFSAccessMask() uint64 {
 	}
 	if b.abi >= 3 {
 		access |= LANDLOCK_ACCESS_FS_TRUNCATE
+	}
+	if b.abi >= 5 && b.handleDeviceIOCTL {
+		access |= LANDLOCK_ACCESS_FS_IOCTL_DEV
 	}
 
 	return access
@@ -332,16 +419,23 @@ func (b *RulesetBuilder) buildWriteAccessMask() uint64 {
 const accessFile = LANDLOCK_ACCESS_FS_EXECUTE |
 	LANDLOCK_ACCESS_FS_WRITE_FILE |
 	LANDLOCK_ACCESS_FS_READ_FILE |
-	LANDLOCK_ACCESS_FS_TRUNCATE
+	LANDLOCK_ACCESS_FS_TRUNCATE |
+	LANDLOCK_ACCESS_FS_IOCTL_DEV
 
-func (b *RulesetBuilder) addPathRule(rulesetFd int, path string, access uint64) error {
+// AddPathRuleObject opens one exact object, adds it to an existing ruleset,
+// and retains the same O_PATH descriptor for a trusted broker handoff.
+func AddPathRuleObject(rulesetFD int, path string, access uint64) (RuleObject, error) {
 	fd, err := unix.Open(path, unix.O_PATH|unix.O_CLOEXEC, 0)
 	if err != nil {
 		slog.Debug("landlock: addPathRule open failed",
 			"path", path, "error", err)
-		return fmt.Errorf("open %s: %w", path, err)
+		return RuleObject{}, fmt.Errorf("open %s: %w", path, err)
 	}
-	defer unix.Close(fd)
+	file := os.NewFile(uintptr(fd), "landlock-rule-object")
+	if file == nil {
+		_ = unix.Close(fd)
+		return RuleObject{}, fmt.Errorf("retain Landlock object %s", path)
+	}
 
 	// For non-directory inodes (files, devices, pipes), strip directory-only
 	// access rights. The kernel rejects rules with MAKE_REG, REMOVE_DIR, etc.
@@ -358,16 +452,17 @@ func (b *RulesetBuilder) addPathRule(rulesetFd int, path string, access uint64) 
 
 	_, _, errno := syscall.Syscall6(
 		SYS_LANDLOCK_ADD_RULE,
-		uintptr(rulesetFd),
+		uintptr(rulesetFD),
 		LANDLOCK_RULE_PATH_BENEATH,
 		uintptr(unsafe.Pointer(&pathBeneath)),
 		0, 0, 0,
 	)
 	if errno != 0 {
-		return fmt.Errorf("landlock_add_rule: %v", errno)
+		_ = file.Close()
+		return RuleObject{}, fmt.Errorf("landlock_add_rule: %v", errno)
 	}
 
-	return nil
+	return RuleObject{Path: path, Rights: access, File: file}, nil
 }
 
 func (b *RulesetBuilder) addNetRule(rulesetFd int, access uint64) error {

@@ -11,12 +11,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/wraphandoff"
 	"github.com/agentsh/agentsh/internal/wrapperlog"
 	"github.com/agentsh/agentsh/pkg/types"
+	"golang.org/x/sys/unix"
 )
 
 // makeWrapInitHandler returns an http.HandlerFunc that serves the given
@@ -67,6 +69,49 @@ func serveNotifySetupStatus(ln net.Listener, okStatus bool) {
 }
 
 // ─── Test 1: ModeOff returns ResultSkip without any HTTP call ───────────────
+
+func TestConfigureCommandJailProcessUsesNonRootCompositionIdentity(t *testing.T) {
+	attr := &syscall.SysProcAttr{}
+	requirements := &types.LinuxCommandJailRequirements{
+		Required:                true,
+		UserNamespace:           true,
+		MountNamespace:          true,
+		PIDNamespace:            true,
+		CgroupNamespace:         true,
+		IPCNamespace:            true,
+		MapCurrentUserToNonRoot: true,
+		ParentDeathSignal:       "SIGKILL",
+		PrivateProc:             true,
+		HideCgroupFS:            true,
+		HideControlPaths:        true,
+		CloseNonStdioFDs:        true,
+		DropCapabilities:        true,
+		NoNewPrivileges:         true,
+	}
+	if err := configureCommandJailProcess(attr, requirements); err != nil {
+		t.Fatal(err)
+	}
+	if attr.UidMappings[0].ContainerID != 1 || attr.GidMappings[0].ContainerID != 1 {
+		t.Fatalf("non-root mappings not installed: uid=%+v gid=%+v", attr.UidMappings, attr.GidMappings)
+	}
+	if len(attr.AmbientCaps) != 2 || attr.AmbientCaps[0] != unix.CAP_SYS_ADMIN || attr.AmbientCaps[1] != unix.CAP_SETPCAP {
+		t.Fatalf("ambient setup capabilities = %v", attr.AmbientCaps)
+	}
+}
+
+func TestAssembleWrapperEnvStripsCompositionSetupFD(t *testing.T) {
+	env := assembleWrapperEnv(
+		[]string{"AGENTSH_COMPOSITION_SETUP_FD=91", "SAFE=1"},
+		"",
+		map[string]string{"AGENTSH_COMPOSITION_SETUP_FD": "92"},
+		map[string]string{"AGENTSH_COMPOSITION_SETUP_FD": "93"},
+	)
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "AGENTSH_COMPOSITION_SETUP_FD=") {
+			t.Fatalf("composition setup fd leaked into assembled env: %q", entry)
+		}
+	}
+}
 
 func TestInstall_ModeOff_ReturnsSkip(t *testing.T) {
 	handler, calls := makeWrapInitHandler(200, types.WrapInitResponse{

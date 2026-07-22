@@ -42,15 +42,26 @@ type seccompWrapperConfig struct {
 	WaitKillableSource string `json:"wait_killable_source,omitempty"`
 
 	// Landlock filesystem restrictions
-	LandlockEnabled bool     `json:"landlock_enabled,omitempty"`
-	LandlockABI     int      `json:"landlock_abi,omitempty"`
-	Workspace       string   `json:"workspace,omitempty"`
-	AllowExecute    []string `json:"allow_execute,omitempty"`
-	AllowRead       []string `json:"allow_read,omitempty"`
-	AllowWrite      []string `json:"allow_write,omitempty"`
-	DenyPaths       []string `json:"deny_paths,omitempty"`
-	AllowNetwork    bool     `json:"allow_network,omitempty"`
-	AllowBind       bool     `json:"allow_bind,omitempty"`
+	LandlockEnabled   bool     `json:"landlock_enabled,omitempty"`
+	LandlockABI       int      `json:"landlock_abi,omitempty"`
+	Workspace         string   `json:"workspace,omitempty"`
+	AllowExecute      []string `json:"allow_execute,omitempty"`
+	AllowRead         []string `json:"allow_read,omitempty"`
+	AllowWrite        []string `json:"allow_write,omitempty"`
+	DenyPaths         []string `json:"deny_paths,omitempty"`
+	HandleDeviceIOCTL bool     `json:"handle_device_ioctl,omitempty"`
+	AllowDeviceIOCTL  []string `json:"allow_device_ioctl,omitempty"`
+	AllowNetwork      bool     `json:"allow_network,omitempty"`
+	AllowBind         bool     `json:"allow_bind,omitempty"`
+
+	SandboxComposition         string   `json:"sandbox_composition,omitempty"`
+	CompositionAllowExecute    []string `json:"composition_allow_execute,omitempty"`
+	CompositionAllowRead       []string `json:"composition_allow_read,omitempty"`
+	CompositionAllowWrite      []string `json:"composition_allow_write,omitempty"`
+	CompositionScratchRoot     string   `json:"composition_scratch_root,omitempty"`
+	CompositionSyntheticMounts int      `json:"composition_synthetic_mounts,omitempty"`
+	CompositionMaxTransitions  int      `json:"composition_max_transitions,omitempty"`
+	CompositionMaxDataBytes    int64    `json:"composition_max_data_bytes,omitempty"`
 
 	// Server PID for PR_SET_PTRACER (Yama ptrace_scope=1 workaround)
 	ServerPID int `json:"server_pid,omitempty"`
@@ -70,6 +81,12 @@ type seccompWrapperParams struct {
 	UnixSocketEnabled   bool
 	SignalFilterEnabled bool
 	ExecveEnabled       bool
+
+	// CompositionSelectionBound distinguishes an explicit request-local empty
+	// selection from the server-spawned execution path, which reads the mode
+	// recorded while holding the session execution lock.
+	CompositionSelectionBound bool
+	SandboxComposition        string
 }
 
 func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperParams) seccompWrapperConfig {
@@ -119,6 +136,14 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 	seccompCfg.WaitKillable = &a.waitKillableDecision
 	seccompCfg.WaitKillableSource = a.waitKillableSource
 
+	compositionMode := ""
+	if s != nil {
+		compositionMode = s.CurrentSandboxComposition()
+	}
+	if p.CompositionSelectionBound {
+		compositionMode = p.SandboxComposition
+	}
+
 	if a.cfg.Landlock.Enabled {
 		llResult := capabilities.DetectLandlock()
 		if llResult.Available {
@@ -133,6 +158,26 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 			seccompCfg.AllowRead = append(seccompCfg.AllowRead, a.cfg.Landlock.AllowRead...)
 			seccompCfg.AllowWrite = append(seccompCfg.AllowWrite, a.cfg.Landlock.AllowWrite...)
 			seccompCfg.DenyPaths = append(seccompCfg.DenyPaths, a.cfg.Landlock.DenyPaths...)
+
+			// ABI-5 device ioctl handling is composition-specific for now so
+			// ordinary commands preserve their existing Landlock contract.
+			if s != nil && compositionMode == bubblewrapCompositionMode {
+				seccompCfg.SandboxComposition = bubblewrapCompositionMode
+				seccompCfg.CompositionAllowExecute, seccompCfg.CompositionAllowRead, seccompCfg.CompositionAllowWrite = a.deriveLandlockBaseAllowPaths(s)
+				appendRuntimeCompositionPaths(&seccompCfg, s)
+				seccompCfg.CompositionAllowExecute = append(seccompCfg.CompositionAllowExecute, a.cfg.Landlock.AllowExecute...)
+				seccompCfg.CompositionAllowRead = append(seccompCfg.CompositionAllowRead, a.cfg.Landlock.AllowRead...)
+				seccompCfg.CompositionAllowWrite = append(seccompCfg.CompositionAllowWrite, a.cfg.Landlock.AllowWrite...)
+				seccompCfg.CompositionScratchRoot = a.cfg.Sandbox.Composition.Bubblewrap.ScratchRoot
+				seccompCfg.CompositionSyntheticMounts = a.cfg.Sandbox.Composition.Bubblewrap.MaxSyntheticMounts
+				seccompCfg.CompositionMaxTransitions = a.cfg.Sandbox.Composition.Bubblewrap.MaxNamespaceTransitions
+				seccompCfg.CompositionMaxDataBytes = a.cfg.Sandbox.Composition.Bubblewrap.MaxDataBytes
+				seccompCfg.HandleDeviceIOCTL = true
+				seccompCfg.AllowDeviceIOCTL = append(
+					seccompCfg.AllowDeviceIOCTL,
+					a.cfg.Sandbox.Composition.Bubblewrap.DeviceIOCTLPaths...,
+				)
+			}
 
 			if a.cfg.Landlock.Network.AllowConnectTCP != nil {
 				seccompCfg.AllowNetwork = *a.cfg.Landlock.Network.AllowConnectTCP
@@ -277,6 +322,20 @@ func proxyRequiredRawSocketRulesConfigured(cfg *seccompWrapperConfig) bool {
 		return false
 	}
 	return packetDenied && rawDenied(afINET) && rawDenied(afINET6)
+}
+
+func appendRuntimeCompositionPaths(seccompCfg *seccompWrapperConfig, s *session.Session) {
+	if seccompCfg == nil || s == nil {
+		return
+	}
+	if home := s.RuntimeHomePath(); home != "" {
+		seccompCfg.CompositionAllowRead = append(seccompCfg.CompositionAllowRead, home)
+		seccompCfg.CompositionAllowWrite = append(seccompCfg.CompositionAllowWrite, home)
+	}
+	if tmp := s.RuntimeTmpPath(); tmp != "" {
+		seccompCfg.CompositionAllowRead = append(seccompCfg.CompositionAllowRead, tmp)
+		seccompCfg.CompositionAllowWrite = append(seccompCfg.CompositionAllowWrite, tmp)
+	}
 }
 
 func appendRuntimeLandlockPaths(seccompCfg *seccompWrapperConfig, s *session.Session) {

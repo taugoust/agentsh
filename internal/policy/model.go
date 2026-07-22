@@ -5,8 +5,10 @@ import (
 	"net"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/agentsh/agentsh/pkg/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -133,6 +135,11 @@ type CommandRule struct {
 	// immediately before this trusted base-policy rule.
 	ProjectOverlayBoundary bool `yaml:"project_overlay_boundary,omitempty"`
 
+	// SandboxComposition selects an operator-enabled sandbox composition
+	// capability for the admitted command tree. Project overlays may request a
+	// mode, but runtime configuration remains the authoritative host ceiling.
+	SandboxComposition string `yaml:"sandbox_composition,omitempty"`
+
 	EnvAllow          []string `yaml:"env_allow"`
 	EnvDeny           []string `yaml:"env_deny"`
 	EnvMaxBytes       int      `yaml:"env_max_bytes"`
@@ -150,7 +157,7 @@ type CommandRedirect struct {
 var commandRuleYAMLFields = map[string]struct{}{
 	"name": {}, "description": {}, "commands": {}, "args_patterns": {},
 	"decision": {}, "message": {}, "timeout": {}, "redirect_to": {},
-	"context": {}, "internal_provenance": {}, "project_overlay_boundary": {}, "env_allow": {},
+	"context": {}, "internal_provenance": {}, "project_overlay_boundary": {}, "sandbox_composition": {}, "env_allow": {},
 	"env_deny": {}, "env_max_bytes": {}, "env_max_keys": {},
 	"env_block_iteration": {},
 }
@@ -653,6 +660,17 @@ func (p Policy) Validate() error {
 
 	if err := validateProjectOverlayBoundaries(p); err != nil {
 		return err
+	}
+
+	for i, rule := range p.CommandRules {
+		switch rule.SandboxComposition {
+		case "", "bubblewrap-0.11.2":
+		default:
+			return fmt.Errorf("command_rules[%d]: unsupported sandbox_composition %q", i, rule.SandboxComposition)
+		}
+		if rule.SandboxComposition != "" && strings.ToLower(rule.Decision) != string(types.DecisionAllow) && strings.ToLower(rule.Decision) != string(types.DecisionAudit) {
+			return fmt.Errorf("command_rules[%d]: sandbox_composition requires an allow or audit decision", i)
+		}
 	}
 
 	// Validate DNS redirect rules

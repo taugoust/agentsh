@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/composition"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,13 +24,13 @@ func TestExecPathMissing(t *testing.T) {
 	if err := os.WriteFile(file, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if execPathMissing(file, ExecveArgs{}) {
+	if execPathMissing(os.Getpid(), file, ExecveArgs{}) {
 		t.Fatalf("existing file reported missing")
 	}
-	if !execPathMissing(filepath.Join(dir, "missing"), ExecveArgs{}) {
+	if !execPathMissing(os.Getpid(), filepath.Join(dir, "missing"), ExecveArgs{}) {
 		t.Fatalf("missing file not reported missing")
 	}
-	if execPathMissing(filepath.Join(dir, "missing"), ExecveArgs{IsExecveat: true, Flags: 0x1000}) {
+	if execPathMissing(os.Getpid(), filepath.Join(dir, "missing"), ExecveArgs{IsExecveat: true, Flags: 0x1000}) {
 		t.Fatalf("execveat AT_EMPTY_PATH should not use path existence")
 	}
 }
@@ -101,6 +102,169 @@ func TestExecveHandler_TrustedAliases(t *testing.T) {
 	require.Equal(t, "/nix/store/abc-coreutils-9.11/bin/coreutils", pol.filename)
 	require.Contains(t, pol.aliases, "/nix/store/abc-coreutils-9.11/bin/rm")
 	require.Contains(t, pol.aliases, "rm")
+}
+
+func TestExecveHandler_ComposedExecutableUsesMostRestrictiveSourceDecision(t *testing.T) {
+	registry := NewCompositionPathRegistry()
+	t.Cleanup(func() { _ = registry.Close() })
+	pid := os.Getpid()
+	if err := registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+		{Target: "/", Source: ""},
+		{Target: "/visible", Source: "/source"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
+		"/visible/tool": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible"},
+		"/source/tool":  {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-source"},
+	}}
+	h := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, &mockEmitter{})
+	h.SetCompositionPathRegistry(registry)
+
+	result, event := h.Handle(context.Background(), ExecveContext{
+		PID: pid, Filename: "/visible/tool", RawFilename: "/visible/tool", Argv: []string{"tool"},
+	})
+	require.False(t, result.Allow)
+	require.Equal(t, ActionDeny, result.Action)
+	require.Equal(t, "deny-source", result.Rule)
+	require.NotNil(t, event)
+	require.Equal(t, "/source/tool", event.Fields["composition_source_filename"])
+	require.Equal(t, "/source/tool", event.Fields["composition_source_raw_filename"])
+}
+
+func TestExecveHandler_ComposedApprovalScopesOriginalSource(t *testing.T) {
+	registry := NewCompositionPathRegistry()
+	t.Cleanup(func() { _ = registry.Close() })
+	pid := os.Getpid()
+	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+		{Target: "/", Source: ""},
+		{Target: "/visible", Source: "/source"},
+	}}))
+
+	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
+		"/visible/tool": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible"},
+		"/source/tool":  {Decision: "approve", EffectiveDecision: "approve", Rule: "approve-source"},
+	}}
+	approver := &mockApprover{approved: true}
+	h := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, nil)
+	h.SetApprover(approver)
+	h.SetCompositionPathRegistry(registry)
+	result, _ := h.Handle(context.Background(), ExecveContext{
+		PID: pid, Filename: "/visible/tool", RawFilename: "/visible/tool", Argv: []string{"tool"},
+	})
+	require.True(t, result.Allow)
+	require.Equal(t, "/source/tool", approver.gotReq.Command)
+	require.Equal(t, "/visible/tool", approver.gotReq.VisibleCommand)
+	require.Equal(t, "/source/tool", approver.gotReq.SourceCommand)
+}
+
+func TestExecveHandler_ComposedSourceCannotOverrideVisibleDeny(t *testing.T) {
+	registry := NewCompositionPathRegistry()
+	t.Cleanup(func() { _ = registry.Close() })
+	pid := os.Getpid()
+	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+		{Target: "/", Source: ""},
+		{Target: "/visible", Source: "/source"},
+	}}))
+
+	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
+		"/visible/tool": {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-visible"},
+		"/source/tool":  {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-source"},
+	}}
+	h := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, nil)
+	h.SetCompositionPathRegistry(registry)
+	result, _ := h.Handle(context.Background(), ExecveContext{
+		PID: pid, Filename: "/visible/tool", RawFilename: "/visible/tool", Argv: []string{"tool"},
+	})
+	require.False(t, result.Allow)
+	require.Equal(t, "deny-visible", result.Rule)
+}
+
+func TestExecveHandler_ComposedSourceDisablesInternalPathBypass(t *testing.T) {
+	registry := NewCompositionPathRegistry()
+	t.Cleanup(func() { _ = registry.Close() })
+	pid := os.Getpid()
+	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+		{Target: "/", Source: ""},
+		{Target: "/usr/local/bin/agentsh", Source: "/source/malware"},
+	}}))
+
+	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
+		"/usr/local/bin/agentsh": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible"},
+		"/source/malware":        {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-source"},
+	}}
+	h := NewExecveHandler(ExecveHandlerConfig{InternalBypass: []string{"/usr/local/bin/agentsh"}}, pol, nil, nil)
+	h.SetCompositionPathRegistry(registry)
+	result, _ := h.Handle(context.Background(), ExecveContext{
+		PID: pid, Filename: "/usr/local/bin/agentsh", RawFilename: "/usr/local/bin/agentsh", Argv: []string{"agentsh"},
+	})
+	require.False(t, result.Allow)
+	require.Equal(t, "deny-source", result.Rule)
+}
+
+func TestExecveHandler_ComposedTransparentPayloadUsesSourceDecision(t *testing.T) {
+	registry := NewCompositionPathRegistry()
+	t.Cleanup(func() { _ = registry.Close() })
+	pid := os.Getpid()
+	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+		{Target: "/", Source: ""},
+		{Target: "/alias", Source: "/source"},
+	}}))
+
+	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
+		"/usr/bin/env": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-env"},
+		"/alias/tool":  {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible"},
+		"/source/tool": {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-source"},
+	}}
+	h := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, &mockEmitter{})
+	h.SetCompositionPathRegistry(registry)
+	result, event := h.Handle(context.Background(), ExecveContext{
+		PID: pid, Filename: "/usr/bin/env", RawFilename: "/usr/bin/env",
+		Argv: []string{"env", "/alias/tool"},
+	})
+	require.False(t, result.Allow)
+	require.Equal(t, "deny-source", result.Rule)
+	require.NotNil(t, event)
+	require.Equal(t, "/source/tool", event.Fields["composition_source_payload_command"])
+}
+
+type testCompositionRedirector struct{}
+
+func (testCompositionRedirector) Redirect(int, uint64, ExecveContext, uint64, int) error { return nil }
+func (testCompositionRedirector) Close() error                                           { return nil }
+
+func TestExecveHandler_DoesNotComposeSourceSubstitutedBubblewrap(t *testing.T) {
+	const bwrap = "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-bubblewrap-0.11.2/bin/bwrap"
+	registry := NewCompositionPathRegistry()
+	t.Cleanup(func() { _ = registry.Close() })
+	pid := os.Getpid()
+	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+		{Target: "/", Source: ""},
+		{Target: bwrap, Source: "/source/not-bwrap"},
+	}}))
+
+	pol := &mockPolicy{decision: PolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "allow-test"}}
+	h := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, nil)
+	h.SetComposition("bubblewrap-0.11.2", "/nix/store/adapter/bin/agentsh-bwrap-adapter", testCompositionRedirector{})
+	h.SetCompositionPathRegistry(registry)
+	ctx := ExecveContext{PID: pid, Filename: bwrap, RawFilename: bwrap, Argv: []string{"bwrap"}}
+	result, _ := h.Handle(context.Background(), ctx)
+	require.True(t, result.Allow)
+	require.False(t, h.shouldCompose(ctx, result))
+}
+
+func TestExecveHandler_CompositionAttributionFailureDenies(t *testing.T) {
+	h := NewExecveHandler(ExecveHandlerConfig{}, &mockPolicy{decision: PolicyDecision{
+		Decision: "allow", EffectiveDecision: "allow", Rule: "allow-test",
+	}}, nil, nil)
+	h.SetCompositionPathRegistry(NewCompositionPathRegistry())
+	t.Cleanup(func() { _ = h.CompositionPathRegistry().Close() })
+	result, _ := h.Handle(context.Background(), ExecveContext{
+		PID: 1 << 30, Filename: "/visible/tool", RawFilename: "/visible/tool", Argv: []string{"tool"},
+	})
+	require.False(t, result.Allow)
+	require.Equal(t, "composition-source-attribution", result.Rule)
 }
 
 func TestExecveHandler_RejectsUncorroboratedArgv0Alias(t *testing.T) {

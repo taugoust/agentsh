@@ -35,39 +35,67 @@ var (
 // recvFDFromConn receives a file descriptor from a Unix socket connection using SCM_RIGHTS.
 func recvFDFromConn(sock *os.File) (*os.File, error) {
 	buf := make([]byte, 1)
-	oob := make([]byte, unix.CmsgSpace(4))
-	n, oobn, _, _, err := unix.Recvmsg(int(sock.Fd()), buf, oob, 0)
+	oob := make([]byte, unix.CmsgSpace(4*2))
+	n, oobn, flags, _, err := unix.Recvmsg(int(sock.Fd()), buf, oob, unix.MSG_CMSG_CLOEXEC)
 	if err != nil {
 		return nil, fmt.Errorf("recvmsg: %w", err)
 	}
-	if n == 0 || oobn == 0 {
-		return nil, fmt.Errorf("no fd received")
+	if n != 1 || oobn == 0 {
+		return nil, fmt.Errorf("invalid fd packet (n=%d, oobn=%d)", n, oobn)
 	}
 	msgs, err := unix.ParseSocketControlMessage(oob[:oobn])
 	if err != nil {
 		return nil, fmt.Errorf("parse control message: %w", err)
 	}
-	for _, m := range msgs {
-		fds, err := unix.ParseUnixRights(&m)
-		if err != nil {
-			continue
-		}
-		if len(fds) > 0 {
-			return os.NewFile(uintptr(fds[0]), "wrap-notif-fd"), nil
+	var received []int
+	closeReceived := func() {
+		for _, fd := range received {
+			_ = unix.Close(fd)
 		}
 	}
-	return nil, fmt.Errorf("no fd in control message")
+	for _, message := range msgs {
+		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SCM_RIGHTS {
+			closeReceived()
+			return nil, fmt.Errorf("unexpected fd ancillary level=%d type=%d", message.Header.Level, message.Header.Type)
+		}
+		fds, parseErr := unix.ParseUnixRights(&message)
+		if parseErr != nil {
+			closeReceived()
+			return nil, fmt.Errorf("parse descriptors: %w", parseErr)
+		}
+		received = append(received, fds...)
+	}
+	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 {
+		closeReceived()
+		return nil, errors.New("truncated fd packet")
+	}
+	if len(msgs) != 1 || len(received) != 1 {
+		closeReceived()
+		return nil, fmt.Errorf("expected exactly one fd, received %d", len(received))
+	}
+	file := os.NewFile(uintptr(received[0]), "wrap-notif-fd")
+	if file == nil {
+		closeReceived()
+		return nil, errors.New("retain received fd")
+	}
+	return file, nil
 }
 
-func recvNotifyFDForWrap(conn *net.UnixConn) (*os.File, wrapNotifyMetadata, bool, error) {
-	notifyFD, meta, hasMeta, err := wraphandoff.RecvNotifyFD(conn)
+func recvNotifyFDForWrap(conn *net.UnixConn) (*wrapNotifyHandoff, error) {
+	handoff, err := wraphandoff.RecvHandoff(conn)
 	if err != nil {
-		return nil, wrapNotifyMetadata{}, false, err
+		return nil, err
 	}
-	return notifyFD, wrapNotifyMetadata{
-		WrapperPID:  meta.WrapperPID,
-		CommandJail: meta.CommandJail,
-	}, hasMeta, nil
+	return &wrapNotifyHandoff{
+		NotifyFD:         handoff.NotifyFD,
+		CompositionSetup: handoff.CompositionSetup,
+		Metadata: wrapNotifyMetadata{
+			WrapperPID:       handoff.Metadata.WrapperPID,
+			CommandJail:      handoff.Metadata.CommandJail,
+			CompositionSetup: handoff.Metadata.CompositionSetup,
+		},
+		HasMetadata: handoff.HasMetadata,
+	}, nil
 }
 
 func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
@@ -77,7 +105,7 @@ func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
 // startNotifyHandlerForWrap starts the seccomp notify handler for a wrap session.
 // Unlike the exec path where the notify fd comes from a socketpair, here it comes
 // from the CLI via a Unix socket connection.
-func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
 	emitter := &notifyEmitterAdapter{store: a.store, broker: a.broker, sensitive: s.CurrentExecutionSensitive}
 
 	// Prefer session-specific policy engine (has expanded ${PROJECT_ROOT} etc.)
@@ -137,8 +165,50 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID
 		}
 	}
 
-	// Create file handler if configured
+	wrapperCfg, configBound := ctx.Value(wrapSeccompConfigContextKey{}).(seccompWrapperConfig)
+	if !configBound {
+		// Test-only fallback. Production wrap-init captures and binds the exact
+		// configuration sent to unixwrap before accepting any descriptor handoff.
+		wrapperCfg = a.buildSeccompWrapperConfig(s, seccompWrapperParams{ExecveEnabled: execveEnabled})
+	}
+	if wrapperCfg.SandboxComposition != "" {
+		if err := a.configureExecveComposition(execveHandler, s, wrapperCfg, compositionSetup, wrapperPID); err != nil {
+			if cleanupSymlink != nil {
+				cleanupSymlink()
+			}
+			if compositionSetup != nil {
+				_ = compositionSetup.Close()
+			}
+			notifyFD.Close()
+			return err
+		}
+	}
+
+	abortComposition := func() {
+		if execveHandler != nil {
+			execveHandler.CloseComposition()
+		}
+		if compositionSetup != nil {
+			_ = compositionSetup.Close()
+		}
+	}
+
+	// Create file handler if configured. Composition requires source-aware
+	// attribution so bind aliases cannot be evaluated only at their visible
+	// destination spelling.
 	fileHandler := createFileHandler(a.cfg.Sandbox.Seccomp.FileMonitor, sessionPolicy, emitter, a.cfg.Landlock.Enabled, a.approvals, s)
+	if fileHandler != nil && execveHandler != nil {
+		fileHandler.SetCompositionPathRegistry(execveHandler.CompositionPathRegistry())
+	}
+	if wrapperCfg.SandboxComposition != "" && (fileHandler == nil || execveHandler == nil || execveHandler.CompositionPathRegistry() == nil) {
+		_ = notifyFD.Close()
+		abortComposition()
+		runCleanup()
+		if cleanupSymlink != nil {
+			cleanupSymlink()
+		}
+		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: source-aware file interception handler is unavailable")
+	}
 
 	// Probe: verify ProcessVMReadv (or /proc/mem fallback) works against
 	// the wrapper before starting. Same logic as the exec path probe in
@@ -157,6 +227,8 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID
 				// The caller must reject the ACK chain before cgroup cleanup so the
 				// wrapper can exit and its command cgroup can become unpopulated.
 				notifyFD.Close()
+				abortComposition()
+				runCleanup()
 				if cleanupSymlink != nil {
 					cleanupSymlink()
 				}
@@ -191,6 +263,7 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, sessionID
 			unlockSession, admissionErr = s.LockExecContext(ctx)
 			if admissionErr != nil {
 				_ = notifyFD.Close()
+				abortComposition()
 				slog.Warn("wrap: execution admission cancelled", "session_id", sessionID, "error", admissionErr)
 				return admissionErr
 			}
@@ -276,26 +349,55 @@ type wrapperProcStatus struct {
 	UIDs []uint32
 }
 
-func validateWrapperPIDForNotify(wrapperPID, peerPID int, peerUID uint32) error {
+func validateWrapperPIDForNotify(wrapperPID, peerPID int, peerUID uint32) (*os.File, error) {
 	if wrapperPID <= 0 {
-		return fmt.Errorf("invalid wrapper pid %d", wrapperPID)
+		return nil, fmt.Errorf("invalid wrapper pid %d", wrapperPID)
 	}
 	if peerPID <= 0 {
-		return fmt.Errorf("missing notify peer pid for wrapper pid %d", wrapperPID)
+		return nil, fmt.Errorf("missing notify peer pid for wrapper pid %d", wrapperPID)
+	}
+	pidfd, err := unix.PidfdOpen(wrapperPID, 0)
+	if err != nil {
+		return nil, fmt.Errorf("pin wrapper pid %d: %w", wrapperPID, err)
+	}
+	pin := os.NewFile(uintptr(pidfd), "trusted-wrapper-pidfd")
+	if pin == nil {
+		_ = unix.Close(pidfd)
+		return nil, fmt.Errorf("retain wrapper pid %d pin", wrapperPID)
+	}
+	fail := func(err error) (*os.File, error) {
+		_ = pin.Close()
+		return nil, err
+	}
+	if err := validateWrapperPIDPinForNotify(pin); err != nil {
+		return fail(err)
 	}
 	status, err := readWrapperProcStatus(wrapperPID)
 	if err != nil {
-		return err
+		return fail(err)
+	}
+	if err := validateWrapperPIDPinForNotify(pin); err != nil {
+		return fail(err)
 	}
 	if status.PPid != peerPID {
-		return fmt.Errorf("wrapper pid %d parent pid %d does not match notify peer pid %d", wrapperPID, status.PPid, peerPID)
+		return fail(fmt.Errorf("wrapper pid %d parent pid %d does not match notify peer pid %d", wrapperPID, status.PPid, peerPID))
 	}
 	for _, uid := range status.UIDs {
 		if uid == peerUID {
-			return nil
+			return pin, nil
 		}
 	}
-	return fmt.Errorf("wrapper pid %d uid set %v does not include notify peer uid %d", wrapperPID, status.UIDs, peerUID)
+	return fail(fmt.Errorf("wrapper pid %d uid set %v does not include notify peer uid %d", wrapperPID, status.UIDs, peerUID))
+}
+
+func validateWrapperPIDPinForNotify(pin *os.File) error {
+	if pin == nil {
+		return fmt.Errorf("trusted wrapper pid pin is unavailable")
+	}
+	if err := unix.PidfdSendSignal(int(pin.Fd()), unix.Signal(0), nil, 0); err != nil {
+		return fmt.Errorf("trusted wrapper process exited: %w", err)
+	}
+	return nil
 }
 
 func readWrapperProcStatus(pid int) (wrapperProcStatus, error) {

@@ -171,8 +171,9 @@ func loadFilterWithRetry(prog []byte, withWaitKill bool, snapshot []any) (int, b
 	fd, err := loadRawFilter(prog, withWaitKill)
 	dur := time.Since(start)
 	if err == nil {
-		slog.Debug("seccomp: filter Load succeeded",
-			"attempt", 1, "wait_kill", withWaitKill, "duration_ms", dur.Milliseconds())
+		// Do not log after a successful raw load. A metadata-notify filter is
+		// already active on this thread, but its listener may not have been
+		// transferred yet. The caller emits the success diagnostic after handoff.
 		return fd, withWaitKill, nil
 	}
 	slog.Warn("seccomp: filter Load failed",
@@ -192,8 +193,6 @@ func loadFilterWithRetry(prog []byte, withWaitKill bool, snapshot []any) (int, b
 	fd, err = loadRawFilter(prog, false)
 	dur = time.Since(start)
 	if err == nil {
-		slog.Debug("seccomp: filter Load succeeded on retry without WaitKill",
-			"attempt", 2, "duration_ms", dur.Milliseconds())
 		return fd, false, nil
 	}
 	slog.Warn("seccomp: filter Load failed on retry without WaitKill",

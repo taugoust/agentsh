@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/approvals"
+	compositionpkg "github.com/agentsh/agentsh/internal/composition"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/events"
 	"github.com/agentsh/agentsh/internal/pkgcheck"
@@ -279,7 +280,7 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 		fileMonitorCfg:   a.cfg.Sandbox.Seccomp.FileMonitor,
 		landlockEnabled:  a.cfg.Landlock.Enabled,
 		ptraceSync:       a.ptraceTracer != nil && hasNotifyFeatures,
-		commandBoundary:  commandJailRequirements(jailRequired),
+		commandBoundary:  commandJailRequirements(jailRequired, s.CurrentSandboxComposition()),
 		cmdResolver:      a.cmdResolver,
 		sessionTracker:   a.sessionTracker,
 		blockList:        a.buildBlockListConfigFor(sessionID),
@@ -289,10 +290,28 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 	if execveEnabled {
 		extraCfg.execveHandler = createExecveHandler(a.cfg.Sandbox.Seccomp.Execve, sessionPolicy, a.approvals)
 	}
+	var compositionSetup *os.File
+	if s.CurrentSandboxComposition() != "" {
+		setupPair := createUnixSocketPair()
+		if setupPair == nil {
+			closePreStartProcessFiles(extraCfg)
+			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: create trusted composition setup channel")}
+		}
+		setupFD := 3 + len(extraCfg.extraFiles)
+		extraCfg.extraFiles = append(extraCfg.extraFiles, setupPair.child)
+		extraCfg.compositionParentSock = setupPair.parent
+		extraCfg.env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
+		wrappedReq.Env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
+		compositionSetup = setupPair.parent
+	}
+	if compositionErr := a.configureExecveComposition(extraCfg.execveHandler, s, seccompCfg, compositionSetup, 0); compositionErr != nil {
+		closePreStartProcessFiles(extraCfg)
+		return &wrapperSetupResult{wrappedReq: req, setupErr: compositionErr}
+	}
 
 	// Add signal filter config if socket pair succeeded
 	if signalFilterActive && sigSP != nil {
-		signalFD := 4 // second ExtraFile (after notify socket at FD 3)
+		signalFD := 3 + len(extraCfg.extraFiles)
 		wrappedReq.Env["AGENTSH_SIGNAL_SOCK_FD"] = strconv.Itoa(signalFD)
 		extraCfg.env["AGENTSH_SIGNAL_SOCK_FD"] = strconv.Itoa(signalFD)
 		extraCfg.extraFiles = append(extraCfg.extraFiles, sigSP.child)
@@ -331,25 +350,27 @@ func commandJailRequired(cfg *config.Config) bool {
 	return cfg != nil && (cfg.Sandbox.Network.EBPF.Required || cfg.Sandbox.Network.EBPF.Enforce)
 }
 
-func commandJailRequirements(required bool) *types.LinuxCommandJailRequirements {
+func commandJailRequirements(required bool, composition ...string) *types.LinuxCommandJailRequirements {
 	if !required {
 		return nil
 	}
+	useNonRootIdentity := len(composition) > 0 && composition[0] == bubblewrapCompositionMode
 	return &types.LinuxCommandJailRequirements{
-		Required:             true,
-		UserNamespace:        true,
-		MountNamespace:       true,
-		PIDNamespace:         true,
-		CgroupNamespace:      true,
-		IPCNamespace:         true,
-		MapCurrentUserToRoot: true,
-		ParentDeathSignal:    "SIGKILL",
-		PrivateProc:          true,
-		HideCgroupFS:         true,
-		HideControlPaths:     true,
-		CloseNonStdioFDs:     true,
-		DropCapabilities:     true,
-		NoNewPrivileges:      true,
+		Required:                true,
+		UserNamespace:           true,
+		MountNamespace:          true,
+		PIDNamespace:            true,
+		CgroupNamespace:         true,
+		IPCNamespace:            true,
+		MapCurrentUserToRoot:    !useNonRootIdentity,
+		MapCurrentUserToNonRoot: useNonRootIdentity,
+		ParentDeathSignal:       "SIGKILL",
+		PrivateProc:             true,
+		HideCgroupFS:            true,
+		HideControlPaths:        true,
+		CloseNonStdioFDs:        true,
+		DropCapabilities:        true,
+		NoNewPrivileges:         true,
 	}
 }
 
@@ -1808,6 +1829,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	}
 
 	pre := engine.CheckCommandWithExecveProvenance(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode(), opts.provenance)
+	compositionErrorCode := a.applySandboxCompositionSelection(s, &pre)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
 	approvalErr := a.applyCommandApproval(ctx, id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
 	pkgApprovalDenied := false
@@ -1875,6 +1897,9 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		"command": originalCmd,
 		"args":    auditArgumentValues(originalArgs, opts.sensitive),
 	}
+	if pre.SandboxComposition != "" {
+		preFields["sandbox_composition"] = pre.SandboxComposition
+	}
 	if req.Actor != nil {
 		preFields["actor"] = req.Actor
 	}
@@ -1928,6 +1953,9 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	if pre.EffectiveDecision == types.DecisionDeny {
 		a.emitCommandDBBypassAttempt(ctx, s, id, cmdID, pre)
 		code := "E_POLICY_DENIED"
+		if compositionErrorCode != "" {
+			code = compositionErrorCode
+		}
 		if pre.PolicyDecision == types.DecisionApprove || pkgApprovalDenied {
 			code = "E_APPROVAL_DENIED"
 			if approvalErr != nil && strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {

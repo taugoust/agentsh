@@ -31,7 +31,7 @@ func isFileSyscall(nr int32) bool {
 		unix.SYS_UNLINKAT, unix.SYS_MKDIRAT,
 		unix.SYS_RENAMEAT2, unix.SYS_LINKAT, unix.SYS_SYMLINKAT,
 		unix.SYS_FCHMODAT, unix.SYS_FCHOWNAT,
-		unix.SYS_STATX, unix.SYS_NEWFSTATAT, unix.SYS_FACCESSAT2,
+		unix.SYS_STATX, unix.SYS_NEWFSTATAT, unix.SYS_FACCESSAT, unix.SYS_FACCESSAT2,
 		unix.SYS_READLINKAT, unix.SYS_MKNODAT:
 		return true
 	default:
@@ -71,11 +71,15 @@ func isReadOnlyFileOp(nr int32, flags uint32) bool {
 	switch nr {
 	case unix.SYS_OPENAT, unix.SYS_OPENAT2:
 		return isReadOnlyOpen(flags)
-	case unix.SYS_STATX, unix.SYS_NEWFSTATAT, unix.SYS_FACCESSAT2, unix.SYS_READLINKAT:
+	case unix.SYS_STATX, unix.SYS_NEWFSTATAT, unix.SYS_FACCESSAT, unix.SYS_FACCESSAT2, unix.SYS_READLINKAT:
 		return true
 	default:
 		if isLegacyOpenSyscallNr(nr) {
 			return isReadOnlyOpen(flags)
+		}
+		switch legacySyscallToOperation(nr, flags) {
+		case "stat", "access", "readlink":
+			return true
 		}
 		// All other file syscalls (unlinkat, mkdirat, renameat2, linkat,
 		// symlinkat, fchmodat, fchownat, mknodat, and legacy equivalents)
@@ -225,6 +229,8 @@ func extractFileArgs(args SyscallArgs) FileArgs {
 		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1, Flags: uint32(args.Arg2)}
 	case unix.SYS_NEWFSTATAT:
 		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1, Flags: uint32(args.Arg3)}
+	case unix.SYS_FACCESSAT:
+		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1, Flags: uint32(args.Arg2)}
 	case unix.SYS_FACCESSAT2:
 		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1, Flags: uint32(args.Arg3)}
 	case unix.SYS_READLINKAT:
@@ -345,7 +351,7 @@ func syscallToOperation(nr int32, flags uint32) string {
 		return "chown"
 	case unix.SYS_STATX, unix.SYS_NEWFSTATAT:
 		return "stat"
-	case unix.SYS_FACCESSAT2:
+	case unix.SYS_FACCESSAT, unix.SYS_FACCESSAT2:
 		return "access"
 	case unix.SYS_READLINKAT:
 		return "readlink"
@@ -381,6 +387,8 @@ func fileSyscallName(nr int32) string {
 		return "statx"
 	case unix.SYS_NEWFSTATAT:
 		return "newfstatat"
+	case unix.SYS_FACCESSAT:
+		return "faccessat"
 	case unix.SYS_FACCESSAT2:
 		return "faccessat2"
 	case unix.SYS_READLINKAT:

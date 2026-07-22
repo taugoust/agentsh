@@ -296,10 +296,24 @@ func MergePolicyOverlays(base *Policy, overlays []PolicyOverlay) (*Policy, error
 	}
 	merged := clonePolicyForOverlay(base)
 	knownRules := clonePolicyForOverlay(base)
+	compositionBoundary := false
+	for _, rule := range base.CommandRules {
+		if rule.ProjectOverlayBoundary {
+			compositionBoundary = true
+			break
+		}
+	}
 	var added PolicyOverlay
 	for _, overlay := range overlays {
 		if err := overlay.Validate(); err != nil {
 			return nil, fmt.Errorf("overlay %q: %w", overlay.Name, err)
+		}
+		if !compositionBoundary {
+			for _, rule := range overlay.CommandRules {
+				if rule.SandboxComposition != "" {
+					return nil, fmt.Errorf("overlay %q command rule %q selects sandbox_composition without an explicit trusted project_overlay_boundary", overlay.Name, rule.Name)
+				}
+			}
 		}
 		if err := rejectBaseRuleNameConflicts(knownRules, overlay); err != nil {
 			return nil, fmt.Errorf("overlay %q: %w", overlay.Name, err)

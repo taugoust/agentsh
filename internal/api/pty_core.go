@@ -65,6 +65,7 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 
 	engine := a.policyEngineFor(sess)
 	pre := engine.CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+	compositionErrorCode := a.applySandboxCompositionSelection(sess, &pre)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
 	approvalErr := a.applyCommandApproval(ctx, sessionID, cmdID, originalCmd, originalArgs, nil, &pre)
 
@@ -120,6 +121,9 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 		a.emitCommandDBBypassAttempt(ctx, sess, sessionID, cmdID, pre)
 		defer unlock()
 		msg := "command denied by policy"
+		if compositionErrorCode != "" {
+			msg = compositionErrorCode + ": " + pre.Message
+		}
 		if pre.PolicyDecision == types.DecisionApprove {
 			msg = "command denied (approval required)"
 			if approvalErr != nil && strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {

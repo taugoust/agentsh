@@ -140,17 +140,18 @@ type compiledConnectRedirectRule struct {
 }
 
 type Decision struct {
-	PolicyDecision    types.Decision
-	EffectiveDecision types.Decision
-	Rule              string
-	Message           string
-	Approval          *types.ApprovalInfo
-	Redirect          *types.RedirectInfo
-	FileRedirect      *types.FileRedirectInfo
-	EnvPolicy         ResolvedEnvPolicy
-	ThreatFeed        string
-	ThreatMatch       string
-	ThreatAction      string // "deny" or "audit" — set when a threat feed matched
+	PolicyDecision     types.Decision
+	EffectiveDecision  types.Decision
+	Rule               string
+	Message            string
+	Approval           *types.ApprovalInfo
+	Redirect           *types.RedirectInfo
+	FileRedirect       *types.FileRedirectInfo
+	EnvPolicy          ResolvedEnvPolicy
+	ThreatFeed         string
+	ThreatMatch        string
+	ThreatAction       string // "deny" or "audit" — set when a threat feed matched
+	SandboxComposition string
 }
 
 func NewEngine(p *Policy, enforceApprovals bool, enforceRedirects bool) (*Engine, error) {
@@ -903,6 +904,7 @@ func (e *Engine) matchCommandRules(command string, args []string, provenance Com
 
 		dec := e.wrapDecision(r.rule.Decision, r.rule.Name, r.rule.Message, r.rule.RedirectTo)
 		dec.EnvPolicy = MergeEnvPolicy(e.policy.EnvPolicy, r.rule)
+		dec.SandboxComposition = r.rule.SandboxComposition
 		return dec, true
 	}
 	// Default deny (consistent with file_rules, network_rules, and unix_socket_rules).
