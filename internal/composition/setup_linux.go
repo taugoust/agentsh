@@ -419,6 +419,68 @@ func (s *ReceivedSetup) DeniedPolicyObject(source *os.File, sourcePath string) (
 	return false, nil
 }
 
+// HasRightsDescendant reports whether a retained AgentSH policy object carrying
+// any requested rights is provably a strict descendant of source. This is used
+// only to avoid operation-wide VFS reductions that would erase legitimate
+// heterogeneous descendant authority; mandatory Landlock remains the per-object
+// security boundary.
+func (s *ReceivedSetup) HasRightsDescendant(source *os.File, rightsMask uint64) (bool, error) {
+	if s == nil || source == nil {
+		return false, typedError("E_COMPOSITION_SETUP_MISSING", "retained policy objects are unavailable")
+	}
+	if rightsMask == 0 {
+		return false, typedError("E_COMPOSITION_SETUP_INVALID", "descendant rights mask is empty")
+	}
+	var sourceStatus unix.Stat_t
+	if err := unix.Fstat(int(source.Fd()), &sourceStatus); err != nil {
+		return false, typedError("E_COMPOSITION_SETUP_INVALID", "stat recursive bind source: %v", err)
+	}
+	if sourceStatus.Mode&unix.S_IFMT != unix.S_IFDIR {
+		return false, nil
+	}
+	sourcePath, err := os.Readlink(filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprint(source.Fd())))
+	if err != nil || !filepath.IsAbs(sourcePath) || strings.HasSuffix(sourcePath, " (deleted)") {
+		return false, typedError("E_COMPOSITION_SETUP_INVALID", "resolve recursive bind source identity")
+	}
+	sourcePath = filepath.Clean(sourcePath)
+	for index := range s.Objects {
+		object := &s.Objects[index]
+		if object.Kind != SetupObjectPolicy || object.File == nil || object.Rights&rightsMask == 0 {
+			continue
+		}
+		objectPath, pathErr := os.Readlink(filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprint(object.File.Fd())))
+		if pathErr != nil || !filepath.IsAbs(objectPath) || strings.HasSuffix(objectPath, " (deleted)") {
+			return false, typedError("E_COMPOSITION_SETUP_INVALID", "resolve retained mutation object %d", index)
+		}
+		objectPath = filepath.Clean(objectPath)
+		relative, relErr := filepath.Rel(sourcePath, objectPath)
+		if relErr != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		fd, openErr := unix.Openat2(int(source.Fd()), relative, &unix.OpenHow{
+			Flags:   unix.O_PATH | unix.O_CLOEXEC,
+			Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_MAGICLINKS,
+		})
+		if openErr != nil {
+			continue
+		}
+		resolved := os.NewFile(uintptr(fd), "composition-mutation-descendant")
+		if resolved == nil {
+			_ = unix.Close(fd)
+			return false, typedError("E_COMPOSITION_SETUP_INVALID", "retain mutation descendant %d", index)
+		}
+		same, sameErr := sameObject(resolved, object.File)
+		_ = resolved.Close()
+		if sameErr != nil {
+			return false, typedError("E_COMPOSITION_SETUP_INVALID", "compare mutation descendant %d: %v", index, sameErr)
+		}
+		if same {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // ExactPolicyObject returns the retained base-policy object matching source.
 // Ancestor pathname allowance is intentionally insufficient: moving a strict
 // descendant away from its tagged mount ancestry loses the ancestor grant.

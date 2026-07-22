@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <linux/mount.h>
+#include <linux/openat2.h>
 #include <linux/stat.h>
 #include <sched.h>
 #include <stdbool.h>
@@ -19,6 +20,9 @@
 
 #ifndef STATX_MNT_ID_UNIQUE
 #define STATX_MNT_ID_UNIQUE 0x00004000U
+#endif
+#ifndef SYS_openat2
+#define SYS_openat2 437
 #endif
 #ifndef SYS_statmount
 #define SYS_statmount 457
@@ -342,6 +346,106 @@ static void inspect_mount_tree(const char *source_path,
   }
 }
 
+static void print_hex_path(const char *path) {
+  static const char digits[] = "0123456789abcdef";
+  for (const unsigned char *cursor = (const unsigned char *)path; *cursor;
+       cursor++) {
+    char encoded[2] = {digits[*cursor >> 4], digits[*cursor & 0xf]};
+    if (write(STDOUT_FILENO, encoded, sizeof(encoded)) !=
+        (ssize_t)sizeof(encoded))
+      fail("write inspected path");
+  }
+}
+
+static void print_unresolved_path(const char *path, int error_number) {
+  if (dprintf(STDOUT_FILENO, "M\t%d\t%zu\t", error_number, strlen(path)) < 0)
+    fail("write unresolved path header");
+  print_hex_path(path);
+  if (write(STDOUT_FILENO, "\n", 1) != 1)
+    fail("write unresolved path terminator");
+}
+
+/* Resolve every requested cwd component against the completed staged root.
+   RESOLVE_IN_ROOT gives the same absolute-symlink semantics as the later
+   pivot, while RESOLVE_NO_MAGICLINKS keeps proc-style magic links out of this
+   identity check. The path itself came from the bounded normalized plan. */
+static void inspect_completed_cwd(const char *root, const char *cwd) {
+  if (!root || root[0] != '/' || !cwd || cwd[0] != '/' ||
+      strlen(root) >= PATH_MAX || strlen(cwd) >= PATH_MAX) {
+    errno = EINVAL;
+    fail("validate completed cwd request");
+  }
+  int root_fd = open(root, O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  if (root_fd < 0)
+    fail("open completed root");
+
+  char relative[PATH_MAX];
+  const char *without_root = cwd + 1;
+  if (*without_root == '\0')
+    strcpy(relative, ".");
+  else
+    strcpy(relative, without_root);
+
+  size_t length = strlen(relative);
+  int resolved_fd = -1;
+  for (size_t index = 0; index <= length; index++) {
+    if (index != length && relative[index] != '/')
+      continue;
+    char saved = relative[index];
+    relative[index] = '\0';
+    struct open_how how = {
+        .flags = O_PATH | O_CLOEXEC,
+        .resolve = RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS,
+    };
+    resolved_fd = syscall(SYS_openat2, root_fd, relative, &how, sizeof(how));
+    if (resolved_fd < 0) {
+      int saved_errno = errno;
+      char visible[PATH_MAX];
+      if (snprintf(visible, sizeof(visible), "/%s", relative) < 0) {
+        close(root_fd);
+        fail("format unresolved cwd component");
+      }
+      print_unresolved_path(visible, saved_errno);
+      close(root_fd);
+      return;
+    }
+    close(resolved_fd);
+    resolved_fd = -1;
+    relative[index] = saved;
+  }
+
+  struct open_how final_how = {
+      .flags = O_PATH | O_DIRECTORY | O_CLOEXEC,
+      .resolve = RESOLVE_IN_ROOT | RESOLVE_NO_MAGICLINKS,
+  };
+  resolved_fd = syscall(SYS_openat2, root_fd, relative, &final_how,
+                        sizeof(final_how));
+  if (resolved_fd < 0) {
+    int saved_errno = errno;
+    print_unresolved_path(cwd, saved_errno);
+    close(root_fd);
+    return;
+  }
+  struct stat status;
+  if (fstat(resolved_fd, &status) != 0) {
+    int saved_errno = errno;
+    close(resolved_fd);
+    close(root_fd);
+    errno = saved_errno;
+    fail("stat completed cwd");
+  }
+  if (dprintf(STDOUT_FILENO, "O\t%llu\t%llu\t%u\n",
+              (unsigned long long)status.st_dev,
+              (unsigned long long)status.st_ino,
+              (unsigned int)status.st_mode) < 0) {
+    close(resolved_fd);
+    close(root_fd);
+    fail("write completed cwd identity");
+  }
+  close(resolved_fd);
+  close(root_fd);
+}
+
 static void inspect_source_tree(const char *source_path, bool descriptor) {
   if (!source_path || source_path[0] != '/' || strlen(source_path) >= PATH_MAX) {
     errno = EINVAL;
@@ -369,6 +473,10 @@ static void do_operation(const char *operation, const char *target,
   }
   if (strcmp(operation, "inspect-path") == 0) {
     inspect_source_tree(target, false);
+    return;
+  }
+  if (strcmp(operation, "inspect-cwd") == 0) {
+    inspect_completed_cwd(target, argument);
     return;
   }
   if (strcmp(operation, "private") == 0) {

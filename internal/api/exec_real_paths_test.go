@@ -69,6 +69,40 @@ func TestResolveWorkingDir_RealPaths_OutsideWorkspace(t *testing.T) {
 	}
 }
 
+func TestResolveWorkingDir_RealPaths_CanonicalizesOutsideWorkspaceAlias(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink test is POSIX-specific")
+	}
+	m := session.NewManager(10)
+	realRoot := t.TempDir()
+	workspace := filepath.Join(realRoot, "project")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "scratch")
+	if err := os.Symlink(realRoot, alias); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := m.CreateWithID("test-exec-real-alias", workspace, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.SetRealPaths(true)
+
+	resolved, err := resolveWorkingDir(s, filepath.Join(alias, "project"))
+	if err != nil {
+		t.Fatalf("resolveWorkingDir through real-path alias: %v", err)
+	}
+	want, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != filepath.ToSlash(want) {
+		t.Fatalf("resolved = %q, want canonical %q", resolved, filepath.ToSlash(want))
+	}
+}
+
 func TestResolveWorkingDir_Default_OutsideReject(t *testing.T) {
 	m := session.NewManager(10)
 	ws := t.TempDir()

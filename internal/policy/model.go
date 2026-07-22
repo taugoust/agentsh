@@ -3,6 +3,7 @@ package policy
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -117,15 +118,16 @@ type NetworkRule struct {
 }
 
 type CommandRule struct {
-	Name         string           `yaml:"name"`
-	Description  string           `yaml:"description"`
-	Commands     []string         `yaml:"commands"`
-	ArgsPatterns []string         `yaml:"args_patterns"`
-	Decision     string           `yaml:"decision"`
-	Message      string           `yaml:"message"`
-	Timeout      duration         `yaml:"timeout"`
-	RedirectTo   *CommandRedirect `yaml:"redirect_to,omitempty"`
-	Context      ContextConfig    `yaml:"context"`
+	Name                  string           `yaml:"name"`
+	Description           string           `yaml:"description"`
+	Commands              []string         `yaml:"commands"`
+	ArgsPatterns          []string         `yaml:"args_patterns"`
+	WorkingDirectoryRoots []string         `yaml:"working_directory_roots,omitempty"`
+	Decision              string           `yaml:"decision"`
+	Message               string           `yaml:"message"`
+	Timeout               duration         `yaml:"timeout"`
+	RedirectTo            *CommandRedirect `yaml:"redirect_to,omitempty"`
+	Context               ContextConfig    `yaml:"context"`
 
 	// InternalProvenance restricts this rule to a server-originated execution
 	// path. It cannot be supplied by an ExecRequest.
@@ -156,7 +158,7 @@ type CommandRedirect struct {
 
 var commandRuleYAMLFields = map[string]struct{}{
 	"name": {}, "description": {}, "commands": {}, "args_patterns": {},
-	"decision": {}, "message": {}, "timeout": {}, "redirect_to": {},
+	"working_directory_roots": {}, "decision": {}, "message": {}, "timeout": {}, "redirect_to": {},
 	"context": {}, "internal_provenance": {}, "project_overlay_boundary": {}, "sandbox_composition": {}, "env_allow": {},
 	"env_deny": {}, "env_max_bytes": {}, "env_max_keys": {},
 	"env_block_iteration": {},
@@ -663,6 +665,14 @@ func (p Policy) Validate() error {
 	}
 
 	for i, rule := range p.CommandRules {
+		for rootIndex, root := range rule.WorkingDirectoryRoots {
+			if strings.TrimSpace(root) == "" || strings.ContainsAny(root, "*?[") {
+				return fmt.Errorf("command_rules[%d].working_directory_roots[%d]: must be a non-empty path root without glob syntax", i, rootIndex)
+			}
+			if !strings.Contains(root, "${") && (!filepath.IsAbs(root) || filepath.Clean(root) != root) {
+				return fmt.Errorf("command_rules[%d].working_directory_roots[%d]: must be a clean absolute path", i, rootIndex)
+			}
+		}
 		switch rule.SandboxComposition {
 		case "", "bubblewrap-0.11.2":
 		default:

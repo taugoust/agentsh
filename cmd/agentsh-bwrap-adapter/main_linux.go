@@ -244,8 +244,8 @@ func runChild(nonce string) error {
 		return err
 	}
 	if plan.Cwd != "" {
-		if err := os.Chdir(plan.Cwd); err != nil {
-			return fmt.Errorf("chdir %s: %w", plan.Cwd, err)
+		if err := chdirComposedRoot(plan.Cwd); err != nil {
+			return err
 		}
 	}
 	environment := applyEnvironment(plan)
@@ -283,6 +283,34 @@ func runChild(nonce string) error {
 	close(signals)
 	<-done
 	return propagateProcessStatus(waitErr)
+}
+
+func chdirComposedRoot(cwd string) error {
+	separator := string(filepath.Separator)
+	prefix := separator
+	for _, component := range strings.Split(strings.TrimPrefix(cwd, separator), separator) {
+		if component == "" {
+			continue
+		}
+		prefix = filepath.Join(prefix, component)
+		info, err := os.Stat(prefix)
+		if err != nil {
+			return &composition.Error{
+				Code:    "E_COMPOSITION_CWD_UNRESOLVED",
+				Message: fmt.Sprintf("post-pivot cwd %q first unresolved component %q: %v", cwd, prefix, err),
+			}
+		}
+		if prefix != cwd && !info.IsDir() {
+			return &composition.Error{
+				Code:    "E_COMPOSITION_CWD_UNRESOLVED",
+				Message: fmt.Sprintf("post-pivot cwd %q component %q is not a directory", cwd, prefix),
+			}
+		}
+	}
+	if err := os.Chdir(cwd); err != nil {
+		return &composition.Error{Code: "E_COMPOSITION_CWD_UNRESOLVED", Message: fmt.Sprintf("post-pivot chdir %q: %v", cwd, err)}
+	}
+	return nil
 }
 
 func applyEnvironment(plan composition.Plan) []string {

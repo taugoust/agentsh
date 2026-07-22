@@ -122,6 +122,34 @@ func TestParseCapturedQShellBubblewrap0112Invocation(t *testing.T) {
 	if err := ValidatePlan(plan, 256); err != nil {
 		t.Fatalf("validate captured normalized plan: %v", err)
 	}
+	snapshot, err := SnapshotPlan(plan)
+	if err != nil {
+		t.Fatalf("snapshot captured normalized plan: %v", err)
+	}
+	if snapshot.Cwd != plan.Cwd || snapshot.OperationCount != len(plan.Operations) || len(snapshot.Operations) != len(plan.Operations) || len(snapshot.Digest) != 64 {
+		t.Fatalf("normalized plan snapshot header mismatch: %+v", snapshot)
+	}
+	for index, operation := range plan.Operations {
+		actual := snapshot.Operations[index]
+		if actual.Index != index || actual.Type != operation.Type || actual.Source != operation.Source || actual.Target != operation.Target || actual.ReadOnly != operation.ReadOnly || actual.Recursive != operation.Recursive || actual.Try != operation.Try {
+			t.Fatalf("normalized operation %d mismatch: got=%+v want=%+v", index, actual, operation)
+		}
+	}
+	findOperation := func(operationType OperationType, source, target string) int {
+		t.Helper()
+		for index, operation := range snapshot.Operations {
+			if operation.Type == operationType && operation.Source == source && operation.Target == target {
+				return index
+			}
+		}
+		return -1
+	}
+	nixBind := findOperation(OperationBind, "/nix", "/nix")
+	scratchBind := findOperation(OperationBind, "/scratch", "/scratch")
+	lastMask := findOperation(OperationTmpfs, "", "/tmp/.X11-unix")
+	if nixBind != 2 || scratchBind <= nixBind || lastMask != len(snapshot.Operations)-1 {
+		t.Fatalf("captured normalized operation order changed: nix=%d scratch=%d last-mask=%d digest=%s", nixBind, scratchBind, lastMask, snapshot.Digest)
+	}
 }
 
 func TestParseBubblewrapAllowsRootWorkingDirectory(t *testing.T) {

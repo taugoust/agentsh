@@ -27,6 +27,13 @@ var maxShellCDeriveDepth = 4
 // supplied only through internal API options, never through ExecRequest JSON.
 type CommandProvenance string
 
+// CommandMatchContext carries server-normalized request attributes that are not
+// controlled by command argv. An empty WorkingDirectory cannot satisfy a
+// working_directory_roots condition.
+type CommandMatchContext struct {
+	WorkingDirectory string
+}
+
 const (
 	CommandProvenanceNone          CommandProvenance = ""
 	CommandProvenanceDirenvRefresh CommandProvenance = "direnv_refresh"
@@ -108,12 +115,13 @@ type compiledNetworkRule struct {
 }
 
 type compiledCommandRule struct {
-	rule          CommandRule
-	basenames     map[string]struct{} // Commands without paths (e.g., "sh") - match by basename
-	basenameGlobs []glob.Glob         // Glob patterns for basenames (e.g., "go*", "*")
-	fullPaths     map[string]struct{} // Commands with paths (e.g., "/bin/sh") - match exact path
-	pathGlobs     []glob.Glob         // Glob patterns for paths (e.g., "/usr/*/sh")
-	argsRegexes   []*regexp.Regexp    // Regex patterns matched against joined args string
+	rule                  CommandRule
+	basenames             map[string]struct{} // Commands without paths (e.g., "sh") - match by basename
+	basenameGlobs         []glob.Glob         // Glob patterns for basenames (e.g., "go*", "*")
+	fullPaths             map[string]struct{} // Commands with paths (e.g., "/bin/sh") - match exact path
+	pathGlobs             []glob.Glob         // Glob patterns for paths (e.g., "/usr/*/sh")
+	argsRegexes           []*regexp.Regexp    // Regex patterns matched against joined args string
+	workingDirectoryRoots []string            // Clean absolute roots matched against the normalized request cwd
 }
 
 type compiledUnixRule struct {
@@ -265,6 +273,12 @@ func NewEngine(p *Policy, enforceApprovals bool, enforceRedirects bool) (*Engine
 				return nil, fmt.Errorf("compile command rule %q arg pattern %q: %w", r.Name, pat, err)
 			}
 			cr.argsRegexes = append(cr.argsRegexes, re)
+		}
+		for _, root := range r.WorkingDirectoryRoots {
+			if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+				return nil, fmt.Errorf("compile command rule %q working directory root %q: expected a clean absolute path", r.Name, root)
+			}
+			cr.workingDirectoryRoots = append(cr.workingDirectoryRoots, root)
 		}
 		e.compiledCommandRules = append(e.compiledCommandRules, cr)
 	}
@@ -466,6 +480,14 @@ func expandPolicy(p *Policy, vars map[string]string) (*Policy, error) {
 			}
 			expandedRule.Commands[j] = expandedCommand
 		}
+		expandedRule.WorkingDirectoryRoots = make([]string, len(rule.WorkingDirectoryRoots))
+		for j, root := range rule.WorkingDirectoryRoots {
+			expandedRoot, err := ExpandVariables(root, vars)
+			if err != nil {
+				return nil, fmt.Errorf("command rule %q working directory root %q: %w", rule.Name, root, err)
+			}
+			expandedRule.WorkingDirectoryRoots[j] = expandedRoot
+		}
 		expanded.CommandRules[i] = expandedRule
 	}
 
@@ -654,7 +676,7 @@ func ParseShellCOpaqueMode(s string) ShellCOpaqueMode {
 // restrictive command rule is present). See CheckCommandWithExecve for callers
 // on an execve-policed execution path.
 func (e *Engine) CheckCommand(command string, args []string) Decision {
-	return e.checkCommand(command, args, false, ShellCOpaqueEnforce, CommandProvenanceNone)
+	return e.checkCommand(command, args, false, ShellCOpaqueEnforce, CommandProvenanceNone, CommandMatchContext{})
 }
 
 // CheckCommandWithExecve is CheckCommand for callers whose execution path has
@@ -669,11 +691,19 @@ func (e *Engine) CheckCommandWithExecve(command string, args []string, execveEnf
 // CheckCommandWithExecveProvenance evaluates a command with server-owned
 // execution provenance. Public request handlers must use CommandProvenanceNone.
 func (e *Engine) CheckCommandWithExecveProvenance(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode, provenance CommandProvenance) Decision {
-	return e.checkCommand(command, args, execveEnforcementActive, opaqueMode, provenance)
+	return e.CheckCommandWithExecveProvenanceContext(command, args, execveEnforcementActive, opaqueMode, provenance, CommandMatchContext{})
 }
 
-func (e *Engine) checkCommand(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode, provenance CommandProvenance) Decision {
-	result, _ := e.matchCommandRules(command, args, provenance)
+// CheckCommandWithExecveProvenanceContext evaluates a direct request using
+// server-normalized match context. Runtime execve checks intentionally receive
+// no request context and therefore cannot accidentally satisfy a cwd-scoped
+// command rule.
+func (e *Engine) CheckCommandWithExecveProvenanceContext(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode, provenance CommandProvenance, matchContext CommandMatchContext) Decision {
+	return e.checkCommand(command, args, execveEnforcementActive, opaqueMode, provenance, matchContext)
+}
+
+func (e *Engine) checkCommand(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode, provenance CommandProvenance, matchContext CommandMatchContext) Decision {
+	result, _ := e.matchCommandRules(command, args, provenance, matchContext)
 	// For `<shell> -c "<simple-cmd>"` invocations, also evaluate the
 	// underlying binary so a rule like `deny bin=shutdown` fires for
 	// `sh -c "shutdown now"`. An EXPLICITLY matched rule at any derivation
@@ -744,7 +774,7 @@ func (e *Engine) checkCommand(command string, args []string, execveEnforcementAc
 			break
 		}
 		cur, curArgs = derivedCmd, derivedArgs
-		dec, matched := e.matchCommandRules(cur, curArgs, provenance)
+		dec, matched := e.matchCommandRules(cur, curArgs, provenance, matchContext)
 		if !matched {
 			continue
 		}
@@ -811,7 +841,7 @@ func decisionStrictness(d types.Decision) int {
 // When no rule matched, matched=false and the returned Decision is the
 // default-deny fall-through (kept here so callers that don't care about
 // match status continue to see deny-by-default).
-func (e *Engine) matchCommandRules(command string, args []string, provenance CommandProvenance) (Decision, bool) {
+func (e *Engine) matchCommandRules(command string, args []string, provenance CommandProvenance, matchContext CommandMatchContext) (Decision, bool) {
 	cmdLower := strings.ToLower(command)
 	cmdBase := strings.ToLower(filepath.Base(command))
 	// The shim install renames the original shell to <name>.real and places
@@ -832,6 +862,9 @@ func (e *Engine) matchCommandRules(command string, args []string, provenance Com
 		// Pre-check is always depth 0 (direct command from user)
 		// Skip rules that don't apply to direct commands
 		if !r.rule.Context.MatchesDepth(0) {
+			continue
+		}
+		if !workingDirectoryMatches(r.workingDirectoryRoots, matchContext.WorkingDirectory) {
 			continue
 		}
 
@@ -911,6 +944,21 @@ func (e *Engine) matchCommandRules(command string, args []string, provenance Com
 	dec := e.wrapDecision(string(types.DecisionDeny), "default-deny-commands", "", nil)
 	dec.EnvPolicy = MergeEnvPolicy(e.policy.EnvPolicy, CommandRule{})
 	return dec, false
+}
+
+func workingDirectoryMatches(roots []string, workingDirectory string) bool {
+	if len(roots) == 0 {
+		return true
+	}
+	if !filepath.IsAbs(workingDirectory) || filepath.Clean(workingDirectory) != workingDirectory {
+		return false
+	}
+	for _, root := range roots {
+		if pathWithin(workingDirectory, root) {
+			return true
+		}
+	}
+	return false
 }
 
 // isReadOperation returns true for non-mutating file operations.
@@ -1437,6 +1485,9 @@ func (e *Engine) CheckExecveWithAliasesProvenance(filename string, aliases []str
 		}
 		// Check depth/context constraint first
 		if !r.rule.Context.MatchesDepth(depth) {
+			continue
+		}
+		if len(r.workingDirectoryRoots) > 0 {
 			continue
 		}
 

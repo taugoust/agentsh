@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -371,6 +372,9 @@ func runHarness(args []string) error {
 		allowedRoot:   filepath.Clean(*brokerRoot),
 	}
 	handlerDone := make(chan error, 1)
+	var normalizedPlanMu sync.Mutex
+	var normalizedQShellPlan *composition.NormalizedPlanSnapshot
+	var normalizedPlanErr error
 	if semanticComposition {
 		pathRegistry := unixmon.NewCompositionPathRegistry()
 		runtimeBroker, err := composition.NewBroker(composition.BrokerConfig{
@@ -389,7 +393,31 @@ func runHarness(args []string) error {
 			SetupSenderExecutable: processExecutablePath(*wrapper),
 			SetupSyntheticRoots:   cfg.CompositionMaxTransitions,
 			SetupSyntheticRW:      cfg.CompositionSyntheticMounts,
-			PublishPathMappings:   pathRegistry.Register,
+			PublishNormalizedPlan: func(_ int, _ int, snapshot composition.NormalizedPlanSnapshot) {
+				if snapshot.Cwd != "/scratch/theo/qshell-project/qshell" {
+					return
+				}
+				normalizedPlanMu.Lock()
+				defer normalizedPlanMu.Unlock()
+				copy := snapshot
+				normalizedQShellPlan = &copy
+				if snapshot.OperationCount != 65 || len(snapshot.Operations) != 65 {
+					normalizedPlanErr = fmt.Errorf("captured QShell normalized operation count=%d/%d", snapshot.OperationCount, len(snapshot.Operations))
+					return
+				}
+				find := func(source, target string) int {
+					for _, operation := range snapshot.Operations {
+						if operation.Type == composition.OperationBind && operation.Source == source && operation.Target == target && operation.Recursive {
+							return operation.Index
+						}
+					}
+					return -1
+				}
+				if nixIndex, scratchIndex := find("/nix", "/nix"), find("/scratch", "/scratch"); nixIndex != 2 || scratchIndex <= nixIndex {
+					normalizedPlanErr = fmt.Errorf("captured QShell normalized bind order nix=%d scratch=%d", nixIndex, scratchIndex)
+				}
+			},
+			PublishPathMappings: pathRegistry.Register,
 		})
 		if err != nil {
 			_ = cmd.Process.Kill()
@@ -461,6 +489,18 @@ func runHarness(args []string) error {
 	}
 	fmt.Print(stdout.String())
 	fmt.Fprint(os.Stderr, stderr.String())
+	if semanticComposition {
+		normalizedPlanMu.Lock()
+		planSnapshot, planErr := normalizedQShellPlan, normalizedPlanErr
+		normalizedPlanMu.Unlock()
+		if planErr != nil {
+			return planErr
+		}
+		if planSnapshot == nil {
+			return errors.New("runtime broker did not capture the normalized QShell plan")
+		}
+		fmt.Printf("stage=normalized-qshell-plan operations=%d cwd=%s digest=%s result=pass\n", planSnapshot.OperationCount, planSnapshot.Cwd, planSnapshot.Digest)
+	}
 
 	exitCode := processExitCode(waitErr)
 	report := feasibilityReport{

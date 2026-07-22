@@ -1,7 +1,4 @@
-{
-  pkgs,
-  self,
-}:
+{ pkgs, self }:
 let
   vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
 
@@ -152,6 +149,21 @@ let
     text = ''
       set -euo pipefail
       test "$(pwd)" = /scratch/theo/qshell-project/qshell
+      printf '%s\n' project-write > .agentsh-composition-project-write
+      test "$(cat .agentsh-composition-project-write)" = project-write
+      rm .agentsh-composition-project-write
+      if printf denied > /scratch/theo/outside/agentsh-composition-write 2>/dev/null; then
+        echo "heterogeneous /scratch bind broadened write authority" >&2
+        exit 1
+      fi
+      if printf denied > /nix/agentsh-composition-write 2>/dev/null; then
+        echo "/nix bind gained write authority" >&2
+        exit 1
+      fi
+      if printf denied > /nix/store/agentsh-composition-write 2>/dev/null; then
+        echo "/nix/store bind gained write authority" >&2
+        exit 1
+      fi
       test "$(cat /nix-support/marker)" = broker-source
       test "$(cat ${qshellPathFixture}/etc/rpc)" = broker-source
       test -r /.host-etc/os-release
@@ -229,6 +241,17 @@ let
     '';
   };
 
+  productionMissingCWDDriver = pkgs.writeShellApplication {
+    name = "agentsh-composition-missing-cwd-driver";
+    runtimeInputs = [ pkgs.bubblewrap ];
+    text = ''
+      exec bwrap \
+        --bind /scratch /scratch \
+        --chdir /scratch/theo/qshell-project/missing-cwd/leaf \
+        -- ${pkgs.coreutils}/bin/true
+    '';
+  };
+
   productionRecursiveDriver = pkgs.writeShellApplication {
     name = "agentsh-composition-runtime-recursive-driver";
     runtimeInputs = [ pkgs.bubblewrap ];
@@ -283,6 +306,20 @@ let
       run sequential-b ${productionMockHelper}/bin/agentsh-composition-runtime-helper sequential-b
       run recursive ${productionRecursiveDriver}/bin/agentsh-composition-runtime-recursive-driver
       ${productionQShellDriver}/bin/agentsh-composition-qshell-contract-driver
+      missing_cwd=/scratch/theo/qshell-project/missing-cwd/leaf
+      if missing_output="$(${productionMissingCWDDriver}/bin/agentsh-composition-missing-cwd-driver 2>&1)"; then
+        echo "completed-root cwd validation unexpectedly accepted $missing_cwd" >&2
+        exit 1
+      fi
+      case "$missing_output" in
+        *E_COMPOSITION_CWD_UNRESOLVED*) ;;
+        *) printf 'missing typed cwd diagnostic:\n%s\n' "$missing_output" >&2; exit 1 ;;
+      esac
+      case "$missing_output" in
+        *'first unresolved component "/scratch/theo/qshell-project/missing-cwd"'*) ;;
+        *) printf 'missing first unresolved cwd component:\n%s\n' "$missing_output" >&2; exit 1 ;;
+      esac
+      printf 'stage=completed-root-cwd-rejection component=/scratch/theo/qshell-project/missing-cwd result=pass\n'
       printf 'stage=production-composition-matrix result=pass\\n'
     '';
   };
@@ -303,35 +340,33 @@ in
 pkgs.testers.runNixOSTest {
   name = "agentsh-nested-namespace-broker-feasibility";
 
-  nodes.machine =
-    { ... }:
-    {
-      security.unprivilegedUsernsClone = true;
-      boot.kernel.sysctl."user.max_user_namespaces" = 1024;
-      users.users.tester = {
-        isNormalUser = true;
-        uid = 1000;
-      };
-      environment.systemPackages = [
-        compositionProbe
-        brokerProbe
-        genericWrapper
-        semanticWrapper
-        mountHelper
-      ];
-      virtualisation = {
-        memorySize = 2048;
-        cores = 2;
-      };
-      system.stateVersion = "25.11";
+  nodes.machine = { ... }: {
+    security.unprivilegedUsernsClone = true;
+    boot.kernel.sysctl."user.max_user_namespaces" = 1024;
+    users.users.tester = {
+      isNormalUser = true;
+      uid = 1000;
     };
+    environment.systemPackages = [
+      compositionProbe
+      brokerProbe
+      genericWrapper
+      semanticWrapper
+      mountHelper
+    ];
+    virtualisation = {
+      memorySize = 2048;
+      cores = 2;
+    };
+    system.stateVersion = "25.11";
+  };
 
   testScript = ''
     start_all()
     machine.wait_for_unit("multi-user.target")
     machine.succeed("install -d -m 0755 /run/agentsh-feasibility-control")
     machine.succeed("install -d -o root -g root -m 1733 /agentsh-composition-scratch")
-    machine.succeed("install -d -o tester -g users -m 0755 /scratch/theo/qshell-project/qshell /boot /mnt /opt /share /srv /zokelmannvms /zroot")
+    machine.succeed("install -d -o tester -g users -m 0755 /scratch/theo/qshell-project/qshell /scratch/theo/outside /boot /mnt /opt /share /srv /zokelmannvms /zroot")
     machine.succeed("printf '%s\\n' supervisor-secret > /run/agentsh-feasibility-control/secret")
     machine.succeed(
         "install -d -o tester -g users -m 0700 ${brokerRoot} "
@@ -386,7 +421,7 @@ pkgs.testers.runNixOSTest {
         assert '"raw_mount_denied":true' in semantic, semantic
         assert '"landlock_composes":true' in semantic, semantic
 
-    with subtest("production semantic adapter composes repeated real Bubblewrap under Landlock"):
+    def run_production(topology):
         production = machine.succeed(
             "runuser -u tester -- ${compositionProbe}/bin/namespace-composition-probe run "
             "--wrapper ${productionPackage}/bin/agentsh-unixwrap "
@@ -402,8 +437,31 @@ pkgs.testers.runNixOSTest {
         assert "mode=current-pid-proc result=pass" in production, production
         assert "mode=recursive-inner result=pass" in production, production
         assert "mode=qshell-captured-contract result=pass" in production, production
+        assert "stage=normalized-qshell-plan operations=65 cwd=/scratch/theo/qshell-project/qshell" in production, production
+        assert "stage=completed-root-cwd-rejection component=/scratch/theo/qshell-project/missing-cwd result=pass" in production, production
         assert '"stage":"landlock_semantic_composition_runtime"' in production, production
         assert '"selected_branch":"bubblewrap_semantic_adapter"' in production, production
         assert '"landlock_composes":true' in production, production
+        return production
+
+    with subtest("production semantic adapter preserves an ordinary deep /scratch cwd"):
+        run_production("ordinary")
+
+    with subtest("production semantic adapter preserves a symlinked /scratch cwd"):
+        machine.succeed(
+            "rm -rf /scratch && "
+            "install -d -o tester -g users -m 0755 /zroot/scratch-real/theo/qshell-project/qshell /zroot/scratch-real/theo/outside && "
+            "ln -s /zroot/scratch-real /scratch"
+        )
+        run_production("symlink")
+
+    with subtest("production semantic adapter preserves a separate project submount cwd"):
+        machine.succeed(
+            "rm /scratch && rm -rf /zroot/scratch-real && "
+            "install -d -o tester -g users -m 0755 /scratch/theo/qshell-project /scratch/theo/outside && "
+            "mount -t tmpfs -o nosuid,nodev,size=16m tmpfs /scratch/theo/qshell-project && "
+            "install -d -o tester -g users -m 0755 /scratch/theo/qshell-project/qshell"
+        )
+        run_production("separate-mount")
   '';
 }

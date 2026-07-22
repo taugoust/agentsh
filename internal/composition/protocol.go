@@ -2,6 +2,8 @@ package composition
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,6 +60,34 @@ type Operation struct {
 	Try       bool          `json:"try,omitempty"`
 }
 
+// NormalizedOperation is the bounded, parser-normalized operation shape used
+// for audit and release-gate assertions. It contains only client-supplied mount
+// plan paths and flags; payload arguments and environment values are excluded.
+type NormalizedOperation struct {
+	Index     int           `json:"index"`
+	Type      OperationType `json:"type"`
+	Source    string        `json:"source,omitempty"`
+	Target    string        `json:"target"`
+	ReadOnly  bool          `json:"read_only,omitempty"`
+	Recursive bool          `json:"recursive,omitempty"`
+	Try       bool          `json:"try,omitempty"`
+}
+
+// NormalizedPlanSnapshot captures the actual validated plan received by the
+// broker, rather than inferring behavior from parser option counts.
+type NormalizedPlanSnapshot struct {
+	Version        int                   `json:"version"`
+	Dialect        string                `json:"dialect"`
+	Cwd            string                `json:"cwd"`
+	UnsharePID     bool                  `json:"unshare_pid"`
+	UnshareIPC     bool                  `json:"unshare_ipc"`
+	UnshareUTS     bool                  `json:"unshare_uts"`
+	UnshareCgroup  bool                  `json:"unshare_cgroup"`
+	OperationCount int                   `json:"operation_count"`
+	Operations     []NormalizedOperation `json:"operations"`
+	Digest         string                `json:"digest"`
+}
+
 type Plan struct {
 	Version int    `json:"version"`
 	Dialect string `json:"dialect"`
@@ -104,6 +134,58 @@ type PathSymlink struct {
 type PathMappings struct {
 	Aliases  []PathAlias
 	Symlinks []PathSymlink
+}
+
+func SnapshotPlan(plan Plan) (NormalizedPlanSnapshot, error) {
+	snapshot := NormalizedPlanSnapshot{
+		Version:        plan.Version,
+		Dialect:        plan.Dialect,
+		Cwd:            plan.Cwd,
+		UnsharePID:     plan.UnsharePID,
+		UnshareIPC:     plan.UnshareIPC,
+		UnshareUTS:     plan.UnshareUTS,
+		UnshareCgroup:  plan.UnshareCgroup,
+		OperationCount: len(plan.Operations),
+		Operations:     make([]NormalizedOperation, len(plan.Operations)),
+	}
+	for index, operation := range plan.Operations {
+		snapshot.Operations[index] = NormalizedOperation{
+			Index:     index,
+			Type:      operation.Type,
+			Source:    operation.Source,
+			Target:    operation.Target,
+			ReadOnly:  operation.ReadOnly,
+			Recursive: operation.Recursive,
+			Try:       operation.Try,
+		}
+	}
+	encoded, err := json.Marshal(struct {
+		Version        int                   `json:"version"`
+		Dialect        string                `json:"dialect"`
+		Cwd            string                `json:"cwd"`
+		UnsharePID     bool                  `json:"unshare_pid"`
+		UnshareIPC     bool                  `json:"unshare_ipc"`
+		UnshareUTS     bool                  `json:"unshare_uts"`
+		UnshareCgroup  bool                  `json:"unshare_cgroup"`
+		OperationCount int                   `json:"operation_count"`
+		Operations     []NormalizedOperation `json:"operations"`
+	}{
+		Version:        snapshot.Version,
+		Dialect:        snapshot.Dialect,
+		Cwd:            snapshot.Cwd,
+		UnsharePID:     snapshot.UnsharePID,
+		UnshareIPC:     snapshot.UnshareIPC,
+		UnshareUTS:     snapshot.UnshareUTS,
+		UnshareCgroup:  snapshot.UnshareCgroup,
+		OperationCount: snapshot.OperationCount,
+		Operations:     snapshot.Operations,
+	})
+	if err != nil {
+		return NormalizedPlanSnapshot{}, fmt.Errorf("encode normalized plan snapshot: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	snapshot.Digest = hex.EncodeToString(digest[:])
+	return snapshot, nil
 }
 
 type Response struct {

@@ -72,6 +72,65 @@ func TestProjectOverlayCompositionRequiresExplicitTrustedBoundary(t *testing.T) 
 	}
 }
 
+func TestCommandRuleCompositionRequiresNormalizedWorkingDirectoryRoot(t *testing.T) {
+	p := &Policy{
+		Version: 1,
+		Name:    "composition-cwd",
+		CommandRules: []CommandRule{
+			{
+				Name:                  "qshell-project",
+				Commands:              []string{"bash"},
+				ArgsPatterns:          []string{`^-c nix develop \.#ultrascale`},
+				WorkingDirectoryRoots: []string{"${PROJECT_ROOT}"},
+				Decision:              "allow",
+				SandboxComposition:    "bubblewrap-0.11.2",
+			},
+			{Name: "broad-bash", Commands: []string{"bash"}, Decision: "allow"},
+		},
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := NewEngineWithVariables(p, true, true, map[string]string{"PROJECT_ROOT": "/scratch/theo/qshell-project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(name, cwd, wantRule, wantComposition string) {
+		t.Helper()
+		decision := engine.CheckCommandWithExecveProvenanceContext(
+			"bash",
+			[]string{"-c", "nix develop .#ultrascale --command true"},
+			true,
+			ShellCOpaqueEnforce,
+			CommandProvenanceNone,
+			CommandMatchContext{WorkingDirectory: cwd},
+		)
+		if decision.Rule != wantRule || decision.SandboxComposition != wantComposition {
+			t.Errorf("%s: decision=%+v, want rule=%q composition=%q", name, decision, wantRule, wantComposition)
+		}
+	}
+	check("project root", "/scratch/theo/qshell-project", "qshell-project", "bubblewrap-0.11.2")
+	check("project descendant", "/scratch/theo/qshell-project/qshell", "qshell-project", "bubblewrap-0.11.2")
+	check("outside", "/scratch/theo/other-project", "broad-bash", "")
+	check("relative is not normalized", "qshell", "broad-bash", "")
+	check("missing", "", "broad-bash", "")
+
+	// Runtime exec checks have no trusted request cwd and must not activate the
+	// request-local composition rule.
+	if decision := engine.CheckExecve("bash", []string{"bash", "-c", "nix develop .#ultrascale --command true"}, 0); decision.Rule != "broad-bash" || decision.SandboxComposition != "" {
+		t.Fatalf("runtime exec decision=%+v", decision)
+	}
+}
+
+func TestCommandRuleRejectsInvalidWorkingDirectoryRoots(t *testing.T) {
+	for _, root := range []string{"relative", "/scratch/../etc", "/scratch/*"} {
+		p := Policy{Version: 1, Name: "bad-cwd", CommandRules: []CommandRule{{Name: "bad", Decision: "allow", WorkingDirectoryRoots: []string{root}}}}
+		if err := p.Validate(); err == nil {
+			t.Errorf("working directory root %q unexpectedly validated", root)
+		}
+	}
+}
+
 func TestCommandRuleRejectsUnknownSandboxComposition(t *testing.T) {
 	policy := Policy{
 		Version: 1,

@@ -468,7 +468,10 @@ func TestBindWithoutBaseWriteAuthorityIsReducedToReadOnly(t *testing.T) {
 		ExecuteRoots: []string{"/nix"},
 	}}
 	operation := Operation{Type: OperationBind, Source: "/nix", Target: "/nix", Recursive: true}
-	attributes := broker.bindRequiredAttributes(operation, "/nix", readExecute)
+	attributes, err := broker.bindRequiredAttributes(operation, "/nix", readExecute, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if attributes&unix.MOUNT_ATTR_RDONLY == 0 {
 		t.Fatalf("non-writable /nix bind attributes = %#x, want read-only", attributes)
 	}
@@ -477,9 +480,86 @@ func TestBindWithoutBaseWriteAuthorityIsReducedToReadOnly(t *testing.T) {
 	}
 
 	broker.cfg.WriteRoots = []string{"/nix"}
-	attributes = broker.bindRequiredAttributes(operation, "/nix", readExecute|landlock.LANDLOCK_ACCESS_FS_WRITE_FILE)
+	attributes, err = broker.bindRequiredAttributes(operation, "/nix", readExecute|landlock.LANDLOCK_ACCESS_FS_WRITE_FILE, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if attributes&unix.MOUNT_ATTR_RDONLY != 0 {
 		t.Fatalf("base-policy writable bind attributes = %#x, did not want read-only", attributes)
+	}
+}
+
+func TestHeterogeneousBindPreservesRetainedWritableDescendant(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "theo", "qshell-project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	openPath := func(path string) *os.File {
+		t.Helper()
+		fd, err := unix.Open(path, unix.O_PATH|unix.O_CLOEXEC, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return os.NewFile(uintptr(fd), path)
+	}
+	source := openPath(root)
+	defer source.Close()
+	projectObject := openPath(project)
+	defer projectObject.Close()
+	projectMetadata, err := objectMetadata(SetupObjectPolicy, project, compositionMutationRights|landlock.LANDLOCK_ACCESS_FS_READ_DIR|landlock.LANDLOCK_ACCESS_FS_EXECUTE, projectObject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker := &Broker{
+		cfg: BrokerConfig{
+			WriteRoots:   []string{project},
+			ExecuteRoots: []string{project},
+		},
+		setup: &ReceivedSetup{Objects: []ReceivedSetupObject{{SetupObject: projectMetadata, File: projectObject}}},
+	}
+	info, err := source.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := Operation{Type: OperationBind, Source: root, Target: "/scratch", Recursive: true}
+	rootRights := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR)
+	attributes, err := broker.bindRequiredAttributes(operation, root, rootRights, source, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attributes&unix.MOUNT_ATTR_RDONLY != 0 {
+		t.Fatalf("heterogeneous bind attributes=%#x, writable descendant was flattened to read-only", attributes)
+	}
+	if attributes&unix.MOUNT_ATTR_NOEXEC != 0 {
+		t.Fatalf("heterogeneous bind attributes=%#x, executable descendant was flattened to noexec", attributes)
+	}
+	validationRights, err := broker.recursiveBindValidationRights(operation, source, info, rootRights)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantValidationRights := rootRights | compositionMutationRights | landlock.LANDLOCK_ACCESS_FS_EXECUTE
+	if validationRights&wantValidationRights != wantValidationRights {
+		t.Fatalf("heterogeneous validation rights=%#x, want coverage %#x", validationRights, wantValidationRights)
+	}
+	if err := validateDestinationRights(root, validationRights, wantValidationRights, info, attributes); err != nil {
+		t.Fatalf("heterogeneous bind did not preserve descendant authority: %v", err)
+	}
+
+	broker.setup.Objects[0].Rights = landlock.LANDLOCK_ACCESS_FS_READ_DIR
+	attributes, err = broker.bindRequiredAttributes(operation, root, rootRights, source, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attributes&unix.MOUNT_ATTR_RDONLY == 0 || attributes&unix.MOUNT_ATTR_NOEXEC == 0 {
+		t.Fatalf("homogeneous non-writable bind attributes=%#x, want ro,noexec", attributes)
+	}
+	validationRights, err = broker.recursiveBindValidationRights(operation, source, info, rootRights)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if validationRights != rootRights {
+		t.Fatalf("homogeneous validation rights=%#x, want %#x", validationRights, rootRights)
 	}
 }
 

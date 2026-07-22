@@ -41,6 +41,7 @@ type BrokerConfig struct {
 	SetupSyntheticRoots   int
 	SetupSyntheticRW      int
 	DeviceIOCTLRoots      []string
+	PublishNormalizedPlan func(parentPID, targetPID int, snapshot NormalizedPlanSnapshot)
 	PublishPathMappings   func(parentPID, targetPID int, mappings PathMappings) error
 }
 
@@ -523,13 +524,11 @@ func (b *Broker) handlePlan(expectedPID int, mapped *mappedRequester, nonce stri
 	if err != nil {
 		return err
 	}
-	pidOwnerPID := requesterPID
 	pidOwnedByTargetUser := true
 	if mapped != nil {
 		if err := validatePlanNamespaceSelection(expectedPID, requesterPID, plan); err != nil {
 			return err
 		}
-		pidOwnerPID = expectedPID
 		pidOwnedByTargetUser = plan.UnsharePID
 	}
 	if plan.UID != nil && *plan.UID != 1 {
@@ -538,7 +537,14 @@ func (b *Broker) handlePlan(expectedPID int, mapped *mappedRequester, nonce stri
 	if plan.GID != nil && *plan.GID != 1 {
 		return typedError("E_COMPOSITION_OPTION_UNSUPPORTED", "requested GID %d is not the admitted namespace identity", *plan.GID)
 	}
-	return b.executePlan(expectedPID, requesterPID, pidOwnerPID, pidOwnedByTargetUser, plan, revalidate)
+	if b.cfg.PublishNormalizedPlan != nil {
+		snapshot, snapshotErr := SnapshotPlan(plan)
+		if snapshotErr != nil {
+			return typedError("E_COMPOSITION_COMMIT_FAILED", "%v", snapshotErr)
+		}
+		b.cfg.PublishNormalizedPlan(expectedPID, requesterPID, snapshot)
+	}
+	return b.executePlan(expectedPID, requesterPID, pidOwnedByTargetUser, plan, revalidate)
 }
 
 func validatePlanNamespaceSelection(expectedPID, requesterPID int, plan Plan) error {
@@ -859,8 +865,31 @@ func (t *targetContext) close() {
 	}
 }
 
-func pinTargetContext(pid, pidOwnerPID int, pidOwnedByTargetUser bool) (*targetContext, error) {
-	if pid <= 0 || pidOwnerPID <= 0 {
+// NS_GET_USERNS returns the user namespace that owns another namespace. Derive
+// this from the pinned PID namespace itself rather than assuming it is owned by
+// the adapter's immediate parent user namespace: a recursively composed command
+// may preserve a PID namespace owned by an older ancestor.
+const nsGetUserNamespace = 0xb701
+
+func namespaceOwnerUser(namespace *os.File) (*os.File, error) {
+	if namespace == nil {
+		return nil, typedError("E_COMPOSITION_REQUESTER_CHANGED", "PID namespace is unavailable")
+	}
+	fd, _, errno := unix.Syscall(unix.SYS_IOCTL, namespace.Fd(), uintptr(nsGetUserNamespace), 0)
+	if errno != 0 {
+		return nil, typedError("E_COMPOSITION_REQUESTER_CHANGED", "resolve PID namespace owner: %v", errno)
+	}
+	unix.CloseOnExec(int(fd))
+	owner := os.NewFile(fd, "composition-target-pid-owner-user-namespace")
+	if owner == nil {
+		_ = unix.Close(int(fd))
+		return nil, typedError("E_COMPOSITION_REQUESTER_CHANGED", "retain PID namespace owner")
+	}
+	return owner, nil
+}
+
+func pinTargetContext(pid int, pidOwnedByTargetUser bool) (*targetContext, error) {
+	if pid <= 0 {
 		return nil, typedError("E_COMPOSITION_REQUESTER_CHANGED", "invalid target pid")
 	}
 	before, err := readNamespaceIdentities(pid)
@@ -892,8 +921,15 @@ func pinTargetContext(pid, pidOwnerPID int, pidOwnedByTargetUser bool) (*targetC
 	if target.mount, err = open("mount-namespace", filepath.Join(prefix, "ns", "mnt"), unix.O_RDONLY); err != nil {
 		return fail(err)
 	}
-	if target.pidOwnerUser, err = open("pid-owner-user-namespace", filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(pidOwnerPID), "ns", "user"), unix.O_RDONLY); err != nil {
+	if target.pidOwnerUser, err = namespaceOwnerUser(target.pidNS); err != nil {
 		return fail(err)
+	}
+	ownerIsTarget, err := sameObject(target.pidOwnerUser, target.user)
+	if err != nil {
+		return fail(typedError("E_COMPOSITION_REQUESTER_CHANGED", "compare PID namespace owner: %v", err))
+	}
+	if ownerIsTarget != pidOwnedByTargetUser {
+		return fail(typedError("E_COMPOSITION_NAMESPACE_INVALID", "PID namespace ownership does not match the normalized plan"))
 	}
 	after, err := readNamespaceIdentities(pid)
 	if err != nil {
@@ -1015,7 +1051,11 @@ func (b *Broker) finalMountExpectations(context *targetContext, staging string, 
 				source.Close()
 				return nil, rightsErr
 			}
-			required := b.bindRequiredAttributes(operation, canonical, rights)
+			required, requiredErr := b.bindRequiredAttributes(operation, canonical, rights, source, info)
+			if requiredErr != nil {
+				source.Close()
+				return nil, requiredErr
+			}
 			expectationErr := b.addBindMountExpectations(context, expected, source, operation.Source, target, required)
 			source.Close()
 			if expectationErr != nil {
@@ -1116,6 +1156,141 @@ func (b *Broker) validateFinalTopology(context *targetContext, staging string, p
 	return nil
 }
 
+type completedCWDIdentity struct {
+	device uint64
+	inode  uint64
+	mode   uint32
+}
+
+type cwdMountProvenance struct {
+	index     int
+	operation Operation
+}
+
+func parseCompletedCWDIdentity(output []byte, cwd string) (completedCWDIdentity, string, int, error) {
+	line := strings.TrimSpace(string(output))
+	fields := strings.Split(line, "\t")
+	if len(fields) == 4 && fields[0] == "M" {
+		errnoValue, errnoErr := strconv.Atoi(fields[1])
+		length, lengthErr := strconv.Atoi(fields[2])
+		decoded, decodeErr := hex.DecodeString(fields[3])
+		component := string(decoded)
+		if errnoErr != nil || lengthErr != nil || decodeErr != nil || length < 1 || len(decoded) != length || !filepath.IsAbs(component) || filepath.Clean(component) != component || !pathWithin(cwd, component) {
+			return completedCWDIdentity{}, "", 0, typedError("E_COMPOSITION_TOPOLOGY_UNRESOLVED", "invalid completed cwd diagnostic")
+		}
+		return completedCWDIdentity{}, component, errnoValue, nil
+	}
+	if len(fields) != 4 || fields[0] != "O" {
+		return completedCWDIdentity{}, "", 0, typedError("E_COMPOSITION_TOPOLOGY_UNRESOLVED", "invalid completed cwd identity")
+	}
+	device, deviceErr := strconv.ParseUint(fields[1], 10, 64)
+	inode, inodeErr := strconv.ParseUint(fields[2], 10, 64)
+	mode, modeErr := strconv.ParseUint(fields[3], 10, 32)
+	if deviceErr != nil || inodeErr != nil || modeErr != nil || inode == 0 || uint32(mode)&unix.S_IFMT != unix.S_IFDIR {
+		return completedCWDIdentity{}, "", 0, typedError("E_COMPOSITION_TOPOLOGY_UNRESOLVED", "invalid completed cwd object")
+	}
+	return completedCWDIdentity{device: device, inode: inode, mode: uint32(mode)}, "", 0, nil
+}
+
+func completedCWDProvenance(plan Plan) (*cwdMountProvenance, error) {
+	mounts := make(map[string]cwdMountProvenance)
+	for index, operation := range plan.Operations {
+		if operation.Type == OperationSymlink && pathWithin(plan.Cwd, operation.Target) {
+			return nil, typedError("E_COMPOSITION_CWD_UNRESOLVED", "cwd %q traverses plan symlink from operation %d", plan.Cwd, index)
+		}
+		switch operation.Type {
+		case OperationBind, OperationDevBind, OperationTmpfs, OperationProc, OperationDev:
+			for target := range mounts {
+				if target == operation.Target || pathWithin(target, operation.Target) {
+					delete(mounts, target)
+				}
+			}
+			mounts[operation.Target] = cwdMountProvenance{index: index, operation: operation}
+		}
+	}
+	var selected *cwdMountProvenance
+	selectedTargetLength := -1
+	for target, provenance := range mounts {
+		if pathWithin(plan.Cwd, target) && len(target) > selectedTargetLength {
+			copy := provenance
+			selected = &copy
+			selectedTargetLength = len(target)
+		}
+	}
+	return selected, nil
+}
+
+func cwdProvenanceDescription(provenance *cwdMountProvenance) string {
+	if provenance == nil {
+		return "synthetic root"
+	}
+	operation := provenance.operation
+	if operation.Source != "" {
+		return fmt.Sprintf("operation %d (%s %q -> %q)", provenance.index, operation.Type, operation.Source, operation.Target)
+	}
+	return fmt.Sprintf("operation %d (%s %q)", provenance.index, operation.Type, operation.Target)
+}
+
+func (b *Broker) validateCompletedCWD(context *targetContext, staging string, plan Plan) error {
+	output, err := b.runHelperOutput(context, nil, "inspect-cwd", staging, plan.Cwd)
+	if err != nil {
+		return typedError("E_COMPOSITION_CWD_UNRESOLVED", "inspect cwd %q in completed root: %v", plan.Cwd, err)
+	}
+	identity, missing, errnoValue, err := parseCompletedCWDIdentity(output, plan.Cwd)
+	if err != nil {
+		return err
+	}
+	provenance, err := completedCWDProvenance(plan)
+	if err != nil {
+		return err
+	}
+	if missing != "" {
+		return typedError(
+			"E_COMPOSITION_CWD_UNRESOLVED",
+			"cwd %q first unresolved component %q (errno=%d; %s)",
+			plan.Cwd,
+			missing,
+			errnoValue,
+			cwdProvenanceDescription(provenance),
+		)
+	}
+	if provenance == nil || (provenance.operation.Type != OperationBind && provenance.operation.Type != OperationDevBind) {
+		return nil
+	}
+	relative, err := filepath.Rel(provenance.operation.Target, plan.Cwd)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return typedError("E_COMPOSITION_CWD_UNRESOLVED", "map cwd %q through %s", plan.Cwd, cwdProvenanceDescription(provenance))
+	}
+	sourcePath := provenance.operation.Source
+	if relative != "." {
+		sourcePath = filepath.Join(sourcePath, relative)
+	}
+	source, canonical, info, err := b.openSource(context.root, sourcePath)
+	if err != nil {
+		return typedError("E_COMPOSITION_CWD_UNRESOLVED", "resolve cwd source %q from %s: %v", sourcePath, cwdProvenanceDescription(provenance), err)
+	}
+	defer source.Close()
+	if !info.IsDir() {
+		return typedError("E_COMPOSITION_CWD_UNRESOLVED", "cwd source %q from %s is not a directory", sourcePath, cwdProvenanceDescription(provenance))
+	}
+	if _, err := b.sourcePolicyRights(source, canonical, info); err != nil {
+		return fmt.Errorf("validate cwd source authority from %s: %w", cwdProvenanceDescription(provenance), err)
+	}
+	var status unix.Stat_t
+	if err := unix.Fstat(int(source.Fd()), &status); err != nil {
+		return typedError("E_COMPOSITION_CWD_UNRESOLVED", "stat cwd source from %s: %v", cwdProvenanceDescription(provenance), err)
+	}
+	if uint64(status.Dev) != identity.device || status.Ino != identity.inode {
+		return typedError(
+			"E_COMPOSITION_CWD_UNRESOLVED",
+			"cwd %q does not resolve to the admitted source object from %s",
+			plan.Cwd,
+			cwdProvenanceDescription(provenance),
+		)
+	}
+	return nil
+}
+
 func (b *Broker) validateScratchIsolation(context *targetContext, plan Plan) error {
 	for _, operation := range plan.Operations {
 		if operation.Type != OperationBind && operation.Type != OperationDevBind {
@@ -1126,7 +1301,7 @@ func (b *Broker) validateScratchIsolation(context *targetContext, plan Plan) err
 			if operation.Try && errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return err
+			return typedError("E_COMPOSITION_TOPOLOGY_UNRESOLVED", "inspect bind source %q: %v", operation.Source, err)
 		}
 		source.Close()
 		if pathWithin(canonical, b.cfg.ScratchRoot) || pathWithin(b.cfg.ScratchRoot, canonical) {
@@ -1192,8 +1367,8 @@ func pathMappingsFromMaps(aliases, symlinks map[string]string) PathMappings {
 	return mappings
 }
 
-func (b *Broker) executePlan(parentPID, pid, pidOwnerPID int, pidOwnedByTargetUser bool, plan Plan, revalidate func() error) error {
-	targetContext, err := pinTargetContext(pid, pidOwnerPID, pidOwnedByTargetUser)
+func (b *Broker) executePlan(parentPID, pid int, pidOwnedByTargetUser bool, plan Plan, revalidate func() error) error {
+	targetContext, err := pinTargetContext(pid, pidOwnedByTargetUser)
 	if err != nil {
 		return err
 	}
@@ -1280,6 +1455,9 @@ func (b *Broker) executePlan(parentPID, pid, pidOwnerPID int, pidOwnedByTargetUs
 		}
 	}
 	if err := b.validateFinalTopology(targetContext, staging, plan); err != nil {
+		return err
+	}
+	if err := b.validateCompletedCWD(targetContext, staging, plan); err != nil {
 		return err
 	}
 	if revalidate == nil {
@@ -1472,13 +1650,21 @@ func (b *Broker) validateRecursiveSource(context *targetContext, source *os.File
 			return nil, fmt.Errorf("recursive source mount %q (%s): %w", mount.path, mount.filesystem, rightsErr)
 		}
 		effectiveAttributes := mountAttributes | mount.attributes&preservedMountRestrictions
-		if err := validateDestinationRights(childCanonical, rights, destinationRights, info, effectiveAttributes); err != nil {
+		validationRights := rights
+		if mount.kind == 'S' {
+			// Operation-wide VFS write/execute preservation is justified by exact
+			// retained descendants. Landlock still evaluates each aliased source
+			// object, so the bind root itself does not inherit those permissions.
+			validationRights = rootRights
+		}
+		if err := validateDestinationRights(childCanonical, validationRights, destinationRights, info, effectiveAttributes); err != nil {
 			return nil, fmt.Errorf("recursive source mount %q (%s): %w", mount.path, mount.filesystem, err)
 		}
-		if operation.Type != OperationDevBind && rights&landlock.LANDLOCK_ACCESS_FS_WRITE_FILE == 0 && effectiveAttributes&unix.MOUNT_ATTR_RDONLY == 0 {
-			return nil, typedError("E_COMPOSITION_RIGHTS_ESCALATION", "recursive source mount %q is writable at the destination but not in base policy", mount.path)
-		}
-		if rootExecutable && rights&landlock.LANDLOCK_ACCESS_FS_EXECUTE == 0 && mount.attributes&unix.MOUNT_ATTR_NOEXEC == 0 {
+		// A mixed recursive clone may remain VFS-rw even when this particular
+		// mount node has no write right. The requester remains in the mandatory
+		// Landlock domain, whose source-object rules survive aliases and deny
+		// mutation here while preserving separately tagged writable descendants.
+		if mount.kind == 'M' && rootExecutable && rights&landlock.LANDLOCK_ACCESS_FS_EXECUTE == 0 && mount.attributes&unix.MOUNT_ATTR_NOEXEC == 0 {
 			return nil, typedError("E_COMPOSITION_RIGHTS_ESCALATION", "recursive source mount %q would gain execute authority", mount.path)
 		}
 	}
@@ -1567,19 +1753,57 @@ func (b *Broker) cloneValidatedMountTree(context *targetContext, rootSource *os.
 	return nil
 }
 
-func (b *Broker) bindRequiredAttributes(operation Operation, canonical string, rights uint64) uint64 {
+func (b *Broker) recursiveBindValidationRights(operation Operation, source *os.File, info os.FileInfo, rights uint64) (uint64, error) {
+	if !operation.Recursive || info == nil || !info.IsDir() || b.setup == nil {
+		return rights, nil
+	}
+	mutationDescendant, err := b.setup.HasRightsDescendant(source, compositionMutationRights)
+	if err != nil {
+		return 0, err
+	}
+	if mutationDescendant {
+		rights |= compositionMutationRights
+	}
+	executableDescendant, err := b.setup.HasRightsDescendant(source, landlock.LANDLOCK_ACCESS_FS_EXECUTE)
+	if err != nil {
+		return 0, err
+	}
+	if executableDescendant {
+		rights |= landlock.LANDLOCK_ACCESS_FS_EXECUTE
+	}
+	return rights, nil
+}
+
+func (b *Broker) bindRequiredAttributes(operation Operation, canonical string, rights uint64, source *os.File, info os.FileInfo) (uint64, error) {
 	required := uint64(unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV)
-	// A writable VFS mount is unnecessary when the mandatory base Landlock
-	// domain has no write authority over its source. Preserve Bubblewrap's
-	// topology while reducing that mount to read-only instead of rejecting safe
-	// identity binds such as the Nix FHS environment's /nix -> /nix.
-	if operation.ReadOnly || !pathAllowed(canonical, b.cfg.WriteRoots) || rights&landlock.LANDLOCK_ACCESS_FS_WRITE_FILE == 0 {
+	writableRoot := pathAllowed(canonical, b.cfg.WriteRoots) && rights&landlock.LANDLOCK_ACCESS_FS_WRITE_FILE != 0
+	executableRoot := pathAllowed(canonical, b.cfg.ExecuteRoots) && rights&landlock.LANDLOCK_ACCESS_FS_EXECUTE != 0
+	writableDescendant, executableDescendant := false, false
+	if operation.Recursive && info != nil && info.IsDir() && b.setup != nil {
+		var err error
+		writableDescendant, err = b.setup.HasRightsDescendant(source, compositionMutationRights)
+		if err != nil {
+			return 0, err
+		}
+		executableDescendant, err = b.setup.HasRightsDescendant(source, landlock.LANDLOCK_ACCESS_FS_EXECUTE)
+		if err != nil {
+			return 0, err
+		}
+	}
+	// Operation-wide VFS reductions are safe only for homogeneous trees. A
+	// containing bind such as /scratch may have no mutation right at its root
+	// while an exact retained project descendant is writable. In that case keep
+	// the clone VFS-rw and let mandatory Landlock enforce authority per source
+	// object. The fixed helper performs topology operations only and never
+	// content mutation. Trees such as /nix with no writable descendant are still
+	// reduced recursively to read-only.
+	if operation.ReadOnly || (!writableRoot && !writableDescendant) {
 		required |= unix.MOUNT_ATTR_RDONLY
 	}
-	if !pathAllowed(canonical, b.cfg.ExecuteRoots) || rights&landlock.LANDLOCK_ACCESS_FS_EXECUTE == 0 {
+	if !executableRoot && !executableDescendant {
 		required |= unix.MOUNT_ATTR_NOEXEC
 	}
-	return required
+	return required, nil
 }
 
 func (b *Broker) executeBind(context *targetContext, operation Operation, target string, destinationRights uint64) (uint64, bool, error) {
@@ -1595,13 +1819,20 @@ func (b *Broker) executeBind(context *targetContext, operation Operation, target
 	if err != nil {
 		return 0, false, err
 	}
-	requiredAttributes := b.bindRequiredAttributes(operation, canonical, rights)
-	if err := validateDestinationRights(canonical, rights, destinationRights, info, requiredAttributes); err != nil {
+	requiredAttributes, err := b.bindRequiredAttributes(operation, canonical, rights, source, info)
+	if err != nil {
+		return 0, false, err
+	}
+	validationRights, err := b.recursiveBindValidationRights(operation, source, info, rights)
+	if err != nil {
+		return 0, false, err
+	}
+	if err := validateDestinationRights(canonical, validationRights, destinationRights, info, requiredAttributes); err != nil {
 		return 0, false, err
 	}
 	var mounts []sourceMount
 	if operation.Recursive {
-		mounts, err = b.validateRecursiveSource(context, source, canonical, operation, rights, destinationRights, requiredAttributes)
+		mounts, err = b.validateRecursiveSource(context, source, canonical, operation, validationRights, destinationRights, requiredAttributes)
 		if err != nil {
 			return 0, false, err
 		}
@@ -1721,11 +1952,15 @@ func (b *Broker) executeDev(context *targetContext, target string, parentRights 
 			source.Close()
 			return 0, rightsErr
 		}
-		if err := validateDestinationRights(canonical, rights, deviceDestinationRights, info, unix.MOUNT_ATTR_NOSUID|unix.MOUNT_ATTR_NOEXEC); err != nil {
+		deviceAttributes := uint64(unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NOEXEC)
+		if rights&landlock.LANDLOCK_ACCESS_FS_WRITE_FILE == 0 {
+			deviceAttributes |= unix.MOUNT_ATTR_RDONLY
+		}
+		if err := validateDestinationRights(canonical, rights, deviceDestinationRights, info, deviceAttributes); err != nil {
 			source.Close()
 			return 0, err
 		}
-		err = b.runHelper(context, source, "bind-device", filepath.Join(target, name), "nosuid,noexec")
+		err = b.runHelper(context, source, "bind-device", filepath.Join(target, name), mountAttributeArgument(deviceAttributes))
 		source.Close()
 		if err != nil {
 			return 0, err

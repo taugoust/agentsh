@@ -758,7 +758,22 @@ func resolveWorkingDir(s *session.Session, reqWorkingDir string) (string, error)
 			}
 			real = realCandidate
 		} else {
-			// Real-paths mode: pass through as-is for policy/seccomp enforcement
+			// Real-paths mode permits paths outside the workspace, but policy
+			// matching still needs the same canonical spelling used for trusted
+			// PROJECT_ROOT variables. In particular, a reviewed cwd reached through
+			// a top-level symlink (for example /scratch -> /zroot/scratch-real) must
+			// not silently miss a working_directory_roots condition.
+			realCandidate := filepath.Clean(filepath.FromSlash(virtual))
+			if resolved, err := filepath.EvalSymlinks(realCandidate); err == nil {
+				return filepath.ToSlash(filepath.Clean(resolved)), nil
+			}
+			// Preserve the existing pass-through behavior for a not-yet-created
+			// leaf while canonicalizing any existing symlinked ancestors.
+			parent := filepath.Dir(realCandidate)
+			if resolvedParent, err := filepath.EvalSymlinks(parent); err == nil {
+				resolved := filepath.Join(resolvedParent, filepath.Base(realCandidate))
+				return filepath.ToSlash(filepath.Clean(resolved)), nil
+			}
 			return virtual, nil
 		}
 	} else {

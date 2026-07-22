@@ -1141,8 +1141,15 @@ func (a *App) buildPolicyVarsForSession(req types.CreateSessionRequest, s *sessi
 	}
 
 	if req.ProjectRoot != "" {
-		policyVars["PROJECT_ROOT"] = mapToEffective(req.ProjectRoot)
-		policyVars["GIT_ROOT"] = mapToEffective(req.ProjectRoot)
+		projectRoot := filepath.Clean(req.ProjectRoot)
+		if absolute, err := filepath.Abs(projectRoot); err == nil {
+			projectRoot = absolute
+		}
+		if resolved, err := filepath.EvalSymlinks(projectRoot); err == nil {
+			projectRoot = resolved
+		}
+		policyVars["PROJECT_ROOT"] = mapToEffective(projectRoot)
+		policyVars["GIT_ROOT"] = mapToEffective(projectRoot)
 	} else if shouldDetect && realWorkspace != "" {
 		markers := a.cfg.Policies.GetProjectMarkers()
 		if markers == nil {
@@ -1830,7 +1837,12 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		includeEvents = "all"
 	}
 
-	pre := engine.CheckCommandWithExecveProvenance(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode(), opts.provenance)
+	normalizedPolicyWorkingDir, normalizedPolicyWorkingDirErr := resolveWorkingDir(s, req.WorkingDir)
+	commandMatchContext := policy.CommandMatchContext{}
+	if normalizedPolicyWorkingDirErr == nil {
+		commandMatchContext.WorkingDirectory = normalizedPolicyWorkingDir
+	}
+	pre := engine.CheckCommandWithExecveProvenanceContext(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode(), opts.provenance, commandMatchContext)
 	compositionErrorCode := a.applySandboxCompositionSelection(s, &pre)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
 	approvalErr := a.applyCommandApproval(ctx, id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
@@ -1898,6 +1910,9 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	preFields := map[string]any{
 		"command": originalCmd,
 		"args":    auditArgumentValues(originalArgs, opts.sensitive),
+	}
+	if normalizedPolicyWorkingDirErr == nil {
+		preFields["normalized_working_directory"] = normalizedPolicyWorkingDir
 	}
 	if pre.SandboxComposition != "" {
 		preFields["sandbox_composition"] = pre.SandboxComposition

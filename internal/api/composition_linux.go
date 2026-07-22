@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"github.com/agentsh/agentsh/internal/composition"
 	unixmon "github.com/agentsh/agentsh/internal/netmonitor/unix"
 	"github.com/agentsh/agentsh/internal/session"
+	"github.com/agentsh/agentsh/pkg/types"
+	"github.com/google/uuid"
 )
 
 func (a *App) configureExecveComposition(handler any, s *session.Session, wrapperCfg seccompWrapperConfig, setupConnection *os.File, wrapperPID int) error {
@@ -75,7 +78,25 @@ func (a *App) configureExecveComposition(handler any, s *session.Session, wrappe
 		SetupSyntheticRoots:   ceiling.MaxNamespaceTransitions,
 		SetupSyntheticRW:      ceiling.MaxSyntheticMounts,
 		DeviceIOCTLRoots:      ceiling.DeviceIOCTLPaths,
-		PublishPathMappings:   pathRegistry.Register,
+		PublishNormalizedPlan: func(parentPID, targetPID int, snapshot composition.NormalizedPlanSnapshot) {
+			event := types.Event{
+				ID:        uuid.NewString(),
+				Timestamp: time.Now().UTC(),
+				Type:      "composition_plan",
+				SessionID: s.ID,
+				CommandID: s.CurrentCommandID(),
+				Operation: "normalized_bubblewrap_plan",
+				Fields: map[string]any{
+					"parent_pid":      parentPID,
+					"target_pid":      targetPID,
+					"normalized_plan": snapshot,
+				},
+			}
+			s.InjectTraceContext(event.Fields)
+			_ = a.store.AppendEvent(context.Background(), event)
+			a.broker.Publish(event)
+		},
+		PublishPathMappings: pathRegistry.Register,
 	})
 	if err != nil {
 		_ = pathRegistry.Close()
