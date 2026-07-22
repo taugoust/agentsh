@@ -45,12 +45,6 @@ let
 
   productionPackage = self.packages.${pkgs.stdenv.hostPlatform.system}.agentsh;
 
-  productionWrapper = mkGoFixture {
-    pname = "agentsh-unixwrap-composition-runtime";
-    subPackage = "cmd/agentsh-unixwrap";
-    needsEBPF = true;
-  };
-
   genericWrapper = mkGoFixture {
     pname = "agentsh-unixwrap-mount-broker-feasibility";
     subPackage = "cmd/agentsh-unixwrap";
@@ -395,7 +389,7 @@ pkgs.testers.runNixOSTest {
     with subtest("production semantic adapter composes repeated real Bubblewrap under Landlock"):
         production = machine.succeed(
             "runuser -u tester -- ${compositionProbe}/bin/namespace-composition-probe run "
-            "--wrapper ${productionWrapper}/bin/agentsh-unixwrap "
+            "--wrapper ${productionPackage}/bin/agentsh-unixwrap "
             "--matrix ${productionMatrix}/bin/agentsh-composition-runtime-matrix "
             "--control-dir /run/agentsh-feasibility-control --landlock "
             "--landlock-exact-read-root ${sourceFixture} "

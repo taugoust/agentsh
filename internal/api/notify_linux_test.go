@@ -174,7 +174,7 @@ func TestStartNotifyHandler_GracefulErrorExit(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	startNotifyHandler(ctx, parentSock, "test-graceful", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil)
+	startNotifyHandler(ctx, parentSock, "test-graceful", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, nil, nil)
 
 	// Poll until the goroutine exits (parentSock gets closed by the deferred Close).
 	deadline := time.After(2 * time.Second)
@@ -519,7 +519,7 @@ func TestNotifyHandler_CancellationGoroutineExitsOnEarlyReturn(t *testing.T) {
 
 	goroutinesBefore := runtime.NumGoroutine()
 
-	startNotifyHandler(ctx, parentSock, "test-cancel-goroutine", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil)
+	startNotifyHandler(ctx, parentSock, "test-cancel-goroutine", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, nil, nil)
 
 	// Wait for handler goroutine to exit.
 	deadline := time.After(2 * time.Second)
@@ -543,6 +543,73 @@ func TestNotifyHandler_CancellationGoroutineExitsOnEarlyReturn(t *testing.T) {
 	if goroutinesAfter > goroutinesBefore+2 {
 		t.Errorf("goroutine leak: before=%d after=%d (expected ≤%d)",
 			goroutinesBefore, goroutinesAfter, goroutinesBefore+2)
+	}
+}
+
+func TestStartNotifyHandlerConfiguresCompositionWithStartedWrapperPID(t *testing.T) {
+	notifyFDs, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentSock := os.NewFile(uintptr(notifyFDs[0]), "composition-notify-parent")
+	childSock := os.NewFile(uintptr(notifyFDs[1]), "composition-notify-child")
+	defer childSock.Close()
+	setupFDs, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupParent := os.NewFile(uintptr(setupFDs[0]), "composition-setup-parent")
+	setupChild := os.NewFile(uintptr(setupFDs[1]), "composition-setup-child")
+	defer setupChild.Close()
+	pipeR, pipeW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pipeW.Close()
+	if err := unix.Sendmsg(int(childSock.Fd()), []byte{0}, unix.UnixRights(int(pipeR.Fd())), nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	pipeR.Close()
+
+	const expectedPID = 4242
+	configuredPID := make(chan int, 1)
+	configuredSetup := make(chan *os.File, 1)
+	sentinel := errors.New("composition configure sentinel")
+	ready := make(chan error, 1)
+	done := startNotifyHandler(
+		context.Background(), parentSock, "composition-wrapper-pid", nil,
+		&notifyMockEventStore{}, &notifyMockEventBroker{}, nil,
+		config.SandboxSeccompFileMonitorConfig{}, false, nil, ready, false, nil, nil,
+		expectedPID, setupParent,
+		func(_ any, setup *os.File, wrapperPID int) error {
+			configuredPID <- wrapperPID
+			configuredSetup <- setup
+			return sentinel
+		},
+	)
+	select {
+	case got := <-configuredPID:
+		if got != expectedPID {
+			t.Fatalf("configured wrapper PID = %d, want %d", got, expectedPID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("composition configurer was not called")
+	}
+	if got := <-configuredSetup; got != setupParent {
+		t.Fatalf("composition setup = %p, want %p", got, setupParent)
+	}
+	select {
+	case err := <-ready:
+		if !errors.Is(err, sentinel) {
+			t.Fatalf("ready error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("composition configuration failure was not reported")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("notify handler did not exit after composition failure")
 	}
 }
 
@@ -586,7 +653,7 @@ func TestNotifyHandler_ContextCancelCleansUpFDs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	startNotifyHandler(ctx, parentSock, "test-fd-cleanup", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil)
+	startNotifyHandler(ctx, parentSock, "test-fd-cleanup", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, nil, nil)
 
 	// Wait for handler to clean up (close parent socket via defer).
 	deadline := time.After(2 * time.Second)

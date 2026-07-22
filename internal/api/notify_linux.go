@@ -237,9 +237,12 @@ func notifyHandlerRecover(sessID string, store eventStore, broker eventBroker) {
 // *unixmon.BlockListConfig). A nil or zero-ActionByNr value is treated as
 // "no block-list notify routing needed" — safe for errno/kill modes which are
 // kernel-side.
-func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session) <-chan struct{} {
+func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session, expectedWrapperPID int, compositionSetup *os.File, configureComposition compositionConfigurer) <-chan struct{} {
 	done := make(chan struct{})
 	if parentSock == nil {
+		if compositionSetup != nil {
+			_ = compositionSetup.Close()
+		}
 		close(done)
 		return done
 	}
@@ -261,16 +264,19 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 		}()
 		slog.Debug("notify handler started", "session_id", sessID)
 
-		// Get the wrapper's PID from socket credentials for session tracking
-		// This is the process that will exec the user's command
-		var wrapperPID int
-		ucred, err := unix.GetsockoptUcred(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_PEERCRED)
-		if err != nil {
-			slog.Debug("failed to get socket peer credentials", "error", err)
-		} else {
-			wrapperPID = int(ucred.Pid)
-			slog.Debug("got wrapper PID from socket credentials", "wrapper_pid", wrapperPID, "session_id", sessID)
+		// The command runner pins the exact PID returned by cmd.Start. A socketpair's
+		// SO_PEERCRED reflects its creator and does not change when the child inherits
+		// an endpoint, so it is only a legacy fallback when no started PID was bound.
+		wrapperPID := expectedWrapperPID
+		if wrapperPID <= 0 {
+			ucred, err := unix.GetsockoptUcred(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_PEERCRED)
+			if err != nil {
+				slog.Debug("failed to get socket peer credentials", "error", err)
+			} else {
+				wrapperPID = int(ucred.Pid)
+			}
 		}
+		slog.Debug("bound notify wrapper PID", "wrapper_pid", wrapperPID, "session_id", sessID)
 
 		// Set SO_RCVTIMEO directly on the socket. unixmon.RecvFD calls recvmsg
 		// on the raw fd, bypassing Go's netpoll — so SetReadDeadline wouldn't
@@ -326,6 +332,38 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 			_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
 		}
 
+		var h *unixmon.ExecveHandler
+		if execveHandler != nil {
+			h, _ = execveHandler.(*unixmon.ExecveHandler)
+		}
+		if compositionSetup != nil {
+			defer compositionSetup.Close()
+		}
+		if configureComposition != nil {
+			if err := configureComposition(h, compositionSetup, wrapperPID); err != nil {
+				if ptraceReady != nil {
+					select {
+					case ptraceReady <- err:
+					default:
+					}
+				}
+				slog.Debug("composition notify setup failed", "error", err, "wrapper_pid", wrapperPID, "session_id", sessID)
+				return
+			}
+			if h != nil {
+				defer h.CloseComposition()
+			}
+		} else if compositionSetup != nil {
+			err := fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: composition setup channel has no bound configurer")
+			if ptraceReady != nil {
+				select {
+				case ptraceReady <- err:
+				default:
+				}
+			}
+			return
+		}
+
 		// Close the notify FD when context is cancelled to unblock any stuck
 		// NotifReceive ioctl. The done channel ensures this goroutine exits
 		// if the handler returns early (error/setup failure) while context
@@ -348,52 +386,49 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 		// Create file handler if configured
 		fileHandler := createFileHandler(fileMonitorCfg, pol, emitter, landlockEnabled, approvalsMgr, sess)
 
-		// Type-assert and set emitter on execve handler if configured
-		var h *unixmon.ExecveHandler
-		if execveHandler != nil {
-			h, _ = execveHandler.(*unixmon.ExecveHandler)
-			if h != nil {
-				h.SetEmitter(emitter)
-				if fileHandler != nil {
-					fileHandler.SetCompositionPathRegistry(h.CompositionPathRegistry())
+		// Configure the execve handler after composition has published its
+		// source-attribution registry.
+		if h != nil {
+			h.SetEmitter(emitter)
+			if fileHandler != nil {
+				fileHandler.SetCompositionPathRegistry(h.CompositionPathRegistry())
+			}
+			if approvalsMgr != nil {
+				var commandIDFunc func() string
+				if sess != nil {
+					commandIDFunc = sess.CurrentCommandID
 				}
-				if approvalsMgr != nil {
-					var commandIDFunc func() string
-					if sess != nil {
-						commandIDFunc = sess.CurrentCommandID
-					}
-					adapter := &approvalRequesterAdapter{mgr: approvalsMgr, commandIDFunc: commandIDFunc}
-					if sess != nil {
-						adapter.sensitive = sess.CurrentExecutionSensitive
-					}
-					h.SetApprover(adapter)
+				adapter := &approvalRequesterAdapter{mgr: approvalsMgr, commandIDFunc: commandIDFunc}
+				if sess != nil {
+					adapter.sensitive = sess.CurrentExecutionSensitive
 				}
-				// Register the wrapper as session root for depth tracking
-				// The wrapper's exec will be the first command (depth 0)
-				if wrapperPID > 0 {
-					h.RegisterSession(wrapperPID, sessID)
-				}
+				h.SetApprover(adapter)
+			}
+			// Register the wrapper as session root for depth tracking
+			// The wrapper's exec will be the first command (depth 0)
+			if wrapperPID > 0 {
+				h.RegisterSession(wrapperPID, sessID)
+			}
 
-				// Create stub symlink for execve redirect
-				stubPath, err := exec.LookPath("agentsh-stub")
-				if err == nil {
-					// Normalize to absolute path in case LookPath returns relative
-					if !filepath.IsAbs(stubPath) {
-						if abs, err := filepath.Abs(stubPath); err == nil {
-							stubPath = abs
-						}
+			// Create stub symlink for execve redirect
+			stubPath, err := exec.LookPath("agentsh-stub")
+			if err == nil {
+				// Normalize to absolute path in case LookPath returns relative
+				if !filepath.IsAbs(stubPath) {
+					if abs, err := filepath.Abs(stubPath); err == nil {
+						stubPath = abs
 					}
-					unixmon.SetStubBinaryPath(stubPath)
-					symlinkPath, cleanup, symlinkErr := unixmon.CreateStubSymlink(stubPath)
-					if symlinkErr == nil {
-						h.SetStubSymlinkPath(symlinkPath)
-						defer cleanup()
-					} else {
-						slog.Warn("exec: failed to create stub symlink", "error", symlinkErr, "session_id", sessID)
-					}
-				} else {
-					slog.Warn("exec: agentsh-stub not found, redirect will deny", "error", err, "session_id", sessID)
 				}
+				unixmon.SetStubBinaryPath(stubPath)
+				symlinkPath, cleanup, symlinkErr := unixmon.CreateStubSymlink(stubPath)
+				if symlinkErr == nil {
+					h.SetStubSymlinkPath(symlinkPath)
+					defer cleanup()
+				} else {
+					slog.Warn("exec: failed to create stub symlink", "error", symlinkErr, "session_id", sessID)
+				}
+			} else {
+				slog.Warn("exec: agentsh-stub not found, redirect will deny", "error", err, "session_id", sessID)
 			}
 		}
 

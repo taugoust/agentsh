@@ -290,7 +290,6 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 	if execveEnabled {
 		extraCfg.execveHandler = createExecveHandler(a.cfg.Sandbox.Seccomp.Execve, sessionPolicy, a.approvals)
 	}
-	var compositionSetup *os.File
 	if s.CurrentSandboxComposition() != "" {
 		setupPair := createUnixSocketPair()
 		if setupPair == nil {
@@ -302,11 +301,9 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 		extraCfg.compositionParentSock = setupPair.parent
 		extraCfg.env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
 		wrappedReq.Env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
-		compositionSetup = setupPair.parent
-	}
-	if compositionErr := a.configureExecveComposition(extraCfg.execveHandler, s, seccompCfg, compositionSetup, 0); compositionErr != nil {
-		closePreStartProcessFiles(extraCfg)
-		return &wrapperSetupResult{wrappedReq: req, setupErr: compositionErr}
+		extraCfg.configureComposition = func(handler any, setup *os.File, wrapperPID int) error {
+			return a.configureExecveComposition(handler, s, seccompCfg, setup, wrapperPID)
+		}
 	}
 
 	// Add signal filter config if socket pair succeeded
@@ -1787,6 +1784,11 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	s.SetCurrentCommandID(cmdID)
 	s.SetCurrentExecutionSensitive(opts.sensitive)
 	s.SetCurrentCommandProvenance(opts.provenance)
+	// Composition is selected independently for each admitted command. Clear any
+	// prior command's snapshot before network preflight, then clear this command's
+	// selection when it finishes so failures cannot lend authority to a later run.
+	s.SetCurrentSandboxComposition("")
+	defer s.SetCurrentSandboxComposition("")
 
 	if commandJailRequired(a.cfg) {
 		report := a.refreshNetworkEnforcement(id)

@@ -82,6 +82,40 @@ func TestConfigureExecveCompositionRequiresMetadataInterceptionAtRuntime(t *test
 	}
 }
 
+func TestSetupSeccompWrapperDefersCompositionUntilStartedWrapperPID(t *testing.T) {
+	if !capabilities.DetectLandlock().Available {
+		t.Skip("Landlock not available on this host")
+	}
+	enabled := true
+	disabled := false
+	cfg := &config.Config{}
+	cfg.Landlock.Enabled = true
+	cfg.Sandbox.UnixSockets.Enabled = &enabled
+	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.Network.EBPF.Required = true
+	cfg.Sandbox.Seccomp.Execve.Enabled = true
+	cfg.Sandbox.Seccomp.FileMonitor.Enabled = &enabled
+	cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE = &enabled
+	cfg.Sandbox.Seccomp.FileMonitor.InterceptMetadata = &enabled
+	cfg.Sandbox.Seccomp.FileMonitor.WriteOnlyOpens = &disabled
+	cfg.Sandbox.Seccomp.FileMonitor.BlockIOUring = &enabled
+	cfg.Sandbox.Composition.Bubblewrap.Enabled = true
+	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
+	cfg.Sandbox.Composition.Bubblewrap.ScratchRoot = "/agentsh-composition-scratch"
+	app := newTestAppForSeccomp(t, cfg)
+	sess := &session.Session{Workspace: t.TempDir()}
+	sess.SetCurrentSandboxComposition(bubblewrapCompositionMode)
+
+	result := app.setupSeccompWrapper(types.ExecRequest{Command: "/bin/true"}, "composition-deferred", sess)
+	if result == nil || result.setupErr != nil {
+		t.Fatalf("composition wrapper setup failed before process start: %#v", result)
+	}
+	if result.extraCfg == nil || result.extraCfg.compositionParentSock == nil || result.extraCfg.configureComposition == nil {
+		t.Fatalf("composition setup was not deferred with retained state: %#v", result.extraCfg)
+	}
+	closePreStartProcessFiles(result.extraCfg)
+}
+
 func TestBuildSeccompWrapperConfig_DeviceIOCTLOnlyForComposition(t *testing.T) {
 	if !capabilities.DetectLandlock().Available {
 		t.Skip("Landlock not available on this host")

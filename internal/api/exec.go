@@ -30,12 +30,15 @@ const (
 	defaultMaxOutputBytes = 2 * 1024 * 1024 // 2 MiB per stream in response + sqlite
 )
 
+type compositionConfigurer func(handler any, setup *os.File, wrapperPID int) error
+
 type extraProcConfig struct {
 	extraFiles            []*os.File
 	env                   map[string]string
-	envInject             map[string]string  // Operator-trusted env vars that bypass policy filtering
-	notifyParentSock      *os.File           // Parent socket to receive seccomp notify fd (Linux only)
-	compositionParentSock *os.File           // Parent socket to receive retained composition objects
+	envInject             map[string]string // Operator-trusted env vars that bypass policy filtering
+	notifyParentSock      *os.File          // Parent socket to receive seccomp notify fd (Linux only)
+	compositionParentSock *os.File          // Parent socket to receive retained composition objects
+	configureComposition  compositionConfigurer
 	notifySessionID       string             // Session ID for notify handler
 	notifyStore           eventStore         // Event store for notify handler
 	notifyBroker          eventBroker        // Event broker for notify handler
@@ -1226,7 +1229,9 @@ func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid
 	// accidentally or reused by a later command.
 	closeExtraProcessFiles(extra)
 	if extra.notifyParentSock != nil {
-		lifecycle.notifyDone = startNotifyHandler(handlerCtx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession)
+		compositionSetup := extra.compositionParentSock
+		extra.compositionParentSock = nil
+		lifecycle.notifyDone = startNotifyHandler(handlerCtx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession, pid, compositionSetup, extra.configureComposition)
 	}
 	if extra.signalParentSock != nil && extra.signalEngine != nil {
 		if extra.signalRegistry != nil {

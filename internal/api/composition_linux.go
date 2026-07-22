@@ -52,6 +52,7 @@ func (a *App) configureExecveComposition(handler any, s *session.Session, wrappe
 	if err != nil {
 		return err
 	}
+	wrapperPath = compositionProcessExecutablePath(wrapperPath)
 	scratch := ceiling.ScratchRoot
 	if scratch == "" || !filepath.IsAbs(scratch) || filepath.Clean(scratch) != scratch {
 		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: trusted composition scratch root is unavailable")
@@ -116,6 +117,18 @@ func resolveCompositionExecutable(configured, name string) (string, error) {
 		return "", fmt.Errorf("resolve %s: %w", name, err)
 	}
 	return absolute, nil
+}
+
+// Nix's makeWrapper replaces an installed executable with a shell launcher and
+// moves the real process image to .NAME-wrapped. Setup authentication compares
+// /proc/PID/exe inode identity, so bind it to that real image when present.
+func compositionProcessExecutablePath(path string) string {
+	path = filepath.Clean(path)
+	hidden := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+"-wrapped")
+	if info, err := os.Stat(hidden); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+		return hidden
+	}
+	return path
 }
 
 func concreteCompositionRoots(paths []string, workspace string) []string {

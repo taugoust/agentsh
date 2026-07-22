@@ -382,7 +382,7 @@ func runHarness(args []string) error {
 			RequestTimeout:        30 * time.Second,
 			SetupConnection:       compositionParent,
 			SetupSenderPID:        cmd.Process.Pid,
-			SetupSenderExecutable: *wrapper,
+			SetupSenderExecutable: processExecutablePath(*wrapper),
 			SetupSyntheticRoots:   cfg.CompositionMaxTransitions,
 			SetupSyntheticRW:      cfg.CompositionSyntheticMounts,
 			PublishPathMappings:   pathRegistry.Register,
@@ -635,8 +635,9 @@ func runPayload(args []string) error {
 	root := string(filepath.Separator)
 	procRoot := filepath.Join(root, "proc")
 	pidOneStatus, err := os.ReadFile(filepath.Join(procRoot, "1", "status"))
-	if err != nil || !strings.Contains(string(pidOneStatus), "Name:\tagentsh-unixwra") {
-		return fmt.Errorf("private proc did not expose the trusted namespace init: status=%q error=%v", string(pidOneStatus), err)
+	status := string(pidOneStatus)
+	if err != nil || (!strings.Contains(status, "Name:\tagentsh-unixwra") && !strings.Contains(status, "Name:\t.agentsh-unixwr")) {
+		return fmt.Errorf("private proc did not expose the trusted namespace init: status=%q error=%v", status, err)
 	}
 	cgroupRoot := filepath.Join(root, "sys", "fs", "cgroup")
 	cgroupEntries, err := os.ReadDir(cgroupRoot)
@@ -914,6 +915,15 @@ func processExitCode(err error) int {
 		return exitErr.ExitCode()
 	}
 	return 127
+}
+
+func processExecutablePath(path string) string {
+	path = filepath.Clean(path)
+	hidden := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+"-wrapped")
+	if info, err := os.Stat(hidden); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+		return hidden
+	}
+	return path
 }
 
 func fatalf(format string, args ...any) {
