@@ -438,7 +438,7 @@ func TestWrapperRecoveryTokenUsesHiddenFixedPrivateTopology(t *testing.T) {
 	if got != token || retainedPath != path {
 		t.Fatalf("token/path validation failed: %q %q", got, retainedPath)
 	}
-	jail := buildCommandJailConfig(nil, "", "", retainedPath)
+	jail := buildCommandJailConfig(nil, "", "", "", retainedPath, "")
 	if !containsString(jail.HideDirectories, container) {
 		t.Fatalf("recovery container not hidden: %+v", jail)
 	}
@@ -461,6 +461,23 @@ func TestWrapperRecoveryTokenUsesHiddenFixedPrivateTopology(t *testing.T) {
 	}
 	if value, retained := readRecoveryTokenFile(path); value != "" || retained != "" {
 		t.Fatal("same-UID-readable token container was accepted")
+	}
+}
+
+func TestAutomaticCompositionMasksHelperObjectsWithoutMaskingLeaseRuntime(t *testing.T) {
+	leaseRoot := filepath.Join(t.TempDir(), "lease-11111111-1111-4111-8111-111111111111")
+	socket := filepath.Join(leaseRoot, "nethelper.sock")
+	credential := filepath.Join(leaseRoot, "instance-credential")
+	bootstrap := filepath.Join(leaseRoot, "bootstrap.json")
+	scratch := filepath.Join(leaseRoot, "composition")
+	jail := buildCommandJailConfig(nil, socket, credential, bootstrap, "", scratch)
+	for _, path := range []string{socket, credential, bootstrap} {
+		if !containsString(jail.HidePaths, path) {
+			t.Fatalf("helper control %q is not individually masked: %+v", path, jail)
+		}
+	}
+	if containsString(jail.HideDirectories, leaseRoot) {
+		t.Fatalf("composition lease runtime was masked: %+v", jail)
 	}
 }
 

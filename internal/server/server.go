@@ -542,6 +542,67 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 
 	app := api.NewApp(cfg, sessions, store, engine, broker, apiKeyAuth, oidcAuth, approvalsMgr, metricsCollector, policyLoader, cgroupMgr)
+	if cfg.Sandbox.Composition.Bubblewrap.Enabled {
+		runtimeEvidence, preflightErr := app.CompositionRuntimePreflight()
+		if preflightErr != nil {
+			failureEvent := types.Event{
+				ID:        uuid.NewString(),
+				Timestamp: time.Now().UTC(),
+				Type:      string(events.EventCompositionRuntimeFailed),
+				Fields: map[string]any{
+					"configured_mode": cfg.Sandbox.Composition.Bubblewrap.ScratchRoot,
+					"reason":          preflightErr.Error(),
+				},
+			}
+			auditErr := store.AppendEvent(context.Background(), failureEvent)
+			if auditErr == nil {
+				broker.Publish(failureEvent)
+			}
+			app.Close()
+			_ = store.Close()
+			if auditErr != nil {
+				return nil, errors.Join(fmt.Errorf("composition runtime preflight: %w", preflightErr), fmt.Errorf("persist composition runtime failure: %w", auditErr))
+			}
+			return nil, fmt.Errorf("composition runtime preflight: %w", preflightErr)
+		}
+		if runtimeEvidence.Mode == "lease" {
+			provisionedEvent := types.Event{
+				ID:        uuid.NewString(),
+				Timestamp: time.Now().UTC(),
+				Type:      string(events.EventCompositionRuntimeProvisioned),
+				Fields: map[string]any{
+					"mode":         runtimeEvidence.Mode,
+					"scratch_root": runtimeEvidence.ScratchRoot,
+					"lease_id":     runtimeEvidence.LeaseID,
+					"owner":        "root:root",
+					"mode_bits":    "1733",
+				},
+			}
+			if err := store.AppendEvent(context.Background(), provisionedEvent); err != nil {
+				app.Close()
+				_ = store.Close()
+				return nil, fmt.Errorf("persist composition runtime provisioning: %w", err)
+			}
+			broker.Publish(provisionedEvent)
+		}
+		runtimeEvent := types.Event{
+			ID:        uuid.NewString(),
+			Timestamp: time.Now().UTC(),
+			Type:      string(events.EventCompositionRuntimeReady),
+			Fields: map[string]any{
+				"mode":         runtimeEvidence.Mode,
+				"scratch_root": runtimeEvidence.ScratchRoot,
+				"lease_id":     runtimeEvidence.LeaseID,
+			},
+		}
+		if err := store.AppendEvent(context.Background(), runtimeEvent); err != nil {
+			app.Close()
+			_ = store.Close()
+			return nil, fmt.Errorf("persist composition runtime readiness: %w", err)
+		}
+		broker.Publish(runtimeEvent)
+		slog.Info("composition runtime ready", "mode", runtimeEvidence.Mode, "scratch_root", runtimeEvidence.ScratchRoot)
+	}
 	// Publish to the WTP install hook so subsequent pushed-policy
 	// receipts can SwapPolicy in-process (next CheckCommand sees the
 	// new rules without an agentsh restart).

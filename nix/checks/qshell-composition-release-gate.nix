@@ -10,7 +10,10 @@ let
   projectRoot = "/scratch/theo/qshell-project";
   qshellRoot = "${projectRoot}/qshell";
   symlinkedQshellRoot = "/zroot/scratch-real/theo/qshell-project/qshell";
-  scratchRoot = "/agentsh-composition-scratch";
+  releaseUID = "1234";
+  releaseLease = "lease-22222222-2222-4222-8222-222222222222";
+  releaseRuntimeRoot = "/run/agentsh/nethelper/${releaseUID}/${releaseLease}";
+  scratchRoot = "${releaseRuntimeRoot}/composition";
   qshellArgvFixture = "${agentshSource}/internal/composition/testdata/qshell-bwrap-0.11.2-argv.json";
 
   sourceFixture = pkgs.runCommand "agentsh-release-gate-read-only-source" { } ''
@@ -85,6 +88,16 @@ let
         echo "AgentSH recovery controls leaked into the composed root" >&2
         exit 1
       fi
+      if test -e ${scratchRoot}; then
+        echo "AgentSH composition runtime leaked into the payload" >&2
+        exit 1
+      fi
+      for control_variable in AGENTSH_NETHELPER_BOOTSTRAP_RESULT AGENTSH_NETHELPER_RECOVERY_TOKEN_FILE; do
+        if printenv "$control_variable" >/dev/null 2>&1; then
+          echo "AgentSH helper control environment leaked into the payload: $control_variable" >&2
+          exit 1
+        fi
+      done
       if test "''${QSHELL_RELEASE_MODE:?}" = vivado-version; then
         ${recursiveDriver}/bin/agentsh-release-gate-recursive-driver
       fi
@@ -233,6 +246,11 @@ let
       test "$XDG_CACHE_HOME" = /scratch/theo/.cache
       test "$XDG_STATE_HOME" = /scratch/theo/.local/share
       test "$XDG_DATA_HOME" = /home/theo/.local/share
+      if ! test -d "$XDG_CACHE_HOME/nix"; then
+        printf 'release-gate cache directory is unavailable inside AgentSH: %s\\n' "$XDG_CACHE_HOME/nix" >&2
+        ls -ld /scratch /scratch/theo "$XDG_CACHE_HOME" "$XDG_CACHE_HOME/nix" >&2 || true
+        exit 1
+      fi
       cache_probe="$XDG_CACHE_HOME/nix/fetcher-cache-v4.sqlite.release-gate.$$"
       printf '%s\n' cache-write-pass > "$cache_probe"
       test "$(cat "$cache_probe")" = cache-write-pass
@@ -304,35 +322,6 @@ let
       }
     ];
     file_rules = [
-      {
-        name = "allow-release-gate-composition-control-root-mutations";
-        description = "Allow only mutation of the trusted composition staging root itself; do not expose it to FHS discovery";
-        paths = [ scratchRoot ];
-        operations = [
-          "chmod"
-          "chown"
-          "create"
-          "delete"
-          "link"
-          "mkdir"
-          "mknod"
-          "rename"
-          "rmdir"
-          "symlink"
-          "write"
-        ];
-        decision = "allow";
-      }
-      {
-        name = "allow-release-gate-composition-control-descendants";
-        description = "Allow the trusted wrapper to provision and inspect randomized staging descendants hidden before payload release";
-        paths = [
-          "${scratchRoot}/*"
-          "${scratchRoot}/*/**"
-        ];
-        operations = [ "*" ];
-        decision = "allow";
-      }
       {
         name = "allow-release-gate-fhs-root-discovery";
         description = "Permit the Nixpkgs FHS launcher to enumerate only the top-level directory names";
@@ -517,7 +506,7 @@ let
     cp ${basePolicy} "$out/pi-supervised.yaml"
   '';
 
-  serverConfig = yaml.generate "agentsh-qshell-release-config.yaml" {
+  serverConfigDocument = {
     server = {
       http.addr = "127.0.0.1:18080";
       grpc.enabled = false;
@@ -594,7 +583,7 @@ let
         dialect = "0.11.2";
         adapter_path = "${agentshPackage}/bin/agentsh-bwrap-adapter";
         mount_helper_path = "${agentshPackage}/bin/agentsh-composition-mount-helper";
-        scratch_root = scratchRoot;
+        scratch_root = "auto";
         max_namespace_depth = 4;
         max_namespace_transitions = 32;
         max_plan_operations = 256;
@@ -617,10 +606,36 @@ let
     };
   };
 
+  serverConfig = yaml.generate "agentsh-qshell-release-config.yaml" serverConfigDocument;
+  invalidRuntimeServerConfig = yaml.generate "agentsh-qshell-invalid-runtime-config.yaml" (
+    lib.recursiveUpdate serverConfigDocument {
+      server = {
+        http.addr = "127.0.0.1:18081";
+        unix_socket.path = "/run/agentsh-auto-runtime/control.sock";
+      };
+      sessions.base_dir = "/run/agentsh-auto-runtime/sessions";
+      audit = {
+        output = "/run/agentsh-auto-runtime/audit.jsonl";
+        storage.sqlite_path = "/run/agentsh-auto-runtime/events.db";
+      };
+      sandbox.composition.bubblewrap.scratch_root = "auto";
+    }
+  );
+
   serverLauncher = pkgs.writeShellScript "agentsh-release-gate-server" ''
     set -eu
-    export AGENTSH_NETHELPER_INSTANCE_CREDENTIAL="$(${pkgs.coreutils}/bin/cat "$CREDENTIALS_DIRECTORY/agentsh-nethelper-instance-credential")"
+    export AGENTSH_NETHELPER_INSTANCE_CREDENTIAL="$(${pkgs.coreutils}/bin/cat ${releaseRuntimeRoot}/instance-credential)"
     exec ${agentshPackage}/bin/agentsh server --config ${serverConfig}
+  '';
+
+  nethelperBootstrapLauncher = pkgs.writeShellScript "agentsh-release-gate-nethelper-bootstrap" ''
+    set -eu
+    export SUDO_UID=${releaseUID}
+    export SUDO_GID=${releaseUID}
+    export SUDO_USER=agentsh-release-user
+    exec ${agentshPackage}/bin/agentsh nethelper bootstrap \
+      --uid ${releaseUID} --gid ${releaseUID} --lease ${releaseLease} \
+      --runtime 192h --soft-lease 49h
   '';
 in
 assert lib.versionAtLeast pkgs.bubblewrap.version "0.11.2";
@@ -635,6 +650,12 @@ pkgs.testers.runNixOSTest {
       fsType = "bpf";
       options = [ "mode=0700" ];
     };
+    users.groups.agentsh-release-user.gid = 1234;
+    users.users.agentsh-release-user = {
+      isNormalUser = true;
+      uid = 1234;
+      group = "agentsh-release-user";
+    };
     environment.systemPackages = [
       agentshPackage
       pkgs.curl
@@ -643,74 +664,55 @@ pkgs.testers.runNixOSTest {
       pkgs.util-linux
     ];
     systemd.tmpfiles.rules = [
-      "d /var/lib/agentsh-release 0700 root root -"
-      "d /run/agentsh-release 0700 root root -"
-      "f /run/agentsh-release/nethelper-secret 0400 root root - agentsh-release-gate-nethelper-credential-0123456789abcdef"
-      "d /sys/fs/bpf/agentsh-release 0700 root root -"
+      "d /var/lib/agentsh-release 0700 agentsh-release-user agentsh-release-user -"
+      "d /run/agentsh-release 0700 agentsh-release-user agentsh-release-user -"
       "d /boot 0755 root root -"
       "d /home 0755 root root -"
-      "d /home/theo 0755 root root -"
-      "d /home/theo/.config-rose/nix 0755 root root -"
-      "d /home/theo/.local/share/nix 0755 root root -"
+      "d /home/theo 0755 agentsh-release-user agentsh-release-user -"
+      "d /home/theo/.config-rose 0755 agentsh-release-user agentsh-release-user -"
+      "d /home/theo/.config-rose/nix 0755 agentsh-release-user agentsh-release-user -"
+      "d /home/theo/.local 0755 agentsh-release-user agentsh-release-user -"
+      "d /home/theo/.local/share 0755 agentsh-release-user agentsh-release-user -"
+      "d /home/theo/.local/share/nix 0755 agentsh-release-user agentsh-release-user -"
       "d /mnt 0755 root root -"
       "d /opt 0755 root root -"
       "d /share 0755 root root -"
       "d /srv 0755 root root -"
       "d /zokelmannvms 0755 root root -"
       "d /zroot 0755 root root -"
-      "d ${scratchRoot} 1733 root root -"
-      "d /scratch/theo 0755 root root -"
-      "d /scratch/theo/.cache/nix 0755 root root -"
-      "d /scratch/theo/.local/share/nix 0755 root root -"
+      "d /scratch/theo 0755 agentsh-release-user agentsh-release-user -"
+      "d /scratch/theo/.cache 0755 agentsh-release-user agentsh-release-user -"
+      "d /scratch/theo/.cache/nix 0755 agentsh-release-user agentsh-release-user -"
+      "d /scratch/theo/.local 0755 agentsh-release-user agentsh-release-user -"
+      "d /scratch/theo/.local/share 0755 agentsh-release-user agentsh-release-user -"
+      "d /scratch/theo/.local/share/nix 0755 agentsh-release-user agentsh-release-user -"
     ];
-    systemd.sockets.agentsh-release-nethelper = {
-      wantedBy = [ "multi-user.target" ];
+    systemd.services.agentsh-release-nethelper-bootstrap = {
+      requiredBy = [ "agentsh-supervisor-release-gate.service" ];
       before = [ "agentsh-supervisor-release-gate.service" ];
-      socketConfig = {
-        ListenStream = "/run/agentsh-release/nethelper.sock";
-        Accept = false;
-        SocketMode = "0600";
-        SocketUser = "root";
-        SocketGroup = "root";
-        FileDescriptorName = "control";
-        Service = "agentsh-release-nethelper.service";
-        RemoveOnStop = true;
-      };
-    };
-    systemd.services.agentsh-release-nethelper = {
-      requires = [ "agentsh-release-nethelper.socket" ];
-      after = [ "agentsh-release-nethelper.socket" ];
+      after = [
+        "sys-fs-bpf.mount"
+        "systemd-tmpfiles-setup.service"
+      ];
       serviceConfig = {
-        Type = "simple";
-        ExecStart = "${agentshPackage}/bin/agentsh nethelper serve --socket /run/agentsh-release/nethelper.sock --uid 0 --pin-root /sys/fs/bpf/agentsh-release";
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = nethelperBootstrapLauncher;
         User = "root";
         Group = "root";
-        LoadCredential = "agentsh-nethelper-instance-credential:/run/agentsh-release/nethelper-secret";
-        AmbientCapabilities = [
-          "CAP_BPF"
-          "CAP_NET_ADMIN"
-          "CAP_PERFMON"
-          "CAP_SYS_ADMIN"
-        ];
-        CapabilityBoundingSet = [
-          "CAP_BPF"
-          "CAP_NET_ADMIN"
-          "CAP_PERFMON"
-          "CAP_SYS_ADMIN"
-        ];
-        LimitMEMLOCK = "infinity";
       };
     };
     systemd.services.agentsh-supervisor-release-gate = {
       wantedBy = [ "multi-user.target" ];
-      requires = [ "agentsh-release-nethelper.socket" ];
+      requires = [ "agentsh-release-nethelper-bootstrap.service" ];
       after = [
         "network.target"
-        "agentsh-release-nethelper.socket"
+        "agentsh-release-nethelper-bootstrap.service"
       ];
       environment = {
-        AGENTSH_NETHELPER_SOCKET = "/run/agentsh-release/nethelper.sock";
-        AGENTSH_NETHELPER_CREDENTIAL_FILE = "/run/agentsh-release/nethelper-secret";
+        AGENTSH_NETHELPER_SOCKET = "${releaseRuntimeRoot}/nethelper.sock";
+        AGENTSH_NETHELPER_CREDENTIAL_FILE = "${releaseRuntimeRoot}/instance-credential";
+        AGENTSH_NETHELPER_BOOTSTRAP_RESULT = "${releaseRuntimeRoot}/bootstrap.json";
         AGENTSH_DETACHED_SUPERVISOR_LAUNCH_MODE = "systemd-user-delegated";
         XDG_CACHE_HOME = "/scratch/theo/.cache";
         XDG_CONFIG_HOME = "/home/theo/.config-rose";
@@ -720,9 +722,9 @@ pkgs.testers.runNixOSTest {
       serviceConfig = {
         Type = "simple";
         ExecStart = serverLauncher;
-        LoadCredential = "agentsh-nethelper-instance-credential:/run/agentsh-release/nethelper-secret";
         Restart = "no";
-        User = "root";
+        User = "agentsh-release-user";
+        Group = "agentsh-release-user";
         Delegate = true;
         LimitMEMLOCK = "infinity";
         StandardOutput = "append:/var/lib/agentsh-release/server.log";
@@ -746,6 +748,69 @@ pkgs.testers.runNixOSTest {
     machine.wait_until_succeeds("curl -fsS http://127.0.0.1:18080/health", timeout=30)
     machine.succeed("test -x ${agentshPackage}/bin/.agentsh-unixwrap-wrapped")
 
+    with subtest("main supervisor uses the privileged lease-scoped composition runtime"):
+        machine.succeed(
+            "jq -e --arg scratch ${scratchRoot} '"
+            ".bootstrap_schema_version >= 3 and .lease_id == \"${releaseLease}\" and "
+            ".composition_scratch_root == $scratch' ${releaseRuntimeRoot}/bootstrap.json >/dev/null"
+        )
+        assert machine.succeed("stat -Lc '%u:%g:%a' ${scratchRoot}").strip() == "0:0:1733"
+        machine.fail("test -e /agentsh-composition-scratch")
+        machine.fail("grep -E '/agentsh-composition-scratch|/run/agentsh/nethelper' ${projectOverlay}")
+        machine.succeed(
+            "runuser -u agentsh-release-user -- sh -c '"
+            "printf cache-host-pass > /scratch/theo/.cache/nix/release-host-probe && "
+            "rm /scratch/theo/.cache/nix/release-host-probe'"
+        )
+        machine.succeed(
+            "jq -s -e '"
+            "([.[] | select(.type == \"composition_runtime_provisioned\" and .fields.mode == \"lease\" and "
+            ".fields.lease_id == \"${releaseLease}\" and .fields.scratch_root == \"${scratchRoot}\" and "
+            ".fields.owner == \"root:root\" and .fields.mode_bits == \"1733\")] | length == 1) and "
+            "([.[] | select(.type == \"composition_runtime_ready\" and .fields.mode == \"lease\" and "
+            ".fields.lease_id == \"${releaseLease}\" and .fields.scratch_root == \"${scratchRoot}\")] | length == 1)' "
+            "/var/lib/agentsh-release/audit.jsonl >/dev/null"
+        )
+
+    with subtest("unsafe runtime permissions fail startup with durable evidence"):
+        lease = "lease-33333333-3333-4333-8333-333333333333"
+        runtime = "/run/agentsh/nethelper/1234/" + lease
+        scratch = runtime + "/composition"
+        socket = runtime + "/nethelper.sock"
+        credential = runtime + "/instance-credential"
+        result = runtime + "/bootstrap.json"
+        machine.succeed(
+            "env SUDO_UID=1234 SUDO_GID=1234 SUDO_USER=agentsh-release-user "
+            "${agentshPackage}/bin/agentsh nethelper bootstrap --uid 1234 --gid 1234 "
+            "--lease " + lease + " --runtime 1h"
+        )
+        machine.succeed("chmod 0733 " + shlex.quote(scratch))
+        machine.succeed("install -d -o agentsh-release-user -g agentsh-release-user -m 0700 /run/agentsh-auto-runtime")
+        machine.succeed(
+            "systemd-run --unit=agentsh-invalid-runtime --property=User=agentsh-release-user "
+            "--property=Group=agentsh-release-user --property=Delegate=yes "
+            "--property=Environment=AGENTSH_NETHELPER_SOCKET=" + shlex.quote(socket) + " "
+            "--property=Environment=AGENTSH_NETHELPER_CREDENTIAL_FILE=" + shlex.quote(credential) + " "
+            "--property=Environment=AGENTSH_NETHELPER_BOOTSTRAP_RESULT=" + shlex.quote(result) + " "
+            "-- ${agentshPackage}/bin/agentsh server --config ${invalidRuntimeServerConfig}"
+        )
+        machine.wait_until_succeeds(
+            "test -s /run/agentsh-auto-runtime/audit.jsonl && "
+            "! systemctl is-active --quiet agentsh-invalid-runtime.service",
+            timeout=20,
+        )
+        machine.succeed(
+            "jq -s -e '[.[] | select(.type == \"composition_runtime_failed\" and "
+            "(.fields.reason | contains(\"unsafe type, mode, or ownership\")))] | length == 1' "
+            "/run/agentsh-auto-runtime/audit.jsonl >/dev/null"
+        )
+        machine.succeed("chmod 1733 " + shlex.quote(scratch))
+        machine.succeed(
+            "runuser -u agentsh-release-user -- ${agentshPackage}/bin/agentsh nethelper release "
+            "--socket " + shlex.quote(socket) + " --credential-file " + shlex.quote(credential) + " --lease " + lease
+        )
+        machine.wait_until_succeeds("test ! -e " + shlex.quote(runtime), timeout=10)
+
     machine.succeed(
         "python3 - <<'PY'\n"
         "import json\n"
@@ -761,10 +826,13 @@ pkgs.testers.runNixOSTest {
 
     def install_project(root):
         machine.succeed(
-            "install -d -m 0755 " + shlex.quote(root + "/qshell") + " " +
+            "install -d -o agentsh-release-user -g agentsh-release-user -m 0755 " + shlex.quote(root) + " " +
+            shlex.quote(root + "/qshell") + " " + shlex.quote(root + "/.agentsh") + " " +
             shlex.quote(root + "/.agentsh/policy-overlays") + " && " +
-            "cp ${projectOverlay} " + shlex.quote(root + "/.agentsh/policy-overlays/overlay.yaml") + " && " +
-            "printf '{ outputs = _: {}; }\\n' > " + shlex.quote(root + "/flake.nix")
+            "install -o agentsh-release-user -g agentsh-release-user -m 0644 ${projectOverlay} " +
+            shlex.quote(root + "/.agentsh/policy-overlays/overlay.yaml") + " && " +
+            "printf '{ outputs = _: {}; }\\n' > " + shlex.quote(root + "/flake.nix") + " && " +
+            "chown agentsh-release-user:agentsh-release-user " + shlex.quote(root + "/flake.nix")
         )
 
     def create_session(workspace, project_root):
@@ -864,7 +932,8 @@ pkgs.testers.runNixOSTest {
 
     with subtest("a symlinked /scratch root preserves the completed QShell cwd"):
         machine.succeed(
-            "rm -rf /scratch && install -d -m 0755 /zroot/scratch-real/theo/outside /zroot/scratch-real/theo/.cache/nix /zroot/scratch-real/theo/.local/share/nix && "
+            "rm -rf /scratch && install -d -m 0755 /zroot/scratch-real/theo/outside && "
+            "install -d -o agentsh-release-user -g agentsh-release-user -m 0755 /zroot/scratch-real/theo/.cache/nix /zroot/scratch-real/theo/.local/share/nix && "
             "ln -s /zroot/scratch-real /scratch"
         )
         install_project("/zroot/scratch-real/theo/qshell-project")
@@ -874,7 +943,8 @@ pkgs.testers.runNixOSTest {
     with subtest("a separate project submount preserves the completed QShell cwd"):
         machine.succeed(
             "rm /scratch && rm -rf /zroot/scratch-real && "
-            "install -d -m 0755 ${projectRoot} /scratch/theo/outside /scratch/theo/.cache/nix /scratch/theo/.local/share/nix && "
+            "install -d -m 0755 ${projectRoot} /scratch/theo/outside && "
+            "install -d -o agentsh-release-user -g agentsh-release-user -m 0755 /scratch/theo/.cache/nix /scratch/theo/.local/share/nix && "
             "mount -t tmpfs -o nosuid,nodev,size=32m tmpfs ${projectRoot}"
         )
         install_project("${projectRoot}")
@@ -900,6 +970,21 @@ pkgs.testers.runNixOSTest {
             "([$plans[].fields.parent_pid] | sort) == ([$bwrap[].pid] | sort)' "
             "/var/lib/agentsh-release/audit.jsonl >/dev/null"
         )
+        machine.succeed(
+            "jq -s -e '"
+            "[.[] | select(.type == \"composition_runtime_ready\" and .fields.mode == \"lease\" and "
+            ".fields.lease_id == \"${releaseLease}\" and .fields.scratch_root == \"${scratchRoot}\")] | length == 1' "
+            "/var/lib/agentsh-release/audit.jsonl >/dev/null"
+        )
+        machine.succeed("test -z \"$(find ${scratchRoot} -mindepth 1 -maxdepth 1 -print -quit)\"")
+        machine.succeed(
+            "jq -s -e '"
+            "[.[] | select(.type == \"composition_runtime_cleanup\" and .operation == \"synthetic_pool_paths_removed\" and "
+            ".fields.scope == \"command\" and .fields.scratch_root == \"${scratchRoot}\" and "
+            ".fields.construction_paths_removed == true and (.command_id | type == \"string\" and length > 0))] as $cleanup | "
+            "($cleanup | length) == 6 and ([$cleanup[].command_id] | unique | length) == 6' "
+            "/var/lib/agentsh-release/audit.jsonl >/dev/null"
+        )
         approval_events = machine.succeed(
             "grep -E '\"type\":\"approval_(requested|resolved)\"' "
             "/var/lib/agentsh-release/audit.jsonl || true"
@@ -907,5 +992,14 @@ pkgs.testers.runNixOSTest {
         assert approval_events == "", approval_events
         machine.fail("grep -F 'overflowuid' /var/lib/agentsh-release/audit.jsonl /var/lib/agentsh-release/server.log")
         machine.fail("grep -F 'E_COMPOSITION_REQUESTER_CHANGED' /var/lib/agentsh-release/audit.jsonl")
+
+    with subtest("lease teardown removes the empty private composition runtime"):
+        machine.succeed("systemctl stop agentsh-supervisor-release-gate.service")
+        machine.succeed(
+            "runuser -u agentsh-release-user -- ${agentshPackage}/bin/agentsh nethelper release "
+            "--socket ${releaseRuntimeRoot}/nethelper.sock "
+            "--credential-file ${releaseRuntimeRoot}/instance-credential --lease ${releaseLease}"
+        )
+        machine.wait_until_succeeds("test ! -e ${releaseRuntimeRoot}", timeout=10)
   '';
 }

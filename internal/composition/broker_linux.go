@@ -24,26 +24,28 @@ import (
 )
 
 type BrokerConfig struct {
-	HelperPath            string
-	AdapterPath           string
-	LauncherPath          string
-	ScratchRoot           string
-	ReadRoots             []string
-	ListRoots             []string
-	WriteRoots            []string
-	ExecuteRoots          []string
-	DenyRoots             []string
-	MaxPlanOperations     int
-	MaxDataBytes          int64
-	RequestTimeout        time.Duration
-	SetupConnection       *os.File
-	SetupSenderPID        int
-	SetupSenderExecutable string
-	SetupSyntheticRoots   int
-	SetupSyntheticRW      int
-	DeviceIOCTLRoots      []string
-	PublishNormalizedPlan func(parentPID, targetPID int, snapshot NormalizedPlanSnapshot)
-	PublishPathMappings   func(parentPID, targetPID int, mappings PathMappings) error
+	HelperPath               string
+	AdapterPath              string
+	LauncherPath             string
+	ScratchRoot              string
+	ReadRoots                []string
+	ListRoots                []string
+	WriteRoots               []string
+	ExecuteRoots             []string
+	DenyRoots                []string
+	MaxPlanOperations        int
+	MaxDataBytes             int64
+	RequestTimeout           time.Duration
+	SetupConnection          *os.File
+	SetupSenderPID           int
+	SetupSenderExecutable    string
+	SetupSyntheticRoots      int
+	SetupSyntheticRW         int
+	RequireSetupPathsRemoved bool
+	DeviceIOCTLRoots         []string
+	PublishNormalizedPlan    func(parentPID, targetPID int, snapshot NormalizedPlanSnapshot)
+	PublishPathMappings      func(parentPID, targetPID int, mappings PathMappings) error
+	PublishPoolCleanup       func() error
 }
 
 type Broker struct {
@@ -245,6 +247,14 @@ func (b *Broker) receiveSetup(connection *os.File) {
 		b.setup.Close()
 		b.setup = nil
 		b.setupErr = err
+		return
+	}
+	if b.cfg.PublishPoolCleanup != nil {
+		if err := b.cfg.PublishPoolCleanup(); err != nil {
+			b.setup.Close()
+			b.setup = nil
+			b.setupErr = typedError("E_COMPOSITION_BACKEND_UNAVAILABLE", "persist composition pool cleanup: %v", err)
+		}
 	}
 }
 
@@ -328,12 +338,18 @@ func (b *Broker) validateSetupContract(setup *ReceivedSetup) error {
 			if object.Rights != exact || !pathWithin(object.Path, b.cfg.ScratchRoot) {
 				return typedError("E_COMPOSITION_SETUP_INVALID", "synthetic root %d violates its fixed rights/path class", index)
 			}
+			if err := b.validateSyntheticConstructionPathRemoved(index, object.Path); err != nil {
+				return err
+			}
 		case SetupObjectSyntheticRW:
 			syntheticCount++
 			required := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE)
 			forbidden := uint64(landlock.LANDLOCK_ACCESS_FS_EXECUTE | landlock.LANDLOCK_ACCESS_FS_IOCTL_DEV | landlock.LANDLOCK_ACCESS_FS_MAKE_CHAR | landlock.LANDLOCK_ACCESS_FS_MAKE_BLOCK)
 			if object.Rights&required != required || object.Rights&forbidden != 0 || !pathWithin(object.Path, b.cfg.ScratchRoot) {
 				return typedError("E_COMPOSITION_SETUP_INVALID", "synthetic writable object %d violates its fixed rights/path class", index)
+			}
+			if err := b.validateSyntheticConstructionPathRemoved(index, object.Path); err != nil {
+				return err
 			}
 			if syntheticRWRights == 0 {
 				syntheticRWRights = object.Rights
@@ -348,6 +364,20 @@ func (b *Broker) validateSetupContract(setup *ReceivedSetup) error {
 		return typedError("E_COMPOSITION_SETUP_INVALID", "synthetic pool counts root=%d/%d writable=%d/%d", rootCount, b.cfg.SetupSyntheticRoots, syntheticCount, b.cfg.SetupSyntheticRW)
 	}
 	return nil
+}
+
+func (b *Broker) validateSyntheticConstructionPathRemoved(index int, path string) error {
+	if !b.cfg.RequireSetupPathsRemoved {
+		return nil
+	}
+	_, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return typedError("E_COMPOSITION_SETUP_INVALID", "inspect synthetic construction path %d: %v", index, err)
+	}
+	return typedError("E_COMPOSITION_SETUP_INVALID", "synthetic construction path %d remained visible after setup", index)
 }
 
 func (b *Broker) awaitSetup() error {

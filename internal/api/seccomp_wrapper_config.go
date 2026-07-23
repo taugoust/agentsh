@@ -61,6 +61,7 @@ type seccompWrapperConfig struct {
 	CompositionAllowList       []string `json:"composition_allow_list,omitempty"`
 	CompositionAllowWrite      []string `json:"composition_allow_write,omitempty"`
 	CompositionScratchRoot     string   `json:"composition_scratch_root,omitempty"`
+	CompositionControlRoot     string   `json:"composition_control_root,omitempty"`
 	CompositionSyntheticMounts int      `json:"composition_synthetic_mounts,omitempty"`
 	CompositionMaxTransitions  int      `json:"composition_max_transitions,omitempty"`
 	CompositionMaxDataBytes    int64    `json:"composition_max_data_bytes,omitempty"`
@@ -172,7 +173,21 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 				seccompCfg.CompositionAllowExecute = append(seccompCfg.CompositionAllowExecute, a.cfg.Landlock.AllowExecute...)
 				seccompCfg.CompositionAllowRead = append(seccompCfg.CompositionAllowRead, a.cfg.Landlock.AllowRead...)
 				seccompCfg.CompositionAllowWrite = append(seccompCfg.CompositionAllowWrite, a.cfg.Landlock.AllowWrite...)
-				seccompCfg.CompositionScratchRoot = a.cfg.Sandbox.Composition.Bubblewrap.ScratchRoot
+				if scratchRoot, err := a.compositionScratchRoot(); err == nil {
+					controlRoot := scratchRoot
+					if a.cfg.Sandbox.Composition.Bubblewrap.ScratchRoot == config.CompositionScratchRootAuto {
+						controlRoot, err = automaticCompositionRuntimeControlRoot(scratchRoot)
+					}
+					if err == nil {
+						seccompCfg.CompositionScratchRoot = scratchRoot
+						seccompCfg.CompositionControlRoot = controlRoot
+						seccompCfg.DenyPaths = append([]string{controlRoot}, seccompCfg.DenyPaths...)
+					} else {
+						slog.Warn("composition control runtime has invalid topology", "error", err)
+					}
+				} else {
+					slog.Warn("composition runtime became unavailable while building the command boundary", "error", err)
+				}
 				seccompCfg.CompositionSyntheticMounts = a.cfg.Sandbox.Composition.Bubblewrap.MaxSyntheticMounts
 				seccompCfg.CompositionMaxTransitions = a.cfg.Sandbox.Composition.Bubblewrap.MaxNamespaceTransitions
 				seccompCfg.CompositionMaxDataBytes = a.cfg.Sandbox.Composition.Bubblewrap.MaxDataBytes

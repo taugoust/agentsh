@@ -522,7 +522,7 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	})
 	if toolJailRequired {
 		binding := a.nethelperBindingSnapshot()
-		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, binding.SocketPath, binding.CredentialFile, a.nethelperRecoveryTokenFile)
+		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, binding.SocketPath, binding.CredentialFile, binding.BootstrapResultPath, a.nethelperRecoveryTokenFile, seccompCfg.CompositionScratchRoot)
 	}
 
 	// Ensure the parent directory of the about-to-be-execed command is

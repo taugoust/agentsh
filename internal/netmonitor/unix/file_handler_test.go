@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/agentsh/agentsh/pkg/types"
@@ -41,6 +42,42 @@ func (m *mockFileEmitter) AppendEvent(_ context.Context, ev types.Event) error {
 }
 
 func (m *mockFileEmitter) Publish(ev types.Event) {}
+
+func TestFileHandler_InternalCompositionControlAccessIsWrapperOnly(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "runtime")
+	path := filepath.Join(root, "pool")
+	policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
+		path: {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-project-control"},
+	}}
+	handler := NewFileHandler(policy, NewMountRegistry(), nil, true)
+	handler.SetInternalControlAccess(root, os.Getpid())
+
+	result, event := handler.Handle(context.Background(), FileRequest{
+		PID: os.Getpid(), Syscall: int32(unix.SYS_MKDIRAT), Path: path,
+		Operation: "mkdir", SessionID: "composition-test",
+	})
+	if result.Action != ActionContinue || event == nil || event.Policy == nil || event.Policy.Rule != "allow-agentsh-composition-control" {
+		t.Fatalf("trusted wrapper result=%+v event=%+v", result, event)
+	}
+
+	result, _ = handler.Handle(context.Background(), FileRequest{
+		PID: os.Getpid() + 100000, Syscall: int32(unix.SYS_MKDIRAT), Path: path,
+		Operation: "mkdir", SessionID: "composition-test",
+	})
+	if result.Action != ActionDeny {
+		t.Fatalf("untrusted process received internal control access: %+v", result)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside")
+	policy.decisions[outside] = FilePolicyDecision{Decision: "deny", EffectiveDecision: "deny", Rule: "deny-outside"}
+	result, _ = handler.Handle(context.Background(), FileRequest{
+		PID: os.Getpid(), Syscall: int32(unix.SYS_RENAMEAT), Path: path, Path2: outside,
+		Operation: "rename", SessionID: "composition-test",
+	})
+	if result.Action != ActionDeny {
+		t.Fatalf("cross-boundary operation received internal control access: %+v", result)
+	}
+}
 
 func TestFileHandler_ComposedAliasUsesMostRestrictiveSourceDecision(t *testing.T) {
 	policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{

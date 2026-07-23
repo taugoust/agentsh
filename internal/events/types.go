@@ -146,6 +146,14 @@ const (
 	EventPolicyChanged EventType = "policy_changed"
 )
 
+// Composition runtime lifecycle events.
+const (
+	EventCompositionRuntimeProvisioned EventType = "composition_runtime_provisioned"
+	EventCompositionRuntimeReady       EventType = "composition_runtime_ready"
+	EventCompositionRuntimeCleanup     EventType = "composition_runtime_cleanup"
+	EventCompositionRuntimeFailed      EventType = "composition_runtime_failed"
+)
+
 // Cgroup v2 probe and enforcement events (see issue #197).
 const (
 	EventCgroupMode               EventType = "cgroup_mode"
@@ -274,6 +282,12 @@ var EventCategory = map[EventType]string{
 	EventPolicyLoaded:  "policy",
 	EventPolicyChanged: "policy",
 
+	// Composition
+	EventCompositionRuntimeProvisioned: "composition",
+	EventCompositionRuntimeReady:       "composition",
+	EventCompositionRuntimeCleanup:     "composition",
+	EventCompositionRuntimeFailed:      "composition",
+
 	// Cgroup
 	EventCgroupMode:               "cgroup",
 	EventCgroupOrphansReaped:      "cgroup",
@@ -319,6 +333,9 @@ var AllEventTypes = []EventType{
 	EventPackageApproved, EventPackageWarning, EventProviderError,
 	// Policy
 	EventPolicyLoaded, EventPolicyChanged,
+	// Composition
+	EventCompositionRuntimeProvisioned, EventCompositionRuntimeReady,
+	EventCompositionRuntimeCleanup, EventCompositionRuntimeFailed,
 	// Cgroup
 	EventCgroupMode, EventCgroupOrphansReaped, EventCgroupUnavailableRefusal,
 	EventCgroupLimitsDegraded,

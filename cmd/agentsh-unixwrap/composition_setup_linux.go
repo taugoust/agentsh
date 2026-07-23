@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,11 +37,40 @@ const (
 )
 
 type compositionSetupState struct {
-	kinds  []composition.SetupObjectKind
-	paths  []string
-	rights []uint64
-	files  []*os.File
-	owned  []*os.File
+	kinds     []composition.SetupObjectKind
+	paths     []string
+	rights    []uint64
+	files     []*os.File
+	owned     []*os.File
+	poolRoot  string
+	poolSlots []string
+}
+
+func (s *compositionSetupState) cleanupPoolPaths() error {
+	if s == nil {
+		return nil
+	}
+	var errs []error
+	remaining := make([]string, 0, len(s.poolSlots))
+	for index := len(s.poolSlots) - 1; index >= 0; index-- {
+		slot := s.poolSlots[index]
+		if err := unix.Unmount(slot, unix.MNT_DETACH); err != nil && err != unix.EINVAL && err != unix.ENOENT {
+			errs = append(errs, fmt.Errorf("detach composition pool slot %q: %w", slot, err))
+		}
+		if err := os.Remove(slot); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("remove composition pool slot %q: %w", slot, err))
+			remaining = append(remaining, slot)
+		}
+	}
+	s.poolSlots = remaining
+	if s.poolRoot != "" && len(s.poolSlots) == 0 {
+		if err := os.Remove(s.poolRoot); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("remove composition pool root %q: %w", s.poolRoot, err))
+		} else {
+			s.poolRoot = ""
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (s *compositionSetupState) closeOwned() {
@@ -224,20 +254,23 @@ func prepareCompositionSetup(cfg *WrapperConfig, prepared *preparedLandlockRules
 		return nil, fmt.Errorf("create composition pool: %w", err)
 	}
 	if err := os.Chmod(poolRoot, 0o700); err != nil {
+		_ = os.Remove(poolRoot)
 		return nil, fmt.Errorf("protect composition pool: %w", err)
 	}
 
 	capacity := len(prepared.objects) + len(cfg.DenyPaths) + cfg.CompositionSyntheticMounts + cfg.CompositionMaxTransitions
 	state := &compositionSetupState{
-		kinds:  make([]composition.SetupObjectKind, 0, capacity),
-		paths:  make([]string, 0, capacity),
-		rights: make([]uint64, 0, capacity),
-		files:  make([]*os.File, 0, capacity),
-		owned:  make([]*os.File, 0, len(cfg.DenyPaths)+cfg.CompositionSyntheticMounts+cfg.CompositionMaxTransitions),
+		kinds:    make([]composition.SetupObjectKind, 0, capacity),
+		paths:    make([]string, 0, capacity),
+		rights:   make([]uint64, 0, capacity),
+		files:    make([]*os.File, 0, capacity),
+		owned:    make([]*os.File, 0, len(cfg.DenyPaths)+cfg.CompositionSyntheticMounts+cfg.CompositionMaxTransitions),
+		poolRoot: poolRoot,
 	}
 	defer func() {
 		if resultErr != nil {
 			state.closeOwned()
+			resultErr = errors.Join(resultErr, state.cleanupPoolPaths())
 		}
 	}()
 	for index := range prepared.objects {
@@ -297,6 +330,7 @@ func prepareCompositionSetup(cfg *WrapperConfig, prepared *preparedLandlockRules
 		if err := os.Mkdir(slot, 0o700); err != nil {
 			return nil, fmt.Errorf("create composition pool slot %d: %w", index, err)
 		}
+		state.poolSlots = append(state.poolSlots, slot)
 		if err := mountSyntheticTmpfs(slot, cfg.CompositionMaxDataBytes); err != nil {
 			return nil, fmt.Errorf("mount composition pool slot %d: %w", index, err)
 		}
@@ -325,10 +359,13 @@ func prepareCompositionSetup(cfg *WrapperConfig, prepared *preparedLandlockRules
 		return nil, fmt.Errorf("composition setup requires %d descriptors, maximum 240", len(state.files))
 	}
 
-	// The wrapper still has retained O_PATH descriptors, but the payload must
-	// never reach the pool's names. The ordinary trusted mount phase masks this
-	// root before READY.
-	cfg.CommandJail.HideDirectories = append(cfg.CommandJail.HideDirectories, poolRoot)
+	// The cloned mount FDs and retained Landlock objects remain authoritative
+	// after their construction names disappear. Remove those names now: once
+	// Landlock is enforced, mount topology changes and parent-directory removal
+	// are deliberately unavailable to this process.
+	if err := state.cleanupPoolPaths(); err != nil {
+		return nil, fmt.Errorf("remove composition pool construction paths: %w", err)
+	}
 	return state, nil
 }
 
@@ -337,6 +374,9 @@ func publishCompositionSetup(state *compositionSetupState) error {
 		return nil
 	}
 	defer state.closeOwned()
+	if state.poolRoot != "" || len(state.poolSlots) != 0 {
+		return fmt.Errorf("composition pool construction paths survived pre-enforcement cleanup")
+	}
 	fd, err := compositionSetupFD()
 	if err != nil {
 		return err
@@ -347,8 +387,5 @@ func publishCompositionSetup(state *compositionSetupState) error {
 	}
 	defer connection.Close()
 	defer os.Unsetenv(composition.SetupFDEnv)
-	if err := composition.SendSetup(connection, composition.Mode, state.kinds, state.paths, state.rights, state.files); err != nil {
-		return err
-	}
-	return nil
+	return composition.SendSetup(connection, composition.Mode, state.kinds, state.paths, state.rights, state.files)
 }

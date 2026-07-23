@@ -87,26 +87,30 @@ func (a *App) authorizeNethelperRecovery(r *http.Request) bool {
 }
 
 type nethelperBinding struct {
-	Kind                string
-	LeaseID             string
-	UnitName            string
-	SocketPath          string
-	CredentialFile      string
-	BootstrapResultPath string
-	Credential          string
-	ProtocolVersion     int
-	Capabilities        []string
-	CreatedAt           time.Time
-	SoftExpiresAt       time.Time
-	HardExpiresAt       time.Time
-	SoftLease           time.Duration
-	RenewalRequired     bool
-	Generation          uint64
-	RenewalGeneration   uint64
-	ActiveRegistrations int
-	LastStatus          string
-	LastReason          string
-	LastCheckedAt       time.Time
+	Kind                   string
+	LeaseID                string
+	UnitName               string
+	UID                    uint32
+	GID                    uint32
+	SocketPath             string
+	CredentialFile         string
+	BootstrapResultPath    string
+	CompositionScratchRoot string
+	Credential             string
+	ProtocolVersion        int
+	BootstrapSchemaVersion int
+	Capabilities           []string
+	CreatedAt              time.Time
+	SoftExpiresAt          time.Time
+	HardExpiresAt          time.Time
+	SoftLease              time.Duration
+	RenewalRequired        bool
+	Generation             uint64
+	RenewalGeneration      uint64
+	ActiveRegistrations    int
+	LastStatus             string
+	LastReason             string
+	LastCheckedAt          time.Time
 }
 
 func (b nethelperBinding) clone() nethelperBinding {
@@ -138,16 +142,21 @@ func newNethelperBindingState(socketPath, credentialFile, bootstrapPath, credent
 		binding.BootstrapResultPath = filepath.Join(filepath.Dir(binding.SocketPath), "bootstrap.json")
 	}
 	if binding.BootstrapResultPath != "" {
-		if result, err := readNethelperBootstrapResult(binding.BootstrapResultPath); err == nil {
+		if result, err := readNethelperBootstrapResult(binding.BootstrapResultPath); err == nil &&
+			result.Validate(time.Now().UTC()) == nil &&
+			result.SocketPath == binding.SocketPath && result.CredentialFile == binding.CredentialFile &&
+			result.ResultFile == binding.BootstrapResultPath && bootstrapResultMatchesFixedPaths(result) {
 			binding.Kind = "ephemeral"
 			binding.UnitName = result.UnitName
+			binding.BootstrapSchemaVersion = result.BootstrapSchemaVersion
+			binding.UID = result.UID
+			binding.GID = result.GID
+			binding.CompositionScratchRoot = result.CompositionScratchRoot
 			binding.CreatedAt = result.StartedAt
 			binding.HardExpiresAt = result.ExpiresAt
 			binding.SoftLease = time.Duration(result.SoftLeaseSeconds) * time.Second
 			binding.RenewalRequired = result.RenewalRequired
-			if result.BootstrapSchemaVersion >= nethelper.BootstrapSchemaVersion {
-				binding.LeaseID = result.LeaseID
-			}
+			binding.LeaseID = result.LeaseID
 		}
 	}
 	if binding.SocketPath != "" {
@@ -531,8 +540,11 @@ func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation 
 		return nethelperBinding{}, fmt.Errorf("candidate lease does not match expected_lease_id")
 	}
 	expected, err := nethelper.EphemeralPathsForUID(result.UID, result.LeaseID)
-	if err != nil || expected.UnitName != result.UnitName || expected.SocketPath != result.SocketPath || expected.CredentialFile != result.CredentialFile || expected.ResultFile != result.ResultFile || expected.PinRoot != result.PinRoot {
+	if err != nil || expected.UnitName != result.UnitName || expected.SocketPath != result.SocketPath || expected.CredentialFile != result.CredentialFile || expected.ResultFile != result.ResultFile || expected.PinRoot != result.PinRoot || expected.CompositionScratchRoot != result.CompositionScratchRoot {
 		return nethelperBinding{}, fmt.Errorf("bootstrap metadata does not match fixed helper-selected paths")
+	}
+	if err := validateLeaseCompositionScratchRoot(result.CompositionScratchRoot, expected.RuntimeDir); err != nil {
+		return nethelperBinding{}, fmt.Errorf("validate candidate composition runtime: %w", err)
 	}
 	if err := validateOwnedProtectedPath(req.SocketPath, true); err != nil {
 		return nethelperBinding{}, fmt.Errorf("validate candidate socket: %w", err)
@@ -553,12 +565,20 @@ func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation 
 	}
 	return nethelperBinding{
 		Kind: "ephemeral", LeaseID: result.LeaseID, UnitName: result.UnitName,
+		UID: result.UID, GID: result.GID,
 		SocketPath: result.SocketPath, CredentialFile: result.CredentialFile,
-		BootstrapResultPath: result.ResultFile, Credential: value,
-		ProtocolVersion: result.ProtocolVersion, CreatedAt: result.StartedAt,
+		BootstrapResultPath: result.ResultFile, CompositionScratchRoot: result.CompositionScratchRoot, Credential: value,
+		ProtocolVersion: result.ProtocolVersion, BootstrapSchemaVersion: result.BootstrapSchemaVersion, CreatedAt: result.StartedAt,
 		HardExpiresAt: result.ExpiresAt, SoftLease: time.Duration(result.SoftLeaseSeconds) * time.Second,
 		RenewalRequired: result.RenewalRequired, Generation: generation,
 	}, nil
+}
+
+func bootstrapResultMatchesFixedPaths(result nethelper.BootstrapResult) bool {
+	expected, err := nethelper.EphemeralPathsForUID(result.UID, result.LeaseID)
+	return err == nil && expected.UnitName == result.UnitName && expected.SocketPath == result.SocketPath &&
+		expected.CredentialFile == result.CredentialFile && expected.ResultFile == result.ResultFile &&
+		expected.PinRoot == result.PinRoot && expected.CompositionScratchRoot == result.CompositionScratchRoot
 }
 
 func helperBindingCleanupUncertain(report *types.NetworkEnforcement) bool {

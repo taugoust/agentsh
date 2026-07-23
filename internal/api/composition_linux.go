@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/composition"
+	internalevents "github.com/agentsh/agentsh/internal/events"
 	unixmon "github.com/agentsh/agentsh/internal/netmonitor/unix"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/pkg/types"
@@ -56,29 +57,30 @@ func (a *App) configureExecveComposition(handler any, s *session.Session, wrappe
 		return err
 	}
 	wrapperPath = compositionProcessExecutablePath(wrapperPath)
-	scratch := ceiling.ScratchRoot
+	scratch := wrapperCfg.CompositionScratchRoot
 	if scratch == "" || !filepath.IsAbs(scratch) || filepath.Clean(scratch) != scratch {
 		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: trusted composition scratch root is unavailable")
 	}
 	pathRegistry := unixmon.NewCompositionPathRegistry()
 	broker, err := composition.NewBroker(composition.BrokerConfig{
-		HelperPath:            helperPath,
-		AdapterPath:           adapterPath,
-		ScratchRoot:           scratch,
-		ReadRoots:             concreteCompositionRoots(wrapperCfg.CompositionAllowRead, wrapperCfg.Workspace),
-		ListRoots:             concreteCompositionRoots(wrapperCfg.CompositionAllowList, ""),
-		WriteRoots:            concreteCompositionRoots(wrapperCfg.CompositionAllowWrite, wrapperCfg.Workspace),
-		ExecuteRoots:          concreteCompositionRoots(wrapperCfg.CompositionAllowExecute, wrapperCfg.Workspace),
-		DenyRoots:             concreteCompositionRoots(wrapperCfg.DenyPaths, ""),
-		MaxPlanOperations:     ceiling.MaxPlanOperations,
-		MaxDataBytes:          ceiling.MaxDataBytes,
-		RequestTimeout:        30 * time.Second,
-		SetupConnection:       setupConnection,
-		SetupSenderPID:        wrapperPID,
-		SetupSenderExecutable: wrapperPath,
-		SetupSyntheticRoots:   ceiling.MaxNamespaceTransitions,
-		SetupSyntheticRW:      ceiling.MaxSyntheticMounts,
-		DeviceIOCTLRoots:      ceiling.DeviceIOCTLPaths,
+		HelperPath:               helperPath,
+		AdapterPath:              adapterPath,
+		ScratchRoot:              scratch,
+		ReadRoots:                concreteCompositionRoots(wrapperCfg.CompositionAllowRead, wrapperCfg.Workspace),
+		ListRoots:                concreteCompositionRoots(wrapperCfg.CompositionAllowList, ""),
+		WriteRoots:               concreteCompositionRoots(wrapperCfg.CompositionAllowWrite, wrapperCfg.Workspace),
+		ExecuteRoots:             concreteCompositionRoots(wrapperCfg.CompositionAllowExecute, wrapperCfg.Workspace),
+		DenyRoots:                concreteCompositionRoots(wrapperCfg.DenyPaths, ""),
+		MaxPlanOperations:        ceiling.MaxPlanOperations,
+		MaxDataBytes:             ceiling.MaxDataBytes,
+		RequestTimeout:           30 * time.Second,
+		SetupConnection:          setupConnection,
+		SetupSenderPID:           wrapperPID,
+		SetupSenderExecutable:    wrapperPath,
+		SetupSyntheticRoots:      ceiling.MaxNamespaceTransitions,
+		SetupSyntheticRW:         ceiling.MaxSyntheticMounts,
+		RequireSetupPathsRemoved: true,
+		DeviceIOCTLRoots:         ceiling.DeviceIOCTLPaths,
 		PublishNormalizedPlan: func(parentPID, targetPID int, snapshot composition.NormalizedPlanSnapshot) {
 			event := types.Event{
 				ID:        uuid.NewString(),
@@ -98,6 +100,27 @@ func (a *App) configureExecveComposition(handler any, s *session.Session, wrappe
 			a.broker.Publish(event)
 		},
 		PublishPathMappings: pathRegistry.Register,
+		PublishPoolCleanup: func() error {
+			event := types.Event{
+				ID:        uuid.NewString(),
+				Timestamp: time.Now().UTC(),
+				Type:      string(internalevents.EventCompositionRuntimeCleanup),
+				SessionID: s.ID,
+				CommandID: s.CurrentCommandID(),
+				Operation: "synthetic_pool_paths_removed",
+				Fields: map[string]any{
+					"scope":                      "command",
+					"scratch_root":               scratch,
+					"construction_paths_removed": true,
+				},
+			}
+			s.InjectTraceContext(event.Fields)
+			if err := a.store.AppendEvent(context.Background(), event); err != nil {
+				return err
+			}
+			a.broker.Publish(event)
+			return nil
+		},
 	})
 	if err != nil {
 		_ = pathRegistry.Close()

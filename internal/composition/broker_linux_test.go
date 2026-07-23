@@ -457,6 +457,27 @@ func TestDestinationRightsCannotBroadenWritableSyntheticAncestor(t *testing.T) {
 	}
 }
 
+func TestBrokerRequiresSyntheticConstructionPathsRemoved(t *testing.T) {
+	scratch := t.TempDir()
+	constructionPath := filepath.Join(scratch, "pool", "slot")
+	if err := os.MkdirAll(constructionPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	broker := &Broker{cfg: BrokerConfig{
+		ScratchRoot:              scratch,
+		RequireSetupPathsRemoved: true,
+	}}
+	if err := broker.validateSyntheticConstructionPathRemoved(0, constructionPath); err == nil || !strings.Contains(err.Error(), "remained visible") {
+		t.Fatalf("visible construction path error = %v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(scratch, "pool")); err != nil {
+		t.Fatal(err)
+	}
+	if err := broker.validateSyntheticConstructionPathRemoved(0, constructionPath); err != nil {
+		t.Fatalf("removed construction path rejected: %v", err)
+	}
+}
+
 func TestListOnlySetupObjectCannotCarryFileReadAuthority(t *testing.T) {
 	directory := t.TempDir()
 	broker := &Broker{cfg: BrokerConfig{ListRoots: []string{directory}}}

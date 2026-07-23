@@ -216,7 +216,7 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 	})
 	if jailRequired {
 		binding := a.nethelperBindingSnapshot()
-		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, binding.SocketPath, binding.CredentialFile, a.nethelperRecoveryTokenFile)
+		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, binding.SocketPath, binding.CredentialFile, binding.BootstrapResultPath, a.nethelperRecoveryTokenFile, seccompCfg.CompositionScratchRoot)
 	}
 	cfgJSON, marshalErr := json.Marshal(seccompCfg)
 	if marshalErr != nil {
@@ -299,6 +299,7 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 		setupFD := 3 + len(extraCfg.extraFiles)
 		extraCfg.extraFiles = append(extraCfg.extraFiles, setupPair.child)
 		extraCfg.compositionParentSock = setupPair.parent
+		extraCfg.compositionControlRoot = seccompCfg.CompositionControlRoot
 		extraCfg.env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
 		wrappedReq.Env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
 		extraCfg.configureComposition = func(handler any, setup *os.File, wrapperPID int) error {
@@ -371,16 +372,34 @@ func commandJailRequirements(required bool, composition ...string) *types.LinuxC
 	}
 }
 
-func buildCommandJailConfig(cfg *config.Config, nethelperSocket, nethelperCredentialFile, recoveryTokenFile string) *commandJailConfig {
+func buildCommandJailConfig(cfg *config.Config, nethelperSocket, nethelperCredentialFile, nethelperBootstrapResult, recoveryTokenFile, compositionScratchRoot string) *commandJailConfig {
 	jail := &commandJailConfig{Required: true}
-	if helperSocket := strings.TrimSpace(nethelperSocket); helperSocket != "" {
-		jail.HideDirectories = append(jail.HideDirectories, filepath.Dir(helperSocket))
+	compositionScratchRoot = strings.TrimSpace(compositionScratchRoot)
+	compositionLeaseRoot := ""
+	if filepath.IsAbs(compositionScratchRoot) {
+		compositionLeaseRoot = filepath.Dir(filepath.Clean(compositionScratchRoot))
 	}
-	if credentialFile := strings.TrimSpace(nethelperCredentialFile); credentialFile != "" && filepath.IsAbs(credentialFile) {
-		// Hide the containing control directory so credential rotation cannot
-		// reveal a replacement file after the mount boundary is established.
-		jail.HideDirectories = append(jail.HideDirectories, filepath.Dir(credentialFile))
+	addHelperControl := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" || !filepath.IsAbs(path) {
+			return
+		}
+		path = filepath.Clean(path)
+		if compositionLeaseRoot != "" && filepath.Dir(path) == compositionLeaseRoot {
+			// Automatic composition lives beside root-owned helper controls in the
+			// lease directory. Mask each immutable control object while retaining
+			// the composition child for trusted pre-pivot mount construction.
+			jail.HidePaths = append(jail.HidePaths, path)
+			return
+		}
+		// Persistent and legacy helpers have no sibling composition runtime.
+		// Hide the containing directory so credential rotation cannot reveal a
+		// replacement file after the mount boundary is established.
+		jail.HideDirectories = append(jail.HideDirectories, filepath.Dir(path))
 	}
+	addHelperControl(nethelperSocket)
+	addHelperControl(nethelperCredentialFile)
+	addHelperControl(nethelperBootstrapResult)
 	if tokenFile := strings.TrimSpace(recoveryTokenFile); tokenFile != "" && filepath.IsAbs(tokenFile) {
 		// Hide the whole fixed wrapper-control container, not merely today's
 		// token inode, so same-UID commands cannot race replacement or discover

@@ -251,7 +251,7 @@ func detachedSupervisorServiceEnv(eventToken string, env, inheritPatterns []stri
 	// file path; the supervisor reads it before serving requests. The generic
 	// subagent runtime configuration is non-secret control-plane data and must
 	// cross the systemd-run boundary so spawn_subagent works in detached mode.
-	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, detached.EnvNetworkEnforcementRequested}
+	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, detached.EnvNetworkEnforcementRequested}
 	keys = append(keys, detachedSupervisorRuntimeEnvKeys...)
 	seen := map[string]struct{}{"AGENTSH_DETACHED_EVENT_TOKEN": {}}
 	for _, key := range keys {

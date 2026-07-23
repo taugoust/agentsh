@@ -48,6 +48,18 @@ func TestCompleteCommandJailSetupPublishesCompositionAfterVerifiedBoundary(t *te
 	}
 }
 
+func TestScrubCommandJailEnvRemovesHelperRuntimeControls(t *testing.T) {
+	got := scrubCommandJailEnv([]string{
+		"PATH=/bin",
+		"AGENTSH_NETHELPER_BOOTSTRAP_RESULT=/run/agentsh/nethelper/bootstrap.json",
+		"agentsh_nethelper_recovery_token_file=/run/agentsh-wrapper-control/token",
+	})
+	want := []string{"PATH=/bin"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("scrubbed environment = %v, want %v", got, want)
+	}
+}
+
 func TestCompleteCommandJailSetupDoesNotApplyLandlockAfterMountFailure(t *testing.T) {
 	mountErr := errors.New("injected mount failure")
 	landlockApplied := false

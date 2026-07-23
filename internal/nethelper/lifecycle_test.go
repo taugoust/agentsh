@@ -13,14 +13,20 @@ func TestBootstrapResultRuntimeAndExpiryValidation(t *testing.T) {
 		ProtocolVersion: CurrentProtocolVersion, BootstrapSchemaVersion: BootstrapSchemaVersion,
 		LeaseID: "lease-11111111-1111-4111-8111-111111111111", UID: 1000, GID: 100,
 		UnitName: "agentsh-nethelper.service", SocketPath: filepath.Join(string(filepath.Separator), "run", "helper.sock"),
-		CredentialFile: filepath.Join(string(filepath.Separator), "run", "credential"),
-		PinRoot:        filepath.Join(string(filepath.Separator), "sys", "fs", "bpf", "pins"),
-		ResultFile:     filepath.Join(string(filepath.Separator), "run", "bootstrap.json"),
-		StartedAt:      started, ExpiresAt: started.Add(runtimeLimit), RuntimeSeconds: int64(runtimeLimit / time.Second),
+		CredentialFile:         filepath.Join(string(filepath.Separator), "run", "credential"),
+		PinRoot:                filepath.Join(string(filepath.Separator), "sys", "fs", "bpf", "pins"),
+		ResultFile:             filepath.Join(string(filepath.Separator), "run", "bootstrap.json"),
+		CompositionScratchRoot: filepath.Join(string(filepath.Separator), "run", "composition"),
+		StartedAt:              started, ExpiresAt: started.Add(runtimeLimit), RuntimeSeconds: int64(runtimeLimit / time.Second),
 	}
 	if err := result.Validate(started.Add(time.Hour)); err != nil {
 		t.Fatalf("valid result rejected: %v", err)
 	}
+	result.CompositionScratchRoot = ""
+	if err := result.Validate(started.Add(time.Hour)); err == nil {
+		t.Fatal("missing composition runtime accepted")
+	}
+	result.CompositionScratchRoot = filepath.Join(string(filepath.Separator), "run", "composition")
 	result.ExpiresAt = result.ExpiresAt.Add(time.Second)
 	if err := result.Validate(started.Add(time.Hour)); err == nil {
 		t.Fatal("inconsistent expiry accepted")
@@ -33,7 +39,8 @@ func TestBootstrapResultSoftLeaseIsExplicitlyNegotiated(t *testing.T) {
 		LeaseID: "lease-11111111-1111-4111-8111-111111111111", UnitName: "helper.service",
 		SocketPath: filepath.Join(string(filepath.Separator), "run", "helper.sock"), CredentialFile: filepath.Join(string(filepath.Separator), "run", "credential"),
 		PinRoot: filepath.Join(string(filepath.Separator), "sys", "fs", "bpf", "pins"), ResultFile: filepath.Join(string(filepath.Separator), "run", "bootstrap.json"),
-		StartedAt: started, ExpiresAt: started.Add(192 * time.Hour), RuntimeSeconds: int64((192 * time.Hour) / time.Second)}
+		CompositionScratchRoot: filepath.Join(string(filepath.Separator), "run", "composition"),
+		StartedAt:              started, ExpiresAt: started.Add(192 * time.Hour), RuntimeSeconds: int64((192 * time.Hour) / time.Second)}
 	if err := base.Validate(started); err != nil {
 		t.Fatalf("runtime-only metadata rejected: %v", err)
 	}

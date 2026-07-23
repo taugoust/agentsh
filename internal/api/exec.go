@@ -33,20 +33,21 @@ const (
 type compositionConfigurer func(handler any, setup *os.File, wrapperPID int) error
 
 type extraProcConfig struct {
-	extraFiles            []*os.File
-	env                   map[string]string
-	envInject             map[string]string // Operator-trusted env vars that bypass policy filtering
-	notifyParentSock      *os.File          // Parent socket to receive seccomp notify fd (Linux only)
-	compositionParentSock *os.File          // Parent socket to receive retained composition objects
-	configureComposition  compositionConfigurer
-	notifySessionID       string             // Session ID for notify handler
-	notifyStore           eventStore         // Event store for notify handler
-	notifyBroker          eventBroker        // Event broker for notify handler
-	notifyPolicy          *policy.Engine     // Policy engine for notify handler
-	notifyApprovals       *approvals.Manager // Approval manager for notify handler
-	notifySession         *session.Session   // Session for notify handler context
-	execveHandler         any                // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
-	blockList             any                // Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
+	extraFiles             []*os.File
+	env                    map[string]string
+	envInject              map[string]string // Operator-trusted env vars that bypass policy filtering
+	notifyParentSock       *os.File          // Parent socket to receive seccomp notify fd (Linux only)
+	compositionParentSock  *os.File          // Parent socket to receive retained composition objects
+	compositionControlRoot string
+	configureComposition   compositionConfigurer
+	notifySessionID        string             // Session ID for notify handler
+	notifyStore            eventStore         // Event store for notify handler
+	notifyBroker           eventBroker        // Event broker for notify handler
+	notifyPolicy           *policy.Engine     // Policy engine for notify handler
+	notifyApprovals        *approvals.Manager // Approval manager for notify handler
+	notifySession          *session.Session   // Session for notify handler context
+	execveHandler          any                // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
+	blockList              any                // Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
 
 	// outputArtifact receives the complete combined stdout/stderr write stream
 	// for trusted callers that requested a bounded remote overflow artifact.
@@ -1246,7 +1247,7 @@ func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid
 	if extra.notifyParentSock != nil {
 		compositionSetup := extra.compositionParentSock
 		extra.compositionParentSock = nil
-		lifecycle.notifyDone = startNotifyHandler(handlerCtx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession, pid, compositionSetup, extra.configureComposition)
+		lifecycle.notifyDone = startNotifyHandler(handlerCtx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession, pid, extra.compositionControlRoot, compositionSetup, extra.configureComposition)
 	}
 	if extra.signalParentSock != nil && extra.signalEngine != nil {
 		if extra.signalRegistry != nil {

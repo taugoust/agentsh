@@ -2,7 +2,7 @@
 
 ## Status
 
-Open for controlled Rose acceptance. The discovery remediation is published as AgentSH `89485e49c6c0b9059348bfa46e3a528508fd5682` (implementation `83944d43`) and pinned by `nix-config` `0343253`, but the matching Home Manager generation and project-overlay snapshot still require explicit Rose deployment verification.
+Open for a second controlled Rose acceptance. The published known-good MVP is retained as a live reference; the unpublished lease-runtime productionization is tracked in `composition-runtime-productionization.md` and passes its full local QShell gate. Do not replace or stop the reference session until a separate fresh session has validated the new AgentSH pin and control-free versioned project overlay.
 
 The next live attempt exposed an independent launch-environment gap before composition: `pi-supervised` preserved `XDG_CONFIG_HOME` but not Rose's relocated cache/state/data variables, so Nix fell back to `/home/theo/.cache`. A manual invocation with `XDG_CACHE_HOME=/tmp/qshell-nix-cache` and `--option sandbox false` avoided that cache error but intentionally failed to match the exact acceptance rule; ordinary Bubblewrap then failed closed on `overflowuid`. Vivado did not start.
 
@@ -30,7 +30,7 @@ AgentSH `83944d43` fixes the discovery boundary without synthesizing broker oper
 - the original discovery gate admitted `/mnt`, `/scratch`, `/share`, `/sys`, `/tmp`, and `/var`, plus `/zroot` for the symlink fixture; the real-HOME MVP additionally reviews metadata-only `/home` and keeps unreviewed existing roots absent;
 - list-only `/mnt` and `/scratch` file reads, `/scratch` sibling writes, `/nix` writes, source-path laundering, hidden controls, and all approval events remain denied.
 
-The current reviewed live overlay source is `/home/taugoust/Workspace/overlay.discovery.yaml`, SHA-256 `e2846509f923badfb7ab58fb41af65a8996110d1ec0542c50a86ad0bd3d47043`. It adds exact discovery/metadata roots, fails unreviewed top-level metadata probes noninteractively, adds `working_directory_roots`, and narrows composition selection to the harmless `true` and `vivado -version` acceptance forms. Its `/home` and `/scratch/theo` additions carry metadata/list operations only; deployment still requires a fresh Pi session because overlays are snapshotted at session creation.
+The deployment overlay is versioned in `qshell-project` at `.agentsh/policy-overlays/overlay.yaml`; Workspace copies are staging artifacts only. The control-free candidate staging content has SHA-256 `4ce687d6b44e8920b562aa91c8f071415d7b738d5415581cf712c22161ab852d`. It retains exact discovery/metadata roots, noninteractive denial of unreviewed top-level probes, normalized `working_directory_roots`, and harmless `true`/`vivado -version` acceptance selection while removing all AgentSH scratch/control rules. Deployment still requires a fresh Pi session because overlays are snapshotted at session creation.
 
 Final deterministic evidence for the committed implementation:
 
@@ -44,6 +44,12 @@ Final deterministic evidence for the committed implementation:
 | Rose/non-Rose config evaluation | pass; `/tmp/agentsh-discovery-rose-graph-eval.log` | Rose `/nix/store/rpxv0ffcbgr8nhshz1s2hpz3nd658ygq-agentsh-dos-config.yaml`; Graph `/nix/store/i5vdhbm08dsnqj12mh25pz1as5ij9zr1-agentsh-dos-config.yaml` |
 
 No Rose access, Home Manager activation, Vivado invocation, hardware operation, KVM, fleet, or microVM action occurred during this remediation validation.
+
+## Lease-scoped runtime productionization candidate
+
+The candidate helper bootstrap publishes a root-owned lease child at `/run/agentsh/nethelper/<uid>/<lease>/composition`; Rose resolves only this validated path via `scratch_root: auto`. A stable internal deny and trusted-wrapper-only control bypass replace project scratch authority. Synthetic mount construction names disappear before Landlock enforcement, helper controls remain mount-masked, and the broker refuses setup unless construction paths are absent.
+
+The downstream full automatic-runtime gate passes at `/nix/store/a66rrxaj1la7v3360886kwr5v79h2hvi-vm-test-run-agentsh-qshell-composition-release-gate` (before evidence-only issue edits), with log `/tmp/agentsh-composition-runtime-release-gate-post-review.log`. It proves provisioning/readiness/cleanup/failure audit events, malformed-mode refusal, six uniquely command-correlated empty pool cleanups, seven normalized plans, zero approvals, payload/control-environment non-leakage, and lease teardown. Both complete flake suites pass. No Rose deployment or hardware operation occurred.
 
 ## Deterministic release candidate — 2026-07-22
 
@@ -84,7 +90,7 @@ The user has had to discover multiple deterministic integration defects manually
 - Preserve `/nix/store` read-only behavior and source-aware file/metadata/exec policy.
 - Approval-gated paths are never broker source authority.
 - Composition requires both the Rose-only host ceiling and explicit project-policy selection.
-- `/agentsh-composition-scratch` is a dedicated `1733 root:root` top-level directory. It was provisioned manually; automatic trusted provisioning remains deferred.
+- The unpublished productionization candidate must use only its validated helper lease runtime; project policy must not mention either the retired static path or `/run/agentsh/nethelper`.
 - Other DOS hosts must remain unchanged.
 - Hardware programming, reset, `hw_server`, driver, fleet, KVM, and microVM operations remain out of scope.
 
@@ -286,10 +292,10 @@ The gate should fail on the exact errors seen during rollout: missed composition
 
 ## Rollout state and operational notes
 
-- `/agentsh-composition-scratch` should remain `1733 root:root`.
+- The static `/agentsh-composition-scratch` path must be absent from both the host deployment and project policy; bootstrap owns the active lease runtime as `1733 root:root`.
 - Home Manager must apply the latest `nix-config` pin on Rose.
 - A fresh Pi session is required after policy/package changes because the policy snapshot is session-local.
-- The project overlay source used during rollout is `/mnt/virtiofs/Workspace/overlay.yaml`; the deployed project copy belongs at `/scratch/theo/qshell-project/.agentsh/policy-overlays/overlay.yaml`.
+- The authoritative overlay is the versioned project file at `/scratch/theo/qshell-project/.agentsh/policy-overlays/overlay.yaml`; Workspace copies are non-authoritative staging artifacts.
 - The absolute command selecting composition proves that a matching overlay was loaded in that session. The relative command proves its command matcher is incomplete.
 - The saved Nix trusted setting for `extra-sandbox-paths` is expected and unrelated.
 - The prior session approval for the real Bubblewrap is stale evidence from fallback execution and must not become source authority or a substitute for composition.
@@ -311,4 +317,4 @@ The gate should fail on the exact errors seen during rollout: missed composition
 - `nix-config/issues/plans/agentsh-bubblewrap-0112-qshell-contract.md`
 - `nix-config/issues/plans/agentsh-composable-nested-bubblewrap.md`
 - `nix-config/modules/agentsh-policies/lib/fragments/commands.nix`
-- `/mnt/virtiofs/Workspace/overlay.yaml`
+- `qshell-project/.agentsh/policy-overlays/overlay.yaml`

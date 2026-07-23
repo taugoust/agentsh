@@ -6,6 +6,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,12 +51,14 @@ type FileResult struct {
 
 // FileHandler processes file syscall notifications against policy.
 type FileHandler struct {
-	policy           FilePolicyChecker
-	registry         *MountRegistry
-	emitter          Emitter
-	enforce          bool
-	emulateOpen      bool // When true, supervisor emulates openat via AddFD
-	compositionPaths *CompositionPathRegistry
+	policy              FilePolicyChecker
+	registry            *MountRegistry
+	emitter             Emitter
+	enforce             bool
+	emulateOpen         bool // When true, supervisor emulates openat via AddFD
+	compositionPaths    *CompositionPathRegistry
+	internalControlPID  int
+	internalControlRoot string
 }
 
 // NewFileHandler creates a new FileHandler.
@@ -87,6 +92,62 @@ func (h *FileHandler) SetCompositionPathRegistry(registry *CompositionPathRegist
 	if h != nil {
 		h.compositionPaths = registry
 	}
+}
+
+// SetInternalControlAccess grants only the pinned trusted wrapper process
+// access to AgentSH's private composition runtime. Project policy never sees
+// this authority, and the wrapper's payload child has a distinct thread group.
+func (h *FileHandler) SetInternalControlAccess(root string, wrapperPID int) {
+	if h == nil || wrapperPID <= 0 || !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return
+	}
+	h.internalControlRoot = root
+	h.internalControlPID = wrapperPID
+}
+
+func threadGroupID(pid int) int {
+	if pid <= 0 {
+		return 0
+	}
+	data, err := os.ReadFile(filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(pid), "status"))
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "Tgid:" {
+			value, err := strconv.Atoi(fields[1])
+			if err == nil {
+				return value
+			}
+			return 0
+		}
+	}
+	return 0
+}
+
+func pathInsideInternalControlRoot(path, root string) bool {
+	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
+}
+
+func (h *FileHandler) internalControlAccessAllowed(req FileRequest) bool {
+	if h == nil || h.internalControlPID <= 0 || h.internalControlRoot == "" || req.PID <= 0 {
+		return false
+	}
+	if req.PID != h.internalControlPID && threadGroupID(req.PID) != h.internalControlPID {
+		return false
+	}
+	seen := false
+	for _, path := range []string{req.Path, req.Path2, req.SourcePath, req.SourcePath2} {
+		if path == "" {
+			continue
+		}
+		seen = true
+		if !pathInsideInternalControlRoot(filepath.Clean(path), h.internalControlRoot) {
+			return false
+		}
+	}
+	return seen
 }
 
 // Handle evaluates a file request against policy and returns the enforcement result
@@ -129,6 +190,16 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 		if resolved, wasProcFD := resolveProcFD(req.PID, req.Path2); wasProcFD {
 			req.Path2 = resolved
 		}
+	}
+
+	if h.internalControlAccessAllowed(req) {
+		dec := FilePolicyDecision{
+			Decision:          "allow",
+			EffectiveDecision: "allow",
+			Rule:              "allow-agentsh-composition-control",
+			Message:           "trusted wrapper access to the private composition runtime",
+		}
+		return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, false)
 	}
 
 	compositionCovered := false

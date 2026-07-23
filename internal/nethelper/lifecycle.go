@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	BootstrapSchemaVersion  = 2
+	BootstrapSchemaVersion  = 3
 	DefaultBootstrapRuntime = 13 * time.Hour
 	MaximumBootstrapRuntime = 192 * time.Hour
 	EphemeralSoftLease      = 49 * time.Hour
@@ -27,6 +27,7 @@ type BootstrapResult struct {
 	CredentialFile         string    `json:"credential_file"`
 	PinRoot                string    `json:"pin_root"`
 	ResultFile             string    `json:"result_file"`
+	CompositionScratchRoot string    `json:"composition_scratch_root"`
 	StartedAt              time.Time `json:"started_at"`
 	ExpiresAt              time.Time `json:"expires_at"`
 	RuntimeSeconds         int64     `json:"runtime_seconds"`
@@ -50,6 +51,7 @@ func (r BootstrapResult) Validate(now time.Time) error {
 	for name, path := range map[string]string{
 		"socket_path": r.SocketPath, "credential_file": r.CredentialFile,
 		"pin_root": r.PinRoot, "result_file": r.ResultFile,
+		"composition_scratch_root": r.CompositionScratchRoot,
 	} {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 			return fmt.Errorf("bootstrap %s must be absolute and canonical", name)

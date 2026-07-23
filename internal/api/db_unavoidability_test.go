@@ -29,6 +29,46 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+func TestCompositionRuntimeControlRulePrecedesProjectAuthority(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "agentsh-composition-scratch")
+	original := &policy.Policy{FileRules: []policy.FileRule{{
+		Name: "project-control-leak", Paths: []string{root, filepath.Join(root, "**")}, Operations: []string{"*"}, Decision: "allow",
+	}}}
+	app := &App{cfg: &config.Config{}}
+	app.cfg.Sandbox.Composition.Bubblewrap.Enabled = true
+	app.cfg.Sandbox.Composition.Bubblewrap.ScratchRoot = root
+	got, err := app.withCompositionRuntimeControlRule(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.FileRules) != 2 || got.FileRules[0].Name != "deny-agentsh-composition-runtime" || got.FileRules[0].Decision != "deny" {
+		t.Fatalf("runtime rules = %#v", got.FileRules)
+	}
+	if original.FileRules[0].Name != "project-control-leak" || len(original.FileRules) != 1 {
+		t.Fatal("input policy was mutated")
+	}
+}
+
+func TestAutomaticCompositionRuntimeControlRootSurvivesLeaseRebind(t *testing.T) {
+	first := filepath.Join(string(filepath.Separator), "run", "agentsh", "nethelper", "1000", "lease-11111111-1111-4111-8111-111111111111", "composition")
+	second := filepath.Join(string(filepath.Separator), "run", "agentsh", "nethelper", "1000", "lease-22222222-2222-4222-8222-222222222222", "composition")
+	firstControl, err := automaticCompositionRuntimeControlRoot(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondControl, err := automaticCompositionRuntimeControlRoot(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(string(filepath.Separator), "run", "agentsh", "nethelper", "1000")
+	if firstControl != want || secondControl != want {
+		t.Fatalf("control roots = %q and %q, want %q", firstControl, secondControl, want)
+	}
+	if _, err := automaticCompositionRuntimeControlRoot(filepath.Join(string(filepath.Separator), "tmp", "composition")); err == nil {
+		t.Fatal("arbitrary automatic runtime topology accepted")
+	}
+}
+
 func TestDBServiceConfigFromProxyServices(t *testing.T) {
 	services := []dbProxyService{
 		{

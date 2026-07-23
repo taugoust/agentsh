@@ -296,6 +296,29 @@
               })
             ];
           };
+          compositionAutoModule = nixpkgs.lib.nixosSystem {
+            system = stdenv.hostPlatform.system;
+            modules = [
+              self.nixosModules.default
+              ({ ... }: {
+                system.stateVersion = "25.11";
+                services.agentsh = {
+                  enable = true;
+                  package = moduleTestPackage;
+                  policies.source = moduleTestPackage;
+                  sandbox = {
+                    composition.bubblewrap = {
+                      enable = true;
+                      scratchRoot = "auto";
+                    };
+                    seccomp.execve.enable = true;
+                    network.ebpf.enforce = true;
+                  };
+                  extraConfig.landlock.enabled = true;
+                };
+              })
+            ];
+          };
         in
         rec {
           go-format =
@@ -637,6 +660,8 @@
                 customSessionRuntimeModule.config.services.agentsh.sessions.subagents.defaultTimeout == "45m";
               assert builtins.elem "d /agentsh-composition-scratch 1733 root root -"
                 compositionEnabledModule.config.systemd.tmpfiles.rules;
+              assert
+                !(builtins.any (lib.hasInfix "agentsh-composition-scratch") compositionAutoModule.config.systemd.tmpfiles.rules);
               pkgs.runCommand "agentsh-nixos-output-artifacts-module-test"
                 {
                   nativeBuildInputs = [ pkgs.yq-go ];
@@ -659,6 +684,8 @@
                     ${compositionEnabledModule.config.environment.etc."agentsh/config.yml".source}
                   yq -e '.sandbox.seccomp.file_monitor.block_io_uring == true' \
                     ${compositionEnabledModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sandbox.composition.bubblewrap.scratch_root == "auto"' \
+                    ${compositionAutoModule.config.environment.etc."agentsh/config.yml".source}
                   yq -e '.sessions.output_artifacts.max_bytes == 33554432' \
                     ${customSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
                   yq -e '.sessions.subagents.default_timeout == "45m"' \

@@ -23,6 +23,7 @@ func TestSelectSandboxCompositionRequiresMetadataInterception(t *testing.T) {
 	cfg.Landlock.Enabled = true
 	cfg.Sandbox.Composition.Bubblewrap.Enabled = true
 	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
+	cfg.Sandbox.Composition.Bubblewrap.ScratchRoot = "/agentsh-composition-scratch"
 	cfg.Sandbox.Network.EBPF.Required = true
 	cfg.Sandbox.Seccomp.Execve.Enabled = true
 	cfg.Sandbox.Seccomp.FileMonitor.Enabled = &enabled
@@ -122,6 +123,7 @@ func TestBuildSeccompWrapperConfig_DeviceIOCTLOnlyForComposition(t *testing.T) {
 	}
 	cfg := &config.Config{}
 	cfg.Landlock.Enabled = true
+	cfg.Sandbox.Composition.Bubblewrap.ScratchRoot = "/agentsh-composition-scratch"
 	cfg.Sandbox.Composition.Bubblewrap.DeviceIOCTLPaths = []string{"/dev/null"}
 	app := newTestAppForSeccomp(t, cfg)
 	sess := &session.Session{Workspace: "/tmp"}
@@ -138,6 +140,9 @@ func TestBuildSeccompWrapperConfig_DeviceIOCTLOnlyForComposition(t *testing.T) {
 	}
 	if len(composition.AllowDeviceIOCTL) != 1 || composition.AllowDeviceIOCTL[0] != "/dev/null" {
 		t.Fatalf("composition device ioctl paths = %#v", composition.AllowDeviceIOCTL)
+	}
+	if len(composition.DenyPaths) == 0 || composition.DenyPaths[0] != "/agentsh-composition-scratch" {
+		t.Fatalf("composition internal deny paths = %#v", composition.DenyPaths)
 	}
 
 	// A wrap-init snapshot must override stale session-global state in both

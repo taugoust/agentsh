@@ -173,6 +173,7 @@ func bootstrapEphemeralNethelperWithSoftLease(uid, gid uint32, leaseID string, r
 		CredentialFile:         paths.CredentialFile,
 		PinRoot:                paths.PinRoot,
 		ResultFile:             paths.ResultFile,
+		CompositionScratchRoot: paths.CompositionScratchRoot,
 		StartedAt:              startedAt,
 		ExpiresAt:              startedAt.Add(runtimeLimit),
 		RuntimeSeconds:         int64(runtimeLimit / time.Second),
@@ -307,6 +308,9 @@ func createEphemeralLeaseDirectories(paths nethelper.EphemeralLeasePaths, uid ui
 	if err := ensureRootDirectory(paths.RuntimeDir, 0o711, true); err != nil {
 		return err
 	}
+	if err := ensureCompositionScratchDirectory(paths.CompositionScratchRoot); err != nil {
+		return err
+	}
 	for _, path := range []string{
 		"/sys/fs/bpf/agentsh",
 		"/sys/fs/bpf/agentsh/nethelper-ephemeral",
@@ -345,6 +349,34 @@ func ensureRootDirectory(path string, mode os.FileMode, mustCreate bool) error {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil || filepath.Clean(resolved) != path {
 		return fmt.Errorf("protected directory %s must not contain symlink components", path)
+	}
+	return nil
+}
+
+func ensureCompositionScratchDirectory(path string) error {
+	path = filepath.Clean(path)
+	if err := os.Mkdir(path, os.ModeSticky|0o733); err != nil {
+		return fmt.Errorf("create protected composition runtime %s: %w", path, err)
+	}
+	if err := os.Chmod(path, os.ModeSticky|0o733); err != nil {
+		return fmt.Errorf("set protected composition runtime mode %s: %w", path, err)
+	}
+	return validateCompositionScratchDirectory(path)
+}
+
+func validateCompositionScratchDirectory(path string) error {
+	path = filepath.Clean(path)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("stat protected composition runtime %s: %w", path, err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm() != 0o733 || info.Mode()&os.ModeSticky == 0 || !ok || stat == nil || stat.Uid != 0 || stat.Gid != 0 {
+		return fmt.Errorf("protected composition runtime %s has unsafe type, mode, or ownership", path)
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || filepath.Clean(resolved) != path {
+		return fmt.Errorf("protected composition runtime %s must not contain symlink components", path)
 	}
 	return nil
 }
@@ -532,6 +564,9 @@ func reapStaleEphemeralLeases(uid uint32, currentLease string) (int, error) {
 		} else if !os.IsNotExist(err) {
 			continue
 		}
+		if err := removeEmptyCompositionScratchDirectory(paths.CompositionScratchRoot); err != nil {
+			continue
+		}
 
 		runtimeEntries, err := os.ReadDir(paths.RuntimeDir)
 		if err != nil {
@@ -611,6 +646,23 @@ func transientNethelperUnitActive(unit string) bool {
 	return exec.Command(systemctl, "is-active", "--quiet", unit).Run() == nil
 }
 
+func removeEmptyCompositionScratchDirectory(path string) error {
+	if err := validateCompositionScratchDirectory(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	if len(entries) != 0 {
+		return fmt.Errorf("composition runtime %s is not empty", path)
+	}
+	return os.Remove(path)
+}
+
 func cleanupAbortedEphemeralLease(paths nethelper.EphemeralLeasePaths, uid uint32) error {
 	_, _ = nethelper.CleanupPinnedResources(nethelper.PinCleanupOptions{
 		PinRoot:          paths.PinRoot,
@@ -621,6 +673,7 @@ func cleanupAbortedEphemeralLease(paths nethelper.EphemeralLeasePaths, uid uint3
 	for _, path := range []string{paths.ResultFile, paths.CredentialFile, paths.RootCredential, paths.SocketPath} {
 		_ = os.Remove(path)
 	}
+	_ = removeEmptyCompositionScratchDirectory(paths.CompositionScratchRoot)
 	_ = os.Remove(paths.PinRoot)
 	_ = os.Remove(paths.PinLeaseDir)
 	_ = os.Remove(paths.RuntimeDir)

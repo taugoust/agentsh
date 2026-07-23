@@ -52,6 +52,9 @@ func (a *App) selectSandboxComposition(dec *policy.Decision) (string, string) {
 		!config.FileMonitorBoolWithDefault(fileMonitor.BlockIOUring, config.FileMonitorBoolWithDefault(fileMonitor.EnforceWithoutFUSE, false)) {
 		return deny("E_COMPOSITION_BACKEND_UNAVAILABLE", "Bubblewrap composition requires enforced read/write and metadata file interception plus io_uring denial for source attribution")
 	}
+	if _, err := a.compositionScratchRoot(); err != nil {
+		return deny("E_COMPOSITION_RUNTIME_UNAVAILABLE", fmt.Sprintf("automatic composition runtime is unavailable: %v", err))
+	}
 	return bubblewrapCompositionMode, ""
 }
 

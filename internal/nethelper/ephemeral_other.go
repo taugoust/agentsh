@@ -8,15 +8,16 @@ import (
 )
 
 type EphemeralLeasePaths struct {
-	LeaseID        string `json:"lease_id"`
-	UnitName       string `json:"unit_name"`
-	RuntimeDir     string `json:"runtime_dir"`
-	SocketPath     string `json:"socket_path"`
-	CredentialFile string `json:"credential_file"`
-	RootCredential string `json:"-"`
-	ResultFile     string `json:"result_file"`
-	PinLeaseDir    string `json:"-"`
-	PinRoot        string `json:"pin_root"`
+	LeaseID                string `json:"lease_id"`
+	UnitName               string `json:"unit_name"`
+	RuntimeDir             string `json:"runtime_dir"`
+	SocketPath             string `json:"socket_path"`
+	CredentialFile         string `json:"credential_file"`
+	RootCredential         string `json:"-"`
+	ResultFile             string `json:"result_file"`
+	CompositionScratchRoot string `json:"composition_scratch_root"`
+	PinLeaseDir            string `json:"-"`
+	PinRoot                string `json:"pin_root"`
 }
 
 func ValidateEphemeralLeaseID(string) error {

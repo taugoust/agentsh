@@ -174,7 +174,7 @@ func TestStartNotifyHandler_GracefulErrorExit(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	startNotifyHandler(ctx, parentSock, "test-graceful", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, nil, nil)
+	startNotifyHandler(ctx, parentSock, "test-graceful", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
 
 	// Poll until the goroutine exits (parentSock gets closed by the deferred Close).
 	deadline := time.After(2 * time.Second)
@@ -519,7 +519,7 @@ func TestNotifyHandler_CancellationGoroutineExitsOnEarlyReturn(t *testing.T) {
 
 	goroutinesBefore := runtime.NumGoroutine()
 
-	startNotifyHandler(ctx, parentSock, "test-cancel-goroutine", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, nil, nil)
+	startNotifyHandler(ctx, parentSock, "test-cancel-goroutine", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
 
 	// Wait for handler goroutine to exit.
 	deadline := time.After(2 * time.Second)
@@ -580,7 +580,7 @@ func TestStartNotifyHandlerConfiguresCompositionWithStartedWrapperPID(t *testing
 		context.Background(), parentSock, "composition-wrapper-pid", nil,
 		&notifyMockEventStore{}, &notifyMockEventBroker{}, nil,
 		config.SandboxSeccompFileMonitorConfig{}, false, nil, ready, false, nil, nil,
-		expectedPID, setupParent,
+		expectedPID, "", setupParent,
 		func(_ any, setup *os.File, wrapperPID int) error {
 			configuredPID <- wrapperPID
 			configuredSetup <- setup
@@ -653,7 +653,7 @@ func TestNotifyHandler_ContextCancelCleansUpFDs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	startNotifyHandler(ctx, parentSock, "test-fd-cleanup", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, nil, nil)
+	startNotifyHandler(ctx, parentSock, "test-fd-cleanup", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
 
 	// Wait for handler to clean up (close parent socket via defer).
 	deadline := time.After(2 * time.Second)

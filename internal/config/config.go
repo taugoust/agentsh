@@ -461,6 +461,8 @@ type SandboxWrapEnvPolicyConfig struct {
 // SandboxCompositionConfig is the operator-owned ceiling for semantic sandbox
 // composition adapters. Policy may select a mode only when its corresponding
 // host ceiling is enabled.
+const CompositionScratchRootAuto = "auto"
+
 type SandboxCompositionConfig struct {
 	Bubblewrap SandboxBubblewrapCompositionConfig `yaml:"bubblewrap"`
 }
@@ -2482,10 +2484,10 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("sandbox.composition.bubblewrap.%s must be absolute", name)
 		}
 	}
-	if bwComposition.ScratchRoot != "" {
+	if bwComposition.ScratchRoot != "" && bwComposition.ScratchRoot != CompositionScratchRootAuto {
 		clean := filepath.Clean(bwComposition.ScratchRoot)
 		if !filepath.IsAbs(bwComposition.ScratchRoot) || clean != bwComposition.ScratchRoot || clean == string(filepath.Separator) || filepath.Dir(clean) != string(filepath.Separator) {
-			return fmt.Errorf("sandbox.composition.bubblewrap.scratch_root must be a clean, dedicated top-level directory")
+			return fmt.Errorf("sandbox.composition.bubblewrap.scratch_root must be %q or a clean, dedicated top-level directory", CompositionScratchRootAuto)
 		}
 	}
 	seenDeviceIOCTLPaths := make(map[string]struct{}, len(bwComposition.DeviceIOCTLPaths))
@@ -2500,7 +2502,7 @@ func validateConfig(cfg *Config) error {
 	}
 	if bwComposition.Enabled {
 		if bwComposition.ScratchRoot == "" {
-			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires a dedicated scratch_root")
+			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires scratch_root=%q or a dedicated static root", CompositionScratchRootAuto)
 		}
 		if !cfg.Landlock.Enabled {
 			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires landlock.enabled")

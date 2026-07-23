@@ -705,7 +705,7 @@ in
         scratchRoot = mkOption {
           type = types.str;
           default = "/agentsh-composition-scratch";
-          description = "Dedicated top-level staging directory, outside trees recursively rebound by admitted plans. The module provisions it write/execute-only and sticky; randomized per-command children remain private.";
+          description = "Use 'auto' for a helper-lease-scoped runtime, or a dedicated top-level staging directory. Static roots are provisioned write/execute-only and sticky by this module; randomized per-command children remain private.";
         };
         maxNamespaceDepth = mkOption {
           type = types.ints.positive;
@@ -895,12 +895,13 @@ in
       {
         assertion =
           !cfg.sandbox.composition.bubblewrap.enable
+          || cfg.sandbox.composition.bubblewrap.scratchRoot == "auto"
           || (
             safeAbsolutePath cfg.sandbox.composition.bubblewrap.scratchRoot
             && builtins.dirOf cfg.sandbox.composition.bubblewrap.scratchRoot == "/"
             && cfg.sandbox.composition.bubblewrap.scratchRoot != "/"
           );
-        message = "services.agentsh.sandbox.composition.bubblewrap.scratchRoot must be a dedicated top-level directory.";
+        message = "services.agentsh.sandbox.composition.bubblewrap.scratchRoot must be 'auto' or a dedicated top-level directory.";
       }
       {
         assertion =
@@ -963,9 +964,10 @@ in
     # Both the root supervisor and client-spawned wrappers must create private
     # children here. Deny directory listing/inotify discovery while permitting
     # randomized mkdir, and use the sticky bit to protect distinct users.
-    systemd.tmpfiles.rules = lib.optional cfg.sandbox.composition.bubblewrap.enable (
-      "d ${cfg.sandbox.composition.bubblewrap.scratchRoot} 1733 root root -"
-    );
+    systemd.tmpfiles.rules = lib.optional (
+      cfg.sandbox.composition.bubblewrap.enable
+      && cfg.sandbox.composition.bubblewrap.scratchRoot != "auto"
+    ) "d ${cfg.sandbox.composition.bubblewrap.scratchRoot} 1733 root root -";
 
     environment.etc = {
       "agentsh/config.yml".source = configFile;

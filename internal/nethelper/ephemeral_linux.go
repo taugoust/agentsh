@@ -22,15 +22,16 @@ const (
 // EphemeralLeasePaths are fixed helper-selected locations for one transient
 // SSH bootstrap. Callers may select only the lease ID and target UID.
 type EphemeralLeasePaths struct {
-	LeaseID        string `json:"lease_id"`
-	UnitName       string `json:"unit_name"`
-	RuntimeDir     string `json:"runtime_dir"`
-	SocketPath     string `json:"socket_path"`
-	CredentialFile string `json:"credential_file"`
-	RootCredential string `json:"-"`
-	ResultFile     string `json:"result_file"`
-	PinLeaseDir    string `json:"-"`
-	PinRoot        string `json:"pin_root"`
+	LeaseID                string `json:"lease_id"`
+	UnitName               string `json:"unit_name"`
+	RuntimeDir             string `json:"runtime_dir"`
+	SocketPath             string `json:"socket_path"`
+	CredentialFile         string `json:"credential_file"`
+	RootCredential         string `json:"-"`
+	ResultFile             string `json:"result_file"`
+	CompositionScratchRoot string `json:"composition_scratch_root"`
+	PinLeaseDir            string `json:"-"`
+	PinRoot                string `json:"pin_root"`
 }
 
 func ValidateEphemeralLeaseID(leaseID string) error {
@@ -57,15 +58,16 @@ func EphemeralPathsForUID(uid uint32, leaseID string) (EphemeralLeasePaths, erro
 	pinLeaseDir := filepath.Join(ephemeralPinBase, uidText, leaseID)
 	leaseSuffix := strings.TrimPrefix(leaseID, "lease-")
 	return EphemeralLeasePaths{
-		LeaseID:        leaseID,
-		UnitName:       "agentsh-nethelper-ephemeral-" + uidText + "-" + leaseSuffix + ".service",
-		RuntimeDir:     leaseDir,
-		SocketPath:     filepath.Join(leaseDir, "nethelper.sock"),
-		CredentialFile: filepath.Join(leaseDir, "instance-credential"),
-		RootCredential: filepath.Join(leaseDir, "root-credential"),
-		ResultFile:     filepath.Join(leaseDir, "bootstrap.json"),
-		PinLeaseDir:    pinLeaseDir,
-		PinRoot:        filepath.Join(pinLeaseDir, "pins"),
+		LeaseID:                leaseID,
+		UnitName:               "agentsh-nethelper-ephemeral-" + uidText + "-" + leaseSuffix + ".service",
+		RuntimeDir:             leaseDir,
+		SocketPath:             filepath.Join(leaseDir, "nethelper.sock"),
+		CredentialFile:         filepath.Join(leaseDir, "instance-credential"),
+		RootCredential:         filepath.Join(leaseDir, "root-credential"),
+		ResultFile:             filepath.Join(leaseDir, "bootstrap.json"),
+		CompositionScratchRoot: filepath.Join(leaseDir, "composition"),
+		PinLeaseDir:            pinLeaseDir,
+		PinRoot:                filepath.Join(pinLeaseDir, "pins"),
 	}, nil
 }
 

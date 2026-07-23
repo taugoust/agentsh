@@ -237,7 +237,7 @@ func notifyHandlerRecover(sessID string, store eventStore, broker eventBroker) {
 // *unixmon.BlockListConfig). A nil or zero-ActionByNr value is treated as
 // "no block-list notify routing needed" — safe for errno/kill modes which are
 // kernel-side.
-func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session, expectedWrapperPID int, compositionSetup *os.File, configureComposition compositionConfigurer) <-chan struct{} {
+func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session, expectedWrapperPID int, compositionControlRoot string, compositionSetup *os.File, configureComposition compositionConfigurer) <-chan struct{} {
 	done := make(chan struct{})
 	if parentSock == nil {
 		if compositionSetup != nil {
@@ -385,6 +385,9 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 
 		// Create file handler if configured
 		fileHandler := createFileHandler(fileMonitorCfg, pol, emitter, landlockEnabled, approvalsMgr, sess)
+		if fileHandler != nil && compositionControlRoot != "" {
+			fileHandler.SetInternalControlAccess(compositionControlRoot, expectedWrapperPID)
+		}
 
 		// Configure the execve handler after composition has published its
 		// source-attribution registry.

@@ -100,6 +100,7 @@ func newNethelperCapabilitiesCmd() *cobra.Command {
 				"protocol_version":                  nethelper.CurrentProtocolVersion,
 				"bootstrap_schema_version":          nethelper.BootstrapSchemaVersion,
 				"bootstrap_runtime":                 true,
+				"composition_runtime":               "lease-scoped-root-v1",
 				"bootstrap_default_runtime_seconds": int64(nethelper.DefaultBootstrapRuntime / time.Second),
 				"bootstrap_max_runtime_seconds":     int64(nethelper.MaximumBootstrapRuntime / time.Second),
 				"instance_lifecycle":                append([]string(nil), nethelper.LifecycleCapabilities...),

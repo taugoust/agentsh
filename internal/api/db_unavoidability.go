@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/config"
 	dbevents "github.com/agentsh/agentsh/internal/db/events"
 	dbpolicy "github.com/agentsh/agentsh/internal/db/policy"
 	"github.com/agentsh/agentsh/internal/db/proxy/postgres"
@@ -92,6 +93,11 @@ func (a *App) compileDBPolicyForSession(ctx context.Context, s *session.Session,
 		return a.policy, nil, "", nil
 	}
 	base = withSessionParentTraversalRules(base, policyVars)
+	var err error
+	base, err = a.withCompositionRuntimeControlRule(base)
+	if err != nil {
+		return nil, nil, "", err
+	}
 	rs, warns, err := loadDBRuleSet(base)
 	if err != nil {
 		return nil, nil, "", err
@@ -128,6 +134,48 @@ func (a *App) compileDBPolicyForSession(ctx context.Context, s *session.Session,
 		return nil, nil, "", err
 	}
 	return engine, rs, stateDir, nil
+}
+
+func (a *App) withCompositionRuntimeControlRule(p *policy.Policy) (*policy.Policy, error) {
+	if p == nil || a == nil || a.cfg == nil || !a.cfg.Sandbox.Composition.Bubblewrap.Enabled {
+		return p, nil
+	}
+	root, err := a.compositionRuntimeControlRoot()
+	if err != nil {
+		return nil, fmt.Errorf("composition runtime unavailable while compiling session policy: %w", err)
+	}
+	clone := clonePolicy(p)
+	clone.FileRules = append([]policy.FileRule{{
+		Name:        "deny-agentsh-composition-runtime",
+		Description: "Keep AgentSH's private composition and helper runtime outside project and payload authority",
+		Paths:       []string{root, filepath.Join(root, "**")},
+		Operations:  []string{"*"},
+		Decision:    "deny",
+	}}, clone.FileRules...)
+	return clone, nil
+}
+
+func (a *App) compositionRuntimeControlRoot() (string, error) {
+	root, err := a.compositionScratchRoot()
+	if err != nil {
+		return "", err
+	}
+	if a.cfg.Sandbox.Composition.Bubblewrap.ScratchRoot != config.CompositionScratchRootAuto {
+		return root, nil
+	}
+	return automaticCompositionRuntimeControlRoot(root)
+}
+
+func automaticCompositionRuntimeControlRoot(root string) (string, error) {
+	// Rebinding changes the unguessable lease component while retaining the
+	// supervisor UID. Denying the root-owned per-UID helper runtime keeps the
+	// internal rule authoritative for both the current and every future lease.
+	leaseRuntime := filepath.Dir(root)
+	uidRuntime := filepath.Dir(leaseRuntime)
+	if filepath.Base(root) != "composition" || filepath.Dir(uidRuntime) != filepath.Join(string(filepath.Separator), "run", "agentsh", "nethelper") {
+		return "", fmt.Errorf("automatic composition runtime has unexpected helper topology")
+	}
+	return uidRuntime, nil
 }
 
 func withSessionParentTraversalRules(p *policy.Policy, policyVars map[string]string) *policy.Policy {

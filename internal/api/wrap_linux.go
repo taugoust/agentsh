@@ -197,6 +197,9 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 	// attribution so bind aliases cannot be evaluated only at their visible
 	// destination spelling.
 	fileHandler := createFileHandler(a.cfg.Sandbox.Seccomp.FileMonitor, sessionPolicy, emitter, a.cfg.Landlock.Enabled, a.approvals, s)
+	if fileHandler != nil && wrapperCfg.CompositionControlRoot != "" {
+		fileHandler.SetInternalControlAccess(wrapperCfg.CompositionControlRoot, wrapperPID)
+	}
 	if fileHandler != nil && execveHandler != nil {
 		fileHandler.SetCompositionPathRegistry(execveHandler.CompositionPathRegistry())
 	}

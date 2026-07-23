@@ -100,7 +100,37 @@ sandbox:
 	}
 }
 
-func TestBubblewrapCompositionRequiresDedicatedTopLevelScratch(t *testing.T) {
+func TestBubblewrapCompositionAcceptsAutoScratchRuntime(t *testing.T) {
+	cfg, err := loadFromString(t, `
+landlock:
+  enabled: true
+sandbox:
+  network:
+    ebpf:
+      enforce: true
+  seccomp:
+    execve:
+      enabled: true
+    file_monitor:
+      enabled: true
+      enforce_without_fuse: true
+      intercept_metadata: true
+      write_only_opens: false
+      block_io_uring: true
+  composition:
+    bubblewrap:
+      enabled: true
+      scratch_root: auto
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sandbox.Composition.Bubblewrap.ScratchRoot != CompositionScratchRootAuto {
+		t.Fatalf("scratch root = %q", cfg.Sandbox.Composition.Bubblewrap.ScratchRoot)
+	}
+}
+
+func TestBubblewrapCompositionRequiresDedicatedTopLevelStaticScratch(t *testing.T) {
 	for _, scratch := range []string{"", "/", "/run/agentsh-composition", "/tmp/agentsh-composition", "/agentsh-composition/../scratch"} {
 		_, err := loadFromString(t, `
 landlock:

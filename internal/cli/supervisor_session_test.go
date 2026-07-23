@@ -292,12 +292,14 @@ func TestWithoutEnvAssignmentsRemovesExistingSupervisorSecrets(t *testing.T) {
 
 func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 	credentialFile := filepath.Join("run", "agentsh", "instance-credential")
+	bootstrapResult := filepath.Join("run", "agentsh", "bootstrap.json")
 	env := detachedSupervisorServiceEnv("token", []string{
 		"PATH=bin",
 		"AGENTSH_NETHELPER_SOCKET=" + filepath.Join("run", "agentsh", "nethelper.sock"),
 		"AGENTSH_NETHELPER_INSTANCE_CREDENTIAL=must-not-enter-systemd-properties",
 		"AGENTSH_NETHELPER_SESSION_NONCE=must-not-enter-systemd-properties",
 		"AGENTSH_NETHELPER_CREDENTIAL_FILE=" + credentialFile,
+		"AGENTSH_NETHELPER_BOOTSTRAP_RESULT=" + bootstrapResult,
 		detached.EnvNetworkEnforcementRequested + "=strict",
 		"PI_CODING_AGENT_DIR=/run/user/1000/pi-agent",
 		"AGENTSH_SUBAGENT_COMMAND=/nix/store/pi/bin/pi",
@@ -311,6 +313,7 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 		"AGENTSH_DETACHED_EVENT_TOKEN=token",
 		"AGENTSH_NETHELPER_CREDENTIAL_FILE=" + credentialFile,
 		"AGENTSH_NETHELPER_SOCKET=" + filepath.Join("run", "agentsh", "nethelper.sock"),
+		"AGENTSH_NETHELPER_BOOTSTRAP_RESULT=" + bootstrapResult,
 		detached.EnvNetworkEnforcementRequested + "=strict",
 		"PI_CODING_AGENT_DIR=/run/user/1000/pi-agent",
 		"AGENTSH_SUBAGENT_COMMAND=/nix/store/pi/bin/pi",
