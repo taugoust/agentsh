@@ -2,19 +2,13 @@
 
 ## Status
 
-Open for controlled Rose acceptance. Rose is deployed at AgentSH `68786983c506b6a297ec276f127673b8bb9c815f` through `nix-config` `93e5383`, but the first deployed Ultrascale canary exposed an argv-generation gap before Vivado: Nixpkgs could not enumerate `/`, so its generated Bubblewrap plan omitted `/scratch` and completed-root validation correctly failed with `E_COMPOSITION_CWD_UNRESOLVED`.
+Open for controlled Rose acceptance. The discovery remediation is published as AgentSH `89485e49c6c0b9059348bfa46e3a528508fd5682` (implementation `83944d43`) and pinned by `nix-config` `0343253`, but the matching Home Manager generation and project-overlay snapshot still require explicit Rose deployment verification.
 
-AgentSH remediation `83944d4309d12a0041f2863e4f55ee8046b771a4` passes the complete AgentSH check matrix and the strengthened generation-aware downstream release gate. It is not yet pushed, pinned, deployed, or exercised on Rose. No further live canary has run, and Vivado has still not produced version output. Do not describe the feature as production-ready or resolved until the controlled Rose sequence passes.
+The next live attempt exposed an independent launch-environment gap before composition: `pi-supervised` preserved `XDG_CONFIG_HOME` but not Rose's relocated cache/state/data variables, so Nix fell back to `/home/theo/.cache`. A manual invocation with `XDG_CACHE_HOME=/tmp/qshell-nix-cache` and `--option sandbox false` avoided that cache error but intentionally failed to match the exact acceptance rule; ordinary Bubblewrap then failed closed on `overflowuid`. Vivado did not start.
 
-Latest deployed/pinned revisions:
+The current MVP candidate preserves all four XDG variables across detached-supervisor startup, gives only the configured XDG `nix` subtrees file authority, and adds `/home` plus `/scratch/theo` metadata-only traversal to the reviewed FHS topology. The strengthened downstream VM now uses `HOME=/home/theo`, Rose-equivalent XDG paths, and a fetcher-cache write probe. It passes at `/nix/store/lajgwhizg6wgg7cm4sb007bmzz8hqc7r-vm-test-run-agentsh-qshell-composition-release-gate`; log: `/tmp/agentsh-qshell-mvp-release-gate.log`. This candidate is not yet published or deployed.
 
-- AgentSH `overlays`: `68786983c506b6a297ec276f127673b8bb9c815f`
-- `nix-config/main`: `93e5383622e6df00708f48ca4e0746682cf83796`
-- discovery remediation candidate: AgentSH `83944d4309d12a0041f2863e4f55ee8046b771a4`
-- policy-boundary placement: `nix-config` `29066f6`
-- Rose-only host-ceiling enablement: `nix-config` `6eab7ff`
-
-No hardware command has been authorized or run. The only approved acceptance command is `vivado -version` after a harmless composed-shell canary succeeds.
+No hardware command has been authorized or run. The only approved acceptance command is `vivado -version` after the exact harmless composed-shell canary succeeds without approvals.
 
 ## FHS auto-mount discovery remediation — 2026-07-23
 
@@ -33,10 +27,10 @@ AgentSH `83944d43` fixes the discovery boundary without synthesizing broker oper
 - reviewed non-root list identities may authorize directory bind sources, while regular-file sources still require `READ_FILE` and writes/exec remain independently bounded;
 - broker setup validation distinguishes directory-list from file-read authority, and destination-validation compatibility never changes the actual retained source rights;
 - the release gate now runs Nixpkgs-style `/*` discovery inside the real AgentSH boundary, removes the historical host-generated binds, and inserts only policy-visible runtime roots;
-- ordinary plans contain exactly `/mnt`, `/scratch`, `/share`, `/sys`, `/tmp`, and `/var`; the symlinked `/scratch` fixture additionally contains `/zroot`; unreviewed existing roots are absent;
+- the original discovery gate admitted `/mnt`, `/scratch`, `/share`, `/sys`, `/tmp`, and `/var`, plus `/zroot` for the symlink fixture; the real-HOME MVP additionally reviews metadata-only `/home` and keeps unreviewed existing roots absent;
 - list-only `/mnt` and `/scratch` file reads, `/scratch` sibling writes, `/nix` writes, source-path laundering, hidden controls, and all approval events remain denied.
 
-The reviewed live overlay candidate is `/home/taugoust/Workspace/overlay.discovery.yaml`, SHA-256 `e090d2d09ee94e067483d7134561736571941fd97a73be1c988c5ff67ac6a17a`. It adds exact discovery/metadata roots, fails unreviewed top-level metadata probes noninteractively, adds `working_directory_roots`, and narrows composition selection to the harmless `true` and `vivado -version` acceptance forms. It has been syntax-validated after project-root expansion but has not replaced the deployed overlay.
+The current reviewed live overlay source is `/home/taugoust/Workspace/overlay.discovery.yaml`, SHA-256 `e2846509f923badfb7ab58fb41af65a8996110d1ec0542c50a86ad0bd3d47043`. It adds exact discovery/metadata roots, fails unreviewed top-level metadata probes noninteractively, adds `working_directory_roots`, and narrows composition selection to the harmless `true` and `vivado -version` acceptance forms. Its `/home` and `/scratch/theo` additions carry metadata/list operations only; deployment still requires a fresh Pi session because overlays are snapshotted at session creation.
 
 Final deterministic evidence for the committed implementation:
 

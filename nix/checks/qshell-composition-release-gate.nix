@@ -59,6 +59,10 @@ let
         echo "a list-only FHS bind root gained file-read authority" >&2
         exit 1
       fi
+      if cat /home/theo/agentsh-release-gate-secret >/dev/null 2>&1; then
+        echo "the /home list-only bind root gained unrelated file-read authority" >&2
+        exit 1
+      fi
       if printf denied > /scratch/theo/outside/agentsh-release-gate-write 2>/dev/null; then
         echo "the /scratch alias broadened project write authority" >&2
         exit 1
@@ -120,7 +124,7 @@ let
           "/share", "/srv", "/sys", "/tmp", "/var", "/zokelmannvms", "/zroot",
       }
       auto_mount_roots = sys.argv[1:]
-      ordinary_auto_roots = ["/mnt", "/scratch", "/share", "/sys", "/tmp", "/var"]
+      ordinary_auto_roots = ["/home", "/mnt", "/scratch", "/share", "/sys", "/tmp", "/var"]
       symlinked_auto_roots = ordinary_auto_roots + ["/zroot"]
       if auto_mount_roots not in (ordinary_auto_roots, symlinked_auto_roots):
           raise SystemExit(
@@ -224,6 +228,15 @@ let
     name = "nix";
     text = ''
       set -euo pipefail
+      test "$HOME" = /home/theo
+      test "$XDG_CONFIG_HOME" = /home/theo/.config-rose
+      test "$XDG_CACHE_HOME" = /scratch/theo/.cache
+      test "$XDG_STATE_HOME" = /scratch/theo/.local/share
+      test "$XDG_DATA_HOME" = /home/theo/.local/share
+      cache_probe="$XDG_CACHE_HOME/nix/fetcher-cache-v4.sqlite.release-gate.$$"
+      printf '%s\n' cache-write-pass > "$cache_probe"
+      test "$(cat "$cache_probe")" = cache-write-pass
+      rm "$cache_probe"
       case "$*" in
         "develop .#ultrascale --command true")
           export QSHELL_RELEASE_MODE=true
@@ -337,6 +350,7 @@ let
         name = "allow-release-gate-fhs-bind-root-metadata";
         description = "Permit metadata and directory-list authority, but not file reads, for policy-visible FHS bind roots";
         paths = [
+          "/home"
           "/mnt"
           "/scratch"
           "/share"
@@ -348,6 +362,17 @@ let
         operations = [
           "access"
           "list"
+          "readlink"
+          "stat"
+        ];
+        decision = "allow";
+      }
+      {
+        name = "allow-release-gate-scratch-alias-parent-metadata";
+        description = "Preserve metadata-only traversal through the reviewed lexical project parent when /scratch is a symlink";
+        paths = [ "/scratch/theo" ];
+        operations = [
+          "access"
           "readlink"
           "stat"
         ];
@@ -434,6 +459,7 @@ let
         name = "deny-release-gate-list-only-read-probes";
         description = "Keep files beneath metadata-only FHS roots unreadable through composed aliases";
         paths = [
+          "/home/theo/agentsh-release-gate-secret"
           "/mnt/agentsh-release-gate-secret"
           "/run/agentsh/recovery"
           "/scratch/theo/outside/agentsh-release-gate-secret"
@@ -623,6 +649,9 @@ pkgs.testers.runNixOSTest {
       "d /sys/fs/bpf/agentsh-release 0700 root root -"
       "d /boot 0755 root root -"
       "d /home 0755 root root -"
+      "d /home/theo 0755 root root -"
+      "d /home/theo/.config-rose/nix 0755 root root -"
+      "d /home/theo/.local/share/nix 0755 root root -"
       "d /mnt 0755 root root -"
       "d /opt 0755 root root -"
       "d /share 0755 root root -"
@@ -630,6 +659,9 @@ pkgs.testers.runNixOSTest {
       "d /zokelmannvms 0755 root root -"
       "d /zroot 0755 root root -"
       "d ${scratchRoot} 1733 root root -"
+      "d /scratch/theo 0755 root root -"
+      "d /scratch/theo/.cache/nix 0755 root root -"
+      "d /scratch/theo/.local/share/nix 0755 root root -"
     ];
     systemd.sockets.agentsh-release-nethelper = {
       wantedBy = [ "multi-user.target" ];
@@ -680,6 +712,10 @@ pkgs.testers.runNixOSTest {
         AGENTSH_NETHELPER_SOCKET = "/run/agentsh-release/nethelper.sock";
         AGENTSH_NETHELPER_CREDENTIAL_FILE = "/run/agentsh-release/nethelper-secret";
         AGENTSH_DETACHED_SUPERVISOR_LAUNCH_MODE = "systemd-user-delegated";
+        XDG_CACHE_HOME = "/scratch/theo/.cache";
+        XDG_CONFIG_HOME = "/home/theo/.config-rose";
+        XDG_DATA_HOME = "/home/theo/.local/share";
+        XDG_STATE_HOME = "/scratch/theo/.local/share";
       };
       serviceConfig = {
         Type = "simple";
@@ -735,7 +771,15 @@ pkgs.testers.runNixOSTest {
         request = json.dumps({
             "workspace": workspace,
             "project_root": project_root,
-            "home": "/scratch/theo",
+            "home": "/home/theo",
+            "runtime_home_mode": "real",
+            "env_base_mode": "minimal",
+            "env_inherit": [
+                "XDG_CONFIG_HOME",
+                "XDG_CACHE_HOME",
+                "XDG_STATE_HOME",
+                "XDG_DATA_HOME",
+            ],
             "policy": "pi-supervised",
             "real_paths": True,
             "workspace_mode": "direct",
@@ -788,7 +832,7 @@ pkgs.testers.runNixOSTest {
     def composition_plan_count():
         return int(machine.succeed("grep -c '\"type\":\"composition_plan\"' /var/lib/agentsh-release/audit.jsonl || true").strip())
 
-    machine.succeed("install -d -m 0755 /scratch/theo/outside && printf denied > /scratch/theo/outside/agentsh-release-gate-secret && printf denied > /mnt/agentsh-release-gate-secret")
+    machine.succeed("install -d -m 0755 /scratch/theo/outside && printf denied > /scratch/theo/outside/agentsh-release-gate-secret && printf denied > /mnt/agentsh-release-gate-secret && printf denied > /home/theo/agentsh-release-gate-secret")
     install_project("${projectRoot}")
     ordinary = create_session("${projectRoot}", "${projectRoot}")
 
@@ -820,7 +864,7 @@ pkgs.testers.runNixOSTest {
 
     with subtest("a symlinked /scratch root preserves the completed QShell cwd"):
         machine.succeed(
-            "rm -rf /scratch && install -d -m 0755 /zroot/scratch-real/theo/outside && "
+            "rm -rf /scratch && install -d -m 0755 /zroot/scratch-real/theo/outside /zroot/scratch-real/theo/.cache/nix /zroot/scratch-real/theo/.local/share/nix && "
             "ln -s /zroot/scratch-real /scratch"
         )
         install_project("/zroot/scratch-real/theo/qshell-project")
@@ -830,7 +874,7 @@ pkgs.testers.runNixOSTest {
     with subtest("a separate project submount preserves the completed QShell cwd"):
         machine.succeed(
             "rm /scratch && rm -rf /zroot/scratch-real && "
-            "install -d -m 0755 ${projectRoot} /scratch/theo/outside && "
+            "install -d -m 0755 ${projectRoot} /scratch/theo/outside /scratch/theo/.cache/nix /scratch/theo/.local/share/nix && "
             "mount -t tmpfs -o nosuid,nodev,size=32m tmpfs ${projectRoot}"
         )
         install_project("${projectRoot}")
@@ -842,11 +886,11 @@ pkgs.testers.runNixOSTest {
             "jq -s -e '"
             "[.[] | select(.type == \"composition_plan\")] as $plans | "
             "[.[] | select(.type == \"execve\" and .filename == \"${pkgs.bubblewrap}/bin/bwrap\")] as $bwrap | "
-            "[$plans[] | select((.fields.normalized_plan.operation_count == 57 or .fields.normalized_plan.operation_count == 58) and "
+            "[$plans[] | select((.fields.normalized_plan.operation_count == 58 or .fields.normalized_plan.operation_count == 59) and "
             ".fields.normalized_plan.cwd == \"${qshellRoot}\" and "
             "([.fields.normalized_plan.operations[] | select(.type == \"bind\" and .source == \"/scratch\" and .target == \"/scratch\" and .recursive == true)] | length) == 1 and "
             "(([.fields.normalized_plan.operations[] | select(.type == \"bind\" and .source == .target and .source != \"/nix\") | .source] | sort) as $roots | "
-            "($roots == [\"/mnt\", \"/scratch\", \"/share\", \"/sys\", \"/tmp\", \"/var\"] or $roots == [\"/mnt\", \"/scratch\", \"/share\", \"/sys\", \"/tmp\", \"/var\", \"/zroot\"])))] as $qshell | "
+            "($roots == [\"/home\", \"/mnt\", \"/scratch\", \"/share\", \"/sys\", \"/tmp\", \"/var\"] or $roots == [\"/home\", \"/mnt\", \"/scratch\", \"/share\", \"/sys\", \"/tmp\", \"/var\", \"/zroot\"])))] as $qshell | "
             "[$plans[] | select(.fields.normalized_plan.operation_count == 2 and "
             ".fields.normalized_plan.cwd == \"${qshellRoot}\")] as $recursive | "
             "($plans | length) == 7 and ($qshell | length) == 6 and ($recursive | length) == 1 and "
