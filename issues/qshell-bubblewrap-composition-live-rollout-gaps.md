@@ -2,16 +2,54 @@
 
 ## Status
 
-Open for controlled Rose acceptance. AgentSH `ce42938d6bea6e7d644fd342f14b4b5975d2a8d1` passes the replacement deterministic release gate and the complete local Phase 5 sequence. Rose is still pinned to `b1479a2f`, no new live canary has run, and Vivado has still not produced version output. Do not describe the feature as production-ready or resolved until the controlled Rose sequence passes.
+Open for controlled Rose acceptance. Rose is deployed at AgentSH `68786983c506b6a297ec276f127673b8bb9c815f` through `nix-config` `93e5383`, but the first deployed Ultrascale canary exposed an argv-generation gap before Vivado: Nixpkgs could not enumerate `/`, so its generated Bubblewrap plan omitted `/scratch` and completed-root validation correctly failed with `E_COMPOSITION_CWD_UNRESOLVED`.
 
-Latest deployed/pinned revisions at handoff:
+AgentSH remediation `83944d4309d12a0041f2863e4f55ee8046b771a4` passes the complete AgentSH check matrix and the strengthened generation-aware downstream release gate. It is not yet pushed, pinned, deployed, or exercised on Rose. No further live canary has run, and Vivado has still not produced version output. Do not describe the feature as production-ready or resolved until the controlled Rose sequence passes.
 
-- AgentSH `overlays`: `b1479a2fa521160b9dd706309dd62a35f7719023`
-- `nix-config/main`: `5bd4bf3` (pins AgentSH `b1479a2f`)
+Latest deployed/pinned revisions:
+
+- AgentSH `overlays`: `68786983c506b6a297ec276f127673b8bb9c815f`
+- `nix-config/main`: `93e5383622e6df00708f48ca4e0746682cf83796`
+- discovery remediation candidate: AgentSH `83944d4309d12a0041f2863e4f55ee8046b771a4`
 - policy-boundary placement: `nix-config` `29066f6`
 - Rose-only host-ceiling enablement: `nix-config` `6eab7ff`
 
 No hardware command has been authorized or run. The only approved acceptance command is `vivado -version` after a harmless composed-shell canary succeeds.
+
+## FHS auto-mount discovery remediation — 2026-07-23
+
+The deployed live plan contained `51` topology operations with digest `8799ef3c8734a50e7c4abbd0ec90ff309aeb4dcd925250724ce184e84f0dc2c8`. It had no `/` or `/scratch` operation. Removing these `14` generated top-level identity binds from the captured `65`-operation plan reproduced that digest exactly:
+
+```text
+/boot /home /mnt /opt /root /run /scratch /share /srv /sys /tmp /var /zokelmannvms /zroot
+```
+
+Nixpkgs `buildFHSEnv` discovers these roots at runtime with `for dir in /*`. AgentSH's base Landlock domain denied that directory enumeration, so the launcher submitted an internally valid but incomplete plan whose retained CWD still named `/scratch/theo/qshell-project/qshell`.
+
+AgentSH `83944d43` fixes the discovery boundary without synthesizing broker operations or broadening file/write authority:
+
+- exact allow rules carrying `list` but not `read` now become retained Landlock `READ_DIR` objects; relative and glob list roots are omitted because Landlock cannot preserve their segment bounds;
+- root `READ_DIR` permits top-level discovery but is explicitly excluded from generic bind-source authorization;
+- reviewed non-root list identities may authorize directory bind sources, while regular-file sources still require `READ_FILE` and writes/exec remain independently bounded;
+- broker setup validation distinguishes directory-list from file-read authority, and destination-validation compatibility never changes the actual retained source rights;
+- the release gate now runs Nixpkgs-style `/*` discovery inside the real AgentSH boundary, removes the historical host-generated binds, and inserts only policy-visible runtime roots;
+- ordinary plans contain exactly `/mnt`, `/scratch`, `/share`, `/sys`, `/tmp`, and `/var`; the symlinked `/scratch` fixture additionally contains `/zroot`; unreviewed existing roots are absent;
+- list-only `/mnt` and `/scratch` file reads, `/scratch` sibling writes, `/nix` writes, source-path laundering, hidden controls, and all approval events remain denied.
+
+The reviewed live overlay candidate is `/home/taugoust/Workspace/overlay.discovery.yaml`, SHA-256 `e090d2d09ee94e067483d7134561736571941fd97a73be1c988c5ff67ac6a17a`. It adds exact discovery/metadata roots, fails unreviewed top-level metadata probes noninteractively, adds `working_directory_roots`, and narrows composition selection to the harmless `true` and `vivado -version` acceptance forms. It has been syntax-validated after project-root expansion but has not replaced the deployed overlay.
+
+Final deterministic evidence for the committed implementation:
+
+| Gate | Result/log | Output path |
+|---|---|---|
+| `nix flake check -L --keep-going` | all 15 AgentSH checks passed; `/tmp/agentsh-discovery-full-flake-check.log` | exact paths in `/tmp/agentsh-discovery-final-output-paths.log` |
+| AgentSH package | pass; `/tmp/agentsh-discovery-package-committed.log` | `/nix/store/1by0ammf63m03s3nbx84myss7fkwsagz-agentsh-unstable-2026-06-17` |
+| complete production broker VM | pass in the matrix above | `/nix/store/a2blz409x0a1kb59kc9dpdgpa897d2vg-vm-test-run-agentsh-nested-namespace-broker-feasibility` |
+| generation-aware Pi/QShell release gate | pass; `/tmp/agentsh-discovery-release-gate-committed.log` | `/nix/store/97yahs429clka7kmcz07bxhflh4my4n2-vm-test-run-agentsh-qshell-composition-release-gate` |
+| downstream project-overlay boundary | pass; `/tmp/agentsh-discovery-downstream-boundary.log` | `/nix/store/q61bj1r3hs0il20hyzvln80n855dlw4r-agentsh-project-overlay-boundaries-check` |
+| Rose/non-Rose config evaluation | pass; `/tmp/agentsh-discovery-rose-graph-eval.log` | Rose `/nix/store/rpxv0ffcbgr8nhshz1s2hpz3nd658ygq-agentsh-dos-config.yaml`; Graph `/nix/store/i5vdhbm08dsnqj12mh25pz1as5ij9zr1-agentsh-dos-config.yaml` |
+
+No Rose access, Home Manager activation, Vivado invocation, hardware operation, KVM, fleet, or microVM action occurred during this remediation validation.
 
 ## Deterministic release candidate — 2026-07-22
 

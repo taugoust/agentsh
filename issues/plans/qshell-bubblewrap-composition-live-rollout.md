@@ -11,9 +11,9 @@ Downstream architecture/contract plans:
 
 ## Status
 
-Open for Phase 6 only. Rose remains pinned to `b1479a2f`, where the last absolute canary lost the post-pivot CWD and a relative form executed real Bubblewrap. The deterministic implementation candidate is now AgentSH `ce42938d6bea6e7d644fd342f14b4b5975d2a8d1`; its integrated release gate and complete Phase 5 sequence passed locally on 2026-07-22.
+Open for Phase 6 only. Rose is deployed at AgentSH `68786983` through `nix-config` `93e5383`. Its first harmless Ultrascale canary selected composition but failed closed because Nixpkgs' in-boundary `for dir in /*` scan was denied, yielding a `51`-operation plan without `/scratch` and `E_COMPOSITION_CWD_UNRESOLVED`.
 
-The user explicitly authorized publishing this formerly ignored plan. Do not describe live acceptance as complete: the candidate still must be pushed, pinned downstream, and exercised on Rose in the exact harmless-first order below.
+AgentSH remediation `83944d4309d12a0041f2863e4f55ee8046b771a4` adds exact directory-list Landlock authority and a generation-aware release gate. All 15 AgentSH checks and the strengthened downstream gate pass. The candidate and reviewed overlay still must be pushed, pinned, deployed, and exercised on Rose in the exact harmless-first order below. Do not describe live acceptance as complete.
 
 ## Constraints
 
@@ -181,6 +181,8 @@ Run through flake outputs:
 Record logs and exact output paths in the parent issue.
 
 Phase 5 passed for `ce42938d6bea6e7d644fd342f14b4b5975d2a8d1`. The canonical commands, logs, and Nix store outputs are recorded in `issues/qshell-bubblewrap-composition-live-rollout-gaps.md`. The gate additionally caught and fixed recursive composition through a preserved ancestral PID namespace by deriving its real owner with `NS_GET_USERNS`.
+
+The first deployed harmless canary then exposed a release-gate qualification gap: the gate replayed argv generated outside AgentSH, while Nixpkgs generates top-level identity binds by enumerating `/*` inside the command. AgentSH `83944d43` replaces replay-only qualification with in-boundary argv generation, admits exact list-only roots without `READ_FILE`, excludes `/` from bind-source authority, and re-passes the complete Phase 5 matrix. This supersedes the earlier Phase 5 release authorization; only the strengthened gate authorizes the next rollout.
 
 ## Phase 6 — Controlled rollout
 
