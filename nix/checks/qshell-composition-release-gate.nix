@@ -51,6 +51,14 @@ let
       printf '%s\n' project-write > .agentsh-release-gate-write
       test "$(cat .agentsh-release-gate-write)" = project-write
       rm .agentsh-release-gate-write
+      if cat /scratch/theo/outside/agentsh-release-gate-secret >/dev/null 2>&1; then
+        echo "the /scratch list-only alias broadened sibling read authority" >&2
+        exit 1
+      fi
+      if cat /mnt/agentsh-release-gate-secret >/dev/null 2>&1; then
+        echo "a list-only FHS bind root gained file-read authority" >&2
+        exit 1
+      fi
       if printf denied > /scratch/theo/outside/agentsh-release-gate-write 2>/dev/null; then
         echo "the /scratch alias broadened project write authority" >&2
         exit 1
@@ -84,12 +92,69 @@ let
     name = "agentsh-release-gate-qshell-driver";
     runtimeInputs = [ pkgs.python3 ];
     text = ''
-      exec python3 - <<'PY'
+      # Match Nixpkgs buildFHSEnv's runtime auto-mount discovery. This must run
+      # inside the real AgentSH boundary: replaying the captured argv would miss
+      # a policy or Landlock denial of the `/*` scan.
+      ignored=(/nix /dev /proc /etc /bin /lib /lib32 /lib64 /libexec /sbin /usr)
+      declare -A ignored_set=()
+      for path in "''${ignored[@]}"; do
+        ignored_set["$path"]=1
+      done
+      auto_mount_roots=()
+      for dir in /*; do
+        if [[ -d "$dir" && -z "''${ignored_set[$dir]:-}" ]]; then
+          auto_mount_roots+=("$dir")
+        fi
+      done
+
+      exec python3 - "''${auto_mount_roots[@]}" <<'PY'
       import json
       import os
+      import sys
 
       with open("${qshellArgvFixture}", encoding="utf-8") as stream:
-          argv = json.load(stream)
+          captured = json.load(stream)
+
+      captured_auto_roots = {
+          "/boot", "/home", "/mnt", "/opt", "/root", "/run", "/scratch",
+          "/share", "/srv", "/sys", "/tmp", "/var", "/zokelmannvms", "/zroot",
+      }
+      auto_mount_roots = sys.argv[1:]
+      ordinary_auto_roots = ["/mnt", "/scratch", "/share", "/sys", "/tmp", "/var"]
+      symlinked_auto_roots = ordinary_auto_roots + ["/zroot"]
+      if auto_mount_roots not in (ordinary_auto_roots, symlinked_auto_roots):
+          raise SystemExit(
+              f"unexpected policy-filtered FHS auto mounts: {auto_mount_roots!r}; "
+              f"want {ordinary_auto_roots!r} or {symlinked_auto_roots!r}"
+          )
+
+      # Keep the 51 fixed captured operations, but discard the 14 host roots
+      # that were generated outside AgentSH and replace them with this command's
+      # policy-filtered runtime discovery.
+      argv = [captured[0]]
+      index = 1
+      while index < len(captured):
+          if (
+              captured[index] == "--bind"
+              and index + 2 < len(captured)
+              and captured[index + 1] == captured[index + 2]
+              and captured[index + 1] in captured_auto_roots
+          ):
+              index += 3
+              continue
+          argv.append(captured[index])
+          index += 1
+      insertion = next(
+          index
+          for index in range(1, len(argv) - 1)
+          if argv[index] == "--tmpfs" and argv[index + 1] == "/tmp/.X11-unix"
+      )
+      dynamic_mounts = [
+          argument
+          for root in auto_mount_roots
+          for argument in ("--bind", root, root)
+      ]
+      argv[insertion:insertion] = dynamic_mounts
 
       captured_glibc = "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61"
       captured_rootfs = "/nix/store/gvqxs0s79g83bd2906wa91smhqcypbr5-xilinx-shell-fhsenv-rootfs"
@@ -227,49 +292,84 @@ let
     ];
     file_rules = [
       {
-        name = "allow-release-gate-composition-control-pool";
-        description = "Allow the trusted command-jail wrapper to manage only its dedicated composition staging tree";
+        name = "allow-release-gate-composition-control-root-mutations";
+        description = "Allow only mutation of the trusted composition staging root itself; do not expose it to FHS discovery";
+        paths = [ scratchRoot ];
+        operations = [
+          "chmod"
+          "chown"
+          "create"
+          "delete"
+          "link"
+          "mkdir"
+          "mknod"
+          "rename"
+          "rmdir"
+          "symlink"
+          "write"
+        ];
+        decision = "allow";
+      }
+      {
+        name = "allow-release-gate-composition-control-descendants";
+        description = "Allow the trusted wrapper to provision and inspect randomized staging descendants hidden before payload release";
         paths = [
-          scratchRoot
-          "${scratchRoot}/**"
+          "${scratchRoot}/*"
+          "${scratchRoot}/*/**"
         ];
         operations = [ "*" ];
         decision = "allow";
       }
       {
-        name = "allow-release-gate-reviewed-bind-sources";
-        description = "Grant read-only authority to the exact top-level sources in the reviewed QShell plan";
-        paths =
-          lib.concatMap
-            (root: [
-              root
-              "${root}/**"
-            ])
-            [
-              "/boot"
-              "/home"
-              "/mnt"
-              "/opt"
-              "/root"
-              "/run"
-              "/scratch"
-              "/share"
-              "/srv"
-              "/sys"
-              "/tmp"
-              "/var"
-              "/zokelmannvms"
-              "/zroot"
-            ];
+        name = "allow-release-gate-fhs-root-discovery";
+        description = "Permit the Nixpkgs FHS launcher to enumerate only the top-level directory names";
+        paths = [ "/" ];
         operations = [
           "access"
           "list"
           "open"
-          "read"
           "readlink"
           "stat"
         ];
         decision = "allow";
+      }
+      {
+        name = "allow-release-gate-fhs-bind-root-metadata";
+        description = "Permit metadata and directory-list authority, but not file reads, for policy-visible FHS bind roots";
+        paths = [
+          "/mnt"
+          "/scratch"
+          "/share"
+          "/sys"
+          "/tmp"
+          "/var"
+          "/zroot/scratch-real"
+        ];
+        operations = [
+          "access"
+          "list"
+          "readlink"
+          "stat"
+        ];
+        decision = "allow";
+      }
+      {
+        name = "allow-release-gate-symlink-source-list-root";
+        description = "Retain directory-list authority for the canonical parent only when real-path policy already exposes it";
+        paths = [ "/zroot" ];
+        operations = [ "list" ];
+        decision = "allow";
+      }
+      {
+        name = "deny-release-gate-unreviewed-fhs-bind-root-metadata";
+        description = "Make unreviewed top-level directory probes fail noninteractively after root discovery";
+        paths = [ "/*" ];
+        operations = [
+          "access"
+          "readlink"
+          "stat"
+        ];
+        decision = "deny";
       }
       {
         name = "allow-release-gate-python-nix-prefix-metadata";
@@ -327,20 +427,25 @@ let
           projectRoot
           "${projectRoot}/**"
         ];
-        operations = [
-          "chmod"
-          "chown"
-          "create"
-          "delete"
-          "link"
-          "mkdir"
-          "mknod"
-          "rename"
-          "rmdir"
-          "symlink"
-          "write"
-        ];
+        operations = [ "*" ];
         decision = "allow";
+      }
+      {
+        name = "deny-release-gate-list-only-read-probes";
+        description = "Keep files beneath metadata-only FHS roots unreadable through composed aliases";
+        paths = [
+          "/mnt/agentsh-release-gate-secret"
+          "/run/agentsh/recovery"
+          "/scratch/theo/outside/agentsh-release-gate-secret"
+        ];
+        operations = [
+          "access"
+          "open"
+          "read"
+          "readlink"
+          "stat"
+        ];
+        decision = "deny";
       }
       {
         name = "deny-release-gate-reviewed-write-probes";
@@ -630,6 +735,7 @@ pkgs.testers.runNixOSTest {
         request = json.dumps({
             "workspace": workspace,
             "project_root": project_root,
+            "home": "/scratch/theo",
             "policy": "pi-supervised",
             "real_paths": True,
             "workspace_mode": "direct",
@@ -682,7 +788,7 @@ pkgs.testers.runNixOSTest {
     def composition_plan_count():
         return int(machine.succeed("grep -c '\"type\":\"composition_plan\"' /var/lib/agentsh-release/audit.jsonl || true").strip())
 
-    machine.succeed("install -d -m 0755 /scratch/theo/outside")
+    machine.succeed("install -d -m 0755 /scratch/theo/outside && printf denied > /scratch/theo/outside/agentsh-release-gate-secret && printf denied > /mnt/agentsh-release-gate-secret")
     install_project("${projectRoot}")
     ordinary = create_session("${projectRoot}", "${projectRoot}")
 
@@ -736,9 +842,11 @@ pkgs.testers.runNixOSTest {
             "jq -s -e '"
             "[.[] | select(.type == \"composition_plan\")] as $plans | "
             "[.[] | select(.type == \"execve\" and .filename == \"${pkgs.bubblewrap}/bin/bwrap\")] as $bwrap | "
-            "[$plans[] | select(.fields.normalized_plan.operation_count == 65 and "
+            "[$plans[] | select((.fields.normalized_plan.operation_count == 57 or .fields.normalized_plan.operation_count == 58) and "
             ".fields.normalized_plan.cwd == \"${qshellRoot}\" and "
-            "([.fields.normalized_plan.operations[] | select(.type == \"bind\" and .source == \"/scratch\" and .target == \"/scratch\" and .recursive == true)] | length) == 1)] as $qshell | "
+            "([.fields.normalized_plan.operations[] | select(.type == \"bind\" and .source == \"/scratch\" and .target == \"/scratch\" and .recursive == true)] | length) == 1 and "
+            "(([.fields.normalized_plan.operations[] | select(.type == \"bind\" and .source == .target and .source != \"/nix\") | .source] | sort) as $roots | "
+            "($roots == [\"/mnt\", \"/scratch\", \"/share\", \"/sys\", \"/tmp\", \"/var\"] or $roots == [\"/mnt\", \"/scratch\", \"/share\", \"/sys\", \"/tmp\", \"/var\", \"/zroot\"])))] as $qshell | "
             "[$plans[] | select(.fields.normalized_plan.operation_count == 2 and "
             ".fields.normalized_plan.cwd == \"${qshellRoot}\")] as $recursive | "
             "($plans | length) == 7 and ($qshell | length) == 6 and ($recursive | length) == 1 and "

@@ -19,11 +19,19 @@ func TestRulesetBuilder_AddPath(t *testing.T) {
 		t.Errorf("failed to add read path: %v", err)
 	}
 
+	err = b.AddListPath("/")
+	if err != nil {
+		t.Errorf("failed to add list path: %v", err)
+	}
+
 	if len(b.executePaths) != 1 {
 		t.Errorf("expected 1 execute path, got %d", len(b.executePaths))
 	}
 	if len(b.readPaths) != 1 {
 		t.Errorf("expected 1 read path, got %d", len(b.readPaths))
+	}
+	if len(b.listPaths) != 1 || b.listPaths[0] != "/" {
+		t.Errorf("expected exact root list path, got %#v", b.listPaths)
 	}
 }
 
@@ -172,6 +180,16 @@ func TestAddReadPath_GlobStripped(t *testing.T) {
 	}
 	if b.readPaths[0] != "/usr/lib" {
 		t.Errorf("expected /usr/lib, got %s", b.readPaths[0])
+	}
+}
+
+func TestAddListPath_GlobRejected(t *testing.T) {
+	b := NewRulesetBuilder(3)
+	if err := b.AddListPath("/scratch/**"); err == nil {
+		t.Fatal("AddListPath accepted a glob that Landlock cannot preserve exactly")
+	}
+	if len(b.listPaths) != 0 {
+		t.Fatalf("list paths = %#v, want none", b.listPaths)
 	}
 }
 

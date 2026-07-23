@@ -100,6 +100,48 @@ func DeriveReadPathsFromPolicy(p *policy.Policy) []string {
 	return paths
 }
 
+// DeriveListPathsFromPolicy extracts directory-only Landlock roots from allow
+// rules that grant list without also granting full file reads. Unlike ordinary
+// read-root derivation, an exact path names that directory itself: a `list` rule
+// for `/` must not be collapsed away, and a `list` rule for `/scratch` must not
+// become a rule for all of `/`. Glob roots are deliberately omitted because a
+// Landlock path-beneath READ_DIR rule cannot preserve their segment bounds.
+func DeriveListPathsFromPolicy(p *policy.Policy) []string {
+	if p == nil {
+		return nil
+	}
+	pathSet := make(map[string]struct{})
+	for _, rule := range p.FileRules {
+		if strings.ToLower(rule.Decision) != "allow" {
+			continue
+		}
+		hasList := false
+		hasFullRead := len(rule.Operations) == 0
+		for _, operation := range rule.Operations {
+			switch strings.ToLower(operation) {
+			case "list":
+				hasList = true
+			case "read", "*":
+				hasFullRead = true
+			}
+		}
+		if !hasList || hasFullRead {
+			continue
+		}
+		for _, pattern := range rule.Paths {
+			pattern = strings.TrimSpace(pattern)
+			if pattern == "" || strings.IndexAny(pattern, "*?[") >= 0 {
+				continue
+			}
+			path := filepath.Clean(pattern)
+			if filepath.IsAbs(path) {
+				pathSet[path] = struct{}{}
+			}
+		}
+	}
+	return pathSetToSlice(pathSet)
+}
+
 // DeriveApproveReadPathsFromPolicy extracts Landlock read path prefixes for
 // approvable file rules, excluding prefixes that overlap explicit deny rules.
 func DeriveApproveReadPathsFromPolicy(p *policy.Policy) []string {

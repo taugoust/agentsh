@@ -46,6 +46,7 @@ type WrapperConfig struct {
 	Workspace         string   `json:"workspace,omitempty"`
 	AllowExecute      []string `json:"allow_execute,omitempty"`
 	AllowRead         []string `json:"allow_read,omitempty"`
+	AllowList         []string `json:"allow_list,omitempty"`
 	AllowWrite        []string `json:"allow_write,omitempty"`
 	DenyPaths         []string `json:"deny_paths,omitempty"`
 	HandleDeviceIOCTL bool     `json:"handle_device_ioctl,omitempty"`

@@ -29,6 +29,7 @@ type BrokerConfig struct {
 	LauncherPath          string
 	ScratchRoot           string
 	ReadRoots             []string
+	ListRoots             []string
 	WriteRoots            []string
 	ExecuteRoots          []string
 	DenyRoots             []string
@@ -130,6 +131,7 @@ func NewBroker(cfg BrokerConfig) (*Broker, error) {
 		cfg.RequestTimeout = 30 * time.Second
 	}
 	cfg.ReadRoots = cleanRoots(cfg.ReadRoots)
+	cfg.ListRoots = cleanRoots(cfg.ListRoots)
 	cfg.WriteRoots = cleanRoots(cfg.WriteRoots)
 	cfg.ExecuteRoots = cleanRoots(cfg.ExecuteRoots)
 	cfg.DenyRoots = cleanRoots(cfg.DenyRoots)
@@ -300,8 +302,12 @@ func (b *Broker) validateSetupContract(setup *ReceivedSetup) error {
 		switch object.Kind {
 		case SetupObjectPolicy:
 			readable := pathAllowed(object.Path, b.cfg.ReadRoots) || pathAllowed(object.Path, b.cfg.WriteRoots) || pathAllowed(object.Path, b.cfg.ExecuteRoots)
-			if object.Rights&(landlock.LANDLOCK_ACCESS_FS_READ_FILE|landlock.LANDLOCK_ACCESS_FS_READ_DIR) != 0 && !readable {
-				return typedError("E_COMPOSITION_SETUP_INVALID", "policy object %q carries read rights outside the admitted composition roots", object.Path)
+			listable := exactRoot(object.Path, b.cfg.ListRoots)
+			if object.Rights&landlock.LANDLOCK_ACCESS_FS_READ_FILE != 0 && !readable {
+				return typedError("E_COMPOSITION_SETUP_INVALID", "policy object %q carries file-read rights outside the admitted composition roots", object.Path)
+			}
+			if object.Rights&landlock.LANDLOCK_ACCESS_FS_READ_DIR != 0 && !readable && !listable {
+				return typedError("E_COMPOSITION_SETUP_INVALID", "policy object %q carries directory-list rights outside the admitted composition roots", object.Path)
 			}
 			if object.Rights&writeRights != 0 && !pathAllowed(object.Path, b.cfg.WriteRoots) {
 				return typedError("E_COMPOSITION_SETUP_INVALID", "policy object %q carries write rights outside the admitted composition roots", object.Path)
@@ -1488,8 +1494,12 @@ func (b *Broker) sourcePolicyRights(source *os.File, canonical string, info os.F
 	if b.overlapsDenied(canonical, info.IsDir()) {
 		return 0, typedError("E_COMPOSITION_SOURCE_DENIED", "bind source %q overlaps a denied root", canonical)
 	}
-	if !pathAllowed(canonical, b.cfg.ReadRoots) {
-		return 0, typedError("E_COMPOSITION_SOURCE_DENIED", "bind source %q is not base-policy readable", canonical)
+	readable := pathAllowed(canonical, b.cfg.ReadRoots)
+	if info.IsDir() && listPathAllowed(canonical, b.cfg.ListRoots) {
+		readable = true
+	}
+	if !readable {
+		return 0, typedError("E_COMPOSITION_SOURCE_DENIED", "bind source %q is not base-policy readable or listable", canonical)
 	}
 	if b.setup == nil {
 		return ^uint64(0), nil
@@ -1656,6 +1666,11 @@ func (b *Broker) validateRecursiveSource(context *targetContext, source *os.File
 			// retained descendants. Landlock still evaluates each aliased source
 			// object, so the bind root itself does not inherit those permissions.
 			validationRights = rootRights
+		} else if info.IsDir() && listPathAllowed(childCanonical, b.cfg.ListRoots) {
+			// As for the recursive root, READ_FILE here is destination-validation
+			// compatibility only; source-aware file interception retains the
+			// metadata-only decision for content below this mount.
+			validationRights |= landlock.LANDLOCK_ACCESS_FS_READ_FILE
 		}
 		if err := validateDestinationRights(childCanonical, validationRights, destinationRights, info, effectiveAttributes); err != nil {
 			return nil, fmt.Errorf("recursive source mount %q (%s): %w", mount.path, mount.filesystem, err)
@@ -1756,6 +1771,15 @@ func (b *Broker) cloneValidatedMountTree(context *targetContext, rootSource *os.
 func (b *Broker) recursiveBindValidationRights(operation Operation, source *os.File, info os.FileInfo, rights uint64) (uint64, error) {
 	if !operation.Recursive || info == nil || !info.IsDir() || b.setup == nil {
 		return rights, nil
+	}
+	// The synthetic destination root is intentionally readable so FHS rootfs
+	// content can start before every alias is attached. A metadata-only
+	// top-level identity bind may therefore retain READ_FILE as a validation
+	// compatibility right, while its actual mounted authority remains READ_DIR.
+	// Mandatory source-aware file interception independently denies file opens
+	// beneath that alias unless their original source policy allows them.
+	if listPathAllowed(operation.Source, b.cfg.ListRoots) {
+		rights |= landlock.LANDLOCK_ACCESS_FS_READ_FILE
 	}
 	mutationDescendant, err := b.setup.HasRightsDescendant(source, compositionMutationRights)
 	if err != nil {
@@ -2071,6 +2095,19 @@ func cleanRoots(roots []string) []string {
 func pathAllowed(path string, roots []string) bool {
 	for _, root := range roots {
 		if pathWithin(path, root) {
+			return true
+		}
+	}
+	return false
+}
+
+// listPathAllowed deliberately excludes a discovery rule for `/` from source
+// authorization. READ_DIR on `/` lets an FHS launcher enumerate top-level
+// names, but it must not make every directory an admissible bind source. More
+// specific list roots may authorize directory objects (never regular files).
+func listPathAllowed(path string, roots []string) bool {
+	for _, root := range roots {
+		if root != string(filepath.Separator) && pathWithin(path, root) {
 			return true
 		}
 	}

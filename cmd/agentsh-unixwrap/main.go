@@ -462,6 +462,9 @@ func prepareLandlock(cfg *WrapperConfig) (*preparedLandlockRuleset, error) {
 	for _, p := range cfg.AllowRead {
 		_ = builder.AddReadPath(p)
 	}
+	for _, p := range cfg.AllowList {
+		_ = builder.AddListPath(p)
+	}
 	for _, p := range cfg.AllowWrite {
 		_ = builder.AddWritePath(p)
 	}

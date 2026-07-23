@@ -457,6 +457,104 @@ func TestDestinationRightsCannotBroadenWritableSyntheticAncestor(t *testing.T) {
 	}
 }
 
+func TestListOnlySetupObjectCannotCarryFileReadAuthority(t *testing.T) {
+	directory := t.TempDir()
+	broker := &Broker{cfg: BrokerConfig{ListRoots: []string{directory}}}
+	setup := &ReceivedSetup{Objects: []ReceivedSetupObject{{
+		SetupObject: SetupObject{
+			Kind:   SetupObjectPolicy,
+			Path:   directory,
+			Rights: landlock.LANDLOCK_ACCESS_FS_READ_DIR,
+		},
+	}}}
+	if err := broker.validateSetupContract(setup); err != nil {
+		t.Fatalf("directory-list setup object was rejected: %v", err)
+	}
+	setup.Objects[0].Rights |= landlock.LANDLOCK_ACCESS_FS_READ_FILE
+	if err := broker.validateSetupContract(setup); err == nil || !strings.Contains(err.Error(), "file-read rights") {
+		t.Fatalf("list-only setup object carried file-read authority: %v", err)
+	}
+}
+
+func TestListOnlySourceAuthorizationExcludesRootRuleAndRegularFiles(t *testing.T) {
+	directory := t.TempDir()
+	child := filepath.Join(directory, "child")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	regular := filepath.Join(child, "secret")
+	if err := os.WriteFile(regular, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	openWithInfo := func(path string) (*os.File, os.FileInfo) {
+		t.Helper()
+		file, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = file.Close() })
+		info, err := file.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return file, info
+	}
+
+	childFile, childInfo := openWithInfo(child)
+	broker := &Broker{cfg: BrokerConfig{ListRoots: []string{directory}}}
+	if _, err := broker.sourcePolicyRights(childFile, child, childInfo); err != nil {
+		t.Fatalf("specific list root did not admit a directory descendant: %v", err)
+	}
+
+	regularFile, regularInfo := openWithInfo(regular)
+	if _, err := broker.sourcePolicyRights(regularFile, regular, regularInfo); err == nil {
+		t.Fatal("specific list root admitted a regular-file bind source")
+	}
+
+	rootOnly := &Broker{cfg: BrokerConfig{ListRoots: []string{"/"}}}
+	if _, err := rootOnly.sourcePolicyRights(childFile, child, childInfo); err == nil {
+		t.Fatal("root discovery authority admitted an arbitrary directory bind source")
+	}
+}
+
+func TestListOnlyDirectoryBindFitsSyntheticRootAfterReadOnlyNoExecReduction(t *testing.T) {
+	directory := t.TempDir()
+	info, err := os.Stat(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listOnly := uint64(landlock.LANDLOCK_ACCESS_FS_READ_DIR)
+	destination := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE)
+	attributes := uint64(unix.MOUNT_ATTR_RDONLY | unix.MOUNT_ATTR_NOEXEC)
+	source, err := os.Open(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	broker := &Broker{cfg: BrokerConfig{ListRoots: []string{directory}}, setup: &ReceivedSetup{}}
+	validationRights, err := broker.recursiveBindValidationRights(
+		Operation{Type: OperationBind, Source: directory, Target: "/metadata", Recursive: true},
+		source,
+		info,
+		listOnly,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if validationRights&landlock.LANDLOCK_ACCESS_FS_READ_FILE == 0 {
+		t.Fatalf("validation rights %#x omitted synthetic-root read compatibility", validationRights)
+	}
+	if err := validateDestinationRights(directory, validationRights, destination, info, attributes); err != nil {
+		t.Fatalf("list-only directory bind was rejected after safe reductions: %v", err)
+	}
+	if !listPathAllowed("/scratch/theo", []string{"/", "/scratch"}) {
+		t.Fatal("specific list root did not cover its directory descendant")
+	}
+	if listPathAllowed("/root", []string{"/"}) {
+		t.Fatal("root discovery authority became generic bind-source authority")
+	}
+}
+
 func TestBindWithoutBaseWriteAuthorityIsReducedToReadOnly(t *testing.T) {
 	readExecute := uint64(
 		landlock.LANDLOCK_ACCESS_FS_READ_FILE |

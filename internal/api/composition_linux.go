@@ -66,6 +66,7 @@ func (a *App) configureExecveComposition(handler any, s *session.Session, wrappe
 		AdapterPath:           adapterPath,
 		ScratchRoot:           scratch,
 		ReadRoots:             concreteCompositionRoots(wrapperCfg.CompositionAllowRead, wrapperCfg.Workspace),
+		ListRoots:             concreteCompositionRoots(wrapperCfg.CompositionAllowList, ""),
 		WriteRoots:            concreteCompositionRoots(wrapperCfg.CompositionAllowWrite, wrapperCfg.Workspace),
 		ExecuteRoots:          concreteCompositionRoots(wrapperCfg.CompositionAllowExecute, wrapperCfg.Workspace),
 		DenyRoots:             concreteCompositionRoots(wrapperCfg.DenyPaths, ""),

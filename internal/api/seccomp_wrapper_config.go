@@ -47,6 +47,7 @@ type seccompWrapperConfig struct {
 	Workspace         string   `json:"workspace,omitempty"`
 	AllowExecute      []string `json:"allow_execute,omitempty"`
 	AllowRead         []string `json:"allow_read,omitempty"`
+	AllowList         []string `json:"allow_list,omitempty"`
 	AllowWrite        []string `json:"allow_write,omitempty"`
 	DenyPaths         []string `json:"deny_paths,omitempty"`
 	HandleDeviceIOCTL bool     `json:"handle_device_ioctl,omitempty"`
@@ -57,6 +58,7 @@ type seccompWrapperConfig struct {
 	SandboxComposition         string   `json:"sandbox_composition,omitempty"`
 	CompositionAllowExecute    []string `json:"composition_allow_execute,omitempty"`
 	CompositionAllowRead       []string `json:"composition_allow_read,omitempty"`
+	CompositionAllowList       []string `json:"composition_allow_list,omitempty"`
 	CompositionAllowWrite      []string `json:"composition_allow_write,omitempty"`
 	CompositionScratchRoot     string   `json:"composition_scratch_root,omitempty"`
 	CompositionSyntheticMounts int      `json:"composition_synthetic_mounts,omitempty"`
@@ -153,6 +155,7 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 			seccompCfg.Workspace = workspace
 
 			seccompCfg.AllowExecute, seccompCfg.AllowRead, seccompCfg.AllowWrite = a.deriveLandlockAllowPaths(s)
+			seccompCfg.AllowList = a.deriveLandlockBaseListPaths(s)
 			appendRuntimeLandlockPaths(&seccompCfg, s)
 			seccompCfg.AllowExecute = append(seccompCfg.AllowExecute, a.cfg.Landlock.AllowExecute...)
 			seccompCfg.AllowRead = append(seccompCfg.AllowRead, a.cfg.Landlock.AllowRead...)
@@ -164,6 +167,7 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 			if s != nil && compositionMode == bubblewrapCompositionMode {
 				seccompCfg.SandboxComposition = bubblewrapCompositionMode
 				seccompCfg.CompositionAllowExecute, seccompCfg.CompositionAllowRead, seccompCfg.CompositionAllowWrite = a.deriveLandlockBaseAllowPaths(s)
+				seccompCfg.CompositionAllowList = a.deriveLandlockBaseListPaths(s)
 				appendRuntimeCompositionPaths(&seccompCfg, s)
 				seccompCfg.CompositionAllowExecute = append(seccompCfg.CompositionAllowExecute, a.cfg.Landlock.AllowExecute...)
 				seccompCfg.CompositionAllowRead = append(seccompCfg.CompositionAllowRead, a.cfg.Landlock.AllowRead...)

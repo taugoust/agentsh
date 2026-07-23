@@ -464,6 +464,30 @@ func TestDeriveReadPaths(t *testing.T) {
 	}
 }
 
+func TestDeriveListPathsFromPolicy_ExactDirectoryOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("landlock tests use Unix paths")
+	}
+	p := &policy.Policy{FileRules: []policy.FileRule{
+		{Name: "root-discovery", Paths: []string{"/"}, Operations: []string{"open", "list", "stat"}, Decision: "allow"},
+		{Name: "scratch-discovery", Paths: []string{"/scratch"}, Operations: []string{"list", "stat"}, Decision: "allow"},
+		{Name: "full-read", Paths: []string{"/share/**"}, Operations: []string{"read", "list"}, Decision: "allow"},
+		{Name: "glob-list", Paths: []string{"/metadata/*"}, Operations: []string{"list"}, Decision: "allow"},
+		{Name: "relative-list", Paths: []string{"metadata"}, Operations: []string{"list"}, Decision: "allow"},
+		{Name: "denied", Paths: []string{"/root"}, Operations: []string{"list"}, Decision: "deny"},
+	}}
+	found := map[string]bool{}
+	for _, path := range DeriveListPathsFromPolicy(p) {
+		found[path] = true
+	}
+	if !found["/"] || !found["/scratch"] {
+		t.Fatalf("directory-only roots missing: %#v", found)
+	}
+	if found["/share"] || found["/metadata"] || found["metadata"] || found["/root"] {
+		t.Fatalf("full-read, glob, relative, or denied roots leaked into directory-only roots: %#v", found)
+	}
+}
+
 func TestDeriveApprovePathsFromPolicy(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("landlock tests use Unix paths")

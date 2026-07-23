@@ -679,6 +679,14 @@ func (a *App) deriveLandlockBaseAllowPaths(s *session.Session) (execute, read, w
 	return execute, read, write
 }
 
+func (a *App) deriveLandlockBaseListPaths(s *session.Session) []string {
+	engine := a.policyEngineFor(s)
+	if engine == nil {
+		return nil
+	}
+	return landlock.DeriveListPathsFromPolicy(engine.Policy())
+}
+
 func (a *App) deriveLandlockAllowPaths(s *session.Session) (execute, read, write []string) {
 	execute, read, write = a.deriveLandlockBaseAllowPaths(s)
 	engine := a.policyEngineFor(s)

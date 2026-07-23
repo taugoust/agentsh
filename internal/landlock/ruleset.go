@@ -100,6 +100,7 @@ type RulesetBuilder struct {
 	workspace         string
 	executePaths      []string
 	readPaths         []string
+	listPaths         []string
 	writePaths        []string
 	deviceIOCTLPaths  []string
 	denyPaths         []string
@@ -114,6 +115,7 @@ func NewRulesetBuilder(abi int) *RulesetBuilder {
 		abi:          abi,
 		executePaths: make([]string, 0),
 		readPaths:    make([]string, 0),
+		listPaths:    make([]string, 0),
 		writePaths:   make([]string, 0),
 		denyPaths:    make([]string, 0),
 	}
@@ -151,6 +153,21 @@ func (b *RulesetBuilder) AddReadPath(path string) error {
 		return fmt.Errorf("invalid path %s: %w", path, err)
 	}
 	b.readPaths = append(b.readPaths, absPath)
+	return nil
+}
+
+// AddListPath adds a directory prefix with READ_DIR but not READ_FILE. This is
+// used for metadata-only directory discovery without making files beneath the
+// prefix readable through Landlock.
+func (b *RulesetBuilder) AddListPath(path string) error {
+	if strings.IndexAny(path, "*?[") >= 0 {
+		return fmt.Errorf("list path %q must not contain glob syntax", path)
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("invalid path %s: %w", path, err)
+	}
+	b.listPaths = append(b.listPaths, absPath)
 	return nil
 }
 
@@ -273,7 +290,7 @@ func (b *RulesetBuilder) BuildRetained() (int, []RuleObject, error) {
 		return -1, nil, fmt.Errorf("landlock_create_ruleset: %v", errno)
 	}
 	rulesetFd := int(fd)
-	objects := make([]RuleObject, 0, 1+len(b.executePaths)+len(b.readPaths)+len(b.writePaths)+len(b.deviceIOCTLPaths))
+	objects := make([]RuleObject, 0, 1+len(b.executePaths)+len(b.readPaths)+len(b.listPaths)+len(b.writePaths)+len(b.deviceIOCTLPaths))
 	closeWithError := func(err error) (int, []RuleObject, error) {
 		for index := range objects {
 			_ = objects[index].Close()
@@ -320,6 +337,17 @@ func (b *RulesetBuilder) BuildRetained() (int, []RuleObject, error) {
 			continue
 		}
 		if err := addObject(path, readAccess); err != nil {
+			continue
+		}
+	}
+
+	// Add directory-list paths separately. In particular, a rule for `/` grants
+	// only READ_DIR: it must never imply READ_FILE for the whole host tree.
+	for _, path := range b.listPaths {
+		if b.isDenied(path) {
+			continue
+		}
+		if err := addObject(path, LANDLOCK_ACCESS_FS_READ_DIR); err != nil {
 			continue
 		}
 	}

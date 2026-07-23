@@ -13,6 +13,7 @@ type RulesetBuilder struct {
 	workspace         string
 	executePaths      []string
 	readPaths         []string
+	listPaths         []string
 	writePaths        []string
 	deviceIOCTLPaths  []string
 	denyPaths         []string
@@ -27,6 +28,7 @@ func NewRulesetBuilder(abi int) *RulesetBuilder {
 		abi:          abi,
 		executePaths: make([]string, 0),
 		readPaths:    make([]string, 0),
+		listPaths:    make([]string, 0),
 		writePaths:   make([]string, 0),
 		denyPaths:    make([]string, 0),
 	}
@@ -46,6 +48,12 @@ func (b *RulesetBuilder) AddExecutePath(path string) error {
 // AddReadPath adds a path where reading is allowed.
 func (b *RulesetBuilder) AddReadPath(path string) error {
 	b.readPaths = append(b.readPaths, path)
+	return nil
+}
+
+// AddListPath records a directory-only read root.
+func (b *RulesetBuilder) AddListPath(path string) error {
+	b.listPaths = append(b.listPaths, path)
 	return nil
 }
 
