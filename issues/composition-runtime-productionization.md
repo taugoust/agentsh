@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete locally; fresh Rose deployment validation remains pending. The release gate now provisions a helper-owned lease runtime automatically and runs the full QShell composition matrix without `/agentsh-composition-scratch` or project-policy authority over AgentSH control paths.
+Implementation complete locally, but fresh Rose deployment is blocked by `issues/rose-detached-supervisor-socket-timeout.md`. The first deployed launch with AgentSH `39aaacb4e52ab27338291162ce2da5c1be080531` exited before publishing its detached supervisor socket; actionable service diagnostics have not yet been captured. The release gate provisions a helper-owned lease runtime automatically and runs the full QShell composition matrix without `/agentsh-composition-scratch` or project-policy authority over AgentSH control paths, but it did not reproduce this launcher-level failure.
 
 The working Rose session remains an untouched known-good acceptance reference. The candidate overlay content without control-directory rules has SHA-256 `4ce687d6b44e8920b562aa91c8f071415d7b738d5415581cf712c22161ab852d`; it must be committed at the versioned QShell project path `.agentsh/policy-overlays/overlay.yaml` before testing a separate fresh session.
 
