@@ -403,6 +403,24 @@ func (a *App) authenticatedNethelperStatus(ctx context.Context, binding nethelpe
 	})
 }
 
+func (a *App) authenticatedCompositionRuntimeAttestation(ctx context.Context, binding nethelperBinding) (nethelper.AttestCompositionRuntimeResponse, error) {
+	if a != nil && a.nethelperAttestationForTest != nil {
+		return a.nethelperAttestationForTest(ctx, binding.clone())
+	}
+	if strings.TrimSpace(binding.SocketPath) == "" || strings.TrimSpace(binding.LeaseID) == "" || strings.TrimSpace(binding.Credential) == "" {
+		return nethelper.AttestCompositionRuntimeResponse{}, fmt.Errorf("ephemeral helper binding lacks socket, lease, or in-memory credential")
+	}
+	attestationCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	client := nethelperClientForSocket(binding.SocketPath)
+	return client.AttestCompositionRuntime(attestationCtx, nethelper.AttestCompositionRuntimeRequest{
+		ProtocolVersion:          nethelper.CurrentProtocolVersion,
+		RequestID:                "composition-attestation-" + uuid.NewString(),
+		LeaseID:                  binding.LeaseID,
+		HelperInstanceCredential: binding.Credential,
+	})
+}
+
 func (a *App) nethelperLifecycleEvidence(ctx context.Context) (*types.NethelperLifecycleEvidence, error) {
 	binding := a.nethelperBindingSnapshot()
 	if binding.SocketPath == "" {
@@ -533,8 +551,8 @@ func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation 
 		return nethelperBinding{}, fmt.Errorf("candidate runtime directory contains a symlink component")
 	}
 	runtimeInfo, err := os.Lstat(runtimeDir)
-	if err != nil || !runtimeInfo.IsDir() || runtimeInfo.Mode()&os.ModeSymlink != 0 || runtimeInfo.Mode().Perm()&0o022 != 0 || !helperPathOwnedByUID(runtimeInfo, 0) {
-		return nethelperBinding{}, fmt.Errorf("candidate runtime directory has unsafe type, mode, or ownership")
+	if err != nil || !runtimeInfo.IsDir() || runtimeInfo.Mode()&os.ModeSymlink != 0 || runtimeInfo.Mode().Perm()&0o022 != 0 {
+		return nethelperBinding{}, fmt.Errorf("candidate runtime directory has unsafe type or mode")
 	}
 	if strings.TrimSpace(req.ExpectedLeaseID) != result.LeaseID {
 		return nethelperBinding{}, fmt.Errorf("candidate lease does not match expected_lease_id")
@@ -542,9 +560,6 @@ func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation 
 	expected, err := nethelper.EphemeralPathsForUID(result.UID, result.LeaseID)
 	if err != nil || expected.UnitName != result.UnitName || expected.SocketPath != result.SocketPath || expected.CredentialFile != result.CredentialFile || expected.ResultFile != result.ResultFile || expected.PinRoot != result.PinRoot || expected.CompositionScratchRoot != result.CompositionScratchRoot {
 		return nethelperBinding{}, fmt.Errorf("bootstrap metadata does not match fixed helper-selected paths")
-	}
-	if err := validateLeaseCompositionScratchRoot(result.CompositionScratchRoot, expected.RuntimeDir); err != nil {
-		return nethelperBinding{}, fmt.Errorf("validate candidate composition runtime: %w", err)
 	}
 	if err := validateOwnedProtectedPath(req.SocketPath, true); err != nil {
 		return nethelperBinding{}, fmt.Errorf("validate candidate socket: %w", err)
@@ -563,7 +578,7 @@ func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation 
 	if len(value) < 32 || len(value) > 512 || strings.ContainsAny(value, " \t\r\n") {
 		return nethelperBinding{}, fmt.Errorf("candidate credential source contains an invalid credential")
 	}
-	return nethelperBinding{
+	candidate := nethelperBinding{
 		Kind: "ephemeral", LeaseID: result.LeaseID, UnitName: result.UnitName,
 		UID: result.UID, GID: result.GID,
 		SocketPath: result.SocketPath, CredentialFile: result.CredentialFile,
@@ -571,7 +586,15 @@ func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation 
 		ProtocolVersion: result.ProtocolVersion, BootstrapSchemaVersion: result.BootstrapSchemaVersion, CreatedAt: result.StartedAt,
 		HardExpiresAt: result.ExpiresAt, SoftLease: time.Duration(result.SoftLeaseSeconds) * time.Second,
 		RenewalRequired: result.RenewalRequired, Generation: generation,
-	}, nil
+	}
+	attestation, err := a.authenticatedCompositionRuntimeAttestation(context.Background(), candidate)
+	if err != nil {
+		return nethelperBinding{}, fmt.Errorf("authenticate candidate composition runtime inode: %w", err)
+	}
+	if err := validateLeaseCompositionScratchRoot(result.CompositionScratchRoot, expected.RuntimeDir, attestation.Attestation); err != nil {
+		return nethelperBinding{}, fmt.Errorf("validate candidate composition runtime: %w", err)
+	}
+	return candidate, nil
 }
 
 func bootstrapResultMatchesFixedPaths(result nethelper.BootstrapResult) bool {

@@ -122,6 +122,42 @@ func TestEphemeralInstanceControllerStatusAuthentication(t *testing.T) {
 	}
 }
 
+func TestEphemeralInstanceControllerAttestsOnlyFixedAuthenticatedLease(t *testing.T) {
+	const (
+		lease      = "lease-11111111-1111-4111-8111-111111111111"
+		credential = "0123456789abcdef0123456789abcdef"
+	)
+	called := false
+	want := CompositionRuntimeAttestation{
+		Runtime:        CompositionRuntimeInode{Device: 1, Inode: 2, Mode: 0o41733, UID: 0, GID: 0},
+		LeaseDirectory: CompositionRuntimeInode{Device: 1, Inode: 1, Mode: 0o40711, UID: 0, GID: 0},
+	}
+	controller := NewEphemeralInstanceController(EphemeralInstanceControllerOptions{
+		LeaseID: lease, HelperInstanceCredential: credential, ExpectedUID: 1000, ExpectedGID: 100, EnforceGID: true,
+		AttestCompositionRuntime: func(uid uint32, gotLease string) (CompositionRuntimeAttestation, error) {
+			called = true
+			if uid != 1000 || gotLease != lease {
+				t.Fatalf("attester received uid=%d lease=%q", uid, gotLease)
+			}
+			return want, nil
+		},
+	})
+	peer := PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true}
+	resp, err := controller.AttestCompositionRuntime(context.Background(), peer, AttestCompositionRuntimeRequest{
+		ProtocolVersion: CurrentProtocolVersion, RequestID: "attest-1", LeaseID: lease, HelperInstanceCredential: credential,
+	})
+	if err != nil || !resp.OK || resp.Attestation != want || !called {
+		t.Fatalf("attestation response=%+v called=%t err=%v", resp, called, err)
+	}
+	called = false
+	resp, err = controller.AttestCompositionRuntime(context.Background(), peer, AttestCompositionRuntimeRequest{
+		ProtocolVersion: CurrentProtocolVersion, RequestID: "attest-2", LeaseID: lease, HelperInstanceCredential: strings.Repeat("a", 32),
+	})
+	if err == nil || resp.OK || called {
+		t.Fatalf("unauthenticated attestation response=%+v called=%t err=%v", resp, called, err)
+	}
+}
+
 type atomicRegistrationCount struct{ value atomic.Int32 }
 
 func (c *atomicRegistrationCount) ActiveRegistrationCount() int { return int(c.value.Load()) }

@@ -14,7 +14,7 @@ const (
 	EphemeralSoftLease      = 49 * time.Hour
 )
 
-var LifecycleCapabilities = []string{"instance_status", "renew_instance"}
+var LifecycleCapabilities = []string{"instance_status", "renew_instance", "attest_composition_runtime"}
 
 type BootstrapResult struct {
 	ProtocolVersion        int       `json:"protocol_version"`

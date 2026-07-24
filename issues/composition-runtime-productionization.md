@@ -2,9 +2,9 @@
 
 ## Status
 
-Fresh Rose deployment is blocked by `issues/rose-detached-supervisor-socket-timeout.md`. The first deployed launch with AgentSH `39aaacb4e52ab27338291162ce2da5c1be080531` exited before publishing its detached supervisor socket because the supervisor rejected a valid `root:root` mode-`1733` runtime. Preserved host, raw-`lstat`, and equivalent user-unit evidence rules out ownership, mode, mutation, filesystem, and user-namespace defects. A candidate now shares one raw Linux inode predicate between privileged provisioning and supervisor admission and routes detached-service output directly to the private supervisor log; focused tests, the complete AgentSH/downstream flakes, and the full automatic-runtime QShell gate pass. A new Rose deployment remains pending.
+Fresh Rose deployment is blocked by `issues/rose-detached-supervisor-socket-timeout.md`. The first deployed launch with AgentSH `39aaacb4e52ab27338291162ce2da5c1be080531` exited before publishing its detached supervisor socket because the supervisor rejected a valid `root:root` mode-`1733` runtime. AgentSH `01a4627f43533d52f5617abb9e7756343263cb04` added raw diagnostics and private pre-socket logging; its generation-37 Rose retry then showed `uid=65534 gid=65534` because the actual service maps only UID `2016` and GID `100`. The follow-up candidate never trusts overflow IDs: the authenticated privileged helper validates host ownership of the fixed lease parent/child and the supervisor requires the same device/inode/type/mode. Nix-native focused checks, the complete AgentSH flake, and a Rose-shaped automatic-runtime QShell gate pass. A new Rose deployment remains pending.
 
-The working Rose session remains an untouched known-good acceptance reference. The candidate overlay content without control-directory rules has SHA-256 `4ce687d6b44e8920b562aa91c8f071415d7b738d5415581cf712c22161ab852d`; it must be committed at the versioned QShell project path `.agentsh/policy-overlays/overlay.yaml` before testing a separate fresh session.
+The working Rose session remains an untouched known-good acceptance reference. The control-free overlay is deployed at `/scratch/theo/qshell-project/.agentsh/policy-overlays/overlay.yaml` with SHA-256 `4ce687d6b44e8920b562aa91c8f071415d7b738d5415581cf712c22161ab852d`. The umbrella `/scratch/theo/qshell-project` directory is not itself a Git repository, although its component projects are, so durable overlay versioning remains unresolved and must not be falsely claimed before fresh-session acceptance.
 
 ## Goal
 
@@ -28,13 +28,14 @@ Make composition runtime provisioning an AgentSH-owned lifecycle concern. Projec
 - The gate proves root-owned mode `1733`, malformed-mode startup refusal, durable `composition_runtime_{provisioned,ready,cleanup,failed}` events, six cleaned command pools with unique command IDs, seven normalized plans, zero approval events, control-environment/runtime non-leakage, and systemd lease-tree teardown.
 - The complete AgentSH flake passes; log `/tmp/agentsh-composition-runtime-full-flake-check-final.log`.
 - The complete downstream `nix-config` flake passes with `--override-input agentsh path:../agentsh`; log `/tmp/agentsh-composition-runtime-downstream-full-check-final-rerun.log`.
+- The namespace-aware follow-up gate passes at `/nix/store/d8rw5c3rc6i7n2i8rdpv3973dv4gcgql-vm-test-run-agentsh-qshell-composition-release-gate`; it explicitly proves that host root is absent from the supervisor UID map before running the full matrix. Log: `/tmp/agentsh-root-attestation-qshell-release-gate.log`. The complete follow-up AgentSH flake passes in `/tmp/agentsh-root-attestation-full-flake-check.log`.
 - Focused downstream outputs include `/nix/store/c1x62ql21079972r6ann225k0kkaimi9-agentsh-project-overlay-boundaries-check`, `/nix/store/jac982x4vys3picfrnaqkyl8cl9wig16-pi-supervised-git-ssh-proxy-check`, `/nix/store/lp45nsqbsd66p7flvnqxpa8lwsh8h281-pi-ssh-nethelper-lifecycle-check`, and `/nix/store/jb2fs2dh81idjl70wal1k8ba47s95syg-pi-auto-nethelper-state-migration-check`.
 - Lifecycle lock ownership uses the actual Bash process, atomic owner-file publication, and bounded unpublished-owner grace. Deterministic forced-publication-race coverage and three repeated Nix rebuilds pass; log `/tmp/agentsh-composition-runtime-lifecycle-publication-race-repeated.log`.
 - Generated Rose config `/nix/store/7lskkw4fp0ljha09avcv04043ixwvljw-agentsh-dos-config.yaml` enables Landlock/composition with `scratch_root: auto`; Graph `/nix/store/6ik1j3yv0lc9va0s5vmcxsff9ypwrx5y-agentsh-dos-config.yaml` keeps Landlock/composition disabled.
 
 ## Follow-up cleanup
 
-- Commit the control-free overlay in `qshell-project`, deploy the pinned AgentSH/nix-config pair, and validate a second fresh Rose session before retiring the reference session.
+- Choose a durable repository-owned location or umbrella-workspace versioning mechanism for the deployed control-free overlay, deploy the pinned AgentSH/nix-config pair, and validate a second fresh Rose session before retiring the reference session.
 - Capture the reference session's exact acceptance output, plan digest, XDG environment, event database, and zero-approval evidence without stopping it.
 - Select dormant composition capability independently of exact outer shell spelling.
 - Consolidate the live project overlay and release-gate fixture into one source of truth.

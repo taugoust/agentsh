@@ -59,17 +59,18 @@ const (
 type Operation string
 
 const (
-	OperationRegisterSessionCgroup Operation = "register_session_cgroup"
-	OperationUpdatePolicyMap       Operation = "update_policy_map"
-	OperationCleanupSession        Operation = "cleanup_session"
-	OperationInstanceStatus        Operation = "instance_status"
-	OperationRenewInstance         Operation = "renew_instance"
-	OperationReleaseInstance       Operation = "release_instance"
+	OperationRegisterSessionCgroup    Operation = "register_session_cgroup"
+	OperationUpdatePolicyMap          Operation = "update_policy_map"
+	OperationCleanupSession           Operation = "cleanup_session"
+	OperationInstanceStatus           Operation = "instance_status"
+	OperationRenewInstance            Operation = "renew_instance"
+	OperationAttestCompositionRuntime Operation = "attest_composition_runtime"
+	OperationReleaseInstance          Operation = "release_instance"
 )
 
 func (op Operation) Valid() bool {
 	switch op {
-	case OperationRegisterSessionCgroup, OperationUpdatePolicyMap, OperationCleanupSession, OperationInstanceStatus, OperationRenewInstance, OperationReleaseInstance:
+	case OperationRegisterSessionCgroup, OperationUpdatePolicyMap, OperationCleanupSession, OperationInstanceStatus, OperationRenewInstance, OperationAttestCompositionRuntime, OperationReleaseInstance:
 		return true
 	default:
 		return false
@@ -164,6 +165,7 @@ type lifecycleOperationAdmitter interface {
 type InstanceController interface {
 	InstanceStatus(context.Context, PeerInfo, InstanceStatusRequest) (InstanceStatusResponse, error)
 	RenewInstance(context.Context, PeerInfo, RenewInstanceRequest) (RenewInstanceResponse, error)
+	AttestCompositionRuntime(context.Context, PeerInfo, AttestCompositionRuntimeRequest) (AttestCompositionRuntimeResponse, error)
 	ReleaseInstance(context.Context, PeerInfo, ReleaseInstanceRequest) (ReleaseInstanceResponse, error)
 }
 
@@ -597,6 +599,16 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 		}
 		resp, err := s.InstanceController.RenewInstance(ctx, peer, req)
 		return ensureInstanceStatusResponse(req.RequestID, req.LeaseID, resp, err)
+	case OperationAttestCompositionRuntime:
+		req, err := DecodeAttestCompositionRuntimeRequestJSON(env.Request)
+		if err != nil {
+			return AttestCompositionRuntimeResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+		}
+		if s.InstanceController == nil {
+			return AttestCompositionRuntimeResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, OK: false, Error: "composition runtime attestation is not configured"}
+		}
+		resp, err := s.InstanceController.AttestCompositionRuntime(ctx, peer, req)
+		return ensureAttestCompositionRuntimeResponse(req, resp, err)
 	case OperationReleaseInstance:
 		req, err := DecodeReleaseInstanceRequestJSON(env.Request)
 		if err != nil {
@@ -689,6 +701,25 @@ func ensureInstanceStatusResponse(requestID, leaseID string, resp InstanceStatus
 	}
 	if resp.LeaseID == "" {
 		resp.LeaseID = leaseID
+	}
+	if err != nil {
+		resp.OK = false
+		if resp.Error == "" {
+			resp.Error = err.Error()
+		}
+	}
+	return resp
+}
+
+func ensureAttestCompositionRuntimeResponse(req AttestCompositionRuntimeRequest, resp AttestCompositionRuntimeResponse, err error) AttestCompositionRuntimeResponse {
+	if resp.ProtocolVersion == 0 {
+		resp.ProtocolVersion = CurrentProtocolVersion
+	}
+	if resp.RequestID == "" {
+		resp.RequestID = req.RequestID
+	}
+	if resp.LeaseID == "" {
+		resp.LeaseID = req.LeaseID
 	}
 	if err != nil {
 		resp.OK = false
@@ -846,6 +877,23 @@ func (c *Client) RenewInstance(ctx context.Context, req RenewInstanceRequest) (R
 	}
 	var resp RenewInstanceResponse
 	if err := c.roundTrip(ctx, OperationRenewInstance, req, &resp); err != nil {
+		return resp, err
+	}
+	if err := validateInstanceResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.LeaseID, req.RequestID, req.LeaseID); err != nil {
+		return resp, err
+	}
+	if !resp.OK {
+		return resp, responseError(resp.Error)
+	}
+	return resp, nil
+}
+
+func (c *Client) AttestCompositionRuntime(ctx context.Context, req AttestCompositionRuntimeRequest) (AttestCompositionRuntimeResponse, error) {
+	if err := req.Validate(); err != nil {
+		return AttestCompositionRuntimeResponse{}, err
+	}
+	var resp AttestCompositionRuntimeResponse
+	if err := c.roundTrip(ctx, OperationAttestCompositionRuntime, req, &resp); err != nil {
 		return resp, err
 	}
 	if err := validateInstanceResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.LeaseID, req.RequestID, req.LeaseID); err != nil {

@@ -39,6 +39,7 @@ type EphemeralInstanceControllerOptions struct {
 	ReleaseDrainTimeout      time.Duration
 	Now                      func() time.Time
 	NewTimer                 func(time.Duration) InstanceTimer
+	AttestCompositionRuntime func(uint32, string) (CompositionRuntimeAttestation, error)
 	Stop                     func()
 }
 
@@ -205,6 +206,42 @@ func (c *EphemeralInstanceController) RenewInstance(_ context.Context, peer Peer
 	case c.wake <- struct{}{}:
 	default:
 	}
+	return resp, nil
+}
+
+func (c *EphemeralInstanceController) AttestCompositionRuntime(_ context.Context, peer PeerInfo, req AttestCompositionRuntimeRequest) (AttestCompositionRuntimeResponse, error) {
+	resp := AttestCompositionRuntimeResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID}
+	if c == nil {
+		return resp, fmt.Errorf("ephemeral instance controller is nil")
+	}
+	if err := req.Validate(); err != nil {
+		return resp, err
+	}
+	if err := c.authenticate(peer, req.LeaseID, req.HelperInstanceCredential, "composition runtime attestation"); err != nil {
+		return resp, err
+	}
+	c.mu.Lock()
+	status := c.statusLocked(req.RequestID, c.now())
+	c.mu.Unlock()
+	if !status.OK {
+		return resp, fmt.Errorf("helper instance cannot attest composition runtime after %s", status.Reason)
+	}
+	attester := c.opts.AttestCompositionRuntime
+	if attester == nil {
+		attester = attestCompositionRuntimeForLease
+	}
+	attestation, err := attester(c.opts.ExpectedUID, c.opts.LeaseID)
+	if err != nil {
+		return resp, err
+	}
+	c.mu.Lock()
+	status = c.statusLocked(req.RequestID, c.now())
+	c.mu.Unlock()
+	if !status.OK {
+		return resp, fmt.Errorf("helper instance stopped while attesting composition runtime: %s", status.Reason)
+	}
+	resp.Attestation = attestation
+	resp.OK = true
 	return resp, nil
 }
 

@@ -308,6 +308,9 @@ func createEphemeralLeaseDirectories(paths nethelper.EphemeralLeasePaths, uid ui
 	if err := ensureRootDirectory(paths.RuntimeDir, 0o711, true); err != nil {
 		return err
 	}
+	if err := validateCompositionLeaseDirectory(paths.RuntimeDir); err != nil {
+		return err
+	}
 	if err := ensureCompositionScratchDirectory(paths.CompositionScratchRoot); err != nil {
 		return err
 	}
@@ -349,6 +352,22 @@ func ensureRootDirectory(path string, mode os.FileMode, mustCreate bool) error {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil || filepath.Clean(resolved) != path {
 		return fmt.Errorf("protected directory %s must not contain symlink components", path)
+	}
+	return nil
+}
+
+func validateCompositionLeaseDirectory(path string) error {
+	path = filepath.Clean(path)
+	var stat unix.Stat_t
+	if err := unix.Lstat(path, &stat); err != nil {
+		return fmt.Errorf("stat protected composition lease directory %s: %w", path, err)
+	}
+	if err := nethelper.ValidateCompositionLeaseDirectoryMetadata(stat.Mode, stat.Uid, stat.Gid); err != nil {
+		return fmt.Errorf("protected composition lease directory %s: %w", path, err)
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || filepath.Clean(resolved) != path {
+		return fmt.Errorf("protected composition lease directory %s must not contain symlink components", path)
 	}
 	return nil
 }

@@ -547,6 +547,48 @@ func (r RenewInstanceRequest) Validate() error {
 
 type RenewInstanceResponse = InstanceStatusResponse
 
+// CompositionRuntimeInode identifies one fixed helper-owned filesystem object.
+// Device/inode/type/mode let a namespaced supervisor compare the object it can
+// see with the host-namespace object validated by the privileged helper. UID
+// and GID are host-namespace values and are never inferred from overflow IDs.
+type CompositionRuntimeInode struct {
+	Device uint64 `json:"device"`
+	Inode  uint64 `json:"inode"`
+	Mode   uint32 `json:"mode"`
+	UID    uint32 `json:"uid"`
+	GID    uint32 `json:"gid"`
+}
+
+// AttestCompositionRuntimeRequest authenticates a read-only attestation of the
+// fixed composition child and lease directory derived from LeaseID. It accepts
+// no caller-selected path.
+type AttestCompositionRuntimeRequest struct {
+	ProtocolVersion          int    `json:"protocol_version,omitempty"`
+	RequestID                string `json:"request_id,omitempty"`
+	LeaseID                  string `json:"lease_id"`
+	HelperInstanceCredential string `json:"helper_instance_credential"`
+}
+
+func (r AttestCompositionRuntimeRequest) Validate() error {
+	return validateInstanceLifecycleRequest(r.ProtocolVersion, r.RequestID, r.LeaseID, r.HelperInstanceCredential)
+}
+
+type CompositionRuntimeAttestation struct {
+	Runtime        CompositionRuntimeInode `json:"runtime"`
+	LeaseDirectory CompositionRuntimeInode `json:"lease_directory"`
+}
+
+// AttestCompositionRuntimeResponse proves host ownership of the exact inodes a
+// supervisor observes through a potentially narrow user namespace.
+type AttestCompositionRuntimeResponse struct {
+	ProtocolVersion int                           `json:"protocol_version,omitempty"`
+	RequestID       string                        `json:"request_id,omitempty"`
+	LeaseID         string                        `json:"lease_id,omitempty"`
+	Attestation     CompositionRuntimeAttestation `json:"attestation"`
+	OK              bool                          `json:"ok"`
+	Error           string                        `json:"error,omitempty"`
+}
+
 func validateInstanceLifecycleRequest(protocolVersion int, requestID, leaseID, credential string) error {
 	if err := validateProtocolVersion(protocolVersion); err != nil {
 		return err
@@ -646,6 +688,14 @@ func DecodeInstanceStatusRequestJSON(data []byte) (InstanceStatusRequest, error)
 
 func DecodeRenewInstanceRequestJSON(data []byte) (RenewInstanceRequest, error) {
 	var req RenewInstanceRequest
+	if err := decodeStrictJSON(data, &req); err != nil {
+		return req, err
+	}
+	return req, req.Validate()
+}
+
+func DecodeAttestCompositionRuntimeRequestJSON(data []byte) (AttestCompositionRuntimeRequest, error) {
+	var req AttestCompositionRuntimeRequest
 	if err := decodeStrictJSON(data, &req); err != nil {
 		return req, err
 	}

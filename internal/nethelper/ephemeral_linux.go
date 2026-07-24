@@ -61,6 +61,25 @@ func ValidateCompositionScratchMetadata(mode, uid, gid uint32) error {
 	return nil
 }
 
+// ValidateCompositionLeaseDirectoryMetadata validates the immutable parent
+// from which the root-owned composition child cannot be replaced. The helper
+// and supervisor both apply this predicate to host-namespace attestation data.
+func ValidateCompositionLeaseDirectoryMetadata(mode, uid, gid uint32) error {
+	const permissionMask = uint32(unix.S_ISUID | unix.S_ISGID | unix.S_ISVTX | 0o777)
+	fileType := mode & uint32(unix.S_IFMT)
+	permissions := mode & permissionMask
+	if fileType != uint32(unix.S_IFDIR) || permissions&0o022 != 0 || uid != 0 || gid != 0 {
+		return fmt.Errorf(
+			"composition lease directory has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d gid=%d)",
+			fileType,
+			permissions,
+			uid,
+			gid,
+		)
+	}
+	return nil
+}
+
 func ValidateEphemeralLeaseID(leaseID string) error {
 	leaseID = strings.TrimSpace(leaseID)
 	if !strings.HasPrefix(leaseID, "lease-") {

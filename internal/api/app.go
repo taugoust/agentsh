@@ -78,6 +78,7 @@ type App struct {
 	// these nil and always performs protected-path validation, authenticated RPC,
 	// and the full disposable strict preflight.
 	nethelperStatusForTest           func(context.Context, nethelperBinding) (nethelper.InstanceStatusResponse, error)
+	nethelperAttestationForTest      func(context.Context, nethelperBinding) (nethelper.AttestCompositionRuntimeResponse, error)
 	nethelperCleanupForTest          func(context.Context, nethelperBinding, nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error)
 	nethelperCandidateForTest        func(types.NethelperRebindRequest, uint64) (nethelperBinding, error)
 	nethelperRebindPreflightForTest  func(context.Context, string) *types.NetworkEnforcement

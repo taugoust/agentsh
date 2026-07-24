@@ -267,10 +267,15 @@ func TestClientServerAuthenticatedStatusAndRenewal(t *testing.T) {
 	const lease = "lease-11111111-1111-4111-8111-111111111111"
 	created := time.Now().UTC().Truncate(time.Second)
 	server := NewServer(&recordingBackend{}, AllowAuthorizer{})
+	wantAttestation := CompositionRuntimeAttestation{
+		Runtime:        CompositionRuntimeInode{Device: 1, Inode: 2, Mode: 0o41733, UID: 0, GID: 0},
+		LeaseDirectory: CompositionRuntimeInode{Device: 1, Inode: 1, Mode: 0o40711, UID: 0, GID: 0},
+	}
 	server.InstanceController = NewEphemeralInstanceController(EphemeralInstanceControllerOptions{
 		LeaseID: lease, UnitName: "unit.service", HelperInstanceCredential: credential,
 		ExpectedUID: uint32(os.Getuid()), ExpectedGID: uint32(os.Getgid()), EnforceGID: true,
 		CreatedAt: created, HardExpiresAt: created.Add(60 * time.Hour), Registrations: fixedRegistrationCount(0),
+		AttestCompositionRuntime: func(uint32, string) (CompositionRuntimeAttestation, error) { return wantAttestation, nil },
 	})
 	socket := shortSocketPath(t)
 	ln, err := ListenUnix(socket)
@@ -282,8 +287,14 @@ func TestClientServerAuthenticatedStatusAndRenewal(t *testing.T) {
 	go func() { _ = server.ServeListener(ctx, ln) }()
 	client := NewClient(socket)
 	status, err := client.InstanceStatus(context.Background(), InstanceStatusRequest{ProtocolVersion: 1, RequestID: "status-1", LeaseID: lease, HelperInstanceCredential: credential})
-	if err != nil || status.Status != "active" || !containsString(status.Capabilities, "renew_instance") {
+	if err != nil || status.Status != "active" || !containsString(status.Capabilities, "renew_instance") || !containsString(status.Capabilities, "attest_composition_runtime") {
 		t.Fatalf("status=%+v err=%v", status, err)
+	}
+	attested, err := client.AttestCompositionRuntime(context.Background(), AttestCompositionRuntimeRequest{
+		ProtocolVersion: CurrentProtocolVersion, RequestID: "attest-1", LeaseID: lease, HelperInstanceCredential: credential,
+	})
+	if err != nil || !attested.OK || attested.Attestation != wantAttestation {
+		t.Fatalf("attested=%+v err=%v", attested, err)
 	}
 	renewed, err := client.RenewInstance(context.Background(), RenewInstanceRequest{ProtocolVersion: 1, RequestID: "renew-1", LeaseID: lease, HelperInstanceCredential: credential})
 	if err != nil || renewed.RenewalGeneration != 1 {

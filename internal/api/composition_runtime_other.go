@@ -2,7 +2,11 @@
 
 package api
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/agentsh/agentsh/internal/nethelper"
+)
 
 type CompositionRuntimeEvidence struct {
 	Mode        string
@@ -14,7 +18,7 @@ func (a *App) compositionScratchRoot() (string, error) {
 	return "", fmt.Errorf("composition runtime is available only on Linux")
 }
 
-func validateLeaseCompositionScratchRoot(string, string) error {
+func validateLeaseCompositionScratchRoot(string, string, nethelper.CompositionRuntimeAttestation) error {
 	return fmt.Errorf("composition runtime is available only on Linux")
 }
 

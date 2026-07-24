@@ -2,7 +2,7 @@
 
 ## Status
 
-Open release blocker. The first fresh Rose launch after deploying AgentSH `39aaacb4e52ab27338291162ce2da5c1be080531` through `nix-config` `a32d1b4` timed out before the detached supervisor published its Unix socket. Do not continue to the QShell or Vivado canary until the startup failure is understood and covered by a deterministic regression.
+Open release blocker. The first fresh Rose launch after deploying AgentSH `39aaacb4e52ab27338291162ce2da5c1be080531` through `nix-config` `a32d1b4` timed out before the detached supervisor published its Unix socket. AgentSH `01a4627f43533d52f5617abb9e7756343263cb04` and `nix-config` `6d2f24e` added raw metadata diagnostics and private pre-socket logging, but the first generation-37 retry then proved that Rose intentionally reports host `root:root` as overflow UID/GID inside the actual delegated service. Do not continue to the QShell or Vivado canary until the authenticated ownership correction is deployed and a fresh harmless canary passes.
 
 The existing known-good Rose session remains the acceptance reference and must not be stopped or cleaned up while this issue is open. No hardware operation was performed.
 
@@ -38,7 +38,15 @@ Direct read-only inspection of the retained lease proves that the inode metadata
 - composition birth/change time: `2026-07-23 16:56:11.904252675 +0000`;
 - failed preflight: `2026-07-23 16:56:12.250727 +0000`.
 
-Python `lstat` independently reported directory type `040000`, permissions `01733`, sticky bit set, no set-ID bits, UID `0`, and GID `0`. An equivalent transient `systemd-run --user` probe saw the same values and an identity UID/GID map (`0 0 4294967295`). No matching user-unit drop-in exists. This rules out user-namespace remapping, post-failure chmod repair, a non-tmpfs runtime, and unit-name hardening overrides.
+Python `lstat` independently reported directory type `040000`, permissions `01733`, sticky bit set, no set-ID bits, UID `0`, and GID `0`. A simple transient `systemd-run --user` probe without the production launcher's private mount setup saw an identity UID/GID map, but that probe did not reproduce the actual service namespace. Read-only inspection of running AgentSH transient services later showed the production shape exactly: UID map `2016 2016 1` and GID map `100 100 1`. In that namespace host root is intentionally unmapped. The host evidence still rules out post-failure chmod repair, a non-tmpfs runtime, and unit-name hardening overrides; it does not rule out ownership translation.
+
+After generation 37 activated `01a4627f`, fresh session `session-7c58a717-3b03-4c0e-98f3-196d1f779f75` ran `/nix/store/ygw3vfy49ansxxzxjbhz5h3540wf2x2z-agentsh-unstable-2026-06-17/bin/agentsh`. Its mode-0600 `logs/supervisor.log` independently retained the actionable failure:
+
+```text
+composition runtime preflight: composition runtime has unsafe type, mode, or ownership (type=040000 mode=01733 uid=65534 gid=65534; expected type=040000 mode=01733 uid=0 gid=0)
+```
+
+The matching durable `composition_runtime_failed` event contains the same fields. This confirms that raw `stat` was correct and that accepting overflow IDs as root would be ambiguous and unsafe: any host owner omitted from the narrow map appears as the same overflow identity.
 
 ## Expected behavior
 
@@ -46,15 +54,17 @@ A schema-3 helper lease should provide the authenticated `composition_scratch_ro
 
 ## Actual behavior
 
-`systemd-run --user` accepted the transient service, but AgentSH's `os.FileInfo`-based predicate rejected an inode whose raw Linux stat metadata exactly matched the required topology. The process exited before creating `supervisor.sock`; the parent exposed only the generic socket timeout, and `supervisor.log` retained only the `systemd-run` launch line. The actionable preflight error was available only after querying the corrected invocation ID in the user journal.
+`systemd-run --user` accepted both transient services. The original `os.FileInfo` predicate hid the observed fields; the raw-stat correction then showed that the exact supervisor context sees the valid host-root inode as `65534:65534`. The first process exposed only the generic timeout and required the corrected journal invocation ID for diagnosis. The second process also exited before creating `supervisor.sock`, but its private log and durable event retained the complete error independently of journald.
 
-The correction must both validate provisioning/admission through one raw Linux inode predicate and retain the actionable startup error independently of journal availability. Live Rose acceptance remains the release blocker.
+Local mode and overflow ownership are insufficient to prove host ownership. Admission must authenticate a privileged helper observation of the fixed lease path and prove that it names the same device/inode/type/mode observed by the unprivileged supervisor. Live Rose acceptance remains the release blocker.
 
 ## Candidate correction
 
-The candidate replaces both duplicated `os.FileInfo` checks with one `unix.Lstat`/raw-mode predicate shared by privileged provisioning and supervisor admission. It requires exact directory type, mode `01733`, UID/GID `0:0`, and rejects set-ID bits. Failure strings now include the observed type, mode, UID, and GID, so the mandatory durable event is actionable. Detached systemd launches additionally set `StandardOutput=append:` and `StandardError=append:` to the existing mode-0600 session log, preserving pre-socket failures independently of journald and `--collect`.
+The follow-up adds the authenticated, read-only `attest_composition_runtime` helper operation. Its request carries only the fixed lease ID and in-memory helper credential; it accepts no caller-selected path. The privileged helper derives the schema-3 composition child and lease parent, rejects symlinks, and applies the shared raw Linux type/mode/host-UID/host-GID predicates. It returns device/inode/mode identities for those two fixed objects. The unprivileged supervisor independently resolves and stats the same paths, validates the attested host ownership as `root:root`, and requires exact device/inode/mode equality. It never treats UID/GID `65534` as root.
 
-Focused formatting/unit checks pass, including exact metadata acceptance; type, sticky-bit, permissions, set-ID, UID, and GID rejection; and both private log-routing properties. The final complete AgentSH and downstream flakes pass (`/tmp/agentsh-rose-runtime-full-flake-check-final.log` and `/tmp/agentsh-rose-runtime-downstream-full-check-final.log`). The downstream automatic-runtime gate passes at `/nix/store/hkp07618c02wdzaz6kjqsnjch3sa9anp-vm-test-run-agentsh-qshell-composition-release-gate` before this evidence-only update; its malformed-mode case asserts durable detail `type=040000 mode=0733 uid=0 gid=0`. A fresh Rose local-launch canary remains required before resolution.
+The same attestation is required during helper rebinding. Provisioning now applies the shared raw predicate to the immutable root-owned lease parent as well as the sticky mode-`1733` composition child. The operation is credential- and peer-authenticated, advertised as an instance lifecycle capability, and fails closed if an older helper does not implement it. Existing detailed failures and private `StandardOutput=append:`/`StandardError=append:` routing remain intact.
+
+Nix-native unit, formatting, lifecycle, and complete AgentSH flake checks pass (`/tmp/agentsh-root-attestation-go-unit-tests.log`, `/tmp/agentsh-root-attestation-go-format.log`, `/tmp/agentsh-root-attestation-nethelper-lifecycle-tests.log`, and `/tmp/agentsh-root-attestation-full-flake-check.log`). The downstream automatic-runtime VM now runs its main supervisor with only UID/GID `1234` mapped and host root absent, reproducing Rose's ownership view. It passes startup and readiness, malformed-mode refusal with durable host metadata, all seven QShell plans, six command-correlated cleanups, zero approvals, empty pools, and authenticated lease teardown at `/nix/store/d8rw5c3rc6i7n2i8rdpv3973dv4gcgql-vm-test-run-agentsh-qshell-composition-release-gate`; log `/tmp/agentsh-root-attestation-qshell-release-gate.log`. A fresh Rose local-launch canary remains required before resolution.
 
 ## Remaining acceptance and follow-up
 

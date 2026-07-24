@@ -72,6 +72,31 @@ func TestValidateCompositionScratchMetadata(t *testing.T) {
 	}
 }
 
+func TestValidateCompositionLeaseDirectoryMetadata(t *testing.T) {
+	const validMode = uint32(unix.S_IFDIR | 0o711)
+	if err := ValidateCompositionLeaseDirectoryMetadata(validMode, 0, 0); err != nil {
+		t.Fatalf("valid metadata rejected: %v", err)
+	}
+	for _, test := range []struct {
+		name string
+		mode uint32
+		uid  uint32
+		gid  uint32
+	}{
+		{name: "regular file", mode: uint32(unix.S_IFREG | 0o711)},
+		{name: "group writable", mode: uint32(unix.S_IFDIR | 0o731)},
+		{name: "world writable", mode: uint32(unix.S_IFDIR | 0o713)},
+		{name: "wrong uid", mode: validMode, uid: 2016},
+		{name: "wrong gid", mode: validMode, gid: 100},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := ValidateCompositionLeaseDirectoryMetadata(test.mode, test.uid, test.gid); err == nil {
+				t.Fatal("unsafe metadata accepted")
+			}
+		})
+	}
+}
+
 func TestValidateEphemeralLeaseID(t *testing.T) {
 	if err := ValidateEphemeralLeaseID("lease-11111111-1111-4111-8111-111111111111"); err != nil {
 		t.Fatalf("valid lease rejected: %v", err)

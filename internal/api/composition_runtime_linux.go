@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,40 +49,67 @@ func (a *App) compositionScratchRoot() (string, error) {
 	if err != nil || expected.CompositionScratchRoot != binding.CompositionScratchRoot {
 		return "", fmt.Errorf("composition runtime path does not match the helper-selected lease topology")
 	}
-	if err := validateLeaseCompositionScratchRoot(binding.CompositionScratchRoot, expected.RuntimeDir); err != nil {
+	attestation, err := a.authenticatedCompositionRuntimeAttestation(context.Background(), binding)
+	if err != nil {
+		return "", fmt.Errorf("authenticate composition runtime inode: %w", err)
+	}
+	if err := validateLeaseCompositionScratchRoot(binding.CompositionScratchRoot, expected.RuntimeDir, attestation.Attestation); err != nil {
 		return "", err
 	}
 	return binding.CompositionScratchRoot, nil
 }
 
-func validateLeaseCompositionScratchRoot(path, runtimeDir string) error {
+func validateLeaseCompositionScratchRoot(path, runtimeDir string, attestation nethelper.CompositionRuntimeAttestation) error {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Dir(path) != runtimeDir {
 		return fmt.Errorf("composition runtime path is not the fixed lease child")
 	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil || filepath.Clean(resolved) != path {
-		return fmt.Errorf("composition runtime contains a symlink component")
+	for _, object := range []struct {
+		label string
+		path  string
+	}{
+		{label: "composition runtime", path: path},
+		{label: "composition lease directory", path: runtimeDir},
+	} {
+		resolved, err := filepath.EvalSymlinks(object.path)
+		if err != nil || filepath.Clean(resolved) != object.path {
+			return fmt.Errorf("%s contains a symlink component", object.label)
+		}
 	}
 	var runtimeStat unix.Stat_t
 	if err := unix.Lstat(path, &runtimeStat); err != nil {
 		return fmt.Errorf("stat composition runtime: %w", err)
 	}
-	if err := nethelper.ValidateCompositionScratchMetadata(runtimeStat.Mode, runtimeStat.Uid, runtimeStat.Gid); err != nil {
+	if err := nethelper.ValidateCompositionScratchMetadata(attestation.Runtime.Mode, attestation.Runtime.UID, attestation.Runtime.GID); err != nil {
+		return fmt.Errorf("helper attestation: %w", err)
+	}
+	if err := compareCompositionRuntimeInode("composition runtime", runtimeStat, attestation.Runtime); err != nil {
 		return err
 	}
 	var parentStat unix.Stat_t
 	if err := unix.Lstat(runtimeDir, &parentStat); err != nil {
 		return fmt.Errorf("stat composition lease directory: %w", err)
 	}
-	parentType := parentStat.Mode & uint32(unix.S_IFMT)
-	parentMode := parentStat.Mode & uint32(unix.S_ISUID|unix.S_ISGID|unix.S_ISVTX|0o777)
-	if parentType != uint32(unix.S_IFDIR) || parentMode&0o022 != 0 || parentStat.Uid != 0 || parentStat.Gid != 0 {
+	if err := nethelper.ValidateCompositionLeaseDirectoryMetadata(attestation.LeaseDirectory.Mode, attestation.LeaseDirectory.UID, attestation.LeaseDirectory.GID); err != nil {
+		return fmt.Errorf("helper attestation: %w", err)
+	}
+	return compareCompositionRuntimeInode("composition lease directory", parentStat, attestation.LeaseDirectory)
+}
+
+func compareCompositionRuntimeInode(label string, observed unix.Stat_t, attested nethelper.CompositionRuntimeInode) error {
+	if uint64(observed.Dev) != attested.Device || observed.Ino != attested.Inode || observed.Mode != attested.Mode {
 		return fmt.Errorf(
-			"composition lease directory has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d gid=%d)",
-			parentType,
-			parentMode,
-			parentStat.Uid,
-			parentStat.Gid,
+			"%s does not match authenticated helper inode (observed dev=%d ino=%d mode=%#o uid=%d gid=%d; attested dev=%d ino=%d mode=%#o host_uid=%d host_gid=%d)",
+			label,
+			uint64(observed.Dev),
+			observed.Ino,
+			observed.Mode,
+			observed.Uid,
+			observed.Gid,
+			attested.Device,
+			attested.Inode,
+			attested.Mode,
+			attested.UID,
+			attested.GID,
 		)
 	}
 	return nil

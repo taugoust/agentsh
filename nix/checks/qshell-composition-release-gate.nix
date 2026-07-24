@@ -625,7 +625,15 @@ let
   serverLauncher = pkgs.writeShellScript "agentsh-release-gate-server" ''
     set -eu
     export AGENTSH_NETHELPER_INSTANCE_CREDENTIAL="$(${pkgs.coreutils}/bin/cat ${releaseRuntimeRoot}/instance-credential)"
-    exec ${agentshPackage}/bin/agentsh server --config ${serverConfig}
+    exec ${pkgs.util-linux}/bin/unshare \
+      --user --map-current-user -- \
+      ${agentshPackage}/bin/agentsh server --config ${serverConfig}
+  '';
+
+  invalidRuntimeServerLauncher = pkgs.writeShellScript "agentsh-release-gate-invalid-runtime-server" ''
+    set -eu
+    export AGENTSH_NETHELPER_INSTANCE_CREDENTIAL="$(${pkgs.coreutils}/bin/cat "$AGENTSH_NETHELPER_CREDENTIAL_FILE")"
+    exec ${agentshPackage}/bin/agentsh server --config ${invalidRuntimeServerConfig}
   '';
 
   nethelperBootstrapLauncher = pkgs.writeShellScript "agentsh-release-gate-nethelper-bootstrap" ''
@@ -750,6 +758,15 @@ pkgs.testers.runNixOSTest {
 
     with subtest("main supervisor uses the privileged lease-scoped composition runtime"):
         machine.succeed(
+            "python3 - <<'PY'\n"
+            "import pathlib, subprocess\n"
+            "pid=int(subprocess.check_output(['systemctl','show','-p','MainPID','--value','agentsh-supervisor-release-gate.service']))\n"
+            "maps=[tuple(map(int, line.split())) for line in pathlib.Path(f'/proc/{pid}/uid_map').read_text().splitlines()]\n"
+            "assert any(ns <= 1234 < ns + size and host + (1234 - ns) == 1234 for ns,host,size in maps), maps\n"
+            "assert not any(host <= 0 < host + size for _,host,size in maps), maps\n"
+            "PY"
+        )
+        machine.succeed(
             "jq -e --arg scratch ${scratchRoot} '"
             ".bootstrap_schema_version >= 3 and .lease_id == \"${releaseLease}\" and "
             ".composition_scratch_root == $scratch' ${releaseRuntimeRoot}/bootstrap.json >/dev/null"
@@ -792,7 +809,7 @@ pkgs.testers.runNixOSTest {
             "--property=Environment=AGENTSH_NETHELPER_SOCKET=" + shlex.quote(socket) + " "
             "--property=Environment=AGENTSH_NETHELPER_CREDENTIAL_FILE=" + shlex.quote(credential) + " "
             "--property=Environment=AGENTSH_NETHELPER_BOOTSTRAP_RESULT=" + shlex.quote(result) + " "
-            "-- ${agentshPackage}/bin/agentsh server --config ${invalidRuntimeServerConfig}"
+            "-- ${invalidRuntimeServerLauncher}"
         )
         machine.wait_until_succeeds(
             "test -s /run/agentsh-auto-runtime/audit.jsonl && "

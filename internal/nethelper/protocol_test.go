@@ -2,6 +2,7 @@ package nethelper
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -259,6 +260,33 @@ func TestReleaseInstanceRequestStrictValidation(t *testing.T) {
 	} {
 		if _, err := DecodeReleaseInstanceRequestJSON([]byte(invalid)); err == nil {
 			t.Fatalf("accepted invalid release request: %s", invalid)
+		}
+	}
+}
+
+func TestAttestCompositionRuntimeRequestHasNoCallerSelectedPath(t *testing.T) {
+	req := AttestCompositionRuntimeRequest{
+		ProtocolVersion:          CurrentProtocolVersion,
+		RequestID:                "attest-1",
+		LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
+		HelperInstanceCredential: "0123456789abcdef0123456789abcdef",
+	}
+	wire, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeAttestCompositionRuntimeRequestJSON(wire)
+	if err != nil {
+		t.Fatalf("DecodeAttestCompositionRuntimeRequestJSON: %v", err)
+	}
+	if got != req {
+		t.Fatalf("round trip mismatch: got %+v want %+v", got, req)
+	}
+	for _, field := range []string{"path", "runtime_dir", "device", "inode"} {
+		invalid := fmt.Sprintf(`{"protocol_version":1,"request_id":"attest-2","lease_id":%q,"helper_instance_credential":%q,%q:"/tmp"}`,
+			req.LeaseID, req.HelperInstanceCredential, field)
+		if _, err := DecodeAttestCompositionRuntimeRequestJSON([]byte(invalid)); err == nil {
+			t.Fatalf("accepted caller-selected %s: %s", field, invalid)
 		}
 	}
 }
