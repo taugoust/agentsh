@@ -26,6 +26,7 @@ type detachedSupervisorLaunchRequest struct {
 	SessionID      string
 	ServiceEnv     []string
 	ServiceEnvFile string
+	ServiceLogFile string
 	GOOS           string
 	LookPath       func(string) (string, error)
 }
@@ -67,7 +68,7 @@ func buildDetachedSupervisorLaunch(req detachedSupervisorLaunchRequest) detached
 	launch.Path = systemdRunPath
 	serviceEnv := withoutEnvAssignments(req.ServiceEnv, detached.EnvSupervisorLaunchMode)
 	serviceEnv = append(serviceEnv, detached.EnvSupervisorLaunchMode+"=systemd-user-delegated")
-	launch.Args = buildSystemdRunDetachedSupervisorArgs(unit, req.Dir, req.ServiceEnvFile, serviceEnv, req.Exe, req.Args)
+	launch.Args = buildSystemdRunDetachedSupervisorArgs(unit, req.Dir, req.ServiceEnvFile, req.ServiceLogFile, serviceEnv, req.Exe, req.Args)
 	// systemd-run needs the user's bus/runtime environment, but must never carry
 	// either credential in its own inspectable environment. The service receives
 	// secrets only through the protected EnvironmentFile.
@@ -110,7 +111,7 @@ func chooseDetachedSupervisorSystemdRun(req detachedSupervisorLaunchRequest) (st
 	return systemdRunPath, true
 }
 
-func buildSystemdRunDetachedSupervisorArgs(unit, workDir, serviceEnvFile string, serviceEnv []string, exe string, supervisorArgs []string) []string {
+func buildSystemdRunDetachedSupervisorArgs(unit, workDir, serviceEnvFile, serviceLogFile string, serviceEnv []string, exe string, supervisorArgs []string) []string {
 	privateTmp := "yes"
 	if detachedSupervisorNeedsHostTmp(serviceEnv) {
 		// OpenSSH creates forwarded-agent sockets below the host /tmp. A private
@@ -137,6 +138,13 @@ func buildSystemdRunDetachedSupervisorArgs(unit, workDir, serviceEnvFile string,
 	}
 	if strings.TrimSpace(workDir) != "" {
 		args = append(args, "-p", "WorkingDirectory="+workDir)
+	}
+	if strings.TrimSpace(serviceLogFile) != "" {
+		logFile := filepath.Clean(serviceLogFile)
+		args = append(args,
+			"-p", "StandardOutput=append:"+logFile,
+			"-p", "StandardError=append:"+logFile,
+		)
 	}
 	if strings.TrimSpace(serviceEnvFile) != "" {
 		args = append(args, "-p", "EnvironmentFile="+filepath.Clean(serviceEnvFile))

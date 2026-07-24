@@ -398,6 +398,8 @@ func TestBuildDetachedSupervisorLaunchBuildsSystemdRunCommand(t *testing.T) {
 		"-p", "LimitCORE=0",
 		"-p", "OOMPolicy=stop",
 		"-p", "WorkingDirectory=" + req.Dir,
+		"-p", "StandardOutput=append:" + req.ServiceLogFile,
+		"-p", "StandardError=append:" + req.ServiceLogFile,
 		"-p", "EnvironmentFile=" + req.ServiceEnvFile,
 		"--", req.Exe,
 	}
@@ -412,6 +414,7 @@ func TestBuildSystemdRunDetachedSupervisorArgsKeepsForwardedAgentSocketVisible(t
 		"unit",
 		"workspace",
 		"/state/supervisor.env",
+		"/state/supervisor.log",
 		[]string{"SSH_AUTH_SOCK=/tmp/ssh-example/agent.123"},
 		"agentsh",
 		nil,
@@ -424,6 +427,7 @@ func TestBuildSystemdRunDetachedSupervisorArgsKeepsForwardedAgentSocketVisible(t
 		"unit",
 		"workspace",
 		"/state/supervisor.env",
+		"/state/supervisor.log",
 		[]string{"SSH_AUTH_SOCK=/run/user/501/agent.sock"},
 		"agentsh",
 		nil,
@@ -449,6 +453,7 @@ func testDetachedSupervisorLaunchRequest() detachedSupervisorLaunchRequest {
 		SessionID:      "session-123",
 		ServiceEnv:     []string{"AGENTSH_DETACHED_EVENT_TOKEN=token", "AGENTSH_NETHELPER_CREDENTIAL_FILE=credential-file"},
 		ServiceEnvFile: filepath.Join(string(filepath.Separator), "state", "supervisor.env"),
+		ServiceLogFile: filepath.Join(string(filepath.Separator), "state", "logs", "supervisor.log"),
 	}
 }
 

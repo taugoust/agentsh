@@ -801,7 +801,8 @@ pkgs.testers.runNixOSTest {
         )
         machine.succeed(
             "jq -s -e '[.[] | select(.type == \"composition_runtime_failed\" and "
-            "(.fields.reason | contains(\"unsafe type, mode, or ownership\")))] | length == 1' "
+            "(.fields.reason | contains(\"unsafe type, mode, or ownership\")) and "
+            "(.fields.reason | contains(\"type=040000 mode=0733 uid=0 gid=0\")))] | length == 1' "
             "/run/agentsh-auto-runtime/audit.jsonl >/dev/null"
         )
         machine.succeed("chmod 1733 " + shlex.quote(scratch))

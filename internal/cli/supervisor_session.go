@@ -480,7 +480,8 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 		return nil, fmt.Errorf("create state dir: %w", err)
 	}
 
-	logFile, err := os.OpenFile(filepath.Join(logsDir, "supervisor.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	logPath := filepath.Join(logsDir, "supervisor.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open supervisor log: %w", err)
 	}
@@ -536,6 +537,7 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 		SessionID:      sessionID,
 		ServiceEnv:     serviceEnv,
 		ServiceEnvFile: serviceEnvFile,
+		ServiceLogFile: logPath,
 	})
 	if launch.UsesSystemd {
 		serviceEnv = withoutEnvAssignments(serviceEnv, detached.EnvSupervisorLaunchMode)

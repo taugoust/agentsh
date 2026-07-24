@@ -34,6 +34,33 @@ type EphemeralLeasePaths struct {
 	PinRoot                string `json:"pin_root"`
 }
 
+// ValidateCompositionScratchMetadata is the single raw Linux inode predicate
+// shared by privileged lease provisioning and unprivileged supervisor
+// admission. Using the kernel stat mode directly avoids divergent FileMode
+// translations while rejecting unexpected set-ID bits as well as missing
+// sticky/write permissions.
+func ValidateCompositionScratchMetadata(mode, uid, gid uint32) error {
+	const (
+		permissionMask = uint32(unix.S_ISUID | unix.S_ISGID | unix.S_ISVTX | 0o777)
+		expectedType   = uint32(unix.S_IFDIR)
+		expectedMode   = uint32(unix.S_ISVTX | 0o733)
+	)
+	fileType := mode & uint32(unix.S_IFMT)
+	permissions := mode & permissionMask
+	if fileType != expectedType || permissions != expectedMode || uid != 0 || gid != 0 {
+		return fmt.Errorf(
+			"composition runtime has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d gid=%d; expected type=%#o mode=%#o uid=0 gid=0)",
+			fileType,
+			permissions,
+			uid,
+			gid,
+			expectedType,
+			expectedMode,
+		)
+	}
+	return nil
+}
+
 func ValidateEphemeralLeaseID(leaseID string) error {
 	leaseID = strings.TrimSpace(leaseID)
 	if !strings.HasPrefix(leaseID, "lease-") {

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/nethelper"
+	"golang.org/x/sys/unix"
 )
 
 type CompositionRuntimeEvidence struct {
@@ -62,21 +62,27 @@ func validateLeaseCompositionScratchRoot(path, runtimeDir string) error {
 	if err != nil || filepath.Clean(resolved) != path {
 		return fmt.Errorf("composition runtime contains a symlink component")
 	}
-	info, err := os.Lstat(path)
-	if err != nil {
+	var runtimeStat unix.Stat_t
+	if err := unix.Lstat(path, &runtimeStat); err != nil {
 		return fmt.Errorf("stat composition runtime: %w", err)
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm() != 0o733 || info.Mode()&os.ModeSticky == 0 || !ok || stat == nil || stat.Uid != 0 || stat.Gid != 0 {
-		return fmt.Errorf("composition runtime has unsafe type, mode, or ownership")
+	if err := nethelper.ValidateCompositionScratchMetadata(runtimeStat.Mode, runtimeStat.Uid, runtimeStat.Gid); err != nil {
+		return err
 	}
-	parentInfo, err := os.Lstat(runtimeDir)
-	if err != nil {
+	var parentStat unix.Stat_t
+	if err := unix.Lstat(runtimeDir, &parentStat); err != nil {
 		return fmt.Errorf("stat composition lease directory: %w", err)
 	}
-	parentStat, ok := parentInfo.Sys().(*syscall.Stat_t)
-	if parentInfo.Mode()&os.ModeSymlink != 0 || !parentInfo.IsDir() || parentInfo.Mode().Perm()&0o022 != 0 || !ok || parentStat == nil || parentStat.Uid != 0 || parentStat.Gid != 0 {
-		return fmt.Errorf("composition lease directory has unsafe type, mode, or ownership")
+	parentType := parentStat.Mode & uint32(unix.S_IFMT)
+	parentMode := parentStat.Mode & uint32(unix.S_ISUID|unix.S_ISGID|unix.S_ISVTX|0o777)
+	if parentType != uint32(unix.S_IFDIR) || parentMode&0o022 != 0 || parentStat.Uid != 0 || parentStat.Gid != 0 {
+		return fmt.Errorf(
+			"composition lease directory has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d gid=%d)",
+			parentType,
+			parentMode,
+			parentStat.Uid,
+			parentStat.Gid,
+		)
 	}
 	return nil
 }

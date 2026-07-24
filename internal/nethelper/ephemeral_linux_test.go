@@ -5,6 +5,8 @@ package nethelper
 import (
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestEphemeralPathsForUIDAreFixed(t *testing.T) {
@@ -34,6 +36,39 @@ func TestEphemeralPathsForUIDAreFixed(t *testing.T) {
 	}
 	if !strings.HasPrefix(paths.PinRoot, "/sys/fs/bpf/agentsh/nethelper-ephemeral/1234/") || !strings.HasSuffix(paths.PinRoot, "/pins") {
 		t.Fatalf("unexpected pin root: %s", paths.PinRoot)
+	}
+}
+
+func TestValidateCompositionScratchMetadata(t *testing.T) {
+	const validMode = uint32(unix.S_IFDIR | unix.S_ISVTX | 0o733)
+	if err := ValidateCompositionScratchMetadata(validMode, 0, 0); err != nil {
+		t.Fatalf("valid metadata rejected: %v", err)
+	}
+	for _, test := range []struct {
+		name string
+		mode uint32
+		uid  uint32
+		gid  uint32
+	}{
+		{name: "regular file", mode: uint32(unix.S_IFREG | unix.S_ISVTX | 0o733)},
+		{name: "missing sticky", mode: uint32(unix.S_IFDIR | 0o733)},
+		{name: "missing owner write", mode: uint32(unix.S_IFDIR | unix.S_ISVTX | 0o533)},
+		{name: "unexpected setuid", mode: validMode | uint32(unix.S_ISUID)},
+		{name: "unexpected setgid", mode: validMode | uint32(unix.S_ISGID)},
+		{name: "wrong uid", mode: validMode, uid: 2016},
+		{name: "wrong gid", mode: validMode, gid: 100},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateCompositionScratchMetadata(test.mode, test.uid, test.gid)
+			if err == nil {
+				t.Fatal("unsafe metadata accepted")
+			}
+			for _, detail := range []string{"type=", "mode=", "uid=", "gid="} {
+				if !strings.Contains(err.Error(), detail) {
+					t.Fatalf("error %q does not contain %q", err, detail)
+				}
+			}
+		})
 	}
 }
 

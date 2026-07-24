@@ -366,13 +366,12 @@ func ensureCompositionScratchDirectory(path string) error {
 
 func validateCompositionScratchDirectory(path string) error {
 	path = filepath.Clean(path)
-	info, err := os.Lstat(path)
-	if err != nil {
+	var stat unix.Stat_t
+	if err := unix.Lstat(path, &stat); err != nil {
 		return fmt.Errorf("stat protected composition runtime %s: %w", path, err)
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm() != 0o733 || info.Mode()&os.ModeSticky == 0 || !ok || stat == nil || stat.Uid != 0 || stat.Gid != 0 {
-		return fmt.Errorf("protected composition runtime %s has unsafe type, mode, or ownership", path)
+	if err := nethelper.ValidateCompositionScratchMetadata(stat.Mode, stat.Uid, stat.Gid); err != nil {
+		return fmt.Errorf("protected composition runtime %s: %w", path, err)
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil || filepath.Clean(resolved) != path {
