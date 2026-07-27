@@ -15,46 +15,69 @@ var errCommandTimeout = errors.New("command timed out")
 
 const terminalPersistenceTimeout = 5 * time.Second
 
-// commandTimeoutExtender serializes timer expiry and approval extensions under
-// one mutex. The first positive extension fixes the cumulative extension cap;
-// later extensions may not move the deadline past that cap.
+type commandTerminalState uint8
+
+const (
+	commandTerminalPending commandTerminalState = iota
+	commandTerminalCompleted
+	commandTerminalTimedOut
+	commandTerminalParentCancelled
+)
+
+type commandTimeoutControllerKey struct{}
+
+// commandTimeoutExtender serializes process completion, timer expiry, caller
+// cancellation, and approval extensions under one mutex. The first positive
+// extension fixes the cumulative extension cap; later extensions may not move
+// the deadline past that cap.
 type commandTimeoutExtender struct {
 	mu sync.Mutex
 
 	cancel          context.CancelCauseFunc
+	parent          context.Context
+	parentDeadline  time.Time
+	parentStop      func() bool
 	timer           *time.Timer
 	initialDeadline time.Time
 	deadline        time.Time
 	maximumDeadline time.Time
+	terminal        commandTerminalState
 	stopped         bool
 }
 
 func withExtendableCommandTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	if timeout <= 0 {
-		ctx, cancel := context.WithCancel(parent)
-		return approvals.WithCommandTimeoutExtension(ctx, func(time.Duration) {}), cancel
-	}
-
 	baseCtx, extender := newCommandTimeoutExtender(parent, timeout)
 	ctx := approvals.WithCommandTimeoutExtension(baseCtx, extender.extend)
 	return ctx, extender.cancelContext
 }
 
 func newCommandTimeoutExtender(parent context.Context, timeout time.Duration) (context.Context, *commandTimeoutExtender) {
-	baseCtx, cancelCause := context.WithCancelCause(parent)
-	initialDeadline := time.Now().Add(timeout)
-	extender := &commandTimeoutExtender{
-		cancel:          cancelCause,
-		initialDeadline: initialDeadline,
-		deadline:        initialDeadline,
+	if parent == nil {
+		parent = context.Background()
+	}
+	// Preserve request values without inheriting cancellation directly. Parent
+	// cancellation is arbitrated explicitly against process completion and the
+	// command deadline below, so a cancellation that arrives during post-exit
+	// cleanup cannot rewrite a completed process result.
+	baseCtx, cancelCause := context.WithCancelCause(context.WithoutCancel(parent))
+	extender := &commandTimeoutExtender{cancel: cancelCause, parent: parent}
+	if deadline, ok := parent.Deadline(); ok {
+		extender.parentDeadline = deadline
+	}
+	if timeout > 0 {
+		extender.initialDeadline = time.Now().Add(timeout)
+		extender.deadline = extender.initialDeadline
 	}
 
-	// Hold the mutex until timer assignment is complete. Even an unusually
-	// short timeout therefore cannot run its callback against a nil timer.
+	// Hold the mutex until callbacks are installed. Even an unusually short
+	// timeout or an already-cancelled parent therefore sees complete state.
 	extender.mu.Lock()
-	extender.timer = time.AfterFunc(timeout, extender.expire)
+	if timeout > 0 {
+		extender.timer = time.AfterFunc(timeout, extender.expire)
+	}
+	extender.parentStop = context.AfterFunc(parent, extender.cancelFromParent)
 	extender.mu.Unlock()
-	return baseCtx, extender
+	return context.WithValue(baseCtx, commandTimeoutControllerKey{}, extender), extender
 }
 
 func (e *commandTimeoutExtender) expire() {
@@ -63,21 +86,58 @@ func (e *commandTimeoutExtender) expire() {
 	e.expireLocked(time.Now())
 }
 
+func (e *commandTimeoutExtender) cancelFromParent() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.stopped {
+		return
+	}
+	now := time.Now()
+	cause := context.Cause(e.parent)
+	if cause == nil {
+		cause = e.parent.Err()
+	}
+	if e.timeoutWinsOverParentLocked(now, cause) {
+		e.finishLocked(commandTerminalTimedOut, errCommandTimeout)
+		return
+	}
+	e.finishLocked(commandTerminalParentCancelled, cause)
+}
+
+func (e *commandTimeoutExtender) timeoutWinsOverParentLocked(now time.Time, parentCause error) bool {
+	if e.deadline.IsZero() || now.Before(e.deadline) {
+		return false
+	}
+	// A manual cancellation has no trustworthy timestamp. If it is already
+	// observable when arbitration acquires the mutex, preserve it. Deadline
+	// causes can be ordered exactly using their published deadlines.
+	if !errors.Is(parentCause, context.DeadlineExceeded) || e.parentDeadline.IsZero() {
+		return false
+	}
+	return !e.deadline.After(e.parentDeadline)
+}
+
 // expireLocked returns true when this call wins expiry. A stale callback from
 // the pre-extension timer only reschedules against the current deadline.
 func (e *commandTimeoutExtender) expireLocked(now time.Time) bool {
-	if e.stopped {
+	if e.stopped || e.deadline.IsZero() {
 		return false
 	}
 	if now.Before(e.deadline) {
 		e.timer.Reset(time.Until(e.deadline))
 		return false
 	}
-
-	e.stopLocked()
-	// Cancel while still holding the mutex so an extension that loses the
-	// deadline race observes errCommandTimeout before it returns.
-	e.cancel(errCommandTimeout)
+	if e.parent != nil && e.parent.Err() != nil {
+		cause := context.Cause(e.parent)
+		if cause == nil {
+			cause = e.parent.Err()
+		}
+		if !e.timeoutWinsOverParentLocked(now, cause) {
+			e.finishLocked(commandTerminalParentCancelled, cause)
+			return false
+		}
+	}
+	e.finishLocked(commandTerminalTimedOut, errCommandTimeout)
 	return true
 }
 
@@ -93,12 +153,23 @@ func (e *commandTimeoutExtender) extend(extra time.Duration) {
 // extendLocked returns whether the extension was accepted. The first accepted
 // extension sets the one-command cap to initial deadline plus its allowance.
 func (e *commandTimeoutExtender) extendLocked(extra time.Duration, now time.Time) bool {
-	if extra <= 0 || e.stopped {
+	if extra <= 0 || e.stopped || e.deadline.IsZero() {
+		return false
+	}
+	if e.parent != nil && e.parent.Err() != nil {
+		cause := context.Cause(e.parent)
+		if cause == nil {
+			cause = e.parent.Err()
+		}
+		if e.timeoutWinsOverParentLocked(now, cause) {
+			e.finishLocked(commandTerminalTimedOut, errCommandTimeout)
+		} else {
+			e.finishLocked(commandTerminalParentCancelled, cause)
+		}
 		return false
 	}
 	if !now.Before(e.deadline) {
-		e.stopLocked()
-		e.cancel(errCommandTimeout)
+		e.finishLocked(commandTerminalTimedOut, errCommandTimeout)
 		return false
 	}
 
@@ -117,26 +188,106 @@ func (e *commandTimeoutExtender) extendLocked(extra time.Duration, now time.Time
 	return true
 }
 
-func (e *commandTimeoutExtender) cancelContext() {
+// complete atomically establishes the process-completion winner. It compares
+// the observed completion time with the effective deadline even if the timer
+// callback itself was delayed by scheduling.
+func (e *commandTimeoutExtender) complete(now time.Time) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.stopLocked()
+	if e.stopped {
+		return e.terminal == commandTerminalCompleted
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if e.parent != nil && e.parent.Err() != nil {
+		cause := context.Cause(e.parent)
+		if cause == nil {
+			cause = e.parent.Err()
+		}
+		if e.timeoutWinsOverParentLocked(now, cause) {
+			e.finishLocked(commandTerminalTimedOut, errCommandTimeout)
+		} else {
+			e.finishLocked(commandTerminalParentCancelled, cause)
+		}
+		return false
+	}
+	if !e.deadline.IsZero() && !now.Before(e.deadline) {
+		e.finishLocked(commandTerminalTimedOut, errCommandTimeout)
+		return false
+	}
+	e.finishLocked(commandTerminalCompleted, nil)
+	return true
+}
+
+func (e *commandTimeoutExtender) cancelContext() {
+	e.mu.Lock()
+	if !e.stopped {
+		e.finishLocked(commandTerminalCompleted, nil)
+	}
+	e.mu.Unlock()
+	// Release any context waiters only after runner-owned cancellation watchers
+	// and cleanup defers have stopped. A prior timeout/parent cause wins.
 	e.cancel(context.Canceled)
 }
 
-func (e *commandTimeoutExtender) stopLocked() {
+func (e *commandTimeoutExtender) finishLocked(state commandTerminalState, cause error) {
 	if e.stopped {
 		return
 	}
 	e.stopped = true
+	e.terminal = state
 	if e.timer != nil {
 		// A false result means the callback has fired or is running. It still
 		// has to acquire mu and will observe stopped before doing any work.
 		e.timer.Stop()
 	}
+	if e.parentStop != nil {
+		e.parentStop()
+	}
+	if state != commandTerminalCompleted {
+		if cause == nil {
+			cause = context.Canceled
+		}
+		e.cancel(cause)
+	}
+}
+
+func commandTimeoutController(ctx context.Context) *commandTimeoutExtender {
+	if ctx == nil {
+		return nil
+	}
+	controller, _ := ctx.Value(commandTimeoutControllerKey{}).(*commandTimeoutExtender)
+	return controller
+}
+
+func completeCommandExecution(ctx context.Context, at time.Time) bool {
+	controller := commandTimeoutController(ctx)
+	if controller == nil {
+		return true
+	}
+	return controller.complete(at)
+}
+
+func commandContextError(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
+	}
+	return ctx.Err()
 }
 
 func commandTimedOut(ctx context.Context) bool {
+	if controller := commandTimeoutController(ctx); controller != nil {
+		controller.mu.Lock()
+		timedOut := controller.terminal == commandTerminalTimedOut
+		controller.mu.Unlock()
+		if timedOut {
+			return true
+		}
+	}
 	return errors.Is(context.Cause(ctx), errCommandTimeout)
 }
 

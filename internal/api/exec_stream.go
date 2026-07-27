@@ -350,6 +350,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 	})
 	if handled, code, out, errOut := s.Builtin(req); handled {
 		notifyStarted()
+		completeCommandExecution(ctx, time.Now())
 		if len(out) > 0 {
 			_ = emit("stdout", map[string]any{"command_id": cmdID, "stream": "stdout", "data": string(out)})
 		}
@@ -463,7 +464,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		cmd.Stderr = stderrPipeW
 	}
 
-	if tracer != nil && ctx.Err() != nil {
+	if tracer != nil && commandContextError(ctx) != nil {
 		extra.closeWrapperLogPipe()
 		if stdoutPipeR != nil {
 			stdoutPipeR.Close()
@@ -480,7 +481,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		if commandTimedOut(ctx) {
 			return 124, nil, nil, 0, 0, false, false, types.ExecResources{}, errCommandTimeout
 		}
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, ctx.Err()
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, commandContextError(ctx)
 	}
 
 	barrier := newPreExecBarrier(hook)
@@ -611,7 +612,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				select {
 				case readyErr = <-ptraceReady:
 				case <-ctx.Done():
-					readyErr = ctx.Err()
+					readyErr = commandContextError(ctx)
 				}
 				if readyErr != nil {
 					close(ptraceDone)
@@ -663,6 +664,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			waitStart := time.Now()
 			slog.Debug("exec_stream waiting for command (hybrid)", "command", req.Command, "pid", cmd.Process.Pid)
 			result := waitExit()
+			completeCommandExecution(ctx, time.Now())
 			close(ptraceDone)
 			handlerCancel()
 			if result.err != nil {
@@ -678,14 +680,14 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			resources = result.resources
 			cmd.Process.Release()
 
-			if ctx.Err() != nil {
+			if commandContextError(ctx) != nil {
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
 				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
 			}
-			if ctx.Err() != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
+			if commandContextError(ctx) != nil {
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if tracer != nil {
@@ -725,6 +727,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			waitStart := time.Now()
 			slog.Debug("exec_stream waiting for command (ptrace)", "command", req.Command, "pid", cmd.Process.Pid)
 			result := waitExit()
+			completeCommandExecution(ctx, time.Now())
 			close(ptraceDone)
 			if result.err != nil {
 				_ = killProcess(cmd.Process.Pid)
@@ -739,14 +742,14 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			resources = result.resources
 			cmd.Process.Release()
 
-			if ctx.Err() != nil {
+			if commandContextError(ctx) != nil {
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
 				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
 			}
-			if ctx.Err() != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
+			if commandContextError(ctx) != nil {
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if hook != nil {
@@ -775,23 +778,24 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 	}
 	waitStart := time.Now()
 	waitErr := cmd.Wait()
+	completeCommandExecution(ctx, time.Now())
 	waitDuration := time.Since(waitStart)
-	slog.Debug("exec_stream command finished", "command", req.Command, "pid", cmd.Process.Pid, "wait_error", waitErr, "ctx_err", ctx.Err(), "wait_duration_ms", waitDuration.Milliseconds())
+	slog.Debug("exec_stream command finished", "command", req.Command, "pid", cmd.Process.Pid, "wait_error", waitErr, "ctx_err", commandContextError(ctx), "wait_duration_ms", waitDuration.Milliseconds())
 	stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 	stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
 	stdoutTrunc, stderrTrunc = stdoutW.truncated, stderrW.truncated
 
 	resources = resourcesFromProcessState(cmd.ProcessState)
 
-	if ctx.Err() != nil {
+	if commandContextError(ctx) != nil {
 		_ = killProcessGroup(pgid)
 	}
 
 	if commandTimedOut(ctx) {
 		return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
 	}
-	if ctx.Err() != nil {
-		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
+	if commandContextError(ctx) != nil {
+		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
 	}
 	if waitErr == nil {
 		return 0, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, err

@@ -261,6 +261,54 @@ func extendCommandTimeoutAt(extender *commandTimeoutExtender, extra time.Duratio
 	return extender.extendLocked(extra, now)
 }
 
+func TestCommandTimeoutCompletionImmediatelyBeforeDeadlineWins(t *testing.T) {
+	ctx, extender := newCommandTimeoutExtender(context.Background(), time.Hour)
+	defer extender.cancelContext()
+	extender.mu.Lock()
+	deadline := extender.deadline
+	extender.mu.Unlock()
+
+	if !extender.complete(deadline.Add(-time.Nanosecond)) {
+		t.Fatal("completion immediately before the deadline did not win")
+	}
+	extender.mu.Lock()
+	lateExpiryWon := extender.expireLocked(deadline.Add(time.Hour))
+	state := extender.terminal
+	extender.mu.Unlock()
+	if lateExpiryWon || state != commandTerminalCompleted || context.Cause(ctx) != nil {
+		t.Fatalf("late timer rewrote completion: expired=%t state=%d cause=%v", lateExpiryWon, state, context.Cause(ctx))
+	}
+}
+
+func TestCommandTimeoutCompletionImmediatelyAfterDeadlineCannotEscape(t *testing.T) {
+	ctx, extender := newCommandTimeoutExtender(context.Background(), time.Hour)
+	defer extender.cancelContext()
+	extender.mu.Lock()
+	deadline := extender.deadline
+	extender.mu.Unlock()
+
+	if extender.complete(deadline.Add(time.Nanosecond)) {
+		t.Fatal("completion after the effective deadline won")
+	}
+	if !commandTimedOut(ctx) || !errors.Is(context.Cause(ctx), errCommandTimeout) {
+		t.Fatalf("late completion was not timeout: state=%d cause=%v", extender.terminal, context.Cause(ctx))
+	}
+}
+
+func TestCommandCompletionIgnoresCancellationDuringPostExitCleanup(t *testing.T) {
+	parent, parentCancel := context.WithCancel(context.Background())
+	ctx, extender := newCommandTimeoutExtender(parent, time.Hour)
+	defer extender.cancelContext()
+	if !extender.complete(time.Now()) {
+		t.Fatal("process completion did not win")
+	}
+	parentCancel()
+	time.Sleep(time.Millisecond)
+	if cause := context.Cause(ctx); cause != nil {
+		t.Fatalf("post-completion caller cancellation rewrote result: %v", cause)
+	}
+}
+
 func TestCommandTimeoutCauseDoesNotClaimParentDeadline(t *testing.T) {
 	parent, parentCancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
 	defer parentCancel()

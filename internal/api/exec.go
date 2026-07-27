@@ -258,6 +258,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 
 	if handled, code, out, errOut := s.Builtin(req); handled {
 		notifyStarted()
+		completeCommandExecution(ctx, time.Now())
 		if extra != nil && extra.outputArtifact != nil {
 			_ = extra.outputArtifact.Append(out)
 			_ = extra.outputArtifact.Append(errOut)
@@ -393,7 +394,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 	}
 
 	// Fail fast if context is already cancelled (ptrace mode doesn't use CommandContext)
-	if tracer != nil && ctx.Err() != nil {
+	if tracer != nil && commandContextError(ctx) != nil {
 		extra.closeWrapperLogPipe()
 		if stdoutPipeR != nil {
 			stdoutPipeR.Close()
@@ -410,7 +411,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 		if commandTimedOut(ctx) {
 			return 124, nil, nil, 0, 0, false, false, types.ExecResources{}, errCommandTimeout
 		}
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, ctx.Err()
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, commandContextError(ctx)
 	}
 
 	barrier := newPreExecBarrier(hook)
@@ -545,7 +546,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 				select {
 				case readyErr = <-ptraceReady:
 				case <-ctx.Done():
-					readyErr = ctx.Err()
+					readyErr = commandContextError(ctx)
 				}
 				if readyErr != nil {
 					close(ptraceDone)
@@ -598,6 +599,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			waitStart := time.Now()
 			slog.Debug("exec waiting for command (hybrid)", "command", req.Command, "pid", cmd.Process.Pid)
 			result := waitExit()
+			completeCommandExecution(ctx, time.Now())
 			close(ptraceDone)
 			handlerCancel()
 			if result.err != nil {
@@ -613,14 +615,14 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			resources = result.resources
 			cmd.Process.Release()
 
-			if ctx.Err() != nil {
+			if commandContextError(ctx) != nil {
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
 				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
 			}
-			if ctx.Err() != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
+			if commandContextError(ctx) != nil {
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if tracer != nil {
@@ -664,6 +666,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			waitStart := time.Now()
 			slog.Debug("exec waiting for command (ptrace)", "command", req.Command, "pid", cmd.Process.Pid)
 			result := waitExit()
+			completeCommandExecution(ctx, time.Now())
 			close(ptraceDone) // stop context watcher immediately after exit
 			// On tracer shutdown, force-kill child before draining pipes
 			if result.err != nil {
@@ -679,14 +682,14 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			resources = result.resources
 			cmd.Process.Release()
 
-			if ctx.Err() != nil {
+			if commandContextError(ctx) != nil {
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
 				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
 			}
-			if ctx.Err() != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
+			if commandContextError(ctx) != nil {
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if hook != nil {
@@ -723,23 +726,24 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 	waitStart := time.Now()
 	slog.Debug("exec waiting for command", "command", req.Command, "pid", cmd.Process.Pid, "tracer_nil", tracer == nil, "hook_nil", hook == nil, "extra_nil", extra == nil)
 	waitErr := cmd.Wait()
+	completeCommandExecution(ctx, time.Now())
 	waitDuration := time.Since(waitStart)
 	stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 	stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
-	slog.Debug("exec command finished", "command", req.Command, "pid", cmd.Process.Pid, "wait_error", waitErr, "ctx_err", ctx.Err(), "wait_duration_ms", waitDuration.Milliseconds(), "stdout_len", len(stdout), "stdout_total", stdoutW.total, "stderr_len", len(stderr), "stderr_total", stderrW.total, "stdout_truncated", stdoutW.truncated)
+	slog.Debug("exec command finished", "command", req.Command, "pid", cmd.Process.Pid, "wait_error", waitErr, "ctx_err", commandContextError(ctx), "wait_duration_ms", waitDuration.Milliseconds(), "stdout_len", len(stdout), "stdout_total", stdoutW.total, "stderr_len", len(stderr), "stderr_total", stderrW.total, "stdout_truncated", stdoutW.truncated)
 	stdoutTrunc, stderrTrunc = stdoutW.truncated, stderrW.truncated
 
 	resources = resourcesFromProcessState(cmd.ProcessState)
 
-	if ctx.Err() != nil {
+	if commandContextError(ctx) != nil {
 		_ = killProcessGroup(pgid)
 	}
 
 	if commandTimedOut(ctx) {
 		return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
 	}
-	if ctx.Err() != nil {
-		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, ctx.Err()
+	if commandContextError(ctx) != nil {
+		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
 	}
 	if waitErr == nil {
 		return 0, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, err
