@@ -228,6 +228,121 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 	}, nil
 }
 
+// OpenMulti reopens an already materialized retained shadow workspace without
+// copying from the real roots or deleting any shadow data. expected is the
+// durable identity captured after the original CreateMulti completed.
+func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, expected []Root, createdAt time.Time) (*Workspace, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(id) == "" || len(specs) == 0 || strings.TrimSpace(opts.BaseDir) == "" {
+		return nil, fmt.Errorf("retained shadow identity is incomplete")
+	}
+	if len(expected) != len(specs) || len(expected) == 0 {
+		return nil, fmt.Errorf("retained shadow root identity is incomplete")
+	}
+
+	baseAbs, err := filepath.Abs(opts.BaseDir)
+	if err != nil {
+		return nil, fmt.Errorf("shadow base abs: %w", err)
+	}
+	sessionDir := filepath.Join(baseAbs, id)
+	work := filepath.Join(sessionDir, "work")
+	home := filepath.Join(sessionDir, "home")
+	tmp := filepath.Join(sessionDir, "tmp")
+	for _, dir := range []string{sessionDir, work, home, tmp} {
+		info, statErr := os.Lstat(dir)
+		if statErr != nil {
+			return nil, fmt.Errorf("retained shadow path %s: %w", dir, statErr)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("retained shadow path %s must be a real directory", dir)
+		}
+	}
+
+	roots := make([]Root, 0, len(specs))
+	seenNames := make(map[string]struct{}, len(specs))
+	seenReal := make(map[string]struct{}, len(specs))
+	ownerUID, ownerGID := -1, -1
+	multi := len(specs) > 1 || strings.TrimSpace(specs[0].Name) != ""
+	for i, spec := range specs {
+		realAbs, absErr := filepath.Abs(spec.Path)
+		if absErr != nil {
+			return nil, fmt.Errorf("workspace root %q abs: %w", spec.Path, absErr)
+		}
+		if resolved, resolveErr := filepath.EvalSymlinks(realAbs); resolveErr == nil {
+			realAbs = resolved
+		}
+		info, statErr := os.Stat(realAbs)
+		if statErr != nil || !info.IsDir() {
+			if statErr != nil {
+				return nil, fmt.Errorf("workspace root %q stat: %w", spec.Path, statErr)
+			}
+			return nil, fmt.Errorf("workspace root %q must be a directory", spec.Path)
+		}
+		if i == 0 {
+			ownerUID, ownerGID = owner(info)
+		}
+		if _, duplicate := seenReal[realAbs]; duplicate {
+			return nil, fmt.Errorf("duplicate workspace root path: %s", realAbs)
+		}
+		seenReal[realAbs] = struct{}{}
+		name := cleanRootName(spec.Name)
+		if name == "" {
+			name = cleanRootName(filepath.Base(realAbs))
+		}
+		if name == "" || name == "." || name == ".." || strings.ContainsRune(name, filepath.Separator) {
+			return nil, fmt.Errorf("invalid workspace root name %q", spec.Name)
+		}
+		if _, duplicate := seenNames[name]; duplicate {
+			return nil, fmt.Errorf("duplicate workspace root name %q", name)
+		}
+		seenNames[name] = struct{}{}
+		rootWork := work
+		if multi {
+			rootWork = filepath.Join(work, name)
+		}
+		workInfo, workErr := os.Lstat(rootWork)
+		if workErr != nil || !workInfo.IsDir() || workInfo.Mode()&os.ModeSymlink != 0 {
+			if workErr != nil {
+				return nil, fmt.Errorf("retained shadow root %s: %w", name, workErr)
+			}
+			return nil, fmt.Errorf("retained shadow root %s is not a real directory", name)
+		}
+		want := expected[i]
+		if want.Name != name || filepath.Clean(want.Real) != filepath.Clean(realAbs) || filepath.Clean(want.Work) != filepath.Clean(rootWork) {
+			return nil, fmt.Errorf("retained shadow root %d identity mismatch", i)
+		}
+		roots = append(roots, Root{Name: name, Real: realAbs, Work: rootWork})
+	}
+
+	rsyncExecutable, err := runtimebin.Resolve("rsync")
+	if err != nil {
+		return nil, fmt.Errorf("resolve shadow workspace rsync: %w", err)
+	}
+	diffExecutable, err := runtimebin.Resolve("diff")
+	if err != nil {
+		return nil, fmt.Errorf("resolve shadow workspace diff: %w", err)
+	}
+	diffExcludes := cleanExcludes(opts.DiffExcludes)
+	if len(diffExcludes) == 0 {
+		diffExcludes = []string{".git", ".direnv"}
+	}
+	acceptExcludes := cleanExcludes(opts.AcceptExcludes)
+	if len(acceptExcludes) == 0 {
+		acceptExcludes = []string{".git", ".direnv"}
+	}
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	return &Workspace{
+		ID: id, Real: roots[0].Real, Work: work, Home: home, Tmp: tmp, Roots: roots,
+		OwnerUID: ownerUID, OwnerGID: ownerGID, CreatedAt: createdAt.UTC(), State: StateActive,
+		diffExcludes: diffExcludes, acceptExcludes: acceptExcludes, acceptChown: opts.AcceptChown,
+		diffExecutable: diffExecutable, rsyncExecutable: rsyncExecutable,
+	}, nil
+}
+
 func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

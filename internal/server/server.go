@@ -26,6 +26,7 @@ import (
 	"github.com/agentsh/agentsh/internal/auth"
 	"github.com/agentsh/agentsh/internal/capabilities"
 	"github.com/agentsh/agentsh/internal/config"
+	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/events"
 	limitspkg "github.com/agentsh/agentsh/internal/limits"
 	"github.com/agentsh/agentsh/internal/mcpregistry"
@@ -1082,6 +1083,16 @@ func (e serverEmitter) AppendEvent(ctx context.Context, ev types.Event) error {
 	return nil
 }
 func (e serverEmitter) Publish(ev types.Event) { e.broker.Publish(ev) }
+
+// BootstrapDetachedSession installs the lifecycle coordinator and rehydrates
+// the exact session before any listener starts serving requests.
+func (s *Server) BootstrapDetachedSession(ctx context.Context, runtime *detached.Runtime) (types.Session, *types.NetworkEnforcement, error) {
+	if s == nil || s.app == nil {
+		return types.Session{}, nil, fmt.Errorf("server app is unavailable")
+	}
+	s.app.SetDetachedRuntime(runtime)
+	return s.app.BootstrapDetachedSession(ctx)
+}
 
 func (s *Server) Run(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)

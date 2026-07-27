@@ -57,6 +57,10 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 	return nil, fmt.Errorf("shadow workspaces are only supported on Linux")
 }
 
+func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, expected []Root, createdAt time.Time) (*Workspace, error) {
+	return nil, fmt.Errorf("shadow workspaces are only supported on Linux")
+}
+
 func (w *Workspace) Diff(ctx context.Context) ([]byte, error) { return nil, fmt.Errorf("unsupported") }
 func (w *Workspace) Accept(ctx context.Context) error         { return fmt.Errorf("unsupported") }
 func (w *Workspace) Reject(ctx context.Context) error         { return fmt.Errorf("unsupported") }

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -194,8 +195,8 @@ func (w *OutputArtifactWriter) Finish() (OutputArtifact, error) {
 
 	s := w.session
 	s.outputArtifactsMu.Lock()
-	defer s.outputArtifactsMu.Unlock()
 	if s.outputArtifactsClosed {
+		s.outputArtifactsMu.Unlock()
 		_ = os.Remove(w.path)
 		return OutputArtifact{}, ErrOutputArtifactsUnavailable
 	}
@@ -203,6 +204,12 @@ func (w *OutputArtifactWriter) Finish() (OutputArtifact, error) {
 		s.outputArtifacts = make(map[string]outputArtifactRegistration)
 	}
 	s.outputArtifacts[w.path] = outputArtifactRegistration{info: fileInfo}
+	paths := s.outputArtifactPathsLocked()
+	hook := s.outputArtifactsChanged
+	s.outputArtifactsMu.Unlock()
+	if hook != nil {
+		hook(paths)
+	}
 	return artifact, nil
 }
 
@@ -294,6 +301,56 @@ func (s *Session) OpenOutputArtifact(path string) (*os.File, os.FileInfo, error)
 		return nil, nil, errors.New("registered output artifact identity changed")
 	}
 	return file, fileInfo, nil
+}
+
+func (s *Session) SetOutputArtifactPersistenceHook(hook func([]string)) {
+	s.outputArtifactsMu.Lock()
+	s.outputArtifactsChanged = hook
+	paths := s.outputArtifactPathsLocked()
+	s.outputArtifactsMu.Unlock()
+	if hook != nil {
+		hook(paths)
+	}
+}
+
+func (s *Session) RestoreOutputArtifacts(paths []string) error {
+	runtimeTmp := filepath.Clean(s.RuntimeTmpPath())
+	if runtimeTmp == "." || !filepath.IsAbs(runtimeTmp) {
+		return ErrOutputArtifactsUnavailable
+	}
+	root := filepath.Join(runtimeTmp, outputArtifactDirName)
+	registrations := make(map[string]outputArtifactRegistration, len(paths))
+	for _, path := range paths {
+		candidate, ok := normalizeOutputArtifactPath(path)
+		if !ok || !IsRealPathUnder(candidate, root) || filepath.Dir(candidate) != root {
+			return fmt.Errorf("restore output artifact outside exact session root")
+		}
+		info, err := os.Lstat(candidate)
+		if err != nil {
+			return fmt.Errorf("restore output artifact %s: %w", candidate, err)
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+			return fmt.Errorf("restore output artifact %s: invalid file type or permissions", candidate)
+		}
+		registrations[candidate] = outputArtifactRegistration{info: info}
+	}
+	s.outputArtifactsMu.Lock()
+	defer s.outputArtifactsMu.Unlock()
+	if s.outputArtifactsClosed {
+		return ErrOutputArtifactsUnavailable
+	}
+	s.outputArtifactRoot = root
+	s.outputArtifacts = registrations
+	return nil
+}
+
+func (s *Session) outputArtifactPathsLocked() []string {
+	paths := make([]string, 0, len(s.outputArtifacts))
+	for path := range s.outputArtifacts {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 func normalizeOutputArtifactPath(path string) (string, bool) {

@@ -566,6 +566,9 @@ func (a *App) recordNetworkEnforcementFailure(sessionID, commandID string, err e
 	report.Warning = "command execution was refused because required runtime network setup failed"
 	report.Normalize()
 	sess.SetNetworkEnforcement(report)
+	if a.detachedRuntime != nil {
+		_ = a.detachedRuntime.UpdateNetwork(report)
+	}
 	a.emitNetworkEnforcementEvidence("network_enforcement_failed", sessionID, commandID, report)
 }
 
@@ -612,6 +615,9 @@ func (a *App) recordNetworkCleanupFailure(sessionID, commandID string, err error
 	report.Warning = "helper or cgroup resources may remain pinned fail closed; operator cleanup may be required"
 	report.Normalize()
 	sess.SetNetworkEnforcement(report)
+	if a.detachedRuntime != nil {
+		_ = a.detachedRuntime.UpdateNetwork(report)
+	}
 	a.emitNetworkEnforcementEvidence("network_enforcement_cleanup_failed", sessionID, commandID, report)
 }
 
@@ -1293,7 +1299,11 @@ func (a *App) preflightSessionNetworkEnforcement(w http.ResponseWriter, r *http.
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "network enforcement preflight requires an idle session"})
 		return
 	}
-	writeJSON(w, http.StatusOK, a.runNetworkEnforcementPreflight(r.Context(), sessionID))
+	report := a.runNetworkEnforcementPreflight(r.Context(), sessionID)
+	if a.detachedRuntime != nil {
+		_ = a.detachedRuntime.UpdateNetwork(report)
+	}
+	writeJSON(w, http.StatusOK, report)
 }
 
 func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
@@ -1482,6 +1492,18 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 	report.HelperLifecycle = lifecycle
 	report.Normalize()
 	sess.SetNetworkEnforcement(report)
+	if a.detachedRuntime != nil {
+		if err := a.detachedRuntime.UpdateNethelperBinding(candidate.SocketPath, candidate.CredentialFile, candidate.BootstrapResultPath, candidate.Generation); err != nil {
+			_ = a.detachedRuntime.MarkFailed("persist replacement nethelper identity: " + err.Error())
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "replacement helper is live but its durable path/generation identity could not be committed; exact reconciliation is required"})
+			return
+		}
+		if err := a.detachedRuntime.UpdateNetwork(report); err != nil {
+			_ = a.detachedRuntime.MarkFailed("persist replacement network readiness: " + err.Error())
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "replacement helper readiness could not be persisted; exact reconciliation is required"})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, report)
 }
 

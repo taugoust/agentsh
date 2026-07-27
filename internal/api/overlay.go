@@ -58,6 +58,12 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sw != nil {
+		if a.detachedRuntime != nil {
+			if err := a.detachedRuntime.MarkFinalizing(); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "refusing workspace accept because durable finalization state could not be recorded"})
+				return
+			}
+		}
 		if err := sw.Accept(r.Context()); err != nil {
 			code := http.StatusInternalServerError
 			if errors.Is(err, shadow.ErrInactive) {
@@ -80,6 +86,9 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = a.store.AppendEvent(r.Context(), ev)
 		a.broker.Publish(ev)
+		if a.detachedRuntime != nil {
+			_ = a.detachedRuntime.MarkFinalized()
+		}
 		writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 		return
 	}
@@ -122,6 +131,12 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sw != nil {
+		if a.detachedRuntime != nil {
+			if err := a.detachedRuntime.MarkFinalizing(); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "refusing workspace reject because durable finalization state could not be recorded"})
+				return
+			}
+		}
 		if err := sw.Reject(r.Context()); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
@@ -140,6 +155,9 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = a.store.AppendEvent(r.Context(), ev)
 		a.broker.Publish(ev)
+		if a.detachedRuntime != nil {
+			_ = a.detachedRuntime.MarkFinalized()
+		}
 		writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 		return
 	}

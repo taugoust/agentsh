@@ -21,6 +21,12 @@ func hardenSupervisorForCommandBoundary() error {
 }
 
 func configureCommandBoundaryProcess(attr *syscall.SysProcAttr, requirements *types.LinuxCommandJailRequirements) error {
+	// Every server-owned command must die with its supervisor, including
+	// best-effort/direct sessions. Otherwise an orphan could keep mutating the
+	// retained workspace concurrently with a recovered exact incarnation.
+	if attr != nil && attr.Pdeathsig == 0 {
+		attr.Pdeathsig = syscall.SIGKILL
+	}
 	if requirements == nil {
 		return nil
 	}

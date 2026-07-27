@@ -509,6 +509,29 @@
           };
 
           # Stable focused gates consumed by lifecycle integration branches.
+          detached-supervisor-recovery-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-detached-supervisor-recovery-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/detached
+              go test ./internal/workspace/shadow -run 'TestOpenMulti'
+              go test ./internal/api -run 'TestNethelperRebind_DetachedBootstrap'
+              go test ./internal/cli -run 'Test(DetachedSupervisor|BuildDetachedSupervisor|BuildSystemdRunDetachedSupervisor)'
+              runHook postCheck
+            '';
+          });
+
+          detached-supervisor-systemd-recovery =
+            if stdenv.hostPlatform.isLinux then
+              import ./nix/checks/detached-supervisor-systemd-recovery.nix {
+                inherit pkgs self;
+              }
+            else
+              pkgs.runCommand "agentsh-detached-supervisor-systemd-recovery-skipped" { } ''
+                mkdir -p "$out"
+                touch "$out/skipped-non-linux"
+              '';
+
           nethelper-lifecycle-tests = go-unit-tests.overrideAttrs (_: {
             pname = "agentsh-nethelper-lifecycle-tests";
             checkPhase = ''

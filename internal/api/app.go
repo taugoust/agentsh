@@ -19,6 +19,7 @@ import (
 	"github.com/agentsh/agentsh/internal/auth"
 	"github.com/agentsh/agentsh/internal/config"
 	dbevents "github.com/agentsh/agentsh/internal/db/events"
+	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/events"
 	"github.com/agentsh/agentsh/internal/limits"
 	"github.com/agentsh/agentsh/internal/mcpinspect"
@@ -93,6 +94,7 @@ type App struct {
 	detachedRouteMu   sync.Mutex
 	detachedRoutes    map[string]detachedSupervisor
 	detachedApprovals *detachedApprovalStore
+	detachedRuntime   *detached.Runtime
 
 	approvalUIMu sync.Mutex
 	approvalUIs  map[string]*approvalUIEndpoint
@@ -269,6 +271,27 @@ func (a *App) SetPackageChecker(c *pkgcheck.Checker) {
 	a.pkgChecker = c
 }
 
+// SetDetachedRuntime installs the exact-session lifecycle coordinator before
+// bootstrap and before any request can be served.
+func (a *App) SetDetachedRuntime(runtime *detached.Runtime) {
+	a.detachedRuntime = runtime
+	if a.approvals != nil && runtime != nil {
+		a.approvals.SetScopedPersistenceHook(func(sessionID string, decisions []approvals.ScopedDecision) {
+			if sessionID != runtime.Manifest().SessionID {
+				return
+			}
+			data, err := json.Marshal(decisions)
+			if err != nil {
+				_ = runtime.MarkFailed("encode scoped approval recovery state: " + err.Error())
+				return
+			}
+			if err := runtime.UpdateScopedApprovals(data); err != nil {
+				_ = runtime.MarkFailed("persist scoped approval recovery state: " + err.Error())
+			}
+		})
+	}
+}
+
 // SetCmdResolver attaches a PID→command_id resolver for ESF file event attribution.
 // Called on darwin after the policy socket server is started. No-op on other platforms.
 func (a *App) SetCmdResolver(r interface {
@@ -357,6 +380,13 @@ func (a *App) Router() http.Handler {
 	r.Get(a.cfg.Health.ReadinessPath, func(w http.ResponseWriter, r *http.Request) { writeText(w, http.StatusOK, "ready\n") })
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/detached/status", func(w http.ResponseWriter, r *http.Request) {
+			if a.detachedRuntime == nil {
+				writeJSON(w, http.StatusNotFound, map[string]any{"error": "detached runtime is not configured"})
+				return
+			}
+			writeJSON(w, http.StatusOK, a.detachedRuntime.RuntimeStatus())
+		})
 		r.Get("/profiles", a.handleListProfiles)
 
 		r.Post("/sessions", a.createSession)
@@ -903,16 +933,36 @@ func (a *App) patchSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
+	if a.detachedRuntime != nil {
+		if err := a.detachedRuntime.UpdateMutable(detachedEnvironmentRecoveryState(s)); err != nil {
+			_ = a.detachedRuntime.MarkFailed("persist mutable session recovery state: " + err.Error())
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "session update applied in memory but durable recovery persistence failed; command execution is disabled"})
+			return
+		}
+		acknowledged := append([]string(nil), req.Unset...)
+		for name := range req.Env {
+			acknowledged = append(acknowledged, name)
+		}
+		if err := a.detachedRuntime.AcknowledgeEnvironment(acknowledged, false); err != nil {
+			_ = a.detachedRuntime.MarkFailed("persist environment reprovisioning: " + err.Error())
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "environment was reprovisioned but detached lifecycle persistence failed"})
+			return
+		}
+	}
 
+	envNames := make([]string, 0, len(req.Env))
+	for name := range req.Env {
+		envNames = append(envNames, name)
+	}
 	ev := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now().UTC(),
 		Type:      "session_updated",
 		SessionID: id,
 		Fields: map[string]any{
-			"cwd":   req.Cwd,
-			"env":   req.Env,
-			"unset": req.Unset,
+			"cwd":       req.Cwd,
+			"env_names": envNames,
+			"unset":     req.Unset,
 		},
 	}
 	_ = a.store.AppendEvent(r.Context(), ev)
@@ -934,6 +984,12 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
 		return
 	}
+	if a.detachedRuntime != nil {
+		if err := a.detachedRuntime.MarkStopping(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "refusing teardown because durable detached lifecycle update failed"})
+			return
+		}
+	}
 	a.closeApprovalUI(id)
 	if a.approvals != nil {
 		a.approvals.ClearSession(r.Context(), id)
@@ -954,6 +1010,9 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = a.store.AppendEvent(r.Context(), ev)
 	a.broker.Publish(ev)
+	if a.detachedRuntime != nil {
+		_ = a.detachedRuntime.MarkStopped()
+	}
 
 	w.WriteHeader(http.StatusNoContent)
 }

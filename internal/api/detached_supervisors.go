@@ -66,6 +66,9 @@ func (a *App) discoverDetachedSupervisors() []detachedSupervisor {
 			if err := detached.ValidateUsable(meta, detachedSupervisorPIDAlive); err != nil {
 				continue
 			}
+			if meta.ProtocolVersion >= 2 && !a.detachedMetadataMatchesLiveRuntime(meta) {
+				continue
+			}
 			key := strings.TrimSpace(meta.SupervisorSock)
 			if key == "" {
 				continue
@@ -81,6 +84,19 @@ func (a *App) discoverDetachedSupervisors() []detachedSupervisor {
 		return out[i].Meta.SessionID < out[j].Meta.SessionID
 	})
 	return out
+}
+
+func (a *App) detachedMetadataMatchesLiveRuntime(meta detached.Metadata) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), a.detachedSupervisorTimeout())
+	defer cancel()
+	var status detached.RuntimeStatus
+	c := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", a.detachedSupervisorTimeout())
+	if err := c.DoRawJSON(ctx, http.MethodGet, "/api/v1/detached/status", nil, &status); err != nil {
+		return false
+	}
+	return status.ProtocolVersion == meta.ProtocolVersion && status.SessionID == meta.SessionID &&
+		status.Generation == meta.Generation && status.IncarnationID == meta.IncarnationID &&
+		status.OwnerPID == meta.OwnerPID && status.OwnerStartIdentity == meta.OwnerStartIdentity && status.BootID == meta.BootID
 }
 
 func (a *App) detachedSupervisorClient(s detachedSupervisor) *client.Client {

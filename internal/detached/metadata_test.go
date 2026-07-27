@@ -3,6 +3,7 @@ package detached
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -274,6 +275,64 @@ func TestValidateUsableErrors(t *testing.T) {
 	}
 }
 
+func TestValidateUsableV2ChecksKernelProcessAndSocketIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Unix socket identity test")
+	}
+	root := t.TempDir()
+	sock := filepath.Join(root, "supervisor.sock")
+	listener, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Skipf("Unix sockets unavailable: %v", err)
+	}
+	defer listener.Close()
+	start, boot, err := CurrentProcessIdentity(os.Getpid())
+	if err != nil || start == "" || boot == "" {
+		t.Skipf("stable process identity unavailable: %v", err)
+	}
+	meta := Metadata{
+		SessionID: "session-v2", State: LifecycleReady, SupervisorSock: sock,
+		OwnerPID: os.Getpid(), OwnerStartIdentity: start, BootID: boot,
+		Generation: 1, IncarnationID: "incarnation-v2", ProtocolVersion: ProtocolVersion,
+	}
+	if err := ValidateUsable(meta, func(pid int) bool { return pid == os.Getpid() }); err != nil {
+		t.Fatalf("ValidateUsable exact v2 identity: %v", err)
+	}
+	meta.OwnerStartIdentity = "reused-process-start"
+	if err := ValidateUsable(meta, func(int) bool { return true }); err == nil || !strings.Contains(err.Error(), "reused") {
+		t.Fatalf("reused process identity error = %v", err)
+	}
+}
+
+func TestReadMetadataRejectsPathIdentitySubstitutionAndUnsafeFile(t *testing.T) {
+	root := t.TempDir()
+	meta := testMetadata(t, root, "session-expected")
+	meta.SessionID = "session-substituted"
+	meta.ID = "session-substituted"
+	stateDir := filepath.Join(root, "session-expected")
+	if err := WriteMetadata(stateDir, meta); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ReadMetadataFromRoot(root, "session-expected"); err == nil || !strings.Contains(err.Error(), "identities differ") {
+		t.Fatalf("metadata path substitution error = %v", err)
+	}
+	if _, _, err := ReadMetadataFromRoot(root, "../session-expected"); err == nil {
+		t.Fatal("metadata path traversal was accepted")
+	}
+
+	meta.SessionID = "session-expected"
+	meta.ID = "session-expected"
+	if err := WriteMetadata(stateDir, meta); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(MetadataPath(stateDir), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ReadMetadataFromRoot(root, "session-expected"); err == nil || !strings.Contains(err.Error(), "unsafe") {
+		t.Fatalf("public metadata permissions error = %v", err)
+	}
+}
+
 func testMetadata(t *testing.T, root, id string) Metadata {
 	t.Helper()
 	sock := filepath.Join(root, id, "supervisor.sock")
@@ -294,7 +353,7 @@ func testMetadata(t *testing.T, root, id string) Metadata {
 		Worktree:        filepath.Join(root, id, "workspace", "work"),
 		SupervisorSock:  sock,
 		OwnerPID:        12345,
-		ProtocolVersion: ProtocolVersion,
+		ProtocolVersion: 1,
 	}
 }
 

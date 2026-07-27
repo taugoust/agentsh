@@ -81,6 +81,9 @@ type Manager struct {
 	pending       map[string]*pending
 	scoped        map[string]map[string]ScopedDecision            // sessionID -> scopeKey -> decision
 	commandScoped map[string]map[string]map[string]ScopedDecision // sessionID -> commandID -> scopeKey -> decision
+	// scopedChanged persists session-scoped grants for detached crash recovery.
+	// Command-scoped decisions deliberately never survive a command/process loss.
+	scopedChanged func(sessionID string, decisions []ScopedDecision)
 
 	promptMu sync.Mutex
 
@@ -150,6 +153,74 @@ func New(mode string, timeout time.Duration, emit Emitter) *Manager {
 // Required when using TOTP approval mode.
 func (m *Manager) SetTOTPSecretLookup(lookup func(sessionID string) string) {
 	m.totpSecretLookup = lookup
+}
+
+func (m *Manager) SetScopedPersistenceHook(hook func(sessionID string, decisions []ScopedDecision)) {
+	m.mu.Lock()
+	m.scopedChanged = hook
+	m.mu.Unlock()
+}
+
+// SessionScopedDecisions returns an expiry-filtered copy of durable
+// session-scoped decisions. Pending and command-scoped approvals are excluded.
+func (m *Manager) SessionScopedDecisions(sessionID string) []ScopedDecision {
+	if m == nil || sessionID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	bySession := m.scoped[sessionID]
+	out := make([]ScopedDecision, 0, len(bySession))
+	for key, decision := range bySession {
+		if decision.ExpiresAt != nil && decision.ExpiresAt.Before(now) {
+			delete(bySession, key)
+			continue
+		}
+		out = append(out, decision)
+	}
+	return out
+}
+
+// RestoreSessionScopedDecisions reinstates only grants bound to the exact
+// session identity. Callers must first verify the recovery policy digest.
+func (m *Manager) RestoreSessionScopedDecisions(sessionID string, decisions []ScopedDecision) error {
+	if m == nil || sessionID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	restored := make(map[string]ScopedDecision, len(decisions))
+	for _, decision := range decisions {
+		scope := Scope{Kind: decision.Kind, Key: decision.Key, Label: decision.Label, Rule: decision.Rule, Operation: decision.Operation, Path: decision.Path, Prefix: decision.Prefix}
+		if decision.SessionID != sessionID || !validScope(scope) {
+			return fmt.Errorf("invalid scoped approval recovery identity")
+		}
+		if decision.ExpiresAt != nil && decision.ExpiresAt.Before(now) {
+			continue
+		}
+		restored[decision.Key] = decision
+	}
+	m.mu.Lock()
+	if len(restored) == 0 {
+		delete(m.scoped, sessionID)
+	} else {
+		m.scoped[sessionID] = restored
+	}
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Manager) notifyScopedChanged(sessionID string) {
+	if m == nil || sessionID == "" {
+		return
+	}
+	decisions := m.SessionScopedDecisions(sessionID)
+	m.mu.Lock()
+	hook := m.scopedChanged
+	m.mu.Unlock()
+	if hook != nil {
+		hook(sessionID, decisions)
+	}
 }
 
 // SetWebAuthnApprover sets the WebAuthn approver (required for webauthn mode).
@@ -632,6 +703,7 @@ func (m *Manager) SetScoped(ctx context.Context, sessionID string, commandID str
 	}
 	m.scoped[sessionID][scope.Key] = dec
 	m.mu.Unlock()
+	m.notifyScopedChanged(sessionID)
 	m.emitScopedEvent(ctx, "approval_scope_granted", commandID, dec)
 	return true
 }
@@ -690,6 +762,7 @@ func (m *Manager) ClearSession(ctx context.Context, sessionID string) {
 	delete(m.scoped, sessionID)
 	delete(m.commandScoped, sessionID)
 	m.mu.Unlock()
+	m.notifyScopedChanged(sessionID)
 	for _, dec := range decisions {
 		m.emitScopedEvent(ctx, "approval_scope_cleared", "", dec)
 	}

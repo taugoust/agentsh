@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,7 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
-const ProtocolVersion = 1
+const ProtocolVersion = 2
 
 const (
 	// EnvNetworkEnforcementRequested carries launcher intent into the detached
@@ -63,27 +64,34 @@ const (
 )
 
 type Metadata struct {
-	SessionID          string              `json:"session_id"`
-	ID                 string              `json:"id,omitempty"`
-	CreatedAt          time.Time           `json:"created_at"`
-	State              string              `json:"state"`
-	Policy             string              `json:"policy"`
-	RealWorkspace      string              `json:"real_workspace"`
-	WorkspaceMode      string              `json:"workspace_mode"`
-	Worktree           string              `json:"worktree"`
-	WorkspaceRoots     []WorkspaceRoot     `json:"workspace_roots,omitempty"`
-	RuntimeHome        string              `json:"runtime_home,omitempty"`
-	RuntimeTmp         string              `json:"runtime_tmp,omitempty"`
-	ProcessHome        string              `json:"process_home,omitempty"`
-	RuntimeHomeMode    string              `json:"runtime_home_mode,omitempty"`
-	EnvBaseMode        string              `json:"env_base_mode,omitempty"`
-	EnvInherit         []string            `json:"env_inherit,omitempty"`
-	SupervisorSock     string              `json:"supervisor_sock"`
-	EventToken         string              `json:"event_token,omitempty"`
-	SystemdUnit        string              `json:"systemd_unit,omitempty"`
-	OwnerPID           int                 `json:"owner_pid"`
-	NetworkEnforcement *NetworkEnforcement `json:"network_enforcement,omitempty"`
-	ProtocolVersion    int                 `json:"protocol_version"`
+	SessionID            string              `json:"session_id"`
+	ID                   string              `json:"id,omitempty"`
+	CreatedAt            time.Time           `json:"created_at"`
+	State                string              `json:"state"`
+	Policy               string              `json:"policy"`
+	RealWorkspace        string              `json:"real_workspace"`
+	WorkspaceMode        string              `json:"workspace_mode"`
+	Worktree             string              `json:"worktree"`
+	WorkspaceRoots       []WorkspaceRoot     `json:"workspace_roots,omitempty"`
+	RuntimeHome          string              `json:"runtime_home,omitempty"`
+	RuntimeTmp           string              `json:"runtime_tmp,omitempty"`
+	ProcessHome          string              `json:"process_home,omitempty"`
+	RuntimeHomeMode      string              `json:"runtime_home_mode,omitempty"`
+	EnvBaseMode          string              `json:"env_base_mode,omitempty"`
+	EnvInherit           []string            `json:"env_inherit,omitempty"`
+	SupervisorSock       string              `json:"supervisor_sock"`
+	EventToken           string              `json:"event_token,omitempty"`
+	SystemdUnit          string              `json:"systemd_unit,omitempty"`
+	OwnerPID             int                 `json:"owner_pid"`
+	OwnerStartIdentity   string              `json:"owner_start_identity,omitempty"`
+	BootID               string              `json:"boot_id,omitempty"`
+	Generation           uint64              `json:"generation,omitempty"`
+	IncarnationID        string              `json:"incarnation_id,omitempty"`
+	IncarnationStartedAt time.Time           `json:"incarnation_started_at,omitzero"`
+	HeartbeatAt          time.Time           `json:"heartbeat_at,omitzero"`
+	LastError            string              `json:"last_error,omitempty"`
+	NetworkEnforcement   *NetworkEnforcement `json:"network_enforcement,omitempty"`
+	ProtocolVersion      int                 `json:"protocol_version"`
 }
 
 type DiscoveryOptions struct {
@@ -107,16 +115,55 @@ func WriteMetadata(stateDir string, meta Metadata) error {
 		return err
 	}
 	path := MetadataPath(stateDir)
-	if err := os.WriteFile(path, append(b, '\n'), 0o600); err != nil {
+	if err := atomicWritePrivateFile(path, append(b, '\n')); err != nil {
 		return fmt.Errorf("write metadata: %w", err)
 	}
 	return nil
 }
 
+func atomicWritePrivateFile(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	if dirHandle, err := os.Open(dir); err == nil {
+		_ = dirHandle.Sync()
+		_ = dirHandle.Close()
+	}
+	return nil
+}
+
 func ReadMetadataFromRoot(root string, sessionID string) (Metadata, string, error) {
+	if sessionID == "" || sessionID == "." || sessionID == ".." || strings.ContainsAny(sessionID, `/\\`) || filepath.Base(sessionID) != sessionID {
+		return Metadata{}, "", fmt.Errorf("%w: invalid detached session path identity", ErrMetadataInvalid)
+	}
 	stateDir := filepath.Join(root, sessionID)
 	path := MetadataPath(stateDir)
-	b, err := os.ReadFile(path)
+	b, err := readProtectedRegularFile(path, 4<<20)
 	if err != nil {
 		return Metadata{}, stateDir, fmt.Errorf("read detached supervisor metadata for %s at %s: %w", sessionID, path, err)
 	}
@@ -127,10 +174,46 @@ func ReadMetadataFromRoot(root string, sessionID string) (Metadata, string, erro
 	if meta.SessionID == "" {
 		return Metadata{}, stateDir, fmt.Errorf("%w for %s at %s: missing session_id", ErrMetadataInvalid, sessionID, path)
 	}
+	if meta.SessionID != sessionID || (meta.ID != "" && meta.ID != sessionID) {
+		return Metadata{}, stateDir, fmt.Errorf("%w for %s at %s: path and metadata identities differ", ErrMetadataInvalid, sessionID, path)
+	}
 	if meta.NetworkEnforcement != nil {
 		meta.NetworkEnforcement.Normalize()
 	}
 	return meta, stateDir, nil
+}
+
+func readProtectedRegularFile(path string, maxBytes int64) ([]byte, error) {
+	pathInfo, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !pathInfo.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 || pathInfo.Mode().Perm()&0o077 != 0 {
+		return nil, fmt.Errorf("protected file has unsafe type or permissions")
+	}
+	if pathInfo.Size() < 0 || pathInfo.Size() > maxBytes {
+		return nil, fmt.Errorf("protected file exceeds %d bytes", maxBytes)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	openedInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !openedInfo.Mode().IsRegular() || !os.SameFile(pathInfo, openedInfo) {
+		return nil, fmt.Errorf("protected file identity changed while opening")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("protected file exceeds %d bytes", maxBytes)
+	}
+	return data, nil
 }
 
 func ListMetadataFromRoot(root string, opts DiscoveryOptions) ([]Metadata, error) {
@@ -202,17 +285,40 @@ func StaleNetworkEnforcementSnapshot(report *NetworkEnforcement) *NetworkEnforce
 }
 
 func ValidateUsable(meta Metadata, pidAlive func(int) bool) error {
+	if meta.ProtocolVersion >= 2 {
+		switch meta.State {
+		case LifecycleReady, LifecycleDegraded, LifecycleRecovering:
+		case LifecycleProvisioning:
+			return fmt.Errorf("detached session %s is still provisioning", meta.SessionID)
+		case LifecycleFinalizing, LifecycleStopping, LifecycleStopped, LifecycleFinalized:
+			return fmt.Errorf("detached session %s is %s", meta.SessionID, meta.State)
+		case LifecycleFailed:
+			return fmt.Errorf("detached session %s supervisor failed: %s", meta.SessionID, meta.LastError)
+		default:
+			return fmt.Errorf("stale metadata for detached session %s: unknown lifecycle state %q", meta.SessionID, meta.State)
+		}
+		if meta.Generation == 0 || strings.TrimSpace(meta.IncarnationID) == "" {
+			return fmt.Errorf("stale metadata for detached session %s: incomplete incarnation identity", meta.SessionID)
+		}
+	}
 	if strings.TrimSpace(meta.SupervisorSock) == "" {
 		return fmt.Errorf("stale metadata for detached session %s: metadata.json has no supervisor_sock", meta.SessionID)
 	}
-	if _, err := os.Stat(meta.SupervisorSock); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+	socketInfo, socketErr := os.Lstat(meta.SupervisorSock)
+	if socketErr != nil {
+		if errors.Is(socketErr, os.ErrNotExist) {
 			return fmt.Errorf("stale metadata for detached session %s: supervisor.sock is missing at %s; stop/remove the stale session or start a new detached session", meta.SessionID, meta.SupervisorSock)
 		}
-		return fmt.Errorf("stale metadata for detached session %s: cannot stat supervisor.sock at %s: %w", meta.SessionID, meta.SupervisorSock, err)
+		return fmt.Errorf("stale metadata for detached session %s: cannot stat supervisor.sock at %s: %w", meta.SessionID, meta.SupervisorSock, socketErr)
+	}
+	if meta.ProtocolVersion >= 2 && (socketInfo.Mode()&os.ModeSocket == 0 || socketInfo.Mode()&os.ModeSymlink != 0) {
+		return fmt.Errorf("stale metadata for detached session %s: supervisor path is not a direct Unix socket", meta.SessionID)
 	}
 	if meta.OwnerPID > 0 && pidAlive != nil && !pidAlive(meta.OwnerPID) {
-		return fmt.Errorf("dead supervisor for detached session %s: owner_pid %d is not running; stop/remove the stale session or start a new detached session", meta.SessionID, meta.OwnerPID)
+		return fmt.Errorf("dead supervisor for detached session %s: owner_pid %d is not running; recover or stop the exact stale session", meta.SessionID, meta.OwnerPID)
+	}
+	if meta.OwnerPID > 0 && meta.OwnerStartIdentity != "" && meta.BootID != "" && !ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
+		return fmt.Errorf("stale supervisor identity for detached session %s: owner_pid %d was reused or belongs to another boot", meta.SessionID, meta.OwnerPID)
 	}
 	return nil
 }

@@ -129,12 +129,19 @@ func buildSystemdRunDetachedSupervisorArgs(unit, workDir, serviceEnvFile, servic
 		"-p", "Delegate=yes",
 		"-p", "KillMode=mixed",
 		"-p", "TimeoutStopSec=10s",
+		"-p", "Restart=on-failure",
+		"-p", "RestartSec=500ms",
+		"-p", "StartLimitIntervalSec=30s",
+		"-p", "StartLimitBurst=10",
 		"-p", "UMask=0077",
 		"-p", "NoNewPrivileges=yes",
 		"-p", "PrivateTmp=" + privateTmp,
 		"-p", "KeyringMode=private",
 		"-p", "LimitCORE=0",
-		"-p", "OOMPolicy=stop",
+		// A workload OOM must not stop the supervisor. If the main supervisor is
+		// selected by the kernel or crashes independently, Restart=on-failure
+		// launches a new incarnation which rehydrates the exact session.
+		"-p", "OOMPolicy=continue",
 	}
 	if strings.TrimSpace(workDir) != "" {
 		args = append(args, "-p", "WorkingDirectory="+workDir)

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,7 @@ type Session struct {
 	outputArtifactRoot     string
 	outputArtifactMaxBytes int64
 	outputArtifactsClosed  bool
+	outputArtifactsChanged func([]string)
 
 	ID                string
 	State             types.SessionState
@@ -636,6 +638,23 @@ func (s *Session) Timestamps() (createdAt, lastActivity time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.CreatedAt, s.LastActivity
+}
+
+// RestoreTimestamps reinstates the durable identity of a rehydrated session.
+// It is intended only for detached startup before the server begins accepting
+// requests.
+func (s *Session) RestoreTimestamps(createdAt, lastActivity time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !createdAt.IsZero() {
+		s.CreatedAt = createdAt.UTC()
+	}
+	if lastActivity.IsZero() {
+		lastActivity = createdAt
+	}
+	if !lastActivity.IsZero() {
+		s.LastActivity = lastActivity.UTC()
+	}
 }
 
 func (s *Session) SetWorkspaceMount(path string) {
@@ -1350,6 +1369,19 @@ func (s *Session) DirenvEnvironment() (map[string]string, uint64) {
 		out[k] = v
 	}
 	return out, s.direnvGeneration
+}
+
+// DirenvNames returns names only; sensitive direnv values are never exposed to
+// detached recovery persistence.
+func (s *Session) DirenvNames() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.direnvEnv))
+	for name := range s.direnvEnv {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ReplaceDirenvEnvironment atomically installs one complete generation.

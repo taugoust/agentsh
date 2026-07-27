@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"context"
 	"path/filepath"
+	"time"
 
+	"github.com/agentsh/agentsh/internal/client"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/detached"
 )
@@ -39,12 +42,28 @@ func listSupervisorMetadata() ([]supervisorMetadata, error) {
 		return nil, err
 	}
 	// Discovery callers need routing metadata, never the detached bridge
-	// credential. Keep it confined to the mode-0600 on-disk record.
-	for i := range metas {
-		metas[i].EventToken = ""
-		metas[i].NetworkEnforcement = detached.StaleNetworkEnforcementSnapshot(metas[i].NetworkEnforcement)
+	// credential. Keep it confined to the mode-0600 on-disk record. Protocol-v2
+	// records are returned only after their protected metadata matches the live
+	// socket incarnation handshake.
+	out := make([]supervisorMetadata, 0, len(metas))
+	for _, meta := range metas {
+		if err := validateSupervisorMetadataUsable(meta); err != nil {
+			continue
+		}
+		if meta.ProtocolVersion >= 2 {
+			c := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", 2*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			err := validateDetachedRuntimeHandshake(ctx, c, meta)
+			cancel()
+			if err != nil {
+				continue
+			}
+		}
+		meta.EventToken = ""
+		meta.NetworkEnforcement = detached.StaleNetworkEnforcementSnapshot(meta.NetworkEnforcement)
+		out = append(out, meta)
 	}
-	return metas, nil
+	return out, nil
 }
 
 func listSupervisorMetadataFromRoot(root string, opts supervisorDiscoveryOptions) ([]supervisorMetadata, error) {

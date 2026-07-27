@@ -125,6 +125,10 @@ func (a *App) subagentExecutionTimeout(timeoutMS int64) (time.Duration, error) {
 
 func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "id")
+	if err := a.detachedMutationReady(); err != nil {
+		writeToolError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	s, ok := a.sessions.Get(sessionID)
 	if !ok {
 		writeToolError(w, http.StatusNotFound, "session not found")

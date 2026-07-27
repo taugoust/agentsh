@@ -19,6 +19,7 @@ import (
 	"github.com/agentsh/agentsh/internal/approvals"
 	compositionpkg "github.com/agentsh/agentsh/internal/composition"
 	"github.com/agentsh/agentsh/internal/config"
+	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/events"
 	"github.com/agentsh/agentsh/internal/pkgcheck"
 	"github.com/agentsh/agentsh/internal/platform"
@@ -434,7 +435,7 @@ func buildCommandJailConfig(cfg *config.Config, nethelperSocket, nethelperCreden
 	}
 	if base := strings.TrimSpace(cfg.Sessions.BaseDir); base != "" {
 		stateDir := filepath.Dir(base)
-		for _, name := range []string{"metadata.json", "supervisor.sock", "supervisor.env", "events.jsonl", "events.db", "events.db-wal", "events.db-shm"} {
+		for _, name := range []string{"metadata.json", "recovery.json", "supervisor.lock", "supervisor.sock", "supervisor.env", "events.jsonl", "events.db", "events.db-wal", "events.db-shm"} {
 			path := filepath.Join(stateDir, name)
 			if info, err := os.Lstat(path); err == nil && !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 				jail.HidePaths = append(jail.HidePaths, path)
@@ -946,12 +947,27 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 	} else {
 		rootSpecs = []shadow.RootSpec{{Path: s.Workspace}}
 	}
-	sw, err := shadow.CreateMulti(ctx, s.ID, rootSpecs, shadow.Options{
+	shadowOptions := shadow.Options{
 		BaseDir:        a.cfg.Sessions.WorkspaceShadow.BaseDir,
 		DiffExcludes:   diffExcludes,
 		AcceptExcludes: acceptExcludes,
 		AcceptChown:    acceptChown,
-	})
+	}
+	var sw *shadow.Workspace
+	var err error
+	if a.detachedRuntime != nil && a.detachedRuntime.IsRecovery() {
+		manifest := a.detachedRuntime.Manifest()
+		if manifest.Shadow == nil {
+			return fmt.Errorf("detached recovery manifest has no retained shadow identity")
+		}
+		expected := make([]shadow.Root, 0, len(manifest.Shadow.Roots))
+		for _, root := range manifest.Shadow.Roots {
+			expected = append(expected, shadow.Root{Name: root.Name, Real: root.Real, Work: root.Work})
+		}
+		sw, err = shadow.OpenMulti(ctx, s.ID, rootSpecs, shadowOptions, expected, manifest.Shadow.CreatedAt)
+	} else {
+		sw, err = shadow.CreateMulti(ctx, s.ID, rootSpecs, shadowOptions)
+	}
 	if err != nil {
 		return err
 	}
@@ -965,10 +981,14 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 		return sw.Reject(context.Background())
 	})
 
+	shadowEventType := "shadow_created"
+	if a.detachedRuntime != nil && a.detachedRuntime.IsRecovery() {
+		shadowEventType = "shadow_reopened"
+	}
 	ev := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now().UTC(),
-		Type:      "shadow_created",
+		Type:      shadowEventType,
 		SessionID: s.ID,
 		Fields: map[string]any{
 			"real":  sw.Real,
@@ -1767,6 +1787,26 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 
 	cmdID := "cmd-" + uuid.NewString()
 	queuedAt := time.Now().UTC()
+	if a.detachedRuntime != nil {
+		status := a.detachedRuntime.RuntimeStatus()
+		recoveryAction := ""
+		if opts.provenance == policy.CommandProvenanceDirenvRefresh {
+			recoveryAction = "direnv_refresh"
+		}
+		if status.LifecycleState != detached.LifecycleReady && !a.detachedRuntime.CanRunRecoveryAction(recoveryAction) {
+			message := fmt.Sprintf("detached supervisor lifecycle is %s; command was not executed", status.LifecycleState)
+			if strings.TrimSpace(status.LastError) != "" {
+				message += ": " + status.LastError
+			}
+			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: queuedAt, Request: req,
+				Result: types.ExecResult{ExitCode: 127,
+					Error:   &types.ExecError{Code: "E_SUPERVISOR_NOT_READY", Message: message},
+					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_SUPERVISOR_NOT_READY", Message: message}},
+				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			}
+			return resp, http.StatusServiceUnavailable, nil
+		}
+	}
 	queueCtx := ctx
 	var cancelQueue context.CancelFunc
 	if opts.queueTimeout > 0 {
@@ -2041,8 +2081,38 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	origCommand := req.Command
 	origArgs := append([]string{}, req.Args...)
 
+	clearDetachedJournal := true
+	if a.detachedRuntime != nil {
+		if err := a.detachedRuntime.RecordCommand(detached.InflightCommand{
+			CommandID: cmdID, Operation: "exec", AdmittedAt: time.Now().UTC(), Sensitive: opts.sensitive,
+		}); err != nil {
+			_ = a.detachedRuntime.MarkFailed("persist command admission: " + err.Error())
+			message := "durable command admission failed; command was not executed"
+			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
+				Result: types.ExecResult{ExitCode: 127, CommandTimeout: timeoutResolution.Metadata, DurationMs: int64(time.Since(start) / time.Millisecond),
+					Error:   &types.ExecError{Code: "E_DURABLE_ADMISSION", Message: message},
+					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_DURABLE_ADMISSION", Message: message}},
+				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			}
+			return resp, http.StatusServiceUnavailable, nil
+		}
+		defer func() {
+			if clearDetachedJournal {
+				_ = a.detachedRuntime.CompleteCommand(cmdID)
+			}
+		}()
+	}
+
 	outputArtifactCapture := newCommandOutputArtifactCapture(s, cmdID, req.OutputArtifact)
 	configureAttempt := func(extraCfg *extraProcConfig) *extraProcConfig {
+		if a.detachedRuntime != nil {
+			if extraCfg == nil {
+				extraCfg = &extraProcConfig{}
+			}
+			extraCfg.onProcessStarted = func(pid, processGroupID int) error {
+				return a.detachedRuntime.MarkCommandProcess(cmdID, pid, processGroupID)
+			}
+		}
 		if outputArtifactCapture != nil {
 			if extraCfg == nil {
 				extraCfg = &extraProcConfig{}
@@ -2067,6 +2137,12 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	onStarted := func() {
 		commandStarted = true
 		startedAt := time.Now().UTC()
+		if a.detachedRuntime != nil {
+			if err := a.detachedRuntime.MarkCommandStarted(cmdID, startedAt); err != nil {
+				clearDetachedJournal = false
+				_ = a.detachedRuntime.MarkFailed("persist command start: " + err.Error())
+			}
+		}
 		startEv := types.Event{ID: uuid.NewString(), Timestamp: startedAt, Type: "command_started", SessionID: id, CommandID: cmdID, CommandTimeout: &timeoutResolution.Metadata,
 			Fields: map[string]any{"command": origCommand, "args": auditArgumentValues(origArgs, opts.sensitive)}}
 		s.InjectTraceContext(startEv.Fields)
@@ -2346,6 +2422,19 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		resp.Result.StderrTotalBytes = 0
 		resp.Result.StdoutTruncated = false
 		resp.Result.StderrTruncated = false
+	}
+	if a.detachedRuntime != nil {
+		if err := a.detachedRuntime.UpdateMutable(detachedEnvironmentRecoveryState(s)); err != nil {
+			clearDetachedJournal = false
+			_ = a.detachedRuntime.MarkFailed("persist terminal mutable session state: " + err.Error())
+			message := "command completed, but durable detached session state could not be committed; side effects may have occurred and the command must not be replayed"
+			resp.Result.Error = &types.ExecError{Code: "E_TERMINAL_PERSISTENCE", Message: message}
+			resp.Result.Outcome.Code = "E_TERMINAL_PERSISTENCE"
+			resp.Result.Outcome.Message = message
+			resp.Result.Outcome.Retryable = false
+			applyIncludeEvents(resp, includeEvents)
+			return resp, http.StatusInternalServerError, nil
+		}
 	}
 	applyIncludeEvents(resp, includeEvents)
 	statusCode := http.StatusOK

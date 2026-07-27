@@ -239,6 +239,10 @@ func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) writeFileTool(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	if err := a.detachedMutationReady(); err != nil {
+		writeToolError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	var req fileToolRequest
 	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
 		return
@@ -248,6 +252,12 @@ func (a *App) writeFileTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, code, err.Error())
 		return
 	}
+	completeMutation, err := a.beginDetachedMutation("write_file")
+	if err != nil {
+		writeToolError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	defer completeMutation()
 	if req.CreateDirs {
 		if err := os.MkdirAll(filepath.Dir(rp.Real), 0o755); err != nil {
 			writeToolError(w, http.StatusInternalServerError, err.Error())
@@ -268,6 +278,10 @@ func (a *App) writeFileTool(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) editFileTool(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	if err := a.detachedMutationReady(); err != nil {
+		writeToolError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	var req fileToolRequest
 	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
 		return
@@ -309,6 +323,12 @@ func (a *App) editFileTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("edited file exceeds limit of %d bytes", maxToolFileBytes))
 		return
 	}
+	completeMutation, err := a.beginDetachedMutation("edit_file")
+	if err != nil {
+		writeToolError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	defer completeMutation()
 	if err := os.WriteFile(rp.Real, newData, 0o644); err != nil {
 		writeToolError(w, statusForFileError(err), err.Error())
 		return

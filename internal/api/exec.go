@@ -49,6 +49,11 @@ type extraProcConfig struct {
 	execveHandler          any                // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
 	blockList              any                // Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
 
+	// onProcessStarted durably records the external process group before strict
+	// barriers release user code. A persistence failure kills the group and
+	// prevents command admission from being reported as successful.
+	onProcessStarted func(pid, processGroupID int) error
+
 	// outputArtifact receives the complete combined stdout/stderr write stream
 	// for trusted callers that requested a bounded remote overflow artifact.
 	outputArtifact *commandOutputArtifactCapture
@@ -433,6 +438,27 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandStartError{err: fmt.Errorf("start: %w", err)}
 	}
 	slog.Debug("exec command started", "command", req.Command, "pid", cmd.Process.Pid)
+	if extra != nil && extra.onProcessStarted != nil {
+		pid := cmd.Process.Pid
+		if persistErr := extra.onProcessStarted(pid, getProcessGroupID(pid)); persistErr != nil {
+			_ = killProcessGroup(getProcessGroupID(pid))
+			_, _ = cmd.Process.Wait()
+			extra.closeWrapperLogPipe()
+			if stdoutPipeR != nil {
+				stdoutPipeR.Close()
+			}
+			if stderrPipeR != nil {
+				stderrPipeR.Close()
+			}
+			if stdoutPipeW != nil {
+				stdoutPipeW.Close()
+			}
+			if stderrPipeW != nil {
+				stderrPipeW.Close()
+			}
+			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError("E_DETACHED_COMMAND_JOURNAL", persistErr)
+		}
+	}
 
 	// For ptrace mode: close write ends (now owned by child) and start draining
 	if tracer != nil && stdoutPipeW != nil {

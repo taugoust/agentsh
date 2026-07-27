@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -64,40 +66,124 @@ func newSupervisorRunCmd() *cobra.Command {
 		Use:   "run",
 		Short: "Run one detached supervisor process",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if stateDir == "" {
-				return fmt.Errorf("--state-dir is required")
-			}
-			if sockPath == "" {
-				return fmt.Errorf("--socket is required")
-			}
-			cfg, _, err := loadLocalConfig(configPath)
-			if err != nil {
-				return err
-			}
-			if err := loadSupervisorNethelperCredential(); err != nil {
-				if detachedSupervisorStrictNetworkEnforcement(cfg) {
-					return fmt.Errorf("strict detached helper credential unavailable: %w", err)
-				}
-				fmt.Fprintf(os.Stderr, "agentsh: warning: nethelper credential unavailable; continuing without the helper in degraded mode: %v\n", err)
-				for _, key := range []string{nethelper.EnvSocket, nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, nethelper.EnvCredentialFile} {
-					_ = os.Unsetenv(key)
-				}
-			}
-			if err := configureSupervisorMVP(cfg, stateDir, sockPath); err != nil {
-				return err
-			}
-			srv, err := server.New(cfg)
-			if err != nil {
-				return err
-			}
-			defer srv.Close()
-			return srv.Run(cmd.Context())
+			return runDetachedSupervisor(cmd.Context(), configPath, stateDir, sockPath)
 		},
 	}
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to server config YAML")
 	cmd.Flags().StringVar(&stateDir, "state-dir", "", "Detached session state directory")
 	cmd.Flags().StringVar(&sockPath, "socket", "", "Supervisor Unix socket path")
 	return cmd
+}
+
+func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath string) (runErr error) {
+	if strings.TrimSpace(stateDir) == "" {
+		return fmt.Errorf("--state-dir is required")
+	}
+	if strings.TrimSpace(sockPath) == "" {
+		return fmt.Errorf("--socket is required")
+	}
+	stateDir, err := filepath.Abs(stateDir)
+	if err != nil {
+		return fmt.Errorf("resolve detached state directory: %w", err)
+	}
+	sockPath, err = filepath.Abs(sockPath)
+	if err != nil {
+		return fmt.Errorf("resolve detached supervisor socket: %w", err)
+	}
+	if filepath.Clean(filepath.Dir(sockPath)) != filepath.Clean(stateDir) {
+		return fmt.Errorf("detached supervisor socket must be inside the exact state directory")
+	}
+	lock, err := detached.AcquireSupervisorLock(stateDir)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	startIdentity, bootID, identityErr := detached.CurrentProcessIdentity(os.Getpid())
+	if identityErr != nil {
+		return fmt.Errorf("capture detached supervisor process identity: %w", identityErr)
+	}
+	runtimeState, err := detached.BeginRuntime(stateDir, os.Getpid(), startIdentity, bootID, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if runErr != nil {
+			_ = runtimeState.MarkFailed(runErr.Error())
+		}
+	}()
+
+	cfg, _, err := loadLocalConfig(configPath)
+	if err != nil {
+		return err
+	}
+	for name, value := range runtimeState.NethelperRecoveryEnvironment() {
+		if err := os.Setenv(name, value); err != nil {
+			return fmt.Errorf("apply durable nethelper recovery path %s: %w", name, err)
+		}
+	}
+	if err := loadSupervisorNethelperCredential(); err != nil {
+		if detachedSupervisorStrictNetworkEnforcement(cfg) && !runtimeState.IsRecovery() {
+			return fmt.Errorf("strict detached helper credential unavailable: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "agentsh: warning: nethelper credential unavailable; starting fail-closed recovery control plane: %v\n", err)
+		if detachedSupervisorStrictNetworkEnforcement(cfg) {
+			// Keep capability initialization on the external-helper path while
+			// carrying no valid helper authority. The random placeholder can never
+			// authenticate; strict command admission remains blocked until the
+			// wrapper performs an authorized transactional rebind.
+			if strings.TrimSpace(os.Getenv(nethelper.EnvSocket)) == "" {
+				_ = os.Setenv(nethelper.EnvSocket, filepath.Join(stateDir, "nethelper-unavailable.sock"))
+			}
+			_ = os.Setenv(nethelper.EnvHelperInstanceCredential, randomDetachedEventToken())
+		} else {
+			for _, key := range []string{nethelper.EnvSocket, nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, nethelper.EnvCredentialFile} {
+				_ = os.Unsetenv(key)
+			}
+		}
+	}
+	if err := configureSupervisorMVP(cfg, stateDir, sockPath); err != nil {
+		return err
+	}
+	srv, err := server.New(cfg)
+	if err != nil {
+		return err
+	}
+	defer srv.Close()
+	if _, _, err := srv.BootstrapDetachedSession(ctx, runtimeState); err != nil {
+		return err
+	}
+
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(context.Background())
+	defer cancelHeartbeat()
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case now := <-ticker.C:
+				if err := runtimeState.Heartbeat(now); err != nil {
+					fmt.Fprintf(os.Stderr, "agentsh: detached heartbeat persistence failed: %v\n", err)
+				}
+			}
+		}
+	}()
+	runErr = srv.Run(ctx)
+	if runErr == nil {
+		status := runtimeState.RuntimeStatus()
+		switch status.LifecycleState {
+		case detached.LifecycleStopping:
+			_ = runtimeState.MarkStopped()
+		case detached.LifecycleStopped, detached.LifecycleFinalized:
+		default:
+			// A clean server return without an already durable stop transition is
+			// not a terminal session decision. Exit failed so the service manager
+			// recreates this exact incarnation rather than stranding stale state.
+			runErr = fmt.Errorf("supervisor exited before a durable stop transition")
+		}
+	}
+	return runErr
 }
 
 func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error {
@@ -251,7 +337,7 @@ func detachedSupervisorServiceEnv(eventToken string, env, inheritPatterns []stri
 	// file path; the supervisor reads it before serving requests. The generic
 	// subagent runtime configuration is non-secret control-plane data and must
 	// cross the systemd-run boundary so spawn_subagent works in detached mode.
-	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, detached.EnvNetworkEnforcementRequested}
+	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile, detached.EnvNetworkEnforcementRequested}
 	keys = append(keys, detachedSupervisorRuntimeEnvKeys...)
 	seen := map[string]struct{}{"AGENTSH_DETACHED_EVENT_TOKEN": {}}
 	for _, key := range keys {
@@ -276,6 +362,28 @@ func detachedSupervisorServiceEnv(eventToken string, env, inheritPatterns []stri
 		seen[name] = struct{}{}
 	}
 	return serviceEnv
+}
+
+func restartUnsafeServiceEnvironmentNames(assignments []string) []string {
+	var unsafe []string
+	for _, assignment := range assignments {
+		name, _, ok := strings.Cut(assignment, "=")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" {
+			continue
+		}
+		switch name {
+		case "AGENTSH_DETACHED_EVENT_TOKEN", nethelper.EnvCredentialFile, nethelper.EnvSocket,
+			nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile,
+			detached.EnvNetworkEnforcementRequested, detached.EnvSupervisorLaunchMode:
+			continue
+		}
+		if !detached.RestartSafeEnvironmentName(name) {
+			unsafe = append(unsafe, name)
+		}
+	}
+	slices.Sort(unsafe)
+	return slices.Compact(unsafe)
 }
 
 func detachedSupervisorEnvRequested(name string, patterns []string) bool {
@@ -529,6 +637,21 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	}
 	serviceEnv := detachedSupervisorServiceEnv(eventToken, launcherEnv, envInherit)
 	serviceEnvFile := filepath.Join(stateDir, "supervisor.env")
+	req := types.CreateSessionRequest{
+		ID: sessionID, Workspace: realWorkspace, Policy: policyName, WorkspaceMode: workspaceMode,
+		Home: userHomeDir(), RuntimeHomeMode: runtimeHomeMode, EnvBaseMode: envBaseMode, EnvInherit: envInherit,
+	}
+	if len(realWorkspaces) > 1 {
+		for _, path := range realWorkspaces {
+			req.WorkspaceRoots = append(req.WorkspaceRoots, types.WorkspaceRoot{Path: path})
+		}
+	}
+	if workspaceMode == string(types.WorkspaceModeShadow) {
+		req.Shadow = &types.CreateShadowOptions{KeepOnDestroy: true}
+	} else if workspaceMode == string(types.WorkspaceModeDirect) {
+		realPaths := true
+		req.RealPaths = &realPaths
+	}
 	launch := buildDetachedSupervisorLaunch(detachedSupervisorLaunchRequest{
 		Exe:            exe,
 		Args:           detachedSupervisorRunArgs(stateDir, sockPath, configPath),
@@ -542,12 +665,34 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	if launch.UsesSystemd {
 		serviceEnv = withoutEnvAssignments(serviceEnv, detached.EnvSupervisorLaunchMode)
 		serviceEnv = append(serviceEnv, detached.EnvSupervisorLaunchMode+"=systemd-user-delegated")
-		if err := writeDetachedSupervisorEnvironmentFile(serviceEnvFile, serviceEnv); err != nil {
-			return nil, err
-		}
-		// The transient unit has no restart policy. Keep the protected file only
-		// through launch/session handshake, then remove this extra credential copy.
-		defer os.Remove(serviceEnvFile)
+	}
+	// Retain the protected, path-oriented bootstrap environment for exact
+	// process recreation. Credential values are never written here; only the
+	// detached event token and protected helper/recovery source paths are secret.
+	if err := writeDetachedSupervisorEnvironmentFile(serviceEnvFile, serviceEnv); err != nil {
+		return nil, err
+	}
+	createdAt := time.Now().UTC()
+	manifest := detached.NewRecoveryManifest(sessionID, req, detached.LaunchSpec{
+		Executable: exe, ConfigPath: configPath, WorkingDir: realWorkspace,
+		EnvironmentFile: serviceEnvFile, LogFile: logPath,
+		SystemdUnit: launch.SystemdUnit, UsesSystemd: launch.UsesSystemd,
+		PrivateTmp: !detachedSupervisorNeedsHostTmp(serviceEnv),
+	}, createdAt)
+	manifest.Mutable.VolatileEnvironment = restartUnsafeServiceEnvironmentNames(serviceEnv)
+	if err := detached.WriteRecoveryManifest(stateDir, manifest); err != nil {
+		return nil, err
+	}
+	provisioningMeta := supervisorMetadata{
+		SessionID: sessionID, ID: sessionID, CreatedAt: createdAt,
+		State: detached.LifecycleProvisioning, Policy: policyName,
+		RealWorkspace: realWorkspace, WorkspaceMode: workspaceMode,
+		SupervisorSock: sockPath, EventToken: eventToken,
+		SystemdUnit: launch.SystemdUnit, NetworkEnforcement: detachedSupervisorPendingNetworkEnforcement(preflightCfg),
+		ProtocolVersion: supervisorProtocolVersion,
+	}
+	if err := writeSupervisorMetadata(stateDir, provisioningMeta); err != nil {
+		return nil, err
 	}
 	cmd := exec.Command(launch.Path, launch.Args...)
 	cmd.Env = launch.Env
@@ -562,11 +707,18 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 		return nil, fmt.Errorf("start supervisor: %w", err)
 	}
 	pid := cmd.Process.Pid
-	ownerPID := pid
-	if !launch.OwnerPIDFromCommand {
-		ownerPID = 0
-	}
 	_ = cmd.Process.Release()
+	keepSupervisor := false
+	defer func() {
+		if keepSupervisor {
+			return
+		}
+		if launch.SystemdUnit != "" {
+			_ = stopDetachedSupervisorSystemdUnit(context.Background(), launch.SystemdUnit)
+		} else {
+			_ = signalProcess(pid, os.Kill)
+		}
+	}()
 
 	waitClient := client.NewWithTimeout("unix://"+sockPath, "", time.Second)
 	if err := waitForSupervisor(ctx, sockPath, waitClient); err != nil {
@@ -577,47 +729,39 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 		}
 		return nil, err
 	}
-	if launch.UsesSystemd {
-		// systemd consumed EnvironmentFile before exec. Remove it before any
-		// disposable or user command can enter the session.
-		_ = os.Remove(serviceEnvFile)
-	}
-	// Session creation can copy large shadow workspaces with rsync. Keep the
-	// supervisor readiness probe short, but use a much longer timeout for the
-	// actual create request so multi-root pi-auto sessions do not fail while the
-	// shadow workspace is still being materialized.
-	c := client.NewWithTimeout("unix://"+sockPath, "", 30*time.Minute)
-
-	req := types.CreateSessionRequest{
-		ID:              sessionID,
-		Workspace:       realWorkspace,
-		Policy:          policyName,
-		WorkspaceMode:   workspaceMode,
-		Home:            userHomeDir(),
-		RuntimeHomeMode: runtimeHomeMode,
-		EnvBaseMode:     envBaseMode,
-		EnvInherit:      envInherit,
-	}
-	if len(realWorkspaces) > 1 {
-		for _, path := range realWorkspaces {
-			req.WorkspaceRoots = append(req.WorkspaceRoots, types.WorkspaceRoot{Path: path})
-		}
-	}
-	if workspaceMode == string(types.WorkspaceModeShadow) {
-		req.Shadow = &types.CreateShadowOptions{KeepOnDestroy: true}
-	} else if workspaceMode == string(types.WorkspaceModeDirect) {
-		realPaths := true
-		req.RealPaths = &realPaths
-	}
-	sess, err := c.CreateSessionWithRequest(ctx, req)
+	// Bootstrap and retained-shadow reopening happen inside the supervisor before
+	// its listeners serve. Fetch the exact identity rather than issuing a second
+	// create request from this launcher.
+	c := client.NewWithTimeout("unix://"+sockPath, "", 30*time.Second)
+	sess, err := c.GetSession(ctx, sessionID)
 	if err != nil {
 		if launch.SystemdUnit != "" {
 			_ = stopDetachedSupervisorSystemdUnit(ctx, launch.SystemdUnit)
 		} else {
 			_ = signalProcess(pid, os.Kill)
 		}
-		return nil, fmt.Errorf("create supervised session: %w", err)
+		return nil, fmt.Errorf("read bootstrapped supervised session: %w", err)
 	}
+	if sess.ID != sessionID {
+		return nil, fmt.Errorf("detached supervisor identity mismatch: got %s, want %s", sess.ID, sessionID)
+	}
+	var networkEnforcement detached.NetworkEnforcement
+	networkPath := "/api/v1/sessions/" + url.PathEscape(sessionID) + "/network-enforcement"
+	if err := c.DoRawJSON(ctx, http.MethodGet, networkPath, nil, &networkEnforcement); err != nil {
+		return nil, fmt.Errorf("read live detached network readiness: %w", err)
+	}
+	networkEnforcement.Normalize()
+	if detachedSupervisorStrictNetworkEnforcement(preflightCfg) && !networkEnforcement.Ready() {
+		return nil, fmt.Errorf("strict detached network startup refused: status=%s tier=%s: %s", networkEnforcement.Status, networkEnforcement.Tier, networkEnforcement.Detail)
+	}
+	meta, _, err := detached.ReadMetadataFromRoot(filepath.Dir(stateDir), sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if meta.SessionID != sessionID || meta.State != detached.LifecycleReady || meta.Generation == 0 || strings.TrimSpace(meta.IncarnationID) == "" {
+		return nil, fmt.Errorf("detached supervisor did not publish a complete ready identity for %s", sessionID)
+	}
+	meta.NetworkEnforcement = &networkEnforcement
 	worktree := sess.WorkspaceMount
 	if sess.Shadow != nil && sess.Shadow.Work != "" {
 		worktree = sess.Shadow.Work
@@ -625,84 +769,8 @@ func startDetachedSupervisorSession(ctx context.Context, workspaces []string, wo
 	if worktree == "" {
 		worktree = sess.Workspace
 	}
-
-	networkEnforcement, handshakeErr := detachedSupervisorRuntimeHandshake(ctx, c, sessionID)
-	if handshakeErr != nil {
-		networkEnforcement = detachedSupervisorPendingNetworkEnforcement(preflightCfg)
-		if detachedSupervisorStrictNetworkEnforcement(preflightCfg) {
-			networkEnforcement.Status = detached.NetworkEnforcementStatusFailed
-		} else {
-			networkEnforcement.Status = detached.NetworkEnforcementStatusDegraded
-		}
-		networkEnforcement.CheckedAt = time.Now().UTC()
-		networkEnforcement.Detail = "runtime enforcement handshake failed: " + handshakeErr.Error()
-		if detachedSupervisorStrictNetworkEnforcement(preflightCfg) {
-			networkEnforcement.Readiness = detached.NetworkEnforcementStatusFailed
-			networkEnforcement.Warning = "strict detached startup will be refused because runtime network readiness could not be observed"
-		} else {
-			networkEnforcement.Warning = "runtime network readiness could not be observed; continuing in degraded mode because strict enforcement was not requested"
-		}
-		networkEnforcement.Normalize()
-	}
-
-	var metaRoots []detached.WorkspaceRoot
-	if sess.Shadow != nil {
-		for _, root := range sess.Shadow.Roots {
-			metaRoots = append(metaRoots, detached.WorkspaceRoot{Name: root.Name, Real: root.Real, Work: root.Work})
-		}
-	}
-	meta := supervisorMetadata{
-		SessionID:          sessionID,
-		ID:                 sessionID,
-		CreatedAt:          time.Now().UTC(),
-		State:              "active",
-		Policy:             sess.Policy,
-		RealWorkspace:      realWorkspace,
-		WorkspaceMode:      sess.WorkspaceMode,
-		Worktree:           worktree,
-		WorkspaceRoots:     metaRoots,
-		RuntimeHome:        sess.RuntimeHome,
-		RuntimeTmp:         sess.RuntimeTmp,
-		ProcessHome:        sess.ProcessHome,
-		RuntimeHomeMode:    sess.RuntimeHomeMode,
-		EnvBaseMode:        sess.EnvBaseMode,
-		EnvInherit:         sess.EnvInherit,
-		SupervisorSock:     sockPath,
-		EventToken:         eventToken,
-		SystemdUnit:        launch.SystemdUnit,
-		OwnerPID:           ownerPID,
-		NetworkEnforcement: networkEnforcement,
-		ProtocolVersion:    supervisorProtocolVersion,
-	}
-	if detachedSupervisorStrictNetworkEnforcement(preflightCfg) && (networkEnforcement == nil || !networkEnforcement.Ready()) {
-		if networkEnforcement == nil {
-			networkEnforcement = detachedSupervisorPendingNetworkEnforcement(preflightCfg)
-			meta.NetworkEnforcement = networkEnforcement
-		}
-		networkEnforcement.Status = detached.NetworkEnforcementStatusFailed
-		networkEnforcement.Readiness = detached.NetworkEnforcementStatusFailed
-		networkEnforcement.CheckedAt = time.Now().UTC()
-		networkEnforcement.Warning = "strict detached startup refused because runtime enforcement is not ready"
-		networkEnforcement.Normalize()
-		meta.State = "failed"
-		meta.EventToken = ""
-		_ = writeSupervisorMetadata(stateDir, meta)
-		_ = c.DestroySession(context.Background(), sessionID)
-		if launch.SystemdUnit != "" {
-			_ = stopDetachedSupervisorSystemdUnit(ctx, launch.SystemdUnit)
-		} else {
-			_ = signalProcess(pid, os.Kill)
-		}
-		return nil, fmt.Errorf("strict detached network startup refused: status=%s tier=%s: %s", networkEnforcement.Status, networkEnforcement.Tier, networkEnforcement.Detail)
-	}
-	if err := writeSupervisorMetadata(stateDir, meta); err != nil {
-		if launch.SystemdUnit != "" {
-			_ = stopDetachedSupervisorSystemdUnit(ctx, launch.SystemdUnit)
-		} else {
-			_ = signalProcess(pid, os.Kill)
-		}
-		return nil, err
-	}
+	meta.Worktree = worktree
+	keepSupervisor = true
 	return &detachedSessionStartResult{supervisorMetadata: meta, Session: sess, StateDir: stateDir}, nil
 }
 
@@ -722,7 +790,14 @@ func detachedSupervisorRuntimeHandshake(ctx context.Context, c *client.Client, s
 }
 
 func waitForSupervisor(ctx context.Context, sockPath string, c *client.Client) error {
-	deadline := time.Now().Add(15 * time.Second)
+	return waitForSupervisorAfterGeneration(ctx, sockPath, c, 0)
+}
+
+func waitForSupervisorAfterGeneration(ctx context.Context, sockPath string, c *client.Client, priorGeneration uint64) error {
+	// Shadow materialization can legitimately take many minutes. The socket is
+	// bound during server construction but is not served until exact bootstrap
+	// and enforcement preflight commit, so this wait is also the readiness gate.
+	deadline := time.Now().Add(30 * time.Minute)
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -730,9 +805,20 @@ func waitForSupervisor(ctx context.Context, sockPath string, c *client.Client) e
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timed out waiting for supervisor socket %s", sockPath)
 		}
-		if _, statErr := os.Stat(sockPath); statErr == nil {
-			if _, err := c.ListSessions(ctx); err == nil {
-				return nil
+		stateDir := filepath.Dir(sockPath)
+		sessionID := filepath.Base(stateDir)
+		meta, _, metaErr := detached.ReadMetadataFromRoot(filepath.Dir(stateDir), sessionID)
+		if metaErr == nil && (priorGeneration == 0 || meta.Generation > priorGeneration) {
+			switch meta.State {
+			case detached.LifecycleFailed:
+				return fmt.Errorf("detached supervisor %s failed during startup: %s", sessionID, meta.LastError)
+			case detached.LifecycleStopped, detached.LifecycleFinalized:
+				return fmt.Errorf("detached supervisor %s became %s during startup", sessionID, meta.State)
+			}
+			if _, statErr := os.Stat(sockPath); statErr == nil {
+				if _, err := c.ListSessions(ctx); err == nil {
+					return nil
+				}
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -747,7 +833,189 @@ func detachedClientForSession(sessionID string) (*client.Client, supervisorMetad
 	if err := validateSupervisorMetadataUsable(meta); err != nil {
 		return nil, supervisorMetadata{}, err
 	}
-	return client.New("unix://"+meta.SupervisorSock, ""), meta, nil
+	c := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", 3*time.Second)
+	handshakeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := validateDetachedRuntimeHandshake(handshakeCtx, c, meta); err != nil {
+		return nil, supervisorMetadata{}, err
+	}
+	return c, meta, nil
+}
+
+func validateDetachedRuntimeHandshake(ctx context.Context, c *client.Client, meta supervisorMetadata) error {
+	if meta.ProtocolVersion < 2 {
+		// Version-one metadata has no incarnation handshake. Keep read
+		// compatibility, but never describe it as crash recoverable.
+		return nil
+	}
+	var status detached.RuntimeStatus
+	if err := c.DoRawJSON(ctx, http.MethodGet, "/api/v1/detached/status", nil, &status); err != nil {
+		return fmt.Errorf("detached supervisor identity handshake failed for %s: %w", meta.SessionID, err)
+	}
+	if status.ProtocolVersion != meta.ProtocolVersion || status.SessionID != meta.SessionID ||
+		status.Generation != meta.Generation || status.IncarnationID != meta.IncarnationID ||
+		status.OwnerPID != meta.OwnerPID || status.OwnerStartIdentity != meta.OwnerStartIdentity || status.BootID != meta.BootID {
+		return fmt.Errorf("detached supervisor identity handshake mismatch for expected session %s", meta.SessionID)
+	}
+	if status.LifecycleState != detached.LifecycleReady && status.LifecycleState != detached.LifecycleDegraded && status.LifecycleState != detached.LifecycleRecovering {
+		return fmt.Errorf("detached supervisor %s is %s: %s", meta.SessionID, status.LifecycleState, status.LastError)
+	}
+	return nil
+}
+
+func newSessionRecoverCmd() *cobra.Command {
+	var outputJSON bool
+	cmd := &cobra.Command{
+		Use:   "recover SESSION_ID",
+		Short: "Recover the exact detached supervisor and retained session",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			status, err := recoverDetachedSession(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			if outputJSON {
+				return printJSON(cmd, status)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Session %s recovered (generation %d, state %s)\n", status.SessionID, status.Generation, status.LifecycleState)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output lifecycle status as JSON")
+	return cmd
+}
+
+func recoverDetachedSession(ctx context.Context, sessionID string) (detached.RuntimeStatus, error) {
+	meta, stateDir, err := readSupervisorMetadata(sessionID)
+	if err != nil {
+		return detached.RuntimeStatus{}, err
+	}
+	manifest, err := detached.ReadRecoveryManifest(stateDir)
+	if err != nil {
+		return detached.RuntimeStatus{}, fmt.Errorf("exact recovery is unavailable for legacy/incomplete detached session %s: %w", sessionID, err)
+	}
+	if manifest.SessionID != sessionID {
+		return detached.RuntimeStatus{}, fmt.Errorf("detached recovery manifest identity mismatch")
+	}
+	switch manifest.State {
+	case detached.LifecycleFinalizing, detached.LifecycleStopping, detached.LifecycleStopped, detached.LifecycleFinalized:
+		return detached.RuntimeStatus{}, fmt.Errorf("detached session %s is %s and cannot be recovered", sessionID, manifest.State)
+	}
+	if c, _, liveErr := detachedClientForSession(sessionID); liveErr == nil {
+		var status detached.RuntimeStatus
+		if err := c.DoRawJSON(ctx, http.MethodGet, "/api/v1/detached/status", nil, &status); err == nil {
+			return status, nil
+		}
+	}
+
+	// A failed handshake does not prove that a direct supervisor process died.
+	// Never unlink its live socket and race a second process. Systemd restart is
+	// an explicit replacement of the exact unit; for direct mode, terminate only
+	// a kernel-verified exact owner and wait for it to die first.
+	if !manifest.Launch.UsesSystemd && meta.OwnerPID > 0 && supervisorPIDAlive(meta.OwnerPID) {
+		if meta.OwnerStartIdentity == "" || meta.BootID == "" {
+			return detached.RuntimeStatus{}, fmt.Errorf("refusing direct recovery while unverified owner_pid %d is still alive", meta.OwnerPID)
+		}
+		if detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
+			if err := signalProcess(meta.OwnerPID, os.Kill); err != nil {
+				return detached.RuntimeStatus{}, fmt.Errorf("terminate unresponsive exact detached supervisor: %w", err)
+			}
+			deadline := time.Now().Add(10 * time.Second)
+			for supervisorPIDAlive(meta.OwnerPID) && detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
+				if time.Now().After(deadline) {
+					return detached.RuntimeStatus{}, fmt.Errorf("timed out terminating unresponsive exact detached supervisor %d", meta.OwnerPID)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+	}
+	_ = os.Remove(meta.SupervisorSock)
+	serviceEnv, err := detached.ReadServiceEnvironment(manifest.Launch.EnvironmentFile)
+	if err != nil {
+		return detached.RuntimeStatus{}, fmt.Errorf("load exact supervisor recovery environment: %w", err)
+	}
+	args := detachedSupervisorRunArgs(stateDir, meta.SupervisorSock, manifest.Launch.ConfigPath)
+	if manifest.Launch.UsesSystemd {
+		if manifest.Launch.SystemdUnit == "" || manifest.Launch.SystemdUnit != meta.SystemdUnit {
+			return detached.RuntimeStatus{}, fmt.Errorf("detached systemd recovery identity is incomplete")
+		}
+		restartCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		restart := exec.CommandContext(restartCtx, "systemctl", "--user", "restart", manifest.Launch.SystemdUnit)
+		restartErr := restart.Run()
+		cancel()
+		if restartErr != nil {
+			systemdRun, lookErr := exec.LookPath("systemd-run")
+			if lookErr != nil {
+				return detached.RuntimeStatus{}, fmt.Errorf("recreate detached systemd unit: %w", lookErr)
+			}
+			propertyEnv := serviceEnv
+			if !manifest.Launch.PrivateTmp {
+				propertyEnv = append(append([]string(nil), serviceEnv...), "SSH_AUTH_SOCK="+filepath.Join(os.TempDir(), "agentsh-recovery-agent.sock"))
+			}
+			launchArgs := buildSystemdRunDetachedSupervisorArgs(
+				manifest.Launch.SystemdUnit, manifest.Launch.WorkingDir,
+				manifest.Launch.EnvironmentFile, manifest.Launch.LogFile,
+				propertyEnv, manifest.Launch.Executable, args,
+			)
+			launchCmd := exec.CommandContext(ctx, systemdRun, launchArgs...)
+			launchCmd.Env = withoutEnvAssignments(os.Environ(), "AGENTSH_DETACHED_EVENT_TOKEN", nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce)
+			launchCmd.Dir = manifest.Launch.WorkingDir
+			if output, launchErr := launchCmd.CombinedOutput(); launchErr != nil {
+				return detached.RuntimeStatus{}, fmt.Errorf("recreate detached supervisor unit: %w: %s", launchErr, strings.TrimSpace(string(output)))
+			}
+		}
+	} else {
+		names := make([]string, 0, len(serviceEnv))
+		for _, assignment := range serviceEnv {
+			name, _, ok := strings.Cut(assignment, "=")
+			if ok {
+				names = append(names, name)
+			}
+		}
+		env := withoutEnvAssignments(os.Environ(), names...)
+		env = append(env, serviceEnv...)
+		env = withoutEnvAssignments(env, detached.EnvSupervisorLaunchMode)
+		env = append(env, detached.EnvSupervisorLaunchMode+"=direct")
+		logFile, openErr := os.OpenFile(manifest.Launch.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if openErr != nil {
+			return detached.RuntimeStatus{}, openErr
+		}
+		defer logFile.Close()
+		launchCmd := exec.Command(manifest.Launch.Executable, args...)
+		launchCmd.Env = env
+		launchCmd.Dir = manifest.Launch.WorkingDir
+		launchCmd.Stdout = logFile
+		launchCmd.Stderr = logFile
+		setDetachedProcessAttrs(launchCmd)
+		if err := launchCmd.Start(); err != nil {
+			return detached.RuntimeStatus{}, fmt.Errorf("restart detached supervisor: %w", err)
+		}
+		_ = launchCmd.Process.Release()
+	}
+
+	waitClient := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", time.Second)
+	if err := waitForSupervisorAfterGeneration(ctx, meta.SupervisorSock, waitClient, meta.Generation); err != nil {
+		return detached.RuntimeStatus{}, err
+	}
+	fresh, _, err := readSupervisorMetadata(sessionID)
+	if err != nil {
+		return detached.RuntimeStatus{}, err
+	}
+	if err := validateSupervisorMetadataUsable(fresh); err != nil {
+		return detached.RuntimeStatus{}, err
+	}
+	var status detached.RuntimeStatus
+	statusClient := client.NewWithTimeout("unix://"+fresh.SupervisorSock, "", 3*time.Second)
+	if err := statusClient.DoRawJSON(ctx, http.MethodGet, "/api/v1/detached/status", nil, &status); err != nil {
+		return detached.RuntimeStatus{}, err
+	}
+	if status.SessionID != sessionID || status.Generation <= meta.Generation || status.IncarnationID == "" || status.IncarnationID == meta.IncarnationID {
+		return detached.RuntimeStatus{}, fmt.Errorf("recovered supervisor did not publish a new valid exact incarnation")
+	}
+	if err := validateDetachedRuntimeHandshake(ctx, statusClient, fresh); err != nil {
+		return detached.RuntimeStatus{}, err
+	}
+	return status, nil
 }
 
 func newSessionStopCmd() *cobra.Command {
@@ -756,27 +1024,74 @@ func newSessionStopCmd() *cobra.Command {
 		Short: "Stop a detached session supervisor",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id := args[0]
-			c, meta, err := detachedClientForSession(id)
-			if err != nil {
+			if err := stopDetachedSessionExact(cmd.Context(), args[0]); err != nil {
 				return err
-			}
-			_ = c.DestroySession(cmd.Context(), id)
-			if meta.SystemdUnit != "" {
-				_ = stopDetachedSupervisorSystemdUnit(cmd.Context(), meta.SystemdUnit)
-			} else if meta.OwnerPID > 0 {
-				_ = signalProcess(meta.OwnerPID, os.Kill)
-			}
-			meta.State = "stopped"
-			meta.EventToken = ""
-			if _, stateDir, err := readSupervisorMetadata(id); err == nil {
-				_ = writeSupervisorMetadata(stateDir, meta)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")
 			return nil
 		},
 	}
 	return cmd
+}
+
+func stopDetachedSessionExact(ctx context.Context, sessionID string) error {
+	meta, stateDir, err := readSupervisorMetadata(sessionID)
+	if err != nil {
+		return err
+	}
+	manifest, manifestErr := detached.ReadRecoveryManifest(stateDir)
+	if manifestErr != nil && meta.ProtocolVersion >= 2 {
+		return manifestErr
+	}
+	if c, _, liveErr := detachedClientForSession(sessionID); liveErr == nil {
+		if err := c.DestroySession(ctx, sessionID); err != nil {
+			return fmt.Errorf("destroy exact detached session %s: %w", sessionID, err)
+		}
+	}
+	if meta.SystemdUnit != "" {
+		if err := stopDetachedSupervisorSystemdUnit(ctx, meta.SystemdUnit); err != nil {
+			return err
+		}
+	} else if meta.OwnerPID > 0 && supervisorPIDAlive(meta.OwnerPID) {
+		if meta.OwnerStartIdentity != "" && meta.BootID != "" && !detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
+			return fmt.Errorf("refusing to signal reused owner_pid %d for detached session %s", meta.OwnerPID, sessionID)
+		}
+		_ = signalProcess(meta.OwnerPID, os.Kill)
+	}
+	var lock *detached.SupervisorLock
+	for attempt := 0; attempt < 100; attempt++ {
+		lock, err = detached.AcquireSupervisorLock(stateDir)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, detached.ErrSupervisorAlreadyRunning) {
+			return err
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if lock == nil {
+		return fmt.Errorf("timed out waiting for exact detached supervisor %s to stop", sessionID)
+	}
+	defer lock.Close()
+	if manifestErr == nil {
+		manifest.State = detached.LifecycleStopped
+		manifest.LastError = ""
+		if err := detached.WriteRecoveryManifest(stateDir, manifest); err != nil {
+			return err
+		}
+	}
+	meta.State = detached.LifecycleStopped
+	meta.EventToken = ""
+	meta.LastError = ""
+	meta.HeartbeatAt = time.Now().UTC()
+	if err := writeSupervisorMetadata(stateDir, meta); err != nil {
+		return err
+	}
+	_ = os.Remove(meta.SupervisorSock)
+	if manifestErr == nil {
+		_ = os.Remove(manifest.Launch.EnvironmentFile)
+	}
+	return nil
 }
 
 func signalProcess(pid int, sig os.Signal) error {

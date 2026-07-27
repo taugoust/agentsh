@@ -96,6 +96,10 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 			"state": result.State, "set_count": 0, "unset_count": result.UnsetCount,
 			"rejected_count": 0, "generation": result.Generation, "duration_ms": 0,
 		})
+		if err := a.persistDetachedDirenvState(s, true); err != nil {
+			writeToolError(w, http.StatusInternalServerError, "persist detached direnv recovery state")
+			return
+		}
 		writeJSON(w, http.StatusOK, toolResponse{OK: true, Result: result})
 		return
 	}
@@ -146,7 +150,14 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 		"state": result.State, "set_count": result.SetCount, "unset_count": result.UnsetCount,
 		"rejected_count": result.RejectedCount, "generation": result.Generation, "duration_ms": result.DurationMS,
 	})
-	writeJSON(w, http.StatusOK, toolResponse{OK: result.State == "loaded" || result.State == "unchanged" || result.State == "no_envrc", Result: result})
+	okResult := result.State == "loaded" || result.State == "unchanged" || result.State == "no_envrc"
+	if okResult {
+		if err := a.persistDetachedDirenvState(s, true); err != nil {
+			writeToolError(w, http.StatusInternalServerError, "persist detached direnv recovery state")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, toolResponse{OK: okResult, Result: result})
 }
 
 func direnvFileWithinWorkspace(workdir, workspaceRoot string) (bool, error) {

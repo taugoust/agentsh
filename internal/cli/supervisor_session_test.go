@@ -293,6 +293,7 @@ func TestWithoutEnvAssignmentsRemovesExistingSupervisorSecrets(t *testing.T) {
 func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 	credentialFile := filepath.Join("run", "agentsh", "instance-credential")
 	bootstrapResult := filepath.Join("run", "agentsh", "bootstrap.json")
+	recoveryToken := filepath.Join("run", "user", "1000", "agentsh-wrapper-control", "nethelper-recovery.token")
 	env := detachedSupervisorServiceEnv("token", []string{
 		"PATH=bin",
 		"AGENTSH_NETHELPER_SOCKET=" + filepath.Join("run", "agentsh", "nethelper.sock"),
@@ -300,6 +301,7 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 		"AGENTSH_NETHELPER_SESSION_NONCE=must-not-enter-systemd-properties",
 		"AGENTSH_NETHELPER_CREDENTIAL_FILE=" + credentialFile,
 		"AGENTSH_NETHELPER_BOOTSTRAP_RESULT=" + bootstrapResult,
+		nethelper.EnvRecoveryTokenFile + "=" + recoveryToken,
 		detached.EnvNetworkEnforcementRequested + "=strict",
 		"PI_CODING_AGENT_DIR=/run/user/1000/pi-agent",
 		"AGENTSH_SUBAGENT_COMMAND=/nix/store/pi/bin/pi",
@@ -314,6 +316,7 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 		"AGENTSH_NETHELPER_CREDENTIAL_FILE=" + credentialFile,
 		"AGENTSH_NETHELPER_SOCKET=" + filepath.Join("run", "agentsh", "nethelper.sock"),
 		"AGENTSH_NETHELPER_BOOTSTRAP_RESULT=" + bootstrapResult,
+		nethelper.EnvRecoveryTokenFile + "=" + recoveryToken,
 		detached.EnvNetworkEnforcementRequested + "=strict",
 		"PI_CODING_AGENT_DIR=/run/user/1000/pi-agent",
 		"AGENTSH_SUBAGENT_COMMAND=/nix/store/pi/bin/pi",
@@ -325,6 +328,21 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 	}
 	if !reflect.DeepEqual(env, want) {
 		t.Fatalf("service env = %#v, want %#v", env, want)
+	}
+}
+
+func TestDetachedSupervisorRestartEnvironmentSeparatesVolatileSecrets(t *testing.T) {
+	unsafe := restartUnsafeServiceEnvironmentNames([]string{
+		"AGENTSH_DETACHED_EVENT_TOKEN=control-token",
+		nethelper.EnvCredentialFile + "=/protected/credential",
+		"SSH_AUTH_SOCK=/tmp/agent.sock",
+		"XDG_CONFIG_HOME=/home/test/.config",
+		"OPENAI_API_KEY=secret",
+		"CUSTOM_TOKEN=secret",
+	})
+	want := []string{"CUSTOM_TOKEN", "OPENAI_API_KEY"}
+	if !reflect.DeepEqual(unsafe, want) {
+		t.Fatalf("volatile restart environment = %#v, want %#v", unsafe, want)
 	}
 }
 
@@ -346,7 +364,7 @@ func TestDetachedSupervisorServiceEnvIncludesExplicitInheritedValues(t *testing.
 	}
 }
 
-func TestBuildDetachedSupervisorLaunchBuildsSystemdRunCommand(t *testing.T) {
+func TestBuildSystemdRunDetachedSupervisorArgsCreatesRestartableUnit(t *testing.T) {
 	req := testDetachedSupervisorLaunchRequest()
 	req.GOOS = "linux"
 	req.Env = append(req.Env,
@@ -391,12 +409,16 @@ func TestBuildDetachedSupervisorLaunchBuildsSystemdRunCommand(t *testing.T) {
 		"-p", "Delegate=yes",
 		"-p", "KillMode=mixed",
 		"-p", "TimeoutStopSec=10s",
+		"-p", "Restart=on-failure",
+		"-p", "RestartSec=500ms",
+		"-p", "StartLimitIntervalSec=30s",
+		"-p", "StartLimitBurst=10",
 		"-p", "UMask=0077",
 		"-p", "NoNewPrivileges=yes",
 		"-p", "PrivateTmp=yes",
 		"-p", "KeyringMode=private",
 		"-p", "LimitCORE=0",
-		"-p", "OOMPolicy=stop",
+		"-p", "OOMPolicy=continue",
 		"-p", "WorkingDirectory=" + req.Dir,
 		"-p", "StandardOutput=append:" + req.ServiceLogFile,
 		"-p", "StandardError=append:" + req.ServiceLogFile,

@@ -506,6 +506,27 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		}
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandStartError{err: fmt.Errorf("start: %w", err)}
 	}
+	if extra != nil && extra.onProcessStarted != nil {
+		pid := cmd.Process.Pid
+		if persistErr := extra.onProcessStarted(pid, getProcessGroupID(pid)); persistErr != nil {
+			_ = killProcessGroup(getProcessGroupID(pid))
+			_, _ = cmd.Process.Wait()
+			extra.closeWrapperLogPipe()
+			if stdoutPipeR != nil {
+				stdoutPipeR.Close()
+			}
+			if stderrPipeR != nil {
+				stderrPipeR.Close()
+			}
+			if stdoutPipeW != nil {
+				stdoutPipeW.Close()
+			}
+			if stderrPipeW != nil {
+				stderrPipeW.Close()
+			}
+			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError("E_DETACHED_COMMAND_JOURNAL", persistErr)
+		}
+	}
 
 	// For ptrace mode: close write ends and start draining
 	if tracer != nil && stdoutPipeW != nil {
