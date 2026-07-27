@@ -596,6 +596,32 @@
             '';
           };
 
+          api-darwin-cross-compile-tests = pkgs.buildGoModule {
+            pname = "agentsh-api-darwin-cross-compile-tests";
+            version = "unstable-2026-06-17";
+            src = self;
+            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+
+            env = {
+              CGO_ENABLED = "0";
+              GOTELEMETRY = "off";
+            };
+
+            buildPhase = ''
+              runHook preBuild
+              GOOS=darwin GOARCH=amd64 go test -c -o api-darwin-amd64.test ./internal/api
+              GOOS=darwin GOARCH=arm64 go test -c -o api-darwin-arm64.test ./internal/api
+              runHook postBuild
+            '';
+            doCheck = false;
+            installPhase = ''
+              runHook preInstall
+              mkdir -p $out
+              touch $out/passed
+              runHook postInstall
+            '';
+          };
+
           workspace-runtime-tests = pkgs.buildGoModule {
             pname = "agentsh-workspace-runtime-tests";
             version = "unstable-2026-06-17";

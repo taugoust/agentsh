@@ -15,10 +15,11 @@ const (
 	Dialect         = "0.11.2"
 	Mode            = "bubblewrap-0.11.2"
 
-	BrokerFD  = 3
-	PlanFD    = 4
-	InjectFD  = 101
-	AdapterFD = 102
+	BrokerFD   = 3
+	PlanFD     = 4
+	InjectFD   = 101
+	AdapterFD  = 102
+	SetupFDEnv = "AGENTSH_COMPOSITION_SETUP_FD"
 
 	ChallengeType           = "challenge"
 	NamespaceMapRequestType = "namespace-map"

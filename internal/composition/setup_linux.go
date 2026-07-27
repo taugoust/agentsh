@@ -17,7 +17,6 @@ import (
 
 const (
 	SetupProtocolVersion = 1
-	SetupFDEnv           = "AGENTSH_COMPOSITION_SETUP_FD"
 	maxSetupBytes        = 1024 * 1024
 	// Linux limits one SCM_RIGHTS message to SCM_MAX_FD (253). Keep margin for
 	// implementation-specific ancillary data and fail before sendmsg.
