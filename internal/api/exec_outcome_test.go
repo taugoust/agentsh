@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -83,5 +84,39 @@ func TestNormalizeBarrierFailureBeforeReleaseIsNotStarted(t *testing.T) {
 	outcome := normalizeExecOutcome(false, 127, err)
 	if outcome.CommandStarted || outcome.DispatchState != "pre_exec_refused" || outcome.Code != "E_PRE_EXEC_RELEASE" {
 		t.Fatalf("outcome=%+v", outcome)
+	}
+}
+
+func TestNormalizeTimeoutCausesRemainDistinct(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		err      error
+		wantCode string
+		wantKind types.ExecFailureKind
+	}{
+		{name: "command budget", err: errCommandTimeout, wantCode: "E_COMMAND_TIMEOUT", wantKind: types.ExecFailureCommandTimeout},
+		{name: "caller deadline", err: context.DeadlineExceeded, wantCode: "E_CALLER_DEADLINE", wantKind: types.ExecFailureCancellation},
+		{name: "caller cancellation", err: context.Canceled, wantCode: "E_CALLER_CANCELLED", wantKind: types.ExecFailureCancellation},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			outcome := normalizeExecOutcome(true, 124, tc.err)
+			if outcome.Code != tc.wantCode || outcome.FailureKind != tc.wantKind || !outcome.CommandStarted || outcome.DispatchState != "started" {
+				t.Fatalf("outcome=%+v", outcome)
+			}
+		})
+	}
+}
+
+func TestNormalizePostStartCleanupFailureIsNeverReportedAsRefused(t *testing.T) {
+	err := errors.Join(
+		markPreExecEnforcementError("E_PRE_EXEC_ENFORCEMENT", errors.New("stale setup classification")),
+		markPostStartCleanupError(errors.New("helper cleanup failed")),
+	)
+	outcome := normalizeExecOutcome(true, 0, err)
+	if !outcome.CommandStarted || outcome.DispatchState != "started" {
+		t.Fatalf("started command was reported as unstarted: %+v", outcome)
+	}
+	if outcome.Code != "E_POST_START_CLEANUP" || outcome.FailureKind != types.ExecFailurePostStart {
+		t.Fatalf("cleanup outcome=%+v", outcome)
 	}
 }

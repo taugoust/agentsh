@@ -454,6 +454,12 @@ func (a *App) recordNetworkAttachmentEnded(sessionID, commandID string) {
 	if previous == nil || previous.Attachment == nil || previous.Attachment.CommandID != commandID {
 		return
 	}
+	if previous.Status == types.NetworkEnforcementStatusFailed || previous.Attachment.Status == types.NetworkEnforcementStatusFailed {
+		// Cleanup failure is sticky. A later or accidentally reordered success
+		// callback must never erase the failure or emit an inactive/success
+		// attestation for the same command.
+		return
+	}
 	report := a.observedNetworkEnforcement(sessionID)
 	report.Attachment = nil
 	if report.Preflight != nil && report.Preflight.Proven() {

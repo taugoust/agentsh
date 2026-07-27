@@ -470,7 +470,7 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(stream.Context())
 	defer cancelTerminalPersistence()
 
-	if commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
+	if !commandStarted && commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
 		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, execErr)
 	}
 	_ = s.app.store.SaveOutput(terminalCtx, req.SessionID, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)

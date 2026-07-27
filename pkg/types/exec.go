@@ -51,6 +51,7 @@ const (
 	ExecFailureCancellation   ExecFailureKind = "caller_cancellation"
 	ExecFailureCommandTimeout ExecFailureKind = "command_timeout"
 	ExecFailurePreExec        ExecFailureKind = "pre_exec_enforcement"
+	ExecFailurePostStart      ExecFailureKind = "post_start_cleanup"
 	ExecFailureDenied         ExecFailureKind = "policy_or_approval_denial"
 	ExecFailureStart          ExecFailureKind = "command_start"
 	ExecFailureValidation     ExecFailureKind = "request_validation"

@@ -416,7 +416,7 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 	barrier := newPreExecBarrier(hook)
 	defer func() {
 		if cleanupErr := barrier.Cleanup(); cleanupErr != nil && !errors.Is(err, cleanupErr) {
-			err = errors.Join(err, fmt.Errorf("post-start cleanup: %w", cleanupErr))
+			err = errors.Join(err, markPostStartCleanupError(cleanupErr))
 		}
 	}()
 

@@ -248,7 +248,7 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(r.Context())
 	defer cancelTerminalPersistence()
 
-	if commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
+	if !commandStarted && commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
 	}
 	_ = a.store.SaveOutput(terminalCtx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
@@ -486,7 +486,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 	barrier := newPreExecBarrier(hook)
 	defer func() {
 		if cleanupErr := barrier.Cleanup(); cleanupErr != nil && !errors.Is(err, cleanupErr) {
-			err = errors.Join(err, fmt.Errorf("post-start cleanup: %w", cleanupErr))
+			err = errors.Join(err, markPostStartCleanupError(cleanupErr))
 		}
 	}()
 

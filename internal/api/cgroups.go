@@ -292,7 +292,6 @@ func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, 
 			app.recordNetworkCleanupFailure(sessionID, cmdID, fmt.Errorf("cgroup cleanup: %w", err))
 			return err
 		}
-		app.recordNetworkAttachmentEnded(sessionID, cmdID)
 		return nil
 	}
 	cleanupResources := func() error {
@@ -317,6 +316,13 @@ func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, 
 			_ = emit.AppendEvent(context.Background(), ev)
 			emit.Publish(ev)
 			app.recordNetworkCleanupFailure(sessionID, cmdID, fmt.Errorf("network resource cleanup: %w", kernelErr))
+		}
+		if kernelErr == nil && cgroupErr == nil {
+			// A command attachment is inactive only after both the helper/eBPF
+			// resources and the command cgroup have been cleaned. Emitting this
+			// earlier can falsely attest successful teardown before a helper
+			// cleanup failure is known.
+			app.recordNetworkAttachmentEnded(sessionID, cmdID)
 		}
 		return errors.Join(kernelErr, cgroupErr)
 	}

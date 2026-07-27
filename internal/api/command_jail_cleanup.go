@@ -31,7 +31,7 @@ func finalizePTYCommandBoundaryFailure(processState *os.ProcessState, waitErr, c
 		resultErr = errors.Join(resultErr, errors.New("command-jail handler cleanup did not complete"))
 	}
 	if cleanupErr != nil {
-		resultErr = errors.Join(resultErr, fmt.Errorf("post-start cleanup: %w", cleanupErr))
+		resultErr = errors.Join(resultErr, markPostStartCleanupError(cleanupErr))
 	}
 	return resultErr
 }
@@ -78,7 +78,7 @@ func finalizeCommandBoundaryFailure(cmd *exec.Cmd, pgid int, barrier *preExecBar
 		resultErr = errors.Join(resultErr, errors.New("command-jail handler cleanup did not complete"))
 	}
 	if cleanupErr != nil {
-		resultErr = errors.Join(resultErr, fmt.Errorf("post-start cleanup: %w", cleanupErr))
+		resultErr = errors.Join(resultErr, markPostStartCleanupError(cleanupErr))
 	}
 	return resultErr
 }

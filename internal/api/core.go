@@ -2230,7 +2230,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		stdoutB = nil
 		stderrB = nil
 	}
-	if commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
+	if !commandStarted && commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
 	}
 
@@ -2308,19 +2308,9 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	stderrB, stderrTotal, softSuggestions := addSoftDeleteHints(fileOps, stderrB, stderrTotal)
 	stderrB, stderrTotal, approvalSuggestions := addExecveApprovalHints(blockedOps, stderrB, stderrTotal)
 
-	dispatchState := "not_dispatched"
-	if commandStarted {
-		dispatchState = "started"
-	}
-	outcome := &types.ExecOutcome{
-		CommandStarted: commandStarted, DispatchState: dispatchState, FailureKind: types.ExecFailureNone,
-		QueueDurationMs: int64(queueDuration / time.Millisecond), ExecutionDurationMs: int64(end.Sub(start) / time.Millisecond),
-	}
-	if exitCode != 0 && execErr == nil {
-		outcome.FailureKind = types.ExecFailureChildExit
-		outcome.Code = "E_CHILD_EXIT"
-		outcome.Message = fmt.Sprintf("command exited with code %d", exitCode)
-	}
+	outcome := normalizeExecOutcome(commandStarted, exitCode, execErr)
+	outcome.QueueDurationMs = int64(queueDuration / time.Millisecond)
+	outcome.ExecutionDurationMs = int64(end.Sub(start) / time.Millisecond)
 	res := types.ExecResult{
 
 		ExitCode:          exitCode,
@@ -2338,41 +2328,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		Error:             resultError,
 	}
 	if execErr != nil {
-		code := "E_COMMAND_FAILED"
-		outcome.FailureKind = types.ExecFailureInternal
-		outcome.Message = execErr.Error()
-		var preExecErr *preExecEnforcementError
-		var preStartErr *commandPreStartError
-		var startErr *commandStartError
-		switch {
-		case errors.As(execErr, &preExecErr):
-			code = preExecErr.code
-			outcome.CommandStarted = false
-			outcome.DispatchState = "pre_exec_refused"
-			outcome.FailureKind = types.ExecFailurePreExec
-		case errors.As(execErr, &preStartErr):
-			code = preStartErr.code
-			outcome.CommandStarted = false
-			outcome.DispatchState = "pre_start_refused"
-			outcome.FailureKind = types.ExecFailureValidation
-		case errors.As(execErr, &startErr):
-			code = "E_COMMAND_START"
-			outcome.CommandStarted = false
-			outcome.DispatchState = "start_failed"
-			outcome.FailureKind = types.ExecFailureStart
-		case errors.Is(execErr, errCommandTimeout):
-			code = "E_COMMAND_TIMEOUT"
-			outcome.FailureKind = types.ExecFailureCommandTimeout
-		case errors.Is(execErr, context.DeadlineExceeded):
-			code = "E_CALLER_DEADLINE"
-			outcome.FailureKind = types.ExecFailureCancellation
-		case errors.Is(execErr, context.Canceled):
-			code = "E_CALLER_CANCELLED"
-			outcome.FailureKind = types.ExecFailureCancellation
-		}
-		outcome.Code = code
-		res.Error = &types.ExecError{Code: code, Message: execErr.Error()}
-
+		res.Error = &types.ExecError{Code: outcome.Code, Message: execErr.Error()}
 	}
 	applyCommandAttemptDiagnostics(outcome, attemptCount, attemptDiagnostics)
 	if stdoutTrunc && stdoutTotal > int64(len(stdoutB)) {

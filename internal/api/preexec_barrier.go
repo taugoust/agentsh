@@ -31,6 +31,27 @@ func markPreExecEnforcementError(code string, err error) error {
 	return &preExecEnforcementError{code: code, err: err}
 }
 
+// postStartCleanupError distinguishes a teardown failure from setup/refusal.
+// Callers still use their authoritative command-start bit: a wrapper that
+// never received GO remains a pre-exec failure even if its cleanup also fails.
+type postStartCleanupError struct {
+	err error
+}
+
+func (e *postStartCleanupError) Error() string { return "post-start cleanup: " + e.err.Error() }
+func (e *postStartCleanupError) Unwrap() error { return e.err }
+
+func markPostStartCleanupError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var existing *postStartCleanupError
+	if errors.As(err, &existing) {
+		return err
+	}
+	return &postStartCleanupError{err: err}
+}
+
 type preExecBarrier struct {
 	hook postStartHook
 
