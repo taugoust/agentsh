@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -11,16 +12,44 @@ func TestSubagentTerminalDistinguishesTimeoutAndCancellation(t *testing.T) {
 	timeoutCtx, timeoutCancel := context.WithTimeoutCause(context.Background(), time.Millisecond, errSubagentRequestTimeout)
 	defer timeoutCancel()
 	<-timeoutCtx.Done()
-	timedOut := cancelledSubagentTerminal(timeoutCtx, 124, "terminated", subagentTerminationGraceful)
-	if timedOut.State != subagentStateTimedOut || timedOut.CancellationCause != subagentCancelRequestTimeout || timedOut.ExitCode != 124 {
+	timedOut := cancelledSubagentTerminal(timeoutCtx, 124, "terminated", subagentTerminationGraceful, true)
+	if timedOut.State != subagentStateTimedOut || timedOut.CancellationCause != subagentCancelRequestTimeout || timedOut.ExitCode != 124 || timedOut.Retryable || !timedOut.SideEffectsMayHaveOccurred {
 		t.Fatalf("timeout terminal = %+v", timedOut)
 	}
 
-	cancelCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	cancelled := cancelledSubagentTerminal(cancelCtx, 130, "terminated", subagentTerminationGraceful)
-	if cancelled.State != subagentStateCancelled || cancelled.CancellationCause != subagentCancelClientDisconnected || cancelled.ExitCode != 130 {
-		t.Fatalf("cancelled terminal = %+v", cancelled)
+	for _, tc := range []struct {
+		name  string
+		cause error
+		want  subagentCancellationCause
+	}{
+		{name: "user", cause: errSubagentUserCancelled, want: subagentCancelUser},
+		{name: "parent", cause: errSubagentParentCancelled, want: subagentCancelParent},
+		{name: "disconnect", cause: errSubagentClientDisconnected, want: subagentCancelClientDisconnected},
+		{name: "shutdown", cause: errSubagentSupervisorShutdown, want: subagentCancelSupervisorShutdown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cancelCtx, cancel := context.WithCancelCause(context.Background())
+			cancel(tc.cause)
+			terminal := cancelledSubagentTerminal(cancelCtx, 130, "terminated", subagentTerminationGraceful, true)
+			if terminal.State != subagentStateCancelled || terminal.CancellationCause != tc.want || terminal.ExitCode != 130 || terminal.Retryable || !terminal.SideEffectsMayHaveOccurred {
+				t.Fatalf("cancelled terminal = %+v", terminal)
+			}
+		})
+	}
+}
+
+func TestSubagentRequestContextPropagatesSupervisorShutdown(t *testing.T) {
+	app := &App{}
+	ctx, _, cleanup := app.newSubagentRequestContext(context.Background(), time.Hour)
+	defer cleanup()
+	app.BeginShutdown()
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("subagent context did not observe supervisor shutdown")
+	}
+	if !errors.Is(context.Cause(ctx), errSubagentSupervisorShutdown) {
+		t.Fatalf("cancellation cause = %v", context.Cause(ctx))
 	}
 }
 

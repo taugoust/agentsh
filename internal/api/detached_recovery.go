@@ -99,11 +99,26 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 			}
 		}
 		for _, command := range interrupted {
-			terminal, queryErr := a.store.QueryEvents(context.Background(), types.EventQuery{CommandID: command.CommandID, Types: []string{"command_finished"}, Limit: 1, Asc: false})
-			if queryErr == nil && len(terminal) > 0 {
+			terminalTypes := []string{"command_finished", "command_interrupted"}
+			if command.Operation == detachedOperationSpawnSubagent {
+				terminalTypes = []string{"tool_spawn_subagent_end"}
+			} else if command.Operation == detachedOperationSpawnSubagentChild {
+				terminalTypes = []string{"subagent_terminal"}
+			}
+			terminal, queryErr := a.store.QueryEvents(context.Background(), types.EventQuery{CommandID: command.CommandID, Types: terminalTypes, Limit: 1, Asc: false})
+			if queryErr != nil {
+				return cleanupOnError(fmt.Errorf("query interrupted operation %s terminal evidence: %w", command.CommandID, queryErr))
+			}
+			if len(terminal) > 0 {
 				continue
 			}
-			a.emitDetachedCommandInterrupted(command)
+			if command.Operation == detachedOperationSpawnSubagent || command.Operation == detachedOperationSpawnSubagentChild {
+				if err := a.emitDetachedSubagentInterrupted(command); err != nil {
+					return cleanupOnError(err)
+				}
+			} else if err := a.emitDetachedCommandInterrupted(command); err != nil {
+				return cleanupOnError(err)
+			}
 		}
 	}
 	sess.SetOutputArtifactPersistenceHook(func(paths []string) {
@@ -169,9 +184,40 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 	return snapshot, report, nil
 }
 
-func (a *App) emitDetachedCommandInterrupted(command detached.InflightCommand) {
+func (a *App) emitDetachedSubagentInterrupted(operation detached.InflightCommand) error {
 	if a == nil || a.detachedRuntime == nil {
-		return
+		return nil
+	}
+	status := a.detachedRuntime.RuntimeStatus()
+	terminal := subagentTerminal{
+		State:                      subagentStateCancelled,
+		FailureKind:                subagentFailureProcess,
+		CancellationCause:          subagentCancelSupervisorRestart,
+		ExitCode:                   130,
+		Signal:                     "killed",
+		Termination:                subagentTerminationForced,
+		Retryable:                  false,
+		SideEffectsMayHaveOccurred: true,
+		Message:                    "subagent was interrupted by a supervisor restart; side effects are unknown",
+	}
+	eventType := "tool_spawn_subagent_end"
+	if operation.Operation == detachedOperationSpawnSubagentChild {
+		eventType = "subagent_terminal"
+	}
+	if err := a.persistSubagentTerminalEvent(status.SessionID, eventType, operation.CommandID, operation.ParentID, terminal, map[string]any{
+		"interrupted":        true,
+		"termination_reason": "supervisor_restart",
+		"generation":         status.Generation,
+		"incarnation_id":     status.IncarnationID,
+	}); err != nil {
+		return fmt.Errorf("persist interrupted subagent %s terminal evidence: %w", operation.CommandID, err)
+	}
+	return nil
+}
+
+func (a *App) emitDetachedCommandInterrupted(command detached.InflightCommand) error {
+	if a == nil || a.detachedRuntime == nil {
+		return nil
 	}
 	status := a.detachedRuntime.RuntimeStatus()
 	event := types.Event{
@@ -192,8 +238,12 @@ func (a *App) emitDetachedCommandInterrupted(command detached.InflightCommand) {
 	}
 	terminalCtx, cancel := terminalPersistenceContext(context.Background())
 	defer cancel()
-	_ = a.store.AppendEvent(terminalCtx, event)
+	if err := a.store.AppendEvent(terminalCtx, event); err != nil {
+		_ = a.detachedRuntime.MarkFailed("persist interrupted command terminal evidence: " + err.Error())
+		return fmt.Errorf("persist interrupted command %s terminal evidence: %w", command.CommandID, err)
+	}
 	a.broker.Publish(event)
+	return nil
 }
 
 func detachedEnvironmentRecoveryState(sess *session.Session) detached.MutableSessionState {

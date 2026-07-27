@@ -79,6 +79,7 @@ type MutableSessionState struct {
 type InflightCommand struct {
 	CommandID            string    `json:"command_id"`
 	Operation            string    `json:"operation,omitempty"`
+	ParentID             string    `json:"parent_id,omitempty"`
 	AdmittedAt           time.Time `json:"admitted_at"`
 	StartedAt            time.Time `json:"started_at,omitempty"`
 	Sensitive            bool      `json:"sensitive,omitempty"`
@@ -178,8 +179,11 @@ func validateRecoveryManifest(manifest RecoveryManifest) error {
 		}
 	}
 	for _, command := range append(append([]InflightCommand(nil), manifest.Inflight...), manifest.Interrupted...) {
-		if strings.TrimSpace(command.CommandID) == "" {
-			return fmt.Errorf("%w: command journal contains an empty identity", ErrRecoveryManifestInvalid)
+		if strings.TrimSpace(command.CommandID) == "" || len(command.CommandID) > 128 || strings.ContainsAny(command.CommandID, "\x00\r\n") {
+			return fmt.Errorf("%w: command journal contains an invalid identity", ErrRecoveryManifestInvalid)
+		}
+		if len(command.ParentID) > 128 || strings.ContainsAny(command.ParentID, "\x00\r\n") {
+			return fmt.Errorf("%w: command %s has an invalid parent identity", ErrRecoveryManifestInvalid, command.CommandID)
 		}
 		if command.ExternalProcess && (command.PID <= 0 || command.ProcessGroupID != command.PID) {
 			return fmt.Errorf("%w: command %s has invalid process-group identity", ErrRecoveryManifestInvalid, command.CommandID)

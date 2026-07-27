@@ -1189,6 +1189,11 @@ func (s *Server) Run(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
+		if app != nil {
+			// Cancel server-owned child work with a typed shutdown cause before
+			// waiting for HTTP/gRPC requests to drain.
+			app.BeginShutdown()
+		}
 		if pprofServer != nil {
 			_ = pprofServer.Shutdown(shutdownCtx)
 		}

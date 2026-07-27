@@ -96,6 +96,13 @@ type App struct {
 	detachedApprovals *detachedApprovalStore
 	detachedRuntime   *detached.Runtime
 
+	lifecycleMu     sync.Mutex
+	lifecycleCtx    context.Context
+	lifecycleCancel context.CancelCauseFunc
+
+	subagentCancellationMu sync.Mutex
+	subagentCancellations  map[string]subagentCancellationEntry
+
 	approvalUIMu sync.Mutex
 	approvalUIs  map[string]*approvalUIEndpoint
 
@@ -216,6 +223,7 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 		appCgroupMgr = cgroupMgr
 	}
 
+	lifecycleCtx, lifecycleCancel := context.WithCancelCause(context.Background())
 	app := &App{
 		cfg:                        cfg,
 		sessions:                   sessions,
@@ -233,6 +241,9 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 		sessionEvents:              newSessionEventStore(),
 		detachedRoutes:             make(map[string]detachedSupervisor),
 		detachedApprovals:          newDetachedApprovalStore(),
+		lifecycleCtx:               lifecycleCtx,
+		lifecycleCancel:            lifecycleCancel,
+		subagentCancellations:      make(map[string]subagentCancellationEntry),
 		metrics:                    metricsCollector,
 		platform:                   plat,
 		policyLoader:               policyLoader,
@@ -312,8 +323,24 @@ func (a *App) SetSessionTracker(t interface {
 	a.sessionTracker = t
 }
 
+// BeginShutdown cancels server-owned operations with an explicit lifecycle
+// cause before listeners begin waiting for graceful request completion.
+func (a *App) BeginShutdown() {
+	if a == nil {
+		return
+	}
+	a.lifecycleMu.Lock()
+	if a.lifecycleCancel == nil {
+		a.lifecycleCtx, a.lifecycleCancel = context.WithCancelCause(context.Background())
+	}
+	cancel := a.lifecycleCancel
+	a.lifecycleMu.Unlock()
+	cancel(errSubagentSupervisorShutdown)
+}
+
 // Close releases resources held by the app (e.g., ptrace tracer).
 func (a *App) Close() {
+	a.BeginShutdown()
 	a.closePtraceTracer()
 	if a.nethelperBinding != nil {
 		a.nethelperBinding.clearSecret()
@@ -421,6 +448,7 @@ func (a *App) Router() http.Handler {
 		r.Post("/sessions/{id}/tools/write_file", a.writeFileTool)
 		r.Post("/sessions/{id}/tools/edit_file", a.editFileTool)
 		r.Post("/sessions/{id}/tools/spawn_subagent", a.spawnSubagentTool)
+		r.Post("/sessions/{id}/tools/spawn_subagent/{requestID}/cancel", a.cancelSubagentTool)
 
 		r.Get("/events/search", a.searchEvents)
 

@@ -18,6 +18,7 @@ import (
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
+	"github.com/agentsh/agentsh/pkg/types"
 )
 
 func TestSubagentExecutionTimeoutDefaultsAndOverrides(t *testing.T) {
@@ -454,6 +455,51 @@ esac
 			}
 		})
 	}
+
+	t.Run("explicit user cancellation is durable", func(t *testing.T) {
+		const requestID = "subagent-request-user-cancel-test"
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent", strings.NewReader(`{"request_id":"`+requestID+`","task":"timeout","stream":true}`))
+		doneServing := make(chan struct{})
+		go func() {
+			defer close(doneServing)
+			handler.ServeHTTP(rr, req)
+		}()
+		time.Sleep(50 * time.Millisecond)
+
+		cancelRecorder := httptest.NewRecorder()
+		cancelRequest := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent/"+requestID+"/cancel", strings.NewReader(`{"cause":"user_cancelled"}`))
+		handler.ServeHTTP(cancelRecorder, cancelRequest)
+		if cancelRecorder.Code != http.StatusAccepted {
+			t.Fatalf("cancel status=%d body=%s", cancelRecorder.Code, cancelRecorder.Body.String())
+		}
+		select {
+		case <-doneServing:
+		case <-time.After(3 * time.Second):
+			t.Fatal("timed out waiting for explicitly cancelled stream handler")
+		}
+		events := decodeSubagentStreamEvents(t, rr.Body.String())
+		var done map[string]any
+		for _, event := range events {
+			if event["event"] == "done" {
+				done = event
+			}
+		}
+		if done == nil {
+			t.Fatalf("missing done event: %#v", events)
+		}
+		state, cause := terminalStateFromDone(t, done)
+		if state != "cancelled" || cause != "user_cancelled" {
+			t.Fatalf("terminal state=%q cause=%q", state, cause)
+		}
+		persisted, err := store.QueryEvents(context.Background(), types.EventQuery{CommandID: requestID, Types: []string{"tool_spawn_subagent_end"}, Limit: 10})
+		if err != nil || len(persisted) != 1 {
+			t.Fatalf("durable terminal events=%d err=%v", len(persisted), err)
+		}
+		if persisted[0].Fields["cancellation_cause"] != string(subagentCancelUser) || persisted[0].Fields["retryable"] != false {
+			t.Fatalf("persisted terminal fields=%#v", persisted[0].Fields)
+		}
+	})
 
 	t.Run("client cancellation", func(t *testing.T) {
 		rr := httptest.NewRecorder()

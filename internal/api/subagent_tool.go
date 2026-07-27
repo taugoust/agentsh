@@ -29,6 +29,7 @@ const (
 )
 
 type spawnSubagentToolRequest struct {
+	RequestID                    string                `json:"request_id,omitempty"`
 	Task                         string                `json:"task,omitempty"`
 	SystemPrompt                 string                `json:"systemPrompt,omitempty"`
 	Model                        string                `json:"model,omitempty"`
@@ -61,6 +62,7 @@ type subagentRuntimeConfig struct {
 }
 
 type subagentResult struct {
+	SubagentID          string                       `json:"subagent_id"`
 	Label               string                       `json:"label"`
 	Task                string                       `json:"task"`
 	ExitCode            int                          `json:"exit_code"`
@@ -94,11 +96,12 @@ type subagentResult struct {
 }
 
 type spawnSubagentResult struct {
-	Mode     string           `json:"mode"`
-	Final    string           `json:"final"`
-	Summary  string           `json:"summary"`
-	Terminal subagentTerminal `json:"terminal"`
-	Results  []subagentResult `json:"results"`
+	RequestID string           `json:"request_id"`
+	Mode      string           `json:"mode"`
+	Final     string           `json:"final"`
+	Summary   string           `json:"summary"`
+	Terminal  subagentTerminal `json:"terminal"`
+	Results   []subagentResult `json:"results"`
 }
 
 func (a *App) subagentExecutionTimeout(timeoutMS int64) (time.Duration, error) {
@@ -161,10 +164,40 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusBadRequest, fmt.Sprintf("result_artifact_threshold_bytes must be between 0 and %d", maxSubagentTextBytes))
 		return
 	}
-	ctx, cancel := context.WithTimeoutCause(r.Context(), timeout, errSubagentRequestTimeout)
-	defer cancel()
+	requestID := strings.TrimSpace(req.RequestID)
+	if requestID == "" {
+		requestID = "subagent-request-" + uuid.NewString()
+	}
+	if !validSubagentRequestID(requestID) {
+		writeToolError(w, http.StatusBadRequest, "invalid subagent request_id")
+		return
+	}
+	var flusher http.Flusher
+	if req.Stream {
+		var ok bool
+		flusher, ok = w.(http.Flusher)
+		if !ok {
+			writeToolError(w, http.StatusInternalServerError, "streaming unsupported by response writer")
+			return
+		}
+	}
+	ctx, explicitCancel, cleanupContext := a.newSubagentRequestContext(r.Context(), timeout)
+	if err := a.registerSubagentCancellation(sessionID, requestID, explicitCancel); err != nil {
+		cleanupContext()
+		writeToolError(w, http.StatusConflict, err.Error())
+		return
+	}
+	defer func() {
+		a.unregisterSubagentCancellation(sessionID, requestID)
+		cleanupContext()
+	}()
+	if err := a.beginDetachedSubagentOperation(requestID, detachedOperationSpawnSubagent, ""); err != nil {
+		writeToolError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 
 	a.emitToolEvent(r.Context(), sessionID, "tool_spawn_subagent_start", "spawn_subagent", "", req.Actor, map[string]any{
+		"request_id": requestID,
 		"mode":       mode,
 		"tasks":      len(specs),
 		"runtime":    runtime.Name,
@@ -173,11 +206,6 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	var stream *subagentStreamer
 	if req.Stream {
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			writeToolError(w, http.StatusInternalServerError, "streaming unsupported by response writer")
-			return
-		}
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.WriteHeader(http.StatusOK)
@@ -185,8 +213,10 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var result spawnSubagentResult
+	result.RequestID = requestID
 	var code int
 	var runErr error
+	terminalPersistenceAttempted := false
 	if stream != nil {
 		defer func() {
 			if recover() != nil {
@@ -202,22 +232,33 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 			if result.Terminal.State == "" {
 				result.Terminal = aggregateSubagentTerminal(result.Results, runErr)
 			}
+			result.RequestID = requestID
 			result.Summary = result.Final
+			if !terminalPersistenceAttempted {
+				terminalPersistenceAttempted = true
+				if persistErr := a.persistSubagentTerminalEvent(sessionID, "tool_spawn_subagent_end", requestID, "", result.Terminal, map[string]any{
+					"mode": mode, "tasks": len(specs), "runtime": runtime.Name,
+					"duration_ms": time.Since(started).Milliseconds(), "error": sanitizeSubagentDiagnostic(errString(runErr)),
+				}); persistErr != nil {
+					runErr = errors.Join(runErr, persistErr)
+				}
+			}
 			protocolOK := runErr == nil || len(result.Results) > 0
 			_ = stream.Done(map[string]any{"ok": protocolOK, "result": result, "error": errString(runErr)})
 		}()
 	}
 	if stream != nil {
-		if emitErr := stream.Emit("subagent_start", map[string]any{"mode": mode, "tasks": len(specs), "runtime": runtime.Name, "timeout_ms": timeout.Milliseconds()}); emitErr != nil {
+		if emitErr := stream.Emit("subagent_start", map[string]any{"request_id": requestID, "mode": mode, "tasks": len(specs), "runtime": runtime.Name, "timeout_ms": timeout.Milliseconds()}); emitErr != nil {
 			runErr = errors.New("subagent stream is not writable")
 			code = http.StatusInternalServerError
-			result = spawnSubagentResult{Mode: mode, Final: runErr.Error(), Terminal: failedSubagentTerminal(subagentFailureTransport, 1, "", subagentTerminationNatural, true, runErr.Error())}
+			result = spawnSubagentResult{RequestID: requestID, Mode: mode, Final: runErr.Error(), Terminal: failedSubagentTerminal(subagentFailureTransport, 1, "", subagentTerminationNatural, true, runErr.Error())}
 		} else {
-			result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, mode, specs, req.Actor, req.ResultArtifactThresholdBytes, stream)
+			result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, requestID, mode, specs, req.Actor, req.ResultArtifactThresholdBytes, stream)
 		}
 	} else {
-		result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, mode, specs, req.Actor, req.ResultArtifactThresholdBytes, nil)
+		result, code, runErr = a.runSubagentModeSafely(ctx, s, runtime, requestID, mode, specs, req.Actor, req.ResultArtifactThresholdBytes, nil)
 	}
+	result.RequestID = requestID
 	if result.Terminal.State == "" {
 		result.Terminal = aggregateSubagentTerminal(result.Results, runErr)
 	}
@@ -226,16 +267,21 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	if status == 0 {
 		status = http.StatusOK
 	}
-	a.emitToolEvent(r.Context(), sessionID, "tool_spawn_subagent_end", "spawn_subagent", "", req.Actor, map[string]any{
-		"mode":           mode,
-		"tasks":          len(specs),
-		"runtime":        runtime.Name,
-		"duration_ms":    time.Since(started).Milliseconds(),
-		"terminal_state": result.Terminal.State,
-		"failure_kind":   result.Terminal.FailureKind,
-		"error":          errString(runErr),
+	terminalPersistenceAttempted = true
+	terminalPersistErr := a.persistSubagentTerminalEvent(sessionID, "tool_spawn_subagent_end", requestID, "", result.Terminal, map[string]any{
+		"mode":        mode,
+		"tasks":       len(specs),
+		"runtime":     runtime.Name,
+		"duration_ms": time.Since(started).Milliseconds(),
+		"error":       sanitizeSubagentDiagnostic(errString(runErr)),
 	})
-	protocolOK := runErr == nil || len(result.Results) > 0
+	if terminalPersistErr != nil {
+		runErr = errors.Join(runErr, terminalPersistErr)
+		if code == 0 || code == http.StatusOK {
+			code = http.StatusInternalServerError
+		}
+	}
+	protocolOK := runErr == nil || (len(result.Results) > 0 && terminalPersistErr == nil)
 	if stream != nil {
 		return
 	}
@@ -369,29 +415,30 @@ func validateSubagentItem(item subagentItemRequest) error {
 	return nil
 }
 
-func (a *App) runSubagentModeSafely(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (result spawnSubagentResult, code int, err error) {
+func (a *App) runSubagentModeSafely(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, requestID, mode string, specs []subagentItemRequest, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (result spawnSubagentResult, code int, err error) {
 	defer func() {
 		if recover() != nil {
 			err = errors.New("subagent runtime failed unexpectedly")
 			code = http.StatusInternalServerError
 			result = spawnSubagentResult{
-				Mode:     mode,
-				Final:    err.Error(),
-				Terminal: failedSubagentTerminal(subagentFailureUnknown, 1, "", subagentTerminationNatural, true, err.Error()),
+				RequestID: requestID,
+				Mode:      mode,
+				Final:     err.Error(),
+				Terminal:  failedSubagentTerminal(subagentFailureUnknown, 1, "", subagentTerminationNatural, true, err.Error()),
 			}
 		}
 	}()
-	return a.runSubagentMode(ctx, s, runtime, mode, specs, actor, artifactThresholdBytes, stream)
+	return a.runSubagentMode(ctx, s, runtime, requestID, mode, specs, actor, artifactThresholdBytes, stream)
 }
 
-func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, mode string, specs []subagentItemRequest, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (spawnSubagentResult, int, error) {
+func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, requestID, mode string, specs []subagentItemRequest, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (spawnSubagentResult, int, error) {
 	switch mode {
 	case "single":
-		res := a.runSingleSubagent(ctx, s, runtime, specs[0], "subagent", 0, actor, artifactThresholdBytes, stream)
+		res := a.runSingleSubagent(ctx, s, runtime, requestID, specs[0], "subagent", 0, actor, artifactThresholdBytes, stream)
 		if stream != nil {
 			_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "result": res})
 		}
-		out := spawnSubagentResult{Mode: mode, Final: res.Final, Terminal: res.Terminal, Results: []subagentResult{res}}
+		out := spawnSubagentResult{RequestID: requestID, Mode: mode, Final: res.Final, Terminal: res.Terminal, Results: []subagentResult{res}}
 		if subagentResultFailed(res) {
 			return out, http.StatusOK, errors.New(resultErrorSummary(res))
 		}
@@ -401,13 +448,13 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		previous := ""
 		for i, spec := range specs {
 			spec.Task = strings.ReplaceAll(spec.Task, "{previous}", previous)
-			res := a.runSingleSubagent(ctx, s, runtime, spec, fmt.Sprintf("step %d", i+1), i+1, actor, artifactThresholdBytes, stream)
+			res := a.runSingleSubagent(ctx, s, runtime, requestID, spec, fmt.Sprintf("step %d", i+1), i+1, actor, artifactThresholdBytes, stream)
 			if stream != nil {
 				_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "step": i + 1, "result": res})
 			}
 			results = append(results, res)
 			if subagentResultFailed(res) {
-				return spawnSubagentResult{Mode: mode, Final: resultErrorSummary(res), Terminal: res.Terminal, Results: results}, http.StatusOK, errors.New(resultErrorSummary(res))
+				return spawnSubagentResult{RequestID: requestID, Mode: mode, Final: resultErrorSummary(res), Terminal: res.Terminal, Results: results}, http.StatusOK, errors.New(resultErrorSummary(res))
 			}
 			previous = res.Final
 		}
@@ -415,7 +462,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		if len(results) > 0 {
 			final = results[len(results)-1].Final
 		}
-		return spawnSubagentResult{Mode: mode, Final: final, Terminal: aggregateSubagentTerminal(results, nil), Results: results}, http.StatusOK, nil
+		return spawnSubagentResult{RequestID: requestID, Mode: mode, Final: final, Terminal: aggregateSubagentTerminal(results, nil), Results: results}, http.StatusOK, nil
 	case "parallel":
 		results := make([]subagentResult, len(specs))
 		sem := make(chan struct{}, maxSubagentConcurrency)
@@ -429,10 +476,10 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 				select {
 				case sem <- struct{}{}:
 					defer func() { <-sem }()
-					results[i] = a.runSingleSubagent(ctx, s, runtime, spec, label, 0, actor, artifactThresholdBytes, stream)
+					results[i] = a.runSingleSubagent(ctx, s, runtime, requestID, spec, label, 0, actor, artifactThresholdBytes, stream)
 				case <-ctx.Done():
 					results[i] = subagentResult{Label: label, Task: spec.Task, Model: spec.Model, Tools: spec.Tools, Runtime: runtime.Name, Command: runtime.Command}
-					setSubagentTerminal(&results[i], cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), "", subagentTerminationNatural))
+					setSubagentTerminal(&results[i], cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), "", subagentTerminationNatural, false))
 				}
 				if stream != nil {
 					_ = stream.Emit("subagent_result", map[string]any{"label": results[i].Label, "index": i, "result": results[i]})
@@ -453,22 +500,52 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 			parts = append(parts, fmt.Sprintf("[%s] %s", res.Label, truncateString(preview, 500)))
 		}
 		final := strings.Join(parts, "\n\n")
-		out := spawnSubagentResult{Mode: mode, Final: final, Terminal: aggregateSubagentTerminal(results, nil), Results: results}
+		out := spawnSubagentResult{RequestID: requestID, Mode: mode, Final: final, Terminal: aggregateSubagentTerminal(results, nil), Results: results}
 		if len(failed) > 0 {
 			return out, http.StatusOK, fmt.Errorf("%d/%d subagents failed: %s", len(failed), len(results), strings.Join(failed, "; "))
 		}
 		return out, http.StatusOK, nil
 	default:
 		err := fmt.Errorf("unsupported subagent mode %q", mode)
-		return spawnSubagentResult{Mode: mode, Final: err.Error(), Terminal: failedSubagentTerminal(subagentFailureConfiguration, 1, "", subagentTerminationNatural, false, err.Error())}, http.StatusBadRequest, err
+		return spawnSubagentResult{RequestID: requestID, Mode: mode, Final: err.Error(), Terminal: failedSubagentTerminal(subagentFailureConfiguration, 1, "", subagentTerminationNatural, false, err.Error())}, http.StatusBadRequest, err
 	}
 }
 
-func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, spec subagentItemRequest, label string, step int, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) subagentResult {
+func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, requestID string, spec subagentItemRequest, label string, step int, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (res subagentResult) {
 	started := time.Now()
 	subagentID := "subagent-" + uuid.NewString()
+	res = subagentResult{SubagentID: subagentID, Label: label, Task: spec.Task, Model: spec.Model, Tools: spec.Tools, Runtime: runtime.Name, Command: runtime.Command}
+	if err := a.beginDetachedSubagentOperation(subagentID, detachedOperationSpawnSubagentChild, requestID); err != nil {
+		res.Error = err.Error()
+		setSubagentTerminal(&res, failedSubagentTerminal(subagentFailureProcess, 1, "", subagentTerminationNatural, false, err.Error()))
+		res.DurationMS = time.Since(started).Milliseconds()
+		return res
+	}
+	defer func() {
+		if res.DurationMS == 0 {
+			res.DurationMS = time.Since(started).Milliseconds()
+		}
+		if res.Terminal.State == "" {
+			message := "subagent ended without terminal evidence"
+			res.Error = message
+			setSubagentTerminal(&res, failedSubagentTerminal(subagentFailureUnknown, 1, "", subagentTerminationNatural, false, message))
+		}
+		if persistErr := a.persistSubagentTerminalEvent(s.ID, "subagent_terminal", subagentID, requestID, res.Terminal, map[string]any{
+			"label": res.Label, "duration_ms": res.DurationMS, "protocol_settled": res.ProtocolSettled,
+		}); persistErr != nil {
+			if res.Error == "" {
+				res.Error = persistErr.Error()
+			} else {
+				res.Error = errors.Join(errors.New(res.Error), persistErr).Error()
+			}
+			res.Error = sanitizeSubagentDiagnostic(res.Error)
+			terminal := failedSubagentTerminal(subagentFailureTransport, res.ExitCode, res.Terminal.Signal, res.Terminal.Termination, false, res.Error)
+			terminal.SideEffectsMayHaveOccurred = res.Terminal.SideEffectsMayHaveOccurred
+			setSubagentTerminal(&res, terminal)
+		}
+	}()
 	cwd, virtualCwd, err := resolveSubagentCwd(s, spec.Cwd)
-	res := subagentResult{Label: label, Task: spec.Task, Model: spec.Model, Tools: spec.Tools, Cwd: virtualCwd, Runtime: runtime.Name, Command: runtime.Command}
+	res.Cwd = virtualCwd
 	if err != nil {
 		res.Error = err.Error()
 		setSubagentTerminal(&res, failedSubagentTerminal(subagentFailureConfiguration, 1, "", subagentTerminationNatural, false, err.Error()))
@@ -559,7 +636,9 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	}
 	cmd.Stdout = subagentOutputWriter(&stdout, protocolWriter, stream, subagentID, label, "stdout")
 	cmd.Stderr = subagentOutputWriter(&stderr, nil, stream, subagentID, label, "stderr")
-	process := runOwnedSubagentProcess(ctx, cmd, subagentTerminationGracePeriod)
+	process := runOwnedSubagentProcessWithStart(ctx, cmd, subagentTerminationGracePeriod, func(pid, processGroupID int) error {
+		return a.markDetachedSubagentProcess(subagentID, pid, processGroupID)
+	})
 	stderrText := stderr.String()
 	if stream == nil {
 		res.Stdout = stdout.String()
@@ -582,13 +661,13 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	res.ProtocolDiagnostics = protocolOutcome.Diagnostics
 
 	if ctx.Err() != nil {
-		setSubagentTerminal(&res, cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), process.Signal, process.Termination))
+		setSubagentTerminal(&res, cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), process.Signal, process.Termination, process.Started))
 		return res
 	}
 	if process.RunError != nil {
 		res.Error = process.RunError.Error()
 		kind := subagentFailureProcess
-		retryable := true
+		retryable := !process.Started
 		var execErr *exec.Error
 		if errors.As(process.RunError, &execErr) {
 			kind = subagentFailureConfiguration
@@ -598,12 +677,14 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 			retryable = false
 		} else if protocolOutcome.Failed() {
 			kind = protocolOutcome.FailureKind
-			retryable = kind == subagentFailureProtocol || kind == subagentFailureCompaction
+			retryable = !process.Started && (kind == subagentFailureProtocol || kind == subagentFailureCompaction)
 			if protocolOutcome.ErrorMessage != "" {
 				res.Error = protocolOutcome.ErrorMessage
 			}
 		}
-		setSubagentTerminal(&res, failedSubagentTerminal(kind, exitCode(process.RunError), process.Signal, process.Termination, retryable, res.Error))
+		terminal := failedSubagentTerminal(kind, exitCode(process.RunError), process.Signal, process.Termination, retryable, res.Error)
+		terminal.SideEffectsMayHaveOccurred = process.Started
+		setSubagentTerminal(&res, terminal)
 		if res.Final == "" {
 			res.Final = resultErrorSummary(res)
 		}
@@ -611,13 +692,17 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	}
 	if protocolOutcome.Failed() {
 		res.Error = protocolOutcome.ErrorMessage
-		retryable := protocolOutcome.FailureKind == subagentFailureProtocol || protocolOutcome.FailureKind == subagentFailureCompaction
-		setSubagentTerminal(&res, failedSubagentTerminal(protocolOutcome.FailureKind, 1, process.Signal, process.Termination, retryable, res.Error))
+		retryable := !process.Started && (protocolOutcome.FailureKind == subagentFailureProtocol || protocolOutcome.FailureKind == subagentFailureCompaction)
+		terminal := failedSubagentTerminal(protocolOutcome.FailureKind, 1, process.Signal, process.Termination, retryable, res.Error)
+		terminal.SideEffectsMayHaveOccurred = process.Started
+		setSubagentTerminal(&res, terminal)
 		return res
 	}
 	if !protocolOutcome.Completed {
 		res.Error = "subagent output protocol did not reach completion"
-		setSubagentTerminal(&res, failedSubagentTerminal(subagentFailureProtocol, 1, process.Signal, process.Termination, true, res.Error))
+		terminal := failedSubagentTerminal(subagentFailureProtocol, 1, process.Signal, process.Termination, !process.Started, res.Error)
+		terminal.SideEffectsMayHaveOccurred = process.Started
+		setSubagentTerminal(&res, terminal)
 		return res
 	}
 	setSubagentTerminal(&res, completedSubagentTerminal(0, process.Termination))

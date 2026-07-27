@@ -36,13 +36,21 @@ const (
 	subagentCancelParent             subagentCancellationCause = "parent_cancelled"
 	subagentCancelClientDisconnected subagentCancellationCause = "client_disconnected"
 	subagentCancelSupervisorShutdown subagentCancellationCause = "supervisor_shutdown"
+	subagentCancelSupervisorRestart  subagentCancellationCause = "supervisor_restart"
 
 	subagentTerminationNatural  subagentTermination = "natural"
 	subagentTerminationGraceful subagentTermination = "graceful"
 	subagentTerminationForced   subagentTermination = "forced"
 )
 
-var errSubagentRequestTimeout = errors.New("subagent request timeout")
+var (
+	errSubagentRequestTimeout     = errors.New("subagent request timeout")
+	errSubagentUserCancelled      = errors.New("subagent cancelled by user")
+	errSubagentParentCancelled    = errors.New("subagent cancelled by parent")
+	errSubagentClientDisconnected = errors.New("subagent client disconnected")
+	errSubagentSupervisorShutdown = errors.New("subagent supervisor is shutting down")
+	errSubagentRequestComplete    = errors.New("subagent request complete")
+)
 
 var (
 	subagentBearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
@@ -50,14 +58,15 @@ var (
 )
 
 type subagentTerminal struct {
-	State             subagentTerminalState     `json:"state"`
-	FailureKind       subagentFailureKind       `json:"failure_kind,omitempty"`
-	CancellationCause subagentCancellationCause `json:"cancellation_cause,omitempty"`
-	ExitCode          int                       `json:"exit_code,omitempty"`
-	Signal            string                    `json:"signal,omitempty"`
-	Termination       subagentTermination       `json:"termination,omitempty"`
-	Retryable         bool                      `json:"retryable"`
-	Message           string                    `json:"message,omitempty"`
+	State                      subagentTerminalState     `json:"state"`
+	FailureKind                subagentFailureKind       `json:"failure_kind,omitempty"`
+	CancellationCause          subagentCancellationCause `json:"cancellation_cause,omitempty"`
+	ExitCode                   int                       `json:"exit_code,omitempty"`
+	Signal                     string                    `json:"signal,omitempty"`
+	Termination                subagentTermination       `json:"termination,omitempty"`
+	Retryable                  bool                      `json:"retryable"`
+	SideEffectsMayHaveOccurred bool                      `json:"side_effects_may_have_occurred,omitempty"`
+	Message                    string                    `json:"message,omitempty"`
 }
 
 func sanitizeSubagentDiagnostic(message string) string {
@@ -104,28 +113,34 @@ func subagentCancellationExitCode(ctx context.Context) int {
 	return 130
 }
 
-func cancelledSubagentTerminal(ctx context.Context, exitCode int, signal string, termination subagentTermination) subagentTerminal {
+func subagentCancellationFromContext(ctx context.Context) (subagentTerminalState, subagentFailureKind, subagentCancellationCause, string) {
 	cause := context.Cause(ctx)
-	if errors.Is(cause, errSubagentRequestTimeout) || errors.Is(cause, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return subagentTerminal{
-			State:             subagentStateTimedOut,
-			FailureKind:       subagentFailureProcess,
-			CancellationCause: subagentCancelRequestTimeout,
-			ExitCode:          exitCode,
-			Signal:            signal,
-			Termination:       termination,
-			Retryable:         true,
-			Message:           "subagent request timed out",
-		}
+	switch {
+	case errors.Is(cause, errSubagentRequestTimeout), errors.Is(cause, context.DeadlineExceeded), errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return subagentStateTimedOut, subagentFailureProcess, subagentCancelRequestTimeout, "subagent request timed out"
+	case errors.Is(cause, errSubagentUserCancelled):
+		return subagentStateCancelled, "", subagentCancelUser, "subagent was cancelled by the user"
+	case errors.Is(cause, errSubagentParentCancelled):
+		return subagentStateCancelled, "", subagentCancelParent, "subagent was cancelled by its parent"
+	case errors.Is(cause, errSubagentSupervisorShutdown):
+		return subagentStateCancelled, subagentFailureProcess, subagentCancelSupervisorShutdown, "subagent was cancelled because the supervisor is shutting down"
+	default:
+		return subagentStateCancelled, subagentFailureTransport, subagentCancelClientDisconnected, "subagent client disconnected"
 	}
+}
+
+func cancelledSubagentTerminal(ctx context.Context, exitCode int, signal string, termination subagentTermination, processStarted bool) subagentTerminal {
+	state, failureKind, cancellationCause, message := subagentCancellationFromContext(ctx)
 	return subagentTerminal{
-		State:             subagentStateCancelled,
-		CancellationCause: subagentCancelClientDisconnected,
-		ExitCode:          exitCode,
-		Signal:            signal,
-		Termination:       termination,
-		Retryable:         true,
-		Message:           "subagent request was cancelled",
+		State:                      state,
+		FailureKind:                failureKind,
+		CancellationCause:          cancellationCause,
+		ExitCode:                   exitCode,
+		Signal:                     signal,
+		Termination:                termination,
+		Retryable:                  !processStarted,
+		SideEffectsMayHaveOccurred: processStarted,
+		Message:                    message,
 	}
 }
 

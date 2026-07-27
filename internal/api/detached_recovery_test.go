@@ -88,6 +88,12 @@ func TestNethelperRebind_DetachedBootstrapRehydratesExactSessionAndInterruptedEv
 	if err := runtimeOne.MarkCommandStarted("cmd-interrupted", time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
+	if err := runtimeOne.RecordCommand(detached.InflightCommand{CommandID: "subagent-request-interrupted", Operation: detachedOperationSpawnSubagent, AdmittedAt: time.Now().UTC(), StartedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtimeOne.RecordCommand(detached.InflightCommand{CommandID: "subagent-child-interrupted", Operation: detachedOperationSpawnSubagentChild, ParentID: "subagent-request-interrupted", AdmittedAt: time.Now().UTC(), StartedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
 
 	runtimeTwo, err := detached.BeginRuntime(stateDir, 200, "start-2", "boot-1", time.Now().UTC())
 	if err != nil {
@@ -128,5 +134,40 @@ func TestNethelperRebind_DetachedBootstrapRehydratesExactSessionAndInterruptedEv
 	}
 	if !found {
 		t.Fatalf("interrupted terminal evidence missing: %+v", events)
+	}
+	for operationID, eventType := range map[string]string{
+		"subagent-request-interrupted": "tool_spawn_subagent_end",
+		"subagent-child-interrupted":   "subagent_terminal",
+	} {
+		terminalEvents, queryErr := store.QueryEvents(context.Background(), types.EventQuery{SessionID: sessionID, CommandID: operationID, Types: []string{eventType}, Limit: 20, Asc: true})
+		if queryErr != nil {
+			t.Fatal(queryErr)
+		}
+		if len(terminalEvents) != 1 || terminalEvents[0].Fields["cancellation_cause"] != string(subagentCancelSupervisorRestart) || terminalEvents[0].Fields["retryable"] != false || terminalEvents[0].Fields["side_effects_may_have_occurred"] != true {
+			t.Fatalf("durable interrupted subagent evidence for %s: %+v", operationID, terminalEvents)
+		}
+	}
+
+	// A later incarnation must recognize the durable interrupted terminal and
+	// never append a duplicate for the retained journal entry.
+	runtimeThree, err := detached.BeginRuntime(stateDir, 300, "start-3", "boot-1", time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	appThree := newTestApp(t, session.NewManager(1), store)
+	appThree.cfg.Sessions.WorkspaceShadow.BaseDir = filepath.Join(stateDir, "workspace-state")
+	appThree.SetDetachedRuntime(runtimeThree)
+	if _, _, err := appThree.BootstrapDetachedSession(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for operationID, eventType := range map[string]string{
+		"cmd-interrupted":              "command_interrupted",
+		"subagent-request-interrupted": "tool_spawn_subagent_end",
+		"subagent-child-interrupted":   "subagent_terminal",
+	} {
+		terminalEvents, queryErr := store.QueryEvents(context.Background(), types.EventQuery{SessionID: sessionID, CommandID: operationID, Types: []string{eventType}, Limit: 20, Asc: true})
+		if queryErr != nil || len(terminalEvents) != 1 {
+			t.Fatalf("terminal evidence duplicated for %s: count=%d err=%v events=%+v", operationID, len(terminalEvents), queryErr, terminalEvents)
+		}
 	}
 }
