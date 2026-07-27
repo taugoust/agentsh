@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"os"
@@ -56,10 +57,27 @@ type fileToolRequest struct {
 }
 
 type toolResponse struct {
-	OK     bool   `json:"ok"`
-	Result any    `json:"result,omitempty"`
-	Error  string `json:"error,omitempty"`
+	OK      bool   `json:"ok"`
+	Result  any    `json:"result,omitempty"`
+	Code    string `json:"code,omitempty"`
+	Error   string `json:"error,omitempty"`
+	Path    string `json:"path,omitempty"`
+	ErrorID string `json:"error_id,omitempty"`
 }
+
+const (
+	toolErrorFileNotFound       = "file_not_found"
+	toolErrorFilePermission     = "file_permission_denied"
+	toolErrorSessionNotFound    = "session_not_found"
+	toolErrorPolicyDenied       = "policy_denied"
+	toolErrorApprovalDenied     = "approval_denied"
+	toolErrorEditConflict       = "edit_conflict"
+	toolErrorInvalidRequest     = "invalid_request"
+	toolErrorUnsupported        = "unsupported_endpoint"
+	toolErrorConflict           = "conflict"
+	toolErrorSupervisorNotReady = "supervisor_not_ready"
+	toolErrorInternal           = "internal_error"
+)
 
 type resolvedToolPath struct {
 	Real           string
@@ -180,7 +198,7 @@ func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
 	}
 	s, rp, code, err := a.resolveToolFileRequest(r.Context(), id, req.Path, req.Cwd, "read", req.Actor, true)
 	if err != nil {
-		writeToolError(w, code, err.Error())
+		writeToolErrorWithPath(w, code, err.Error(), req.Path)
 		return
 	}
 	maxBytes := req.MaxBytes
@@ -201,17 +219,17 @@ func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		status := statusForFileError(err)
-		if rp.OutputArtifact && status == http.StatusInternalServerError {
-			status = http.StatusForbidden
+		if rp.OutputArtifact && statusForFileError(err) == http.StatusInternalServerError {
+			writeToolDomainError(w, http.StatusForbidden, toolErrorPolicyDenied, "output artifact is unavailable", rp.Virtual, err)
+		} else {
+			writeToolFileError(w, err, rp.Virtual)
 		}
-		writeToolError(w, status, err.Error())
 		return
 	}
 	defer f.Close()
 	window, err := readTextLineWindow(f, req.Offset, req.Limit, maxBytes)
 	if err != nil {
-		writeToolError(w, http.StatusInternalServerError, err.Error())
+		writeToolDomainError(w, http.StatusInternalServerError, toolErrorInternal, err.Error(), rp.Virtual, err)
 		return
 	}
 	result := map[string]any{
@@ -249,23 +267,23 @@ func (a *App) writeFileTool(w http.ResponseWriter, r *http.Request) {
 	}
 	rp, data, code, err := a.prepareWriteFileTool(r.Context(), id, req, "write")
 	if err != nil {
-		writeToolError(w, code, err.Error())
+		writeToolErrorWithPath(w, code, err.Error(), req.Path)
 		return
 	}
 	completeMutation, err := a.beginDetachedMutation("write_file")
 	if err != nil {
-		writeToolError(w, http.StatusServiceUnavailable, err.Error())
+		writeToolErrorWithPath(w, http.StatusServiceUnavailable, err.Error(), rp.Virtual)
 		return
 	}
 	defer completeMutation()
 	if req.CreateDirs {
 		if err := os.MkdirAll(filepath.Dir(rp.Real), 0o755); err != nil {
-			writeToolError(w, http.StatusInternalServerError, err.Error())
+			writeToolFileError(w, err, rp.Virtual)
 			return
 		}
 	}
 	if err := os.WriteFile(rp.Real, data, 0o644); err != nil {
-		writeToolError(w, statusForFileError(err), err.Error())
+		writeToolFileError(w, err, rp.Virtual)
 		return
 	}
 	a.emitToolEvent(r.Context(), id, "tool_write_file", "write", rp.Virtual, req.Actor, map[string]any{"bytes": len(data)})
@@ -292,45 +310,45 @@ func (a *App) editFileTool(w http.ResponseWriter, r *http.Request) {
 	}
 	s, rp, code, err := a.resolveToolFileRequest(r.Context(), id, req.Path, req.Cwd, "read", req.Actor, false)
 	if err != nil {
-		writeToolError(w, code, err.Error())
+		writeToolErrorWithPath(w, code, err.Error(), req.Path)
 		return
 	}
 	if code, err := a.enforceToolFilePolicy(r.Context(), s, "write", rp.Real, req.Actor); err != nil {
-		writeToolError(w, code, err.Error())
+		writeToolErrorWithPath(w, code, err.Error(), rp.Virtual)
 		return
 	}
 	data, err := os.ReadFile(rp.Real)
 	if err != nil {
-		writeToolError(w, statusForFileError(err), err.Error())
+		writeToolFileError(w, err, rp.Virtual)
 		return
 	}
 	if len(data) > maxToolFileBytes {
-		writeToolError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("file exceeds edit limit of %d bytes", maxToolFileBytes))
+		writeToolErrorWithPath(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("file exceeds edit limit of %d bytes", maxToolFileBytes), rp.Virtual)
 		return
 	}
 	oldB := []byte(req.OldText)
 	count := bytes.Count(data, oldB)
 	if count == 0 {
-		writeToolError(w, http.StatusConflict, "oldText not found")
+		writeToolDomainError(w, http.StatusConflict, toolErrorEditConflict, "oldText not found", rp.Virtual, nil)
 		return
 	}
 	if count > 1 {
-		writeToolError(w, http.StatusConflict, "oldText is not unique")
+		writeToolDomainError(w, http.StatusConflict, toolErrorEditConflict, "oldText is not unique", rp.Virtual, nil)
 		return
 	}
 	newData := bytes.Replace(data, oldB, []byte(req.NewText), 1)
 	if len(newData) > maxToolFileBytes {
-		writeToolError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("edited file exceeds limit of %d bytes", maxToolFileBytes))
+		writeToolErrorWithPath(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("edited file exceeds limit of %d bytes", maxToolFileBytes), rp.Virtual)
 		return
 	}
 	completeMutation, err := a.beginDetachedMutation("edit_file")
 	if err != nil {
-		writeToolError(w, http.StatusServiceUnavailable, err.Error())
+		writeToolErrorWithPath(w, http.StatusServiceUnavailable, err.Error(), rp.Virtual)
 		return
 	}
 	defer completeMutation()
 	if err := os.WriteFile(rp.Real, newData, 0o644); err != nil {
-		writeToolError(w, statusForFileError(err), err.Error())
+		writeToolFileError(w, err, rp.Virtual)
 		return
 	}
 	diff := ""
@@ -629,11 +647,93 @@ func (a *App) emitToolEvent(ctx context.Context, sessionID, eventType, operation
 	a.broker.Publish(ev)
 }
 
-func writeToolError(w http.ResponseWriter, code int, msg string) {
-	if code == 0 {
-		code = http.StatusInternalServerError
+func defaultToolErrorCode(status int, message string) string {
+	lower := strings.ToLower(message)
+	switch status {
+	case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
+		return toolErrorInvalidRequest
+	case http.StatusNotFound:
+		if strings.Contains(lower, "session") {
+			return toolErrorSessionNotFound
+		}
+		return toolErrorFileNotFound
+	case http.StatusForbidden:
+		if strings.Contains(lower, "approval") {
+			return toolErrorApprovalDenied
+		}
+		return toolErrorPolicyDenied
+	case http.StatusConflict:
+		if strings.Contains(lower, "oldtext") || strings.Contains(lower, "not unique") {
+			return toolErrorEditConflict
+		}
+		return toolErrorConflict
+	case http.StatusServiceUnavailable:
+		return toolErrorSupervisorNotReady
+	default:
+		return toolErrorInternal
 	}
-	writeJSON(w, code, toolResponse{OK: false, Error: msg})
+}
+
+func publicToolErrorMessage(domainCode, message string) string {
+	switch domainCode {
+	case toolErrorFileNotFound:
+		return "File not found"
+	case toolErrorFilePermission:
+		return "File access denied"
+	case toolErrorSessionNotFound:
+		return "AgentSH session not found"
+	case toolErrorUnsupported:
+		return "AgentSH endpoint is not supported"
+	case toolErrorInternal:
+		return "AgentSH internal error"
+	default:
+		message = strings.TrimSpace(message)
+		if message == "" {
+			return "AgentSH request failed"
+		}
+		return sanitizeSubagentDiagnostic(message)
+	}
+}
+
+func writeToolDomainError(w http.ResponseWriter, status int, domainCode, message, path string, cause error) {
+	if status == 0 {
+		status = http.StatusInternalServerError
+	}
+	if domainCode == "" {
+		domainCode = defaultToolErrorCode(status, message)
+	}
+	errorID := "error-" + uuid.NewString()
+	if cause == nil && message != "" {
+		cause = errors.New(message)
+	}
+	log := slog.Debug
+	if status >= http.StatusInternalServerError {
+		log = slog.Error
+	}
+	log("AgentSH Pi tool request failed", "error_id", errorID, "code", domainCode, "status", status, "path", path, "error", cause)
+	writeJSON(w, status, toolResponse{
+		OK: false, Code: domainCode, Error: publicToolErrorMessage(domainCode, message),
+		Path: strings.TrimSpace(path), ErrorID: errorID,
+	})
+}
+
+func writeToolError(w http.ResponseWriter, status int, message string) {
+	writeToolDomainError(w, status, "", message, "", errors.New(message))
+}
+
+func writeToolErrorWithPath(w http.ResponseWriter, status int, message, path string) {
+	writeToolDomainError(w, status, "", message, path, errors.New(message))
+}
+
+func writeToolFileError(w http.ResponseWriter, err error, path string) {
+	status := statusForFileError(err)
+	code := toolErrorInternal
+	if os.IsNotExist(err) {
+		code = toolErrorFileNotFound
+	} else if os.IsPermission(err) {
+		code = toolErrorFilePermission
+	}
+	writeToolDomainError(w, status, code, err.Error(), path, err)
 }
 
 func statusForFileError(err error) int {

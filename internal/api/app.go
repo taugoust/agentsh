@@ -494,6 +494,9 @@ func (a *App) Router() http.Handler {
 		r.Get("/mcp/servers", a.listMCPServers)
 	})
 
+	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+		writeToolDomainError(w, http.StatusNotFound, toolErrorUnsupported, "endpoint is not supported", "", nil)
+	})
 	return r
 }
 

@@ -118,6 +118,72 @@ func TestPiToolFileEndpoints_RejectTraversalAndDuplicateEdit(t *testing.T) {
 	}
 }
 
+func TestPiToolErrorsExposeStableDomainCodes(t *testing.T) {
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+	workspace := t.TempDir()
+	sess, err := sessions.Create(workspace, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "dup.txt"), []byte("x x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := newTestApp(t, sessions, store).Router()
+
+	for _, tc := range []struct {
+		name       string
+		url        string
+		body       string
+		wantStatus int
+		wantCode   string
+		wantPath   string
+	}{
+		{name: "missing file", url: "/api/v1/sessions/" + sess.ID + "/tools/read_file", body: `{"path":"missing.txt"}`, wantStatus: http.StatusNotFound, wantCode: toolErrorFileNotFound, wantPath: "/workspace/missing.txt"},
+		{name: "missing session", url: "/api/v1/sessions/session-missing/tools/read_file", body: `{"path":"missing.txt"}`, wantStatus: http.StatusNotFound, wantCode: toolErrorSessionNotFound, wantPath: "missing.txt"},
+		{name: "edit conflict", url: "/api/v1/sessions/" + sess.ID + "/tools/edit_file", body: `{"path":"dup.txt","oldText":"x","newText":"y"}`, wantStatus: http.StatusConflict, wantCode: toolErrorEditConflict, wantPath: "/workspace/dup.txt"},
+		{name: "invalid request", url: "/api/v1/sessions/" + sess.ID + "/tools/read_file", body: `{`, wantStatus: http.StatusBadRequest, wantCode: toolErrorInvalidRequest},
+		{name: "unsupported endpoint", url: "/api/v1/sessions/" + sess.ID + "/tools/not_a_tool", body: `{}`, wantStatus: http.StatusNotFound, wantCode: toolErrorUnsupported},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, tc.url, strings.NewReader(tc.body)))
+			if recorder.Code != tc.wantStatus {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+			var response toolResponse
+			if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+				t.Fatal(err)
+			}
+			if response.OK || response.Code != tc.wantCode || response.Path != tc.wantPath || response.ErrorID == "" {
+				t.Fatalf("domain error=%+v", response)
+			}
+			if strings.Contains(recorder.Body.String(), workspace) {
+				t.Fatalf("error leaked real workspace path: %s", recorder.Body.String())
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		message string
+		want    string
+	}{
+		{message: "operation denied by policy rule read", want: toolErrorPolicyDenied},
+		{message: "operation denied by approval", want: toolErrorApprovalDenied},
+	} {
+		recorder := httptest.NewRecorder()
+		writeToolError(recorder, http.StatusForbidden, tc.message)
+		var response toolResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != tc.want {
+			t.Fatalf("message=%q code=%q want=%q", tc.message, response.Code, tc.want)
+		}
+	}
+}
+
 func TestPiToolExecBash_UsesNonLoginShell(t *testing.T) {
 	st := newSQLiteStore(t)
 	store := composite.New(st, st)

@@ -18,6 +18,7 @@ import (
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 var direnvNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -66,7 +67,7 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 		_, generation, revoked := pruneDirenvEnvironment(cfg, s, old)
 		writeJSON(w, http.StatusForbidden, toolResponse{
 			OK: false, Result: refreshDirenvResult{State: "policy_denied", UnsetCount: revoked, Generation: generation},
-			Error: "direnv refresh is disabled by policy",
+			Code: toolErrorPolicyDenied, Error: "direnv refresh is disabled by policy", ErrorID: "error-" + uuid.NewString(),
 		})
 		return
 	}

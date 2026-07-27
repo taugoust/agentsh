@@ -13,10 +13,10 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any, invalidMsg stri
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
 		var mbe *http.MaxBytesError
 		if errors.As(err, &mbe) {
-			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "request body too large"})
+			writeToolDomainError(w, http.StatusRequestEntityTooLarge, toolErrorInvalidRequest, "request body too large", "", err)
 			return false
 		}
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": invalidMsg})
+		writeToolDomainError(w, http.StatusBadRequest, toolErrorInvalidRequest, invalidMsg, "", err)
 		return false
 	}
 	return true
