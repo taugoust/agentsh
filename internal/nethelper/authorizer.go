@@ -688,9 +688,12 @@ func (a *SupervisorAuthorizer) removeRegistration(key string) {
 	}
 }
 
-// ReapableRegistrations marks registrations whose command cgroup is proven
-// gone/unpopulated. A dead supervisor alone is not enough to detach an active
-// gate: populated command cgroups remain pinned and fail closed.
+// ReapableRegistrations marks failed-registration tombstones and orphaned
+// command cgroups for cleanup. A live supervisor owns normal command teardown:
+// reaping its newly unpopulated cgroup can race the supervisor's authenticated
+// cleanup request and turn a successful command into a sticky cleanup failure.
+// A dead supervisor alone is not enough to detach an active gate: populated
+// command cgroups remain pinned and fail closed.
 func (a *SupervisorAuthorizer) ReapableRegistrations() []CleanupSessionRequest {
 	if a == nil || !a.opts.RequireKernelCgroupChecks {
 		return nil
@@ -742,9 +745,13 @@ func (a *SupervisorAuthorizer) ReapableRegistrations() []CleanupSessionRequest {
 		if populated {
 			continue
 		}
-		reason := CleanupReasonSessionEnded
-		if reg.Identity != nil && !reg.Identity.alive() {
-			reason = CleanupReasonOrphanReaped
+		// The normal supervisor cleanup runs immediately after its command is
+		// reaped. Do not let this periodic reaper win the small interval between
+		// the cgroup becoming empty and that authenticated cleanup RPC. If the
+		// supervisor later exits, its retained process identity makes the same
+		// registration eligible as an orphan.
+		if reg.Identity == nil || reg.Identity.alive() {
+			continue
 		}
 		reg.CleanupPending = true
 		requests = append(requests, CleanupSessionRequest{
@@ -753,7 +760,7 @@ func (a *SupervisorAuthorizer) ReapableRegistrations() []CleanupSessionRequest {
 			RegistrationID:  reg.RegistrationID,
 			CgroupID:        reg.CgroupID,
 			CgroupPath:      reg.CgroupPath,
-			Reason:          reason,
+			Reason:          CleanupReasonOrphanReaped,
 		})
 	}
 	sort.Slice(requests, func(i, j int) bool {

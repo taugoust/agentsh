@@ -513,7 +513,7 @@
             pname = "agentsh-nethelper-lifecycle-tests";
             checkPhase = ''
               runHook preCheck
-              go test ./internal/nethelper -run 'Test(EphemeralInstanceController|ReleaseWaitsForInFlightRegistration|ReleaseTimeoutReopensLifecycleAdmission|ClientServerReleaseCancellationRecoversAdmission|FailedRegistrationCompensationRetainsAuthenticatedTombstone|BootstrapResult|DefaultBootstrapRuntime)'
+              go test ./internal/nethelper -run 'Test(EphemeralInstanceController|ReleaseWaitsForInFlightRegistration|ReleaseTimeoutReopensLifecycleAdmission|ClientServerReleaseCancellationRecoversAdmission|FailedRegistrationCompensationRetainsAuthenticatedTombstone|SupervisorAuthorizerReaper|BootstrapResult|DefaultBootstrapRuntime)'
               go test ./internal/cli -run 'Test(EphemeralSystemdRunArgs|NethelperBootstrapRuntime|ValidateEphemeralNethelperRuntime)'
               runHook postCheck
             '';
