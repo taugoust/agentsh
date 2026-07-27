@@ -188,6 +188,9 @@ func validateRecoveryManifest(manifest RecoveryManifest) error {
 		if command.ExternalProcess && (command.PID <= 0 || command.ProcessGroupID != command.PID) {
 			return fmt.Errorf("%w: command %s has invalid process-group identity", ErrRecoveryManifestInvalid, command.CommandID)
 		}
+		if (command.ProcessStartIdentity == "") != (command.BootID == "") {
+			return fmt.Errorf("%w: command %s has incomplete process identity", ErrRecoveryManifestInvalid, command.CommandID)
+		}
 	}
 	return nil
 }
@@ -454,7 +457,13 @@ func (r *Runtime) MarkCommandProcess(commandID string, pid, processGroupID int) 
 	if pid <= 0 || processGroupID <= 0 {
 		return fmt.Errorf("command process identity is incomplete")
 	}
-	startIdentity, bootID, _ := CurrentProcessIdentity(pid)
+	startIdentity, bootID, identityErr := CurrentProcessIdentity(pid)
+	if identityErr != nil {
+		return fmt.Errorf("capture command process identity: %w", identityErr)
+	}
+	if (strings.TrimSpace(startIdentity) == "") != (strings.TrimSpace(bootID) == "") {
+		return fmt.Errorf("command process identity is incomplete")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i := range r.manifest.Inflight {

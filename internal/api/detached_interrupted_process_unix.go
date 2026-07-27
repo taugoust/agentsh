@@ -24,14 +24,15 @@ func terminateDetachedInterruptedProcesses(commands []detached.InflightCommand) 
 		if command.PID <= 0 || command.ProcessGroupID != command.PID {
 			return fmt.Errorf("interrupted command %s has incomplete process-group identity", command.CommandID)
 		}
-		if command.ProcessStartIdentity != "" || command.BootID != "" {
-			if !detached.ProcessIdentityMatches(command.PID, command.ProcessStartIdentity, command.BootID) {
-				// A missing leader is expected after parent-death SIGKILL; its
-				// descendants can still retain the original process group. A live,
-				// reused PID is not safe to signal through stale evidence.
-				if err := syscall.Kill(command.PID, 0); err == nil || !errors.Is(err, syscall.ESRCH) {
-					return fmt.Errorf("interrupted command %s process identity was reused", command.CommandID)
-				}
+		if command.ProcessStartIdentity == "" || command.BootID == "" {
+			return fmt.Errorf("interrupted command %s lacks a verifiable process identity", command.CommandID)
+		}
+		if !detached.ProcessIdentityMatches(command.PID, command.ProcessStartIdentity, command.BootID) {
+			// A missing leader is expected after parent-death SIGKILL; its
+			// descendants can still retain the original process group. A live,
+			// reused PID is not safe to signal through stale evidence.
+			if err := syscall.Kill(command.PID, 0); err == nil || !errors.Is(err, syscall.ESRCH) {
+				return fmt.Errorf("interrupted command %s process identity was reused", command.CommandID)
 			}
 		}
 		if err := syscall.Kill(-command.ProcessGroupID, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
