@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"net/netip"
 	"strings"
 	"time"
 )
@@ -164,6 +165,26 @@ type NetworkAttachmentEvidence struct {
 	Detail                    string                   `json:"detail,omitempty"`
 }
 
+func exactLoopbackEndpointID(endpoint string) bool {
+	addrPort, err := netip.ParseAddrPort(strings.TrimSpace(endpoint))
+	return err == nil && addrPort.Port() != 0 && addrPort.Addr().Zone() == "" && addrPort.Addr().Unmap().IsLoopback()
+}
+
+func (a NetworkAttachmentEvidence) hasExactPrimaryProxyEndpoint() bool {
+	if !exactLoopbackEndpointID(a.ProxyEndpointID) {
+		return false
+	}
+	for _, endpoint := range a.ProxyEndpointIDs {
+		if !exactLoopbackEndpointID(endpoint) {
+			return false
+		}
+		if strings.TrimSpace(endpoint) == strings.TrimSpace(a.ProxyEndpointID) {
+			return true
+		}
+	}
+	return false
+}
+
 // Proven reports whether this attachment is evidence for an active,
 // crash-persistent, exact-proxy command gate.
 func (a NetworkAttachmentEvidence) Proven() bool {
@@ -176,7 +197,7 @@ func (a NetworkAttachmentEvidence) Proven() bool {
 		a.CgroupID != 0 &&
 		strings.TrimSpace(a.RegistrationID) != "" &&
 		a.HelperAuthenticated &&
-		strings.TrimSpace(a.ProxyEndpointID) != "" &&
+		a.hasExactPrimaryProxyEndpoint() &&
 		a.AllowEntries > 0 &&
 		a.DefaultDeny &&
 		a.InitialPolicyLocked &&
@@ -237,41 +258,42 @@ type NethelperLifecycleEvidence struct {
 // recomputed while marshaling and can only be true when Proven reports that
 // every required prerequisite is present.
 type NetworkEnforcement struct {
-	Requested                 NetworkEnforcementRequest   `json:"requested"`
-	Readiness                 NetworkEnforcementStatus    `json:"readiness"`
-	Status                    NetworkEnforcementStatus    `json:"status"`
-	Tier                      NetworkEnforcementTier      `json:"tier"`
-	NetworkPolicyEnforced     bool                        `json:"network_policy_enforced"`
-	CgroupDelegated           bool                        `json:"cgroup_delegated"`
-	CgroupMode                string                      `json:"cgroup_mode,omitempty"`
-	CgroupRoot                string                      `json:"cgroup_root,omitempty"`
-	HelperConfigured          bool                        `json:"helper_configured"`
-	HelperAuthenticated       bool                        `json:"helper_authenticated"`
-	ToolBoundaryActive        bool                        `json:"tool_boundary_active"`
-	ProxyReady                bool                        `json:"proxy_ready"`
-	ProxyRequired             bool                        `json:"proxy_required"`
-	ExactProxyOnly            bool                        `json:"exact_proxy_endpoint_only"`
-	AllowedTransport          string                      `json:"allowed_transport,omitempty"`
-	ProxyEndpointID           string                      `json:"proxy_endpoint_id,omitempty"`
-	DirectBypassBlocked       bool                        `json:"direct_bypass_blocked"`
-	DirectTCPBlocked          bool                        `json:"direct_tcp_blocked"`
-	LocalNonProxyTCPBlocked   bool                        `json:"local_non_proxy_tcp_blocked"`
-	UDPBlocked                bool                        `json:"udp_blocked"`
-	QUICBlocked               bool                        `json:"quic_blocked"`
-	CommandDNSRequired        bool                        `json:"command_dns_required"`
-	RawSocketBlockConfigured  bool                        `json:"raw_socket_blocking_configured"`
-	RawSocketsBlocked         bool                        `json:"raw_sockets_blocked"`
-	UnsupportedTrafficAction  string                      `json:"unsupported_traffic_action,omitempty"`
-	BlockedTrafficClasses     []string                    `json:"blocked_traffic_classes,omitempty"`
-	UnsupportedTrafficBlocked bool                        `json:"unsupported_traffic_blocked"`
-	FailClosedSetup           bool                        `json:"fail_closed_setup"`
-	TransparentRedirect       bool                        `json:"transparent_redirect"`
-	CheckedAt                 time.Time                   `json:"checked_at"`
-	Detail                    string                      `json:"detail,omitempty"`
-	Warning                   string                      `json:"warning,omitempty"`
-	Preflight                 *NetworkPreflightEvidence   `json:"preflight,omitempty"`
-	Attachment                *NetworkAttachmentEvidence  `json:"attachment,omitempty"`
-	HelperLifecycle           *NethelperLifecycleEvidence `json:"helper_lifecycle,omitempty"`
+	Requested                 NetworkEnforcementRequest    `json:"requested"`
+	Readiness                 NetworkEnforcementStatus     `json:"readiness"`
+	Status                    NetworkEnforcementStatus     `json:"status"`
+	Tier                      NetworkEnforcementTier       `json:"tier"`
+	NetworkPolicyEnforced     bool                         `json:"network_policy_enforced"`
+	CgroupDelegated           bool                         `json:"cgroup_delegated"`
+	CgroupMode                string                       `json:"cgroup_mode,omitempty"`
+	CgroupRoot                string                       `json:"cgroup_root,omitempty"`
+	HelperConfigured          bool                         `json:"helper_configured"`
+	HelperAuthenticated       bool                         `json:"helper_authenticated"`
+	ToolBoundaryActive        bool                         `json:"tool_boundary_active"`
+	ProxyReady                bool                         `json:"proxy_ready"`
+	ProxyRequired             bool                         `json:"proxy_required"`
+	ExactProxyOnly            bool                         `json:"exact_proxy_endpoint_only"`
+	AllowedTransport          string                       `json:"allowed_transport,omitempty"`
+	ProxyEndpointID           string                       `json:"proxy_endpoint_id,omitempty"`
+	DirectBypassBlocked       bool                         `json:"direct_bypass_blocked"`
+	DirectTCPBlocked          bool                         `json:"direct_tcp_blocked"`
+	LocalNonProxyTCPBlocked   bool                         `json:"local_non_proxy_tcp_blocked"`
+	UDPBlocked                bool                         `json:"udp_blocked"`
+	QUICBlocked               bool                         `json:"quic_blocked"`
+	CommandDNSRequired        bool                         `json:"command_dns_required"`
+	RawSocketBlockConfigured  bool                         `json:"raw_socket_blocking_configured"`
+	RawSocketsBlocked         bool                         `json:"raw_sockets_blocked"`
+	UnsupportedTrafficAction  string                       `json:"unsupported_traffic_action,omitempty"`
+	BlockedTrafficClasses     []string                     `json:"blocked_traffic_classes,omitempty"`
+	UnsupportedTrafficBlocked bool                         `json:"unsupported_traffic_blocked"`
+	FailClosedSetup           bool                         `json:"fail_closed_setup"`
+	TransparentRedirect       bool                         `json:"transparent_redirect"`
+	CheckedAt                 time.Time                    `json:"checked_at"`
+	Detail                    string                       `json:"detail,omitempty"`
+	Warning                   string                       `json:"warning,omitempty"`
+	Preflight                 *NetworkPreflightEvidence    `json:"preflight,omitempty"`
+	Attachment                *NetworkAttachmentEvidence   `json:"attachment,omitempty"`
+	Attachments               []*NetworkAttachmentEvidence `json:"attachments,omitempty"`
+	HelperLifecycle           *NethelperLifecycleEvidence  `json:"helper_lifecycle,omitempty"`
 }
 
 // Proven is the sole condition under which AgentSH may emit
@@ -280,10 +302,42 @@ func (n NetworkEnforcement) Proven() bool {
 	if n.CheckedAt.IsZero() || n.Readiness != NetworkEnforcementStatusReady || n.Preflight == nil || !n.Preflight.Proven() {
 		return false
 	}
-	if n.Status != NetworkEnforcementStatusReady {
-		if n.Status != NetworkEnforcementStatusActive || n.Attachment == nil || !n.Attachment.Proven() {
+	activeEndpoint := ""
+	switch n.Status {
+	case NetworkEnforcementStatusReady:
+		if len(n.Attachments) != 0 || n.Attachment != nil {
 			return false
 		}
+		activeEndpoint = n.Preflight.ProxyEndpointID
+	case NetworkEnforcementStatusActive:
+		attachments := n.Attachments
+		if len(attachments) == 0 && n.Attachment != nil {
+			attachments = []*NetworkAttachmentEvidence{n.Attachment}
+		}
+		if len(attachments) == 0 || n.Attachment == nil || !n.Attachment.Proven() {
+			return false
+		}
+		seenCommands := make(map[string]struct{}, len(attachments))
+		selectedPresent := false
+		for _, attachment := range attachments {
+			if attachment == nil || !attachment.Proven() {
+				return false
+			}
+			if _, duplicate := seenCommands[attachment.CommandID]; duplicate {
+				return false
+			}
+			seenCommands[attachment.CommandID] = struct{}{}
+			if attachment.CommandID == n.Attachment.CommandID && attachment.CgroupID == n.Attachment.CgroupID &&
+				attachment.RegistrationID == n.Attachment.RegistrationID && attachment.ProxyEndpointID == n.Attachment.ProxyEndpointID {
+				selectedPresent = true
+			}
+		}
+		if !selectedPresent {
+			return false
+		}
+		activeEndpoint = n.Attachment.ProxyEndpointID
+	default:
+		return false
 	}
 	return n.Tier == NetworkEnforcementTierHelperEBPFProxyRequired &&
 		n.CgroupDelegated &&
@@ -294,7 +348,7 @@ func (n NetworkEnforcement) Proven() bool {
 		n.ToolBoundaryActive &&
 		n.ProxyReady &&
 		strings.TrimSpace(n.ProxyEndpointID) != "" &&
-		strings.TrimSpace(n.Preflight.ProxyEndpointID) == strings.TrimSpace(n.ProxyEndpointID) &&
+		strings.TrimSpace(activeEndpoint) == strings.TrimSpace(n.ProxyEndpointID) &&
 		n.ProxyRequired &&
 		n.ExactProxyOnly &&
 		strings.EqualFold(strings.TrimSpace(n.AllowedTransport), "tcp") &&
@@ -349,6 +403,11 @@ func (n *NetworkEnforcement) Normalize() {
 	}
 	if n.Attachment != nil && n.Attachment.Status == "" {
 		n.Attachment.Status = n.Status
+	}
+	for _, attachment := range n.Attachments {
+		if attachment != nil && attachment.Status == "" {
+			attachment.Status = n.Status
+		}
 	}
 	n.NetworkPolicyEnforced = n.Proven()
 	if !n.NetworkPolicyEnforced && strings.TrimSpace(n.Warning) == "" && n.Requested != NetworkEnforcementRequestNone {

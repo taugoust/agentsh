@@ -309,7 +309,7 @@ func TestChildExecutionCapability_RevocationCancelsTypedQueuedRequest(t *testing
 	requireChildExecOK(t, active)
 }
 
-func TestChildExecutionLanes_StrictProxyConfigurationFallsBackToExclusive(t *testing.T) {
+func TestChildExecutionLanes_StrictExplicitProxyConfigurationUsesSharedLane(t *testing.T) {
 	app, sess, _ := newChildLaneTest(t, 4)
 	capability := activeChildCapabilityForTest(t, app, sess, "subagent-a")
 	request := childExecRequest(context.Background(), sess.ID, capability.token, "true")
@@ -317,9 +317,28 @@ func TestChildExecutionLanes_StrictProxyConfigurationFallsBackToExclusive(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
+	app.cfg.Sandbox.Cgroups.Enabled = true
+	app.cfg.Sandbox.Network.Enabled = true
+	app.cfg.Sandbox.Network.EBPF.Enabled = true
 	app.cfg.Sandbox.Network.EBPF.Enforce = true
+	sess.SetProxy("http://127.0.0.1:18080", func() error { return nil })
+	if !app.childSharedExecutionSupported(sess, claim) {
+		t.Fatal("strict Linux cgroup/eBPF explicit-proxy command was not admitted to a shared lane")
+	}
+
+	app.cfg.Sandbox.Network.Transparent.Enabled = true
+	if !app.childSharedExecutionSupported(sess, claim) {
+		t.Fatal("strict exact-proxy cgroup gate should remain shared when legacy transparent interception is configured")
+	}
+	app.cfg.Sandbox.Network.Transparent.Enabled = false
+	app.cfg.Sandbox.FUSE.Enabled = true
 	if app.childSharedExecutionSupported(sess, claim) {
-		t.Fatal("strict eBPF/proxy command was admitted to a shared lane")
+		t.Fatal("FUSE execution must remain serialized")
+	}
+	app.cfg.Sandbox.FUSE.Enabled = false
+	app.ptraceTracer = struct{}{}
+	if app.childSharedExecutionSupported(sess, claim) {
+		t.Fatal("ptrace execution must remain serialized")
 	}
 }
 

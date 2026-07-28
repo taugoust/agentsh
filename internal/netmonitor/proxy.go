@@ -35,32 +35,61 @@ type mcpAddrSource interface {
 }
 
 type Proxy struct {
-	sessionID string
-	sess      *session.Session
-	policy    *policy.Engine
-	approvals *approvals.Manager
-	emit      Emitter
-	dbBypass  atomic.Pointer[dbevents.BypassEmitter]
+	sessionID      string
+	fixedCommandID string
+	sess           *session.Session
+	policy         *policy.Engine
+	approvals      *approvals.Manager
+	emit           Emitter
+	dbBypass       atomic.Pointer[dbevents.BypassEmitter]
 
-	ln   net.Listener
-	wg   sync.WaitGroup
-	done chan struct{}
+	ln        net.Listener
+	wg        sync.WaitGroup
+	done      chan struct{}
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once
+	closeErr  error
+
+	connMu  sync.Mutex
+	closing bool
+	conns   map[net.Conn]struct{}
 }
 
 func StartProxy(listenAddr string, sessionID string, sess *session.Session, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, dbBypass ...*dbevents.BypassEmitter) (*Proxy, string, error) {
+	return startProxy(listenAddr, sessionID, "", sess, engine, approvalsMgr, emit, dbBypass...)
+}
+
+// StartCommandProxy starts an explicit proxy whose attribution cannot change
+// for its lifetime. It is used with one stopped command cgroup whose eBPF gate
+// permits only this listener's exact loopback address and port.
+func StartCommandProxy(listenAddr string, sessionID string, commandID string, sess *session.Session, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, dbBypass ...*dbevents.BypassEmitter) (*Proxy, string, error) {
+	commandID = strings.TrimSpace(commandID)
+	if commandID == "" {
+		return nil, "", fmt.Errorf("command-bound proxy requires a command ID")
+	}
+	return startProxy(listenAddr, sessionID, commandID, sess, engine, approvalsMgr, emit, dbBypass...)
+}
+
+func startProxy(listenAddr string, sessionID string, commandID string, sess *session.Session, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, dbBypass ...*dbevents.BypassEmitter) (*Proxy, string, error) {
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return nil, "", err
 	}
 
+	proxyCtx, cancel := context.WithCancel(context.Background())
 	p := &Proxy{
-		sessionID: sessionID,
-		sess:      sess,
-		policy:    engine,
-		approvals: approvalsMgr,
-		emit:      emit,
-		ln:        ln,
-		done:      make(chan struct{}),
+		sessionID:      sessionID,
+		fixedCommandID: commandID,
+		sess:           sess,
+		policy:         engine,
+		approvals:      approvalsMgr,
+		emit:           emit,
+		ln:             ln,
+		done:           make(chan struct{}),
+		ctx:            proxyCtx,
+		cancel:         cancel,
+		conns:          make(map[net.Conn]struct{}),
 	}
 	if len(dbBypass) > 0 {
 		p.SetDBBypassEmitter(dbBypass[0])
@@ -81,10 +110,63 @@ func (p *Proxy) SetDBBypassEmitter(em *dbevents.BypassEmitter) {
 }
 
 func (p *Proxy) Close() error {
-	close(p.done)
-	err := p.ln.Close()
-	p.wg.Wait()
-	return err
+	if p == nil {
+		return nil
+	}
+	p.closeOnce.Do(func() {
+		close(p.done)
+		if p.cancel != nil {
+			p.cancel()
+		}
+		if p.ln != nil {
+			p.closeErr = p.ln.Close()
+		}
+		// Closing accepted streams makes command-local cleanup bounded even when
+		// a CONNECT tunnel outlives the process that opened it. Each handler still
+		// emits its terminal event with the immutable command attribution.
+		p.connMu.Lock()
+		p.closing = true
+		connections := make([]net.Conn, 0, len(p.conns))
+		for conn := range p.conns {
+			connections = append(connections, conn)
+		}
+		p.connMu.Unlock()
+		for _, conn := range connections {
+			_ = conn.Close()
+		}
+		p.wg.Wait()
+	})
+	return p.closeErr
+}
+
+func (p *Proxy) trackConn(conn net.Conn) bool {
+	p.connMu.Lock()
+	defer p.connMu.Unlock()
+	if p.closing {
+		_ = conn.Close()
+		return false
+	}
+	p.conns[conn] = struct{}{}
+	return true
+}
+
+func (p *Proxy) untrackConn(conn net.Conn) {
+	p.connMu.Lock()
+	delete(p.conns, conn)
+	p.connMu.Unlock()
+}
+
+func (p *Proxy) commandID() string {
+	if p == nil {
+		return ""
+	}
+	if p.fixedCommandID != "" {
+		return p.fixedCommandID
+	}
+	if p.sess != nil {
+		return p.sess.CurrentCommandID()
+	}
+	return ""
 }
 
 func (p *Proxy) acceptLoop() {
@@ -99,9 +181,13 @@ func (p *Proxy) acceptLoop() {
 				continue
 			}
 		}
+		if !p.trackConn(conn) {
+			continue
+		}
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()
+			defer p.untrackConn(conn)
 			_ = p.handleConn(conn)
 		}()
 	}
@@ -115,6 +201,9 @@ func (p *Proxy) handleConn(c net.Conn) error {
 		return err
 	}
 	defer req.Body.Close()
+	if p.ctx != nil {
+		req = req.WithContext(p.ctx)
+	}
 
 	if strings.EqualFold(req.Method, http.MethodConnect) {
 		return p.handleConnect(c, req)
@@ -162,10 +251,7 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 	}
 	portStr := strconv.Itoa(port)
 
-	commandID := ""
-	if p.sess != nil {
-		commandID = p.sess.CurrentCommandID()
-	}
+	commandID := p.commandID()
 	engine := p.policyEngine()
 
 	// Fail-closed check: if the target host is declared as an http_services
@@ -278,7 +364,8 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 		Redirect:         redirectResult,
 	})
 
-	up, err := net.DialTimeout(dialTarget.Network, dialTarget.Address, 20*time.Second)
+	dialer := &net.Dialer{Timeout: 20 * time.Second}
+	up, err := dialer.DialContext(ctx, dialTarget.Network, dialTarget.Address)
 	if err != nil {
 		_, _ = io.WriteString(client, "HTTP/1.1 502 Bad Gateway\r\n\r\n")
 		return nil
@@ -348,10 +435,7 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 		return nil
 	}
 
-	commandID := ""
-	if p.sess != nil {
-		commandID = p.sess.CurrentCommandID()
-	}
+	commandID := p.commandID()
 	engine := p.policyEngine()
 
 	// Fail-closed check: if the target host is declared as an http_services

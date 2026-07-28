@@ -150,6 +150,7 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 				report.ProxyRequired = previous.ProxyRequired
 				report.ExactProxyOnly = previous.ExactProxyOnly
 				report.AllowedTransport = previous.AllowedTransport
+				report.ProxyEndpointID = previous.ProxyEndpointID
 				report.DirectBypassBlocked = previous.DirectBypassBlocked
 				report.DirectTCPBlocked = previous.DirectTCPBlocked
 				report.LocalNonProxyTCPBlocked = previous.LocalNonProxyTCPBlocked
@@ -163,6 +164,7 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 				report.UnsupportedTrafficBlocked = previous.UnsupportedTrafficBlocked
 				report.FailClosedSetup = previous.FailClosedSetup
 				report.Attachment = previous.Attachment
+				report.Attachments = previous.Attachments
 				report.Detail = previous.Detail
 				report.Warning = previous.Warning
 				report.Normalize()
@@ -174,6 +176,7 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 				report.Tier = previous.Tier
 				report.FailClosedSetup = previous.FailClosedSetup
 				report.Attachment = previous.Attachment
+				report.Attachments = previous.Attachments
 				report.Detail = previous.Detail
 				report.Warning = previous.Warning
 				report.Normalize()
@@ -232,6 +235,19 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 	return report
 }
 
+// networkEnforcementReadyForCommand accepts proven session readiness while
+// sibling strict commands are active. NetworkEnforcement.Ready intentionally
+// remains the idle/autonomous-start predicate.
+func networkEnforcementReadyForCommand(report *types.NetworkEnforcement) bool {
+	if report == nil {
+		return false
+	}
+	if report.Status == types.NetworkEnforcementStatusReady {
+		return report.Ready()
+	}
+	return report.Status == types.NetworkEnforcementStatusActive && report.Proven()
+}
+
 func (a *App) refreshNetworkEnforcement(sessionID string) *types.NetworkEnforcement {
 	report := a.observedNetworkEnforcement(sessionID)
 	if a != nil && a.sessions != nil {
@@ -240,19 +256,6 @@ func (a *App) refreshNetworkEnforcement(sessionID string) *types.NetworkEnforcem
 		}
 	}
 	return report
-}
-
-func networkEndpointPresent(endpoints []string, endpoint string) bool {
-	endpoint = strings.TrimSpace(endpoint)
-	if endpoint == "" {
-		return false
-	}
-	for _, candidate := range endpoints {
-		if strings.TrimSpace(candidate) == endpoint {
-			return true
-		}
-	}
-	return false
 }
 
 func (a *App) recordNetworkAttachment(sessionID, commandID, cgroupPath string, cgroupID uint64, tier types.NetworkEnforcementTier, registrationID string, helperAuthenticated bool, proxyEndpoints []string, allowEntries, denyEntries int, defaultDeny, proxyRequired, pinned, reloaded bool) {
@@ -265,9 +268,6 @@ func (a *App) recordNetworkAttachment(sessionID, commandID, cgroupPath string, c
 	}
 	report := a.observedNetworkEnforcement(sessionID)
 	preflightReady := report.Preflight != nil && report.Preflight.Proven()
-	if preflightReady && !networkEndpointPresent(proxyEndpoints, report.Preflight.ProxyEndpointID) {
-		preflightReady = false
-	}
 	directBlocked := proxyRequired && defaultDeny
 	unsupportedTrafficAction := "policy-map"
 	var blockedTraffic []string
@@ -306,10 +306,10 @@ func (a *App) recordNetworkAttachment(sessionID, commandID, cgroupPath string, c
 	report.BlockedTrafficClasses = blockedTraffic
 	report.UnsupportedTrafficBlocked = preflightReady && proxyRequired
 	proxyEndpoint := ""
-	if preflightReady {
-		proxyEndpoint = report.Preflight.ProxyEndpointID
-	} else if len(proxyEndpoints) > 0 {
+	if len(proxyEndpoints) > 0 {
 		proxyEndpoint = proxyEndpoints[0]
+	} else if preflightReady {
+		proxyEndpoint = report.Preflight.ProxyEndpointID
 	}
 	if proxyEndpoint != "" {
 		report.ProxyEndpointID = proxyEndpoint
@@ -450,50 +450,59 @@ func (a *App) recordNetworkAttachmentEnded(sessionID, commandID string) {
 	if !ok {
 		return
 	}
-	previous := sess.NetworkEnforcement()
-	if previous == nil || previous.Attachment == nil || previous.Attachment.CommandID != commandID {
+	removed, stickyFailure := sess.RemoveNetworkAttachment(commandID)
+	if !removed || stickyFailure {
+		// Cleanup failure is sticky. A stale or reordered success callback can
+		// neither erase it nor remove a sibling command's attachment.
 		return
 	}
-	if previous.Status == types.NetworkEnforcementStatusFailed || previous.Attachment.Status == types.NetworkEnforcementStatusFailed {
-		// Cleanup failure is sticky. A later or accidentally reordered success
-		// callback must never erase the failure or emit an inactive/success
-		// attestation for the same command.
+
+	report := sess.NetworkEnforcement()
+	if report == nil {
+		report = a.observedNetworkEnforcement(sessionID)
+	}
+	if report == nil {
 		return
 	}
-	report := a.observedNetworkEnforcement(sessionID)
-	report.Attachment = nil
-	if report.Preflight != nil && report.Preflight.Proven() {
-		// Readiness is session-scoped. Ending one command removes only the active
-		// attachment; it must not erase the disposable preflight or turn ready
-		// into a misleading degraded state.
-		report.Status = types.NetworkEnforcementStatusReady
-		report.Readiness = types.NetworkEnforcementStatusReady
-		report.Detail = "session preflight remains ready; the completed command attachment was cleaned successfully"
-		report.Warning = ""
-	} else {
-		report.Status = types.NetworkEnforcementStatusDegraded
-		report.Readiness = types.NetworkEnforcementStatusDegraded
-		report.ProxyRequired = false
-		report.ExactProxyOnly = false
-		report.AllowedTransport = ""
-		report.DirectBypassBlocked = false
-		report.DirectTCPBlocked = false
-		report.LocalNonProxyTCPBlocked = false
-		report.UDPBlocked = false
-		report.QUICBlocked = false
-		report.CommandDNSRequired = false
-		report.RawSocketBlockConfigured = false
-		report.RawSocketsBlocked = false
-		report.UnsupportedTrafficAction = ""
-		report.BlockedTrafficClasses = nil
-		report.UnsupportedTrafficBlocked = false
-		report.FailClosedSetup = report.Preflight != nil && report.Preflight.FailClosedBarrierProven
-		report.Detail = "a disposable or completed command attachment was observed; no proven session preflight is available"
-		report.Warning = "network policy enforcement is not ready for strict autonomous startup"
+	if report.Attachment == nil && report.Status != types.NetworkEnforcementStatusFailed {
+		if report.Preflight != nil && report.Preflight.Proven() {
+			// Readiness is session-scoped. Ending the final command removes only
+			// its attachment and retains the disposable preflight.
+			report.Status = types.NetworkEnforcementStatusReady
+			report.Readiness = types.NetworkEnforcementStatusReady
+			report.Detail = "session preflight remains ready; the completed command attachment was cleaned successfully"
+			report.Warning = ""
+		} else {
+			report.Status = types.NetworkEnforcementStatusDegraded
+			report.Readiness = types.NetworkEnforcementStatusDegraded
+			report.ProxyRequired = false
+			report.ExactProxyOnly = false
+			report.AllowedTransport = ""
+			report.DirectBypassBlocked = false
+			report.DirectTCPBlocked = false
+			report.LocalNonProxyTCPBlocked = false
+			report.UDPBlocked = false
+			report.QUICBlocked = false
+			report.CommandDNSRequired = false
+			report.RawSocketBlockConfigured = false
+			report.RawSocketsBlocked = false
+			report.UnsupportedTrafficAction = ""
+			report.BlockedTrafficClasses = nil
+			report.UnsupportedTrafficBlocked = false
+			report.FailClosedSetup = report.Preflight != nil && report.Preflight.FailClosedBarrierProven
+			report.Detail = "a disposable or completed command attachment was observed; no proven session preflight is available"
+			report.Warning = "network policy enforcement is not ready for strict autonomous startup"
+		}
+		report.Attachments = nil
+		report.Normalize()
+		// Preserve an attachment that may have started after the exact removal.
+		sess.SetNetworkEnforcementBaseline(report)
 	}
-	report.Normalize()
-	sess.SetNetworkEnforcement(report)
-	a.emitNetworkEnforcementEvidence("network_enforcement_inactive", sessionID, commandID, report)
+	current := sess.NetworkEnforcement()
+	if current == nil {
+		current = report
+	}
+	a.emitNetworkEnforcementEvidence("network_enforcement_inactive", sessionID, commandID, current)
 }
 
 func isNetworkPreExecFailure(err error) bool {
@@ -734,6 +743,16 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 	if !ok {
 		return a.finishNetworkEnforcementPreflight(sessionID, nil, report, preflight, "session is unavailable", false)
 	}
+	if acquireExec {
+		unlock, err := sess.LockExecContext(ctx)
+		if err != nil {
+			return a.finishNetworkEnforcementPreflight(sessionID, nil, report, preflight, "network preflight execution admission was cancelled: "+err.Error(), false)
+		}
+		defer unlock()
+		// Admission may have waited for shared commands and their attachments to
+		// drain. Re-observe only after that drain before replacing readiness.
+		report = a.observedNetworkEnforcement(sessionID)
+	}
 
 	// Invalidate any older ready object before touching disposable resources. A
 	// failed or interrupted recheck must never leave a stale true claim behind.
@@ -742,17 +761,10 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 	report.NetworkPolicyEnforced = false
 	report.Preflight = preflight
 	report.Attachment = nil
+	report.Attachments = nil
 	report.Warning = "runtime network preflight is in progress; previous readiness is invalid"
 	report.Normalize()
-	sess.SetNetworkEnforcement(report)
-
-	if acquireExec {
-		unlock, err := sess.LockExecContext(ctx)
-		if err != nil {
-			return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "network preflight execution admission was cancelled: "+err.Error(), false)
-		}
-		defer unlock()
-	}
+	sess.ResetNetworkEnforcement(report)
 
 	if runtime.GOOS != "linux" {
 		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "proxy-required preflight is only available on Linux", false)
@@ -1179,6 +1191,7 @@ func (a *App) finishNetworkEnforcementPreflight(sessionID string, sess *session.
 	}
 	report.Preflight = preflight
 	report.CheckedAt = preflight.CheckedAt
+	report.Attachments = nil
 	if ready {
 		report.Attachment = nil
 	}
@@ -1244,7 +1257,7 @@ func (a *App) finishNetworkEnforcementPreflight(sessionID string, sess *session.
 	}
 	report.Normalize()
 	if sess != nil {
-		sess.SetNetworkEnforcement(report)
+		sess.ResetNetworkEnforcement(report)
 	}
 
 	eventType := "network_enforcement_preflight_degraded"
@@ -1497,7 +1510,7 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 	}
 	report.HelperLifecycle = lifecycle
 	report.Normalize()
-	sess.SetNetworkEnforcement(report)
+	sess.ResetNetworkEnforcement(report)
 	if a.detachedRuntime != nil {
 		if err := a.detachedRuntime.UpdateNethelperBinding(candidate.SocketPath, candidate.CredentialFile, candidate.BootstrapResultPath, candidate.Generation); err != nil {
 			_ = a.detachedRuntime.MarkFailed("persist replacement nethelper identity: " + err.Error())

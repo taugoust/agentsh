@@ -151,24 +151,161 @@ type Session struct {
 	// Nil if no services declare inject.env.
 	serviceEnvVars map[string]string
 
-	// networkEnforcement contains observed runtime evidence. It is never
-	// populated from policy intent alone.
-	networkEnforcement *types.NetworkEnforcement
+	// networkEnforcement contains session-scoped readiness evidence. Active
+	// command reports are retained separately so overlapping strict command
+	// attachments cannot overwrite one another.
+	networkEnforcement        *types.NetworkEnforcement
+	networkCommandEnforcement map[string]*types.NetworkEnforcement
 }
 
 // SetPolicyEngine stores the session-specific policy engine with expanded variables.
-// SetNetworkEnforcement replaces the session's observed network evidence.
+// SetNetworkEnforcement updates session readiness evidence or atomically upserts
+// the report for one active/failed command attachment. It never discards sibling
+// attachments; preflight recovery uses ResetNetworkEnforcement explicitly.
 func (s *Session) SetNetworkEnforcement(report *types.NetworkEnforcement) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.networkEnforcement = cloneNetworkEnforcement(report)
+	cloned := cloneNetworkEnforcement(report)
+	if cloned != nil && cloned.Attachment != nil && strings.TrimSpace(cloned.Attachment.CommandID) != "" &&
+		(cloned.Status == types.NetworkEnforcementStatusActive || cloned.Status == types.NetworkEnforcementStatusFailed) {
+		if s.networkCommandEnforcement == nil {
+			s.networkCommandEnforcement = make(map[string]*types.NetworkEnforcement)
+		}
+		commandID := cloned.Attachment.CommandID
+		cloned.Attachments = nil
+		s.networkCommandEnforcement[commandID] = cloned
+		return
+	}
+	if s.networkEnforcement != nil && s.networkEnforcement.Status == types.NetworkEnforcementStatusFailed &&
+		(cloned == nil || cloned.Status != types.NetworkEnforcementStatusFailed) {
+		return
+	}
+	s.networkEnforcement = cloned
 }
 
-// NetworkEnforcement returns a copy of the current observed network evidence.
+// ResetNetworkEnforcement replaces readiness and clears command attachment
+// history. Callers must hold exclusive execution admission.
+func (s *Session) ResetNetworkEnforcement(report *types.NetworkEnforcement) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.networkEnforcement = cloneNetworkEnforcement(report)
+	s.networkCommandEnforcement = nil
+	s.mu.Unlock()
+}
+
+// SetNetworkEnforcementBaseline updates session readiness without touching
+// concurrently tracked command attachments.
+func (s *Session) SetNetworkEnforcementBaseline(report *types.NetworkEnforcement) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.networkEnforcement = cloneNetworkEnforcement(report)
+	s.mu.Unlock()
+}
+
+// NetworkAttachment returns a copy of one command's attachment evidence.
+func (s *Session) NetworkAttachment(commandID string) *types.NetworkAttachmentEvidence {
+	if s == nil || strings.TrimSpace(commandID) == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	report := s.networkCommandEnforcement[commandID]
+	if report == nil {
+		return nil
+	}
+	return cloneNetworkAttachment(report.Attachment)
+}
+
+// RemoveNetworkAttachment removes only commandID. Failed cleanup evidence is
+// sticky and cannot be erased by a reordered successful callback.
+func (s *Session) RemoveNetworkAttachment(commandID string) (removed bool, stickyFailure bool) {
+	if s == nil || strings.TrimSpace(commandID) == "" {
+		return false, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	report := s.networkCommandEnforcement[commandID]
+	if report == nil || report.Attachment == nil {
+		return false, false
+	}
+	if report.Status == types.NetworkEnforcementStatusFailed || report.Attachment.Status == types.NetworkEnforcementStatusFailed {
+		return false, true
+	}
+	delete(s.networkCommandEnforcement, commandID)
+	if len(s.networkCommandEnforcement) == 0 {
+		s.networkCommandEnforcement = nil
+	}
+	return true, false
+}
+
+// NetworkEnforcement returns a copy of current observed evidence. All command
+// attachments are sorted by command ID for deterministic API output; Attachment
+// remains the newest failed/active entry for backwards compatibility.
 func (s *Session) NetworkEnforcement() *types.NetworkEnforcement {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return cloneNetworkEnforcement(s.networkEnforcement)
+	return s.networkEnforcementLocked()
+}
+
+func (s *Session) networkEnforcementLocked() *types.NetworkEnforcement {
+	if len(s.networkCommandEnforcement) == 0 {
+		return cloneNetworkEnforcement(s.networkEnforcement)
+	}
+	commandIDs := make([]string, 0, len(s.networkCommandEnforcement))
+	for commandID := range s.networkCommandEnforcement {
+		commandIDs = append(commandIDs, commandID)
+	}
+	sort.Strings(commandIDs)
+
+	var selected *types.NetworkEnforcement
+	selectedFailed := false
+	attachments := make([]*types.NetworkAttachmentEvidence, 0, len(commandIDs))
+	for _, commandID := range commandIDs {
+		report := s.networkCommandEnforcement[commandID]
+		if report == nil || report.Attachment == nil {
+			continue
+		}
+		attachment := cloneNetworkAttachment(report.Attachment)
+		attachments = append(attachments, attachment)
+		failed := report.Status == types.NetworkEnforcementStatusFailed || attachment.Status == types.NetworkEnforcementStatusFailed
+		if selected == nil || (failed && !selectedFailed) || (failed == selectedFailed && attachment.CheckedAt.After(selected.Attachment.CheckedAt)) {
+			selected = report
+			selectedFailed = failed
+		}
+	}
+	if selected == nil {
+		return cloneNetworkEnforcement(s.networkEnforcement)
+	}
+	if s.networkEnforcement != nil && s.networkEnforcement.Status == types.NetworkEnforcementStatusFailed {
+		out := cloneNetworkEnforcement(s.networkEnforcement)
+		out.Attachments = attachments
+		out.Normalize()
+		return out
+	}
+	out := cloneNetworkEnforcement(selected)
+	out.Attachments = attachments
+	if selectedFailed {
+		out.Status = types.NetworkEnforcementStatusFailed
+		out.Readiness = types.NetworkEnforcementStatusFailed
+	} else {
+		out.Status = types.NetworkEnforcementStatusActive
+	}
+	out.Normalize()
+	return out
+}
+
+func cloneNetworkAttachment(attachment *types.NetworkAttachmentEvidence) *types.NetworkAttachmentEvidence {
+	if attachment == nil {
+		return nil
+	}
+	clone := *attachment
+	clone.ProxyEndpointIDs = append([]string(nil), attachment.ProxyEndpointIDs...)
+	clone.BlockedTrafficClasses = append([]string(nil), attachment.BlockedTrafficClasses...)
+	return &clone
 }
 
 func cloneNetworkEnforcement(report *types.NetworkEnforcement) *types.NetworkEnforcement {
@@ -177,6 +314,14 @@ func cloneNetworkEnforcement(report *types.NetworkEnforcement) *types.NetworkEnf
 	}
 	clone := *report
 	clone.BlockedTrafficClasses = append([]string(nil), report.BlockedTrafficClasses...)
+	clone.Attachment = cloneNetworkAttachment(report.Attachment)
+	clone.Attachments = make([]*types.NetworkAttachmentEvidence, 0, len(report.Attachments))
+	for _, attachment := range report.Attachments {
+		clone.Attachments = append(clone.Attachments, cloneNetworkAttachment(attachment))
+	}
+	if len(clone.Attachments) == 0 {
+		clone.Attachments = nil
+	}
 	if report.Preflight != nil {
 		preflight := *report.Preflight
 		clone.Preflight = &preflight
@@ -185,12 +330,6 @@ func cloneNetworkEnforcement(report *types.NetworkEnforcement) *types.NetworkEnf
 		lifecycle := *report.HelperLifecycle
 		lifecycle.Capabilities = append([]string(nil), report.HelperLifecycle.Capabilities...)
 		clone.HelperLifecycle = &lifecycle
-	}
-	if report.Attachment != nil {
-		attachment := *report.Attachment
-		attachment.ProxyEndpointIDs = append([]string(nil), report.Attachment.ProxyEndpointIDs...)
-		attachment.BlockedTrafficClasses = append([]string(nil), report.Attachment.BlockedTrafficClasses...)
-		clone.Attachment = &attachment
 	}
 	clone.Normalize()
 	return &clone
@@ -456,7 +595,7 @@ func (s *Session) Snapshot() types.Session {
 	if workspaceMode == "" {
 		workspaceMode = string(types.WorkspaceModeDirect)
 	}
-	networkEnforcement := cloneNetworkEnforcement(s.networkEnforcement)
+	networkEnforcement := s.networkEnforcementLocked()
 	policyCommandTimeout := time.Duration(0)
 	if s.policyEngine != nil {
 		policyCommandTimeout = s.policyEngine.Limits().CommandTimeout

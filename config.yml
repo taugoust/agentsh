@@ -158,7 +158,7 @@ sessions:
   subagents:
     default_timeout: "2h"
     # Fail-closed default. Raise to allow authenticated sibling child lanes on
-    # supported runtimes; strict eBPF/proxy and other unsupported paths serialize.
+    # supported runtimes, including strict Linux eBPF command-local proxy gates.
     max_exec_concurrency: 1
   
   # Session metadata retention after termination

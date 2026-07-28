@@ -704,7 +704,8 @@
               runHook preCheck
               go test -race ./internal/session -run '^(TestExecutionLanes_|TestLockExecContextCancelledQueueNeverAcquiresLater$|TestManager_ReapExpired_DoesNotIdleReapBusySession$)'
               go test ./internal/config -run '^TestSubagents_'
-              go test -race ./internal/api -run '^(TestChildExecution(Lanes|Capability)_|TestKillCommand_KillsRunningExec$)'
+              go test -race ./internal/netmonitor -run '^(TestStartProxy|TestProxy|TestHandleConnect|TestCheckConnectNetwork)'
+              go test -race ./internal/api -run '^(TestChildExecution(Lanes|Capability)_|TestKillCommand_KillsRunningExec$|TestNetworkCleanupFailureCannotBeOverwrittenByInactiveSuccess$)'
               runHook postCheck
             '';
           });

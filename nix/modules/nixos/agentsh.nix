@@ -464,7 +464,7 @@ in
         maxExecConcurrency = mkOption {
           type = types.ints.between 1 4;
           default = 1;
-          description = "Aggregate cap for authenticated child exec_bash lanes. Unsupported and strict proxy/eBPF paths remain exclusive.";
+          description = "Aggregate cap for authenticated child exec_bash lanes. Strict Linux eBPF uses command-local proxies; unsupported persistent attribution backends remain exclusive.";
         };
       };
       workspaceOverlay = {

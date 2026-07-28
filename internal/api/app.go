@@ -692,6 +692,122 @@ func (a *App) createSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, code, snap)
 }
 
+type commandExplicitProxy struct {
+	once sync.Once
+
+	app       *App
+	sessionID string
+	commandID string
+	url       string
+	endpoint  string
+	proxy     *netmonitor.Proxy
+	closeErr  error
+}
+
+func (p *commandExplicitProxy) URL() string {
+	if p == nil {
+		return ""
+	}
+	return p.url
+}
+
+func (p *commandExplicitProxy) Close() error {
+	if p == nil {
+		return nil
+	}
+	p.once.Do(func() {
+		if p.proxy != nil {
+			p.closeErr = p.proxy.Close()
+		}
+		if p.app == nil {
+			return
+		}
+		ev := types.Event{
+			ID:        uuid.NewString(),
+			Timestamp: time.Now().UTC(),
+			Type:      "net_proxy_stopped",
+			SessionID: p.sessionID,
+			CommandID: p.commandID,
+			Fields: map[string]any{
+				"proxy_url":         p.url,
+				"proxy_endpoint_id": p.endpoint,
+				"command_local":     true,
+			},
+		}
+		if p.closeErr != nil {
+			ev.Fields["error"] = p.closeErr.Error()
+		}
+		if p.app.store != nil {
+			_ = p.app.store.AppendEvent(context.Background(), ev)
+		}
+		if p.app.broker != nil {
+			p.app.broker.Publish(ev)
+		}
+	})
+	return p.closeErr
+}
+
+// startCommandExplicitProxy creates one immutable-attribution listener before
+// the stopped command is attached. Only this exact endpoint is passed to that
+// command's cgroup/nethelper policy update.
+func (a *App) startCommandExplicitProxy(ctx context.Context, s *session.Session, commandID string) (*commandExplicitProxy, error) {
+	if a == nil || a.cfg == nil || s == nil || strings.TrimSpace(commandID) == "" {
+		return nil, fmt.Errorf("command-local network proxy prerequisites are incomplete")
+	}
+	em := storeEmitter{store: a.store, broker: a.broker}
+	pr, proxyURL, err := netmonitor.StartCommandProxy(a.cfg.Sandbox.Network.ProxyListenAddr, s.ID, commandID, s, a.policyEngineFor(s), a.approvals, em, a.dbBypass)
+	if err != nil {
+		fail := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "net_proxy_failed", SessionID: s.ID, CommandID: commandID,
+			Fields: map[string]any{"error": err.Error(), "command_local": true}}
+		if a.store != nil {
+			_ = a.store.AppendEvent(ctx, fail)
+		}
+		if a.broker != nil {
+			a.broker.Publish(fail)
+		}
+		return nil, err
+	}
+	proxyAddrPort, endpointErr := exactLoopbackProxyAddrPort(proxyURL)
+	if endpointErr != nil {
+		_ = pr.Close()
+		endpointErr = fmt.Errorf("command-local proxy listener is not an exact loopback endpoint: %w", endpointErr)
+		fail := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "net_proxy_failed", SessionID: s.ID, CommandID: commandID,
+			Fields: map[string]any{"error": endpointErr.Error(), "command_local": true}}
+		if a.store != nil {
+			_ = a.store.AppendEvent(ctx, fail)
+		}
+		if a.broker != nil {
+			a.broker.Publish(fail)
+		}
+		return nil, endpointErr
+	}
+	handle := &commandExplicitProxy{
+		app: a, sessionID: s.ID, commandID: commandID, url: proxyURL,
+		endpoint: proxyAddrPort.String(), proxy: pr,
+	}
+	okEv := types.Event{
+		ID:        uuid.NewString(),
+		Timestamp: time.Now().UTC(),
+		Type:      "net_proxy_started",
+		SessionID: s.ID,
+		CommandID: commandID,
+		Fields: map[string]any{
+			"proxy_url":         proxyURL,
+			"proxy_endpoint_id": proxyAddrPort.String(),
+			"proxy_ready":       true,
+			"transport":         "tcp",
+			"command_local":     true,
+		},
+	}
+	if a.store != nil {
+		_ = a.store.AppendEvent(ctx, okEv)
+	}
+	if a.broker != nil {
+		a.broker.Publish(okEv)
+	}
+	return handle, nil
+}
+
 func (a *App) startExplicitProxy(ctx context.Context, s *session.Session) error {
 	em := storeEmitter{store: a.store, broker: a.broker}
 	pr, proxyURL, err := netmonitor.StartProxy(a.cfg.Sandbox.Network.ProxyListenAddr, s.ID, s, a.policy, a.approvals, em, a.dbBypass)
@@ -1180,6 +1296,14 @@ func (a *App) execInSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) cgroupHook(sessionID string, cmdID string, limits policy.Limits) postStartHook {
+	return a.cgroupHookWithProxyEndpoints(sessionID, cmdID, limits, nil)
+}
+
+func (a *App) cgroupHookWithProxyEndpoints(sessionID string, cmdID string, limits policy.Limits, proxyEndpoints *networkProxyEndpoints) postStartHook {
+	if proxyEndpoints != nil {
+		snapshot := *proxyEndpoints
+		proxyEndpoints = &snapshot
+	}
 	// Return nil (not a no-op function) when neither resource limits nor
 	// cgroup-attached eBPF need a command cgroup. eBPF can be enabled without
 	// cgroup resource limits (attach-only mode), so do not gate solely on
@@ -1201,12 +1325,12 @@ func (a *App) cgroupHook(sessionID string, cmdID string, limits policy.Limits) p
 				return nil, markPreExecEnforcementError("E_NETWORK_ENFORCEMENT_NOT_READY", fmt.Errorf("strict session is unavailable during pre-exec enforcement"))
 			}
 			report := sess.NetworkEnforcement()
-			if report == nil || !report.Ready() {
+			if !networkEnforcementReadyForCommand(report) {
 				return nil, markPreExecEnforcementError("E_NETWORK_ENFORCEMENT_NOT_READY", fmt.Errorf("strict network enforcement is not ready"))
 			}
 		}
 		em := storeEmitter{store: a.store, broker: a.broker}
-		cleanup, err := applyCgroupV2(context.Background(), em, a, sessionID, cmdID, pid, limits, a.metrics, a.policy)
+		cleanup, err := applyCgroupV2WithProxyEndpoints(context.Background(), em, a, sessionID, cmdID, pid, limits, a.metrics, a.policy, proxyEndpoints)
 		if err != nil {
 			a.recordNetworkEnforcementFailure(sessionID, cmdID, err)
 			// applyCgroupV2 may return cleanup for a partially-created command

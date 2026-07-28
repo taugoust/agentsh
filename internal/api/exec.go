@@ -1045,6 +1045,35 @@ func buildCommandEnvironment(cfg *config.Config, envPol policy.ResolvedEnvPolicy
 	return scrubReservedSupervisorEnvSlice(env), nil
 }
 
+func explicitProxyEnvironment(proxyURL string) map[string]string {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return nil
+	}
+	return map[string]string{
+		"HTTP_PROXY":  proxyURL,
+		"HTTPS_PROXY": proxyURL,
+		"ALL_PROXY":   proxyURL,
+		"http_proxy":  proxyURL,
+		"https_proxy": proxyURL,
+		"all_proxy":   proxyURL,
+	}
+}
+
+func mergeTrustedEnvironment(base map[string]string, override map[string]string) map[string]string {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(base)+len(override))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range override {
+		merged[key] = value
+	}
+	return merged
+}
+
 func overlayTrustedEnv(env []string, values map[string]string) []string {
 	if len(values) == 0 {
 		return env

@@ -90,8 +90,37 @@ func emitCgroupDegradedAndContinue(ctx context.Context, emit storeEmitter, sessi
 	return func() error { return nil }, nil
 }
 
+type networkProxyEndpoints struct {
+	ProxyURL    string
+	LLMProxyURL string
+}
+
+func sessionNetworkProxyEndpoints(app *App, sessionID string) networkProxyEndpoints {
+	if app == nil || app.sessions == nil {
+		return networkProxyEndpoints{}
+	}
+	sess, ok := app.sessions.Get(sessionID)
+	if !ok || sess == nil {
+		return networkProxyEndpoints{}
+	}
+	return networkProxyEndpoints{ProxyURL: strings.TrimSpace(sess.ProxyURL()), LLMProxyURL: strings.TrimSpace(sess.LLMProxyURL())}
+}
+
 func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, cmdID string, pid int, lim policy.Limits, m *metrics.Collector, pol *policy.Engine) (func() error, error) {
+	return applyCgroupV2WithProxyEndpoints(ctx, emit, app, sessionID, cmdID, pid, lim, m, pol, nil)
+}
+
+// applyCgroupV2WithProxyEndpoints binds a command-specific explicit proxy to
+// this command's cgroup registration. A nil override preserves the exclusive
+// session proxy path; a non-nil override is authoritative and never falls back.
+func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app *App, sessionID, cmdID string, pid int, lim policy.Limits, m *metrics.Collector, pol *policy.Engine, proxyOverride *networkProxyEndpoints) (func() error, error) {
 	cfg := app.cfg
+	proxyEndpoints := sessionNetworkProxyEndpoints(app, sessionID)
+	if proxyOverride != nil {
+		proxyEndpoints = *proxyOverride
+		proxyEndpoints.ProxyURL = strings.TrimSpace(proxyEndpoints.ProxyURL)
+		proxyEndpoints.LLMProxyURL = strings.TrimSpace(proxyEndpoints.LLMProxyURL)
+	}
 	needsCgroup := cfg != nil && (cfg.Sandbox.Cgroups.Enabled ||
 		cfg.Sandbox.Network.EBPF.Enabled ||
 		cfg.Sandbox.Network.EBPF.Enforce ||
@@ -368,7 +397,7 @@ func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, 
 			return setupFailure(fmt.Errorf("strict eBPF enforcement requires the installed privileged nethelper socket"))
 		}
 		if helperSock != "" {
-			cleanup, err := setupEBPFViaNethelper(ctx, emit, app, sessionID, cmdID, cg.Path, pol)
+			cleanup, err := setupEBPFViaNethelperWithProxyEndpoints(ctx, emit, app, sessionID, cmdID, cg.Path, pol, proxyEndpoints)
 			if err == nil {
 				helperCleanup = cleanup
 				return cleanupResources, nil
@@ -486,10 +515,10 @@ func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, 
 						var ttlHint time.Duration
 						proxyRequired := false
 						var proxyEndpointIDs []string
-						if sess, ok := app.sessions.Get(sessionID); ok && strings.TrimSpace(sess.ProxyURL()) != "" {
+						if strings.TrimSpace(proxyEndpoints.ProxyURL) != "" {
 							proxyRequired = true
 							var proxyErr error
-							ep, cidrs, proxyErr = buildProxyOnlyAllowedEndpoints(sess.ProxyURL(), sess.LLMProxyURL())
+							ep, cidrs, proxyErr = buildProxyOnlyAllowedEndpoints(proxyEndpoints.ProxyURL, proxyEndpoints.LLMProxyURL)
 							if proxyErr != nil {
 								return setupFailure(fmt.Errorf("build exact proxy-required allowlist: %w", proxyErr))
 							}
@@ -577,18 +606,8 @@ func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, 
 									"unsupported_traffic_blocked":        false,
 									"transparent_redirect_supported":     false,
 									"network_policy_enforced":            false,
-									"proxy_url": func() string {
-										if sess, ok := app.sessions.Get(sessionID); ok {
-											return sess.ProxyURL()
-										}
-										return ""
-									}(),
-									"llm_proxy_url": func() string {
-										if sess, ok := app.sessions.Get(sessionID); ok {
-											return sess.LLMProxyURL()
-										}
-										return ""
-									}(),
+									"proxy_url":                          proxyEndpoints.ProxyURL,
+									"llm_proxy_url":                      proxyEndpoints.LLMProxyURL,
 								},
 							}
 							_ = emit.AppendEvent(ctx, ev)
@@ -756,6 +775,10 @@ func (e *nethelperSetupFailure) Unwrap() error {
 }
 
 func setupEBPFViaNethelper(ctx context.Context, emit storeEmitter, app *App, sessionID, cmdID, cgroupPath string, pol *policy.Engine) (func() error, error) {
+	return setupEBPFViaNethelperWithProxyEndpoints(ctx, emit, app, sessionID, cmdID, cgroupPath, pol, sessionNetworkProxyEndpoints(app, sessionID))
+}
+
+func setupEBPFViaNethelperWithProxyEndpoints(ctx context.Context, emit storeEmitter, app *App, sessionID, cmdID, cgroupPath string, pol *policy.Engine, endpoints networkProxyEndpoints) (func() error, error) {
 	if app == nil || app.cfg == nil {
 		return nil, fmt.Errorf("app config unavailable")
 	}
@@ -765,7 +788,7 @@ func setupEBPFViaNethelper(ctx context.Context, emit storeEmitter, app *App, ses
 		return nil, fmt.Errorf("nethelper socket is not configured")
 	}
 	client := nethelperClientForSocket(socketPath)
-	proxyGate, err := nethelperProxyGate(app, sessionID)
+	proxyGate, err := nethelperProxyGateForEndpoints(endpoints)
 	if err != nil {
 		return nil, err
 	}
@@ -1044,15 +1067,15 @@ type nethelperProxyGateConfig struct {
 }
 
 func nethelperProxyGate(app *App, sessionID string) (*nethelperProxyGateConfig, error) {
-	if app == nil || app.sessions == nil {
+	return nethelperProxyGateForEndpoints(sessionNetworkProxyEndpoints(app, sessionID))
+}
+
+func nethelperProxyGateForEndpoints(endpoints networkProxyEndpoints) (*nethelperProxyGateConfig, error) {
+	proxyURL := strings.TrimSpace(endpoints.ProxyURL)
+	if proxyURL == "" {
 		return nil, nil
 	}
-	sess, ok := app.sessions.Get(sessionID)
-	if !ok || strings.TrimSpace(sess.ProxyURL()) == "" {
-		return nil, nil
-	}
-	proxyURL := strings.TrimSpace(sess.ProxyURL())
-	keys, cidrs, err := buildProxyOnlyAllowedEndpoints(proxyURL, sess.LLMProxyURL())
+	keys, cidrs, err := buildProxyOnlyAllowedEndpoints(proxyURL, endpoints.LLMProxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("resolve exact proxy-required endpoints: %w", err)
 	}

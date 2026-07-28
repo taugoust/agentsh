@@ -1907,7 +1907,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 
 	if commandJailRequired(a.cfg) {
 		report := a.refreshNetworkEnforcement(id)
-		if report == nil || !report.Ready() {
+		if !networkEnforcementReadyForCommand(report) {
 			message := "strict network enforcement is not ready; command was not executed"
 			if report != nil && strings.TrimSpace(report.Detail) != "" {
 				message += ": " + report.Detail
@@ -2128,6 +2128,35 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		return resp, http.StatusForbidden, nil
 	}
 
+	var commandProxy *commandExplicitProxy
+	var commandProxyEndpoints *networkProxyEndpoints
+	commandProxyClosed := false
+	closeCommandProxy := func() {
+		if commandProxy == nil || commandProxyClosed {
+			return
+		}
+		commandProxyClosed = true
+		if closeErr := commandProxy.Close(); closeErr != nil {
+			a.recordNetworkCleanupFailure(id, cmdID, fmt.Errorf("close command-local network proxy: %w", closeErr))
+		}
+	}
+	if lease.Shared() && commandJailRequired(a.cfg) {
+		var proxyErr error
+		commandProxy, proxyErr = a.startCommandExplicitProxy(ctx, s, cmdID)
+		if proxyErr != nil {
+			message := "command-local strict network proxy could not start; command was not executed: " + proxyErr.Error()
+			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
+				Result: types.ExecResult{ExitCode: 127, CommandTimeout: timeoutResolution.Metadata, DurationMs: int64(time.Since(start) / time.Millisecond),
+					Error:   &types.ExecError{Code: "E_NETWORK_PROXY_UNAVAILABLE", Message: message},
+					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_NETWORK_PROXY_UNAVAILABLE", Message: message, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
+				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			}
+			return resp, http.StatusServiceUnavailable, nil
+		}
+		commandProxyEndpoints = &networkProxyEndpoints{ProxyURL: commandProxy.URL(), LLMProxyURL: s.LLMProxyURL()}
+		defer closeCommandProxy()
+	}
+
 	origCommand := req.Command
 	origArgs := append([]string{}, req.Args...)
 
@@ -2176,6 +2205,12 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			extraCfg.stdoutCaptureBytes = opts.stdoutCaptureBytes
 			extraCfg.stderrCaptureBytes = opts.stderrCaptureBytes
 			setExecveAuditRedaction(extraCfg.execveHandler, true)
+		}
+		if commandProxy != nil {
+			if extraCfg == nil {
+				extraCfg = &extraProcConfig{}
+			}
+			extraCfg.envInject = mergeTrustedEnvironment(extraCfg.envInject, explicitProxyEnvironment(commandProxy.URL()))
 		}
 		if extraCfg != nil {
 			setExecveProvenance(extraCfg.execveHandler, opts.provenance)
@@ -2250,7 +2285,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			envPolicyResolved = true
 		}
 
-		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, a.cgroupHookWithProxyEndpoints(id, cmdID, limits, commandProxyEndpoints), extraCfg, a.ptraceTracer, id, onStarted)
 		failure := commandJailFailureFrom(execErr)
 		if failure == nil {
 			break
@@ -2263,6 +2298,10 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			break
 		}
 	}
+	// runCommand has already torn down the command cgroup. Stop the listener now
+	// so long-lived tunnels emit their final immutable-attribution events before
+	// this response queries command events.
+	closeCommandProxy()
 	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(ctx)
 	defer cancelTerminalPersistence()
 

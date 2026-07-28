@@ -382,11 +382,11 @@ func (a *App) validateChildCapabilityClaim(claim *childCapabilityClaim) error {
 	}
 }
 
-// childSharedExecutionSupported is intentionally conservative. Persistent FUSE,
-// ptrace/ESF attribution, cgroups, and the network proxy still consume
-// session-wide runtime state. In particular, the strict eBPF proxy accepts a
-// TCP stream without a trustworthy source-command identity. Those paths stay
-// exclusive until they can map a proxy connection back to its command cgroup.
+// childSharedExecutionSupported remains conservative for session-wide FUSE,
+// ptrace/ESF, netns, and non-strict transparent interception. Strict Linux explicit-proxy
+// execution is safe because each shared command receives its own immutable-ID
+// proxy listener and only that exact endpoint is installed in its command
+// cgroup. Non-strict session proxies remain serialized.
 func (a *App) childSharedExecutionSupported(sess *session.Session, claim *childCapabilityClaim) bool {
 	if a == nil || a.cfg == nil || sess == nil || claim == nil || !claim.sharedEligible() {
 		return false
@@ -394,20 +394,29 @@ func (a *App) childSharedExecutionSupported(sess *session.Session, claim *childC
 	if runtime.GOOS != "linux" || a.cfg.Sessions.Subagents.ExecConcurrency() <= 1 {
 		return false
 	}
-	if a.ptraceTracer != nil || a.cmdResolver != nil || a.sessionTracker != nil {
+	if a.ptraceTracer != nil || a.cmdResolver != nil || a.sessionTracker != nil || a.cfg.Sandbox.FUSE.Enabled {
 		return false
 	}
-	if a.cfg.Sandbox.FUSE.Enabled || sess.NetNSName() != "" || strings.TrimSpace(sess.ProxyURL()) != "" {
+	if sess.NetNSName() != "" {
 		return false
 	}
-	if a.cfg.Sandbox.Cgroups.Enabled || a.cfg.Sandbox.Network.Enabled || a.cfg.Sandbox.Network.Transparent.Enabled {
+
+	if commandJailRequired(a.cfg) {
+		proxyURL := strings.TrimSpace(sess.ProxyURL())
+		if proxyURL == "" {
+			return false
+		}
+		if _, err := exactLoopbackProxyAddrPort(proxyURL); err != nil {
+			return false
+		}
+		return true
+	}
+
+	if a.cfg.Sandbox.Network.Transparent.Enabled || strings.TrimSpace(sess.ProxyURL()) != "" || a.cfg.Sandbox.Cgroups.Enabled || a.cfg.Sandbox.Network.Enabled {
 		return false
 	}
 	ebpf := a.cfg.Sandbox.Network.EBPF
-	if ebpf.Enabled || ebpf.Enforce || ebpf.Required {
-		return false
-	}
-	return true
+	return !ebpf.Enabled && !ebpf.Enforce && !ebpf.Required
 }
 
 // contextForChildCapability makes revocation an execution cancellation cause.

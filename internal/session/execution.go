@@ -99,7 +99,12 @@ func (r *CommandRuntime) SetCurrentCommandID(commandID string) {
 		return
 	}
 	r.mu.Lock()
-	r.commandID = commandID
+	// Shared execution attribution is minted with the lease and is immutable.
+	// Retain the setter for the CommandRuntimeState interface, but never let a
+	// handler or overlapping command replace an established identity.
+	if r.commandID == "" {
+		r.commandID = commandID
+	}
 	r.mu.Unlock()
 }
 

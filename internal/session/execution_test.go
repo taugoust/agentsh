@@ -175,6 +175,16 @@ func TestExecutionLanes_ExclusiveWaiterDrainsAndBlocksNewSharedWork(t *testing.T
 	}
 }
 
+func TestExecutionLanes_SharedCommandAttributionIsImmutable(t *testing.T) {
+	sess := newExecutionTestSession(t)
+	lease := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-original", LaneID: "child-a", Shared: true, SharedLimit: 2})
+	defer lease.Release()
+	lease.Runtime().SetCurrentCommandID("cmd-overwrite-attempt")
+	if got := lease.Runtime().CurrentCommandID(); got != "cmd-original" {
+		t.Fatalf("shared command attribution = %q, want immutable cmd-original", got)
+	}
+}
+
 func TestExecutionLanes_CommandProcessResolvesSharedAndExclusiveState(t *testing.T) {
 	sess := newExecutionTestSession(t)
 	exclusive := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "root"})
