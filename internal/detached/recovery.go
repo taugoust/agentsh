@@ -840,6 +840,38 @@ type RuntimeStatus struct {
 	NetworkEnforcement    *NetworkEnforcement `json:"network_enforcement,omitempty"`
 }
 
+// ReadTerminalRuntimeStatusFromRoot returns durable exact-session termination
+// evidence after the supervisor socket is gone. The recovery manifest is the
+// terminal authority: stop writes it only after the exact unit/process has
+// stopped and the supervisor lock has been acquired. Metadata independently
+// binds that authority to the captured protocol-v2 incarnation.
+func ReadTerminalRuntimeStatusFromRoot(root, sessionID string) (RuntimeStatus, error) {
+	meta, stateDir, err := ReadMetadataFromRoot(root, sessionID)
+	if err != nil {
+		return RuntimeStatus{}, err
+	}
+	manifest, err := ReadRecoveryManifest(stateDir)
+	if err != nil {
+		return RuntimeStatus{}, err
+	}
+	if meta.ProtocolVersion < ProtocolVersion || manifest.SessionID != sessionID ||
+		meta.Generation == 0 || meta.Generation != manifest.Generation ||
+		strings.TrimSpace(meta.IncarnationID) == "" || meta.IncarnationID != manifest.IncarnationID {
+		return RuntimeStatus{}, fmt.Errorf("%w: terminal metadata and recovery identities differ", ErrRecoveryManifestInvalid)
+	}
+	if manifest.State != LifecycleStopped && manifest.State != LifecycleFinalized {
+		return RuntimeStatus{}, fmt.Errorf("%w: detached session is not durably terminal", ErrRecoveryManifestInvalid)
+	}
+	return RuntimeStatus{
+		ProtocolVersion: ProtocolVersion, SessionID: sessionID,
+		LifecycleState: manifest.State, Generation: manifest.Generation,
+		IncarnationID: manifest.IncarnationID, OwnerPID: meta.OwnerPID,
+		OwnerStartIdentity: meta.OwnerStartIdentity, BootID: meta.BootID,
+		IncarnationStartedAt: meta.IncarnationStartedAt, HeartbeatAt: meta.HeartbeatAt,
+		Recoverable: false,
+	}, nil
+}
+
 func cloneRecoveryManifest(in RecoveryManifest) RecoveryManifest {
 	out := in
 	out.Request.WorkspaceRoots = append([]types.WorkspaceRoot(nil), in.Request.WorkspaceRoots...)

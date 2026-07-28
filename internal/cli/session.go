@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/agentsh/agentsh/internal/client"
+	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/spf13/cobra"
 )
@@ -217,6 +218,13 @@ func newSessionInfoCmd() *cobra.Command {
 			}
 			s, err := c.GetSession(cmd.Context(), args[0])
 			if err != nil {
+				// A successful exact stop removes the supervisor socket, so a live
+				// API can no longer return a 404. Protocol-v2 terminal records are
+				// protected durable evidence for wrapper cleanup after that point.
+				status, terminalErr := detached.ReadTerminalRuntimeStatusFromRoot(detachedSessionsRoot(), args[0])
+				if terminalErr == nil {
+					return printJSON(cmd, status)
+				}
 				return err
 			}
 			return printJSON(cmd, s)

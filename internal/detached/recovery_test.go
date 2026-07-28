@@ -9,6 +9,56 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
+func TestReadTerminalRuntimeStatusFromRootRequiresExactDurableIdentity(t *testing.T) {
+	root := t.TempDir()
+	sessionID := "session-terminal"
+	stateDir := filepath.Join(root, sessionID)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := NewRecoveryManifest(sessionID, types.CreateSessionRequest{ID: sessionID, Workspace: root}, LaunchSpec{
+		Executable: filepath.Join(root, "agentsh"), WorkingDir: root,
+		EnvironmentFile: filepath.Join(stateDir, "supervisor.env"), LogFile: filepath.Join(stateDir, "supervisor.log"),
+	}, time.Now().UTC())
+	manifest.State = LifecycleStopped
+	manifest.Generation = 1
+	manifest.IncarnationID = "11111111-1111-4111-8111-111111111111"
+	if err := WriteRecoveryManifest(stateDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	meta := Metadata{
+		SessionID: sessionID, ID: sessionID, State: LifecycleStopped,
+		ProtocolVersion: ProtocolVersion, Generation: manifest.Generation,
+		IncarnationID: manifest.IncarnationID,
+	}
+	if err := WriteMetadata(stateDir, meta); err != nil {
+		t.Fatal(err)
+	}
+	status, err := ReadTerminalRuntimeStatusFromRoot(root, sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.SessionID != sessionID || status.LifecycleState != LifecycleStopped || status.Generation != 1 || status.IncarnationID != manifest.IncarnationID || status.Recoverable {
+		t.Fatalf("terminal status = %+v", status)
+	}
+
+	manifest.State = LifecycleReady
+	if err := WriteRecoveryManifest(stateDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadTerminalRuntimeStatusFromRoot(root, sessionID); err == nil {
+		t.Fatal("non-terminal manifest was accepted as stop evidence")
+	}
+	manifest.State = LifecycleStopped
+	manifest.IncarnationID = "22222222-2222-4222-8222-222222222222"
+	if err := WriteRecoveryManifest(stateDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadTerminalRuntimeStatusFromRoot(root, sessionID); err == nil {
+		t.Fatal("mismatched terminal incarnation was accepted as stop evidence")
+	}
+}
+
 func TestRuntimeRecoveryPreservesIdentityAndInterruptsInflightCommand(t *testing.T) {
 	root := t.TempDir()
 	sessionID := "session-recovery"
