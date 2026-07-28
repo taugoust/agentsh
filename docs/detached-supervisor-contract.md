@@ -275,6 +275,8 @@ Implementation notes:
 - `actor` is copied into command approval/audit metadata where the existing exec path carries request metadata.
 - Runtime approvals share one bounded extension allowance. The first positive extension fixes the maximum deadline at the initial effective deadline plus that allowance (normally `approvals.timeout`); sequential approvals cannot accumulate additional allowances. `command_timeout.approval_extension_ms` reports the bound when approvals are enabled.
 - Pi's command transport slack must be greater than `approval_extension_ms` plus a cleanup/response margin. The transport deadline must not expire while AgentSH is killing descendants, persisting terminal state, and returning the response.
+- AgentSH-owned child Pi processes receive a supervisor-minted `AGENTSH_CHILD_CAPABILITY`. Their extension sends it only as `X-AgentSH-Child-Capability` on `exec_bash` over the supervisor Unix socket. The credential is bound to the session, subagent ID, exact peer PID, stable process identity where supported, and child lifetime; it is scrubbed from executed command environments.
+- Each authenticated child is one serialized execution lane. Different child lanes may overlap up to `sessions.subagents.max_exec_concurrency`. The fail-closed default is `1`. Parent/root requests and unsupported transports remain exclusive. Persistent FUSE, ptrace/ESF, cgroup/network-proxy, and strict eBPF paths currently fall back to exclusive admission because their session-wide or proxy-connection attribution cannot yet identify every overlapping command safely.
 
 ### `read_file`
 

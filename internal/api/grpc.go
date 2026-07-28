@@ -628,6 +628,7 @@ func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*
 	if !ok {
 		return nil, status.Error(codes.NotFound, "session not found")
 	}
+	s.app.revokeChildCapabilitiesForSession(id, errChildCapabilityRevoked)
 	if s.app.approvals != nil {
 		s.app.approvals.ClearSession(ctx, id)
 	}
@@ -754,11 +755,10 @@ func (s *grpcServer) KillCommand(ctx context.Context, in *structpb.Struct) (*str
 	if cmdID == "" {
 		return nil, status.Error(codes.InvalidArgument, "command_id is required")
 	}
-	current := sess.CurrentCommandID()
-	if current == "" || current != cmdID {
+	pid, running := sess.CommandProcess(cmdID)
+	if !running {
 		return nil, status.Error(codes.NotFound, "command not running")
 	}
-	pid := sess.CurrentProcessPID()
 	if pid <= 0 {
 		return nil, status.Error(codes.FailedPrecondition, "command pid not available")
 	}

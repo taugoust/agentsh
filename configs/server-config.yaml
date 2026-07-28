@@ -40,6 +40,7 @@ sessions:
     max_bytes: 16777216
   subagents:
     default_timeout: "2h"
+    max_exec_concurrency: 1
 
 # LLM Proxy configuration
 proxy:

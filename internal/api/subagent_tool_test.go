@@ -297,6 +297,11 @@ func TestSubagentStreamEndpointTerminalContract(t *testing.T) {
   printf '%s\n' '{"type":"agent_settled"}'
   exit 9
 fi
+if [ -z "$AGENTSH_CHILD_CAPABILITY" ]; then
+  printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"missing child execution capability"}}'
+  printf '%s\n' '{"type":"agent_settled"}'
+  exit 10
+fi
 case "$1" in
   fail)
     printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"model failed"}}'

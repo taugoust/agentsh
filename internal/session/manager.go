@@ -85,8 +85,20 @@ type Session struct {
 	currentTraceID            string // W3C trace context: trace ID (32 hex chars)
 	currentSpanID             string // W3C trace context: parent span ID (16 hex chars)
 	currentTraceFlags         string // W3C trace context: trace flags (2 hex chars, e.g. "01")
-	execGateOnce              sync.Once
-	execGate                  chan struct{}
+
+	// execAdmissionMu coordinates exclusive root/legacy executions and
+	// authenticated child lanes. It is deliberately separate from mu so a
+	// cancelled waiter never needs to acquire session state before it can leave
+	// the queue.
+	execAdmissionMu      sync.Mutex
+	execAdmissionChanged chan struct{}
+	execExclusiveActive  bool
+	execExclusiveWaiters int
+	execSharedWaiters    int
+	execSharedActive     int
+	execActiveCount      int
+	execActiveLanes      map[string]struct{}
+	execActiveCommands   map[string]*CommandRuntime
 
 	// direnvEnv is server-owned sensitive state. It is merged into child
 	// commands but never copied into types.Session snapshots.
@@ -486,44 +498,15 @@ func (s *Session) LockExec() func() {
 	return unlock
 }
 
-// LockExecContext admits one execution only while ctx remains live. A queued
-// request cancelled by its caller is never allowed to acquire the slot later.
+// LockExecContext retains the historical exclusive execution contract. Child
+// exec_bash requests use AcquireExecution directly only after their supervisor-
+// minted capability has been authenticated.
 func (s *Session) LockExecContext(ctx context.Context) (func(), error) {
-	if ctx == nil {
-		ctx = context.Background()
+	lease, err := s.AcquireExecution(ctx, ExecutionAdmission{})
+	if err != nil {
+		return nil, err
 	}
-	s.execGateOnce.Do(func() {
-		s.execGate = make(chan struct{}, 1)
-		s.execGate <- struct{}{}
-	})
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-s.execGate:
-		if err := ctx.Err(); err != nil {
-			s.execGate <- struct{}{}
-			return nil, err
-		}
-	}
-	s.mu.Lock()
-	s.State = types.SessionStateBusy
-	s.LastActivity = time.Now().UTC()
-	s.mu.Unlock()
-	return func() {
-		s.mu.Lock()
-		s.State = types.SessionStateReady
-		s.currentCommandID = ""
-		s.currentProcPID = 0
-		s.currentExecutionSensitive = false
-		s.currentCommandProvenance = policy.CommandProvenanceNone
-		s.currentSandboxComposition = ""
-		s.currentTraceID = ""
-		s.currentSpanID = ""
-		s.currentTraceFlags = ""
-		s.LastActivity = time.Now().UTC()
-		s.mu.Unlock()
-		s.execGate <- struct{}{}
-	}, nil
+	return lease.Release, nil
 }
 
 func (s *Session) SetCurrentCommandID(commandID string) {

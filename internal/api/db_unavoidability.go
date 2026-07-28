@@ -395,6 +395,7 @@ func (a *App) cleanupCreatedSession(s *session.Session) {
 	if s == nil {
 		return
 	}
+	a.revokeChildCapabilitiesForSession(s.ID, errChildCapabilityRevoked)
 	_ = s.CloseDBProxy()
 	_ = s.CloseNetNS()
 	_ = s.CloseProxy()

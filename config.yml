@@ -157,6 +157,9 @@ sessions:
   # AgentSH-owned default/maximum execution deadline for supervised child Pi processes
   subagents:
     default_timeout: "2h"
+    # Fail-closed default. Raise to allow authenticated sibling child lanes on
+    # supported runtimes; strict eBPF/proxy and other unsupported paths serialize.
+    max_exec_concurrency: 1
   
   # Session metadata retention after termination
   metadata_retention: "24h"

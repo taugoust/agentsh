@@ -698,12 +698,25 @@
             '';
           };
 
+          child-execution-lane-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-child-execution-lane-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test -race ./internal/session -run '^(TestExecutionLanes_|TestLockExecContextCancelledQueueNeverAcquiresLater$|TestManager_ReapExpired_DoesNotIdleReapBusySession$)'
+              go test ./internal/config -run '^TestSubagents_'
+              go test -race ./internal/api -run '^(TestChildExecution(Lanes|Capability)_|TestKillCommand_KillsRunningExec$)'
+              runHook postCheck
+            '';
+          });
+
           nixos-output-artifacts-module =
             if stdenv.hostPlatform.isLinux then
               assert
                 defaultSessionRuntimeModule.config.services.agentsh.sessions.outputArtifacts.maxBytes == 16777216;
               assert
                 defaultSessionRuntimeModule.config.services.agentsh.sessions.subagents.defaultTimeout == "2h";
+              assert
+                defaultSessionRuntimeModule.config.services.agentsh.sessions.subagents.maxExecConcurrency == 1;
               assert
                 customSessionRuntimeModule.config.services.agentsh.sessions.outputArtifacts.maxBytes == 33554432;
               assert
@@ -721,6 +734,8 @@
                   yq -e '.sessions.output_artifacts.max_bytes == 16777216' \
                     ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
                   yq -e '.sessions.subagents.default_timeout == "2h"' \
+                    ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
+                  yq -e '.sessions.subagents.max_exec_concurrency == 1' \
                     ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}
                   yq -e '.sessions.default_idle_timeout == "9h"' \
                     ${defaultSessionRuntimeModule.config.environment.etc."agentsh/config.yml".source}

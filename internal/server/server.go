@@ -933,6 +933,7 @@ func New(cfg *config.Config) (*Server, error) {
 		srv.unixPath = unixPath
 		srv.unixServer = &http.Server{
 			Handler:           api.MarkUnixSocketRequests(handler),
+			ConnContext:       api.UnixSocketConnContext,
 			ReadHeaderTimeout: 15 * time.Second,
 			ReadTimeout:       readTimeout,
 			// Do not apply the global HTTP write timeout to the trusted local

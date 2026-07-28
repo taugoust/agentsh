@@ -239,7 +239,10 @@ let
       sessions = {
         base_dir = cfg.sessions.baseDir;
         output_artifacts.max_bytes = cfg.sessions.outputArtifacts.maxBytes;
-        subagents.default_timeout = cfg.sessions.subagents.defaultTimeout;
+        subagents = {
+          default_timeout = cfg.sessions.subagents.defaultTimeout;
+          max_exec_concurrency = cfg.sessions.subagents.maxExecConcurrency;
+        };
         workspace_overlay = {
           enabled = cfg.sessions.workspaceOverlay.enable;
           base_dir = cfg.sessions.workspaceOverlay.baseDir;
@@ -452,10 +455,17 @@ in
         default = 16 * 1024 * 1024;
         description = "Maximum bytes retained in each session-owned remote output artifact.";
       };
-      subagents.defaultTimeout = mkOption {
-        type = types.str;
-        default = "2h";
-        description = "Default and maximum AgentSH-owned execution deadline for supervised child Pi processes; requests may select a shorter timeout.";
+      subagents = {
+        defaultTimeout = mkOption {
+          type = types.str;
+          default = "2h";
+          description = "Default and maximum AgentSH-owned execution deadline for supervised child Pi processes; requests may select a shorter timeout.";
+        };
+        maxExecConcurrency = mkOption {
+          type = types.ints.between 1 4;
+          default = 1;
+          description = "Aggregate cap for authenticated child exec_bash lanes. Unsupported and strict proxy/eBPF paths remain exclusive.";
+        };
       };
       workspaceOverlay = {
         enable = mkOption {

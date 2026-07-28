@@ -160,24 +160,23 @@ func (sd *SessionShutdown) doShutdown(ctx context.Context, reason ShutdownReason
 		cancel()
 	}
 
-	// 5. Signal the process
+	// 5. Signal every active command process. Shared child lanes intentionally
+	// leave the legacy singleton empty, so shutdown must consume the command
+	// registry rather than silently terminating only one (or none).
 	finalState := types.SessionStateCompleted
-	sd.session.mu.Lock()
-	pid := sd.session.currentProcPID
-	sd.session.mu.Unlock()
-
-	if pid > 0 {
-		// Send SIGTERM first
-		if err := signalProcess(pid, syscall.SIGTERM); err == nil {
-			// Wait for graceful exit
-			exitCtx, cancel := context.WithTimeout(ctx, sd.config.GracePeriod)
+	pids := sd.session.ActiveCommandProcesses()
+	for _, pid := range pids {
+		_ = signalProcess(pid, syscall.SIGTERM)
+	}
+	if len(pids) > 0 {
+		exitCtx, cancel := context.WithTimeout(ctx, sd.config.GracePeriod)
+		for _, pid := range pids {
 			if !sd.waitProcessExit(exitCtx, pid) {
-				// Force kill
-				signalProcess(pid, syscall.SIGKILL)
+				_ = signalProcess(pid, syscall.SIGKILL)
 				finalState = types.SessionStateKilled
 			}
-			cancel()
 		}
+		cancel()
 	}
 
 	// 6. Determine final state based on reason

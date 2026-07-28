@@ -21,10 +21,14 @@ import (
 )
 
 func (a *App) configureExecveComposition(handler any, s *session.Session, wrapperCfg seccompWrapperConfig, setupConnection *os.File, wrapperPID int) error {
+	return a.configureExecveCompositionForState(handler, s, s, wrapperCfg, setupConnection, wrapperPID)
+}
+
+func (a *App) configureExecveCompositionForState(handler any, s *session.Session, runtimeState session.CommandRuntimeState, wrapperCfg seccompWrapperConfig, setupConnection *os.File, wrapperPID int) error {
 	if wrapperCfg.SandboxComposition == "" {
 		return nil
 	}
-	if s == nil || wrapperCfg.SandboxComposition != bubblewrapCompositionMode {
+	if s == nil || runtimeState == nil || wrapperCfg.SandboxComposition != bubblewrapCompositionMode {
 		return fmt.Errorf("unsupported selected composition mode %q", wrapperCfg.SandboxComposition)
 	}
 	h, ok := handler.(*unixmon.ExecveHandler)
@@ -87,7 +91,7 @@ func (a *App) configureExecveComposition(handler any, s *session.Session, wrappe
 				Timestamp: time.Now().UTC(),
 				Type:      "composition_plan",
 				SessionID: s.ID,
-				CommandID: s.CurrentCommandID(),
+				CommandID: runtimeState.CurrentCommandID(),
 				Operation: "normalized_bubblewrap_plan",
 				Fields: map[string]any{
 					"parent_pid":      parentPID,
@@ -95,7 +99,7 @@ func (a *App) configureExecveComposition(handler any, s *session.Session, wrappe
 					"normalized_plan": snapshot,
 				},
 			}
-			s.InjectTraceContext(event.Fields)
+			runtimeState.InjectTraceContext(event.Fields)
 			_ = a.store.AppendEvent(context.Background(), event)
 			a.broker.Publish(event)
 		},
@@ -106,7 +110,7 @@ func (a *App) configureExecveComposition(handler any, s *session.Session, wrappe
 				Timestamp: time.Now().UTC(),
 				Type:      string(internalevents.EventCompositionRuntimeCleanup),
 				SessionID: s.ID,
-				CommandID: s.CurrentCommandID(),
+				CommandID: runtimeState.CurrentCommandID(),
 				Operation: "synthetic_pool_paths_removed",
 				Fields: map[string]any{
 					"scope":                      "command",
@@ -114,7 +118,7 @@ func (a *App) configureExecveComposition(handler any, s *session.Session, wrappe
 					"construction_paths_removed": true,
 				},
 			}
-			s.InjectTraceContext(event.Fields)
+			runtimeState.InjectTraceContext(event.Fields)
 			if err := a.store.AppendEvent(context.Background(), event); err != nil {
 				return err
 			}

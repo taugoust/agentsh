@@ -66,17 +66,19 @@ type toolResponse struct {
 }
 
 const (
-	toolErrorFileNotFound       = "file_not_found"
-	toolErrorFilePermission     = "file_permission_denied"
-	toolErrorSessionNotFound    = "session_not_found"
-	toolErrorPolicyDenied       = "policy_denied"
-	toolErrorApprovalDenied     = "approval_denied"
-	toolErrorEditConflict       = "edit_conflict"
-	toolErrorInvalidRequest     = "invalid_request"
-	toolErrorUnsupported        = "unsupported_endpoint"
-	toolErrorConflict           = "conflict"
-	toolErrorSupervisorNotReady = "supervisor_not_ready"
-	toolErrorInternal           = "internal_error"
+	toolErrorFileNotFound           = "file_not_found"
+	toolErrorFilePermission         = "file_permission_denied"
+	toolErrorSessionNotFound        = "session_not_found"
+	toolErrorPolicyDenied           = "policy_denied"
+	toolErrorApprovalDenied         = "approval_denied"
+	toolErrorEditConflict           = "edit_conflict"
+	toolErrorInvalidRequest         = "invalid_request"
+	toolErrorUnsupported            = "unsupported_endpoint"
+	toolErrorConflict               = "conflict"
+	toolErrorSupervisorNotReady     = "supervisor_not_ready"
+	toolErrorChildCapabilityInvalid = "child_capability_invalid"
+	toolErrorChildCapabilityRevoked = "child_capability_revoked"
+	toolErrorInternal               = "internal_error"
 )
 
 type resolvedToolPath struct {
@@ -124,6 +126,25 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	claim, capabilityErr := a.authenticateChildCapability(r.Context(), r, id)
+	if capabilityErr != nil {
+		switch {
+		case errors.Is(capabilityErr, errChildCapabilityRevoked):
+			writeToolDomainError(w, http.StatusForbidden, toolErrorChildCapabilityRevoked, "child execution capability is revoked", "", capabilityErr)
+		case errors.Is(capabilityErr, context.Canceled), errors.Is(capabilityErr, context.DeadlineExceeded):
+			writeToolDomainError(w, http.StatusRequestTimeout, toolErrorChildCapabilityInvalid, "child capability authentication was cancelled", "", capabilityErr)
+		default:
+			writeToolDomainError(w, http.StatusForbidden, toolErrorChildCapabilityInvalid, "child execution capability is invalid", "", capabilityErr)
+		}
+		return
+	}
+	execCtx := r.Context()
+	cleanupCapabilityContext := func() {}
+	if claim != nil {
+		execCtx, cleanupCapabilityContext = contextForChildCapability(execCtx, claim)
+	}
+	defer cleanupCapabilityContext()
+
 	execReq := types.ExecRequest{
 		Command: "bash",
 		// Do not use a login shell here. On NixOS, /etc/profile rebuilds PATH from
@@ -138,7 +159,15 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		OutputArtifact: outputArtifactRequest,
 		Actor:          map[string]any(req.Actor),
 	}
-	resp, code, err := a.execInSessionCore(r.Context(), id, execReq)
+	opts := internalExecOptions{}
+	if claim != nil {
+		opts.executionLaneID = claim.laneID
+		opts.executionLaneLimit = a.cfg.Sessions.Subagents.ExecConcurrency()
+		sess, _ := a.sessions.Get(id)
+		opts.sharedExecution = a.childSharedExecutionSupported(sess, claim)
+		opts.admissionCheck = claim.validate
+	}
+	resp, code, err := a.execInSessionCoreWithOptions(execCtx, id, execReq, opts)
 	if err != nil {
 		writeToolError(w, code, err.Error())
 		return

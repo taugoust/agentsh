@@ -40,14 +40,15 @@ type extraProcConfig struct {
 	compositionParentSock  *os.File          // Parent socket to receive retained composition objects
 	compositionControlRoot string
 	configureComposition   compositionConfigurer
-	notifySessionID        string             // Session ID for notify handler
-	notifyStore            eventStore         // Event store for notify handler
-	notifyBroker           eventBroker        // Event broker for notify handler
-	notifyPolicy           *policy.Engine     // Policy engine for notify handler
-	notifyApprovals        *approvals.Manager // Approval manager for notify handler
-	notifySession          *session.Session   // Session for notify handler context
-	execveHandler          any                // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
-	blockList              any                // Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
+	notifySessionID        string                      // Session ID for notify handler
+	notifyStore            eventStore                  // Event store for notify handler
+	notifyBroker           eventBroker                 // Event broker for notify handler
+	notifyPolicy           *policy.Engine              // Policy engine for notify handler
+	notifyApprovals        *approvals.Manager          // Approval manager for notify handler
+	notifySession          *session.Session            // Session for notify handler context
+	commandState           session.CommandRuntimeState // Per-command attribution; Session on exclusive paths
+	execveHandler          any                         // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
+	blockList              any                         // Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
 
 	// onProcessStarted durably records the external process group before strict
 	// barriers release user code. A persistence failure kills the group and
@@ -486,7 +487,11 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 	var handlerLifecycle *wrapperHandlerLifecycle
 	defer func() { handlerLifecycle.cancelHandlers() }()
 	if cmd.Process != nil {
-		s.SetCurrentProcessPID(cmd.Process.Pid)
+		commandState := session.CommandRuntimeState(s)
+		if extra != nil && extra.commandState != nil {
+			commandState = extra.commandState
+		}
+		commandState.SetCurrentProcessPID(cmd.Process.Pid)
 		// Register PID→command_id for ESF event attribution.
 		if extra != nil && extra.cmdResolver != nil {
 			extra.cmdResolver.RegisterCommand(int32(cmd.Process.Pid), cmdID)
@@ -1128,6 +1133,7 @@ func reservedSupervisorEnvKeys() []string {
 		nethelper.EnvRecoveryTokenFile,
 		"AGENTSH_DETACHED_EVENT_TOKEN",
 		"AGENTSH_DETACHED_EVENT_URL",
+		childCapabilityEnv,
 		"AGENTSH_INTERNAL_COMMAND_JAIL_STAGE",
 		"AGENTSH_INTERNAL_COMMAND_JAIL_MOUNTS",
 		"AGENTSH_INTERNAL_COMMAND_JAIL_EXEC_PATH",
@@ -1277,7 +1283,7 @@ func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid
 	if extra.notifyParentSock != nil {
 		compositionSetup := extra.compositionParentSock
 		extra.compositionParentSock = nil
-		lifecycle.notifyDone = startNotifyHandler(handlerCtx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession, pid, extra.compositionControlRoot, compositionSetup, extra.configureComposition)
+		lifecycle.notifyDone = startNotifyHandlerForState(handlerCtx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession, extra.commandState, pid, extra.compositionControlRoot, compositionSetup, extra.configureComposition)
 	}
 	if extra.signalParentSock != nil && extra.signalEngine != nil {
 		if extra.signalRegistry != nil {

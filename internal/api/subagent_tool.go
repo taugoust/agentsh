@@ -587,6 +587,15 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		defer os.RemoveAll(promptDir)
 	}
 
+	capability, err := a.mintChildCapability(s.ID, subagentID)
+	if err != nil {
+		res.Error = err.Error()
+		setSubagentTerminal(&res, failedSubagentTerminal(subagentFailureProcess, 1, "", subagentTerminationNatural, false, err.Error()))
+		res.DurationMS = time.Since(started).Milliseconds()
+		return res
+	}
+	defer a.revokeChildCapability(capability, errChildCapabilityRevoked)
+
 	args := append([]string{}, runtime.Args...)
 	stdin := ""
 	env := sanitizedSubagentEnv(os.Environ())
@@ -598,6 +607,7 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		"AGENTSH_SUBAGENT_CWD":        virtualCwd,
 		"AGENTSH_SUBAGENT_MODEL":      spec.Model,
 		"AGENTSH_SUBAGENT_TOOLS":      strings.Join(spec.Tools, ","),
+		childCapabilityEnv:            capability.token,
 		"PI_CODING_AGENT_DIR":         childAgentDir,
 		"PI_CODING_AGENT_SESSION_DIR": childSessionDir,
 	}
@@ -651,7 +661,13 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	cmd.Stdout = subagentOutputWriter(&stdout, protocolWriter, stream, subagentID, label, "stdout")
 	cmd.Stderr = subagentOutputWriter(&stderr, nil, stream, subagentID, label, "stderr")
 	process := runOwnedSubagentProcessWithStart(ctx, cmd, subagentTerminationGracePeriod, func(pid, processGroupID int) error {
-		return a.markDetachedSubagentProcess(subagentID, pid, processGroupID)
+		// Durable process evidence must exist before the capability becomes
+		// usable. A child that reaches the supervisor early waits on capability
+		// activation and can never race an unjournaled command into execution.
+		if err := a.markDetachedSubagentProcess(subagentID, pid, processGroupID); err != nil {
+			return err
+		}
+		return a.activateChildCapability(capability, pid, processGroupID)
 	})
 	stderrText := stderr.String()
 	if stream == nil {
@@ -779,6 +795,7 @@ func validateSubagentCwdPath(s *session.Session, realPath, virtualPath string) (
 
 func sanitizedSubagentEnv(in []string) []string {
 	blocked := map[string]bool{
+		childCapabilityEnv:          true,
 		"AGENTSH_API_KEY":           true,
 		"AGENTSH_APPROVER_KEY":      true,
 		"AGENTSH_APPROVER_API_KEY":  true,

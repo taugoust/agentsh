@@ -30,10 +30,11 @@ func getMountRegistry() *unixmon.MountRegistry {
 
 // filePolicyEngineWrapper adapts policy.Engine to unixmon.FilePolicyChecker.
 type filePolicyEngineWrapper struct {
-	engine    *policy.Engine
-	approvals *approvals.Manager
-	sessionID string
-	session   *session.Session
+	engine       *policy.Engine
+	approvals    *approvals.Manager
+	sessionID    string
+	session      *session.Session // legacy constructor/test compatibility
+	runtimeState session.CommandRuntimeState
 }
 
 func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation string) unixmon.FilePolicyDecision {
@@ -60,8 +61,12 @@ func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation
 		return out
 	}
 	commandID := ""
-	if w.session != nil {
-		commandID = w.session.CurrentCommandID()
+	runtimeState := w.runtimeState
+	if runtimeState == nil {
+		runtimeState = w.session
+	}
+	if runtimeState != nil {
+		commandID = runtimeState.CurrentCommandID()
 	}
 	if cached, ok := w.approvals.CheckScoped(ctx, w.sessionID, commandID, scope); ok {
 		if cached.Approved {
@@ -95,6 +100,10 @@ func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation
 // createFileHandler creates a FileHandler from configuration.
 // landlockEnabled indicates whether Landlock enforcement is configured (not just kernel-available).
 func createFileHandler(cfg config.SandboxSeccompFileMonitorConfig, pol *policy.Engine, emitter unixmon.Emitter, landlockEnabled bool, approvalsMgr *approvals.Manager, sess *session.Session) *unixmon.FileHandler {
+	return createFileHandlerForState(cfg, pol, emitter, landlockEnabled, approvalsMgr, sess, sess)
+}
+
+func createFileHandlerForState(cfg config.SandboxSeccompFileMonitorConfig, pol *policy.Engine, emitter unixmon.Emitter, landlockEnabled bool, approvalsMgr *approvals.Manager, sess *session.Session, runtimeState session.CommandRuntimeState) *unixmon.FileHandler {
 	if !config.FileMonitorBoolWithDefault(cfg.Enabled, false) {
 		return nil
 	}
@@ -105,7 +114,7 @@ func createFileHandler(cfg config.SandboxSeccompFileMonitorConfig, pol *policy.E
 		if sess != nil {
 			sessionID = sess.ID
 		}
-		policyChecker = &filePolicyEngineWrapper{engine: pol, approvals: approvalsMgr, sessionID: sessionID, session: sess}
+		policyChecker = &filePolicyEngineWrapper{engine: pol, approvals: approvalsMgr, sessionID: sessionID, runtimeState: runtimeState}
 	}
 
 	registry := getMountRegistry()

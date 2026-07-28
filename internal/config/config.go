@@ -302,9 +302,11 @@ type RotationConfig struct {
 }
 
 const (
-	DefaultOutputArtifactMaxBytes int64 = 16 * 1024 * 1024
-	DefaultSubagentTimeout              = 2 * time.Hour
-	DefaultSubagentTimeoutString        = "2h"
+	DefaultOutputArtifactMaxBytes  int64 = 16 * 1024 * 1024
+	DefaultSubagentTimeout               = 2 * time.Hour
+	DefaultSubagentTimeoutString         = "2h"
+	DefaultSubagentExecConcurrency       = 1
+	MaximumSubagentExecConcurrency       = 4
 )
 
 type SessionsConfig struct {
@@ -360,6 +362,11 @@ type SubagentsConfig struct {
 	// DefaultTimeout is the fallback default/maximum when the effective policy
 	// does not define resource_limits.subagent_timeout.
 	DefaultTimeout string `yaml:"default_timeout"`
+
+	// MaxExecConcurrency caps simultaneously executing authenticated child
+	// exec_bash lanes. One is the fail-closed default. Unsupported enforcement
+	// paths remain exclusive even when this is raised.
+	MaxExecConcurrency int `yaml:"max_exec_concurrency"`
 }
 
 func (c SubagentsConfig) DefaultTimeoutDuration() time.Duration {
@@ -368,6 +375,13 @@ func (c SubagentsConfig) DefaultTimeoutDuration() time.Duration {
 		return DefaultSubagentTimeout
 	}
 	return timeout
+}
+
+func (c SubagentsConfig) ExecConcurrency() int {
+	if c.MaxExecConcurrency <= 0 {
+		return DefaultSubagentExecConcurrency
+	}
+	return c.MaxExecConcurrency
 }
 
 type WorkspaceOverlayConfig struct {
@@ -1853,6 +1867,9 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	if cfg.Sessions.Subagents.DefaultTimeout == "" {
 		cfg.Sessions.Subagents.DefaultTimeout = DefaultSubagentTimeoutString
 	}
+	if cfg.Sessions.Subagents.MaxExecConcurrency == 0 {
+		cfg.Sessions.Subagents.MaxExecConcurrency = DefaultSubagentExecConcurrency
+	}
 	if cfg.Sessions.WorkspaceOverlay.BaseDir == "" {
 		cfg.Sessions.WorkspaceOverlay.BaseDir = filepath.Join(cfg.Sessions.BaseDir, "overlays")
 	}
@@ -2573,6 +2590,9 @@ func validateConfig(cfg *Config) error {
 		if err != nil || timeout <= 0 {
 			return fmt.Errorf("sessions.subagents.default_timeout must be a positive duration")
 		}
+	}
+	if concurrency := cfg.Sessions.Subagents.MaxExecConcurrency; concurrency < 1 || concurrency > MaximumSubagentExecConcurrency {
+		return fmt.Errorf("sessions.subagents.max_exec_concurrency must be between 1 and %d", MaximumSubagentExecConcurrency)
 	}
 	switch cfg.Sessions.WorkspaceOverlay.DestroyAction {
 	case "", "reject", "keep":

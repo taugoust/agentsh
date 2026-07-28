@@ -83,12 +83,19 @@ type wrapperSetupResult struct {
 // Returns the wrapped request and extra process config, or nil extraCfg if wrapping is disabled.
 // Note: agentsh-unixwrap is Linux-only; this function returns early on other platforms.
 func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *session.Session) *wrapperSetupResult {
-	return a.setupSeccompWrapperWithPolicy(req, sessionID, s, a.policyEngineFor(s))
+	return a.setupSeccompWrapperWithPolicyAndState(req, sessionID, s, a.policyEngineFor(s), s)
 }
 
 // setupSeccompWrapperWithPolicy keeps one admitted command on the same policy
 // snapshot used for its timeout resolution and command checks.
 func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID string, s *session.Session, sessionPolicy *policy.Engine) *wrapperSetupResult {
+	return a.setupSeccompWrapperWithPolicyAndState(req, sessionID, s, sessionPolicy, s)
+}
+
+func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessionID string, s *session.Session, sessionPolicy *policy.Engine, runtimeState session.CommandRuntimeState) *wrapperSetupResult {
+	if runtimeState == nil {
+		runtimeState = s
+	}
 	if a.commandBoundarySetupErrorForTest != nil {
 		return &wrapperSetupResult{wrappedReq: req, setupErr: a.commandBoundarySetupErrorForTest}
 	}
@@ -96,8 +103,8 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 	// Helper: return early without seccomp wrapping but with envInject applied.
 	earlyReturn := func() *wrapperSetupResult {
 		envInject := mergeEnvInject(a.cfg, sessionPolicy)
-		if len(envInject) > 0 || a.cmdResolver != nil || a.sessionTracker != nil {
-			return &wrapperSetupResult{wrappedReq: req, extraCfg: &extraProcConfig{envInject: envInject, cmdResolver: a.cmdResolver, sessionTracker: a.sessionTracker}}
+		if len(envInject) > 0 || a.cmdResolver != nil || a.sessionTracker != nil || runtimeState != s {
+			return &wrapperSetupResult{wrappedReq: req, extraCfg: &extraProcConfig{envInject: envInject, cmdResolver: a.cmdResolver, sessionTracker: a.sessionTracker, commandState: runtimeState}}
 		}
 		return &wrapperSetupResult{wrappedReq: req, extraCfg: nil}
 	}
@@ -211,9 +218,11 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 		// Strict mode forces a notify handoff even when ordinary Unix-socket
 		// monitoring is disabled. Every strict command therefore reaches the
 		// same ACK barrier before command-jail entry.
-		UnixSocketEnabled:   a.cfg.Sandbox.UnixSocketNotifyEnabled() || jailRequired,
-		SignalFilterEnabled: signalFilterActive,
-		ExecveEnabled:       execveEnabled,
+		UnixSocketEnabled:         a.cfg.Sandbox.UnixSocketNotifyEnabled() || jailRequired,
+		SignalFilterEnabled:       signalFilterActive,
+		ExecveEnabled:             execveEnabled,
+		CompositionSelectionBound: true,
+		SandboxComposition:        runtimeState.CurrentSandboxComposition(),
 	})
 	if jailRequired {
 		binding := a.nethelperBindingSnapshot()
@@ -281,7 +290,8 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 		fileMonitorCfg:   a.cfg.Sandbox.Seccomp.FileMonitor,
 		landlockEnabled:  a.cfg.Landlock.Enabled,
 		ptraceSync:       a.ptraceTracer != nil && hasNotifyFeatures,
-		commandBoundary:  commandJailRequirements(jailRequired, s.CurrentSandboxComposition()),
+		commandBoundary:  commandJailRequirements(jailRequired, runtimeState.CurrentSandboxComposition()),
+		commandState:     runtimeState,
 		cmdResolver:      a.cmdResolver,
 		sessionTracker:   a.sessionTracker,
 		blockList:        a.buildBlockListConfigFor(sessionID),
@@ -291,7 +301,7 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 	if execveEnabled {
 		extraCfg.execveHandler = createExecveHandler(a.cfg.Sandbox.Seccomp.Execve, sessionPolicy, a.approvals)
 	}
-	if s.CurrentSandboxComposition() != "" {
+	if runtimeState.CurrentSandboxComposition() != "" {
 		setupPair := createUnixSocketPair()
 		if setupPair == nil {
 			closePreStartProcessFiles(extraCfg)
@@ -304,7 +314,7 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 		extraCfg.env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
 		wrappedReq.Env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
 		extraCfg.configureComposition = func(handler any, setup *os.File, wrapperPID int) error {
-			return a.configureExecveComposition(handler, s, seccompCfg, setup, wrapperPID)
+			return a.configureExecveCompositionForState(handler, s, runtimeState, seccompCfg, setup, wrapperPID)
 		}
 	}
 
@@ -317,7 +327,7 @@ func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID str
 		extraCfg.signalParentSock = sigSP.parent
 		extraCfg.signalEngine = sessionPolicy.SignalEngine()
 		extraCfg.signalRegistry = signal.NewPIDRegistry(sessionID, os.Getpid())
-		extraCfg.signalCommandID = func() string { return s.CurrentCommandID() }
+		extraCfg.signalCommandID = runtimeState.CurrentCommandID
 	}
 
 	// Wrapper log routing (issue #415): hand the wrapper a pipe for its
@@ -1747,8 +1757,16 @@ type internalExecOptions struct {
 	stderrCaptureBytes int64
 	queueTimeout       time.Duration
 	evaluationTimeout  time.Duration
-	onAdmitted         func()
-	onSensitiveResult  func(internalSensitiveExecResult)
+
+	// Shared execution is set only by authenticated child exec_bash. Every
+	// other caller remains on the exclusive admission path.
+	sharedExecution    bool
+	executionLaneID    string
+	executionLaneLimit int
+	admissionCheck     func() error
+
+	onAdmitted        func()
+	onSensitiveResult func(internalSensitiveExecResult)
 }
 
 type internalSensitiveExecResult struct {
@@ -1813,12 +1831,23 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		queueCtx, cancelQueue = context.WithTimeout(ctx, opts.queueTimeout)
 		defer cancelQueue()
 	}
-	unlock, admissionErr := s.LockExecContext(queueCtx)
+	lease, admissionErr := s.AcquireExecution(queueCtx, session.ExecutionAdmission{
+		CommandID: cmdID, LaneID: opts.executionLaneID, Shared: opts.sharedExecution, SharedLimit: opts.executionLaneLimit,
+	})
 	queueDuration := time.Since(queuedAt)
 	if admissionErr != nil {
 		kind := types.ExecFailureCancellation
 		code := "E_CALLER_CANCELLED"
-		if errors.Is(admissionErr, context.DeadlineExceeded) {
+		status := http.StatusRequestTimeout
+		var queueErr *session.ExecutionQueueError
+		switch {
+		case errors.Is(admissionErr, errChildCapabilityRevoked):
+			code = "E_CHILD_CAPABILITY_REVOKED"
+			status = http.StatusForbidden
+		case errors.As(admissionErr, &queueErr) && queueErr.Failure == session.ExecutionQueueDeadline:
+			kind = types.ExecFailureQueueTimeout
+			code = "E_QUEUE_TIMEOUT"
+		case errors.Is(admissionErr, context.DeadlineExceeded):
 			kind = types.ExecFailureQueueTimeout
 			code = "E_QUEUE_TIMEOUT"
 		}
@@ -1828,9 +1857,29 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 				Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: kind, Retryable: false, Code: code, Message: admissionErr.Error(), QueueDurationMs: int64(queueDuration / time.Millisecond)}},
 			Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
 		}
-		return resp, http.StatusRequestTimeout, nil
+		return resp, status, nil
 	}
-	defer unlock()
+	defer lease.Release()
+
+	runtimeState := session.CommandRuntimeState(s)
+	if lease.Shared() {
+		runtimeState = lease.Runtime()
+	}
+	if opts.admissionCheck != nil {
+		if checkErr := opts.admissionCheck(); checkErr != nil {
+			code := "E_CHILD_CAPABILITY_REVOKED"
+			if !errors.Is(checkErr, errChildCapabilityRevoked) {
+				code = "E_CHILD_CAPABILITY_INVALID"
+			}
+			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: queuedAt, Request: req,
+				Result: types.ExecResult{ExitCode: 127, DurationMs: int64(time.Since(queuedAt) / time.Millisecond),
+					Error:   &types.ExecError{Code: code, Message: checkErr.Error()},
+					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureCancellation, Retryable: false, Code: code, Message: checkErr.Error(), QueueDurationMs: int64(queueDuration / time.Millisecond)}},
+				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			}
+			return resp, http.StatusForbidden, nil
+		}
+	}
 	if opts.onAdmitted != nil {
 		opts.onAdmitted()
 	}
@@ -1847,14 +1896,14 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		defer cancelEval()
 	}
 	start := time.Now().UTC()
-	s.SetCurrentCommandID(cmdID)
-	s.SetCurrentExecutionSensitive(opts.sensitive)
-	s.SetCurrentCommandProvenance(opts.provenance)
-	// Composition is selected independently for each admitted command. Clear any
-	// prior command's snapshot before network preflight, then clear this command's
-	// selection when it finishes so failures cannot lend authority to a later run.
-	s.SetCurrentSandboxComposition("")
-	defer s.SetCurrentSandboxComposition("")
+	runtimeState.SetCurrentCommandID(cmdID)
+	runtimeState.SetCurrentExecutionSensitive(opts.sensitive)
+	runtimeState.SetCurrentCommandProvenance(opts.provenance)
+	// Composition is selected independently for each admitted command. Shared
+	// lanes keep this snapshot command-local; exclusive paths retain the legacy
+	// session state required by persistent enforcement backends.
+	runtimeState.SetCurrentSandboxComposition("")
+	defer runtimeState.SetCurrentSandboxComposition("")
 
 	if commandJailRequired(a.cfg) {
 		report := a.refreshNetworkEnforcement(id)
@@ -1882,7 +1931,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	}
 	if tp != "" {
 		if traceID, spanID, traceFlags, ok := parseTraceparent(tp); ok {
-			s.SetCurrentTraceContext(traceID, spanID, traceFlags)
+			runtimeState.SetCurrentTraceContext(traceID, spanID, traceFlags)
 		}
 	}
 
@@ -1902,7 +1951,8 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		commandMatchContext.WorkingDirectory = normalizedPolicyWorkingDir
 	}
 	pre := engine.CheckCommandWithExecveProvenanceContext(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode(), opts.provenance, commandMatchContext)
-	compositionErrorCode := a.applySandboxCompositionSelection(s, &pre)
+	compositionMode, compositionErrorCode := a.selectSandboxComposition(&pre)
+	runtimeState.SetCurrentSandboxComposition(compositionMode)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
 	approvalErr := a.applyCommandApproval(ctx, id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
 	pkgApprovalDenied := false
@@ -1996,7 +2046,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		},
 		Fields: preFields,
 	}
-	s.InjectTraceContext(preEv.Fields)
+	runtimeState.InjectTraceContext(preEv.Fields)
 	_ = a.store.AppendEvent(ctx, preEv)
 	a.broker.Publish(preEv)
 
@@ -2021,7 +2071,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 				"to_args":      auditArgumentValues(req.Args, opts.sensitive),
 			},
 		}
-		s.InjectTraceContext(redirEv.Fields)
+		runtimeState.InjectTraceContext(redirEv.Fields)
 		_ = a.store.AppendEvent(ctx, redirEv)
 		a.broker.Publish(redirEv)
 	}
@@ -2145,7 +2195,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		}
 		startEv := types.Event{ID: uuid.NewString(), Timestamp: startedAt, Type: "command_started", SessionID: id, CommandID: cmdID, CommandTimeout: &timeoutResolution.Metadata,
 			Fields: map[string]any{"command": origCommand, "args": auditArgumentValues(origArgs, opts.sensitive)}}
-		s.InjectTraceContext(startEv.Fields)
+		runtimeState.InjectTraceContext(startEv.Fields)
 		_ = a.store.AppendEvent(ctx, startEv)
 		a.broker.Publish(startEv)
 	}
@@ -2169,7 +2219,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		// Wrapper setup is per-attempt: retry never reuses socketpairs, handler
 		// state, a command cgroup, or a helper registration. Policy and approval
 		// above are intentionally not replayed.
-		wrapperResult := a.setupSeccompWrapperWithPolicy(req, id, s, engine)
+		wrapperResult := a.setupSeccompWrapperWithPolicyAndState(req, id, s, engine, runtimeState)
 		if wrapperResult.setupErr != nil {
 			a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
 			if attemptCount == 1 {
@@ -2261,7 +2311,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	if terminationReason != "" {
 		endEv.Fields["termination_reason"] = terminationReason
 	}
-	s.InjectTraceContext(endEv.Fields)
+	runtimeState.InjectTraceContext(endEv.Fields)
 	_ = a.store.AppendEvent(terminalCtx, endEv)
 	a.broker.Publish(endEv)
 

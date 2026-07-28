@@ -36,12 +36,22 @@ const recvFDTimeout = 10 * time.Second
 
 // notifyEmitterAdapter adapts the API's event store/broker to the unix handler's Emitter interface.
 type notifyEmitterAdapter struct {
-	store     eventStore
-	broker    eventBroker
-	sensitive func() bool
+	store        eventStore
+	broker       eventBroker
+	runtimeState session.CommandRuntimeState
+	sensitive    func() bool
 }
 
 func (a *notifyEmitterAdapter) redact(ev types.Event) types.Event {
+	if a.runtimeState != nil {
+		if ev.CommandID == "" {
+			ev.CommandID = a.runtimeState.CurrentCommandID()
+		}
+		if ev.Fields == nil {
+			ev.Fields = make(map[string]any)
+		}
+		a.runtimeState.InjectTraceContext(ev.Fields)
+	}
 	return redactSensitiveExecEvent(ev, a.sensitive != nil && a.sensitive())
 }
 
@@ -238,6 +248,10 @@ func notifyHandlerRecover(sessID string, store eventStore, broker eventBroker) {
 // "no block-list notify routing needed" — safe for errno/kill modes which are
 // kernel-side.
 func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session, expectedWrapperPID int, compositionControlRoot string, compositionSetup *os.File, configureComposition compositionConfigurer) <-chan struct{} {
+	return startNotifyHandlerForState(ctx, parentSock, sessID, pol, store, broker, execveHandler, fileMonitorCfg, landlockEnabled, blockList, ptraceReady, commandJailRequired, approvalsMgr, sess, sess, expectedWrapperPID, compositionControlRoot, compositionSetup, configureComposition)
+}
+
+func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session, runtimeState session.CommandRuntimeState, expectedWrapperPID int, compositionControlRoot string, compositionSetup *os.File, configureComposition compositionConfigurer) <-chan struct{} {
 	done := make(chan struct{})
 	if parentSock == nil {
 		if compositionSetup != nil {
@@ -378,13 +392,16 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 			}
 		}()
 
-		emitter := &notifyEmitterAdapter{store: store, broker: broker}
-		if sess != nil {
-			emitter.sensitive = sess.CurrentExecutionSensitive
+		if runtimeState == nil {
+			runtimeState = sess
+		}
+		emitter := &notifyEmitterAdapter{store: store, broker: broker, runtimeState: runtimeState}
+		if runtimeState != nil {
+			emitter.sensitive = runtimeState.CurrentExecutionSensitive
 		}
 
 		// Create file handler if configured
-		fileHandler := createFileHandler(fileMonitorCfg, pol, emitter, landlockEnabled, approvalsMgr, sess)
+		fileHandler := createFileHandlerForState(fileMonitorCfg, pol, emitter, landlockEnabled, approvalsMgr, sess, runtimeState)
 		if fileHandler != nil && compositionControlRoot != "" {
 			fileHandler.SetInternalControlAccess(compositionControlRoot, expectedWrapperPID)
 		}
@@ -398,12 +415,12 @@ func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string,
 			}
 			if approvalsMgr != nil {
 				var commandIDFunc func() string
-				if sess != nil {
-					commandIDFunc = sess.CurrentCommandID
+				if runtimeState != nil {
+					commandIDFunc = runtimeState.CurrentCommandID
 				}
 				adapter := &approvalRequesterAdapter{mgr: approvalsMgr, commandIDFunc: commandIDFunc}
-				if sess != nil {
-					adapter.sensitive = sess.CurrentExecutionSensitive
+				if runtimeState != nil {
+					adapter.sensitive = runtimeState.CurrentExecutionSensitive
 				}
 				h.SetApprover(adapter)
 			}

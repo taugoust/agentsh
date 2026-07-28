@@ -21,5 +21,9 @@ func (a *App) ReapExpiredSessions(now time.Time, sessionTimeout, idleTimeout tim
 	if a.resolveCandidateCleanup(ctx) != nil {
 		return nil
 	}
-	return a.sessions.ReapExpired(now, sessionTimeout, idleTimeout)
+	reaped := a.sessions.ReapExpired(now, sessionTimeout, idleTimeout)
+	for _, sess := range reaped {
+		a.revokeChildCapabilitiesForSession(sess.ID, errChildCapabilityRevoked)
+	}
+	return reaped
 }

@@ -44,6 +44,8 @@ func normalizeExecOutcome(started bool, exitCode int, err error) *types.ExecOutc
 		o.Code, o.FailureKind, o.DispatchState = "E_COMMAND_START", types.ExecFailureStart, "start_failed"
 	case errors.Is(err, errCommandTimeout):
 		o.Code, o.FailureKind = "E_COMMAND_TIMEOUT", types.ExecFailureCommandTimeout
+	case errors.Is(err, errChildCapabilityRevoked):
+		o.Code, o.FailureKind = "E_CHILD_CAPABILITY_REVOKED", types.ExecFailureCancellation
 	case errors.Is(err, context.DeadlineExceeded):
 		o.Code, o.FailureKind = "E_CALLER_DEADLINE", types.ExecFailureCancellation
 	case errors.Is(err, context.Canceled):
@@ -69,7 +71,12 @@ func execFailureHTTPStatus(o *types.ExecOutcome) int {
 		return http.StatusBadRequest
 	case types.ExecFailureStart:
 		return http.StatusUnprocessableEntity
-	case types.ExecFailureCancellation, types.ExecFailureQueueTimeout, types.ExecFailureCommandTimeout:
+	case types.ExecFailureCancellation:
+		if o.Code == "E_CHILD_CAPABILITY_REVOKED" {
+			return http.StatusForbidden
+		}
+		return http.StatusRequestTimeout
+	case types.ExecFailureQueueTimeout, types.ExecFailureCommandTimeout:
 		return http.StatusRequestTimeout
 	default:
 		return http.StatusInternalServerError

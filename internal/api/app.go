@@ -103,6 +103,9 @@ type App struct {
 	subagentCancellationMu sync.Mutex
 	subagentCancellations  map[string]subagentCancellationEntry
 
+	childCapabilityMu sync.Mutex
+	childCapabilities map[[32]byte]*childCapabilityRecord
+
 	approvalUIMu sync.Mutex
 	approvalUIs  map[string]*approvalUIEndpoint
 
@@ -244,6 +247,7 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 		lifecycleCtx:               lifecycleCtx,
 		lifecycleCancel:            lifecycleCancel,
 		subagentCancellations:      make(map[string]subagentCancellationEntry),
+		childCapabilities:          make(map[[32]byte]*childCapabilityRecord),
 		metrics:                    metricsCollector,
 		platform:                   plat,
 		policyLoader:               policyLoader,
@@ -336,6 +340,7 @@ func (a *App) BeginShutdown() {
 	cancel := a.lifecycleCancel
 	a.lifecycleMu.Unlock()
 	cancel(errSubagentSupervisorShutdown)
+	a.revokeAllChildCapabilities(errChildCapabilitySupervisorStopped)
 }
 
 // Close releases resources held by the app (e.g., ptrace tracer).
@@ -1022,6 +1027,7 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.closeApprovalUI(id)
+	a.revokeChildCapabilitiesForSession(id, errChildCapabilityRevoked)
 	if a.approvals != nil {
 		a.approvals.ClearSession(r.Context(), id)
 	}
@@ -1111,12 +1117,11 @@ func (a *App) killCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cmdID := chi.URLParam(r, "cmdID")
-	current := s.CurrentCommandID()
-	if current == "" || current != cmdID {
+	pid, running := s.CommandProcess(cmdID)
+	if !running {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "command not running"})
 		return
 	}
-	pid := s.CurrentProcessPID()
 	if pid <= 0 {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "command pid not available"})
 		return
