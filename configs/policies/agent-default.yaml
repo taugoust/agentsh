@@ -839,6 +839,7 @@ resource_limits:
   cpu_quota_percent: 100
   pids_max: 500
   command_timeout: 15m
+  subagent_timeout: 4h
   session_timeout: 12h
   idle_timeout: 30m
 

@@ -90,9 +90,10 @@ type Engine struct {
 }
 
 type Limits struct {
-	CommandTimeout time.Duration
-	SessionTimeout time.Duration
-	IdleTimeout    time.Duration
+	CommandTimeout  time.Duration
+	SubagentTimeout time.Duration
+	SessionTimeout  time.Duration
+	IdleTimeout     time.Duration
 
 	MaxMemoryMB     int
 	CPUQuotaPercent int
@@ -550,6 +551,7 @@ func (e *Engine) Limits() Limits {
 	}
 	return Limits{
 		CommandTimeout:  e.policy.ResourceLimits.CommandTimeout.Duration,
+		SubagentTimeout: e.policy.ResourceLimits.SubagentTimeout.Duration,
 		SessionTimeout:  e.policy.ResourceLimits.SessionTimeout.Duration,
 		IdleTimeout:     e.policy.ResourceLimits.IdleTimeout.Duration,
 		MaxMemoryMB:     e.policy.ResourceLimits.MaxMemoryMB,

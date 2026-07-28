@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	maxSubagentParallelTasks = 8
-	maxSubagentConcurrency   = 4
-	maxSubagentTextBytes     = 2 * 1024 * 1024
+	maxSubagentParallelTasks           = 8
+	maxSubagentConcurrency             = 4
+	maxSubagentTextBytes               = 2 * 1024 * 1024
+	subagentDeadlineEpochMSEnvironment = "AGENTSH_SUBAGENT_DEADLINE_EPOCH_MS"
 )
 
 type spawnSubagentToolRequest struct {
@@ -104,13 +105,22 @@ type spawnSubagentResult struct {
 	Results   []subagentResult `json:"results"`
 }
 
-func (a *App) subagentExecutionTimeout(timeoutMS int64) (time.Duration, error) {
+func (a *App) subagentExecutionTimeout(s *session.Session, timeoutMS int64) (time.Duration, error) {
 	if timeoutMS < 0 {
 		return 0, errors.New("timeout_ms must be non-negative")
 	}
+	// The server setting is a compatibility fallback for policies that do not
+	// define a subagent limit. A positive effective policy value is authoritative.
 	configured := config.DefaultSubagentTimeout
 	if a != nil && a.cfg != nil {
 		configured = a.cfg.Sessions.Subagents.DefaultTimeoutDuration()
+	}
+	if a != nil {
+		if engine := a.policyEngineFor(s); engine != nil {
+			if policyTimeout := engine.Limits().SubagentTimeout; policyTimeout > 0 {
+				configured = policyTimeout
+			}
+		}
 	}
 	if timeoutMS == 0 {
 		return configured, nil
@@ -155,7 +165,7 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusForbidden, fmt.Sprintf("subagent recursion depth %d exceeds max %d", depth+1, runtime.MaxDepth))
 		return
 	}
-	timeout, err := a.subagentExecutionTimeout(req.TimeoutMS)
+	timeout, err := a.subagentExecutionTimeout(s, req.TimeoutMS)
 	if err != nil {
 		writeToolError(w, http.StatusBadRequest, err.Error())
 		return
@@ -581,7 +591,7 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	stdin := ""
 	env := sanitizedSubagentEnv(os.Environ())
 	childDepth := subagentDepthFromActor(actor) + 1
-	env = withEnvOverrides(env, map[string]string{
+	childEnv := map[string]string{
 		"AGENTSH_SESSION_ID":          s.ID,
 		"AGENTSH_SUBAGENT_ID":         subagentID,
 		"AGENTSH_SUBAGENT_DEPTH":      strconv.Itoa(childDepth),
@@ -590,7 +600,11 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		"AGENTSH_SUBAGENT_TOOLS":      strings.Join(spec.Tools, ","),
 		"PI_CODING_AGENT_DIR":         childAgentDir,
 		"PI_CODING_AGENT_SESSION_DIR": childSessionDir,
-	})
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		childEnv[subagentDeadlineEpochMSEnvironment] = strconv.FormatInt(deadline.UnixMilli(), 10)
+	}
+	env = withEnvOverrides(env, childEnv)
 	if home := s.ProcessHomePath(); home != "" {
 		overrides := map[string]string{"HOME": home}
 		if s.RuntimeHomeModeValue() == "isolated" {

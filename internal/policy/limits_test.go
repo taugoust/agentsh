@@ -66,6 +66,7 @@ network_rules: []
 command_rules: []
 resource_limits:
   command_timeout: 12s
+  subagent_timeout: 4h
   session_timeout: 34m
   idle_timeout: 56m
 `), 0o644); err != nil {
@@ -84,6 +85,9 @@ resource_limits:
 	lim := e.Limits()
 	if lim.CommandTimeout != 12*time.Second {
 		t.Fatalf("command_timeout: expected 12s, got %s", lim.CommandTimeout)
+	}
+	if lim.SubagentTimeout != 4*time.Hour {
+		t.Fatalf("subagent_timeout: expected 4h, got %s", lim.SubagentTimeout)
 	}
 	if lim.SessionTimeout != 34*time.Minute {
 		t.Fatalf("session_timeout: expected 34m, got %s", lim.SessionTimeout)

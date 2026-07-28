@@ -285,6 +285,7 @@ type ResourceLimits struct {
 	NetBandwidthMbps int      `yaml:"net_bandwidth_mbps"`
 	PidsMax          int      `yaml:"pids_max"`
 	CommandTimeout   duration `yaml:"command_timeout"`
+	SubagentTimeout  duration `yaml:"subagent_timeout"`
 	SessionTimeout   duration `yaml:"session_timeout"`
 	IdleTimeout      duration `yaml:"idle_timeout"`
 }
@@ -646,6 +647,9 @@ func (p Policy) Validate() error {
 	}
 	if timeout := p.ResourceLimits.CommandTimeout.Duration; timeout > 0 && timeout < time.Millisecond {
 		return fmt.Errorf("positive resource_limits.command_timeout must be at least 1ms")
+	}
+	if timeout := p.ResourceLimits.SubagentTimeout.Duration; timeout > 0 && timeout < time.Millisecond {
+		return fmt.Errorf("positive resource_limits.subagent_timeout must be at least 1ms")
 	}
 	if err := ValidateDirenvImportPolicy(p.Direnv); err != nil {
 		return fmt.Errorf("direnv: %w", err)

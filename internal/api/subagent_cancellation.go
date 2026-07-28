@@ -94,23 +94,22 @@ func (a *App) cancelRegisteredSubagent(sessionID, requestID string, cause error)
 // not derive directly from the HTTP context because a cancel control request
 // must be able to win before the original response stream is closed.
 func (a *App) newSubagentRequestContext(requestCtx context.Context, timeout time.Duration) (context.Context, context.CancelCauseFunc, func()) {
-	ctx, cancelCause := context.WithCancelCause(context.Background())
+	baseCtx, cancelCause := context.WithCancelCause(context.Background())
+	ctx := context.Context(baseCtx)
+	timeoutCancel := func() {}
+	if timeout > 0 {
+		ctx, timeoutCancel = context.WithTimeoutCause(baseCtx, timeout, errSubagentRequestTimeout)
+	}
 	if requestCtx == nil {
 		requestCtx = context.Background()
 	}
 	stopRequest := context.AfterFunc(requestCtx, func() { cancelCause(errSubagentClientDisconnected) })
 	stopLifecycle := context.AfterFunc(a.subagentLifecycleContext(), func() { cancelCause(errSubagentSupervisorShutdown) })
-	var timer *time.Timer
-	if timeout > 0 {
-		timer = time.AfterFunc(timeout, func() { cancelCause(errSubagentRequestTimeout) })
-	}
 	cleanup := func() {
 		stopRequest()
 		stopLifecycle()
-		if timer != nil {
-			timer.Stop()
-		}
 		cancelCause(errSubagentRequestComplete)
+		timeoutCancel()
 	}
 	return ctx, cancelCause, cleanup
 }

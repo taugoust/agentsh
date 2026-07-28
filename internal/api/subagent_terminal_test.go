@@ -38,6 +38,20 @@ func TestSubagentTerminalDistinguishesTimeoutAndCancellation(t *testing.T) {
 	}
 }
 
+func TestSubagentRequestContextExposesExecutionDeadline(t *testing.T) {
+	app := &App{}
+	started := time.Now()
+	ctx, _, cleanup := app.newSubagentRequestContext(context.Background(), time.Hour)
+	defer cleanup()
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("subagent request context has no authoritative deadline")
+	}
+	if remaining := deadline.Sub(started); remaining < 59*time.Minute || remaining > 61*time.Minute {
+		t.Fatalf("subagent deadline remaining = %s, want approximately 1h", remaining)
+	}
+}
+
 func TestSubagentRequestContextPropagatesSupervisorShutdown(t *testing.T) {
 	app := &App{}
 	ctx, _, cleanup := app.newSubagentRequestContext(context.Background(), time.Hour)

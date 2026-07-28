@@ -357,7 +357,8 @@ type OutputArtifactsConfig struct {
 }
 
 type SubagentsConfig struct {
-	// DefaultTimeout is also the maximum; requests may choose a shorter deadline.
+	// DefaultTimeout is the fallback default/maximum when the effective policy
+	// does not define resource_limits.subagent_timeout.
 	DefaultTimeout string `yaml:"default_timeout"`
 }
 

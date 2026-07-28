@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/config"
+	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
 	"github.com/agentsh/agentsh/pkg/types"
@@ -23,31 +24,44 @@ import (
 
 func TestSubagentExecutionTimeoutDefaultsAndOverrides(t *testing.T) {
 	app := &App{cfg: &config.Config{}}
-	got, err := app.subagentExecutionTimeout(0)
+	got, err := app.subagentExecutionTimeout(nil, 0)
 	if err != nil || got != 2*time.Hour {
 		t.Fatalf("default timeout = %s, err=%v; want %s", got, err, 2*time.Hour)
 	}
 
 	app.cfg.Sessions.Subagents.DefaultTimeout = "45m"
-	got, err = app.subagentExecutionTimeout(0)
+	got, err = app.subagentExecutionTimeout(nil, 0)
 	if err != nil || got != 45*time.Minute {
-		t.Fatalf("configured timeout = %s, err=%v; want %s", got, err, 45*time.Minute)
+		t.Fatalf("configured fallback timeout = %s, err=%v; want %s", got, err, 45*time.Minute)
 	}
 
-	got, err = app.subagentExecutionTimeout(125)
+	policyDocument, err := policy.LoadFromBytes([]byte("version: 1\nname: subagent-timeout-test\nresource_limits:\n  subagent_timeout: 4h\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.policy, err = policy.NewEngine(policyDocument, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = app.subagentExecutionTimeout(nil, 0)
+	if err != nil || got != 4*time.Hour {
+		t.Fatalf("policy timeout = %s, err=%v; want %s", got, err, 4*time.Hour)
+	}
+
+	got, err = app.subagentExecutionTimeout(nil, 125)
 	if err != nil || got != 125*time.Millisecond {
 		t.Fatalf("request timeout = %s, err=%v; want %s", got, err, 125*time.Millisecond)
 	}
 
-	got, err = app.subagentExecutionTimeout(int64((3 * time.Hour) / time.Millisecond))
-	if err != nil || got != 45*time.Minute {
-		t.Fatalf("request above configured ceiling = %s, err=%v; want %s", got, err, 45*time.Minute)
+	got, err = app.subagentExecutionTimeout(nil, int64((5*time.Hour)/time.Millisecond))
+	if err != nil || got != 4*time.Hour {
+		t.Fatalf("request above policy ceiling = %s, err=%v; want %s", got, err, 4*time.Hour)
 	}
 
-	if _, err = app.subagentExecutionTimeout(-1); err == nil {
+	if _, err = app.subagentExecutionTimeout(nil, -1); err == nil {
 		t.Fatal("negative timeout_ms was accepted")
 	}
-	if _, err = app.subagentExecutionTimeout(1 << 62); err == nil {
+	if _, err = app.subagentExecutionTimeout(nil, 1<<62); err == nil {
 		t.Fatal("overflowing timeout_ms was accepted")
 	}
 }
@@ -293,6 +307,17 @@ case "$1" in
     trap 'exit 0' TERM
     while :; do sleep 1; done
     ;;
+  deadline)
+    case "$AGENTSH_SUBAGENT_DEADLINE_EPOCH_MS" in
+      ''|*[!0-9]*)
+        printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"missing authoritative deadline"}}'
+        printf '%s\n' '{"type":"agent_settled"}'
+        exit 8
+        ;;
+    esac
+    printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"deadline present"}],"stopReason":"stop"}}'
+    printf '%s\n' '{"type":"agent_settled"}'
+    ;;
   large)
     i=0
     while [ "$i" -lt 2200 ]; do
@@ -357,6 +382,7 @@ esac
 		wantChildStates []string
 	}{
 		{name: "completed", body: `{"task":"complete","systemPrompt":"system-prompt-sentinel","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
+		{name: "child receives deadline", body: `{"task":"deadline","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
 		{name: "large progress retains final", body: `{"task":"large","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
 		{name: "long final gets remote artifact", body: `{"task":"artifact","stream":true,"result_artifact_threshold_bytes":4096}`, wantState: "completed", wantTimeoutMS: 7_200_000},
 		{name: "failed task is protocol success", body: `{"task":"fail","stream":true}`, wantState: "failed", wantTimeoutMS: 7_200_000},
