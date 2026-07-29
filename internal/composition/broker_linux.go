@@ -1373,7 +1373,12 @@ func replaceMountAuthority(authorities map[string]uint64, target string, rights 
 	authorities[target] = rights
 }
 
-func replacePathAlias(aliases map[string]string, symlinks map[string]string, target, source string) {
+type pathAliasMapping struct {
+	source        string
+	freshWritable bool
+}
+
+func replacePathAlias(aliases map[string]pathAliasMapping, symlinks map[string]string, target, source string, freshWritable bool) {
 	for mountpoint := range aliases {
 		if mountpoint == target || pathWithin(mountpoint, target) {
 			delete(aliases, mountpoint)
@@ -1384,16 +1389,20 @@ func replacePathAlias(aliases map[string]string, symlinks map[string]string, tar
 			delete(symlinks, path)
 		}
 	}
-	aliases[target] = source
+	aliases[target] = pathAliasMapping{source: source, freshWritable: freshWritable}
 }
 
-func pathMappingsFromMaps(aliases, symlinks map[string]string) PathMappings {
+func pathMappingsFromMaps(aliases map[string]pathAliasMapping, symlinks map[string]string) PathMappings {
 	mappings := PathMappings{
 		Aliases:  make([]PathAlias, 0, len(aliases)),
 		Symlinks: make([]PathSymlink, 0, len(symlinks)),
 	}
-	for target, source := range aliases {
-		mappings.Aliases = append(mappings.Aliases, PathAlias{Target: target, Source: source})
+	for target, alias := range aliases {
+		mappings.Aliases = append(mappings.Aliases, PathAlias{
+			Target:        target,
+			Source:        alias.source,
+			FreshWritable: alias.freshWritable,
+		})
 	}
 	for target, source := range symlinks {
 		mappings.Symlinks = append(mappings.Symlinks, PathSymlink{Target: target, Source: source})
@@ -1425,7 +1434,9 @@ func (b *Broker) executePlan(parentPID, pid int, pidOwnedByTargetUser bool, plan
 		return err
 	}
 	mountAuthorities := make(map[string]uint64)
-	pathAliases := map[string]string{string(filepath.Separator): ""}
+	pathAliases := map[string]pathAliasMapping{
+		string(filepath.Separator): {},
+	}
 	planSymlinks := make(map[string]string)
 	if b.setup != nil {
 		mountAuthorities[staging] = landlock.LANDLOCK_ACCESS_FS_READ_FILE |
@@ -1487,7 +1498,12 @@ func (b *Broker) executePlan(parentPID, pid int, pidOwnedByTargetUser bool, plan
 			if operation.Type == OperationBind || operation.Type == OperationDevBind {
 				source = operation.Source
 			}
-			replacePathAlias(pathAliases, planSymlinks, operation.Target, source)
+			// Only an OperationTmpfs mount backed by the authenticated setup
+			// pool is both fresh and intentionally writable by the composed
+			// payload. Proc, dev, legacy helper mounts, and the synthetic root
+			// retain their existing visible-path policy checks.
+			freshWritable := operation.Type == OperationTmpfs && b.setup != nil
+			replacePathAlias(pathAliases, planSymlinks, operation.Target, source, freshWritable)
 		}
 	}
 	if err := b.validateFinalTopology(targetContext, staging, plan); err != nil {

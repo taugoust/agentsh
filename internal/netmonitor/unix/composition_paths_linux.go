@@ -120,13 +120,24 @@ func replacePathPrefix(path, target, source string) (string, bool) {
 	return filepath.Join(source, relative), true
 }
 
-func normalizeCompositionPath(state *compositionPathState, path string) (string, bool, error) {
+// CompositionPathResolution describes how one path in a composed mount
+// namespace maps back to the outer namespace. Fresh is true for a path backed
+// by a broker-created filesystem rather than a host bind. FreshWritable is the
+// narrower subset backed by a broker-provisioned writable tmpfs.
+type CompositionPathResolution struct {
+	Path          string
+	Covered       bool
+	Fresh         bool
+	FreshWritable bool
+}
+
+func normalizeCompositionPath(state *compositionPathState, path string) (CompositionPathResolution, error) {
 	if path == "" || !filepath.IsAbs(path) {
-		return path, false, nil
+		return CompositionPathResolution{Path: path}, nil
 	}
 	path = filepath.Clean(path)
 	if state == nil {
-		return path, false, nil
+		return CompositionPathResolution{Path: path}, nil
 	}
 
 	// Resolve only symlinks created by the reviewed plan. Source-tree symlinks
@@ -135,7 +146,7 @@ func normalizeCompositionPath(state *compositionPathState, path string) (string,
 	seen := make(map[string]struct{})
 	for depth := 0; depth < 40; depth++ {
 		if _, duplicate := seen[path]; duplicate {
-			return "", true, errors.New("composition symlink attribution loop")
+			return CompositionPathResolution{}, errors.New("composition symlink attribution loop")
 		}
 		seen[path] = struct{}{}
 		rewritten := false
@@ -150,7 +161,7 @@ func normalizeCompositionPath(state *compositionPathState, path string) (string,
 			break
 		}
 		if depth == 39 {
-			return "", true, errors.New("composition symlink attribution depth exceeded")
+			return CompositionPathResolution{}, errors.New("composition symlink attribution depth exceeded")
 		}
 	}
 
@@ -159,12 +170,17 @@ func normalizeCompositionPath(state *compositionPathState, path string) (string,
 			continue
 		}
 		if alias.Source == "" {
-			return path, true, nil
+			return CompositionPathResolution{
+				Path:          path,
+				Covered:       true,
+				Fresh:         true,
+				FreshWritable: alias.FreshWritable,
+			}, nil
 		}
 		mapped, _ := replacePathPrefix(path, alias.Target, alias.Source)
-		return mapped, true, nil
+		return CompositionPathResolution{Path: mapped, Covered: true}, nil
 	}
-	return path, false, nil
+	return CompositionPathResolution{Path: path}, nil
 }
 
 func (r *CompositionPathRegistry) stateForPID(pid int) (*compositionPathState, error) {
@@ -181,15 +197,25 @@ func (r *CompositionPathRegistry) stateForPID(pid int) (*compositionPathState, e
 	return state, nil
 }
 
+// ResolveDetails returns complete source-attribution information for a path in
+// a composed mount namespace.
+func (r *CompositionPathRegistry) ResolveDetails(pid int, path string) (CompositionPathResolution, error) {
+	state, err := r.stateForPID(pid)
+	if err != nil {
+		return CompositionPathResolution{}, err
+	}
+	return normalizeCompositionPath(state, path)
+}
+
 // Resolve returns the source-attributed spelling for path and whether the path
 // lies below a composed mount/symlink boundary. An unchanged path with
 // covered=true is a fresh-filesystem barrier or identity bind.
 func (r *CompositionPathRegistry) Resolve(pid int, path string) (string, bool, error) {
-	state, err := r.stateForPID(pid)
+	resolution, err := r.ResolveDetails(pid, path)
 	if err != nil {
 		return "", false, err
 	}
-	return normalizeCompositionPath(state, path)
+	return resolution.Path, resolution.Covered, nil
 }
 
 // Register publishes one post-pivot snapshot. Sources are first normalized
@@ -223,16 +249,36 @@ func (r *CompositionPathRegistry) Register(parentPID, targetPID int, mappings co
 		if err != nil {
 			return err
 		}
+		freshWritable := alias.FreshWritable
+		if source != "" && freshWritable {
+			return fmt.Errorf("composition alias %q cannot be both source-backed and fresh-writable", target)
+		}
 		if source != "" {
-			source, _, err = normalizeCompositionPath(parentState, source)
+			parentResolution, err := normalizeCompositionPath(parentState, source)
 			if err != nil {
 				return fmt.Errorf("normalize parent composition source %q: %w", alias.Source, err)
 			}
+			if parentResolution.FreshWritable {
+				// A bind sourced from a parent composition's writable tmpfs
+				// remains private synthetic state in the nested namespace.
+				source = ""
+				freshWritable = true
+			} else {
+				// Preserve a source spelling behind the read-only synthetic root.
+				// Besides keeping source policy effective, this distinguishes an
+				// atomic replacement snapshot from a nested writable tmpfs bind.
+				source = parentResolution.Path
+			}
 		}
 		if target == string(filepath.Separator) && source == "" {
+			if freshWritable {
+				return errors.New("composition synthetic-root barrier cannot be fresh-writable")
+			}
 			rootBarrier = true
 		}
-		aliases = append(aliases, composition.PathAlias{Target: target, Source: source})
+		aliases = append(aliases, composition.PathAlias{
+			Target: target, Source: source, FreshWritable: freshWritable,
+		})
 	}
 	if !rootBarrier {
 		return errors.New("composition path mappings omit the synthetic-root barrier")

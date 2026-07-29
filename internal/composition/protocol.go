@@ -116,11 +116,15 @@ type Plan struct {
 
 // PathAlias describes one final mount-boundary attribution. An empty Source is
 // a fresh-filesystem barrier: paths below Target must not inherit an enclosing
-// bind alias. These records never authorize mounts; they let the file monitor
-// evaluate later accesses against both their visible and original source paths.
+// bind alias. FreshWritable is set only for a broker-provisioned writable tmpfs;
+// it lets the file monitor distinguish private synthetic writes from writes to
+// an identity bind with the same visible and source spelling. These records
+// never authorize mounts; they let the file monitor evaluate later accesses
+// against both their visible and original source paths.
 type PathAlias struct {
-	Target string
-	Source string
+	Target        string
+	Source        string
+	FreshWritable bool
 }
 
 // PathSymlink records a symlink created by the reviewed plan so source

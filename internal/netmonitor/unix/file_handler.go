@@ -31,16 +31,18 @@ type FilePolicyDecision struct {
 
 // FileRequest holds the parsed context for a file syscall notification.
 type FileRequest struct {
-	PID         int
-	Syscall     int32
-	Path        string
-	Path2       string // second path for rename/link
-	SourcePath  string // composition-attributed original source path
-	SourcePath2 string
-	Operation   string
-	Flags       uint32
-	Mode        uint32
-	SessionID   string
+	PID                       int
+	Syscall                   int32
+	Path                      string
+	Path2                     string // second path for rename/link
+	SourcePath                string // composition-attributed original source path
+	SourcePath2               string
+	CompositionFreshWritable  bool // path is backed by a broker-created writable tmpfs
+	CompositionFreshWritable2 bool
+	Operation                 string
+	Flags                     uint32
+	Mode                      uint32
+	SessionID                 string
 }
 
 // FileResult holds the outcome of handling a file syscall.
@@ -204,7 +206,7 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 
 	compositionCovered := false
 	if h.compositionPaths != nil {
-		attributed, covered, err := h.compositionPaths.Resolve(req.PID, req.Path)
+		resolution, err := h.compositionPaths.ResolveDetails(req.PID, req.Path)
 		if err != nil {
 			dec := FilePolicyDecision{
 				Decision: "deny", EffectiveDecision: "deny",
@@ -213,12 +215,13 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 			}
 			return FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}, h.buildFileEvent(req, dec, true, false)
 		}
-		compositionCovered = covered
-		if covered && attributed != "" && attributed != req.Path {
-			req.SourcePath = attributed
+		compositionCovered = resolution.Covered
+		req.CompositionFreshWritable = resolution.FreshWritable
+		if resolution.Covered && resolution.Path != "" && resolution.Path != req.Path {
+			req.SourcePath = resolution.Path
 		}
 		if req.Path2 != "" {
-			attributed2, covered2, err := h.compositionPaths.Resolve(req.PID, req.Path2)
+			resolution2, err := h.compositionPaths.ResolveDetails(req.PID, req.Path2)
 			if err != nil {
 				dec := FilePolicyDecision{
 					Decision: "deny", EffectiveDecision: "deny",
@@ -227,9 +230,10 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 				}
 				return FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}, h.buildFileEvent(req, dec, true, false)
 			}
-			compositionCovered = compositionCovered || covered2
-			if covered2 && attributed2 != "" && attributed2 != req.Path2 {
-				req.SourcePath2 = attributed2
+			compositionCovered = compositionCovered || resolution2.Covered
+			req.CompositionFreshWritable2 = resolution2.FreshWritable
+			if resolution2.Covered && resolution2.Path != "" && resolution2.Path != req.Path2 {
+				req.SourcePath2 = resolution2.Path
 			}
 		}
 	}
@@ -243,12 +247,28 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 		return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, shadowDeny)
 	}
 
-	// 3. Full enforcement path.
-	dec := h.policy.CheckFile(ctx, req.Path, req.Operation)
+	// 3. Full enforcement path. A broker-created writable tmpfs has no host
+	// source object to protect: its fixed Landlock rights and restrictive mount
+	// attributes are established before the payload starts. Do not apply a host
+	// path rule such as "approve writes to /etc" to that private filesystem.
+	freshWritableDecision := FilePolicyDecision{
+		Decision:          "allow",
+		EffectiveDecision: "allow",
+		Rule:              "allow-composition-fresh-writable",
+		Message:           "write is confined to a broker-created writable tmpfs",
+	}
+	dec := freshWritableDecision
+	if !req.CompositionFreshWritable {
+		dec = h.policy.CheckFile(ctx, req.Path, req.Operation)
+	}
 
-	// For dual-path syscalls (rename, link), also check the second path.
+	// For dual-path syscalls (rename, link), also check the second path. Every
+	// non-fresh endpoint remains subject to its visible and source policy.
 	if req.Path2 != "" {
-		dec2 := h.policy.CheckFile(ctx, req.Path2, req.Operation)
+		dec2 := freshWritableDecision
+		if !req.CompositionFreshWritable2 {
+			dec2 = h.policy.CheckFile(ctx, req.Path2, req.Operation)
+		}
 		// If either path is restrictive, the combined decision is restrictive.
 		if dec2.EffectiveDecision != "allow" {
 			dec = dec2
@@ -336,6 +356,12 @@ func (h *FileHandler) buildFileEvent(req FileRequest, dec FilePolicyDecision, bl
 	}
 	if req.SourcePath2 != "" {
 		fields["composition_source_path2"] = req.SourcePath2
+	}
+	if req.CompositionFreshWritable {
+		fields["composition_fresh_writable"] = true
+	}
+	if req.CompositionFreshWritable2 {
+		fields["composition_fresh_writable2"] = true
 	}
 
 	ev := &types.Event{

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/agentsh/agentsh/internal/composition"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sys/unix"
@@ -100,6 +101,62 @@ func TestFileHandler_ComposedAliasUsesMostRestrictiveSourceDecision(t *testing.T
 	}
 	if got := event.Fields["composition_source_path"]; got != "/source/secret" {
 		t.Fatalf("composition source audit field = %#v", got)
+	}
+}
+
+func TestFileHandler_ComposedFreshWritableBypassesHostPathPolicy(t *testing.T) {
+	registry := NewCompositionPathRegistry()
+	t.Cleanup(func() { _ = registry.Close() })
+	pid := os.Getpid()
+	if err := registry.Register(pid, pid, composition.PathMappings{
+		Aliases: []composition.PathAlias{
+			{Target: "/", Source: ""},
+			{Target: "/etc", Source: "", FreshWritable: true},
+			{Target: "/readonly", Source: ""},
+			{Target: "/identity", Source: "/identity"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	deny := FilePolicyDecision{Decision: "deny", EffectiveDecision: "deny", Rule: "deny-host-write"}
+	policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
+		"/etc/ld.so.conf": deny,
+		"/readonly/file":  deny,
+		"/identity/file":  deny,
+	}}
+	handler := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true)
+	handler.SetCompositionPathRegistry(registry)
+
+	result, event := handler.Handle(context.Background(), FileRequest{
+		PID: pid, Syscall: int32(unix.SYS_OPENAT), Flags: uint32(unix.O_WRONLY | unix.O_CREAT),
+		Path: "/etc/ld.so.conf", Operation: "write", SessionID: "composition-test",
+	})
+	if result.Action != ActionContinue || event == nil || event.Policy == nil ||
+		event.Policy.Rule != "allow-composition-fresh-writable" {
+		t.Fatalf("fresh writable result=%+v event=%+v", result, event)
+	}
+	if got := event.Fields["composition_fresh_writable"]; got != true {
+		t.Fatalf("fresh writable audit field = %#v", got)
+	}
+
+	for _, path := range []string{"/readonly/file", "/identity/file"} {
+		result, _ := handler.Handle(context.Background(), FileRequest{
+			PID: pid, Syscall: int32(unix.SYS_OPENAT), Flags: uint32(unix.O_WRONLY),
+			Path: path, Operation: "write", SessionID: "composition-test",
+		})
+		if result.Action != ActionDeny {
+			t.Fatalf("non-writable composition path %q bypassed policy: %+v", path, result)
+		}
+	}
+
+	result, _ = handler.Handle(context.Background(), FileRequest{
+		PID: pid, Syscall: int32(unix.SYS_RENAMEAT),
+		Path: "/etc/ld.so.conf", Path2: "/identity/file",
+		Operation: "rename", SessionID: "composition-test",
+	})
+	if result.Action != ActionDeny {
+		t.Fatalf("rename from fresh tmpfs to source-backed path bypassed policy: %+v", result)
 	}
 }
 

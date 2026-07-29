@@ -82,6 +82,9 @@ let
         echo "source command policy was bypassed through a visible alias" >&2
         exit 1
       fi
+      printf '%s\n' private-tmpfs-write > /etc/agentsh-release-gate-synthetic-write
+      test "$(cat /etc/agentsh-release-gate-synthetic-write)" = private-tmpfs-write
+      rm /etc/agentsh-release-gate-synthetic-write
       test -d /tmp/.X11-unix
       test -c /dev/null
       if test -e /run/agentsh/recovery; then
@@ -468,6 +471,7 @@ let
         paths = [
           "/nix"
           "/nix/**"
+          "/etc/agentsh-release-gate-synthetic-write"
           "/scratch/theo/outside"
           "/scratch/theo/outside/**"
         ];

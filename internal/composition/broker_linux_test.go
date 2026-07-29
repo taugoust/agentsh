@@ -16,6 +16,30 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func TestPathMappingsPreserveOnlyExplicitWritableTmpfs(t *testing.T) {
+	mappings := pathMappingsFromMaps(map[string]pathAliasMapping{
+		"/":     {},
+		"/etc":  {freshWritable: true},
+		"/proc": {},
+		"/nix":  {source: "/nix"},
+	}, nil)
+	got := make(map[string]PathAlias, len(mappings.Aliases))
+	for _, alias := range mappings.Aliases {
+		got[alias.Target] = alias
+	}
+	if !got["/etc"].FreshWritable {
+		t.Fatal("writable tmpfs mapping lost fresh-writable attribution")
+	}
+	for _, target := range []string{"/", "/proc", "/nix"} {
+		if got[target].FreshWritable {
+			t.Fatalf("non-tmpfs mapping %q became fresh-writable", target)
+		}
+	}
+	if got["/nix"].Source != "/nix" {
+		t.Fatalf("bind source attribution = %q", got["/nix"].Source)
+	}
+}
+
 func newSetupTestBroker(t *testing.T, expectedPID int, expectedExecutable string, readRoots []string) (*Broker, *os.File) {
 	t.Helper()
 	self, err := os.Executable()
