@@ -18,15 +18,17 @@ func TestCompleteCommandJailSetupPublishesCompositionAfterVerifiedBoundary(t *te
 	}
 
 	err := completeCommandJailSetup(commandJailSetupOps{
-		makeMountsPrivate:  step("mount-propagation-private"),
-		prepareComposition: step("prepare-composition"),
-		installMounts:      step("install-command-jail-mounts"),
-		publishComposition: step("publish-composition"),
-		enforceLandlock:    func() { got = append(got, "enforce-landlock") },
-		dropPrivileges:     step("drop-privileges"),
-		installSeccomp:     step("install-final-seccomp"),
-		protectDescriptors: step("protect-descriptors"),
-		verifyPrivileges:   step("verify-privileges"),
+		makeMountsPrivate:      step("mount-propagation-private"),
+		installPrivateProc:     step("install-private-proc"),
+		refreshLandlock:        step("refresh-landlock"),
+		prepareComposition:     step("prepare-composition"),
+		installRemainingMounts: step("install-remaining-mounts"),
+		publishComposition:     step("publish-composition"),
+		enforceLandlock:        func() { got = append(got, "enforce-landlock") },
+		dropPrivileges:         step("drop-privileges"),
+		installSeccomp:         step("install-final-seccomp"),
+		protectDescriptors:     step("protect-descriptors"),
+		verifyPrivileges:       step("verify-privileges"),
 	})
 	if err != nil {
 		t.Fatalf("completeCommandJailSetup: %v", err)
@@ -34,8 +36,10 @@ func TestCompleteCommandJailSetupPublishesCompositionAfterVerifiedBoundary(t *te
 
 	want := []string{
 		"mount-propagation-private",
+		"install-private-proc",
+		"refresh-landlock",
 		"prepare-composition",
-		"install-command-jail-mounts",
+		"install-remaining-mounts",
 		"enforce-landlock",
 		"drop-privileges",
 		"install-final-seccomp",
@@ -60,17 +64,19 @@ func TestScrubCommandJailEnvRemovesHelperRuntimeControls(t *testing.T) {
 	}
 }
 
-func TestCompleteCommandJailSetupDoesNotApplyLandlockAfterMountFailure(t *testing.T) {
+func TestCompleteCommandJailSetupDoesNotRefreshOrApplyLandlockAfterMountFailure(t *testing.T) {
 	mountErr := errors.New("injected mount failure")
+	landlockRefreshed := false
 	landlockApplied := false
 	err := completeCommandJailSetup(commandJailSetupOps{
 		makeMountsPrivate: func() error { return mountErr },
+		refreshLandlock:   func() error { landlockRefreshed = true; return nil },
 		enforceLandlock:   func() { landlockApplied = true },
 	})
 	if !errors.Is(err, mountErr) {
 		t.Fatalf("error = %v, want %v", err, mountErr)
 	}
-	if landlockApplied {
-		t.Fatal("Landlock was applied after an incomplete mount boundary")
+	if landlockRefreshed || landlockApplied {
+		t.Fatal("Landlock was refreshed or applied after an incomplete mount boundary")
 	}
 }

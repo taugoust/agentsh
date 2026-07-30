@@ -124,9 +124,9 @@ func main() {
 	// Landlock domains are per-thread. Pin before preparing the ruleset and stay
 	// pinned through seccomp setup and the final exec/fork so a Go scheduler
 	// migration cannot make enforcement intermittent. In strict command-jail
-	// mode the ruleset is built now, but restrict_self is deliberately deferred
-	// until after the trusted mount topology is complete: Landlock rejects mount
-	// propagation changes even for a process with CAP_SYS_ADMIN.
+	// mode restrict_self is deferred until trusted mount setup is complete. The
+	// stage adds replacement rules for its private procfs object before enforcing
+	// this prepared ruleset.
 	var preparedLandlock *preparedLandlockRuleset
 	if cfg.LandlockEnabled && cfg.LandlockABI > 0 {
 		runtime.LockOSThread()

@@ -16,11 +16,28 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func TestEffectivePlanNamespaceSelectionAbsorbsPIDIsolation(t *testing.T) {
+	selection := effectivePlanNamespaceSelection(Plan{
+		UnsharePID:    true,
+		UnshareIPC:    true,
+		UnshareUTS:    true,
+		UnshareCgroup: true,
+	})
+	if selection["pid"] {
+		t.Fatal("nested composition selected a PID namespace outside the outer private procfs boundary")
+	}
+	for _, namespace := range []string{"ipc", "uts", "cgroup"} {
+		if !selection[namespace] {
+			t.Errorf("%s namespace request was not preserved", namespace)
+		}
+	}
+}
+
 func TestPathMappingsPreserveOnlyExplicitWritableTmpfs(t *testing.T) {
 	mappings := pathMappingsFromMaps(map[string]pathAliasMapping{
 		"/":     {},
 		"/etc":  {freshWritable: true},
-		"/proc": {},
+		"/proc": {source: "/proc"},
 		"/nix":  {source: "/nix"},
 	}, nil)
 	got := make(map[string]PathAlias, len(mappings.Aliases))
@@ -37,6 +54,9 @@ func TestPathMappingsPreserveOnlyExplicitWritableTmpfs(t *testing.T) {
 	}
 	if got["/nix"].Source != "/nix" {
 		t.Fatalf("bind source attribution = %q", got["/nix"].Source)
+	}
+	if got["/proc"].Source != "/proc" {
+		t.Fatalf("private proc source attribution = %q", got["/proc"].Source)
 	}
 }
 

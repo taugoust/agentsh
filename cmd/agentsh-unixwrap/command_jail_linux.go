@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/agentsh/agentsh/internal/landlock"
 	seccomp "github.com/seccomp/libseccomp-golang"
 	"golang.org/x/sys/unix"
 )
@@ -57,28 +58,35 @@ type mountedFilesystem struct {
 }
 
 type commandJailSetupOps struct {
-	makeMountsPrivate  func() error
-	prepareComposition func() error
-	installMounts      func() error
-	publishComposition func() error
-	enforceLandlock    func()
-	dropPrivileges     func() error
-	installSeccomp     func() error
-	protectDescriptors func() error
-	verifyPrivileges   func() error
+	makeMountsPrivate      func() error
+	installPrivateProc     func() error
+	refreshLandlock        func() error
+	prepareComposition     func() error
+	installRemainingMounts func() error
+	publishComposition     func() error
+	enforceLandlock        func()
+	dropPrivileges         func() error
+	installSeccomp         func() error
+	protectDescriptors     func() error
+	verifyPrivileges       func() error
 }
 
 // completeCommandJailSetup preserves the security-sensitive ordering between
-// privileged mount setup and irreversible per-thread restrictions. In
-// particular, Landlock must be applied after the mount topology is complete.
-// The setup object packet is published only after Landlock, capability drop,
-// no_new_privs, seccomp, and descriptor protection are all verified, so its
-// authenticated sender cannot attest from a partially established boundary.
+// privileged mount setup and irreversible per-thread restrictions. The private
+// procfs is installed first so replacement rules can be added to the prepared
+// Landlock ruleset. Composition then captures those exact objects and adds its
+// bounded synthetic mounts before cgroup/helper controls are masked and the
+// completed ruleset is enforced. The setup object packet is published only
+// after Landlock, capability drop, no_new_privs, seccomp, and descriptor
+// protection are all verified, so its authenticated sender cannot attest from
+// a partially established boundary.
 func completeCommandJailSetup(ops commandJailSetupOps) error {
 	for _, step := range []func() error{
 		ops.makeMountsPrivate,
+		ops.installPrivateProc,
+		ops.refreshLandlock,
 		ops.prepareComposition,
-		ops.installMounts,
+		ops.installRemainingMounts,
 		func() error {
 			if ops.enforceLandlock != nil {
 				ops.enforceLandlock()
@@ -185,6 +193,8 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 	defer signal.Stop(sigCh)
 
 	var compositionSetup *compositionSetupState
+	var mounts []mountedFilesystem
+	var hiddenProcRoots []string
 	if err := completeCommandJailSetup(commandJailSetupOps{
 		makeMountsPrivate: func() error {
 			if err := unix.Mount("", string(filepath.Separator), "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
@@ -192,12 +202,26 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 			}
 			return nil
 		},
+		installPrivateProc: func() error {
+			var err error
+			mounts, err = loadCommandJailMountInventory()
+			if err != nil {
+				return err
+			}
+			hiddenProcRoots, err = installCommandJailPrivateProc(mounts)
+			return err
+		},
+		refreshLandlock: func() error {
+			return refreshPrivateProcLandlock(preparedLandlock, hiddenProcRoots)
+		},
 		prepareComposition: func() error {
 			var err error
 			compositionSetup, err = prepareCompositionSetup(cfg, preparedLandlock)
 			return err
 		},
-		installMounts:      func() error { return installCommandJailMounts(cfg.CommandJail) },
+		installRemainingMounts: func() error {
+			return installCommandJailRemainingMounts(cfg.CommandJail, mounts, hiddenProcRoots)
+		},
 		publishComposition: func() error { return publishCompositionSetup(compositionSetup) },
 		// Landlock rejects mount topology changes. Apply the ruleset only after
 		// all trusted command-jail mounts are complete, while still on the OS
@@ -300,35 +324,79 @@ func validateCommandJailHideTargets(cfg *CommandJailConfig) error {
 	return nil
 }
 
-func installCommandJailMounts(cfg *CommandJailConfig) error {
+func loadCommandJailMountInventory() ([]mountedFilesystem, error) {
 	var mounts []mountedFilesystem
 	if err := json.Unmarshal([]byte(os.Getenv(commandJailMountsEnv)), &mounts); err != nil || len(mounts) == 0 {
 		if err == nil {
 			err = errors.New("empty mount inventory")
 		}
-		return fmt.Errorf("load trusted mount inventory: %w", err)
+		return nil, fmt.Errorf("load trusted mount inventory: %w", err)
 	}
+	sort.Slice(mounts, func(i, j int) bool { return len(mounts[i].Path) < len(mounts[j].Path) })
+	return mounts, nil
+}
+
+func installCommandJailPrivateProc(mounts []mountedFilesystem) ([]string, error) {
 	// Shallow roots first. Container runtimes often overmount proc files such
 	// as /proc/sysrq-trigger; replacing the enclosing proc root removes those
-	// host views, so nested proc/cgroup mountpoints must not be mounted again.
-	sort.Slice(mounts, func(i, j int) bool { return len(mounts[i].Path) < len(mounts[j].Path) })
+	// host views, so nested proc mountpoints must not be mounted again.
 	var hiddenRoots []string
 	for _, mount := range mounts {
-		if pathCoveredByRoot(mount.Path, hiddenRoots) {
+		if mount.FSType != "proc" || pathCoveredByRoot(mount.Path, hiddenRoots) {
 			continue
 		}
-		switch mount.FSType {
-		case "proc":
-			if err := replaceWithPrivateProc(mount.Path); err != nil {
-				return err
-			}
-			hiddenRoots = append(hiddenRoots, mount.Path)
-		case "cgroup", "cgroup2":
-			if err := maskDirectory(mount.Path); err != nil {
-				return fmt.Errorf("hide cgroupfs %s: %w", mount.Path, err)
-			}
-			hiddenRoots = append(hiddenRoots, mount.Path)
+		if err := replaceWithPrivateProc(mount.Path); err != nil {
+			return nil, err
 		}
+		hiddenRoots = append(hiddenRoots, mount.Path)
+	}
+	return hiddenRoots, nil
+}
+
+func refreshPrivateProcLandlock(prepared *preparedLandlockRuleset, procRoots []string) error {
+	if prepared == nil || prepared.fd < 0 || len(procRoots) == 0 {
+		return nil
+	}
+	originalCount := len(prepared.objects)
+	for index := 0; index < originalCount; index++ {
+		object := prepared.objects[index]
+		covered := false
+		exactRoot := false
+		for _, root := range procRoots {
+			if object.Path == root {
+				covered = true
+				exactRoot = true
+				break
+			}
+			if pathCoveredByRoot(object.Path, []string{root}) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			continue
+		}
+		replacement, err := landlock.AddPathRuleObject(prepared.fd, object.Path, object.Rights)
+		if err != nil {
+			if errors.Is(err, unix.ENOENT) && !exactRoot {
+				continue
+			}
+			return fmt.Errorf("refresh private proc Landlock object %s: %w", object.Path, err)
+		}
+		prepared.objects = append(prepared.objects, replacement)
+	}
+	return nil
+}
+
+func installCommandJailRemainingMounts(cfg *CommandJailConfig, mounts []mountedFilesystem, hiddenRoots []string) error {
+	for _, mount := range mounts {
+		if (mount.FSType != "cgroup" && mount.FSType != "cgroup2") || pathCoveredByRoot(mount.Path, hiddenRoots) {
+			continue
+		}
+		if err := maskDirectory(mount.Path); err != nil {
+			return fmt.Errorf("hide cgroupfs %s: %w", mount.Path, err)
+		}
+		hiddenRoots = append(hiddenRoots, mount.Path)
 	}
 
 	hideDirs := append([]string(nil), cfg.HideDirectories...)

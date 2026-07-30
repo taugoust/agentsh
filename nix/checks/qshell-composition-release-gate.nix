@@ -87,6 +87,12 @@ let
       rm /etc/agentsh-release-gate-synthetic-write
       test -d /tmp/.X11-unix
       test -c /dev/null
+      # Both the FHS plan and the explicit recursively composed PID-isolation
+      # probe use /proc. Composition rebinds the strict command jail's
+      # pre-Landlock private procfs, so policy-allowed reads must remain usable
+      # without exposing the host PID namespace.
+      cat /proc/modules >/dev/null
+      cat /proc/self/status >/dev/null
       if test -e /run/agentsh/recovery; then
         echo "AgentSH recovery controls leaked into the composed root" >&2
         exit 1
@@ -222,6 +228,8 @@ let
         ${qshellRoot}|${symlinkedQshellRoot}) ;;
         *) echo "unexpected recursive cwd: $(pwd)" >&2; exit 1 ;;
       esac
+      cat /proc/modules >/dev/null
+      cat /proc/self/status >/dev/null
       printf 'qshell-release-recursive cwd=%s result=pass\n' "$(pwd)"
     '';
   };
@@ -233,8 +241,11 @@ let
       set -euo pipefail
       exec bwrap \
         --die-with-parent \
+        --unshare-pid \
         --bind /nix /nix \
         --bind /scratch /scratch \
+        --dev /dev \
+        --proc /proc \
         --chdir ${qshellRoot} \
         -- ${recursivePayload}/bin/agentsh-release-gate-recursive-payload
     '';
@@ -887,7 +898,9 @@ pkgs.testers.runNixOSTest {
             + "/network-enforcement/preflight"
         )
         preflight = json.loads(preflight_raw)
-        assert preflight["readiness"] == "ready", preflight_raw
+        if preflight["readiness"] != "ready":
+            server_tail = machine.succeed("tail -n 200 /var/lib/agentsh-release/server.log")
+            raise AssertionError(preflight_raw + "\nserver log:\n" + server_tail)
         jail = preflight["preflight"]
         assert jail["status"] == "ready", preflight_raw
         for invariant in [
@@ -940,9 +953,9 @@ pkgs.testers.runNixOSTest {
                 assert "qshell-release-recursive" in response["result"]["stdout"], response
         assert composition_plan_count() == before + len(forms) + 1
 
-    with subtest("arbitrary Bash in the project does not select composition"):
+    with subtest("arbitrary Bash retains its private procfs without selecting composition"):
         before = composition_plan_count()
-        request = json.dumps({"command": "printf arbitrary-bash-pass", "cwd": "${projectRoot}"})
+        request = json.dumps({"command": "cat /proc/modules >/dev/null && cat /proc/self/status >/dev/null && printf arbitrary-bash-pass", "cwd": "${projectRoot}"})
         raw = machine.succeed(
             "curl -sS -H 'content-type: application/json' -X POST "
             + "http://127.0.0.1:18080/api/v1/sessions/" + ordinary
@@ -983,8 +996,10 @@ pkgs.testers.runNixOSTest {
             "([.fields.normalized_plan.operations[] | select(.type == \"bind\" and .source == \"/scratch\" and .target == \"/scratch\" and .recursive == true)] | length) == 1 and "
             "(([.fields.normalized_plan.operations[] | select(.type == \"bind\" and .source == .target and .source != \"/nix\") | .source] | sort) as $roots | "
             "($roots == [\"/home\", \"/mnt\", \"/scratch\", \"/share\", \"/sys\", \"/tmp\", \"/var\"] or $roots == [\"/home\", \"/mnt\", \"/scratch\", \"/share\", \"/sys\", \"/tmp\", \"/var\", \"/zroot\"])))] as $qshell | "
-            "[$plans[] | select(.fields.normalized_plan.operation_count == 2 and "
-            ".fields.normalized_plan.cwd == \"${qshellRoot}\")] as $recursive | "
+            "[$plans[] | select(.fields.normalized_plan.operation_count == 4 and "
+            ".fields.normalized_plan.unshare_pid == true and "
+            ".fields.normalized_plan.cwd == \"${qshellRoot}\" and "
+            "([.fields.normalized_plan.operations[] | select(.type == \"proc\" and .target == \"/proc\")] | length) == 1)] as $recursive | "
             "($plans | length) == 7 and ($qshell | length) == 6 and ($recursive | length) == 1 and "
             "($bwrap | length) == ($plans | length) and "
             "all($plans[]; .fields.parent_pid > 0 and .fields.target_pid > 0 and .fields.parent_pid != .fields.target_pid) and "

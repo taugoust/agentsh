@@ -83,19 +83,7 @@ func runAdapter(args []string) error {
 		return fmt.Errorf("resolve adapter executable identity: invalid target %q", self)
 	}
 	launcher := filepath.Join(filepath.Dir(self), "agentsh-composition-ns-launcher")
-	namespaceFlags := uintptr(unix.CLONE_NEWNS)
-	if plan.UnsharePID {
-		namespaceFlags |= unix.CLONE_NEWPID
-	}
-	if plan.UnshareIPC {
-		namespaceFlags |= unix.CLONE_NEWIPC
-	}
-	if plan.UnshareUTS {
-		namespaceFlags |= unix.CLONE_NEWUTS
-	}
-	if plan.UnshareCgroup {
-		namespaceFlags |= unix.CLONE_NEWCGROUP
-	}
+	namespaceFlags := compositionNamespaceFlags(plan)
 	uid, gid := os.Geteuid(), os.Getegid()
 	if uid != 1 || gid != 1 {
 		_ = planReader.Close()
@@ -146,6 +134,27 @@ func runAdapter(args []string) error {
 	close(signals)
 	<-done
 	return propagateProcessStatus(waitErr)
+}
+
+func compositionNamespaceFlags(plan composition.Plan) uintptr {
+	// The strict outer command jail already provides one private PID namespace
+	// and a procfs prepared before Landlock enforcement. Absorb Bubblewrap's
+	// nested --unshare-pid request into that boundary: a procfs mounted for a
+	// later PID namespace would be a new filesystem object outside the inherited
+	// Landlock ruleset. Fresh user, mount, IPC, UTS, and cgroup namespaces remain
+	// independently enforced, while recursive compositions reuse the same
+	// command-private PID/proc boundary.
+	flags := uintptr(unix.CLONE_NEWNS)
+	if plan.UnshareIPC {
+		flags |= unix.CLONE_NEWIPC
+	}
+	if plan.UnshareUTS {
+		flags |= unix.CLONE_NEWUTS
+	}
+	if plan.UnshareCgroup {
+		flags |= unix.CLONE_NEWCGROUP
+	}
+	return flags
 }
 
 func propagateProcessStatus(waitErr error) error {

@@ -565,7 +565,11 @@ func (b *Broker) handlePlan(expectedPID int, mapped *mappedRequester, nonce stri
 		if err := validatePlanNamespaceSelection(expectedPID, requesterPID, plan); err != nil {
 			return err
 		}
-		pidOwnedByTargetUser = plan.UnsharePID
+		// The strict outer command jail owns the PID namespace even when the
+		// Bubblewrap plan requested --unshare-pid. The adapter absorbs that
+		// redundant request so all recursive compositions retain the one
+		// pre-Landlock private procfs object.
+		pidOwnedByTargetUser = false
 	}
 	if plan.UID != nil && *plan.UID != 1 {
 		return typedError("E_COMPOSITION_OPTION_UNSUPPORTED", "requested UID %d is not the admitted namespace identity", *plan.UID)
@@ -583,14 +587,20 @@ func (b *Broker) handlePlan(expectedPID int, mapped *mappedRequester, nonce stri
 	return b.executePlan(expectedPID, requesterPID, pidOwnedByTargetUser, plan, revalidate)
 }
 
-func validatePlanNamespaceSelection(expectedPID, requesterPID int, plan Plan) error {
-	requested := map[string]bool{
-		"pid":    plan.UnsharePID,
+func effectivePlanNamespaceSelection(plan Plan) map[string]bool {
+	return map[string]bool{
+		// The outer strict command jail already supplies the private PID
+		// namespace. Keeping it is required for the inherited Landlock rule to
+		// continue naming the procfs object across recursive compositions.
+		"pid":    false,
 		"ipc":    plan.UnshareIPC,
 		"uts":    plan.UnshareUTS,
 		"cgroup": plan.UnshareCgroup,
 	}
-	for namespace, wantFresh := range requested {
+}
+
+func validatePlanNamespaceSelection(expectedPID, requesterPID int, plan Plan) error {
+	for namespace, wantFresh := range effectivePlanNamespaceSelection(plan) {
 		expected, err := os.Readlink(filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(expectedPID), "ns", namespace))
 		if err != nil {
 			return typedError("E_COMPOSITION_NAMESPACE_INVALID", "read expected %s namespace: %v", namespace, err)
@@ -1469,13 +1479,15 @@ func (b *Broker) executePlan(parentPID, pid int, pidOwnedByTargetUser bool, plan
 			mountedRights, err = b.executeSyntheticTmpfs(targetContext, target)
 			mounted = err == nil
 		case OperationProc:
-			// A procfs for the requester's verified current PID namespace—or the
-			// fresh descendant requested with --unshare-pid—contains only that
-			// namespace and descendants. hidepid=2 would prevent the adapter
-			// parent from writing a newly cloned child's uid_map before the map
-			// gives the child a matching identity, breaking safe recursion.
-			err = b.runHelper(targetContext, nil, "proc", target, "hidepid=0")
-			mounted = err == nil
+			// Rebind the outer command jail's private procfs instead of creating a
+			// post-Landlock filesystem object. The adapter deliberately preserves
+			// that PID namespace, so /proc/self and PID reporting retain correct
+			// semantics while host and other-command processes stay invisible.
+			procBind := operation
+			procBind.Source = "/proc"
+			procBind.ReadOnly = true
+			procBind.Recursive = true
+			mountedRights, mounted, err = b.executeBind(targetContext, procBind, target, parentRights)
 		case OperationDev:
 			mountedRights, err = b.executeDev(targetContext, target, parentRights)
 			mounted = err == nil
@@ -1497,6 +1509,8 @@ func (b *Broker) executePlan(parentPID, pid int, pidOwnedByTargetUser bool, plan
 			source := ""
 			if operation.Type == OperationBind || operation.Type == OperationDevBind {
 				source = operation.Source
+			} else if operation.Type == OperationProc {
+				source = "/proc"
 			}
 			// Only an OperationTmpfs mount backed by the authenticated setup
 			// pool is both fresh and intentionally writable by the composed
