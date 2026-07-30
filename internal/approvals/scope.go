@@ -14,9 +14,12 @@ import (
 const (
 	ScopeOnce    = "once"
 	ScopeSession = "session"
+
+	CommandRunScopeKind = "command-run"
+	CommandRunScopeKey  = "command-run:all-approvals"
 )
 
-// Scope identifies the canonical target a session-scoped approval applies to.
+// Scope identifies the canonical target a session- or command-scoped approval applies to.
 type Scope struct {
 	Kind      string
 	Key       string
@@ -40,6 +43,21 @@ func NormalizeResolutionScope(scope string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid approval scope %q", scope)
 	}
+}
+
+// NewCommandRunScope builds the command-wide approval target. Its constant key
+// is safe because command-scoped decisions are nested under session_id and the
+// unique top-level command_id; it never becomes a session-scoped grant.
+func NewCommandRunScope() Scope {
+	return Scope{
+		Kind:  CommandRunScopeKind,
+		Key:   CommandRunScopeKey,
+		Label: "all requests for this command invocation",
+	}
+}
+
+func IsCommandRunScope(scope Scope) bool {
+	return scope.Kind == CommandRunScopeKind && scope.Key == CommandRunScopeKey
 }
 
 // NewNetworkScope builds a canonical network scope from host and explicit port.
@@ -273,6 +291,9 @@ func scopeFields(scope Scope) map[string]any {
 	}
 	if scope.Prefix {
 		fields["scope_prefix"] = true
+	}
+	if IsCommandRunScope(scope) {
+		fields["scope_lifetime"] = "command"
 	}
 	return fields
 }

@@ -359,6 +359,8 @@ func (m *Manager) resolveForSession(sessionID string, id string, approved bool, 
 		} else if granted, ok := ScopeFromRequest(p.req); ok {
 			m.resolvePendingCoveredBySessionScope(p.req, granted, res)
 		}
+	} else if scope == ScopeOnce && IsCommandRunScope(target) {
+		m.resolvePendingCoveredByCommandRun(p.req, target, res)
 	}
 	return true
 }
@@ -371,6 +373,9 @@ func (m *Manager) resolveDecisionForSession(sessionID string, id string, approve
 	if !ok || p == nil || sessionID != "" && p.req.SessionID != sessionID {
 		return nil, terminalResolution{}, false
 	}
+	if IsCommandRunScope(target) {
+		target = NewCommandRunScope()
+	}
 	res := Resolution{Approved: approved, Reason: reason, Scope: scope, At: time.Now().UTC()}
 	if validScope(target) {
 		res.ScopeKind = target.Kind
@@ -380,6 +385,32 @@ func (m *Manager) resolveDecisionForSession(sessionID string, id string, approve
 		res.ScopePath = target.Path
 		res.ScopeRule = target.Rule
 		res.ScopePrefix = target.Prefix
+	}
+	// Publish command-wide decisions before waking the current waiter. This
+	// closes the interval in which another request from the same command could
+	// arrive after operator resolution but before RequestApproval stores its
+	// command-scoped result.
+	if scope == ScopeOnce && IsCommandRunScope(target) && p.req.SessionID != "" && p.req.CommandID != "" {
+		dec := ScopedDecision{
+			SessionID: p.req.SessionID,
+			Kind:      target.Kind,
+			Key:       target.Key,
+			Label:     target.Label,
+			Approved:  approved,
+			Reason:    reason,
+			Rule:      p.req.Rule,
+			CreatedAt: time.Now().UTC(),
+		}
+		if m.commandScoped == nil {
+			m.commandScoped = make(map[string]map[string]map[string]ScopedDecision)
+		}
+		if m.commandScoped[p.req.SessionID] == nil {
+			m.commandScoped[p.req.SessionID] = make(map[string]map[string]ScopedDecision)
+		}
+		if m.commandScoped[p.req.SessionID][p.req.CommandID] == nil {
+			m.commandScoped[p.req.SessionID][p.req.CommandID] = make(map[string]ScopedDecision)
+		}
+		m.commandScoped[p.req.SessionID][p.req.CommandID][target.Key] = dec
 	}
 	terminal := terminalResolution{resolution: res, cause: terminalCauseDecision}
 	if !m.terminalizePendingLocked(id, p, terminal) {
@@ -472,6 +503,26 @@ func terminalError(ctx context.Context, cause terminalCause) error {
 }
 
 func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution, error) {
+	if req.SessionID != "" && req.CommandID != "" {
+		commandRun := NewCommandRunScope()
+		if cached, ok := m.CheckScoped(ctx, req.SessionID, req.CommandID, commandRun); ok {
+			return Resolution{
+				Approved:       cached.Approved,
+				Reason:         cached.Reason,
+				Scope:          ScopeOnce,
+				At:             time.Now().UTC(),
+				ScopeKind:      cached.Kind,
+				ScopeKey:       cached.Key,
+				ScopeLabel:     cached.Label,
+				ScopeOperation: cached.Operation,
+				ScopePath:      cached.Path,
+				ScopeRule:      cached.Rule,
+				ScopePrefix:    cached.Prefix,
+			}, nil
+		}
+		appendCommandRunScopeOption(&req)
+	}
+
 	// Rate limiting: check concurrent approval count per session
 	if m.maxPerSession > 0 {
 		m.rateMu.Lock()
@@ -569,6 +620,11 @@ func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID s
 	m.mu.Lock()
 	if commandID != "" {
 		if byCommand := m.commandScoped[sessionID][commandID]; byCommand != nil {
+			if dec, ok := byCommand[CommandRunScopeKey]; ok {
+				m.mu.Unlock()
+				m.emitScopedEvent(ctx, "approval_command_scope_used", commandID, dec)
+				return dec, true
+			}
 			if dec, ok := byCommand[scope.Key]; ok {
 				m.mu.Unlock()
 				m.emitScopedEvent(ctx, "approval_command_scope_used", commandID, dec)
@@ -587,6 +643,10 @@ func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID s
 				}
 			}
 		}
+	}
+	if IsCommandRunScope(scope) {
+		m.mu.Unlock()
+		return ScopedDecision{}, false
 	}
 	bySession := m.scoped[sessionID]
 	dec, ok := bySession[scope.Key]
@@ -678,7 +738,7 @@ func fileTreeContains(dirPath, filePath string) bool {
 }
 
 func (m *Manager) SetScoped(ctx context.Context, sessionID string, commandID string, scope Scope, approved bool, reason string, rule string) bool {
-	if sessionID == "" || !validScope(scope) {
+	if sessionID == "" || !validScope(scope) || IsCommandRunScope(scope) {
 		return false
 	}
 	dec := ScopedDecision{
@@ -777,7 +837,7 @@ func (m *Manager) setScopedFromRequest(ctx context.Context, req Request, res Res
 	if !ok {
 		approvalScope, ok = ScopeFromRequest(req)
 	}
-	if !ok {
+	if !ok || IsCommandRunScope(approvalScope) && scope != ScopeOnce {
 		return
 	}
 	switch scope {
@@ -788,6 +848,39 @@ func (m *Manager) setScopedFromRequest(ctx context.Context, req Request, res Res
 	case ScopeOnce:
 		m.SetCommandScoped(ctx, req.SessionID, req.CommandID, approvalScope, res.Approved, res.Reason, req.Rule)
 	}
+}
+
+func (m *Manager) resolvePendingCoveredByCommandRun(source Request, granted Scope, sourceRes Resolution) {
+	if source.SessionID == "" || source.CommandID == "" || !IsCommandRunScope(granted) {
+		return
+	}
+	m.mu.Lock()
+	now := time.Now().UTC()
+	for id, p := range m.pending {
+		if p == nil || id == source.ID || p.req.SessionID != source.SessionID || p.req.CommandID != source.CommandID {
+			continue
+		}
+		if p.req.ExpiresAt.Before(now) {
+			continue
+		}
+		res := Resolution{
+			Approved:   sourceRes.Approved,
+			Reason:     sourceRes.Reason,
+			Scope:      ScopeOnce,
+			At:         now,
+			ScopeKind:  granted.Kind,
+			ScopeKey:   granted.Key,
+			ScopeLabel: granted.Label,
+		}
+		if strings.TrimSpace(res.Reason) == "" {
+			res.Reason = "covered by command invocation approval"
+		}
+		m.terminalizePendingLocked(id, p, terminalResolution{
+			resolution: res,
+			cause:      terminalCauseDecision,
+		})
+	}
+	m.mu.Unlock()
 }
 
 func (m *Manager) resolvePendingCoveredBySessionScope(source Request, granted Scope, sourceRes Resolution) {
@@ -828,6 +921,30 @@ func (m *Manager) resolvePendingCoveredBySessionScope(source Request, granted Sc
 		})
 	}
 	m.mu.Unlock()
+}
+
+func appendCommandRunScopeOption(req *Request) {
+	if req == nil || req.CommandID == "" {
+		return
+	}
+	if req.Fields == nil {
+		req.Fields = make(map[string]any)
+	}
+	commandRun := NewCommandRunScope()
+	for _, existing := range scopesFromRequest(*req) {
+		if IsCommandRunScope(existing) {
+			return
+		}
+	}
+	option := ScopeFields(commandRun)
+	switch options := req.Fields["scope_options"].(type) {
+	case nil:
+		req.Fields["scope_options"] = []map[string]any{option}
+	case []map[string]any:
+		req.Fields["scope_options"] = append(options, option)
+	case []any:
+		req.Fields["scope_options"] = append(options, option)
+	}
 }
 
 // RequestCoveredByScope reports whether a pending request asks for a scope that
