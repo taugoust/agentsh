@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress.
+Resolved.
 
 ## Problem
 
@@ -16,3 +16,7 @@ One top-level AgentSH command can trigger many executable, file, and network app
 - Hard policy denials and unsupported operations remain unaffected.
 - The command-wide decision is not persisted as a session grant.
 - Audit events identify command-wide grant and use.
+
+## Resolution
+
+Implemented by `ce96853e`. AgentSH now advertises a command-lifetime `command-run` scope on requests carrying a top-level command ID. Selecting it atomically installs a command-scoped decision, resolves all already-pending requests for that exact `(session_id, command_id)`, and auto-resolves future approval-required requests while preserving command isolation, session-scope rejection, and grant/use audit events.
