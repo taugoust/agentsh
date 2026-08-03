@@ -1,6 +1,7 @@
 package detached
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -56,6 +57,115 @@ func TestReadTerminalRuntimeStatusFromRootRequiresExactDurableIdentity(t *testin
 	}
 	if _, err := ReadTerminalRuntimeStatusFromRoot(root, sessionID); err == nil {
 		t.Fatal("mismatched terminal incarnation was accepted as stop evidence")
+	}
+}
+
+func TestRuntimeHeartbeatUsesAdvisoryRecordAndStopsAtTerminal(t *testing.T) {
+	root := t.TempDir()
+	sessionID := "session-heartbeat"
+	stateDir := filepath.Join(root, sessionID)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	envFile := filepath.Join(stateDir, "supervisor.env")
+	if err := atomicWritePrivateFile(envFile, nil); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	req := types.CreateSessionRequest{ID: sessionID, Workspace: root, Policy: "default", WorkspaceMode: string(types.WorkspaceModeDirect)}
+	manifest := NewRecoveryManifest(sessionID, req, LaunchSpec{
+		Executable: filepath.Join(root, "agentsh"), WorkingDir: root,
+		EnvironmentFile: envFile, LogFile: filepath.Join(stateDir, "supervisor.log"),
+	}, now)
+	if err := WriteRecoveryManifest(stateDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteMetadata(stateDir, Metadata{
+		SessionID: sessionID, ID: sessionID, State: LifecycleProvisioning,
+		SupervisorSock: filepath.Join(stateDir, "supervisor.sock"), EventToken: "event-token", ProtocolVersion: ProtocolVersion,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runtimeState, err := BeginRuntime(stateDir, 101, "start", "boot", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtimeState.MarkReady(types.Session{
+		ID: sessionID, CreatedAt: now, Workspace: root, WorkspaceMount: root,
+		WorkspaceMode: string(types.WorkspaceModeDirect), Policy: "default",
+	}, "policy-digest", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	before := runtimeState.RuntimeStatus().HeartbeatAt
+	heartbeatAt := before.Add(time.Second)
+	if err := runtimeState.Heartbeat(heartbeatAt); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(HeartbeatPath(stateDir))
+	if err != nil {
+		t.Fatalf("advisory heartbeat was not written: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("heartbeat permissions = %o, want 600", info.Mode().Perm())
+	}
+
+	data, err := readProtectedRegularFile(MetadataPath(stateDir), 4<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var durable Metadata
+	if err := json.Unmarshal(data, &durable); err != nil {
+		t.Fatal(err)
+	}
+	if !durable.HeartbeatAt.Equal(before) {
+		t.Fatalf("heartbeat rewrote durable metadata: got %s want %s", durable.HeartbeatAt, before)
+	}
+	merged, _, err := ReadMetadataFromRoot(root, sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !merged.HeartbeatAt.Equal(heartbeatAt) {
+		t.Fatalf("merged heartbeat = %s, want %s", merged.HeartbeatAt, heartbeatAt)
+	}
+
+	if err := runtimeState.MarkStopping(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(HeartbeatPath(stateDir)); !os.IsNotExist(err) {
+		t.Fatalf("terminal transition retained heartbeat: %v", err)
+	}
+	stoppingMeta, _, err := ReadMetadataFromRoot(root, sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stoppingMeta.EventToken != "" {
+		t.Fatal("stopping metadata retained detached event authority")
+	}
+	if _, err := os.Stat(envFile); err != nil {
+		t.Fatalf("stopping transition removed restart environment before clean exit: %v", err)
+	}
+	terminalHeartbeat := runtimeState.RuntimeStatus().HeartbeatAt
+	if err := runtimeState.Heartbeat(terminalHeartbeat.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(HeartbeatPath(stateDir)); !os.IsNotExist(err) {
+		t.Fatalf("terminal heartbeat was recreated: %v", err)
+	}
+	if got := runtimeState.RuntimeStatus().HeartbeatAt; !got.Equal(terminalHeartbeat) {
+		t.Fatalf("terminal heartbeat advanced from %s to %s", terminalHeartbeat, got)
+	}
+	if err := runtimeState.MarkFailed("concurrent shutdown error"); err == nil {
+		t.Fatal("stopping lifecycle was rewritten as failed")
+	}
+	if got := runtimeState.RuntimeStatus().LifecycleState; got != LifecycleStopping {
+		t.Fatalf("lifecycle after rejected failure = %q, want stopping", got)
+	}
+	if err := runtimeState.MarkStopped(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(envFile); !os.IsNotExist(err) {
+		t.Fatalf("stopped transition retained supervisor environment: %v", err)
 	}
 }
 

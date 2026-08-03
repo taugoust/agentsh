@@ -1,17 +1,28 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/agentsh/agentsh/internal/client"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/nethelper"
+	"github.com/agentsh/agentsh/pkg/types"
+	"github.com/google/uuid"
 )
 
 func TestDetachedSupervisorStrictNetworkHasNoMigrationWarning(t *testing.T) {
@@ -502,5 +513,238 @@ func assertDirectDetachedSupervisorLaunch(t *testing.T, launch detachedSuperviso
 	}
 	if !launch.OwnerPIDFromCommand {
 		t.Fatal("direct launch should record the child PID as owner PID")
+	}
+}
+
+func TestDetachedSessionIDRequiresCanonicalCallerIdentity(t *testing.T) {
+	canonical := "session-" + uuid.NewString()
+	if got, err := detachedSessionID(canonical); err != nil || got != canonical {
+		t.Fatalf("detachedSessionID(%q) = %q, %v", canonical, got, err)
+	}
+	generated, err := detachedSessionID("")
+	if err != nil {
+		t.Fatalf("generate detached session ID: %v", err)
+	}
+	if _, err := uuid.Parse(strings.TrimPrefix(generated, "session-")); err != nil || !strings.HasPrefix(generated, "session-") {
+		t.Fatalf("generated non-canonical ID %q", generated)
+	}
+	for _, invalid := range []string{
+		" session-" + uuid.NewString(),
+		"SESSION-" + uuid.NewString(),
+		"session-" + strings.ToUpper(uuid.NewString()),
+		"session-00000000-0000-0000-0000-000000000000",
+		"session-../escape",
+		"arbitrary-id",
+	} {
+		if _, err := detachedSessionID(invalid); err == nil {
+			t.Errorf("detachedSessionID(%q) unexpectedly succeeded", invalid)
+		}
+	}
+	if newSessionStartCmd().Flags().Lookup("session-id") == nil {
+		t.Fatal("session start does not expose --session-id")
+	}
+
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("HOME", stateHome)
+	stateDir, err := reserveDetachedSessionState(canonical)
+	if err != nil {
+		t.Fatalf("reserve caller identity: %v", err)
+	}
+	if filepath.Base(stateDir) != canonical {
+		t.Fatalf("reserved state directory = %q", stateDir)
+	}
+	if _, err := reserveDetachedSessionState(canonical); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("caller identity collision error = %v", err)
+	}
+}
+
+func TestValidateDetachedStopAuthorityRequiresExactTopology(t *testing.T) {
+	sessionID := "session-11111111-1111-4111-8111-111111111111"
+	stateDir := filepath.Join(t.TempDir(), sessionID)
+	meta := supervisorMetadata{
+		SessionID: sessionID, ID: sessionID, SupervisorSock: filepath.Join(stateDir, "supervisor.sock"),
+		ProtocolVersion: detached.ProtocolVersion, Generation: 2, IncarnationID: "incarnation-test",
+	}
+	manifest := detached.NewRecoveryManifest(sessionID, types.CreateSessionRequest{
+		ID: sessionID, Workspace: t.TempDir(),
+	}, detached.LaunchSpec{Executable: "/bin/agentsh", WorkingDir: t.TempDir(), EnvironmentFile: filepath.Join(stateDir, "supervisor.env")}, time.Now())
+	manifest.Generation = meta.Generation
+	manifest.IncarnationID = meta.IncarnationID
+	if err := validateDetachedStopAuthority(sessionID, stateDir, meta, manifest, nil); err != nil {
+		t.Fatalf("valid stop authority: %v", err)
+	}
+
+	wrongSocket := meta
+	wrongSocket.SupervisorSock = filepath.Join(t.TempDir(), "supervisor.sock")
+	if err := validateDetachedStopAuthority(sessionID, stateDir, wrongSocket, manifest, nil); err == nil {
+		t.Fatal("socket outside exact state directory was accepted")
+	}
+	wrongUnit := meta
+	wrongUnit.SystemdUnit = "agentsh-supervisor-session-22222222-2222-4222-8222-222222222222.service"
+	if err := validateDetachedStopAuthority(sessionID, stateDir, wrongUnit, manifest, nil); err == nil {
+		t.Fatal("wrong exact systemd unit was accepted")
+	}
+	wrongManifest := manifest
+	wrongManifest.IncarnationID = "different-incarnation"
+	if err := validateDetachedStopAuthority(sessionID, stateDir, meta, wrongManifest, nil); err == nil {
+		t.Fatal("mismatched recovery incarnation was accepted")
+	}
+}
+
+func TestExactDetachedSessionNotFoundRequiresProtocolV2Typed404(t *testing.T) {
+	missing := &client.HTTPError{StatusCode: http.StatusNotFound, Body: `{"error":"session not found"}`}
+	meta := supervisorMetadata{ProtocolVersion: detached.ProtocolVersion}
+	if !isExactDetachedSessionNotFound(missing, meta) {
+		t.Fatal("exact protocol-v2 session-not-found response was not classified as idempotent")
+	}
+	for _, err := range []error{
+		&client.HTTPError{StatusCode: http.StatusNotFound, Body: `{"error":"different resource"}`},
+		&client.HTTPError{StatusCode: http.StatusConflict, Body: `{"error":"session not found"}`},
+		errors.New("transport failed"),
+	} {
+		if isExactDetachedSessionNotFound(err, meta) {
+			t.Fatalf("ambiguous error was classified as idempotent: %v", err)
+		}
+	}
+	if isExactDetachedSessionNotFound(missing, supervisorMetadata{ProtocolVersion: 1}) {
+		t.Fatal("legacy metadata without an incarnation handshake accepted a 404")
+	}
+}
+
+func TestStopDetachedSessionExact_ContinuesAfterIdentityChecked404(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix sockets are unavailable on Windows")
+	}
+	stateHome, err := os.MkdirTemp(os.TempDir(), "agsh-e-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(stateHome) })
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("HOME", stateHome)
+
+	sessionID := "session-" + uuid.NewString()
+	root := detachedSessionsRoot()
+	stateDir := filepath.Join(root, sessionID)
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	sockPath := filepath.Join(stateDir, "supervisor.sock")
+	listener, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	owner := exec.Command("sleep", "60")
+	if err := owner.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = owner.Process.Kill()
+		_ = owner.Wait()
+	})
+	ownerStart, bootID, err := detached.CurrentProcessIdentity(owner.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var destroys atomic.Int32
+	var mismatch atomic.Bool
+	mismatch.Store(true)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/detached/status", func(w http.ResponseWriter, _ *http.Request) {
+		incarnation := "incarnation-test"
+		if mismatch.Load() {
+			incarnation = "wrong-incarnation"
+		}
+		_ = json.NewEncoder(w).Encode(detached.RuntimeStatus{
+			ProtocolVersion: detached.ProtocolVersion, SessionID: sessionID,
+			LifecycleState: detached.LifecycleReady, Generation: 1,
+			IncarnationID: incarnation, OwnerPID: owner.Process.Pid,
+			OwnerStartIdentity: ownerStart, BootID: bootID, Recoverable: true,
+		})
+	})
+	mux.HandleFunc("/api/v1/sessions/"+sessionID, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		destroys.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"session not found"}`))
+	})
+	httpServer := &http.Server{Handler: mux}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- httpServer.Serve(listener) }()
+	t.Cleanup(func() {
+		_ = httpServer.Shutdown(context.Background())
+		<-serveDone
+	})
+
+	envFile := filepath.Join(stateDir, "supervisor.env")
+	if err := os.WriteFile(envFile, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdAt := time.Now().UTC().Add(-time.Hour)
+	req := types.CreateSessionRequest{
+		ID: sessionID, Workspace: workspace, Policy: "default",
+		WorkspaceMode: string(types.WorkspaceModeDirect),
+	}
+	manifest := detached.NewRecoveryManifest(sessionID, req, detached.LaunchSpec{
+		Executable: executable, WorkingDir: workspace, EnvironmentFile: envFile,
+		LogFile: filepath.Join(stateDir, "supervisor.log"),
+	}, createdAt)
+	manifest.State = detached.LifecycleReady
+	manifest.SessionCreatedAt = createdAt
+	manifest.PolicyDigest = "test-policy-digest"
+	manifest.Generation = 1
+	manifest.IncarnationID = "incarnation-test"
+	if err := detached.WriteRecoveryManifest(stateDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSupervisorMetadata(stateDir, supervisorMetadata{
+		SessionID: sessionID, ID: sessionID, CreatedAt: createdAt,
+		State: detached.LifecycleReady, Policy: "default",
+		RealWorkspace: workspace, WorkspaceMode: string(types.WorkspaceModeDirect),
+		SupervisorSock: sockPath, EventToken: "event-token",
+		OwnerPID: owner.Process.Pid, OwnerStartIdentity: ownerStart, BootID: bootID,
+		Generation: 1, IncarnationID: "incarnation-test",
+		ProtocolVersion: detached.ProtocolVersion,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := stopDetachedSessionExact(context.Background(), sessionID); err == nil || !strings.Contains(err.Error(), "identity handshake mismatch") {
+		t.Fatalf("mismatched live socket stop error = %v", err)
+	}
+	if destroys.Load() != 0 {
+		t.Fatalf("destroy dispatched through mismatched socket")
+	}
+	if !supervisorPIDAlive(owner.Process.Pid) {
+		t.Fatal("mismatched socket stop signaled the recorded owner")
+	}
+	mismatch.Store(false)
+	if err := stopDetachedSessionExact(context.Background(), sessionID); err != nil {
+		t.Fatalf("stopDetachedSessionExact: %v", err)
+	}
+	if destroys.Load() != 1 {
+		t.Fatalf("destroy requests = %d, want 1", destroys.Load())
+	}
+	status, err := detached.ReadTerminalRuntimeStatusFromRoot(root, sessionID)
+	if err != nil {
+		t.Fatalf("ReadTerminalRuntimeStatusFromRoot: %v", err)
+	}
+	if status.LifecycleState != detached.LifecycleStopped || status.Recoverable {
+		t.Fatalf("terminal status = %+v", status)
+	}
+	if _, err := os.Lstat(sockPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("supervisor socket still published: %v", err)
 	}
 }

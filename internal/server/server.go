@@ -1114,6 +1114,10 @@ func (s *Server) Run(ctx context.Context) error {
 	grpcServer := s.grpcServer
 	grpcLn := s.grpcLn
 	app := s.app
+	var detachedStopCh <-chan struct{}
+	if app != nil {
+		detachedStopCh = app.DetachedStopSignal()
+	}
 	policySockCancel := s.policySockCancel
 	policySockDone := s.policySockDone
 
@@ -1121,6 +1125,7 @@ func (s *Server) Run(ctx context.Context) error {
 		go func() { _ = pprofServer.Serve(pprofLn) }()
 	}
 
+	detachedExpiryCh := make(chan struct{}, 1)
 	if s.sessionTimeout > 0 || s.idleTimeout > 0 {
 		ticker := time.NewTicker(s.reapInterval)
 		defer ticker.Stop()
@@ -1130,7 +1135,13 @@ func (s *Server) Run(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					s.reapOnce(time.Now().UTC())
+					if s.reapOnce(time.Now().UTC()) {
+						select {
+						case detachedExpiryCh <- struct{}{}:
+						default:
+						}
+						return
+					}
 				}
 			}
 		}()
@@ -1230,6 +1241,18 @@ func (s *Server) Run(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return shutdown(10*time.Second, true)
+	case <-detachedExpiryCh:
+		// The exact detached session has already entered a durable stopping
+		// state and been reaped. Cancel server-owned background work and return
+		// cleanly so Restart=on-failure does not recreate an expired session.
+		stop()
+		return shutdown(10*time.Second, true)
+	case <-detachedStopCh:
+		// Explicit API teardown has committed the exact detached session's
+		// stopped state. The supervisor itself is part of that teardown even
+		// when the caller used the API directly instead of `session stop`.
+		stop()
+		return shutdown(10*time.Second, true)
 	case err := <-s.fatalAuditErr:
 		slog.Error("fatal audit integrity error", "error", err)
 		stop()
@@ -1313,9 +1336,13 @@ func (s *Server) GRPCAddr() string {
 	return s.grpcLn.Addr().String()
 }
 
-func (s *Server) reapOnce(now time.Time) {
-	reaped := s.app.ReapExpiredSessions(now, s.sessionTimeout, s.idleTimeout)
-	for _, sess := range reaped {
+func (s *Server) reapOnce(now time.Time) bool {
+	result := s.app.ReapExpiredSessionsWithResult(now, s.sessionTimeout, s.idleTimeout)
+	if result.Err != nil {
+		slog.Error("session expiry deferred because lifecycle cleanup failed", "error", result.Err)
+		return false
+	}
+	for _, sess := range result.Sessions {
 		_ = sess.CloseDBProxy()
 		_ = sess.CloseNetNS()
 		_ = sess.CloseProxy()
@@ -1346,6 +1373,7 @@ func (s *Server) reapOnce(now time.Time) {
 			s.broker.Publish(ev)
 		}
 	}
+	return result.DetachedSupervisorExpired
 }
 
 // resolvePolicyPath superseded by policy.Manager

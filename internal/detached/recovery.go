@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -397,6 +398,19 @@ func (r *Runtime) MarkFailed(reason string) error {
 func (r *Runtime) markState(state, reason string, network *NetworkEnforcement) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// A durable stop decision is absorbing. In particular, concurrent shutdown
+	// errors must not rewrite stopping as failed and make an expired supervisor
+	// eligible for service-manager recovery.
+	switch r.manifest.State {
+	case LifecycleStopping:
+		if state != LifecycleStopping && state != LifecycleStopped {
+			return fmt.Errorf("refusing detached lifecycle transition from %s to %s", r.manifest.State, state)
+		}
+	case LifecycleStopped, LifecycleFinalized:
+		if state != r.manifest.State {
+			return fmt.Errorf("refusing detached lifecycle transition from terminal %s to %s", r.manifest.State, state)
+		}
+	}
 	now := time.Now().UTC()
 	r.manifest.State = state
 	r.manifest.LastError = boundedReason(reason)
@@ -407,12 +421,26 @@ func (r *Runtime) markState(state, reason string, network *NetworkEnforcement) e
 	r.metadata.State = state
 	r.metadata.LastError = boundedReason(reason)
 	r.metadata.HeartbeatAt = now
+	switch state {
+	case LifecycleStopping, LifecycleStopped, LifecycleFinalized:
+		r.metadata.EventToken = ""
+	}
 	if network != nil {
 		copy := *network
 		copy.Normalize()
 		r.metadata.NetworkEnforcement = &copy
 	}
-	return r.persistLocked()
+	if err := r.persistLocked(); err != nil {
+		return err
+	}
+	switch state {
+	case LifecycleStopping:
+		_ = RemoveHeartbeat(r.stateDir)
+	case LifecycleStopped, LifecycleFinalized:
+		_ = RemoveHeartbeat(r.stateDir)
+		_ = os.Remove(r.manifest.Launch.EnvironmentFile)
+	}
+	return nil
 }
 
 func (r *Runtime) MarkFinalizing() error {
@@ -430,11 +458,15 @@ func (r *Runtime) MarkFinalized() error {
 func (r *Runtime) Heartbeat(now time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	switch r.metadata.State {
+	case LifecycleStopping, LifecycleStopped, LifecycleFinalized:
+		return nil
+	}
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	r.metadata.HeartbeatAt = now.UTC()
-	return WriteMetadata(r.stateDir, r.metadata)
+	return WriteHeartbeat(r.stateDir, r.metadata)
 }
 
 func (r *Runtime) RecordCommand(command InflightCommand) error {
@@ -814,7 +846,7 @@ func (r *Runtime) RuntimeStatus() RuntimeStatus {
 		BootID:                r.metadata.BootID,
 		IncarnationStartedAt:  r.metadata.IncarnationStartedAt,
 		HeartbeatAt:           r.metadata.HeartbeatAt,
-		Recoverable:           r.manifest.State != LifecycleFinalizing && r.manifest.State != LifecycleStopped && r.manifest.State != LifecycleFinalized,
+		Recoverable:           r.manifest.State != LifecycleFinalizing && r.manifest.State != LifecycleStopping && r.manifest.State != LifecycleStopped && r.manifest.State != LifecycleFinalized,
 		LastError:             r.metadata.LastError,
 		RequiredEnvironment:   pendingEnvironmentNames(r.pendingEnvironment),
 		DirenvRefreshRequired: r.pendingDirenv,

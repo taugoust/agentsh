@@ -523,6 +523,19 @@
             '';
           });
 
+          detached-supervisor-expiry-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-detached-supervisor-expiry-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/session -run '^TestManager_ReapExpiredGuarded_'
+              go test ./internal/detached -run '^TestRuntimeHeartbeatUsesAdvisoryRecordAndStopsAtTerminal$'
+              go test ./internal/api -run '^Test(ReapExpiredSessions_|DestroySession_SignalsDetachedSupervisorShutdown|DetachedRuntimeStatus_)'
+              go test ./internal/server -run '^TestServerRun_ExitsCleanlyWhenDetachedSessionExpires$'
+              go test ./internal/cli -run '^Test(DetachedSessionIDRequiresCanonicalCallerIdentity|ValidateDetachedStopAuthorityRequiresExactTopology|ExactDetachedSessionNotFoundRequiresProtocolV2Typed404|StopDetachedSessionExact_ContinuesAfterIdentityChecked404|StopDetachedSupervisorSystemdUnit_AlreadyCollectedIsSuccess)$'
+              runHook postCheck
+            '';
+          });
+
           detached-supervisor-systemd-recovery =
             if stdenv.hostPlatform.isLinux then
               import ./nix/checks/detached-supervisor-systemd-recovery.nix {
@@ -530,6 +543,17 @@
               }
             else
               pkgs.runCommand "agentsh-detached-supervisor-systemd-recovery-skipped" { } ''
+                mkdir -p "$out"
+                touch "$out/skipped-non-linux"
+              '';
+
+          detached-supervisor-systemd-expiry =
+            if stdenv.hostPlatform.isLinux then
+              import ./nix/checks/detached-supervisor-systemd-expiry.nix {
+                inherit pkgs self;
+              }
+            else
+              pkgs.runCommand "agentsh-detached-supervisor-systemd-expiry-skipped" { } ''
                 mkdir -p "$out"
                 touch "$out/skipped-non-linux"
               '';

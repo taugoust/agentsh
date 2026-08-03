@@ -25,6 +25,9 @@ func writeSupervisorMetadata(stateDir string, meta supervisorMetadata) error {
 }
 
 func readSupervisorMetadata(sessionID string) (supervisorMetadata, string, error) {
+	if err := validateDetachedSessionID(sessionID); err != nil {
+		return supervisorMetadata{}, "", err
+	}
 	return readSupervisorMetadataFromRoot(detachedSessionsRoot(), sessionID)
 }
 

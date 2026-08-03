@@ -91,10 +91,13 @@ type App struct {
 	approvals     *approvals.Manager
 	sessionEvents *sessionEventStore
 
-	detachedRouteMu   sync.Mutex
-	detachedRoutes    map[string]detachedSupervisor
-	detachedApprovals *detachedApprovalStore
-	detachedRuntime   *detached.Runtime
+	detachedRouteMu     sync.Mutex
+	detachedRoutes      map[string]detachedSupervisor
+	detachedApprovals   *detachedApprovalStore
+	detachedRuntime     *detached.Runtime
+	detachedStopCh      chan struct{}
+	detachedStopOnce    sync.Once
+	detachedLifecycleMu sync.Mutex
 
 	lifecycleMu     sync.Mutex
 	lifecycleCtx    context.Context
@@ -244,6 +247,7 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 		sessionEvents:              newSessionEventStore(),
 		detachedRoutes:             make(map[string]detachedSupervisor),
 		detachedApprovals:          newDetachedApprovalStore(),
+		detachedStopCh:             make(chan struct{}),
 		lifecycleCtx:               lifecycleCtx,
 		lifecycleCancel:            lifecycleCancel,
 		subagentCancellations:      make(map[string]subagentCancellationEntry),
@@ -289,7 +293,12 @@ func (a *App) SetPackageChecker(c *pkgcheck.Checker) {
 // SetDetachedRuntime installs the exact-session lifecycle coordinator before
 // bootstrap and before any request can be served.
 func (a *App) SetDetachedRuntime(runtime *detached.Runtime) {
+	a.detachedLifecycleMu.Lock()
 	a.detachedRuntime = runtime
+	if a.detachedStopCh == nil {
+		a.detachedStopCh = make(chan struct{})
+	}
+	a.detachedLifecycleMu.Unlock()
 	if a.approvals != nil && runtime != nil {
 		a.approvals.SetScopedPersistenceHook(func(sessionID string, decisions []approvals.ScopedDecision) {
 			if sessionID != runtime.Manifest().SessionID {
@@ -305,6 +314,31 @@ func (a *App) SetDetachedRuntime(runtime *detached.Runtime) {
 			}
 		})
 	}
+}
+
+// DetachedStopSignal closes after explicit teardown commits the exact detached
+// session's durable stopped state. A nil channel disables this path for an App
+// that has never installed a detached runtime.
+func (a *App) DetachedStopSignal() <-chan struct{} {
+	if a == nil {
+		return nil
+	}
+	a.detachedLifecycleMu.Lock()
+	defer a.detachedLifecycleMu.Unlock()
+	return a.detachedStopCh
+}
+
+func (a *App) signalDetachedStop() {
+	if a == nil {
+		return
+	}
+	a.detachedLifecycleMu.Lock()
+	if a.detachedStopCh == nil {
+		a.detachedStopCh = make(chan struct{})
+	}
+	ch := a.detachedStopCh
+	a.detachedLifecycleMu.Unlock()
+	a.detachedStopOnce.Do(func() { close(ch) })
 }
 
 // SetCmdResolver attaches a PID→command_id resolver for ESF file event attribution.
@@ -417,7 +451,7 @@ func (a *App) Router() http.Handler {
 				writeJSON(w, http.StatusNotFound, map[string]any{"error": "detached runtime is not configured"})
 				return
 			}
-			writeJSON(w, http.StatusOK, a.detachedRuntime.RuntimeStatus())
+			writeJSON(w, http.StatusOK, a.detachedRuntimeStatus())
 		})
 		r.Get("/profiles", a.handleListProfiles)
 
@@ -1164,7 +1198,12 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 	_ = a.store.AppendEvent(r.Context(), ev)
 	a.broker.Publish(ev)
 	if a.detachedRuntime != nil {
-		_ = a.detachedRuntime.MarkStopped()
+		if err := a.detachedRuntime.MarkStopped(); err != nil {
+			a.signalDetachedStop()
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "session was destroyed but durable detached stopped persistence failed; supervisor shutdown was requested"})
+			return
+		}
+		a.signalDetachedStop()
 	}
 
 	w.WriteHeader(http.StatusNoContent)

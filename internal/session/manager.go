@@ -1556,14 +1556,23 @@ func (s *Session) RecordHistory(line string) {
 }
 
 func (m *Manager) ReapExpired(now time.Time, sessionTimeout, idleTimeout time.Duration) []*Session {
+	reaped, _ := m.ReapExpiredGuarded(now, sessionTimeout, idleTimeout, nil)
+	return reaped
+}
+
+// ReapExpiredGuarded invokes beforeRemove for every still-installed expired
+// session before removing any of them. A guard failure leaves all candidate
+// sessions installed. This lets callers durably commit an owning supervisor's
+// terminal lifecycle before deleting its only in-memory session identity.
+func (m *Manager) ReapExpiredGuarded(now time.Time, sessionTimeout, idleTimeout time.Duration, beforeRemove func(*Session) error) ([]*Session, error) {
 	if sessionTimeout <= 0 && idleTimeout <= 0 {
-		return nil
+		return nil, nil
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 
-	// First pass: collect candidates without holding both locks simultaneously
+	// First pass: collect candidates without holding both locks simultaneously.
 	m.mu.RLock()
 	candidates := make([]*Session, 0, len(m.sessions))
 	for _, s := range m.sessions {
@@ -1571,7 +1580,7 @@ func (m *Manager) ReapExpired(now time.Time, sessionTimeout, idleTimeout time.Du
 	}
 	m.mu.RUnlock()
 
-	// Check each session's timestamps (only holding session lock)
+	// Check each session's timestamps while holding only the session lock.
 	var expiredIDs []string
 	for _, s := range candidates {
 		s.mu.Lock()
@@ -1599,21 +1608,32 @@ func (m *Manager) ReapExpired(now time.Time, sessionTimeout, idleTimeout time.Du
 	}
 
 	if len(expiredIDs) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	// Second pass: delete expired sessions (only holding manager lock)
+	// Resolve the still-installed candidates while holding the manager lock.
+	// Run every guard before deleting anything so a durable lifecycle failure
+	// cannot leave a partially reaped manager.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var reaped []*Session
+	reaped := make([]*Session, 0, len(expiredIDs))
 	for _, id := range expiredIDs {
 		if s, ok := m.sessions[id]; ok {
-			delete(m.sessions, id)
 			reaped = append(reaped, s)
 		}
 	}
-	return reaped
+	if beforeRemove != nil {
+		for _, s := range reaped {
+			if err := beforeRemove(s); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, s := range reaped {
+		delete(m.sessions, s.ID)
+	}
+	return reaped, nil
 }
 
 // Stats returns a copy of the session statistics.

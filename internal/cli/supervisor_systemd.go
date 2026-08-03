@@ -335,14 +335,44 @@ func stopDetachedSupervisorSystemdUnit(ctx context.Context, unit string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+	loadState, err := detachedSupervisorSystemdUnitLoadState(ctx, unit)
+	if err != nil {
+		return err
+	}
+	if loadState == "not-found" {
+		return nil
+	}
 	cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", unit)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	// --collect can remove a transient unit between the load-state query and
+	// stop. Recheck machine-readable state so that an already absent exact unit
+	// is idempotent without relying on localized stderr text.
+	if current, stateErr := detachedSupervisorSystemdUnitLoadState(ctx, unit); stateErr == nil && current == "not-found" {
+		return nil
+	}
+	msg := strings.TrimSpace(string(out))
+	if msg != "" {
+		return fmt.Errorf("systemctl --user stop %s: %w: %s", unit, err, msg)
+	}
+	return fmt.Errorf("systemctl --user stop %s: %w", unit, err)
+}
+
+func detachedSupervisorSystemdUnitLoadState(ctx context.Context, unit string) (string, error) {
+	cmd := exec.CommandContext(ctx, "systemctl", "--user", "show", "--property=LoadState", "--value", unit)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		if msg != "" {
-			return fmt.Errorf("systemctl --user stop %s: %w: %s", unit, err, msg)
+			return "", fmt.Errorf("systemctl --user show %s: %w: %s", unit, err, msg)
 		}
-		return fmt.Errorf("systemctl --user stop %s: %w", unit, err)
+		return "", fmt.Errorf("systemctl --user show %s: %w", unit, err)
 	}
-	return nil
+	state := strings.TrimSpace(string(out))
+	if state == "" {
+		return "", fmt.Errorf("systemctl --user show %s returned an empty LoadState", unit)
+	}
+	return state, nil
 }

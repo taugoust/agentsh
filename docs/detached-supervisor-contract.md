@@ -38,6 +38,14 @@ agentsh wrap --server unix://$SUPERVISOR_SOCK --session $SESSION_ID -- <cmd> [ar
 
 The command returns one JSON object. Top-level fields include the detached supervisor metadata plus `session` and `state_dir`.
 
+Callers that must survive response loss may preallocate the exact identity:
+
+```sh
+agentsh session start --detach --session-id session-11111111-1111-4111-8111-111111111111 --workspace . --workspace-mode shadow --json
+```
+
+`--session-id` accepts only canonical, non-nil `session-<uuid>` values. AgentSH uses it consistently for the state directory, socket, recovery manifest, API session, and transient unit, and refuses any existing state directory rather than replacing or adopting it. Callers should durably journal that ID and the expected `<platform user-state>/agentsh/sessions/<id>/supervisor.sock` before dispatch.
+
 ```json
 {
   "session_id": "session-...",
@@ -140,6 +148,10 @@ Stable shape:
 ```
 
 The object is runtime evidence, not launch intent. See [network-enforcement-runtime.md](network-enforcement-runtime.md). `network_policy_enforced` is defensively forced to false unless every proxy-required prerequisite is proven.
+
+Protocol-v2 lifecycle, generation, incarnation, owner, and recovery state remain crash-durable in `metadata.json` and `recovery.json`. Advisory liveness is updated every 30 seconds in a separate mode-0600 `heartbeat.json` without forcing a full metadata and parent-directory sync. Readers merge it only when its exact protocol/session/generation/incarnation identity matches durable metadata. Terminal transitions remove the advisory heartbeat and detached event authority.
+
+Expiry or explicit destruction of the supervisor's one exact session first persists `stopping`/`stopped`, then shuts down the server and exits successfully so `Restart=on-failure` cannot recreate it. A protocol-v2 exact stop may treat only the typed `404 {"error":"session not found"}` from an identity-verified live incarnation as already destroyed; wrong sockets, identity mismatches, arbitrary 404s, and ambiguous transport failures remain errors.
 
 ### `agentsh session list --json` detached fallback entries
 

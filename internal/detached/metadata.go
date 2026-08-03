@@ -104,6 +104,50 @@ func MetadataPath(stateDir string) string {
 	return filepath.Join(stateDir, "metadata.json")
 }
 
+func HeartbeatPath(stateDir string) string {
+	return filepath.Join(stateDir, "heartbeat.json")
+}
+
+type heartbeatRecord struct {
+	ProtocolVersion int       `json:"protocol_version"`
+	SessionID       string    `json:"session_id"`
+	Generation      uint64    `json:"generation"`
+	IncarnationID   string    `json:"incarnation_id"`
+	HeartbeatAt     time.Time `json:"heartbeat_at"`
+}
+
+func WriteHeartbeat(stateDir string, meta Metadata) error {
+	if meta.ProtocolVersion < ProtocolVersion || strings.TrimSpace(meta.SessionID) == "" || meta.Generation == 0 || strings.TrimSpace(meta.IncarnationID) == "" || meta.HeartbeatAt.IsZero() {
+		return fmt.Errorf("write heartbeat: incomplete detached incarnation identity")
+	}
+	record := heartbeatRecord{
+		ProtocolVersion: meta.ProtocolVersion,
+		SessionID:       meta.SessionID,
+		Generation:      meta.Generation,
+		IncarnationID:   meta.IncarnationID,
+		HeartbeatAt:     meta.HeartbeatAt.UTC(),
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("encode heartbeat: %w", err)
+	}
+	// Heartbeat freshness is advisory. Atomic replacement prevents readers from
+	// accepting partial content, while deliberately omitting fsync avoids turning
+	// every liveness tick into a durable metadata transaction.
+	if err := atomicWritePrivateFileWithDurability(HeartbeatPath(stateDir), append(data, '\n'), false); err != nil {
+		return fmt.Errorf("write heartbeat: %w", err)
+	}
+	return nil
+}
+
+func RemoveHeartbeat(stateDir string) error {
+	err := os.Remove(HeartbeatPath(stateDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
 func WriteMetadata(stateDir string, meta Metadata) error {
 	if meta.NetworkEnforcement != nil {
 		network := *meta.NetworkEnforcement
@@ -122,6 +166,10 @@ func WriteMetadata(stateDir string, meta Metadata) error {
 }
 
 func atomicWritePrivateFile(path string, data []byte) error {
+	return atomicWritePrivateFileWithDurability(path, data, true)
+}
+
+func atomicWritePrivateFileWithDurability(path string, data []byte, durable bool) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -140,9 +188,11 @@ func atomicWritePrivateFile(path string, data []byte) error {
 		_ = tmp.Close()
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
+	if durable {
+		if err := tmp.Sync(); err != nil {
+			_ = tmp.Close()
+			return err
+		}
 	}
 	if err := tmp.Close(); err != nil {
 		return err
@@ -150,9 +200,11 @@ func atomicWritePrivateFile(path string, data []byte) error {
 	if err := os.Rename(tmpPath, path); err != nil {
 		return err
 	}
-	if dirHandle, err := os.Open(dir); err == nil {
-		_ = dirHandle.Sync()
-		_ = dirHandle.Close()
+	if durable {
+		if dirHandle, err := os.Open(dir); err == nil {
+			_ = dirHandle.Sync()
+			_ = dirHandle.Close()
+		}
 	}
 	return nil
 }
@@ -180,7 +232,31 @@ func ReadMetadataFromRoot(root string, sessionID string) (Metadata, string, erro
 	if meta.NetworkEnforcement != nil {
 		meta.NetworkEnforcement.Normalize()
 	}
+	if heartbeat, err := readHeartbeat(stateDir); err == nil &&
+		heartbeat.ProtocolVersion == meta.ProtocolVersion && heartbeat.SessionID == meta.SessionID &&
+		heartbeat.Generation == meta.Generation && heartbeat.IncarnationID == meta.IncarnationID &&
+		heartbeat.HeartbeatAt.After(meta.HeartbeatAt) {
+		meta.HeartbeatAt = heartbeat.HeartbeatAt
+	}
 	return meta, stateDir, nil
+}
+
+func readHeartbeat(stateDir string) (heartbeatRecord, error) {
+	data, err := readProtectedRegularFile(HeartbeatPath(stateDir), 16<<10)
+	if err != nil {
+		return heartbeatRecord{}, err
+	}
+	var heartbeat heartbeatRecord
+	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&heartbeat); err != nil {
+		return heartbeatRecord{}, err
+	}
+	if heartbeat.ProtocolVersion < ProtocolVersion || strings.TrimSpace(heartbeat.SessionID) == "" || heartbeat.Generation == 0 || strings.TrimSpace(heartbeat.IncarnationID) == "" || heartbeat.HeartbeatAt.IsZero() {
+		return heartbeatRecord{}, fmt.Errorf("invalid detached heartbeat")
+	}
+	heartbeat.HeartbeatAt = heartbeat.HeartbeatAt.UTC()
+	return heartbeat, nil
 }
 
 func readProtectedRegularFile(path string, maxBytes int64) ([]byte, error) {

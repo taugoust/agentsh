@@ -79,6 +79,66 @@ func TestManager_ReapExpired_SessionTimeoutWins(t *testing.T) {
 	}
 }
 
+func TestManager_ReapExpiredGuarded_FailureLeavesAllCandidatesInstalled(t *testing.T) {
+	m := NewManager(10)
+	first, err := m.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := m.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := first.CreatedAt
+	if second.CreatedAt.After(now) {
+		now = second.CreatedAt
+	}
+
+	guardErr := errors.New("durable transition failed")
+	reaped, err := m.ReapExpiredGuarded(now.Add(time.Hour), 30*time.Minute, 0, func(sess *Session) error {
+		if sess.ID == second.ID {
+			return guardErr
+		}
+		return nil
+	})
+	if !errors.Is(err, guardErr) {
+		t.Fatalf("guard error = %v, want %v", err, guardErr)
+	}
+	if len(reaped) != 0 {
+		t.Fatalf("reaped sessions despite guard failure: %+v", reaped)
+	}
+	for _, id := range []string{first.ID, second.ID} {
+		if _, ok := m.Get(id); !ok {
+			t.Fatalf("session %s removed despite guard failure", id)
+		}
+	}
+}
+
+func TestManager_ReapExpiredGuarded_CommitsBeforeRemoval(t *testing.T) {
+	m := NewManager(10)
+	sess, err := m.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	guarded := false
+	reaped, err := m.ReapExpiredGuarded(sess.CreatedAt.Add(time.Hour), 30*time.Minute, 0, func(candidate *Session) error {
+		if candidate.ID != sess.ID {
+			t.Fatalf("guard candidate = %s, want %s", candidate.ID, sess.ID)
+		}
+		guarded = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ReapExpiredGuarded: %v", err)
+	}
+	if !guarded || len(reaped) != 1 || reaped[0].ID != sess.ID {
+		t.Fatalf("guarded=%v reaped=%+v", guarded, reaped)
+	}
+	if _, ok := m.Get(sess.ID); ok {
+		t.Fatal("expired session remains installed")
+	}
+}
+
 func TestManager_ReapExpired_DoesNotIdleReapBusySession(t *testing.T) {
 	m := NewManager(10)
 	ws := t.TempDir()
