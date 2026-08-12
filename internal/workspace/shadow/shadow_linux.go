@@ -357,25 +357,44 @@ func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve shadow workspace diff: %w", err)
 	}
+	rsyncExecutable, err := workspaceExecutable(w.rsyncExecutable, "rsync")
+	if err != nil {
+		return nil, fmt.Errorf("resolve shadow workspace rsync: %w", err)
+	}
 	var combined bytes.Buffer
 	for _, root := range roots {
 		if len(roots) > 1 {
 			fmt.Fprintf(&combined, "diff --shadow-root %s\n", root.Name)
 		}
-		args := []string{"-ruN"}
+		args := []string{"-ruN", "--no-dereference"}
 		for _, ex := range w.diffExcludes {
 			args = append(args, "--exclude="+ex)
 		}
 		args = append(args, root.Real, root.Work)
 		cmd := exec.CommandContext(ctx, diffExecutable, args...)
 		out, err := cmd.CombinedOutput()
-		combined.Write(out)
 		if err == nil {
+			combined.Write(out)
 			continue
 		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+			combined.Write(out)
 			continue
+		}
+		if errors.As(err, &ee) && ee.ExitCode() == 2 {
+			planArgs := []string{"-a", "--delete", "--dry-run", "--itemize-changes"}
+			for _, ex := range w.diffExcludes {
+				planArgs = append(planArgs, "--exclude="+ex)
+			}
+			planArgs = append(planArgs, withTrailingSeparator(root.Work), withTrailingSeparator(root.Real))
+			planOut, planErr := exec.CommandContext(ctx, rsyncExecutable, planArgs...).CombinedOutput()
+			if planErr == nil {
+				fmt.Fprintf(&combined, "Itemized shadow Apply plan for root %s (unified diff unavailable):\n", root.Name)
+				combined.Write(planOut)
+				continue
+			}
+			return combined.Bytes(), fmt.Errorf("diff shadow workspace root %s: %w: %s; itemized fallback: %v: %s", root.Name, err, strings.TrimSpace(string(out)), planErr, strings.TrimSpace(string(planOut)))
 		}
 		return combined.Bytes(), fmt.Errorf("diff shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
 	}

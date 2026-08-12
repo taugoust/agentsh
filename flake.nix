@@ -653,6 +653,10 @@
             version = "unstable-2026-06-17";
             src = self;
             vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+            nativeBuildInputs = [
+              pkgs.diffutils
+              pkgs.rsync
+            ];
 
             env = {
               CGO_ENABLED = "0";
