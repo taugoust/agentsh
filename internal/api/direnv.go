@@ -231,6 +231,13 @@ func evaluateDirenvResult(cfg policy.ResolvedDirenvImportPolicy, s *session.Sess
 		}
 		return out
 	}
+	// Once direnv's diff has been imported, `direnv export json` succeeds
+	// with empty stdout until the environment changes again. That is the normal
+	// unchanged result, not malformed JSON.
+	if len(bytes.TrimSpace(run.Stdout)) == 0 {
+		out.State = "unchanged"
+		return out
+	}
 	changes, err := parseDirenvJSON(run.Stdout, cfg)
 	if err != nil {
 		out.State = "invalid_output"

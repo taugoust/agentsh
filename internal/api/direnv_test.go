@@ -187,7 +187,7 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	if err := os.WriteFile(nested, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "#!/bin/sh\n" + nested + " '" + nestedSecret + "'\nprintf '%s' '{\"DEV_SHELL\":\"ready\",\"HOME\":\"" + secret + "\",\"PROJECT_TOKEN\":\"" + secret + "\"}'\n"
+	body := "#!/bin/sh\n" + nested + " '" + nestedSecret + "'\nif [ \"${DEV_SHELL:-}\" = ready ]; then\n  exit 0\nfi\nprintf '%s' '{\"DEV_SHELL\":\"ready\",\"HOME\":\"" + secret + "\",\"PROJECT_TOKEN\":\"" + secret + "\"}'\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -220,6 +220,27 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	got, _ := sess.DirenvEnvironment()
 	if got["DEV_SHELL"] != "ready" || got["HOME"] != "" || got["PROJECT_TOKEN"] != "" {
 		t.Fatalf("server snapshot = %#v", got)
+	}
+
+	unchanged := httptest.NewRecorder()
+	app.Router().ServeHTTP(unchanged, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv", strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension","label":"test"}}`)))
+	if unchanged.Code != http.StatusOK {
+		t.Fatalf("unchanged status = %d body=%s", unchanged.Code, unchanged.Body.String())
+	}
+	if strings.Contains(unchanged.Body.String(), secret) || strings.Contains(unchanged.Body.String(), "DEV_SHELL") {
+		t.Fatalf("unchanged response leaked environment: %s", unchanged.Body.String())
+	}
+	var unchangedResponse toolResponse
+	if err := json.Unmarshal(unchanged.Body.Bytes(), &unchangedResponse); err != nil {
+		t.Fatal(err)
+	}
+	unchangedResult := unchangedResponse.Result.(map[string]any)
+	if unchangedResult["state"] != "unchanged" || unchangedResult["set_count"] != float64(0) || unchangedResult["rejected_count"] != float64(0) {
+		t.Fatalf("unchanged response = %#v", unchangedResult)
+	}
+	gotAfterUnchanged, _ := sess.DirenvEnvironment()
+	if !reflect.DeepEqual(gotAfterUnchanged, got) {
+		t.Fatalf("unchanged refresh modified snapshot: before=%#v after=%#v", got, gotAfterUnchanged)
 	}
 
 	events, err := store.QueryEvents(context.Background(), types.EventQuery{SessionID: sess.ID, Limit: 100, Asc: true})
