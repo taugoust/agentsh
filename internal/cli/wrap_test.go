@@ -181,7 +181,13 @@ func (m *mockWrapClient) PatchSession(ctx context.Context, id string, req types.
 func (m *mockWrapClient) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil
 }
+func (m *mockWrapClient) DiffSessionOverlayReview(ctx context.Context, id string) (client.OverlayReview, error) {
+	return client.OverlayReview{Body: io.NopCloser(strings.NewReader(""))}, nil
+}
 func (m *mockWrapClient) AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+	return types.Session{ID: id}, nil
+}
+func (m *mockWrapClient) AcceptSessionOverlayReviewed(ctx context.Context, id string, generation uint64, hash string) (types.Session, error) {
 	return types.Session{ID: id}, nil
 }
 func (m *mockWrapClient) RejectSessionOverlay(ctx context.Context, id string) (types.Session, error) {

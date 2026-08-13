@@ -29,7 +29,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const detachedSupervisorHeartbeatInterval = 30 * time.Second
+const (
+	detachedSupervisorHeartbeatInterval = 30 * time.Second
+	detachedReviewClientTimeout         = 31 * time.Minute
+)
 
 type detachedSessionStartResult struct {
 	supervisorMetadata
@@ -878,7 +881,10 @@ func detachedClientForSession(sessionID string) (*client.Client, supervisorMetad
 	if err := validateSupervisorMetadataUsable(meta); err != nil {
 		return nil, supervisorMetadata{}, err
 	}
-	c := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", 3*time.Second)
+	// Review/apply can legitimately run rsync across a large project. Keep the
+	// transport alive for the server-owned finalization bound; individual
+	// identity handshakes still use their explicit short contexts below.
+	c := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", detachedReviewClientTimeout)
 	handshakeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := validateDetachedRuntimeHandshake(handshakeCtx, c, meta); err != nil {

@@ -99,6 +99,9 @@ type Session struct {
 	execActiveCount      int
 	execActiveLanes      map[string]struct{}
 	execActiveCommands   map[string]*CommandRuntime
+	workspaceActivities  int
+	workspaceFinalizing  bool
+	workspaceSealed      bool
 
 	// direnvEnv is server-owned sensitive state. It is merged into child
 	// commands but never copied into types.Session snapshots.
@@ -580,7 +583,7 @@ func (s *Session) Snapshot() types.Session {
 		}
 		shadowInfo = &types.ShadowInfo{
 			Enabled:    true,
-			State:      s.Shadow.State,
+			State:      s.Shadow.StateValue(),
 			Real:       s.Shadow.Real,
 			Work:       s.Shadow.Work,
 			Home:       s.Shadow.Home,

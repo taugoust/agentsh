@@ -261,41 +261,49 @@ func newSessionDiffCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
 			if err != nil {
 				return err
 			}
-			r, err := c.DiffSessionOverlay(cmd.Context(), args[0])
+			review, err := c.DiffSessionOverlayReview(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			defer r.Close()
-			_, err = io.Copy(cmd.OutOrStdout(), r)
-			return err
+			defer review.Body.Close()
+			if _, err = io.Copy(cmd.OutOrStdout(), review.Body); err != nil {
+				return err
+			}
+			if review.Generation != 0 && review.Hash != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Review generation: %d\nReview hash: %s\n", review.Generation, review.Hash)
+			}
+			return nil
 		},
 	}
 	return cmd
 }
 
 func newSessionAcceptCmd() *cobra.Command {
+	var reviewGeneration uint64
+	var reviewHash string
 	cmd := &cobra.Command{
 		Use:   "accept SESSION_ID",
 		Short: "Accept review workspace changes into the real workspace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
 			if err != nil {
 				return err
 			}
-			s, err := c.AcceptSessionOverlay(cmd.Context(), args[0])
+			s, err := c.AcceptSessionOverlayReviewed(cmd.Context(), args[0], reviewGeneration, reviewHash)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: accept does not yet detect concurrent real-workspace changes.\n")
 			return printJSON(cmd, s)
 		},
 	}
+	cmd.Flags().Uint64Var(&reviewGeneration, "review-generation", 0, "Fresh shadow review generation returned by session diff")
+	cmd.Flags().StringVar(&reviewHash, "review-hash", "", "Fresh shadow review hash returned by session diff")
 	return cmd
 }
 

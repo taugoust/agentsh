@@ -20,7 +20,9 @@ type CLIClient interface {
 	DestroySession(ctx context.Context, id string) error
 	PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error)
 	DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error)
+	DiffSessionOverlayReview(ctx context.Context, id string) (OverlayReview, error)
 	AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error)
+	AcceptSessionOverlayReviewed(ctx context.Context, id string, generation uint64, hash string) (types.Session, error)
 	RejectSessionOverlay(ctx context.Context, id string) (types.Session, error)
 
 	Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error)

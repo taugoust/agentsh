@@ -299,6 +299,17 @@ func (a *App) writeFileTool(w http.ResponseWriter, r *http.Request) {
 		writeToolErrorWithPath(w, code, err.Error(), req.Path)
 		return
 	}
+	s, ok := a.sessions.Get(id)
+	if !ok {
+		writeToolError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	activity, err := s.BeginWorkspaceActivity()
+	if err != nil {
+		writeToolDomainError(w, http.StatusConflict, toolErrorConflict, err.Error(), rp.Virtual, err)
+		return
+	}
+	defer activity.Release()
 	completeMutation, err := a.beginDetachedMutation("write_file")
 	if err != nil {
 		writeToolErrorWithPath(w, http.StatusServiceUnavailable, err.Error(), rp.Virtual)
@@ -370,6 +381,12 @@ func (a *App) editFileTool(w http.ResponseWriter, r *http.Request) {
 		writeToolErrorWithPath(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("edited file exceeds limit of %d bytes", maxToolFileBytes), rp.Virtual)
 		return
 	}
+	activity, err := s.BeginWorkspaceActivity()
+	if err != nil {
+		writeToolDomainError(w, http.StatusConflict, toolErrorConflict, err.Error(), rp.Virtual, err)
+		return
+	}
+	defer activity.Release()
 	completeMutation, err := a.beginDetachedMutation("edit_file")
 	if err != nil {
 		writeToolErrorWithPath(w, http.StatusServiceUnavailable, err.Error(), rp.Virtual)

@@ -5,12 +5,17 @@ package shadow
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,7 +33,23 @@ const (
 	StateClosed   = "closed"
 )
 
-var ErrInactive = errors.New("shadow workspace is not active")
+var (
+	ErrInactive    = errors.New("shadow workspace is not active")
+	ErrStaleReview = errors.New("shadow workspace review is stale")
+)
+
+const reviewSchemaVersion = 1
+
+type Review struct {
+	SchemaVersion int       `json:"schema_version"`
+	Generation    uint64    `json:"generation"`
+	Hash          string    `json:"hash"`
+	BaseHash      string    `json:"base_hash"`
+	ShadowHash    string    `json:"shadow_hash"`
+	DiffHash      string    `json:"diff_hash"`
+	CreatedAt     time.Time `json:"created_at"`
+	Diff          []byte    `json:"-"`
+}
 
 type Options struct {
 	BaseDir        string
@@ -67,6 +88,7 @@ type Workspace struct {
 	acceptChown     bool
 	diffExecutable  string
 	rsyncExecutable string
+	latestReview    Review
 }
 
 func Create(ctx context.Context, id string, real string, opts Options) (*Workspace, error) {
@@ -344,11 +366,60 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 }
 
 func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
+	review, err := w.Review(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), review.Diff...), nil
+}
+
+func (w *Workspace) Review(ctx context.Context) (Review, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.State != StateActive {
-		return nil, ErrInactive
+		return Review{}, ErrInactive
 	}
+	baseHash, shadowHash, err := w.treeHashesLocked(ctx)
+	if err != nil {
+		return Review{}, err
+	}
+	out, err := w.diffLocked(ctx)
+	if err != nil {
+		return Review{}, err
+	}
+	verifiedBase, verifiedShadow, err := w.treeHashesLocked(ctx)
+	if err != nil {
+		return Review{}, err
+	}
+	if verifiedBase != baseHash || verifiedShadow != shadowHash {
+		return Review{}, fmt.Errorf("%w: workspace changed while review was generated", ErrStaleReview)
+	}
+	diffSum := sha256.Sum256(out)
+	generation := w.latestReview.Generation + 1
+	createdAt := time.Now().UTC()
+	payload := struct {
+		SchemaVersion int    `json:"schema_version"`
+		Generation    uint64 `json:"generation"`
+		BaseHash      string `json:"base_hash"`
+		ShadowHash    string `json:"shadow_hash"`
+		DiffHash      string `json:"diff_hash"`
+	}{reviewSchemaVersion, generation, baseHash, shadowHash, "sha256:" + hex.EncodeToString(diffSum[:])}
+	encoded, marshalErr := json.Marshal(payload)
+	if marshalErr != nil {
+		return Review{}, marshalErr
+	}
+	hash := sha256.Sum256(encoded)
+	review := Review{
+		SchemaVersion: reviewSchemaVersion, Generation: generation,
+		Hash: "sha256:" + hex.EncodeToString(hash[:]), BaseHash: baseHash,
+		ShadowHash: shadowHash, DiffHash: payload.DiffHash, CreatedAt: createdAt,
+		Diff: append([]byte(nil), out...),
+	}
+	w.latestReview = review
+	return review, nil
+}
+
+func (w *Workspace) diffLocked(ctx context.Context) ([]byte, error) {
 	roots := w.Roots
 	if len(roots) == 0 {
 		roots = []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
@@ -401,11 +472,133 @@ func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 	return combined.Bytes(), nil
 }
 
+func (w *Workspace) treeHashesLocked(ctx context.Context) (string, string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", "", err
+	}
+	roots := w.Roots
+	if len(roots) == 0 {
+		roots = []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
+	}
+	baseHasher := sha256.New()
+	shadowHasher := sha256.New()
+	for _, root := range roots {
+		if _, err := fmt.Fprintf(baseHasher, "root\x00%s\x00", root.Name); err != nil {
+			return "", "", err
+		}
+		if _, err := fmt.Fprintf(shadowHasher, "root\x00%s\x00", root.Name); err != nil {
+			return "", "", err
+		}
+		if err := hashTree(ctx, baseHasher, root.Real, w.acceptExcludes); err != nil {
+			return "", "", fmt.Errorf("hash real workspace root %s: %w", root.Name, err)
+		}
+		if err := hashTree(ctx, shadowHasher, root.Work, w.acceptExcludes); err != nil {
+			return "", "", fmt.Errorf("hash shadow workspace root %s: %w", root.Name, err)
+		}
+	}
+	return "sha256:" + hex.EncodeToString(baseHasher.Sum(nil)), "sha256:" + hex.EncodeToString(shadowHasher.Sum(nil)), nil
+}
+
+func hashTree(ctx context.Context, hasher io.Writer, root string, excludes []string) error {
+	writeField := func(kind string, value []byte) error {
+		if _, err := fmt.Fprintf(hasher, "%d:%s%d:", len(kind), kind, len(value)); err != nil {
+			return err
+		}
+		_, err := hasher.Write(value)
+		return err
+	}
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		first, _, _ := strings.Cut(rel, string(filepath.Separator))
+		if slices.Contains(excludes, first) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		kind := "file"
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			kind = "symlink"
+		case info.IsDir():
+			kind = "dir"
+		case !info.Mode().IsRegular():
+			kind = "other"
+		}
+		if err := writeField("path", []byte(filepath.ToSlash(rel))); err != nil {
+			return err
+		}
+		if err := writeField("kind", []byte(kind)); err != nil {
+			return err
+		}
+		if err := writeField("mode", []byte(strconv.FormatUint(uint64(info.Mode()), 8))); err != nil {
+			return err
+		}
+		switch kind {
+		case "file":
+			file, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			contentHash := sha256.New()
+			_, copyErr := io.Copy(contentHash, file)
+			closeErr := file.Close()
+			if err := errors.Join(copyErr, closeErr); err != nil {
+				return err
+			}
+			return writeField("content-sha256", contentHash.Sum(nil))
+		case "symlink":
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return writeField("target", []byte(target))
+		}
+		return nil
+	})
+}
+
 func (w *Workspace) Accept(ctx context.Context) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.latestReview.Generation == 0 {
+		return ErrStaleReview
+	}
+	return w.acceptReviewedLocked(ctx, w.latestReview.Generation, w.latestReview.Hash)
+}
+
+func (w *Workspace) AcceptReviewed(ctx context.Context, generation uint64, hash string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.acceptReviewedLocked(ctx, generation, hash)
+}
+
+func (w *Workspace) acceptReviewedLocked(ctx context.Context, generation uint64, hash string) error {
 	if w.State != StateActive {
 		return ErrInactive
+	}
+	if generation == 0 || generation != w.latestReview.Generation || hash == "" || hash != w.latestReview.Hash {
+		return ErrStaleReview
+	}
+	baseHash, shadowHash, err := w.treeHashesLocked(ctx)
+	if err != nil {
+		return err
+	}
+	if baseHash != w.latestReview.BaseHash || shadowHash != w.latestReview.ShadowHash {
+		return ErrStaleReview
 	}
 	rsyncExecutable, err := workspaceExecutable(w.rsyncExecutable, "rsync")
 	if err != nil {
@@ -426,13 +619,8 @@ func (w *Workspace) Accept(ctx context.Context) error {
 		args = append(args, withTrailingSeparator(root.Work), withTrailingSeparator(root.Real))
 		cmd := exec.CommandContext(ctx, rsyncExecutable, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			if !isRsyncVanished(err) {
-				return fmt.Errorf("accept shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
-			}
+			return fmt.Errorf("accept shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
 		}
-	}
-	if err := cleanup.RemoveAllWritable(filepath.Dir(w.Work)); err != nil {
-		return fmt.Errorf("remove shadow dir: %w", err)
 	}
 	w.State = StateAccepted
 	return nil
@@ -444,11 +632,14 @@ func (w *Workspace) Reject(ctx context.Context) error {
 	if w.State != StateActive {
 		return nil
 	}
-	if err := cleanup.RemoveAllWritable(filepath.Dir(w.Work)); err != nil {
-		return fmt.Errorf("remove shadow dir: %w", err)
-	}
 	w.State = StateRejected
 	return nil
+}
+
+func (w *Workspace) StateValue() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.State
 }
 
 func (w *Workspace) Close(ctx context.Context) error {

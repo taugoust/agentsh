@@ -160,6 +160,29 @@ func TestManager_ReapExpired_DoesNotIdleReapBusySession(t *testing.T) {
 	}
 }
 
+func TestWorkspaceFinalizationRequiresQuiescenceAndSealsAdmission(t *testing.T) {
+	s := &Session{ID: "session-review", State: types.SessionStateReady}
+	activity, err := s.BeginWorkspaceActivity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TryBeginWorkspaceFinalization(); !errors.Is(err, ErrWorkspaceBusy) {
+		t.Fatalf("finalization with active writer error = %v", err)
+	}
+	activity.Release()
+	lease, err := s.TryBeginWorkspaceFinalization()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.BeginWorkspaceActivity(); !errors.Is(err, ErrWorkspaceFinalizing) {
+		t.Fatalf("writer during finalization error = %v", err)
+	}
+	lease.Release(true)
+	if _, err := s.AcquireExecution(context.Background(), ExecutionAdmission{}); !errors.Is(err, ErrWorkspaceSealed) {
+		t.Fatalf("execution after finalization error = %v", err)
+	}
+}
+
 func TestLockExecContextCancelledQueueNeverAcquiresLater(t *testing.T) {
 	m := NewManager(10)
 	s, err := m.Create(t.TempDir(), "default")

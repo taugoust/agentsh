@@ -450,9 +450,25 @@ func (r *Runtime) MarkStopping() error { return r.markState(LifecycleStopping, "
 func (r *Runtime) MarkStopped() error  { return r.markState(LifecycleStopped, "", nil) }
 func (r *Runtime) MarkFinalized() error {
 	r.mu.Lock()
-	r.manifest.FinalizedAt = time.Now().UTC()
-	r.mu.Unlock()
-	return r.markState(LifecycleFinalized, "review workspace was finalized", nil)
+	defer r.mu.Unlock()
+	if r.manifest.State != LifecycleFinalizing {
+		return fmt.Errorf("refusing detached lifecycle transition from %s to %s", r.manifest.State, LifecycleFinalized)
+	}
+	now := time.Now().UTC()
+	r.manifest.FinalizedAt = now
+	r.manifest.State = LifecycleFinalized
+	r.manifest.LastError = "review workspace was finalized"
+	r.manifest.UpdatedAt = now
+	r.metadata.State = LifecycleFinalized
+	r.metadata.LastError = "review workspace was finalized"
+	r.metadata.HeartbeatAt = now
+	r.metadata.EventToken = ""
+	if err := r.persistLocked(); err != nil {
+		return err
+	}
+	_ = RemoveHeartbeat(r.stateDir)
+	_ = os.Remove(r.manifest.Launch.EnvironmentFile)
+	return nil
 }
 
 func (r *Runtime) Heartbeat(now time.Time) error {

@@ -3,7 +3,9 @@
 package shadow
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -133,6 +135,55 @@ func TestWorkspaceDiffHandlesDanglingSymlinks(t *testing.T) {
 	}
 	if target, err := os.Readlink(filepath.Join(realRoot, "real-only-link")); err != nil || target != filepath.Join(string(filepath.Separator), "missing", "real-only") {
 		t.Fatalf("Diff() mutated real symlink: target=%q err=%v", target, err)
+	}
+}
+
+func TestReviewBindsRealAndShadowTreesBeforeAccept(t *testing.T) {
+	realRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(realRoot, "value.bin"), []byte{0, 1, 2}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := Create(context.Background(), "session-review", realRoot, Options{BaseDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace.Work, "value.bin"), []byte{3, 4, 5, 6}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	review, err := workspace.Review(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if review.Generation != 1 || !strings.HasPrefix(review.Hash, "sha256:") || review.BaseHash == review.ShadowHash {
+		t.Fatalf("review = %+v", review)
+	}
+	if err := os.WriteFile(filepath.Join(realRoot, "concurrent.txt"), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.AcceptReviewed(context.Background(), review.Generation, review.Hash); !errors.Is(err, ErrStaleReview) {
+		t.Fatalf("accept after real change error = %v", err)
+	}
+	if _, err := os.Stat(workspace.Work); err != nil {
+		t.Fatalf("stale accept invalidated retained shadow: %v", err)
+	}
+	// Restore the reviewed base before taking the fresh review. The accept plan
+	// intentionally mirrors shadow -> real, including deletion of real-only files.
+	if err := os.Remove(filepath.Join(realRoot, "concurrent.txt")); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := workspace.Review(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Generation != 2 || fresh.Hash == review.Hash {
+		t.Fatalf("fresh review = %+v", fresh)
+	}
+	if err := workspace.AcceptReviewed(context.Background(), fresh.Generation, fresh.Hash); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(realRoot, "value.bin"))
+	if err != nil || !bytes.Equal(data, []byte{3, 4, 5, 6}) {
+		t.Fatalf("accepted binary = %v, %v", data, err)
 	}
 }
 

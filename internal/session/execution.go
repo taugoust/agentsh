@@ -11,6 +11,12 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
+var (
+	ErrWorkspaceBusy       = errors.New("workspace has active or queued writers")
+	ErrWorkspaceFinalizing = errors.New("workspace is finalizing")
+	ErrWorkspaceSealed     = errors.New("workspace is sealed")
+)
+
 // ExecutionQueueFailure classifies an execution request that left admission
 // before dispatch. Callers can inspect this type without parsing context error
 // strings.
@@ -286,6 +292,9 @@ func (s *Session) notifyExecutionChangedLocked() {
 }
 
 func (s *Session) canAdmitExecutionLocked(req ExecutionAdmission) bool {
+	if s.workspaceFinalizing || s.workspaceSealed {
+		return false
+	}
 	if !req.Shared {
 		return !s.execExclusiveActive && s.execSharedActive == 0
 	}
@@ -355,6 +364,15 @@ func (s *Session) AcquireExecution(ctx context.Context, req ExecutionAdmission) 
 		}
 
 		s.execAdmissionMu.Lock()
+		if s.workspaceFinalizing || s.workspaceSealed {
+			sealed := s.workspaceSealed
+			s.execAdmissionMu.Unlock()
+			removeWaiter()
+			if sealed {
+				return nil, ErrWorkspaceSealed
+			}
+			return nil, ErrWorkspaceFinalizing
+		}
 		if ctx.Err() != nil {
 			s.execAdmissionMu.Unlock()
 			removeWaiter()
@@ -449,6 +467,94 @@ func (s *Session) releaseExecution(lease *ExecutionLease) {
 	s.mu.Unlock()
 	s.notifyExecutionChangedLocked()
 	s.execAdmissionMu.Unlock()
+}
+
+type WorkspaceActivityLease struct {
+	once    sync.Once
+	session *Session
+}
+
+func (l *WorkspaceActivityLease) Release() {
+	if l == nil {
+		return
+	}
+	l.once.Do(func() {
+		if l.session == nil {
+			return
+		}
+		l.session.execAdmissionMu.Lock()
+		if l.session.workspaceActivities > 0 {
+			l.session.workspaceActivities--
+		}
+		l.session.notifyExecutionChangedLocked()
+		l.session.execAdmissionMu.Unlock()
+	})
+}
+
+// BeginWorkspaceActivity registers a non-command writer such as write_file or
+// an outer subagent process. It is fail-fast once review finalization starts.
+func (s *Session) BeginWorkspaceActivity() (*WorkspaceActivityLease, error) {
+	if s == nil {
+		return nil, ErrWorkspaceSealed
+	}
+	s.execAdmissionMu.Lock()
+	defer s.execAdmissionMu.Unlock()
+	switch {
+	case s.workspaceSealed:
+		return nil, ErrWorkspaceSealed
+	case s.workspaceFinalizing:
+		return nil, ErrWorkspaceFinalizing
+	default:
+		s.workspaceActivities++
+		s.notifyExecutionChangedLocked()
+		return &WorkspaceActivityLease{session: s}, nil
+	}
+}
+
+type WorkspaceFinalizationLease struct {
+	once    sync.Once
+	session *Session
+}
+
+// TryBeginWorkspaceFinalization atomically closes writer admission only when
+// all command and direct-writer activity is already quiescent. It never waits,
+// avoiding deadlock with subagents that need nested command calls to finish.
+func (s *Session) TryBeginWorkspaceFinalization() (*WorkspaceFinalizationLease, error) {
+	if s == nil {
+		return nil, ErrWorkspaceSealed
+	}
+	s.execAdmissionMu.Lock()
+	defer s.execAdmissionMu.Unlock()
+	switch {
+	case s.workspaceSealed:
+		return nil, ErrWorkspaceSealed
+	case s.workspaceFinalizing:
+		return nil, ErrWorkspaceFinalizing
+	case s.execActiveCount != 0 || s.execExclusiveWaiters != 0 || s.execSharedWaiters != 0 || s.workspaceActivities != 0:
+		return nil, ErrWorkspaceBusy
+	default:
+		s.workspaceFinalizing = true
+		s.notifyExecutionChangedLocked()
+		return &WorkspaceFinalizationLease{session: s}, nil
+	}
+}
+
+func (l *WorkspaceFinalizationLease) Release(seal bool) {
+	if l == nil {
+		return
+	}
+	l.once.Do(func() {
+		if l.session == nil {
+			return
+		}
+		l.session.execAdmissionMu.Lock()
+		l.session.workspaceFinalizing = false
+		if seal {
+			l.session.workspaceSealed = true
+		}
+		l.session.notifyExecutionChangedLocked()
+		l.session.execAdmissionMu.Unlock()
+	})
 }
 
 // ActiveExecutionCount is a synchronized observation used by lifecycle code

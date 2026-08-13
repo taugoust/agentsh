@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/client"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/spf13/cobra"
 )
@@ -41,7 +42,13 @@ func (m *mockCLIClient) PatchSession(ctx context.Context, id string, req types.S
 func (m *mockCLIClient) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil
 }
+func (m *mockCLIClient) DiffSessionOverlayReview(ctx context.Context, id string) (client.OverlayReview, error) {
+	return client.OverlayReview{Body: io.NopCloser(strings.NewReader(""))}, nil
+}
 func (m *mockCLIClient) AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+	return m.session, nil
+}
+func (m *mockCLIClient) AcceptSessionOverlayReviewed(ctx context.Context, id string, generation uint64, hash string) (types.Session, error) {
 	return m.session, nil
 }
 func (m *mockCLIClient) RejectSessionOverlay(ctx context.Context, id string) (types.Session, error) {

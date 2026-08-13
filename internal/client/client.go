@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -161,32 +162,53 @@ func (c *Client) PatchSession(ctx context.Context, id string, req types.SessionP
 	return out, nil
 }
 
-func (c *Client) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
+type OverlayReview struct {
+	Body       io.ReadCloser
+	Generation uint64
+	Hash       string
+}
+
+func (c *Client) DiffSessionOverlayReview(ctx context.Context, id string) (OverlayReview, error) {
 	u := c.baseURL + "/api/v1/sessions/" + url.PathEscape(id) + "/overlay/diff"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, err
+		return OverlayReview{}, err
 	}
 	c.addAuth(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return OverlayReview{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		return nil, &HTTPError{Method: http.MethodGet, Path: "/api/v1/sessions/" + url.PathEscape(id) + "/overlay/diff", Status: resp.Status, StatusCode: resp.StatusCode, Body: string(b)}
+		return OverlayReview{}, &HTTPError{Method: http.MethodGet, Path: "/api/v1/sessions/" + url.PathEscape(id) + "/overlay/diff", Status: resp.Status, StatusCode: resp.StatusCode, Body: string(b)}
 	}
-	return resp.Body, nil
+	generation, _ := strconv.ParseUint(resp.Header.Get("X-AgentSH-Review-Generation"), 10, 64)
+	return OverlayReview{Body: resp.Body, Generation: generation, Hash: resp.Header.Get("X-AgentSH-Review-Hash")}, nil
 }
 
-func (c *Client) AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+func (c *Client) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
+	review, err := c.DiffSessionOverlayReview(ctx, id)
+	return review.Body, err
+}
+
+func (c *Client) AcceptSessionOverlayReviewed(ctx context.Context, id string, generation uint64, hash string) (types.Session, error) {
 	var out types.Session
 	path := "/api/v1/sessions/" + url.PathEscape(id) + "/overlay/accept"
-	if err := c.doJSON(ctx, http.MethodPost, path, nil, map[string]any{}, &out); err != nil {
+	body := map[string]any{}
+	if generation != 0 || hash != "" {
+		body["review_generation"] = generation
+		body["review_hash"] = hash
+	}
+	if err := c.doJSON(ctx, http.MethodPost, path, nil, body, &out); err != nil {
 		return out, err
 	}
 	return out, nil
+}
+
+func (c *Client) AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+	return c.AcceptSessionOverlayReviewed(ctx, id, 0, "")
 }
 
 func (c *Client) RejectSessionOverlay(ctx context.Context, id string) (types.Session, error) {

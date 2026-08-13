@@ -174,6 +174,12 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusBadRequest, fmt.Sprintf("result_artifact_threshold_bytes must be between 0 and %d", maxSubagentTextBytes))
 		return
 	}
+	activity, err := s.BeginWorkspaceActivity()
+	if err != nil {
+		writeToolDomainError(w, http.StatusConflict, toolErrorConflict, err.Error(), "", err)
+		return
+	}
+	defer activity.Release()
 	requestID := strings.TrimSpace(req.RequestID)
 	if requestID == "" {
 		requestID = "subagent-request-" + uuid.NewString()

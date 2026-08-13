@@ -1,7 +1,7 @@
 # Make shadow workspace review/accept atomic and quiescent
 
 ## Status
-Open.
+Resolved.
 
 ## Problem
 Shadow workspace accept/reject can race with active commands and is tied to the request context. `Accept` immediately `rsync --delete`s from shadow to real workspace without a reviewed diff generation or command quiescence, so the user may accept different content than they reviewed.
@@ -16,3 +16,6 @@ Add a review transaction: lock/quiesce session execution, compute and persist a 
 
 ## Rough priority
 High.
+
+## Resolution
+Implemented quiescent workspace-writer admission, content-addressed real/shadow review generations, mandatory fresh accept preconditions, independent bounded finalization, enriched audit events, and focused Nix coverage. Resolved by the commit that moved this issue to `issues/resolved/`.

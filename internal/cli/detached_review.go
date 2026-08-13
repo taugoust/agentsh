@@ -8,6 +8,8 @@ import (
 )
 
 func newDetachedReviewCmd(op string) *cobra.Command {
+	var reviewGeneration uint64
+	var reviewHash string
 	cmd := &cobra.Command{
 		Use:   op + " SESSION_ID",
 		Short: op + " detached session workspace changes",
@@ -20,19 +22,23 @@ func newDetachedReviewCmd(op string) *cobra.Command {
 			}
 			switch op {
 			case "diff":
-				r, err := c.DiffSessionOverlay(cmd.Context(), id)
+				review, err := c.DiffSessionOverlayReview(cmd.Context(), id)
 				if err != nil {
 					return err
 				}
-				defer r.Close()
-				_, err = io.Copy(cmd.OutOrStdout(), r)
-				return err
+				defer review.Body.Close()
+				if _, err = io.Copy(cmd.OutOrStdout(), review.Body); err != nil {
+					return err
+				}
+				if review.Generation != 0 && review.Hash != "" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Review generation: %d\nReview hash: %s\n", review.Generation, review.Hash)
+				}
+				return nil
 			case "accept":
-				s, err := c.AcceptSessionOverlay(cmd.Context(), id)
+				s, err := c.AcceptSessionOverlayReviewed(cmd.Context(), id, reviewGeneration, reviewHash)
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: accept does not yet detect concurrent real-workspace changes.\n")
 				return printJSON(cmd, s)
 			case "reject":
 				s, err := c.RejectSessionOverlay(cmd.Context(), id)
@@ -44,6 +50,10 @@ func newDetachedReviewCmd(op string) *cobra.Command {
 				return fmt.Errorf("unsupported review operation %q", op)
 			}
 		},
+	}
+	if op == "accept" {
+		cmd.Flags().Uint64Var(&reviewGeneration, "review-generation", 0, "Fresh shadow review generation returned by diff")
+		cmd.Flags().StringVar(&reviewHash, "review-hash", "", "Fresh shadow review hash returned by diff")
 	}
 	return cmd
 }

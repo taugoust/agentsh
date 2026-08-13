@@ -513,6 +513,17 @@
             '';
           };
 
+          shadow-review-atomicity-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-shadow-review-atomicity-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/workspace/shadow -run '^Test(Review|WorkspaceDiff|WorkspaceLifecycle)'
+              go test ./internal/session -run '^TestWorkspaceFinalization'
+              go test ./internal/api -run '^TestShadowReview'
+              runHook postCheck
+            '';
+          });
+
           runtime-provider-tests = go-unit-tests.overrideAttrs (_: {
             pname = "agentsh-runtime-provider-tests";
             checkPhase = ''
