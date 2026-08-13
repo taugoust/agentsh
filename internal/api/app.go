@@ -1201,6 +1201,10 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
 		return
 	}
+	if s.WorkspaceFinalizing() {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "session teardown refused while workspace finalization is in progress"})
+		return
+	}
 	if a.detachedRuntime != nil {
 		if err := a.detachedRuntime.MarkStopping(); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "refusing teardown because durable detached lifecycle update failed"})

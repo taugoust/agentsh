@@ -551,6 +551,15 @@ func (s *Session) TryBeginWorkspaceFinalization() (*WorkspaceFinalizationLease, 
 	}
 }
 
+func (s *Session) WorkspaceFinalizing() bool {
+	if s == nil {
+		return false
+	}
+	s.execAdmissionMu.Lock()
+	defer s.execAdmissionMu.Unlock()
+	return s.workspaceFinalizing
+}
+
 func (l *WorkspaceFinalizationLease) Release(seal bool) {
 	if l == nil {
 		return
