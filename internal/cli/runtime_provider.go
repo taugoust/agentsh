@@ -306,10 +306,16 @@ func startDetachedRuntime(ctx context.Context, request runtimeprovider.Request, 
 	}
 	snapshot, err := instance.ControlPlane(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read runtime provider control plane: %w", err)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), detachedRuntimeCleanupTimeout)
+		cleanupErr := errors.Join(instance.Stop(cleanupCtx, runtimeprovider.StopReasonStartupFailed), instance.Destroy(cleanupCtx))
+		cancel()
+		return nil, errors.Join(fmt.Errorf("read runtime provider control plane: %w", err), cleanupErr)
 	}
 	if snapshot.Session.ID == "" {
-		return nil, fmt.Errorf("runtime provider %q returned no detached session result", request.Provider)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), detachedRuntimeCleanupTimeout)
+		cleanupErr := errors.Join(instance.Stop(cleanupCtx, runtimeprovider.StopReasonStartupFailed), instance.Destroy(cleanupCtx))
+		cancel()
+		return nil, errors.Join(fmt.Errorf("runtime provider %q returned no detached session result", request.Provider), cleanupErr)
 	}
 	return &detachedSessionStartResult{
 		supervisorMetadata: snapshot.Metadata,

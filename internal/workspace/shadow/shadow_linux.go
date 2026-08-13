@@ -207,6 +207,7 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 	if len(acceptExcludes) == 0 {
 		acceptExcludes = []string{".git", ".direnv"}
 	}
+	excludes = reviewExcludes(excludes, acceptExcludes)
 
 	multi := len(roots) > 1 || strings.TrimSpace(specs[0].Name) != ""
 	for i := range roots {
@@ -357,6 +358,7 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 	if len(acceptExcludes) == 0 {
 		acceptExcludes = []string{".git", ".direnv"}
 	}
+	diffExcludes = reviewExcludes(diffExcludes, acceptExcludes)
 	if createdAt.IsZero() {
 		createdAt = time.Now().UTC()
 	}
@@ -760,6 +762,16 @@ func cleanRootName(name string) string {
 		return ""
 	}
 	return name
+}
+
+func reviewExcludes(diffExcludes, acceptExcludes []string) []string {
+	out := make([]string, 0, len(diffExcludes))
+	for _, excluded := range diffExcludes {
+		if slices.Contains(acceptExcludes, excluded) {
+			out = append(out, excluded)
+		}
+	}
+	return out
 }
 
 func cleanExcludes(in []string) []string {
