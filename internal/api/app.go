@@ -709,12 +709,31 @@ func (a *App) requireRoles(roles ...string) func(http.Handler) http.Handler {
 	}
 }
 
+type createSessionRequestWire struct {
+	types.CreateSessionRequest
+	Runtime         json.RawMessage `json:"runtime,omitempty"`
+	RuntimeProfile  json.RawMessage `json:"runtime_profile,omitempty"`
+	RuntimeProvider json.RawMessage `json:"runtime_provider,omitempty"`
+	RuntimeOptions  json.RawMessage `json:"runtime_options,omitempty"`
+}
+
+func (r createSessionRequestWire) rejectRuntimeSelection() error {
+	if len(r.Runtime) > 0 || len(r.RuntimeProfile) > 0 || len(r.RuntimeProvider) > 0 || len(r.RuntimeOptions) > 0 {
+		return fmt.Errorf("runtime selection is operator-owned; use the trusted detached session start command with a configured profile")
+	}
+	return nil
+}
+
 func (a *App) createSession(w http.ResponseWriter, r *http.Request) {
-	var req types.CreateSessionRequest
-	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
+	var wire createSessionRequestWire
+	if ok := decodeJSON(w, r, &wire, "invalid json"); !ok {
 		return
 	}
-	snap, code, err := a.createSessionCore(r.Context(), req)
+	if err := wire.rejectRuntimeSelection(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	snap, code, err := a.createSessionCore(r.Context(), wire.CreateSessionRequest)
 	if err != nil {
 		writeJSON(w, code, map[string]any{"error": err.Error()})
 		return

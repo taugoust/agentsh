@@ -1135,6 +1135,9 @@ func (a *App) grpcCreateSession(ctx context.Context, reqJSON []byte) (*structpb.
 	if err := json.Unmarshal(reqJSON, &req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
+	if err := req.rejectRuntimeSelection(); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	sess, httpCode, err := a.createSessionCore(ctx, req.ToTypes())
 	if err != nil {
 		return nil, status.Error(codeFromHTTP(httpCode), err.Error())
@@ -1202,6 +1205,18 @@ type CreateSessionRequestCompat struct {
 	DetectProjectRoot *bool                 `json:"detect_project_root,omitempty"`
 	ProjectRoot       string                `json:"project_root,omitempty"`
 	RealPaths         *bool                 `json:"real_paths,omitempty"`
+	Runtime           json.RawMessage       `json:"runtime,omitempty"`
+	RuntimeProfile    json.RawMessage       `json:"runtime_profile,omitempty"`
+	RuntimeProvider   json.RawMessage       `json:"runtime_provider,omitempty"`
+	RuntimeOptions    json.RawMessage       `json:"runtime_options,omitempty"`
+}
+
+func (c CreateSessionRequestCompat) rejectRuntimeSelection() error {
+	wire := createSessionRequestWire{
+		Runtime: c.Runtime, RuntimeProfile: c.RuntimeProfile,
+		RuntimeProvider: c.RuntimeProvider, RuntimeOptions: c.RuntimeOptions,
+	}
+	return wire.rejectRuntimeSelection()
 }
 
 func (c CreateSessionRequestCompat) ToTypes() types.CreateSessionRequest {

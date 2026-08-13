@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/nethelper"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
@@ -461,6 +462,25 @@ func TestWrapperRecoveryTokenUsesHiddenFixedPrivateTopology(t *testing.T) {
 	}
 	if value, retained := readRecoveryTokenFile(path); value != "" || retained != "" {
 		t.Fatal("same-UID-readable token container was accepted")
+	}
+}
+
+func TestCommandJailMasksRuntimeProviderLifecycleAuthority(t *testing.T) {
+	stateDir := t.TempDir()
+	baseDir := filepath.Join(stateDir, "workspaces")
+	for _, name := range []string{"runtime-provider.json", "runtime-provider.lock"} {
+		if err := os.WriteFile(filepath.Join(stateDir, name), []byte("control"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := &config.Config{}
+	cfg.Sessions.BaseDir = baseDir
+	jail := buildCommandJailConfig(cfg, "", "", "", "", "")
+	for _, name := range []string{"runtime-provider.json", "runtime-provider.lock"} {
+		path := filepath.Join(stateDir, name)
+		if !containsString(jail.HidePaths, path) {
+			t.Fatalf("runtime lifecycle authority %q is not hidden: %+v", path, jail)
+		}
 	}
 }
 

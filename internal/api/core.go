@@ -445,7 +445,7 @@ func buildCommandJailConfig(cfg *config.Config, nethelperSocket, nethelperCreden
 	}
 	if base := strings.TrimSpace(cfg.Sessions.BaseDir); base != "" {
 		stateDir := filepath.Dir(base)
-		for _, name := range []string{"metadata.json", "recovery.json", "supervisor.lock", "supervisor.sock", "supervisor.env", "events.jsonl", "events.db", "events.db-wal", "events.db-shm"} {
+		for _, name := range []string{"metadata.json", "recovery.json", "runtime-provider.json", "runtime-provider.lock", "supervisor.lock", "supervisor.sock", "supervisor.env", "events.jsonl", "events.db", "events.db-wal", "events.db-shm"} {
 			path := filepath.Join(stateDir, name)
 			if info, err := os.Lstat(path); err == nil && !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 				jail.HidePaths = append(jail.HidePaths, path)

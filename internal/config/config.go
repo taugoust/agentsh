@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/runtimeprovider"
 	seccompPkg "github.com/agentsh/agentsh/internal/seccomp"
 	"gopkg.in/yaml.v3"
 )
@@ -346,6 +347,10 @@ type SessionsConfig struct {
 	// WorkspaceShadow configures VM-local copied workspaces.
 	WorkspaceShadow WorkspaceShadowConfig `yaml:"workspace_shadow"`
 
+	// Runtime selects an operator-owned outer-runtime profile for detached
+	// sessions. Ordinary session-create requests cannot supply this selection.
+	Runtime SessionRuntimeConfig `yaml:"runtime"`
+
 	// DetachedSupervisors configures discovery of per-session detached supervisor
 	// daemons whose approval/session-event queues should be surfaced by this daemon.
 	DetachedSupervisors DetachedSupervisorsConfig `yaml:"detached_supervisors"`
@@ -399,6 +404,30 @@ type WorkspaceShadowConfig struct {
 	AcceptExcludes []string `yaml:"accept_excludes"`
 	AcceptChown    *bool    `yaml:"accept_chown"`
 	DestroyAction  string   `yaml:"destroy_action"` // reject|keep
+}
+
+// SessionRuntimeConfig maps trusted profile names to fixed provider kinds.
+// Provider-specific options are intentionally absent until their contracts are
+// implemented and validated; unknown YAML keys in this block are rejected.
+type SessionRuntimeConfig struct {
+	DefaultProfile string                          `yaml:"default_profile"`
+	Profiles       map[string]RuntimeProfileConfig `yaml:"profiles"`
+}
+
+type RuntimeProfileConfig struct {
+	Provider string `yaml:"provider"`
+}
+
+func (c SessionRuntimeConfig) ResolveProfile(requested string) (string, RuntimeProfileConfig, error) {
+	name := strings.TrimSpace(requested)
+	if name == "" {
+		name = c.DefaultProfile
+	}
+	profile, ok := c.Profiles[name]
+	if !ok {
+		return "", RuntimeProfileConfig{}, fmt.Errorf("runtime profile %q is not configured", name)
+	}
+	return name, profile, nil
 }
 
 // DetachedSupervisorsConfig configures daemon-side discovery/proxying of
@@ -1578,6 +1607,49 @@ func rejectRemovedConfigKeys(data []byte) error {
 	if yamlMappingPathExists(&root, "sandbox", "seccomp", "hardening_profiles") {
 		return fmt.Errorf("sandbox.seccomp.hardening_profiles has been removed; use sandbox.seccomp.mitigation_sets")
 	}
+	if err := validateSessionRuntimeConfigKeys(&root); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateSessionRuntimeConfigKeys(root *yaml.Node) error {
+	runtimeNode := yamlMappingNode(root, "sessions", "runtime")
+	if runtimeNode == nil {
+		return nil
+	}
+	if runtimeNode.Kind != yaml.MappingNode {
+		return fmt.Errorf("sessions.runtime must be a mapping")
+	}
+	knownRuntimeKeys := map[string]struct{}{
+		"default_profile": {},
+		"profiles":        {},
+	}
+	for i := 0; i+1 < len(runtimeNode.Content); i += 2 {
+		key := runtimeNode.Content[i].Value
+		if _, ok := knownRuntimeKeys[key]; !ok {
+			return fmt.Errorf("unknown sessions.runtime key %q", key)
+		}
+	}
+	profilesNode := yamlMappingNode(root, "sessions", "runtime", "profiles")
+	if profilesNode == nil {
+		return nil
+	}
+	if profilesNode.Kind != yaml.MappingNode {
+		return fmt.Errorf("sessions.runtime.profiles must be a mapping")
+	}
+	for i := 0; i+1 < len(profilesNode.Content); i += 2 {
+		name := profilesNode.Content[i].Value
+		profileNode := profilesNode.Content[i+1]
+		if profileNode.Kind != yaml.MappingNode {
+			return fmt.Errorf("sessions.runtime.profiles.%s must be a mapping", name)
+		}
+		for j := 0; j+1 < len(profileNode.Content); j += 2 {
+			if key := profileNode.Content[j].Value; key != "provider" {
+				return fmt.Errorf("unknown sessions.runtime.profiles.%s key %q", name, key)
+			}
+		}
+	}
 	return nil
 }
 
@@ -1899,6 +1971,14 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	}
 	if cfg.Sessions.WorkspaceShadow.DestroyAction == "" {
 		cfg.Sessions.WorkspaceShadow.DestroyAction = "reject"
+	}
+	if cfg.Sessions.Runtime.DefaultProfile == "" {
+		cfg.Sessions.Runtime.DefaultProfile = runtimeprovider.DefaultProfile
+	}
+	if len(cfg.Sessions.Runtime.Profiles) == 0 {
+		cfg.Sessions.Runtime.Profiles = map[string]RuntimeProfileConfig{
+			runtimeprovider.DefaultProfile: {Provider: runtimeprovider.NativeProvider},
+		}
 	}
 	if cfg.Sessions.DetachedSupervisors.RequestTimeout == "" {
 		cfg.Sessions.DetachedSupervisors.RequestTimeout = "500ms"
@@ -2605,6 +2685,23 @@ func validateConfig(cfg *Config) error {
 		// ok; "" is normalized by applyDefaults.
 	default:
 		return fmt.Errorf("invalid sessions.workspace_shadow.destroy_action %q: must be one of reject or keep", cfg.Sessions.WorkspaceShadow.DestroyAction)
+	}
+	if err := runtimeprovider.ValidateName(cfg.Sessions.Runtime.DefaultProfile); err != nil {
+		return fmt.Errorf("sessions.runtime.default_profile: %w", err)
+	}
+	if len(cfg.Sessions.Runtime.Profiles) == 0 {
+		return fmt.Errorf("sessions.runtime.profiles must configure at least one profile")
+	}
+	if _, ok := cfg.Sessions.Runtime.Profiles[cfg.Sessions.Runtime.DefaultProfile]; !ok {
+		return fmt.Errorf("sessions.runtime.default_profile %q is not present in sessions.runtime.profiles", cfg.Sessions.Runtime.DefaultProfile)
+	}
+	for name, profile := range cfg.Sessions.Runtime.Profiles {
+		if err := runtimeprovider.ValidateName(name); err != nil {
+			return fmt.Errorf("sessions.runtime.profiles: %w", err)
+		}
+		if profile.Provider != runtimeprovider.NativeProvider {
+			return fmt.Errorf("sessions.runtime.profiles.%s.provider %q is unsupported; only native is available", name, profile.Provider)
+		}
 	}
 	switch cfg.Sessions.RuntimeHomeMode {
 	case "", "isolated", "real":

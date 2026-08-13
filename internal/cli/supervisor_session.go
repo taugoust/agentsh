@@ -22,6 +22,7 @@ import (
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/detachedreport"
 	"github.com/agentsh/agentsh/internal/nethelper"
+	"github.com/agentsh/agentsh/internal/runtimeprovider"
 	"github.com/agentsh/agentsh/internal/server"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
@@ -104,13 +105,28 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 	if identityErr != nil {
 		return fmt.Errorf("capture detached supervisor process identity: %w", identityErr)
 	}
-	runtimeState, err := detached.BeginRuntime(stateDir, os.Getpid(), startIdentity, bootID, time.Now().UTC())
-	if err != nil {
+	var runtimeState *detached.Runtime
+	if err := runtimeprovider.WithLifecycleLock(stateDir, func() error {
+		manifest, readErr := runtimeprovider.ReadManifest(stateDir)
+		if readErr == nil && (manifest.State == runtimeprovider.StateStopping || manifest.State == runtimeprovider.StateStopped) {
+			return fmt.Errorf("detached session %s has committed runtime state %s and cannot restart", manifest.SessionID, manifest.State)
+		}
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			return readErr
+		}
+		var beginErr error
+		runtimeState, beginErr = detached.BeginRuntime(stateDir, os.Getpid(), startIdentity, bootID, time.Now().UTC())
+		if beginErr != nil {
+			return beginErr
+		}
+		return syncNativeRuntimeProviderManifestLocked(stateDir, runtimeState.Metadata())
+	}); err != nil {
 		return err
 	}
 	defer func() {
 		if runErr != nil {
 			_ = runtimeState.MarkFailed(runErr.Error())
+			_ = syncNativeRuntimeProviderManifest(stateDir, runtimeState.Metadata())
 		}
 	}()
 
@@ -154,6 +170,9 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 	if _, _, err := srv.BootstrapDetachedSession(ctx, runtimeState); err != nil {
 		return err
 	}
+	if err := syncNativeRuntimeProviderManifest(stateDir, runtimeState.Metadata()); err != nil {
+		return fmt.Errorf("persist ready native runtime-provider incarnation: %w", err)
+	}
 
 	heartbeatCtx, cancelHeartbeat := context.WithCancel(context.Background())
 	defer cancelHeartbeat()
@@ -192,6 +211,9 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 			// recreates this exact incarnation rather than stranding stale state.
 			runErr = fmt.Errorf("supervisor exited before a durable stop transition")
 		}
+	}
+	if err := syncNativeRuntimeProviderManifest(stateDir, runtimeState.Metadata()); err != nil {
+		runErr = errors.Join(runErr, fmt.Errorf("persist terminal native runtime-provider state: %w", err))
 	}
 	return runErr
 }
@@ -499,6 +521,7 @@ func newSessionStartCmd() *cobra.Command {
 	var envBaseMode string
 	var envInherit []string
 	var sessionID string
+	var runtimeProfile string
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start a session",
@@ -530,7 +553,7 @@ broker features remain out of scope.`,
 			if len(workspaces) == 0 {
 				workspaces = []string{"."}
 			}
-			res, err := startDetachedSupervisorSession(cmd.Context(), sessionID, workspaces, workspaceMode, policy, runtimeHomeMode, envBaseMode, envInherit)
+			res, err := startDetachedSupervisorSession(cmd.Context(), sessionID, workspaces, workspaceMode, policy, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile)
 			if err != nil {
 				return err
 			}
@@ -555,6 +578,7 @@ broker features remain out of scope.`,
 	cmd.Flags().StringVar(&envBaseMode, "env-base", "", "Child env base: minimal or inherit_allowed")
 	cmd.Flags().StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "Exact caller-preallocated session-UUID identity")
+	cmd.Flags().StringVar(&runtimeProfile, "runtime-profile", "", "Operator-configured detached runtime profile (default: sessions.runtime.default_profile)")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	return cmd
 }
@@ -604,39 +628,25 @@ func reserveDetachedSessionState(sessionID string) (string, error) {
 	return stateDir, nil
 }
 
-func startDetachedSupervisorSession(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string) (*detachedSessionStartResult, error) {
-	if len(workspaces) == 0 {
-		workspaces = []string{"."}
+func startDetachedSupervisorSession(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile string) (*detachedSessionStartResult, error) {
+	request, configPath, cfg, err := prepareDetachedRuntimeRequest(
+		requestedSessionID, workspaces, workspaceMode, policyName,
+		runtimeHomeMode, envBaseMode, envInherit, runtimeProfile,
+	)
+	if err != nil {
+		return nil, err
 	}
-	realWorkspaces := make([]string, 0, len(workspaces))
-	for _, workspace := range workspaces {
-		realWorkspace, err := filepath.Abs(workspace)
-		if err != nil {
-			return nil, fmt.Errorf("workspace abs: %w", err)
-		}
-		if resolved, err := filepath.EvalSymlinks(realWorkspace); err == nil {
-			realWorkspace = resolved
-		}
-		if st, err := os.Stat(realWorkspace); err != nil {
-			return nil, fmt.Errorf("workspace stat: %w", err)
-		} else if !st.IsDir() {
-			return nil, fmt.Errorf("workspace must be a directory")
-		}
-		realWorkspaces = append(realWorkspaces, realWorkspace)
-	}
-	if len(realWorkspaces) > 1 && workspaceMode != string(types.WorkspaceModeShadow) {
-		return nil, fmt.Errorf("multiple workspaces require workspace_mode=shadow")
-	}
-	realWorkspace := realWorkspaces[0]
+	return startDetachedRuntime(ctx, request, configPath, cfg)
+}
 
-	sessionID, err := detachedSessionID(requestedSessionID)
-	if err != nil {
-		return nil, err
-	}
-	stateDir, err := reserveDetachedSessionState(sessionID)
-	if err != nil {
-		return nil, err
-	}
+func startNativeDetachedSupervisorSession(ctx context.Context, request runtimeprovider.Request, configPath string, preflightCfg *config.Config) (*detachedSessionStartResult, error) {
+	sessionID := request.SessionID
+	stateDir := request.StateDir
+	req := request.Session
+	realWorkspace := req.Workspace
+	policyName := req.Policy
+	workspaceMode := req.WorkspaceMode
+	envInherit := req.EnvInherit
 	sockPath := filepath.Join(stateDir, "supervisor.sock")
 	logsDir := filepath.Join(stateDir, "logs")
 	if err := os.Mkdir(logsDir, 0o700); err != nil {
@@ -654,13 +664,8 @@ func startDetachedSupervisorSession(ctx context.Context, requestedSessionID stri
 	if err != nil {
 		return nil, fmt.Errorf("locate executable: %w", err)
 	}
-	configPath, _ := findDetachedSupervisorConfigPath()
-	if abs, absErr := filepath.Abs(configPath); absErr == nil {
-		configPath = abs
-	}
-	preflightCfg, _, err := loadLocalConfig(configPath)
-	if err != nil {
-		return nil, err
+	if preflightCfg == nil {
+		return nil, fmt.Errorf("native runtime preflight configuration is unavailable")
 	}
 	if warning := detachedSupervisorNetworkEnforcementWarning(preflightCfg); warning != "" {
 		fmt.Fprintf(os.Stderr, "agentsh: warning: %s\n", warning)
@@ -692,21 +697,6 @@ func startDetachedSupervisorSession(ctx context.Context, requestedSessionID stri
 	}
 	serviceEnv := detachedSupervisorServiceEnv(eventToken, launcherEnv, envInherit)
 	serviceEnvFile := filepath.Join(stateDir, "supervisor.env")
-	req := types.CreateSessionRequest{
-		ID: sessionID, Workspace: realWorkspace, Policy: policyName, WorkspaceMode: workspaceMode,
-		Home: userHomeDir(), RuntimeHomeMode: runtimeHomeMode, EnvBaseMode: envBaseMode, EnvInherit: envInherit,
-	}
-	if len(realWorkspaces) > 1 {
-		for _, path := range realWorkspaces {
-			req.WorkspaceRoots = append(req.WorkspaceRoots, types.WorkspaceRoot{Path: path})
-		}
-	}
-	if workspaceMode == string(types.WorkspaceModeShadow) {
-		req.Shadow = &types.CreateShadowOptions{KeepOnDestroy: true}
-	} else if workspaceMode == string(types.WorkspaceModeDirect) {
-		realPaths := true
-		req.RealPaths = &realPaths
-	}
 	launch := buildDetachedSupervisorLaunch(detachedSupervisorLaunchRequest{
 		Exe:            exe,
 		Args:           detachedSupervisorRunArgs(stateDir, sockPath, configPath),
@@ -948,7 +938,7 @@ func newSessionRecoverCmd() *cobra.Command {
 	return cmd
 }
 
-func recoverDetachedSession(ctx context.Context, sessionID string) (detached.RuntimeStatus, error) {
+func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detached.RuntimeStatus, error) {
 	meta, stateDir, err := readSupervisorMetadata(sessionID)
 	if err != nil {
 		return detached.RuntimeStatus{}, err
@@ -1143,7 +1133,7 @@ func validateDetachedStopSocket(meta supervisorMetadata, info os.FileInfo) error
 	return nil
 }
 
-func stopDetachedSessionExact(ctx context.Context, sessionID string) error {
+func stopNativeDetachedSessionExact(ctx context.Context, sessionID string) error {
 	if err := validateDetachedSessionID(sessionID); err != nil {
 		return err
 	}
@@ -1151,6 +1141,21 @@ func stopDetachedSessionExact(ctx context.Context, sessionID string) error {
 	if err != nil {
 		return err
 	}
+	return stopNativeDetachedRuntimeInstanceExact(ctx, stateDir, meta)
+}
+
+func stopNativeDetachedRuntimeInstanceExact(ctx context.Context, stateDir string, expected supervisorMetadata) error {
+	if err := validateDetachedSessionID(expected.SessionID); err != nil {
+		return err
+	}
+	meta, actualStateDir, err := readSupervisorMetadata(expected.SessionID)
+	if err != nil {
+		return err
+	}
+	if filepath.Clean(actualStateDir) != filepath.Clean(stateDir) || !sameSupervisorIncarnation(meta, expected) {
+		return fmt.Errorf("detached stop exact incarnation mismatch for %s", expected.SessionID)
+	}
+	sessionID := expected.SessionID
 	manifest, manifestErr := detached.ReadRecoveryManifest(stateDir)
 	if err := validateDetachedStopAuthority(sessionID, stateDir, meta, manifest, manifestErr); err != nil {
 		return err
@@ -1240,6 +1245,14 @@ func stopDetachedSessionExact(ctx context.Context, sessionID string) error {
 		_ = os.Remove(manifest.Launch.EnvironmentFile)
 	}
 	return nil
+}
+
+func sameSupervisorIncarnation(current, expected supervisorMetadata) bool {
+	return current.SessionID == expected.SessionID && current.ProtocolVersion == expected.ProtocolVersion &&
+		current.Generation == expected.Generation && current.IncarnationID == expected.IncarnationID &&
+		current.OwnerPID == expected.OwnerPID && current.OwnerStartIdentity == expected.OwnerStartIdentity &&
+		current.BootID == expected.BootID && current.SupervisorSock == expected.SupervisorSock &&
+		current.SystemdUnit == expected.SystemdUnit
 }
 
 func isExactDetachedSessionNotFound(err error, meta supervisorMetadata) bool {

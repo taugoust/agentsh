@@ -211,6 +211,11 @@ pkgs.testers.runNixOSTest {
       assert recovered["incarnation_id"] != first_incarnation, recovered
       assert int(recovered["owner_pid"]) != first_owner_pid, recovered
       assert recovered["created_at"] == first_created_at, recovered
+      machine.wait_until_succeeds(
+          "jq -e --arg iid " + shlex.quote(recovered["incarnation_id"]) +
+          " '.identity.incarnation_id == $iid and .state == \"ready\"' " +
+          shlex.quote(state_dir + "/runtime-provider.json")
+      )
 
       status = api("GET", "/api/v1/detached/status")
       assert status["session_id"] == session_id, status
