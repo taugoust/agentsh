@@ -65,6 +65,9 @@ type fakeInstance struct {
 	cleanupCanceled bool
 	controlPlane    ControlPlaneSnapshot
 	controlPlaneErr error
+	stopStarted     chan struct{}
+	stopRelease     <-chan struct{}
+	stopSignalOnce  sync.Once
 }
 
 func (i *fakeInstance) Identity() Identity { return i.identity }
@@ -83,10 +86,23 @@ func (i *fakeInstance) ControlPlane(context.Context) (ControlPlaneSnapshot, erro
 }
 func (i *fakeInstance) Stop(ctx context.Context, _ StopReason) error {
 	i.mu.Lock()
-	defer i.mu.Unlock()
 	i.stops++
 	i.cleanupCanceled = i.cleanupCanceled || ctx.Err() != nil
-	return i.stopErr
+	started := i.stopStarted
+	release := i.stopRelease
+	err := i.stopErr
+	i.mu.Unlock()
+	if started != nil {
+		i.stopSignalOnce.Do(func() { close(started) })
+	}
+	if release != nil {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return err
 }
 func (i *fakeInstance) Destroy(ctx context.Context) error {
 	i.mu.Lock()
@@ -320,6 +336,95 @@ func TestControllerStopCompletesAfterCallerCancellation(t *testing.T) {
 	}
 	if instance.stops != 1 || instance.destroys != 1 {
 		t.Fatalf("idempotent stop repeated cleanup")
+	}
+}
+
+func TestControllerFailedStartedCleanupCommitsStoppingAndRejectsRecovery(t *testing.T) {
+	request, provider, instance := readyFixture(t)
+	provider.startErr = errors.New("provider start failed")
+	instance.stopErr = errors.New("stop failed")
+	instance.stopStarted = make(chan struct{})
+	release := make(chan struct{})
+	instance.stopRelease = release
+	controller := Controller{CleanupTimeout: time.Second}
+	done := make(chan error, 1)
+	go func() {
+		_, err := controller.Start(context.Background(), provider, request)
+		done <- err
+	}()
+	<-instance.stopStarted
+	manifest, err := ReadManifest(request.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.State != StateStopping || manifest.CleanupComplete || manifest.Identity != instance.identity || manifest.Endpoint != instance.endpoint {
+		t.Fatalf("cleanup intent manifest=%+v", manifest)
+	}
+	if _, err := controller.Recover(context.Background(), provider, request.StateDir, manifest); err == nil || !strings.Contains(err.Error(), "cannot be recovered") {
+		t.Fatalf("Recover error=%v", err)
+	}
+	if provider.recovers != 0 {
+		t.Fatalf("provider recovery calls=%d", provider.recovers)
+	}
+	close(release)
+	if err := <-done; err == nil || !strings.Contains(err.Error(), "provider start failed") || !strings.Contains(err.Error(), "stop failed") {
+		t.Fatalf("Start error=%v", err)
+	}
+	manifest, err = ReadManifest(request.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.State != StateStopping || manifest.CleanupComplete {
+		t.Fatalf("failed cleanup manifest=%+v", manifest)
+	}
+}
+
+func TestControllerUnboundFailedCleanupCannotBeRecovered(t *testing.T) {
+	request, provider, instance := readyFixture(t)
+	provider.startErr = errors.New("provider start failed")
+	instance.identity = Identity{ContractVersion: ContractVersion, Provider: NativeProvider, Profile: DefaultProfile, SessionID: "other", Generation: 1, IncarnationID: "other"}
+	instance.stopErr = errors.New("stop failed")
+	_, err := (Controller{CleanupTimeout: time.Second}).Start(context.Background(), provider, request)
+	if err == nil {
+		t.Fatal("mismatched failed start succeeded")
+	}
+	manifest, readErr := ReadManifest(request.StateDir)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if manifest.State != StateFailed || manifest.CleanupComplete || manifest.Identity != (Identity{}) || manifest.Endpoint != (Endpoint{}) {
+		t.Fatalf("unbound cleanup manifest=%+v", manifest)
+	}
+	opens, recovers := provider.opens, provider.recovers
+	if _, err := (Controller{CleanupTimeout: time.Second}).Recover(context.Background(), provider, request.StateDir, manifest); err == nil || !strings.Contains(err.Error(), "unbound incomplete cleanup") {
+		t.Fatalf("Recover error=%v", err)
+	}
+	if provider.opens != opens || provider.recovers != recovers {
+		t.Fatalf("provider called during refused recovery opens=%d recovers=%d", provider.opens, provider.recovers)
+	}
+}
+
+func TestControllerRecoverAllowsProviderReportedFailedRuntime(t *testing.T) {
+	request, provider, instance := readyFixture(t)
+	manifest := NewManifest(request, time.Now().UTC())
+	manifest.State = StateFailed
+	manifest.Identity = instance.identity
+	manifest.Endpoint = instance.endpoint
+	manifest.CleanupComplete = false
+	manifest.LastError = "runtime crashed"
+	if err := WriteManifest(request.StateDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest, _ = ReadManifest(request.StateDir)
+	provider.openErr = errors.New("old incarnation unavailable")
+	instance.identity.Generation = 2
+	instance.identity.IncarnationID = "incarnation-2"
+	instance.status = Status{Identity: instance.identity, Endpoint: instance.endpoint, State: StateReady, Ready: true, Recoverable: true}
+	if _, err := (Controller{CleanupTimeout: time.Second}).Recover(context.Background(), provider, request.StateDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if provider.recovers != 1 {
+		t.Fatalf("recover calls=%d", provider.recovers)
 	}
 }
 

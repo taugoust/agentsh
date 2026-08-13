@@ -129,6 +129,9 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 		if current.State == StateStopping || current.State == StateStopped {
 			return fmt.Errorf("runtime session %s is %s and cannot be recovered", current.SessionID, current.State)
 		}
+		if current.State == StateFailed && !current.CleanupComplete && !manifestHasExactRuntime(current) {
+			return fmt.Errorf("runtime session %s has unbound incomplete cleanup and cannot be recovered", current.SessionID)
+		}
 		return nil
 	}); err != nil {
 		return nil, err
@@ -326,33 +329,112 @@ func (c Controller) failWithoutInstance(stateDir string, manifest Manifest, caus
 }
 
 func (c Controller) failStarted(stateDir string, manifest Manifest, instance Instance, reason StopReason, cause error) error {
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), c.cleanupTimeout())
-	defer cancel()
-	stopErr := instance.Stop(cleanupCtx, reason)
-	destroyErr := instance.Destroy(cleanupCtx)
-	cleanupErr := errors.Join(stopErr, destroyErr)
-	manifest.State = StateFailed
+	original := manifest
 	identity := instance.Identity()
 	endpoint := instance.Endpoint()
-	if identity.ValidateComplete() == nil && identity.Provider == manifest.Provider && identity.Profile == manifest.Profile && identity.SessionID == manifest.SessionID {
-		manifest.Identity = identity
-		if endpoint.Validate() == nil {
-			manifest.Endpoint = endpoint
-		}
+	bindingErr := identity.ValidateComplete()
+	if bindingErr == nil && (identity.Provider != manifest.Provider || identity.Profile != manifest.Profile || identity.SessionID != manifest.SessionID) {
+		bindingErr = fmt.Errorf("runtime provider returned a different exact identity")
 	}
-	manifest.LastError = boundedError(errors.Join(cause, cleanupErr))
-	manifest.CleanupComplete = cleanupErr == nil
-	writeErr := WithLifecycleLock(stateDir, func() error {
+	if bindingErr == nil {
+		bindingErr = endpoint.Validate()
+	}
+
+	intent := manifest
+	intent.LastError = boundedError(errors.Join(cause, bindingErr))
+	intent.CleanupComplete = false
+	if bindingErr == nil {
+		// Exact cleanup intent is absorbing and retryable through Controller.Stop.
+		intent.State = StateStopping
+		intent.Identity = identity
+		intent.Endpoint = endpoint
+	} else {
+		// Never bind cleanup debt to an incomplete or substituted identity.
+		intent.State = StateFailed
+		intent.Identity = Identity{}
+		intent.Endpoint = Endpoint{}
+	}
+
+	var committed Manifest
+	commitErr := WithLifecycleLock(stateDir, func() error {
 		current, err := ReadManifest(stateDir)
 		if err != nil {
 			return err
 		}
 		if current.State == StateStopping || current.State == StateStopped {
-			return nil
+			return fmt.Errorf("runtime session %s committed stop while handling provider failure", current.SessionID)
 		}
-		return WriteManifest(stateDir, manifest)
+		if !sameManifestLineage(current, original) {
+			return fmt.Errorf("runtime-provider manifest changed before failed-instance cleanup")
+		}
+		if bindingErr == nil {
+			if current.Identity.Generation > identity.Generation ||
+				(current.Identity.Generation == identity.Generation && current.Identity.IncarnationID != "" && current.Identity != identity) ||
+				(current.Identity.Generation == identity.Generation && current.Endpoint != (Endpoint{}) && current.Endpoint != endpoint) {
+				return fmt.Errorf("runtime-provider incarnation changed before failed-instance cleanup")
+			}
+		} else if current.Identity != original.Identity || current.Endpoint != original.Endpoint {
+			return fmt.Errorf("runtime-provider incarnation changed before unbound cleanup")
+		}
+		if err := WriteManifest(stateDir, intent); err != nil {
+			return err
+		}
+		committed, err = ReadManifest(stateDir)
+		return err
 	})
-	return errors.Join(cause, cleanupErr, writeErr)
+
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), c.cleanupTimeout())
+	stopErr := instance.Stop(cleanupCtx, reason)
+	destroyErr := instance.Destroy(cleanupCtx)
+	cancel()
+	cleanupErr := errors.Join(stopErr, destroyErr)
+	if commitErr != nil {
+		return errors.Join(cause, bindingErr, commitErr, cleanupErr)
+	}
+
+	replacement := committed
+	replacement.LastError = boundedError(errors.Join(cause, bindingErr, cleanupErr))
+	switch {
+	case cleanupErr == nil:
+		replacement.State = StateFailed
+		replacement.CleanupComplete = true
+		if bindingErr != nil {
+			replacement.Identity = original.Identity
+			replacement.Endpoint = original.Endpoint
+		}
+	case bindingErr == nil:
+		replacement.State = StateStopping
+		replacement.CleanupComplete = false
+	default:
+		replacement.State = StateFailed
+		replacement.CleanupComplete = false
+	}
+	writeErr := WithLifecycleLock(stateDir, func() error {
+		return writeManifestIfRevisionCurrent(stateDir, committed, replacement)
+	})
+	return errors.Join(cause, bindingErr, cleanupErr, writeErr)
+}
+
+func manifestHasExactRuntime(manifest Manifest) bool {
+	return validateIdentityForManifest(manifest.Identity, manifest) == nil && manifest.Endpoint.Validate() == nil
+}
+
+func sameManifestLineage(current, supplied Manifest) bool {
+	return current.SchemaVersion == supplied.SchemaVersion && current.ContractVersion == supplied.ContractVersion &&
+		current.Provider == supplied.Provider && current.Profile == supplied.Profile &&
+		current.SessionID == supplied.SessionID && current.StateDir == supplied.StateDir &&
+		current.CreatedAt.Equal(supplied.CreatedAt)
+}
+
+func writeManifestIfRevisionCurrent(stateDir string, expected, replacement Manifest) error {
+	current, err := ReadManifest(stateDir)
+	if err != nil {
+		return err
+	}
+	if !sameManifestRevision(current, expected) {
+		return fmt.Errorf("runtime-provider manifest changed during failed-instance cleanup")
+	}
+	return WriteManifest(stateDir, replacement)
 }
 
 func sameManifestRevision(current, supplied Manifest) bool {
