@@ -84,5 +84,6 @@ func (w *Workspace) AcceptReviewed(ctx context.Context, generation uint64, hash 
 	return fmt.Errorf("unsupported")
 }
 func (w *Workspace) Reject(ctx context.Context) error { return fmt.Errorf("unsupported") }
+func (w *Workspace) CleanupFinalized() error          { return fmt.Errorf("unsupported") }
 func (w *Workspace) StateValue() string               { return w.State }
 func (w *Workspace) Close(ctx context.Context) error  { return nil }

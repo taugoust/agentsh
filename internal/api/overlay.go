@@ -136,6 +136,10 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		if err := sw.CleanupFinalized(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace accepted but finalized shadow cleanup failed"})
+			return
+		}
 		writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 		return
 	}
@@ -220,6 +224,10 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace rejected but durable finalized state could not be recorded"})
 				return
 			}
+		}
+		if err := sw.CleanupFinalized(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace rejected but finalized shadow cleanup failed"})
+			return
 		}
 		writeJSON(w, http.StatusOK, a.sessionSnapshot(s))
 		return

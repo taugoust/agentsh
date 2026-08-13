@@ -460,7 +460,7 @@ func (s *Session) releaseExecution(lease *ExecutionLease) {
 		s.currentSpanID = ""
 		s.currentTraceFlags = ""
 	}
-	if s.execActiveCount == 0 && s.State == types.SessionStateBusy {
+	if s.execActiveCount == 0 && s.workspaceActivities == 0 && s.State == types.SessionStateBusy {
 		s.State = types.SessionStateReady
 	}
 	s.LastActivity = now

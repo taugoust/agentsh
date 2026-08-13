@@ -706,6 +706,18 @@ func (w *Workspace) Reject(ctx context.Context) error {
 	return nil
 }
 
+func (w *Workspace) CleanupFinalized() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.State != StateAccepted && w.State != StateRejected {
+		return ErrInactive
+	}
+	if err := cleanup.RemoveAllWritable(filepath.Dir(w.Work)); err != nil {
+		return fmt.Errorf("remove finalized shadow dir: %w", err)
+	}
+	return nil
+}
+
 func (w *Workspace) StateValue() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()

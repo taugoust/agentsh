@@ -308,12 +308,7 @@ func (a *App) SetDetachedRuntime(runtime *detached.Runtime) {
 			identity := detachedtransport.Identity{
 				SessionID: status.SessionID, Generation: status.Generation, IncarnationID: status.IncarnationID,
 			}
-			sequence := a.detachedControl.NextSequence(identity)
-			record, err := detachedtransport.NewApprovalRequest(sequence, request)
-			if err != nil {
-				return err
-			}
-			_, err = a.detachedControl.Put(identity, record)
+			_, err := a.detachedControl.AppendApproval(identity, request)
 			return err
 		})
 		a.approvals.SetScopedPersistenceHook(func(sessionID string, decisions []approvals.ScopedDecision) {

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/agentsh/agentsh/internal/approvals"
 )
 
 // Journal is a bounded, idempotent replay buffer. A production remote adapter
@@ -63,6 +65,39 @@ func (j *Journal) Put(identity Identity, record Record) (bool, error) {
 	j.order = append(j.order, key)
 	j.last[identity] = record.Sequence
 	return true, nil
+}
+
+func (j *Journal) AppendApproval(identity Identity, request approvals.Request) (Record, error) {
+	if j == nil {
+		return Record{}, fmt.Errorf("detached transport journal is nil")
+	}
+	if err := identity.Validate(); err != nil {
+		return Record{}, err
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	record, err := NewApprovalRequest(j.last[identity]+1, request)
+	if err != nil {
+		return Record{}, err
+	}
+	key := journalKey(identity, record)
+	if existing, ok := j.records[key]; ok {
+		if existing.Digest != record.Digest {
+			return Record{}, fmt.Errorf("conflicting detached transport replay for %s", record.ID)
+		}
+		return cloneRecord(existing)
+	}
+	if len(j.records) >= j.max {
+		return Record{}, fmt.Errorf("detached transport journal is full")
+	}
+	cloned, err := cloneRecord(record)
+	if err != nil {
+		return Record{}, err
+	}
+	j.records[key] = cloned
+	j.order = append(j.order, key)
+	j.last[identity] = record.Sequence
+	return cloneRecord(record)
 }
 
 func (j *Journal) NextSequence(identity Identity) uint64 {
