@@ -94,9 +94,10 @@ type App struct {
 
 	detachedRouteMu     sync.Mutex
 	detachedRoutes      map[string]detachedSupervisor
-	detachedApprovals   *detachedApprovalStore
+	detachedRelays      map[detachedtransport.Identity]*detachedRelay
 	detachedRuntime     *detached.Runtime
 	detachedControl     *detachedtransport.Journal
+	detachedResolutions *detachedtransport.ResolutionInbox
 	detachedStopCh      chan struct{}
 	detachedStopOnce    sync.Once
 	detachedLifecycleMu sync.Mutex
@@ -248,8 +249,9 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 		approvals:                  approvalsMgr,
 		sessionEvents:              newSessionEventStore(),
 		detachedRoutes:             make(map[string]detachedSupervisor),
-		detachedApprovals:          newDetachedApprovalStore(),
+		detachedRelays:             make(map[detachedtransport.Identity]*detachedRelay),
 		detachedControl:            detachedtransport.NewJournal(4096),
+		detachedResolutions:        detachedtransport.NewResolutionInbox(4096),
 		detachedStopCh:             make(chan struct{}),
 		lifecycleCtx:               lifecycleCtx,
 		lifecycleCancel:            lifecycleCancel,
@@ -309,6 +311,17 @@ func (a *App) SetDetachedRuntime(runtime *detached.Runtime) {
 				SessionID: status.SessionID, Generation: status.Generation, IncarnationID: status.IncarnationID,
 			}
 			_, err := a.detachedControl.AppendApproval(identity, request)
+			return err
+		})
+		a.approvals.SetDetachedTerminalObserver(func(_ context.Context, request approvals.Request, resolution approvals.Resolution) error {
+			status := runtime.RuntimeStatus()
+			identity := detachedtransport.Identity{
+				SessionID: status.SessionID, Generation: status.Generation, IncarnationID: status.IncarnationID,
+			}
+			_, err := a.detachedControl.AppendResolution(identity, request.ID, resolution)
+			if err != nil {
+				_ = runtime.MarkFailed("persist detached approval terminal record: " + err.Error())
+			}
 			return err
 		})
 		a.approvals.SetScopedPersistenceHook(func(sessionID string, decisions []approvals.ScopedDecision) {
@@ -505,10 +518,6 @@ func (a *App) Router() http.Handler {
 
 		r.Post("/detached-sessions/{id}/session-events", a.publishDetachedSessionEvent)
 		r.Get("/detached-sessions/{id}/session-events/question-answers/{qid}", a.getDetachedSessionQuestionAnswer)
-		r.Get("/detached-sessions/{id}/approvals", a.listDetachedSessionApprovals)
-		r.Post("/detached-sessions/{id}/approvals", a.registerDetachedApproval)
-		r.Get("/detached-sessions/{id}/approvals/{approvalID}/resolution", a.getDetachedApprovalResolution)
-		r.Post("/detached-sessions/{id}/approvals/{approvalID}/resolution", a.resolveDetachedApprovalFromSession)
 
 		r.Group(func(r chi.Router) {
 			r.Use(a.requireRoles("approver", "admin"))
@@ -1919,7 +1928,6 @@ func (a *App) listApprovals(w http.ResponseWriter, r *http.Request) {
 			out = append(out, item)
 		}
 	}
-	out = append(out, a.listPushedDetachedApprovals()...)
 	out = append(out, a.listDetachedApprovals(r.Context())...)
 	writeJSON(w, http.StatusOK, out)
 }
@@ -1935,12 +1943,8 @@ func (a *App) resolveApproval(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, status, body)
 		return
 	}
-	if status, body, handled := a.resolvePushedDetachedApproval(id, raw); handled {
+	if status, body, handled := a.resolveDetachedControlApproval(r.Context(), id, raw); handled {
 		writeJSON(w, status, body)
-		return
-	}
-	if a.forwardDetachedRaw(r.Context(), escapedAPIPath("approvals", id), raw) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
 	writeJSON(w, http.StatusNotFound, map[string]any{"error": "approval not found"})

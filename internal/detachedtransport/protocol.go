@@ -1,7 +1,7 @@
 // Package detachedtransport defines the versioned, transport-neutral exchange
 // used to mirror detached approvals and deliver operator resolutions. Native
-// deployments may carry it over HTTP/Unix sockets; VM providers can implement
-// the same contract over an authenticated host/guest channel.
+// deployments carry it over an authenticated Unix socket; VM providers can
+// implement the same contract over an authenticated host/guest channel.
 package detachedtransport
 
 import (
@@ -15,7 +15,10 @@ import (
 	"github.com/agentsh/agentsh/internal/approvals"
 )
 
-const Version = 1
+const (
+	Version            = 1
+	ControlTokenHeader = "X-AgentSH-Detached-Control-Token"
+)
 
 type Kind string
 
@@ -129,21 +132,29 @@ func (r Record) Validate() error {
 type ExchangeRequest struct {
 	Version  int      `json:"version"`
 	Identity Identity `json:"identity"`
-	Cursor   uint64   `json:"cursor"`
-	Limit    int      `json:"limit"`
-	Records  []Record `json:"records"`
+	// The credential is carried inside the typed schema as well as the protected
+	// transport header so non-HTTP host/guest adapters can enforce the same
+	// authentication contract.
+	Credential string `json:"credential"`
+	// Cursor acknowledges the highest supervisor-origin record consumed by the
+	// parent. Records use an independent parent-origin sequence space.
+	Cursor  uint64   `json:"cursor"`
+	Limit   int      `json:"limit"`
+	Records []Record `json:"records"`
 }
 
 type ExchangeResponse struct {
 	Version  int      `json:"version"`
 	Identity Identity `json:"identity"`
-	Ack      uint64   `json:"ack"`
-	Cursor   uint64   `json:"cursor"`
-	Records  []Record `json:"records"`
+	// Ack is the highest parent-origin resolution durably accepted by the
+	// supervisor. Cursor is the highest supervisor-origin record returned.
+	Ack     uint64   `json:"ack"`
+	Cursor  uint64   `json:"cursor"`
+	Records []Record `json:"records"`
 }
 
 func (r ExchangeRequest) Validate() error {
-	if r.Version != Version || r.Limit < 0 || r.Limit > 256 || len(r.Records) > 256 {
+	if r.Version != Version || strings.TrimSpace(r.Credential) == "" || strings.ContainsAny(r.Credential, "\r\n") || r.Limit < 0 || r.Limit > 256 || len(r.Records) > 256 {
 		return fmt.Errorf("detached transport exchange request is invalid")
 	}
 	if err := r.Identity.Validate(); err != nil {
@@ -154,8 +165,8 @@ func (r ExchangeRequest) Validate() error {
 		if err := record.Validate(); err != nil {
 			return err
 		}
-		if record.Approval != nil && record.Approval.SessionID != r.Identity.SessionID {
-			return fmt.Errorf("detached transport record session identity mismatch")
+		if record.Kind != KindApprovalResolved || record.Resolution == nil {
+			return fmt.Errorf("parent may send only detached approval resolutions")
 		}
 		if record.Sequence <= prior {
 			return fmt.Errorf("detached transport records are not strictly ordered")
@@ -165,19 +176,29 @@ func (r ExchangeRequest) Validate() error {
 	return nil
 }
 
-func (r ExchangeResponse) Validate(expected Identity, sentMax uint64) error {
-	if r.Version != Version || r.Identity != expected || r.Ack > sentMax || r.Cursor < r.Ack || len(r.Records) > 256 {
+func (r ExchangeResponse) Validate(expected Identity, sentMax, requestedCursor uint64) error {
+	if r.Version != Version || r.Identity != expected || r.Ack > sentMax || r.Cursor < requestedCursor || len(r.Records) > 256 {
 		return fmt.Errorf("detached transport exchange response is invalid")
 	}
-	var prior uint64
+	prior := requestedCursor
 	for _, record := range r.Records {
 		if err := record.Validate(); err != nil {
 			return err
+		}
+		if record.Approval != nil && record.Approval.SessionID != expected.SessionID {
+			return fmt.Errorf("detached transport record session identity mismatch")
 		}
 		if record.Sequence <= prior {
 			return fmt.Errorf("detached transport response records are not strictly ordered")
 		}
 		prior = record.Sequence
+	}
+	if len(r.Records) == 0 {
+		if r.Cursor != requestedCursor {
+			return fmt.Errorf("detached transport empty response advanced its cursor")
+		}
+	} else if r.Cursor != prior {
+		return fmt.Errorf("detached transport response cursor does not match its records")
 	}
 	return nil
 }

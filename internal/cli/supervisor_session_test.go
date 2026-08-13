@@ -305,7 +305,7 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 	credentialFile := filepath.Join("run", "agentsh", "instance-credential")
 	bootstrapResult := filepath.Join("run", "agentsh", "bootstrap.json")
 	recoveryToken := filepath.Join("run", "user", "1000", "agentsh-wrapper-control", "nethelper-recovery.token")
-	env := detachedSupervisorServiceEnv("token", []string{
+	env := detachedSupervisorServiceEnv([]string{
 		"PATH=bin",
 		"AGENTSH_NETHELPER_SOCKET=" + filepath.Join("run", "agentsh", "nethelper.sock"),
 		"AGENTSH_NETHELPER_INSTANCE_CREDENTIAL=must-not-enter-systemd-properties",
@@ -323,7 +323,6 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 		"AGENTSH_SUBAGENT_RUNTIME=pi",
 	}, nil)
 	want := []string{
-		"AGENTSH_DETACHED_EVENT_TOKEN=token",
 		"AGENTSH_NETHELPER_CREDENTIAL_FILE=" + credentialFile,
 		"AGENTSH_NETHELPER_SOCKET=" + filepath.Join("run", "agentsh", "nethelper.sock"),
 		"AGENTSH_NETHELPER_BOOTSTRAP_RESULT=" + bootstrapResult,
@@ -358,7 +357,7 @@ func TestDetachedSupervisorRestartEnvironmentSeparatesVolatileSecrets(t *testing
 }
 
 func TestDetachedSupervisorServiceEnvIncludesExplicitInheritedValues(t *testing.T) {
-	env := detachedSupervisorServiceEnv("token", []string{
+	env := detachedSupervisorServiceEnv([]string{
 		"PATH=bin",
 		"SSH_AUTH_SOCK=/tmp/ssh-example/agent.123",
 		"GIT_SSH_COMMAND=ssh -o IdentitiesOnly=no",
@@ -366,7 +365,6 @@ func TestDetachedSupervisorServiceEnvIncludesExplicitInheritedValues(t *testing.
 		"AGENTSH_DETACHED_EVENT_TOKEN=must-not-override-token",
 	}, []string{"SSH_AUTH_SOCK", "GIT_*", "AGENTSH_DETACHED_EVENT_TOKEN"})
 	want := []string{
-		"AGENTSH_DETACHED_EVENT_TOKEN=token",
 		"SSH_AUTH_SOCK=/tmp/ssh-example/agent.123",
 		"GIT_SSH_COMMAND=ssh -o IdentitiesOnly=no",
 	}

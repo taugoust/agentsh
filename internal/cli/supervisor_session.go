@@ -122,6 +122,13 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 		if beginErr != nil {
 			return beginErr
 		}
+		protectedMeta, _, metaErr := detached.ReadMetadataFromRoot(filepath.Dir(stateDir), runtimeState.Manifest().SessionID)
+		if metaErr != nil {
+			return fmt.Errorf("read detached control credential: %w", metaErr)
+		}
+		if err := runtimeState.SetControlCredential(protectedMeta.EventToken); err != nil {
+			return err
+		}
 		return syncNativeRuntimeProviderManifestLocked(stateDir, runtimeState.Metadata())
 	}); err != nil {
 		return err
@@ -239,9 +246,9 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error
 	cfg.Server.GRPC.Enabled = false
 	cfg.Server.UnixSocket.Enabled = true
 	cfg.Server.UnixSocket.Path = sockPath
-	if cfg.Server.UnixSocket.Permissions == "" {
-		cfg.Server.UnixSocket.Permissions = "0600"
-	}
+	// The socket carries exact-session lifecycle and approval authority. Never
+	// inherit a broader configured mode into the detached supervisor.
+	cfg.Server.UnixSocket.Permissions = "0600"
 	cfg.Auth.Type = "none"
 	cfg.Development.DisableAuth = true
 	cfg.Development.AllowUnauthenticatedUnixApprovals = true
@@ -365,8 +372,8 @@ var detachedSupervisorRuntimeEnvKeys = []string{
 	"AGENTSH_SUBAGENT_RUNTIME",
 }
 
-func detachedSupervisorServiceEnv(eventToken string, env, inheritPatterns []string) []string {
-	serviceEnv := []string{"AGENTSH_DETACHED_EVENT_TOKEN=" + eventToken}
+func detachedSupervisorServiceEnv(env, inheritPatterns []string) []string {
+	var serviceEnv []string
 	// Never put the helper credential value in systemd-run argv or transient
 	// unit properties. Installed services pass only the protected credential
 	// file path; the supervisor reads it before serving requests. The generic
@@ -374,7 +381,7 @@ func detachedSupervisorServiceEnv(eventToken string, env, inheritPatterns []stri
 	// cross the systemd-run boundary so spawn_subagent works in detached mode.
 	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile, detached.EnvNetworkEnforcementRequested}
 	keys = append(keys, detachedSupervisorRuntimeEnvKeys...)
-	seen := map[string]struct{}{"AGENTSH_DETACHED_EVENT_TOKEN": {}}
+	seen := map[string]struct{}{}
 	for _, key := range keys {
 		if value, ok := lookupEnvAssignment(env, key); ok && strings.TrimSpace(value) != "" {
 			serviceEnv = append(serviceEnv, key+"="+strings.TrimSpace(value))
@@ -689,7 +696,6 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 		detached.EnvSupervisorLaunchMode,
 	)
 	launcherEnv = append(launcherEnv,
-		"AGENTSH_DETACHED_EVENT_TOKEN="+eventToken,
 		detached.EnvNetworkEnforcementRequested+"="+string(detachedSupervisorNetworkRequest(preflightCfg)),
 	)
 	if strings.TrimSpace(helperCredential) != "" {
@@ -698,7 +704,7 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 	if strings.TrimSpace(credentialFile) != "" {
 		launcherEnv = append(launcherEnv, nethelper.EnvCredentialFile+"="+strings.TrimSpace(credentialFile))
 	}
-	serviceEnv := detachedSupervisorServiceEnv(eventToken, launcherEnv, envInherit)
+	serviceEnv := detachedSupervisorServiceEnv(launcherEnv, envInherit)
 	serviceEnvFile := filepath.Join(stateDir, "supervisor.env")
 	launch := buildDetachedSupervisorLaunch(detachedSupervisorLaunchRequest{
 		Exe:            exe,
@@ -715,8 +721,8 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 		serviceEnv = append(serviceEnv, detached.EnvSupervisorLaunchMode+"=systemd-user-delegated")
 	}
 	// Retain the protected, path-oriented bootstrap environment for exact
-	// process recreation. Credential values are never written here; only the
-	// detached event token and protected helper/recovery source paths are secret.
+	// process recreation. The detached control credential remains only in
+	// protected metadata and is never placed in a process environment.
 	if err := writeDetachedSupervisorEnvironmentFile(serviceEnvFile, serviceEnv); err != nil {
 		return nil, err
 	}

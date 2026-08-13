@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,8 +14,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/approvals"
 	"github.com/agentsh/agentsh/internal/client"
 	"github.com/agentsh/agentsh/internal/detached"
+	"github.com/agentsh/agentsh/internal/detachedtransport"
 )
 
 type detachedSupervisor struct {
@@ -125,8 +128,154 @@ func isHTTPBadRequest(err error) bool {
 	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusBadRequest
 }
 
+type detachedRelay struct {
+	mu         sync.Mutex
+	identity   detachedtransport.Identity
+	supervisor detachedSupervisor
+	cursor     uint64
+	ack        uint64
+	next       uint64
+	pending    map[string]approvals.Request
+	outbox     map[uint64]detachedtransport.Record
+	decisions  map[string]detachedtransport.Record
+}
+
+func (a *App) detachedRelayFor(sup detachedSupervisor) *detachedRelay {
+	identity := detachedtransport.Identity{SessionID: sup.Meta.SessionID, Generation: sup.Meta.Generation, IncarnationID: sup.Meta.IncarnationID}
+	a.detachedRouteMu.Lock()
+	defer a.detachedRouteMu.Unlock()
+	if a.detachedRelays == nil {
+		a.detachedRelays = make(map[detachedtransport.Identity]*detachedRelay)
+	}
+	for known := range a.detachedRelays {
+		if known.SessionID == identity.SessionID && known != identity {
+			delete(a.detachedRelays, known)
+		}
+	}
+	relay := a.detachedRelays[identity]
+	if relay == nil {
+		relay = &detachedRelay{identity: identity, supervisor: sup, pending: make(map[string]approvals.Request), outbox: make(map[uint64]detachedtransport.Record), decisions: make(map[string]detachedtransport.Record)}
+		a.detachedRelays[identity] = relay
+	} else {
+		relay.supervisor = sup
+	}
+	return relay
+}
+
+func (a *App) exchangeDetachedRelay(ctx context.Context, relay *detachedRelay) error {
+	if relay == nil {
+		return fmt.Errorf("detached relay is nil")
+	}
+	relay.mu.Lock()
+	defer relay.mu.Unlock()
+	records := make([]detachedtransport.Record, 0, len(relay.outbox))
+	for sequence := relay.ack + 1; sequence <= relay.next; sequence++ {
+		if record, ok := relay.outbox[sequence]; ok {
+			records = append(records, record)
+		}
+	}
+	request := detachedtransport.ExchangeRequest{Version: detachedtransport.Version, Identity: relay.identity, Credential: relay.supervisor.Meta.EventToken, Cursor: relay.cursor, Limit: 256, Records: records}
+	response, err := client.ExchangeDetachedControl(ctx, relay.supervisor.Socket, relay.supervisor.Meta.EventToken, request, a.detachedSupervisorTimeout())
+	if err != nil {
+		return err
+	}
+	for sequence := relay.ack + 1; sequence <= response.Ack; sequence++ {
+		delete(relay.outbox, sequence)
+	}
+	relay.ack = response.Ack
+	for _, record := range response.Records {
+		switch record.Kind {
+		case detachedtransport.KindApprovalRequested:
+			if record.Approval != nil {
+				relay.pending[record.ID] = *record.Approval
+			}
+		case detachedtransport.KindApprovalResolved:
+			delete(relay.pending, record.ID)
+		}
+	}
+	relay.cursor = response.Cursor
+	return nil
+}
+
 func (a *App) listDetachedApprovals(ctx context.Context) []any {
-	return a.listDetachedArray(ctx, "/api/v1/approvals")
+	supervisors := a.discoverDetachedSupervisors()
+	out := make([]any, 0)
+	for _, sup := range supervisors {
+		relay := a.detachedRelayFor(sup)
+		if err := a.exchangeDetachedRelay(ctx, relay); err != nil {
+			slog.Debug("detached control exchange failed", "session_id", sup.Meta.SessionID, "error", err)
+			continue
+		}
+		relay.mu.Lock()
+		for _, request := range relay.pending {
+			if request.ExpiresAt.IsZero() || request.ExpiresAt.After(time.Now().UTC()) {
+				out = append(out, request)
+			}
+		}
+		relay.mu.Unlock()
+	}
+	return out
+}
+
+func (a *App) resolveDetachedControlApproval(ctx context.Context, id string, raw []byte) (int, map[string]any, bool) {
+	resolution, err := decodeApprovalResolution(raw)
+	if err != nil {
+		return http.StatusBadRequest, map[string]any{"error": err.Error()}, true
+	}
+	var candidates []*detachedRelay
+	a.detachedRouteMu.Lock()
+	for _, relay := range a.detachedRelays {
+		relay.mu.Lock()
+		_, pending := relay.pending[id]
+		relay.mu.Unlock()
+		if pending {
+			candidates = append(candidates, relay)
+		}
+	}
+	a.detachedRouteMu.Unlock()
+	if len(candidates) == 0 {
+		// Refresh discovery once so resolution does not depend on a prior list.
+		_ = a.listDetachedApprovals(ctx)
+		a.detachedRouteMu.Lock()
+		for _, relay := range a.detachedRelays {
+			relay.mu.Lock()
+			_, pending := relay.pending[id]
+			relay.mu.Unlock()
+			if pending {
+				candidates = append(candidates, relay)
+			}
+		}
+		a.detachedRouteMu.Unlock()
+	}
+	if len(candidates) == 0 {
+		return 0, nil, false
+	}
+	if len(candidates) != 1 {
+		return http.StatusConflict, map[string]any{"error": "approval id is ambiguous across detached incarnations"}, true
+	}
+	relay := candidates[0]
+	relay.mu.Lock()
+	if existing, ok := relay.decisions[id]; ok {
+		if existing.Resolution == nil || !sameResolutionDecision(*existing.Resolution, resolution) {
+			relay.mu.Unlock()
+			return http.StatusConflict, map[string]any{"error": "conflicting detached approval resolution replay"}, true
+		}
+	} else {
+		relay.next++
+		record, makeErr := detachedtransport.NewApprovalResolution(relay.next, id, resolution)
+		if makeErr != nil {
+			relay.next--
+			relay.mu.Unlock()
+			return http.StatusBadRequest, map[string]any{"error": makeErr.Error()}, true
+		}
+		relay.decisions[id] = record
+		relay.outbox[record.Sequence] = record
+	}
+	relay.mu.Unlock()
+	if err := a.exchangeDetachedRelay(ctx, relay); err != nil {
+		return http.StatusServiceUnavailable, map[string]any{"error": "detached approval resolution is retained for replay: " + err.Error()}, true
+	}
+	return http.StatusOK, map[string]any{"ok": true}, true
 }
 
 func (a *App) listDetachedSessionEvents(ctx context.Context) []any {

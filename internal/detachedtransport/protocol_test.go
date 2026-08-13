@@ -38,7 +38,7 @@ func TestJournalReplaysExactRecordsAndRejectsConflictsAcrossExactIdentity(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := journal.Put(identity, late); err == nil || !strings.Contains(err.Error(), "monotonic") {
+	if _, err := journal.Put(identity, late); err == nil || !strings.Contains(err.Error(), "contiguous") {
 		t.Fatalf("late sequence error = %v", err)
 	}
 	got := journal.Since(identity, 0, 10, KindApprovalRequested)
@@ -49,15 +49,15 @@ func TestJournalReplaysExactRecordsAndRejectsConflictsAcrossExactIdentity(t *tes
 
 func TestExchangeStrictlyValidatesVersionDigestAndOrdering(t *testing.T) {
 	identity := Identity{SessionID: "session-one", Generation: 1, IncarnationID: "incarnation-one"}
-	first, err := NewApprovalRequest(2, approvals.Request{ID: "a", SessionID: identity.SessionID, Kind: "command", CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute)})
+	first, err := NewApprovalResolution(2, "a", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := NewApprovalRequest(1, approvals.Request{ID: "b", SessionID: identity.SessionID, Kind: "command", CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute)})
+	second, err := NewApprovalResolution(1, "b", approvals.Resolution{Approved: false, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := ExchangeRequest{Version: Version, Identity: identity, Limit: 16, Records: []Record{first, second}}
+	request := ExchangeRequest{Version: Version, Identity: identity, Credential: "credential", Limit: 16, Records: []Record{first, second}}
 	if err := request.Validate(); err == nil || !strings.Contains(err.Error(), "ordered") {
 		t.Fatalf("ordering error = %v", err)
 	}

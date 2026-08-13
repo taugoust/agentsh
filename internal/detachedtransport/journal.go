@@ -8,13 +8,12 @@ import (
 	"github.com/agentsh/agentsh/internal/approvals"
 )
 
-// Journal is a bounded, idempotent replay buffer. A production remote adapter
-// can place the same interface over durable storage; the native parent mirror
-// uses it to avoid ID-only collisions and conflicting duplicate replacement.
+// Journal is a bounded, idempotent replay buffer. Records are retained until
+// the peer acknowledges their contiguous sequence prefix.
 type Journal struct {
 	mu      sync.Mutex
-	records map[string]Record
-	order   []string
+	records map[Identity]map[uint64]Record
+	byID    map[Identity]map[string]uint64
 	max     int
 	last    map[Identity]uint64
 }
@@ -23,11 +22,16 @@ func NewJournal(max int) *Journal {
 	if max <= 0 {
 		max = 4096
 	}
-	return &Journal{records: make(map[string]Record), max: max, last: make(map[Identity]uint64)}
+	return &Journal{
+		records: make(map[Identity]map[uint64]Record),
+		byID:    make(map[Identity]map[string]uint64),
+		max:     max,
+		last:    make(map[Identity]uint64),
+	}
 }
 
-func journalKey(identity Identity, record Record) string {
-	return fmt.Sprintf("%s\x00%d\x00%s\x00%s\x00%s", identity.SessionID, identity.Generation, identity.IncarnationID, record.Kind, record.ID)
+func recordIDKey(record Record) string {
+	return string(record.Kind) + "\x00" + record.ID
 }
 
 // Put returns true when the record was newly inserted. Exact replay is
@@ -42,29 +46,57 @@ func (j *Journal) Put(identity Identity, record Record) (bool, error) {
 	if err := record.Validate(); err != nil {
 		return false, err
 	}
-	key := journalKey(identity, record)
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if existing, ok := j.records[key]; ok {
+	return j.putLocked(identity, record)
+}
+
+func (j *Journal) putLocked(identity Identity, record Record) (bool, error) {
+	idKey := recordIDKey(record)
+	if sequence, ok := j.byID[identity][idKey]; ok {
+		existing := j.records[identity][sequence]
 		if existing.Digest != record.Digest {
 			return false, fmt.Errorf("conflicting detached transport replay for %s", record.ID)
 		}
 		return false, nil
 	}
-	if record.Sequence <= j.last[identity] {
-		return false, fmt.Errorf("detached transport sequence is not monotonic")
+	if record.Sequence != j.last[identity]+1 {
+		return false, fmt.Errorf("detached transport sequence is not contiguous")
 	}
-	if len(j.records) >= j.max {
+	if j.recordCountLocked() >= j.max {
 		return false, fmt.Errorf("detached transport journal is full")
 	}
 	cloned, err := cloneRecord(record)
 	if err != nil {
 		return false, err
 	}
-	j.records[key] = cloned
-	j.order = append(j.order, key)
+	if j.records[identity] == nil {
+		j.records[identity] = make(map[uint64]Record)
+	}
+	if j.byID[identity] == nil {
+		j.byID[identity] = make(map[string]uint64)
+	}
+	j.records[identity][record.Sequence] = cloned
+	j.byID[identity][idKey] = record.Sequence
 	j.last[identity] = record.Sequence
 	return true, nil
+}
+
+func (j *Journal) appendLocked(identity Identity, idKey string, makeRecord func(uint64) (Record, error)) (Record, error) {
+	if sequence, ok := j.byID[identity][idKey]; ok {
+		return cloneRecord(j.records[identity][sequence])
+	}
+	if j.recordCountLocked() >= j.max {
+		return Record{}, fmt.Errorf("detached transport journal is full")
+	}
+	record, err := makeRecord(j.last[identity] + 1)
+	if err != nil {
+		return Record{}, err
+	}
+	if _, err := j.putLocked(identity, record); err != nil {
+		return Record{}, err
+	}
+	return cloneRecord(record)
 }
 
 func (j *Journal) AppendApproval(identity Identity, request approvals.Request) (Record, error) {
@@ -76,37 +108,36 @@ func (j *Journal) AppendApproval(identity Identity, request approvals.Request) (
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	record, err := NewApprovalRequest(j.last[identity]+1, request)
-	if err != nil {
-		return Record{}, err
-	}
-	key := journalKey(identity, record)
-	if existing, ok := j.records[key]; ok {
-		if existing.Digest != record.Digest {
-			return Record{}, fmt.Errorf("conflicting detached transport replay for %s", record.ID)
-		}
-		return cloneRecord(existing)
-	}
-	if len(j.records) >= j.max {
-		return Record{}, fmt.Errorf("detached transport journal is full")
-	}
-	cloned, err := cloneRecord(record)
-	if err != nil {
-		return Record{}, err
-	}
-	j.records[key] = cloned
-	j.order = append(j.order, key)
-	j.last[identity] = record.Sequence
-	return cloneRecord(record)
+	return j.appendLocked(identity, string(KindApprovalRequested)+"\x00"+request.ID, func(sequence uint64) (Record, error) {
+		return NewApprovalRequest(sequence, request)
+	})
 }
 
-func (j *Journal) NextSequence(identity Identity) uint64 {
+func (j *Journal) AppendResolution(identity Identity, approvalID string, resolution approvals.Resolution) (Record, error) {
+	if j == nil {
+		return Record{}, fmt.Errorf("detached transport journal is nil")
+	}
+	if err := identity.Validate(); err != nil {
+		return Record{}, err
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.appendLocked(identity, string(KindApprovalResolved)+"\x00"+approvalID, func(sequence uint64) (Record, error) {
+		return NewApprovalResolution(sequence, approvalID, resolution)
+	})
+}
+
+func (j *Journal) HighWater(identity Identity) uint64 {
 	if j == nil {
 		return 0
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return j.last[identity] + 1
+	return j.last[identity]
+}
+
+func (j *Journal) NextSequence(identity Identity) uint64 {
+	return j.HighWater(identity) + 1
 }
 
 func (j *Journal) Since(identity Identity, cursor uint64, limit int, kind Kind) []Record {
@@ -119,9 +150,12 @@ func (j *Journal) Since(identity Identity, cursor uint64, limit int, kind Kind) 
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	out := make([]Record, 0, limit)
-	for _, key := range j.order {
-		record := j.records[key]
-		if record.Sequence <= cursor || (kind != "" && record.Kind != kind) || key != journalKey(identity, record) {
+	for sequence := cursor + 1; sequence <= j.last[identity]; sequence++ {
+		record, ok := j.records[identity][sequence]
+		if !ok {
+			continue
+		}
+		if kind != "" && record.Kind != kind {
 			continue
 		}
 		cloned, err := cloneRecord(record)
@@ -134,6 +168,39 @@ func (j *Journal) Since(identity Identity, cursor uint64, limit int, kind Kind) 
 		}
 	}
 	return out
+}
+
+// Acknowledge removes the acknowledged contiguous prefix while preserving the
+// high-water mark so future records never reuse a sequence.
+func (j *Journal) Acknowledge(identity Identity, cursor uint64) error {
+	if j == nil {
+		return fmt.Errorf("detached transport journal is nil")
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if cursor > j.last[identity] {
+		return fmt.Errorf("detached transport acknowledgment exceeds journal high-water")
+	}
+	for sequence, record := range j.records[identity] {
+		if sequence > cursor {
+			continue
+		}
+		delete(j.records[identity], sequence)
+		delete(j.byID[identity], recordIDKey(record))
+	}
+	if len(j.records[identity]) == 0 {
+		delete(j.records, identity)
+		delete(j.byID, identity)
+	}
+	return nil
+}
+
+func (j *Journal) recordCountLocked() int {
+	count := 0
+	for _, records := range j.records {
+		count += len(records)
+	}
+	return count
 }
 
 func cloneRecord(record Record) (Record, error) {

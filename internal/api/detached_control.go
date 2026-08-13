@@ -1,16 +1,26 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/agentsh/agentsh/internal/approvals"
 	"github.com/agentsh/agentsh/internal/detachedtransport"
 )
 
 func (a *App) exchangeDetachedControl(w http.ResponseWriter, r *http.Request) {
-	if a == nil || a.detachedRuntime == nil || a.detachedControl == nil || !isUnixSocketRequest(r) {
+	if a == nil || a.detachedRuntime == nil || a.detachedControl == nil || a.detachedResolutions == nil || !isUnixSocketRequest(r) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "detached control exchange requires the exact local supervisor channel"})
+		return
+	}
+	metadata := a.detachedRuntime.Metadata()
+	token := strings.TrimSpace(r.Header.Get(detachedtransport.ControlTokenHeader))
+	if token == "" || strings.TrimSpace(metadata.EventToken) == "" || subtle.ConstantTimeCompare([]byte(token), []byte(metadata.EventToken)) != 1 {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid detached control credential"})
 		return
 	}
 	var request detachedtransport.ExchangeRequest
@@ -20,8 +30,17 @@ func (a *App) exchangeDetachedControl(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid detached control exchange"})
 		return
 	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid trailing detached control data"})
+		return
+	}
 	if err := request.Validate(); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(request.Credential), []byte(token)) != 1 {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "detached control schema credential mismatch"})
 		return
 	}
 	status := a.detachedRuntime.RuntimeStatus()
@@ -30,25 +49,28 @@ func (a *App) exchangeDetachedControl(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "detached control incarnation mismatch"})
 		return
 	}
-	ack := request.Cursor
-	for _, record := range request.Records {
-		if record.Kind != detachedtransport.KindApprovalResolved || record.Resolution == nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "parent may send only approval resolution records"})
-			return
-		}
+	ack, err := a.detachedResolutions.Apply(identity, request.Records, func(record detachedtransport.Record) bool {
 		resolution := *record.Resolution
 		target := approvals.Scope{
 			Kind: resolution.ScopeKind, Key: resolution.ScopeKey, Label: resolution.ScopeLabel,
 			Operation: resolution.ScopeOperation, Path: resolution.ScopePath, Rule: resolution.ScopeRule,
 			Prefix: resolution.ScopePrefix,
 		}
-		if !a.approvals.ResolveForSessionWithScopeTarget(identity.SessionID, record.ID, resolution.Approved, resolution.Reason, resolution.Scope, target) {
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": "approval not pending in exact detached incarnation"})
-			return
+		return a.approvals.ResolveForSessionWithScopeTarget(identity.SessionID, record.ID, resolution.Approved, resolution.Reason, resolution.Scope, target)
+	})
+	if err != nil {
+		code := http.StatusConflict
+		if strings.Contains(err.Error(), "not pending") {
+			code = http.StatusNotFound
 		}
-		ack = record.Sequence
+		writeJSON(w, code, map[string]any{"error": err.Error(), "ack": ack})
+		return
 	}
-	out := a.detachedControl.Since(identity, request.Cursor, request.Limit, detachedtransport.KindApprovalRequested)
+	if err := a.detachedControl.Acknowledge(identity, request.Cursor); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+		return
+	}
+	out := a.detachedControl.Since(identity, request.Cursor, request.Limit, "")
 	cursor := request.Cursor
 	if len(out) > 0 {
 		cursor = out[len(out)-1].Sequence

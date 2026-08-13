@@ -330,6 +330,22 @@ func (r *Runtime) Metadata() Metadata {
 	return cloneMetadata(r.metadata)
 }
 
+// SetControlCredential installs the protected detached-control credential read
+// from metadata by the trusted launcher. It is never sourced from environment.
+func (r *Runtime) SetControlCredential(credential string) error {
+	credential = strings.TrimSpace(credential)
+	if credential == "" || strings.ContainsAny(credential, "\x00\r\n") {
+		return fmt.Errorf("detached control credential is invalid")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if existing := strings.TrimSpace(r.metadata.EventToken); existing != "" && existing != credential {
+		return fmt.Errorf("detached control credential does not match protected metadata")
+	}
+	r.metadata.EventToken = credential
+	return nil
+}
+
 func (r *Runtime) persistLocked() error {
 	if err := WriteRecoveryManifest(r.stateDir, r.manifest); err != nil {
 		return err

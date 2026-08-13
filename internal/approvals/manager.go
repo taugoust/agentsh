@@ -77,7 +77,8 @@ type Manager struct {
 	// webauthnApprover handles WebAuthn approval challenges (webauthn mode only)
 	webauthnApprover *WebAuthnApprover
 
-	requestObserver func(context.Context, Request) error
+	requestObserver  func(context.Context, Request) error
+	terminalObserver func(context.Context, Request, Resolution) error
 
 	mu            sync.Mutex
 	pending       map[string]*pending
@@ -158,22 +159,41 @@ func (m *Manager) SetTOTPSecretLookup(lookup func(sessionID string) string) {
 }
 
 // SetDetachedRequestObserver installs the detached control-plane publication
-// seam. The observer owns transport/replay; approval semantics remain in this
-// manager. Installing it disables the legacy per-approval HTTP bridge.
+// seam. The observer owns transport/replay; approval semantics remain here.
 func (m *Manager) SetDetachedRequestObserver(observer func(context.Context, Request) error) {
 	m.mu.Lock()
 	m.requestObserver = observer
 	m.mu.Unlock()
 }
 
-func (m *Manager) notifyDetachedRequest(ctx context.Context, request Request) (bool, error) {
+// SetDetachedTerminalObserver publishes the immutable winning outcome after an
+// approval terminalizes, including cancellation and timeout.
+func (m *Manager) SetDetachedTerminalObserver(observer func(context.Context, Request, Resolution) error) {
+	m.mu.Lock()
+	m.terminalObserver = observer
+	m.mu.Unlock()
+}
+
+func (m *Manager) notifyDetachedRequest(ctx context.Context, request Request) error {
 	m.mu.Lock()
 	observer := m.requestObserver
 	m.mu.Unlock()
 	if observer == nil {
-		return false, nil
+		return nil
 	}
-	return true, observer(ctx, request)
+	return observer(ctx, request)
+}
+
+func (m *Manager) notifyDetachedTerminal(request Request, resolution Resolution) error {
+	m.mu.Lock()
+	observer := m.terminalObserver
+	m.mu.Unlock()
+	if observer == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return observer(ctx, request, resolution)
 }
 
 func (m *Manager) SetScopedPersistenceHook(hook func(sessionID string, decisions []ScopedDecision)) {
@@ -591,11 +611,8 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 	ExtendCommandTimeoutForApproval(ctx, m.timeout)
 
 	m.emitEvent(ctx, "approval_requested", req, nil)
-	observed, observerErr := m.notifyDetachedRequest(ctx, req)
-	if observerErr != nil {
+	if observerErr := m.notifyDetachedRequest(ctx, req); observerErr != nil {
 		_ = m.ResolveForSession(req.SessionID, req.ID, false, "detached control transport unavailable: "+observerErr.Error())
-	} else if !observed {
-		m.maybeStartDetachedBridge(ctx, req)
 	}
 
 	var cancelPrompt context.CancelFunc
@@ -631,6 +648,7 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 		cancelPrompt()
 	}
 	res := terminal.resolution
+	_ = m.notifyDetachedTerminal(req, res)
 	m.emitEvent(ctx, "approval_resolved", req, &res)
 	if terminal.cause == terminalCauseDecision {
 		m.setScopedFromRequest(ctx, req, res)

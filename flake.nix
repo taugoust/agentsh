@@ -529,8 +529,10 @@
             checkPhase = ''
               runHook preCheck
               go test ./internal/detachedtransport
+              go test ./internal/client -run '^TestExchangeDetachedControl'
               go test ./internal/approvals -run '^TestApprovalResolution'
-              go test ./internal/api -run '^TestDetached(Control|SessionsPush)'
+              go test ./internal/api -run '^TestDetachedControl'
+              go test ./internal/cli -run '^TestDetachedSupervisor(ServiceEnv|RestartEnvironment|BuildSystemdRun)'
               runHook postCheck
             '';
           });
