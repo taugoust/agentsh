@@ -6,15 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 )
 
 const (
-	detachedEventURLDefault = "http://127.0.0.1:18080"
-	detachedEventTokenEnv   = "AGENTSH_DETACHED_EVENT_TOKEN"
-	detachedEventURLEnv     = "AGENTSH_DETACHED_EVENT_URL"
+	detachedEventTokenEnv = "AGENTSH_DETACHED_EVENT_TOKEN"
+	detachedEventURLEnv   = "AGENTSH_DETACHED_EVENT_URL"
 )
 
 type detachedBridgeResolutionResponse struct {
@@ -30,7 +30,10 @@ func detachedBridgeConfig() (string, string, bool) {
 	}
 	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv(detachedEventURLEnv)), "/")
 	if baseURL == "" {
-		baseURL = detachedEventURLDefault
+		// A token alone no longer opts into ambient localhost callbacks. Native
+		// detached approval routing uses the authenticated supervisor channel;
+		// legacy callback mode must be selected explicitly by a trusted launcher.
+		return "", "", false
 	}
 	return baseURL, token, true
 }
@@ -86,8 +89,8 @@ func postDetachedApproval(ctx context.Context, client *http.Client, baseURL, tok
 	if err != nil {
 		return false
 	}
-	url := fmt.Sprintf("%s/api/v1/detached-sessions/%s/approvals", baseURL, pathEscape(req.SessionID))
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	endpoint := fmt.Sprintf("%s/api/v1/detached-sessions/%s/approvals", baseURL, url.PathEscape(req.SessionID))
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return false
 	}
@@ -102,8 +105,8 @@ func postDetachedApproval(ctx context.Context, client *http.Client, baseURL, tok
 }
 
 func getDetachedApprovalResolution(ctx context.Context, client *http.Client, baseURL, token string, req Request) (Resolution, bool) {
-	url := fmt.Sprintf("%s/api/v1/detached-sessions/%s/approvals/%s/resolution", baseURL, pathEscape(req.SessionID), pathEscape(req.ID))
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	endpoint := fmt.Sprintf("%s/api/v1/detached-sessions/%s/approvals/%s/resolution", baseURL, url.PathEscape(req.SessionID), url.PathEscape(req.ID))
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return Resolution{}, false
 	}
@@ -121,9 +124,4 @@ func getDetachedApprovalResolution(ctx context.Context, client *http.Client, bas
 		return Resolution{}, false
 	}
 	return body.Resolution, body.Resolved
-}
-
-func pathEscape(value string) string {
-	replacer := strings.NewReplacer("%", "%25", "/", "%2F", "?", "%3F", "#", "%23")
-	return replacer.Replace(value)
 }

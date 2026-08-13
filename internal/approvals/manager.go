@@ -77,6 +77,8 @@ type Manager struct {
 	// webauthnApprover handles WebAuthn approval challenges (webauthn mode only)
 	webauthnApprover *WebAuthnApprover
 
+	requestObserver func(context.Context, Request) error
+
 	mu            sync.Mutex
 	pending       map[string]*pending
 	scoped        map[string]map[string]ScopedDecision            // sessionID -> scopeKey -> decision
@@ -153,6 +155,25 @@ func New(mode string, timeout time.Duration, emit Emitter) *Manager {
 // Required when using TOTP approval mode.
 func (m *Manager) SetTOTPSecretLookup(lookup func(sessionID string) string) {
 	m.totpSecretLookup = lookup
+}
+
+// SetDetachedRequestObserver installs the detached control-plane publication
+// seam. The observer owns transport/replay; approval semantics remain in this
+// manager. Installing it disables the legacy per-approval HTTP bridge.
+func (m *Manager) SetDetachedRequestObserver(observer func(context.Context, Request) error) {
+	m.mu.Lock()
+	m.requestObserver = observer
+	m.mu.Unlock()
+}
+
+func (m *Manager) notifyDetachedRequest(ctx context.Context, request Request) (bool, error) {
+	m.mu.Lock()
+	observer := m.requestObserver
+	m.mu.Unlock()
+	if observer == nil {
+		return false, nil
+	}
+	return true, observer(ctx, request)
 }
 
 func (m *Manager) SetScopedPersistenceHook(hook func(sessionID string, decisions []ScopedDecision)) {
@@ -570,7 +591,12 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 	ExtendCommandTimeoutForApproval(ctx, m.timeout)
 
 	m.emitEvent(ctx, "approval_requested", req, nil)
-	m.maybeStartDetachedBridge(ctx, req)
+	observed, observerErr := m.notifyDetachedRequest(ctx, req)
+	if observerErr != nil {
+		_ = m.ResolveForSession(req.SessionID, req.ID, false, "detached control transport unavailable: "+observerErr.Error())
+	} else if !observed {
+		m.maybeStartDetachedBridge(ctx, req)
+	}
 
 	var cancelPrompt context.CancelFunc
 	promptCtx := ctx

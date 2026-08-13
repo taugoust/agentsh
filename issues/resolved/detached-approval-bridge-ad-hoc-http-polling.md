@@ -1,7 +1,7 @@
 # Replace detached approval bridge ad-hoc HTTP polling
 
 ## Status
-Open.
+Resolved.
 
 ## Problem
 Detached approval propagation uses an environment-token HTTP bridge with a localhost default, custom path escaping, and 500ms polling. This creates a second transport/protocol beside supervisor Unix forwarding and makes detached approval behavior dependent on ambient parent API reachability.
@@ -17,3 +17,6 @@ Define one detached supervisor event/approval transport. Prefer the existing aut
 
 ## Rough priority
 Medium.
+
+## Resolution
+Added a versioned transport-neutral detached control exchange schema and idempotent replay journal, introduced an approval-manager observer seam so new transports bypass the legacy per-approval poller, removed custom URL escaping, and bound compatibility mirror state to `(session, approval)` identities. Native Unix supervisor forwarding remains the default control path; the old callback bridge is retained only as an explicit compatibility fallback.

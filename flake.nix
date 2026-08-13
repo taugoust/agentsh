@@ -524,6 +524,17 @@
             '';
           });
 
+          detached-control-transport-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-detached-control-transport-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/detachedtransport
+              go test ./internal/approvals -run '^TestApprovalResolution'
+              go test ./internal/api -run '^TestDetachedSessionsPush'
+              runHook postCheck
+            '';
+          });
+
           runtime-provider-tests = go-unit-tests.overrideAttrs (_: {
             pname = "agentsh-runtime-provider-tests";
             checkPhase = ''

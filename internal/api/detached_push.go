@@ -1,7 +1,9 @@
 package api
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -13,16 +15,32 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+type detachedApprovalKey struct {
+	SessionID  string
+	ApprovalID string
+}
+
 type detachedApprovalStore struct {
-	mu          sync.Mutex
-	pending     map[string]approvals.Request
-	resolutions map[string]approvals.Resolution
+	mu                  sync.Mutex
+	pending             map[detachedApprovalKey]approvals.Request
+	resolutions         map[detachedApprovalKey]approvals.Resolution
+	requestFingerprints map[detachedApprovalKey]string
+}
+
+func detachedApprovalFingerprint(request approvals.Request) (string, error) {
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
 func newDetachedApprovalStore() *detachedApprovalStore {
 	return &detachedApprovalStore{
-		pending:     make(map[string]approvals.Request),
-		resolutions: make(map[string]approvals.Resolution),
+		pending:             make(map[detachedApprovalKey]approvals.Request),
+		resolutions:         make(map[detachedApprovalKey]approvals.Resolution),
+		requestFingerprints: make(map[detachedApprovalKey]string),
 	}
 }
 
@@ -47,15 +65,31 @@ func (s *detachedApprovalStore) resolve(approvalID, sessionID string, res approv
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	req, ok := s.pending[approvalID]
-	if !ok {
+	var key detachedApprovalKey
+	var req approvals.Request
+	if sessionID != "" {
+		key = detachedApprovalKey{SessionID: sessionID, ApprovalID: approvalID}
+		req = s.pending[key]
+	} else {
+		found := false
+		for candidate, pending := range s.pending {
+			if candidate.ApprovalID != approvalID {
+				continue
+			}
+			if found {
+				return false
+			}
+			key, req, found = candidate, pending, true
+		}
+		if !found {
+			return false
+		}
+	}
+	if req.ID == "" {
 		return false
 	}
-	if sessionID != "" && req.SessionID != sessionID {
-		return false
-	}
-	delete(s.pending, approvalID)
-	s.resolutions[approvalID] = res
+	delete(s.pending, key)
+	s.resolutions[key] = res
 	s.resolveCoveredBySessionScopeLocked(req, res, now)
 	return true
 }
@@ -71,17 +105,17 @@ func (s *detachedApprovalStore) resolveCoveredBySessionScopeLocked(source approv
 	if !ok {
 		return
 	}
-	for id, req := range s.pending {
-		if id == source.ID || req.SessionID != source.SessionID {
+	for key, req := range s.pending {
+		if key.ApprovalID == source.ID || req.SessionID != source.SessionID {
 			continue
 		}
 		if !req.ExpiresAt.IsZero() && req.ExpiresAt.Before(now) {
-			delete(s.pending, id)
+			delete(s.pending, key)
 			continue
 		}
 		if approvals.RequestCoveredByScope(req, granted) {
-			delete(s.pending, id)
-			s.resolutions[id] = res
+			delete(s.pending, key)
+			s.resolutions[key] = res
 		}
 	}
 }
@@ -188,9 +222,9 @@ func (a *App) listDetachedSessionApprovals(w http.ResponseWriter, r *http.Reques
 	a.detachedApprovals.mu.Lock()
 	defer a.detachedApprovals.mu.Unlock()
 	out := make([]approvals.Request, 0)
-	for id, req := range a.detachedApprovals.pending {
+	for key, req := range a.detachedApprovals.pending {
 		if req.ExpiresAt.Before(now) {
-			delete(a.detachedApprovals.pending, id)
+			delete(a.detachedApprovals.pending, key)
 			continue
 		}
 		if req.SessionID == sessionID {
@@ -226,9 +260,21 @@ func (a *App) registerDetachedApproval(w http.ResponseWriter, r *http.Request) {
 	if req.ExpiresAt.IsZero() {
 		req.ExpiresAt = now.Add(5 * time.Minute)
 	}
+	key := detachedApprovalKey{SessionID: sessionID, ApprovalID: req.ID}
+	fingerprint, err := detachedApprovalFingerprint(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid approval payload"})
+		return
+	}
 	a.detachedApprovals.mu.Lock()
-	if _, resolved := a.detachedApprovals.resolutions[req.ID]; !resolved {
-		a.detachedApprovals.pending[req.ID] = req
+	if existing, known := a.detachedApprovals.requestFingerprints[key]; known && existing != fingerprint {
+		a.detachedApprovals.mu.Unlock()
+		writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "conflicting detached approval replay"})
+		return
+	}
+	a.detachedApprovals.requestFingerprints[key] = fingerprint
+	if _, resolved := a.detachedApprovals.resolutions[key]; !resolved {
+		a.detachedApprovals.pending[key] = req
 	}
 	a.detachedApprovals.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -244,8 +290,9 @@ func (a *App) getDetachedApprovalResolution(w http.ResponseWriter, r *http.Reque
 	if !a.authorizeDetachedToken(w, r, sessionID) {
 		return
 	}
+	key := detachedApprovalKey{SessionID: sessionID, ApprovalID: approvalID}
 	a.detachedApprovals.mu.Lock()
-	res, ok := a.detachedApprovals.resolutions[approvalID]
+	res, ok := a.detachedApprovals.resolutions[key]
 	a.detachedApprovals.mu.Unlock()
 	if !ok {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "resolved": false})
@@ -284,9 +331,9 @@ func (a *App) listPushedDetachedApprovals() []any {
 	a.detachedApprovals.mu.Lock()
 	defer a.detachedApprovals.mu.Unlock()
 	out := make([]any, 0, len(a.detachedApprovals.pending))
-	for id, req := range a.detachedApprovals.pending {
+	for key, req := range a.detachedApprovals.pending {
 		if req.ExpiresAt.Before(now) {
-			delete(a.detachedApprovals.pending, id)
+			delete(a.detachedApprovals.pending, key)
 			continue
 		}
 		out = append(out, req)
