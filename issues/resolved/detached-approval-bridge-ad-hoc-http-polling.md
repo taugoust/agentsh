@@ -20,3 +20,5 @@ Medium.
 
 ## Resolution
 Added a versioned transport-neutral detached control exchange schema and idempotent replay journal, introduced an approval-manager observer seam so new transports bypass the legacy per-approval poller, removed custom URL escaping, and bound compatibility mirror state to `(session, approval)` identities. Native Unix supervisor forwarding remains the default control path; the old callback bridge is retained only as an explicit compatibility fallback.
+
+Implemented across `48cd054a`, `dec16f7e`, and `7c8e2304`.

@@ -23,3 +23,6 @@ MicroVM launch, Nix evaluation, QEMU arguments, guest protocol, workspace stagin
 
 ## Rough priority
 High. This is the native compatibility seam required before adding an external MicroVM provider.
+
+## Resolution
+Implemented in `29f56a52`, with provider-neutral frontend completion in `c082fb55` and exact startup cleanup hardening in `aff8221b`.

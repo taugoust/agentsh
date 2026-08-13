@@ -18,4 +18,4 @@ Add a review transaction: lock/quiesce session execution, compute and persist a 
 High.
 
 ## Resolution
-Implemented quiescent workspace-writer admission, content-addressed real/shadow review generations, mandatory fresh accept preconditions, independent bounded finalization, enriched audit events, and focused Nix coverage. Resolved by the commit that moved this issue to `issues/resolved/`.
+Implemented quiescent workspace-writer admission, content-addressed real/shadow review generations, mandatory fresh accept preconditions, independent bounded finalization, enriched audit events, and focused Nix coverage. Implemented across `e77dda67`, `f8da1575`, `7c8e2304`, `c1349b35`, and `aff8221b`.
