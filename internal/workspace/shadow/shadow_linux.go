@@ -39,8 +39,16 @@ var (
 )
 
 const (
-	reviewSchemaVersion = 1
-	reviewFileName      = "review.json"
+	reviewSchemaVersion       = 1
+	reviewFileName            = "review.json"
+	finalizationSchemaVersion = 1
+	finalizationFileName      = "finalization.json"
+
+	FinalizationAccept   = "accept"
+	FinalizationReject   = "reject"
+	FinalizationPrepared = "prepared"
+	FinalizationApplying = "applying"
+	FinalizationApplied  = "applied"
 )
 
 type Review struct {
@@ -52,6 +60,20 @@ type Review struct {
 	DiffHash      string    `json:"diff_hash"`
 	CreatedAt     time.Time `json:"created_at"`
 	Diff          []byte    `json:"-"`
+}
+
+type Finalization struct {
+	SchemaVersion    int       `json:"schema_version"`
+	ID               string    `json:"finalization_id"`
+	Action           string    `json:"action"`
+	Phase            string    `json:"phase"`
+	ReviewGeneration uint64    `json:"review_generation,omitempty"`
+	ReviewHash       string    `json:"review_hash,omitempty"`
+	BaseHash         string    `json:"base_hash,omitempty"`
+	ShadowHash       string    `json:"shadow_hash,omitempty"`
+	DiffHash         string    `json:"diff_hash,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	AppliedAt        time.Time `json:"applied_at,omitempty"`
 }
 
 type Options struct {
@@ -92,6 +114,7 @@ type Workspace struct {
 	diffExecutable  string
 	rsyncExecutable string
 	latestReview    Review
+	finalization    *Finalization
 }
 
 func Create(ctx context.Context, id string, real string, opts Options) (*Workspace, error) {
@@ -371,6 +394,9 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 	if err := workspace.loadReviewLocked(); err != nil {
 		return nil, err
 	}
+	if err := workspace.loadFinalizationLocked(); err != nil {
+		return nil, err
+	}
 	return workspace, nil
 }
 
@@ -378,17 +404,19 @@ func (w *Workspace) reviewPath() string {
 	return filepath.Join(filepath.Dir(w.Work), reviewFileName)
 }
 
-func (w *Workspace) persistReviewLocked(review Review) error {
-	persisted := review
-	persisted.Diff = nil
-	encoded, err := json.MarshalIndent(persisted, "", "  ")
+func (w *Workspace) finalizationPath() string {
+	return filepath.Join(filepath.Dir(w.Work), finalizationFileName)
+}
+
+func persistPrivateJSON(path, prefix string, value any) error {
+	encoded, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode shadow review: %w", err)
+		return err
 	}
-	path := w.reviewPath()
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".review-*.json")
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, prefix)
 	if err != nil {
-		return fmt.Errorf("create shadow review: %w", err)
+		return err
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
@@ -409,6 +437,31 @@ func (w *Workspace) persistReviewLocked(review Review) error {
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		return err
+	}
+	dirHandle, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	syncErr := dirHandle.Sync()
+	closeErr := dirHandle.Close()
+	return errors.Join(syncErr, closeErr)
+}
+
+func (w *Workspace) persistReviewLocked(review Review) error {
+	persisted := review
+	persisted.Diff = nil
+	if err := persistPrivateJSON(w.reviewPath(), ".review-*.json", persisted); err != nil {
+		return fmt.Errorf("persist shadow review: %w", err)
+	}
+	return nil
+}
+
+func (w *Workspace) persistFinalizationLocked() error {
+	if w.finalization == nil {
+		return fmt.Errorf("shadow finalization is absent")
+	}
+	if err := persistPrivateJSON(w.finalizationPath(), ".finalization-*.json", w.finalization); err != nil {
+		return fmt.Errorf("persist shadow finalization: %w", err)
 	}
 	return nil
 }
@@ -434,6 +487,42 @@ func (w *Workspace) loadReviewLocked() error {
 	return nil
 }
 
+func (w *Workspace) loadFinalizationLocked() error {
+	data, err := os.ReadFile(w.finalizationPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read retained shadow finalization: %w", err)
+	}
+	var finalization Finalization
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&finalization); err != nil {
+		return fmt.Errorf("decode retained shadow finalization: %w", err)
+	}
+	if finalization.SchemaVersion != finalizationSchemaVersion || strings.TrimSpace(finalization.ID) == "" ||
+		(finalization.Action != FinalizationAccept && finalization.Action != FinalizationReject) ||
+		(finalization.Phase != FinalizationPrepared && finalization.Phase != FinalizationApplying && finalization.Phase != FinalizationApplied) || finalization.CreatedAt.IsZero() {
+		return fmt.Errorf("retained shadow finalization is invalid")
+	}
+	if finalization.Action == FinalizationAccept && (finalization.ReviewGeneration == 0 || finalization.ReviewHash == "" || finalization.ShadowHash == "") {
+		return fmt.Errorf("retained shadow accept finalization is incomplete")
+	}
+	w.finalization = &finalization
+	switch finalization.Phase {
+	case FinalizationApplied:
+		if finalization.Action == FinalizationAccept {
+			w.State = StateAccepted
+		} else {
+			w.State = StateRejected
+		}
+	default:
+		w.State = StateActive
+	}
+	return nil
+}
+
 func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 	review, err := w.Review(ctx)
 	if err != nil {
@@ -445,7 +534,7 @@ func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
 func (w *Workspace) Review(ctx context.Context) (Review, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.State != StateActive {
+	if w.State != StateActive || w.finalization != nil {
 		return Review{}, ErrInactive
 	}
 	baseHash, shadowHash, err := w.treeHashesLocked(ctx)
@@ -649,7 +738,10 @@ func (w *Workspace) Accept(ctx context.Context) error {
 	if w.latestReview.Generation == 0 {
 		return ErrStaleReview
 	}
-	return w.acceptReviewedLocked(ctx, w.latestReview.Generation, w.latestReview.Hash)
+	if w.finalization == nil {
+		return fmt.Errorf("shadow accept requires a prepared finalization")
+	}
+	return w.applyFinalizationLocked(ctx, w.finalization.ID)
 }
 
 func (w *Workspace) ValidateReview(ctx context.Context, generation uint64, hash string) error {
@@ -658,14 +750,8 @@ func (w *Workspace) ValidateReview(ctx context.Context, generation uint64, hash 
 	return w.validateReviewLocked(ctx, generation, hash)
 }
 
-func (w *Workspace) AcceptReviewed(ctx context.Context, generation uint64, hash string) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.acceptReviewedLocked(ctx, generation, hash)
-}
-
 func (w *Workspace) validateReviewLocked(ctx context.Context, generation uint64, hash string) error {
-	if w.State != StateActive {
+	if w.State != StateActive || w.finalization != nil {
 		return ErrInactive
 	}
 	if generation == 0 || generation != w.latestReview.Generation || hash == "" || hash != w.latestReview.Hash {
@@ -681,10 +767,111 @@ func (w *Workspace) validateReviewLocked(ctx context.Context, generation uint64,
 	return nil
 }
 
-func (w *Workspace) acceptReviewedLocked(ctx context.Context, generation uint64, hash string) error {
+func (w *Workspace) PrepareAccept(ctx context.Context, finalizationID string, generation uint64, hash string) (Finalization, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if strings.TrimSpace(finalizationID) == "" {
+		return Finalization{}, fmt.Errorf("shadow finalization id is required")
+	}
+	if w.finalization != nil {
+		if w.finalization.ID == finalizationID && w.finalization.Action == FinalizationAccept && w.finalization.ReviewGeneration == generation && w.finalization.ReviewHash == hash {
+			return *w.finalization, nil
+		}
+		return Finalization{}, fmt.Errorf("a different shadow finalization is already prepared")
+	}
 	if err := w.validateReviewLocked(ctx, generation, hash); err != nil {
+		return Finalization{}, err
+	}
+	finalization := &Finalization{
+		SchemaVersion: finalizationSchemaVersion, ID: finalizationID, Action: FinalizationAccept, Phase: FinalizationPrepared,
+		ReviewGeneration: generation, ReviewHash: hash, BaseHash: w.latestReview.BaseHash,
+		ShadowHash: w.latestReview.ShadowHash, DiffHash: w.latestReview.DiffHash, CreatedAt: time.Now().UTC(),
+	}
+	w.finalization = finalization
+	if err := w.persistFinalizationLocked(); err != nil {
+		w.finalization = nil
+		return Finalization{}, err
+	}
+	return *finalization, nil
+}
+
+func (w *Workspace) PrepareReject(ctx context.Context, finalizationID string) (Finalization, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return Finalization{}, err
+	}
+	if strings.TrimSpace(finalizationID) == "" {
+		return Finalization{}, fmt.Errorf("shadow finalization id is required")
+	}
+	if w.finalization != nil {
+		if w.finalization.ID == finalizationID && w.finalization.Action == FinalizationReject {
+			return *w.finalization, nil
+		}
+		return Finalization{}, fmt.Errorf("a different shadow finalization is already prepared")
+	}
+	if w.State != StateActive {
+		return Finalization{}, ErrInactive
+	}
+	finalization := &Finalization{SchemaVersion: finalizationSchemaVersion, ID: finalizationID, Action: FinalizationReject, Phase: FinalizationPrepared, CreatedAt: time.Now().UTC()}
+	w.finalization = finalization
+	if err := w.persistFinalizationLocked(); err != nil {
+		w.finalization = nil
+		return Finalization{}, err
+	}
+	return *finalization, nil
+}
+
+func (w *Workspace) PendingFinalization() (Finalization, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalization == nil {
+		return Finalization{}, false
+	}
+	return *w.finalization, true
+}
+
+func (w *Workspace) ApplyFinalization(ctx context.Context, finalizationID string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.applyFinalizationLocked(ctx, finalizationID)
+}
+
+func (w *Workspace) ResumeFinalization(ctx context.Context, finalizationID string) error {
+	return w.ApplyFinalization(ctx, finalizationID)
+}
+
+func (w *Workspace) applyFinalizationLocked(ctx context.Context, finalizationID string) error {
+	if w.finalization == nil || w.finalization.ID != finalizationID {
+		return fmt.Errorf("shadow finalization identity mismatch")
+	}
+	if w.finalization.Phase == FinalizationApplied {
+		return nil
+	}
+	w.finalization.Phase = FinalizationApplying
+	if err := w.persistFinalizationLocked(); err != nil {
 		return err
 	}
+	switch w.finalization.Action {
+	case FinalizationReject:
+		w.State = StateRejected
+	case FinalizationAccept:
+		if err := w.applyAcceptLocked(ctx); err != nil {
+			return err
+		}
+		w.State = StateAccepted
+	default:
+		return fmt.Errorf("unsupported shadow finalization action %q", w.finalization.Action)
+	}
+	w.finalization.Phase = FinalizationApplied
+	w.finalization.AppliedAt = time.Now().UTC()
+	if err := w.persistFinalizationLocked(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *Workspace) applyAcceptLocked(ctx context.Context) error {
 	rsyncExecutable, err := workspaceExecutable(w.rsyncExecutable, "rsync")
 	if err != nil {
 		return fmt.Errorf("resolve shadow workspace rsync: %w", err)
@@ -707,8 +894,23 @@ func (w *Workspace) acceptReviewedLocked(ctx context.Context, generation uint64,
 			return fmt.Errorf("accept shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
 		}
 	}
-	w.State = StateAccepted
+	baseHash, shadowHash, err := w.treeHashesLocked(ctx)
+	if err != nil {
+		return err
+	}
+	if baseHash != w.finalization.ShadowHash || shadowHash != w.finalization.ShadowHash {
+		return fmt.Errorf("accepted workspace verification failed")
+	}
 	return nil
+}
+
+func (w *Workspace) AcceptReviewed(ctx context.Context, generation uint64, hash string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalization == nil || w.finalization.Action != FinalizationAccept || w.finalization.ReviewGeneration != generation || w.finalization.ReviewHash != hash {
+		return ErrStaleReview
+	}
+	return w.applyFinalizationLocked(ctx, w.finalization.ID)
 }
 
 func (w *Workspace) Reject(ctx context.Context) error {
@@ -716,6 +918,9 @@ func (w *Workspace) Reject(ctx context.Context) error {
 	defer w.mu.Unlock()
 	if w.State != StateActive {
 		return nil
+	}
+	if w.finalization != nil {
+		return w.applyFinalizationLocked(ctx, w.finalization.ID)
 	}
 	w.State = StateRejected
 	return nil
@@ -726,6 +931,9 @@ func (w *Workspace) CleanupFinalized() error {
 	defer w.mu.Unlock()
 	if w.State != StateAccepted && w.State != StateRejected {
 		return ErrInactive
+	}
+	if w.finalization == nil || w.finalization.Phase != FinalizationApplied {
+		return fmt.Errorf("shadow finalization is not durably applied")
 	}
 	if err := cleanup.RemoveAllWritable(filepath.Dir(w.Work)); err != nil {
 		return fmt.Errorf("remove finalized shadow dir: %w", err)

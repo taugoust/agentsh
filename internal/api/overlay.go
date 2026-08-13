@@ -3,11 +3,14 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/detached"
+	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/workspace/overlay"
 	"github.com/agentsh/agentsh/internal/workspace/shadow"
 	"github.com/agentsh/agentsh/pkg/types"
@@ -62,6 +65,20 @@ type shadowAcceptRequest struct {
 
 const shadowFinalizationTimeout = 30 * time.Minute
 
+func (a *App) reserveWorkspaceFinalization(id string) (*session.Session, *session.WorkspaceFinalizationLease, error) {
+	a.sessionTopologyMu.Lock()
+	defer a.sessionTopologyMu.Unlock()
+	s, ok := a.sessions.Get(id)
+	if !ok {
+		return nil, nil, fmt.Errorf("session not found")
+	}
+	lease, err := s.TryBeginWorkspaceFinalization()
+	if err != nil {
+		return nil, nil, err
+	}
+	return s, lease, nil
+}
+
 func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	s, ok := a.sessions.Get(id)
@@ -84,16 +101,28 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusPreconditionRequired, map[string]any{"error": "shadow accept requires review_generation and review_hash from a fresh diff"})
 			return
 		}
-		lease, err := s.TryBeginWorkspaceFinalization()
+		s, lease, err := a.reserveWorkspaceFinalization(id)
 		if err != nil {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+			code := http.StatusConflict
+			if err.Error() == "session not found" {
+				code = http.StatusNotFound
+			}
+			writeJSON(w, code, map[string]any{"error": err.Error()})
+			return
+		}
+		sw = s.ShadowWorkspace()
+		if sw == nil {
+			lease.Release(false)
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "session has no shadow workspace"})
 			return
 		}
 		seal := false
 		defer func() { lease.Release(seal) }()
 		finalizeCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), shadowFinalizationTimeout)
 		defer cancel()
-		if err := sw.ValidateReview(finalizeCtx, req.ReviewGeneration, req.ReviewHash); err != nil {
+		finalizationID := "shadow-finalization-" + uuid.NewString()
+		intent, err := sw.PrepareAccept(finalizeCtx, finalizationID, req.ReviewGeneration, req.ReviewHash)
+		if err != nil {
 			code := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, shadow.ErrInactive):
@@ -104,14 +133,15 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, code, map[string]any{"error": err.Error()})
 			return
 		}
+		lease.MarkPending()
 		if a.detachedRuntime != nil {
-			if err := a.detachedRuntime.MarkFinalizing(); err != nil {
+			durable := detached.ShadowFinalizationRecovery{ID: intent.ID, Action: intent.Action, ReviewGeneration: intent.ReviewGeneration, ReviewHash: intent.ReviewHash, CreatedAt: intent.CreatedAt}
+			if err := a.detachedRuntime.MarkFinalizing(durable); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "refusing workspace apply because durable finalization state could not be recorded"})
 				return
 			}
 		}
-		if err := sw.AcceptReviewed(finalizeCtx, req.ReviewGeneration, req.ReviewHash); err != nil {
-			seal = a.detachedRuntime != nil
+		if err := sw.ApplyFinalization(finalizeCtx, finalizationID); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace apply failed after durable finalization began: " + err.Error()})
 			return
 		}
@@ -126,6 +156,7 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 			Fields: map[string]any{
 				"real":              sw.Real,
 				"work":              sw.Work,
+				"finalization_id":   finalizationID,
 				"review_generation": req.ReviewGeneration,
 				"review_hash":       req.ReviewHash,
 			},
@@ -136,7 +167,7 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 		}
 		a.broker.Publish(ev)
 		if a.detachedRuntime != nil {
-			if err := a.detachedRuntime.MarkFinalized(); err != nil {
+			if err := a.detachedRuntime.MarkFinalized(finalizationID); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace applied but durable finalized state could not be recorded"})
 				return
 			}
@@ -187,24 +218,42 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sw != nil {
-		lease, err := s.TryBeginWorkspaceFinalization()
+		s, lease, err := a.reserveWorkspaceFinalization(id)
 		if err != nil {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+			code := http.StatusConflict
+			if err.Error() == "session not found" {
+				code = http.StatusNotFound
+			}
+			writeJSON(w, code, map[string]any{"error": err.Error()})
+			return
+		}
+		sw = s.ShadowWorkspace()
+		if sw == nil {
+			lease.Release(false)
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "session has no shadow workspace"})
 			return
 		}
 		seal := false
 		defer func() { lease.Release(seal) }()
 		finalizeCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), shadowFinalizationTimeout)
 		defer cancel()
-		if err := sw.Reject(finalizeCtx); err != nil {
+		finalizationID := "shadow-finalization-" + uuid.NewString()
+		intent, err := sw.PrepareReject(finalizeCtx, finalizationID)
+		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
+		lease.MarkPending()
 		if a.detachedRuntime != nil {
-			if err := a.detachedRuntime.MarkFinalizing(); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace rejected but durable finalization state could not be recorded"})
+			durable := detached.ShadowFinalizationRecovery{ID: intent.ID, Action: intent.Action, CreatedAt: intent.CreatedAt}
+			if err := a.detachedRuntime.MarkFinalizing(durable); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace rejection intent is retained but durable detached finalization could not be recorded"})
 				return
 			}
+		}
+		if err := sw.ApplyFinalization(finalizeCtx, finalizationID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
 		}
 		seal = true
 		now := time.Now().UTC()
@@ -215,8 +264,9 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 			Type:      "shadow_rejected",
 			SessionID: s.ID,
 			Fields: map[string]any{
-				"real": sw.Real,
-				"work": sw.Work,
+				"real":            sw.Real,
+				"work":            sw.Work,
+				"finalization_id": finalizationID,
 			},
 		}
 		if err := a.store.AppendEvent(finalizeCtx, ev); err != nil {
@@ -225,7 +275,7 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 		}
 		a.broker.Publish(ev)
 		if a.detachedRuntime != nil {
-			if err := a.detachedRuntime.MarkFinalized(); err != nil {
+			if err := a.detachedRuntime.MarkFinalized(finalizationID); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace rejected but durable finalized state could not be recorded"})
 				return
 			}

@@ -63,6 +63,14 @@ type ShadowRecovery struct {
 	CreatedAt time.Time            `json:"created_at"`
 }
 
+type ShadowFinalizationRecovery struct {
+	ID               string    `json:"id"`
+	Action           string    `json:"action"`
+	ReviewGeneration uint64    `json:"review_generation,omitempty"`
+	ReviewHash       string    `json:"review_hash,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
 type NethelperRecovery struct {
 	SocketPath          string `json:"socket_path"`
 	CredentialFile      string `json:"credential_file"`
@@ -116,11 +124,12 @@ type RecoveryManifest struct {
 	IncarnationID    string              `json:"incarnation_id,omitempty"`
 	// NethelperGeneration is retained for protocol-v2 manifests written before
 	// the path+generation record was made one atomic authority.
-	NethelperGeneration uint64             `json:"nethelper_generation,omitempty"`
-	Nethelper           *NethelperRecovery `json:"nethelper,omitempty"`
-	LastError           string             `json:"last_error,omitempty"`
-	LastFailureAt       time.Time          `json:"last_failure_at,omitempty"`
-	FinalizedAt         time.Time          `json:"finalized_at,omitempty"`
+	NethelperGeneration uint64                      `json:"nethelper_generation,omitempty"`
+	Nethelper           *NethelperRecovery          `json:"nethelper,omitempty"`
+	LastError           string                      `json:"last_error,omitempty"`
+	LastFailureAt       time.Time                   `json:"last_failure_at,omitempty"`
+	Finalization        *ShadowFinalizationRecovery `json:"finalization,omitempty"`
+	FinalizedAt         time.Time                   `json:"finalized_at,omitempty"`
 }
 
 func RecoveryManifestPath(stateDir string) string {
@@ -177,6 +186,13 @@ func validateRecoveryManifest(manifest RecoveryManifest) error {
 			filepath.Clean(binding.SocketPath) != binding.SocketPath || filepath.Clean(binding.CredentialFile) != binding.CredentialFile || filepath.Clean(binding.BootstrapResultPath) != binding.BootstrapResultPath ||
 			strings.ContainsAny(binding.SocketPath+binding.CredentialFile+binding.BootstrapResultPath, "\x00\r\n") {
 			return fmt.Errorf("%w: nethelper recovery identity is invalid", ErrRecoveryManifestInvalid)
+		}
+	}
+	if manifest.Finalization != nil {
+		finalization := manifest.Finalization
+		if strings.TrimSpace(finalization.ID) == "" || (finalization.Action != "accept" && finalization.Action != "reject") || finalization.CreatedAt.IsZero() ||
+			(finalization.Action == "accept" && (finalization.ReviewGeneration == 0 || strings.TrimSpace(finalization.ReviewHash) == "")) {
+			return fmt.Errorf("%w: shadow finalization identity is invalid", ErrRecoveryManifestInvalid)
 		}
 	}
 	for _, command := range append(append([]InflightCommand(nil), manifest.Inflight...), manifest.Interrupted...) {
@@ -274,13 +290,20 @@ func BeginRuntime(stateDir string, pid int, startIdentity, bootID string, now ti
 	if manifest.SessionCreatedAt.IsZero() != (strings.TrimSpace(manifest.PolicyDigest) == "") {
 		return nil, fmt.Errorf("%w: incomplete durable session readiness identity", ErrRecoveryManifestInvalid)
 	}
-	if manifest.State == LifecycleFinalizing || manifest.State == LifecycleStopping || manifest.State == LifecycleStopped || manifest.State == LifecycleFinalized {
+	if manifest.State == LifecycleFinalizing {
+		if manifest.Finalization == nil || manifest.Shadow == nil {
+			return nil, fmt.Errorf("detached session %s has incomplete finalization recovery state", manifest.SessionID)
+		}
+	} else if manifest.State == LifecycleStopping || manifest.State == LifecycleStopped || manifest.State == LifecycleFinalized {
 		return nil, fmt.Errorf("detached session %s is %s and cannot be restarted", manifest.SessionID, manifest.State)
 	}
+	resumeFinalization := manifest.State == LifecycleFinalizing
 	manifest.Generation++
 	manifest.IncarnationID = uuid.NewString()
 	manifest.State = LifecycleRecovering
-	if !recovery {
+	if resumeFinalization {
+		manifest.State = LifecycleFinalizing
+	} else if !recovery {
 		manifest.State = LifecycleProvisioning
 	}
 	manifest.LastError = ""
@@ -459,16 +482,42 @@ func (r *Runtime) markState(state, reason string, network *NetworkEnforcement) e
 	return nil
 }
 
-func (r *Runtime) MarkFinalizing() error {
-	return r.markState(LifecycleFinalizing, "review workspace finalization is in progress", nil)
+func (r *Runtime) MarkFinalizing(finalization ShadowFinalizationRecovery) error {
+	if strings.TrimSpace(finalization.ID) == "" || (finalization.Action != "accept" && finalization.Action != "reject") || finalization.CreatedAt.IsZero() ||
+		(finalization.Action == "accept" && (finalization.ReviewGeneration == 0 || strings.TrimSpace(finalization.ReviewHash) == "")) {
+		return fmt.Errorf("detached shadow finalization identity is invalid")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.manifest.Finalization != nil {
+		if *r.manifest.Finalization == finalization && r.manifest.State == LifecycleFinalizing {
+			return nil
+		}
+		return fmt.Errorf("a different detached shadow finalization is already committed")
+	}
+	if r.manifest.State != LifecycleReady && r.manifest.State != LifecycleDegraded {
+		return fmt.Errorf("refusing detached lifecycle transition from %s to %s", r.manifest.State, LifecycleFinalizing)
+	}
+	now := time.Now().UTC()
+	r.manifest.Finalization = &finalization
+	r.manifest.State = LifecycleFinalizing
+	r.manifest.LastError = "review workspace finalization is in progress"
+	r.manifest.UpdatedAt = now
+	r.metadata.State = LifecycleFinalizing
+	r.metadata.LastError = r.manifest.LastError
+	r.metadata.HeartbeatAt = now
+	return r.persistLocked()
 }
 func (r *Runtime) MarkStopping() error { return r.markState(LifecycleStopping, "", nil) }
 func (r *Runtime) MarkStopped() error  { return r.markState(LifecycleStopped, "", nil) }
-func (r *Runtime) MarkFinalized() error {
+func (r *Runtime) MarkFinalized(finalizationID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.manifest.State != LifecycleFinalizing {
 		return fmt.Errorf("refusing detached lifecycle transition from %s to %s", r.manifest.State, LifecycleFinalized)
+	}
+	if r.manifest.Finalization == nil || r.manifest.Finalization.ID != finalizationID {
+		return fmt.Errorf("detached shadow finalization identity mismatch")
 	}
 	now := time.Now().UTC()
 	r.manifest.FinalizedAt = now

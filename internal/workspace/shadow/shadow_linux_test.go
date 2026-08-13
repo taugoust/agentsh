@@ -48,8 +48,12 @@ func TestWorkspaceLifecycleRetainsResolvedExecutablesAfterPathIsCleared(t *testi
 	// Creation stores absolute trusted paths. Later lifecycle operations must not
 	// regress to basename lookup if the detached process has no ambient PATH.
 	t.Setenv("PATH", "")
-	if _, err := workspace.Diff(context.Background()); err != nil {
+	review, err := workspace.Review(context.Background())
+	if err != nil {
 		t.Fatalf("Diff() error with empty PATH = %v", err)
+	}
+	if _, err := workspace.PrepareAccept(context.Background(), "finalization-test", review.Generation, review.Hash); err != nil {
+		t.Fatal(err)
 	}
 	if err := workspace.Accept(context.Background()); err != nil {
 		t.Fatalf("Accept() error with empty PATH = %v", err)
@@ -160,7 +164,7 @@ func TestReviewBindsRealAndShadowTreesBeforeAccept(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(realRoot, "concurrent.txt"), []byte("changed"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := workspace.AcceptReviewed(context.Background(), review.Generation, review.Hash); !errors.Is(err, ErrStaleReview) {
+	if _, err := workspace.PrepareAccept(context.Background(), "stale-finalization", review.Generation, review.Hash); !errors.Is(err, ErrStaleReview) {
 		t.Fatalf("accept after real change error = %v", err)
 	}
 	if _, err := os.Stat(workspace.Work); err != nil {
@@ -177,6 +181,9 @@ func TestReviewBindsRealAndShadowTreesBeforeAccept(t *testing.T) {
 	}
 	if fresh.Generation != 2 || fresh.Hash == review.Hash {
 		t.Fatalf("fresh review = %+v", fresh)
+	}
+	if _, err := workspace.PrepareAccept(context.Background(), "fresh-finalization", fresh.Generation, fresh.Hash); err != nil {
+		t.Fatal(err)
 	}
 	if err := workspace.AcceptReviewed(context.Background(), fresh.Generation, fresh.Hash); err != nil {
 		t.Fatal(err)

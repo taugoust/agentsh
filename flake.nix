@@ -517,9 +517,9 @@
             pname = "agentsh-shadow-review-atomicity-tests";
             checkPhase = ''
               runHook preCheck
-              go test ./internal/workspace/shadow -run '^Test(Review|WorkspaceDiff|WorkspaceLifecycle)'
+              go test ./internal/workspace/shadow -run '^Test(Review|WorkspaceDiff|WorkspaceLifecycle|Prepared)'
               go test ./internal/session -run '^TestWorkspaceFinalization'
-              go test ./internal/api -run '^TestShadowReview'
+              go test ./internal/api -run '^Test(ShadowReview|ReservedWorkspaceFinalization|GRPCDestroyRefusesWorkspaceFinalization|WorkspacePendingFinalization)'
               runHook postCheck
             '';
           });

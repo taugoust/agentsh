@@ -17,6 +17,15 @@ var (
 	ErrWorkspaceSealed     = errors.New("workspace is sealed")
 )
 
+type WorkspaceFinalizationState uint8
+
+const (
+	WorkspaceFinalizationOpen WorkspaceFinalizationState = iota
+	WorkspaceFinalizationRunning
+	WorkspaceFinalizationPending
+	WorkspaceFinalizationComplete
+)
+
 // ExecutionQueueFailure classifies an execution request that left admission
 // before dispatch. Callers can inspect this type without parsing context error
 // strings.
@@ -292,7 +301,7 @@ func (s *Session) notifyExecutionChangedLocked() {
 }
 
 func (s *Session) canAdmitExecutionLocked(req ExecutionAdmission) bool {
-	if s.workspaceFinalizing || s.workspaceSealed {
+	if s.workspaceFinalization != WorkspaceFinalizationOpen {
 		return false
 	}
 	if !req.Shared {
@@ -364,8 +373,8 @@ func (s *Session) AcquireExecution(ctx context.Context, req ExecutionAdmission) 
 		}
 
 		s.execAdmissionMu.Lock()
-		if s.workspaceFinalizing || s.workspaceSealed {
-			sealed := s.workspaceSealed
+		if s.workspaceFinalization != WorkspaceFinalizationOpen {
+			sealed := s.workspaceFinalization == WorkspaceFinalizationComplete
 			s.execAdmissionMu.Unlock()
 			removeWaiter()
 			if sealed {
@@ -507,10 +516,10 @@ func (s *Session) BeginWorkspaceActivity() (*WorkspaceActivityLease, error) {
 	}
 	s.execAdmissionMu.Lock()
 	defer s.execAdmissionMu.Unlock()
-	switch {
-	case s.workspaceSealed:
+	switch s.workspaceFinalization {
+	case WorkspaceFinalizationComplete:
 		return nil, ErrWorkspaceSealed
-	case s.workspaceFinalizing:
+	case WorkspaceFinalizationRunning, WorkspaceFinalizationPending:
 		return nil, ErrWorkspaceFinalizing
 	default:
 		s.workspaceActivities++
@@ -538,26 +547,50 @@ func (s *Session) TryBeginWorkspaceFinalization() (*WorkspaceFinalizationLease, 
 	s.execAdmissionMu.Lock()
 	defer s.execAdmissionMu.Unlock()
 	switch {
-	case s.workspaceSealed:
+	case s.workspaceFinalization == WorkspaceFinalizationComplete:
 		return nil, ErrWorkspaceSealed
-	case s.workspaceFinalizing:
+	case s.workspaceFinalization == WorkspaceFinalizationRunning || s.workspaceFinalization == WorkspaceFinalizationPending:
 		return nil, ErrWorkspaceFinalizing
 	case s.execActiveCount != 0 || s.execExclusiveWaiters != 0 || s.execSharedWaiters != 0 || s.workspaceActivities != 0:
 		return nil, ErrWorkspaceBusy
 	default:
-		s.workspaceFinalizing = true
+		s.workspaceFinalization = WorkspaceFinalizationRunning
 		s.notifyExecutionChangedLocked()
 		return &WorkspaceFinalizationLease{session: s}, nil
 	}
 }
 
-func (s *Session) WorkspaceFinalizing() bool {
+func (s *Session) WorkspaceFinalizationState() WorkspaceFinalizationState {
 	if s == nil {
-		return false
+		return WorkspaceFinalizationComplete
 	}
 	s.execAdmissionMu.Lock()
 	defer s.execAdmissionMu.Unlock()
-	return s.workspaceFinalizing
+	return s.workspaceFinalization
+}
+
+func (s *Session) WorkspaceFinalizing() bool {
+	state := s.WorkspaceFinalizationState()
+	return state == WorkspaceFinalizationRunning || state == WorkspaceFinalizationPending
+}
+
+func (s *Session) WorkspaceTeardownAllowed() bool {
+	state := s.WorkspaceFinalizationState()
+	return state == WorkspaceFinalizationOpen || state == WorkspaceFinalizationComplete
+}
+
+// MarkPending makes a durable finalization intent absorbing. Release(false)
+// keeps writers and teardown sealed until the exact intent is resumed.
+func (l *WorkspaceFinalizationLease) MarkPending() {
+	if l == nil || l.session == nil {
+		return
+	}
+	l.session.execAdmissionMu.Lock()
+	if l.session.workspaceFinalization == WorkspaceFinalizationRunning {
+		l.session.workspaceFinalization = WorkspaceFinalizationPending
+		l.session.notifyExecutionChangedLocked()
+	}
+	l.session.execAdmissionMu.Unlock()
 }
 
 func (l *WorkspaceFinalizationLease) Release(seal bool) {
@@ -569,9 +602,13 @@ func (l *WorkspaceFinalizationLease) Release(seal bool) {
 			return
 		}
 		l.session.execAdmissionMu.Lock()
-		l.session.workspaceFinalizing = false
-		if seal {
-			l.session.workspaceSealed = true
+		switch {
+		case seal:
+			l.session.workspaceFinalization = WorkspaceFinalizationComplete
+		case l.session.workspaceFinalization == WorkspaceFinalizationPending:
+			// A durable intent exists and must remain absorbing.
+		default:
+			l.session.workspaceFinalization = WorkspaceFinalizationOpen
 		}
 		l.session.notifyExecutionChangedLocked()
 		l.session.execAdmissionMu.Unlock()

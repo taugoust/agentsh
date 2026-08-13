@@ -1210,8 +1210,8 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
 		return
 	}
-	if s.WorkspaceFinalizing() {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "session teardown refused while workspace finalization is in progress"})
+	if !s.WorkspaceTeardownAllowed() {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "session teardown refused while workspace finalization is running or pending"})
 		return
 	}
 	if a.detachedRuntime != nil {

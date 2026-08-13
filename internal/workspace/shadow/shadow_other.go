@@ -32,6 +32,28 @@ type Review struct {
 	Diff          []byte    `json:"-"`
 }
 
+const (
+	FinalizationAccept   = "accept"
+	FinalizationReject   = "reject"
+	FinalizationPrepared = "prepared"
+	FinalizationApplying = "applying"
+	FinalizationApplied  = "applied"
+)
+
+type Finalization struct {
+	SchemaVersion    int       `json:"schema_version"`
+	ID               string    `json:"finalization_id"`
+	Action           string    `json:"action"`
+	Phase            string    `json:"phase"`
+	ReviewGeneration uint64    `json:"review_generation,omitempty"`
+	ReviewHash       string    `json:"review_hash,omitempty"`
+	BaseHash         string    `json:"base_hash,omitempty"`
+	ShadowHash       string    `json:"shadow_hash,omitempty"`
+	DiffHash         string    `json:"diff_hash,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	AppliedAt        time.Time `json:"applied_at,omitempty"`
+}
+
 type Options struct {
 	BaseDir        string
 	DiffExcludes   []string
@@ -84,6 +106,19 @@ func (w *Workspace) ValidateReview(ctx context.Context, generation uint64, hash 
 	return fmt.Errorf("unsupported")
 }
 func (w *Workspace) AcceptReviewed(ctx context.Context, generation uint64, hash string) error {
+	return fmt.Errorf("unsupported")
+}
+func (w *Workspace) PrepareAccept(ctx context.Context, finalizationID string, generation uint64, hash string) (Finalization, error) {
+	return Finalization{}, fmt.Errorf("unsupported")
+}
+func (w *Workspace) PrepareReject(ctx context.Context, finalizationID string) (Finalization, error) {
+	return Finalization{}, fmt.Errorf("unsupported")
+}
+func (w *Workspace) PendingFinalization() (Finalization, bool) { return Finalization{}, false }
+func (w *Workspace) ApplyFinalization(ctx context.Context, finalizationID string) error {
+	return fmt.Errorf("unsupported")
+}
+func (w *Workspace) ResumeFinalization(ctx context.Context, finalizationID string) error {
 	return fmt.Errorf("unsupported")
 }
 func (w *Workspace) Reject(ctx context.Context) error { return fmt.Errorf("unsupported") }

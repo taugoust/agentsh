@@ -183,6 +183,22 @@ func TestWorkspaceFinalizationRequiresQuiescenceAndSealsAdmission(t *testing.T) 
 	}
 }
 
+func TestWorkspacePendingFinalizationBlocksWritersAndTeardown(t *testing.T) {
+	s := &Session{ID: "session-pending", State: types.SessionStateReady}
+	lease, err := s.TryBeginWorkspaceFinalization()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease.MarkPending()
+	lease.Release(false)
+	if s.WorkspaceTeardownAllowed() {
+		t.Fatal("pending finalization allowed teardown")
+	}
+	if _, err := s.BeginWorkspaceActivity(); !errors.Is(err, ErrWorkspaceFinalizing) {
+		t.Fatalf("writer error=%v", err)
+	}
+}
+
 func TestLockExecContextCancelledQueueNeverAcquiresLater(t *testing.T) {
 	m := NewManager(10)
 	s, err := m.Create(t.TempDir(), "default")

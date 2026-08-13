@@ -71,17 +71,28 @@ type ShadowRootInfo struct {
 	Work string `json:"work"`
 }
 
+type ShadowFinalizationInfo struct {
+	ID               string    `json:"id"`
+	Action           string    `json:"action"`
+	Phase            string    `json:"phase"`
+	ReviewGeneration uint64    `json:"review_generation,omitempty"`
+	ReviewHash       string    `json:"review_hash,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	AppliedAt        time.Time `json:"applied_at,omitempty"`
+}
+
 type ShadowInfo struct {
-	Enabled    bool             `json:"enabled"`
-	State      string           `json:"state,omitempty"`
-	Real       string           `json:"real,omitempty"`
-	Work       string           `json:"work,omitempty"`
-	Home       string           `json:"home,omitempty"`
-	Tmp        string           `json:"tmp,omitempty"`
-	Roots      []ShadowRootInfo `json:"roots,omitempty"`
-	CreatedAt  time.Time        `json:"created_at,omitempty"`
-	AcceptedAt *time.Time       `json:"accepted_at,omitempty"`
-	RejectedAt *time.Time       `json:"rejected_at,omitempty"`
+	Enabled      bool                    `json:"enabled"`
+	State        string                  `json:"state,omitempty"`
+	Real         string                  `json:"real,omitempty"`
+	Work         string                  `json:"work,omitempty"`
+	Home         string                  `json:"home,omitempty"`
+	Tmp          string                  `json:"tmp,omitempty"`
+	Roots        []ShadowRootInfo        `json:"roots,omitempty"`
+	CreatedAt    time.Time               `json:"created_at,omitempty"`
+	AcceptedAt   *time.Time              `json:"accepted_at,omitempty"`
+	RejectedAt   *time.Time              `json:"rejected_at,omitempty"`
+	Finalization *ShadowFinalizationInfo `json:"finalization,omitempty"`
 }
 
 type CreateShadowOptions struct {

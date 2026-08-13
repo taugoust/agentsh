@@ -50,8 +50,8 @@ func (a *App) ReapExpiredSessionsWithResult(now time.Time, sessionTimeout, idleT
 	}
 
 	reaped, err := a.sessions.ReapExpiredGuarded(now, sessionTimeout, idleTimeout, func(sess *session.Session) error {
-		if sess != nil && sess.WorkspaceFinalizing() {
-			return fmt.Errorf("session %s workspace finalization is in progress", sess.ID)
+		if sess != nil && !sess.WorkspaceTeardownAllowed() {
+			return fmt.Errorf("session %s workspace finalization is running or pending", sess.ID)
 		}
 		if runtime == nil || sess == nil || sess.ID != detachedSessionID {
 			return nil

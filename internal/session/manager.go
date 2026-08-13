@@ -90,18 +90,17 @@ type Session struct {
 	// authenticated child lanes. It is deliberately separate from mu so a
 	// cancelled waiter never needs to acquire session state before it can leave
 	// the queue.
-	execAdmissionMu      sync.Mutex
-	execAdmissionChanged chan struct{}
-	execExclusiveActive  bool
-	execExclusiveWaiters int
-	execSharedWaiters    int
-	execSharedActive     int
-	execActiveCount      int
-	execActiveLanes      map[string]struct{}
-	execActiveCommands   map[string]*CommandRuntime
-	workspaceActivities  int
-	workspaceFinalizing  bool
-	workspaceSealed      bool
+	execAdmissionMu       sync.Mutex
+	execAdmissionChanged  chan struct{}
+	execExclusiveActive   bool
+	execExclusiveWaiters  int
+	execSharedWaiters     int
+	execSharedActive      int
+	execActiveCount       int
+	execActiveLanes       map[string]struct{}
+	execActiveCommands    map[string]*CommandRuntime
+	workspaceActivities   int
+	workspaceFinalization WorkspaceFinalizationState
 
 	// direnvEnv is server-owned sensitive state. It is merged into child
 	// commands but never copied into types.Session snapshots.
@@ -592,6 +591,13 @@ func (s *Session) Snapshot() types.Session {
 			CreatedAt:  s.Shadow.CreatedAt,
 			AcceptedAt: s.ShadowAcceptedAt,
 			RejectedAt: s.ShadowRejectedAt,
+		}
+		if finalization, ok := s.Shadow.PendingFinalization(); ok {
+			shadowInfo.Finalization = &types.ShadowFinalizationInfo{
+				ID: finalization.ID, Action: finalization.Action, Phase: finalization.Phase,
+				ReviewGeneration: finalization.ReviewGeneration, ReviewHash: finalization.ReviewHash,
+				CreatedAt: finalization.CreatedAt, AppliedAt: finalization.AppliedAt,
+			}
 		}
 	}
 	workspaceMode := s.WorkspaceMode

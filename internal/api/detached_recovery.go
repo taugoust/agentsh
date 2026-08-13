@@ -11,6 +11,7 @@ import (
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
+	"github.com/agentsh/agentsh/internal/workspace/shadow"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
 )
@@ -77,6 +78,42 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 	}
 
 	if a.detachedRuntime.IsRecovery() {
+		if manifest.State == detached.LifecycleFinalizing && manifest.Finalization != nil {
+			sw := sess.ShadowWorkspace()
+			if sw == nil {
+				return cleanupOnError(fmt.Errorf("detached finalization recovery has no retained shadow workspace"))
+			}
+			intent, ok := sw.PendingFinalization()
+			if !ok || intent.ID != manifest.Finalization.ID || intent.Action != manifest.Finalization.Action ||
+				intent.ReviewGeneration != manifest.Finalization.ReviewGeneration || intent.ReviewHash != manifest.Finalization.ReviewHash {
+				return cleanupOnError(fmt.Errorf("detached finalization recovery identity mismatch"))
+			}
+			lease, leaseErr := sess.TryBeginWorkspaceFinalization()
+			if leaseErr != nil {
+				return cleanupOnError(fmt.Errorf("reserve detached finalization recovery: %w", leaseErr))
+			}
+			lease.MarkPending()
+			if applyErr := sw.ResumeFinalization(ctx, intent.ID); applyErr != nil {
+				lease.Release(false)
+				return cleanupOnError(fmt.Errorf("resume detached shadow finalization: %w", applyErr))
+			}
+			now := time.Now().UTC()
+			if intent.Action == shadow.FinalizationAccept {
+				sess.MarkShadowAccepted(now)
+			} else {
+				sess.MarkShadowRejected(now)
+			}
+			if err := a.detachedRuntime.MarkFinalized(intent.ID); err != nil {
+				lease.Release(false)
+				return types.Session{}, nil, fmt.Errorf("commit resumed detached finalization: %w", err)
+			}
+			if err := sw.CleanupFinalized(); err != nil {
+				lease.Release(true)
+				return types.Session{}, nil, fmt.Errorf("clean resumed detached finalization: %w", err)
+			}
+			lease.Release(true)
+			return sess.Snapshot(), nil, nil
+		}
 		if err := sess.RestoreOutputArtifacts(manifest.OutputArtifacts); err != nil {
 			return cleanupOnError(fmt.Errorf("restore detached output artifacts: %w", err))
 		}

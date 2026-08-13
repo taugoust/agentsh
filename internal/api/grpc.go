@@ -628,15 +628,36 @@ func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*
 	if !ok {
 		return nil, status.Error(codes.NotFound, "session not found")
 	}
+	if !sess.WorkspaceTeardownAllowed() {
+		return nil, status.Error(codes.FailedPrecondition, "session teardown refused while workspace finalization is running or pending")
+	}
+	if s.app.detachedRuntime != nil {
+		if err := s.app.detachedRuntime.MarkStopping(); err != nil {
+			return nil, status.Error(codes.Internal, "refusing teardown because durable detached lifecycle update failed")
+		}
+	}
+	s.app.closeApprovalUI(id)
 	s.app.revokeChildCapabilitiesForSession(id, errChildCapabilityRevoked)
 	if s.app.approvals != nil {
 		s.app.approvals.ClearSession(ctx, id)
 	}
+	_ = sess.CloseDBProxy()
 	_ = sess.CloseNetNS()
 	_ = sess.CloseProxy()
 	_ = sess.UnmountWorkspace()
+	_ = sess.CloseRuntime()
 	s.app.purgeTrashForSession(sess)
 	_ = s.app.sessions.Destroy(id)
+	ev := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "session_destroyed", SessionID: id}
+	_ = s.app.store.AppendEvent(context.WithoutCancel(ctx), ev)
+	s.app.broker.Publish(ev)
+	if s.app.detachedRuntime != nil {
+		if err := s.app.detachedRuntime.MarkStopped(); err != nil {
+			s.app.signalDetachedStop()
+			return nil, status.Error(codes.Internal, "session was destroyed but durable detached stopped persistence failed")
+		}
+		s.app.signalDetachedStop()
+	}
 	return jsonToProto(map[string]any{"ok": true})
 }
 

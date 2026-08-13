@@ -963,8 +963,12 @@ func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detach
 		return detached.RuntimeStatus{}, fmt.Errorf("detached recovery manifest identity mismatch")
 	}
 	switch manifest.State {
-	case detached.LifecycleFinalizing, detached.LifecycleStopping, detached.LifecycleStopped, detached.LifecycleFinalized:
+	case detached.LifecycleStopping, detached.LifecycleStopped, detached.LifecycleFinalized:
 		return detached.RuntimeStatus{}, fmt.Errorf("detached session %s is %s and cannot be recovered", sessionID, manifest.State)
+	case detached.LifecycleFinalizing:
+		if manifest.Finalization == nil || manifest.Shadow == nil {
+			return detached.RuntimeStatus{}, fmt.Errorf("detached session %s has incomplete finalization recovery state", sessionID)
+		}
 	}
 	if c, _, liveErr := detachedClientForSession(sessionID); liveErr == nil {
 		var status detached.RuntimeStatus
