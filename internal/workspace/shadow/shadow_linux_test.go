@@ -187,6 +187,36 @@ func TestReviewBindsRealAndShadowTreesBeforeAccept(t *testing.T) {
 	}
 }
 
+func TestOpenMultiRestoresPersistedReviewGeneration(t *testing.T) {
+	realRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(realRoot, "value.txt"), []byte("real\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	baseDir := t.TempDir()
+	workspace, err := Create(context.Background(), "session-resume-review", realRoot, Options{BaseDir: baseDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace.Work, "value.txt"), []byte("draft\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, err := workspace.Review(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenMulti(context.Background(), workspace.ID, []RootSpec{{Path: realRoot}}, Options{BaseDir: baseDir}, workspace.Roots, workspace.CreatedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := reopened.Review(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Generation != first.Generation+1 {
+		t.Fatalf("reopened review generation=%d want=%d", second.Generation, first.Generation+1)
+	}
+}
+
 func TestCreateFailsBeforeSessionStateWhenRsyncIsUnavailable(t *testing.T) {
 	t.Setenv("PATH", "")
 	realRoot := t.TempDir()

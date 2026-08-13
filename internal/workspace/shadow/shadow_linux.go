@@ -38,7 +38,10 @@ var (
 	ErrStaleReview = errors.New("shadow workspace review is stale")
 )
 
-const reviewSchemaVersion = 1
+const (
+	reviewSchemaVersion = 1
+	reviewFileName      = "review.json"
+)
 
 type Review struct {
 	SchemaVersion int       `json:"schema_version"`
@@ -357,12 +360,76 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 	if createdAt.IsZero() {
 		createdAt = time.Now().UTC()
 	}
-	return &Workspace{
+	workspace := &Workspace{
 		ID: id, Real: roots[0].Real, Work: work, Home: home, Tmp: tmp, Roots: roots,
 		OwnerUID: ownerUID, OwnerGID: ownerGID, CreatedAt: createdAt.UTC(), State: StateActive,
 		diffExcludes: diffExcludes, acceptExcludes: acceptExcludes, acceptChown: opts.AcceptChown,
 		diffExecutable: diffExecutable, rsyncExecutable: rsyncExecutable,
-	}, nil
+	}
+	if err := workspace.loadReviewLocked(); err != nil {
+		return nil, err
+	}
+	return workspace, nil
+}
+
+func (w *Workspace) reviewPath() string {
+	return filepath.Join(filepath.Dir(w.Work), reviewFileName)
+}
+
+func (w *Workspace) persistReviewLocked(review Review) error {
+	persisted := review
+	persisted.Diff = nil
+	encoded, err := json.MarshalIndent(persisted, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode shadow review: %w", err)
+	}
+	path := w.reviewPath()
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".review-*.json")
+	if err != nil {
+		return fmt.Errorf("create shadow review: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(append(encoded, '\n')); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *Workspace) loadReviewLocked() error {
+	data, err := os.ReadFile(w.reviewPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read retained shadow review: %w", err)
+	}
+	var review Review
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&review); err != nil {
+		return fmt.Errorf("decode retained shadow review: %w", err)
+	}
+	if review.SchemaVersion != reviewSchemaVersion || review.Generation == 0 || !strings.HasPrefix(review.Hash, "sha256:") {
+		return fmt.Errorf("retained shadow review is invalid")
+	}
+	w.latestReview = review
+	return nil
 }
 
 func (w *Workspace) Diff(ctx context.Context) ([]byte, error) {
@@ -414,6 +481,9 @@ func (w *Workspace) Review(ctx context.Context) (Review, error) {
 		Hash: "sha256:" + hex.EncodeToString(hash[:]), BaseHash: baseHash,
 		ShadowHash: shadowHash, DiffHash: payload.DiffHash, CreatedAt: createdAt,
 		Diff: append([]byte(nil), out...),
+	}
+	if err := w.persistReviewLocked(review); err != nil {
+		return Review{}, err
 	}
 	w.latestReview = review
 	return review, nil

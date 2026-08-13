@@ -486,6 +486,14 @@ func (l *WorkspaceActivityLease) Release() {
 		if l.session.workspaceActivities > 0 {
 			l.session.workspaceActivities--
 		}
+		if l.session.workspaceActivities == 0 && l.session.execActiveCount == 0 {
+			l.session.mu.Lock()
+			if l.session.State == types.SessionStateBusy {
+				l.session.State = types.SessionStateReady
+			}
+			l.session.LastActivity = time.Now().UTC()
+			l.session.mu.Unlock()
+		}
 		l.session.notifyExecutionChangedLocked()
 		l.session.execAdmissionMu.Unlock()
 	})
@@ -506,6 +514,10 @@ func (s *Session) BeginWorkspaceActivity() (*WorkspaceActivityLease, error) {
 		return nil, ErrWorkspaceFinalizing
 	default:
 		s.workspaceActivities++
+		s.mu.Lock()
+		s.State = types.SessionStateBusy
+		s.LastActivity = time.Now().UTC()
+		s.mu.Unlock()
 		s.notifyExecutionChangedLocked()
 		return &WorkspaceActivityLease{session: s}, nil
 	}
