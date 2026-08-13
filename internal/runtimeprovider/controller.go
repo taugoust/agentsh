@@ -206,8 +206,8 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 		}
 		if current.Provider != prepared.Provider || current.Profile != prepared.Profile ||
 			current.SessionID != prepared.SessionID || current.StateDir != prepared.StateDir ||
-			current.State != StateRecovering || current.CreatedAt != prepared.CreatedAt ||
-			current.Identity.Generation > identity.Generation ||
+			(current.State != StateRecovering && current.State != StateReady && current.State != StateDegraded) ||
+			!current.CreatedAt.Equal(prepared.CreatedAt) || current.Identity.Generation > identity.Generation ||
 			(current.Identity.Generation == identity.Generation && current.Identity.IncarnationID != "" && current.Identity != identity) {
 			return fmt.Errorf("runtime-provider manifest changed during recovery")
 		}

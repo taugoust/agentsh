@@ -55,7 +55,7 @@ func (p *nativeRuntimeProvider) Start(ctx context.Context, request runtimeprovid
 		}
 		return nil, err
 	}
-	return newNativeRuntimeInstance(request.Profile, request.StateDir, result.supervisorMetadata, result, detached.RuntimeStatus{}), nil
+	return newNativeRuntimeInstance(request.Profile, request.StateDir, result.supervisorMetadata, &result.Session, detached.RuntimeStatus{}), nil
 }
 
 func (p *nativeRuntimeProvider) Open(_ context.Context, manifest runtimeprovider.Manifest) (runtimeprovider.Instance, error) {
@@ -99,17 +99,17 @@ type nativeRuntimeInstance struct {
 	profile         string
 	stateDir        string
 	metadata        supervisorMetadata
-	startResult     *detachedSessionStartResult
+	startedSession  *types.Session
 	recoveredStatus detached.RuntimeStatus
 
 	cleanupOnce sync.Once
 	cleanupErr  error
 }
 
-func newNativeRuntimeInstance(profile, stateDir string, meta supervisorMetadata, result *detachedSessionStartResult, status detached.RuntimeStatus) *nativeRuntimeInstance {
+func newNativeRuntimeInstance(profile, stateDir string, meta supervisorMetadata, session *types.Session, status detached.RuntimeStatus) *nativeRuntimeInstance {
 	return &nativeRuntimeInstance{
 		profile: profile, stateDir: stateDir, metadata: meta,
-		startResult: result, recoveredStatus: status,
+		startedSession: session, recoveredStatus: status,
 	}
 }
 
@@ -144,6 +144,31 @@ func (i *nativeRuntimeInstance) Probe(ctx context.Context) (runtimeprovider.Stat
 		Identity: identity, Endpoint: endpoint, State: state, Ready: ready,
 		Recoverable: status.Recoverable, LastError: status.LastError,
 	}, nil
+}
+
+func (i *nativeRuntimeInstance) ControlPlane(ctx context.Context) (runtimeprovider.ControlPlaneSnapshot, error) {
+	meta, stateDir, err := readSupervisorMetadata(i.metadata.SessionID)
+	if err != nil {
+		return runtimeprovider.ControlPlaneSnapshot{}, err
+	}
+	if filepath.Clean(stateDir) != filepath.Clean(i.stateDir) || nativeRuntimeIdentity(i.profile, meta) != i.Identity() {
+		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("native runtime control-plane incarnation mismatch")
+	}
+	snapshot := runtimeprovider.ControlPlaneSnapshot{Metadata: meta, StateDir: stateDir, Status: i.recoveredStatus}
+	if i.startedSession != nil {
+		snapshot.Session = *i.startedSession
+	}
+	if snapshot.Status.SessionID == "" {
+		client := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", 3*time.Second)
+		snapshot.Status, err = detachedRuntimeHandshakeStatus(ctx, client, meta)
+		if err != nil {
+			return runtimeprovider.ControlPlaneSnapshot{}, err
+		}
+	}
+	if err := snapshot.Validate(i.Identity(), i.Endpoint()); err != nil {
+		return runtimeprovider.ControlPlaneSnapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func (i *nativeRuntimeInstance) Stop(ctx context.Context, _ runtimeprovider.StopReason) error {
@@ -279,11 +304,18 @@ func startDetachedRuntime(ctx context.Context, request runtimeprovider.Request, 
 	if err != nil {
 		return nil, err
 	}
-	native, ok := instance.(*nativeRuntimeInstance)
-	if !ok || native.startResult == nil {
-		return nil, fmt.Errorf("runtime provider %q returned no detached start result", request.Provider)
+	snapshot, err := instance.ControlPlane(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read runtime provider control plane: %w", err)
 	}
-	return native.startResult, nil
+	if snapshot.Session.ID == "" {
+		return nil, fmt.Errorf("runtime provider %q returned no detached session result", request.Provider)
+	}
+	return &detachedSessionStartResult{
+		supervisorMetadata: snapshot.Metadata,
+		Session:            snapshot.Session,
+		StateDir:           snapshot.StateDir,
+	}, nil
 }
 
 func runtimeManifestForDetachedSession(sessionID, stateDir string) (runtimeprovider.Manifest, bool, error) {
@@ -422,19 +454,14 @@ func recoverDetachedSession(ctx context.Context, sessionID string) (detached.Run
 	if err != nil {
 		return detached.RuntimeStatus{}, err
 	}
-	native, ok := instance.(*nativeRuntimeInstance)
-	if !ok {
-		return detached.RuntimeStatus{}, fmt.Errorf("runtime provider %q returned an incompatible recovery instance", manifest.Provider)
+	snapshot, err := instance.ControlPlane(ctx)
+	if err != nil {
+		return detached.RuntimeStatus{}, fmt.Errorf("read recovered runtime provider control plane: %w", err)
 	}
-	status := native.recoveredStatus
-	if status.SessionID == "" {
-		client := client.NewWithTimeout("unix://"+native.metadata.SupervisorSock, "", 3*time.Second)
-		status, err = detachedRuntimeHandshakeStatus(ctx, client, native.metadata)
-		if err != nil {
-			return detached.RuntimeStatus{}, err
-		}
+	if snapshot.Status.SessionID == "" {
+		return detached.RuntimeStatus{}, fmt.Errorf("runtime provider %q returned no detached recovery status", manifest.Provider)
 	}
-	return status, nil
+	return snapshot.Status, nil
 }
 
 func stopDetachedSessionExact(ctx context.Context, sessionID string) error {

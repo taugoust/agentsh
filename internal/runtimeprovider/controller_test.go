@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
@@ -62,6 +63,8 @@ type fakeInstance struct {
 	stops           int
 	destroys        int
 	cleanupCanceled bool
+	controlPlane    ControlPlaneSnapshot
+	controlPlaneErr error
 }
 
 func (i *fakeInstance) Identity() Identity { return i.identity }
@@ -74,6 +77,9 @@ func (i *fakeInstance) Probe(ctx context.Context) (Status, error) {
 		return Status{}, err
 	}
 	return i.status, nil
+}
+func (i *fakeInstance) ControlPlane(context.Context) (ControlPlaneSnapshot, error) {
+	return i.controlPlane, i.controlPlaneErr
 }
 func (i *fakeInstance) Stop(ctx context.Context, _ StopReason) error {
 	i.mu.Lock()
@@ -391,6 +397,29 @@ func TestManifestRejectsUnknownFieldsAndUnsafePermissions(t *testing.T) {
 	}
 	if _, err := ReadManifest(request.StateDir); err == nil || !strings.Contains(err.Error(), "unsafe") {
 		t.Fatalf("unsafe manifest error = %v", err)
+	}
+}
+
+func TestControlPlaneSnapshotValidatesProviderNeutralIdentity(t *testing.T) {
+	request, _, instance := readyFixture(t)
+	snapshot := ControlPlaneSnapshot{
+		Metadata: detached.Metadata{
+			SessionID: request.SessionID, Generation: instance.identity.Generation,
+			IncarnationID: instance.identity.IncarnationID, SupervisorSock: instance.endpoint.Address,
+		},
+		Session:  types.Session{ID: request.SessionID},
+		StateDir: request.StateDir,
+		Status: detached.RuntimeStatus{
+			SessionID: request.SessionID, Generation: instance.identity.Generation,
+			IncarnationID: instance.identity.IncarnationID,
+		},
+	}
+	if err := snapshot.Validate(instance.identity, instance.endpoint); err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Status.IncarnationID = "other"
+	if err := snapshot.Validate(instance.identity, instance.endpoint); err == nil || !strings.Contains(err.Error(), "status identity") {
+		t.Fatalf("mismatched control-plane status error = %v", err)
 	}
 }
 

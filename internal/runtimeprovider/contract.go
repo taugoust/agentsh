@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
@@ -145,10 +146,40 @@ type Provider interface {
 	Recover(context.Context, Manifest) (Instance, error)
 }
 
+// ControlPlaneSnapshot is the provider-neutral detached AgentSH control-plane
+// view used by trusted CLI frontends. Providers may place that control plane in
+// a native process, VM, or another outer runtime; callers never need a concrete
+// provider instance to render the established session-start/recovery results.
+type ControlPlaneSnapshot struct {
+	Metadata detached.Metadata
+	Session  types.Session
+	StateDir string
+	Status   detached.RuntimeStatus
+}
+
+func (s ControlPlaneSnapshot) Validate(identity Identity, endpoint Endpoint) error {
+	if s.Metadata.SessionID != identity.SessionID || s.Metadata.Generation != identity.Generation ||
+		s.Metadata.IncarnationID != identity.IncarnationID || s.Metadata.SupervisorSock != endpoint.Address {
+		return fmt.Errorf("runtime control-plane metadata identity mismatch")
+	}
+	if !filepath.IsAbs(s.StateDir) || filepath.Clean(s.StateDir) != s.StateDir || filepath.Base(s.StateDir) != identity.SessionID {
+		return fmt.Errorf("runtime control-plane state directory identity mismatch")
+	}
+	if s.Session.ID != "" && s.Session.ID != identity.SessionID {
+		return fmt.Errorf("runtime control-plane session identity mismatch")
+	}
+	if s.Status.SessionID != "" && (s.Status.SessionID != identity.SessionID ||
+		s.Status.Generation != identity.Generation || s.Status.IncarnationID != identity.IncarnationID) {
+		return fmt.Errorf("runtime control-plane status identity mismatch")
+	}
+	return nil
+}
+
 type Instance interface {
 	Identity() Identity
 	Endpoint() Endpoint
 	Probe(context.Context) (Status, error)
+	ControlPlane(context.Context) (ControlPlaneSnapshot, error)
 	Stop(context.Context, StopReason) error
 	Destroy(context.Context) error
 }
