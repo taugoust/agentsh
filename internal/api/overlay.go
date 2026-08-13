@@ -93,7 +93,7 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 		defer func() { lease.Release(seal) }()
 		finalizeCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), shadowFinalizationTimeout)
 		defer cancel()
-		if err := sw.AcceptReviewed(finalizeCtx, req.ReviewGeneration, req.ReviewHash); err != nil {
+		if err := sw.ValidateReview(finalizeCtx, req.ReviewGeneration, req.ReviewHash); err != nil {
 			code := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, shadow.ErrInactive):
@@ -106,9 +106,14 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 		}
 		if a.detachedRuntime != nil {
 			if err := a.detachedRuntime.MarkFinalizing(); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace applied but durable finalization state could not be recorded"})
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "refusing workspace apply because durable finalization state could not be recorded"})
 				return
 			}
+		}
+		if err := sw.AcceptReviewed(finalizeCtx, req.ReviewGeneration, req.ReviewHash); err != nil {
+			seal = a.detachedRuntime != nil
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace apply failed after durable finalization began: " + err.Error()})
+			return
 		}
 		seal = true
 		now := time.Now().UTC()

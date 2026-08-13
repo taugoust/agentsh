@@ -652,13 +652,19 @@ func (w *Workspace) Accept(ctx context.Context) error {
 	return w.acceptReviewedLocked(ctx, w.latestReview.Generation, w.latestReview.Hash)
 }
 
+func (w *Workspace) ValidateReview(ctx context.Context, generation uint64, hash string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.validateReviewLocked(ctx, generation, hash)
+}
+
 func (w *Workspace) AcceptReviewed(ctx context.Context, generation uint64, hash string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.acceptReviewedLocked(ctx, generation, hash)
 }
 
-func (w *Workspace) acceptReviewedLocked(ctx context.Context, generation uint64, hash string) error {
+func (w *Workspace) validateReviewLocked(ctx context.Context, generation uint64, hash string) error {
 	if w.State != StateActive {
 		return ErrInactive
 	}
@@ -671,6 +677,13 @@ func (w *Workspace) acceptReviewedLocked(ctx context.Context, generation uint64,
 	}
 	if baseHash != w.latestReview.BaseHash || shadowHash != w.latestReview.ShadowHash {
 		return ErrStaleReview
+	}
+	return nil
+}
+
+func (w *Workspace) acceptReviewedLocked(ctx context.Context, generation uint64, hash string) error {
+	if err := w.validateReviewLocked(ctx, generation, hash); err != nil {
+		return err
 	}
 	rsyncExecutable, err := workspaceExecutable(w.rsyncExecutable, "rsync")
 	if err != nil {

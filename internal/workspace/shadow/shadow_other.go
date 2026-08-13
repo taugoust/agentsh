@@ -80,6 +80,9 @@ func (w *Workspace) Review(ctx context.Context) (Review, error) {
 	return Review{}, fmt.Errorf("unsupported")
 }
 func (w *Workspace) Accept(ctx context.Context) error { return fmt.Errorf("unsupported") }
+func (w *Workspace) ValidateReview(ctx context.Context, generation uint64, hash string) error {
+	return fmt.Errorf("unsupported")
+}
 func (w *Workspace) AcceptReviewed(ctx context.Context, generation uint64, hash string) error {
 	return fmt.Errorf("unsupported")
 }
