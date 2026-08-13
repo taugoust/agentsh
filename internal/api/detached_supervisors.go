@@ -157,7 +157,9 @@ func (a *App) detachedRelayFor(sup detachedSupervisor) *detachedRelay {
 		relay = &detachedRelay{identity: identity, supervisor: sup, pending: make(map[string]approvals.Request), outbox: make(map[uint64]detachedtransport.Record), decisions: make(map[string]detachedtransport.Record)}
 		a.detachedRelays[identity] = relay
 	} else {
+		relay.mu.Lock()
 		relay.supervisor = sup
+		relay.mu.Unlock()
 	}
 	return relay
 }
@@ -174,8 +176,8 @@ func (a *App) exchangeDetachedRelay(ctx context.Context, relay *detachedRelay) e
 			records = append(records, record)
 		}
 	}
-	request := detachedtransport.ExchangeRequest{Version: detachedtransport.Version, Identity: relay.identity, Credential: relay.supervisor.Meta.EventToken, Cursor: relay.cursor, Limit: 256, Records: records}
-	response, err := client.ExchangeDetachedControl(ctx, relay.supervisor.Socket, relay.supervisor.Meta.EventToken, request, a.detachedSupervisorTimeout())
+	request := detachedtransport.ExchangeRequest{Version: detachedtransport.Version, Identity: relay.identity, Credential: relay.supervisor.Meta.EventToken, Cursor: relay.cursor, AckFloor: relay.ack, Limit: 256, Records: records}
+	response, err := client.ExchangeDetachedControl(ctx, relay.supervisor.Socket, relay.supervisor.Meta.EventToken, relay.ack, request, a.detachedSupervisorTimeout())
 	if err != nil {
 		return err
 	}

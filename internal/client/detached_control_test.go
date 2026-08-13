@@ -40,7 +40,7 @@ func TestExchangeDetachedControlAuthenticatesAndValidatesIdentity(t *testing.T) 
 	defer server.Close()
 	defer os.Remove(socket)
 
-	response, err := ExchangeDetachedControl(context.Background(), socket, "secret", detachedtransport.ExchangeRequest{Version: detachedtransport.Version, Identity: identity, Limit: 8}, time.Second)
+	response, err := ExchangeDetachedControl(context.Background(), socket, "secret", 0, detachedtransport.ExchangeRequest{Version: detachedtransport.Version, Identity: identity, Limit: 8}, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestExchangeDetachedControlAuthenticatesAndValidatesIdentity(t *testing.T) 
 
 func TestExchangeDetachedControlRejectsRelativeSocket(t *testing.T) {
 	identity := detachedtransport.Identity{SessionID: "session", Generation: 1, IncarnationID: "incarnation"}
-	_, err := ExchangeDetachedControl(context.Background(), "relative.sock", "secret", detachedtransport.ExchangeRequest{Version: detachedtransport.Version, Identity: identity}, time.Second)
+	_, err := ExchangeDetachedControl(context.Background(), "relative.sock", "secret", 0, detachedtransport.ExchangeRequest{Version: detachedtransport.Version, Identity: identity}, time.Second)
 	if err == nil {
 		t.Fatal("relative socket was accepted")
 	}

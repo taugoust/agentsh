@@ -49,14 +49,28 @@ func (a *App) exchangeDetachedControl(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "detached control incarnation mismatch"})
 		return
 	}
-	ack, err := a.detachedResolutions.Apply(identity, request.Records, func(record detachedtransport.Record) bool {
+	if request.AckFloor > 0 && a.detachedResolutions.Ack(identity) == 0 {
+		if err := a.detachedResolutions.RestoreAck(identity, request.AckFloor); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+			return
+		}
+	}
+	ack, err := a.detachedResolutions.Apply(identity, request.Records, func(record detachedtransport.Record) detachedtransport.ResolveResult {
 		resolution := *record.Resolution
 		target := approvals.Scope{
 			Kind: resolution.ScopeKind, Key: resolution.ScopeKey, Label: resolution.ScopeLabel,
 			Operation: resolution.ScopeOperation, Path: resolution.ScopePath, Rule: resolution.ScopeRule,
 			Prefix: resolution.ScopePrefix,
 		}
-		return a.approvals.ResolveForSessionWithScopeTarget(identity.SessionID, record.ID, resolution.Approved, resolution.Reason, resolution.Scope, target)
+		if a.approvals.ResolveForSessionWithScopeTarget(identity.SessionID, record.ID, resolution.Approved, resolution.Reason, resolution.Scope, target) {
+			return detachedtransport.ResolveApplied
+		}
+		if !a.approvals.HasPendingForSession(identity.SessionID, record.ID) {
+			// Timeout, cancellation, or another trusted resolver won. Consume the
+			// stale record so it cannot poison all later ordered resolutions.
+			return detachedtransport.ResolveAlreadyTerminal
+		}
+		return detachedtransport.ResolveRejected
 	})
 	if err != nil {
 		code := http.StatusConflict

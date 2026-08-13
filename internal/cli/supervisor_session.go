@@ -251,11 +251,9 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error
 	cfg.Server.UnixSocket.Permissions = "0600"
 	cfg.Auth.Type = "none"
 	cfg.Development.DisableAuth = true
-	cfg.Development.AllowUnauthenticatedUnixApprovals = true
-	// The supervisor socket is file-permission protected and session-local. Keep
-	// api approvals enabled so the trusted parent Pi can poll and resolve pending
-	// approvals over this Unix socket. The HTTP/TCP approval routes stay forbidden
-	// while auth is disabled.
+	cfg.Development.AllowUnauthenticatedUnixApprovals = false
+	// Approval authority is available only through the typed control endpoint,
+	// which additionally requires the protected per-incarnation credential.
 	cfg.Development.PProf.Enabled = false
 	cfg.Metrics.Enabled = false
 

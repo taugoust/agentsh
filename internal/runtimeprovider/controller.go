@@ -129,6 +129,9 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 		if current.State == StateStopping || current.State == StateStopped {
 			return fmt.Errorf("runtime session %s is %s and cannot be recovered", current.SessionID, current.State)
 		}
+		if current.CleanupPending {
+			return fmt.Errorf("runtime session %s has incomplete cleanup and cannot be recovered", current.SessionID)
+		}
 		if current.State == StateFailed && !current.CleanupComplete && !manifestHasExactRuntime(current) {
 			return fmt.Errorf("runtime session %s has unbound incomplete cleanup and cannot be recovered", current.SessionID)
 		}
@@ -265,6 +268,7 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 		manifest.State = StateStopping
 		manifest.LastError = ""
 		manifest.CleanupComplete = false
+		manifest.CleanupPending = true
 		return WriteManifest(stateDir, manifest)
 	}); err != nil {
 		return err
@@ -284,6 +288,7 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 		manifest.State = StateStopping
 		manifest.LastError = boundedError(cleanupErr)
 		manifest.CleanupComplete = false
+		manifest.CleanupPending = true
 		writeErr := WithLifecycleLock(stateDir, func() error {
 			return writeManifestIfStopStillCurrent(stateDir, manifest)
 		})
@@ -292,6 +297,7 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 	manifest.State = StateStopped
 	manifest.LastError = ""
 	manifest.CleanupComplete = true
+	manifest.CleanupPending = false
 	return WithLifecycleLock(stateDir, func() error {
 		return writeManifestIfStopStillCurrent(stateDir, manifest)
 	})
@@ -315,13 +321,17 @@ func (c Controller) failWithoutInstance(stateDir string, manifest Manifest, caus
 	manifest.State = StateFailed
 	manifest.LastError = boundedError(cause)
 	manifest.CleanupComplete = true
+	manifest.CleanupPending = false
 	writeErr := WithLifecycleLock(stateDir, func() error {
 		current, err := ReadManifest(stateDir)
 		if err != nil {
 			return err
 		}
-		if current.State == StateStopping || current.State == StateStopped {
+		if current.State == StateStopping || current.State == StateStopped || current.CleanupPending {
 			return nil
+		}
+		if !sameManifestLineage(current, manifest) {
+			return fmt.Errorf("runtime-provider manifest changed before failure persistence")
 		}
 		return WriteManifest(stateDir, manifest)
 	})
@@ -343,6 +353,7 @@ func (c Controller) failStarted(stateDir string, manifest Manifest, instance Ins
 	intent := manifest
 	intent.LastError = boundedError(errors.Join(cause, bindingErr))
 	intent.CleanupComplete = false
+	intent.CleanupPending = true
 	if bindingErr == nil {
 		// Exact cleanup intent is absorbing and retryable through Controller.Stop.
 		intent.State = StateStopping
@@ -383,14 +394,14 @@ func (c Controller) failStarted(stateDir string, manifest Manifest, instance Ins
 		return err
 	})
 
+	if commitErr != nil {
+		return errors.Join(cause, bindingErr, commitErr)
+	}
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), c.cleanupTimeout())
 	stopErr := instance.Stop(cleanupCtx, reason)
 	destroyErr := instance.Destroy(cleanupCtx)
 	cancel()
 	cleanupErr := errors.Join(stopErr, destroyErr)
-	if commitErr != nil {
-		return errors.Join(cause, bindingErr, commitErr, cleanupErr)
-	}
 
 	replacement := committed
 	replacement.LastError = boundedError(errors.Join(cause, bindingErr, cleanupErr))
@@ -398,6 +409,7 @@ func (c Controller) failStarted(stateDir string, manifest Manifest, instance Ins
 	case cleanupErr == nil:
 		replacement.State = StateFailed
 		replacement.CleanupComplete = true
+		replacement.CleanupPending = false
 		if bindingErr != nil {
 			replacement.Identity = original.Identity
 			replacement.Endpoint = original.Endpoint
@@ -405,9 +417,11 @@ func (c Controller) failStarted(stateDir string, manifest Manifest, instance Ins
 	case bindingErr == nil:
 		replacement.State = StateStopping
 		replacement.CleanupComplete = false
+		replacement.CleanupPending = true
 	default:
 		replacement.State = StateFailed
 		replacement.CleanupComplete = false
+		replacement.CleanupPending = true
 	}
 	writeErr := WithLifecycleLock(stateDir, func() error {
 		return writeManifestIfRevisionCurrent(stateDir, committed, replacement)
@@ -445,7 +459,7 @@ func sameManifestRevision(current, supplied Manifest) bool {
 		current.State == supplied.State && current.CreatedAt.Equal(supplied.CreatedAt) &&
 		current.UpdatedAt.Equal(supplied.UpdatedAt) && current.Identity == supplied.Identity &&
 		current.Endpoint == supplied.Endpoint && current.LastError == supplied.LastError &&
-		current.CleanupComplete == supplied.CleanupComplete
+		current.CleanupComplete == supplied.CleanupComplete && current.CleanupPending == supplied.CleanupPending
 }
 
 func validateProviderSelection(provider Provider, expected string) error {

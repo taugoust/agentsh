@@ -988,7 +988,17 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 		if keepOnDestroy || destroyAction == "keep" {
 			return sw.Close(context.Background())
 		}
-		return sw.Reject(context.Background())
+		if pending, ok := sw.PendingFinalization(); ok {
+			return fmt.Errorf("refusing destroy while shadow finalization %s is pending", pending.ID)
+		}
+		intent, err := sw.PrepareReject(context.Background(), "destroy-reject-"+uuid.NewString())
+		if err != nil {
+			return err
+		}
+		if err := sw.ApplyFinalization(context.Background(), intent.ID); err != nil {
+			return err
+		}
+		return sw.CleanupFinalized()
 	})
 
 	shadowEventType := "shadow_created"

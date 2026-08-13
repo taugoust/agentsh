@@ -384,6 +384,16 @@ func (m *Manager) ResolveForSessionWithScopeTarget(sessionID string, id string, 
 	return m.resolveForSession(sessionID, id, approved, reason, scope, target)
 }
 
+func (m *Manager) HasPendingForSession(sessionID, id string) bool {
+	if m == nil || sessionID == "" || id == "" {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	pending := m.pending[id]
+	return pending != nil && pending.req.SessionID == sessionID
+}
+
 func (m *Manager) resolveForSession(sessionID string, id string, approved bool, reason string, scope string, target Scope) bool {
 	scope, err := NormalizeResolutionScope(scope)
 	if err != nil {

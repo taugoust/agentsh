@@ -56,7 +56,7 @@ func TestDetachedControlExchangeRequiresUnixAndReplaysExactApproval(t *testing.T
 		t.Fatal(err)
 	}
 	response := detachedtransport.ExchangeResponse{Version: detachedtransport.Version, Identity: identity, Cursor: 1, Records: []detachedtransport.Record{record}}
-	if err := response.Validate(identity, 0, 0); err != nil {
+	if err := response.Validate(identity, 0, 0, 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := json.Marshal(response); err != nil {

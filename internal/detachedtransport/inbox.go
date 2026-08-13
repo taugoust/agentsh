@@ -5,7 +5,15 @@ import (
 	"sync"
 )
 
-type ResolveRecord func(Record) bool
+type ResolveResult uint8
+
+const (
+	ResolveApplied ResolveResult = iota + 1
+	ResolveAlreadyTerminal
+	ResolveRejected
+)
+
+type ResolveRecord func(Record) ResolveResult
 
 // ResolutionInbox provides exactly-once application and replay-safe
 // acknowledgment for one parent-to-supervisor stream per exact incarnation.
@@ -51,10 +59,13 @@ func (i *ResolutionInbox) Apply(identity Identity, records []Record, resolve Res
 			return ack, fmt.Errorf("detached resolution sequence gap: got %d after %d", record.Sequence, ack)
 		}
 		if i.receiptCountLocked() >= i.max {
-			return ack, fmt.Errorf("detached resolution inbox is full")
+			// ACK is cumulative and every earlier sequence is already terminal;
+			// retain only the most recent receipt needed to authenticate replay.
+			delete(i.receipts, identity)
 		}
-		if !resolve(record) {
-			return ack, fmt.Errorf("approval %s is not pending in exact detached incarnation", record.ID)
+		result := resolve(record)
+		if result == ResolveRejected {
+			return ack, fmt.Errorf("approval %s resolution was rejected by exact detached incarnation", record.ID)
 		}
 		cloned, err := cloneRecord(record)
 		if err != nil {
@@ -68,6 +79,28 @@ func (i *ResolutionInbox) Apply(identity Identity, records []Record, resolve Res
 		i.ack[identity] = ack
 	}
 	return ack, nil
+}
+
+// RestoreAck advances an empty incarnation inbox to a parent-retained
+// high-water mark after supervisor restart. It is accepted only before this
+// process has applied records, preserving conflict checks for live receipts.
+func (i *ResolutionInbox) RestoreAck(identity Identity, ack uint64) error {
+	if i == nil {
+		return fmt.Errorf("detached resolution inbox is unavailable")
+	}
+	if err := identity.Validate(); err != nil {
+		return err
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.ack[identity] != 0 || len(i.receipts[identity]) != 0 {
+		if i.ack[identity] == ack {
+			return nil
+		}
+		return fmt.Errorf("detached resolution acknowledgment conflicts with live inbox")
+	}
+	i.ack[identity] = ack
+	return nil
 }
 
 func (i *ResolutionInbox) Ack(identity Identity) uint64 {

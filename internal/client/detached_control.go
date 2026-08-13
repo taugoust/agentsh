@@ -17,7 +17,7 @@ import (
 
 // ExchangeDetachedControl performs one authenticated typed exchange over an
 // absolute Unix socket. It deliberately has no TCP, proxy, or redirect path.
-func ExchangeDetachedControl(ctx context.Context, socketPath, token string, request detachedtransport.ExchangeRequest, timeout time.Duration) (detachedtransport.ExchangeResponse, error) {
+func ExchangeDetachedControl(ctx context.Context, socketPath, token string, acknowledged uint64, request detachedtransport.ExchangeRequest, timeout time.Duration) (detachedtransport.ExchangeResponse, error) {
 	var response detachedtransport.ExchangeResponse
 	socketPath = strings.TrimSpace(socketPath)
 	if socketPath == "" || !filepath.IsAbs(socketPath) || filepath.Clean(socketPath) != socketPath || strings.ContainsAny(socketPath, "\x00\r\n") {
@@ -81,11 +81,11 @@ func ExchangeDetachedControl(ctx context.Context, socketPath, token string, requ
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return detachedtransport.ExchangeResponse{}, fmt.Errorf("detached control response contains trailing data")
 	}
-	var sentMax uint64
+	sentMax := acknowledged
 	if len(request.Records) > 0 {
 		sentMax = request.Records[len(request.Records)-1].Sequence
 	}
-	if err := response.Validate(request.Identity, sentMax, request.Cursor); err != nil {
+	if err := response.Validate(request.Identity, acknowledged, sentMax, request.Cursor); err != nil {
 		return detachedtransport.ExchangeResponse{}, err
 	}
 	return response, nil

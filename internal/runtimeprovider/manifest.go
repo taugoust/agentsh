@@ -29,6 +29,9 @@ type Manifest struct {
 	Endpoint        Endpoint  `json:"endpoint,omitempty"`
 	LastError       string    `json:"last_error,omitempty"`
 	CleanupComplete bool      `json:"cleanup_complete,omitempty"`
+	// CleanupPending distinguishes provider cleanup debt from an ordinary
+	// recoverable runtime failure in schema-v1 manifests.
+	CleanupPending bool `json:"cleanup_pending,omitempty"`
 }
 
 func ManifestPath(stateDir string) string {
@@ -93,6 +96,9 @@ func (m Manifest) Validate() error {
 		if !identityPresent || !endpointPresent {
 			return fmt.Errorf("%w: state %s requires complete identity and endpoint", ErrManifestInvalid, m.State)
 		}
+	}
+	if m.CleanupPending && m.CleanupComplete {
+		return fmt.Errorf("%w: cleanup cannot be pending and complete", ErrManifestInvalid)
 	}
 	if strings.ContainsAny(m.LastError, "\x00") || len(m.LastError) > 4096 {
 		return fmt.Errorf("%w: last_error is invalid", ErrManifestInvalid)

@@ -17,7 +17,7 @@ func TestResolutionInboxExactReplayAppliesOnce(t *testing.T) {
 	}
 	inbox := NewResolutionInbox(8)
 	var calls atomic.Int32
-	resolve := func(Record) bool { calls.Add(1); return true }
+	resolve := func(Record) ResolveResult { calls.Add(1); return ResolveApplied }
 	if ack, err := inbox.Apply(identity, []Record{record}, resolve); err != nil || ack != 1 {
 		t.Fatalf("first apply ack=%d err=%v", ack, err)
 	}
@@ -37,7 +37,7 @@ func TestResolutionInboxConcurrentReplayAppliesOnce(t *testing.T) {
 	}
 	inbox := NewResolutionInbox(8)
 	var calls atomic.Int32
-	resolve := func(Record) bool { calls.Add(1); return true }
+	resolve := func(Record) ResolveResult { calls.Add(1); return ResolveApplied }
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
@@ -58,15 +58,15 @@ func TestResolutionInboxRejectsGapAndConflictingReplay(t *testing.T) {
 	identity := Identity{SessionID: "session", Generation: 1, IncarnationID: "incarnation"}
 	inbox := NewResolutionInbox(8)
 	second, _ := NewApprovalResolution(2, "approval", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
-	if _, err := inbox.Apply(identity, []Record{second}, func(Record) bool { return true }); err == nil {
+	if _, err := inbox.Apply(identity, []Record{second}, func(Record) ResolveResult { return ResolveApplied }); err == nil {
 		t.Fatal("sequence gap was accepted")
 	}
 	first, _ := NewApprovalResolution(1, "approval", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
-	if _, err := inbox.Apply(identity, []Record{first}, func(Record) bool { return true }); err != nil {
+	if _, err := inbox.Apply(identity, []Record{first}, func(Record) ResolveResult { return ResolveApplied }); err != nil {
 		t.Fatal(err)
 	}
 	conflict, _ := NewApprovalResolution(1, "approval", approvals.Resolution{Approved: false, Scope: approvals.ScopeOnce, At: first.CreatedAt})
-	if _, err := inbox.Apply(identity, []Record{conflict}, func(Record) bool { return true }); err == nil {
+	if _, err := inbox.Apply(identity, []Record{conflict}, func(Record) ResolveResult { return ResolveApplied }); err == nil {
 		t.Fatal("conflicting replay was accepted")
 	}
 }

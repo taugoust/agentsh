@@ -301,8 +301,8 @@ func TestControllerRecoverRejectsGenerationIdentitySubstitution(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "changed an existing generation") {
 		t.Fatalf("recovery substitution error = %v", err)
 	}
-	if instance.stops != 1 || instance.destroys != 1 {
-		t.Fatalf("substituted recovery cleanup stops=%d destroys=%d", instance.stops, instance.destroys)
+	if instance.stops != 0 || instance.destroys != 0 {
+		t.Fatalf("uncommitted substituted recovery was cleaned stops=%d destroys=%d", instance.stops, instance.destroys)
 	}
 }
 
@@ -396,7 +396,7 @@ func TestControllerUnboundFailedCleanupCannotBeRecovered(t *testing.T) {
 		t.Fatalf("unbound cleanup manifest=%+v", manifest)
 	}
 	opens, recovers := provider.opens, provider.recovers
-	if _, err := (Controller{CleanupTimeout: time.Second}).Recover(context.Background(), provider, request.StateDir, manifest); err == nil || !strings.Contains(err.Error(), "unbound incomplete cleanup") {
+	if _, err := (Controller{CleanupTimeout: time.Second}).Recover(context.Background(), provider, request.StateDir, manifest); err == nil || !strings.Contains(err.Error(), "incomplete cleanup") {
 		t.Fatalf("Recover error=%v", err)
 	}
 	if provider.opens != opens || provider.recovers != recovers {

@@ -141,6 +141,9 @@ type ExchangeRequest struct {
 	Cursor  uint64   `json:"cursor"`
 	Limit   int      `json:"limit"`
 	Records []Record `json:"records"`
+	// AckFloor is the parent's retained cumulative acknowledgment. A restarted
+	// supervisor may restore an empty inbox to this exact high-water mark.
+	AckFloor uint64 `json:"ack_floor,omitempty"`
 }
 
 type ExchangeResponse struct {
@@ -160,7 +163,7 @@ func (r ExchangeRequest) Validate() error {
 	if err := r.Identity.Validate(); err != nil {
 		return err
 	}
-	var prior uint64
+	prior := r.AckFloor
 	for _, record := range r.Records {
 		if err := record.Validate(); err != nil {
 			return err
@@ -176,8 +179,8 @@ func (r ExchangeRequest) Validate() error {
 	return nil
 }
 
-func (r ExchangeResponse) Validate(expected Identity, sentMax, requestedCursor uint64) error {
-	if r.Version != Version || r.Identity != expected || r.Ack > sentMax || r.Cursor < requestedCursor || len(r.Records) > 256 {
+func (r ExchangeResponse) Validate(expected Identity, acknowledged, sentMax, requestedCursor uint64) error {
+	if r.Version != Version || r.Identity != expected || r.Ack < acknowledged || r.Ack > sentMax || r.Cursor < requestedCursor || len(r.Records) > 256 {
 		return fmt.Errorf("detached transport exchange response is invalid")
 	}
 	prior := requestedCursor
