@@ -20,6 +20,7 @@ import (
 	"github.com/agentsh/agentsh/internal/config"
 	dbevents "github.com/agentsh/agentsh/internal/db/events"
 	"github.com/agentsh/agentsh/internal/detached"
+	"github.com/agentsh/agentsh/internal/detachedtransport"
 	"github.com/agentsh/agentsh/internal/events"
 	"github.com/agentsh/agentsh/internal/limits"
 	"github.com/agentsh/agentsh/internal/mcpinspect"
@@ -95,6 +96,7 @@ type App struct {
 	detachedRoutes      map[string]detachedSupervisor
 	detachedApprovals   *detachedApprovalStore
 	detachedRuntime     *detached.Runtime
+	detachedControl     *detachedtransport.Journal
 	detachedStopCh      chan struct{}
 	detachedStopOnce    sync.Once
 	detachedLifecycleMu sync.Mutex
@@ -247,6 +249,7 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 		sessionEvents:              newSessionEventStore(),
 		detachedRoutes:             make(map[string]detachedSupervisor),
 		detachedApprovals:          newDetachedApprovalStore(),
+		detachedControl:            detachedtransport.NewJournal(4096),
 		detachedStopCh:             make(chan struct{}),
 		lifecycleCtx:               lifecycleCtx,
 		lifecycleCancel:            lifecycleCancel,
@@ -300,6 +303,19 @@ func (a *App) SetDetachedRuntime(runtime *detached.Runtime) {
 	}
 	a.detachedLifecycleMu.Unlock()
 	if a.approvals != nil && runtime != nil {
+		a.approvals.SetDetachedRequestObserver(func(_ context.Context, request approvals.Request) error {
+			status := runtime.RuntimeStatus()
+			identity := detachedtransport.Identity{
+				SessionID: status.SessionID, Generation: status.Generation, IncarnationID: status.IncarnationID,
+			}
+			sequence := a.detachedControl.NextSequence(identity)
+			record, err := detachedtransport.NewApprovalRequest(sequence, request)
+			if err != nil {
+				return err
+			}
+			_, err = a.detachedControl.Put(identity, record)
+			return err
+		})
 		a.approvals.SetScopedPersistenceHook(func(sessionID string, decisions []approvals.ScopedDecision) {
 			if sessionID != runtime.Manifest().SessionID {
 				return
@@ -453,6 +469,7 @@ func (a *App) Router() http.Handler {
 			}
 			writeJSON(w, http.StatusOK, a.detachedRuntimeStatus())
 		})
+		r.Post("/detached/control/exchange", a.exchangeDetachedControl)
 		r.Get("/profiles", a.handleListProfiles)
 
 		r.Post("/sessions", a.createSession)

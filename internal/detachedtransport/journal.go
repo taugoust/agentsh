@@ -65,6 +65,15 @@ func (j *Journal) Put(identity Identity, record Record) (bool, error) {
 	return true, nil
 }
 
+func (j *Journal) NextSequence(identity Identity) uint64 {
+	if j == nil {
+		return 0
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.last[identity] + 1
+}
+
 func (j *Journal) Since(identity Identity, cursor uint64, limit int, kind Kind) []Record {
 	if j == nil {
 		return nil

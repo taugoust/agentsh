@@ -530,7 +530,7 @@
               runHook preCheck
               go test ./internal/detachedtransport
               go test ./internal/approvals -run '^TestApprovalResolution'
-              go test ./internal/api -run '^TestDetachedSessionsPush'
+              go test ./internal/api -run '^TestDetached(Control|SessionsPush)'
               runHook postCheck
             '';
           });
