@@ -541,8 +541,8 @@ func TestDetachedSessionIDRequiresCanonicalCallerIdentity(t *testing.T) {
 			t.Errorf("detachedSessionID(%q) unexpectedly succeeded", invalid)
 		}
 	}
-	if newSessionStartCmd().Flags().Lookup("session-id") == nil {
-		t.Fatal("session start does not expose --session-id")
+	if newSessionStartCmd().Flags().Lookup("session-id") == nil || newSessionStartCmd().Flags().Lookup("control-token-file") == nil {
+		t.Fatal("session start does not expose exact identity and private control credential flags")
 	}
 
 	stateHome := t.TempDir()
@@ -557,6 +557,41 @@ func TestDetachedSessionIDRequiresCanonicalCallerIdentity(t *testing.T) {
 	}
 	if _, err := reserveDetachedSessionState(canonical); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("caller identity collision error = %v", err)
+	}
+}
+
+func TestWriteDetachedControlTokenFileRequiresPrivateExclusiveDestination(t *testing.T) {
+	private := filepath.Join(t.TempDir(), "private")
+	if err := os.Mkdir(private, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(private, "control.token")
+	if err := writeDetachedControlTokenFile(path, "control-secret"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "control-secret\n" {
+		t.Fatalf("token contents = %q", data)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("token mode = %v", info.Mode().Perm())
+	}
+	if err := writeDetachedControlTokenFile(path, "replacement"); err == nil {
+		t.Fatal("existing token destination was overwritten")
+	}
+	public := filepath.Join(t.TempDir(), "public")
+	if err := os.Mkdir(public, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeDetachedControlTokenFile(filepath.Join(public, "control.token"), "secret"); err == nil {
+		t.Fatal("public token directory was accepted")
 	}
 }
 

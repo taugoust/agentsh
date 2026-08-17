@@ -534,6 +534,7 @@ func newSessionStartCmd() *cobra.Command {
 	var envInherit []string
 	var sessionID string
 	var runtimeProfile string
+	var controlTokenFile string
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start a session",
@@ -569,6 +570,11 @@ broker features remain out of scope.`,
 			if err != nil {
 				return err
 			}
+			if controlTokenFile != "" {
+				if err := writeDetachedControlTokenFile(controlTokenFile, res.EventToken); err != nil {
+					return err
+				}
+			}
 			if outputJSON {
 				return printJSON(cmd, res)
 			}
@@ -591,8 +597,46 @@ broker features remain out of scope.`,
 	cmd.Flags().StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "Exact caller-preallocated session-UUID identity")
 	cmd.Flags().StringVar(&runtimeProfile, "runtime-profile", "", "Operator-configured detached runtime profile (default: sessions.runtime.default_profile)")
+	cmd.Flags().StringVar(&controlTokenFile, "control-token-file", "", "Create a private detached-control credential file for a trusted wrapper")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	return cmd
+}
+
+func writeDetachedControlTokenFile(path, token string) error {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if !filepath.IsAbs(path) || path == string(filepath.Separator) || strings.TrimSpace(token) == "" || strings.ContainsAny(token, " \t\r\n") {
+		return fmt.Errorf("detached control token file request is invalid")
+	}
+	parent := filepath.Dir(path)
+	info, err := os.Lstat(parent)
+	if err != nil {
+		return fmt.Errorf("inspect detached control token directory: %w", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("detached control token directory must be a private direct directory")
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("create detached control token file: %w", err)
+	}
+	ok := false
+	defer func() {
+		_ = file.Close()
+		if !ok {
+			_ = os.Remove(path)
+		}
+	}()
+	if _, err := file.WriteString(token + "\n"); err != nil {
+		return fmt.Errorf("write detached control token file: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync detached control token file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close detached control token file: %w", err)
+	}
+	ok = true
+	return nil
 }
 
 func randomDetachedEventToken() string {
