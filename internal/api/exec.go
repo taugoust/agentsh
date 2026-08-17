@@ -1161,6 +1161,7 @@ func reservedSupervisorEnvKeys() []string {
 		nethelper.EnvBootstrapResult,
 		nethelper.EnvRecoveryTokenFile,
 		"AGENTSH_DETACHED_EVENT_TOKEN",
+		"AGENTSH_DETACHED_CONTROL_TOKEN",
 		"AGENTSH_DETACHED_EVENT_URL",
 		childCapabilityEnv,
 		"AGENTSH_INTERNAL_COMMAND_JAIL_STAGE",

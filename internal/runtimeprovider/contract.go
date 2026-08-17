@@ -147,6 +147,14 @@ type Provider interface {
 	Recover(context.Context, Manifest) (Instance, error)
 }
 
+// UnprovisionedCleanupProvider is an optional fail-closed cleanup seam for a
+// controller crash before an exact runtime identity reached the manifest. It
+// may only reconstruct a handle from provider-owned durable state and must not
+// start, recover, or adopt a runtime.
+type UnprovisionedCleanupProvider interface {
+	OpenUnprovisionedCleanup(context.Context, Manifest) (Instance, error)
+}
+
 // ControlPlaneSnapshot is the provider-neutral detached AgentSH control-plane
 // view used by trusted CLI frontends. Providers may place that control plane in
 // a native process, VM, or another outer runtime; callers never need a concrete

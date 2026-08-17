@@ -339,6 +339,7 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 	}
 	defer operation.Close()
 	var instance Instance
+	unprovisionedCleanup := false
 	if err := WithLifecycleLock(stateDir, func() error {
 		current, readErr := ReadManifest(stateDir)
 		if readErr != nil {
@@ -351,11 +352,22 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 		if manifest.State == StateFinalizing {
 			return fmt.Errorf("runtime session %s is finalizing and cannot be stopped", manifest.SessionID)
 		}
-		if manifest.State == StateStopped && manifest.CleanupComplete {
+		if (manifest.State == StateStopped || manifest.State == StateFailed) && manifest.CleanupComplete {
 			return nil
 		}
 		var openErr error
-		instance, openErr = provider.Open(ctx, manifest)
+		if manifestHasExactRuntime(manifest) {
+			instance, openErr = provider.Open(ctx, manifest)
+		} else {
+			if manifest.State != StateProvisioning && !(manifest.State == StateFailed && manifest.CleanupPending) {
+				return fmt.Errorf("runtime provider has no exact identity for cleanup")
+			}
+			cleaner, ok := provider.(UnprovisionedCleanupProvider)
+			if !ok {
+				return fmt.Errorf("runtime provider cannot verify unprovisioned cleanup")
+			}
+			instance, openErr = cleaner.OpenUnprovisionedCleanup(ctx, manifest)
+		}
 		if openErr != nil {
 			return fmt.Errorf("open exact runtime provider instance: %w", openErr)
 		}
@@ -364,18 +376,29 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 		}
 		identity := instance.Identity()
 		endpoint := instance.Endpoint()
-		if identityErr := validateIdentityForManifest(identity, manifest); identityErr != nil {
-			return identityErr
+		if identityErr := identity.ValidateComplete(); identityErr == nil {
+			if identityErr = validateIdentityForManifest(identity, manifest); identityErr != nil {
+				return identityErr
+			}
+			if endpointErr := endpoint.Validate(); endpointErr != nil {
+				return endpointErr
+			}
+			if manifest.Endpoint != (Endpoint{}) && endpoint != manifest.Endpoint {
+				return fmt.Errorf("runtime provider exact endpoint mismatch")
+			}
+			manifest.Identity = identity
+			manifest.Endpoint = endpoint
+			manifest.State = StateStopping
+		} else {
+			if err := validateUnprovisionedCleanupIdentity(identity, manifest); err != nil {
+				return err
+			}
+			if err := endpoint.Validate(); err != nil {
+				return err
+			}
+			unprovisionedCleanup = true
+			manifest.State = StateFailed
 		}
-		if endpointErr := endpoint.Validate(); endpointErr != nil {
-			return endpointErr
-		}
-		if manifest.Endpoint != (Endpoint{}) && endpoint != manifest.Endpoint {
-			return fmt.Errorf("runtime provider exact endpoint mismatch")
-		}
-		manifest.Identity = identity
-		manifest.Endpoint = endpoint
-		manifest.State = StateStopping
 		manifest.LastError = ""
 		manifest.CleanupComplete = false
 		manifest.CleanupPending = true
@@ -384,9 +407,10 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 	}); err != nil {
 		return err
 	}
-	if instance == nil { // already stopped and cleanup-complete
+	if instance == nil { // already terminal and cleanup-complete
 		return nil
 	}
+	intent := manifest
 
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), c.cleanupTimeout())
 	defer cancel()
@@ -394,37 +418,46 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 	destroyErr := instance.Destroy(cleanupCtx)
 	cleanupErr := errors.Join(stopErr, destroyErr)
 	if cleanupErr != nil {
-		// Preserve the committed stop intent. Recovery must never resurrect a
+		// Preserve the committed cleanup intent. Recovery must never resurrect a
 		// runtime merely because one cleanup step needs to be retried.
-		manifest.State = StateStopping
 		manifest.LastError = boundedError(cleanupErr)
 		manifest.CleanupComplete = false
 		manifest.CleanupPending = true
 		manifest.CleanupIntentKnown = true
 		writeErr := WithLifecycleLock(stateDir, func() error {
-			return writeManifestIfStopStillCurrent(stateDir, manifest)
+			return writeManifestIfCleanupStillCurrent(stateDir, intent, manifest)
 		})
 		return errors.Join(fmt.Errorf("exact runtime cleanup: %w", cleanupErr), writeErr)
 	}
-	manifest.State = StateStopped
+	if unprovisionedCleanup {
+		manifest.State = StateFailed
+	} else {
+		manifest.State = StateStopped
+	}
 	manifest.LastError = ""
 	manifest.CleanupComplete = true
 	manifest.CleanupPending = false
 	manifest.CleanupIntentKnown = true
 	return WithLifecycleLock(stateDir, func() error {
-		return writeManifestIfStopStillCurrent(stateDir, manifest)
+		return writeManifestIfCleanupStillCurrent(stateDir, intent, manifest)
 	})
 }
 
-func writeManifestIfStopStillCurrent(stateDir string, replacement Manifest) error {
+func validateUnprovisionedCleanupIdentity(identity Identity, manifest Manifest) error {
+	if identity.ContractVersion != ContractVersion || identity.Provider != manifest.Provider || identity.Profile != manifest.Profile || identity.SessionID != manifest.SessionID ||
+		identity.Generation != 0 || identity.IncarnationID != "" || identity.OwnerPID != 0 || identity.OwnerStartIdentity != "" || identity.BootID != "" {
+		return fmt.Errorf("runtime provider returned an invalid unprovisioned cleanup identity")
+	}
+	return nil
+}
+
+func writeManifestIfCleanupStillCurrent(stateDir string, intent, replacement Manifest) error {
 	current, err := ReadManifest(stateDir)
 	if err != nil {
 		return err
 	}
-	if current.Provider != replacement.Provider || current.Profile != replacement.Profile ||
-		current.SessionID != replacement.SessionID || current.StateDir != replacement.StateDir ||
-		current.Identity != replacement.Identity || current.Endpoint != replacement.Endpoint ||
-		current.State != StateStopping {
+	if current.Provider != intent.Provider || current.Profile != intent.Profile || current.SessionID != intent.SessionID || current.StateDir != intent.StateDir ||
+		current.Identity != intent.Identity || current.Endpoint != intent.Endpoint || current.State != intent.State || !current.CleanupPending || current.CleanupComplete {
 		return fmt.Errorf("runtime-provider incarnation changed during exact cleanup")
 	}
 	return WriteManifest(stateDir, replacement)

@@ -73,6 +73,36 @@ func (p *nativeRuntimeProvider) Open(_ context.Context, manifest runtimeprovider
 	return newNativeRuntimeInstance(manifest.Profile, stateDir, meta, nil, detached.RuntimeStatus{}), nil
 }
 
+func (p *nativeRuntimeProvider) OpenUnprovisionedCleanup(_ context.Context, manifest runtimeprovider.Manifest) (runtimeprovider.Instance, error) {
+	if manifest.Identity != (runtimeprovider.Identity{}) || manifest.Endpoint != (runtimeprovider.Endpoint{}) {
+		return nil, fmt.Errorf("native unprovisioned cleanup requires an unpublished runtime identity")
+	}
+	meta, stateDir, err := readSupervisorMetadata(manifest.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Clean(stateDir) != filepath.Clean(manifest.StateDir) {
+		return nil, fmt.Errorf("native runtime state directory identity mismatch")
+	}
+	recovery, recoveryErr := detached.ReadRecoveryManifest(stateDir)
+	if err := validateDetachedStopAuthority(manifest.SessionID, stateDir, meta, recovery, recoveryErr); err != nil {
+		return nil, err
+	}
+	identity := nativeRuntimeIdentity(manifest.Profile, meta)
+	if err := identity.ValidateComplete(); err != nil {
+		if meta.Generation != 0 || meta.IncarnationID != "" || meta.OwnerPID != 0 || meta.OwnerStartIdentity != "" || meta.BootID != "" || meta.State != detached.LifecycleProvisioning {
+			return nil, fmt.Errorf("native runtime has partially published an untrusted incarnation")
+		}
+		if _, socketErr := os.Lstat(meta.SupervisorSock); !errors.Is(socketErr, os.ErrNotExist) {
+			if socketErr == nil {
+				return nil, fmt.Errorf("native unprovisioned runtime has a live or ambiguous supervisor socket")
+			}
+			return nil, fmt.Errorf("inspect native unprovisioned supervisor socket: %w", socketErr)
+		}
+	}
+	return newNativeRuntimeInstance(manifest.Profile, stateDir, meta, nil, detached.RuntimeStatus{}), nil
+}
+
 func (p *nativeRuntimeProvider) Recover(ctx context.Context, manifest runtimeprovider.Manifest) (runtimeprovider.Instance, error) {
 	status, err := recoverNativeDetachedSession(ctx, manifest.SessionID)
 	if err != nil {

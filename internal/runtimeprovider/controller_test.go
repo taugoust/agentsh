@@ -42,6 +42,10 @@ func (p *fakeProvider) Open(context.Context, Manifest) (Instance, error) {
 	p.opens++
 	return p.instance, p.openErr
 }
+func (p *fakeProvider) OpenUnprovisionedCleanup(context.Context, Manifest) (Instance, error) {
+	p.opens++
+	return p.instance, p.openErr
+}
 func (p *fakeProvider) Recover(context.Context, Manifest) (Instance, error) {
 	p.mu.Lock()
 	p.recovers++
@@ -572,6 +576,42 @@ func TestRegistryRejectsDuplicateAndUnknownProviders(t *testing.T) {
 	}
 	if _, err := registry.Resolve("microvm"); err == nil {
 		t.Fatal("unknown runtime provider was resolved")
+	}
+}
+
+func TestControllerStopCleansCrashReleasedUnprovisionedRuntime(t *testing.T) {
+	request, provider, instance := readyFixture(t)
+	if err := os.MkdirAll(request.StateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := NewManifest(request, time.Now().UTC())
+	if err := WriteManifest(request.StateDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := ReadManifest(request.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance.identity = Identity{
+		ContractVersion: ContractVersion, Provider: request.Provider, Profile: request.Profile, SessionID: request.SessionID,
+	}
+	instance.status = Status{}
+	controller := Controller{CleanupTimeout: time.Second}
+	if err := controller.Stop(context.Background(), provider, request.StateDir, manifest, StopReasonStartupFailed); err != nil {
+		t.Fatal(err)
+	}
+	cleaned, err := ReadManifest(request.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleaned.State != StateFailed || !cleaned.CleanupComplete || cleaned.CleanupPending || provider.opens != 1 || instance.stops != 1 || instance.destroys != 1 {
+		t.Fatalf("unprovisioned cleanup manifest=%+v opens=%d stops=%d destroys=%d", cleaned, provider.opens, instance.stops, instance.destroys)
+	}
+	if err := controller.Stop(context.Background(), provider, request.StateDir, cleaned, StopReasonStartupFailed); err != nil {
+		t.Fatal(err)
+	}
+	if instance.stops != 1 || instance.destroys != 1 {
+		t.Fatal("completed unprovisioned cleanup repeated provider teardown")
 	}
 }
 
