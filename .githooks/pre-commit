@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+exec nix develop "path:$repo_root" \
+  --command pre-commit run --hook-stage pre-commit

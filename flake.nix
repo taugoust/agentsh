@@ -918,7 +918,7 @@
 
             shellHook = ''
               if git rev-parse --git-dir >/dev/null 2>&1; then
-                pre-commit install --install-hooks >/dev/null
+                git config --local core.hooksPath .githooks
               fi
             ''
             + lib.optionalString stdenv.hostPlatform.isLinux ''
