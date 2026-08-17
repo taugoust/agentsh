@@ -31,7 +31,8 @@ type Manifest struct {
 	CleanupComplete bool      `json:"cleanup_complete,omitempty"`
 	// CleanupPending distinguishes provider cleanup debt from an ordinary
 	// recoverable runtime failure in schema-v1 manifests.
-	CleanupPending bool `json:"cleanup_pending,omitempty"`
+	CleanupPending     bool `json:"cleanup_pending,omitempty"`
+	CleanupIntentKnown bool `json:"cleanup_intent_known,omitempty"`
 }
 
 func ManifestPath(stateDir string) string {
@@ -44,15 +45,16 @@ func NewManifest(request Request, now time.Time) Manifest {
 	}
 	now = now.UTC()
 	return Manifest{
-		SchemaVersion:   ManifestSchemaVersion,
-		ContractVersion: ContractVersion,
-		Provider:        request.Provider,
-		Profile:         request.Profile,
-		SessionID:       request.SessionID,
-		StateDir:        request.StateDir,
-		State:           StateProvisioning,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		SchemaVersion:      ManifestSchemaVersion,
+		ContractVersion:    ContractVersion,
+		Provider:           request.Provider,
+		Profile:            request.Profile,
+		SessionID:          request.SessionID,
+		StateDir:           request.StateDir,
+		State:              StateProvisioning,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		CleanupIntentKnown: true,
 	}
 }
 
@@ -73,7 +75,7 @@ func (m Manifest) Validate() error {
 		return fmt.Errorf("%w: timestamps are invalid", ErrManifestInvalid)
 	}
 	switch m.State {
-	case StateProvisioning, StateRecovering, StateReady, StateDegraded, StateStopping, StateStopped, StateFailed:
+	case StateProvisioning, StateRecovering, StateReady, StateDegraded, StateFinalizing, StateStopping, StateStopped, StateFailed:
 	default:
 		return fmt.Errorf("%w: unsupported state %q", ErrManifestInvalid, m.State)
 	}
@@ -92,10 +94,13 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("%w: %v", ErrManifestInvalid, err)
 		}
 	}
-	if m.State == StateReady || m.State == StateDegraded || m.State == StateStopping || m.State == StateStopped {
+	if m.State == StateReady || m.State == StateDegraded || m.State == StateFinalizing || m.State == StateStopping || m.State == StateStopped {
 		if !identityPresent || !endpointPresent {
 			return fmt.Errorf("%w: state %s requires complete identity and endpoint", ErrManifestInvalid, m.State)
 		}
+	}
+	if m.CleanupPending && !m.CleanupIntentKnown {
+		return fmt.Errorf("%w: pending cleanup intent must be explicit", ErrManifestInvalid)
 	}
 	if m.CleanupPending && m.CleanupComplete {
 		return fmt.Errorf("%w: cleanup cannot be pending and complete", ErrManifestInvalid)
@@ -141,6 +146,12 @@ func ReadManifest(stateDir string) (Manifest, error) {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&manifest); err != nil {
 		return Manifest{}, fmt.Errorf("%w at %s: %v", ErrManifestInvalid, path, err)
+	}
+	if manifest.SchemaVersion == 1 {
+		if manifest.CleanupPending {
+			manifest.CleanupIntentKnown = true
+		}
+		manifest.SchemaVersion = ManifestSchemaVersion
 	}
 	if err := ensureJSONEOF(decoder); err != nil {
 		return Manifest{}, fmt.Errorf("%w at %s: %v", ErrManifestInvalid, path, err)
@@ -203,11 +214,13 @@ func atomicWritePrivateFile(path string, data []byte) error {
 	if err := os.Rename(tmpPath, path); err != nil {
 		return err
 	}
-	if handle, err := os.Open(dir); err == nil {
-		_ = handle.Sync()
-		_ = handle.Close()
+	handle, err := os.Open(dir)
+	if err != nil {
+		return err
 	}
-	return nil
+	syncErr := handle.Sync()
+	closeErr := handle.Close()
+	return errors.Join(syncErr, closeErr)
 }
 
 func readProtectedRegularFile(path string, maxBytes int64) ([]byte, error) {

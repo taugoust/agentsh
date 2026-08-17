@@ -41,7 +41,7 @@ var (
 const (
 	reviewSchemaVersion       = 1
 	reviewFileName            = "review.json"
-	finalizationSchemaVersion = 1
+	finalizationSchemaVersion = 3
 	finalizationFileName      = "finalization.json"
 
 	FinalizationAccept   = "accept"
@@ -72,6 +72,9 @@ type Finalization struct {
 	BaseHash         string    `json:"base_hash,omitempty"`
 	ShadowHash       string    `json:"shadow_hash,omitempty"`
 	DiffHash         string    `json:"diff_hash,omitempty"`
+	SnapshotDir      string    `json:"snapshot_dir,omitempty"`
+	AcceptExcludes   []string  `json:"accept_excludes,omitempty"`
+	AcceptChown      bool      `json:"accept_chown,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 	AppliedAt        time.Time `json:"applied_at,omitempty"`
 }
@@ -178,6 +181,9 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 		return nil, fmt.Errorf("shadow base abs: %w", err)
 	}
 	sessionDir := filepath.Join(baseAbs, id)
+	if err := validateNonOverlappingRoots(roots, sessionDir); err != nil {
+		return nil, err
+	}
 	work := filepath.Join(sessionDir, "work")
 	home := filepath.Join(sessionDir, "home")
 	tmp := filepath.Join(sessionDir, "tmp")
@@ -364,6 +370,9 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 		}
 		roots = append(roots, Root{Name: name, Real: realAbs, Work: rootWork})
 	}
+	if err := validateNonOverlappingRoots(roots, sessionDir); err != nil {
+		return nil, err
+	}
 
 	rsyncExecutable, err := runtimebin.Resolve("rsync")
 	if err != nil {
@@ -406,6 +415,10 @@ func (w *Workspace) reviewPath() string {
 
 func (w *Workspace) finalizationPath() string {
 	return filepath.Join(filepath.Dir(w.Work), finalizationFileName)
+}
+
+func (w *Workspace) finalizationSnapshotDir() string {
+	return filepath.Join(filepath.Dir(w.Work), "finalization-snapshot")
 }
 
 func persistPrivateJSON(path, prefix string, value any) error {
@@ -456,14 +469,42 @@ func (w *Workspace) persistReviewLocked(review Review) error {
 	return nil
 }
 
-func (w *Workspace) persistFinalizationLocked() error {
-	if w.finalization == nil {
+func (w *Workspace) persistFinalizationValueLocked(finalization *Finalization) error {
+	if finalization == nil {
 		return fmt.Errorf("shadow finalization is absent")
 	}
-	if err := persistPrivateJSON(w.finalizationPath(), ".finalization-*.json", w.finalization); err != nil {
+	if err := persistPrivateJSON(w.finalizationPath(), ".finalization-*.json", finalization); err != nil {
 		return fmt.Errorf("persist shadow finalization: %w", err)
 	}
 	return nil
+}
+
+func (w *Workspace) persistFinalizationLocked() error {
+	return w.persistFinalizationValueLocked(w.finalization)
+}
+
+func validSHA256Digest(value string) bool {
+	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
+	return err == nil
+}
+
+func reviewDigest(generation uint64, baseHash, shadowHash, diffHash string) (string, error) {
+	payload := struct {
+		SchemaVersion int    `json:"schema_version"`
+		Generation    uint64 `json:"generation"`
+		BaseHash      string `json:"base_hash"`
+		ShadowHash    string `json:"shadow_hash"`
+		DiffHash      string `json:"diff_hash"`
+	}{reviewSchemaVersion, generation, baseHash, shadowHash, diffHash}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(hash[:]), nil
 }
 
 func (w *Workspace) loadReviewLocked() error {
@@ -480,7 +521,9 @@ func (w *Workspace) loadReviewLocked() error {
 	if err := decoder.Decode(&review); err != nil {
 		return fmt.Errorf("decode retained shadow review: %w", err)
 	}
-	if review.SchemaVersion != reviewSchemaVersion || review.Generation == 0 || !strings.HasPrefix(review.Hash, "sha256:") {
+	expected, digestErr := reviewDigest(review.Generation, review.BaseHash, review.ShadowHash, review.DiffHash)
+	if review.SchemaVersion != reviewSchemaVersion || review.Generation == 0 || !validSHA256Digest(review.Hash) ||
+		!validSHA256Digest(review.BaseHash) || !validSHA256Digest(review.ShadowHash) || !validSHA256Digest(review.DiffHash) || digestErr != nil || expected != review.Hash {
 		return fmt.Errorf("retained shadow review is invalid")
 	}
 	w.latestReview = review
@@ -501,13 +544,62 @@ func (w *Workspace) loadFinalizationLocked() error {
 	if err := decoder.Decode(&finalization); err != nil {
 		return fmt.Errorf("decode retained shadow finalization: %w", err)
 	}
+	if (finalization.SchemaVersion < 1 || finalization.SchemaVersion > 2) && finalization.SchemaVersion != finalizationSchemaVersion {
+		return fmt.Errorf("retained shadow finalization has unsupported schema")
+	}
+	if finalization.SchemaVersion < finalizationSchemaVersion && finalization.Action == FinalizationAccept && finalization.SnapshotDir == "" {
+		finalization.SnapshotDir = w.finalizationSnapshotDir()
+		if finalization.Phase != FinalizationApplied {
+			_, shadowHash, hashErr := w.treeHashesLocked(context.Background())
+			if hashErr != nil || shadowHash != finalization.ShadowHash {
+				return fmt.Errorf("legacy shadow finalization cannot be safely migrated")
+			}
+			if finalization.Phase == FinalizationPrepared {
+				baseHash, _, hashErr := w.treeHashesLocked(context.Background())
+				if hashErr != nil || baseHash != finalization.BaseHash {
+					return fmt.Errorf("legacy shadow finalization base changed before migration")
+				}
+			}
+			if err := w.createFinalizationSnapshotLocked(context.Background()); err != nil {
+				return err
+			}
+		}
+	}
+	if finalization.SchemaVersion < finalizationSchemaVersion {
+		if finalization.Action == FinalizationAccept && finalization.Phase != FinalizationApplied {
+			w.finalization = &finalization
+			snapshotHash, hashErr := w.snapshotHashLocked(context.Background())
+			if hashErr != nil || snapshotHash != finalization.ShadowHash {
+				return fmt.Errorf("legacy shadow finalization semantics changed before migration")
+			}
+		}
+		finalization.AcceptExcludes = append([]string(nil), w.acceptExcludes...)
+		finalization.AcceptChown = w.acceptChown
+		finalization.SchemaVersion = finalizationSchemaVersion
+		w.finalization = &finalization
+		if err := w.persistFinalizationLocked(); err != nil {
+			return err
+		}
+	}
 	if finalization.SchemaVersion != finalizationSchemaVersion || strings.TrimSpace(finalization.ID) == "" ||
 		(finalization.Action != FinalizationAccept && finalization.Action != FinalizationReject) ||
 		(finalization.Phase != FinalizationPrepared && finalization.Phase != FinalizationApplying && finalization.Phase != FinalizationApplied) || finalization.CreatedAt.IsZero() {
 		return fmt.Errorf("retained shadow finalization is invalid")
 	}
-	if finalization.Action == FinalizationAccept && (finalization.ReviewGeneration == 0 || finalization.ReviewHash == "" || finalization.ShadowHash == "") {
+	if finalization.Action == FinalizationAccept && (finalization.ReviewGeneration == 0 || finalization.ReviewHash == "" || finalization.ShadowHash == "" ||
+		!filepath.IsAbs(finalization.SnapshotDir) || filepath.Clean(finalization.SnapshotDir) != finalization.SnapshotDir || finalization.SnapshotDir != w.finalizationSnapshotDir()) {
 		return fmt.Errorf("retained shadow accept finalization is incomplete")
+	}
+	if finalization.Action == FinalizationAccept {
+		expected, digestErr := reviewDigest(finalization.ReviewGeneration, finalization.BaseHash, finalization.ShadowHash, finalization.DiffHash)
+		if digestErr != nil || expected != finalization.ReviewHash || w.latestReview.Generation != finalization.ReviewGeneration || w.latestReview.Hash != finalization.ReviewHash ||
+			w.latestReview.BaseHash != finalization.BaseHash || w.latestReview.ShadowHash != finalization.ShadowHash || w.latestReview.DiffHash != finalization.DiffHash {
+			return fmt.Errorf("retained shadow finalization does not match its review")
+		}
+	}
+	if finalization.Action == FinalizationAccept {
+		w.acceptExcludes = append([]string(nil), finalization.AcceptExcludes...)
+		w.acceptChown = finalization.AcceptChown
 	}
 	w.finalization = &finalization
 	switch finalization.Phase {
@@ -555,22 +647,15 @@ func (w *Workspace) Review(ctx context.Context) (Review, error) {
 	diffSum := sha256.Sum256(out)
 	generation := w.latestReview.Generation + 1
 	createdAt := time.Now().UTC()
-	payload := struct {
-		SchemaVersion int    `json:"schema_version"`
-		Generation    uint64 `json:"generation"`
-		BaseHash      string `json:"base_hash"`
-		ShadowHash    string `json:"shadow_hash"`
-		DiffHash      string `json:"diff_hash"`
-	}{reviewSchemaVersion, generation, baseHash, shadowHash, "sha256:" + hex.EncodeToString(diffSum[:])}
-	encoded, marshalErr := json.Marshal(payload)
-	if marshalErr != nil {
-		return Review{}, marshalErr
+	diffHash := "sha256:" + hex.EncodeToString(diffSum[:])
+	hash, digestErr := reviewDigest(generation, baseHash, shadowHash, diffHash)
+	if digestErr != nil {
+		return Review{}, digestErr
 	}
-	hash := sha256.Sum256(encoded)
 	review := Review{
 		SchemaVersion: reviewSchemaVersion, Generation: generation,
-		Hash: "sha256:" + hex.EncodeToString(hash[:]), BaseHash: baseHash,
-		ShadowHash: shadowHash, DiffHash: payload.DiffHash, CreatedAt: createdAt,
+		Hash: hash, BaseHash: baseHash,
+		ShadowHash: shadowHash, DiffHash: diffHash, CreatedAt: createdAt,
 		Diff: append([]byte(nil), out...),
 	}
 	if err := w.persistReviewLocked(review); err != nil {
@@ -633,31 +718,47 @@ func (w *Workspace) diffLocked(ctx context.Context) ([]byte, error) {
 	return combined.Bytes(), nil
 }
 
-func (w *Workspace) treeHashesLocked(ctx context.Context) (string, string, error) {
+func (w *Workspace) workspaceRootsLocked() []Root {
+	if len(w.Roots) > 0 {
+		return w.Roots
+	}
+	return []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
+}
+
+func (w *Workspace) hashRootSetLocked(ctx context.Context, pathFor func(Root) string) (string, error) {
 	if err := ctx.Err(); err != nil {
-		return "", "", err
+		return "", err
 	}
-	roots := w.Roots
-	if len(roots) == 0 {
-		roots = []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
-	}
-	baseHasher := sha256.New()
-	shadowHasher := sha256.New()
-	for _, root := range roots {
-		if _, err := fmt.Fprintf(baseHasher, "root\x00%s\x00", root.Name); err != nil {
-			return "", "", err
+	hasher := sha256.New()
+	for _, root := range w.workspaceRootsLocked() {
+		if _, err := fmt.Fprintf(hasher, "root\x00%s\x00", root.Name); err != nil {
+			return "", err
 		}
-		if _, err := fmt.Fprintf(shadowHasher, "root\x00%s\x00", root.Name); err != nil {
-			return "", "", err
-		}
-		if err := hashTree(ctx, baseHasher, root.Real, w.acceptExcludes); err != nil {
-			return "", "", fmt.Errorf("hash real workspace root %s: %w", root.Name, err)
-		}
-		if err := hashTree(ctx, shadowHasher, root.Work, w.acceptExcludes); err != nil {
-			return "", "", fmt.Errorf("hash shadow workspace root %s: %w", root.Name, err)
+		if err := hashTree(ctx, hasher, pathFor(root), w.acceptExcludes); err != nil {
+			return "", fmt.Errorf("hash workspace root %s: %w", root.Name, err)
 		}
 	}
-	return "sha256:" + hex.EncodeToString(baseHasher.Sum(nil)), "sha256:" + hex.EncodeToString(shadowHasher.Sum(nil)), nil
+	return "sha256:" + hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func (w *Workspace) treeHashesLocked(ctx context.Context) (string, string, error) {
+	baseHash, err := w.hashRootSetLocked(ctx, func(root Root) string { return root.Real })
+	if err != nil {
+		return "", "", fmt.Errorf("hash real workspace: %w", err)
+	}
+	shadowHash, err := w.hashRootSetLocked(ctx, func(root Root) string { return root.Work })
+	if err != nil {
+		return "", "", fmt.Errorf("hash shadow workspace: %w", err)
+	}
+	return baseHash, shadowHash, nil
+}
+
+func (w *Workspace) snapshotRoot(root Root) string {
+	return filepath.Join(w.finalizationSnapshotDir(), root.Name)
+}
+
+func (w *Workspace) snapshotHashLocked(ctx context.Context) (string, error) {
+	return w.hashRootSetLocked(ctx, w.snapshotRoot)
 }
 
 func hashTree(ctx context.Context, hasher io.Writer, root string, excludes []string) error {
@@ -767,6 +868,35 @@ func (w *Workspace) validateReviewLocked(ctx context.Context, generation uint64,
 	return nil
 }
 
+func (w *Workspace) createFinalizationSnapshotLocked(ctx context.Context) error {
+	snapshotDir := w.finalizationSnapshotDir()
+	if err := cleanup.RemoveAllWritable(snapshotDir); err != nil {
+		return fmt.Errorf("remove stale finalization snapshot: %w", err)
+	}
+	if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
+		return fmt.Errorf("create finalization snapshot: %w", err)
+	}
+	rsyncExecutable, err := workspaceExecutable(w.rsyncExecutable, "rsync")
+	if err != nil {
+		return err
+	}
+	for _, root := range w.workspaceRootsLocked() {
+		destination := w.snapshotRoot(root)
+		if err := os.MkdirAll(destination, 0o700); err != nil {
+			return err
+		}
+		args := []string{"-a", "--delete", "--fsync"}
+		for _, excluded := range w.acceptExcludes {
+			args = append(args, "--exclude="+excluded)
+		}
+		args = append(args, withTrailingSeparator(root.Work), withTrailingSeparator(destination))
+		if output, err := exec.CommandContext(ctx, rsyncExecutable, args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("snapshot shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(output)))
+		}
+	}
+	return nil
+}
+
 func (w *Workspace) PrepareAccept(ctx context.Context, finalizationID string, generation uint64, hash string) (Finalization, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -782,14 +912,27 @@ func (w *Workspace) PrepareAccept(ctx context.Context, finalizationID string, ge
 	if err := w.validateReviewLocked(ctx, generation, hash); err != nil {
 		return Finalization{}, err
 	}
+	if err := w.createFinalizationSnapshotLocked(ctx); err != nil {
+		return Finalization{}, err
+	}
+	snapshotHash, err := w.snapshotHashLocked(ctx)
+	if err != nil || snapshotHash != w.latestReview.ShadowHash {
+		_ = cleanup.RemoveAllWritable(w.finalizationSnapshotDir())
+		if err != nil {
+			return Finalization{}, err
+		}
+		return Finalization{}, ErrStaleReview
+	}
 	finalization := &Finalization{
 		SchemaVersion: finalizationSchemaVersion, ID: finalizationID, Action: FinalizationAccept, Phase: FinalizationPrepared,
 		ReviewGeneration: generation, ReviewHash: hash, BaseHash: w.latestReview.BaseHash,
-		ShadowHash: w.latestReview.ShadowHash, DiffHash: w.latestReview.DiffHash, CreatedAt: time.Now().UTC(),
+		ShadowHash: w.latestReview.ShadowHash, DiffHash: w.latestReview.DiffHash, SnapshotDir: w.finalizationSnapshotDir(),
+		AcceptExcludes: append([]string(nil), w.acceptExcludes...), AcceptChown: w.acceptChown, CreatedAt: time.Now().UTC(),
 	}
 	w.finalization = finalization
 	if err := w.persistFinalizationLocked(); err != nil {
 		w.finalization = nil
+		_ = cleanup.RemoveAllWritable(w.finalizationSnapshotDir())
 		return Finalization{}, err
 	}
 	return *finalization, nil
@@ -848,10 +991,30 @@ func (w *Workspace) applyFinalizationLocked(ctx context.Context, finalizationID 
 	if w.finalization.Phase == FinalizationApplied {
 		return nil
 	}
-	w.finalization.Phase = FinalizationApplying
-	if err := w.persistFinalizationLocked(); err != nil {
+	if w.finalization.Action == FinalizationAccept {
+		snapshotHash, err := w.snapshotHashLocked(ctx)
+		if err != nil || snapshotHash != w.finalization.ShadowHash {
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("immutable reviewed snapshot is stale")
+		}
+		if w.finalization.Phase == FinalizationPrepared {
+			baseHash, err := w.hashRootSetLocked(ctx, func(root Root) string { return root.Real })
+			if err != nil {
+				return err
+			}
+			if baseHash != w.finalization.BaseHash {
+				return ErrStaleReview
+			}
+		}
+	}
+	applying := *w.finalization
+	applying.Phase = FinalizationApplying
+	if err := w.persistFinalizationValueLocked(&applying); err != nil {
 		return err
 	}
+	w.finalization = &applying
 	switch w.finalization.Action {
 	case FinalizationReject:
 		w.State = StateRejected
@@ -863,11 +1026,13 @@ func (w *Workspace) applyFinalizationLocked(ctx context.Context, finalizationID 
 	default:
 		return fmt.Errorf("unsupported shadow finalization action %q", w.finalization.Action)
 	}
-	w.finalization.Phase = FinalizationApplied
-	w.finalization.AppliedAt = time.Now().UTC()
-	if err := w.persistFinalizationLocked(); err != nil {
+	applied := *w.finalization
+	applied.Phase = FinalizationApplied
+	applied.AppliedAt = time.Now().UTC()
+	if err := w.persistFinalizationValueLocked(&applied); err != nil {
 		return err
 	}
+	w.finalization = &applied
 	return nil
 }
 
@@ -876,29 +1041,30 @@ func (w *Workspace) applyAcceptLocked(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("resolve shadow workspace rsync: %w", err)
 	}
-	roots := w.Roots
-	if len(roots) == 0 {
-		roots = []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
-	}
+	roots := w.workspaceRootsLocked()
 	for _, root := range roots {
-		args := []string{"-a", "--delete"}
+		args := []string{"-a", "--delete", "--fsync"}
 		for _, ex := range w.acceptExcludes {
 			args = append(args, "--exclude="+ex)
 		}
 		if w.acceptChown && w.OwnerUID >= 0 && w.OwnerGID >= 0 {
 			args = append(args, "--chown="+strconv.Itoa(w.OwnerUID)+":"+strconv.Itoa(w.OwnerGID))
 		}
-		args = append(args, withTrailingSeparator(root.Work), withTrailingSeparator(root.Real))
+		args = append(args, withTrailingSeparator(w.snapshotRoot(root)), withTrailingSeparator(root.Real))
 		cmd := exec.CommandContext(ctx, rsyncExecutable, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("accept shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
 		}
 	}
-	baseHash, shadowHash, err := w.treeHashesLocked(ctx)
+	baseHash, err := w.hashRootSetLocked(ctx, func(root Root) string { return root.Real })
 	if err != nil {
 		return err
 	}
-	if baseHash != w.finalization.ShadowHash || shadowHash != w.finalization.ShadowHash {
+	snapshotHash, err := w.snapshotHashLocked(ctx)
+	if err != nil {
+		return err
+	}
+	if baseHash != w.finalization.ShadowHash || snapshotHash != w.finalization.ShadowHash {
 		return fmt.Errorf("accepted workspace verification failed")
 	}
 	return nil
@@ -974,6 +1140,26 @@ func owner(info fs.FileInfo) (int, int) {
 		return int(st.Uid), int(st.Gid)
 	}
 	return os.Getuid(), os.Getgid()
+}
+
+func pathContains(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	return err == nil && rel != ".." && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func validateNonOverlappingRoots(roots []Root, sessionDir string) error {
+	for i, root := range roots {
+		if root.Real == sessionDir || pathContains(root.Real, sessionDir) || pathContains(sessionDir, root.Real) {
+			return fmt.Errorf("shadow session directory overlaps workspace root %s", root.Real)
+		}
+		for j := i + 1; j < len(roots); j++ {
+			other := roots[j].Real
+			if root.Real == other || pathContains(root.Real, other) || pathContains(other, root.Real) {
+				return fmt.Errorf("workspace roots overlap: %s and %s", root.Real, other)
+			}
+		}
+	}
+	return nil
 }
 
 func cleanRootName(name string) string {

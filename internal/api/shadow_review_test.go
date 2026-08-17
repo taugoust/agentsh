@@ -40,6 +40,17 @@ func TestShadowReviewRequiresFreshPreconditionAndQuiescence(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	activity, err := sess.BeginWorkspaceActivity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockedReview := httptest.NewRecorder()
+	app.Router().ServeHTTP(blockedReview, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sess.ID+"/overlay/diff", nil))
+	activity.Release()
+	if blockedReview.Code != http.StatusConflict {
+		t.Fatalf("review with active writer status=%d body=%s", blockedReview.Code, blockedReview.Body.String())
+	}
+
 	diffReq := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sess.ID+"/overlay/diff", nil)
 	diffRecorder := httptest.NewRecorder()
 	app.Router().ServeHTTP(diffRecorder, diffReq)
@@ -59,7 +70,7 @@ func TestShadowReviewRequiresFreshPreconditionAndQuiescence(t *testing.T) {
 		t.Fatalf("missing precondition status=%d body=%s", missing.Code, missing.Body.String())
 	}
 
-	activity, err := sess.BeginWorkspaceActivity()
+	activity, err = sess.BeginWorkspaceActivity()
 	if err != nil {
 		t.Fatal(err)
 	}

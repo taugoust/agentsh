@@ -14,22 +14,20 @@ import (
 )
 
 func TestWorkspaceLifecycleRetainsResolvedExecutablesAfterPathIsCleared(t *testing.T) {
-	shExecutable, err := exec.LookPath("sh")
-	if err != nil {
-		t.Fatalf("locate shell fixture: %v", err)
-	}
-	shExecutable, err = filepath.Abs(shExecutable)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	binDir := filepath.Join(t.TempDir(), "runtime path with spaces", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"rsync", "diff"} {
-		script := []byte("#!" + shExecutable + "\nexit 0\n")
-		if err := os.WriteFile(filepath.Join(binDir, name), script, 0o755); err != nil {
+		executable, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatalf("locate %s fixture: %v", name, err)
+		}
+		executable, err = filepath.Abs(executable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(executable, filepath.Join(binDir, name)); err != nil {
 			t.Fatal(err)
 		}
 	}

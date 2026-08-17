@@ -12,6 +12,21 @@ import (
 	"github.com/agentsh/agentsh/internal/detachedtransport"
 )
 
+func (a *App) authorizeDetachedOperatorRequest(r *http.Request) bool {
+	if a == nil || a.detachedRuntime == nil || r == nil || !isUnixSocketRequest(r) {
+		return false
+	}
+	path := r.URL.Path
+	allowed := strings.HasSuffix(path, "/overlay/accept") || strings.HasSuffix(path, "/overlay/reject") ||
+		path == "/api/v1/session-events" || (strings.HasPrefix(path, "/api/v1/session-events/") && (strings.HasSuffix(path, "/ack") || strings.HasSuffix(path, "/answer")))
+	if !allowed {
+		return false
+	}
+	expected := strings.TrimSpace(a.detachedRuntime.Metadata().EventToken)
+	token := strings.TrimSpace(r.Header.Get(detachedtransport.ControlTokenHeader))
+	return expected != "" && token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1
+}
+
 func (a *App) exchangeDetachedControl(w http.ResponseWriter, r *http.Request) {
 	if a == nil || a.detachedRuntime == nil || a.detachedControl == nil || a.detachedResolutions == nil || !isUnixSocketRequest(r) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "detached control exchange requires the exact local supervisor channel"})
@@ -49,13 +64,7 @@ func (a *App) exchangeDetachedControl(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "detached control incarnation mismatch"})
 		return
 	}
-	if request.AckFloor > 0 && a.detachedResolutions.Ack(identity) == 0 {
-		if err := a.detachedResolutions.RestoreAck(identity, request.AckFloor); err != nil {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
-			return
-		}
-	}
-	ack, err := a.detachedResolutions.Apply(identity, request.Records, func(record detachedtransport.Record) detachedtransport.ResolveResult {
+	ack, err := a.detachedResolutions.Apply(identity, request.AckFloor, request.Records, func(record detachedtransport.Record) detachedtransport.ResolveResult {
 		resolution := *record.Resolution
 		target := approvals.Scope{
 			Kind: resolution.ScopeKind, Key: resolution.ScopeKey, Label: resolution.ScopeLabel,
@@ -89,7 +98,8 @@ func (a *App) exchangeDetachedControl(w http.ResponseWriter, r *http.Request) {
 	if len(out) > 0 {
 		cursor = out[len(out)-1].Sequence
 	}
+	pending := a.approvals.ListPendingForSession(identity.SessionID)
 	writeJSON(w, http.StatusOK, detachedtransport.ExchangeResponse{
-		Version: detachedtransport.Version, Identity: identity, Ack: ack, Cursor: cursor, Records: out,
+		Version: detachedtransport.Version, Identity: identity, Ack: ack, Cursor: cursor, Records: out, Pending: pending,
 	})
 }

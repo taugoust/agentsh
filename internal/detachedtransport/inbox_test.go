@@ -18,10 +18,10 @@ func TestResolutionInboxExactReplayAppliesOnce(t *testing.T) {
 	inbox := NewResolutionInbox(8)
 	var calls atomic.Int32
 	resolve := func(Record) ResolveResult { calls.Add(1); return ResolveApplied }
-	if ack, err := inbox.Apply(identity, []Record{record}, resolve); err != nil || ack != 1 {
+	if ack, err := inbox.Apply(identity, 0, []Record{record}, resolve); err != nil || ack != 1 {
 		t.Fatalf("first apply ack=%d err=%v", ack, err)
 	}
-	if ack, err := inbox.Apply(identity, []Record{record}, resolve); err != nil || ack != 1 {
+	if ack, err := inbox.Apply(identity, 0, []Record{record}, resolve); err != nil || ack != 1 {
 		t.Fatalf("replay ack=%d err=%v", ack, err)
 	}
 	if calls.Load() != 1 {
@@ -43,7 +43,7 @@ func TestResolutionInboxConcurrentReplayAppliesOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := inbox.Apply(identity, []Record{record}, resolve); err != nil {
+			if _, err := inbox.Apply(identity, 0, []Record{record}, resolve); err != nil {
 				t.Errorf("Apply: %v", err)
 			}
 		}()
@@ -58,16 +58,33 @@ func TestResolutionInboxRejectsGapAndConflictingReplay(t *testing.T) {
 	identity := Identity{SessionID: "session", Generation: 1, IncarnationID: "incarnation"}
 	inbox := NewResolutionInbox(8)
 	second, _ := NewApprovalResolution(2, "approval", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
-	if _, err := inbox.Apply(identity, []Record{second}, func(Record) ResolveResult { return ResolveApplied }); err == nil {
+	if _, err := inbox.Apply(identity, 0, []Record{second}, func(Record) ResolveResult { return ResolveApplied }); err == nil {
 		t.Fatal("sequence gap was accepted")
 	}
 	first, _ := NewApprovalResolution(1, "approval", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
-	if _, err := inbox.Apply(identity, []Record{first}, func(Record) ResolveResult { return ResolveApplied }); err != nil {
+	if _, err := inbox.Apply(identity, 0, []Record{first}, func(Record) ResolveResult { return ResolveApplied }); err != nil {
 		t.Fatal(err)
 	}
 	conflict, _ := NewApprovalResolution(1, "approval", approvals.Resolution{Approved: false, Scope: approvals.ScopeOnce, At: first.CreatedAt})
-	if _, err := inbox.Apply(identity, []Record{conflict}, func(Record) ResolveResult { return ResolveApplied }); err == nil {
+	if _, err := inbox.Apply(identity, 0, []Record{conflict}, func(Record) ResolveResult { return ResolveApplied }); err == nil {
 		t.Fatal("conflicting replay was accepted")
+	}
+}
+
+func TestResolutionInboxPrunesOnlyPeerConfirmedReceipts(t *testing.T) {
+	identity := Identity{SessionID: "session", Generation: 1, IncarnationID: "incarnation"}
+	inbox := NewResolutionInbox(1)
+	first, _ := NewApprovalResolution(1, "one", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
+	second, _ := NewApprovalResolution(2, "two", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
+	resolve := func(Record) ResolveResult { return ResolveApplied }
+	if _, err := inbox.Apply(identity, 0, []Record{first}, resolve); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inbox.Apply(identity, 0, []Record{first, second}, resolve); err == nil {
+		t.Fatal("unconfirmed receipt was evicted to accept another resolution")
+	}
+	if ack, err := inbox.Apply(identity, 1, []Record{second}, resolve); err != nil || ack != 2 {
+		t.Fatalf("confirmed compaction ack=%d err=%v", ack, err)
 	}
 }
 

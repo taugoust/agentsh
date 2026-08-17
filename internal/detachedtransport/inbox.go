@@ -31,7 +31,7 @@ func NewResolutionInbox(max int) *ResolutionInbox {
 	return &ResolutionInbox{max: max, ack: make(map[Identity]uint64), receipts: make(map[Identity]map[uint64]Record)}
 }
 
-func (i *ResolutionInbox) Apply(identity Identity, records []Record, resolve ResolveRecord) (uint64, error) {
+func (i *ResolutionInbox) Apply(identity Identity, confirmed uint64, records []Record, resolve ResolveRecord) (uint64, error) {
 	if i == nil || resolve == nil {
 		return 0, fmt.Errorf("detached resolution inbox is unavailable")
 	}
@@ -41,6 +41,14 @@ func (i *ResolutionInbox) Apply(identity Identity, records []Record, resolve Res
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	ack := i.ack[identity]
+	if confirmed > ack {
+		return ack, fmt.Errorf("detached resolution confirmation exceeds inbox acknowledgment")
+	}
+	for sequence := range i.receipts[identity] {
+		if sequence <= confirmed {
+			delete(i.receipts[identity], sequence)
+		}
+	}
 	for _, record := range records {
 		if err := record.Validate(); err != nil {
 			return ack, err
@@ -59,9 +67,7 @@ func (i *ResolutionInbox) Apply(identity Identity, records []Record, resolve Res
 			return ack, fmt.Errorf("detached resolution sequence gap: got %d after %d", record.Sequence, ack)
 		}
 		if i.receiptCountLocked() >= i.max {
-			// ACK is cumulative and every earlier sequence is already terminal;
-			// retain only the most recent receipt needed to authenticate replay.
-			delete(i.receipts, identity)
+			return ack, fmt.Errorf("detached resolution inbox is full awaiting peer confirmation")
 		}
 		result := resolve(record)
 		if result == ResolveRejected {
@@ -79,28 +85,6 @@ func (i *ResolutionInbox) Apply(identity Identity, records []Record, resolve Res
 		i.ack[identity] = ack
 	}
 	return ack, nil
-}
-
-// RestoreAck advances an empty incarnation inbox to a parent-retained
-// high-water mark after supervisor restart. It is accepted only before this
-// process has applied records, preserving conflict checks for live receipts.
-func (i *ResolutionInbox) RestoreAck(identity Identity, ack uint64) error {
-	if i == nil {
-		return fmt.Errorf("detached resolution inbox is unavailable")
-	}
-	if err := identity.Validate(); err != nil {
-		return err
-	}
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	if i.ack[identity] != 0 || len(i.receipts[identity]) != 0 {
-		if i.ack[identity] == ack {
-			return nil
-		}
-		return fmt.Errorf("detached resolution acknowledgment conflicts with live inbox")
-	}
-	i.ack[identity] = ack
-	return nil
 }
 
 func (i *ResolutionInbox) Ack(identity Identity) uint64 {

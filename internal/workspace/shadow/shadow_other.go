@@ -50,6 +50,9 @@ type Finalization struct {
 	BaseHash         string    `json:"base_hash,omitempty"`
 	ShadowHash       string    `json:"shadow_hash,omitempty"`
 	DiffHash         string    `json:"diff_hash,omitempty"`
+	SnapshotDir      string    `json:"snapshot_dir,omitempty"`
+	AcceptExcludes   []string  `json:"accept_excludes,omitempty"`
+	AcceptChown      bool      `json:"accept_chown,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 	AppliedAt        time.Time `json:"applied_at,omitempty"`
 }

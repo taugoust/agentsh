@@ -7,8 +7,7 @@ package runtimeprovider
 // serialization before being registered.
 type lifecycleLock struct{}
 
-func acquireLifecycleLock(string) (*lifecycleLock, error) {
-	return &lifecycleLock{}, nil
-}
+func acquireLifecycleLock(string) (*lifecycleLock, error) { return &lifecycleLock{}, nil }
+func acquireOperationLock(string) (*lifecycleLock, error) { return &lifecycleLock{}, nil }
 
 func (l *lifecycleLock) Close() error { return nil }

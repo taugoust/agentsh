@@ -43,6 +43,9 @@ func TestDetachedSupervisorStrictNetworkHasNoMigrationWarning(t *testing.T) {
 	if !cfg.Sandbox.Network.Enabled || !cfg.Sandbox.Network.EBPF.Enabled || !cfg.Sandbox.Network.EBPF.Enforce || !cfg.Sandbox.Network.EBPF.Required {
 		t.Fatalf("strict network configuration was not preserved: %+v", cfg.Sandbox.Network)
 	}
+	if !cfg.Development.DetachedControlOnly || cfg.Development.AllowUnauthenticatedUnixApprovals {
+		t.Fatalf("detached approval auth mode is unsafe: %+v", cfg.Development)
+	}
 }
 
 func TestConfigureSupervisorMVPStillDisablesBestEffortNetworkPieces(t *testing.T) {

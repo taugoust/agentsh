@@ -53,21 +53,22 @@ func (a *App) ReapExpiredSessionsWithResult(now time.Time, sessionTimeout, idleT
 		if sess != nil && !sess.WorkspaceTeardownAllowed() {
 			return fmt.Errorf("session %s workspace finalization is running or pending", sess.ID)
 		}
-		if runtime == nil || sess == nil || sess.ID != detachedSessionID {
-			return nil
+		isDetached := runtime != nil && sess != nil && sess.ID == detachedSessionID
+		if isDetached {
+			if err := runtime.MarkStopping(); err != nil {
+				return fmt.Errorf("persist detached session expiry for %s: %w", sess.ID, err)
+			}
 		}
-		if err := runtime.MarkStopping(); err != nil {
-			return fmt.Errorf("persist detached session expiry for %s: %w", sess.ID, err)
+		if sess != nil {
+			if err := sess.UnmountWorkspace(); err != nil {
+				return fmt.Errorf("session %s workspace teardown: %w", sess.ID, err)
+			}
 		}
-		result.DetachedSupervisorExpired = true
+		if isDetached {
+			result.DetachedSupervisorExpired = true
+		}
 		return nil
 	})
-	if err != nil {
-		result.DetachedSupervisorExpired = false
-		result.Err = err
-		return result
-	}
-
 	result.Sessions = reaped
 	for _, sess := range reaped {
 		if sess == nil {
@@ -78,6 +79,10 @@ func (a *App) ReapExpiredSessionsWithResult(now time.Time, sessionTimeout, idleT
 		if a.approvals != nil {
 			a.approvals.ClearSession(ctx, sess.ID)
 		}
+	}
+	if err != nil {
+		result.DetachedSupervisorExpired = false
+		result.Err = err
 	}
 	return result
 }

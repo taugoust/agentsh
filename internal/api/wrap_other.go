@@ -68,6 +68,7 @@ func validateWrapperPIDPinForNotify(pin *os.File) error {
 	return errWrapNotSupported
 }
 
-func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socketPath string, sessionID string, expectedUID int) {
+func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socketPath string, sessionID string, expectedUID int, activity *session.WorkspaceActivityLease) {
+	activity.Release()
 	listener.Close()
 }

@@ -79,7 +79,7 @@ func TestManager_ReapExpired_SessionTimeoutWins(t *testing.T) {
 	}
 }
 
-func TestManager_ReapExpiredGuarded_FailureLeavesAllCandidatesInstalled(t *testing.T) {
+func TestManager_ReapExpiredGuarded_FailureRetainsFailingAndLaterCandidates(t *testing.T) {
 	m := NewManager(10)
 	first, err := m.Create(t.TempDir(), "default")
 	if err != nil {
@@ -104,14 +104,15 @@ func TestManager_ReapExpiredGuarded_FailureLeavesAllCandidatesInstalled(t *testi
 	if !errors.Is(err, guardErr) {
 		t.Fatalf("guard error = %v, want %v", err, guardErr)
 	}
-	if len(reaped) != 0 {
-		t.Fatalf("reaped sessions despite guard failure: %+v", reaped)
+	if _, ok := m.Get(second.ID); !ok {
+		t.Fatalf("failing session %s was removed", second.ID)
 	}
-	for _, id := range []string{first.ID, second.ID} {
-		if _, ok := m.Get(id); !ok {
-			t.Fatalf("session %s removed despite guard failure", id)
+	for _, removed := range reaped {
+		if _, ok := m.Get(removed.ID); ok {
+			t.Fatalf("successfully guarded session %s remains installed", removed.ID)
 		}
 	}
+	_ = first
 }
 
 func TestManager_ReapExpiredGuarded_CommitsBeforeRemoval(t *testing.T) {

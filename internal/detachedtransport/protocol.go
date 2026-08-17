@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	Version            = 1
+	Version            = 2
 	ControlTokenHeader = "X-AgentSH-Detached-Control-Token"
 )
 
@@ -154,6 +154,9 @@ type ExchangeResponse struct {
 	Ack     uint64   `json:"ack"`
 	Cursor  uint64   `json:"cursor"`
 	Records []Record `json:"records"`
+	// Pending is the authoritative exact-incarnation snapshot. It lets a
+	// restarted parent reconstruct unresolved approvals after journal compaction.
+	Pending []approvals.Request `json:"pending"`
 }
 
 func (r ExchangeRequest) Validate() error {
@@ -179,8 +182,8 @@ func (r ExchangeRequest) Validate() error {
 	return nil
 }
 
-func (r ExchangeResponse) Validate(expected Identity, acknowledged, sentMax, requestedCursor uint64) error {
-	if r.Version != Version || r.Identity != expected || r.Ack < acknowledged || r.Ack > sentMax || r.Cursor < requestedCursor || len(r.Records) > 256 {
+func (r ExchangeResponse) Validate(expected Identity, acknowledged, sentMax, requestedCursor uint64, sentRecords bool) error {
+	if r.Version != Version || r.Identity != expected || r.Ack < acknowledged || (sentRecords && r.Ack > sentMax) || r.Cursor < requestedCursor || len(r.Records) > 256 || len(r.Pending) > 256 {
 		return fmt.Errorf("detached transport exchange response is invalid")
 	}
 	prior := requestedCursor
@@ -195,6 +198,11 @@ func (r ExchangeResponse) Validate(expected Identity, acknowledged, sentMax, req
 			return fmt.Errorf("detached transport response records are not strictly ordered")
 		}
 		prior = record.Sequence
+	}
+	for _, request := range r.Pending {
+		if strings.TrimSpace(request.ID) == "" || request.SessionID != expected.SessionID {
+			return fmt.Errorf("detached transport pending snapshot identity mismatch")
+		}
 	}
 	if len(r.Records) == 0 {
 		if r.Cursor != requestedCursor {

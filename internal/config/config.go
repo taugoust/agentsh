@@ -1114,6 +1114,10 @@ type DevelopmentConfig struct {
 	// socket. It is intentionally not configurable via YAML; detached
 	// per-session supervisors enable it after binding a 0600 session-local socket.
 	AllowUnauthenticatedUnixApprovals bool `yaml:"-"`
+	// DetachedControlOnly permits API-mode approval evaluation while keeping the
+	// generic approval routes closed. Only the credential-protected detached
+	// control endpoint may deliver resolutions.
+	DetachedControlOnly bool `yaml:"-"`
 
 	PProf DevelopmentPProfConfig `yaml:"pprof"`
 }

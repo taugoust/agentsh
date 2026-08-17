@@ -33,4 +33,18 @@ func (w *wrappedEventStore) QueryEvents(ctx context.Context, q types.EventQuery)
 	return w.inner.QueryEvents(ctx, q)
 }
 
+func (w *wrappedEventStore) FlushSync() error {
+	if flusher, ok := w.inner.(interface{ FlushSync() error }); ok {
+		return flusher.FlushSync()
+	}
+	if flusher, ok := w.inner.(interface {
+		FlushContext(context.Context)
+		LastWriteError() error
+	}); ok {
+		flusher.FlushContext(context.Background())
+		return flusher.LastWriteError()
+	}
+	return nil
+}
+
 func (w *wrappedEventStore) Close() error { return w.inner.Close() }

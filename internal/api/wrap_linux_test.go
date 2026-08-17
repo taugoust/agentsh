@@ -866,10 +866,14 @@ func TestAcceptPtracePID_BindsSession(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
+	activity, err := s.BeginWorkspaceActivity()
+	if err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptPtracePID(context.Background(), listener, socketPath, s.ID, os.Getuid())
+		app.acceptPtracePID(context.Background(), listener, socketPath, s.ID, os.Getuid(), activity)
 	}()
 
 	conn := dialUnixConn(t, socketPath)
@@ -916,10 +920,14 @@ func TestAcceptPtracePID_ContinuesAfterWrongUID(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 
+	activity, err := s.BeginWorkspaceActivity()
+	if err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptPtracePID(context.Background(), listener, socketPath, s.ID, os.Getuid()+1)
+		app.acceptPtracePID(context.Background(), listener, socketPath, s.ID, os.Getuid()+1, activity)
 	}()
 
 	firstConn := dialUnixConn(t, socketPath)

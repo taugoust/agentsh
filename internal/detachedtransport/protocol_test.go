@@ -47,6 +47,17 @@ func TestJournalReplaysExactRecordsAndRejectsConflictsAcrossExactIdentity(t *tes
 	}
 }
 
+func TestExchangeResponseAllowsCumulativeAckWithoutNewRecords(t *testing.T) {
+	identity := Identity{SessionID: "session-one", Generation: 1, IncarnationID: "incarnation-one"}
+	response := ExchangeResponse{Version: Version, Identity: identity, Ack: 7, Pending: []approvals.Request{{ID: "pending", SessionID: identity.SessionID}}}
+	if err := response.Validate(identity, 0, 0, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := response.Validate(identity, 0, 0, 0, true); err == nil {
+		t.Fatal("ack beyond sent records was accepted for a non-empty send")
+	}
+}
+
 func TestExchangeStrictlyValidatesVersionDigestAndOrdering(t *testing.T) {
 	identity := Identity{SessionID: "session-one", Generation: 1, IncarnationID: "incarnation-one"}
 	first, err := NewApprovalResolution(2, "a", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})

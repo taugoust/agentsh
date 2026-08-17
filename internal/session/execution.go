@@ -535,6 +535,7 @@ func (s *Session) BeginWorkspaceActivity() (*WorkspaceActivityLease, error) {
 type WorkspaceFinalizationLease struct {
 	once    sync.Once
 	session *Session
+	pending bool
 }
 
 // TryBeginWorkspaceFinalization atomically closes writer admission only when
@@ -560,6 +561,23 @@ func (s *Session) TryBeginWorkspaceFinalization() (*WorkspaceFinalizationLease, 
 	}
 }
 
+func (s *Session) TryResumeWorkspaceFinalization() (*WorkspaceFinalizationLease, error) {
+	if s == nil {
+		return nil, ErrWorkspaceSealed
+	}
+	s.execAdmissionMu.Lock()
+	defer s.execAdmissionMu.Unlock()
+	if s.workspaceFinalization != WorkspaceFinalizationPending {
+		return nil, ErrWorkspaceFinalizing
+	}
+	if s.execActiveCount != 0 || s.workspaceActivities != 0 {
+		return nil, ErrWorkspaceBusy
+	}
+	s.workspaceFinalization = WorkspaceFinalizationRunning
+	s.notifyExecutionChangedLocked()
+	return &WorkspaceFinalizationLease{session: s}, nil
+}
+
 func (s *Session) WorkspaceFinalizationState() WorkspaceFinalizationState {
 	if s == nil {
 		return WorkspaceFinalizationComplete
@@ -582,15 +600,9 @@ func (s *Session) WorkspaceTeardownAllowed() bool {
 // MarkPending makes a durable finalization intent absorbing. Release(false)
 // keeps writers and teardown sealed until the exact intent is resumed.
 func (l *WorkspaceFinalizationLease) MarkPending() {
-	if l == nil || l.session == nil {
-		return
+	if l != nil {
+		l.pending = true
 	}
-	l.session.execAdmissionMu.Lock()
-	if l.session.workspaceFinalization == WorkspaceFinalizationRunning {
-		l.session.workspaceFinalization = WorkspaceFinalizationPending
-		l.session.notifyExecutionChangedLocked()
-	}
-	l.session.execAdmissionMu.Unlock()
 }
 
 func (l *WorkspaceFinalizationLease) Release(seal bool) {
@@ -605,8 +617,8 @@ func (l *WorkspaceFinalizationLease) Release(seal bool) {
 		switch {
 		case seal:
 			l.session.workspaceFinalization = WorkspaceFinalizationComplete
-		case l.session.workspaceFinalization == WorkspaceFinalizationPending:
-			// A durable intent exists and must remain absorbing.
+		case l.pending:
+			l.session.workspaceFinalization = WorkspaceFinalizationPending
 		default:
 			l.session.workspaceFinalization = WorkspaceFinalizationOpen
 		}

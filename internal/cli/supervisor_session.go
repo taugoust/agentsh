@@ -29,6 +29,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var errDetachedFinalizationCompleted = errors.New("detached finalization completed during recovery")
+
 const (
 	detachedSupervisorHeartbeatInterval = 30 * time.Second
 	detachedReviewClientTimeout         = 31 * time.Minute
@@ -111,8 +113,9 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 	var runtimeState *detached.Runtime
 	if err := runtimeprovider.WithLifecycleLock(stateDir, func() error {
 		manifest, readErr := runtimeprovider.ReadManifest(stateDir)
-		if readErr == nil && (manifest.State == runtimeprovider.StateStopping || manifest.State == runtimeprovider.StateStopped) {
-			return fmt.Errorf("detached session %s has committed runtime state %s and cannot restart", manifest.SessionID, manifest.State)
+		if readErr == nil && (manifest.State == runtimeprovider.StateStopping || manifest.State == runtimeprovider.StateStopped || manifest.CleanupPending ||
+			(!manifest.CleanupIntentKnown && manifest.State == runtimeprovider.StateFailed && !manifest.CleanupComplete)) {
+			return fmt.Errorf("detached session %s has committed runtime cleanup state and cannot restart", manifest.SessionID)
 		}
 		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 			return readErr
@@ -252,6 +255,7 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error
 	cfg.Auth.Type = "none"
 	cfg.Development.DisableAuth = true
 	cfg.Development.AllowUnauthenticatedUnixApprovals = false
+	cfg.Development.DetachedControlOnly = true
 	// Approval authority is available only through the typed control endpoint,
 	// which additionally requires the protected per-incarnation credential.
 	cfg.Development.PProf.Enabled = false
@@ -864,7 +868,12 @@ func waitForSupervisorAfterGeneration(ctx context.Context, sockPath string, c *c
 			switch meta.State {
 			case detached.LifecycleFailed:
 				return fmt.Errorf("detached supervisor %s failed during startup: %s", sessionID, meta.LastError)
-			case detached.LifecycleStopped, detached.LifecycleFinalized:
+			case detached.LifecycleFinalized:
+				if priorGeneration > 0 {
+					return errDetachedFinalizationCompleted
+				}
+				return fmt.Errorf("detached supervisor %s became %s during startup", sessionID, meta.State)
+			case detached.LifecycleStopped:
 				return fmt.Errorf("detached supervisor %s became %s during startup", sessionID, meta.State)
 			}
 			if _, statErr := os.Stat(sockPath); statErr == nil {
@@ -894,7 +903,7 @@ func detachedClientForSession(sessionID string) (*client.Client, supervisorMetad
 	if err := validateDetachedRuntimeHandshake(handshakeCtx, c, meta); err != nil {
 		return nil, supervisorMetadata{}, err
 	}
-	return c, meta, nil
+	return c.WithDetachedControlToken(meta.EventToken), meta, nil
 }
 
 func detachedRuntimeHandshakeStatus(ctx context.Context, c *client.Client, meta supervisorMetadata) (detached.RuntimeStatus, error) {
@@ -1062,6 +1071,9 @@ func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detach
 
 	waitClient := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", time.Second)
 	if err := waitForSupervisorAfterGeneration(ctx, meta.SupervisorSock, waitClient, meta.Generation); err != nil {
+		if errors.Is(err, errDetachedFinalizationCompleted) {
+			return detached.ReadTerminalRuntimeStatusFromRoot(filepath.Dir(stateDir), sessionID)
+		}
 		return detached.RuntimeStatus{}, err
 	}
 	fresh, _, err := readSupervisorMetadata(sessionID)

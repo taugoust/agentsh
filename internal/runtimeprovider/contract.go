@@ -15,7 +15,7 @@ import (
 
 const (
 	ContractVersion       = 1
-	ManifestSchemaVersion = 1
+	ManifestSchemaVersion = 2
 	NativeProvider        = "native"
 	DefaultProfile        = "native"
 )
@@ -27,6 +27,7 @@ const (
 	StateRecovering   State = "recovering"
 	StateReady        State = "ready"
 	StateDegraded     State = "degraded"
+	StateFinalizing   State = "finalizing"
 	StateStopping     State = "stopping"
 	StateStopped      State = "stopped"
 	StateFailed       State = "failed"

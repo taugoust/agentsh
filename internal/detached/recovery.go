@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const RecoverySchemaVersion = 1
+const RecoverySchemaVersion = 2
 
 const (
 	LifecycleProvisioning = "provisioning"
@@ -69,6 +69,9 @@ type ShadowFinalizationRecovery struct {
 	ReviewGeneration uint64    `json:"review_generation,omitempty"`
 	ReviewHash       string    `json:"review_hash,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
+	Applied          bool      `json:"applied,omitempty"`
+	AuditCommitted   bool      `json:"audit_committed,omitempty"`
+	CleanupComplete  bool      `json:"cleanup_complete,omitempty"`
 }
 
 type NethelperRecovery struct {
@@ -191,7 +194,8 @@ func validateRecoveryManifest(manifest RecoveryManifest) error {
 	if manifest.Finalization != nil {
 		finalization := manifest.Finalization
 		if strings.TrimSpace(finalization.ID) == "" || (finalization.Action != "accept" && finalization.Action != "reject") || finalization.CreatedAt.IsZero() ||
-			(finalization.Action == "accept" && (finalization.ReviewGeneration == 0 || strings.TrimSpace(finalization.ReviewHash) == "")) {
+			(finalization.Action == "accept" && (finalization.ReviewGeneration == 0 || strings.TrimSpace(finalization.ReviewHash) == "")) ||
+			(finalization.AuditCommitted && !finalization.Applied) || (finalization.CleanupComplete && !finalization.AuditCommitted) {
 			return fmt.Errorf("%w: shadow finalization identity is invalid", ErrRecoveryManifestInvalid)
 		}
 	}
@@ -238,6 +242,9 @@ func ReadRecoveryManifest(stateDir string) (RecoveryManifest, error) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&manifest); err != nil {
 		return RecoveryManifest{}, fmt.Errorf("%w at %s: %v", ErrRecoveryManifestInvalid, path, err)
+	}
+	if manifest.SchemaVersion == 1 {
+		manifest.SchemaVersion = RecoverySchemaVersion
 	}
 	if err := validateRecoveryManifest(manifest); err != nil {
 		return RecoveryManifest{}, fmt.Errorf("%w at %s", err, path)
@@ -490,14 +497,18 @@ func (r *Runtime) MarkFinalizing(finalization ShadowFinalizationRecovery) error 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.manifest.Finalization != nil {
-		if *r.manifest.Finalization == finalization && r.manifest.State == LifecycleFinalizing {
+		existing := r.manifest.Finalization
+		if existing.ID == finalization.ID && existing.Action == finalization.Action && existing.ReviewGeneration == finalization.ReviewGeneration &&
+			existing.ReviewHash == finalization.ReviewHash && existing.CreatedAt.Equal(finalization.CreatedAt) && r.manifest.State == LifecycleFinalizing {
 			return nil
 		}
 		return fmt.Errorf("a different detached shadow finalization is already committed")
 	}
-	if r.manifest.State != LifecycleReady && r.manifest.State != LifecycleDegraded {
+	if r.manifest.State != LifecycleReady && r.manifest.State != LifecycleDegraded && r.manifest.State != LifecycleRecovering {
 		return fmt.Errorf("refusing detached lifecycle transition from %s to %s", r.manifest.State, LifecycleFinalizing)
 	}
+	previousManifest := cloneRecoveryManifest(r.manifest)
+	previousMetadata := cloneMetadata(r.metadata)
 	now := time.Now().UTC()
 	r.manifest.Finalization = &finalization
 	r.manifest.State = LifecycleFinalizing
@@ -506,8 +517,51 @@ func (r *Runtime) MarkFinalizing(finalization ShadowFinalizationRecovery) error 
 	r.metadata.State = LifecycleFinalizing
 	r.metadata.LastError = r.manifest.LastError
 	r.metadata.HeartbeatAt = now
-	return r.persistLocked()
+	if err := r.persistLocked(); err != nil {
+		r.manifest = previousManifest
+		r.metadata = previousMetadata
+		return err
+	}
+	return nil
 }
+func (r *Runtime) updateFinalization(finalizationID string, update func(*ShadowFinalizationRecovery)) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.manifest.State != LifecycleFinalizing || r.manifest.Finalization == nil || r.manifest.Finalization.ID != finalizationID {
+		return fmt.Errorf("detached shadow finalization identity mismatch")
+	}
+	previousManifest := cloneRecoveryManifest(r.manifest)
+	previousMetadata := cloneMetadata(r.metadata)
+	update(r.manifest.Finalization)
+	r.manifest.UpdatedAt = time.Now().UTC()
+	if err := r.persistLocked(); err != nil {
+		r.manifest = previousManifest
+		r.metadata = previousMetadata
+		return err
+	}
+	return nil
+}
+
+func (r *Runtime) MarkFinalizationApplied(finalizationID string) error {
+	return r.updateFinalization(finalizationID, func(finalization *ShadowFinalizationRecovery) { finalization.Applied = true })
+}
+
+func (r *Runtime) MarkFinalizationAudited(finalizationID string) error {
+	return r.updateFinalization(finalizationID, func(finalization *ShadowFinalizationRecovery) {
+		if finalization.Applied {
+			finalization.AuditCommitted = true
+		}
+	})
+}
+
+func (r *Runtime) MarkFinalizationCleanupComplete(finalizationID string) error {
+	return r.updateFinalization(finalizationID, func(finalization *ShadowFinalizationRecovery) {
+		if finalization.AuditCommitted {
+			finalization.CleanupComplete = true
+		}
+	})
+}
+
 func (r *Runtime) MarkStopping() error { return r.markState(LifecycleStopping, "", nil) }
 func (r *Runtime) MarkStopped() error  { return r.markState(LifecycleStopped, "", nil) }
 func (r *Runtime) MarkFinalized(finalizationID string) error {
@@ -516,9 +570,12 @@ func (r *Runtime) MarkFinalized(finalizationID string) error {
 	if r.manifest.State != LifecycleFinalizing {
 		return fmt.Errorf("refusing detached lifecycle transition from %s to %s", r.manifest.State, LifecycleFinalized)
 	}
-	if r.manifest.Finalization == nil || r.manifest.Finalization.ID != finalizationID {
-		return fmt.Errorf("detached shadow finalization identity mismatch")
+	if r.manifest.Finalization == nil || r.manifest.Finalization.ID != finalizationID || !r.manifest.Finalization.Applied ||
+		!r.manifest.Finalization.AuditCommitted || !r.manifest.Finalization.CleanupComplete {
+		return fmt.Errorf("detached shadow finalization is incomplete")
 	}
+	previousManifest := cloneRecoveryManifest(r.manifest)
+	previousMetadata := cloneMetadata(r.metadata)
 	now := time.Now().UTC()
 	r.manifest.FinalizedAt = now
 	r.manifest.State = LifecycleFinalized
@@ -529,6 +586,8 @@ func (r *Runtime) MarkFinalized(finalizationID string) error {
 	r.metadata.HeartbeatAt = now
 	r.metadata.EventToken = ""
 	if err := r.persistLocked(); err != nil {
+		r.manifest = previousManifest
+		r.metadata = previousMetadata
 		return err
 	}
 	_ = RemoveHeartbeat(r.stateDir)
@@ -1003,6 +1062,10 @@ func cloneRecoveryManifest(in RecoveryManifest) RecoveryManifest {
 	if in.Nethelper != nil {
 		binding := *in.Nethelper
 		out.Nethelper = &binding
+	}
+	if in.Finalization != nil {
+		finalization := *in.Finalization
+		out.Finalization = &finalization
 	}
 	return out
 }

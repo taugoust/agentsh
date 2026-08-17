@@ -477,7 +477,13 @@ func getConnPeerCreds(conn *net.UnixConn) peerCreds {
 // acceptPtracePID accepts a connection on the notify socket, extracts the peer
 // PID via SO_PEERCRED, and attaches the ptrace tracer. The connection is kept
 // open as a keepalive — when the shell exits, the connection closes.
-func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socketPath string, sessionID string, expectedUID int) {
+func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socketPath string, sessionID string, expectedUID int, activity *session.WorkspaceActivityLease) {
+	releaseActivity := true
+	defer func() {
+		if releaseActivity {
+			activity.Release()
+		}
+	}()
 	defer listener.Close()
 	defer os.RemoveAll(filepath.Dir(socketPath))
 
@@ -562,15 +568,8 @@ func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socket
 			// Already-traced PID: session bound. Send ACK and hold the keepalive.
 			conn.Write([]byte{1})
 			slog.Info("ptrace wrap: session bound to already-traced shell", "pid", pid, "session_id", sessionID)
-			go func() {
-				defer conn.Close()
-				buf := make([]byte, 1)
-				select {
-				case <-ctx.Done():
-				default:
-					conn.Read(buf) // blocks until shell exits or connection closes
-				}
-			}()
+			releaseActivity = false
+			go holdPtraceWorkspaceActivity(ctx, conn, tr, sessionID, activity)
 			return
 		}
 		// BindSession returned an error (PID not in tracees map), which means either
@@ -594,13 +593,30 @@ func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socket
 	slog.Info("ptrace wrap: attached to shell", "pid", pid, "session_id", sessionID)
 
 	// Keep connection open until context is cancelled or shell exits.
-	go func() {
-		defer conn.Close()
-		buf := make([]byte, 1)
+	releaseActivity = false
+	go holdPtraceWorkspaceActivity(ctx, conn, tr, sessionID, activity)
+}
+
+func holdPtraceWorkspaceActivity(ctx context.Context, conn net.Conn, tracer *ptrace.Tracer, sessionID string, activity *session.WorkspaceActivityLease) {
+	defer conn.Close()
+	defer activity.Release()
+	buf := make([]byte, 1)
+	select {
+	case <-ctx.Done():
+		return
+	default:
+		_, _ = conn.Read(buf)
+	}
+	if tracer == nil {
+		return
+	}
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for tracer.HasSessionTracees(sessionID) {
 		select {
 		case <-ctx.Done():
-		default:
-			conn.Read(buf) // blocks until shell exits or connection closes
+			return
+		case <-ticker.C:
 		}
-	}()
+	}
 }

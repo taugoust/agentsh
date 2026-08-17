@@ -186,6 +186,30 @@ func (s *Store) Restore(state audit.AllocatorState) error {
 	return s.allocator.Restore(state)
 }
 
+// FlushSync waits for the authoritative primary sink to durably expose all
+// prior appends. Finalization uses this barrier before deleting recovery state.
+func (s *Store) FlushSync(ctx context.Context) error {
+	if s == nil || s.primary == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if flusher, ok := s.primary.(interface{ FlushSync() error }); ok {
+		return flusher.FlushSync()
+	}
+	if flusher, ok := s.primary.(interface {
+		FlushContext(context.Context)
+		LastWriteError() error
+	}); ok {
+		flusher.FlushContext(ctx)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return flusher.LastWriteError()
+	}
+	return nil
+}
+
 func (s *Store) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
 	if s.primary == nil {
 		return nil, nil

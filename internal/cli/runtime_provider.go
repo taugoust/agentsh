@@ -132,10 +132,13 @@ func (i *nativeRuntimeInstance) Probe(ctx context.Context) (runtimeprovider.Stat
 	if nativeRuntimeIdentity(i.profile, meta) != i.Identity() || meta.SupervisorSock != i.metadata.SupervisorSock {
 		return runtimeprovider.Status{}, fmt.Errorf("native runtime exact incarnation changed before probe")
 	}
-	client := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", 3*time.Second)
-	status, err := detachedRuntimeHandshakeStatus(ctx, client, meta)
-	if err != nil {
-		return runtimeprovider.Status{}, err
+	status := i.recoveredStatus
+	if status.SessionID == "" || (status.LifecycleState != detached.LifecycleStopped && status.LifecycleState != detached.LifecycleFinalized) {
+		client := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", 3*time.Second)
+		status, err = detachedRuntimeHandshakeStatus(ctx, client, meta)
+		if err != nil {
+			return runtimeprovider.Status{}, err
+		}
 	}
 	identity := nativeRuntimeIdentity(i.profile, meta)
 	endpoint := runtimeprovider.Endpoint{Transport: "unix", Address: meta.SupervisorSock}
@@ -208,7 +211,9 @@ func nativeProviderState(state string) (runtimeprovider.State, bool) {
 		return runtimeprovider.StateDegraded, true
 	case detached.LifecycleProvisioning:
 		return runtimeprovider.StateProvisioning, false
-	case detached.LifecycleFinalizing, detached.LifecycleStopping:
+	case detached.LifecycleFinalizing:
+		return runtimeprovider.StateFinalizing, false
+	case detached.LifecycleStopping:
 		return runtimeprovider.StateStopping, false
 	case detached.LifecycleStopped, detached.LifecycleFinalized:
 		return runtimeprovider.StateStopped, false
@@ -300,22 +305,25 @@ func startDetachedRuntime(ctx context.Context, request runtimeprovider.Request, 
 	if err != nil {
 		return nil, err
 	}
-	instance, err := (runtimeprovider.Controller{CleanupTimeout: detachedRuntimeCleanupTimeout}).Start(ctx, provider, request)
+	controller := runtimeprovider.Controller{CleanupTimeout: detachedRuntimeCleanupTimeout}
+	instance, err := controller.Start(ctx, provider, request)
 	if err != nil {
 		return nil, err
 	}
+	cleanupCommitted := func(cause error) error {
+		manifest, readErr := runtimeprovider.ReadManifest(request.StateDir)
+		if readErr != nil {
+			return errors.Join(cause, fmt.Errorf("read committed runtime for cleanup: %w", readErr))
+		}
+		cleanupErr := controller.Stop(context.Background(), provider, request.StateDir, manifest, runtimeprovider.StopReasonStartupFailed)
+		return errors.Join(cause, cleanupErr)
+	}
 	snapshot, err := instance.ControlPlane(ctx)
 	if err != nil {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), detachedRuntimeCleanupTimeout)
-		cleanupErr := errors.Join(instance.Stop(cleanupCtx, runtimeprovider.StopReasonStartupFailed), instance.Destroy(cleanupCtx))
-		cancel()
-		return nil, errors.Join(fmt.Errorf("read runtime provider control plane: %w", err), cleanupErr)
+		return nil, cleanupCommitted(fmt.Errorf("read runtime provider control plane: %w", err))
 	}
 	if snapshot.Session.ID == "" {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), detachedRuntimeCleanupTimeout)
-		cleanupErr := errors.Join(instance.Stop(cleanupCtx, runtimeprovider.StopReasonStartupFailed), instance.Destroy(cleanupCtx))
-		cancel()
-		return nil, errors.Join(fmt.Errorf("runtime provider %q returned no detached session result", request.Provider), cleanupErr)
+		return nil, cleanupCommitted(fmt.Errorf("runtime provider %q returned no detached session result", request.Provider))
 	}
 	return &detachedSessionStartResult{
 		supervisorMetadata: snapshot.Metadata,
@@ -348,17 +356,18 @@ func runtimeManifestForDetachedSession(sessionID, stateDir string) (runtimeprovi
 	}
 	state, cleanupComplete := inferredRuntimeState(recovery.State)
 	manifest = runtimeprovider.Manifest{
-		SchemaVersion:   runtimeprovider.ManifestSchemaVersion,
-		ContractVersion: runtimeprovider.ContractVersion,
-		Provider:        runtimeprovider.NativeProvider,
-		Profile:         runtimeprovider.DefaultProfile,
-		SessionID:       sessionID,
-		StateDir:        stateDir,
-		State:           state,
-		CreatedAt:       recovery.CreatedAt,
-		UpdatedAt:       recovery.UpdatedAt,
-		LastError:       recovery.LastError,
-		CleanupComplete: cleanupComplete,
+		SchemaVersion:      runtimeprovider.ManifestSchemaVersion,
+		ContractVersion:    runtimeprovider.ContractVersion,
+		Provider:           runtimeprovider.NativeProvider,
+		Profile:            runtimeprovider.DefaultProfile,
+		SessionID:          sessionID,
+		StateDir:           stateDir,
+		State:              state,
+		CreatedAt:          recovery.CreatedAt,
+		UpdatedAt:          recovery.UpdatedAt,
+		LastError:          recovery.LastError,
+		CleanupComplete:    cleanupComplete,
+		CleanupIntentKnown: true,
 	}
 	if meta.Generation > 0 && strings.TrimSpace(meta.IncarnationID) != "" {
 		manifest.Identity = nativeRuntimeIdentity(runtimeprovider.DefaultProfile, meta)
@@ -396,6 +405,9 @@ func syncNativeRuntimeProviderManifestLocked(stateDir string, meta supervisorMet
 	if manifest.State == runtimeprovider.StateStopping || manifest.State == runtimeprovider.StateStopped {
 		return nil
 	}
+	if manifest.CleanupPending || (!manifest.CleanupIntentKnown && manifest.State == runtimeprovider.StateFailed && !manifest.CleanupComplete) {
+		return fmt.Errorf("native runtime-provider cleanup debt is absorbing")
+	}
 	identity := nativeRuntimeIdentity(manifest.Profile, meta)
 	if manifest.Identity.Generation > identity.Generation ||
 		(manifest.Identity.Generation == identity.Generation && manifest.Identity.IncarnationID != "" && manifest.Identity != identity) {
@@ -407,6 +419,8 @@ func syncNativeRuntimeProviderManifestLocked(stateDir string, meta supervisorMet
 	manifest.Endpoint = runtimeprovider.Endpoint{Transport: "unix", Address: meta.SupervisorSock}
 	manifest.LastError = meta.LastError
 	manifest.CleanupComplete = cleanupComplete
+	manifest.CleanupPending = false
+	manifest.CleanupIntentKnown = true
 	return runtimeprovider.WriteManifest(stateDir, manifest)
 }
 
@@ -420,7 +434,9 @@ func inferredRuntimeState(state string) (runtimeprovider.State, bool) {
 		return runtimeprovider.StateReady, false
 	case detached.LifecycleDegraded:
 		return runtimeprovider.StateDegraded, false
-	case detached.LifecycleFinalizing, detached.LifecycleStopping:
+	case detached.LifecycleFinalizing:
+		return runtimeprovider.StateFinalizing, false
+	case detached.LifecycleStopping:
 		return runtimeprovider.StateStopping, false
 	case detached.LifecycleStopped, detached.LifecycleFinalized:
 		return runtimeprovider.StateStopped, true

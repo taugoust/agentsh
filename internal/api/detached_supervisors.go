@@ -103,7 +103,7 @@ func (a *App) detachedMetadataMatchesLiveRuntime(meta detached.Metadata) bool {
 }
 
 func (a *App) detachedSupervisorClient(s detachedSupervisor) *client.Client {
-	return client.NewWithTimeout("unix://"+s.Socket, "", a.detachedSupervisorTimeout())
+	return client.NewWithTimeout("unix://"+s.Socket, "", a.detachedSupervisorTimeout()).WithDetachedControlToken(s.Meta.EventToken)
 }
 
 func (a *App) queryDetachedJSON(ctx context.Context, s detachedSupervisor, path string, out any) error {
@@ -138,6 +138,7 @@ type detachedRelay struct {
 	pending    map[string]approvals.Request
 	outbox     map[uint64]detachedtransport.Record
 	decisions  map[string]detachedtransport.Record
+	legacy     bool
 }
 
 func (a *App) detachedRelayFor(sup detachedSupervisor) *detachedRelay {
@@ -179,21 +180,32 @@ func (a *App) exchangeDetachedRelay(ctx context.Context, relay *detachedRelay) e
 	request := detachedtransport.ExchangeRequest{Version: detachedtransport.Version, Identity: relay.identity, Credential: relay.supervisor.Meta.EventToken, Cursor: relay.cursor, AckFloor: relay.ack, Limit: 256, Records: records}
 	response, err := client.ExchangeDetachedControl(ctx, relay.supervisor.Socket, relay.supervisor.Meta.EventToken, relay.ack, request, a.detachedSupervisorTimeout())
 	if err != nil {
+		var httpErr *client.HTTPError
+		if errors.As(err, &httpErr) && (httpErr.StatusCode == http.StatusBadRequest || httpErr.StatusCode == http.StatusNotFound) && relay.ack == 0 && len(relay.outbox) == 0 {
+			var pending []approvals.Request
+			if legacyErr := a.queryDetachedJSON(ctx, relay.supervisor, "/api/v1/approvals", &pending); legacyErr != nil {
+				return errors.Join(err, legacyErr)
+			}
+			relay.pending = make(map[string]approvals.Request, len(pending))
+			for _, approval := range pending {
+				relay.pending[approval.ID] = approval
+			}
+			relay.legacy = true
+			return nil
+		}
 		return err
 	}
+	relay.legacy = false
 	for sequence := relay.ack + 1; sequence <= response.Ack; sequence++ {
 		delete(relay.outbox, sequence)
 	}
 	relay.ack = response.Ack
-	for _, record := range response.Records {
-		switch record.Kind {
-		case detachedtransport.KindApprovalRequested:
-			if record.Approval != nil {
-				relay.pending[record.ID] = *record.Approval
-			}
-		case detachedtransport.KindApprovalResolved:
-			delete(relay.pending, record.ID)
-		}
+	if relay.next < response.Ack {
+		relay.next = response.Ack
+	}
+	relay.pending = make(map[string]approvals.Request, len(response.Pending))
+	for _, request := range response.Pending {
+		relay.pending[request.ID] = request
 	}
 	relay.cursor = response.Cursor
 	return nil
@@ -257,6 +269,14 @@ func (a *App) resolveDetachedControlApproval(ctx context.Context, id string, raw
 	}
 	relay := candidates[0]
 	relay.mu.Lock()
+	if relay.legacy {
+		supervisor := relay.supervisor
+		relay.mu.Unlock()
+		if err := a.postDetachedRaw(ctx, supervisor, escapedAPIPath("approvals", id), raw); err != nil {
+			return http.StatusServiceUnavailable, map[string]any{"error": err.Error()}, true
+		}
+		return http.StatusOK, map[string]any{"ok": true}, true
+	}
 	if existing, ok := relay.decisions[id]; ok {
 		if existing.Resolution == nil || !sameResolutionDecision(*existing.Resolution, resolution) {
 			relay.mu.Unlock()

@@ -704,6 +704,10 @@ func (a *App) requireRoles(roles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if a.cfg.Development.DisableAuth || strings.EqualFold(a.cfg.Auth.Type, "none") {
+				if a.cfg.Development.DetachedControlOnly && a.authorizeDetachedOperatorRequest(r) {
+					next.ServeHTTP(w, r)
+					return
+				}
 				if a.cfg.Development.AllowUnauthenticatedUnixApprovals && isUnixSocketRequest(r) {
 					next.ServeHTTP(w, r)
 					return
@@ -1220,6 +1224,10 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if err := s.UnmountWorkspace(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace teardown failed and the session was retained: " + err.Error()})
+		return
+	}
 	a.closeApprovalUI(id)
 	a.revokeChildCapabilitiesForSession(id, errChildCapabilityRevoked)
 	if a.approvals != nil {
@@ -1228,7 +1236,6 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 	_ = s.CloseDBProxy()
 	_ = s.CloseNetNS()
 	_ = s.CloseProxy()
-	_ = s.UnmountWorkspace()
 	_ = s.CloseRuntime()
 	a.purgeTrashForSession(s)
 	_ = a.sessions.Destroy(id)

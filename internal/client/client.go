@@ -19,9 +19,10 @@ import (
 )
 
 type Client struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+	baseURL              string
+	apiKey               string
+	detachedControlToken string
+	httpClient           *http.Client
 }
 
 type HTTPError struct {
@@ -431,9 +432,19 @@ func (c *Client) doJSONRawHeaders(ctx context.Context, method, path string, q ur
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+func (c *Client) WithDetachedControlToken(token string) *Client {
+	if c != nil {
+		c.detachedControlToken = strings.TrimSpace(token)
+	}
+	return c
+}
+
 func (c *Client) addAuth(req *http.Request) {
 	if c.apiKey != "" {
 		req.Header.Set("X-API-Key", c.apiKey)
+	}
+	if c.detachedControlToken != "" {
+		req.Header.Set("X-AgentSH-Detached-Control-Token", c.detachedControlToken)
 	}
 	// Propagate W3C trace context so agentsh events nest under the caller's trace
 	if tp := os.Getenv("TRACEPARENT"); tp != "" {

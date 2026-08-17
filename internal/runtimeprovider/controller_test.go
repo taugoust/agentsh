@@ -360,11 +360,15 @@ func TestControllerFailedStartedCleanupCommitsStoppingAndRejectsRecovery(t *test
 	if manifest.State != StateStopping || manifest.CleanupComplete || manifest.Identity != instance.identity || manifest.Endpoint != instance.endpoint {
 		t.Fatalf("cleanup intent manifest=%+v", manifest)
 	}
-	if _, err := controller.Recover(context.Background(), provider, request.StateDir, manifest); err == nil || !strings.Contains(err.Error(), "cannot be recovered") {
-		t.Fatalf("Recover error=%v", err)
-	}
-	if provider.recovers != 0 {
-		t.Fatalf("provider recovery calls=%d", provider.recovers)
+	recoverDone := make(chan error, 1)
+	go func() {
+		_, recoverErr := controller.Recover(context.Background(), provider, request.StateDir, manifest)
+		recoverDone <- recoverErr
+	}()
+	select {
+	case err := <-recoverDone:
+		t.Fatalf("recovery bypassed in-flight operation lock: %v", err)
+	case <-time.After(20 * time.Millisecond):
 	}
 	close(release)
 	if err := <-done; err == nil || !strings.Contains(err.Error(), "provider start failed") || !strings.Contains(err.Error(), "stop failed") {
@@ -376,6 +380,15 @@ func TestControllerFailedStartedCleanupCommitsStoppingAndRejectsRecovery(t *test
 	}
 	if manifest.State != StateStopping || manifest.CleanupComplete {
 		t.Fatalf("failed cleanup manifest=%+v", manifest)
+	}
+	if err := <-recoverDone; err == nil {
+		t.Fatal("stale concurrent recovery unexpectedly succeeded")
+	}
+	if _, err := controller.Recover(context.Background(), provider, request.StateDir, manifest); err == nil || !strings.Contains(err.Error(), "cannot be recovered") {
+		t.Fatalf("fresh Recover error=%v", err)
+	}
+	if provider.recovers != 0 {
+		t.Fatalf("provider recovery calls=%d", provider.recovers)
 	}
 }
 
@@ -396,11 +409,31 @@ func TestControllerUnboundFailedCleanupCannotBeRecovered(t *testing.T) {
 		t.Fatalf("unbound cleanup manifest=%+v", manifest)
 	}
 	opens, recovers := provider.opens, provider.recovers
-	if _, err := (Controller{CleanupTimeout: time.Second}).Recover(context.Background(), provider, request.StateDir, manifest); err == nil || !strings.Contains(err.Error(), "incomplete cleanup") {
+	if _, err := (Controller{CleanupTimeout: time.Second}).Recover(context.Background(), provider, request.StateDir, manifest); err == nil || !strings.Contains(err.Error(), "incomplete or ambiguous cleanup") {
 		t.Fatalf("Recover error=%v", err)
 	}
 	if provider.opens != opens || provider.recovers != recovers {
 		t.Fatalf("provider called during refused recovery opens=%d recovers=%d", provider.opens, provider.recovers)
+	}
+}
+
+func TestControllerRejectsLegacyAmbiguousFailedCleanup(t *testing.T) {
+	request, provider, instance := readyFixture(t)
+	manifest := NewManifest(request, time.Now().UTC())
+	manifest.State = StateFailed
+	manifest.Identity = instance.identity
+	manifest.Endpoint = instance.endpoint
+	manifest.CleanupComplete = false
+	manifest.CleanupIntentKnown = false
+	if err := WriteManifest(request.StateDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest, _ = ReadManifest(request.StateDir)
+	if _, err := (Controller{CleanupTimeout: time.Second}).Recover(context.Background(), provider, request.StateDir, manifest); err == nil || !strings.Contains(err.Error(), "ambiguous cleanup") {
+		t.Fatalf("Recover error=%v", err)
+	}
+	if provider.opens != 0 || provider.recovers != 0 {
+		t.Fatalf("provider called opens=%d recovers=%d", provider.opens, provider.recovers)
 	}
 }
 

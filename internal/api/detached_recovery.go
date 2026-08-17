@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -11,10 +12,32 @@ import (
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
-	"github.com/agentsh/agentsh/internal/workspace/shadow"
+	"github.com/agentsh/agentsh/internal/workspace/cleanup"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
 )
+
+func (a *App) validateShadowRecoveryTopology(manifest detached.RecoveryManifest) (string, error) {
+	if a == nil || a.cfg == nil || manifest.Shadow == nil {
+		return "", fmt.Errorf("shadow recovery topology is unavailable")
+	}
+	base, err := filepath.Abs(a.cfg.Sessions.WorkspaceShadow.BaseDir)
+	if err != nil || filepath.Clean(base) != base {
+		return "", fmt.Errorf("shadow recovery base is invalid")
+	}
+	sessionDir := filepath.Join(base, manifest.SessionID)
+	shadow := manifest.Shadow
+	if filepath.Clean(shadow.Work) != filepath.Join(sessionDir, "work") || filepath.Clean(shadow.Home) != filepath.Join(sessionDir, "home") || filepath.Clean(shadow.Tmp) != filepath.Join(sessionDir, "tmp") {
+		return "", fmt.Errorf("shadow recovery paths escape the exact session topology")
+	}
+	for _, root := range shadow.Roots {
+		clean := filepath.Clean(root.Work)
+		if clean != shadow.Work && filepath.Dir(clean) != shadow.Work {
+			return "", fmt.Errorf("shadow recovery root escapes the exact work directory")
+		}
+	}
+	return sessionDir, nil
+}
 
 // BootstrapDetachedSession creates or rehydrates the exact session described by
 // the protected recovery manifest. It runs before listeners serve requests.
@@ -52,6 +75,26 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 		a.nethelperBinding.replace(binding)
 	}
 
+	if a.detachedRuntime.IsRecovery() && manifest.Finalization != nil && manifest.Finalization.Applied && manifest.Finalization.AuditCommitted && manifest.Shadow != nil {
+		sessionDir, topologyErr := a.validateShadowRecoveryTopology(manifest)
+		if topologyErr != nil {
+			return types.Session{}, nil, topologyErr
+		}
+		if !manifest.Finalization.CleanupComplete {
+			if err := cleanup.RemoveAllWritable(sessionDir); err != nil {
+				return types.Session{}, nil, err
+			}
+			if err := a.detachedRuntime.MarkFinalizationCleanupComplete(manifest.Finalization.ID); err != nil {
+				return types.Session{}, nil, err
+			}
+		}
+		if err := a.detachedRuntime.MarkFinalized(manifest.Finalization.ID); err != nil {
+			return types.Session{}, nil, err
+		}
+		a.signalDetachedStop()
+		return types.Session{ID: manifest.SessionID}, nil, nil
+	}
+
 	snapshot, _, err := a.createSessionCore(ctx, manifest.Request)
 	if err != nil {
 		return types.Session{}, nil, fmt.Errorf("bootstrap exact detached session %s: %w", manifest.SessionID, err)
@@ -78,60 +121,43 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 	}
 
 	if a.detachedRuntime.IsRecovery() {
-		if manifest.Finalization != nil {
-			sw := sess.ShadowWorkspace()
-			if sw == nil {
-				return types.Session{}, nil, fmt.Errorf("detached finalization recovery has no retained shadow workspace")
-			}
-			intent, ok := sw.PendingFinalization()
-			if !ok || intent.ID != manifest.Finalization.ID || intent.Action != manifest.Finalization.Action ||
-				intent.ReviewGeneration != manifest.Finalization.ReviewGeneration || intent.ReviewHash != manifest.Finalization.ReviewHash {
-				return types.Session{}, nil, fmt.Errorf("detached finalization recovery identity mismatch")
-			}
-			lease, leaseErr := sess.TryBeginWorkspaceFinalization()
-			if leaseErr != nil {
-				return types.Session{}, nil, fmt.Errorf("reserve detached finalization recovery: %w", leaseErr)
-			}
-			lease.MarkPending()
-			if applyErr := sw.ResumeFinalization(ctx, intent.ID); applyErr != nil {
-				lease.Release(false)
-				return types.Session{}, nil, fmt.Errorf("resume detached shadow finalization: %w", applyErr)
-			}
-			now := time.Now().UTC()
-			eventType := "shadow_rejected"
-			if intent.Action == shadow.FinalizationAccept {
-				eventType = "shadow_accepted"
-				sess.MarkShadowAccepted(now)
-			} else {
-				sess.MarkShadowRejected(now)
-			}
-			event := types.Event{
-				ID: uuid.NewString(), Timestamp: now, Type: eventType, SessionID: sess.ID,
-				Fields: map[string]any{
-					"real": sw.Real, "work": sw.Work, "finalization_id": intent.ID,
-					"review_generation": intent.ReviewGeneration, "review_hash": intent.ReviewHash,
-					"recovered": true,
-				},
-			}
-			terminalCtx, terminalCancel := terminalPersistenceContext(context.Background())
-			auditErr := a.store.AppendEvent(terminalCtx, event)
-			terminalCancel()
-			if auditErr != nil {
-				lease.Release(false)
-				return types.Session{}, nil, fmt.Errorf("persist resumed detached finalization audit: %w", auditErr)
-			}
-			a.broker.Publish(event)
-			if err := a.detachedRuntime.MarkFinalized(intent.ID); err != nil {
-				lease.Release(false)
-				return types.Session{}, nil, fmt.Errorf("commit resumed detached finalization: %w", err)
-			}
-			if err := sw.CleanupFinalized(); err != nil {
+		sw := sess.ShadowWorkspace()
+		if sw != nil {
+			intent, localPending := sw.PendingFinalization()
+			if localPending {
+				if manifest.Finalization == nil {
+					durable := detached.ShadowFinalizationRecovery{ID: intent.ID, Action: intent.Action, ReviewGeneration: intent.ReviewGeneration, ReviewHash: intent.ReviewHash, CreatedAt: intent.CreatedAt}
+					if err := a.detachedRuntime.MarkFinalizing(durable); err != nil {
+						return types.Session{}, nil, fmt.Errorf("reconcile local shadow finalization: %w", err)
+					}
+					manifest = a.detachedRuntime.Manifest()
+				}
+				if manifest.Finalization == nil || intent.ID != manifest.Finalization.ID || intent.Action != manifest.Finalization.Action ||
+					intent.ReviewGeneration != manifest.Finalization.ReviewGeneration || intent.ReviewHash != manifest.Finalization.ReviewHash {
+					return types.Session{}, nil, fmt.Errorf("detached finalization recovery identity mismatch")
+				}
+				lease, leaseErr := sess.TryBeginWorkspaceFinalization()
+				if leaseErr != nil {
+					return types.Session{}, nil, fmt.Errorf("reserve detached finalization recovery: %w", leaseErr)
+				}
+				lease.MarkPending()
+				if applyErr := sw.ResumeFinalization(ctx, intent.ID); applyErr != nil {
+					lease.Release(false)
+					return types.Session{}, nil, fmt.Errorf("resume detached shadow finalization: %w", applyErr)
+				}
+				terminalCtx, terminalCancel := terminalPersistenceContext(context.Background())
+				completeErr := a.completeShadowFinalization(terminalCtx, sess, sw, intent, true)
+				terminalCancel()
+				if completeErr != nil {
+					lease.Release(false)
+					return types.Session{}, nil, fmt.Errorf("complete resumed detached finalization: %w", completeErr)
+				}
 				lease.Release(true)
-				return types.Session{}, nil, fmt.Errorf("clean resumed detached finalization: %w", err)
+				return sess.Snapshot(), nil, nil
 			}
-			lease.Release(true)
-			a.signalDetachedStop()
-			return sess.Snapshot(), nil, nil
+		}
+		if manifest.Finalization != nil {
+			return types.Session{}, nil, fmt.Errorf("detached finalization manifest has no matching local transaction")
 		}
 		if err := sess.RestoreOutputArtifacts(manifest.OutputArtifacts); err != nil {
 			return cleanupOnError(fmt.Errorf("restore detached output artifacts: %w", err))

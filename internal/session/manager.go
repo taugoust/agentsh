@@ -997,8 +997,16 @@ func (s *Session) UnmountWorkspace() error {
 	fn := s.workspaceUnmount
 	s.workspaceUnmount = nil
 	s.mu.Unlock()
-	if fn != nil {
-		return fn()
+	if fn == nil {
+		return nil
+	}
+	if err := fn(); err != nil {
+		s.mu.Lock()
+		if s.workspaceUnmount == nil {
+			s.workspaceUnmount = fn
+		}
+		s.mu.Unlock()
+		return err
 	}
 	return nil
 }
@@ -1619,6 +1627,7 @@ func (m *Manager) ReapExpiredGuarded(now time.Time, sessionTimeout, idleTimeout 
 	if len(expiredIDs) == 0 {
 		return nil, nil
 	}
+	sort.Strings(expiredIDs)
 
 	// Resolve the still-installed candidates while holding the manager lock.
 	// Run every guard before deleting anything so a durable lifecycle failure
@@ -1628,19 +1637,17 @@ func (m *Manager) ReapExpiredGuarded(now time.Time, sessionTimeout, idleTimeout 
 
 	reaped := make([]*Session, 0, len(expiredIDs))
 	for _, id := range expiredIDs {
-		if s, ok := m.sessions[id]; ok {
-			reaped = append(reaped, s)
+		s, ok := m.sessions[id]
+		if !ok {
+			continue
 		}
-	}
-	if beforeRemove != nil {
-		for _, s := range reaped {
+		if beforeRemove != nil {
 			if err := beforeRemove(s); err != nil {
-				return nil, err
+				return reaped, err
 			}
 		}
-	}
-	for _, s := range reaped {
 		delete(m.sessions, s.ID)
+		reaped = append(reaped, s)
 	}
 	return reaped, nil
 }

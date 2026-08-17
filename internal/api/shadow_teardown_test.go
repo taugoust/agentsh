@@ -21,7 +21,7 @@ func TestReservedWorkspaceFinalizationExcludesTeardown(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := &App{sessions: manager}
-	reserved, lease, err := app.reserveWorkspaceFinalization(sess.ID)
+	reserved, lease, err := app.reserveWorkspaceFinalization(sess.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}

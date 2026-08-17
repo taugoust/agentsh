@@ -118,7 +118,7 @@ func New(cfg *config.Config) (*Server, error) {
 	// session-local Unix socket; TCP approval routes remain forbidden by api.requireRoles.
 	if cfg.Approvals.Enabled && strings.EqualFold(strings.TrimSpace(cfg.Approvals.Mode), "api") {
 		if cfg.Development.DisableAuth || strings.EqualFold(strings.TrimSpace(cfg.Auth.Type), "none") {
-			if !cfg.Development.AllowUnauthenticatedUnixApprovals {
+			if !cfg.Development.AllowUnauthenticatedUnixApprovals && !cfg.Development.DetachedControlOnly {
 				return nil, fmt.Errorf("approvals.mode=api requires auth.type=api_key (auth is disabled)")
 			}
 		}
@@ -1270,6 +1270,7 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) Close() error {
+	var closeErr error
 	if s.httpLn != nil {
 		_ = s.httpLn.Close()
 		s.httpLn = nil
@@ -1302,8 +1303,8 @@ func (s *Server) Close() error {
 			_ = sess.CloseDBProxy()
 			_ = sess.CloseNetNS()
 			_ = sess.CloseProxy()
-			_ = sess.UnmountWorkspace()
-			_ = sess.CloseRuntime()
+			closeErr = errors.Join(closeErr, sess.UnmountWorkspace())
+			closeErr = errors.Join(closeErr, sess.CloseRuntime())
 		}
 	}
 	if s.store != nil {
@@ -1319,7 +1320,7 @@ func (s *Server) Close() error {
 			<-s.policySockDone
 		}
 	}
-	return nil
+	return closeErr
 }
 
 func (s *Server) PProfAddr() string {
@@ -1338,10 +1339,6 @@ func (s *Server) GRPCAddr() string {
 
 func (s *Server) reapOnce(now time.Time) bool {
 	result := s.app.ReapExpiredSessionsWithResult(now, s.sessionTimeout, s.idleTimeout)
-	if result.Err != nil {
-		slog.Error("session expiry deferred because lifecycle cleanup failed", "error", result.Err)
-		return false
-	}
 	for _, sess := range result.Sessions {
 		_ = sess.CloseDBProxy()
 		_ = sess.CloseNetNS()
@@ -1372,6 +1369,10 @@ func (s *Server) reapOnce(now time.Time) bool {
 		if s.broker != nil {
 			s.broker.Publish(ev)
 		}
+	}
+	if result.Err != nil {
+		slog.Error("remaining session expiry deferred because lifecycle cleanup failed", "error", result.Err)
+		return result.DetachedSupervisorExpired
 	}
 	return result.DetachedSupervisorExpired
 }

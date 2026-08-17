@@ -85,7 +85,7 @@ func ExchangeDetachedControl(ctx context.Context, socketPath, token string, ackn
 	if len(request.Records) > 0 {
 		sentMax = request.Records[len(request.Records)-1].Sequence
 	}
-	if err := response.Validate(request.Identity, acknowledged, sentMax, request.Cursor); err != nil {
+	if err := response.Validate(request.Identity, acknowledged, sentMax, request.Cursor, len(request.Records) > 0); err != nil {
 		return detachedtransport.ExchangeResponse{}, err
 	}
 	return response, nil

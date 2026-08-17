@@ -636,6 +636,9 @@ func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*
 			return nil, status.Error(codes.Internal, "refusing teardown because durable detached lifecycle update failed")
 		}
 	}
+	if err := sess.UnmountWorkspace(); err != nil {
+		return nil, status.Error(codes.Internal, "workspace teardown failed and the session was retained")
+	}
 	s.app.closeApprovalUI(id)
 	s.app.revokeChildCapabilitiesForSession(id, errChildCapabilityRevoked)
 	if s.app.approvals != nil {
@@ -644,7 +647,6 @@ func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*
 	_ = sess.CloseDBProxy()
 	_ = sess.CloseNetNS()
 	_ = sess.CloseProxy()
-	_ = sess.UnmountWorkspace()
 	_ = sess.CloseRuntime()
 	s.app.purgeTrashForSession(sess)
 	_ = s.app.sessions.Destroy(id)

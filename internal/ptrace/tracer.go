@@ -535,6 +535,17 @@ func (t *Tracer) ResumePID(pid int) error {
 // session the shim's wrap-init handshake established, so subsequent HandleExecve
 // calls for that shell and its descendants reach the policy engine rather than
 // passing through as "sessionless_pid_attach". Issue #416.
+func (t *Tracer) HasSessionTracees(sessionID string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, state := range t.tracees {
+		if state.SessionID == sessionID {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *Tracer) BindSession(pid int, sessionID string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()

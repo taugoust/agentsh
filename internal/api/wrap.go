@@ -284,6 +284,16 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 
 	// Ptrace mode: skip seccomp wrapper entirely. Create a socket for PID handshake.
 	if a.ptraceTracer != nil {
+		activity, activityErr := s.BeginWorkspaceActivity()
+		if activityErr != nil {
+			return types.WrapInitResponse{}, http.StatusConflict, activityErr
+		}
+		activityTransferred := false
+		defer func() {
+			if !activityTransferred {
+				activity.Release()
+			}
+		}()
 		if a.ptraceFailed.Load() {
 			return types.WrapInitResponse{}, http.StatusServiceUnavailable,
 				fmt.Errorf("ptrace tracer is not healthy; refusing wrap-init")
@@ -341,7 +351,8 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 			return types.WrapInitResponse{}, http.StatusInternalServerError, err
 		}
 
-		go a.acceptPtracePID(ctx, listener, notifySocketPath, sessionID, req.CallerUID)
+		go a.acceptPtracePID(ctx, listener, notifySocketPath, sessionID, req.CallerUID, activity)
+		activityTransferred = true
 
 		ev := types.Event{
 			ID:        uuid.NewString(),
@@ -559,7 +570,7 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	// A same-UID command jail must not expose another supervisor control socket.
 	// Strict wrapped agents use the trusted detached/API approval bridge instead
 	// of receiving the local approval-UI socket path.
-	if req.Mode != "shim" && !toolJailRequired && a.approvals != nil {
+	if req.Mode != "shim" && !toolJailRequired && !a.cfg.Development.DetachedControlOnly && a.approvals != nil {
 		approvalUI, err = a.startApprovalUIEndpoint(sessionID, req.CallerUID)
 		if err != nil {
 			_ = listener.Close()
