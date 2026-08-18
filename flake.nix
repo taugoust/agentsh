@@ -101,6 +101,10 @@
                   -L${pkgs.glibc.static}/lib \
                   cmd/agentsh-composition-ns-launcher/main.c \
                   -o agentsh-composition-ns-launcher
+                $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
+                  -L${pkgs.glibc.static}/lib \
+                  cmd/agentsh-file-lookup-broker/main.c \
+                  -o agentsh-file-lookup-broker
                 CGO_ENABLED=0 go build \
                   -ldflags='-s -w' \
                   -o agentsh-bwrap-adapter-static \
@@ -162,12 +166,15 @@
                 $out/bin/agentsh-composition-mount-helper
               install -Dm755 agentsh-composition-ns-launcher \
                 $out/bin/agentsh-composition-ns-launcher
+              install -Dm755 agentsh-file-lookup-broker \
+                $out/bin/agentsh-file-lookup-broker
               for trusted_binary in \
                 $out/bin/agentsh-bwrap-adapter \
                 $out/bin/agentsh-composition-mount-helper \
-                $out/bin/agentsh-composition-ns-launcher; do
+                $out/bin/agentsh-composition-ns-launcher \
+                $out/bin/agentsh-file-lookup-broker; do
                 if readelf -l "$trusted_binary" | grep -q 'Requesting program interpreter'; then
-                  echo "trusted composition binary is dynamically linked: $trusted_binary" >&2
+                  echo "trusted native binary is dynamically linked: $trusted_binary" >&2
                   exit 1
                 fi
               done
@@ -832,6 +839,37 @@
               pkgs.runCommand "agentsh-nixos-output-artifacts-module-test-skipped" { } ''
                 mkdir -p "$out"
                 touch "$out/skipped-non-linux"
+              '';
+
+          missing-read-probe-tests =
+            if stdenv.hostPlatform.isLinux then
+              go-unit-tests.overrideAttrs (old: {
+                pname = "agentsh-missing-read-probe-tests";
+                nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.binutils ];
+                checkPhase = ''
+                  runHook preCheck
+                  $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
+                    -L${pkgs.glibc.static}/lib \
+                    cmd/agentsh-file-lookup-broker/main.c \
+                    -o "$TMPDIR/agentsh-file-lookup-broker"
+                  if readelf -l "$TMPDIR/agentsh-file-lookup-broker" | grep -q 'Requesting program interpreter'; then
+                    echo "file lookup worker is dynamically linked" >&2
+                    exit 1
+                  fi
+                  export AGENTSH_FILE_LOOKUP_WORKER_TEST="$TMPDIR/agentsh-file-lookup-broker"
+                  go test ./internal/filelookup
+                  go test ./internal/wraphandoff -run '^Test(Local|Lineage)'
+                  go test ./cmd/agentsh-unixwrap -run '^TestPayloadForkInstallsNotifyOnlyInExactChild$'
+                  go test ./internal/approvals -run '^TestRequestApprovalScoped_'
+                  go test ./internal/netmonitor/unix -run '^Test(EvaluateFileNotification|FileLookupBroker|FileHandlerFileLookupProbe|FileHandler_|EligibleMissingLookup|ExtractFileArgs_|ExtractLegacyFileArgs_|ReadPathname_|ResolvePathAt|ReadOpenHow|ApplyOpenHow|NotifRespond(Errno|Deny))'
+                  go test ./internal/api -run '^Test(AcceptNotifyFDLineage|CreateFileHandler_|FilePolicyEngineWrapper_|FileHandler_(Prepare|Resolve)|FileApprovalScope_|FileLookupWorkerForWrapper)'
+                  runHook postCheck
+                '';
+              })
+            else
+              pkgs.runCommand "agentsh-missing-read-probe-tests-skipped" { } ''
+                mkdir -p $out
+                touch $out/skipped-non-linux
               '';
 
           approval-regression-tests =

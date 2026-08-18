@@ -64,6 +64,10 @@ type extraProcConfig struct {
 	stdoutCaptureBytes int64
 	stderrCaptureBytes int64
 
+	// The persistent wrapper parent and at-most-one native lookup worker are
+	// cgroup members in addition to the payload slot used before lineage mode.
+	lineagePIDReserve int
+
 	// File monitor config
 	fileMonitorCfg  config.SandboxSeccompFileMonitorConfig
 	landlockEnabled bool // Whether Landlock enforcement is configured

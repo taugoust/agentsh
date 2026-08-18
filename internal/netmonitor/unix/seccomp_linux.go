@@ -45,6 +45,34 @@ type Filter struct {
 	loadDiagnostics  *filterLoadDiagnostics
 }
 
+// PreparedFilterProgram is an exported, kernel-ready cBPF program which has
+// not been installed in the calling process. The lineage wrapper prepares it
+// in the trusted parent and passes the bytes to the raw-fork payload child;
+// only that child invokes seccomp(2).
+type PreparedFilterProgram struct {
+	program             []byte
+	wantWaitKillable    bool
+	needsNotifyFD       bool
+	interceptMetadata   bool
+	waitKillableSource  string
+	kernelProbeSupports bool
+	libseccompRuntime   string
+	snapshot            []any
+	blockList           map[uint32]seccompkg.OnBlockAction
+	blockedFamilyMap    map[uint64]seccompkg.BlockedFamily
+	socketRules         []seccompkg.SocketRule
+}
+
+func (p *PreparedFilterProgram) BPFProgram() []byte {
+	if p == nil {
+		return nil
+	}
+	return append([]byte(nil), p.program...)
+}
+
+func (p *PreparedFilterProgram) WaitKillable() bool  { return p != nil && p.wantWaitKillable }
+func (p *PreparedFilterProgram) NeedsNotifyFD() bool { return p != nil && p.needsNotifyFD }
+
 // LogLoaded emits the per-exec filter diagnostic once. Metadata-intercepting
 // wrappers defer this until after the notify listener is handed to the
 // supervisor: even trusted logging/runtime code must not risk a trapped
@@ -294,6 +322,11 @@ type FilterConfig struct {
 	// server so the per-exec "seccomp: filter loaded" log line can record
 	// it. Issue #369.
 	WaitKillableSource string
+
+	// FreezeLookupSecurityContext denies post-fork Landlock-domain mutation
+	// and securebits/ambient-capability changes. It is enabled only for the
+	// payload variant selected after broker context parity succeeds.
+	FreezeLookupSecurityContext bool
 }
 
 // DefaultFilterConfig returns config for unix socket monitoring only.
@@ -306,7 +339,7 @@ func DefaultFilterConfig() FilterConfig {
 
 // InstallFilterWithConfig installs a seccomp filter based on config.
 // Unix socket syscalls get user-notify, blocked syscalls get kill.
-func InstallFilterWithConfig(cfg FilterConfig) (*Filter, error) {
+func prepareFilterProgramWithConfig(cfg FilterConfig) (*PreparedFilterProgram, error) {
 	if err := DetectSupport(); err != nil {
 		return nil, err
 	}
@@ -509,6 +542,26 @@ func InstallFilterWithConfig(cfg FilterConfig) (*Filter, error) {
 		ruleCounts["io_uring_block"] = ioUringRulesAdded
 	}
 
+	if cfg.FreezeLookupSecurityContext {
+		freezeAction := seccomp.ActErrno.SetReturnCode(int16(unix.EPERM))
+		for _, nr := range []int{
+			unix.SYS_LANDLOCK_CREATE_RULESET,
+			unix.SYS_LANDLOCK_ADD_RULE,
+			unix.SYS_LANDLOCK_RESTRICT_SELF,
+		} {
+			if err := filt.AddRule(seccomp.ScmpSyscall(nr), freezeAction); err != nil {
+				return nil, fmt.Errorf("freeze Landlock syscall %d: %w", nr, err)
+			}
+		}
+		for _, option := range []uint64{unix.PR_SET_SECUREBITS, unix.PR_CAP_AMBIENT} {
+			condition := seccomp.ScmpCondition{Argument: 0, Op: seccomp.CompareEqual, Operand1: option}
+			if err := filt.AddRuleConditional(seccomp.ScmpSyscall(unix.SYS_PRCTL), freezeAction, []seccomp.ScmpCondition{condition}); err != nil {
+				return nil, fmt.Errorf("freeze prctl option %d: %w", option, err)
+			}
+		}
+		ruleCounts["lookup_context_freeze"] = 5
+	}
+
 	// Pre-load diagnostic snapshot. Logged at DEBUG so it stays out of
 	// stderr captured by integration tests on the success path.
 	snapshot := filterDiagnosticFields(filt, cfg, wantWaitKill, ruleCounts)
@@ -527,45 +580,67 @@ func InstallFilterWithConfig(cfg FilterConfig) (*Filter, error) {
 	filt.Release()
 
 	// Resolve every diagnostic that might cross into libc or lazy runtime state
-	// before loading a metadata-notify filter. The success log itself is deferred
-	// below when metadata interception is active.
-	libVer := libseccompRuntimeVersion()
-	kernelProbeSupports := ProbeWaitKillable()
+	// before a payload child installs a metadata-notify filter.
+	return &PreparedFilterProgram{
+		program:             prog,
+		wantWaitKillable:    wantWaitKill,
+		needsNotifyFD:       filterConfigNeedsNotifyFD(cfg, blockListMap, blockedFamilyMap, socketRules),
+		interceptMetadata:   cfg.InterceptMetadata,
+		waitKillableSource:  cfg.WaitKillableSource,
+		kernelProbeSupports: ProbeWaitKillable(),
+		libseccompRuntime:   libseccompRuntimeVersion(),
+		snapshot:            snapshot,
+		blockList:           blockListMap,
+		blockedFamilyMap:    blockedFamilyMap,
+		socketRules:         socketRules,
+	}, nil
+}
 
-	rawFd, gotWaitKill, err := loadFilterWithRetry(prog, wantWaitKill, snapshot)
+// PrepareFilterProgramWithConfig builds but does not install the payload
+// filter. The returned bytes are suitable for a native raw-fork child.
+func PrepareFilterProgramWithConfig(cfg FilterConfig) (*PreparedFilterProgram, error) {
+	return prepareFilterProgramWithConfig(cfg)
+}
+
+func (p *PreparedFilterProgram) install() (*Filter, error) {
+	if p == nil || len(p.program) == 0 {
+		return nil, errors.New("prepared seccomp filter is unavailable")
+	}
+	rawFD, gotWaitKill, err := loadFilterWithRetry(p.program, p.wantWaitKillable, p.snapshot)
 	if err != nil {
 		return nil, err
 	}
-	// rawFd is the listener fd from SECCOMP_FILTER_FLAG_NEW_LISTENER.
-	// loadFilterWithRetry returns >=0 on success; the legacy
-	// "no notify rules, fd=-1" path is unreachable because we always
-	// pass NEW_LISTENER (kernel returns the fd even for filters
-	// without ActNotify rules — it's just never readable).
-	diagnostics := &filterLoadDiagnostics{
-		fd:                  rawFd,
-		waitKillable:        gotWaitKill,
-		waitKillableSource:  cfg.WaitKillableSource,
-		kernelProbeSupports: kernelProbeSupports,
-		libseccompRuntime:   libVer,
-	}
 	result := &Filter{
-		fd:               seccomp.ScmpFd(rawFd),
-		blockList:        blockListMap,
-		blockedFamilyMap: blockedFamilyMap,
-		socketRules:      socketRules,
-		loadDiagnostics:  diagnostics,
+		fd:               seccomp.ScmpFd(rawFD),
+		blockList:        p.blockList,
+		blockedFamilyMap: p.blockedFamilyMap,
+		socketRules:      p.socketRules,
+		loadDiagnostics: &filterLoadDiagnostics{
+			fd:                  rawFD,
+			waitKillable:        gotWaitKill,
+			waitKillableSource:  p.waitKillableSource,
+			kernelProbeSupports: p.kernelProbeSupports,
+			libseccompRuntime:   p.libseccompRuntime,
+		},
 	}
-
-	if !filterConfigNeedsNotifyFD(cfg, blockListMap, blockedFamilyMap, socketRules) {
-		// Close the now-unused listener fd. The filter is still
-		// installed; only the userspace dispatch handle is dropped.
-		_ = unix.Close(rawFd)
+	if !p.needsNotifyFD {
+		_ = unix.Close(rawFD)
 		result.fd = -1
 	}
-	if !cfg.InterceptMetadata {
+	if !p.interceptMetadata {
 		result.LogLoaded()
 	}
 	return result, nil
+}
+
+// InstallFilterWithConfig preserves the direct/test API while production
+// unixwrap uses PrepareFilterProgramWithConfig and installs only in its child.
+func InstallFilterWithConfig(cfg FilterConfig) (*Filter, error) {
+	prepared, err := prepareFilterProgramWithConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return prepared.install()
 }
 
 // familyToScmpAction maps an OnBlockAction to the libseccomp action used

@@ -4,6 +4,7 @@ package unix
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,17 +17,99 @@ import (
 	sysunix "golang.org/x/sys/unix"
 )
 
-// FilePolicyChecker evaluates file policy decisions.
+// FilePolicyChecker evaluates raw file policy and any already-cached approval
+// scope. CheckFile must not create or wait for an approval.
 type FilePolicyChecker interface {
 	CheckFile(ctx context.Context, path, operation string) FilePolicyDecision
 }
 
-// FilePolicyDecision represents a file policy check result.
+// FileApprovalResolver performs the blocking half of an unresolved file
+// approval. Implementations must atomically recheck the prepared scope and
+// register a pending request when the cache still misses. Context cancellation
+// must be returned so notification-liveness callers can stop the pipeline.
+type FileApprovalResolver interface {
+	ResolveFileApproval(ctx context.Context, target, operation string, decision FilePolicyDecision) (FilePolicyDecision, error)
+}
+
+// FileApprovalCacheOutcome records what the nonblocking scoped-cache check did.
+type FileApprovalCacheOutcome string
+
+const (
+	FileApprovalCacheNotApplicable FileApprovalCacheOutcome = "not_applicable"
+	FileApprovalCacheMiss          FileApprovalCacheOutcome = "miss"
+	FileApprovalCacheAllow         FileApprovalCacheOutcome = "allow"
+	FileApprovalCacheDeny          FileApprovalCacheOutcome = "deny"
+	FileApprovalCacheUnsupported   FileApprovalCacheOutcome = "unsupported"
+)
+
+// FilePolicyDecision represents raw policy plus a nonblocking scoped-cache
+// outcome. Decision always remains the raw policy decision; only
+// EffectiveDecision reflects a cache hit or unsupported approval scope.
 type FilePolicyDecision struct {
 	Decision          string
 	EffectiveDecision string
 	Rule              string
 	Message           string
+	CacheOutcome      FileApprovalCacheOutcome
+
+	// ApprovalScopeKey and ApprovalCommandID bind ResolveFileApproval to the
+	// exact cache lookup performed during Prepare.
+	ApprovalScopeKey  string
+	ApprovalCommandID string
+}
+
+// FilePolicyAttribution identifies the independent path obligation represented
+// by a policy decision.
+type FilePolicyAttribution string
+
+const (
+	FilePolicyVisiblePath             FilePolicyAttribution = "visible_path"
+	FilePolicySecondPath              FilePolicyAttribution = "second_path"
+	FilePolicyCompositionSource       FilePolicyAttribution = "composition_source"
+	FilePolicyCompositionSourceSecond FilePolicyAttribution = "composition_source_second_path"
+)
+
+// FilePolicyObligation is one independent visible or composition-source policy
+// requirement. FilePolicyDecision is embedded so callers can inspect the raw
+// decision, rule/message, and cache outcome without losing path attribution.
+type FilePolicyObligation struct {
+	FilePolicyDecision
+	Target             string
+	Operation          string
+	Attribution        FilePolicyAttribution
+	Secondary          bool
+	CompositionSource  bool
+	LoaderSafeOverride bool
+	ResolutionError    string
+}
+
+// PreparedFileDecision is the nonblocking result of FileHandler.Prepare.
+// Obligations are kept in stable primary, secondary, source, source-secondary
+// order. Private terminal state is consumed by Resolve and keeps Handle fully
+// backward compatible.
+type PreparedFileDecision struct {
+	Request     FileRequest
+	Obligations []FilePolicyObligation
+
+	terminal      bool
+	result        FileResult
+	blocked       bool
+	shadowDeny    bool
+	emitEvent     bool
+	eventDecision FilePolicyDecision
+}
+
+// HasUnresolvedApprovals reports whether Resolve has blocking approval work.
+func (p PreparedFileDecision) HasUnresolvedApprovals() bool {
+	if p.terminal {
+		return false
+	}
+	for _, obligation := range p.Obligations {
+		if !obligation.LoaderSafeOverride && fileDecisionNeedsApproval(obligation.FilePolicyDecision) {
+			return true
+		}
+	}
+	return false
 }
 
 // FileRequest holds the parsed context for a file syscall notification.
@@ -42,6 +125,7 @@ type FileRequest struct {
 	Operation                 string
 	Flags                     uint32
 	Mode                      uint32
+	Lookup                    *FileLookupRequest // exact raw lookup context; nil for synthetic/test requests
 	SessionID                 string
 }
 
@@ -54,6 +138,8 @@ type FileResult struct {
 // FileHandler processes file syscall notifications against policy.
 type FileHandler struct {
 	policy              FilePolicyChecker
+	approvalResolver    FileApprovalResolver
+	fileLookupProbe     FileLookupProbe
 	registry            *MountRegistry
 	emitter             Emitter
 	enforce             bool
@@ -65,12 +151,41 @@ type FileHandler struct {
 
 // NewFileHandler creates a new FileHandler.
 func NewFileHandler(policy FilePolicyChecker, registry *MountRegistry, emitter Emitter, enforce bool) *FileHandler {
-	return &FileHandler{
+	h := &FileHandler{
 		policy:   policy,
 		registry: registry,
 		emitter:  emitter,
 		enforce:  enforce,
 	}
+	if resolver, ok := policy.(FileApprovalResolver); ok {
+		h.approvalResolver = resolver
+	}
+	return h
+}
+
+// SetApprovalResolver overrides the resolver inferred from the policy checker.
+// It is primarily useful for adapters and deterministic tests.
+func (h *FileHandler) SetApprovalResolver(resolver FileApprovalResolver) {
+	if h != nil {
+		h.approvalResolver = resolver
+	}
+}
+
+// SetFileLookupProbe hands the session's tracee-lineage lookup capability to
+// the file handler. Phase 4 deliberately does not consult it from Prepare or
+// Resolve; phase 5 will add the notification-liveness decision pipeline.
+func (h *FileHandler) SetFileLookupProbe(probe FileLookupProbe) {
+	if h != nil {
+		h.fileLookupProbe = probe
+	}
+}
+
+// FileLookupProbe returns the currently bound probe capability, if any.
+func (h *FileHandler) FileLookupProbe() FileLookupProbe {
+	if h == nil {
+		return nil
+	}
+	return h.fileLookupProbe
 }
 
 // SetEmulateOpen enables or disables openat AddFD emulation.
@@ -152,39 +267,41 @@ func (h *FileHandler) internalControlAccessAllowed(req FileRequest) bool {
 	return seen
 }
 
-// Handle evaluates a file request against policy and returns the enforcement result
-// and an optional audit event. The caller is responsible for emitting the event.
-//
-// Routing logic:
-//  1. No policy -> allow with "no_policy" event.
-//  2. Path under FUSE mount -> audit-only (FUSE handles enforcement).
-//  3. Otherwise -> full enforcement based on policy decision and enforce flag.
+// Handle remains the compatibility entry point. New notification pipelines can
+// call Prepare, inspect unresolved obligations, and then call Resolve.
 func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, *types.Event) {
+	prepared := h.Prepare(ctx, req)
+	result, event, _ := h.Resolve(ctx, prepared)
+	return result, event
+}
+
+// Prepare performs all nonblocking file-policy work. It normalizes visible
+// paths, resolves composition attribution, applies delegation/loader guards,
+// and records cache outcomes without ever creating an approval.
+func (h *FileHandler) Prepare(ctx context.Context, req FileRequest) PreparedFileDecision {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	// 0. Pseudo-paths (pipe:[...], socket:[...], anon_inode:[...]) resolve
-	//    from /proc/<pid>/fd/<N> for non-filesystem fds. They are not
-	//    filesystem objects and cannot match path-based policy rules —
-	//    allow unconditionally to avoid spurious denials.
+	// Pseudo-paths resolve from proc fds for non-filesystem objects and cannot
+	// participate in path policy.
 	if req.Path != "" && !strings.HasPrefix(req.Path, "/") {
-		return FileResult{Action: ActionContinue}, nil
+		return terminalPreparedFileDecision(req, nil, FileResult{Action: ActionContinue}, false, false, false)
 	}
 
-	// 1. No policy configured — allow everything.
-	if h.policy == nil {
+	if h == nil || h.policy == nil {
 		dec := FilePolicyDecision{
 			Decision:          "allow",
 			EffectiveDecision: "allow",
 			Rule:              "no_policy",
+			CacheOutcome:      FileApprovalCacheNotApplicable,
 		}
-		return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, false)
+		obligations := []FilePolicyObligation{newFilePolicyObligation(req.Path, req.Operation, FilePolicyVisiblePath, dec)}
+		return terminalPreparedFileDecision(req, obligations, FileResult{Action: ActionContinue}, false, false, true)
 	}
 
-	// Resolve /proc/self/fd/N, /proc/<pid>/fd/N, /dev/fd/N to actual target.
-	// This prevents policy bypass by re-deriving paths from file descriptors.
-	// Normalize both Path and Path2 (for rename/link dual-path syscalls).
+	// Normalize fd aliases before either visible or composition-source policy is
+	// evaluated. Both endpoints of dual-path operations remain independent.
 	if resolved, wasProcFD := resolveProcFD(req.PID, req.Path); wasProcFD {
 		req.Path = resolved
 	}
@@ -200,20 +317,17 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 			EffectiveDecision: "allow",
 			Rule:              "allow-agentsh-composition-control",
 			Message:           "trusted wrapper access to the private composition runtime",
+			CacheOutcome:      FileApprovalCacheNotApplicable,
 		}
-		return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, false)
+		obligations := []FilePolicyObligation{newFilePolicyObligation(req.Path, req.Operation, FilePolicyVisiblePath, dec)}
+		return terminalPreparedFileDecision(req, obligations, FileResult{Action: ActionContinue}, false, false, true)
 	}
 
 	compositionCovered := false
 	if h.compositionPaths != nil {
 		resolution, err := h.compositionPaths.ResolveDetails(req.PID, req.Path)
 		if err != nil {
-			dec := FilePolicyDecision{
-				Decision: "deny", EffectiveDecision: "deny",
-				Rule:    "composition-source-attribution",
-				Message: "composition source attribution failed: " + err.Error(),
-			}
-			return FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}, h.buildFileEvent(req, dec, true, false)
+			return h.compositionAttributionFailure(req, err)
 		}
 		compositionCovered = resolution.Covered
 		req.CompositionFreshWritable = resolution.FreshWritable
@@ -223,12 +337,7 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 		if req.Path2 != "" {
 			resolution2, err := h.compositionPaths.ResolveDetails(req.PID, req.Path2)
 			if err != nil {
-				dec := FilePolicyDecision{
-					Decision: "deny", EffectiveDecision: "deny",
-					Rule:    "composition-source-attribution",
-					Message: "composition source attribution failed: " + err.Error(),
-				}
-				return FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}, h.buildFileEvent(req, dec, true, false)
+				return h.compositionAttributionFailure(req, err)
 			}
 			compositionCovered = compositionCovered || resolution2.Covered
 			req.CompositionFreshWritable2 = resolution2.FreshWritable
@@ -238,97 +347,365 @@ func (h *FileHandler) Handle(ctx context.Context, req FileRequest) (FileResult, 
 		}
 	}
 
-	// 2. Path under FUSE mount point — audit-only; FUSE handles enforcement.
-	//    Only defers when the resolved syscall path is actually under a FUSE
-	//    mount point (e.g., sessions/{id}/mount-0), not a source path.
+	// FUSE owns enforcement only for an actual resolved mount path. A raw cache
+	// check is safe for audit attribution, but an approval must never be created.
 	if !compositionCovered && h.registry != nil && h.registry.IsUnderFUSEMount(req.SessionID, req.Path) {
-		dec := h.policy.CheckFile(ctx, req.Path, req.Operation)
-		shadowDeny := dec.EffectiveDecision == "deny"
-		return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, shadowDeny)
+		obligations := []FilePolicyObligation{
+			newFilePolicyObligation(req.Path, req.Operation, FilePolicyVisiblePath, h.preparePolicyDecision(ctx, req.Path, req.Operation)),
+		}
+		if req.Path2 != "" {
+			obligations = append(obligations, newFilePolicyObligation(
+				req.Path2, req.Operation, FilePolicySecondPath, h.preparePolicyDecision(ctx, req.Path2, req.Operation),
+			))
+		}
+		if req.SourcePath != "" {
+			obligations = append(obligations, newFilePolicyObligation(
+				req.SourcePath, req.Operation, FilePolicyCompositionSource, h.preparePolicyDecision(ctx, req.SourcePath, req.Operation),
+			))
+		}
+		if req.SourcePath2 != "" {
+			obligations = append(obligations, newFilePolicyObligation(
+				req.SourcePath2, req.Operation, FilePolicyCompositionSourceSecond, h.preparePolicyDecision(ctx, req.SourcePath2, req.Operation),
+			))
+		}
+		shadowDeny := false
+		for _, obligation := range obligations {
+			if strings.EqualFold(obligation.EffectiveDecision, "deny") {
+				shadowDeny = true
+				break
+			}
+		}
+		return terminalPreparedFileDecision(
+			req,
+			obligations,
+			FileResult{Action: ActionContinue},
+			false,
+			shadowDeny,
+			true,
+		)
 	}
 
-	// 3. Full enforcement path. A broker-created writable tmpfs has no host
-	// source object to protect: its fixed Landlock rights and restrictive mount
-	// attributes are established before the payload starts. Do not apply a host
-	// path rule such as "approve writes to /etc" to that private filesystem.
 	freshWritableDecision := FilePolicyDecision{
 		Decision:          "allow",
 		EffectiveDecision: "allow",
 		Rule:              "allow-composition-fresh-writable",
 		Message:           "write is confined to a broker-created writable tmpfs",
+		CacheOutcome:      FileApprovalCacheNotApplicable,
 	}
-	dec := freshWritableDecision
+	obligations := make([]FilePolicyObligation, 0, 4)
+	primary := freshWritableDecision
 	if !req.CompositionFreshWritable {
-		dec = h.policy.CheckFile(ctx, req.Path, req.Operation)
+		primary = h.preparePolicyDecision(ctx, req.Path, req.Operation)
+	}
+	obligations = append(obligations, newFilePolicyObligation(req.Path, req.Operation, FilePolicyVisiblePath, primary))
+
+	if req.Path2 != "" {
+		secondary := freshWritableDecision
+		if !req.CompositionFreshWritable2 {
+			secondary = h.preparePolicyDecision(ctx, req.Path2, req.Operation)
+		}
+		obligations = append(obligations, newFilePolicyObligation(req.Path2, req.Operation, FilePolicySecondPath, secondary))
+	}
+	if req.SourcePath != "" {
+		dec := h.preparePolicyDecision(ctx, req.SourcePath, req.Operation)
+		obligations = append(obligations, newFilePolicyObligation(req.SourcePath, req.Operation, FilePolicyCompositionSource, dec))
+	}
+	if req.SourcePath2 != "" {
+		dec := h.preparePolicyDecision(ctx, req.SourcePath2, req.Operation)
+		obligations = append(obligations, newFilePolicyObligation(req.SourcePath2, req.Operation, FilePolicyCompositionSourceSecond, dec))
 	}
 
-	// For dual-path syscalls (rename, link), also check the second path. Every
-	// non-fresh endpoint remains subject to its visible and source policy.
-	if req.Path2 != "" {
-		dec2 := freshWritableDecision
-		if !req.CompositionFreshWritable2 {
-			dec2 = h.policy.CheckFile(ctx, req.Path2, req.Operation)
-		}
-		// If either path is restrictive, the combined decision is restrictive.
-		if dec2.EffectiveDecision != "allow" {
-			dec = dec2
+	if h.enforce && isReadOnlyFileOp(req.Syscall, req.Flags) {
+		for i := range obligations {
+			obligation := &obligations[i]
+			if obligation.CompositionSource || strings.EqualFold(obligation.EffectiveDecision, "allow") {
+				continue
+			}
+			systemNode := isSystemDirNode(obligation.Target)
+			loaderPath := isDefaultDenyRule(obligation.Rule) && isLoaderSafeSystemPath(obligation.Target)
+			if !systemNode && !loaderPath {
+				continue
+			}
+			obligation.LoaderSafeOverride = true
+			message := "loader-safe read override (#369)"
+			if systemNode {
+				message = "system-dir-node read override (#369)"
+			}
+			slog.Debug("file_monitor: "+message,
+				"path", obligation.Target,
+				"operation", obligation.Operation,
+				"policy_rule", obligation.Rule,
+				"session", req.SessionID,
+			)
 		}
 	}
-	// A bind alias must never launder a restrictive source decision through an
-	// allowed-looking destination. Evaluate every broker-attributed source and
-	// let either visible or source policy deny the operation.
-	sourceRestricted := false
-	for _, source := range []string{req.SourcePath, req.SourcePath2} {
-		if source == "" {
+
+	prepared := PreparedFileDecision{
+		Request:     req,
+		Obligations: obligations,
+		emitEvent:   true,
+	}
+	activeRestriction := false
+	finalRestriction := false
+	unresolvedApproval := false
+	loaderOverride := false
+	for _, obligation := range obligations {
+		if obligation.LoaderSafeOverride {
+			loaderOverride = true
 			continue
 		}
-		sourceDecision := h.policy.CheckFile(ctx, source, req.Operation)
-		if sourceDecision.EffectiveDecision != "allow" {
-			dec = sourceDecision
-			sourceRestricted = true
+		if strings.EqualFold(obligation.EffectiveDecision, "allow") {
+			continue
+		}
+		activeRestriction = true
+		if fileDecisionNeedsApproval(obligation.FilePolicyDecision) {
+			unresolvedApproval = true
+		} else {
+			finalRestriction = true
+		}
+	}
+	prepared.eventDecision = dominantFilePolicyDecision(obligations)
+	prepared.shadowDeny = loaderOverride
+
+	if !h.enforce && activeRestriction {
+		prepared.terminal = true
+		prepared.result = FileResult{Action: ActionContinue}
+		return prepared
+	}
+	if finalRestriction {
+		// Explicit and cached denials dominate unresolved approvals. Do not
+		// create prompts for an operation that cannot proceed.
+		prepared.shadowDeny = false
+		prepared.terminal = true
+		prepared.result = FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}
+		prepared.blocked = true
+		return prepared
+	}
+	if unresolvedApproval {
+		return prepared
+	}
+
+	prepared.terminal = true
+	prepared.result = FileResult{Action: ActionContinue}
+	prepared.shadowDeny = loaderOverride
+	return prepared
+}
+
+// Resolve requests every still-unresolved obligation. A denial on any one is
+// dominant, but the remaining independent obligations are still resolved while
+// the context remains live. Cancellation stops the sequence immediately so no
+// later approval can be enqueued after liveness is lost, and the first resolver
+// or context error is returned for the notification pipeline to act on.
+func (h *FileHandler) Resolve(ctx context.Context, prepared PreparedFileDecision) (FileResult, *types.Event, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if prepared.terminal {
+		return prepared.result, h.preparedFileEvent(prepared), nil
+	}
+
+	prepared.Obligations = append([]FilePolicyObligation(nil), prepared.Obligations...)
+	resolutionFailed := false
+	var resolutionErr error
+	for i := range prepared.Obligations {
+		obligation := &prepared.Obligations[i]
+		if obligation.LoaderSafeOverride || !fileDecisionNeedsApproval(obligation.FilePolicyDecision) {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			obligation.EffectiveDecision = "deny"
+			obligation.ResolutionError = err.Error()
+			resolutionFailed = true
+			resolutionErr = err
+			break
+		}
+		if h == nil || h.approvalResolver == nil {
+			obligation.EffectiveDecision = "deny"
+			obligation.CacheOutcome = FileApprovalCacheUnsupported
+			resolutionFailed = true
+			continue
+		}
+
+		resolved, err := h.approvalResolver.ResolveFileApproval(ctx, obligation.Target, obligation.Operation, obligation.FilePolicyDecision)
+		// Raw policy attribution is immutable across resolution. The resolver is
+		// responsible only for the effective result and (optionally) a newer
+		// atomic cache outcome.
+		obligation.EffectiveDecision = resolved.EffectiveDecision
+		if resolved.CacheOutcome != "" {
+			obligation.CacheOutcome = resolved.CacheOutcome
+		}
+		if err != nil {
+			obligation.ResolutionError = err.Error()
+			if resolutionErr == nil {
+				resolutionErr = err
+			}
+		}
+		if !strings.EqualFold(obligation.EffectiveDecision, "allow") || err != nil {
+			obligation.EffectiveDecision = "deny"
+			resolutionFailed = true
+		}
+		if err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+			break
+		}
+		// A resolver can win just before notification liveness is lost. Recheck
+		// the caller's context before any later obligation or successful return;
+		// phase 5 will drive this context from notification-ID validation.
+		if err := ctx.Err(); err != nil {
+			obligation.EffectiveDecision = "deny"
+			obligation.ResolutionError = err.Error()
+			resolutionFailed = true
+			resolutionErr = err
+			break
 		}
 	}
 
-	if dec.EffectiveDecision != "allow" {
-		if !h.enforce {
-			// Audit-only mode: log but allow.
-			return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, false)
-		}
-		// #369 loader-safe + system-dir-node guards: file_monitor must not deny
-		// the read-only opens / stats every wrapped program needs to start, or a
-		// deny-by-default policy makes every dynamically-linked command fail.
-		// The ptrace enforcer effectively allows both classes below; file_monitor
-		// matches it. Read-only only — writes/creates/deletes stay enforced.
-		if isReadOnlyFileOp(req.Syscall, req.Flags) && !sourceRestricted {
-			// (1) Standard system DIRECTORY NODES (/, /dev, /proc/self, /etc, ...).
-			// EXACT match — does NOT extend to contents (a deny of /etc/secret
-			// still stands). Overrides ANY deny rule (catch-all or explicit) for
-			// these specific bare nodes, because they are universally read-safe
-			// (every program stats them) and the wrapped shell can't start
-			// without them; operator denies on /proc/self etc. are about the
-			// CONTENTS (maps, cmdline, environ), which exact-match preserves.
-			if isSystemDirNode(req.Path) {
-				slog.Debug("file_monitor: system-dir-node read override (#369)",
-					"path", req.Path, "operation", req.Operation, "policy_rule", dec.Rule, "session", req.SessionID)
-				return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, true)
-			}
-			// (2) Loader-essential subtrees (/lib, /usr, ld.so.cache, ...). Subtree
-			// match. Scoped to the CATCH-ALL deny only: an operator's explicit
-			// deny rule on a system subpath (e.g. `deny read /opt/app/secrets/**`)
-			// is still honored, matching ptrace's first-match-explicit-deny.
-			if isDefaultDenyRule(dec.Rule) && isLoaderSafeSystemPath(req.Path) {
-				slog.Debug("file_monitor: loader-safe read override (#369)",
-					"path", req.Path, "operation", req.Operation, "policy_rule", dec.Rule, "session", req.SessionID)
-				return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, true)
-			}
-		}
-		// Enforced deny for any restrictive decision that has not already been
-		// resolved to allow by an approval-aware adapter.
-		return FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}, h.buildFileEvent(req, dec, true, false)
+	prepared.eventDecision = dominantFilePolicyDecision(prepared.Obligations)
+	if resolutionFailed {
+		prepared.result = FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)}
+		prepared.blocked = true
+		prepared.shadowDeny = false
+	} else {
+		prepared.result = FileResult{Action: ActionContinue}
 	}
+	prepared.terminal = true
+	return prepared.result, h.preparedFileEvent(prepared), resolutionErr
+}
 
-	// Allowed.
-	return FileResult{Action: ActionContinue}, h.buildFileEvent(req, dec, false, false)
+func (h *FileHandler) preparePolicyDecision(ctx context.Context, target, operation string) FilePolicyDecision {
+	dec := h.policy.CheckFile(ctx, target, operation)
+	if dec.CacheOutcome == "" {
+		if fileDecisionNeedsApproval(dec) {
+			dec.CacheOutcome = FileApprovalCacheMiss
+		} else {
+			dec.CacheOutcome = FileApprovalCacheNotApplicable
+		}
+	}
+	if fileDecisionNeedsApproval(dec) && h.approvalResolver == nil {
+		dec.EffectiveDecision = "deny"
+		dec.CacheOutcome = FileApprovalCacheUnsupported
+	}
+	return dec
+}
+
+func (h *FileHandler) compositionAttributionFailure(req FileRequest, err error) PreparedFileDecision {
+	dec := FilePolicyDecision{
+		Decision:          "deny",
+		EffectiveDecision: "deny",
+		Rule:              "composition-source-attribution",
+		Message:           "composition source attribution failed: " + err.Error(),
+		CacheOutcome:      FileApprovalCacheNotApplicable,
+	}
+	obligations := []FilePolicyObligation{newFilePolicyObligation(req.Path, req.Operation, FilePolicyVisiblePath, dec)}
+	return terminalPreparedFileDecision(
+		req,
+		obligations,
+		FileResult{Action: ActionDeny, Errno: int32(sysunix.EACCES)},
+		true,
+		false,
+		true,
+	)
+}
+
+func terminalPreparedFileDecision(req FileRequest, obligations []FilePolicyObligation, result FileResult, blocked, shadowDeny, emitEvent bool) PreparedFileDecision {
+	return PreparedFileDecision{
+		Request:       req,
+		Obligations:   obligations,
+		terminal:      true,
+		result:        result,
+		blocked:       blocked,
+		shadowDeny:    shadowDeny,
+		emitEvent:     emitEvent,
+		eventDecision: dominantFilePolicyDecision(obligations),
+	}
+}
+
+func newFilePolicyObligation(target, operation string, attribution FilePolicyAttribution, dec FilePolicyDecision) FilePolicyObligation {
+	return FilePolicyObligation{
+		FilePolicyDecision: dec,
+		Target:             target,
+		Operation:          operation,
+		Attribution:        attribution,
+		Secondary:          attribution == FilePolicySecondPath || attribution == FilePolicyCompositionSourceSecond,
+		CompositionSource:  attribution == FilePolicyCompositionSource || attribution == FilePolicyCompositionSourceSecond,
+	}
+}
+
+func fileDecisionNeedsApproval(dec FilePolicyDecision) bool {
+	return strings.EqualFold(dec.Decision, "approve") && strings.EqualFold(dec.EffectiveDecision, "approve")
+}
+
+func dominantFilePolicyDecision(obligations []FilePolicyObligation) FilePolicyDecision {
+	if len(obligations) == 0 {
+		return FilePolicyDecision{}
+	}
+	selected := obligations[0].FilePolicyDecision
+	selectedRank := fileObligationRank(obligations[0])
+	for _, obligation := range obligations[1:] {
+		if rank := fileObligationRank(obligation); rank > selectedRank {
+			selected = obligation.FilePolicyDecision
+			selectedRank = rank
+		}
+	}
+	return selected
+}
+
+func fileObligationRank(obligation FilePolicyObligation) int {
+	if obligation.LoaderSafeOverride && !strings.EqualFold(obligation.EffectiveDecision, "allow") {
+		return 2
+	}
+	if strings.EqualFold(obligation.EffectiveDecision, "deny") {
+		return 5
+	}
+	if fileDecisionNeedsApproval(obligation.FilePolicyDecision) {
+		return 4
+	}
+	if !strings.EqualFold(obligation.EffectiveDecision, "allow") {
+		return 3
+	}
+	return 1
+}
+
+func (h *FileHandler) preparedFileEvent(prepared PreparedFileDecision) *types.Event {
+	if !prepared.emitEvent || h == nil {
+		return nil
+	}
+	event := h.buildFileEvent(prepared.Request, prepared.eventDecision, prepared.blocked, prepared.shadowDeny)
+	if event != nil && len(prepared.Obligations) > 0 {
+		event.Fields["policy_obligations"] = filePolicyObligationAuditFields(prepared.Obligations)
+	}
+	return event
+}
+
+func filePolicyObligationAuditFields(obligations []FilePolicyObligation) []map[string]any {
+	fields := make([]map[string]any, 0, len(obligations))
+	for _, obligation := range obligations {
+		entry := map[string]any{
+			"target":             obligation.Target,
+			"operation":          obligation.Operation,
+			"attribution":        string(obligation.Attribution),
+			"decision":           obligation.Decision,
+			"effective_decision": obligation.EffectiveDecision,
+			"rule":               obligation.Rule,
+			"message":            obligation.Message,
+			"cache_outcome":      string(obligation.CacheOutcome),
+			"secondary":          obligation.Secondary,
+			"composition_source": obligation.CompositionSource,
+		}
+		if obligation.LoaderSafeOverride {
+			entry["loader_safe_override"] = true
+		}
+		if obligation.ResolutionError != "" {
+			entry["resolution_error"] = obligation.ResolutionError
+		}
+		if obligation.ApprovalScopeKey != "" {
+			entry["approval_scope_key"] = obligation.ApprovalScopeKey
+		}
+		if obligation.ApprovalCommandID != "" {
+			entry["approval_command_id"] = obligation.ApprovalCommandID
+		}
+		fields = append(fields, entry)
+	}
+	return fields
 }
 
 // buildFileEvent builds a structured event for a file operation without emitting it.

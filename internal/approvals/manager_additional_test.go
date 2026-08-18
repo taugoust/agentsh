@@ -30,8 +30,11 @@ func TestRequestApprovalContextCancel(t *testing.T) {
 	if err == nil || res.Approved || res.Reason != "context canceled" {
 		t.Fatalf("expected canceled resolution, got res=%+v err=%v", res, err)
 	}
-	if len(em.events) == 0 {
-		t.Fatalf("expected events emitted")
+	if len(em.events) != 0 {
+		t.Fatalf("pre-canceled request emitted events: %+v", em.events)
+	}
+	if pending := mgr.ListPending(); len(pending) != 0 {
+		t.Fatalf("pre-canceled request became pending: %+v", pending)
 	}
 }
 

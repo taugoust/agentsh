@@ -108,6 +108,8 @@ func TestExtractLegacyFileArgs_Open(t *testing.T) {
 	assert.Equal(t, uint64(0x7fff1000), fa.PathPtr)
 	assert.Equal(t, uint32(unix.O_RDONLY), fa.Flags)
 	assert.Equal(t, uint32(0644), fa.Mode)
+	assert.Equal(t, uint64(unix.O_RDONLY), fa.OpenFlags)
+	assert.Equal(t, uint64(0644), fa.OpenMode)
 	assert.False(t, fa.HasSecondPath)
 }
 
@@ -125,6 +127,8 @@ func TestExtractLegacyFileArgs_Creat(t *testing.T) {
 	// creat is O_WRONLY|O_CREAT|O_TRUNC — must NOT be classified as read-only.
 	assert.Equal(t, uint32(unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC), fa.Flags,
 		"creat must have implicit write flags set")
+	assert.Equal(t, uint64(unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC), fa.OpenFlags)
+	assert.Equal(t, uint64(0644), fa.OpenMode)
 	assert.False(t, isReadOnlyOpen(fa.Flags),
 		"creat must not be classified as read-only")
 }
@@ -234,6 +238,47 @@ func TestExtractLegacyFileArgs_Chown(t *testing.T) {
 	assert.Equal(t, uint64(0x7fffD000), fa.PathPtr)
 }
 
+func TestExtractLegacyFileArgs_MetadataContext(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  SyscallArgs
+		check func(*testing.T, FileArgs)
+	}{
+		{
+			name: "lstat no-follow semantics",
+			args: SyscallArgs{Nr: unix.SYS_LSTAT, Arg0: 0x1000, Arg1: 0x2000},
+			check: func(t *testing.T, got FileArgs) {
+				assert.Equal(t, uint32(unix.AT_SYMLINK_NOFOLLOW), got.LookupFlags)
+			},
+		},
+		{
+			name: "access mode",
+			args: SyscallArgs{Nr: unix.SYS_ACCESS, Arg0: 0x1000, Arg1: uint64(unix.R_OK | unix.X_OK)},
+			check: func(t *testing.T, got FileArgs) {
+				assert.Equal(t, uint32(unix.R_OK|unix.X_OK), got.AccessMode)
+				assert.Zero(t, got.AccessFlags)
+				assert.Zero(t, got.Flags)
+			},
+		},
+		{
+			name: "readlink buffer length",
+			args: SyscallArgs{Nr: unix.SYS_READLINK, Arg0: 0x1000, Arg1: 0x2000, Arg2: 1234},
+			check: func(t *testing.T, got FileArgs) {
+				assert.Equal(t, uint64(0x2000), got.ReadlinkBufferPtr)
+				assert.Equal(t, uint64(1234), got.ReadlinkBufferLen)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractFileArgs(tt.args)
+			assert.Equal(t, int32(unix.AT_FDCWD), got.Dirfd)
+			assert.Equal(t, tt.args.Arg0, got.PathPtr)
+			tt.check(t, got)
+		})
+	}
+}
+
 func TestLegacyFileSyscallList(t *testing.T) {
 	list := legacyFileSyscallList()
 	assert.Len(t, list, 10)
@@ -242,6 +287,75 @@ func TestLegacyFileSyscallList(t *testing.T) {
 		assert.True(t, isLegacyFileSyscall(nr), "syscall %d from list not recognized", nr)
 		assert.True(t, isFileSyscall(nr), "syscall %d from list not recognized by isFileSyscall", nr)
 	}
+}
+
+func TestEligibleMissingLookup_LegacySupportedForms(t *testing.T) {
+	tests := []struct {
+		name string
+		req  FileLookupRequest
+	}{
+		{"open", func() FileLookupRequest {
+			r := baseMissingLookup(unix.SYS_OPEN)
+			r.OpenFlags = uint64(unix.O_RDONLY)
+			return r
+		}()},
+		{"open O_PATH no-follow", func() FileLookupRequest {
+			r := baseMissingLookup(unix.SYS_OPEN)
+			r.OpenFlags = uint64(unix.O_PATH | unix.O_NOFOLLOW)
+			return r
+		}()},
+		{"stat", baseMissingLookup(unix.SYS_STAT)},
+		{"lstat", func() FileLookupRequest {
+			r := baseMissingLookup(unix.SYS_LSTAT)
+			r.LookupFlags = uint32(unix.AT_SYMLINK_NOFOLLOW)
+			return r
+		}()},
+		{"access", func() FileLookupRequest {
+			r := baseMissingLookup(unix.SYS_ACCESS)
+			r.AccessMode = uint32(unix.R_OK | unix.X_OK)
+			return r
+		}()},
+		{"readlink", func() FileLookupRequest {
+			r := baseMissingLookup(unix.SYS_READLINK)
+			r.ReadlinkBufferLen = 64
+			return r
+		}()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.True(t, eligibleMissingLookup(tt.req), "%+v", tt.req)
+		})
+	}
+}
+
+func TestEligibleMissingLookup_LegacyRejectsUnsupportedAndMutatingForms(t *testing.T) {
+	for _, nr := range []int32{
+		unix.SYS_CREAT,
+		unix.SYS_MKDIR,
+		unix.SYS_RMDIR,
+		unix.SYS_UNLINK,
+		unix.SYS_RENAME,
+		unix.SYS_LINK,
+		unix.SYS_SYMLINK,
+		unix.SYS_CHMOD,
+		unix.SYS_CHOWN,
+	} {
+		t.Run(fileSyscallName(nr), func(t *testing.T) {
+			assert.False(t, eligibleMissingLookup(baseMissingLookup(nr)))
+		})
+	}
+
+	openWrite := baseMissingLookup(unix.SYS_OPEN)
+	openWrite.OpenFlags = uint64(unix.O_WRONLY)
+	assert.False(t, eligibleMissingLookup(openWrite))
+
+	badLstat := baseMissingLookup(unix.SYS_LSTAT)
+	assert.False(t, eligibleMissingLookup(badLstat), "legacy lstat must carry no-follow semantics")
+
+	emptyReadlink := baseMissingLookup(unix.SYS_READLINK)
+	emptyReadlink.ReadlinkBufferLen = 1
+	emptyReadlink.RawPath = ""
+	assert.False(t, eligibleMissingLookup(emptyReadlink))
 }
 
 func TestIsReadOnlyFileOp_Legacy(t *testing.T) {

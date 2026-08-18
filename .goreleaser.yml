@@ -6,6 +6,7 @@ before:
     - go mod download
     - ./scripts/build-envshim.sh
     - ./scripts/build-ptracer.sh
+    - ./scripts/build-file-lookup-brokers.sh
 
 builds:
   # Linux amd64: CGO enabled for full seccomp user-notify support.
@@ -194,6 +195,9 @@ archives:
         dst: .
         strip_parent: true
       - src: build/ptracer/linux_{{ .Arch }}/*
+        dst: .
+        strip_parent: true
+      - src: build/filelookup/linux_{{ .Arch }}/agentsh-file-lookup-broker
         dst: .
         strip_parent: true
       - packaging/bash_startup.sh

@@ -44,6 +44,7 @@ func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation
 		EffectiveDecision: string(dec.EffectiveDecision),
 		Rule:              dec.Rule,
 		Message:           dec.Message,
+		CacheOutcome:      unixmon.FileApprovalCacheNotApplicable,
 	}
 	if dec.PolicyDecision != types.DecisionApprove || dec.EffectiveDecision != types.DecisionApprove {
 		return out
@@ -53,48 +54,97 @@ func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation
 	}
 	if w.approvals == nil || w.sessionID == "" {
 		out.EffectiveDecision = string(types.DecisionDeny)
+		out.CacheOutcome = unixmon.FileApprovalCacheUnsupported
 		return out
 	}
-	scope, ok, scopeOptions := fileApprovalScopeOptions(operation, path, dec.Rule)
+	scope, ok := fileApprovalScope(operation, path, dec.Rule)
 	if !ok {
 		out.EffectiveDecision = string(types.DecisionDeny)
+		out.CacheOutcome = unixmon.FileApprovalCacheUnsupported
 		return out
 	}
-	commandID := ""
-	runtimeState := w.runtimeState
-	if runtimeState == nil {
-		runtimeState = w.session
-	}
-	if runtimeState != nil {
-		commandID = runtimeState.CurrentCommandID()
-	}
+	commandID := w.currentCommandID()
+	out.ApprovalScopeKey = scope.Key
+	out.ApprovalCommandID = commandID
 	if cached, ok := w.approvals.CheckScoped(ctx, w.sessionID, commandID, scope); ok {
 		if cached.Approved {
 			out.EffectiveDecision = string(types.DecisionAllow)
+			out.CacheOutcome = unixmon.FileApprovalCacheAllow
 		} else {
 			out.EffectiveDecision = string(types.DecisionDeny)
+			out.CacheOutcome = unixmon.FileApprovalCacheDeny
 		}
 		return out
+	}
+	out.CacheOutcome = unixmon.FileApprovalCacheMiss
+	return out
+}
+
+// ResolveFileApproval performs the blocking half of file approval handling.
+// RequestApprovalScoped repeats the exact prepared cache lookup and registers a
+// pending request atomically if it still misses.
+func (w *filePolicyEngineWrapper) ResolveFileApproval(ctx context.Context, path, operation string, prepared unixmon.FilePolicyDecision) (unixmon.FilePolicyDecision, error) {
+	out := prepared
+	if prepared.Decision != string(types.DecisionApprove) || prepared.EffectiveDecision != string(types.DecisionApprove) {
+		return out, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		out.EffectiveDecision = string(types.DecisionDeny)
+		return out, err
+	}
+	if w.approvals == nil || w.sessionID == "" {
+		out.EffectiveDecision = string(types.DecisionDeny)
+		out.CacheOutcome = unixmon.FileApprovalCacheUnsupported
+		return out, nil
+	}
+	scope, ok, scopeOptions := fileApprovalScopeOptions(operation, path, prepared.Rule)
+	if !ok || prepared.ApprovalScopeKey == "" || scope.Key != prepared.ApprovalScopeKey {
+		out.EffectiveDecision = string(types.DecisionDeny)
+		out.CacheOutcome = unixmon.FileApprovalCacheUnsupported
+		return out, nil
 	}
 	fields := approvals.ScopeFields(scope)
 	fields["operation"] = operation
 	fields["path"] = path
 	fields["scope_options"] = scopeOptions
-	res, err := w.approvals.RequestApproval(ctx, approvals.Request{
+	res, err := w.approvals.RequestApprovalScoped(ctx, approvals.Request{
 		SessionID: w.sessionID,
-		CommandID: commandID,
+		CommandID: prepared.ApprovalCommandID,
 		Kind:      "file",
 		Target:    path,
-		Rule:      dec.Rule,
-		Message:   dec.Message,
+		Rule:      prepared.Rule,
+		Message:   prepared.Message,
 		Fields:    fields,
-	})
+	}, scope)
 	if err != nil || !res.Approved {
 		out.EffectiveDecision = string(types.DecisionDeny)
-		return out
+		return out, err
 	}
 	out.EffectiveDecision = string(types.DecisionAllow)
-	return out
+	return out, nil
+}
+
+func (w *filePolicyEngineWrapper) currentCommandID() string {
+	switch runtimeState := w.runtimeState.(type) {
+	case nil:
+	case *session.Session:
+		if runtimeState != nil {
+			return runtimeState.CurrentCommandID()
+		}
+	case *session.CommandRuntime:
+		if runtimeState != nil {
+			return runtimeState.CurrentCommandID()
+		}
+	default:
+		return runtimeState.CurrentCommandID()
+	}
+	if w.session != nil {
+		return w.session.CurrentCommandID()
+	}
+	return ""
 }
 
 // createFileHandler creates a FileHandler from configuration.

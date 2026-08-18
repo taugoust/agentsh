@@ -4,12 +4,14 @@ package unix
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -551,6 +553,147 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 	}
 }
 
+type fileNotificationEvaluation struct {
+	result    FileResult
+	event     *types.Event
+	completed bool // response already sent (confirmed ENOENT)
+	stale     bool // notification disappeared; no response is possible
+}
+
+type fileNotificationOps struct {
+	validate     func(int, uint64) error
+	respondErrno func(int, uint64, int32) error
+}
+
+var productionFileNotificationOps = fileNotificationOps{
+	validate:     NotifIDValid,
+	respondErrno: NotifRespondErrno,
+}
+
+// evaluateFileNotification separates nonblocking policy preparation from the
+// approval wait. Only an exact unresolved approval is eligible for a broker
+// lookup, and only a securely confirmed absence is completed with ENOENT.
+func evaluateFileNotification(goCtx context.Context, notifFD int, notifID uint64, h *FileHandler, req FileRequest) fileNotificationEvaluation {
+	return evaluateFileNotificationWithOps(goCtx, notifFD, notifID, h, req, productionFileNotificationOps)
+}
+
+func evaluateFileNotificationWithOps(goCtx context.Context, notifFD int, notifID uint64, h *FileHandler, req FileRequest, ops fileNotificationOps) fileNotificationEvaluation {
+	prepared := h.Prepare(goCtx, req)
+	lookupResult := FileLookupResult{}
+	probed := false
+
+	if prepared.HasUnresolvedApprovals() && req.Lookup != nil && eligibleMissingLookup(*req.Lookup) {
+		probe := h.FileLookupProbe()
+		if probe != nil {
+			if staleFileNotification(ops, notifFD, notifID) {
+				return fileNotificationEvaluation{stale: true}
+			}
+			lookupResult = probe.ProbeFileLookup(goCtx, *req.Lookup)
+			probed = true
+			if lookupResult.Class == LookupStale || staleFileNotification(ops, notifFD, notifID) {
+				return fileNotificationEvaluation{stale: true}
+			}
+			if lookupResult.Class == LookupAbsent {
+				// The pathname is mutable tracee memory. The broker proves absence
+				// for the bytes prepared above; suppress only if those exact bytes
+				// are still present immediately before the direct error response.
+				if req.Lookup.PathPtr == 0 {
+					lookupResult = unknownFileLookup(LookupReasonContextUnavailable)
+				} else if current, err := readPathname(req.PID, req.Lookup.PathPtr, maxTraceePathnameLen); err != nil || current != req.Lookup.RawPath {
+					lookupResult = unknownFileLookup(LookupReasonContextUnavailable)
+				} else if staleFileNotification(ops, notifFD, notifID) {
+					return fileNotificationEvaluation{stale: true}
+				} else {
+					event := h.preparedFileEvent(prepared)
+					annotateFileLookupEvent(event, lookupResult, true)
+					if err := ops.respondErrno(notifFD, notifID, int32(unix.ENOENT)); err != nil {
+						if errors.Is(err, unix.ENOENT) {
+							return fileNotificationEvaluation{stale: true}
+						}
+						slog.Debug("file lookup: ENOENT completion failed", "pid", req.PID, "path", req.Path, "error", err)
+						return fileNotificationEvaluation{completed: true}
+					}
+					return fileNotificationEvaluation{event: event, completed: true}
+				}
+			}
+		}
+	}
+
+	if !prepared.HasUnresolvedApprovals() {
+		result, event, _ := h.Resolve(goCtx, prepared)
+		if probed {
+			annotateFileLookupEvent(event, lookupResult, false)
+		}
+		return fileNotificationEvaluation{result: result, event: event}
+	}
+
+	approvalCtx, stopLiveness, stale := fileNotificationApprovalContext(goCtx, ops, notifFD, notifID)
+	result, event, resolveErr := h.Resolve(approvalCtx, prepared)
+	stopLiveness()
+	if stale.Load() || goCtx.Err() != nil || errors.Is(resolveErr, context.Canceled) || staleFileNotification(ops, notifFD, notifID) {
+		return fileNotificationEvaluation{stale: true}
+	}
+	if probed {
+		annotateFileLookupEvent(event, lookupResult, false)
+	}
+	return fileNotificationEvaluation{result: result, event: event}
+}
+
+func staleFileNotification(ops fileNotificationOps, fd int, id uint64) bool {
+	if ops.validate == nil {
+		return false
+	}
+	err := ops.validate(fd, id)
+	return errors.Is(err, unix.ENOENT)
+}
+
+// fileNotificationApprovalContext cancels a pending approval when the kernel
+// notification becomes stale. Manager cancellation removes the pending request
+// and prevents later obligations from being enqueued.
+func fileNotificationApprovalContext(parent context.Context, ops fileNotificationOps, fd int, id uint64) (context.Context, func(), *atomic.Bool) {
+	ctx, cancel := context.WithCancel(parent)
+	stale := &atomic.Bool{}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(5 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if staleFileNotification(ops, fd, id) {
+					stale.Store(true)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	stop := func() {
+		cancel()
+		<-done
+	}
+	return ctx, stop, stale
+}
+
+func annotateFileLookupEvent(event *types.Event, result FileLookupResult, suppressed bool) {
+	if event == nil {
+		return
+	}
+	if event.Fields == nil {
+		event.Fields = make(map[string]any)
+	}
+	event.Fields["lookup_probe_backend"] = "tracee_lineage_broker"
+	event.Fields["lookup_probe_result"] = string(result.Class)
+	event.Fields["lookup_probe_reason"] = string(result.Reason)
+	event.Fields["approval_suppressed"] = suppressed
+	if suppressed {
+		event.EffectiveAction = "not_found"
+	}
+}
+
 // handleFileNotification processes a file syscall notification.
 // It reads the path from the tracee process, builds a FileRequest,
 // and calls the file handler to make a decision.
@@ -568,9 +711,10 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 	pid := int(req.Pid)
 	fileArgs := extractFileArgs(args)
 
-	// For openat2, resolve actual flags from the open_how struct in tracee memory.
+	// For openat2, preserve the complete extensible structure, including
+	// resolve and exact size/trailing-byte semantics.
 	if args.Nr == unix.SYS_OPENAT2 && fileArgs.HowPtr != 0 {
-		howFlags, howMode, err := readOpenHowWithFallback(pid, fileArgs.HowPtr)
+		how, err := readOpenHowExactWithFallback(pid, fileArgs.HowPtr, fileArgs.HowSize)
 		if err != nil {
 			slog.Debug("file handler: failed to read open_how", "pid", pid, "error", err, "enforce", h.Enforce())
 			if h.Enforce() {
@@ -582,16 +726,16 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 			}
 			return
 		}
-		fileArgs.Flags = uint32(howFlags)
-		fileArgs.Mode = uint32(howMode)
+		fileArgs.applyOpenHow(how)
 	}
 
-	// Resolve primary path. For mutating operations, retry with /proc/<pid>/mem
-	// fallback when ProcessVMReadv fails (Yama ptrace_scope).
-	path, err := resolvePathAt(pid, fileArgs.Dirfd, fileArgs.PathPtr)
+	// Resolve primary path while retaining the exact raw pathname. For
+	// mutating operations, retry with /proc/<pid>/mem fallback when
+	// ProcessVMReadv fails (Yama ptrace_scope).
+	rawPath, path, err := resolvePathAtWithRaw(pid, fileArgs.Dirfd, fileArgs.PathPtr)
 	if err != nil {
 		if !isReadOnlyFileOp(args.Nr, fileArgs.Flags) {
-			path, err = resolvePathAtWithFallback(pid, fileArgs.Dirfd, fileArgs.PathPtr)
+			rawPath, path, err = resolvePathAtWithRawFallback(pid, fileArgs.Dirfd, fileArgs.PathPtr)
 		}
 		if err != nil {
 			slog.Debug("file handler: failed to resolve path", "pid", pid, "error", err, "enforce", h.Enforce())
@@ -606,12 +750,12 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 		}
 	}
 
-	// Resolve second path for rename/link
+	// Resolve second path for rename/link.
 	var path2 string
 	if fileArgs.HasSecondPath {
-		p2, err := resolvePathAt(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
+		_, p2, err := resolvePathAtWithRaw(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
 		if err != nil {
-			p2, err = resolvePathAtWithFallback(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
+			_, p2, err = resolvePathAtWithRawFallback(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
 		}
 		if err != nil {
 			slog.Debug("file handler: failed to resolve second path", "pid", pid, "error", err, "enforce", h.Enforce())
@@ -629,6 +773,7 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 
 	operation := syscallToOperation(args.Nr, fileArgs.Flags)
 
+	lookup := fileArgs.fileLookupRequest(pid, args.Nr, rawPath, path)
 	frequest := FileRequest{
 		PID:       pid,
 		Syscall:   args.Nr,
@@ -637,13 +782,21 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 		Operation: operation,
 		Flags:     fileArgs.Flags,
 		Mode:      fileArgs.Mode,
+		Lookup:    &lookup,
 		SessionID: sessID,
 	}
 
-	result, ev := h.Handle(goCtx, frequest)
+	evaluation := evaluateFileNotification(goCtx, int(fd), req.ID, h, frequest)
+	if evaluation.completed || evaluation.stale {
+		if evaluation.event != nil && h.emitter != nil {
+			_ = h.emitter.AppendEvent(context.Background(), *evaluation.event)
+			h.emitter.Publish(*evaluation.event)
+		}
+		return
+	}
 
-	if result.Action == ActionDeny {
-		if err := NotifRespondDeny(int(fd), req.ID, result.Errno); err != nil {
+	if evaluation.result.Action == ActionDeny {
+		if err := NotifRespondDeny(int(fd), req.ID, evaluation.result.Errno); err != nil {
 			slog.Error("file handler: deny response failed", "pid", pid, "path", path, "error", err)
 		}
 	} else {
@@ -655,9 +808,9 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 	// Emit the audit event after the notify response to avoid blocking the
 	// traced process on audit I/O. Uses context.Background() because the
 	// event should be emitted even if the request context was cancelled.
-	if ev != nil && h.emitter != nil {
-		_ = h.emitter.AppendEvent(context.Background(), *ev)
-		h.emitter.Publish(*ev)
+	if evaluation.event != nil && h.emitter != nil {
+		_ = h.emitter.AppendEvent(context.Background(), *evaluation.event)
+		h.emitter.Publish(*evaluation.event)
 	}
 }
 
@@ -678,20 +831,16 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 	notifFD := int(fd)
 	fileArgs := extractFileArgs(args)
 
-	// For openat2, read flags from open_how for policy evaluation.
-	// openat2 is never emulated (shouldFallbackToContinue always returns true
-	// for SYS_OPENAT2), so we don't validate emulation-specific constraints.
-	// Invalid arguments (how_ptr=0, how_size<24) → let kernel handle via CONTINUE.
-	var resolveFlags uint64
+	// For openat2, read and retain the complete known open_how version. Invalid,
+	// unreadable, oversized, or nonzero future fields are left to the kernel.
 	if args.Nr == unix.SYS_OPENAT2 {
-		if fileArgs.HowPtr == 0 || args.Arg3 < 24 {
-			// Invalid openat2 args — let kernel return the appropriate error.
+		if fileArgs.HowPtr == 0 || fileArgs.HowSize < openHowSizeVersion0 {
 			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("emulated file handler: continue response failed", "pid", pid, "error", err)
 			}
 			return
 		}
-		howFlags, howMode, err := readOpenHowWithFallback(pid, fileArgs.HowPtr)
+		how, err := readOpenHowExactWithFallback(pid, fileArgs.HowPtr, fileArgs.HowSize)
 		if err != nil {
 			slog.Debug("emulated file handler: failed to read open_how, CONTINUE", "pid", pid, "error", err)
 			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
@@ -699,14 +848,13 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 			}
 			return
 		}
-		fileArgs.Flags = uint32(howFlags)
-		fileArgs.Mode = uint32(howMode)
+		fileArgs.applyOpenHow(how)
 	}
 
 	// Determine early if this will be a CONTINUE-path syscall. Mutating opens
 	// must continue in the tracee after policy approval; emulating them from the
 	// privileged supervisor would create/modify files with root credentials.
-	forceContinue := shouldUseContinuePathForFileNotify(args.Nr, fileArgs.Flags, resolveFlags)
+	forceContinue := shouldUseContinuePathForFileNotify(args.Nr, fileArgs.Flags, fileArgs.ResolveFlags)
 
 	// Resolve primary path.
 	// Path resolution uses ProcessVMReadv which may fail under Yama
@@ -722,12 +870,12 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 	// resolution failure falls back to CONTINUE — the kernel handles the
 	// syscall without policy evaluation. This is safe because reads cannot
 	// mutate the filesystem.
-	path, err := resolvePathAt(pid, fileArgs.Dirfd, fileArgs.PathPtr)
+	rawPath, path, err := resolvePathAtWithRaw(pid, fileArgs.Dirfd, fileArgs.PathPtr)
 	if err != nil {
 		// For writes, retry with /proc/<pid>/mem fallback — deny rules
 		// must be evaluated even when ProcessVMReadv is blocked by Yama.
 		if !isReadOnlyFileOp(args.Nr, fileArgs.Flags) {
-			path, err = resolvePathAtWithFallback(pid, fileArgs.Dirfd, fileArgs.PathPtr)
+			rawPath, path, err = resolvePathAtWithRawFallback(pid, fileArgs.Dirfd, fileArgs.PathPtr)
 		}
 		if err != nil {
 			if h.Enforce() {
@@ -746,10 +894,10 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 	// Resolve second path for rename/link.
 	var path2 string
 	if fileArgs.HasSecondPath {
-		p2, err := resolvePathAt(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
+		_, p2, err := resolvePathAtWithRaw(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
 		if err != nil {
 			// Rename/link are always mutating — retry with fallback.
-			p2, err = resolvePathAtWithFallback(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
+			_, p2, err = resolvePathAtWithRawFallback(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
 		}
 		if err != nil {
 			slog.Warn("emulated file handler: second path resolution failed for mutating op",
@@ -780,29 +928,22 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 		}
 	}
 
+	lookup := fileArgs.fileLookupRequest(pid, args.Nr, rawPath, path)
 	frequest := FileRequest{
 		PID: pid, Syscall: args.Nr, Path: path, Path2: path2,
-		Operation: operation, Flags: fileArgs.Flags, Mode: fileArgs.Mode, SessionID: sessID,
+		Operation: operation, Flags: fileArgs.Flags, Mode: fileArgs.Mode,
+		Lookup: &lookup, SessionID: sessID,
 	}
 
-	// For non-emulated syscalls (CONTINUE path), do first ID validation
-	// before policy evaluation (spec section 4, step 2).
-	// NOTE: ID validation is defense-in-depth (TOCTOU mitigation), NOT a gate
-	// for policy evaluation. If it fails with anything other than ENOENT (stale),
-	// log and proceed — never skip policy evaluation due to an ID check error.
-	if forceContinue {
-		if err := NotifIDValid(notifFD, req.ID); err != nil {
-			if err == unix.ENOENT {
-				slog.Debug("emulated file handler: notification stale before policy check", "pid", pid)
-				return // notification cancelled, no response needed
-			}
-			// Non-ENOENT error (e.g., EINVAL on custom kernels) — log but proceed
-			// with policy evaluation. ID validation is optional hardening.
-			slog.Debug("emulated file handler: NotifIDValid pre-check failed, proceeding with policy", "pid", pid, "error", err)
+	evaluation := evaluateFileNotification(goCtx, notifFD, req.ID, h, frequest)
+	if evaluation.completed || evaluation.stale {
+		if evaluation.event != nil && h.emitter != nil {
+			_ = h.emitter.AppendEvent(context.Background(), *evaluation.event)
+			h.emitter.Publish(*evaluation.event)
 		}
+		return
 	}
-
-	result, ev := h.Handle(goCtx, frequest)
+	result, ev := evaluation.result, evaluation.event
 
 	// Defer event emission so it runs after the notify response, avoiding
 	// blocking the traced process on audit I/O.

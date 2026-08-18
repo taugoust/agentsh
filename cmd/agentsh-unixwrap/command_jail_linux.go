@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 
+	lookupproto "github.com/agentsh/agentsh/internal/filelookup"
 	"github.com/agentsh/agentsh/internal/landlock"
 	seccomp "github.com/seccomp/libseccomp-golang"
 	"golang.org/x/sys/unix"
@@ -146,7 +148,7 @@ func prepareCommandJail(cfg *CommandJailConfig, commandPath string) error {
 	return nil
 }
 
-func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRuleset) (int, error) {
+func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRuleset, lineage ...*lineageLaunch) (int, error) {
 	if preparedLandlock != nil {
 		defer preparedLandlock.close()
 	}
@@ -212,7 +214,16 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 			return err
 		},
 		refreshLandlock: func() error {
-			return refreshPrivateProcLandlock(preparedLandlock, hiddenProcRoots)
+			if err := refreshPrivateProcLandlock(preparedLandlock, hiddenProcRoots); err != nil {
+				return err
+			}
+			if len(lineage) > 0 && lineage[0] != nil && lineage[0].lookup != nil && lineage[0].lookup.worker != nil {
+				if err := lineage[0].lookup.pinProcRoot(); err != nil {
+					lineage[0].lookup.unsupportedReason = lookupproto.ReasonContextUnavailable
+					log.Printf("file lookup broker proc pin unavailable: %v", err)
+				}
+			}
+			return nil
 		},
 		prepareComposition: func() error {
 			var err error
@@ -242,6 +253,18 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 	preparedLandlock = nil
 
 	env := scrubCommandJailEnv(os.Environ())
+	if len(lineage) > 0 && lineage[0] != nil {
+		launch := lineage[0]
+		if launch.lookup != nil && launch.lookup.worker != nil && launch.lookup.procRoot != nil && launch.lookup.unsupportedReason == lookupproto.ReasonContextUnavailable {
+			if err := launch.lookup.finalizeContext(); err != nil {
+				// File lookup suppression is optional. Preserve the already-complete
+				// command jail and continue with an unavailable probe capability.
+				log.Printf("file lookup broker context unavailable: %v", err)
+				launch.lookup.disabled.Store(true)
+			}
+		}
+		return runTrustedPayloadParent(controlFD, launch, env)
+	}
 	if err := commandJailReadyAndWaitForGO(controlFD); err != nil {
 		return 127, err
 	}

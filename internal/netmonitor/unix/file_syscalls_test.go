@@ -126,6 +126,8 @@ func TestExtractFileArgs_Openat(t *testing.T) {
 	assert.Equal(t, uint64(0x7fff1000), fa.PathPtr)
 	assert.Equal(t, uint32(unix.O_RDONLY), fa.Flags)
 	assert.Equal(t, uint32(0644), fa.Mode)
+	assert.Equal(t, uint64(unix.O_RDONLY), fa.OpenFlags)
+	assert.Equal(t, uint64(0644), fa.OpenMode)
 	assert.False(t, fa.HasSecondPath)
 }
 
@@ -145,8 +147,10 @@ func TestExtractFileArgs_Openat2(t *testing.T) {
 	assert.Equal(t, uint64(0x7fff2000), fa.PathPtr)
 	// For openat2, Flags should be 0 (resolved at runtime from open_how struct)
 	assert.Equal(t, uint32(0), fa.Flags)
-	// HowPtr should hold the pointer to the open_how struct
+	// HowPtr and HowSize preserve the exact extensible object context.
 	assert.Equal(t, uint64(0x7fff3000), fa.HowPtr)
+	assert.Equal(t, uint64(24), fa.HowSize)
+	assert.False(t, fa.HowParsed)
 	assert.False(t, fa.HasSecondPath)
 }
 
@@ -272,10 +276,17 @@ func TestExtractFileArgs_Fchownat(t *testing.T) {
 }
 
 func TestExtractFileArgs_Statx(t *testing.T) {
-	args := SyscallArgs{Nr: unix.SYS_STATX, Arg0: fdcwdUint64(), Arg1: 0x7fff2000, Arg2: 0}
+	flags := uint64(unix.AT_SYMLINK_NOFOLLOW | unix.AT_STATX_DONT_SYNC)
+	mask := uint64(unix.STATX_BASIC_STATS | unix.STATX_BTIME)
+	args := SyscallArgs{
+		Nr: unix.SYS_STATX, Arg0: fdcwdUint64(), Arg1: 0x7fff2000,
+		Arg2: flags, Arg3: mask, Arg4: 0x7fff2800,
+	}
 	fa := extractFileArgs(args)
 	assert.Equal(t, int32(unix.AT_FDCWD), fa.Dirfd)
 	assert.Equal(t, uint64(0x7fff2000), fa.PathPtr)
+	assert.Equal(t, uint32(flags), fa.LookupFlags)
+	assert.Equal(t, uint32(mask), fa.StatMask)
 }
 
 func TestExtractFileArgs_Newfstatat(t *testing.T) {
@@ -286,18 +297,44 @@ func TestExtractFileArgs_Newfstatat(t *testing.T) {
 	assert.Equal(t, uint32(unix.AT_SYMLINK_NOFOLLOW), fa.Flags)
 }
 
-func TestExtractFileArgs_Faccessat2(t *testing.T) {
-	args := SyscallArgs{Nr: unix.SYS_FACCESSAT2, Arg0: fdcwdUint64(), Arg1: 0x7fff4000}
+func TestExtractFileArgs_FaccessatSeparatesModeFromFlags(t *testing.T) {
+	mode := uint64(unix.R_OK | unix.X_OK)
+	args := SyscallArgs{
+		Nr: unix.SYS_FACCESSAT, Arg0: fdcwdUint64(), Arg1: 0x7fff3800, Arg2: mode,
+	}
+	fa := extractFileArgs(args)
+	assert.Equal(t, int32(unix.AT_FDCWD), fa.Dirfd)
+	assert.Equal(t, uint64(0x7fff3800), fa.PathPtr)
+	assert.Equal(t, uint32(mode), fa.AccessMode)
+	assert.Zero(t, fa.AccessFlags)
+	assert.Zero(t, fa.Flags, "faccessat mode must never be stored as lookup flags")
+}
+
+func TestExtractFileArgs_Faccessat2SeparatesModeFromFlags(t *testing.T) {
+	mode := uint64(unix.W_OK)
+	flags := uint64(unix.AT_EACCESS | unix.AT_SYMLINK_NOFOLLOW)
+	args := SyscallArgs{
+		Nr: unix.SYS_FACCESSAT2, Arg0: fdcwdUint64(), Arg1: 0x7fff4000,
+		Arg2: mode, Arg3: flags,
+	}
 	fa := extractFileArgs(args)
 	assert.Equal(t, int32(unix.AT_FDCWD), fa.Dirfd)
 	assert.Equal(t, uint64(0x7fff4000), fa.PathPtr)
+	assert.Equal(t, uint32(mode), fa.AccessMode)
+	assert.Equal(t, uint32(flags), fa.AccessFlags)
+	assert.Equal(t, uint32(flags), fa.Flags)
 }
 
 func TestExtractFileArgs_Readlinkat(t *testing.T) {
-	args := SyscallArgs{Nr: unix.SYS_READLINKAT, Arg0: fdcwdUint64(), Arg1: 0x7fff5000}
+	args := SyscallArgs{
+		Nr: unix.SYS_READLINKAT, Arg0: fdcwdUint64(), Arg1: 0x7fff5000,
+		Arg2: 0x7fff5800, Arg3: 8192,
+	}
 	fa := extractFileArgs(args)
 	assert.Equal(t, int32(unix.AT_FDCWD), fa.Dirfd)
 	assert.Equal(t, uint64(0x7fff5000), fa.PathPtr)
+	assert.Equal(t, uint64(0x7fff5800), fa.ReadlinkBufferPtr)
+	assert.Equal(t, uint64(8192), fa.ReadlinkBufferLen)
 }
 
 func TestExtractFileArgs_Mknodat(t *testing.T) {
@@ -306,6 +343,73 @@ func TestExtractFileArgs_Mknodat(t *testing.T) {
 	assert.Equal(t, int32(unix.AT_FDCWD), fa.Dirfd)
 	assert.Equal(t, uint64(0x7fff6000), fa.PathPtr)
 	assert.Equal(t, uint32(0o100644), fa.Mode)
+}
+
+func TestExtractFileArgs_LookupRequestPreservesExactContext(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  SyscallArgs
+		check func(*testing.T, FileLookupRequest)
+	}{
+		{
+			name: "openat",
+			args: SyscallArgs{
+				Nr: unix.SYS_OPENAT, Arg0: 9, Arg1: 0x1000,
+				Arg2: uint64(unix.O_PATH | unix.O_NOFOLLOW), Arg3: 0o777,
+			},
+			check: func(t *testing.T, got FileLookupRequest) {
+				assert.Equal(t, uint64(unix.O_PATH|unix.O_NOFOLLOW), got.OpenFlags)
+				assert.Equal(t, uint64(0o777), got.OpenMode)
+			},
+		},
+		{
+			name: "statx",
+			args: SyscallArgs{
+				Nr: unix.SYS_STATX, Arg0: 9, Arg1: 0x1000,
+				Arg2: uint64(unix.AT_SYMLINK_NOFOLLOW), Arg3: uint64(unix.STATX_BTIME),
+			},
+			check: func(t *testing.T, got FileLookupRequest) {
+				assert.Equal(t, uint32(unix.AT_SYMLINK_NOFOLLOW), got.LookupFlags)
+				assert.Equal(t, uint32(unix.STATX_BTIME), got.StatMask)
+			},
+		},
+		{
+			name: "faccessat2",
+			args: SyscallArgs{
+				Nr: unix.SYS_FACCESSAT2, Arg0: 9, Arg1: 0x1000,
+				Arg2: uint64(unix.R_OK | unix.X_OK), Arg3: uint64(unix.AT_EACCESS),
+			},
+			check: func(t *testing.T, got FileLookupRequest) {
+				assert.Equal(t, uint32(unix.R_OK|unix.X_OK), got.AccessMode)
+				assert.Equal(t, uint32(unix.AT_EACCESS), got.AccessFlags)
+			},
+		},
+		{
+			name: "readlinkat",
+			args: SyscallArgs{
+				Nr: unix.SYS_READLINKAT, Arg0: 9, Arg1: 0x1000, Arg2: 0x2000, Arg3: 511,
+			},
+			check: func(t *testing.T, got FileLookupRequest) {
+				assert.Equal(t, uint64(511), got.ReadlinkBufferLen)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fileArgs := extractFileArgs(tt.args)
+			separator := string(filepath.Separator)
+			rawPath := "raw" + separator + ".." + separator + "candidate"
+			resolvedPath := filepath.Join(string(filepath.Separator), "base", "candidate")
+			got := fileArgs.fileLookupRequest(123, tt.args.Nr, rawPath, resolvedPath)
+			assert.Equal(t, 123, got.TID)
+			assert.Equal(t, tt.args.Nr, got.Syscall)
+			assert.Equal(t, int32(9), got.DirFD)
+			assert.Equal(t, rawPath, got.RawPath)
+			assert.Equal(t, resolvedPath, got.ResolvedPath)
+			assert.True(t, got.PathnameNULTerminated)
+			tt.check(t, got)
+		})
+	}
 }
 
 func TestFileSyscallName(t *testing.T) {

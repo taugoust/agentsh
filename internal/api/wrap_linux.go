@@ -89,10 +89,13 @@ func recvNotifyFDForWrap(conn *net.UnixConn) (*wrapNotifyHandoff, error) {
 	return &wrapNotifyHandoff{
 		NotifyFD:         handoff.NotifyFD,
 		CompositionSetup: handoff.CompositionSetup,
+		FileLookupBroker: handoff.FileLookupBroker,
 		Metadata: wrapNotifyMetadata{
 			WrapperPID:       handoff.Metadata.WrapperPID,
+			PayloadPID:       handoff.Metadata.PayloadPID,
 			CommandJail:      handoff.Metadata.CommandJail,
 			CompositionSetup: handoff.Metadata.CompositionSetup,
+			FileLookupBroker: handoff.Metadata.FileLookupBroker,
 		},
 		HasMetadata: handoff.HasMetadata,
 	}, nil
@@ -106,6 +109,13 @@ func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
 // Unlike the exec path where the notify fd comes from a socketpair, here it comes
 // from the CLI via a Unix socket connection.
 func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+	lineage, lineageBound := ctx.Value(wrapLineageContextKey{}).(wrapLineageContext)
+	payloadPID := wrapperPID // test/legacy fallback only
+	var lookupEndpoint *os.File
+	if lineageBound {
+		payloadPID = lineage.PayloadPID
+		lookupEndpoint = lineage.FileLookupBroker
+	}
 	emitter := &notifyEmitterAdapter{store: a.store, broker: a.broker, runtimeState: s, sensitive: s.CurrentExecutionSensitive}
 
 	// Prefer session-specific policy engine (has expanded ${PROJECT_ROOT} etc.)
@@ -130,9 +140,9 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 				execveHandler.SetEmitter(emitter)
 				execveHandler.SetProvenance(string(s.CurrentCommandProvenance()))
 
-				// Register wrapper process for depth tracking
-				if wrapperPID > 0 {
-					execveHandler.RegisterSession(wrapperPID, sessionID)
+				// The wrapper remains the trusted parent; payload is depth zero.
+				if payloadPID > 0 {
+					execveHandler.RegisterSession(payloadPID, sessionID)
 				}
 
 				// Create stub symlink for execve redirect
@@ -193,10 +203,35 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 		}
 	}
 
+	var fileLookupBroker unixmon.FileLookupBroker
+	fileLookupBrokerTransferred := false
+	defer func() {
+		if fileLookupBroker != nil && !fileLookupBrokerTransferred {
+			_ = fileLookupBroker.Close()
+		}
+	}()
+	if lookupEndpoint != nil {
+		candidate, brokerErr := unixmon.NewFileLookupBroker(unixmon.FileLookupBrokerConfig{
+			Endpoint: lookupEndpoint, ExpectedWrapperPID: wrapperPID,
+			ExpectedPayloadPID: payloadPID, Timeout: 250 * time.Millisecond,
+		})
+		if brokerErr != nil {
+			slog.Debug("wrap: file lookup broker unavailable", "error", brokerErr, "session_id", sessionID)
+			_ = lookupEndpoint.Close()
+			lookupEndpoint = nil
+		} else {
+			fileLookupBroker = candidate
+			lookupEndpoint = nil
+		}
+	}
+
 	// Create file handler if configured. Composition requires source-aware
 	// attribution so bind aliases cannot be evaluated only at their visible
 	// destination spelling.
 	fileHandler := createFileHandler(a.cfg.Sandbox.Seccomp.FileMonitor, sessionPolicy, emitter, a.cfg.Landlock.Enabled, a.approvals, s)
+	if fileHandler != nil && fileLookupBroker != nil {
+		fileHandler.SetFileLookupProbe(fileLookupBroker)
+	}
 	if fileHandler != nil && wrapperCfg.CompositionControlRoot != "" {
 		fileHandler.SetInternalControlAccess(wrapperCfg.CompositionControlRoot, wrapperPID)
 	}
@@ -213,42 +248,37 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: source-aware file interception handler is unavailable")
 	}
 
-	// Probe: verify ProcessVMReadv (or /proc/mem fallback) works against
-	// the wrapper before starting. Same logic as the exec path probe in
-	// notify_linux.go — catches broken memory access at startup.
-	if wrapperPID > 0 {
-		pvrErr, memErr := probeMemoryAccess(wrapperPID)
+	// Probe the exact payload child. Infrastructure failure retains the existing
+	// fail-closed startup contract; the optional lookup broker cannot relax it.
+	if payloadPID > 0 {
+		pvrErr, memErr := probeMemoryAccess(payloadPID)
 		if pvrErr != nil && memErr != nil {
 			if fileHandler != nil || execveHandler != nil || sessionPolicy != nil {
 				slog.Error("wrap: ProcessVMReadv and /proc/mem both failed — "+
 					"handler cannot read tracee memory for path resolution",
-					"wrapper_pid", wrapperPID,
+					"payload_pid", payloadPID,
 					"pvr_error", pvrErr, "mem_error", memErr,
 					"session_id", sessionID,
 					"hint", "check kernel.yama.ptrace_scope, ensure CAP_SYS_PTRACE, "+
 						"or set sandbox.seccomp.file_monitor.enabled: false")
-				// The caller must reject the ACK chain before cgroup cleanup so the
-				// wrapper can exit and its command cgroup can become unpopulated.
 				notifyFD.Close()
 				abortComposition()
 				runCleanup()
 				if cleanupSymlink != nil {
 					cleanupSymlink()
 				}
-				return fmt.Errorf("wrap notify handler startup probe failed for wrapper pid %d: pvr_error=%v mem_error=%v", wrapperPID, pvrErr, memErr)
+				return fmt.Errorf("wrap notify handler startup probe failed for payload pid %d: pvr_error=%v mem_error=%v", payloadPID, pvrErr, memErr)
 			}
 			slog.Warn("wrap: ProcessVMReadv probe failed, monitoring may be degraded",
-				"wrapper_pid", wrapperPID, "pvr_error", pvrErr, "mem_error", memErr)
+				"payload_pid", payloadPID, "pvr_error", pvrErr, "mem_error", memErr)
 		} else if pvrErr != nil {
-			// /proc/mem fallback works for file monitoring, but socket monitoring
-			// uses ProcessVMReadv directly (ReadSockaddr has no /proc/mem fallback).
 			if sessionPolicy != nil {
 				slog.Warn("wrap: ProcessVMReadv failed — socket monitoring will be degraded "+
 					"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for file monitoring",
-					"wrapper_pid", wrapperPID, "pvr_error", pvrErr)
+					"payload_pid", payloadPID, "pvr_error", pvrErr)
 			} else {
 				slog.Debug("wrap: ProcessVMReadv failed but /proc/mem fallback works",
-					"wrapper_pid", wrapperPID, "pvr_error", pvrErr)
+					"payload_pid", payloadPID, "pvr_error", pvrErr)
 			}
 		}
 	}
@@ -271,13 +301,17 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 				return admissionErr
 			}
 		}
-		if wrapperPID > 0 {
-			s.SetCurrentProcessPID(wrapperPID)
+		if payloadPID > 0 {
+			s.SetCurrentProcessPID(payloadPID)
 		}
 	}
 
+	fileLookupBrokerTransferred = true
 	go func() {
 		defer notifyFD.Close()
+		if fileLookupBroker != nil {
+			defer fileLookupBroker.Close()
+		}
 		if unlockSession != nil {
 			defer unlockSession()
 		}

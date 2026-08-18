@@ -181,7 +181,7 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 			return nil, http.StatusInternalServerError, fmt.Errorf("build PTY environment: %w", envErr)
 		}
 
-		hook := a.cgroupHook(sessionID, cmdID, limits)
+		hook := a.cgroupHook(sessionID, cmdID, reserveLineagePIDs(limits, extraCfg))
 		if barrierErr := validatePreExecBarrierPath(hook, nil, extraCfg); barrierErr != nil {
 			a.recordNetworkEnforcementFailure(sessionID, cmdID, barrierErr)
 			defer unlock()

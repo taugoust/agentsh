@@ -3,12 +3,13 @@
 package unix
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -124,20 +125,38 @@ func shouldUseContinuePathForFileNotify(nr int32, flags uint32, resolveFlags uin
 	return !isReadOnlyOpen(flags)
 }
 
-// FileArgs holds parsed file syscall arguments.
+// FileArgs holds parsed file syscall arguments. Flags and Mode remain the
+// compatibility values used by policy/emulation. The syscall-family-specific
+// fields retain exact lookup semantics without conflating unrelated arguments.
 type FileArgs struct {
 	Dirfd   int32
 	PathPtr uint64
 	Flags   uint32
 	Mode    uint32
 
+	OpenFlags   uint64
+	OpenMode    uint64
+	LookupFlags uint32
+	StatMask    uint32
+	AccessMode  uint32
+	AccessFlags uint32
+
+	ReadlinkBufferPtr uint64
+	ReadlinkBufferLen uint64
+
 	// For rename/link syscalls that operate on two paths.
 	HasSecondPath bool
 	Dirfd2        int32
 	PathPtr2      uint64
 
-	// For openat2: pointer to open_how struct in tracee memory.
-	HowPtr uint64
+	// For openat2: exact extensible-structure context. HowParsed is set only
+	// after the complete supplied size and any trailing bytes are validated.
+	HowPtr               uint64
+	HowSize              uint64
+	HowVersion           uint32
+	HowParsed            bool
+	HowTrailingBytesZero bool
+	ResolveFlags         uint64
 }
 
 // extractFileArgs extracts file arguments based on syscall number.
@@ -146,10 +165,12 @@ func extractFileArgs(args SyscallArgs) FileArgs {
 	case unix.SYS_OPENAT:
 		// openat(dirfd, path, flags, mode)
 		return FileArgs{
-			Dirfd:   int32(args.Arg0),
-			PathPtr: args.Arg1,
-			Flags:   uint32(args.Arg2),
-			Mode:    uint32(args.Arg3),
+			Dirfd:     int32(args.Arg0),
+			PathPtr:   args.Arg1,
+			Flags:     uint32(args.Arg2),
+			Mode:      uint32(args.Arg3),
+			OpenFlags: uint64(uint32(args.Arg2)),
+			OpenMode:  uint64(uint32(args.Arg3)),
 		}
 
 	case unix.SYS_OPENAT2:
@@ -160,6 +181,7 @@ func extractFileArgs(args SyscallArgs) FileArgs {
 			Dirfd:   int32(args.Arg0),
 			PathPtr: args.Arg1,
 			HowPtr:  args.Arg2,
+			HowSize: args.Arg3,
 		}
 
 	case unix.SYS_UNLINKAT:
@@ -226,15 +248,35 @@ func extractFileArgs(args SyscallArgs) FileArgs {
 		}
 
 	case unix.SYS_STATX:
-		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1, Flags: uint32(args.Arg2)}
+		lookupFlags := uint32(args.Arg2)
+		return FileArgs{
+			Dirfd: int32(args.Arg0), PathPtr: args.Arg1,
+			Flags: lookupFlags, LookupFlags: lookupFlags, StatMask: uint32(args.Arg3),
+		}
 	case unix.SYS_NEWFSTATAT:
-		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1, Flags: uint32(args.Arg3)}
+		lookupFlags := uint32(args.Arg3)
+		return FileArgs{
+			Dirfd: int32(args.Arg0), PathPtr: args.Arg1,
+			Flags: lookupFlags, LookupFlags: lookupFlags,
+		}
 	case unix.SYS_FACCESSAT:
-		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1, Flags: uint32(args.Arg2)}
+		// faccessat(dirfd, path, mode) has no flags argument. Keeping mode in
+		// Flags used to conflate X_OK/R_OK/W_OK with AT_* lookup flags.
+		return FileArgs{
+			Dirfd: int32(args.Arg0), PathPtr: args.Arg1,
+			AccessMode: uint32(args.Arg2),
+		}
 	case unix.SYS_FACCESSAT2:
-		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1, Flags: uint32(args.Arg3)}
+		accessFlags := uint32(args.Arg3)
+		return FileArgs{
+			Dirfd: int32(args.Arg0), PathPtr: args.Arg1,
+			Flags: accessFlags, AccessMode: uint32(args.Arg2), AccessFlags: accessFlags,
+		}
 	case unix.SYS_READLINKAT:
-		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1}
+		return FileArgs{
+			Dirfd: int32(args.Arg0), PathPtr: args.Arg1,
+			ReadlinkBufferPtr: args.Arg2, ReadlinkBufferLen: args.Arg3,
+		}
 	case unix.SYS_MKNODAT:
 		return FileArgs{Dirfd: int32(args.Arg0), PathPtr: args.Arg1, Mode: uint32(args.Arg2)}
 
@@ -243,73 +285,130 @@ func extractFileArgs(args SyscallArgs) FileArgs {
 	}
 }
 
-// readOpenHow reads the open_how struct from tracee memory for openat2 syscalls.
-// struct open_how { __u64 flags; __u64 mode; __u64 resolve; }
+var (
+	ErrOpenHowTooSmall           = errors.New("open_how is smaller than version 0")
+	ErrOpenHowTooLarge           = errors.New("open_how exceeds the supported bound")
+	ErrOpenHowUnsupportedVersion = errors.New("open_how has nonzero unknown trailing bytes")
+)
+
+// OpenHowContext is a completely read and version-checked open_how object.
+// Size is the exact size supplied to openat2, not the size of this Go type.
+type OpenHowContext struct {
+	Flags             uint64
+	Mode              uint64
+	Resolve           uint64
+	Size              uint64
+	Version           uint32
+	TrailingBytesZero bool
+}
+
+// readOpenHowExact reads the complete size supplied by the tracee. Linux's
+// extensible-structure ABI accepts a larger object only when bytes beyond the
+// latest understood version are zero; nonzero future fields are unsupported.
+func readOpenHowExact(pid int, howPtr, howSize uint64) (OpenHowContext, error) {
+	return readOpenHowExactImpl(pid, howPtr, howSize, false)
+}
+
+func readOpenHowExactWithFallback(pid int, howPtr, howSize uint64) (OpenHowContext, error) {
+	return readOpenHowExactImpl(pid, howPtr, howSize, true)
+}
+
+func readOpenHowExactImpl(pid int, howPtr, howSize uint64, useFallback bool) (OpenHowContext, error) {
+	if howPtr == 0 {
+		return OpenHowContext{}, ErrNullPtr
+	}
+	if howSize < openHowSizeVersion0 {
+		return OpenHowContext{}, fmt.Errorf("%w: got %d, need at least %d", ErrOpenHowTooSmall, howSize, openHowSizeVersion0)
+	}
+	if howSize > maxOpenHowSize {
+		return OpenHowContext{}, fmt.Errorf("%w: got %d, maximum %d", ErrOpenHowTooLarge, howSize, maxOpenHowSize)
+	}
+
+	buf := make([]byte, int(howSize))
+	liov := unix.Iovec{Base: &buf[0], Len: uint64(len(buf))}
+	riov := unix.RemoteIovec{Base: uintptr(howPtr), Len: len(buf)}
+	n, readErr := unix.ProcessVMReadv(pid, []unix.Iovec{liov}, []unix.RemoteIovec{riov}, 0)
+	if readErr != nil || n != len(buf) {
+		if !useFallback {
+			if readErr != nil {
+				return OpenHowContext{}, fmt.Errorf("%w: open_how: %v", ErrReadMemory, readErr)
+			}
+			return OpenHowContext{}, fmt.Errorf("%w: open_how: short read (%d/%d bytes)", ErrReadMemory, n, len(buf))
+		}
+		fallbackN, fallbackErr := readProcMemStrict(pid, howPtr, buf)
+		if fallbackErr != nil || fallbackN != len(buf) {
+			return OpenHowContext{}, fmt.Errorf(
+				"%w: open_how: process_vm_readv: %v (%d/%d), /proc/mem: %v (%d/%d)",
+				ErrReadMemory, readErr, n, len(buf), fallbackErr, fallbackN, len(buf),
+			)
+		}
+	}
+
+	for _, value := range buf[openHowSizeVersion0:] {
+		if value != 0 {
+			return OpenHowContext{}, ErrOpenHowUnsupportedVersion
+		}
+	}
+	return OpenHowContext{
+		Flags:             binary.NativeEndian.Uint64(buf[0:8]),
+		Mode:              binary.NativeEndian.Uint64(buf[8:16]),
+		Resolve:           binary.NativeEndian.Uint64(buf[16:24]),
+		Size:              howSize,
+		Version:           0,
+		TrailingBytesZero: true,
+	}, nil
+}
+
+func (a *FileArgs) applyOpenHow(how OpenHowContext) {
+	a.OpenFlags = how.Flags
+	a.OpenMode = how.Mode
+	a.ResolveFlags = how.Resolve
+	a.HowSize = how.Size
+	a.HowVersion = how.Version
+	a.HowParsed = true
+	a.HowTrailingBytesZero = how.TrailingBytesZero
+
+	// Compatibility fields are intentionally lossy and must never be used by
+	// the missing-lookup classifier.
+	a.Flags = uint32(how.Flags)
+	a.Mode = uint32(how.Mode)
+}
+
+// readOpenHow is retained for existing policy/emulation callers. New lookup
+// code must use readOpenHowExact so resolve and size semantics cannot be lost.
 func readOpenHow(pid int, howPtr uint64) (flags uint64, mode uint64, err error) {
-	if howPtr == 0 {
-		return 0, 0, ErrNullPtr
+	how, err := readOpenHowExact(pid, howPtr, openHowSizeVersion0)
+	if err != nil {
+		return 0, 0, err
 	}
-
-	// open_how is 24 bytes: flags(8) + mode(8) + resolve(8)
-	var buf [24]byte
-	liov := unix.Iovec{Base: &buf[0], Len: 24}
-	riov := unix.RemoteIovec{Base: uintptr(howPtr), Len: 24}
-
-	n, err := unix.ProcessVMReadv(pid, []unix.Iovec{liov}, []unix.RemoteIovec{riov}, 0)
-	if err != nil || n != 24 {
-		if err != nil {
-			return 0, 0, fmt.Errorf("%w: open_how: %v", ErrReadMemory, err)
-		}
-		return 0, 0, fmt.Errorf("%w: open_how: short read (%d/24 bytes)", ErrReadMemory, n)
-	}
-
-	// Parse little-endian uint64s
-	flags = *(*uint64)(unsafe.Pointer(&buf[0]))
-	mode = *(*uint64)(unsafe.Pointer(&buf[8]))
-	return flags, mode, nil
+	return how.Flags, how.Mode, nil
 }
 
-// readOpenHowWithFallback is like readOpenHow but falls back to /proc/<pid>/mem
-// when ProcessVMReadv fails. Use when openat2 flag parsing must succeed to
-// evaluate file policy (deny rules cannot be checked without knowing the flags).
 func readOpenHowWithFallback(pid int, howPtr uint64) (flags uint64, mode uint64, err error) {
-	if howPtr == 0 {
-		return 0, 0, ErrNullPtr
+	how, err := readOpenHowExactWithFallback(pid, howPtr, openHowSizeVersion0)
+	if err != nil {
+		return 0, 0, err
 	}
-
-	var buf [24]byte
-	liov := unix.Iovec{Base: &buf[0], Len: 24}
-	riov := unix.RemoteIovec{Base: uintptr(howPtr), Len: 24}
-
-	n, err := unix.ProcessVMReadv(pid, []unix.Iovec{liov}, []unix.RemoteIovec{riov}, 0)
-	if err != nil || n != 24 {
-		n, ferr := readProcMemStrict(pid, howPtr, buf[:])
-		if ferr != nil || n != 24 {
-			return 0, 0, fmt.Errorf("%w: open_how: process_vm_readv: %v, /proc/mem: %v", ErrReadMemory, err, ferr)
-		}
-	}
-
-	flags = *(*uint64)(unsafe.Pointer(&buf[0]))
-	mode = *(*uint64)(unsafe.Pointer(&buf[8]))
-	return flags, mode, nil
+	return how.Flags, how.Mode, nil
 }
 
-// readOpenHowResolve reads only the resolve field (offset 16) from the
-// openat2 open_how struct in tracee memory. Returns the resolve flags and
-// an error. On error, the caller must force CONTINUE fallback — never
-// emulate when resolve flags are unknown.
+// readOpenHowResolve is retained for compatibility with callers that only need
+// the version-0 resolve field. It still requires a complete eight-byte read.
 func readOpenHowResolve(pid int, howPtr uint64) (uint64, error) {
 	if howPtr == 0 {
 		return 0, nil
 	}
 	var buf [8]byte
-	liov := unix.Iovec{Base: &buf[0], Len: 8}
-	riov := unix.RemoteIovec{Base: uintptr(howPtr + 16), Len: 8}
-	_, err := unix.ProcessVMReadv(pid, []unix.Iovec{liov}, []unix.RemoteIovec{riov}, 0)
+	liov := unix.Iovec{Base: &buf[0], Len: uint64(len(buf))}
+	riov := unix.RemoteIovec{Base: uintptr(howPtr + 16), Len: len(buf)}
+	n, err := unix.ProcessVMReadv(pid, []unix.Iovec{liov}, []unix.RemoteIovec{riov}, 0)
 	if err != nil {
 		return 0, fmt.Errorf("read open_how resolve: %w", err)
 	}
-	return *(*uint64)(unsafe.Pointer(&buf[0])), nil
+	if n != len(buf) {
+		return 0, fmt.Errorf("%w: open_how resolve: short read (%d/%d bytes)", ErrReadMemory, n, len(buf))
+	}
+	return binary.NativeEndian.Uint64(buf[:]), nil
 }
 
 // syscallToOperation maps a file syscall number and flags to a policy operation string.
@@ -400,55 +499,56 @@ func fileSyscallName(nr int32) string {
 	}
 }
 
-// resolvePathAt reads a path string from tracee memory and resolves it
-// relative to the given dirfd. If the path is absolute, it is cleaned
-// and returned directly. If relative, it is resolved against:
-//   - /proc/<pid>/cwd when dirfd == AT_FDCWD (-100)
-//   - /proc/<pid>/fd/<dirfd> otherwise
+// resolvePathAt reads a confirmed NUL-terminated pathname from tracee memory
+// and resolves a policy path relative to the supplied dirfd.
 func resolvePathAt(pid int, dirfd int32, pathPtr uint64) (string, error) {
-	return resolvePathAtImpl(pid, dirfd, pathPtr, false)
+	_, resolved, err := resolvePathAtDetailed(pid, dirfd, pathPtr, false)
+	return resolved, err
 }
 
 // resolvePathAtWithFallback is like resolvePathAt but uses /proc/<pid>/mem
-// as a fallback when ProcessVMReadv fails. Use this only for write operations
-// where the path must be resolved to evaluate deny rules.
+// when process_vm_readv itself fails. It never accepts a non-NUL partial read.
 func resolvePathAtWithFallback(pid int, dirfd int32, pathPtr uint64) (string, error) {
-	return resolvePathAtImpl(pid, dirfd, pathPtr, true)
+	_, resolved, err := resolvePathAtDetailed(pid, dirfd, pathPtr, true)
+	return resolved, err
 }
 
-func resolvePathAtImpl(pid int, dirfd int32, pathPtr uint64, useFallback bool) (string, error) {
-	var path string
+func resolvePathAtWithRaw(pid int, dirfd int32, pathPtr uint64) (rawPath, resolvedPath string, err error) {
+	return resolvePathAtDetailed(pid, dirfd, pathPtr, false)
+}
+
+func resolvePathAtWithRawFallback(pid int, dirfd int32, pathPtr uint64) (rawPath, resolvedPath string, err error) {
+	return resolvePathAtDetailed(pid, dirfd, pathPtr, true)
+}
+
+func resolvePathAtDetailed(pid int, dirfd int32, pathPtr uint64, useFallback bool) (string, string, error) {
+	var rawPath string
 	var err error
 	if useFallback {
-		path, err = readStringWithFallback(pid, pathPtr, 4096)
+		rawPath, err = readPathnameWithFallback(pid, pathPtr, maxTraceePathnameLen)
 	} else {
-		path, err = readString(pid, pathPtr, 4096)
+		rawPath, err = readPathname(pid, pathPtr, maxTraceePathnameLen)
 	}
 	if err != nil {
-		return "", fmt.Errorf("read path from tracee: %w", err)
+		return "", "", fmt.Errorf("read path from tracee: %w", err)
 	}
 
-	// Absolute path: clean and return
-	if filepath.IsAbs(path) {
-		return filepath.Clean(path), nil
+	if filepath.IsAbs(rawPath) {
+		return rawPath, filepath.Clean(rawPath), nil
 	}
-
-	// Relative path: resolve against dirfd
-	const atFDCWD = -100
-	if dirfd == atFDCWD {
+	if dirfd == int32(unix.AT_FDCWD) {
 		cwd, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid))
 		if err != nil {
-			return "", fmt.Errorf("resolve cwd for pid %d: %w", pid, err)
+			return rawPath, "", fmt.Errorf("resolve cwd for pid %d: %w", pid, err)
 		}
-		return filepath.Clean(filepath.Join(cwd, path)), nil
+		return rawPath, filepath.Clean(filepath.Join(cwd, rawPath)), nil
 	}
 
-	// Resolve relative to dirfd
 	dirPath, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/%d", pid, dirfd))
 	if err != nil {
-		return "", fmt.Errorf("resolve fd %d for pid %d: %w", dirfd, pid, err)
+		return rawPath, "", fmt.Errorf("resolve fd %d for pid %d: %w", dirfd, pid, err)
 	}
-	return filepath.Clean(filepath.Join(dirPath, path)), nil
+	return rawPath, filepath.Clean(filepath.Join(dirPath, rawPath)), nil
 }
 
 // resolveProcFD detects and resolves /proc/self/fd/N, /proc/thread-self/fd/N,

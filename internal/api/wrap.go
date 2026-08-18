@@ -39,13 +39,16 @@ var (
 
 type wrapNotifyMetadata struct {
 	WrapperPID       int
+	PayloadPID       int
 	CommandJail      bool
 	CompositionSetup bool
+	FileLookupBroker bool
 }
 
 type wrapNotifyHandoff struct {
 	NotifyFD         *os.File
 	CompositionSetup *os.File
+	FileLookupBroker *os.File
 	Metadata         wrapNotifyMetadata
 	HasMetadata      bool
 }
@@ -62,10 +65,20 @@ func (h *wrapNotifyHandoff) close() {
 		_ = h.CompositionSetup.Close()
 		h.CompositionSetup = nil
 	}
+	if h.FileLookupBroker != nil {
+		_ = h.FileLookupBroker.Close()
+		h.FileLookupBroker = nil
+	}
 }
 
 type wrapExecLockContextKey struct{}
 type wrapSeccompConfigContextKey struct{}
+type wrapLineageContextKey struct{}
+
+type wrapLineageContext struct {
+	PayloadPID       int
+	FileLookupBroker *os.File
+}
 
 func wrapExecLockHeld(ctx context.Context) bool {
 	held, _ := ctx.Value(wrapExecLockContextKey{}).(bool)
@@ -530,6 +543,7 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		ExecveEnabled:             execveEnabled,
 		CompositionSelectionBound: true,
 		SandboxComposition:        selectedComposition,
+		FileLookupWorkerPath:      fileLookupWorkerForWrapper(wrapperPath),
 	})
 	if toolJailRequired {
 		binding := a.nethelperBindingSnapshot()
@@ -943,6 +957,9 @@ func resolvedSocketRulesUseNotify(rules []seccomppkg.SocketRule) bool {
 // plumbed for clarity and to make the per-invocation contract explicit in the
 // call site.
 func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketPath string, sessionID string, s *session.Session, execveEnabled bool, expectedUID int, shimMode bool, approvalUI *approvalUIEndpoint) {
+	if a.acceptNotifyFDLineage(ctx, listener, socketPath, sessionID, s, execveEnabled, expectedUID, shimMode, approvalUI) {
+		return
+	}
 	// Retained on the internal signature for lifecycle diagnostics/tests; strict
 	// boundary selection is deliberately mode-independent.
 	_ = shimMode
@@ -1255,6 +1272,14 @@ func defaultWrapCgroupSetupForNotify(ctx context.Context, a *App, s *session.Ses
 	lim := policy.Limits{}
 	if engine != nil {
 		lim = engine.Limits()
+	}
+	// The wrapper remains resident as broker parent and may fork one native
+	// lookup worker. Preserve the policy's prior payload capacity explicitly.
+	if lim.PidsMax > 0 {
+		maxInt := int(^uint(0) >> 1)
+		if lim.PidsMax <= maxInt-2 {
+			lim.PidsMax += 2
+		}
 	}
 	cmdID := "wrap-" + uuid.NewString()
 	if s != nil {

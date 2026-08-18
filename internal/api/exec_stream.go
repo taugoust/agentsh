@@ -226,7 +226,7 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 			envPolicy = cmdDecision.EnvPolicy
 			envPolicyResolved = true
 		}
-		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesStreamingEmitResolvedTimeout(r.Context(), s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, emit, a.cgroupHook(id, cmdID, limits), extraCfg, a.ptraceTracer, id, onStarted)
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesStreamingEmitResolvedTimeout(r.Context(), s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, emit, a.cgroupHook(id, cmdID, reserveLineagePIDs(limits, extraCfg)), extraCfg, a.ptraceTracer, id, onStarted)
 		failure := commandJailFailureFrom(execErr)
 		if failure == nil {
 			break

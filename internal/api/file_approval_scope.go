@@ -8,9 +8,14 @@ import (
 	"github.com/agentsh/agentsh/internal/approvals"
 )
 
+func fileApprovalScope(operation, filePath, rule string) (approvals.Scope, bool) {
+	cleanPath := filepath.ToSlash(filepath.Clean(filePath))
+	return approvals.NewFileScopeWithRule(operation, cleanPath, rule)
+}
+
 func fileApprovalScopeOptions(operation, filePath, rule string) (approvals.Scope, bool, []map[string]any) {
 	cleanPath := filepath.ToSlash(filepath.Clean(filePath))
-	exact, ok := approvals.NewFileScopeWithRule(operation, cleanPath, rule)
+	exact, ok := fileApprovalScope(operation, cleanPath, rule)
 	if !ok {
 		return approvals.Scope{}, false, nil
 	}

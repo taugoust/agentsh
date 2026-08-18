@@ -3,6 +3,7 @@
 package unix
 
 import (
+	"strconv"
 	"testing"
 	"unsafe"
 
@@ -79,6 +80,30 @@ func TestNotifSend_IoctlNumber(t *testing.T) {
 
 func TestNotifSend_ContinueFlag(t *testing.T) {
 	require.Equal(t, uint32(0x1), uint32(seccompUserNotifFlagContinue))
+}
+
+func TestNotifRespondErrno_ResponseLayout(t *testing.T) {
+	const id = uint64(0x1020304050607080)
+
+	resp, err := notifErrnoResponse(id, 13)
+	require.NoError(t, err)
+	require.Equal(t, id, resp.id)
+	require.Zero(t, resp.val, "errno completion must not set a return value")
+	require.Equal(t, int32(-13), resp.err, "kernel expects a negative errno")
+	require.Zero(t, resp.flags, "errno completion must not set CONTINUE")
+	require.Zero(t, resp.flags&seccompUserNotifFlagContinue)
+}
+
+func TestNotifRespondErrno_InvalidFD(t *testing.T) {
+	err := NotifRespondErrno(-1, 0, 13)
+	require.Error(t, err, "NotifRespondErrno with invalid fd should fail")
+}
+
+func TestNotifRespondErrno_InvalidErrno(t *testing.T) {
+	for _, errno := range []int32{0, -1, -13} {
+		err := NotifRespondErrno(3, 0, errno)
+		require.EqualError(t, err, "NotifRespondErrno: errno must be positive, got "+strconv.FormatInt(int64(errno), 10))
+	}
 }
 
 func TestNotifRespondDeny_InvalidFD(t *testing.T) {

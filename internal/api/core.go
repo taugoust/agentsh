@@ -151,9 +151,10 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 	}
 
 	// Check if wrapper binary exists before proceeding (CGO-disabled builds won't have it).
-	if _, err := exec.LookPath(wrapperBin); err != nil {
+	wrapperPath, wrapperPathErr := exec.LookPath(wrapperBin)
+	if wrapperPathErr != nil {
 		if jailRequired {
-			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail requires %q: %w", wrapperBin, err)}
+			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail requires %q: %w", wrapperBin, wrapperPathErr)}
 		}
 		slog.Warn("seccomp wrapper unavailable: wrapper binary not found (running without seccomp enforcement)",
 			"wrapper_bin", wrapperBin,
@@ -214,6 +215,10 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 	}
 
 	// Pass seccomp and command-jail configuration to the wrapper.
+	fileLookupWorkerPath := fileLookupWorkerForWrapper(wrapperPath)
+	if config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.Enabled, false) && fileLookupWorkerPath == "" {
+		slog.Warn("seccomp file lookup worker unavailable", "wrapper_path", wrapperPath)
+	}
 	seccompCfg := a.buildSeccompWrapperConfig(s, seccompWrapperParams{
 		// Strict mode forces a notify handoff even when ordinary Unix-socket
 		// monitoring is disabled. Every strict command therefore reaches the
@@ -223,6 +228,7 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 		ExecveEnabled:             execveEnabled,
 		CompositionSelectionBound: true,
 		SandboxComposition:        runtimeState.CurrentSandboxComposition(),
+		FileLookupWorkerPath:      fileLookupWorkerPath,
 	})
 	if jailRequired {
 		binding := a.nethelperBindingSnapshot()
@@ -276,25 +282,26 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 	delete(envInject, wrapperlog.EnvKey)
 
 	extraCfg := &extraProcConfig{
-		extraFiles:       []*os.File{sp.child},
-		env:              extraEnv,
-		envInject:        envInject,
-		notifyParentSock: sp.parent,
-		notifySessionID:  sessionID,
-		notifyPolicy:     sessionPolicy,
-		notifyApprovals:  a.approvals,
-		notifySession:    s,
-		notifyStore:      a.store,
-		notifyBroker:     a.broker,
-		origCommand:      origCommand, // Store original command for signal registry
-		fileMonitorCfg:   a.cfg.Sandbox.Seccomp.FileMonitor,
-		landlockEnabled:  a.cfg.Landlock.Enabled,
-		ptraceSync:       a.ptraceTracer != nil && hasNotifyFeatures,
-		commandBoundary:  commandJailRequirements(jailRequired, runtimeState.CurrentSandboxComposition()),
-		commandState:     runtimeState,
-		cmdResolver:      a.cmdResolver,
-		sessionTracker:   a.sessionTracker,
-		blockList:        a.buildBlockListConfigFor(sessionID),
+		extraFiles:        []*os.File{sp.child},
+		env:               extraEnv,
+		envInject:         envInject,
+		notifyParentSock:  sp.parent,
+		notifySessionID:   sessionID,
+		notifyPolicy:      sessionPolicy,
+		notifyApprovals:   a.approvals,
+		notifySession:     s,
+		notifyStore:       a.store,
+		notifyBroker:      a.broker,
+		origCommand:       origCommand, // Store original command for signal registry
+		lineagePIDReserve: 2,
+		fileMonitorCfg:    a.cfg.Sandbox.Seccomp.FileMonitor,
+		landlockEnabled:   a.cfg.Landlock.Enabled,
+		ptraceSync:        a.ptraceTracer != nil && hasNotifyFeatures,
+		commandBoundary:   commandJailRequirements(jailRequired, runtimeState.CurrentSandboxComposition()),
+		commandState:      runtimeState,
+		cmdResolver:       a.cmdResolver,
+		sessionTracker:    a.sessionTracker,
+		blockList:         a.buildBlockListConfigFor(sessionID),
 	}
 
 	// Create execve handler if enabled (Linux-specific, will be nil on other platforms)
@@ -2295,7 +2302,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			envPolicyResolved = true
 		}
 
-		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, a.cgroupHookWithProxyEndpoints(id, cmdID, limits, commandProxyEndpoints), extraCfg, a.ptraceTracer, id, onStarted)
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, a.cgroupHookWithProxyEndpoints(id, cmdID, reserveLineagePIDs(limits, extraCfg), commandProxyEndpoints), extraCfg, a.ptraceTracer, id, onStarted)
 		failure := commandJailFailureFrom(execErr)
 		if failure == nil {
 			break

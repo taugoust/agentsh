@@ -57,20 +57,25 @@ func extractLegacyFileArgs(args SyscallArgs) FileArgs {
 	case unix.SYS_OPEN:
 		// open(path, flags, mode)
 		return FileArgs{
-			Dirfd:   int32(unix.AT_FDCWD),
-			PathPtr: args.Arg0,
-			Flags:   uint32(args.Arg1),
-			Mode:    uint32(args.Arg2),
+			Dirfd:     int32(unix.AT_FDCWD),
+			PathPtr:   args.Arg0,
+			Flags:     uint32(args.Arg1),
+			Mode:      uint32(args.Arg2),
+			OpenFlags: uint64(uint32(args.Arg1)),
+			OpenMode:  uint64(uint32(args.Arg2)),
 		}
 
 	case unix.SYS_CREAT:
 		// creat(path, mode) — equivalent to open(path, O_WRONLY|O_CREAT|O_TRUNC, mode).
 		// Set implicit flags so isReadOnlyOpen and other flag checks work correctly.
+		flags := uint32(unix.O_WRONLY | unix.O_CREAT | unix.O_TRUNC)
 		return FileArgs{
-			Dirfd:   int32(unix.AT_FDCWD),
-			PathPtr: args.Arg0,
-			Flags:   uint32(unix.O_WRONLY | unix.O_CREAT | unix.O_TRUNC),
-			Mode:    uint32(args.Arg1),
+			Dirfd:     int32(unix.AT_FDCWD),
+			PathPtr:   args.Arg0,
+			Flags:     flags,
+			Mode:      uint32(args.Arg1),
+			OpenFlags: uint64(flags),
+			OpenMode:  uint64(uint32(args.Arg1)),
 		}
 
 	case unix.SYS_MKDIR:
@@ -138,8 +143,23 @@ func extractLegacyFileArgs(args SyscallArgs) FileArgs {
 			PathPtr: args.Arg0,
 		}
 
-	case unix.SYS_STAT, unix.SYS_LSTAT, unix.SYS_ACCESS, unix.SYS_READLINK:
+	case unix.SYS_STAT:
 		return FileArgs{Dirfd: int32(unix.AT_FDCWD), PathPtr: args.Arg0}
+	case unix.SYS_LSTAT:
+		return FileArgs{
+			Dirfd: int32(unix.AT_FDCWD), PathPtr: args.Arg0,
+			LookupFlags: uint32(unix.AT_SYMLINK_NOFOLLOW),
+		}
+	case unix.SYS_ACCESS:
+		return FileArgs{
+			Dirfd: int32(unix.AT_FDCWD), PathPtr: args.Arg0,
+			AccessMode: uint32(args.Arg1),
+		}
+	case unix.SYS_READLINK:
+		return FileArgs{
+			Dirfd: int32(unix.AT_FDCWD), PathPtr: args.Arg0,
+			ReadlinkBufferPtr: args.Arg1, ReadlinkBufferLen: args.Arg2,
+		}
 
 	default:
 		return FileArgs{}
@@ -188,6 +208,28 @@ func legacySyscallToOperation(nr int32, flags uint32) string {
 	default:
 		return ""
 	}
+}
+
+func eligibleLegacyMissingLookup(req FileLookupRequest) bool {
+	switch req.Syscall {
+	case unix.SYS_OPEN:
+		return eligibleOpenLookup(req, false)
+	case unix.SYS_STAT:
+		return eligibleLegacyStatLookup(req, 0)
+	case unix.SYS_LSTAT:
+		return eligibleLegacyStatLookup(req, uint32(unix.AT_SYMLINK_NOFOLLOW))
+	case unix.SYS_ACCESS:
+		return eligibleFaccessatLookup(req)
+	case unix.SYS_READLINK:
+		return eligibleReadlinkLookup(req)
+	default:
+		return false
+	}
+}
+
+func eligibleLegacyStatLookup(req FileLookupRequest, expectedFlags uint32) bool {
+	return noOpenContext(req) && req.LookupFlags == expectedFlags && req.StatMask == 0 &&
+		req.AccessMode == 0 && req.AccessFlags == 0 && req.ReadlinkBufferLen == 0
 }
 
 // legacyFileSyscallName returns the human-readable name for a legacy file syscall.

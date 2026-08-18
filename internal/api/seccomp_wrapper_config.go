@@ -3,6 +3,7 @@ package api
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/agentsh/agentsh/internal/capabilities"
 	"github.com/agentsh/agentsh/internal/config"
@@ -23,9 +24,11 @@ type seccompWrapperConfig struct {
 	OnBlock             string                    `json:"on_block,omitempty"`
 
 	// File monitor sub-options
-	InterceptMetadata bool `json:"intercept_metadata,omitempty"`
-	WriteOnlyOpens    bool `json:"write_only_opens,omitempty"`
-	BlockIOUring      bool `json:"block_io_uring,omitempty"`
+	InterceptMetadata    bool   `json:"intercept_metadata,omitempty"`
+	WriteOnlyOpens       bool   `json:"write_only_opens,omitempty"`
+	BlockIOUring         bool   `json:"block_io_uring,omitempty"`
+	FileLookupWorkerPath string `json:"file_lookup_worker_path,omitempty"`
+	LineageHandoff       bool   `json:"lineage_handoff,omitempty"`
 
 	// WaitKillable forwards the server's decision (boot-time probe +
 	// optional config override) to the wrapper, which uses it in place
@@ -74,6 +77,29 @@ type seccompWrapperConfig struct {
 	CommandJail *commandJailConfig `json:"command_jail,omitempty"`
 }
 
+func fileLookupWorkerForWrapper(wrapperPath string) string {
+	if wrapperPath == "" {
+		return ""
+	}
+	absolute, err := filepath.Abs(wrapperPath)
+	if err != nil {
+		return ""
+	}
+	// PATH commonly resolves the Home Manager/profile symlink. Resolve the
+	// wrapper into its immutable package directory so the trusted worker can be
+	// opened with O_NOFOLLOW rather than following another profile symlink.
+	resolvedWrapper, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return ""
+	}
+	candidate := filepath.Join(filepath.Dir(resolvedWrapper), "agentsh-file-lookup-broker")
+	info, err := os.Stat(candidate)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return ""
+	}
+	return candidate
+}
+
 type commandJailConfig struct {
 	Required        bool     `json:"required"`
 	HideDirectories []string `json:"hide_directories,omitempty"`
@@ -90,6 +116,7 @@ type seccompWrapperParams struct {
 	// recorded while holding the session execution lock.
 	CompositionSelectionBound bool
 	SandboxComposition        string
+	FileLookupWorkerPath      string
 }
 
 func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperParams) seccompWrapperConfig {
@@ -98,13 +125,15 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 		slog.Warn("seccomp: failed to resolve effective syscall block list; syscall rules will not be blocked", "error", err)
 	}
 	seccompCfg := seccompWrapperConfig{
-		UnixSocketEnabled:   p.UnixSocketEnabled,
-		SignalFilterEnabled: p.SignalFilterEnabled,
-		ExecveEnabled:       p.ExecveEnabled,
-		FileMonitorEnabled:  config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.Enabled, false),
-		BlockedSyscalls:     blockedSyscalls,
-		OnBlock:             onBlock,
-		ServerPID:           os.Getpid(),
+		UnixSocketEnabled:    p.UnixSocketEnabled,
+		SignalFilterEnabled:  p.SignalFilterEnabled,
+		ExecveEnabled:        p.ExecveEnabled,
+		FileMonitorEnabled:   config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.Enabled, false),
+		BlockedSyscalls:      blockedSyscalls,
+		OnBlock:              onBlock,
+		ServerPID:            os.Getpid(),
+		FileLookupWorkerPath: p.FileLookupWorkerPath,
+		LineageHandoff:       true,
 	}
 
 	// Resolve and forward blocked socket families.

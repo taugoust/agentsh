@@ -22,6 +22,7 @@ import (
 	unixmon "github.com/agentsh/agentsh/internal/netmonitor/unix"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
+	"github.com/agentsh/agentsh/internal/wraphandoff"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
@@ -266,13 +267,13 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 		defer close(done)
 		defer notifyHandlerRecover(sessID, store, broker)
 		defer parentSock.Close()
-		// Ensure ptraceReady is always signaled on all exit paths to prevent
-		// the main goroutine from blocking forever in hybrid mode.
+		// Ensure the pre-fork release waiter is always signaled on setup exits.
+		readySignaled := false
 		defer func() {
-			if ptraceReady != nil {
+			if ptraceReady != nil && !readySignaled {
 				select {
-				case ptraceReady <- fmt.Errorf("notify handler exited without signaling READY"):
-				default: // already signaled
+				case ptraceReady <- fmt.Errorf("notify handler exited before pre-fork lineage readiness"):
+				default:
 				}
 			}
 		}()
@@ -302,49 +303,56 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 			// Don't return - RecvFD will still work, just without a timeout
 		}
 
-		// Receive the notify fd from the wrapper process
-		slog.Debug("waiting to receive notify fd from wrapper", "session_id", sessID)
-		notifyFD, err := unixmon.RecvFD(parentSock)
-		if err != nil {
-			slog.Debug("failed to receive notify fd", "error", err, "session_id", sessID)
+		// Phase one authenticates the trusted wrapper parent before it forks.
+		// Cgroup/eBPF and hybrid-ptrace release therefore apply to the parent
+		// which every payload and lookup worker must inherit from.
+		slog.Debug("waiting for pre-fork lineage handoff", "session_id", sessID)
+		prelude, err := wraphandoff.RecvLocalPrelude(parentSock)
+		if err != nil || prelude == nil || prelude.Sender == nil || int(prelude.Sender.Pid) != wrapperPID || prelude.Metadata.CommandJail != commandJailRequired {
+			slog.Debug("invalid pre-fork lineage handoff", "error", err, "wrapper_pid", wrapperPID, "session_id", sessID)
 			return
 		}
-
-		if notifyFD == nil {
-			slog.Debug("received nil notify fd", "session_id", sessID)
-			return
-		}
-		slog.Debug("received notify fd from wrapper", "fd", notifyFD.Fd(), "session_id", sessID)
-		defer notifyFD.Close()
-
-		// Clear SO_RCVTIMEO now that FD handoff is complete. Otherwise the
-		// 10s timeout we set for RecvFD would persist on the socket and
-		// shorten the later READY byte read below (which expects 30s).
-		if err := unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{}); err != nil {
-			slog.Debug("failed to clear SO_RCVTIMEO on notify socket", "error", err, "session_id", sessID)
-		}
-
-		if commandJailRequired {
-			capabilityTimeout := unix.NsecToTimeval((30 * time.Second).Nanoseconds())
-			_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &capabilityTimeout)
-			capability := []byte{0}
-			for {
-				n, capabilityErr := parentSock.Read(capability)
-				if capabilityErr != nil && errors.Is(capabilityErr, syscall.EINTR) {
-					continue
-				}
-				if capabilityErr != nil {
-					slog.Debug("command-jail capability read failed", "error", capabilityErr, "session_id", sessID)
-					return
-				}
-				if n != 1 || capability[0] != 'J' {
-					slog.Debug("command-jail capability rejected", "bytes", n, "value", capability[0], "session_id", sessID)
-					return
-				}
-				break
+		if ptraceReady != nil {
+			select {
+			case ptraceReady <- nil:
+				readySignaled = true
+			default:
 			}
-			_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
+		} else {
+			if n, releaseErr := parentSock.Write([]byte{'G'}); releaseErr != nil || n != 1 {
+				slog.Debug("release pre-fork lineage barrier failed", "error", releaseErr, "bytes", n, "session_id", sessID)
+				return
+			}
 		}
+
+		payloadTimeout := unix.NsecToTimeval((30 * time.Second).Nanoseconds())
+		_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &payloadTimeout)
+		payload, err := wraphandoff.RecvLocalPayload(parentSock)
+		if err != nil || payload == nil || payload.NotifyFD == nil || payload.Sender == nil {
+			if payload != nil {
+				payload.Close()
+			}
+			slog.Debug("failed to receive payload lineage handoff", "error", err, "session_id", sessID)
+			return
+		}
+		defer payload.Close()
+		payloadPID := int(payload.Sender.Pid)
+		if payload.Metadata.CommandJail != commandJailRequired || !payloadLineageMatches(payloadPID, wrapperPID) {
+			slog.Debug("payload lineage handoff rejected", "payload_pid", payloadPID, "wrapper_pid", wrapperPID, "session_id", sessID)
+			return
+		}
+		notifyFD := payload.NotifyFD
+		payload.NotifyFD = nil
+		lookupEndpoint := payload.FileLookup
+		payload.FileLookup = nil
+		defer notifyFD.Close()
+		defer func() {
+			if lookupEndpoint != nil {
+				_ = lookupEndpoint.Close()
+			}
+		}()
+		slog.Debug("received child-owned notify fd", "fd", notifyFD.Fd(), "payload_pid", payloadPID, "wrapper_pid", wrapperPID, "session_id", sessID)
+		_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
 
 		var h *unixmon.ExecveHandler
 		if execveHandler != nil {
@@ -400,8 +408,28 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 			emitter.sensitive = runtimeState.CurrentExecutionSensitive
 		}
 
-		// Create file handler if configured
+		var fileLookupBroker unixmon.FileLookupBroker
+		if lookupEndpoint != nil {
+			candidate, brokerErr := unixmon.NewFileLookupBroker(unixmon.FileLookupBrokerConfig{
+				Endpoint: lookupEndpoint, ExpectedWrapperPID: wrapperPID,
+				ExpectedPayloadPID: payloadPID, Timeout: 250 * time.Millisecond,
+			})
+			if brokerErr != nil {
+				slog.Debug("file lookup broker unavailable", "error", brokerErr, "session_id", sessID)
+				_ = lookupEndpoint.Close()
+			} else {
+				fileLookupBroker = candidate
+				lookupEndpoint = nil // ownership transferred to the broker
+				defer fileLookupBroker.Close()
+			}
+		}
+
+		// Create file handler if configured and hand off the optional probe API.
+		// Handler decisions deliberately do not consume it until phase 5.
 		fileHandler := createFileHandlerForState(fileMonitorCfg, pol, emitter, landlockEnabled, approvalsMgr, sess, runtimeState)
+		if fileHandler != nil && fileLookupBroker != nil {
+			fileHandler.SetFileLookupProbe(fileLookupBroker)
+		}
 		if fileHandler != nil && compositionControlRoot != "" {
 			fileHandler.SetInternalControlAccess(compositionControlRoot, expectedWrapperPID)
 		}
@@ -424,10 +452,10 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 				}
 				h.SetApprover(adapter)
 			}
-			// Register the wrapper as session root for depth tracking
-			// The wrapper's exec will be the first command (depth 0)
-			if wrapperPID > 0 {
-				h.RegisterSession(wrapperPID, sessID)
+			// The wrapper remains the broker parent; the exact payload child is
+			// the depth-zero process which installs and inherits the filter.
+			if payloadPID > 0 {
+				h.RegisterSession(payloadPID, sessID)
 			}
 
 			// Create stub symlink for execve redirect
@@ -452,51 +480,37 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 			}
 		}
 
-		// Probe: verify ProcessVMReadv (or /proc/mem fallback) works against
-		// the wrapper before starting. Catches Yama, missing CAP_SYS_PTRACE,
-		// or other LSM restrictions at startup instead of on first notification.
-		if wrapperPID > 0 {
-			pvrErr, memErr := probeMemoryAccess(wrapperPID)
+		// Probe the exact pre-exec payload child, not the non-tracee broker
+		// parent. A failure retains the existing fail-closed startup behavior.
+		if payloadPID > 0 {
+			pvrErr, memErr := probeMemoryAccess(payloadPID)
 			if pvrErr != nil && memErr != nil {
 				if fileHandler != nil || h != nil || pol != nil {
 					slog.Error("seccomp notify: ProcessVMReadv and /proc/mem both failed — "+
 						"handler cannot read tracee memory for path resolution",
-						"wrapper_pid", wrapperPID,
+						"payload_pid", payloadPID,
 						"pvr_error", pvrErr, "mem_error", memErr,
 						"session_id", sessID,
 						"hint", "check kernel.yama.ptrace_scope, ensure CAP_SYS_PTRACE, "+
 							"or set sandbox.seccomp.file_monitor.enabled: false")
-					return // Don't send ACK — wrapper fails with clear handshake error
+					return
 				}
 				slog.Warn("ProcessVMReadv probe failed, monitoring may be degraded",
-					"wrapper_pid", wrapperPID, "pvr_error", pvrErr, "mem_error", memErr)
+					"payload_pid", payloadPID, "pvr_error", pvrErr, "mem_error", memErr)
 			} else if pvrErr != nil {
-				// /proc/mem fallback works for file monitoring, but socket monitoring
-				// uses ProcessVMReadv directly (ReadSockaddr has no /proc/mem fallback).
 				if pol != nil {
 					slog.Warn("ProcessVMReadv failed — socket monitoring will be degraded "+
 						"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for file monitoring",
-						"wrapper_pid", wrapperPID, "pvr_error", pvrErr)
+						"payload_pid", payloadPID, "pvr_error", pvrErr)
 				} else {
 					slog.Debug("ProcessVMReadv failed but /proc/mem fallback works",
-						"wrapper_pid", wrapperPID, "pvr_error", pvrErr)
+						"payload_pid", payloadPID, "pvr_error", pvrErr)
 				}
 			}
 		}
 
-		// Send ACK only after the notify handler prerequisites are ready. A failed
-		// or short write must not advance to READY/GO or user execution.
-		n, ackErr := parentSock.Write([]byte{1})
-		if ackErr != nil || n != 1 {
-			if ackErr == nil {
-				ackErr = io.ErrShortWrite
-			}
-			slog.Debug("notify: ACK write to wrapper failed", "error", ackErr, "session_id", sessID)
-			return
-		}
-
-		// Start ServeNotifyWithExecve BEFORE reading READY to ensure notifications
-		// can be processed by the time the wrapper exec's after receiving GO.
+		// Start ServeNotifyWithExecve before acknowledging the child-owned
+		// listener. The trusted parent cannot release payload exec until this ACK.
 		serveDone := make(chan struct{})
 		// Type-assert the cross-platform any back to the concrete Linux type.
 		// Stub/non-Linux callers pass nil; core.go on Linux always passes a
@@ -513,30 +527,26 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 			slog.Debug("ServeNotifyWithExecve returned", "session_id", sessID)
 		}()
 
-		// If ptrace sync is enabled, read the READY byte from the wrapper
-		// and signal the main goroutine that ptrace can now be attached.
-		if ptraceReady != nil {
-			// Use 30s timeout for READY (wrapper does signal filter + Landlock
-			// setup after ACK). SO_RCVTIMEO is used instead of SetReadDeadline
-			// because parentSock wraps a raw socketpair fd that isn't
-			// registered with Go's netpoll, so deadlines are a silent no-op.
-			readyTv := unix.NsecToTimeval((30 * time.Second).Nanoseconds())
-			if err := unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &readyTv); err != nil {
-				slog.Debug("failed to set SO_RCVTIMEO for READY read", "error", err, "session_id", sessID)
+		n, ackErr := parentSock.Write([]byte{1})
+		if ackErr != nil || n != 1 {
+			if ackErr == nil {
+				ackErr = io.ErrShortWrite
 			}
-			readyBytes, readyErr := readCommandJailREADY(parentSock)
-			// Clear SO_RCVTIMEO so it doesn't leak to any later reads.
-			_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
-			if readyErr != nil {
-				ptraceReady <- newCommandJailReadyFailure(readyBytes, readyErr)
-			} else {
-				ptraceReady <- nil
-			}
+			slog.Debug("notify: payload ACK write failed", "error", ackErr, "session_id", sessID)
+			return
 		}
 
 		<-serveDone // wait for ServeNotifyWithExecve to finish
 	}()
 	return done
+}
+
+func payloadLineageMatches(payloadPID, wrapperPID int) bool {
+	if payloadPID <= 0 || wrapperPID <= 0 || payloadPID == wrapperPID {
+		return false
+	}
+	status, err := readWrapperProcStatus(payloadPID)
+	return err == nil && status.PPid == wrapperPID
 }
 
 func readCommandJailREADY(r io.Reader) (int, error) {

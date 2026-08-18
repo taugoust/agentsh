@@ -209,17 +209,25 @@ const ioctlNotifSend = 0xC0182101
 // as if seccomp were not installed.
 const seccompUserNotifFlagContinue = 0x1
 
-// NotifRespondDeny responds to a seccomp notification with an error,
-// causing the trapped syscall to fail with the given errno.
-// The errno parameter must be a positive value (e.g., unix.EACCES = 13);
-// this function negates it for the kernel.
-func NotifRespondDeny(notifFD int, id uint64, errno int32) error {
+// notifErrnoResponse constructs a syscall-error completion. Keeping response
+// construction separate makes the exact kernel-facing layout unit-testable.
+func notifErrnoResponse(id uint64, errno int32) (seccompNotifResp, error) {
 	if errno <= 0 {
-		return fmt.Errorf("NotifRespondDeny: errno must be positive, got %d", errno)
+		return seccompNotifResp{}, fmt.Errorf("NotifRespondErrno: errno must be positive, got %d", errno)
 	}
-	resp := seccompNotifResp{
+	return seccompNotifResp{
 		id:  id,
 		err: -errno, // kernel expects negative errno
+	}, nil
+}
+
+// NotifRespondErrno completes a seccomp notification with an error, causing
+// the trapped syscall to fail with the given errno without executing it.
+// The errno parameter must be a positive value (e.g., unix.ENOENT = 2).
+func NotifRespondErrno(notifFD int, id uint64, errno int32) error {
+	resp, err := notifErrnoResponse(id, errno)
+	if err != nil {
+		return err
 	}
 	_, _, e := unix.Syscall(
 		unix.SYS_IOCTL,
@@ -231,6 +239,13 @@ func NotifRespondDeny(notifFD int, id uint64, errno int32) error {
 		return e
 	}
 	return nil
+}
+
+// NotifRespondDeny is retained for compatibility with policy-denial callers.
+// New callers completing a syscall with a neutral error should use
+// NotifRespondErrno.
+func NotifRespondDeny(notifFD int, id uint64, errno int32) error {
+	return NotifRespondErrno(notifFD, id, errno)
 }
 
 // NotifRespondValue completes an emulated syscall with the supplied return

@@ -323,113 +323,15 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 		logFile.Close()
 	}
 
-	// Receive the seccomp notify fd from the wrapper via SCM_RIGHTS.
-	notifyFD, recvErr := recvNotifyFD(parentFile)
-	if recvErr != nil {
-		// Wrapper may have exited before sending the fd (e.g. setup failure).
-		// Wait for it, propagate its exit code.
-		exitCode := waitWrapper(cmd)
-		parentFile.Close()
-		return Result{
-			Action:          ResultExec,
-			ExecPath:        wrapperBin,
-			ExecArgs:        cmd.Args,
-			ExecEnv:         env,
-			WrapperExitCode: exitCode,
-			Reason:          fmt.Sprintf("recvmsg failed (wrapper exit %d): %v", exitCode, recvErr),
-		}, nil
-	}
-
-	// A strict wrapper advertises command-jail support before blocking on ACK.
-	// Consume that byte before the centralized server barrier and propagate the
-	// result with the wrapper PID. Missing support is a version/configuration
-	// mismatch and must leave the command ACK-blocked.
-	commandJail := false
-	if resp.CommandJail != nil {
-		if capabilityErr := readCommandJailControlByte(parentFile, 'J'); capabilityErr != nil {
-			unix.Close(notifyFD)
-			parentFile.Close()
-			_ = cmd.Process.Kill()
-			_ = waitWrapper(cmd)
-			return Result{
-				Action: ResultFailClosed,
-				Reason: fmt.Sprintf("wait for command-jail capability failed: %v", capabilityErr),
-			}, nil
-		}
-		commandJail = true
-	}
-
-	// Forward the notify fd to the server's Unix listener socket.
-	// IMPORTANT: if forwarding fails, do NOT send the ACK.  Sending the ACK
-	// would let the wrapper execve the user's command with no live policy
-	// handler — a silent enforcement bypass.  Instead close the parent fd so
-	// the wrapper's waitForACK read returns EOF/error, causing the wrapper to
-	// exit with a fatal log.  Then wait for the wrapper and return
-	// ResultFailClosed so the shim aborts rather than running the command.
-	setupFD := -1
-	if compositionParentFile != nil {
-		setupFD = int(compositionParentFile.Fd())
-	}
-	if fwdErr := forwardNotifyHandoffWithPID(notifySocket, notifyFD, setupFD, cmd.Process.Pid, commandJail); fwdErr != nil {
-		unix.Close(notifyFD)
-		slog.Error("kernelinstall: failed to forward notify fd — closing parent fd to abort wrapper", "error", fwdErr)
-		// Close parentFile: wrapper's waitForACK will see EOF/EBADF and fatal.
-		parentFile.Close()
-		exitCode := waitWrapper(cmd)
-		_ = exitCode // wrapper exited due to our close; use ResultFailClosed
-		return Result{
-			Action: ResultFailClosed,
-			Reason: fmt.Sprintf("forward notify fd failed: %v", fwdErr),
-		}, nil
-	}
-	unix.Close(notifyFD)
-	if compositionParentFile != nil {
-		_ = compositionParentFile.Close()
-		compositionParentFile = nil
-	}
-
-	// Send ACK byte (0x01) only after the server has confirmed cgroup/eBPF and
-	// notify-handler setup. Any failed or short write keeps this path fail-closed;
-	// never report ResultExec after an ambiguous barrier release.
-	n, ackErr := parentFile.Write([]byte{1})
-	if ackErr != nil || n != 1 {
+	if lineageErr := completeKernelLineageHandoff(parentFile, compositionParentFile, notifySocket, cmd.Process.Pid, resp.CommandJail != nil); lineageErr != nil {
 		parentFile.Close()
 		_ = cmd.Process.Kill()
 		_ = waitWrapper(cmd)
-		if ackErr == nil {
-			ackErr = io.ErrShortWrite
-		}
-		return Result{
-			Action: ResultFailClosed,
-			Reason: fmt.Sprintf("release wrapper ACK barrier failed (wrote %d byte): %v", n, ackErr),
-		}, nil
-	}
-	if resp.CommandJail != nil {
-		if readyErr := readCommandJailControlByte(parentFile, 'R'); readyErr != nil {
-			parentFile.Close()
-			_ = cmd.Process.Kill()
-			_ = waitWrapper(cmd)
-			return Result{Action: ResultFailClosed, Reason: fmt.Sprintf("wait for command-jail READY failed: %v", readyErr)}, nil
-		}
-		if goErr := writeCommandJailControlByte(parentFile, 'G'); goErr != nil {
-			parentFile.Close()
-			_ = cmd.Process.Kill()
-			_ = waitWrapper(cmd)
-			return Result{Action: ResultFailClosed, Reason: fmt.Sprintf("release command-jail GO barrier failed: %v", goErr)}, nil
-		}
+		return Result{Action: ResultFailClosed, Reason: fmt.Sprintf("lineage notify handoff failed: %v", lineageErr)}, nil
 	}
 	parentFile.Close()
-
-	// Wait for the wrapper to finish.
-	exitCode := waitWrapper(cmd)
-
-	return Result{
-		Action:          ResultExec,
-		ExecPath:        wrapperBin,
-		ExecArgs:        cmd.Args,
-		ExecEnv:         env,
-		WrapperExitCode: exitCode,
-	}, nil
+	lineageExitCode := waitWrapper(cmd)
+	return Result{Action: ResultExec, ExecPath: wrapperBin, ExecArgs: cmd.Args, ExecEnv: env, WrapperExitCode: lineageExitCode}, nil
 }
 
 func validateCommandJailResponse(resp types.WrapInitResponse) error {

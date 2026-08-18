@@ -90,6 +90,20 @@ func emitCgroupDegradedAndContinue(ctx context.Context, emit storeEmitter, sessi
 	return func() error { return nil }, nil
 }
 
+func reserveLineagePIDs(lim policy.Limits, extra *extraProcConfig) policy.Limits {
+	if extra == nil || extra.lineagePIDReserve <= 0 || lim.PidsMax <= 0 {
+		return lim
+	}
+	maxInt := int(^uint(0) >> 1)
+	if lim.PidsMax > maxInt-extra.lineagePIDReserve {
+		// Do not wrap or reduce the policy limit. The subsequent fork can fail
+		// conservatively if an unrepresentable configuration is ever admitted.
+		return lim
+	}
+	lim.PidsMax += extra.lineagePIDReserve
+	return lim
+}
+
 type networkProxyEndpoints struct {
 	ProxyURL    string
 	LLMProxyURL string

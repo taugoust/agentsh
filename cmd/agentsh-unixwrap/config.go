@@ -22,9 +22,11 @@ type WrapperConfig struct {
 	SocketRules         []seccompkg.SocketRule    `json:"socket_rules,omitempty"`
 	OnBlock             string                    `json:"on_block,omitempty"`
 
-	InterceptMetadata bool `json:"intercept_metadata,omitempty"`
-	WriteOnlyOpens    bool `json:"write_only_opens,omitempty"`
-	BlockIOUring      bool `json:"block_io_uring,omitempty"`
+	InterceptMetadata    bool   `json:"intercept_metadata,omitempty"`
+	WriteOnlyOpens       bool   `json:"write_only_opens,omitempty"`
+	BlockIOUring         bool   `json:"block_io_uring,omitempty"`
+	FileLookupWorkerPath string `json:"file_lookup_worker_path,omitempty"`
+	LineageHandoff       bool   `json:"lineage_handoff,omitempty"`
 
 	// WaitKillable, when non-nil, forces SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV
 	// on or off, bypassing the wrapper's legacy kernel-version probe. The

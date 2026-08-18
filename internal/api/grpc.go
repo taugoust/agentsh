@@ -446,7 +446,7 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		}
 		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesStreamingEmitResolvedTimeout(
 			stream.Context(), sess, cmdID, wrappedReq, s.app.cfg, envPolicy, timeoutResolution.Duration, emit,
-			s.app.cgroupHook(req.SessionID, cmdID, limits), extraCfg, s.app.ptraceTracer, req.SessionID, onStarted,
+			s.app.cgroupHook(req.SessionID, cmdID, reserveLineagePIDs(limits, extraCfg)), extraCfg, s.app.ptraceTracer, req.SessionID, onStarted,
 		)
 		failure := commandJailFailureFrom(execErr)
 		if failure == nil {

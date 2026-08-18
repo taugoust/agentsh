@@ -22,5 +22,8 @@ func extractLegacyFileArgs(args SyscallArgs) FileArgs { return FileArgs{} }
 // legacySyscallToOperation returns empty string on non-amd64 architectures.
 func legacySyscallToOperation(nr int32, flags uint32) string { return "" }
 
+// eligibleLegacyMissingLookup rejects unsupported legacy architecture forms.
+func eligibleLegacyMissingLookup(req FileLookupRequest) bool { return false }
+
 // legacyFileSyscallName returns empty string on non-amd64 architectures.
 func legacyFileSyscallName(nr int32) string { return "" }

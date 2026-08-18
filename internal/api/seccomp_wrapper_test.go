@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -538,5 +540,31 @@ func TestBuildSeccompWrapperConfig_PropagatesWaitKillable(t *testing.T) {
 	}
 	if got.WaitKillableSource != "config" {
 		t.Fatalf("WaitKillableSource = %q, want config", got.WaitKillableSource)
+	}
+}
+
+func TestFileLookupWorkerForWrapperResolvesProfileSymlink(t *testing.T) {
+	packageBin := filepath.Join(t.TempDir(), "package", "bin")
+	profileBin := filepath.Join(t.TempDir(), "profile", "bin")
+	if err := os.MkdirAll(packageBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(profileBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wrapper := filepath.Join(packageBin, "agentsh-unixwrap")
+	worker := filepath.Join(packageBin, "agentsh-file-lookup-broker")
+	if err := os.WriteFile(wrapper, []byte("wrapper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(worker, []byte("worker"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	profileWrapper := filepath.Join(profileBin, "agentsh-unixwrap")
+	if err := os.Symlink(wrapper, profileWrapper); err != nil {
+		t.Fatal(err)
+	}
+	if got := fileLookupWorkerForWrapper(profileWrapper); got != worker {
+		t.Fatalf("worker = %q, want immutable package sibling %q", got, worker)
 	}
 }

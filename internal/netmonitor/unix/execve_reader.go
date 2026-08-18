@@ -14,8 +14,10 @@ import (
 )
 
 var (
-	ErrReadMemory = errors.New("failed to read process memory")
-	ErrNullPtr    = errors.New("null pointer")
+	ErrReadMemory             = errors.New("failed to read process memory")
+	ErrNullPtr                = errors.New("null pointer")
+	ErrPathnameNotTerminated  = errors.New("pathname is not NUL-terminated within the read limit")
+	ErrInvalidPathnameReadLen = errors.New("invalid pathname read limit")
 )
 
 // SyscallArgs holds the arguments from a seccomp notification.
@@ -110,6 +112,46 @@ func readStringWithFallback(pid int, ptr uint64, maxLen int) (string, error) {
 		return string(buf[:idx]), nil
 	}
 	return string(buf[:n]), nil
+}
+
+// readPathname reads a Linux pathname and succeeds only when a NUL terminator
+// was observed. Unlike readString, it never turns a short, page-boundary, or
+// max-length non-NUL read into a truncated path.
+func readPathname(pid int, ptr uint64, maxLen int) (string, error) {
+	return readPathnameImpl(pid, ptr, maxLen, false)
+}
+
+// readPathnameWithFallback is the strict pathname equivalent used by existing
+// fail-closed mutation handling when process_vm_readv is unavailable.
+func readPathnameWithFallback(pid int, ptr uint64, maxLen int) (string, error) {
+	return readPathnameImpl(pid, ptr, maxLen, true)
+}
+
+func readPathnameImpl(pid int, ptr uint64, maxLen int, useFallback bool) (string, error) {
+	if ptr == 0 {
+		return "", ErrNullPtr
+	}
+	if maxLen <= 0 || maxLen > maxTraceePathnameLen {
+		return "", ErrInvalidPathnameReadLen
+	}
+
+	buf := make([]byte, maxLen)
+	liov := unix.Iovec{Base: &buf[0], Len: uint64(len(buf))}
+	riov := unix.RemoteIovec{Base: uintptr(ptr), Len: len(buf)}
+	n, readErr := unix.ProcessVMReadv(pid, []unix.Iovec{liov}, []unix.RemoteIovec{riov}, 0)
+	if readErr != nil && useFallback {
+		n, readErr = readProcMem(pid, ptr, buf)
+	}
+	if readErr != nil {
+		return "", fmt.Errorf("%w: pathname: %v", ErrReadMemory, readErr)
+	}
+	if n < 0 || n > len(buf) {
+		return "", fmt.Errorf("%w: pathname: invalid read count %d", ErrReadMemory, n)
+	}
+	if idx := bytes.IndexByte(buf[:n], 0); idx >= 0 {
+		return string(buf[:idx]), nil
+	}
+	return "", fmt.Errorf("%w: read %d of %d bytes", ErrPathnameNotTerminated, n, maxLen)
 }
 
 // readPointer reads a pointer (8 bytes on amd64) from tracee memory.

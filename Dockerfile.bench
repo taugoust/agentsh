@@ -15,7 +15,7 @@
 # Build stage
 # ---------------------------------------------------------------------------
 FROM golang:1.25 AS builder
-RUN apt-get update && apt-get install -y --no-install-recommends libseccomp-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libseccomp-dev libc6-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -23,7 +23,9 @@ COPY . .
 RUN go build -o /out/agentsh          ./cmd/agentsh && \
     go build -o /out/agentsh-shell-shim ./cmd/agentsh-shell-shim && \
     go build -o /out/agentsh-unixwrap  ./cmd/agentsh-unixwrap && \
-    go build -o /out/agentsh-stub      ./cmd/agentsh-stub
+    go build -o /out/agentsh-stub      ./cmd/agentsh-stub && \
+    gcc -std=c11 -O2 -Wall -Wextra -Werror -static \
+      cmd/agentsh-file-lookup-broker/main.c -o /out/agentsh-file-lookup-broker
 
 # ---------------------------------------------------------------------------
 # Runtime stage
@@ -38,6 +40,7 @@ RUN apt-get update && \
 COPY --from=builder /out/agentsh          /usr/bin/agentsh
 COPY --from=builder /out/agentsh-shell-shim /usr/bin/agentsh-shell-shim
 COPY --from=builder /out/agentsh-unixwrap  /usr/bin/agentsh-unixwrap
+COPY --from=builder /out/agentsh-file-lookup-broker /usr/bin/agentsh-file-lookup-broker
 COPY --from=builder /out/agentsh-stub      /usr/bin/agentsh-stub
 
 COPY configs/policies/ /etc/agentsh/policies/

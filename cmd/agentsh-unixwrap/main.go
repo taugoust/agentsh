@@ -27,7 +27,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func main() {
+func legacyMain() {
 	log.SetFlags(0)
 	// Route diagnostics off the wrapped command's stderr before anything
 	// can log (issue #415).

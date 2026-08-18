@@ -36,6 +36,10 @@ func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
 	return errWrapNotSupported
 }
 
+func (a *App) acceptNotifyFDLineage(context.Context, net.Listener, string, string, *session.Session, bool, int, bool, *approvalUIEndpoint) bool {
+	return false
+}
+
 func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
 	if notifyFD != nil {
 		_ = notifyFD.Close()
