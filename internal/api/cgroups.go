@@ -398,8 +398,20 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 		}
 		_ = emit.AppendEvent(context.Background(), ev)
 		emit.Publish(ev)
-		app.recordNetworkEnforcementFailure(sessionID, cmdID, setupErr)
-		return cleanupCgroup, setupErr
+		refusalErr := newNetworkSetupRefusalError(setupErr)
+		app.recordNetworkEnforcementFailure(sessionID, cmdID, refusalErr)
+		cleanupRefusal := func() error {
+			cleanupErr := cleanupCgroup()
+			if cleanupErr == nil && partialCleanupSucceeded {
+				// The command never resumed and every partial kernel/helper/cgroup
+				// resource is gone. Preserve the refusal in audit, but do not turn a
+				// transient setup error into permanent session degradation.
+				refusalErr.markCleanupComplete()
+				app.recordNetworkSetupRefusalCleaned(sessionID, cmdID)
+			}
+			return cleanupErr
+		}
+		return cleanupRefusal, refusalErr
 	}
 	refreshInterval := cfg.Sandbox.Network.EBPF.DNSRefreshSeconds
 	if refreshInterval <= 0 {

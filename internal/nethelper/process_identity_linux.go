@@ -82,7 +82,7 @@ func (p *processIdentity) validate() error {
 	}
 	if p.pidfd >= 0 {
 		fds := []unix.PollFd{{Fd: int32(p.pidfd), Events: unix.POLLIN}}
-		n, err := unix.Poll(fds, 0)
+		n, err := pollProcessIdentity(fds, unix.Poll)
 		if err != nil {
 			return fmt.Errorf("poll pidfd: %w", err)
 		}
@@ -98,6 +98,18 @@ func (p *processIdentity) validate() error {
 		return fmt.Errorf("registered supervisor pid was reused")
 	}
 	return nil
+}
+
+type processIdentityPoll func(fds []unix.PollFd, timeout int) (int, error)
+
+func pollProcessIdentity(fds []unix.PollFd, poll processIdentityPoll) (int, error) {
+	for {
+		n, err := poll(fds, 0)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		return n, err
+	}
 }
 
 func (p *processIdentity) alive() bool {

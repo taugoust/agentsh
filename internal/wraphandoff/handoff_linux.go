@@ -262,8 +262,13 @@ func RecvHandoff(conn *net.UnixConn) (*Handoff, error) {
 	var n, oobn, flags int
 	var recvErr error
 	if err := raw.Read(func(fd uintptr) bool {
-		n, oobn, flags, _, recvErr = unix.Recvmsg(int(fd), buf, oob, unix.MSG_CMSG_CLOEXEC)
-		return recvErr != unix.EAGAIN && recvErr != unix.EWOULDBLOCK
+		for {
+			n, oobn, flags, _, recvErr = unix.Recvmsg(int(fd), buf, oob, unix.MSG_CMSG_CLOEXEC)
+			if errors.Is(recvErr, unix.EINTR) {
+				continue
+			}
+			return recvErr != unix.EAGAIN && recvErr != unix.EWOULDBLOCK
+		}
 	}); err != nil {
 		return nil, fmt.Errorf("recvmsg readiness: %w", err)
 	}

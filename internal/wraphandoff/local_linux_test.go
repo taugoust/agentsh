@@ -42,6 +42,51 @@ func TestLocalLineagePreludeCarriesKernelCredentials(t *testing.T) {
 	}
 }
 
+func TestLocalPreludeSendRetriesEINTR(t *testing.T) {
+	calls := 0
+	err := sendLocalFrame(7, []byte("frame"), func(_ int, payload, _ []byte, _ unix.Sockaddr, _ int) (int, error) {
+		calls++
+		if calls == 1 {
+			return 0, unix.EINTR
+		}
+		return len(payload), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("send calls = %d, want 2", calls)
+	}
+}
+
+func TestLocalPreludeReceiveRetriesEINTR(t *testing.T) {
+	sender, receiver := localFiles(t)
+	if err := EnableLocalCredentials(int(receiver.Fd())); err != nil {
+		t.Fatal(err)
+	}
+	if err := SendLocalPrelude(int(sender.Fd()), LocalMetadata{CommandJail: true}); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	message, err := recvLocalMessageWith(receiver, localFramePrelude, func(fd int, payload, oob []byte, flags int) (int, int, int, unix.Sockaddr, error) {
+		calls++
+		if calls == 1 {
+			return 0, 0, 0, nil, unix.EINTR
+		}
+		return unix.Recvmsg(fd, payload, oob, flags)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer message.Close()
+	if calls != 2 {
+		t.Fatalf("recv calls = %d, want 2", calls)
+	}
+	if message.Sender == nil || !message.Metadata.CommandJail {
+		t.Fatalf("unexpected prelude: %+v", message)
+	}
+}
+
 func TestLocalPayloadDescriptorOrderIsFixed(t *testing.T) {
 	sender, receiver := localFiles(t)
 	if err := EnableLocalCredentials(int(receiver.Fd())); err != nil {

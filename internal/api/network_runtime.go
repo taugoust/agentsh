@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/detached"
@@ -443,6 +444,14 @@ func (a *App) recordDirectNetworkAttachment(sessionID, commandID, cgroupPath str
 }
 
 func (a *App) recordNetworkAttachmentEnded(sessionID, commandID string) {
+	a.finishNetworkAttachment(sessionID, commandID, false)
+}
+
+func (a *App) recordNetworkSetupRefusalCleaned(sessionID, commandID string) {
+	a.finishNetworkAttachment(sessionID, commandID, true)
+}
+
+func (a *App) finishNetworkAttachment(sessionID, commandID string, resolveSetupRefusal bool) {
 	if a == nil || a.sessions == nil {
 		return
 	}
@@ -450,7 +459,13 @@ func (a *App) recordNetworkAttachmentEnded(sessionID, commandID string) {
 	if !ok {
 		return
 	}
-	removed, stickyFailure := sess.RemoveNetworkAttachment(commandID)
+	removed := false
+	stickyFailure := false
+	if resolveSetupRefusal {
+		removed = sess.ResolveNetworkSetupRefusal(commandID)
+	} else {
+		removed, stickyFailure = sess.RemoveNetworkAttachment(commandID)
+	}
 	if !removed || stickyFailure {
 		// Cleanup failure is sticky. A stale or reordered success callback can
 		// neither erase it nor remove a sibling command's attachment.
@@ -502,6 +517,11 @@ func (a *App) recordNetworkAttachmentEnded(sessionID, commandID string) {
 	if current == nil {
 		current = report
 	}
+	if resolveSetupRefusal && a.detachedRuntime != nil {
+		// The refusal was published as failed before teardown. Repair detached
+		// lifecycle metadata immediately once fail-closed cleanup is proven.
+		_ = a.detachedRuntime.UpdateNetwork(current)
+	}
 	a.emitNetworkEnforcementEvidence("network_enforcement_inactive", sessionID, commandID, current)
 }
 
@@ -532,11 +552,34 @@ func isNetworkPreExecFailure(err error) bool {
 	return false
 }
 
+type networkSetupRefusalError struct {
+	err             error
+	cleanupComplete atomic.Bool
+}
+
+func (e *networkSetupRefusalError) Error() string { return e.err.Error() }
+func (e *networkSetupRefusalError) Unwrap() error { return e.err }
+
+func newNetworkSetupRefusalError(err error) *networkSetupRefusalError {
+	return &networkSetupRefusalError{err: err}
+}
+
+func (e *networkSetupRefusalError) markCleanupComplete() {
+	if e != nil {
+		e.cleanupComplete.Store(true)
+	}
+}
+
 func shouldRecordNetworkEnforcementFailure(err error) bool {
-	if failure := commandJailFailureFrom(err); failure != nil && failure.provenCleanPreGO() {
-		// The wrapper never attempted GO and every per-attempt resource was
-		// reaped/joined/removed. Session-scoped preflight readiness remains valid;
-		// only helper/setup or uncertain cleanup failures are sticky.
+	var refusal *networkSetupRefusalError
+	if errors.As(err, &refusal) && refusal.cleanupComplete.Load() {
+		return false
+	}
+	if failure := commandJailFailureFrom(err); failure != nil && failure.boundaryCleanupComplete() {
+		// Dispatch may remain ambiguous after an attempted GO and must not be
+		// retried. It is nevertheless command-local once every process, handler,
+		// helper/eBPF registration, and cgroup has been reaped or removed; the
+		// session-scoped preflight remains valid for future commands.
 		return false
 	}
 	return isNetworkPreExecFailure(err)

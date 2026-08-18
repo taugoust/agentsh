@@ -70,14 +70,21 @@ func TestCommandJailReadyEOFDoesNotRetryAfterContextCancellation(t *testing.T) {
 	}
 }
 
-func TestCommandJailGOWriteFailureIsNeverCleanOrRetryable(t *testing.T) {
+func TestCommandJailGOWriteFailureIsAmbiguousButDoesNotPoisonAfterCleanup(t *testing.T) {
 	failure := newCommandJailGOFailure(io.ErrClosedPipe)
 	failure.finalize(nil, "SIGKILL", "", true, true, nil)
+	wrapped := markPreExecEnforcementError(failure.code(), failure)
 	if failure.retryableReadyEOF(context.Background()) {
 		t.Fatal("GO write failure was retryable")
 	}
 	if failure.provenCleanPreGO() {
 		t.Fatal("GO write failure was classified as clean pre-GO")
+	}
+	if !failure.boundaryCleanupComplete() {
+		t.Fatal("fully reaped GO failure did not retain cleanup evidence")
+	}
+	if shouldRecordNetworkEnforcementFailure(wrapped) {
+		t.Fatal("fully cleaned ambiguous dispatch would poison future session commands")
 	}
 	if failure.code() != "E_COMMAND_JAIL_GO" {
 		t.Fatalf("code = %q", failure.code())

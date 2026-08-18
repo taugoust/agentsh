@@ -144,6 +144,20 @@ func (e *commandJailFailure) provenCleanPreGO() bool {
 	return e.stage == commandJailStageReadyWait && !e.goAttempted && e.processReaped && e.handlersJoined && e.cleanupComplete
 }
 
+// boundaryCleanupComplete reports only whether the failed attempt left any
+// process, handler, helper, eBPF, or cgroup resource behind. A GO write remains
+// dispatch-ambiguous and is never retryable, but complete teardown means the
+// session-scoped preflight is still valid for a later, independently admitted
+// command.
+func (e *commandJailFailure) boundaryCleanupComplete() bool {
+	if e == nil {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.processReaped && e.handlersJoined && e.cleanupComplete
+}
+
 func (e *commandJailFailure) retryableReadyEOF(ctx context.Context) bool {
 	if e == nil || (ctx != nil && ctx.Err() != nil) {
 		return false

@@ -237,11 +237,34 @@ func (s *Session) RemoveNetworkAttachment(commandID string) (removed bool, stick
 	if report.Status == types.NetworkEnforcementStatusFailed || report.Attachment.Status == types.NetworkEnforcementStatusFailed {
 		return false, true
 	}
+	s.removeNetworkAttachmentLocked(commandID)
+	return true, false
+}
+
+// ResolveNetworkSetupRefusal removes failed command-local evidence only after
+// the caller has proved that the refused child never resumed and every partial
+// helper/eBPF/cgroup resource was cleaned. Cleanup failures use the ordinary
+// sticky path and must never call this method.
+func (s *Session) ResolveNetworkSetupRefusal(commandID string) bool {
+	if s == nil || strings.TrimSpace(commandID) == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	report := s.networkCommandEnforcement[commandID]
+	if report == nil || report.Attachment == nil ||
+		(report.Status != types.NetworkEnforcementStatusFailed && report.Attachment.Status != types.NetworkEnforcementStatusFailed) {
+		return false
+	}
+	s.removeNetworkAttachmentLocked(commandID)
+	return true
+}
+
+func (s *Session) removeNetworkAttachmentLocked(commandID string) {
 	delete(s.networkCommandEnforcement, commandID)
 	if len(s.networkCommandEnforcement) == 0 {
 		s.networkCommandEnforcement = nil
 	}
-	return true, false
 }
 
 // NetworkEnforcement returns a copy of current observed evidence. All command

@@ -64,14 +64,25 @@ func SendLocalPrelude(fd int, metadata LocalMetadata) error {
 		return errors.New("file lookup readiness is invalid in a pre-fork frame")
 	}
 	frame := encodeLocalFrame(localFramePrelude, metadata)
-	n, err := unix.SendmsgN(fd, frame, nil, nil, unix.MSG_NOSIGNAL)
-	if err != nil {
-		return err
+	return sendLocalFrame(fd, frame, unix.SendmsgN)
+}
+
+type localSendmsgN func(fd int, p, oob []byte, to unix.Sockaddr, flags int) (int, error)
+
+func sendLocalFrame(fd int, frame []byte, send localSendmsgN) error {
+	for {
+		n, err := send(fd, frame, nil, nil, unix.MSG_NOSIGNAL)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if n != len(frame) {
+			return io.ErrShortWrite
+		}
+		return nil
 	}
-	if n != len(frame) {
-		return io.ErrShortWrite
-	}
-	return nil
 }
 
 func RecvLocalPrelude(file *os.File) (*LocalMessage, error) {
@@ -100,6 +111,12 @@ func encodeLocalFrame(frameType uint16, metadata LocalMetadata) []byte {
 }
 
 func recvLocalMessage(file *os.File, expectedType uint16) (*LocalMessage, error) {
+	return recvLocalMessageWith(file, expectedType, unix.Recvmsg)
+}
+
+type localRecvmsg func(fd int, p, oob []byte, flags int) (n, oobn, recvflags int, from unix.Sockaddr, err error)
+
+func recvLocalMessageWith(file *os.File, expectedType uint16, recv localRecvmsg) (*LocalMessage, error) {
 	if file == nil {
 		return nil, errors.New("nil local handoff socket")
 	}
@@ -109,7 +126,15 @@ func recvLocalMessage(file *os.File, expectedType uint16) (*LocalMessage, error)
 	}
 	frame := make([]byte, localFrameSize)
 	oob := make([]byte, unix.CmsgSpace(unix.SizeofUcred)+unix.CmsgSpace(4*4))
-	n, oobn, flags, _, err := unix.Recvmsg(fd, frame, oob, unix.MSG_CMSG_CLOEXEC)
+	var n, oobn, flags int
+	var err error
+	for {
+		n, oobn, flags, _, err = recv(fd, frame, oob, unix.MSG_CMSG_CLOEXEC)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		break
+	}
 	if err != nil {
 		return nil, err
 	}
