@@ -496,6 +496,7 @@
               go test ./cmd/agentsh-bwrap-adapter
               go test ./cmd/agentsh-unixwrap -run '^Test(CompleteCommandJailSetup|ScrubCommandJailEnv)'
               go test ./internal/composition
+              go test ./internal/guestcontrol
               go test ./internal/runtimeprovider
               go test ./internal/wraphandoff
               go test ./internal/netmonitor/unix -run '^Test(CompositionRedirector|CompositionPathRegistry|FileHandler_Composed|ExecveHandler_Composed|ExecveHandler_Composition|ExecveHandler_DoesNotCompose|ExecPathMissing|FilterLogLoaded|MetadataNotify)'
@@ -552,6 +553,16 @@
               go test ./internal/config -run '^TestRuntimeProfiles'
               go test ./internal/api -run '^Test(CreateSessionRejectsCallerRuntimeSelection|GRPCCreateSessionRejectsCallerRuntimeSelection)$'
               go test ./internal/cli -run '^TestRuntimeProvider'
+              runHook postCheck
+            '';
+          });
+
+          guest-control-protocol-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-guest-control-protocol-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test ./internal/guestcontrol
+              go test ./internal/cli -run '^TestGuestControl'
               runHook postCheck
             '';
           });

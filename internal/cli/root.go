@@ -26,6 +26,7 @@ func NewRoot(version string) *cobra.Command {
 	cmd.PersistentFlags().StringVar(&cfg.clientTimeout, "client-timeout", getenvDefault("AGENTSH_CLIENT_TIMEOUT", "30s"), "HTTP client timeout for API requests (e.g. 30s, 5m)")
 
 	cmd.AddCommand(newServerCmd())
+	cmd.AddCommand(newGuestControlCmd(version))
 	cmd.AddCommand(newSessionCmd())
 	cmd.AddCommand(newSupervisorCmd())
 	cmd.AddCommand(newNethelperCmd())
