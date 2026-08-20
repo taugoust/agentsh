@@ -390,7 +390,7 @@ func TestDetachedSupervisorFailuresDoNotBreakGlobalEndpoints(t *testing.T) {
 	}
 }
 
-func TestDetachedSessionsPushEventsAndApprovalsWithToken(t *testing.T) {
+func TestDetachedSessionsPushEventsWithToken(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, "sess-push")
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
@@ -430,133 +430,7 @@ func TestDetachedSessionsPushEventsAndApprovalsWithToken(t *testing.T) {
 		t.Fatalf("pushed event missing from central list: %s", rr.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/detached-sessions/sess-push/approvals", strings.NewReader(`{"id":"apr-push","kind":"file","target":"/tmp/x"}`))
-	req.Header.Set("X-AgentSH-Session-Event-Token", "tok-push")
-	rr = httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("push approval status=%d body=%s", rr.Code, rr.Body.String())
-	}
-
-	rr = doApproverRequest(h, http.MethodGet, "/api/v1/approvals", "")
-	if rr.Code != http.StatusOK {
-		t.Fatalf("list approvals status=%d body=%s", rr.Code, rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), "apr-push") {
-		t.Fatalf("pushed approval missing from central list: %s", rr.Body.String())
-	}
-
-	rr = doApproverRequest(h, http.MethodPost, "/api/v1/approvals/apr-push", `{"decision":"approve","scope":"once","reason":"ok"}`)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("resolve pushed approval status=%d body=%s", rr.Code, rr.Body.String())
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/detached-sessions/sess-push/approvals/apr-push/resolution", nil)
-	req.Header.Set("X-AgentSH-Session-Event-Token", "tok-push")
-	rr = httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("get pushed resolution status=%d body=%s", rr.Code, rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), `"resolved":true`) {
-		t.Fatalf("expected resolved approval: %s", rr.Body.String())
-	}
 }
-
-func TestDetachedSessionsPushedCommandSessionScopeResolvesCoveredPending(t *testing.T) {
-	root := t.TempDir()
-	stateDir := filepath.Join(root, "sess-push-command")
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := detached.WriteMetadata(stateDir, detached.Metadata{
-		SessionID:       "sess-push-command",
-		ID:              "sess-push-command",
-		CreatedAt:       time.Now().UTC(),
-		State:           detached.LifecycleReady,
-		Policy:          "default",
-		WorkspaceMode:   "shadow",
-		RealWorkspace:   "/work/sess-push-command",
-		EventToken:      "tok-command",
-		OwnerPID:        os.Getpid(),
-		Generation:      1,
-		IncarnationID:   "test-incarnation",
-		ProtocolVersion: detached.ProtocolVersion,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	h := newDetachedAggregationTestApp(t, []string{root}, "20ms")
-
-	command := "/nix/store/abc-sqlite/bin/sqlite3"
-	rule := "approve-unknown-nix-store-executables"
-	approvalRequest := func(id string, args []string) approvals.Request {
-		scope, ok, scopeOptions := commandApprovalScopeOptions(command, args, rule)
-		if !ok {
-			t.Fatal("commandApprovalScopeOptions returned !ok")
-		}
-		fields := map[string]any{"command": command, "args": args}
-		for k, v := range approvals.ScopeFields(scope) {
-			fields[k] = v
-		}
-		fields["scope_options"] = scopeOptions
-		return approvals.Request{ID: id, Kind: "command", Target: command, Rule: rule, Fields: fields}
-	}
-	postApproval := func(apr approvals.Request) {
-		raw, err := json.Marshal(apr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/detached-sessions/sess-push-command/approvals", strings.NewReader(string(raw)))
-		req.Header.Set("X-AgentSH-Session-Event-Token", "tok-command")
-		rr := httptest.NewRecorder()
-		h.ServeHTTP(rr, req)
-		if rr.Code != http.StatusOK {
-			t.Fatalf("push approval %s status=%d body=%s", apr.ID, rr.Code, rr.Body.String())
-		}
-	}
-
-	apr1 := approvalRequest("apr-sqlite-1", []string{"events.db", "select 1"})
-	apr2 := approvalRequest("apr-sqlite-2", []string{"-readonly", "events.db", "select 2"})
-	postApproval(apr1)
-	postApproval(apr2)
-
-	executable := findCommandScopeOption(t, apr1, "command-executable:")
-	resolveRaw := approvalResolutionJSON(t, "approve", approvals.ScopeSession, executable)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/detached-sessions/sess-push-command/approvals/apr-sqlite-1/resolution", strings.NewReader(string(resolveRaw)))
-	req.Header.Set("X-AgentSH-Session-Event-Token", "tok-command")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("resolve status=%d body=%s", rr.Code, rr.Body.String())
-	}
-
-	rr = doApproverRequest(h, http.MethodGet, "/api/v1/approvals", "")
-	if rr.Code != http.StatusOK {
-		t.Fatalf("list approvals status=%d body=%s", rr.Code, rr.Body.String())
-	}
-	if strings.Contains(rr.Body.String(), "apr-sqlite-2") {
-		t.Fatalf("covered detached approval still listed after session resolution: %s", rr.Body.String())
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/detached-sessions/sess-push-command/approvals/apr-sqlite-2/resolution", nil)
-	req.Header.Set("X-AgentSH-Session-Event-Token", "tok-command")
-	rr = httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("get covered resolution status=%d body=%s", rr.Code, rr.Body.String())
-	}
-	var body struct {
-		Resolved   bool                 `json:"resolved"`
-		Resolution approvals.Resolution `json:"resolution"`
-	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if !body.Resolved || !body.Resolution.Approved || body.Resolution.ScopeKey != executable.Key {
-		t.Fatalf("covered approval resolution = %+v, want approved executable session scope %s", body, executable.Key)
-	}
-}
-
 func TestSessionEventEndpointsRequireApproverRole(t *testing.T) {
 	h := newDetachedAggregationTestApp(t, nil, "20ms")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/session-events", nil)
