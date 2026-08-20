@@ -219,8 +219,59 @@ func TestCommandTimeoutPiToolExecBashBoundsQueuedRequests(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&wire); err != nil {
 		t.Fatal(err)
 	}
-	if wire.Result.CommandStarted || wire.Result.Outcome == nil || wire.Result.Outcome.Code != "E_QUEUE_TIMEOUT" {
+	if wire.Result.CommandStarted || wire.Result.Outcome == nil || wire.Result.Outcome.Code != "E_QUEUE_TIMEOUT" || !wire.Result.Outcome.Retryable {
 		t.Fatalf("queue outcome = %+v", wire.Result)
+	}
+}
+
+func TestPiToolExecBashWaitsForAdmissionByDefault(t *testing.T) {
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+	sess, err := sessions.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := sess.AcquireExecution(context.Background(), session.ExecutionAdmission{CommandID: "held"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	app := newTestApp(t, sessions, store)
+	rr := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		body := strings.NewReader(`{"command":"printf admitted"}`)
+		app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", body))
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("exec_bash returned while execution admission was held")
+	case <-time.After(50 * time.Millisecond):
+	}
+	lease.Release()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("exec_bash did not run after execution admission was released")
+	}
+	if rr.Code != http.StatusOK {
+		t.Fatalf("exec_bash status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	var response struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			Stdout string `json:"stdout"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if !response.OK || response.Result.Stdout != "admitted" {
+		t.Fatalf("exec_bash response = %+v", response)
 	}
 }
 

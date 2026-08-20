@@ -1937,6 +1937,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		kind := types.ExecFailureCancellation
 		code := "E_CALLER_CANCELLED"
 		status := http.StatusRequestTimeout
+		retryable := false
 		var queueErr *session.ExecutionQueueError
 		switch {
 		case errors.Is(admissionErr, errChildCapabilityRevoked):
@@ -1945,14 +1946,16 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		case errors.As(admissionErr, &queueErr) && queueErr.Failure == session.ExecutionQueueDeadline:
 			kind = types.ExecFailureQueueTimeout
 			code = "E_QUEUE_TIMEOUT"
+			retryable = true
 		case errors.Is(admissionErr, context.DeadlineExceeded):
 			kind = types.ExecFailureQueueTimeout
 			code = "E_QUEUE_TIMEOUT"
+			retryable = true
 		}
 		resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: queuedAt, Request: req,
 			Result: types.ExecResult{ExitCode: 127, DurationMs: int64(queueDuration / time.Millisecond),
 				Error:   &types.ExecError{Code: code, Message: admissionErr.Error()},
-				Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: kind, Retryable: false, Code: code, Message: admissionErr.Error(), QueueDurationMs: int64(queueDuration / time.Millisecond)}},
+				Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: kind, Retryable: retryable, Code: code, Message: admissionErr.Error(), QueueDurationMs: int64(queueDuration / time.Millisecond)}},
 			Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
 		}
 		return resp, status, nil

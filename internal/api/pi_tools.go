@@ -26,11 +26,6 @@ import (
 const (
 	defaultToolReadLimitBytes = 1 * 1024 * 1024
 	maxToolFileBytes          = 4 * 1024 * 1024
-
-	// Parent Pi tool calls are exclusive and models commonly issue several in
-	// parallel. Never let a sibling request remain parked behind a command whose
-	// client cancellation was lost or delayed at the transport boundary.
-	defaultExecBashQueueTimeout = 30 * time.Second
 )
 
 type piToolActor map[string]any
@@ -117,14 +112,15 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		}
 		timeout = (time.Duration(*req.TimeoutMS) * time.Millisecond).String()
 	}
-	queueTimeout := defaultExecBashQueueTimeout
+	var queueTimeout time.Duration
 	if req.QueueTimeoutMS != nil {
 		if *req.QueueTimeoutMS <= 0 {
 			writeToolError(w, http.StatusBadRequest, "queue_timeout_ms must be greater than zero")
 			return
 		}
-		if *req.QueueTimeoutMS > int64(defaultExecBashQueueTimeout/time.Millisecond) {
-			writeToolError(w, http.StatusBadRequest, "queue_timeout_ms exceeds the maximum")
+		maxMilliseconds := int64(math.MaxInt64) / int64(time.Millisecond)
+		if *req.QueueTimeoutMS > maxMilliseconds {
+			writeToolError(w, http.StatusBadRequest, "queue_timeout_ms is too large")
 			return
 		}
 		queueTimeout = time.Duration(*req.QueueTimeoutMS) * time.Millisecond
