@@ -257,9 +257,24 @@ A custom analyzer for project-specific fail-open patterns may provide more value
 7. Trial targeted mutation testing and whole-program dead-code detection.
 8. Add architecture enforcement, native analyzers, kernel matrix, CodeQL, SBOM, and release hardening.
 
+## First canonical full-suite run
+
+The first authorized `x86_64-linux` build evaluated every native package and failed in 17 package targets. The failing derivation was `/nix/store/5k5yplw4j9bd2vh5kz0ax63lsv5ai3ca-agentsh-go-tests-unstable-2026-06-17.drv`.
+
+Initial failure classes:
+
+- Nix-environment assumptions: hard-coded `/bin/echo`, `/bin/cat`, and `/bin/pwd`; `cat` absent from a deliberately reduced test `PATH`; an unwritable default home; missing FUSE include discovery; and tests that assume a checkout-relative repository root or fixture path.
+- Sandbox inheritance: kernel-install tests observe the Nix builder's existing seccomp filter and cannot exercise their expected unfiltered-process transition directly.
+- Stale test setup or expectations after maintained changes: mandatory composition dialect validation, fail-closed approval behavior, symlink alias handling, and runtime exec-deny rule selection.
+- Security/lifecycle failures requiring individual triage: cgroup cleanup and nethelper paths, detached supervisor aggregation, composition cleanup, wrapper setup, and shell-shim behavior.
+
+Failing packages were `cmd/agentsh-shell-shim`, `cmd/agentsh-unixwrap`, `internal/api`, `internal/cli`, `internal/config`, `internal/netmonitor`, `internal/netmonitor/unix`, `internal/ocsf`, `internal/pkgcheck/provider`, `internal/pkgcheck/resolver`, `internal/platform/fuse`, `internal/policy`, `internal/policy/envshim`, `internal/shim`, `internal/shim/kernelinstall`, `internal/store/watchtower/transport`, and `internal/stub`.
+
+Most previously unselected domains did execute successfully, including PostgreSQL classification/policy/proxy tests, MCP inspection, proxy and secret-provider tests, ptrace tests, package and skill checks, most stores and Watchtower/WAL tests, platform-neutral and platform-stub tests, and public `pkg/` libraries.
+
 ## Iteration notes
 
-- The canonical full Go check was integrated before its first authorized run; record and classify every initial failure rather than weakening the suite implicitly.
+- Record and classify every initial failure rather than weakening the suite implicitly.
 - Do not choose coverage or mutation thresholds until baseline data is available.
 - Tool selection should be validated against Go 1.25, cgo, build tags, and Nix packaging before adoption.
 - This document should be updated as experiments establish runtime, signal quality, false-positive rate, and maintenance cost.
