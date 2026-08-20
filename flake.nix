@@ -461,8 +461,10 @@
             '';
           };
 
+          # Authoritative native Go suite. Focused checks below reuse the same
+          # build environment but remain separate for faster diagnosis.
           go-unit-tests = pkgs.buildGoModule {
-            pname = "agentsh-go-unit-tests";
+            pname = "agentsh-go-tests";
             version = "unstable-2026-06-17";
             src = self;
             vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
@@ -493,24 +495,9 @@
             '';
             checkPhase = ''
               runHook preCheck
-              go test ./cmd/agentsh-bwrap-adapter
-              go test ./cmd/agentsh-unixwrap -run '^Test(CompleteCommandJailSetup|ScrubCommandJailEnv)'
-              go test ./internal/composition
-              go test ./internal/guestcontrol
-              go test ./internal/runtimeprovider
-              go test ./internal/wraphandoff
-              go test ./internal/netmonitor/unix -run '^Test(CompositionRedirector|CompositionPathRegistry|FileHandler_Composed|ExecveHandler_Composed|ExecveHandler_Composition|ExecveHandler_DoesNotCompose|ExecPathMissing|FilterLogLoaded|MetadataNotify)'
-              go test ./internal/policy -run 'Test(DiscoverProjectOverlays|LoadOverlay|MergePolicyOverlays|CommandRule.*SandboxComposition)'
-              go test ./internal/config -run 'Test(ProjectOverlays|OutputArtifacts|Subagents|BubblewrapComposition|RuntimeProfiles)'
-              go test ./internal/session -run '^(TestOutputArtifact_|TestConfigureOutputArtifacts|TestSession_Cleanup$|TestLockExecContextCancelledQueueNeverAcquiresLater$)'
-              go test ./internal/api -run '^(TestCommandOutputArtifactCapture_.*|TestValidateOutputArtifactRequest|TestPersistSubagentFinalArtifact_.*|TestReadTextLineWindow_.*|TestPiToolReadFile_ShadowAllowsOnlyExactRegisteredOutputArtifact|TestPiToolExecBash_(RemoteArtifactRetainsBeyondResponseCap|PreExecFailureIsPromotedAndNotStarted|ChildExit127IsStartedNotPreExec)|Test(NethelperRebind.*|RebindSerializes.*|HelperDisappearanceAfterReadyPreflightBecomesStickyFailed|FailedCandidateCleanupTombstoneBlocksRebindAndTeardown|WrapperRecoveryTokenUsesHiddenFixedPrivateTopology|RunCommand.*AuthoritativeStart|NormalizeBarrierFailureBeforeReleaseIsNotStarted)|TestDefaultMaxOutputBytes_IsTwoMiB|TestCreateSession_AssignsRuntimeHomeAndTmp|TestCreateSessionRejectsCallerRuntimeSelection|TestGRPCCreateSessionRejectsCallerRuntimeSelection)$'
-              go test ./internal/api -run '^Test(AcceptNotifyFD_TransfersCompositionSetupEndpoint|StartNotifyHandlerForWrap_CleansUpAfterProbeFailure|SelectSandboxCompositionRequiresMetadataInterception|ConfigureExecveCompositionRequiresMetadataInterceptionAtRuntime)$'
-              go test ./internal/api -run '^Test(CompositionRuntime|ValidateLeaseCompositionScratchRoot)'
-              go test ./internal/cli -run '^(TestFindDetachedSupervisorConfigPath_|TestDetachedSupervisorServiceEnv|TestBuildSystemdRunDetachedSupervisorArgs|TestRuntimeProvider|TestEphemeralSystemdRunArgsAreFixedAndSecretFree|TestNethelperBootstrapRuntimeDefaultIsBackwardCompatible|TestEphemeralSystemdRunArgsNegotiatesSoftLease|TestValidateEphemeralNethelperRuntime|TestConfigureWrapCommandBoundaryUsesNonRootCompositionIdentity|TestForwardNotifyHandoffWithCompositionSetup)$'
-              go test ./internal/shim/kernelinstall -run '^Test(ConfigureCommandJailProcessUsesNonRootCompositionIdentity|AssembleWrapperEnvStripsCompositionSetupFD)$'
-              go test ./internal/nethelper
-              go test ./internal/detached ./internal/detachedreport
-              go test ./internal/workspace/runtimebin ./internal/workspace/shadow ./internal/workspace/overlay
+              mkdir -p "$TMPDIR/go-tmp"
+              export GOTMPDIR="$TMPDIR/go-tmp"
+              go test -count=1 -p 2 ./...
               runHook postCheck
             '';
             installPhase = ''

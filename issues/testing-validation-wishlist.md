@@ -11,7 +11,8 @@ Track testing and validation techniques that could improve confidence in AgentSH
 ## Current observations
 
 - The repository has extensive example-based coverage: about 964 tracked Go test files across 145 package directories.
-- The Nix `go-unit-tests` output runs a selected set of packages and regex-filtered tests. The unmaintained legacy GitHub workflows have been removed; Nix is the maintained validation workflow. There is no canonical complete Go test check yet.
+- The unmaintained legacy GitHub workflows have been removed; Nix is the maintained validation workflow.
+- The Nix `go-unit-tests` output is now defined as the authoritative complete native Go suite (`go test -count=1 -p 2 ./...`). Its first full run and failure triage are pending explicit authorization.
 - Race detection is focused on selected session, network-monitor, and API tests.
 - There is no repository-wide coverage report or coverage ratchet.
 - Go formatting is checked, but no general Go lint, vulnerability, dead-code, shell, or Nix validation gate is configured.
@@ -39,8 +40,9 @@ Track testing and validation techniques that could improve confidence in AgentSH
 
 ### Canonical full Go test check
 
-- Add a Nix-native `go-test-full` check covering the complete native package set.
-- Make the Nix check the authoritative maintained definition; do not treat the legacy GitHub workflow as current infrastructure.
+- Use the Nix-native `go-unit-tests` check to cover the complete native package set.
+- The check is integrated but has not yet been run; its first execution and triage remain pending.
+- Make this Nix check the authoritative maintained definition; do not treat removed legacy workflows as current infrastructure.
 - Preserve focused lifecycle, approval, timeout, subagent, and recovery checks for fast diagnosis.
 - Separate genuinely platform-specific packages instead of silently skipping them.
 
@@ -247,7 +249,7 @@ A custom analyzer for project-specific fail-open patterns may provide more value
 ## Suggested adoption order
 
 1. Remove the unmaintained legacy GitHub workflows.
-2. Add the canonical full Nix test check and clean up the check matrix.
+2. Run and triage the newly integrated canonical full Nix test check, then clean up the check matrix.
 3. Add Go linting, `govulncheck`, shell validation, and Nix validation.
 4. Add coverage reporting and package/changed-line ratchets.
 5. Broaden race checks, leak checks, and deterministic fault injection.
@@ -257,6 +259,7 @@ A custom analyzer for project-specific fail-open patterns may provide more value
 
 ## Iteration notes
 
+- The canonical full Go check was integrated before its first authorized run; record and classify every initial failure rather than weakening the suite implicitly.
 - Do not choose coverage or mutation thresholds until baseline data is available.
 - Tool selection should be validated against Go 1.25, cgo, build tags, and Nix packaging before adoption.
 - This document should be updated as experiments establish runtime, signal quality, false-positive rate, and maintenance cost.
