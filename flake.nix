@@ -389,6 +389,17 @@
                 touch "$out/covered-natively"
               '';
 
+          unfiltered-seccomp-tests =
+            if stdenv.hostPlatform.isLinux then
+              import ./nix/checks/unfiltered-seccomp-tests.nix {
+                inherit pkgs self;
+              }
+            else
+              pkgs.runCommand "agentsh-unfiltered-seccomp-tests-skipped" { } ''
+                mkdir -p "$out"
+                touch "$out/skipped-non-linux"
+              '';
+
           nested-namespace-feasibility =
             if stdenv.hostPlatform.isLinux then
               import ./nix/checks/nested-namespace-feasibility.nix {
