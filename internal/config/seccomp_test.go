@@ -153,7 +153,7 @@ sandbox:
 
 func TestOnBlockRejectsUnknown(t *testing.T) {
 	cfg := &Config{}
-	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
+	applyDefaults(cfg)
 	cfg.Sandbox.FUSE.Audit.Mode = "monitor" // satisfy existing validator
 	cfg.Sandbox.Seccomp.Syscalls.OnBlock = "banana"
 	err := validateConfig(cfg)
@@ -169,7 +169,7 @@ func TestOnBlockValidatorAcceptsLegalValues(t *testing.T) {
 	for _, v := range []string{"", "errno", "kill", "log", "log_and_kill"} {
 		t.Run("v="+v, func(t *testing.T) {
 			cfg := &Config{}
-			cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
+			applyDefaults(cfg)
 			cfg.Sandbox.FUSE.Audit.Mode = "monitor"
 			cfg.Sandbox.Seccomp.Syscalls.OnBlock = v
 			require.NoError(t, validateConfig(cfg))
@@ -284,7 +284,7 @@ sandbox:
 
 func TestSandboxSeccompSocketFamily_RejectsUnknownName(t *testing.T) {
 	cfg := &Config{}
-	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
+	applyDefaults(cfg)
 	cfg.Sandbox.FUSE.Audit.Mode = "monitor" // satisfy existing FUSE validator
 	cfg.Sandbox.Seccomp.Enabled = true
 	cfg.Sandbox.Seccomp.BlockedSocketFamilies = []SandboxSeccompSocketFamilyConfig{
@@ -301,7 +301,7 @@ func TestSandboxSeccompSocketFamily_RejectsUnknownName(t *testing.T) {
 
 func TestSandboxSeccompSocketFamily_RejectsBadAction(t *testing.T) {
 	cfg := &Config{}
-	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
+	applyDefaults(cfg)
 	cfg.Sandbox.FUSE.Audit.Mode = "monitor"
 	cfg.Sandbox.Seccomp.Enabled = true
 	cfg.Sandbox.Seccomp.BlockedSocketFamilies = []SandboxSeccompSocketFamilyConfig{
@@ -315,7 +315,7 @@ func TestSandboxSeccompSocketFamily_RejectsBadAction(t *testing.T) {
 
 func TestSandboxSeccompSocketFamily_AcceptsNumericFamily(t *testing.T) {
 	cfg := &Config{}
-	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
+	applyDefaults(cfg)
 	cfg.Sandbox.FUSE.Audit.Mode = "monitor"
 	cfg.Sandbox.Seccomp.Enabled = true
 	cfg.Sandbox.Seccomp.BlockedSocketFamilies = []SandboxSeccompSocketFamilyConfig{

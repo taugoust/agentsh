@@ -133,7 +133,7 @@ func TestResolveSocketRules_RejectsDuplicateNamesAfterMitigationSetExpansion(t *
 
 func TestValidateConfig_ValidatesSocketRules(t *testing.T) {
 	cfg := &Config{}
-	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
+	applyDefaults(cfg)
 	cfg.Sandbox.FUSE.Audit.Mode = "monitor"
 	cfg.Sandbox.Seccomp.SocketRules = []SandboxSeccompSocketRuleConfig{{
 		Name:   "bad-family",
