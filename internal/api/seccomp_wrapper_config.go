@@ -101,9 +101,15 @@ func fileLookupWorkerForWrapper(wrapperPath string) string {
 }
 
 type commandJailConfig struct {
-	Required        bool     `json:"required"`
-	HideDirectories []string `json:"hide_directories,omitempty"`
-	HidePaths       []string `json:"hide_paths,omitempty"`
+	Required           bool                       `json:"required"`
+	HideDirectories    []string                   `json:"hide_directories,omitempty"`
+	HidePaths          []string                   `json:"hide_paths,omitempty"`
+	HideDirectoryTrees []commandJailDirectoryTree `json:"hide_directory_trees,omitempty"`
+}
+
+type commandJailDirectoryTree struct {
+	Path                string   `json:"path"`
+	PreserveDirectories []string `json:"preserve_directories,omitempty"`
 }
 
 type seccompWrapperParams struct {

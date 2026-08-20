@@ -62,8 +62,14 @@ type wrapperConfig struct {
 }
 
 type jailConfig struct {
-	Required        bool     `json:"required"`
-	HideDirectories []string `json:"hide_directories,omitempty"`
+	Required           bool                  `json:"required"`
+	HideDirectories    []string              `json:"hide_directories,omitempty"`
+	HideDirectoryTrees []hiddenDirectoryTree `json:"hide_directory_trees,omitempty"`
+}
+
+type hiddenDirectoryTree struct {
+	Path                string   `json:"path"`
+	PreserveDirectories []string `json:"preserve_directories,omitempty"`
 }
 
 type feasibilityReport struct {
@@ -145,6 +151,7 @@ func runHarness(args []string) error {
 	wrapper := fs.String("wrapper", "", "test-only agentsh-unixwrap path")
 	matrix := fs.String("matrix", "", "Bubblewrap matrix executable")
 	controlDir := fs.String("control-dir", "", "outer command-jail control directory to mask")
+	stateDir := fs.String("state-dir", "", "detached state tree whose workspace child remains visible")
 	landlockEnabled := fs.Bool("landlock", false, "apply the current AgentSH Landlock ruleset")
 	outerNamespaceID := fs.Int("outer-namespace-id", 1, "outer user-namespace UID/GID mapping")
 	expectBlock := fs.Bool("expect-landlock-block", false, "require a typed EPERM-class Landlock failure")
@@ -201,6 +208,9 @@ func runHarness(args []string) error {
 	if *landlockWriteRoot != "" && !filepath.IsAbs(*landlockWriteRoot) {
 		return errors.New("--landlock-write-root must be absolute")
 	}
+	if *stateDir != "" && !filepath.IsAbs(*stateDir) {
+		return errors.New("--state-dir must be absolute")
+	}
 	if *landlockExactReadRoot != "" && !filepath.IsAbs(*landlockExactReadRoot) {
 		return errors.New("--landlock-exact-read-root must be absolute")
 	}
@@ -236,6 +246,13 @@ func runHarness(args []string) error {
 		workspace = *landlockWriteRoot
 	}
 	waitKillable := false
+	var hiddenTrees []hiddenDirectoryTree
+	if *stateDir != "" {
+		hiddenTrees = append(hiddenTrees, hiddenDirectoryTree{
+			Path:                *stateDir,
+			PreserveDirectories: []string{filepath.Join(*stateDir, "workspace")},
+		})
+	}
 	cfg := wrapperConfig{
 		UnixSocketEnabled:  true,
 		ExecveEnabled:      true,
@@ -258,8 +275,9 @@ func runHarness(args []string) error {
 		AllowNetwork: true,
 		AllowBind:    true,
 		CommandJail: &jailConfig{
-			Required:        true,
-			HideDirectories: []string{*controlDir},
+			Required:           true,
+			HideDirectories:    []string{*controlDir},
+			HideDirectoryTrees: hiddenTrees,
 		},
 	}
 	if brokerEnabled {
@@ -307,7 +325,7 @@ func runHarness(args []string) error {
 	if *landlockWriteRoot != "" {
 		scratchRoot = *landlockWriteRoot
 	}
-	cmd := exec.CommandContext(ctx, *wrapper, "--", self, "payload", "--matrix", *matrix, "--control-dir", *controlDir, "--scratch-root", scratchRoot, "--composition="+strconv.FormatBool(semanticComposition))
+	cmd := exec.CommandContext(ctx, *wrapper, "--", self, "payload", "--matrix", *matrix, "--control-dir", *controlDir, "--state-dir", *stateDir, "--scratch-root", scratchRoot, "--composition="+strconv.FormatBool(semanticComposition))
 	cmd.Env = append(os.Environ(), notifyFDEnv+"=3", configEnv+"="+string(configJSON))
 	cmd.ExtraFiles = []*os.File{childSocket}
 	if compositionChild != nil {
@@ -464,6 +482,16 @@ func runHarness(args []string) error {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		return fmt.Errorf("wait for complete outer boundary READY: %w; wrapper stderr: %s", err, stderr.String())
+	}
+	if *stateDir != "" {
+		recovery := filepath.Join(*stateDir, "recovery.json")
+		replacement := recovery + ".replacement"
+		if err := os.WriteFile(replacement, []byte("replacement-secret\n"), 0o600); err != nil {
+			return fmt.Errorf("write replacement recovery state: %w", err)
+		}
+		if err := os.Rename(replacement, recovery); err != nil {
+			return fmt.Errorf("atomically replace recovery state after READY: %w", err)
+		}
 	}
 	if brokerEnabled {
 		broker.active.Store(true)
@@ -640,12 +668,13 @@ func runPayload(args []string) error {
 	fs := flag.NewFlagSet("payload", flag.ContinueOnError)
 	matrix := fs.String("matrix", "", "Bubblewrap matrix executable")
 	controlDir := fs.String("control-dir", "", "masked control directory")
+	stateDir := fs.String("state-dir", "", "masked detached state tree")
 	scratchRoot := fs.String("scratch-root", "", "optional writable root for the outer mount denial probe")
 	compositionSelected := fs.Bool("composition", false, "expect composition-only namespace syscall filtering")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if !filepath.IsAbs(*matrix) || !filepath.IsAbs(*controlDir) || (*scratchRoot != "" && !filepath.IsAbs(*scratchRoot)) {
+	if !filepath.IsAbs(*matrix) || !filepath.IsAbs(*controlDir) || (*stateDir != "" && !filepath.IsAbs(*stateDir)) || (*scratchRoot != "" && !filepath.IsAbs(*scratchRoot)) {
 		return errors.New("payload paths must be absolute")
 	}
 
@@ -673,6 +702,20 @@ func runPayload(args []string) error {
 	}
 	if err := verifyNoSensitiveInheritedFDs(*controlDir); err != nil {
 		return err
+	}
+	if *stateDir != "" {
+		if _, err := os.Stat(filepath.Join(*stateDir, "recovery.json")); !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("atomically replaced recovery state became visible: %v", err)
+		}
+		workspace := filepath.Join(*stateDir, "workspace")
+		marker, err := os.ReadFile(filepath.Join(workspace, "marker"))
+		if err != nil || strings.TrimSpace(string(marker)) != "preserved-workspace" {
+			return fmt.Errorf("preserved workspace marker unavailable: %q: %v", marker, err)
+		}
+		if err := os.WriteFile(filepath.Join(workspace, "payload-write"), []byte("ok\n"), 0o600); err != nil {
+			return fmt.Errorf("preserved workspace is not writable: %w", err)
+		}
+		emitStage("stable_detached_control_tree", "pass", "", nil)
 	}
 	emitStage("hidden_control_paths_and_fds", "pass", "", nil)
 

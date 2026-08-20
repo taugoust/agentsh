@@ -307,40 +307,54 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 	return processExitCode(state), nil
 }
 
+func validateCommandJailHideTarget(target string, wantDirectory bool) error {
+	if err := validateMountTarget(target); err != nil {
+		return err
+	}
+	info, err := os.Lstat(target)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("symbolic-link mount targets are forbidden")
+	}
+	if wantDirectory != info.IsDir() {
+		return fmt.Errorf("mount target directory=%t, want %t", info.IsDir(), wantDirectory)
+	}
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return err
+	}
+	if filepath.Clean(resolved) != filepath.Clean(target) {
+		return fmt.Errorf("mount target traverses a symbolic link to %s", resolved)
+	}
+	return nil
+}
+
 func validateCommandJailHideTargets(cfg *CommandJailConfig) error {
 	if cfg == nil {
 		return errors.New("command jail configuration is missing")
 	}
-	validate := func(target string, wantDirectory bool) error {
-		if err := validateMountTarget(target); err != nil {
-			return err
+	for _, tree := range cfg.HideDirectoryTrees {
+		if err := validateCommandJailHideTarget(tree.Path, true); err != nil {
+			return fmt.Errorf("invalid hidden directory tree %s: %w", tree.Path, err)
 		}
-		info, err := os.Lstat(target)
-		if err != nil {
-			return err
+		for _, preserved := range tree.PreserveDirectories {
+			if preserved == tree.Path || !pathCoveredByRoot(preserved, []string{tree.Path}) {
+				return fmt.Errorf("preserved directory %s escapes hidden tree %s", preserved, tree.Path)
+			}
+			if err := validateCommandJailHideTarget(preserved, true); err != nil {
+				return fmt.Errorf("invalid preserved directory %s: %w", preserved, err)
+			}
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("symbolic-link mount targets are forbidden")
-		}
-		if wantDirectory != info.IsDir() {
-			return fmt.Errorf("mount target directory=%t, want %t", info.IsDir(), wantDirectory)
-		}
-		resolved, err := filepath.EvalSymlinks(target)
-		if err != nil {
-			return err
-		}
-		if filepath.Clean(resolved) != filepath.Clean(target) {
-			return fmt.Errorf("mount target traverses a symbolic link to %s", resolved)
-		}
-		return nil
 	}
 	for _, target := range cfg.HideDirectories {
-		if err := validate(target, true); err != nil {
+		if err := validateCommandJailHideTarget(target, true); err != nil {
 			return fmt.Errorf("invalid hidden directory %s: %w", target, err)
 		}
 	}
 	for _, target := range cfg.HidePaths {
-		if err := validate(target, false); err != nil {
+		if err := validateCommandJailHideTarget(target, false); err != nil {
 			return fmt.Errorf("invalid hidden path %s: %w", target, err)
 		}
 	}
@@ -422,10 +436,21 @@ func installCommandJailRemainingMounts(cfg *CommandJailConfig, mounts []mountedF
 		hiddenRoots = append(hiddenRoots, mount.Path)
 	}
 
+	hideTrees := append([]HiddenDirectoryTree(nil), cfg.HideDirectoryTrees...)
+	sort.Slice(hideTrees, func(i, j int) bool { return len(hideTrees[i].Path) < len(hideTrees[j].Path) })
+	for _, tree := range hideTrees {
+		if pathCoveredByRoot(tree.Path, hiddenRoots) {
+			continue
+		}
+		if err := maskDirectoryTree(tree); err != nil {
+			return fmt.Errorf("hide control directory tree %s: %w", tree.Path, err)
+		}
+	}
+
 	hideDirs := append([]string(nil), cfg.HideDirectories...)
 	sort.Slice(hideDirs, func(i, j int) bool { return len(hideDirs[i]) < len(hideDirs[j]) })
 	for _, path := range hideDirs {
-		if pathCoveredByRoot(path, hiddenRoots) {
+		if pathCoveredByRoot(path, hiddenRoots) || pathHiddenByDirectoryTrees(path, hideTrees) {
 			continue
 		}
 		if err := maskDirectory(path); err != nil {
@@ -437,12 +462,109 @@ func installCommandJailRemainingMounts(cfg *CommandJailConfig, mounts []mountedF
 		// Credentials commonly live below the helper control directory. Once
 		// that directory is masked, trying to overmount the now-absent child
 		// path would incorrectly turn a stronger boundary into a setup failure.
-		if pathCoveredByRoot(path, hiddenRoots) {
+		if pathCoveredByRoot(path, hiddenRoots) || pathHiddenByDirectoryTrees(path, hideTrees) {
 			continue
 		}
 		if err := maskPath(path); err != nil {
 			return fmt.Errorf("hide control path %s: %w", path, err)
 		}
+	}
+	return nil
+}
+
+func pathHiddenByDirectoryTrees(path string, trees []HiddenDirectoryTree) bool {
+	for _, tree := range trees {
+		if path != tree.Path && !pathCoveredByRoot(path, []string{tree.Path}) {
+			continue
+		}
+		preserved := false
+		for _, root := range tree.PreserveDirectories {
+			if path == root || pathCoveredByRoot(path, []string{root}) {
+				preserved = true
+				break
+			}
+		}
+		if !preserved {
+			return true
+		}
+	}
+	return false
+}
+
+func pinCommandJailDirectory(path string) (int, error) {
+	fd, err := unix.Open(path, unix.O_PATH|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, err
+	}
+	var pinned, current unix.Stat_t
+	if err := unix.Fstat(fd, &pinned); err != nil {
+		_ = unix.Close(fd)
+		return -1, err
+	}
+	if err := unix.Stat(path, &current); err != nil || pinned.Dev != current.Dev || pinned.Ino != current.Ino {
+		_ = unix.Close(fd)
+		if err != nil {
+			return -1, err
+		}
+		return -1, errors.New("directory identity changed while pinning")
+	}
+	return fd, nil
+}
+
+func maskDirectoryTree(tree HiddenDirectoryTree) error {
+	type pinnedDirectory struct {
+		path string
+		fd   int
+	}
+	rootFD, err := pinCommandJailDirectory(tree.Path)
+	if err != nil {
+		return fmt.Errorf("pin hidden directory tree: %w", err)
+	}
+	defer unix.Close(rootFD)
+
+	pinned := make([]pinnedDirectory, 0, len(tree.PreserveDirectories))
+	defer func() {
+		for _, directory := range pinned {
+			_ = unix.Close(directory.fd)
+		}
+	}()
+
+	for _, path := range tree.PreserveDirectories {
+		fd, err := pinCommandJailDirectory(path)
+		if err != nil {
+			return fmt.Errorf("pin preserved directory %s: %w", path, err)
+		}
+		pinned = append(pinned, pinnedDirectory{path: path, fd: fd})
+	}
+
+	flags := uintptr(unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC)
+	rootTarget := filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprintf("%d", rootFD))
+	if err := unix.Mount("tmpfs", rootTarget, "tmpfs", flags, "mode=0755,size=1048576"); err != nil {
+		return err
+	}
+	var mounted unix.Statfs_t
+	if err := unix.Statfs(tree.Path, &mounted); err != nil || uint64(mounted.Type) != uint64(unix.TMPFS_MAGIC) {
+		if err != nil {
+			return fmt.Errorf("verify hidden directory tree mount: %w", err)
+		}
+		return errors.New("hidden directory tree pathname changed during masking")
+	}
+	for _, directory := range pinned {
+		relative, err := filepath.Rel(tree.Path, directory.path)
+		if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("preserved directory %s escapes hidden tree", directory.path)
+		}
+		target := filepath.Join(tree.Path, relative)
+		if err := os.MkdirAll(target, 0o700); err != nil {
+			return fmt.Errorf("create preserved directory mountpoint %s: %w", target, err)
+		}
+		source := filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprintf("%d", directory.fd))
+		if err := unix.Mount(source, target, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+			return fmt.Errorf("restore preserved directory %s: %w", directory.path, err)
+		}
+	}
+	if err := unix.Mount("", tree.Path, "", flags|unix.MS_REMOUNT|unix.MS_RDONLY, ""); err != nil {
+		return fmt.Errorf("remount hidden directory tree read-only: %w", err)
 	}
 	return nil
 }

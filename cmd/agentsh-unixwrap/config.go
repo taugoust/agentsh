@@ -71,9 +71,15 @@ type WrapperConfig struct {
 }
 
 type CommandJailConfig struct {
-	Required        bool     `json:"required"`
-	HideDirectories []string `json:"hide_directories,omitempty"`
-	HidePaths       []string `json:"hide_paths,omitempty"`
+	Required           bool                  `json:"required"`
+	HideDirectories    []string              `json:"hide_directories,omitempty"`
+	HidePaths          []string              `json:"hide_paths,omitempty"`
+	HideDirectoryTrees []HiddenDirectoryTree `json:"hide_directory_trees,omitempty"`
+}
+
+type HiddenDirectoryTree struct {
+	Path                string   `json:"path"`
+	PreserveDirectories []string `json:"preserve_directories,omitempty"`
 }
 
 // loadConfig reads the wrapper config from environment.

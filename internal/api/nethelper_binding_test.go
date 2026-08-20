@@ -439,7 +439,7 @@ func TestWrapperRecoveryTokenUsesHiddenFixedPrivateTopology(t *testing.T) {
 	if got != token || retainedPath != path {
 		t.Fatalf("token/path validation failed: %q %q", got, retainedPath)
 	}
-	jail := buildCommandJailConfig(nil, "", "", "", retainedPath, "")
+	jail := buildCommandJailConfig(nil, nil, "", "", "", "", retainedPath, "")
 	if !containsString(jail.HideDirectories, container) {
 		t.Fatalf("recovery container not hidden: %+v", jail)
 	}
@@ -465,23 +465,62 @@ func TestWrapperRecoveryTokenUsesHiddenFixedPrivateTopology(t *testing.T) {
 	}
 }
 
-func TestCommandJailMasksRuntimeProviderLifecycleAuthority(t *testing.T) {
+func TestCommandJailMasksDetachedStateTreeAndPreservesRuntimeDirectories(t *testing.T) {
 	stateDir := t.TempDir()
-	baseDir := filepath.Join(stateDir, "workspaces")
-	for _, name := range []string{"runtime-provider.json", "runtime-provider.lock"} {
-		if err := os.WriteFile(filepath.Join(stateDir, name), []byte("control"), 0o600); err != nil {
+	baseDir := filepath.Join(stateDir, "runtime")
+	workspaceDir := filepath.Join(stateDir, "workspace")
+	homeDir := filepath.Join(stateDir, "home")
+	tmpDir := filepath.Join(stateDir, "tmp")
+	for _, path := range []string{baseDir, workspaceDir, homeDir, tmpDir} {
+		if err := os.Mkdir(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cfg := &config.Config{}
 	cfg.Sessions.BaseDir = baseDir
-	jail := buildCommandJailConfig(cfg, "", "", "", "", "")
-	for _, name := range []string{"runtime-provider.json", "runtime-provider.lock"} {
-		path := filepath.Join(stateDir, name)
-		if !containsString(jail.HidePaths, path) {
-			t.Fatalf("runtime lifecycle authority %q is not hidden: %+v", path, jail)
+	cfg.Sessions.WorkspaceShadow.BaseDir = workspaceDir
+	sess := &session.Session{Workspace: workspaceDir, WorkspaceMount: workspaceDir}
+	sess.SetRuntimePaths(homeDir, tmpDir, func() error { return nil })
+	jail := buildCommandJailConfig(cfg, sess, stateDir, "", "", "", "", "")
+	if len(jail.HideDirectoryTrees) != 1 || jail.HideDirectoryTrees[0].Path != stateDir {
+		t.Fatalf("detached state tree is not hidden: %+v", jail)
+	}
+	for _, path := range []string{baseDir, workspaceDir, homeDir, tmpDir} {
+		if !containsString(jail.HideDirectoryTrees[0].PreserveDirectories, path) {
+			t.Fatalf("runtime directory %q is not preserved: %+v", path, jail)
 		}
 	}
+	for _, name := range []string{"metadata.json", "recovery.json", "runtime-provider.json", "supervisor.sock"} {
+		path := filepath.Join(stateDir, name)
+		if !pathHiddenByCommandJailTree(path, jail.HideDirectoryTrees[0]) {
+			t.Fatalf("control path %q remains exposed: %+v", path, jail)
+		}
+	}
+}
+
+func TestCommandJailDoesNotInferControlTreeFromOrdinarySessionsBaseDir(t *testing.T) {
+	baseDir := filepath.Join(t.TempDir(), "sessions")
+	if err := os.Mkdir(baseDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{}
+	cfg.Sessions.BaseDir = baseDir
+	jail := buildCommandJailConfig(cfg, nil, "", "", "", "", "", "")
+	if len(jail.HideDirectoryTrees) != 0 {
+		t.Fatalf("ordinary sessions parent was treated as detached control state: %+v", jail)
+	}
+}
+
+func pathHiddenByCommandJailTree(path string, tree commandJailDirectoryTree) bool {
+	if path != tree.Path && !pathWithinRoot(path, tree.Path) {
+		return false
+	}
+	for _, preserved := range tree.PreserveDirectories {
+		if path == preserved || pathWithinRoot(path, preserved) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestAutomaticCompositionMasksHelperObjectsWithoutMaskingLeaseRuntime(t *testing.T) {
@@ -490,7 +529,7 @@ func TestAutomaticCompositionMasksHelperObjectsWithoutMaskingLeaseRuntime(t *tes
 	credential := filepath.Join(leaseRoot, "instance-credential")
 	bootstrap := filepath.Join(leaseRoot, "bootstrap.json")
 	scratch := filepath.Join(leaseRoot, "composition")
-	jail := buildCommandJailConfig(nil, socket, credential, bootstrap, "", scratch)
+	jail := buildCommandJailConfig(nil, nil, "", socket, credential, bootstrap, "", scratch)
 	for _, path := range []string{socket, credential, bootstrap} {
 		if !containsString(jail.HidePaths, path) {
 			t.Fatalf("helper control %q is not individually masked: %+v", path, jail)

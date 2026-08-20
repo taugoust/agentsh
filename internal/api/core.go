@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -232,7 +233,7 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 	})
 	if jailRequired {
 		binding := a.nethelperBindingSnapshot()
-		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, binding.SocketPath, binding.CredentialFile, binding.BootstrapResultPath, a.nethelperRecoveryTokenFile, seccompCfg.CompositionScratchRoot)
+		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, s, a.detachedCommandJailStateDir(), binding.SocketPath, binding.CredentialFile, binding.BootstrapResultPath, a.nethelperRecoveryTokenFile, seccompCfg.CompositionScratchRoot)
 	}
 	cfgJSON, marshalErr := json.Marshal(seccompCfg)
 	if marshalErr != nil {
@@ -390,7 +391,14 @@ func commandJailRequirements(required bool, composition ...string) *types.LinuxC
 	}
 }
 
-func buildCommandJailConfig(cfg *config.Config, nethelperSocket, nethelperCredentialFile, nethelperBootstrapResult, recoveryTokenFile, compositionScratchRoot string) *commandJailConfig {
+func (a *App) detachedCommandJailStateDir() string {
+	if a == nil || a.detachedRuntime == nil {
+		return ""
+	}
+	return a.detachedRuntime.StateDir()
+}
+
+func buildCommandJailConfig(cfg *config.Config, sess *session.Session, detachedStateDir, nethelperSocket, nethelperCredentialFile, nethelperBootstrapResult, recoveryTokenFile, compositionScratchRoot string) *commandJailConfig {
 	jail := &commandJailConfig{Required: true}
 	compositionScratchRoot = strings.TrimSpace(compositionScratchRoot)
 	compositionLeaseRoot := ""
@@ -450,22 +458,94 @@ func buildCommandJailConfig(cfg *config.Config, nethelperSocket, nethelperCreden
 			jail.HidePaths = append(jail.HidePaths, path)
 		}
 	}
-	if base := strings.TrimSpace(cfg.Sessions.BaseDir); base != "" {
-		stateDir := filepath.Dir(base)
-		for _, name := range []string{"metadata.json", "recovery.json", "runtime-provider.json", "runtime-provider.lock", "supervisor.lock", "supervisor.sock", "supervisor.env", "events.jsonl", "events.db", "events.db-wal", "events.db-shm"} {
-			path := filepath.Join(stateDir, name)
-			if info, err := os.Lstat(path); err == nil && !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
-				jail.HidePaths = append(jail.HidePaths, path)
+	if stateDir := strings.TrimSpace(detachedStateDir); stateDir != "" && filepath.IsAbs(stateDir) {
+		stateDir = filepath.Clean(stateDir)
+		var preserve []string
+		for _, candidate := range []string{
+			cfg.Sessions.BaseDir,
+			cfg.Sessions.WorkspaceShadow.BaseDir,
+			cfg.Sessions.WorkspaceOverlay.BaseDir,
+		} {
+			if info, err := os.Lstat(candidate); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+				preserve = append(preserve, candidate)
 			}
 		}
-		logsDir := filepath.Join(stateDir, "logs")
-		if info, err := os.Lstat(logsDir); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
-			jail.HideDirectories = append(jail.HideDirectories, logsDir)
+		if sess != nil {
+			preserve = append(preserve,
+				sess.RuntimeHomePath(),
+				sess.RuntimeTmpPath(),
+				sess.ProcessHomePath(),
+				sess.Workspace,
+				sess.WorkspaceMount,
+			)
+		}
+		jail.HideDirectoryTrees = append(jail.HideDirectoryTrees, commandJailDirectoryTree{
+			Path:                stateDir,
+			PreserveDirectories: cleanPreservedDirectories(stateDir, preserve),
+		})
+	}
+	jail.HideDirectories = filterPathsOutsideHiddenTrees(cleanUniqueAbsolutePaths(jail.HideDirectories), jail.HideDirectoryTrees)
+	jail.HidePaths = filterPathsOutsideHiddenTrees(cleanUniqueAbsolutePaths(jail.HidePaths), jail.HideDirectoryTrees)
+	return jail
+}
+
+func filterPathsOutsideHiddenTrees(paths []string, trees []commandJailDirectoryTree) []string {
+	result := paths[:0]
+	for _, path := range paths {
+		hidden := false
+		for _, tree := range trees {
+			if path != tree.Path && !pathWithinRoot(path, tree.Path) {
+				continue
+			}
+			preserved := false
+			for _, root := range tree.PreserveDirectories {
+				if path == root || pathWithinRoot(path, root) {
+					preserved = true
+					break
+				}
+			}
+			if !preserved {
+				hidden = true
+				break
+			}
+		}
+		if !hidden {
+			result = append(result, path)
 		}
 	}
-	jail.HideDirectories = cleanUniqueAbsolutePaths(jail.HideDirectories)
-	jail.HidePaths = cleanUniqueAbsolutePaths(jail.HidePaths)
-	return jail
+	return result
+}
+
+func cleanPreservedDirectories(root string, paths []string) []string {
+	root = filepath.Clean(root)
+	var candidates []string
+	for _, path := range cleanUniqueAbsolutePaths(paths) {
+		if path == root || !pathWithinRoot(path, root) {
+			continue
+		}
+		candidates = append(candidates, path)
+	}
+	sort.Slice(candidates, func(i, j int) bool { return len(candidates[i]) < len(candidates[j]) })
+	var result []string
+	for _, path := range candidates {
+		covered := false
+		for _, existing := range result {
+			if pathWithinRoot(path, existing) {
+				covered = true
+				break
+			}
+		}
+		if covered {
+			continue
+		}
+		result = append(result, path)
+	}
+	return result
+}
+
+func pathWithinRoot(path, root string) bool {
+	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	return err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func cleanUniqueAbsolutePaths(paths []string) []string {

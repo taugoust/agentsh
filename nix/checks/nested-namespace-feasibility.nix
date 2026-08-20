@@ -154,6 +154,10 @@ pkgs.testers.runNixOSTest {
     machine.wait_for_unit("multi-user.target")
     machine.succeed("install -d -m 0755 /run/agentsh-feasibility-control")
     machine.succeed("printf '%s\\n' supervisor-secret > /run/agentsh-feasibility-control/secret")
+    machine.succeed("install -d -o tester -g users -m 0700 /run/agentsh-feasibility-state /run/agentsh-feasibility-state/workspace")
+    machine.succeed("printf '%s\\n' original-secret > /run/agentsh-feasibility-state/recovery.json")
+    machine.succeed("printf '%s\\n' preserved-workspace > /run/agentsh-feasibility-state/workspace/marker")
+    machine.succeed("chown -R tester:users /run/agentsh-feasibility-state")
 
     with subtest("Bubblewrap works outside AgentSH"):
         outside = machine.succeed(
@@ -180,7 +184,8 @@ pkgs.testers.runNixOSTest {
             "runuser -u tester -- ${feasibilityProbe}/bin/namespace-composition-probe run "
             "--wrapper ${feasibilityWrapper}/bin/agentsh-unixwrap "
             "--matrix ${bubblewrapMatrix}/bin/agentsh-nested-namespace-bubblewrap-matrix "
-            "--control-dir /run/agentsh-feasibility-control 2>&1"
+            "--control-dir /run/agentsh-feasibility-control "
+            "--state-dir /run/agentsh-feasibility-state 2>&1"
         )
         for stage in [
             "outer_privileges",
@@ -193,7 +198,10 @@ pkgs.testers.runNixOSTest {
             marker = f'"stage":"{stage}"'
             assert marker in monitored, (marker, monitored)
         assert monitored.count('"errno_class":"EPERM"') >= 2, monitored
+        assert '"stage":"stable_detached_control_tree"' in monitored, monitored
         assert "stage=bubblewrap-matrix result=pass" in monitored, monitored
+        machine.succeed("test \"$(cat /run/agentsh-feasibility-state/recovery.json)\" = replacement-secret")
+        machine.succeed("test \"$(cat /run/agentsh-feasibility-state/workspace/payload-write)\" = ok")
 
     with subtest("the current Landlock domain blocks descendant mount composition"):
         landlock = machine.succeed(
@@ -201,6 +209,7 @@ pkgs.testers.runNixOSTest {
             "--wrapper ${feasibilityWrapper}/bin/agentsh-unixwrap "
             "--matrix ${bubblewrapMatrix}/bin/agentsh-nested-namespace-bubblewrap-matrix "
             "--control-dir /run/agentsh-feasibility-control "
+            "--state-dir /run/agentsh-feasibility-state "
             "--landlock --expect-landlock-block 2>&1"
         )
         assert '"stage":"landlock_nested_mount"' in landlock, landlock
@@ -208,6 +217,7 @@ pkgs.testers.runNixOSTest {
         assert '"errno_class":"EPERM"' in landlock, landlock
         assert '"landlock_composes":false' in landlock, landlock
         assert '"selected_branch":"alternate_backend_required"' in landlock, landlock
+        assert '"stage":"stable_detached_control_tree"' in landlock, landlock
         assert "landlock: restrictions applied" in landlock, landlock
   '';
 }

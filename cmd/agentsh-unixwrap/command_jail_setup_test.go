@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -49,6 +50,30 @@ func TestCompleteCommandJailSetupPublishesCompositionAfterVerifiedBoundary(t *te
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("setup order = %v, want %v", got, want)
+	}
+}
+
+func TestPathHiddenByDirectoryTreesPreservesOnlyExplicitRuntimeSubtrees(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "state", "session")
+	workspace := filepath.Join(root, "workspace")
+	trees := []HiddenDirectoryTree{{Path: root, PreserveDirectories: []string{workspace}}}
+
+	for _, path := range []string{
+		filepath.Join(root, "recovery.json"),
+		filepath.Join(root, "logs", "supervisor.log"),
+		filepath.Join(root, "future-control-file"),
+	} {
+		if !pathHiddenByDirectoryTrees(path, trees) {
+			t.Fatalf("control path %q is not hidden", path)
+		}
+	}
+	for _, path := range []string{workspace, filepath.Join(workspace, "project", "file")} {
+		if pathHiddenByDirectoryTrees(path, trees) {
+			t.Fatalf("preserved path %q is hidden", path)
+		}
+	}
+	if pathHiddenByDirectoryTrees(filepath.Join(string(filepath.Separator), "unrelated"), trees) {
+		t.Fatal("unrelated path is hidden by detached state tree")
 	}
 }
 
