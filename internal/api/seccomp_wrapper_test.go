@@ -19,9 +19,21 @@ import (
 func newTestAppForSeccomp(t *testing.T, cfg *config.Config) *App {
 	t.Helper()
 	mgr := session.NewManager(5)
+	if _, err := mgr.CreateWithID("test-session", t.TempDir(), "default"); err != nil {
+		t.Fatalf("create test session: %v", err)
+	}
 	store := composite.New(mockEventStore{}, nil)
 	broker := events.NewBroker()
 	return NewApp(cfg, mgr, store, nil, broker, nil, nil, nil, nil, nil, nil)
+}
+
+func testSessionForSeccomp(t *testing.T, app *App) *session.Session {
+	t.Helper()
+	sess, ok := app.sessions.Get("test-session")
+	if !ok {
+		t.Fatal("test session not found")
+	}
+	return sess
 }
 
 func TestSetupSeccompWrapper_DisabledByConfig(t *testing.T) {
@@ -37,7 +49,7 @@ func TestSetupSeccompWrapper_DisabledByConfig(t *testing.T) {
 		Args:    []string{"hello"},
 	}
 
-	result := app.setupSeccompWrapper(req, "test-session", nil)
+	result := app.setupSeccompWrapper(req, "test-session", testSessionForSeccomp(t, app))
 
 	// Should return original request unchanged
 	if result.wrappedReq.Command != "/bin/echo" {
@@ -61,7 +73,7 @@ func TestSetupSeccompWrapper_NilEnabled(t *testing.T) {
 		Args:    []string{"hello"},
 	}
 
-	result := app.setupSeccompWrapper(req, "test-session", nil)
+	result := app.setupSeccompWrapper(req, "test-session", testSessionForSeccomp(t, app))
 
 	// Should return original request unchanged
 	if result.wrappedReq.Command != "/bin/echo" {
@@ -88,7 +100,7 @@ func TestSetupSeccompWrapper_NonLinux(t *testing.T) {
 		Args:    []string{"hello"},
 	}
 
-	result := app.setupSeccompWrapper(req, "test-session", nil)
+	result := app.setupSeccompWrapper(req, "test-session", testSessionForSeccomp(t, app))
 
 	// Should return original request unchanged on non-Linux
 	if result.wrappedReq.Command != "/bin/echo" {
@@ -116,7 +128,7 @@ func TestSetupSeccompWrapper_WrapperNotFound(t *testing.T) {
 		Args:    []string{"hello"},
 	}
 
-	result := app.setupSeccompWrapper(req, "test-session", nil)
+	result := app.setupSeccompWrapper(req, "test-session", testSessionForSeccomp(t, app))
 
 	// Should return original request unchanged when wrapper not found
 	if result.wrappedReq.Command != "/bin/echo" {
@@ -145,7 +157,7 @@ func TestSetupSeccompWrapper_Enabled(t *testing.T) {
 		Args:    []string{"hello", "world"},
 	}
 
-	result := app.setupSeccompWrapper(req, "test-session", nil)
+	result := app.setupSeccompWrapper(req, "test-session", testSessionForSeccomp(t, app))
 
 	// Should wrap the command
 	if result.wrappedReq.Command != testNoopExecutable(t) {
@@ -215,7 +227,7 @@ func TestSetupSeccompWrapper_PreservesEnv(t *testing.T) {
 		},
 	}
 
-	result := app.setupSeccompWrapper(req, "test-session", nil)
+	result := app.setupSeccompWrapper(req, "test-session", testSessionForSeccomp(t, app))
 
 	// Should preserve existing env vars
 	if result.wrappedReq.Env["MY_VAR"] != "my_value" {
@@ -254,7 +266,7 @@ func TestSetupSeccompWrapper_FileMonitorDefaults(t *testing.T) {
 		Args:    []string{"hello"},
 	}
 
-	result := app.setupSeccompWrapper(req, "test-session", nil)
+	result := app.setupSeccompWrapper(req, "test-session", testSessionForSeccomp(t, app))
 	if result == nil || result.extraCfg == nil {
 		t.Fatal("expected non-nil wrapper setup result with extraCfg")
 	}
@@ -337,7 +349,7 @@ func TestSetupSeccompWrapper_WriteOnlyOpensForwarded(t *testing.T) {
 	result := app.setupSeccompWrapper(types.ExecRequest{
 		Command: "/bin/echo",
 		Args:    []string{"hello"},
-	}, "test-session", nil)
+	}, "test-session", testSessionForSeccomp(t, app))
 	if result == nil || result.extraCfg == nil {
 		t.Fatal("expected non-nil wrapper setup result with extraCfg")
 	}
@@ -392,7 +404,7 @@ seccomp:
 		Args:    []string{"hello"},
 	}
 
-	result := app.setupSeccompWrapper(req, "test-session", nil)
+	result := app.setupSeccompWrapper(req, "test-session", testSessionForSeccomp(t, app))
 	if result == nil || result.extraCfg == nil {
 		t.Fatal("expected non-nil wrapper setup result with extraCfg")
 	}

@@ -74,14 +74,17 @@ func TestApplyCommandApproval_RequestIncludesCommandSessionScope(t *testing.T) {
 		t.Fatalf("scope_key = %q, want executable scope", key)
 	}
 	options := commandScopeOptionsFromRequest(t, req)
-	if len(options) != 2 {
-		t.Fatalf("scope_options len = %d, want 2: %#v", len(options), options)
+	if len(options) != 3 {
+		t.Fatalf("scope_options len = %d, want 3: %#v", len(options), options)
 	}
 	if key, _ := options[0]["scope_key"].(string); !strings.HasPrefix(key, "command-executable:") {
 		t.Fatalf("first option key = %q, want executable", key)
 	}
 	if key, _ := options[1]["scope_key"].(string); !strings.HasPrefix(key, "command-invocation:") {
 		t.Fatalf("second option key = %q, want invocation", key)
+	}
+	if key, _ := options[2]["scope_key"].(string); !strings.HasPrefix(key, "command-run:") {
+		t.Fatalf("third option key = %q, want command-run", key)
 	}
 	if !app.approvals.ResolveForSessionWithScope(sess.ID, req.ID, true, "ok", approvals.ScopeSession) {
 		t.Fatal("ResolveForSessionWithScope returned false")

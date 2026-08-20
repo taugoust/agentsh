@@ -228,15 +228,15 @@ func TestMaybeApproveTimeoutDenies(t *testing.T) {
 	}
 }
 
-func TestMaybeApproveNoApprovalsLeavesDecision(t *testing.T) {
+func TestMaybeApproveNoApprovalsFailsClosed(t *testing.T) {
 	p := &Proxy{approvals: nil}
 	dec := policy.Decision{
 		PolicyDecision:    types.DecisionApprove,
 		EffectiveDecision: types.DecisionApprove,
 	}
 	got := p.maybeApprove(context.Background(), "", dec, "network", "example.com")
-	if got.EffectiveDecision != types.DecisionApprove {
-		t.Fatalf("expected unchanged decision when approvals manager missing, got %v", got.EffectiveDecision)
+	if got.EffectiveDecision != types.DecisionDeny {
+		t.Fatalf("expected deny when approvals manager is missing, got %v", got.EffectiveDecision)
 	}
 }
 

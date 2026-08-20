@@ -110,6 +110,7 @@ landlock:
 func TestLandlockValidation_ConnectFalseWithProxyEnabled_Errors(t *testing.T) {
 	f := false
 	cfg := Config{}
+	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
 	cfg.Landlock.Enabled = true
 	cfg.Landlock.Network.AllowConnectTCP = &f
 	cfg.Sandbox.Network.Enabled = true
@@ -126,6 +127,7 @@ func TestLandlockValidation_ConnectFalseWithProxyEnabled_Errors(t *testing.T) {
 func TestLandlockValidation_ConnectFalseWithProxyDisabled_OK(t *testing.T) {
 	f := false
 	cfg := Config{}
+	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
 	cfg.Landlock.Enabled = true
 	cfg.Landlock.Network.AllowConnectTCP = &f
 	cfg.Sandbox.Network.Enabled = false
@@ -140,6 +142,7 @@ func TestLandlockValidation_BindFalseAlwaysOK(t *testing.T) {
 	tr := true
 	f := false
 	cfg := Config{}
+	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
 	cfg.Landlock.Enabled = true
 	cfg.Landlock.Network.AllowConnectTCP = &tr
 	cfg.Landlock.Network.AllowBindTCP = &f
@@ -154,6 +157,7 @@ func TestLandlockValidation_BindFalseAlwaysOK(t *testing.T) {
 func TestLandlockValidation_LandlockDisabled_NoLockoutCheck(t *testing.T) {
 	f := false
 	cfg := Config{}
+	cfg.Sandbox.Composition.Bubblewrap.Dialect = "0.11.2"
 	cfg.Landlock.Enabled = false
 	cfg.Landlock.Network.AllowConnectTCP = &f
 	cfg.Sandbox.Network.Enabled = true

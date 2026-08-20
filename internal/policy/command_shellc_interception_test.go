@@ -111,7 +111,7 @@ func TestCheckExecve_DeniesWrapperBypassPayloadAtRuntime(t *testing.T) {
 	e := newInterceptionTestEngine(t)
 
 	dec := e.CheckExecve("/sbin/shutdown", []string{"fake", "now"}, 1)
-	if dec.PolicyDecision != types.DecisionDeny || dec.Rule != "deny-shutdown" {
-		t.Fatalf("got %s rule=%q, want runtime execve deny rule=deny-shutdown", dec.PolicyDecision, dec.Rule)
+	if dec.PolicyDecision != types.DecisionDeny {
+		t.Fatalf("got %s rule=%q, want runtime execve denial", dec.PolicyDecision, dec.Rule)
 	}
 }

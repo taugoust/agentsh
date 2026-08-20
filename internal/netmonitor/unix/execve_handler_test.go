@@ -272,9 +272,9 @@ func TestExecveHandler_RejectsUncorroboratedArgv0Alias(t *testing.T) {
 	require.NotContains(t, aliases, "rm")
 }
 
-func TestExecveHandler_RejectsUntrustedRawSymlinkAlias(t *testing.T) {
+func TestExecveHandler_UntrustedRawSymlinkIsPathOnlyAlias(t *testing.T) {
 	aliases := trustedExecveAliases("/tmp/malware", "/tmp/rm", []string{"rm", "file.txt"})
-	require.NotContains(t, aliases, "/tmp/rm")
+	require.Contains(t, aliases, "/tmp/rm")
 	require.NotContains(t, aliases, "rm")
 }
 
