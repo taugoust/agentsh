@@ -541,7 +541,7 @@ func getCurrentSession(cmd *cobra.Command) (*PNACLSession, error) {
 }
 
 func getActiveIPs() []string {
-	var ips []string
+	ips := make([]string, 0)
 
 	interfaces, err := net.Interfaces()
 	if err != nil {

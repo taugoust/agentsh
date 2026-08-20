@@ -63,4 +63,6 @@ var skiplist = map[string]string{
 	// Explicit test sentinels that don't match the above categories.
 	"definitely_not_in_registry_xyz": "test fixture: explicit unknown-type sentinel in mapper_test.go",
 	"session_started":                "test fixture: unrelated-event placeholder in mcp_bridge_test.go",
+	"exec_probe":                     "test fixture: guest-control protocol event sentinel",
+	"shutdown":                       "test fixture: guest-control protocol event sentinel",
 }
