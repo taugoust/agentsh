@@ -1269,7 +1269,7 @@ func TestWrapInit_LongTMPDIR_LongSessionID(t *testing.T) {
 	// Use a TMPDIR that simulates macOS /var/folders nesting (~40 chars)
 	// while still leaving enough room for the socket path.
 	// Budget: 104 - len(TMPDIR) - ~25 (agentsh-wrap-*) - 13 (fixed parts)
-	longDir := filepath.Join(t.TempDir(), "deep")
+	longDir := filepath.Join(shortSocketDir(t), "deep")
 	if err := os.MkdirAll(longDir, 0700); err != nil {
 		t.Fatalf("create tmpdir: %v", err)
 	}
@@ -1648,19 +1648,19 @@ func TestWrapInit_LandlockNetwork_BackCompatDefaults(t *testing.T) {
 	// Exercises the back-compat promise: omitting landlock.network.* must
 	// yield allow_network=true (proxy-compatible) and allow_bind=false
 	// (new security default, replacing prior accidental permissive behavior).
-	yamlData := []byte(`
+	yamlData := []byte(fmt.Sprintf(`
 landlock:
   enabled: true
 sandbox:
   unix_sockets:
     enabled: true
-    wrapper_bin: /bin/true
+    wrapper_bin: %q
   seccomp:
     execve:
       enabled: true
     unix_socket:
       enabled: true
-`)
+`, testNoopExecutable(t)))
 	tmpFile := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(tmpFile, yamlData, 0600); err != nil {
 		t.Fatalf("write temp config: %v", err)

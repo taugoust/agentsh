@@ -36,6 +36,8 @@ const (
 	mountAttrNoExec = 0x00000008
 )
 
+var detachCompositionMount = unix.Unmount
+
 type compositionSetupState struct {
 	kinds     []composition.SetupObjectKind
 	paths     []string
@@ -54,7 +56,7 @@ func (s *compositionSetupState) cleanupPoolPaths() error {
 	remaining := make([]string, 0, len(s.poolSlots))
 	for index := len(s.poolSlots) - 1; index >= 0; index-- {
 		slot := s.poolSlots[index]
-		if err := unix.Unmount(slot, unix.MNT_DETACH); err != nil && err != unix.EINVAL && err != unix.ENOENT {
+		if err := detachCompositionMount(slot, unix.MNT_DETACH); err != nil && err != unix.EINVAL && err != unix.ENOENT {
 			errs = append(errs, fmt.Errorf("detach composition pool slot %q: %w", slot, err))
 		}
 		if err := os.Remove(slot); err != nil && !os.IsNotExist(err) {

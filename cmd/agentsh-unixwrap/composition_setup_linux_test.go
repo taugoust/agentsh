@@ -7,9 +7,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
+func stubCompositionUnmount(t *testing.T) {
+	t.Helper()
+	original := detachCompositionMount
+	detachCompositionMount = func(string, int) error { return unix.EINVAL }
+	t.Cleanup(func() { detachCompositionMount = original })
+}
+
 func TestPublishCompositionSetupRejectsSurvivingPoolPaths(t *testing.T) {
+	stubCompositionUnmount(t)
 	state := &compositionSetupState{poolRoot: filepath.Join(t.TempDir(), "survivor")}
 	if err := os.Mkdir(state.poolRoot, 0o700); err != nil {
 		t.Fatal(err)
@@ -20,6 +30,7 @@ func TestPublishCompositionSetupRejectsSurvivingPoolPaths(t *testing.T) {
 }
 
 func TestCompositionSetupCleanupRetainsFailedPathsForRetry(t *testing.T) {
+	stubCompositionUnmount(t)
 	poolRoot := filepath.Join(t.TempDir(), ".agentsh-composition-pool-retry")
 	slot := filepath.Join(poolRoot, "slot")
 	if err := os.MkdirAll(slot, 0o700); err != nil {
@@ -48,6 +59,7 @@ func TestCompositionSetupCleanupRetainsFailedPathsForRetry(t *testing.T) {
 }
 
 func TestCompositionSetupCleanupRemovesPoolNames(t *testing.T) {
+	stubCompositionUnmount(t)
 	parent := t.TempDir()
 	poolRoot := filepath.Join(parent, ".agentsh-composition-pool-test")
 	if err := os.Mkdir(poolRoot, 0o700); err != nil {

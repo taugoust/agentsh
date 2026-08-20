@@ -12,6 +12,19 @@ import (
 	"time"
 )
 
+func requireUnfilteredSeccompForShimInstall(t *testing.T) {
+	t.Helper()
+	status, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		t.Skipf("cannot inspect inherited seccomp state: %v", err)
+	}
+	for _, line := range strings.Split(string(status), "\n") {
+		if strings.HasPrefix(line, "Seccomp_filters:") && strings.TrimSpace(strings.TrimPrefix(line, "Seccomp_filters:")) != "0" {
+			t.Skip("requires an unfiltered process (covered by the native VM check)")
+		}
+	}
+}
+
 // TestShimInstall_SiblingProcessTree starts an in-process agentsh test
 // server with Landlock denying reads of a tempdir directory. It builds and
 // runs the shim from a process tree that is NOT a child of the test
@@ -24,6 +37,7 @@ import (
 // attempt fails on Unix DAC alone — the test would pass even with no
 // agentsh enforcement (false positive).
 func TestShimInstall_SiblingProcessTree(t *testing.T) {
+	requireUnfilteredSeccompForShimInstall(t)
 	if !landlockSupported(t) {
 		t.Skip("Landlock not supported in this environment")
 	}
@@ -134,6 +148,7 @@ func TestShimInstall_SiblingProcessTree(t *testing.T) {
 // AND that wrap-init was called at least twice (proving nested install actually
 // ran, not just exec-deny on the inner shim binary).
 func TestShimInstall_NestedInstallsCompose(t *testing.T) {
+	requireUnfilteredSeccompForShimInstall(t)
 	if !landlockSupported(t) {
 		t.Skip("Landlock not supported in this environment")
 	}

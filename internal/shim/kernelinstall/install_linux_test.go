@@ -136,6 +136,13 @@ func TestInstall_ModeOff_ReturnsSkip(t *testing.T) {
 	}
 }
 
+func requireUnfilteredSeccompProcess(t *testing.T) {
+	t.Helper()
+	if count := seccompFilterCount(); count > 0 {
+		t.Skipf("requires an unfiltered process; inherited Seccomp_filters=%d (covered by the native VM check)", count)
+	}
+}
+
 // ─── Test InheritedFilter: caller already has seccomp filter → ResultSkip ────
 
 // TestInstall_AlreadyFiltered_ReturnsSkip covers the #282 root cause
@@ -274,6 +281,7 @@ func TestInstall_ModeAuto_WrapInitError_Skips(t *testing.T) {
 // ─── Test 3: ModeOn + server 500 → ResultFailClosed ─────────────────────────
 
 func TestInstall_ModeOn_WrapInitError_FailsClosed(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	handler, _ := makeWrapInitHandler(500, nil)
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
@@ -315,6 +323,7 @@ func TestInstall_ModeAuto_EmptyResponse_Skips(t *testing.T) {
 // ─── Test 5: ModeOn + empty WrapInitResponse → ResultFailClosed ─────────────
 
 func TestInstall_ModeOn_EmptyResponse_FailsClosed(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	handler, _ := makeWrapInitHandler(200, types.WrapInitResponse{})
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
@@ -368,6 +377,7 @@ func TestInstall_StripsSignalSockFd(t *testing.T) {
 // value and asserting the wrapper's environment (via the fake wrapper printing
 // its own env) contains no AGENTSH_SIGNAL_SOCK_FD entry.
 func TestInstall_StripsSignalSockFdFromPEnv(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	// Build a fake wrapper that prints its env and then does the socketpair handshake.
 	wrapperBin := buildFakeWrapperPrintEnv(t)
 
@@ -443,6 +453,7 @@ func TestInstall_StripsSignalSockFdFromPEnv(t *testing.T) {
 // wrapper itself then substitutes argv[0]; that substitution is covered
 // by tests in cmd/agentsh-unixwrap.
 func TestInstall_PassesArgv0ToWrapper(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	wrapperBin := buildFakeWrapperPrintEnv(t)
 
 	sockDir := t.TempDir()
@@ -496,6 +507,7 @@ func TestInstall_PassesArgv0ToWrapper(t *testing.T) {
 // AGENTSH_UNIXWRAP_ARGV0 env var must NOT be set. unixwrap's empty-string
 // path falls back to argv[0]=resolved-cmd-path, preserving prior behavior.
 func TestInstall_OmitsArgv0WhenEmpty(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	wrapperBin := buildFakeWrapperPrintEnv(t)
 
 	sockDir := t.TempDir()
@@ -551,6 +563,7 @@ func TestInstall_OmitsArgv0WhenEmpty(t *testing.T) {
 // would contradict that. We strip both internal env vars before
 // appending the authoritative value (or none) in runRelay.
 func TestInstall_StripsStaleArgv0FromInheritedEnv(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	wrapperBin := buildFakeWrapperPrintEnv(t)
 
 	sockDir := t.TempDir()
@@ -731,6 +744,7 @@ func buildFakeWrapperPrintEnv(t *testing.T) string {
 // before the wrapper exits.
 
 func TestInstall_RelayForwardFail_NoACK_ResultFailClosed(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	// Build the fake wrapper.
 	wrapperBin := buildFakeWrapperNoACKExit(t)
 
@@ -764,6 +778,7 @@ func TestInstall_RelayForwardFail_NoACK_ResultFailClosed(t *testing.T) {
 }
 
 func TestInstall_RelayServerReject_NoACK_ResultFailClosed(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	wrapperBin := buildFakeWrapperNoACKExit(t)
 
 	notifyDir := t.TempDir()
@@ -813,6 +828,7 @@ func TestInstall_RelayServerReject_NoACK_ResultFailClosed(t *testing.T) {
 }
 
 func TestInstall_RelaySetupStatusTimeout_NoACK_ResultFailClosed(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	wrapperBin := buildFakeWrapperNoACKExit(t)
 
 	origTimeout := notifySetupStatusTimeout
@@ -970,6 +986,7 @@ func buildFakeWrapperNoACKExit(t *testing.T) string {
 // If the Go toolchain is unavailable the test is skipped.
 
 func TestInstall_RelayHappyPath(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	// Build the fake wrapper binary.
 	wrapperBin := buildFakeWrapper(t)
 
@@ -1122,6 +1139,7 @@ func TestAssembleWrapperEnv_DropsWrapperLogFDFromWrapperEnv(t *testing.T) {
 // to the wrapper. XDG_STATE_HOME is redirected to a temp dir so the test
 // owns the state-dir location.
 func TestInstall_PassesWrapperLogFDAndCreatesStateLogFile(t *testing.T) {
+	requireUnfilteredSeccompProcess(t)
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
 

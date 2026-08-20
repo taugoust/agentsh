@@ -25,6 +25,16 @@ import (
 	"github.com/agentsh/agentsh/internal/store/composite"
 )
 
+func shortSocketDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "as-sock-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
 type fakeDetachedSupervisor struct {
 	t       *testing.T
 	session string
@@ -207,7 +217,7 @@ func doApproverRequest(h http.Handler, method, path, body string) *httptest.Resp
 
 func TestDetachedSupervisorsListReportsNetworkEnforcement(t *testing.T) {
 	root := t.TempDir()
-	f := startFakeDetachedSupervisor(t, t.TempDir(), "sess-network")
+	f := startFakeDetachedSupervisor(t, shortSocketDir(t), "sess-network")
 	stateDir := filepath.Join(root, f.session)
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -268,8 +278,8 @@ func TestDetachedSupervisorsListReportsNetworkEnforcement(t *testing.T) {
 
 func TestDetachedSupervisorsAggregateSessionEventsAndForwardAckAnswer(t *testing.T) {
 	root := t.TempDir()
-	f1 := startFakeDetachedSupervisor(t, t.TempDir(), "sess-1")
-	f2 := startFakeDetachedSupervisor(t, t.TempDir(), "sess-2")
+	f1 := startFakeDetachedSupervisor(t, shortSocketDir(t), "sess-1")
+	f2 := startFakeDetachedSupervisor(t, shortSocketDir(t), "sess-2")
 	f1.events = []map[string]any{{"id": "ev-1", "session_id": "sess-1", "title": "one", "acked": false}}
 	f2.events = []map[string]any{{"id": "ev-2", "session_id": "sess-2", "title": "two", "acked": false}}
 	f2.acceptAckID = "ev-2"
@@ -316,7 +326,7 @@ func TestDetachedSupervisorsAggregateSessionEventsAndForwardAckAnswer(t *testing
 
 func TestDetachedSupervisorsAggregateApprovalsAndForwardRawResolution(t *testing.T) {
 	root := t.TempDir()
-	f := startFakeDetachedSupervisor(t, t.TempDir(), "sess-approval")
+	f := startFakeDetachedSupervisor(t, shortSocketDir(t), "sess-approval")
 	f.approvals = []map[string]any{{"id": "apr-1", "session_id": "sess-approval", "kind": "file"}}
 	f.acceptApprovalID = "apr-1"
 	writeDetachedMetadata(t, root, f)
@@ -351,15 +361,15 @@ func TestDetachedSupervisorsAggregateApprovalsAndForwardRawResolution(t *testing
 
 func TestDetachedSupervisorFailuresDoNotBreakGlobalEndpoints(t *testing.T) {
 	root := t.TempDir()
-	good := startFakeDetachedSupervisor(t, t.TempDir(), "sess-good")
+	good := startFakeDetachedSupervisor(t, shortSocketDir(t), "sess-good")
 	good.events = []map[string]any{{"id": "ev-good", "session_id": "sess-good", "title": "good"}}
 	writeDetachedMetadata(t, root, good)
 
-	slow := startFakeDetachedSupervisor(t, t.TempDir(), "sess-slow")
+	slow := startFakeDetachedSupervisor(t, shortSocketDir(t), "sess-slow")
 	slow.delay = 200 * time.Millisecond
 	writeDetachedMetadata(t, root, slow)
 
-	missing := &fakeDetachedSupervisor{session: "sess-missing", sock: filepath.Join(t.TempDir(), "missing.sock")}
+	missing := &fakeDetachedSupervisor{session: "sess-missing", sock: filepath.Join(shortSocketDir(t), "missing.sock")}
 	writeDetachedMetadata(t, root, missing)
 
 	h := newDetachedAggregationTestApp(t, []string{root}, "20ms")

@@ -478,14 +478,14 @@
               pkgs.rsync
             ];
             buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
-              pkgs.fuse3
+              pkgs.fuse
               pkgs.libbpf
               pkgs.libseccomp
               pkgs.linuxHeaders
             ];
             env = {
               CGO_ENABLED = if stdenv.hostPlatform.isLinux then "1" else "0";
-              CGO_CFLAGS = lib.optionalString stdenv.hostPlatform.isLinux "-I${pkgs.fuse3.dev}/include/fuse3 -DFUSE_USE_VERSION=31";
+              CGO_CFLAGS = lib.optionalString stdenv.hostPlatform.isLinux "-I${pkgs.fuse.dev}/include";
             };
 
             buildPhase = ''
