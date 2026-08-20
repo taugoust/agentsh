@@ -31,10 +31,15 @@ func landlockSupported(t *testing.T) bool {
 // SECCOMP_RET_USER_NOTIF (required by agentsh-unixwrap).
 func seccompUserNotifySupported(t *testing.T) bool {
 	t.Helper()
+	wrapperBin := "agentsh-unixwrap"
+	if prebuilt := os.Getenv("AGENTSH_TEST_WRAP_BINARY"); prebuilt != "" {
+		wrapperBin = prebuilt
+	}
 	r := capabilities.CheckAll(&config.Config{
 		Sandbox: config.SandboxConfig{
 			UnixSockets: config.SandboxUnixSocketsConfig{
-				Enabled: func(b bool) *bool { return &b }(true),
+				Enabled:    func(b bool) *bool { return &b }(true),
+				WrapperBin: wrapperBin,
 			},
 		},
 	})
@@ -44,6 +49,9 @@ func seccompUserNotifySupported(t *testing.T) bool {
 // cgoAvailable returns true when cgo is available in the current build
 // environment (needed to compile agentsh-unixwrap).
 func cgoAvailable() bool {
+	if os.Getenv("AGENTSH_TEST_WRAP_BINARY") != "" {
+		return true
+	}
 	// The simplest check: try to find a C compiler. go build with CGO_ENABLED=1
 	// fails fast if cc isn't available, so we can also just attempt the build
 	// and t.Skip on error. This is just an early-out.
@@ -147,6 +155,10 @@ func startTestServerWithLandlockDenyOpts(t *testing.T, denyPath string, extraAll
 		"/dev/null",
 		"/dev/urandom",
 	}
+	if _, err := os.Stat("/nix/store"); err == nil {
+		cfg.Landlock.AllowExecute = append(cfg.Landlock.AllowExecute, "/nix/store")
+		cfg.Landlock.AllowRead = append(cfg.Landlock.AllowRead, "/nix/store")
+	}
 	// Allow network for the wrapper's seccomp-notify handshake with the server.
 	connectTCP := true
 	bindTCP := false
@@ -188,6 +200,17 @@ func startTestServerWithLandlockDenyOpts(t *testing.T, denyPath string, extraAll
 	}
 }
 
+func copyTestExecutable(t *testing.T, source, destination string) {
+	t.Helper()
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatalf("read prebuilt test executable: %v", err)
+	}
+	if err := os.WriteFile(destination, data, 0o755); err != nil {
+		t.Fatalf("write test executable: %v", err)
+	}
+}
+
 // buildShimBinary compiles agentsh-shell-shim with the -tags shimtest flag and
 // returns the path to the binary.  The binary is named "bash" so the shim
 // internally resolves the real shell as "bash.real".
@@ -198,6 +221,10 @@ func buildShimBinary(t *testing.T) string {
 	}
 	binDir := t.TempDir()
 	shimBin := filepath.Join(binDir, "bash")
+	if prebuilt := os.Getenv("AGENTSH_TEST_SHIM_BINARY"); prebuilt != "" {
+		copyTestExecutable(t, prebuilt, shimBin)
+		return shimBin
+	}
 	cmd := exec.Command("go", "build", "-tags", "shimtest", "-o", shimBin,
 		"./cmd/agentsh-shell-shim")
 	cmd.Dir = repoRoot(t)
@@ -216,6 +243,10 @@ func buildWrapBinary(t *testing.T) string {
 	}
 	binDir := t.TempDir()
 	wrapBin := filepath.Join(binDir, "agentsh-unixwrap")
+	if prebuilt := os.Getenv("AGENTSH_TEST_WRAP_BINARY"); prebuilt != "" {
+		copyTestExecutable(t, prebuilt, wrapBin)
+		return wrapBin
+	}
 	cmd := exec.Command("go", "build", "-o", wrapBin, "./cmd/agentsh-unixwrap")
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")

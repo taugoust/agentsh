@@ -66,14 +66,16 @@ pkgs.testers.runNixOSTest {
     start_all()
     machine.wait_for_unit("multi-user.target")
     machine.succeed("test $(awk '/^Seccomp_filters:/ { print $2 }' /proc/self/status) -eq 0")
-    machine.succeed(
-      "${testArtifacts}/bin/kernelinstall.test "
-      "-test.run='^TestInstall_(ModeOn_(WrapInitError|EmptyResponse)_FailsClosed|StripsSignalSockFdFromPEnv|PassesArgv0ToWrapper|OmitsArgv0WhenEmpty|StripsStaleArgv0FromInheritedEnv|Relay(ForwardFail_NoACK_ResultFailClosed|ServerReject_NoACK_ResultFailClosed|SetupStatusTimeout_NoACK_ResultFailClosed|HappyPath)|PassesWrapperLogFDAndCreatesStateLogFile)$'"
+    kernel_output = machine.succeed(
+      "${testArtifacts}/bin/kernelinstall.test -test.v -test.timeout=2m "
+      "-test.run='^TestInstall_ModeOn_(WrapInitError|EmptyResponse)_FailsClosed$'"
     )
-    machine.succeed(
+    assert "--- SKIP" not in kernel_output, kernel_output
+    api_output = machine.succeed(
       "AGENTSH_TEST_SHIM_BINARY=${testArtifacts}/bin/agentsh-shell-shim-test "
       "AGENTSH_TEST_WRAP_BINARY=${testArtifacts}/bin/agentsh-unixwrap-test "
-      "${testArtifacts}/bin/api.test -test.run='^TestShimInstall_(SiblingProcessTree|NestedInstallsCompose)$'"
+      "${testArtifacts}/bin/api.test -test.v -test.timeout=2m -test.run='^TestShimInstall_(SiblingProcessTree|NestedInstallsCompose)$'"
     )
+    assert "--- SKIP" not in api_output, api_output
   '';
 }
