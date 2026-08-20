@@ -16,6 +16,19 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
+func TestAppendEventHonorsContextWhileWriterLockIsHeld(t *testing.T) {
+	s := &Store{}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	err := s.AppendEvent(ctx, types.Event{ID: "blocked", SessionID: "sess", Type: "command_finished", Timestamp: time.Now()})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("AppendEvent error = %v, want deadline exceeded", err)
+	}
+}
+
 func TestAppendAndRotate(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "events.log")

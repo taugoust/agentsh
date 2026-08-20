@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
@@ -181,6 +182,45 @@ func TestPiToolErrorsExposeStableDomainCodes(t *testing.T) {
 		if response.Code != tc.want {
 			t.Fatalf("message=%q code=%q want=%q", tc.message, response.Code, tc.want)
 		}
+	}
+}
+
+func TestCommandTimeoutPiToolExecBashBoundsQueuedRequests(t *testing.T) {
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+	sess, err := sessions.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := sess.AcquireExecution(context.Background(), session.ExecutionAdmission{CommandID: "held"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Release()
+
+	app := newTestApp(t, sessions, store)
+	rr := httptest.NewRecorder()
+	body := `{"command":"printf should-not-run","queue_timeout_ms":20}`
+	started := time.Now()
+	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("queued exec_bash returned after %v", elapsed)
+	}
+	if rr.Code != http.StatusRequestTimeout {
+		t.Fatalf("exec_bash status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	var wire struct {
+		Result struct {
+			CommandStarted bool               `json:"command_started"`
+			Outcome        *types.ExecOutcome `json:"outcome"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.Result.CommandStarted || wire.Result.Outcome == nil || wire.Result.Outcome.Code != "E_QUEUE_TIMEOUT" {
+		t.Fatalf("queue outcome = %+v", wire.Result)
 	}
 }
 

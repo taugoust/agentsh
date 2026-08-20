@@ -249,6 +249,7 @@ Request:
   "command": "nix flake check",
   "cwd": ".",
   "timeout_ms": 120000,
+  "queue_timeout_ms": 30000,
   "stdin": "optional stdin",
   "env": {"KEY": "value"},
   "include_events": "summary",
@@ -280,7 +281,8 @@ Response result:
 
 Implementation notes:
 
-- Runs via the existing session exec path as `bash -lc <command>`.
+- Runs via the existing session exec path as `bash -c <command>`.
+- Parent requests are exclusive and parallel calls therefore queue. Queue admission is bounded to 30 seconds by default; `queue_timeout_ms` may select a shorter positive bound. Expiry returns HTTP 408 with `E_QUEUE_TIMEOUT` and never starts the command.
 - The REST endpoint returns buffered stdout/stderr; it does not stream chunks yet.
 - Uses the session worktree and existing command policy/precheck machinery.
 - Runtime supervision is only as strong as the reported evidence. Strict detached eBPF uses the cgroup/helper setup barrier but startup refuses until all readiness prerequisites are proven; non-strict unsupported features degrade explicitly. Transparent networking and FUSE/overlay remain disabled.

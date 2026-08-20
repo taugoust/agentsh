@@ -13,15 +13,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	storepkg "github.com/agentsh/agentsh/internal/store"
 	"github.com/agentsh/agentsh/pkg/types"
 	_ "modernc.org/sqlite"
 )
 
 // Default async batch settings.
 const (
-	defaultBatchSize     = 64
-	defaultFlushInterval = 50 * time.Millisecond
-	defaultChannelSize   = 4096
+	defaultBatchSize       = 64
+	defaultFlushInterval   = 50 * time.Millisecond
+	defaultChannelSize     = 4096
+	criticalEnqueueTimeout = time.Second
 )
 
 // eventPayload holds pre-extracted fields ready for INSERT, avoiding
@@ -56,6 +58,12 @@ type Store struct {
 	closeOnce sync.Once
 	inflight  sync.WaitGroup // tracks in-flight AppendEvent calls for clean shutdown
 	lastErr   atomic.Value   // stores errHolder for health checks
+
+	// Bulk allow events are best effort under sustained filesystem scans. Keep
+	// their diagnostics aggregated so overload cannot become a second log flood.
+	dropMu       sync.Mutex
+	dropLastLog  time.Time
+	dropSinceLog uint64
 }
 
 // errHolder wraps an error for atomic.Value (which cannot store nil interfaces).
@@ -287,6 +295,34 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
+func bulkAuditEvent(p eventPayload) bool {
+	decision := types.Decision(p.effectiveDecision)
+	if decision != types.DecisionAllow && decision != types.DecisionAudit {
+		return false
+	}
+	return strings.HasPrefix(p.evType, "file_") ||
+		strings.HasPrefix(p.evType, "dir_") ||
+		strings.HasPrefix(p.evType, "symlink_") ||
+		strings.HasPrefix(p.evType, "net_") ||
+		p.evType == "dns_query"
+}
+
+func (s *Store) recordBulkDrop(p eventPayload) {
+	now := time.Now()
+	s.dropMu.Lock()
+	s.dropSinceLog++
+	if !s.dropLastLog.IsZero() && now.Sub(s.dropLastLog) < time.Second {
+		s.dropMu.Unlock()
+		return
+	}
+	dropped := s.dropSinceLog
+	s.dropSinceLog = 0
+	s.dropLastLog = now
+	s.dropMu.Unlock()
+	slog.Warn("sqlite: bulk event channel saturated; dropping allowed audit events",
+		"dropped_since_last_log", dropped, "event_type", p.evType)
+}
+
 func (s *Store) AppendEvent(ctx context.Context, ev types.Event) error {
 	s.closeMu.Lock()
 	if s.closed {
@@ -340,18 +376,26 @@ func (s *Store) AppendEvent(ctx context.Context, ev types.Event) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
-		// Channel full — block briefly to absorb bursts before dropping.
-		select {
-		case s.eventCh <- p:
-			return nil
-		case <-s.done:
-			return fmt.Errorf("store closed")
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(5 * time.Millisecond):
-			slog.Warn("sqlite: event channel full, dropping event", "event_id", ev.ID, "type", ev.Type)
-			return fmt.Errorf("event channel full")
-		}
+	}
+
+	if bulkAuditEvent(p) {
+		s.recordBulkDrop(p)
+		return fmt.Errorf("%w: type %s", storepkg.ErrEventBufferFull, ev.Type)
+	}
+
+	// Lifecycle, denial, approval, and other low-volume events must not compete
+	// on equal terms with an allowed-file scan. Wait for capacity, but impose an
+	// internal bound too because several enforcement emitters intentionally use
+	// context.Background and must never wedge on audit persistence.
+	criticalCtx, cancelCritical := context.WithTimeout(ctx, criticalEnqueueTimeout)
+	defer cancelCritical()
+	select {
+	case s.eventCh <- p:
+		return nil
+	case <-s.done:
+		return fmt.Errorf("store closed")
+	case <-criticalCtx.Done():
+		return criticalCtx.Err()
 	}
 }
 

@@ -2,12 +2,45 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	storepkg "github.com/agentsh/agentsh/internal/store"
 	"github.com/agentsh/agentsh/pkg/types"
 )
+
+func TestAppendEventSaturationDropsBulkButPreservesLifecycle(t *testing.T) {
+	s := &Store{eventCh: make(chan eventPayload, 1), done: make(chan struct{})}
+	s.eventCh <- eventPayload{evType: "file_open"}
+
+	bulk := types.Event{
+		ID: "bulk", SessionID: "sess", Type: "file_open", Timestamp: time.Now(),
+		Policy: &types.PolicyInfo{Decision: types.DecisionAllow, EffectiveDecision: types.DecisionAllow},
+	}
+	started := time.Now()
+	if err := s.AppendEvent(context.Background(), bulk); !errors.Is(err, storepkg.ErrEventBufferFull) {
+		t.Fatalf("bulk saturation error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
+		t.Fatalf("bulk drop blocked for %v", elapsed)
+	}
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		<-s.eventCh
+	}()
+	lifecycle := types.Event{ID: "finished", SessionID: "sess", Type: "command_finished", Timestamp: time.Now()}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := s.AppendEvent(ctx, lifecycle); err != nil {
+		t.Fatalf("lifecycle append under saturation: %v", err)
+	}
+	if got := <-s.eventCh; got.evType != "command_finished" {
+		t.Fatalf("queued event type = %q, want command_finished", got.evType)
+	}
+}
 
 func TestAppendAndQueryEvents(t *testing.T) {
 	dir := t.TempDir()

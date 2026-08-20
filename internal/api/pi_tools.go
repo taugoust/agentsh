@@ -26,6 +26,11 @@ import (
 const (
 	defaultToolReadLimitBytes = 1 * 1024 * 1024
 	maxToolFileBytes          = 4 * 1024 * 1024
+
+	// Parent Pi tool calls are exclusive and models commonly issue several in
+	// parallel. Never let a sibling request remain parked behind a command whose
+	// client cancellation was lost or delayed at the transport boundary.
+	defaultExecBashQueueTimeout = 30 * time.Second
 )
 
 type piToolActor map[string]any
@@ -34,6 +39,7 @@ type execBashToolRequest struct {
 	Command                string            `json:"command"`
 	Cwd                    string            `json:"cwd,omitempty"`
 	TimeoutMS              *int64            `json:"timeout_ms,omitempty"`
+	QueueTimeoutMS         *int64            `json:"queue_timeout_ms,omitempty"`
 	Env                    map[string]string `json:"env,omitempty"`
 	Stdin                  string            `json:"stdin,omitempty"`
 	IncludeEvents          string            `json:"include_events,omitempty"`
@@ -111,6 +117,18 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		}
 		timeout = (time.Duration(*req.TimeoutMS) * time.Millisecond).String()
 	}
+	queueTimeout := defaultExecBashQueueTimeout
+	if req.QueueTimeoutMS != nil {
+		if *req.QueueTimeoutMS <= 0 {
+			writeToolError(w, http.StatusBadRequest, "queue_timeout_ms must be greater than zero")
+			return
+		}
+		if *req.QueueTimeoutMS > int64(defaultExecBashQueueTimeout/time.Millisecond) {
+			writeToolError(w, http.StatusBadRequest, "queue_timeout_ms exceeds the maximum")
+			return
+		}
+		queueTimeout = time.Duration(*req.QueueTimeoutMS) * time.Millisecond
+	}
 	includeEvents := req.IncludeEvents
 	if includeEvents == "" {
 		includeEvents = "summary"
@@ -159,7 +177,7 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		OutputArtifact: outputArtifactRequest,
 		Actor:          map[string]any(req.Actor),
 	}
-	opts := internalExecOptions{}
+	opts := internalExecOptions{queueTimeout: queueTimeout}
 	if claim != nil {
 		opts.executionLaneID = claim.laneID
 		opts.executionLaneLimit = a.cfg.Sessions.Subagents.ExecConcurrency()

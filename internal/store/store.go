@@ -2,9 +2,31 @@ package store
 
 import (
 	"context"
+	"errors"
+	"sync"
+	"time"
 
 	"github.com/agentsh/agentsh/pkg/types"
 )
+
+// ErrEventBufferFull reports best-effort loss of a non-critical bulk audit
+// event. Callers may aggregate this signal instead of logging every dropped
+// filesystem operation.
+var ErrEventBufferFull = errors.New("event buffer full")
+
+func lockMutexContext(ctx context.Context, mu *sync.Mutex) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for !mu.TryLock() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Millisecond):
+		}
+	}
+	return nil
+}
 
 type EventStore interface {
 	AppendEvent(ctx context.Context, ev types.Event) error

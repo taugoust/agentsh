@@ -28,6 +28,7 @@ import (
 	"github.com/agentsh/agentsh/internal/policy/signing"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/signal"
+	storepkg "github.com/agentsh/agentsh/internal/store"
 	"github.com/agentsh/agentsh/internal/workspace/cleanup"
 	"github.com/agentsh/agentsh/internal/workspace/overlay"
 	"github.com/agentsh/agentsh/internal/workspace/shadow"
@@ -2451,11 +2452,18 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	_ = a.store.AppendEvent(terminalCtx, endEv)
 	a.broker.Publish(endEv)
 
-	collected, _ := a.store.QueryEvents(terminalCtx, types.EventQuery{
-		CommandID: cmdID,
-		Limit:     5000,
-		Asc:       true,
-	})
+	var collected []types.Event
+	// A disconnected caller cannot consume event details. More importantly, a
+	// saturated audit database must not turn successful process cancellation
+	// into seconds of flush/query work before the execution lease is released.
+	if terminationReason != types.TerminationReasonCallerCancelled &&
+		terminationReason != types.TerminationReasonCallerDeadline {
+		collected, _ = a.store.QueryEvents(terminalCtx, types.EventQuery{
+			CommandID: cmdID,
+			Limit:     5000,
+			Asc:       true,
+		})
+	}
 	var fileOps, netOps, blockedOps, otherOps []types.Event
 	for _, ev := range collected {
 		isBlocked := false
@@ -2747,7 +2755,7 @@ func (a *App) processIOEvents(eventChan <-chan platform.IOEvent) {
 		persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		err := a.store.AppendEvent(persistCtx, ev)
 		cancel()
-		if err != nil {
+		if err != nil && !errors.Is(err, storepkg.ErrEventBufferFull) {
 			slog.Error("persist fuse io event", "error", err, "event_type", ev.Type, "event_id", ev.ID)
 		}
 		a.broker.Publish(ev)

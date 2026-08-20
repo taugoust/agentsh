@@ -388,6 +388,9 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 	} else if strings.TrimSpace(req.Argv0) != "" && len(cmd.Args) > 0 {
 		cmd.Args[0] = req.Argv0
 	}
+	if tracer == nil {
+		cmd.WaitDelay = commandWaitDelay
+	}
 	cmd.Dir = workdir
 
 	var commandBoundary *types.LinuxCommandJailRequirements
@@ -619,7 +622,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 					handlerCancel()
 					_ = killProcess(cmd.Process.Pid)
 					_ = killProcessGroup(pgid)
-					pipeWG.Wait()
+					waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 					cmd.Process.Release()
 					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid wrapper ready: %w", readyErr)
 				}
@@ -632,7 +635,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				handlerCancel()
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
-				pipeWG.Wait()
+				waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 				cmd.Process.Release()
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid ptrace attach: %w", attachErr)
 			}
@@ -654,7 +657,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
 				_ = waitExit()
-				pipeWG.Wait()
+				waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 				cmd.Process.Release()
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
@@ -673,7 +676,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			}
 			waitDuration := time.Since(waitStart)
 			slog.Debug("exec_stream command finished (hybrid)", "command", req.Command, "pid", cmd.Process.Pid, "exit_code", result.exitCode, "wait_duration_ms", waitDuration.Milliseconds())
-			pipeWG.Wait()
+			waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 			stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 			stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
 			stdoutTrunc, stderrTrunc = stdoutW.truncated, stderrW.truncated
@@ -708,7 +711,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				close(ptraceDone)
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
-				pipeWG.Wait()
+				waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 				cmd.Process.Release()
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace attach: %w", attachErr)
 			}
@@ -717,7 +720,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
 				_ = waitExit()
-				pipeWG.Wait()
+				waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 				cmd.Process.Release()
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
@@ -735,7 +738,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			}
 			waitDuration := time.Since(waitStart)
 			slog.Debug("exec_stream command finished (ptrace)", "command", req.Command, "pid", cmd.Process.Pid, "exit_code", result.exitCode, "wait_duration_ms", waitDuration.Milliseconds())
-			pipeWG.Wait() // drain pipes before reading capture writers
+			waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 			stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 			stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
 			stdoutTrunc, stderrTrunc = stdoutW.truncated, stderrW.truncated

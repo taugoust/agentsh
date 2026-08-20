@@ -588,7 +588,9 @@ func (s *IntegrityStore) AppendEvent(ctx context.Context, ev types.Event) error 
 		return fmt.Errorf("integrity marshal: %w", err)
 	}
 
-	s.mu.Lock()
+	if err := lockMutexContext(ctx, &s.mu); err != nil {
+		return err
+	}
 	defer s.mu.Unlock()
 
 	if s.fatal {

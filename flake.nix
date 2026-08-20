@@ -669,6 +669,8 @@
               go test ./internal/api -run '^(TestCommandTimeout.*|TestCommandOutputArtifactCapture_DirenvEnvironmentPrecedenceAndProtectedFilter)$'
               go test ./internal/approvals -run '^TestRequestApproval_ExtendsCommandTimeout$'
               go test ./internal/policy -run '^(TestPolicyValidateCommandTimeoutMinimum|TestPolicyLoadRejectsSubMillisecondCommandTimeout|TestEngine_Limits)$'
+              go test ./internal/store/sqlite -run '^TestAppendEventSaturationDropsBulkButPreservesLifecycle$'
+              go test ./internal/store/jsonl -run '^TestAppendEventHonorsContextWhileWriterLockIsHeld$'
               runHook postCheck
             '';
             installPhase = ''

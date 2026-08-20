@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -68,6 +71,61 @@ func TestCommandTimeoutKillsProcessGroupStreaming(t *testing.T) {
 		t.Fatalf("stream timeout result = exit %d err %v", exitCode, err)
 	}
 	assertChildDidNotSurvive(t, childFile)
+}
+
+func TestCommandTimeoutEscapedPipeHolderDoesNotBlockWaitForever(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("session escape fixture requires POSIX")
+	}
+	const roleEnv = "AGENTSH_TEST_ESCAPED_PIPE_ROLE"
+	switch os.Getenv(roleEnv) {
+	case "holder":
+		time.Sleep(30 * time.Second)
+		return
+	case "launcher":
+		cmd := exec.Command(os.Args[0], "-test.run=^TestCommandTimeoutEscapedPipeHolderDoesNotBlockWaitForever$")
+		cmd.Env = append(os.Environ(), roleEnv+"=holder")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		if err := cmd.Start(); err != nil {
+			os.Exit(2)
+		}
+		if err := os.WriteFile(os.Getenv("AGENTSH_TEST_ESCAPED_PIPE_PID_FILE"), []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
+			_ = cmd.Process.Kill()
+			os.Exit(3)
+		}
+		time.Sleep(30 * time.Second)
+		return
+	}
+
+	s := newTestSession(t)
+	pidFile := filepath.Join(t.TempDir(), "escaped-pid")
+	req := types.ExecRequest{
+		Command: os.Args[0],
+		Args:    []string{"-test.run=^TestCommandTimeoutEscapedPipeHolderDoesNotBlockWaitForever$"},
+		Timeout: "50ms",
+		Env: map[string]string{
+			roleEnv:                              "launcher",
+			"AGENTSH_TEST_ESCAPED_PIPE_PID_FILE": pidFile,
+		},
+	}
+	started := time.Now()
+	exitCode, _, _, _, _, _, _, _, err := runCommandWithResources(context.Background(), s, "cmd-escaped-pipe", req, &config.Config{}, policy.ResolvedEnvPolicy{}, 0, nil, nil, nil, "", nil)
+	if elapsed := time.Since(started); elapsed > commandWaitDelay+2*time.Second {
+		t.Fatalf("cancellation remained blocked on escaped capture pipe for %v", elapsed)
+	}
+	if exitCode != 124 || !errors.Is(err, errCommandTimeout) {
+		t.Fatalf("timeout result = exit %d err %v", exitCode, err)
+	}
+
+	if raw, readErr := os.ReadFile(pidFile); readErr == nil {
+		if pid, parseErr := strconv.Atoi(string(raw)); parseErr == nil {
+			if proc, findErr := os.FindProcess(pid); findErr == nil {
+				_ = proc.Kill()
+			}
+		}
+	}
 }
 
 func TestCommandTimeoutDoesNotClaimCallerDeadline(t *testing.T) {

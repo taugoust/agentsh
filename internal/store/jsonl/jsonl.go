@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/agentsh/agentsh/pkg/types"
 )
@@ -95,8 +96,24 @@ func NewWithLock(path string, maxSizeMB int, maxBackups int, lockFile *os.File) 
 	}, nil
 }
 
-func (s *Store) AppendEvent(_ context.Context, ev types.Event) error {
-	s.mu.Lock()
+func lockContext(ctx context.Context, mu *sync.Mutex) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for !mu.TryLock() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Millisecond):
+		}
+	}
+	return nil
+}
+
+func (s *Store) AppendEvent(ctx context.Context, ev types.Event) error {
+	if err := lockContext(ctx, &s.mu); err != nil {
+		return err
+	}
 	defer s.mu.Unlock()
 
 	if err := s.rotateIfNeededLocked(); err != nil {
@@ -119,8 +136,10 @@ func (s *Store) AppendEvent(_ context.Context, ev types.Event) error {
 // If truncate succeeds, a normal error is returned and callers may safely
 // roll back chain state. If truncate fails, a PartialWriteError is returned
 // and callers must NOT roll back (partial data may be on disk).
-func (s *Store) WriteRaw(_ context.Context, data []byte) error {
-	s.mu.Lock()
+func (s *Store) WriteRaw(ctx context.Context, data []byte) error {
+	if err := lockContext(ctx, &s.mu); err != nil {
+		return err
+	}
 	defer s.mu.Unlock()
 
 	if err := s.rotateIfNeededLocked(); err != nil {
