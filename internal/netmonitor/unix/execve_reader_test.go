@@ -36,6 +36,16 @@ func TestReadString_Truncation(t *testing.T) {
 	assert.Equal(t, "this-is-a-", result)
 }
 
+func pinArgvMemory(t *testing.T, ptrs []uintptr, argBytes [][]byte) {
+	t.Helper()
+	var pinner runtime.Pinner
+	pinner.Pin(&ptrs[0])
+	for i := range argBytes {
+		pinner.Pin(&argBytes[i][0])
+	}
+	t.Cleanup(pinner.Unpin)
+}
+
 func TestReadArgv(t *testing.T) {
 	// Create a test argv array in our own memory
 	args := []string{"cmd", "-flag", "value"}
@@ -52,6 +62,7 @@ func TestReadArgv(t *testing.T) {
 		ptrs[i] = uintptr(unsafe.Pointer(&argBytes[i][0]))
 	}
 	ptrs[len(args)] = 0 // NULL terminator
+	pinArgvMemory(t, ptrs, argBytes)
 
 	cfg := ExecveReaderConfig{
 		MaxArgc:      1000,
@@ -77,6 +88,7 @@ func TestReadArgv_Truncation_ArgCount(t *testing.T) {
 		ptrs[i] = uintptr(unsafe.Pointer(&argBytes[i][0]))
 	}
 	ptrs[len(args)] = 0
+	pinArgvMemory(t, ptrs, argBytes)
 
 	cfg := ExecveReaderConfig{
 		MaxArgc:      3,
@@ -102,6 +114,7 @@ func TestReadArgv_Truncation_ByteLimit(t *testing.T) {
 		ptrs[i] = uintptr(unsafe.Pointer(&argBytes[i][0]))
 	}
 	ptrs[len(args)] = 0
+	pinArgvMemory(t, ptrs, argBytes)
 
 	cfg := ExecveReaderConfig{
 		MaxArgc:      1000,

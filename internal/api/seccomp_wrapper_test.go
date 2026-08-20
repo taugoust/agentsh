@@ -421,7 +421,7 @@ seccomp:
 	if !result.extraCfg.ptraceSync {
 		t.Fatal("expected ptrace sync when a mitigation-set socket family uses log")
 	}
-	if got := result.wrappedReq.Env["AGENTSH_PTRACE_SYNC"]; got != "1" {
+	if got := result.extraCfg.env["AGENTSH_PTRACE_SYNC"]; got != "1" {
 		t.Fatalf("AGENTSH_PTRACE_SYNC = %q, want 1", got)
 	}
 }

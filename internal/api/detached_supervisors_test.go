@@ -18,6 +18,7 @@ import (
 	"github.com/agentsh/agentsh/internal/auth"
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/detached"
+	"github.com/agentsh/agentsh/internal/detachedtransport"
 	"github.com/agentsh/agentsh/internal/events"
 	"github.com/agentsh/agentsh/internal/metrics"
 	"github.com/agentsh/agentsh/internal/policy"
@@ -44,7 +45,7 @@ type fakeDetachedSupervisor struct {
 	delay   time.Duration
 
 	mu               sync.Mutex
-	approvals        []map[string]any
+	approvals        []approvals.Request
 	events           []map[string]any
 	acceptApprovalID string
 	acceptAckID      string
@@ -59,6 +60,48 @@ func startFakeDetachedSupervisor(t *testing.T, dir, sessionID string) *fakeDetac
 	t.Helper()
 	f := &fakeDetachedSupervisor{t: t, session: sessionID, sock: filepath.Join(dir, sessionID+".sock")}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/detached/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(detached.RuntimeStatus{
+			ProtocolVersion: detached.ProtocolVersion,
+			SessionID:       sessionID,
+			LifecycleState:  detached.LifecycleReady,
+			Generation:      1,
+			IncarnationID:   "test-incarnation",
+			OwnerPID:        os.Getpid(),
+		})
+	})
+	mux.HandleFunc("/api/v1/detached/control/exchange", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		var request detachedtransport.ExchangeRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		ack := request.AckFloor
+		f.mu.Lock()
+		for _, record := range request.Records {
+			ack = record.Sequence
+			if record.ID == f.acceptApprovalID && record.Resolution != nil {
+				f.approvalRaw, _ = json.Marshal(record.Resolution)
+			}
+		}
+		pending := append([]approvals.Request(nil), f.approvals...)
+		f.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(detachedtransport.ExchangeResponse{
+			Version:  detachedtransport.Version,
+			Identity: request.Identity,
+			Ack:      ack,
+			Cursor:   request.Cursor,
+			Pending:  pending,
+		})
+	})
 	mux.HandleFunc("/api/v1/approvals", func(w http.ResponseWriter, r *http.Request) {
 		f.maybeDelay()
 		if r.Method != http.MethodGet {
@@ -161,6 +204,7 @@ func writeDetachedMetadata(t *testing.T, root string, f *fakeDetachedSupervisor)
 		WorkspaceMode:   "shadow",
 		RealWorkspace:   "/work/" + f.session,
 		SupervisorSock:  f.sock,
+		EventToken:      "test-control-token",
 		OwnerPID:        os.Getpid(),
 		Generation:      1,
 		IncarnationID:   "test-incarnation",
@@ -233,6 +277,7 @@ func TestDetachedSupervisorsListReportsNetworkEnforcement(t *testing.T) {
 		WorkspaceMode:   "shadow",
 		RealWorkspace:   "/work/" + f.session,
 		SupervisorSock:  f.sock,
+		EventToken:      "test-control-token",
 		OwnerPID:        os.Getpid(),
 		Generation:      1,
 		IncarnationID:   "test-incarnation",
@@ -331,7 +376,7 @@ func TestDetachedSupervisorsAggregateSessionEventsAndForwardAckAnswer(t *testing
 func TestDetachedSupervisorsAggregateApprovalsAndForwardRawResolution(t *testing.T) {
 	root := t.TempDir()
 	f := startFakeDetachedSupervisor(t, shortSocketDir(t), "sess-approval")
-	f.approvals = []map[string]any{{"id": "apr-1", "session_id": "sess-approval", "kind": "file"}}
+	f.approvals = []approvals.Request{{ID: "apr-1", SessionID: "sess-approval", Kind: "file"}}
 	f.acceptApprovalID = "apr-1"
 	writeDetachedMetadata(t, root, f)
 	h := newDetachedAggregationTestApp(t, []string{root}, "200ms")
