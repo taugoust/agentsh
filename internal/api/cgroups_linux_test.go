@@ -832,8 +832,8 @@ func TestApplyCgroupV2_UsesNethelperProxyGateWhenConfigured(t *testing.T) {
 	sess.SetProxy("http://127.0.0.1:18080", func() error { return nil })
 
 	backend := &apiNethelperBackend{}
-	t.Setenv(nethelper.EnvSocket, startAPITestNethelper(t, backend))
-	t.Setenv(nethelper.EnvHelperInstanceCredential, "instance-credential-test")
+	socket := startAPITestNethelper(t, backend)
+	app.nethelperBinding = newNethelperBindingState(socket, "", "", "instance-credential-test")
 
 	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
 	if err != nil {
@@ -881,7 +881,7 @@ func TestApplyCgroupV2_NethelperFailureFailsClosedWhenEnforced(t *testing.T) {
 	cfg.Sandbox.Network.EBPF.Enabled = true
 	cfg.Sandbox.Network.EBPF.Enforce = true
 	app := newAppWithFakeCgroupManager(t, cfg, cgPath)
-	t.Setenv(nethelper.EnvSocket, filepath.Join(t.TempDir(), "missing.sock"))
+	app.nethelperBinding = newNethelperBindingState(filepath.Join(t.TempDir(), "missing.sock"), "", "", "instance-credential-test")
 
 	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
 	if err == nil {

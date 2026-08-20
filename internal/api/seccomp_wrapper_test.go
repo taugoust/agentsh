@@ -12,7 +12,6 @@ import (
 	"github.com/agentsh/agentsh/internal/events"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
-	"github.com/agentsh/agentsh/internal/workspace/shadow"
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
@@ -422,7 +421,7 @@ seccomp:
 	if !result.extraCfg.ptraceSync {
 		t.Fatal("expected ptrace sync when a mitigation-set socket family uses log")
 	}
-	if got := result.extraCfg.envInject["AGENTSH_PTRACE_SYNC"]; got != "1" {
+	if got := result.wrappedReq.Env["AGENTSH_PTRACE_SYNC"]; got != "1" {
 		t.Fatalf("AGENTSH_PTRACE_SYNC = %q, want 1", got)
 	}
 }
@@ -462,13 +461,11 @@ func TestAppendShadowRuntimeLandlockPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateWithID: %v", err)
 	}
-	s.SetShadow(&shadow.Workspace{
-		ID:   "session-test",
-		Real: "/real/project",
-		Work: "/var/lib/agentsh/workspaces/session-test/work",
-		Home: "/var/lib/agentsh/workspaces/session-test/home",
-		Tmp:  "/var/lib/agentsh/workspaces/session-test/tmp",
-	})
+	s.SetRuntimePaths(
+		"/var/lib/agentsh/workspaces/session-test/home",
+		"/var/lib/agentsh/workspaces/session-test/tmp",
+		nil,
+	)
 
 	cfg := seccompWrapperConfig{
 		AllowRead:  []string{"/existing/read"},

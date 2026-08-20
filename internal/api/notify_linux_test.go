@@ -571,7 +571,7 @@ func TestStartNotifyHandlerConfiguresCompositionWithStartedWrapperPID(t *testing
 	}
 	pipeR.Close()
 
-	const expectedPID = 4242
+	expectedPID := os.Getpid()
 	configuredPID := make(chan int, 1)
 	configuredSetup := make(chan *os.File, 1)
 	sentinel := errors.New("composition configure sentinel")
