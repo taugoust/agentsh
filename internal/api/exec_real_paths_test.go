@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -17,13 +18,17 @@ import (
 )
 
 // pwdCommand returns a command and args that print the working directory,
-// bypassing the session builtin. On Windows uses "cmd /c cd", on POSIX
-// uses "/bin/pwd".
+// bypassing the session builtin. On Windows it uses "cmd /c cd"; on POSIX
+// it resolves pwd from the hermetic test PATH instead of assuming /bin.
 func pwdCommand() (string, []string) {
 	if runtime.GOOS == "windows" {
 		return "cmd", []string{"/c", "cd"}
 	}
-	return "/bin/pwd", nil
+	path, err := exec.LookPath("pwd")
+	if err != nil {
+		return "pwd", nil
+	}
+	return path, nil
 }
 
 func TestResolveWorkingDir_RealPaths(t *testing.T) {

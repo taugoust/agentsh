@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/agentsh/agentsh/internal/pkgcheck"
@@ -17,8 +16,7 @@ import (
 )
 
 func testdataPath(name string) string {
-	_, filename, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(filename), "testdata", name)
+	return filepath.Join("testdata", name)
 }
 
 func TestOSVProvider_Name(t *testing.T) {

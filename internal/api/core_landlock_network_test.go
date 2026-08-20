@@ -92,7 +92,7 @@ func TestSetupSeccompWrapperDefersCompositionUntilStartedWrapperPID(t *testing.T
 	cfg := &config.Config{}
 	cfg.Landlock.Enabled = true
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Network.EBPF.Required = true
 	cfg.Sandbox.Seccomp.Execve.Enabled = true
 	cfg.Sandbox.Seccomp.FileMonitor.Enabled = &enabled
@@ -107,7 +107,7 @@ func TestSetupSeccompWrapperDefersCompositionUntilStartedWrapperPID(t *testing.T
 	sess := &session.Session{Workspace: t.TempDir()}
 	sess.SetCurrentSandboxComposition(bubblewrapCompositionMode)
 
-	result := app.setupSeccompWrapper(types.ExecRequest{Command: "/bin/true"}, "composition-deferred", sess)
+	result := app.setupSeccompWrapper(types.ExecRequest{Command: testNoopExecutable(t)}, "composition-deferred", sess)
 	if result == nil || result.setupErr != nil {
 		t.Fatalf("composition wrapper setup failed before process start: %#v", result)
 	}
@@ -193,7 +193,7 @@ func TestSetupSeccompWrapper_LandlockNetwork_HonorsConfig(t *testing.T) {
 			enabled := true
 			cfg := &config.Config{}
 			cfg.Sandbox.UnixSockets.Enabled = &enabled
-			cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+			cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 			cfg.Landlock.Enabled = true
 			cfg.Landlock.Network.AllowConnectTCP = &connect
 			cfg.Landlock.Network.AllowBindTCP = &bind

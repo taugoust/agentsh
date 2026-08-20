@@ -208,7 +208,7 @@ func TestHandleExecve_SessionlessPIDAttachAllows(t *testing.T) {
 	router, _ := newTestRouter(t, "")
 	res := router.HandleExecve(context.Background(), ptrace.ExecContext{
 		PID:                  4242,
-		Filename:             "/bin/true",
+		Filename:             testNoopExecutable(t),
 		SessionID:            "",
 		SessionlessPIDAttach: true,
 	})
@@ -236,7 +236,7 @@ func TestHandleExecve_NonEmptyUnknownSessionDenies(t *testing.T) {
 	router, _ := newTestRouter(t, "")
 	res := router.HandleExecve(context.Background(), ptrace.ExecContext{
 		PID:                  4242,
-		Filename:             "/bin/true",
+		Filename:             testNoopExecutable(t),
 		SessionID:            "session-that-does-not-exist",
 		SessionlessPIDAttach: false,
 	})

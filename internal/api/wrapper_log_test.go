@@ -89,7 +89,7 @@ func TestStartWrapperLogDrain_ForwardsLinesToLogger(t *testing.T) {
 	var buf syncBuffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
-	done := startWrapperLogDrain(r, logger, "sess-1", "/bin/true")
+	done := startWrapperLogDrain(r, logger, "sess-1", testNoopExecutable(t))
 
 	if _, err := w.WriteString("seccomp: filter loaded fd=8 wait_killable=true\nlandlock: restrictions applied\n"); err != nil {
 		t.Fatalf("write: %v", err)

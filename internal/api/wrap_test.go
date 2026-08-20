@@ -150,7 +150,7 @@ func TestWrapInit_NotifyDirPermissions_Fallback(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrap(t, cfg)
 	app.ptraceTracer = struct{}{}
 
@@ -198,7 +198,7 @@ func TestWrapInit_NotifyDirPermissions_CallerUID(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrap(t, cfg)
 
 	s, err := mgr.Create(t.TempDir(), "default")
@@ -241,7 +241,7 @@ func TestWrapInit_NotifyDirPermissions_ValidationFailure(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrap(t, cfg)
 
 	s, err := mgr.Create(t.TempDir(), "default")
@@ -399,7 +399,7 @@ func TestWrapInit_UnixSocketsDisabledButEBPFRequiresWrapper(t *testing.T) {
 	disabled := false
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &disabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Network.EBPF.Required = true
 	app, mgr := newTestAppForWrap(t, cfg)
 
@@ -924,7 +924,7 @@ func TestWrapInit_SafeToBypassShellShim_SeccompExecveEnabled(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Seccomp.Execve.Enabled = true
 	app, mgr := newTestAppForWrap(t, cfg)
 
@@ -956,7 +956,7 @@ func TestWrapInit_SafeToBypassShellShim_SeccompExecveDisabled(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Seccomp.Execve.Enabled = false
 	app, mgr := newTestAppForWrap(t, cfg)
 
@@ -991,7 +991,7 @@ func TestWrapInit_HTTPResponseIncludesSafeToBypassShellShimFalse(t *testing.T) {
 	cfg.Health.Path = "/health"
 	cfg.Health.ReadinessPath = "/ready"
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Seccomp.Execve.Enabled = false
 	app, mgr := newTestAppForWrap(t, cfg)
 
@@ -1023,7 +1023,7 @@ func TestWrapInit_Success(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
 	// Use /bin/true as a stand-in for the wrapper binary
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrap(t, cfg)
 
 	s, err := mgr.Create(t.TempDir(), "default")
@@ -1044,7 +1044,7 @@ func TestWrapInit_Success(t *testing.T) {
 	}
 
 	// Verify response fields
-	if resp.WrapperBinary != "/bin/true" {
+	if resp.WrapperBinary != testNoopExecutable(t) {
 		t.Errorf("expected wrapper binary /bin/true, got %q", resp.WrapperBinary)
 	}
 	if resp.NotifySocket == "" {
@@ -1069,7 +1069,7 @@ func TestWrapInit_CallerUIDPassedThrough(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrap(t, cfg)
 
 	s, err := mgr.Create(t.TempDir(), "default")
@@ -1101,7 +1101,7 @@ func TestWrapInit_SeccompConfigContent(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Seccomp.Execve.Enabled = true
 	cfg.Sandbox.Seccomp.UnixSocket.Enabled = true
 	cfg.Sandbox.Seccomp.FileMonitor.Enabled = &enabled
@@ -1151,7 +1151,7 @@ func TestWrapInit_ForcesNotifyHandoffWhenEBPFRequiresPreAckCgroup(t *testing.T) 
 	disabled := false
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &disabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Cgroups.Enabled = true
 	cfg.Sandbox.Network.EBPF.Required = true
 	app, mgr := newTestAppForWrap(t, cfg)
@@ -1188,7 +1188,7 @@ func TestWrapInit_SeccompConfigContent_MitigationSetsForwardSocketRules(t *testi
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Seccomp.MitigationSets = []string{"dirtyfrag-conservative"}
 	app, mgr := newTestAppForWrap(t, cfg)
 
@@ -1222,7 +1222,7 @@ func TestWrapInit_SeccompConfigContent_MitigationSetsForwardSyscallsAndFamilies(
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Seccomp.Syscalls.OnBlock = "log"
 	addTestMitigationSet(t, cfg, "api-runtime", `
 version: 1
@@ -1278,7 +1278,7 @@ func TestWrapInit_LongTMPDIR_LongSessionID(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrap(t, cfg)
 
 	// Use a 128-char session ID to exercise the hashing/truncation path
@@ -1326,7 +1326,7 @@ func TestWrapInit_BudgetExhausted(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrap(t, cfg)
 
 	s, err := mgr.Create(t.TempDir(), "default")
@@ -1384,7 +1384,7 @@ func TestWrapInit_SignalFilterEnabled(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrapWithSignalPolicy(t, cfg)
 
 	s, err := mgr.Create(t.TempDir(), "default")
@@ -1425,7 +1425,7 @@ func TestWrapInit_SignalSocketSet(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrapWithSignalPolicy(t, cfg)
 
 	s, err := mgr.Create(t.TempDir(), "default")
@@ -1475,7 +1475,7 @@ func TestWrapInit_SignalSocketPermissions_CallerUID(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	app, mgr := newTestAppForWrapWithSignalPolicy(t, cfg)
 
 	s, err := mgr.Create(t.TempDir(), "default")
@@ -1528,7 +1528,7 @@ func TestWrapInit_NoSignalSocketWithoutPolicy(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	// Use standard helper (no signal policy)
 	app, mgr := newTestAppForWrap(t, cfg)
 
@@ -1599,7 +1599,7 @@ func TestWrapInit_LandlockNetwork_HonorsConfig(t *testing.T) {
 			enabled := true
 			cfg := &config.Config{}
 			cfg.Sandbox.UnixSockets.Enabled = &enabled
-			cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+			cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 			cfg.Sandbox.Seccomp.Execve.Enabled = true
 			cfg.Sandbox.Seccomp.UnixSocket.Enabled = true
 			cfg.Landlock.Enabled = true
@@ -1959,7 +1959,7 @@ func TestWrapInit_AllowExecuteIncludesAgentCommandDir(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Landlock.Enabled = true
 
 	app, mgr := newTestAppForWrap(t, cfg)
@@ -2017,7 +2017,7 @@ func TestWrapInit_AllowExecuteSkipsBareCommandName(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Landlock.Enabled = true
 
 	app, mgr := newTestAppForWrap(t, cfg)

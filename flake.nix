@@ -478,11 +478,15 @@
               pkgs.rsync
             ];
             buildInputs = lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.fuse3
               pkgs.libbpf
               pkgs.libseccomp
               pkgs.linuxHeaders
             ];
-            env.CGO_ENABLED = if stdenv.hostPlatform.isLinux then "1" else "0";
+            env = {
+              CGO_ENABLED = if stdenv.hostPlatform.isLinux then "1" else "0";
+              CGO_CFLAGS = lib.optionalString stdenv.hostPlatform.isLinux "-I${pkgs.fuse3.dev}/include/fuse3 -DFUSE_USE_VERSION=31";
+            };
 
             buildPhase = ''
               runHook preBuild
@@ -495,8 +499,11 @@
             '';
             checkPhase = ''
               runHook preCheck
-              mkdir -p "$TMPDIR/go-tmp"
+              mkdir -p "$TMPDIR/go-tmp" "$TMPDIR/home" "$TMPDIR/test-bin"
               export GOTMPDIR="$TMPDIR/go-tmp"
+              export HOME="$TMPDIR/home"
+              go build -o "$TMPDIR/test-bin/agentsh-unixwrap" ./cmd/agentsh-unixwrap
+              export PATH="$TMPDIR/test-bin:$PATH"
               go test -count=1 -p 2 ./...
               runHook postCheck
             '';

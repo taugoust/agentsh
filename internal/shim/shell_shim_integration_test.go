@@ -394,8 +394,18 @@ func TestShellShim_NonInteractiveBypass_BinaryStdinPassthrough(t *testing.T) {
 	shimPath := filepath.Join(binDir, "sh")
 	copyFile(t, shimBin, shimPath, 0o755)
 
-	// Use a real shell as sh.real.
-	copyFile(t, "/bin/sh", filepath.Join(binDir, "sh.real"), 0o755)
+	// Use a real shell as sh.real and provide the command used by the script in
+	// the deliberately isolated PATH.
+	realShell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Fatalf("find sh: %v", err)
+	}
+	cat, err := exec.LookPath("cat")
+	if err != nil {
+		t.Fatalf("find cat: %v", err)
+	}
+	copyFile(t, realShell, filepath.Join(binDir, "sh.real"), 0o755)
+	copyFile(t, cat, filepath.Join(binDir, "cat"), 0o755)
 
 	// Generate binary data with null bytes and full byte range (simulating a binary/ELF).
 	binaryData := make([]byte, 8192)
@@ -409,7 +419,7 @@ func TestShellShim_NonInteractiveBypass_BinaryStdinPassthrough(t *testing.T) {
 	cmd := exec.Command(shimPath, "-c", "cat")
 	cmd.Stdin = bytes.NewReader(binaryData)
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + binDir,
 		"AGENTSH_SESSION_ID=test-session",
 		// No AGENTSH_BIN — the bypass should exec sh.real directly.
 	}

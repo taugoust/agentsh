@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"testing"
 	"time"
 
@@ -14,8 +13,7 @@ import (
 )
 
 func testdataPath(name string) string {
-	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "testdata", name)
+	return filepath.Join("testdata", name)
 }
 
 func readTestdata(t *testing.T, name string) []byte {

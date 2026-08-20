@@ -4,8 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -109,9 +109,9 @@ func collectToWireReasonCases(t *testing.T, path string) []string {
 
 func callerFile(t *testing.T) string {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(1)
-	if !ok {
-		t.Fatalf("runtime.Caller failed")
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get package working directory: %v", err)
 	}
-	return file
+	return filepath.Join(dir, "loss_reason_exhaustiveness_test.go")
 }

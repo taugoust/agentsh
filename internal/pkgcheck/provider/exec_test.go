@@ -37,8 +37,7 @@ func TestExecProvider_Success(t *testing.T) {
 	}
 
 	script := writeTestScript(t, `#!/bin/sh
-cat <<'RESPONSE'
-{
+printf '%s\n' '{
   "provider": "custom",
   "findings": [
     {
@@ -50,8 +49,7 @@ cat <<'RESPONSE'
     }
   ],
   "metadata": {}
-}
-RESPONSE
+}'
 exit 0
 `)
 
@@ -74,8 +72,7 @@ func TestExecProvider_PartialFailure(t *testing.T) {
 	}
 
 	script := writeTestScript(t, `#!/bin/sh
-cat <<'RESPONSE'
-{
+printf '%s\n' '{
   "provider": "custom",
   "findings": [
     {
@@ -87,9 +84,8 @@ cat <<'RESPONSE'
     }
   ],
   "metadata": {}
-}
-RESPONSE
-echo "warning: some packages could not be checked" >&2
+}'
+printf '%s\n' "warning: some packages could not be checked" >&2
 exit 1
 `)
 

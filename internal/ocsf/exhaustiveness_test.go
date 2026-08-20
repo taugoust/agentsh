@@ -5,8 +5,8 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -297,14 +297,16 @@ func TestExhaustiveness_PendingTypesShrinking(t *testing.T) {
 }
 
 // repoRoot returns the agentsh repo root via go.mod search starting
-// from this file's directory.
+// from the package working directory. runtime.Caller paths may be trimmed
+// to module import paths in reproducible builds and are not filesystem paths.
 func repoRoot(t *testing.T) string {
 	t.Helper()
-	_, file, _, _ := runtime.Caller(0)
-	dir := filepath.Dir(file)
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("repoRoot: get working directory: %v", err)
+	}
 	for {
-		entries, err := filepath.Glob(filepath.Join(dir, "go.mod"))
-		if err == nil && len(entries) == 1 {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)

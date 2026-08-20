@@ -21,9 +21,13 @@ func buildShim(t *testing.T) string {
 
 	tmp := t.TempDir()
 	out := filepath.Join(tmp, "libenvshim.so")
-	// Build from the source directory (same as this test file).
-	_, file, _, _ := runtime.Caller(0)
-	srcDir := filepath.Dir(file)
+	// Go runs the test binary with the package source directory as its working
+	// directory. Do not use runtime.Caller here: reproducible builds trim that
+	// path to the module import path.
+	srcDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get package working directory: %v", err)
+	}
 	cmd := exec.Command("gcc", "-shared", "-fPIC", "envshim.c", "-o", out)
 	cmd.Dir = srcDir
 	cmd.Stdout = os.Stdout
@@ -34,7 +38,16 @@ func buildShim(t *testing.T) string {
 	return out
 }
 
-// Test that when AGENTSH_ENV_BLOCK_ITERATION=1, iterating env (via /usr/bin/env)
+func testEnvCommand(t *testing.T) *exec.Cmd {
+	t.Helper()
+	path, err := exec.LookPath("env")
+	if err != nil {
+		t.Fatalf("find env: %v", err)
+	}
+	return exec.Command(path)
+}
+
+// Test that when AGENTSH_ENV_BLOCK_ITERATION=1, iterating env
 // yields an empty environment.
 func TestEnvShimBlocksIteration(t *testing.T) {
 	if runtime.GOOS != "linux" {
@@ -42,7 +55,7 @@ func TestEnvShimBlocksIteration(t *testing.T) {
 	}
 	shim := buildShim(t)
 
-	cmd := exec.Command("/usr/bin/env")
+	cmd := testEnvCommand(t)
 	cmd.Env = []string{
 		"LD_PRELOAD=" + shim,
 		"AGENTSH_ENV_BLOCK_ITERATION=1",
@@ -68,7 +81,7 @@ func TestEnvShimAllowsIterationWhenNotBlocked(t *testing.T) {
 	}
 	shim := buildShim(t)
 
-	cmd := exec.Command("/usr/bin/env")
+	cmd := testEnvCommand(t)
 	cmd.Env = []string{
 		"LD_PRELOAD=" + shim,
 		"FOO=bar",

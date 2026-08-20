@@ -28,7 +28,7 @@ func TestWrapInit_ShimMode_ListenerExitsAfterOneConnection(t *testing.T) {
 	cfg := &config.Config{}
 	// Use /bin/true as a stable wrapper path so the test runs in any CI
 	// without requiring agentsh-unixwrap to be preinstalled on PATH.
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 
 	app, mgr := newTestAppForWrapWithPermissivePolicy(t, cfg)
 	s, err := mgr.Create(t.TempDir(), "default")
@@ -46,7 +46,7 @@ func TestWrapInit_ShimMode_ListenerExitsAfterOneConnection(t *testing.T) {
 	}
 
 	resp, code, err := app.wrapInitCore(s, s.ID, types.WrapInitRequest{
-		AgentCommand: "/bin/true",
+		AgentCommand: testNoopExecutable(t),
 		Mode:         "shim",
 	})
 	if err != nil || code != 200 {

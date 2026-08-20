@@ -22,7 +22,7 @@ func TestWrapInit_ResponseCarriesEnvInject(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.EnvInject = map[string]string{
 		"BASH_ENV":          "/usr/lib/agentsh/bash_startup.sh",
 		"OTEL_SERVICE_NAME": "agentsh-blaxel",

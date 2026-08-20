@@ -6,12 +6,20 @@ import (
 	"bytes"
 	"context"
 	"net"
+	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func testExecutable(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	require.NoError(t, err)
+	return path
+}
 
 func TestServerHandler_EchoCommand(t *testing.T) {
 	srvConn, stubConn := net.Pipe()
@@ -21,7 +29,7 @@ func TestServerHandler_EchoCommand(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- ServeStubConnection(context.Background(), srvConn, ServeConfig{
-			Command: "/bin/echo",
+			Command: testExecutable(t, "echo"),
 			Args:    []string{"echo", "hello from server"},
 		})
 	}()
@@ -43,7 +51,7 @@ func TestServerHandler_NonZeroExit(t *testing.T) {
 
 	go func() {
 		ServeStubConnection(context.Background(), srvConn, ServeConfig{
-			Command: "/bin/sh",
+			Command: testExecutable(t, "sh"),
 			Args:    []string{"sh", "-c", "exit 42"},
 		})
 	}()
@@ -64,7 +72,7 @@ func TestServerHandler_StdinClose(t *testing.T) {
 	go func() {
 		errCh <- ServeStubConnection(context.Background(), srvConn, ServeConfig{
 			// cat reads stdin until EOF, then exits
-			Command: "/bin/cat",
+			Command: testExecutable(t, "cat"),
 			Args:    []string{"cat"},
 		})
 	}()
@@ -89,7 +97,7 @@ func TestServerHandler_StderrCapture(t *testing.T) {
 
 	go func() {
 		ServeStubConnection(context.Background(), srvConn, ServeConfig{
-			Command: "/bin/sh",
+			Command: testExecutable(t, "sh"),
 			Args:    []string{"sh", "-c", "echo err >&2; echo out"},
 		})
 	}()

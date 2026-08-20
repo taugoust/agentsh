@@ -17,6 +17,17 @@ import (
 	"time"
 )
 
+func testShellPath(t *testing.T) string {
+	t.Helper()
+	for _, name := range []string{"bash", "sh"} {
+		if path, err := exec.LookPath(name); err == nil {
+			return path
+		}
+	}
+	t.Fatal("no test shell found in PATH")
+	return ""
+}
+
 func TestResolveAgentshBin(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell-shim tests require Unix shell")
@@ -267,7 +278,7 @@ func TestShimPipedStdin_PassesBinaryDataThrough(t *testing.T) {
 
 	// Symlink sh.real to /bin/sh so the shim can resolve it.
 	// A copy would lose the macOS code signature seal and get SIGKILL'd.
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -283,7 +294,7 @@ func TestShimPipedStdin_PassesBinaryDataThrough(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "cat")
 	cmd.Stdin = bytes.NewReader(binaryData)
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		// agentsh is not available — if the shim tries to go through agentsh,
 		// it will fail. With the non-interactive bypass, it should exec sh.real directly.
@@ -311,7 +322,7 @@ func TestShimPipedStdin_PreservesExitCode(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -319,7 +330,7 @@ func TestShimPipedStdin_PreservesExitCode(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "exit 42")
 	cmd.Stdin = strings.NewReader("") // piped (non-TTY)
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 	}
 
@@ -343,7 +354,7 @@ func TestShimPipedStdin_StderrNotContaminated(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -351,7 +362,7 @@ func TestShimPipedStdin_StderrNotContaminated(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo hello && echo err >&2")
 	cmd.Stdin = strings.NewReader("")
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 	}
 
@@ -378,7 +389,7 @@ func TestShimConfForce_EnforcesWithoutTTY(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -400,7 +411,7 @@ func TestShimConfForce_EnforcesWithoutTTY(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo hello")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_SERVER=" + srvURL,
@@ -429,7 +440,7 @@ func TestShimConfForce_EnvZeroCannotOverrideConfig(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -449,7 +460,7 @@ func TestShimConfForce_EnvZeroCannotOverrideConfig(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo hello")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_SHIM_FORCE=0",
@@ -479,7 +490,7 @@ func TestShimConfForce_UnreadableConfigFailsClosed(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -499,7 +510,7 @@ func TestShimConfForce_UnreadableConfigFailsClosed(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo hello")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_SERVER=" + srvURL,
@@ -528,7 +539,7 @@ func TestShimReadinessGate_ServerUnreachable_ForceFallsThrough(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -545,7 +556,7 @@ func TestShimReadinessGate_ServerUnreachable_ForceFallsThrough(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo readiness-fallthrough")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_SERVER=http://127.0.0.1:1", // nothing listens on port 1
@@ -575,7 +586,7 @@ func TestShimReadinessGate_NoReadyGate_FailsClosed(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -591,7 +602,7 @@ func TestShimReadinessGate_NoReadyGate_FailsClosed(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo should-not-run")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_SERVER=http://127.0.0.1:1", // unreachable
@@ -620,7 +631,7 @@ func TestShimReadinessGate_ServerReachable_ForceEnforces(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -638,7 +649,7 @@ func TestShimReadinessGate_ServerReachable_ForceEnforces(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo hello")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_SERVER=" + srvURL,
@@ -668,7 +679,7 @@ func TestShimReadinessGate_ServerUnreachable_NonInteractiveBypass(t *testing.T) 
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -676,7 +687,7 @@ func TestShimReadinessGate_ServerUnreachable_NonInteractiveBypass(t *testing.T) 
 	cmd := exec.Command(shimBin, "-c", "echo non-interactive-ok")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SERVER=http://127.0.0.1:1", // unreachable
 	}
@@ -704,7 +715,7 @@ func TestShimReadinessGate_EnvForce_SkipsGate(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -721,7 +732,7 @@ func TestShimReadinessGate_EnvForce_SkipsGate(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo should-not-run")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_SHIM_FORCE=1",
@@ -752,7 +763,7 @@ func TestShimReadinessGate_RemoteUnreachable_FailsClosed(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -769,7 +780,7 @@ func TestShimReadinessGate_RemoteUnreachable_FailsClosed(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo should-not-run")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_SERVER=http://192.0.2.1:18080", // TEST-NET-1: non-routable
@@ -799,7 +810,7 @@ func TestShimReadinessGate_GRPCTransport_ProbesGRPCAddr(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -835,7 +846,7 @@ func TestShimReadinessGate_GRPCTransport_ProbesGRPCAddr(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo should-not-run")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_TRANSPORT=grpc",
@@ -878,7 +889,7 @@ func TestShimReadinessGate_UnixSocketEACCES_FailsClosed(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -904,7 +915,7 @@ func TestShimReadinessGate_UnixSocketEACCES_FailsClosed(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo should-not-run")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 		"AGENTSH_SERVER=unix://" + sockPath,
@@ -1271,7 +1282,7 @@ func TestShimConfValidationError_FailsWithMessage(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1287,7 +1298,7 @@ func TestShimConfValidationError_FailsWithMessage(t *testing.T) {
 	cmd := exec.Command(shimBin, "-c", "echo should-not-run")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=/usr/bin:/bin",
+		"PATH=" + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_CONF_ROOT=" + tmp,
 	}
@@ -1337,7 +1348,7 @@ func TestShimForced_StdinMode_CapturesOutput(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1356,7 +1367,7 @@ exec "$@"
 	cmd := exec.Command(shimBin) // no -c, no args — bare invocation
 	cmd.Stdin = strings.NewReader("echo stdin-mode-works\n")
 	cmd.Env = []string{
-		"PATH=" + tmp + ":/usr/bin:/bin",
+		"PATH=" + tmp + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_FORCE=1",
 		"AGENTSH_BIN=" + fakeAgentsh,
@@ -1385,7 +1396,7 @@ func TestShimForced_StdinMode_MultiLine(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1403,7 +1414,7 @@ exec "$@"
 	cmd := exec.Command(shimBin)
 	cmd.Stdin = strings.NewReader("echo line1\necho line2\n")
 	cmd.Env = []string{
-		"PATH=" + tmp + ":/usr/bin:/bin",
+		"PATH=" + tmp + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_FORCE=1",
 		"AGENTSH_BIN=" + fakeAgentsh,
@@ -1431,7 +1442,7 @@ func TestShimForced_StdinMode_PropagatesExitCode(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1448,7 +1459,7 @@ exec "$@"
 	cmd := exec.Command(shimBin)
 	cmd.Stdin = strings.NewReader("exit 77\n")
 	cmd.Env = []string{
-		"PATH=" + tmp + ":/usr/bin:/bin",
+		"PATH=" + tmp + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_FORCE=1",
 		"AGENTSH_BIN=" + fakeAgentsh,
@@ -1482,7 +1493,7 @@ func TestShimForced_NonPTY_CapturesOutput(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1505,7 +1516,7 @@ exec "$@"
 	cmd := exec.Command(shimBin, "-c", "echo daytona-capture-test && echo stderr-test >&2")
 	cmd.Stdin = strings.NewReader("") // non-TTY
 	cmd.Env = []string{
-		"PATH=" + tmp + ":/usr/bin:/bin",
+		"PATH=" + tmp + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_FORCE=1",
 		"AGENTSH_BIN=" + fakeAgentsh,
@@ -1540,7 +1551,7 @@ func TestShimForced_NonPTY_PropagatesExitCode(t *testing.T) {
 
 	tmp := t.TempDir()
 	shimBin := buildShim(t, tmp)
-	if err := os.Symlink("/bin/sh", filepath.Join(tmp, "sh.real")); err != nil {
+	if err := os.Symlink(testShellPath(t), filepath.Join(tmp, "sh.real")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1557,7 +1568,7 @@ exec "$@"
 	cmd := exec.Command(shimBin, "-c", "exit 42")
 	cmd.Stdin = strings.NewReader("")
 	cmd.Env = []string{
-		"PATH=" + tmp + ":/usr/bin:/bin",
+		"PATH=" + tmp + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"AGENTSH_SESSION_ID=test-session",
 		"AGENTSH_SHIM_FORCE=1",
 		"AGENTSH_BIN=" + fakeAgentsh,

@@ -26,7 +26,7 @@ func TestWrapInit_ShimGuard_OpaqueInterceptionAware(t *testing.T) {
 		enabled := true
 		cfg := &config.Config{}
 		cfg.Sandbox.UnixSockets.Enabled = &enabled
-		cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+		cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 		cfg.Sandbox.Seccomp.Execve.Enabled = execve
 		app, mgr := newTestAppForWrap(t, cfg)
 		p := &policy.Policy{

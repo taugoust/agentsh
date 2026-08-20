@@ -53,7 +53,7 @@ func TestWrapInit_ShimMode_PopulatesWrapperBinary(t *testing.T) {
 	cfg := &config.Config{}
 	// Use /bin/true as a stable wrapper path so the test runs in any CI
 	// without requiring agentsh-unixwrap to be preinstalled on PATH.
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.UnixSockets.Enabled = func(b bool) *bool { return &b }(true)
 
 	app, mgr := newTestAppForWrapWithPermissivePolicy(t, cfg)
@@ -89,7 +89,7 @@ func TestWrapInit_ShimMode_PopulatesWrapperBinary(t *testing.T) {
 // does not predict.
 func TestWrapInit_ShimMode_NoFeaturesConfigured(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	// Note: NOT setting UnixSockets.Enabled, Landlock.Enabled, or any
 	// Seccomp feature flags. This is the "operator forgot to enable
 	// anything" config — the server still hands back a populated wrapper

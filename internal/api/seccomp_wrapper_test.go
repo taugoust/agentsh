@@ -136,7 +136,7 @@ func TestSetupSeccompWrapper_Enabled(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
 	// Use a wrapper binary that exists - /bin/true is a good test stand-in
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 
 	app := newTestAppForSeccomp(t, cfg)
 
@@ -148,7 +148,7 @@ func TestSetupSeccompWrapper_Enabled(t *testing.T) {
 	result := app.setupSeccompWrapper(req, "test-session", nil)
 
 	// Should wrap the command
-	if result.wrappedReq.Command != "/bin/true" {
+	if result.wrappedReq.Command != testNoopExecutable(t) {
 		t.Errorf("expected command to be wrapper binary, got %q", result.wrappedReq.Command)
 	}
 
@@ -203,7 +203,7 @@ func TestSetupSeccompWrapper_PreservesEnv(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 
 	app := newTestAppForSeccomp(t, cfg)
 
@@ -243,7 +243,7 @@ func TestSetupSeccompWrapper_FileMonitorDefaults(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Seccomp.FileMonitor.Enabled = &enabled
 	cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE = &enabled
 
@@ -328,7 +328,7 @@ func TestSetupSeccompWrapper_WriteOnlyOpensForwarded(t *testing.T) {
 	disabled := false
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 	cfg.Sandbox.Seccomp.FileMonitor.Enabled = &enabled
 	cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE = &enabled
 	cfg.Sandbox.Seccomp.FileMonitor.InterceptMetadata = &disabled
@@ -369,7 +369,7 @@ func TestSetupSeccompWrapper_PtraceSync_MitigationSetFamilyLog(t *testing.T) {
 	enabled := true
 	cfg := &config.Config{}
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.UnixSockets.WrapperBin = "/bin/true"
+	cfg.Sandbox.UnixSockets.WrapperBin = testNoopExecutable(t)
 
 	app := newTestAppForSeccomp(t, cfg)
 	addTestMitigationSet(t, cfg, "ptrace-sync-family", `
