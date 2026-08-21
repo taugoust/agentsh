@@ -98,6 +98,34 @@ func TestValidateSpawnSubagentRequestModes(t *testing.T) {
 	}
 }
 
+func TestValidateSpawnSubagentRequestInheritsParentCwd(t *testing.T) {
+	original := []subagentItemRequest{
+		{Task: "inherited"},
+		{Task: "relative", Cwd: "rtl/package"},
+		{Task: "absolute", Cwd: "/workspace/other"},
+	}
+	_, items, err := validateSpawnSubagentRequest(spawnSubagentToolRequest{
+		Cwd:   "/workspace/project",
+		Tasks: original,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"/workspace/project",
+		"/workspace/project/rtl/package",
+		"/workspace/other",
+	}
+	for i := range items {
+		if items[i].Cwd != want[i] {
+			t.Errorf("item %d cwd = %q, want %q", i, items[i].Cwd, want[i])
+		}
+	}
+	if original[0].Cwd != "" || original[1].Cwd != "rtl/package" {
+		t.Fatalf("request items were mutated: %+v", original)
+	}
+}
+
 func TestValidateSpawnSubagentRequestParallelLimit(t *testing.T) {
 	items := make([]subagentItemRequest, maxSubagentParallelTasks+1)
 	for i := range items {

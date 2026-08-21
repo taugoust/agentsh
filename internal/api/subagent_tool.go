@@ -407,6 +407,7 @@ func validateSpawnSubagentRequest(req spawnSubagentToolRequest) (string, []subag
 		items = req.Chain
 		mode = "chain"
 	}
+	items = inheritSubagentRequestCwd(items, req.Cwd)
 	if mode == "parallel" && len(items) > maxSubagentParallelTasks {
 		return "", nil, fmt.Errorf("too many parallel tasks (%d), max is %d", len(items), maxSubagentParallelTasks)
 	}
@@ -416,6 +417,22 @@ func validateSpawnSubagentRequest(req spawnSubagentToolRequest) (string, []subag
 		}
 	}
 	return mode, items, nil
+}
+
+func inheritSubagentRequestCwd(items []subagentItemRequest, requestCwd string) []subagentItemRequest {
+	inherited := make([]subagentItemRequest, len(items))
+	copy(inherited, items)
+	for i := range inherited {
+		itemCwd := strings.TrimSpace(inherited[i].Cwd)
+		if itemCwd == "" {
+			inherited[i].Cwd = requestCwd
+			continue
+		}
+		if requestCwd != "" && !strings.HasPrefix(itemCwd, "/") && !filepath.IsAbs(itemCwd) {
+			inherited[i].Cwd = filepath.ToSlash(filepath.Clean(filepath.Join(filepath.FromSlash(requestCwd), filepath.FromSlash(itemCwd))))
+		}
+	}
+	return inherited
 }
 
 func validateSubagentItem(item subagentItemRequest) error {
