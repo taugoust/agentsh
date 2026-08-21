@@ -967,18 +967,9 @@ in
       }) cfg.nethelper.instances
     );
 
-    environment.systemPackages = [ cfg.package ];
-
-    # Both the root supervisor and client-spawned wrappers must create private
-    # children here. Deny directory listing/inotify discovery while permitting
-    # randomized mkdir, and use the sticky bit to protect distinct users.
-    systemd = {
-      tmpfiles.rules = lib.optional (
-        cfg.sandbox.composition.bubblewrap.enable
-        && cfg.sandbox.composition.bubblewrap.scratchRoot != "auto"
-      ) "d ${cfg.sandbox.composition.bubblewrap.scratchRoot} 1733 root root -";
-
-      environment.etc = {
+    environment = {
+      systemPackages = [ cfg.package ];
+      etc = {
         "agentsh/config.yml".source = configFile;
         "agentsh/policies".source = cfg.policies.source;
       }
@@ -992,6 +983,16 @@ in
           '';
         };
       };
+    };
+
+    # Both the root supervisor and client-spawned wrappers must create private
+    # children here. Deny directory listing/inotify discovery while permitting
+    # randomized mkdir, and use the sticky bit to protect distinct users.
+    systemd = {
+      tmpfiles.rules = lib.optional (
+        cfg.sandbox.composition.bubblewrap.enable
+        && cfg.sandbox.composition.bubblewrap.scratchRoot != "auto"
+      ) "d ${cfg.sandbox.composition.bubblewrap.scratchRoot} 1733 root root -";
 
       services = {
         agentsh = {
