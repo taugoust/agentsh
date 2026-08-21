@@ -3,8 +3,10 @@
 package guestcontrol
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -38,6 +40,65 @@ func ListenVSock(port uint32) (*Server, error) {
 	}
 	ok = true
 	return &Server{fd: fd, localCID: localCID, port: port}, nil
+}
+
+func dialVSock(ctx context.Context, cid, port uint32) (controlConn, error) {
+	if cid < 3 || cid == ^uint32(0) || port < 1024 || port > 65535 {
+		return nil, fmt.Errorf("guest control VSOCK endpoint is invalid")
+	}
+	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM|unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK, 0)
+	if err != nil {
+		return nil, fmt.Errorf("create guest control VSOCK client: %w", err)
+	}
+	connected := false
+	defer func() {
+		if !connected {
+			_ = unix.Close(fd)
+		}
+	}()
+	address := &unix.SockaddrVM{CID: cid, Port: port}
+	if err := unix.Connect(fd, address); err != nil && err != unix.EINPROGRESS {
+		return nil, fmt.Errorf("connect guest control VSOCK: %w", err)
+	} else if err == unix.EINPROGRESS {
+		for {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			timeout := 100
+			if deadline, ok := ctx.Deadline(); ok {
+				remaining := time.Until(deadline)
+				if remaining <= 0 {
+					return nil, context.DeadlineExceeded
+				}
+				if millis := int(remaining.Milliseconds()); millis < timeout {
+					timeout = max(millis, 1)
+				}
+			}
+			ready, pollErr := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}}, timeout)
+			if pollErr == unix.EINTR {
+				continue
+			}
+			if pollErr != nil {
+				return nil, fmt.Errorf("poll guest control VSOCK: %w", pollErr)
+			}
+			if ready == 0 {
+				continue
+			}
+			connectErr, socketErr := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_ERROR)
+			if socketErr != nil {
+				return nil, fmt.Errorf("inspect guest control VSOCK connection: %w", socketErr)
+			}
+			if connectErr != 0 {
+				return nil, fmt.Errorf("connect guest control VSOCK: %w", unix.Errno(connectErr))
+			}
+			break
+		}
+	}
+	if err := unix.SetNonblock(fd, false); err != nil {
+		return nil, fmt.Errorf("configure guest control VSOCK: %w", err)
+	}
+	connected = true
+	return os.NewFile(uintptr(fd), "agentsh-host-control-vsock"), nil
 }
 
 func acceptVSock(fd int) (*os.File, error) {
