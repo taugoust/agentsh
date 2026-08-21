@@ -178,47 +178,6 @@ You do **not** need to start `agentsh server` yourself.
 
 ---
 
-## Use in Docker (with the shell shim)
-
-See `Dockerfile.example` for a minimal Debian-based image.
-
-Inside the image, install a release package (or copy your build), then activate the shim:
-
-```bash
-agentsh shim install-shell \
-  --root / \
-  --shim /usr/bin/agentsh-shell-shim \
-  --bash \
-  --i-understand-this-modifies-the-host
-```
-
-Point the shim at your server (sidecar or host):
-
-```dockerfile
-ENV AGENTSH_SERVER=http://127.0.0.1:18080
-```
-
-Now any `/bin/sh -c ...` or `/bin/bash -lc ...` in the container routes through agentsh.
-
-### Non-interactive enforcement
-
-By default, the shim bypasses policy when stdin is not a TTY (preserving binary data for piped commands). On platforms where commands are always non-interactive but still need enforcement (e.g., exe.dev, sandbox APIs), add `--force`:
-
-```bash
-agentsh shim install-shell \
-  --root / \
-  --shim /usr/bin/agentsh-shell-shim \
-  --bash \
-  --force \
-  --i-understand-this-modifies-the-host
-```
-
-This writes `/etc/agentsh/shim.conf` with `force=true`, which the shim reads at startup. The config file works regardless of how the shell is spawned (unlike env vars or profile scripts). `AGENTSH_SHIM_FORCE=1` in the process environment achieves the same effect per-process.
-
-**Recommended pattern:** run agentsh as a sidecar (or PID 1) in the same pod/service and share a workspace volume; the shim ensures every shell hop stays under policy.
-
----
-
 ## Policy model
 
 ### Decisions
@@ -743,8 +702,6 @@ Ready-to-use snippets for configuring AI coding assistants to use agentsh:
 * **[Cursor](examples/cursor/)** - Cursor rules for agentsh integration
 * **[AGENTS.md](examples/agents/)** - Generic AGENTS.md snippet (works with multiple AI tools)
 
-> **Note:** These examples are for local development scenarios where running the AI agent inside a container isn't practical. For production or CI/CD environments, prefer running agents in containers with the shell shim installed—see [Use in Docker](#use-in-docker-with-the-shell-shim).
-
 ---
 
 ## References
@@ -754,7 +711,6 @@ Ready-to-use snippets for configuring AI coding assistants to use agentsh:
 * **External KMS:** [`SECURITY.md#external-kms-integration`](SECURITY.md#external-kms-integration) - AWS KMS, Azure Key Vault, HashiCorp Vault, GCP Cloud KMS for audit integrity keys
 * Config template: [`configs/server-config.yaml`](configs/server-config.yaml)
 * Default policy: [`configs/policies/default.yaml`](configs/policies/default.yaml)
-* Example Dockerfile (with shim): [`Dockerfile.example`](Dockerfile.example)
 * **Policy documentation:** [`docs/operations/policies.md`](docs/operations/policies.md) - policy variables, signal rules, network redirect
 * **Database access control:** [`docs/agentsh-db-access-spec.md`](docs/agentsh-db-access-spec.md) - Postgres-only database enforcement scope, policy semantics, redirect behavior, and roadmap
 * **Command policies cookbook:** [`docs/cookbook/command-policies.md`](docs/cookbook/command-policies.md) - how to allow a new binary, when to use `wrap` instead of `exec`, and how to debug a denial

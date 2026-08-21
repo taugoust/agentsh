@@ -256,7 +256,7 @@ Lima/virtiofs   █████████████████████�
 | Use Case | Recommended Platform | Security | Notes |
 |----------|---------------------|:--------:|-------|
 | Production - Maximum Security | Linux Native | 100% | Full isolation, all features |
-| Production - AWS Fargate | Linux (ptrace mode) | 95% | Full enforcement with steering via ptrace + E2E tested on Fargate |
+| Production - AWS Fargate | Linux (ptrace mode) | 95% | Full enforcement with steering via ptrace; validate against the target task environment |
 | Production - Windows Server | Windows WSL2 | 100% | Full Linux security in VM |
 | Production - macOS | macOS + Lima (inside VM) | 100% | Run agentsh inside Lima = native Linux |
 | Enterprise Security Product | macOS ESF+NE | 90% | Alpha — install via Homebrew cask |
@@ -345,7 +345,7 @@ See [Known Limitations - macOS + Lima](#macos--lima) for detailed comparison.
 - Requires root or CAP_SYS_ADMIN for namespaces
 - eBPF requires kernel 5.x+ for full features
 - **Signal interception**: Full blocking and redirect via seccomp user-notify
-- **ptrace mode**: Available in restricted containers (e.g. AWS Fargate) with `SYS_PTRACE` capability; provides full syscall enforcement with steering (exec/file/network redirect, DNS redirect, SNI rewrite, TracerPid masking). E2E tested on Fargate with CI integration.
+- **ptrace mode**: Available in restricted containers (e.g. AWS Fargate) with `SYS_PTRACE` capability; provides syscall enforcement with steering (exec/file/network redirect, DNS redirect, SNI rewrite, TracerPid masking). Validate availability and behavior in the target environment.
 
 ### macOS ESF+NE (Alpha)
 - **Alpha status** - functional end-to-end but expect rough edges and breaking changes

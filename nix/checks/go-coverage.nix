@@ -10,7 +10,7 @@ lib.optionalAttrs (stdenv.hostPlatform.system == "x86_64-linux") {
     pname = "agentsh-go-coverage-baseline";
     version = "unstable-2026-06-17";
     src = self;
-    vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+    vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
 
     nativeBuildInputs = [
       pkgs.diffutils

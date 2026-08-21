@@ -2405,55 +2405,7 @@ sudo systemctl enable agentsh
 sudo systemctl start agentsh
 ```
 
-### 16.3 Docker Deployment
-
-agentsh is available as a Docker image that works on Linux, Windows (Docker Desktop), and macOS (Docker Desktop, Colima, OrbStack).
-
-```dockerfile
-FROM ubuntu:24.04
-
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    fuse3 \
-    libfuse3-dev \
-    iptables \
-    iproute2 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy agentsh binary
-COPY agentsh /usr/local/bin/
-
-# Copy configuration
-COPY config.yaml /etc/agentsh/
-COPY policies/ /etc/agentsh/policies/
-
-# Create directories
-RUN mkdir -p /var/lib/agentsh /var/log/agentsh /var/run/agentsh
-
-# Need privileged mode for namespaces
-# Or specific capabilities: CAP_SYS_ADMIN, CAP_NET_ADMIN
-EXPOSE 18080 9090
-
-CMD ["agentsh", "server"]
-```
-
-```bash
-# Run with required capabilities (works on all platforms with Docker)
-docker run -d \
-  --name agentsh \
-  --cap-add SYS_ADMIN \
-  --cap-add NET_ADMIN \
-  --device /dev/fuse \
-  --security-opt apparmor=unconfined \
-  -p 18080:18080 \
-  -p 9090:9090 \
-  -v /path/to/workspaces:/workspaces \
-  ghcr.io/agentsh/agentsh:latest
-```
-
-**See [docker-compose.yml](docker-compose.yml) for a complete Docker Compose configuration.**
-
-### 16.4 Kubernetes Deployment
+### 16.3 Kubernetes Deployment
 
 ```yaml
 apiVersion: apps/v1

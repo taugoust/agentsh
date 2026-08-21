@@ -45,14 +45,14 @@ The agentsh server process in the sidecar runs the ptrace tracer loop, which att
 
 ```
 cmd/
-  seccomp-probe/               ← Seccomp availability probe (Phase 4c)
+  seccomp-probe/               ← Seccomp availability probe
     main.go                    ← Linux: trivial BPF RET_ALLOW probe
     main_stub.go               ← Non-Linux stub for cross-platform builds
 internal/
   ptrace/                      ← NEW package
     tracer.go                  ← Core ptrace event loop + ReadyFile sentinel support
     tracer_test.go
-    ready_file_test.go         ← Sentinel file integration tests (Phase 4c)
+    ready_file_test.go         ← Sentinel file integration tests
     attach.go                  ← Process discovery and attachment
     attach_test.go
     syscall_handler.go         ← Syscall dispatch (exec, file, net, signal)
@@ -70,15 +70,6 @@ internal/
     benchmark_test.go          ← Overhead benchmarks (Phase 3)
     integration_test.go        ← Integration tests requiring SYS_PTRACE
     doc.go
-  integration/
-    fargate/                   ← Fargate E2E test infrastructure (Phase 4c)
-      doc.go                   ← Package docs + env var reference
-      task_definition.go       ← ECS task definition builder
-      task_definition_test.go
-      log_parser.go            ← Workload marker + audit event parser
-      log_parser_test.go
-      helpers.go               ← AWS client ops (runTask, waitForTask, fetchLogs, etc.)
-      fargate_test.go          ← TestFargateE2E orchestration
   capabilities/
     check.go                   ← Add ptrace availability check
     security_caps.go           ← Add ModePtrace, update SelectMode()
@@ -984,7 +975,7 @@ Legacy (amd64): `open` (2), `unlink` (87), `rename` (82), `mkdir` (83), `rmdir` 
 
 ### 8.1 Target Discovery
 
-Phase 1 supports two discovery modes only. Automatic sidecar discovery is deferred to Phase 3 after real Fargate E2E testing.
+Phase 1 supports two discovery modes only. Automatic sidecar discovery remains deferred pending environment-specific process-tree validation.
 
 **Why no auto-discovery in Phase 1:** On ECS Fargate with `pidMode: "task"`, PID 1 is the AWS `pause` container — not the workload. On EKS, PID 1 is the Kubernetes `pause` container. The tracer cannot assume that "find PID 1" or "find a non-self process with PPid ≤ 1" returns the workload. Getting this wrong means attaching to the pause container or to nothing.
 
@@ -1040,7 +1031,7 @@ func (t *Tracer) discoverTarget() (int, error) {
 
 **Mode: `sidecar` (Phase 3 — deferred)**
 
-Automatic `/proc` enumeration and process identification. Requires real Fargate E2E testing to understand the actual process tree layout, handle the `pause` container correctly, and deal with multi-container tasks where multiple workload containers may be present. Not safe to ship without that testing.
+Automatic `/proc` enumeration and process identification requires environment-specific validation of process-tree layout, pause processes, and tasks with multiple workload containers. It is not safe to ship without that validation.
 
 ### 8.2 Attachment Sequence
 
@@ -1715,27 +1706,6 @@ All integration tests require `SYS_PTRACE` capability and are guarded by build t
 - **prefilter_test.go:** Verify only interesting syscalls cause stops
 - **sidecar_test.go:** Two-process test simulating sidecar PID namespace sharing
 
-### 13.3 Dockerfile for CI
-
-```dockerfile
-FROM debian:bookworm-slim
-# Tests need SYS_PTRACE — run with:
-#   docker run --cap-add SYS_PTRACE --security-opt seccomp=unconfined
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates gcc libc6-dev make curl
-COPY . /src
-WORKDIR /src
-RUN go test -tags "integration,ptrace" -v ./internal/ptrace/...
-```
-
-### 13.4 Fargate E2E Test
-
-A separate integration test deploys the full sidecar task definition to Fargate and validates:
-1. agentsh detects ptrace mode
-2. Workload process is traced
-3. Policy deny on blocked command works
-4. Audit events are emitted
-5. LLM proxy functions
 
 ---
 
@@ -1781,7 +1751,7 @@ A separate integration test deploys the full sidecar task definition to Fargate 
 - Graceful degradation: parked tracees cleaned up on exit, `handleResumeRequest` guards against dead tracees, ESRCH handling in `allowSyscall`/`denySyscall` triggers `handleExit` cleanup instead of SIGKILL fallback
 - Overhead benchmarks behind `//go:build integration && linux`: `BenchmarkExecOverhead`, `BenchmarkFileIOOverhead` with synchronized attach verification
 
-**Deliverable:** Production-hardened ptrace backend with timeout enforcement, operational metrics, and graceful handling of tracee exit races. Sidecar auto-discovery and Fargate E2E deferred to Phase 4c (requires AWS access).
+**Deliverable:** Production-hardened ptrace backend with timeout enforcement, operational metrics, and graceful handling of tracee exit races. Sidecar auto-discovery remains deferred pending environment-specific validation.
 
 ### Phase 4a: Core Steering Engine ✓
 
@@ -1808,22 +1778,9 @@ Phase 4 brings ptrace mode to full feature parity with seccomp+FUSE for redirect
 
 **Deliverable:** Complete steering support for the common cases. Honest about coverage gaps in DNS and TLS interception.
 
-### Phase 4c: Fargate E2E Test Infrastructure ✓
+### Phase 4c: Sidecar Discovery and EKS Fargate (Planned)
 
-- Tracer-ready sentinel file support (`TracerConfig.ReadyFile`) — tracer writes `/shared/tracer-ready` after successful attach, with 3-attempt retry
-- Seccomp availability probe binary (`cmd/seccomp-probe/`) — tests whether `seccomp(SECCOMP_SET_MODE_FILTER)` is available in the container runtime
-- Fargate E2E test workload (`Dockerfile.fargate-workload`, `scripts/fargate-workload-test.sh`) — positive/negative controls for exec, file, network enforcement
-- ECS task definition builder (`internal/integration/fargate/task_definition.go`) — builds multi-container Fargate task with PID namespace sharing, SYS_PTRACE, shared volume
-- Log parser (`internal/integration/fargate/log_parser.go`) — quote-aware logfmt parser for workload markers and agentsh audit events, with escape and tab handling
-- Test harness (`internal/integration/fargate/fargate_test.go`, `helpers.go`) — full E2E orchestration with deadline-driven CloudWatch log retry and per-phase timeouts
-- CI integration (`.github/workflows/ci.yml` `fargate-e2e` job) — gated on `vars.AWS_ECS_CLUSTER`, `continue-on-error: true`, runs after unit + integration tests
-- Setup documentation (`docs/fargate-e2e-setup.md`) — AWS resource provisioning and GitHub Actions configuration
-
-**Deliverable:** Complete Fargate E2E test infrastructure. Tests validate policy enforcement end-to-end on real Fargate tasks with both workload exit markers and agentsh audit event assertions.
-
-### Phase 4d: Sidecar Discovery and EKS Fargate (Planned)
-
-- Sidecar auto-discovery (`sidecar` attach mode) based on real Fargate E2E testing
+- Sidecar auto-discovery (`sidecar` attach mode) based on environment-specific process-tree validation
 - Research spike: seccomp prefilter injection for `pid`/`sidecar` mode (via syscall injection)
 - EKS Fargate support (pending AWS `SYS_PTRACE` for EKS) (§20)
 
@@ -2784,7 +2741,6 @@ The following matrix describes what ptrace mode can and cannot do at each phase,
 
 **Phase 4a-4b (with steering):** Near-complete feature parity with full mode for the common cases that matter to AI agent security: exec redirect, file redirect, connect redirect, DNS redirect, SNI rewrite, TracerPid masking. DNS and SNI rewriting are best-effort and should not be relied on as primary controls — use the LLM proxy for API routing instead.
 
-**Phase 4c (Fargate E2E):** Full test infrastructure validates enforcement end-to-end on real Fargate tasks. CI integration with gated job, positive/negative controls, and dual assertion (workload markers + agentsh audit events).
 
 **For the target use case** (AI agents running untrusted code from packages, repos, and MCP tools on Fargate): ptrace mode provides equivalent practical protection to full mode. The evasion gap (TracerPid, timing) requires a targeted adversary who knows agentsh is running and has built anti-ptrace checks — this is not the threat model agentsh is designed for. Supply chain attacks, MCP exfiltration, and agent prompt injection do not check for ptrace.
 

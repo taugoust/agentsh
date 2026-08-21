@@ -1,5 +1,5 @@
 .PHONY: build build-shim test lint clean proto ebpf
-.PHONY: smoke ptrace-test dns-test seccomp-probe bench
+.PHONY: smoke seccomp-probe
 .PHONY: completions package-snapshot package-release
 .PHONY: build-macos-enterprise build-macos-go build-swift assemble-bundle sign-bundle
 .PHONY: build-driver build-driver-debug install-driver uninstall-driver build-windows-full
@@ -42,20 +42,9 @@ test:
 smoke:
 	bash scripts/smoke.sh
 
-ptrace-test:
-	docker build -f Dockerfile.ptrace-test -t agentsh-ptrace-test .
-	docker run --rm --cap-add SYS_PTRACE agentsh-ptrace-test
-
-dns-test:
-	docker build -f Dockerfile.dns-test -t agentsh-dns-test .
-	docker run --rm --cap-add SYS_PTRACE agentsh-dns-test
-
 seccomp-probe:
 	mkdir -p build
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o build/seccomp-probe ./cmd/seccomp-probe/
-
-bench:
-	bash scripts/bench-modes.sh
 
 lint:
 	@echo "No linter configured"

@@ -49,7 +49,7 @@
             inherit version;
 
             src = self;
-            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
 
             subPackages = [
               "cmd/agentsh"
@@ -392,7 +392,7 @@
                 pname = "agentsh-linux-amd64-compile";
                 version = "unstable-2026-06-17";
                 src = self;
-                vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+                vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
                 subPackages = [ "internal/netmonitor/unix" ];
                 nativeBuildInputs = [
                   pkgs.gnumake
@@ -480,7 +480,7 @@
             pname = "agentsh-approval-resolution-race-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
 
             env = {
               CGO_ENABLED = "0";
@@ -510,7 +510,7 @@
             pname = "agentsh-go-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.diffutils
@@ -674,7 +674,7 @@
             pname = "agentsh-command-timeout-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.gnumake
@@ -722,7 +722,7 @@
             pname = "agentsh-api-darwin-cross-compile-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
 
             env = {
               CGO_ENABLED = "0";
@@ -748,7 +748,7 @@
             pname = "agentsh-workspace-runtime-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
             nativeBuildInputs = [
               pkgs.diffutils
               pkgs.rsync
@@ -783,7 +783,7 @@
             pname = "agentsh-subagent-reliability-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.gnumake
@@ -928,7 +928,7 @@
                 pname = "agentsh-approval-regression-tests";
                 version = "unstable-2026-06-17";
                 src = self;
-                vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
+                vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
 
                 nativeBuildInputs = [
                   pkgs.gnumake

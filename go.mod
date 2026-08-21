@@ -16,8 +16,6 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.6
-	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.64.1
-	github.com/aws/aws-sdk-go-v2/service/ecs v1.73.2
 	github.com/aws/aws-sdk-go-v2/service/kms v1.49.4
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.10
@@ -44,13 +42,13 @@ require (
 	github.com/klauspost/compress v1.18.0
 	github.com/miekg/dns v1.1.62
 	github.com/pganalyze/pg_query_go/v6 v6.2.2
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/pquerna/otp v1.5.0
 	github.com/seccomp/libseccomp-golang v0.11.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.40.0
-	go.uber.org/goleak v1.3.0
 	github.com/wasilibs/go-pgquery v0.0.0-20260428021157-dca720e45577
 	github.com/williamfhe/godivert v0.0.0-20181229124620-a48c5b872c73
 	github.com/winfsp/cgofuse v1.6.0
@@ -62,6 +60,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0
 	go.opentelemetry.io/otel/sdk/log v0.19.0
 	go.opentelemetry.io/otel/trace v1.43.0
+	go.uber.org/goleak v1.3.0
 	golang.org/x/net v0.56.0
 	golang.org/x/sync v0.21.0
 	golang.org/x/sys v0.46.0
@@ -88,7 +87,6 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal v1.2.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.7 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.16 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 // indirect
@@ -163,7 +161,6 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect

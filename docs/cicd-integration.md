@@ -101,7 +101,7 @@ ai-agent-task:
       dotenv: agent.env
 ```
 
-## Docker Container Integration
+## Container Integration
 
 When running agentsh in containers, proper startup sequencing is important to avoid race conditions between the daemon and shell shim.
 
@@ -121,25 +121,6 @@ agentsh shim install-shell \
 This writes `/etc/agentsh/shim.conf` with `force=true`. The shim reads this file at startup, so it works regardless of how the shell is spawned (unlike env vars or profile scripts that may not be sourced for non-interactive SSH sessions).
 
 Alternatively, set `AGENTSH_SHIM_FORCE=1` in the process environment for per-process enforcement.
-
-### Basic Dockerfile
-
-```dockerfile
-FROM debian:bookworm-slim
-
-# Install agentsh
-RUN curl -fsSL https://agentsh.dev/install.sh | bash
-
-# Copy your configuration
-COPY config.yaml /etc/agentsh/config.yaml
-COPY policies/ /etc/agentsh/policies/
-
-# Copy entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
-```
 
 ### Entrypoint Script with Health Check
 
@@ -164,27 +145,6 @@ export AGENTSH_SESSION=$(agentsh session create --workspace /workspace --policy 
 
 # Execute the main command through the shell shim
 exec agentsh-shell-shim "$@"
-```
-
-### Docker Compose Example
-
-```yaml
-version: '3.8'
-
-services:
-  agent:
-    build: .
-    volumes:
-      - ./workspace:/workspace
-    environment:
-      - AGENTSH_LOG_LEVEL=info
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://127.0.0.1:18080/health"]
-      interval: 5s
-      timeout: 3s
-      start_period: 10s
-      retries: 3
-    command: ["bash", "-c", "your-agent-command"]
 ```
 
 ### Kubernetes Deployment
@@ -230,9 +190,9 @@ The shell shim (`agentsh-shell-shim`) internally calls `agentsh exec`, which has
 
 However, for production container deployments, explicit health checking is more reliable:
 
-1. **Container orchestration health checks** - Let Kubernetes/Docker Compose manage readiness
+1. **Container orchestration health checks** - Let the container orchestrator manage readiness
 2. **Explicit wait in entrypoint** - Use `until curl -sf http://127.0.0.1:18080/health; do sleep 0.1; done`
-3. **Startup ordering** - In multi-container setups, use `depends_on` with health conditions
+3. **Startup ordering** - In multi-container setups, use explicit health conditions and dependency ordering
 
 ### Daytona Integration
 

@@ -484,20 +484,6 @@ See [Windows Driver Deployment Guide](windows-driver-deployment.md) for installa
 - Automatic detection of available isolation level
 - Working directory support for sandboxed commands
 
-### Docker (any host)
-
-FUSE requires extra privileges inside containers:
-
-```bash
-docker run --rm -it \
-  --cap-add SYS_ADMIN \
-  --device /dev/fuse \
-  --security-opt apparmor=unconfined \
-  -p 18080:18080 \
-  -v "$(pwd)":/workspace \
-  ghcr.io/agentsh/agentsh:latest
-```
-
 ## Detecting Available Capabilities
 
 Use `agentsh detect` to probe your environment and see what security features are available:
