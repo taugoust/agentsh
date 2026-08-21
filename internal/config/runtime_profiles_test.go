@@ -60,9 +60,9 @@ sessions:
   runtime:
     profiles:
       native:
-        provider: microvm-external-runner
+        provider: project-hypervisor
 `,
-			want: "only native is available",
+			want: "is unsupported",
 		},
 		"missing default": {
 			yaml: `
@@ -92,6 +92,43 @@ sessions:
 				t.Fatalf("runtime config error = %v, want %q", err, input.want)
 			}
 		})
+	}
+}
+
+func TestRuntimeProfilesAcceptDisabledExternalProfile(t *testing.T) {
+	cfg, err := loadFromString(t, `
+sessions:
+  runtime:
+    default_profile: native
+    enable_external_runners: false
+    profiles:
+      native:
+        provider: native
+      pi-linux-qemu-v1:
+        provider: microvm-external-runner
+        profile_file: /nix/store/example-profile/profile.json
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := cfg.Sessions.Runtime.Profiles["pi-linux-qemu-v1"]
+	if cfg.Sessions.Runtime.EnableExternalRunners || profile.Provider != "microvm-external-runner" || profile.ProfileFile == "" {
+		t.Fatalf("external runtime profile = %+v, ceiling=%t", profile, cfg.Sessions.Runtime.EnableExternalRunners)
+	}
+}
+
+func TestRuntimeProfilesRejectExternalDefault(t *testing.T) {
+	_, err := loadFromString(t, `
+sessions:
+  runtime:
+    default_profile: pi-linux-qemu-v1
+    profiles:
+      pi-linux-qemu-v1:
+        provider: microvm-external-runner
+        profile_file: /nix/store/example-profile/profile.json
+`)
+	if err == nil || !strings.Contains(err.Error(), "cannot be the default") {
+		t.Fatalf("external default error = %v", err)
 	}
 }
 

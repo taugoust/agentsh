@@ -584,7 +584,7 @@
             pname = "agentsh-runtime-provider-tests";
             checkPhase = ''
               runHook preCheck
-              go test ./internal/runtimeprovider
+              go test ./internal/runtimeprovider/...
               go test ./internal/config -run '^TestRuntimeProfiles'
               go test ./internal/api -run '^Test(CreateSessionRejectsCallerRuntimeSelection|GRPCCreateSessionRejectsCallerRuntimeSelection)$'
               go test ./internal/cli -run '^TestRuntimeProvider'

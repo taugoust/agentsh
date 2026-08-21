@@ -68,6 +68,39 @@ sessions:
 	}
 }
 
+func TestRuntimeProviderExternalCeilingFailsBeforeStateReservation(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", filepath.Join(root, "state"))
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	configPath := filepath.Join(root, "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`
+sessions:
+  runtime:
+    default_profile: native
+    enable_external_runners: false
+    profiles:
+      native:
+        provider: native
+      pi-linux-qemu-v1:
+        provider: microvm-external-runner
+        profile_file: /nix/store/operator-profile/profile.json
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENTSH_CONFIG", configPath)
+	sessionID := "session-" + uuid.NewString()
+	_, _, _, err := prepareDetachedRuntimeRequest(
+		sessionID, []string{t.TempDir()}, string(types.WorkspaceModeShadow), "default",
+		"", "", nil, "pi-linux-qemu-v1",
+	)
+	if err == nil || !strings.Contains(err.Error(), "operator ceiling") {
+		t.Fatalf("external runtime error = %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(detachedSessionsRoot(), sessionID)); !os.IsNotExist(statErr) {
+		t.Fatalf("disabled external profile reserved state: %v", statErr)
+	}
+}
+
 func TestRuntimeProviderDefaultsToNativeAndExposesStartFlag(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", filepath.Join(root, "state"))

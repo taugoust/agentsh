@@ -1,0 +1,222 @@
+package externalrunner
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/agentsh/agentsh/internal/guestcontrol"
+	"github.com/agentsh/agentsh/internal/runtimeprovider"
+)
+
+const (
+	ProviderName    = "microvm-external-runner"
+	ProfileSchema   = "io.agentsh.microvm-external-runner-profile/v1"
+	maxProfileBytes = 64 * 1024
+)
+
+type Profile struct {
+	Schema        string   `json:"schema"`
+	ProfileDigest string   `json:"profile_digest"`
+	Name          string   `json:"name"`
+	Provider      string   `json:"provider"`
+	Status        string   `json:"status"`
+	System        string   `json:"system"`
+	Runner        Runner   `json:"runner"`
+	Guest         Guest    `json:"guest"`
+	VSock         VSock    `json:"vsock"`
+	Network       Network  `json:"network"`
+	Timeouts      Timeouts `json:"timeouts"`
+}
+
+type Runner struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+}
+
+type Guest struct {
+	ProfileDigest  string `json:"profile_digest"`
+	Policy         string `json:"policy"`
+	Workspace      string `json:"workspace"`
+	Protocol       int    `json:"protocol_version"`
+	ControlPort    uint32 `json:"control_port"`
+	SupervisorPort uint32 `json:"supervisor_port"`
+}
+
+type VSock struct {
+	CIDMin uint32 `json:"cid_min"`
+	CIDMax uint32 `json:"cid_max"`
+}
+
+type Network struct {
+	Transport                 string `json:"transport"`
+	Enforcement               string `json:"enforcement"`
+	RequireReadyBeforePublish bool   `json:"require_ready_before_publish"`
+}
+
+type Timeouts struct {
+	ReadinessSeconds        int `json:"readiness_seconds"`
+	GracefulShutdownSeconds int `json:"graceful_shutdown_seconds"`
+}
+
+func ReadProfile(path string) (Profile, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return Profile{}, fmt.Errorf("external runner profile path must be clean and absolute")
+	}
+	before, err := os.Lstat(path)
+	if err != nil {
+		return Profile{}, fmt.Errorf("inspect external runner profile: %w", err)
+	}
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() > maxProfileBytes {
+		return Profile{}, fmt.Errorf("external runner profile has unsafe type, permissions, or size")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return Profile{}, fmt.Errorf("open external runner profile: %w", err)
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil {
+		return Profile{}, fmt.Errorf("stat external runner profile: %w", err)
+	}
+	if !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
+		return Profile{}, fmt.Errorf("external runner profile identity changed while opening")
+	}
+	decoder := json.NewDecoder(io.LimitReader(file, maxProfileBytes+1))
+	decoder.DisallowUnknownFields()
+	var profile Profile
+	if err := decoder.Decode(&profile); err != nil {
+		return Profile{}, fmt.Errorf("decode external runner profile: %w", err)
+	}
+	if err := requireEOF(decoder); err != nil {
+		return Profile{}, fmt.Errorf("decode external runner profile: %w", err)
+	}
+	if err := profile.Validate(); err != nil {
+		return Profile{}, err
+	}
+	return profile, nil
+}
+
+func (p Profile) Validate() error {
+	if p.Schema != ProfileSchema {
+		return fmt.Errorf("external runner profile schema %q is unsupported", p.Schema)
+	}
+	if err := runtimeprovider.ValidateName(p.Name); err != nil {
+		return fmt.Errorf("external runner profile name: %w", err)
+	}
+	if p.Provider != ProviderName {
+		return fmt.Errorf("external runner profile provider %q is unsupported", p.Provider)
+	}
+	if !validSHA256(p.ProfileDigest) || !validSHA256(p.Runner.SHA256) || !validSHA256(p.Guest.ProfileDigest) {
+		return fmt.Errorf("external runner profile digest is invalid")
+	}
+	if p.System != "x86_64-linux" {
+		return fmt.Errorf("external runner profile system %q is unsupported", p.System)
+	}
+	if !filepath.IsAbs(p.Runner.Path) || filepath.Clean(p.Runner.Path) != p.Runner.Path || strings.ContainsAny(p.Runner.Path, "\x00\r\n") {
+		return fmt.Errorf("external runner executable path is invalid")
+	}
+	if err := runtimeprovider.ValidateName(p.Guest.Policy); err != nil {
+		return fmt.Errorf("external runner guest policy: %w", err)
+	}
+	if !filepath.IsAbs(p.Guest.Workspace) || filepath.Clean(p.Guest.Workspace) != p.Guest.Workspace || p.Guest.Workspace == string(filepath.Separator) {
+		return fmt.Errorf("external runner guest workspace is invalid")
+	}
+	if p.Guest.Protocol != guestcontrol.ProtocolVersion {
+		return fmt.Errorf("external runner guest protocol version %d is unsupported", p.Guest.Protocol)
+	}
+	if !validPort(p.Guest.ControlPort) || !validPort(p.Guest.SupervisorPort) || p.Guest.ControlPort == p.Guest.SupervisorPort {
+		return fmt.Errorf("external runner guest VSOCK ports are invalid or reused")
+	}
+	if p.VSock.CIDMin < 3 || p.VSock.CIDMax == ^uint32(0) || p.VSock.CIDMin > p.VSock.CIDMax {
+		return fmt.Errorf("external runner VSOCK CID range is invalid")
+	}
+	if p.Network.Transport != "qemu-user" {
+		return fmt.Errorf("external runner network transport %q is unsupported", p.Network.Transport)
+	}
+	switch p.Status {
+	case "diagnostic":
+		if p.Network.Enforcement != "disabled-bringup" || p.Network.RequireReadyBeforePublish {
+			return fmt.Errorf("diagnostic external runner profile has inconsistent network admission")
+		}
+	case "strict":
+		if p.Network.Enforcement != "strict" || !p.Network.RequireReadyBeforePublish {
+			return fmt.Errorf("strict external runner profile has inconsistent network admission")
+		}
+	default:
+		return fmt.Errorf("external runner profile status %q is unsupported", p.Status)
+	}
+	if !validTimeout(p.Timeouts.ReadinessSeconds) || !validTimeout(p.Timeouts.GracefulShutdownSeconds) {
+		return fmt.Errorf("external runner profile timeout is invalid")
+	}
+	return nil
+}
+
+func (p Profile) ReadinessTimeout() time.Duration {
+	return time.Duration(p.Timeouts.ReadinessSeconds) * time.Second
+}
+
+func (p Profile) GracefulShutdownTimeout() time.Duration {
+	return time.Duration(p.Timeouts.GracefulShutdownSeconds) * time.Second
+}
+
+func (p Profile) VerifyRunner() error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	info, err := os.Lstat(p.Runner.Path)
+	if err != nil {
+		return fmt.Errorf("inspect external runner executable: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("external runner executable has unsafe type or permissions")
+	}
+	file, err := os.Open(p.Runner.Path)
+	if err != nil {
+		return fmt.Errorf("open external runner executable: %w", err)
+	}
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) || opened.Mode().Perm()&0o022 != 0 {
+		_ = file.Close()
+		return fmt.Errorf("external runner executable identity changed while opening")
+	}
+	hash := sha256.New()
+	_, copyErr := io.Copy(hash, file)
+	closeErr := file.Close()
+	if err := errors.Join(copyErr, closeErr); err != nil {
+		return fmt.Errorf("hash external runner executable: %w", err)
+	}
+	got := "sha256:" + hex.EncodeToString(hash.Sum(nil))
+	if got != p.Runner.SHA256 {
+		return fmt.Errorf("external runner executable digest mismatch")
+	}
+	return nil
+}
+
+func validSHA256(value string) bool {
+	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") {
+		return false
+	}
+	decoded, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
+	return err == nil && len(decoded) == sha256.Size && strings.ToLower(value) == value
+}
+
+func validPort(port uint32) bool    { return port >= 1024 && port <= 65535 }
+func validTimeout(seconds int) bool { return seconds >= 1 && seconds <= 600 }
+
+func requireEOF(decoder *json.Decoder) error {
+	var trailing any
+	if err := decoder.Decode(&trailing); errors.Is(err, io.EOF) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return fmt.Errorf("trailing JSON value")
+}

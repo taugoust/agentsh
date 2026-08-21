@@ -14,6 +14,7 @@ import (
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/externalrunner"
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
@@ -288,7 +289,21 @@ func prepareDetachedRuntimeRequest(requestedSessionID string, workspaces []strin
 	if err != nil {
 		return runtimeprovider.Request{}, "", nil, err
 	}
-	if profile.Provider != runtimeprovider.NativeProvider {
+	switch profile.Provider {
+	case runtimeprovider.NativeProvider:
+	case externalrunner.ProviderName:
+		if !cfg.Sessions.Runtime.EnableExternalRunners {
+			return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q is disabled by the external-runner operator ceiling", profileName)
+		}
+		externalProfile, profileErr := externalrunner.ReadProfile(profile.ProfileFile)
+		if profileErr != nil {
+			return runtimeprovider.Request{}, "", nil, profileErr
+		}
+		if externalProfile.Name != profileName || externalProfile.Provider != profile.Provider {
+			return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q does not match its operator profile file", profileName)
+		}
+		return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q selects an external runner whose host provider is not enabled in this build", profileName)
+	default:
 		return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q selects unavailable provider %q", profileName, profile.Provider)
 	}
 

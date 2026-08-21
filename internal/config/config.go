@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/externalrunner"
 	seccompPkg "github.com/agentsh/agentsh/internal/seccomp"
 	"gopkg.in/yaml.v3"
 )
@@ -410,12 +411,14 @@ type WorkspaceShadowConfig struct {
 // Provider-specific options are intentionally absent until their contracts are
 // implemented and validated; unknown YAML keys in this block are rejected.
 type SessionRuntimeConfig struct {
-	DefaultProfile string                          `yaml:"default_profile"`
-	Profiles       map[string]RuntimeProfileConfig `yaml:"profiles"`
+	DefaultProfile        string                          `yaml:"default_profile"`
+	EnableExternalRunners bool                            `yaml:"enable_external_runners"`
+	Profiles              map[string]RuntimeProfileConfig `yaml:"profiles"`
 }
 
 type RuntimeProfileConfig struct {
-	Provider string `yaml:"provider"`
+	Provider    string `yaml:"provider"`
+	ProfileFile string `yaml:"profile_file"`
 }
 
 func (c SessionRuntimeConfig) ResolveProfile(requested string) (string, RuntimeProfileConfig, error) {
@@ -1626,8 +1629,9 @@ func validateSessionRuntimeConfigKeys(root *yaml.Node) error {
 		return fmt.Errorf("sessions.runtime must be a mapping")
 	}
 	knownRuntimeKeys := map[string]struct{}{
-		"default_profile": {},
-		"profiles":        {},
+		"default_profile":         {},
+		"enable_external_runners": {},
+		"profiles":                {},
 	}
 	for i := 0; i+1 < len(runtimeNode.Content); i += 2 {
 		key := runtimeNode.Content[i].Value
@@ -1649,7 +1653,9 @@ func validateSessionRuntimeConfigKeys(root *yaml.Node) error {
 			return fmt.Errorf("sessions.runtime.profiles.%s must be a mapping", name)
 		}
 		for j := 0; j+1 < len(profileNode.Content); j += 2 {
-			if key := profileNode.Content[j].Value; key != "provider" {
+			switch key := profileNode.Content[j].Value; key {
+			case "provider", "profile_file":
+			default:
 				return fmt.Errorf("unknown sessions.runtime.profiles.%s key %q", name, key)
 			}
 		}
@@ -2703,8 +2709,20 @@ func validateConfig(cfg *Config) error {
 		if err := runtimeprovider.ValidateName(name); err != nil {
 			return fmt.Errorf("sessions.runtime.profiles: %w", err)
 		}
-		if profile.Provider != runtimeprovider.NativeProvider {
-			return fmt.Errorf("sessions.runtime.profiles.%s.provider %q is unsupported; only native is available", name, profile.Provider)
+		switch profile.Provider {
+		case runtimeprovider.NativeProvider:
+			if profile.ProfileFile != "" {
+				return fmt.Errorf("sessions.runtime.profiles.%s.profile_file is not valid for native", name)
+			}
+		case externalrunner.ProviderName:
+			if name == cfg.Sessions.Runtime.DefaultProfile {
+				return fmt.Errorf("sessions.runtime external runner profile %q cannot be the default while experimental", name)
+			}
+			if !filepath.IsAbs(profile.ProfileFile) || filepath.Clean(profile.ProfileFile) != profile.ProfileFile {
+				return fmt.Errorf("sessions.runtime.profiles.%s.profile_file must be clean and absolute", name)
+			}
+		default:
+			return fmt.Errorf("sessions.runtime.profiles.%s.provider %q is unsupported", name, profile.Provider)
 		}
 	}
 	switch cfg.Sessions.RuntimeHomeMode {
