@@ -134,9 +134,16 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 			cancelServe()
 			_ = server.Close()
 			_ = relay.Close()
-			second := <-results
 			if first.control && first.err == nil {
+				// Shutdown has already stopped the exact guest supervisor. Do not
+				// let a kernel-blocked VSOCK accept delay terminal evidence and VM
+				// poweroff; process exit closes the already-disabled relay.
 				return nil
+			}
+			var second serveResult
+			select {
+			case second = <-results:
+			case <-time.After(time.Second):
 			}
 			for _, serveErr := range []error{first.err, second.err} {
 				if serveErr != nil && !errors.Is(serveErr, context.Canceled) {
