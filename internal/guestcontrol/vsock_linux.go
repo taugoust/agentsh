@@ -94,15 +94,12 @@ func dialVSock(ctx context.Context, cid, port uint32) (controlConn, error) {
 			break
 		}
 	}
-	if err := unix.SetNonblock(fd, false); err != nil {
-		return nil, fmt.Errorf("configure guest control VSOCK: %w", err)
-	}
 	connected = true
 	return os.NewFile(uintptr(fd), "agentsh-host-control-vsock"), nil
 }
 
 func acceptVSock(fd int) (*os.File, error) {
-	accepted, _, err := unix.Accept4(fd, unix.SOCK_CLOEXEC)
+	accepted, _, err := unix.Accept4(fd, unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK)
 	if err != nil {
 		return nil, err
 	}
