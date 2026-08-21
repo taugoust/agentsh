@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	ProtocolVersion = 1
+	ProtocolVersion = 2
 	MaxMessageBytes = 64 * 1024
 )
 
@@ -29,12 +29,14 @@ type Manifest struct {
 	SessionID          string `json:"session_id"`
 	LaunchNonce        string `json:"launch_nonce"`
 	ControlToken       string `json:"control_token"`
+	SupervisorToken    string `json:"supervisor_token"`
 	Profile            string `json:"profile"`
 	ProfileDigest      string `json:"profile_digest"`
 	Policy             string `json:"policy"`
 	Workspace          string `json:"workspace"`
 	VSockCID           uint32 `json:"vsock_cid"`
 	VSockPort          uint32 `json:"vsock_port"`
+	SupervisorPort     uint32 `json:"supervisor_port"`
 	ExpectedGeneration uint64 `json:"expected_generation"`
 }
 
@@ -48,8 +50,8 @@ func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest str
 	if !validHexSecret(m.LaunchNonce) {
 		return fmt.Errorf("guest control launch nonce is invalid")
 	}
-	if !validHexSecret(m.ControlToken) {
-		return fmt.Errorf("guest control token is invalid")
+	if !validHexSecret(m.ControlToken) || !validHexSecret(m.SupervisorToken) || secretEqual(m.ControlToken, m.SupervisorToken) {
+		return fmt.Errorf("guest control tokens are invalid or reused")
 	}
 	if !validName(m.Profile) || !validName(m.Policy) {
 		return fmt.Errorf("guest control profile or policy is invalid")
@@ -70,8 +72,8 @@ func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest str
 	if m.VSockCID < 3 || m.VSockCID == ^uint32(0) {
 		return fmt.Errorf("guest control VSOCK CID is invalid")
 	}
-	if m.VSockPort < 1024 || m.VSockPort > 65535 {
-		return fmt.Errorf("guest control VSOCK port is invalid")
+	if m.VSockPort < 1024 || m.VSockPort > 65535 || m.SupervisorPort < 1024 || m.SupervisorPort > 65535 || m.SupervisorPort == m.VSockPort {
+		return fmt.Errorf("guest control VSOCK ports are invalid or reused")
 	}
 	if m.ExpectedGeneration == 0 {
 		return fmt.Errorf("guest control expected generation is missing")
@@ -130,6 +132,7 @@ type Handshake struct {
 	Policy          string   `json:"policy"`
 	VSockCID        uint32   `json:"vsock_cid"`
 	VSockPort       uint32   `json:"vsock_port"`
+	SupervisorPort  uint32   `json:"supervisor_port"`
 	NetworkReady    bool     `json:"network_ready"`
 	Capabilities    []string `json:"capabilities"`
 }
@@ -137,13 +140,13 @@ type Handshake struct {
 func (h Handshake) Validate(manifest Manifest) error {
 	if h.ProtocolVersion != ProtocolVersion || h.SessionID != manifest.SessionID || h.Generation != manifest.ExpectedGeneration ||
 		h.LaunchNonce != manifest.LaunchNonce || h.Profile != manifest.Profile || h.ProfileDigest != manifest.ProfileDigest ||
-		h.Policy != manifest.Policy || h.VSockCID != manifest.VSockCID || h.VSockPort != manifest.VSockPort {
+		h.Policy != manifest.Policy || h.VSockCID != manifest.VSockCID || h.VSockPort != manifest.VSockPort || h.SupervisorPort != manifest.SupervisorPort {
 		return fmt.Errorf("guest control handshake identity mismatch")
 	}
 	if strings.TrimSpace(h.IncarnationID) == "" || strings.TrimSpace(h.GuestBootID) == "" || strings.TrimSpace(h.AgentSHVersion) == "" {
 		return fmt.Errorf("guest control handshake is incomplete")
 	}
-	if !slices.Contains(h.Capabilities, "exec_probe") || !slices.Contains(h.Capabilities, "shutdown") {
+	if !slices.Contains(h.Capabilities, "exec_probe") || !slices.Contains(h.Capabilities, "shutdown") || !slices.Contains(h.Capabilities, "supervisor_proxy") {
 		return fmt.Errorf("guest control handshake capabilities are incomplete")
 	}
 	return nil

@@ -84,6 +84,11 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				return err
 			}
 			defer server.Close()
+			relay, err := guestcontrol.ListenSupervisorRelay(manifest.SupervisorPort)
+			if err != nil {
+				return err
+			}
+			defer relay.Close()
 
 			bootIDBytes, err := os.ReadFile(filepath.Join(string(filepath.Separator), "proc", "sys", "kernel", "random", "boot_id"))
 			if err != nil {
@@ -103,8 +108,9 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				Policy:          manifest.Policy,
 				VSockCID:        manifest.VSockCID,
 				VSockPort:       server.Port(),
+				SupervisorPort:  relay.Port(),
 				NetworkReady:    networkReady,
-				Capabilities:    []string{"exec_probe", "shutdown"},
+				Capabilities:    []string{"exec_probe", "shutdown", "supervisor_proxy"},
 			}
 			if localCID := server.LocalCID(); localCID != 0 && localCID != ^uint32(0) && localCID != manifest.VSockCID {
 				return fmt.Errorf("guest kernel reported VSOCK CID %d, expected %d", localCID, manifest.VSockCID)
@@ -115,10 +121,29 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 			if err := guestcontrol.WriteHandshake(handshakePath, handler.handshake); err != nil {
 				return fmt.Errorf("publish guest control handshake: %w", err)
 			}
-			if err := server.Serve(cmd.Context(), manifest, handler); err != nil && !errors.Is(err, context.Canceled) {
-				return err
+			serveCtx, cancelServe := context.WithCancel(cmd.Context())
+			defer cancelServe()
+			type serveResult struct {
+				control bool
+				err     error
 			}
-			return nil
+			results := make(chan serveResult, 2)
+			go func() { results <- serveResult{control: true, err: server.Serve(serveCtx, manifest, handler)} }()
+			go func() { results <- serveResult{err: relay.Serve(serveCtx, manifest, result.SupervisorSock)} }()
+			first := <-results
+			cancelServe()
+			_ = server.Close()
+			_ = relay.Close()
+			second := <-results
+			if first.control && first.err == nil {
+				return nil
+			}
+			for _, serveErr := range []error{first.err, second.err} {
+				if serveErr != nil && !errors.Is(serveErr, context.Canceled) {
+					return serveErr
+				}
+			}
+			return cmd.Context().Err()
 		},
 	}
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Protected host request manifest")

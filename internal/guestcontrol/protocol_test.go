@@ -18,12 +18,14 @@ func testManifest(workspace string) Manifest {
 		SessionID:          "session-11111111-1111-4111-8111-111111111111",
 		LaunchNonce:        strings.Repeat("1", 64),
 		ControlToken:       strings.Repeat("2", 64),
+		SupervisorToken:    strings.Repeat("4", 64),
 		Profile:            "pi-linux-qemu-v1",
 		ProfileDigest:      "sha256:" + strings.Repeat("3", 64),
 		Policy:             "pi-autonomous",
 		Workspace:          workspace,
 		VSockCID:           41001,
 		VSockPort:          18081,
+		SupervisorPort:     18082,
 		ExpectedGeneration: 1,
 	}
 }
@@ -42,7 +44,8 @@ func testHandshake(manifest Manifest) Handshake {
 		Policy:          manifest.Policy,
 		VSockCID:        manifest.VSockCID,
 		VSockPort:       manifest.VSockPort,
-		Capabilities:    []string{"exec_probe", "shutdown"},
+		SupervisorPort:  manifest.SupervisorPort,
+		Capabilities:    []string{"exec_probe", "shutdown", "supervisor_proxy"},
 	}
 }
 
@@ -84,9 +87,11 @@ func TestManifestRejectsUntrustedSelections(t *testing.T) {
 		{"policy", func(m *Manifest) { m.Policy = "untrusted" }},
 		{"nonce", func(m *Manifest) { m.LaunchNonce = "short" }},
 		{"token", func(m *Manifest) { m.ControlToken = "short" }},
+		{"supervisor token", func(m *Manifest) { m.SupervisorToken = m.ControlToken }},
 		{"profile digest", func(m *Manifest) { m.ProfileDigest = "sha256:bad" }},
 		{"cid", func(m *Manifest) { m.VSockCID = 2 }},
 		{"port", func(m *Manifest) { m.VSockPort = 22 }},
+		{"supervisor port", func(m *Manifest) { m.SupervisorPort = m.VSockPort }},
 		{"generation", func(m *Manifest) { m.ExpectedGeneration = 0 }},
 	}
 	for _, test := range tests {
