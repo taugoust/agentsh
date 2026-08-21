@@ -8,10 +8,27 @@ import (
 
 func TestManagerListPendingForSessionFilters(t *testing.T) {
 	m := New("api", time.Minute, nil)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{}, 2)
+	t.Cleanup(func() {
+		cancel()
+		for range 2 {
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Error("timed out waiting for pending approval cleanup")
+			}
+		}
+	})
 
-	go func() { _, _ = m.RequestApproval(ctx, Request{ID: "a1", SessionID: "s1", Kind: "command"}) }()
-	go func() { _, _ = m.RequestApproval(ctx, Request{ID: "a2", SessionID: "s2", Kind: "network"}) }()
+	go func() {
+		defer func() { done <- struct{}{} }()
+		_, _ = m.RequestApproval(ctx, Request{ID: "a1", SessionID: "s1", Kind: "command"})
+	}()
+	go func() {
+		defer func() { done <- struct{}{} }()
+		_, _ = m.RequestApproval(ctx, Request{ID: "a2", SessionID: "s2", Kind: "network"})
+	}()
 
 	waitForPending(t, m, 2)
 

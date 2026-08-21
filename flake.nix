@@ -49,7 +49,7 @@
             inherit version;
 
             src = self;
-            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
 
             subPackages = [
               "cmd/agentsh"
@@ -347,6 +347,9 @@
           raceChecks = import ./nix/checks/race.nix {
             inherit pkgs self;
           };
+          leakChecks = import ./nix/checks/leak.nix {
+            inherit pkgs self;
+          };
           repositoryValidationChecks = import ./nix/checks/repository-validation.nix {
             inherit pkgs self;
           };
@@ -354,6 +357,7 @@
         coverageChecks
         // goAnalysisChecks
         // raceChecks
+        // leakChecks
         // repositoryValidationChecks
         // rec {
           go-format =
@@ -388,7 +392,7 @@
                 pname = "agentsh-linux-amd64-compile";
                 version = "unstable-2026-06-17";
                 src = self;
-                vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+                vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
                 subPackages = [ "internal/netmonitor/unix" ];
                 nativeBuildInputs = [
                   pkgs.gnumake
@@ -476,7 +480,7 @@
             pname = "agentsh-approval-resolution-race-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
 
             env = {
               CGO_ENABLED = "0";
@@ -506,7 +510,7 @@
             pname = "agentsh-go-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.diffutils
@@ -670,7 +674,7 @@
             pname = "agentsh-command-timeout-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.gnumake
@@ -718,7 +722,7 @@
             pname = "agentsh-api-darwin-cross-compile-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
 
             env = {
               CGO_ENABLED = "0";
@@ -744,7 +748,7 @@
             pname = "agentsh-workspace-runtime-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
             nativeBuildInputs = [
               pkgs.diffutils
               pkgs.rsync
@@ -779,7 +783,7 @@
             pname = "agentsh-subagent-reliability-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+            vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.gnumake
@@ -924,7 +928,7 @@
                 pname = "agentsh-approval-regression-tests";
                 version = "unstable-2026-06-17";
                 src = self;
-                vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+                vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
 
                 nativeBuildInputs = [
                   pkgs.gnumake

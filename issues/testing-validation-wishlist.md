@@ -14,7 +14,8 @@ Track testing and validation techniques that could improve confidence in AgentSH
 - The unmaintained legacy GitHub workflows have been removed; Nix is the maintained validation workflow.
 - The Nix `go-unit-tests` output is the authoritative complete native Go suite (`go test -count=1 -p 2 ./...`). Its initial 17 failing package targets were triaged and repaired, and the suite is green.
 - Race detection now runs complete concurrency-heavy package suites for approvals, API, detached transport/recovery, events, nethelper, netmonitor, proxy, runtime providers, sessions, major stores, Watchtower, and shadow workspaces.
-- There is no repository-wide coverage report or coverage ratchet.
+- The x86_64-linux lifecycle leak gate uses `goleak` plus file-descriptor, child-process, and mount snapshots around selected concurrent package suites, repeated three times in a deterministic shuffled order.
+- The complete native suite publishes a repository-wide 57.7% atomic coverage baseline; package and changed-line ratchets remain open.
 - Go formatting, a first curated `golangci-lint` gate (`govet`, `rowserrcheck`, and `sqlclosecheck`), and a pinned offline `govulncheck` source scan are configured. Broader lint, dead-code, shell, and Nix validation remain open.
 - Two native fuzz targets cover HTTP service path policy. Property-based testing with `rapid` is currently concentrated in the PostgreSQL protocol state machine.
 - Native C helpers are compiled with strong warnings, but there is no static-analyzer or sanitizer gate.
@@ -108,9 +109,10 @@ The first expanded run found and repaired one production streaming race plus tes
 
 ### Leak and flake detection
 
-- Trial `go.uber.org/goleak` in long-lived concurrent packages.
-- Add repeated, shuffled execution for selected stateful tests (`-shuffle=on`, bounded `-count`).
-- Detect leaked processes, file descriptors, sockets, mounts, namespaces, and goroutines in integration fixtures.
+- [x] Run `go.uber.org/goleak` around approvals, detached control and transport, nethelper, proxy, runtime-provider, session, and shadow-workspace package suites.
+- [x] Repeat those stateful suites three times with a fixed shuffle seed so failures are reproducible.
+- [x] Detect leaked direct child processes, file descriptors/sockets, mounts, and goroutines against package-suite baselines on Linux.
+- [ ] Extend behavioral leak checks to privileged namespace, cgroup, and kernel integration fixtures where process-local snapshots cannot observe host-side residue.
 - Avoid automatic retry as the default response to flakes; preserve the first failure evidence.
 
 ### Fault injection
@@ -255,10 +257,11 @@ A custom analyzer for project-specific fail-open patterns may provide more value
 4. [x] Add coverage reporting and publish the initial baseline.
 5. [ ] Add package and changed-line coverage ratchets.
 6. [x] Broaden race checks across concurrency-heavy packages.
-7. [ ] Add leak checks and deterministic fault injection.
-8. [ ] Add fuzz and property/state-machine tests.
-9. [ ] Trial targeted mutation testing and whole-program dead-code detection.
-10. [ ] Add architecture enforcement, native analyzers, kernel matrix, CodeQL, SBOM, and release hardening.
+7. [x] Add lifecycle leak and deterministic flake checks.
+8. [ ] Add deterministic fault injection.
+9. [ ] Add fuzz and property/state-machine tests.
+10. [ ] Trial targeted mutation testing and whole-program dead-code detection.
+11. [ ] Add architecture enforcement, native analyzers, kernel matrix, CodeQL, SBOM, and release hardening.
 
 The first two foundation steps are complete. Check-matrix cleanup remains open: the large check definition still lives mostly in `flake.nix`, broad checks remain duplicated across systems, and several unsupported checks are represented by successful skipped derivations.
 

@@ -50,6 +50,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.40.0
+	go.uber.org/goleak v1.3.0
 	github.com/wasilibs/go-pgquery v0.0.0-20260428021157-dca720e45577
 	github.com/williamfhe/godivert v0.0.0-20181229124620-a48c5b872c73
 	github.com/winfsp/cgofuse v1.6.0

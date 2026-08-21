@@ -7,7 +7,7 @@ let
     pname = "agentsh-unfiltered-seccomp-test-artifacts";
     version = "unstable-2026-08-20";
     src = self;
-    vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
+    vendorHash = "sha256-zeKD8JIgh3rwtQVpJofd3Ug1KlZ+DNoOrA7tw/mPFrg=";
 
     nativeBuildInputs = [
       pkgs.gnumake

@@ -90,8 +90,20 @@ func TestDenyForSessionAndClearSession(t *testing.T) {
 
 func TestInvalidResolutionScopeRejected(t *testing.T) {
 	m := New("api", time.Minute, nil)
-	ctx := context.Background()
-	go func() { _, _ = m.RequestApproval(ctx, Request{ID: "a1", SessionID: "s1", Kind: "network"}) }()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("timed out waiting for pending approval cleanup")
+		}
+	})
+	go func() {
+		defer close(done)
+		_, _ = m.RequestApproval(ctx, Request{ID: "a1", SessionID: "s1", Kind: "network"})
+	}()
 	waitForPending(t, m, 1)
 	if ok := m.ResolveForSessionWithScope("s1", "a1", true, "bad", "forever"); ok {
 		t.Fatal("invalid scope unexpectedly resolved approval")
