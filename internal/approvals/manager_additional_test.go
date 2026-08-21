@@ -2,6 +2,7 @@ package approvals
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,14 +10,19 @@ import (
 )
 
 type stubEmitter struct {
+	mu     sync.Mutex
 	events []types.Event
 }
 
 func (s *stubEmitter) AppendEvent(ctx context.Context, ev types.Event) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.events = append(s.events, ev)
 	return nil
 }
 func (s *stubEmitter) Publish(ev types.Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.events = append(s.events, ev)
 }
 

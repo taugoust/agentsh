@@ -49,6 +49,19 @@ func TestAcceptNotifyFDLineageBindsExactWrapperAndPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	previous := startNotifyHandlerForWrapHook
+	captured := make(chan wrapLineageContext, 1)
+	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD, composition *os.File, _ string, _ *App, _ bool, gotWrapper int, _ *session.Session, _ func() error) error {
+		defer notifyFD.Close()
+		if gotWrapper != wrapper.Process.Pid {
+			t.Fatalf("wrapper pid = %d, want %d", gotWrapper, wrapper.Process.Pid)
+		}
+		lineage, _ := ctx.Value(wrapLineageContextKey{}).(wrapLineageContext)
+		captured <- lineage
+		return nil
+	}
+	t.Cleanup(func() { startNotifyHandlerForWrapHook = previous })
+
 	done := make(chan struct{})
 	ctx := context.WithValue(context.Background(), wrapSeccompConfigContextKey{}, seccompWrapperConfig{})
 	go func() {
@@ -79,19 +92,6 @@ func TestAcceptNotifyFDLineageBindsExactWrapperAndPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	previous := startNotifyHandlerForWrapHook
-	captured := make(chan wrapLineageContext, 1)
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD, composition *os.File, _ string, _ *App, _ bool, gotWrapper int, _ *session.Session, _ func() error) error {
-		defer notifyFD.Close()
-		if gotWrapper != wrapper.Process.Pid {
-			t.Fatalf("wrapper pid = %d, want %d", gotWrapper, wrapper.Process.Pid)
-		}
-		lineage, _ := ctx.Value(wrapLineageContextKey{}).(wrapLineageContext)
-		captured <- lineage
-		return nil
-	}
-	t.Cleanup(func() { startNotifyHandlerForWrapHook = previous })
 
 	notifyR, notifyW, err := os.Pipe()
 	if err != nil {

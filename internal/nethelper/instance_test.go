@@ -84,18 +84,20 @@ func TestEphemeralInstanceControllerStatusRenewalAndHardCap(t *testing.T) {
 
 func TestEphemeralInstanceControllerSoftExpiryStopsService(t *testing.T) {
 	created := time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)
-	current := created
+	var current atomic.Int64
+	current.Store(created.UnixNano())
 	timer := &fakeInstanceTimer{ch: make(chan time.Time, 1)}
 	stopped := make(chan struct{}, 1)
 	controller := NewEphemeralInstanceController(EphemeralInstanceControllerOptions{
 		LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
 		HelperInstanceCredential: "0123456789abcdef0123456789abcdef",
 		ExpectedUID:              1000, CreatedAt: created, HardExpiresAt: created.Add(192 * time.Hour), SoftLease: 49 * time.Hour,
-		Now: func() time.Time { return current }, NewTimer: func(time.Duration) InstanceTimer { return timer },
+		Now: func() time.Time { return time.Unix(0, current.Load()) }, NewTimer: func(time.Duration) InstanceTimer { return timer },
 		Stop: func() { stopped <- struct{}{} },
 	})
-	current = created.Add(49 * time.Hour)
-	timer.ch <- current
+	expires := created.Add(49 * time.Hour)
+	current.Store(expires.UnixNano())
+	timer.ch <- expires
 	select {
 	case <-stopped:
 	case <-time.After(time.Second):

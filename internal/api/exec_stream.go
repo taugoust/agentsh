@@ -433,6 +433,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		}
 		writeMu.Lock()
 		defer writeMu.Unlock()
+		notifyStarted()
 		return emit("stdout", map[string]any{"command_id": cmdID, "stream": "stdout", "data": string(chunk)})
 	})
 	stderrW := newCaptureWriter(defaultMaxOutputBytes, func(chunk []byte) error {
@@ -441,6 +442,7 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		}
 		writeMu.Lock()
 		defer writeMu.Unlock()
+		notifyStarted()
 		return emit("stderr", map[string]any{"command_id": cmdID, "stream": "stderr", "data": string(chunk)})
 	})
 	cmd.Stdout = stdoutW

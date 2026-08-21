@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/policy"
@@ -57,14 +58,21 @@ func TestStartNotifyHandler_NilPolicy_NoOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create pipe: %v", err)
 	}
-	defer r.Close()
-	defer w.Close()
 
 	store := &notifyMockEventStore{}
 	broker := &notifyMockEventBroker{}
 
-	// Should close the socket and return without panic when policy is nil
-	startNotifyHandler(context.Background(), r, "test-session", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
+	// Closing the writer makes the transferred read endpoint reach EOF. Wait for
+	// the handler to release its owned endpoint before the test returns.
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	done := startNotifyHandler(context.Background(), r, "test-session", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for nil-policy handler")
+	}
 }
 
 func TestStartNotifyHandler_NilStore_NoOp(t *testing.T) {

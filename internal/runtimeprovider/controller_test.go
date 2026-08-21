@@ -364,9 +364,10 @@ func TestControllerFailedStartedCleanupCommitsStoppingAndRejectsRecovery(t *test
 	if manifest.State != StateStopping || manifest.CleanupComplete || manifest.Identity != instance.identity || manifest.Endpoint != instance.endpoint {
 		t.Fatalf("cleanup intent manifest=%+v", manifest)
 	}
+	recoveryManifest := manifest
 	recoverDone := make(chan error, 1)
 	go func() {
-		_, recoverErr := controller.Recover(context.Background(), provider, request.StateDir, manifest)
+		_, recoverErr := controller.Recover(context.Background(), provider, request.StateDir, recoveryManifest)
 		recoverDone <- recoverErr
 	}()
 	select {

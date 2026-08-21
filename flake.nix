@@ -344,12 +344,16 @@
               self
               ;
           };
+          raceChecks = import ./nix/checks/race.nix {
+            inherit pkgs self;
+          };
           repositoryValidationChecks = import ./nix/checks/repository-validation.nix {
             inherit pkgs self;
           };
         in
         coverageChecks
         // goAnalysisChecks
+        // raceChecks
         // repositoryValidationChecks
         // rec {
           go-format =

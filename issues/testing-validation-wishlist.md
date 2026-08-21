@@ -13,7 +13,7 @@ Track testing and validation techniques that could improve confidence in AgentSH
 - The repository has extensive example-based coverage: about 964 tracked Go test files across 145 package directories.
 - The unmaintained legacy GitHub workflows have been removed; Nix is the maintained validation workflow.
 - The Nix `go-unit-tests` output is the authoritative complete native Go suite (`go test -count=1 -p 2 ./...`). Its initial 17 failing package targets were triaged and repaired, and the suite is green.
-- Race detection is focused on selected session, network-monitor, and API tests.
+- Race detection now runs complete concurrency-heavy package suites for approvals, API, detached transport/recovery, events, nethelper, netmonitor, proxy, runtime providers, sessions, major stores, Watchtower, and shadow workspaces.
 - There is no repository-wide coverage report or coverage ratchet.
 - Go formatting, a first curated `golangci-lint` gate (`govet`, `rowserrcheck`, and `sqlclosecheck`), and a pinned offline `govulncheck` source scan are configured. Broader lint, dead-code, shell, and Nix validation remain open.
 - Two native fuzz targets cover HTTP service path policy. Property-based testing with `rapid` is currently concentrated in the PostgreSQL protocol state machine.
@@ -94,7 +94,7 @@ Roll out incrementally by fixing findings or documenting narrow exceptions.
 
 ### Broader race detection
 
-Extend race-enabled coverage beyond the existing focused session, netmonitor, and API tests to concurrency-heavy packages such as:
+The x86_64-linux `concurrency-race-tests` check now covers the complete package suites for the following concurrency-heavy areas:
 
 - approvals;
 - detached control, transport, and recovery;
@@ -104,7 +104,7 @@ Extend race-enabled coverage beyond the existing focused session, netmonitor, an
 - proxy lifecycle;
 - workspace finalization.
 
-A maintained package list may provide better signal and runtime than an unconditional repository-wide `-race ./...` gate.
+The first expanded run found and repaired one production streaming race plus test-harness races in approval emission, notify-handler ownership, nethelper time, runtime-provider manifests, and wrap-lineage hooks. A maintained package list provides better signal and runtime than an unconditional repository-wide `-race ./...` gate.
 
 ### Leak and flake detection
 
@@ -254,10 +254,11 @@ A custom analyzer for project-specific fail-open patterns may provide more value
 3. [x] Add initial Go linting, `govulncheck`, shell validation, and Nix validation gates.
 4. [x] Add coverage reporting and publish the initial baseline.
 5. [ ] Add package and changed-line coverage ratchets.
-6. [ ] Broaden race checks, leak checks, and deterministic fault injection.
-7. [ ] Add fuzz and property/state-machine tests.
-8. [ ] Trial targeted mutation testing and whole-program dead-code detection.
-9. [ ] Add architecture enforcement, native analyzers, kernel matrix, CodeQL, SBOM, and release hardening.
+6. [x] Broaden race checks across concurrency-heavy packages.
+7. [ ] Add leak checks and deterministic fault injection.
+8. [ ] Add fuzz and property/state-machine tests.
+9. [ ] Trial targeted mutation testing and whole-program dead-code detection.
+10. [ ] Add architecture enforcement, native analyzers, kernel matrix, CodeQL, SBOM, and release hardening.
 
 The first two foundation steps are complete. Check-matrix cleanup remains open: the large check definition still lives mostly in `flake.nix`, broad checks remain duplicated across systems, and several unsupported checks are represented by successful skipped derivations.
 
