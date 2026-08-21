@@ -810,7 +810,6 @@ func (e *Engine) checkCommand(command string, args []string, execveEnforcementAc
 		denyDec := e.wrapDecision(string(types.DecisionDeny), "shellc-depth-exceeded", "nested shell-c chain exceeded max derivation depth", nil)
 		if s := decisionStrictness(denyDec.PolicyDecision); s > resultStrictness {
 			result = denyDec
-			resultStrictness = s
 		}
 	}
 	return result

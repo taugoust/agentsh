@@ -139,6 +139,7 @@ func TestSSEProxyTransport_SSEResponse(t *testing.T) {
 
 	// Make request through transport
 	req, _ := http.NewRequest("POST", sseServer.URL+"/v1/messages", nil)
+	//nolint:bodyclose // The SSE transport consumes and closes the upstream body.
 	resp, err := transport.RoundTrip(req)
 
 	// Should return nil response and errSSEHandled
@@ -259,6 +260,7 @@ func TestSSEProxyTransport_StreamingBehavior(t *testing.T) {
 		)
 
 		req, _ := http.NewRequest("POST", sseServer.URL+"/v1/messages", nil)
+		//nolint:bodyclose // The SSE transport consumes and closes the upstream body.
 		transport.RoundTrip(req)
 	}()
 
@@ -332,6 +334,7 @@ func TestSSEProxyTransport_LargeStream(t *testing.T) {
 	)
 
 	req, _ := http.NewRequest("POST", sseServer.URL+"/v1/messages", nil)
+	//nolint:bodyclose // The SSE transport consumes and closes the upstream body.
 	_, err := transport.RoundTrip(req)
 
 	if err != errSSEHandled {
@@ -407,6 +410,7 @@ func TestSSEProxyTransport_WithInterceptor(t *testing.T) {
 
 	// Make request through transport.
 	req, _ := http.NewRequest("POST", sseServer.URL+"/v1/messages", nil)
+	//nolint:bodyclose // The SSE transport consumes and closes the upstream body.
 	_, err := transport.RoundTrip(req)
 
 	if err != errSSEHandled {

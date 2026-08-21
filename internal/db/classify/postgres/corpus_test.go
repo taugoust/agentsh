@@ -21,7 +21,6 @@ func TestCorpus(t *testing.T) {
 	rs := policy.MustLoadSample()
 
 	for _, row := range rows {
-		row := row
 		t.Run(row.Name, func(t *testing.T) {
 			d := DialectPostgres
 			if row.Dialect != "" {

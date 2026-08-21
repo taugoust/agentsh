@@ -364,7 +364,6 @@ var _ = Event{Type: string(EventCgroupMode)}
 	rootDir := repoRoot(t)
 	consts := loadEventConstants(t, rootDir)
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			got := scanFromSource(t, tc.src, consts)
 			if _, ok := got[tc.want]; !ok {

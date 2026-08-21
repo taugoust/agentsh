@@ -121,7 +121,7 @@ func TestCommandOutputArtifactCapture_DirenvRevokesStalePolicyAndServiceValues(t
 
 	cfg.Deny = []string{"POLICY_*"}
 	s.SetServiceEnvVars(map[string]string{"service_stale": "supervisor-owned"})
-	old, generation := s.DirenvEnvironment()
+	old, _ := s.DirenvEnvironment()
 	next, generation, removed := pruneDirenvEnvironment(cfg, s, old)
 	if removed != 2 || generation != 2 || !reflect.DeepEqual(next, map[string]string{"KEEP": "current"}) {
 		t.Fatalf("policy/service transition = next=%#v generation=%d removed=%d", next, generation, removed)

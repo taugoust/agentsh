@@ -110,7 +110,10 @@ func TestRetryClient_AbortsOnContextCancellation(t *testing.T) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
 
 	start := time.Now()
-	_, err := c.Do(req)
+	resp, err := c.Do(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -136,7 +139,10 @@ func TestRetryClient_GivesUp_WrapsErrMaxAttempts(t *testing.T) {
 	defer srv.Close()
 	c := newRetryClient(retryConfig{MaxAttempts: 2, BaseBackoff: 1 * time.Millisecond, MaxBackoff: 5 * time.Millisecond})
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
-	_, err := c.Do(req)
+	resp, err := c.Do(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if !errors.Is(err, errMaxAttempts) {
 		t.Fatalf("expected error chain to include errMaxAttempts, got: %v", err)
 	}
@@ -292,7 +298,10 @@ func TestRetryClient_CtxCancelOnFinalAttemptIsNotMaxAttempts(t *testing.T) {
 		close(secondReady) // unblock handler so client.Do returns 500
 	}()
 
-	_, err := c.Do(req)
+	resp, err := c.Do(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected error from cancelled context")
 	}

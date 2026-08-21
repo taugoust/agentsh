@@ -657,6 +657,7 @@ func verifyCloneNamespaceDenied(namespaceFlag uintptr, name string) error {
 		// This branch is evidence of a filter regression. Avoid returning into
 		// the Go runtime after raw clone on the current stack.
 		_, _, _ = unix.RawSyscall(unix.SYS_EXIT, 99, 0, 0)
+		//nolint:staticcheck // Returning after raw clone would corrupt the Go runtime.
 		for {
 		}
 	}

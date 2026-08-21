@@ -68,7 +68,7 @@ func TestTraceOperation_MinimalOp(t *testing.T) {
 		Target:    "api.example.com:443",
 	}
 
-	ctx, span := TraceOperation(ctx, op)
+	_, span := TraceOperation(ctx, op)
 	defer span.End()
 
 	if span == nil {
@@ -144,7 +144,7 @@ func TestRecordError(t *testing.T) {
 func TestPolicyEvalSpan(t *testing.T) {
 	ctx := context.Background()
 
-	ctx, span := PolicyEvalSpan(ctx)
+	_, span := PolicyEvalSpan(ctx)
 	defer span.End()
 
 	if span == nil {
@@ -155,7 +155,7 @@ func TestPolicyEvalSpan(t *testing.T) {
 func TestApprovalSpan(t *testing.T) {
 	ctx := context.Background()
 
-	ctx, span := ApprovalSpan(ctx, OpFileDelete, "/workspace/important.txt")
+	_, span := ApprovalSpan(ctx, OpFileDelete, "/workspace/important.txt")
 	defer span.End()
 
 	if span == nil {
@@ -166,7 +166,7 @@ func TestApprovalSpan(t *testing.T) {
 func TestWebhookSpan(t *testing.T) {
 	ctx := context.Background()
 
-	ctx, span := WebhookSpan(ctx, "https://hooks.example.com/notify")
+	_, span := WebhookSpan(ctx, "https://hooks.example.com/notify")
 	defer span.End()
 
 	if span == nil {

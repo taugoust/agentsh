@@ -420,6 +420,7 @@ func execPTYWS(ctx context.Context, cfg *clientConfig, sessionID string, req exe
 		h.Set("Traceparent", tp)
 	}
 
+	//nolint:bodyclose // gorilla/websocket owns the handshake response body.
 	conn, resp, err := dialer.DialContext(ctx, wsURL, h)
 	if err != nil {
 		// If the server isn't reachable yet, prefer a connection error.

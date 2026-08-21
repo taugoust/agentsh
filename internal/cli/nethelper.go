@@ -379,7 +379,6 @@ func newNethelperLifecycleClientCmd(renew bool) *cobra.Command {
 					LeaseID: leaseID, HelperInstanceCredential: credential,
 				})
 			}
-			credential = ""
 			if err != nil {
 				if outputJSON && response.ProtocolVersion != 0 {
 					if printErr := printJSON(cmd, response); printErr != nil {
@@ -432,7 +431,6 @@ func newNethelperReleaseCmd() *cobra.Command {
 				LeaseID:                  strings.TrimSpace(leaseID),
 				HelperInstanceCredential: credential,
 			})
-			credential = ""
 			if err != nil {
 				return err
 			}

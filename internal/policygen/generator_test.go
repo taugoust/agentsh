@@ -61,6 +61,7 @@ func TestGenerator_BlockedEvents(t *testing.T) {
 	events := []types.Event{
 		{Type: "file_write", Path: "/workspace/src/a.ts", Timestamp: now, Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
 		{Type: "file_write", Path: "/etc/hosts", Timestamp: now.Add(time.Second), Policy: &types.PolicyInfo{Decision: types.DecisionDeny, Message: "system file"}},
+		{Type: "unix_connect", Path: "/run/private.sock", Timestamp: now.Add(2 * time.Second), Policy: &types.PolicyInfo{Decision: types.DecisionDeny, Message: "private socket"}},
 	}
 
 	store := &mockEventStore{events: events}
@@ -77,6 +78,9 @@ func TestGenerator_BlockedEvents(t *testing.T) {
 
 	if len(policy.BlockedFiles) == 0 {
 		t.Error("expected blocked file rules")
+	}
+	if len(policy.BlockedUnix) == 0 {
+		t.Error("expected blocked unix socket rules")
 	}
 }
 

@@ -5,7 +5,7 @@
   basePolicy,
 }:
 let
-  lib = pkgs.lib;
+  inherit (pkgs) lib;
   yaml = pkgs.formats.yaml { };
   projectRoot = "/scratch/theo/qshell-project";
   qshellRoot = "${projectRoot}/qshell";
@@ -686,72 +686,74 @@ pkgs.testers.runNixOSTest {
       pkgs.python3
       pkgs.util-linux
     ];
-    systemd.tmpfiles.rules = [
-      "d /var/lib/agentsh-release 0700 agentsh-release-user agentsh-release-user -"
-      "d /run/agentsh-release 0700 agentsh-release-user agentsh-release-user -"
-      "d /boot 0755 root root -"
-      "d /home 0755 root root -"
-      "d /home/theo 0755 agentsh-release-user agentsh-release-user -"
-      "d /home/theo/.config-rose 0755 agentsh-release-user agentsh-release-user -"
-      "d /home/theo/.config-rose/nix 0755 agentsh-release-user agentsh-release-user -"
-      "d /home/theo/.local 0755 agentsh-release-user agentsh-release-user -"
-      "d /home/theo/.local/share 0755 agentsh-release-user agentsh-release-user -"
-      "d /home/theo/.local/share/nix 0755 agentsh-release-user agentsh-release-user -"
-      "d /mnt 0755 root root -"
-      "d /opt 0755 root root -"
-      "d /share 0755 root root -"
-      "d /srv 0755 root root -"
-      "d /zokelmannvms 0755 root root -"
-      "d /zroot 0755 root root -"
-      "d /scratch/theo 0755 agentsh-release-user agentsh-release-user -"
-      "d /scratch/theo/.cache 0755 agentsh-release-user agentsh-release-user -"
-      "d /scratch/theo/.cache/nix 0755 agentsh-release-user agentsh-release-user -"
-      "d /scratch/theo/.local 0755 agentsh-release-user agentsh-release-user -"
-      "d /scratch/theo/.local/share 0755 agentsh-release-user agentsh-release-user -"
-      "d /scratch/theo/.local/share/nix 0755 agentsh-release-user agentsh-release-user -"
-    ];
-    systemd.services.agentsh-release-nethelper-bootstrap = {
-      requiredBy = [ "agentsh-supervisor-release-gate.service" ];
-      before = [ "agentsh-supervisor-release-gate.service" ];
-      after = [
-        "sys-fs-bpf.mount"
-        "systemd-tmpfiles-setup.service"
+    systemd = {
+      tmpfiles.rules = [
+        "d /var/lib/agentsh-release 0700 agentsh-release-user agentsh-release-user -"
+        "d /run/agentsh-release 0700 agentsh-release-user agentsh-release-user -"
+        "d /boot 0755 root root -"
+        "d /home 0755 root root -"
+        "d /home/theo 0755 agentsh-release-user agentsh-release-user -"
+        "d /home/theo/.config-rose 0755 agentsh-release-user agentsh-release-user -"
+        "d /home/theo/.config-rose/nix 0755 agentsh-release-user agentsh-release-user -"
+        "d /home/theo/.local 0755 agentsh-release-user agentsh-release-user -"
+        "d /home/theo/.local/share 0755 agentsh-release-user agentsh-release-user -"
+        "d /home/theo/.local/share/nix 0755 agentsh-release-user agentsh-release-user -"
+        "d /mnt 0755 root root -"
+        "d /opt 0755 root root -"
+        "d /share 0755 root root -"
+        "d /srv 0755 root root -"
+        "d /zokelmannvms 0755 root root -"
+        "d /zroot 0755 root root -"
+        "d /scratch/theo 0755 agentsh-release-user agentsh-release-user -"
+        "d /scratch/theo/.cache 0755 agentsh-release-user agentsh-release-user -"
+        "d /scratch/theo/.cache/nix 0755 agentsh-release-user agentsh-release-user -"
+        "d /scratch/theo/.local 0755 agentsh-release-user agentsh-release-user -"
+        "d /scratch/theo/.local/share 0755 agentsh-release-user agentsh-release-user -"
+        "d /scratch/theo/.local/share/nix 0755 agentsh-release-user agentsh-release-user -"
       ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        ExecStart = nethelperBootstrapLauncher;
-        User = "root";
-        Group = "root";
+      services.agentsh-release-nethelper-bootstrap = {
+        requiredBy = [ "agentsh-supervisor-release-gate.service" ];
+        before = [ "agentsh-supervisor-release-gate.service" ];
+        after = [
+          "sys-fs-bpf.mount"
+          "systemd-tmpfiles-setup.service"
+        ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = nethelperBootstrapLauncher;
+          User = "root";
+          Group = "root";
+        };
       };
-    };
-    systemd.services.agentsh-supervisor-release-gate = {
-      wantedBy = [ "multi-user.target" ];
-      requires = [ "agentsh-release-nethelper-bootstrap.service" ];
-      after = [
-        "network.target"
-        "agentsh-release-nethelper-bootstrap.service"
-      ];
-      environment = {
-        AGENTSH_NETHELPER_SOCKET = "${releaseRuntimeRoot}/nethelper.sock";
-        AGENTSH_NETHELPER_CREDENTIAL_FILE = "${releaseRuntimeRoot}/instance-credential";
-        AGENTSH_NETHELPER_BOOTSTRAP_RESULT = "${releaseRuntimeRoot}/bootstrap.json";
-        AGENTSH_DETACHED_SUPERVISOR_LAUNCH_MODE = "systemd-user-delegated";
-        XDG_CACHE_HOME = "/scratch/theo/.cache";
-        XDG_CONFIG_HOME = "/home/theo/.config-rose";
-        XDG_DATA_HOME = "/home/theo/.local/share";
-        XDG_STATE_HOME = "/scratch/theo/.local/share";
-      };
-      serviceConfig = {
-        Type = "simple";
-        ExecStart = serverLauncher;
-        Restart = "no";
-        User = "agentsh-release-user";
-        Group = "agentsh-release-user";
-        Delegate = true;
-        LimitMEMLOCK = "infinity";
-        StandardOutput = "append:/var/lib/agentsh-release/server.log";
-        StandardError = "append:/var/lib/agentsh-release/server.log";
+      services.agentsh-supervisor-release-gate = {
+        wantedBy = [ "multi-user.target" ];
+        requires = [ "agentsh-release-nethelper-bootstrap.service" ];
+        after = [
+          "network.target"
+          "agentsh-release-nethelper-bootstrap.service"
+        ];
+        environment = {
+          AGENTSH_NETHELPER_SOCKET = "${releaseRuntimeRoot}/nethelper.sock";
+          AGENTSH_NETHELPER_CREDENTIAL_FILE = "${releaseRuntimeRoot}/instance-credential";
+          AGENTSH_NETHELPER_BOOTSTRAP_RESULT = "${releaseRuntimeRoot}/bootstrap.json";
+          AGENTSH_DETACHED_SUPERVISOR_LAUNCH_MODE = "systemd-user-delegated";
+          XDG_CACHE_HOME = "/scratch/theo/.cache";
+          XDG_CONFIG_HOME = "/home/theo/.config-rose";
+          XDG_DATA_HOME = "/home/theo/.local/share";
+          XDG_STATE_HOME = "/scratch/theo/.local/share";
+        };
+        serviceConfig = {
+          Type = "simple";
+          ExecStart = serverLauncher;
+          Restart = "no";
+          User = "agentsh-release-user";
+          Group = "agentsh-release-user";
+          Delegate = true;
+          LimitMEMLOCK = "infinity";
+          StandardOutput = "append:/var/lib/agentsh-release/server.log";
+          StandardError = "append:/var/lib/agentsh-release/server.log";
+        };
       };
     };
     virtualisation = {

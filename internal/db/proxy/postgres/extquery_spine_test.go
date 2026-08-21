@@ -298,7 +298,7 @@ func TestExtquery_Spine_Query_InTx_RollbackThenContinue(t *testing.T) {
 	case err := <-loopErr:
 		// EOF is fine; we forced the close.
 		if err != nil && !errors.Is(err, net.ErrClosed) {
-			// loop may also exit on upstream pipe close — both acceptable.
+			t.Logf("proxy loop exited after forced upstream close: %v", err)
 		}
 	case <-time.After(time.Second):
 	}

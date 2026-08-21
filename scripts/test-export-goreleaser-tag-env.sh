@@ -18,7 +18,7 @@ git config user.email "test@example.com"
 commit_with_tag() {
   local tag="$1"
   local message="$2"
-  printf '%s\n' "$message" > file.txt
+  printf '%s\n' "$message" >file.txt
   git add file.txt
   git commit -q -m "$message"
   git tag -a "$tag" -m "$tag"
@@ -29,7 +29,7 @@ commit_with_tag "v0.18.1" "v0.18.1"
 commit_with_tag "v0.19.0-rc5" "v0.19.0-rc5"
 commit_with_tag "v0.19.0-rc6" "v0.19.0-rc6"
 
-printf 'v0.18.2 release candidate\n' > file.txt
+printf 'v0.18.2 release candidate\n' >file.txt
 git add file.txt
 git commit -q -m "v0.18.2 candidate"
 git tag -a "v0.18.2-rc1" -m "v0.18.2-rc1"

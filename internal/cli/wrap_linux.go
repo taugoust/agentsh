@@ -236,7 +236,6 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	}
 	if hasSignalSocket {
 		env = append(env, fmt.Sprintf("AGENTSH_SIGNAL_SOCK_FD=%d", nextWrapperFD))
-		nextWrapperFD++
 	}
 
 	// Add wrapper env vars (seccomp config, etc.). Descriptor spellings are

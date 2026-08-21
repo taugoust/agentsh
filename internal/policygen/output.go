@@ -88,10 +88,16 @@ func FormatYAML(policy *GeneratedPolicy, name string) string {
 	}
 
 	// Unix socket rules section
-	if len(policy.UnixRules) > 0 {
+	if len(policy.UnixRules) > 0 || len(policy.BlockedUnix) > 0 {
 		b.WriteString("unix_socket_rules:\n")
 		for _, rule := range policy.UnixRules {
-			writeUnixRule(&b, rule)
+			writeUnixRule(&b, rule, false)
+		}
+		if len(policy.BlockedUnix) > 0 {
+			b.WriteString("  # --- Blocked operations (uncomment to allow) ---\n")
+			for _, rule := range policy.BlockedUnix {
+				writeUnixRule(&b, rule, true)
+			}
 		}
 		b.WriteString("\n")
 	}
@@ -255,8 +261,11 @@ func writeCommandRule(b *strings.Builder, rule CommandRuleGen, commented bool) {
 }
 
 // writeUnixRule writes a unix socket rule to the builder.
-func writeUnixRule(b *strings.Builder, rule UnixRuleGen) {
+func writeUnixRule(b *strings.Builder, rule UnixRuleGen, commented bool) {
 	prefix := "  "
+	if commented {
+		prefix = "  #"
+	}
 
 	b.WriteString(fmt.Sprintf("%s # Provenance: %s\n", prefix, rule.Provenance.String()))
 	b.WriteString(fmt.Sprintf("%s - name: %s\n", prefix, rule.Name))

@@ -112,7 +112,6 @@ func TestLoadOverlayCommandRuleSchemaCompatibility(t *testing.T) {
 		t.Fatal("expected checked-in policy fixtures")
 	}
 	for _, path := range paths {
-		path := path
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			if _, err := LoadFromFile(path); err != nil {
 				t.Fatalf("LoadFromFile(%s): %v", path, err)

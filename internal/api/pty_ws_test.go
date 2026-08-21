@@ -63,6 +63,7 @@ func TestPTYWebSocket_StartAndExit(t *testing.T) {
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/v1/sessions/" + sess.ID + "/pty"
 	d := websocket.Dialer{HandshakeTimeout: 2 * time.Second}
+	//nolint:bodyclose // gorilla/websocket owns the handshake response body.
 	c, _, err := d.Dial(wsURL, nil)
 	if err != nil {
 		t.Fatal(err)

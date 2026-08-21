@@ -47,20 +47,18 @@ in
 pkgs.testers.runNixOSTest {
   name = "agentsh-unfiltered-seccomp-tests";
 
-  nodes.machine =
-    { ... }:
-    {
-      environment.systemPackages = [
-        pkgs.bash
-        pkgs.coreutils
-        testArtifacts
-      ];
-      virtualisation = {
-        memorySize = 3072;
-        cores = 2;
-      };
-      system.stateVersion = "25.11";
+  nodes.machine = _: {
+    environment.systemPackages = [
+      pkgs.bash
+      pkgs.coreutils
+      testArtifacts
+    ];
+    virtualisation = {
+      memorySize = 3072;
+      cores = 2;
     };
+    system.stateVersion = "25.11";
+  };
 
   testScript = ''
     start_all()

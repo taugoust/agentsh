@@ -126,28 +126,26 @@ in
 pkgs.testers.runNixOSTest {
   name = "agentsh-nested-namespace-feasibility";
 
-  nodes.machine =
-    { ... }:
-    {
-      security.unprivilegedUsernsClone = true;
-      boot.kernel.sysctl."user.max_user_namespaces" = 1024;
-      users.users.tester = {
-        isNormalUser = true;
-        uid = 1000;
-      };
-      environment.systemPackages = [
-        pkgs.bubblewrap
-        pkgs.util-linux
-        feasibilityProbe
-        feasibilityWrapper
-        bubblewrapMatrix
-      ];
-      virtualisation = {
-        memorySize = 2048;
-        cores = 2;
-      };
-      system.stateVersion = "25.11";
+  nodes.machine = _: {
+    security.unprivilegedUsernsClone = true;
+    boot.kernel.sysctl."user.max_user_namespaces" = 1024;
+    users.users.tester = {
+      isNormalUser = true;
+      uid = 1000;
     };
+    environment.systemPackages = [
+      pkgs.bubblewrap
+      pkgs.util-linux
+      feasibilityProbe
+      feasibilityWrapper
+      bubblewrapMatrix
+    ];
+    virtualisation = {
+      memorySize = 2048;
+      cores = 2;
+    };
+    system.stateVersion = "25.11";
+  };
 
   testScript = ''
     start_all()

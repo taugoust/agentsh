@@ -136,13 +136,9 @@ func New(ctx context.Context, cfg Config, resolver secrets.RefResolver) (*Provid
 		return nil, fmt.Errorf("token lookup-self: %w", mapAuthError(err))
 	}
 
-	// Clear resolved credential variables. Note: Go strings are immutable,
-	// so we cannot wipe their backing memory. We clear the variables to
-	// prevent accidental reuse; the SecretValue.Zero() calls in
-	// resolveAuthRefs handle the byte-level wiping of the resolver output.
-	token = ""
-	roleID = ""
-	secretID = ""
+	// resolveAuthRefs wipes its mutable resolver outputs. The Vault client
+	// retains the strings required for authentication, so assigning empty
+	// strings here would not erase their immutable backing storage.
 
 	return &Provider{
 		client:     client,

@@ -19,8 +19,8 @@ emit() {
 emit "GORELEASER_CURRENT_TAG=$current_tag"
 
 previous_tag="$(
-  git tag --list 'v*' --sort=-version:refname |
-    awk -v current="$current_tag" '
+  git tag --list 'v*' --sort=-version:refname \
+    | awk -v current="$current_tag" '
       $0 == current { seen = 1; next }
       !seen { next }
       { print; exit }
@@ -29,8 +29,8 @@ previous_tag="$(
 
 if [[ "$current_tag" != *-* ]]; then
   previous_tag="$(
-    git tag --list 'v*' --sort=-version:refname |
-      awk -v current="$current_tag" '
+    git tag --list 'v*' --sort=-version:refname \
+      | awk -v current="$current_tag" '
         $0 == current { seen = 1; next }
         !seen { next }
         $0 ~ /-/ { next }

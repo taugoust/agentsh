@@ -91,6 +91,7 @@ file_rules:
 	wsURL := "ws://" + s.httpLn.Addr().String() + "/api/v1/sessions/" + snap.ID + "/pty"
 	dialCtx, dialCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer dialCancel()
+	//nolint:bodyclose // gorilla/websocket owns the handshake response body.
 	conn, _, err := websocket.DefaultDialer.DialContext(dialCtx, wsURL, http.Header{})
 	if err != nil {
 		t.Fatal(err)

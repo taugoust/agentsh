@@ -1010,7 +1010,7 @@ func TestExecveHandler_SensitiveNestedArgvRedactedAfterPolicy(t *testing.T) {
 	h := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, &mockEmitter{})
 	h.SetRedactArgv(true)
 
-	_, event := h.Handle(nil, ExecveContext{
+	_, event := h.Handle(context.Background(), ExecveContext{
 		PID: 42, ParentPID: 41, SessionID: "sensitive-refresh", Depth: 1,
 		Filename: "/workspace/bin/nested-helper",
 		Argv:     []string{"nested-helper", "--token", secret},
@@ -1020,7 +1020,7 @@ func TestExecveHandler_SensitiveNestedArgvRedactedAfterPolicy(t *testing.T) {
 	require.Equal(t, []string{"[REDACTED]"}, event.Argv)
 
 	ordinary := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, &mockEmitter{})
-	_, ordinaryEvent := ordinary.Handle(nil, ExecveContext{
+	_, ordinaryEvent := ordinary.Handle(context.Background(), ExecveContext{
 		PID: 44, ParentPID: 43, SessionID: "ordinary", Depth: 1,
 		Filename: "/workspace/bin/nested-helper", Argv: []string{"nested-helper", "visible"},
 	})

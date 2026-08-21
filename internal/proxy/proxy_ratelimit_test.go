@@ -271,12 +271,14 @@ func TestProxy_TPM_Returns429(t *testing.T) {
 	}
 
 	// First request succeeds; upstream reports 1000 tokens which depletes the 100-token burst budget.
+	//nolint:bodyclose // makeRequest returns an already drained and closed body.
 	resp1 := makeRequest()
 	if resp1.StatusCode == http.StatusTooManyRequests {
 		t.Fatal("first request should not be rate limited")
 	}
 
 	// Second request should be rate limited (429) because token budget is depleted.
+	//nolint:bodyclose // makeRequest returns an already drained and closed body.
 	resp2 := makeRequest()
 	if resp2.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("second request should be 429 (TPM depleted), got %d", resp2.StatusCode)
@@ -351,12 +353,14 @@ func TestProxy_RPM_Returns429(t *testing.T) {
 	}
 
 	// First request should succeed (uses the 1 burst token)
+	//nolint:bodyclose // makeRequest returns an already drained and closed body.
 	resp1 := makeRequest()
 	if resp1.StatusCode == http.StatusTooManyRequests {
 		t.Fatal("first request should not be rate limited")
 	}
 
 	// Second request should be rate limited (429)
+	//nolint:bodyclose // makeRequest returns an already drained and closed body.
 	resp2 := makeRequest()
 	if resp2.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("second request should be 429, got %d", resp2.StatusCode)
@@ -436,6 +440,7 @@ func TestProxy_TPM_FallbackChargeOnMissingUsage(t *testing.T) {
 
 	// First request succeeds — upstream returns no usage, fallback charge
 	// of 200 tokens drives the 100-token burst budget to -100.
+	//nolint:bodyclose // makeRequest returns an already drained and closed body.
 	resp1 := makeRequest()
 	if resp1.StatusCode == http.StatusTooManyRequests {
 		t.Fatal("first request should not be rate limited")
@@ -443,6 +448,7 @@ func TestProxy_TPM_FallbackChargeOnMissingUsage(t *testing.T) {
 
 	// Second request should be rate limited — budget fully depleted by
 	// the fallback charge from the first request.
+	//nolint:bodyclose // makeRequest returns an already drained and closed body.
 	resp2 := makeRequest()
 	if resp2.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("second request should be 429 (TPM depleted from fallback charge), got %d", resp2.StatusCode)

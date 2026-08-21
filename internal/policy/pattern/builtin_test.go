@@ -249,7 +249,6 @@ func TestClassRegistry_Isolation(t *testing.T) {
 
 	// Modify the returned slice
 	patterns[0] = "modified"
-	patterns = append(patterns, "extra")
 
 	// Get again and verify it's unchanged
 	patterns2, _ := r.Get("shell")

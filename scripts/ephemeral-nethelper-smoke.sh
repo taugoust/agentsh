@@ -14,7 +14,7 @@ EOF
 }
 
 case "${1:-}" in
-  -h|--help)
+  -h | --help)
     usage
     exit 0
     ;;
@@ -98,14 +98,38 @@ sudo "$agentsh_bin" nethelper bootstrap \
   --gid "$gid" \
   --lease "$lease"
 
-[ -f "$result_file" ] || { echo "missing bootstrap result: $result_file" >&2; exit 1; }
-[ -S "$socket" ] || { echo "missing helper socket: $socket" >&2; exit 1; }
-[ -r "$credential_file" ] || { echo "credential copy is not readable by uid $uid" >&2; exit 1; }
-[ "$(stat -c '%a' "$socket")" = 600 ] || { echo "helper socket is not mode 0600" >&2; exit 1; }
-[ "$(stat -c '%u' "$socket")" = "$uid" ] || { echo "helper socket has wrong owner" >&2; exit 1; }
-[ "$(stat -c '%a' "$credential_file")" = 400 ] || { echo "credential copy is not mode 0400" >&2; exit 1; }
-[ "$(stat -c '%u' "$credential_file")" = "$uid" ] || { echo "credential copy has wrong owner" >&2; exit 1; }
-systemctl is-active --quiet "$unit" || { systemctl status --no-pager "$unit" >&2 || true; exit 1; }
+[ -f "$result_file" ] || {
+  echo "missing bootstrap result: $result_file" >&2
+  exit 1
+}
+[ -S "$socket" ] || {
+  echo "missing helper socket: $socket" >&2
+  exit 1
+}
+[ -r "$credential_file" ] || {
+  echo "credential copy is not readable by uid $uid" >&2
+  exit 1
+}
+[ "$(stat -c '%a' "$socket")" = 600 ] || {
+  echo "helper socket is not mode 0600" >&2
+  exit 1
+}
+[ "$(stat -c '%u' "$socket")" = "$uid" ] || {
+  echo "helper socket has wrong owner" >&2
+  exit 1
+}
+[ "$(stat -c '%a' "$credential_file")" = 400 ] || {
+  echo "credential copy is not mode 0400" >&2
+  exit 1
+}
+[ "$(stat -c '%u' "$credential_file")" = "$uid" ] || {
+  echo "credential copy has wrong owner" >&2
+  exit 1
+}
+systemctl is-active --quiet "$unit" || {
+  systemctl status --no-pager "$unit" >&2 || true
+  exit 1
+}
 
 printf '\nBootstrap metadata (contains paths/IDs, never the credential):\n'
 cat "$result_file"
@@ -115,13 +139,16 @@ if [ -z "$jq_bin" ]; then
   jq_package="$(nix build nixpkgs#jq --no-link --print-out-paths | tail -n 1)"
   jq_bin="$jq_package/bin/jq"
 fi
-[ -x "$jq_bin" ] || { echo "could not obtain jq for evidence validation" >&2; exit 1; }
+[ -x "$jq_bin" ] || {
+  echo "could not obtain jq for evidence validation" >&2
+  exit 1
+}
 printf '\nStarting a delegated strict session and disposable preflight...\n'
 session_json="$({
   AGENTSH_DETACHED_SUPERVISOR_SYSTEMD_RUN=1 \
-  AGENTSH_NETHELPER_SOCKET="$socket" \
-  AGENTSH_NETHELPER_CREDENTIAL_FILE="$credential_file" \
-  "$agentsh_bin" session start \
+    AGENTSH_NETHELPER_SOCKET="$socket" \
+    AGENTSH_NETHELPER_CREDENTIAL_FILE="$credential_file" \
+    "$agentsh_bin" session start \
     --detach \
     --policy pi-supervised \
     --workspace "$repo_root" \
@@ -131,9 +158,15 @@ session_json="$({
 })"
 printf '%s\n' "$session_json"
 session_id="$(printf '%s\n' "$session_json" | "$jq_bin" -r '.session_id // .id // empty')"
-[ -n "$session_id" ] || { echo "strict session output has no session id" >&2; exit 1; }
+[ -n "$session_id" ] || {
+  echo "strict session output has no session id" >&2
+  exit 1
+}
 metadata="${XDG_STATE_HOME:-$HOME/.local/state}/agentsh/sessions/$session_id/metadata.json"
-[ -r "$metadata" ] || { echo "strict session metadata is missing: $metadata" >&2; exit 1; }
+[ -r "$metadata" ] || {
+  echo "strict session metadata is missing: $metadata" >&2
+  exit 1
+}
 if ! "$jq_bin" -e '
   .network_enforcement.requested == "strict" and
   .network_enforcement.readiness == "ready" and

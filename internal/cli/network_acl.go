@@ -466,12 +466,6 @@ Note: This requires the agentsh daemon to be running with network monitoring ena
 			// Try to connect to the daemon's event stream
 			cfg := getClientConfig(cmd)
 
-			// Use SSE endpoint if available
-			eventURL := cfg.serverAddr + "/api/v1/events/stream"
-			if processFilter != "" {
-				eventURL += "?process=" + processFilter
-			}
-
 			fmt.Fprintf(w, "Connecting to event stream at %s...\n", cfg.serverAddr)
 			fmt.Fprintln(w, "Press Ctrl+C to stop")
 			fmt.Fprintln(w)

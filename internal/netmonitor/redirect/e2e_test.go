@@ -144,7 +144,7 @@ func TestCorrelationMapOverwrite(t *testing.T) {
 	}
 
 	// Old IP should still work (we don't remove old mappings until cleanup)
-	found, ok = correlationMap.LookupHostname(oldIP)
+	_, ok = correlationMap.LookupHostname(oldIP)
 	if !ok {
 		t.Error("old IP should still be in map until cleanup")
 	}

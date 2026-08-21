@@ -202,7 +202,6 @@ func TestStore_InFlightDrop_EmitsTransportLossOnWire(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.skip != "" {
 				t.Skip(tc.skip)

@@ -444,7 +444,6 @@ func prepareFilterProgramWithConfig(cfg FilterConfig) (*PreparedFilterProgram, e
 	}
 	blockListMap := map[uint32]seccompkg.OnBlockAction{}
 	blockedFamilyMap := map[uint64]seccompkg.BlockedFamily{}
-	socketRules := []seccompkg.SocketRule{}
 	switch action {
 	case seccompkg.OnBlockErrno:
 		errnoAction := seccomp.ActErrno.SetReturnCode(int16(unix.EPERM))

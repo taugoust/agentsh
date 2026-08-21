@@ -439,20 +439,6 @@ func TestCreateVolumes(t *testing.T) {
 	}
 }
 
-func TestRuntimeHealthHandlers(t *testing.T) {
-	config := DefaultSidecarConfig()
-	runtime := NewSidecarRuntime(config)
-
-	// Test that stats are maintained
-	stats := runtime.Stats()
-	time.Sleep(10 * time.Millisecond)
-	stats2 := runtime.Stats()
-
-	if stats.Uptime == stats2.Uptime {
-		// Uptime should have changed (though might be same string for short durations)
-	}
-}
-
 func TestSidecarConfigDefaults(t *testing.T) {
 	config := DefaultSidecarConfig()
 

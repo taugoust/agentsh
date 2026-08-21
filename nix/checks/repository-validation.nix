@@ -6,7 +6,10 @@
   shell-validation =
     pkgs.runCommand "agentsh-shell-validation"
       {
-        nativeBuildInputs = [ pkgs.shellcheck ];
+        nativeBuildInputs = [
+          pkgs.shellcheck
+          pkgs.shfmt
+        ];
       }
       ''
         cp -R ${self} source
@@ -19,6 +22,7 @@
           exit 1
         fi
         shellcheck --external-sources --severity=warning "''${scripts[@]}"
+        shfmt --diff --indent 2 --case-indent --binary-next-line "''${scripts[@]}"
         mkdir -p "$out"
         touch "$out/passed"
       '';
@@ -26,7 +30,11 @@
   nix-validation =
     pkgs.runCommand "agentsh-nix-validation"
       {
-        nativeBuildInputs = [ pkgs.nixfmt ];
+        nativeBuildInputs = [
+          pkgs.deadnix
+          pkgs.nixfmt
+          pkgs.statix
+        ];
       }
       ''
         cp -R ${self} source
@@ -38,6 +46,8 @@
           exit 1
         fi
         nixfmt --check "''${expressions[@]}"
+        statix check .
+        deadnix --fail .
         mkdir -p "$out"
         touch "$out/passed"
       '';

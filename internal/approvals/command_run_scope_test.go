@@ -74,7 +74,6 @@ func TestCommandRunScopeCoversPendingAndFutureRequestsOnlyForSameCommand(t *test
 	}
 	results := make(chan Resolution, len(requests))
 	for _, request := range requests {
-		request := request
 		go func() {
 			res, _ := m.RequestApproval(ctx, request)
 			results <- res

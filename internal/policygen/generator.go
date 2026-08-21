@@ -142,6 +142,7 @@ func (g *Generator) Generate(ctx context.Context, sess types.Session, opts Optio
 
 	// Generate unix socket rules
 	policy.UnixRules = g.generateUnixRules(allowedUnixEvents, false)
+	policy.BlockedUnix = g.generateUnixRules(blockedUnixEvents, true)
 
 	// Generate MCP rules
 	policy.MCPToolRules, policy.MCPBlockedTools, policy.MCPServers, policy.MCPConfig =

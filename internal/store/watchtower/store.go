@@ -548,7 +548,7 @@ func (s *Store) waitAppendDrain() bool {
 	drained := make(chan struct{})
 	go func() {
 		s.appendMu.Lock()
-		s.appendMu.Unlock()
+		s.appendMu.Unlock() //nolint:staticcheck // Barrier for in-flight appends.
 		close(drained)
 	}()
 	select {

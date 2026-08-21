@@ -16,7 +16,7 @@ Track testing and validation techniques that could improve confidence in AgentSH
 - Race detection now runs complete concurrency-heavy package suites for approvals, API, detached transport/recovery, events, nethelper, netmonitor, proxy, runtime providers, sessions, major stores, Watchtower, and shadow workspaces.
 - The x86_64-linux lifecycle leak gate uses `goleak` plus file-descriptor, child-process, and mount snapshots around selected concurrent package suites, repeated three times in a deterministic shuffled order.
 - The complete native suite publishes a repository-wide 57.7% atomic coverage baseline; package and changed-line ratchets remain open.
-- Go formatting, a first curated `golangci-lint` gate (`govet`, `rowserrcheck`, and `sqlclosecheck`), and a pinned offline `govulncheck` source scan are configured. Broader lint, dead-code, shell, and Nix validation remain open.
+- Go formatting, a curated `golangci-lint` gate (`bodyclose`, `copyloopvar`, `govet`, `ineffassign`, `rowserrcheck`, `sqlclosecheck`, and correctness-focused `staticcheck`), and a pinned offline `govulncheck` source scan are configured. Broader error-handling and dead-code analysis remain open.
 - Two native fuzz targets cover HTTP service path policy. Property-based testing with `rapid` is currently concentrated in the PostgreSQL protocol state machine.
 - Native C helpers are compiled with strong warnings, but there is no static-analyzer or sanitizer gate.
 - The flake emits the same broad check set on every system and represents several unsupported checks as successful skipped derivations.
@@ -57,20 +57,20 @@ Track testing and validation techniques that could improve confidence in AgentSH
 
 ### Curated Go linting
 
-A pinned first gate now covers `govet`, `rowserrcheck`, and `sqlclosecheck` with no broad suppression baseline. Expand it incrementally with high-signal analyzers, including:
+The maintained gate now covers `bodyclose`, `copyloopvar`, `govet`, `ineffassign`, `rowserrcheck`, `sqlclosecheck`, and the `staticcheck` correctness family with no broad suppression baseline. Expand it incrementally with additional high-signal analyzers, including:
 
-- `govet`
-- `staticcheck`
+- [x] `govet`
+- [x] `staticcheck` correctness checks
 - `unused`
 - `errcheck`
 - `errorlint`
 - `nilerr`
-- `bodyclose`
+- [x] `bodyclose`
 - `noctx`
-- `rowserrcheck`
-- `sqlclosecheck`
-- `copyloopvar`
-- `ineffassign`
+- [x] `rowserrcheck`
+- [x] `sqlclosecheck`
+- [x] `copyloopvar`
+- [x] `ineffassign`
 - `exhaustive`
 - selected `gocritic` checks
 
@@ -79,17 +79,17 @@ Roll out incrementally by fixing findings or documenting narrow exceptions.
 ### Vulnerability analysis
 
 - [x] Add reachability-aware `govulncheck -mode=source` coverage using a pinned offline Go vulnerability database.
-- Add `osv-scanner` for lockfiles and non-Go dependency metadata.
+- Add `osv-scanner` if maintained non-Go lockfiles are introduced; the current repository has no such metadata, and Go dependencies are covered by `govulncheck`.
 - [x] Pin the vulnerability database as a non-flake input so checks remain reproducible and offline after input realization.
 - Keep the narrow standard-library allowlist synchronized with the pinned nixpkgs Go toolchain; third-party reachable findings always fail.
 
 ### Repository-language validation
 
 - [x] Check maintained shell scripts with `shellcheck` at warning severity; generated completion scripts are excluded.
-- Check shell formatting with `shfmt --diff` if the existing style can be represented without churn.
+- [x] Check shell formatting with `shfmt --diff` using the repository's normalized style.
 - [x] Check Nix formatting, not only Go formatting.
-- Trial `statix` and `deadnix`, with narrow exclusions for intentional module arguments and generated expressions.
-- Validate Python scripts with an appropriate lightweight linter if they remain maintained production tooling.
+- [x] Run `statix` and `deadnix` without a suppression baseline.
+- Python validation is not needed after removal of the unused Python and Docker demo/test assets.
 
 ## Concurrency and lifecycle testing
 

@@ -387,8 +387,11 @@ func TestSession_CloseProxy(t *testing.T) {
 	// Verify proxy is no longer accepting connections (with a short timeout)
 	time.Sleep(50 * time.Millisecond)
 	client := &http.Client{Timeout: 100 * time.Millisecond}
-	_, err = client.Get(proxyURL + "/v1/messages")
-	if err == nil {
+	resp, requestErr := client.Get(proxyURL + "/v1/messages")
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	if requestErr == nil {
 		t.Error("expected connection to fail after proxy close")
 	}
 }

@@ -220,10 +220,7 @@ func (p *Platform) Shutdown(ctx context.Context) error {
 		return nil
 	}
 
-	// Clean up filesystem mounts
-	if p.fs != nil {
-		// Mounts are cleaned up individually via FSMount.Close()
-	}
+	// Mounts are cleaned up individually via FSMount.Close().
 
 	p.initialized = false
 	return nil

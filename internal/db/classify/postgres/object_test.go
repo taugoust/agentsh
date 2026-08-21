@@ -68,7 +68,6 @@ func TestExtractRelation_QualifiedAndUnqualified(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.sql+"|"+tc.res.String(), func(t *testing.T) {
 			res, err := parseSQL(tc.sql)
 			if err != nil {

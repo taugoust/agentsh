@@ -97,7 +97,6 @@ var denyByDefaultPoliciesWithSystemRead = []string{
 // removing the bare-dir / etc-open edits would fail this test.
 func TestIssue369_ShippedPoliciesAllowLoaderReads(t *testing.T) {
 	for _, rel := range denyByDefaultPoliciesWithSystemRead {
-		rel := rel
 		t.Run(filepath.Base(rel), func(t *testing.T) {
 			p, err := LoadFromFile(rel)
 			if err != nil {

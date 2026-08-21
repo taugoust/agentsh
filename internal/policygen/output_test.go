@@ -189,6 +189,14 @@ func TestFormatYAML_UnixRules(t *testing.T) {
 				Decision:   "allow",
 			},
 		},
+		BlockedUnix: []UnixRuleGen{
+			{
+				GeneratedRule: GeneratedRule{Name: "private-socket", Provenance: Provenance{Blocked: true, EventCount: 1}},
+				Paths:         []string{"/run/private.sock"},
+				Operations:    []string{"connect"},
+				Decision:      "deny",
+			},
+		},
 	}
 
 	yaml := FormatYAML(policy, "test")
@@ -198,6 +206,9 @@ func TestFormatYAML_UnixRules(t *testing.T) {
 	}
 	if !strings.Contains(yaml, `paths: ["/var/run/docker.sock"]`) {
 		t.Error("missing socket path")
+	}
+	if !strings.Contains(yaml, `#   paths: ["/run/private.sock"]`) {
+		t.Error("missing commented blocked socket path")
 	}
 }
 

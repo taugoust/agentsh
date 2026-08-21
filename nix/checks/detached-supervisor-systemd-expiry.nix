@@ -23,70 +23,72 @@ pkgs.testers.runNixOSTest {
         createHome = true;
       };
 
-      environment.systemPackages = [
-        agentsh
-        pkgs.coreutils
-        pkgs.jq
-        pkgs.util-linux
-      ];
+      environment = {
+        systemPackages = [
+          agentsh
+          pkgs.coreutils
+          pkgs.jq
+          pkgs.util-linux
+        ];
 
-      environment.etc."agentsh/config.yaml".text = ''
-        server:
-          http:
-            addr: "127.0.0.1:0"
-        auth:
-          type: "none"
-        logging:
-          level: "info"
-          format: "text"
-          output: "stderr"
-        audit:
-          enabled: true
-          storage:
-            sqlite_path: "/home/alice/.local/state/agentsh/events.db"
-        sessions:
-          base_dir: "/home/alice/.local/share/agentsh/sessions"
-          default_idle_timeout: "2s"
-          cleanup_interval: "250ms"
-        sandbox:
-          enabled: false
-          fuse:
+        etc."agentsh/config.yaml".text = ''
+          server:
+            http:
+              addr: "127.0.0.1:0"
+          auth:
+            type: "none"
+          logging:
+            level: "info"
+            format: "text"
+            output: "stderr"
+          audit:
+            enabled: true
+            storage:
+              sqlite_path: "/home/alice/.local/state/agentsh/events.db"
+          sessions:
+            base_dir: "/home/alice/.local/share/agentsh/sessions"
+            default_idle_timeout: "2s"
+            cleanup_interval: "250ms"
+          sandbox:
             enabled: false
-          network:
+            fuse:
+              enabled: false
+            network:
+              enabled: false
+            unix_sockets:
+              enabled: false
+            seccomp:
+              enabled: false
+          policies:
+            dir: "/etc/agentsh/policies"
+            default: "expiry-test"
+          approvals:
             enabled: false
-          unix_sockets:
+          metrics:
             enabled: false
-          seccomp:
-            enabled: false
-        policies:
-          dir: "/etc/agentsh/policies"
-          default: "expiry-test"
-        approvals:
-          enabled: false
-        metrics:
-          enabled: false
-      '';
-      environment.etc."agentsh/policies/expiry-test.yaml".text = ''
-        version: 1
-        name: expiry-test
-        command_rules:
-          - name: allow-all-commands
-            commands: ["*"]
-            decision: allow
-        file_rules:
-          - name: allow-all-files
-            paths: ["/**"]
-            operations: ["*"]
-            decision: allow
-        network_rules:
-          - name: allow-all-network
-            domains: ["*"]
-            decision: allow
-        audit:
-          log_allowed: true
-          log_denied: true
-          log_approved: true
-      '';
+        '';
+        etc."agentsh/policies/expiry-test.yaml".text = ''
+          version: 1
+          name: expiry-test
+          command_rules:
+            - name: allow-all-commands
+              commands: ["*"]
+              decision: allow
+          file_rules:
+            - name: allow-all-files
+              paths: ["/**"]
+              operations: ["*"]
+              decision: allow
+          network_rules:
+            - name: allow-all-network
+              domains: ["*"]
+              decision: allow
+          audit:
+            log_allowed: true
+            log_denied: true
+            log_approved: true
+        '';
+      };
     };
 
   testScript =

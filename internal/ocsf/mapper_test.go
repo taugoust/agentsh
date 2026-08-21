@@ -166,7 +166,6 @@ func TestMap_db_bypass_attemptFinding(t *testing.T) {
 func TestMapDeterministic(t *testing.T) {
 	m := New()
 	for _, ev := range deterministicSampleEvents() {
-		ev := ev
 		t.Run(ev.Type, func(t *testing.T) {
 			first, err := m.Map(ev)
 			if err != nil {
@@ -207,7 +206,6 @@ func deterministicSampleEvents() []types.Event {
 func TestGoldens(t *testing.T) {
 	m := New()
 	for _, ev := range goldenSampleEvents() {
-		ev := ev
 		t.Run(ev.Type, func(t *testing.T) {
 			mapped, err := m.Map(ev)
 			if err != nil {

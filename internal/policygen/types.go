@@ -126,6 +126,7 @@ type GeneratedPolicy struct {
 	BlockedFiles    []FileRuleGen
 	BlockedNetwork  []NetworkRuleGen
 	BlockedCommands []CommandRuleGen
+	BlockedUnix     []UnixRuleGen
 
 	// MCP rules
 	MCPToolRules    []MCPToolRuleGen

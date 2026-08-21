@@ -109,20 +109,13 @@ func createBackup(cmd *cobra.Command, output, configPath string, verify bool) er
 	gw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gw)
 
-	// Track files added for verification
-	var addedFiles []string
-
 	// Backup config file
 	if err := addFileToTar(tw, configPath, "config.yaml"); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not backup config: %v\n", err)
-	} else {
-		addedFiles = append(addedFiles, "config.yaml")
 	}
 
 	if err := addFileToTar(tw, auditDB, "events.db"); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not backup audit DB: %v\n", err)
-	} else {
-		addedFiles = append(addedFiles, "events.db")
 	}
 
 	if err := addDirToTar(tw, policiesDir, "policies"); err != nil {

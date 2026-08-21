@@ -340,7 +340,7 @@ in
 pkgs.testers.runNixOSTest {
   name = "agentsh-nested-namespace-broker-feasibility";
 
-  nodes.machine = { ... }: {
+  nodes.machine = _: {
     security.unprivilegedUsernsClone = true;
     boot.kernel.sysctl."user.max_user_namespaces" = 1024;
     users.users.tester = {

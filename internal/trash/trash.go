@@ -118,11 +118,8 @@ func Divert(path string, cfg Config) (*Entry, error) {
 		Platform:     runtime.GOOS,
 	}
 
-	// Capture platform-specific metadata
-	if err := capturePlatformMetadata(path, info, entry, cfg); err != nil {
-		// Log but don't fail - metadata is nice-to-have
-		// In production, you'd use a logger here
-	}
+	// Platform metadata is best-effort and does not affect payload recovery.
+	_ = capturePlatformMetadata(path, info, entry, cfg)
 
 	if err := os.MkdirAll(filepath.Dir(entry.TrashPath), 0o755); err != nil {
 		return nil, err
@@ -230,10 +227,8 @@ func Restore(trashDir, token, dest string, force bool) (string, error) {
 		}
 	}
 
-	// Restore platform-specific metadata
-	if err := restorePlatformMetadata(target, entry); err != nil {
-		// Log but don't fail
-	}
+	// Platform metadata restoration is best-effort.
+	_ = restorePlatformMetadata(target, entry)
 
 	_ = os.Remove(manPath)
 	return target, nil

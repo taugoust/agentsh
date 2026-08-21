@@ -133,7 +133,6 @@ func bootstrapEphemeralNethelperWithSoftLease(uid, gid uint32, leaseID string, r
 	if err := writePrivateFile(paths.CredentialFile, []byte(credential+"\n"), uid, gid); err != nil {
 		return result, fmt.Errorf("write supervisor helper credential: %w", err)
 	}
-	credential = ""
 
 	systemdRun, err := trustedRootExecutable("systemd-run")
 	if err != nil {

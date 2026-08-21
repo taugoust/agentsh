@@ -265,7 +265,6 @@ func TestApprovalResolutionSingleWinner(t *testing.T) {
 	start := make(chan struct{})
 	results := make(chan candidateResult, len(candidates))
 	for _, candidate := range candidates {
-		candidate := candidate
 		go func() {
 			<-start
 			results <- candidateResult{
@@ -459,7 +458,6 @@ func TestApprovalResolutionScopeAndCleanupByTerminalCause(t *testing.T) {
 	}
 
 	for _, resolutionScope := range []string{ScopeOnce, ScopeSession} {
-		resolutionScope := resolutionScope
 		t.Run("decision-"+resolutionScope, func(t *testing.T) {
 			gate := make(chan struct{})
 			defer releaseResolutionRaceGate(gate)

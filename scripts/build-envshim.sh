@@ -14,8 +14,8 @@ build_one() {
   if ! command -v "$cc" >/dev/null 2>&1; then
     echo "[envshim] skipping linux/${arch}: compiler $cc not found" >&2
     # Create stub for packaging (warns at runtime if loaded)
-    echo '#!/bin/sh' > "$target_dir/libenvshim.so"
-    echo 'echo "envshim: stub library - rebuild with $cc for full functionality" >&2' >> "$target_dir/libenvshim.so"
+    echo '#!/bin/sh' >"$target_dir/libenvshim.so"
+    echo 'echo "envshim: stub library - rebuild with $cc for full functionality" >&2' >>"$target_dir/libenvshim.so"
     chmod 644 "$target_dir/libenvshim.so"
     return 0
   fi

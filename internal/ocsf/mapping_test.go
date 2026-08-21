@@ -43,7 +43,6 @@ func TestAsString(t *testing.T) {
 		{name: "slice int", input: []int{1, 2}, want: nil, wantErr: true},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := AsString(tc.input)
@@ -114,7 +113,6 @@ func TestAsUint32(t *testing.T) {
 		{name: "string", input: "123", want: nil, wantErr: true},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := AsUint32(tc.input)
@@ -174,7 +172,6 @@ func TestAsUint64(t *testing.T) {
 		{name: "bool", input: true, want: nil, wantErr: true},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := AsUint64(tc.input)

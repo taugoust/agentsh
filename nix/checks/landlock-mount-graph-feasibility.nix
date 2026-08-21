@@ -27,22 +27,20 @@ in
 pkgs.testers.runNixOSTest {
   name = "agentsh-landlock-mount-graph-feasibility";
 
-  nodes.machine =
-    { ... }:
-    {
-      security.unprivilegedUsernsClone = true;
-      boot.kernel.sysctl."user.max_user_namespaces" = 1024;
-      users.users.tester = {
-        isNormalUser = true;
-        uid = 1000;
-      };
-      environment.systemPackages = [ probe ];
-      virtualisation = {
-        memorySize = 1536;
-        cores = 2;
-      };
-      system.stateVersion = "25.11";
+  nodes.machine = _: {
+    security.unprivilegedUsernsClone = true;
+    boot.kernel.sysctl."user.max_user_namespaces" = 1024;
+    users.users.tester = {
+      isNormalUser = true;
+      uid = 1000;
     };
+    environment.systemPackages = [ probe ];
+    virtualisation = {
+      memorySize = 1536;
+      cores = 2;
+    };
+    system.stateVersion = "25.11";
+  };
 
   testScript = ''
     start_all()

@@ -4,16 +4,26 @@ run:
   timeout: 15m
   tests: true
 
-# Begin with high-signal analyzers that have a clean, maintainable baseline.
-# Additional analyzers remain explicit follow-up work in the testing wishlist;
+# Keep a high-signal analyzer set with a clean, maintainable baseline. New
+# analyzers are enabled only after their findings have been triaged and fixed;
 # they are not hidden behind a broad suppression file.
 linters:
   default: none
   enable:
+    - bodyclose
+    - copyloopvar
     - govet
+    - ineffassign
     - rowserrcheck
     - sqlclosecheck
+    - staticcheck
   settings:
+    staticcheck:
+      checks:
+        # Start with correctness checks. Deprecations are tracked separately
+        # because several compatibility paths intentionally use older APIs.
+        - "SA*"
+        - "-SA1019"
     govet:
       disable:
         # Go 1.26's experimental inlining suggestion is style-oriented rather

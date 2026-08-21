@@ -317,7 +317,6 @@ func (a *App) listDetachedArray(ctx context.Context, path string) []any {
 	ch := make(chan result, len(supervisors))
 	var wg sync.WaitGroup
 	for _, sup := range supervisors {
-		sup := sup
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

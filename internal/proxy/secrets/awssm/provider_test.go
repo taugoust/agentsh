@@ -338,7 +338,6 @@ func TestMapAWSError_AuthCodes(t *testing.T) {
 	}
 
 	for _, code := range authCodes {
-		code := code
 		t.Run(code, func(t *testing.T) {
 			mock := &mockSMClient{
 				GetSecretValueFunc: func(_ context.Context, _ *secretsmanager.GetSecretValueInput,

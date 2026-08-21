@@ -113,12 +113,9 @@ func (t *Tracer) attachThread(tid int, opts attachOpts) error {
 	// Open MemFD and create TraceeState BEFORE injection and resume.
 	// The injection engine needs TraceeState (for scratch page) and MemFD
 	// (for register read/write during injectSyscall).
-	memFD := -1
-	if fd, openErr := unix.Open(fmt.Sprintf("/proc/%d/mem", tid), unix.O_RDWR, 0); openErr != nil {
-		fd, _ = unix.Open(fmt.Sprintf("/proc/%d/mem", tid), unix.O_RDONLY, 0)
-		memFD = fd
-	} else {
-		memFD = fd
+	memFD, openErr := unix.Open(fmt.Sprintf("/proc/%d/mem", tid), unix.O_RDWR, 0)
+	if openErr != nil {
+		memFD, _ = unix.Open(fmt.Sprintf("/proc/%d/mem", tid), unix.O_RDONLY, 0)
 	}
 
 	t.mu.Lock()

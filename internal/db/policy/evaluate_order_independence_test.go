@@ -21,7 +21,6 @@ func TestEvaluate_R14OrderIndependent(t *testing.T) {
 	rng := rand.New(rand.NewSource(1234))
 
 	for _, c := range cases() {
-		c := c
 		// Snapshot the baseline outcome.
 		rs.statement = append([]*compiledStatementRule(nil), original...)
 		baseline := Evaluate(c.stmt, rs, c.service)

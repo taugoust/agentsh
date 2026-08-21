@@ -6,11 +6,6 @@ import (
 )
 
 func TestResumeProcessByPIDSignature(t *testing.T) {
-	// Verify function exists with correct signature
-	var fn func(uint32) error = ResumeProcessByPID
-	if fn == nil {
-		t.Fatal("ResumeProcessByPID should not be nil")
-	}
 	if runtime.GOOS != "windows" {
 		err := ResumeProcessByPID(0)
 		if err == nil {
@@ -20,10 +15,6 @@ func TestResumeProcessByPIDSignature(t *testing.T) {
 }
 
 func TestSuspendProcessByPIDSignature(t *testing.T) {
-	var fn func(uint32) error = SuspendProcessByPID
-	if fn == nil {
-		t.Fatal("SuspendProcessByPID should not be nil")
-	}
 	if runtime.GOOS != "windows" {
 		err := SuspendProcessByPID(0)
 		if err == nil {
@@ -33,10 +24,6 @@ func TestSuspendProcessByPIDSignature(t *testing.T) {
 }
 
 func TestTerminateProcessByPIDSignature(t *testing.T) {
-	var fn func(uint32, uint32) error = TerminateProcessByPID
-	if fn == nil {
-		t.Fatal("TerminateProcessByPID should not be nil")
-	}
 	if runtime.GOOS != "windows" {
 		err := TerminateProcessByPID(0, 1)
 		if err == nil {
@@ -46,10 +33,6 @@ func TestTerminateProcessByPIDSignature(t *testing.T) {
 }
 
 func TestCreateProcessAsChildSignature(t *testing.T) {
-	var fn func(uint32, string, string, []string, string, bool, []uintptr) (uint32, error) = CreateProcessAsChild
-	if fn == nil {
-		t.Fatal("CreateProcessAsChild should not be nil")
-	}
 	if runtime.GOOS != "windows" {
 		_, err := CreateProcessAsChild(0, "", "test.exe", nil, "", false, nil)
 		if err == nil {

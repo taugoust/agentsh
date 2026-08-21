@@ -142,7 +142,7 @@ func TestInspector_PolicyEnforcement(t *testing.T) {
 
 	// Create inspector for disallowed server
 	inspector2 := NewInspectorWithPolicy("session1", "blocked", emitter, cfg)
-	allowed, reason = inspector2.CheckPolicy("any_tool", "sha256:def")
+	allowed, _ = inspector2.CheckPolicy("any_tool", "sha256:def")
 	if allowed {
 		t.Error("Expected blocked:any_tool to be denied")
 	}

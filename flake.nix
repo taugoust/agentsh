@@ -215,7 +215,7 @@
         in
         {
           default = agentsh;
-          agentsh = agentsh;
+          inherit agentsh;
           formatted-go-source =
             pkgs.runCommand "agentsh-formatted-go-source"
               {
@@ -235,8 +235,6 @@
       nixosModules = {
         default =
           {
-            config,
-            lib,
             pkgs,
             ...
           }@args:
@@ -268,7 +266,7 @@
               system = stdenv.hostPlatform.system;
               modules = [
                 self.nixosModules.default
-                ({ ... }: {
+                (_: {
                   system.stateVersion = "25.11";
                   services.agentsh = {
                     enable = true;
@@ -295,7 +293,7 @@
             system = stdenv.hostPlatform.system;
             modules = [
               self.nixosModules.default
-              ({ ... }: {
+              (_: {
                 system.stateVersion = "25.11";
                 services.agentsh = {
                   enable = true;
@@ -315,7 +313,7 @@
             system = stdenv.hostPlatform.system;
             modules = [
               self.nixosModules.default
-              ({ ... }: {
+              (_: {
                 system.stateVersion = "25.11";
                 services.agentsh = {
                   enable = true;

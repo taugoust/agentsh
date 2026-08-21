@@ -10,8 +10,15 @@ PASS=0
 FAIL=0
 ERRORS=""
 
-pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
-fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); ERRORS="${ERRORS}\n  - $1"; }
+pass() {
+  echo "  PASS: $1"
+  PASS=$((PASS + 1))
+}
+fail() {
+  echo "  FAIL: $1"
+  FAIL=$((FAIL + 1))
+  ERRORS="${ERRORS}\n  - $1"
+}
 
 tmp="$(mktemp -d)"
 cleanup() {

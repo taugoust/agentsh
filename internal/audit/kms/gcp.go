@@ -88,7 +88,7 @@ func (p *GCPKMSProvider) GetKey(ctx context.Context) ([]byte, error) {
 	// Cache encrypted DEK to file
 	if p.encryptedDEKFile != "" && len(encryptedKey) > 0 {
 		if err := os.WriteFile(p.encryptedDEKFile, encryptedKey, 0600); err != nil {
-			// Log warning but don't fail
+			return nil, fmt.Errorf("persist encrypted data key: %w", err)
 		}
 	}
 

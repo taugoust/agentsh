@@ -195,7 +195,6 @@ func TestComputeReplayStart_FullyGCdServerAtOrPastPersistedAckIsNoOp(t *testing.
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			env := newClampTestEnv(t, Options{
 				InitialAckTuple: &AckTuple{
@@ -302,7 +301,6 @@ func TestComputeReplayStart_MixedGenerationsOnDisk_DetectsLossInOlderGeneration(
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			env := newClampTestEnv(t, Options{
 				InitialAckTuple: &AckTuple{

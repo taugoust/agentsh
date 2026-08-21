@@ -176,7 +176,6 @@ func runLineageMain() error {
 	}
 	if preparedLandlock != nil {
 		enforcePreparedLandlock(preparedLandlock)
-		preparedLandlock = nil
 	}
 	if lookup.procRoot != nil && lookup.baseline == nil && lookup.unsupportedReason == lookupproto.ReasonContextUnavailable {
 		if err := lookup.finalizeContext(); err != nil {

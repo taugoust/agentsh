@@ -51,7 +51,7 @@ let
     ++ lib.optional instance.allowCompatSysAdmin "CAP_SYS_ADMIN";
 
   nethelperProfile = lib.concatStringsSep "\n" (
-    lib.mapAttrsToList (name: instance: ''
+    lib.mapAttrsToList (_: instance: ''
       if [ "$(${pkgs.coreutils}/bin/id -u)" = ${lib.escapeShellArg (toString instance.uid)} ]; then
         export AGENTSH_DETACHED_SUPERVISOR_SYSTEMD_RUN=1
         export AGENTSH_NETHELPER_SOCKET=${lib.escapeShellArg (nethelperSocketPath instance)}
@@ -837,39 +837,37 @@ in
           checks on the deployed host.
         '';
         type = types.attrsOf (
-          types.submodule (
-            { name, ... }: {
-              options = {
-                user = mkOption {
-                  type = types.str;
-                  description = "Unix user allowed to connect to this helper instance.";
-                };
-                uid = mkOption {
-                  type = types.int;
-                  description = "Numeric Unix UID verified against SO_PEERCRED.";
-                };
-                credentialFile = mkOption {
-                  type = types.str;
-                  description = "Root-readable source file containing the helper-instance credential (for example, /run/secrets/agentsh-nethelper).";
-                };
-                socketPath = mkOption {
-                  type = types.nullOr types.str;
-                  default = null;
-                  description = "Absolute helper socket path below /run/agentsh/nethelper/<uid>; defaults to nethelper.sock in that protected runtime directory.";
-                };
-                pinRoot = mkOption {
-                  type = types.nullOr types.str;
-                  default = null;
-                  description = "Protected bpffs pin root at or below /sys/fs/bpf/agentsh/nethelper/<uid>.";
-                };
-                allowCompatSysAdmin = mkOption {
-                  type = types.bool;
-                  default = false;
-                  description = "Add CAP_SYS_ADMIN for older kernels that cannot load the fixed programs with CAP_BPF/CAP_NET_ADMIN/CAP_PERFMON alone.";
-                };
+          types.submodule (_: {
+            options = {
+              user = mkOption {
+                type = types.str;
+                description = "Unix user allowed to connect to this helper instance.";
               };
-            }
-          )
+              uid = mkOption {
+                type = types.int;
+                description = "Numeric Unix UID verified against SO_PEERCRED.";
+              };
+              credentialFile = mkOption {
+                type = types.str;
+                description = "Root-readable source file containing the helper-instance credential (for example, /run/secrets/agentsh-nethelper).";
+              };
+              socketPath = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = "Absolute helper socket path below /run/agentsh/nethelper/<uid>; defaults to nethelper.sock in that protected runtime directory.";
+              };
+              pinRoot = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = "Protected bpffs pin root at or below /sys/fs/bpf/agentsh/nethelper/<uid>.";
+              };
+              allowCompatSysAdmin = mkOption {
+                type = types.bool;
+                default = false;
+                description = "Add CAP_SYS_ADMIN for older kernels that cannot load the fixed programs with CAP_BPF/CAP_NET_ADMIN/CAP_PERFMON alone.";
+              };
+            };
+          })
         );
       };
     };
@@ -886,7 +884,7 @@ in
     };
 
     extraConfig = mkOption {
-      type = yaml.type;
+      inherit (yaml) type;
       default = { };
       description = "Extra attrs merged into generated agentsh YAML config.";
     };
@@ -974,55 +972,57 @@ in
     # Both the root supervisor and client-spawned wrappers must create private
     # children here. Deny directory listing/inotify discovery while permitting
     # randomized mkdir, and use the sticky bit to protect distinct users.
-    systemd.tmpfiles.rules = lib.optional (
-      cfg.sandbox.composition.bubblewrap.enable
-      && cfg.sandbox.composition.bubblewrap.scratchRoot != "auto"
-    ) "d ${cfg.sandbox.composition.bubblewrap.scratchRoot} 1733 root root -";
+    systemd = {
+      tmpfiles.rules = lib.optional (
+        cfg.sandbox.composition.bubblewrap.enable
+        && cfg.sandbox.composition.bubblewrap.scratchRoot != "auto"
+      ) "d ${cfg.sandbox.composition.bubblewrap.scratchRoot} 1733 root root -";
 
-    environment.etc = {
-      "agentsh/config.yml".source = configFile;
-      "agentsh/policies".source = cfg.policies.source;
-    }
-    // optionalAttrs cfg.nethelper.enable {
-      "profile.d/agentsh-nethelper.sh" = {
-        mode = "0644";
-        text = ''
-          # AgentSH detached supervisor integration. This exposes only control
-          # paths; the credential value remains in the protected runtime file.
-          ${nethelperProfile}
-        '';
-      };
-    };
-
-    systemd.services = {
-      agentsh = {
-        description = "Policy-enforced execution gateway for AI agents";
-        wantedBy = [ "multi-user.target" ];
-        restartTriggers = [ configFile ];
-        after = [ "network.target" ];
-
-        serviceConfig = {
-          Type = "simple";
-          ExecStart = "${lib.getExe cfg.package} server --config ${cfg.configPath}";
-          Restart = "on-failure";
-          RestartSec = "2s";
-
-          User = "root";
-          StateDirectory = "agentsh";
-          RuntimeDirectory = "agentsh";
-          LogsDirectory = "agentsh";
-
-          Delegate = cfg.service.delegate;
-          DelegateSubgroup = cfg.service.delegateSubgroup;
-          IOAccounting = true;
-          MemoryAccounting = true;
-          TasksAccounting = true;
+      environment.etc = {
+        "agentsh/config.yml".source = configFile;
+        "agentsh/policies".source = cfg.policies.source;
+      }
+      // optionalAttrs cfg.nethelper.enable {
+        "profile.d/agentsh-nethelper.sh" = {
+          mode = "0644";
+          text = ''
+            # AgentSH detached supervisor integration. This exposes only control
+            # paths; the credential value remains in the protected runtime file.
+            ${nethelperProfile}
+          '';
         };
       };
-    }
-    // optionalAttrs cfg.nethelper.enable (nethelperProvisionServices // nethelperServices);
 
-    systemd.sockets = mkIf cfg.nethelper.enable nethelperSockets;
+      services = {
+        agentsh = {
+          description = "Policy-enforced execution gateway for AI agents";
+          wantedBy = [ "multi-user.target" ];
+          restartTriggers = [ configFile ];
+          after = [ "network.target" ];
+
+          serviceConfig = {
+            Type = "simple";
+            ExecStart = "${lib.getExe cfg.package} server --config ${cfg.configPath}";
+            Restart = "on-failure";
+            RestartSec = "2s";
+
+            User = "root";
+            StateDirectory = "agentsh";
+            RuntimeDirectory = "agentsh";
+            LogsDirectory = "agentsh";
+
+            Delegate = cfg.service.delegate;
+            DelegateSubgroup = cfg.service.delegateSubgroup;
+            IOAccounting = true;
+            MemoryAccounting = true;
+            TasksAccounting = true;
+          };
+        };
+      }
+      // optionalAttrs cfg.nethelper.enable (nethelperProvisionServices // nethelperServices);
+
+      sockets = mkIf cfg.nethelper.enable nethelperSockets;
+    };
 
   };
 }

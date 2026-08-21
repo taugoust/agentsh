@@ -181,7 +181,6 @@ func (p *snykProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequest
 		}
 
 		wg.Add(1)
-		i, pkg := i, pkg // capture
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()

@@ -92,8 +92,7 @@ func (p *AWSKMSProvider) GetKey(ctx context.Context) ([]byte, error) {
 	// Cache encrypted DEK to file
 	if p.encryptedDEKFile != "" && len(encryptedKey) > 0 {
 		if err := os.WriteFile(p.encryptedDEKFile, encryptedKey, 0600); err != nil {
-			// Log warning but don't fail - we still have the key in memory
-			// In production, this should be logged
+			return nil, fmt.Errorf("persist encrypted data key: %w", err)
 		}
 	}
 

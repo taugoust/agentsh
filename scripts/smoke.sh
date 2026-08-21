@@ -189,7 +189,7 @@ for attempt in $(seq 1 $max_exec_attempts); do
     if [[ "$out" == "hi" ]]; then
       break
     fi
-    exec_rc=1  # Mark as failed for retry
+    exec_rc=1 # Mark as failed for retry
   fi
 
   if [[ $attempt -lt $max_exec_attempts ]]; then
@@ -332,10 +332,10 @@ if [[ "$SMOKE_PTY_OK" == "1" ]]; then
   # Shim PTY: allocate a pseudo-tty so shim chooses --pty.
   pty_shim_out="$(
     SMOKE_SHIM="$shim_dir/sh" \
-    SMOKE_AGENTSH="$repo_root/bin/agentsh" \
-    SMOKE_SID="$sid" \
-    SMOKE_SERVER="$base_url" \
-    "$PYTHON" - <<'PY'
+      SMOKE_AGENTSH="$repo_root/bin/agentsh" \
+      SMOKE_SID="$sid" \
+      SMOKE_SERVER="$base_url" \
+      "$PYTHON" - <<'PY'
 import os, pty, select, subprocess, sys, time
 
 shim = os.environ["SMOKE_SHIM"]

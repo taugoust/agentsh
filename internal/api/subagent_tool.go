@@ -293,8 +293,8 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	})
 	if terminalPersistErr != nil {
 		runErr = errors.Join(runErr, terminalPersistErr)
-		if code == 0 || code == http.StatusOK {
-			code = http.StatusInternalServerError
+		if status == http.StatusOK {
+			status = http.StatusInternalServerError
 		}
 	}
 	protocolOK := runErr == nil || (len(result.Results) > 0 && terminalPersistErr == nil)
@@ -501,7 +501,6 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		sem := make(chan struct{}, maxSubagentConcurrency)
 		var wg sync.WaitGroup
 		for i, spec := range specs {
-			i, spec := i, spec
 			wg.Add(1)
 			go func() {
 				defer wg.Done()

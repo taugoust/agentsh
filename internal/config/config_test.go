@@ -1989,7 +1989,6 @@ func TestAuditWatchtowerConfig_FilterMinRiskLevelEnum(t *testing.T) {
 		}
 	})
 	for _, v := range []string{"low", "medium", "high", "critical"} {
-		v := v
 		t.Run("valid_"+v, func(t *testing.T) {
 			yaml := validWatchtowerYAML(t, true, "    filter:\n      min_risk_level: \""+v+"\"\n")
 			_, err := loadFromString(t, yaml)
@@ -2067,7 +2066,6 @@ func TestAuditWatchtowerConfig_KMSSourcesMutualExclusion(t *testing.T) {
 		{"hashicorp_vault", "      hashicorp_vault:\n        address: \"https://vault.example.com\"\n        secret_path: \"secret/data/agentsh/wtp\"\n"},
 		{"gcp_kms", "      gcp_kms:\n        key_name: \"projects/p/locations/l/keyRings/r/cryptoKeys/k\"\n"},
 	} {
-		c := c
 		t.Run("only_"+c.name, func(t *testing.T) {
 			yaml := "audit:\n  watchtower:\n    enabled: true\n" +
 				"    endpoint: \"wtp.example.com:9443\"\n" +
@@ -2151,7 +2149,6 @@ func TestAuditWatchtowerConfig_ProviderRequiredFields(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			yaml := "audit:\n  watchtower:\n    enabled: true\n" +
 				"    endpoint: \"wtp.example.com:9443\"\n" +
