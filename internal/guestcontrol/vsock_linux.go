@@ -133,5 +133,9 @@ func acceptVSock(fd int) (controlConn, error) {
 }
 
 func closeVSock(fd int) error {
-	return unix.Close(fd)
+	shutdownErr := unix.Shutdown(fd, unix.SHUT_RDWR)
+	if shutdownErr == unix.ENOTCONN || shutdownErr == unix.EINVAL {
+		shutdownErr = nil
+	}
+	return errors.Join(shutdownErr, unix.Close(fd))
 }
