@@ -4,8 +4,10 @@ package guestcontrol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -95,15 +97,39 @@ func dialVSock(ctx context.Context, cid, port uint32) (controlConn, error) {
 		}
 	}
 	connected = true
-	return os.NewFile(uintptr(fd), "agentsh-host-control-vsock"), nil
+	return newVSockConn(fd, "agentsh-host-control-vsock"), nil
 }
 
-func acceptVSock(fd int) (*os.File, error) {
+type vsockConn struct {
+	*os.File
+	closeOnce sync.Once
+	closeErr  error
+}
+
+func newVSockConn(fd int, name string) *vsockConn {
+	return &vsockConn{File: os.NewFile(uintptr(fd), name)}
+}
+
+func (c *vsockConn) Close() error {
+	if c == nil || c.File == nil {
+		return nil
+	}
+	c.closeOnce.Do(func() {
+		shutdownErr := unix.Shutdown(int(c.Fd()), unix.SHUT_RDWR)
+		if shutdownErr == unix.ENOTCONN || shutdownErr == unix.EINVAL {
+			shutdownErr = nil
+		}
+		c.closeErr = errors.Join(shutdownErr, c.File.Close())
+	})
+	return c.closeErr
+}
+
+func acceptVSock(fd int) (controlConn, error) {
 	accepted, _, err := unix.Accept4(fd, unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK)
 	if err != nil {
 		return nil, err
 	}
-	return os.NewFile(uintptr(accepted), "agentsh-guest-control-vsock"), nil
+	return newVSockConn(accepted, "agentsh-guest-control-vsock"), nil
 }
 
 func closeVSock(fd int) error {

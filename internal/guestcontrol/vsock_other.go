@@ -5,7 +5,6 @@ package guestcontrol
 import (
 	"context"
 	"fmt"
-	"os"
 )
 
 func ListenVSock(uint32) (*Server, error) {
@@ -16,7 +15,7 @@ func dialVSock(context.Context, uint32, uint32) (controlConn, error) {
 	return nil, fmt.Errorf("guest control VSOCK is supported only on Linux")
 }
 
-func acceptVSock(int) (*os.File, error) {
+func acceptVSock(int) (controlConn, error) {
 	return nil, fmt.Errorf("guest control VSOCK is supported only on Linux")
 }
 
