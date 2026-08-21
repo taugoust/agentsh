@@ -1,0 +1,25 @@
+version: "2"
+
+run:
+  timeout: 15m
+  tests: true
+
+# Begin with high-signal analyzers that have a clean, maintainable baseline.
+# Additional analyzers remain explicit follow-up work in the testing wishlist;
+# they are not hidden behind a broad suppression file.
+linters:
+  default: none
+  enable:
+    - govet
+    - rowserrcheck
+    - sqlclosecheck
+  settings:
+    govet:
+      disable:
+        # Go 1.26's experimental inlining suggestion is style-oriented rather
+        # than a correctness check and churns reflect-kind comparisons.
+        - inline
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

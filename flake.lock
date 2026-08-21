@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "go-vulndb": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787160105,
+        "narHash": "sha256-P3n0KRXAgzfrmv/wCYypoUP83rIKwQfMEa1L9jwBhb8=",
+        "owner": "golang",
+        "repo": "vulndb",
+        "rev": "99a8f501b4f30a63dfc799b18ff03b7e78532e54",
+        "type": "github"
+      },
+      "original": {
+        "owner": "golang",
+        "repo": "vulndb",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1781577229,
@@ -18,6 +34,7 @@
     },
     "root": {
       "inputs": {
+        "go-vulndb": "go-vulndb",
         "nixpkgs": "nixpkgs"
       }
     }

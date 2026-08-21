@@ -383,6 +383,7 @@ func runHarness(args []string) error {
 	}
 
 	handlerCtx, stopHandler := context.WithCancel(context.Background())
+	defer stopHandler()
 	counts := &notificationCounts{}
 	broker := &mountBrokerConfig{
 		helper:        *mountBrokerHelper,

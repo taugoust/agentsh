@@ -15,7 +15,7 @@ Track testing and validation techniques that could improve confidence in AgentSH
 - The Nix `go-unit-tests` output is the authoritative complete native Go suite (`go test -count=1 -p 2 ./...`). Its initial 17 failing package targets were triaged and repaired, and the suite is green.
 - Race detection is focused on selected session, network-monitor, and API tests.
 - There is no repository-wide coverage report or coverage ratchet.
-- Go formatting is checked, but no general Go lint, vulnerability, dead-code, shell, or Nix validation gate is configured.
+- Go formatting, a first curated `golangci-lint` gate (`govet`, `rowserrcheck`, and `sqlclosecheck`), and a pinned offline `govulncheck` source scan are configured. Broader lint, dead-code, shell, and Nix validation remain open.
 - Two native fuzz targets cover HTTP service path policy. Property-based testing with `rapid` is currently concentrated in the PostgreSQL protocol state machine.
 - Native C helpers are compiled with strong warnings, but there is no static-analyzer or sanitizer gate.
 - The flake emits the same broad check set on every system and represents several unsupported checks as successful skipped derivations.
@@ -56,7 +56,7 @@ Track testing and validation techniques that could improve confidence in AgentSH
 
 ### Curated Go linting
 
-Trial a pinned `golangci-lint` configuration with high-signal analyzers, including:
+A pinned first gate now covers `govet`, `rowserrcheck`, and `sqlclosecheck` with no broad suppression baseline. Expand it incrementally with high-signal analyzers, including:
 
 - `govet`
 - `staticcheck`
@@ -77,9 +77,10 @@ Roll out incrementally by fixing findings or documenting narrow exceptions.
 
 ### Vulnerability analysis
 
-- Add reachability-aware `govulncheck -mode=source` coverage.
+- [x] Add reachability-aware `govulncheck -mode=source` coverage using a pinned offline Go vulnerability database.
 - Add `osv-scanner` for lockfiles and non-Go dependency metadata.
-- Decide how vulnerability-database freshness should interact with Nix reproducibility and offline evaluation.
+- [x] Pin the vulnerability database as a non-flake input so checks remain reproducible and offline after input realization.
+- Keep the narrow standard-library allowlist synchronized with the pinned nixpkgs Go toolchain; third-party reachable findings always fail.
 
 ### Repository-language validation
 

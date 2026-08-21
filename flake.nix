@@ -3,10 +3,18 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    go-vulndb = {
+      url = "github:golang/vulndb";
+      flake = false;
+    };
   };
 
   outputs =
-    { self, nixpkgs }:
+    {
+      self,
+      nixpkgs,
+      go-vulndb,
+    }:
     let
       systems = [
         "x86_64-linux"
@@ -41,7 +49,7 @@
             inherit version;
 
             src = self;
-            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
 
             subPackages = [
               "cmd/agentsh"
@@ -326,8 +334,16 @@
               })
             ];
           };
+          goAnalysisChecks = import ./nix/checks/go-analysis.nix {
+            inherit
+              go-vulndb
+              pkgs
+              self
+              ;
+          };
         in
-        rec {
+        goAnalysisChecks
+        // rec {
           go-format =
             pkgs.runCommand "agentsh-go-format-check"
               {
@@ -360,7 +376,7 @@
                 pname = "agentsh-linux-amd64-compile";
                 version = "unstable-2026-06-17";
                 src = self;
-                vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+                vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
                 subPackages = [ "internal/netmonitor/unix" ];
                 nativeBuildInputs = [
                   pkgs.gnumake
@@ -448,7 +464,7 @@
             pname = "agentsh-approval-resolution-race-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
 
             env = {
               CGO_ENABLED = "0";
@@ -478,7 +494,7 @@
             pname = "agentsh-go-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.diffutils
@@ -642,7 +658,7 @@
             pname = "agentsh-command-timeout-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.gnumake
@@ -690,7 +706,7 @@
             pname = "agentsh-api-darwin-cross-compile-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
 
             env = {
               CGO_ENABLED = "0";
@@ -716,7 +732,7 @@
             pname = "agentsh-workspace-runtime-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
             nativeBuildInputs = [
               pkgs.diffutils
               pkgs.rsync
@@ -751,7 +767,7 @@
             pname = "agentsh-subagent-reliability-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+            vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.gnumake
@@ -896,7 +912,7 @@
                 pname = "agentsh-approval-regression-tests";
                 version = "unstable-2026-06-17";
                 src = self;
-                vendorHash = "sha256-SnrqSrkgeH/jOiLV71h3a2q9OZj5ISru042kVjhrGRE=";
+                vendorHash = "sha256-ZLvA36nIEbrBnxeAriL35syM2yhQEKvi1n6wuB8boGk=";
 
                 nativeBuildInputs = [
                   pkgs.gnumake

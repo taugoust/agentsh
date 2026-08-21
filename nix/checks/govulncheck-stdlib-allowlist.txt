@@ -1,0 +1,12 @@
+# Reachable standard-library vulnerabilities in the pinned nixpkgs Go toolchain.
+# Remove entries as nixpkgs updates Go; third-party module findings are never allowed.
+GO-2026-5026
+GO-2026-5037
+GO-2026-5039
+GO-2026-5856
+GO-2026-5972
+GO-2026-6088
+GO-2026-6089
+GO-2026-6090
+GO-2026-6091
+GO-2026-6218

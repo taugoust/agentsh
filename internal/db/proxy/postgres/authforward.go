@@ -120,7 +120,7 @@ func forwardAuth(ctx context.Context, pc *proxyConn) error {
 				_ = pc.backend.Flush()
 				return err
 			}
-			pc.state.cancelRegistration = &reg
+			pc.state.cancelRegistration = reg
 			pc.backend.Send(&pgproto3.BackendKeyData{
 				ProcessID: reg.SyntheticPID,
 				SecretKey: append([]byte(nil), reg.SyntheticSecret...),

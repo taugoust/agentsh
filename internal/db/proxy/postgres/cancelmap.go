@@ -116,7 +116,7 @@ func newCancelMap(cfg cancelMapConfig) *cancelMap {
 	}
 }
 
-func (m *cancelMap) Register(meta cancelMeta, realPID uint32, realSecret []byte) (cancelRegistration, error) {
+func (m *cancelMap) Register(meta cancelMeta, realPID uint32, realSecret []byte) (*cancelRegistration, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -125,13 +125,13 @@ func (m *cancelMap) Register(meta cancelMeta, realPID uint32, realSecret []byte)
 		m.pruneExpiredLocked(now)
 	}
 	if len(m.entries) >= m.max {
-		return cancelRegistration{}, errBackendKeyTableFull
+		return nil, errBackendKeyTableFull
 	}
 
 	for i := 0; i < cancelKeyGenerationRetries; i++ {
 		pid, secret, err := m.generate()
 		if err != nil {
-			return cancelRegistration{}, errors.Join(errBackendKeyGenerationFailed, err)
+			return nil, errors.Join(errBackendKeyGenerationFailed, err)
 		}
 
 		key := newCancelKey(pid, secret)
@@ -156,10 +156,10 @@ func (m *cancelMap) Register(meta cancelMeta, realPID uint32, realSecret []byte)
 		reg.release = func() {
 			m.MarkDisconnected(key)
 		}
-		return reg, nil
+		return &reg, nil
 	}
 
-	return cancelRegistration{}, errBackendKeyGenerationFailed
+	return nil, errBackendKeyGenerationFailed
 }
 
 func (m *cancelMap) Lookup(pid uint32, secret []byte) (cancelEntry, cancelLookupStatus) {
