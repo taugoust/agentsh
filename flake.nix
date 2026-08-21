@@ -341,8 +341,12 @@
               self
               ;
           };
+          repositoryValidationChecks = import ./nix/checks/repository-validation.nix {
+            inherit pkgs self;
+          };
         in
         goAnalysisChecks
+        // repositoryValidationChecks
         // rec {
           go-format =
             pkgs.runCommand "agentsh-go-format-check"

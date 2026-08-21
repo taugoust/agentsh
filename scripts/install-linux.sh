@@ -69,7 +69,8 @@ check_fuse() {
     fi
 
     info "Installing FUSE3..."
-    local pm=$(detect_package_manager)
+    local pm
+    pm=$(detect_package_manager)
 
     case $pm in
         apt)
@@ -108,7 +109,8 @@ check_iptables() {
     fi
 
     info "Installing iptables..."
-    local pm=$(detect_package_manager)
+    local pm
+    pm=$(detect_package_manager)
 
     case $pm in
         apt)
@@ -149,7 +151,8 @@ check_cgroups() {
 
 # Detect system architecture
 detect_arch() {
-    local arch=$(uname -m)
+    local arch
+    arch=$(uname -m)
 
     case $arch in
         x86_64|amd64)
@@ -184,7 +187,8 @@ get_latest_version() {
 # Download and install agentsh
 install_agentsh() {
     local version="$VERSION"
-    local arch=$(detect_arch)
+    local arch
+    arch=$(detect_arch)
 
     if [[ "$version" == "latest" ]]; then
         version=$(get_latest_version)
@@ -220,7 +224,8 @@ install_agentsh() {
 # Download and install envshim helper
 install_envshim() {
     local version="$VERSION"
-    local arch=$(detect_arch)
+    local arch
+    arch=$(detect_arch)
 
     if [[ "$version" == "latest" ]]; then
         version=$(get_latest_version)

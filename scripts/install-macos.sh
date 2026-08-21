@@ -136,7 +136,8 @@ EOF
 
 # Detect system architecture
 detect_arch() {
-    local arch=$(uname -m)
+    local arch
+    arch=$(uname -m)
 
     case $arch in
         x86_64)
@@ -168,7 +169,8 @@ get_latest_version() {
 # Download and install agentsh binary
 install_agentsh() {
     local version="$VERSION"
-    local arch=$(detect_arch)
+    local arch
+    arch=$(detect_arch)
 
     if [[ "$version" == "latest" ]]; then
         version=$(get_latest_version)
@@ -199,7 +201,8 @@ install_agentsh() {
 # Download and install envshim helper
 install_envshim() {
     local version="$VERSION"
-    local arch=$(detect_arch)
+    local arch
+    arch=$(detect_arch)
 
     if [[ "$version" == "latest" ]]; then
         version=$(get_latest_version)

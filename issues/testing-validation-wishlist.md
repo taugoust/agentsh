@@ -84,9 +84,9 @@ Roll out incrementally by fixing findings or documenting narrow exceptions.
 
 ### Repository-language validation
 
-- Check all shell scripts with `shellcheck`.
+- [x] Check maintained shell scripts with `shellcheck` at warning severity; generated completion scripts are excluded.
 - Check shell formatting with `shfmt --diff` if the existing style can be represented without churn.
-- Check Nix formatting, not only Go formatting.
+- [x] Check Nix formatting, not only Go formatting.
 - Trial `statix` and `deadnix`, with narrow exclusions for intentional module arguments and generated expressions.
 - Validate Python scripts with an appropriate lightweight linter if they remain maintained production tooling.
 
@@ -251,7 +251,7 @@ A custom analyzer for project-specific fail-open patterns may provide more value
 
 1. [x] Remove the unmaintained legacy GitHub workflows.
 2. [x] Run and triage the canonical full Nix test check.
-3. [ ] Add Go linting, `govulncheck`, shell validation, and Nix validation.
+3. [x] Add initial Go linting, `govulncheck`, shell validation, and Nix validation gates.
 4. [ ] Add coverage reporting and package/changed-line ratchets.
 5. [ ] Broaden race checks, leak checks, and deterministic fault injection.
 6. [ ] Add fuzz and property/state-machine tests.
