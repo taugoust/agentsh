@@ -334,6 +334,9 @@
               })
             ];
           };
+          coverageChecks = import ./nix/checks/go-coverage.nix {
+            inherit pkgs self;
+          };
           goAnalysisChecks = import ./nix/checks/go-analysis.nix {
             inherit
               go-vulndb
@@ -345,7 +348,8 @@
             inherit pkgs self;
           };
         in
-        goAnalysisChecks
+        coverageChecks
+        // goAnalysisChecks
         // repositoryValidationChecks
         // rec {
           go-format =

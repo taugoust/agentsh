@@ -186,7 +186,10 @@ func TestSetupLogging_NoSelfDeadlockUnderFileMonitor(t *testing.T) {
 			os.Exit(3)
 		}
 		slog.Info("post-filter routed record")
-		os.Exit(0)
+		// Exit without Go runtime hooks: coverage hooks may open their profile
+		// after the self-installed notify filter has no userspace handler.
+		_, _, _ = unix.RawSyscall(unix.SYS_EXIT_GROUP, 0, 0, 0)
+		panic("exit_group returned")
 	}
 
 	exe, err := os.Executable()

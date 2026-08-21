@@ -48,8 +48,8 @@ Track testing and validation techniques that could improve confidence in AgentSH
 
 ### Coverage visibility and ratcheting
 
-- Produce atomic coverage profiles and package-level reports.
-- Publish the baseline before enforcing thresholds.
+- [x] Produce an x86_64-linux atomic coverage profile and function/package-level report as the `go-coverage-baseline` Nix output.
+- [x] Publish the initial statement baseline before enforcing thresholds: **57.7%** on the complete native suite.
 - Prefer changed-line coverage and package-specific floors over one repository-wide percentage.
 - Consider stricter expectations for pure security-decision packages such as policy, approvals, configuration, detached protocol validation, environment filtering, and authorization scope resolution.
 - Exclude generated code and account explicitly for platform/syscall-only code.
@@ -252,11 +252,12 @@ A custom analyzer for project-specific fail-open patterns may provide more value
 1. [x] Remove the unmaintained legacy GitHub workflows.
 2. [x] Run and triage the canonical full Nix test check.
 3. [x] Add initial Go linting, `govulncheck`, shell validation, and Nix validation gates.
-4. [ ] Add coverage reporting and package/changed-line ratchets.
-5. [ ] Broaden race checks, leak checks, and deterministic fault injection.
-6. [ ] Add fuzz and property/state-machine tests.
-7. [ ] Trial targeted mutation testing and whole-program dead-code detection.
-8. [ ] Add architecture enforcement, native analyzers, kernel matrix, CodeQL, SBOM, and release hardening.
+4. [x] Add coverage reporting and publish the initial baseline.
+5. [ ] Add package and changed-line coverage ratchets.
+6. [ ] Broaden race checks, leak checks, and deterministic fault injection.
+7. [ ] Add fuzz and property/state-machine tests.
+8. [ ] Trial targeted mutation testing and whole-program dead-code detection.
+9. [ ] Add architecture enforcement, native analyzers, kernel matrix, CodeQL, SBOM, and release hardening.
 
 The first two foundation steps are complete. Check-matrix cleanup remains open: the large check definition still lives mostly in `flake.nix`, broad checks remain duplicated across systems, and several unsupported checks are represented by successful skipped derivations.
 
