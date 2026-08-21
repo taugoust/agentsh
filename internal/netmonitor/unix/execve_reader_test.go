@@ -169,6 +169,9 @@ func TestWriteStringToPID(t *testing.T) {
 	// Allocate a buffer in our own process memory
 	buf := make([]byte, 64)
 	copy(buf, "/usr/bin/original-binary\x00extra-padding-data")
+	var pinner runtime.Pinner
+	pinner.Pin(&buf[0])
+	defer pinner.Unpin()
 	bufPtr := uintptr(unsafe.Pointer(&buf[0]))
 
 	// First verify we can read from the buffer
