@@ -292,10 +292,14 @@ func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.Co
 		return runtimeprovider.ControlPlaneSnapshot{}, err
 	}
 	network.Normalize()
+	layout, err := HostMonitorPaths(i.request.StateDir)
+	if err != nil {
+		return runtimeprovider.ControlPlaneSnapshot{}, err
+	}
 	metadata := detached.Metadata{
 		SessionID: i.request.SessionID, ID: i.request.SessionID, CreatedAt: i.request.CreatedAt,
 		State: detached.LifecycleReady, Policy: i.request.GuestPolicy,
-		RealWorkspace: i.request.SourceWorkspace, WorkspaceMode: string(types.WorkspaceModeShadow), Worktree: i.profile.Guest.Workspace,
+		RealWorkspace: i.request.SourceWorkspace, WorkspaceMode: string(types.WorkspaceModeShadow), Worktree: layout.WorkspaceDir,
 		SupervisorSock: i.Endpoint().Address, EventToken: i.eventToken,
 		OwnerPID: i.status.Monitor.PID, OwnerStartIdentity: i.status.Monitor.StartIdentity, BootID: i.status.Monitor.BootID,
 		Generation: i.status.Guest.Generation, IncarnationID: i.status.Guest.IncarnationID,
