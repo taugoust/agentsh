@@ -54,7 +54,7 @@ lib.optionalAttrs (stdenv.hostPlatform.system == "x86_64-linux") {
         ./internal/detachedtransport \
         ./internal/nethelper \
         ./internal/proxy \
-        ./internal/runtimeprovider \
+        ./internal/runtimeprovider/... \
         ./internal/session \
         ./internal/testutil/leakcheck \
         ./internal/workspace/shadow

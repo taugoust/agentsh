@@ -77,6 +77,41 @@ func TestAuthenticatedSupervisorRelay(t *testing.T) {
 	}
 }
 
+func TestConnectSupervisorCancellationInterruptsAuthentication(t *testing.T) {
+	manifest := testManifest(t.TempDir())
+	dial := func(context.Context, uint32, uint32) (controlConn, error) {
+		server, client := net.Pipe()
+		go func() {
+			defer server.Close()
+			_, _ = io.Copy(io.Discard, server)
+		}()
+		return client, nil
+	}
+	client, err := newClient(manifest, dial, 30*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		conn, connectErr := client.ConnectSupervisor(ctx)
+		if conn != nil {
+			_ = conn.Close()
+		}
+		result <- connectErr
+	}()
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-result:
+		if err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+			t.Fatalf("ConnectSupervisor cancellation error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ConnectSupervisor did not interrupt authentication on cancellation")
+	}
+}
+
 func TestSupervisorRelayRejectsWrongCredential(t *testing.T) {
 	manifest := testManifest(t.TempDir())
 	clientManifest := manifest

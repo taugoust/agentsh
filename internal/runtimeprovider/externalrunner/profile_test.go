@@ -31,7 +31,7 @@ func testProfile(t *testing.T) Profile {
 		Provider:      ProviderName,
 		Status:        "diagnostic",
 		System:        "x86_64-linux",
-		Runner:        Runner{Path: runner, SHA256: digest(runnerData)},
+		Runner:        Runner{Path: runner, SHA256: digest(runnerData), ProcessModel: "direct-exec"},
 		Guest: Guest{
 			ProfileDigest: digest([]byte("guest-profile")),
 			Policy:        "pi-autonomous", Workspace: "/workspace",
@@ -92,6 +92,7 @@ func TestProfileRejectsUntrustedSelections(t *testing.T) {
 		{"provider", func(p *Profile) { p.Provider = "native" }},
 		{"profile digest", func(p *Profile) { p.ProfileDigest = "sha256:bad" }},
 		{"runner path", func(p *Profile) { p.Runner.Path = "relative" }},
+		{"runner process model", func(p *Profile) { p.Runner.ProcessModel = "sidecars" }},
 		{"guest protocol", func(p *Profile) { p.Guest.Protocol-- }},
 		{"ports reused", func(p *Profile) { p.Guest.SupervisorPort = p.Guest.ControlPort }},
 		{"cid range", func(p *Profile) { p.VSock.CIDMin = p.VSock.CIDMax + 1 }},

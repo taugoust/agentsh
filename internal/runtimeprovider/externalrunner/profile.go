@@ -37,8 +37,9 @@ type Profile struct {
 }
 
 type Runner struct {
-	Path   string `json:"path"`
-	SHA256 string `json:"sha256"`
+	Path         string `json:"path"`
+	SHA256       string `json:"sha256"`
+	ProcessModel string `json:"process_model"`
 }
 
 type Guest struct {
@@ -67,41 +68,56 @@ type Timeouts struct {
 }
 
 func ReadProfile(path string) (Profile, error) {
+	profile, _, err := ReadProfileSnapshot(path)
+	return profile, err
+}
+
+// ReadProfileSnapshot parses and hashes the same opened profile bytes so a
+// launch request can bind one immutable operator-profile snapshot.
+func ReadProfileSnapshot(path string) (Profile, string, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return Profile{}, fmt.Errorf("external runner profile path must be clean and absolute")
+		return Profile{}, "", fmt.Errorf("external runner profile path must be clean and absolute")
 	}
 	before, err := os.Lstat(path)
 	if err != nil {
-		return Profile{}, fmt.Errorf("inspect external runner profile: %w", err)
+		return Profile{}, "", fmt.Errorf("inspect external runner profile: %w", err)
 	}
 	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() > maxProfileBytes {
-		return Profile{}, fmt.Errorf("external runner profile has unsafe type, permissions, or size")
+		return Profile{}, "", fmt.Errorf("external runner profile has unsafe type, permissions, or size")
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return Profile{}, fmt.Errorf("open external runner profile: %w", err)
+		return Profile{}, "", fmt.Errorf("open external runner profile: %w", err)
 	}
 	defer file.Close()
 	opened, err := file.Stat()
 	if err != nil {
-		return Profile{}, fmt.Errorf("stat external runner profile: %w", err)
+		return Profile{}, "", fmt.Errorf("stat external runner profile: %w", err)
 	}
 	if !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
-		return Profile{}, fmt.Errorf("external runner profile identity changed while opening")
+		return Profile{}, "", fmt.Errorf("external runner profile identity changed while opening")
 	}
-	decoder := json.NewDecoder(io.LimitReader(file, maxProfileBytes+1))
+	data, err := io.ReadAll(io.LimitReader(file, maxProfileBytes+1))
+	if err != nil {
+		return Profile{}, "", fmt.Errorf("read external runner profile snapshot: %w", err)
+	}
+	if len(data) > maxProfileBytes {
+		return Profile{}, "", fmt.Errorf("external runner profile snapshot exceeds limit")
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
 	var profile Profile
 	if err := decoder.Decode(&profile); err != nil {
-		return Profile{}, fmt.Errorf("decode external runner profile: %w", err)
+		return Profile{}, "", fmt.Errorf("decode external runner profile: %w", err)
 	}
 	if err := requireEOF(decoder); err != nil {
-		return Profile{}, fmt.Errorf("decode external runner profile: %w", err)
+		return Profile{}, "", fmt.Errorf("decode external runner profile: %w", err)
 	}
 	if err := profile.Validate(); err != nil {
-		return Profile{}, err
+		return Profile{}, "", err
 	}
-	return profile, nil
+	sum := sha256.Sum256(data)
+	return profile, "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
 func (p Profile) Validate() error {
@@ -120,7 +136,7 @@ func (p Profile) Validate() error {
 	if p.System != "x86_64-linux" {
 		return fmt.Errorf("external runner profile system %q is unsupported", p.System)
 	}
-	if !filepath.IsAbs(p.Runner.Path) || filepath.Clean(p.Runner.Path) != p.Runner.Path || strings.ContainsAny(p.Runner.Path, "\x00\r\n") {
+	if !filepath.IsAbs(p.Runner.Path) || filepath.Clean(p.Runner.Path) != p.Runner.Path || strings.ContainsAny(p.Runner.Path, "\x00\r\n") || p.Runner.ProcessModel != "direct-exec" {
 		return fmt.Errorf("external runner executable path is invalid")
 	}
 	if err := runtimeprovider.ValidateName(p.Guest.Policy); err != nil {

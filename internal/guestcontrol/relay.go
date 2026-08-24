@@ -166,6 +166,15 @@ func (c *Client) ConnectSupervisor(ctx context.Context) (io.ReadWriteCloser, err
 			_ = conn.Close()
 		}
 	}()
+	cancelWatch := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-cancelWatch:
+		}
+	}()
+	defer close(cancelWatch)
 	deadline := time.Now().Add(c.timeout)
 	if contextDeadline, hasDeadline := ctx.Deadline(); hasDeadline && contextDeadline.Before(deadline) {
 		deadline = contextDeadline
