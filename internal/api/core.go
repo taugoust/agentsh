@@ -2461,9 +2461,18 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	// into seconds of flush/query work before the execution lease is released.
 	if terminationReason != types.TerminationReasonCallerCancelled &&
 		terminationReason != types.TerminationReasonCallerDeadline {
+		queryLimit := 5000
+		// Pi's ordinary exec_bash contract asks for a summary. Do not decode and
+		// classify thousands of syscall events after the process has already
+		// exited: that makes a completed or timed-out command look alive in the UI.
+		// The summary response retains its bounded blocked-operation sample and is
+		// explicitly marked truncated by applyIncludeEvents.
+		if includeEvents == "summary" || includeEvents == "none" {
+			queryLimit = 256
+		}
 		collected, _ = a.store.QueryEvents(terminalCtx, types.EventQuery{
 			CommandID: cmdID,
-			Limit:     5000,
+			Limit:     queryLimit,
 			Asc:       true,
 		})
 	}

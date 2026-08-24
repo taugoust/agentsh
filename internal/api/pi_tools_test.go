@@ -15,7 +15,41 @@ import (
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
 	"github.com/agentsh/agentsh/pkg/types"
+	"github.com/go-chi/chi/v5"
 )
+
+func TestCancelExecBashToolCancelsExactActiveRequest(t *testing.T) {
+	app := &App{}
+	requestID := "11111111-1111-4111-8111-111111111111"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if !app.registerExecCancellation("session-one", requestID, cancel) {
+		t.Fatal("register exact exec cancellation failed")
+	}
+	if app.registerExecCancellation("session-one", requestID, func() {}) {
+		t.Fatal("duplicate active request ID was accepted")
+	}
+
+	route := chi.NewRouter()
+	route.Post("/sessions/{id}/tools/exec_bash/{requestID}/cancel", app.cancelExecBashTool)
+	rr := httptest.NewRecorder()
+	route.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/sessions/session-one/tools/exec_bash/"+requestID+"/cancel", nil))
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("cancel status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("exact exec context was not cancelled")
+	}
+	app.unregisterExecCancellation("session-one", requestID)
+
+	rr = httptest.NewRecorder()
+	route.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/sessions/session-one/tools/exec_bash/"+requestID+"/cancel", nil))
+	if rr.Code != http.StatusAccepted || !strings.Contains(rr.Body.String(), `"cancelled":false`) {
+		t.Fatalf("idempotent completed cancellation = %d %s", rr.Code, rr.Body.String())
+	}
+}
 
 func TestPiToolFileEndpoints_WriteReadEdit(t *testing.T) {
 	st := newSQLiteStore(t)
@@ -221,6 +255,58 @@ func TestCommandTimeoutPiToolExecBashBoundsQueuedRequests(t *testing.T) {
 	}
 	if wire.Result.CommandStarted || wire.Result.Outcome == nil || wire.Result.Outcome.Code != "E_QUEUE_TIMEOUT" || !wire.Result.Outcome.Retryable {
 		t.Fatalf("queue outcome = %+v", wire.Result)
+	}
+}
+
+func TestPiToolExecBashExplicitCancellationInterruptsAdmission(t *testing.T) {
+	st := newSQLiteStore(t)
+	store := composite.New(st, st)
+	sessions := session.NewManager(10)
+	sess, err := sessions.Create(t.TempDir(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := sess.AcquireExecution(context.Background(), session.ExecutionAdmission{CommandID: "held"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Release()
+
+	app := newTestApp(t, sessions, store)
+	requestID := "22222222-2222-4222-8222-222222222222"
+	rr := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		body := strings.NewReader(`{"request_id":"` + requestID + `","command":"printf should-not-run"}`)
+		app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", body))
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		app.execCancellationMu.Lock()
+		_, active := app.execCancellations[execCancellationKey(sess.ID, requestID)]
+		app.execCancellationMu.Unlock()
+		if active {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("exec_bash did not publish its cancellation identity")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancelResponse := httptest.NewRecorder()
+	app.Router().ServeHTTP(cancelResponse, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash/"+requestID+"/cancel", nil))
+	if cancelResponse.Code != http.StatusAccepted {
+		t.Fatalf("cancel status = %d body=%s", cancelResponse.Code, cancelResponse.Body.String())
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("explicit cancellation did not interrupt queued exec_bash")
+	}
+	if strings.Contains(rr.Body.String(), "should-not-run") && rr.Code == http.StatusOK {
+		t.Fatalf("cancelled queued command executed: %s", rr.Body.String())
 	}
 }
 

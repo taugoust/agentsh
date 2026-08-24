@@ -109,6 +109,9 @@ type App struct {
 	subagentCancellationMu sync.Mutex
 	subagentCancellations  map[string]subagentCancellationEntry
 
+	execCancellationMu sync.Mutex
+	execCancellations  map[string]context.CancelFunc
+
 	childCapabilityMu sync.Mutex
 	childCapabilities map[[32]byte]*childCapabilityRecord
 
@@ -507,6 +510,7 @@ func (a *App) Router() http.Handler {
 		// for local detached supervisors over unix:// sockets, but use the same
 		// session, workspace, and policy machinery as the rest of the REST API.
 		r.Post("/sessions/{id}/tools/exec_bash", a.execBashTool)
+		r.Post("/sessions/{id}/tools/exec_bash/{requestID}/cancel", a.cancelExecBashTool)
 		r.Post("/sessions/{id}/tools/refresh_direnv", a.refreshDirenvTool)
 		r.Post("/sessions/{id}/tools/read_file", a.readFileTool)
 		r.Post("/sessions/{id}/tools/write_file", a.writeFileTool)

@@ -31,6 +31,7 @@ const (
 type piToolActor map[string]any
 
 type execBashToolRequest struct {
+	RequestID              string            `json:"request_id,omitempty"`
 	Command                string            `json:"command"`
 	Cwd                    string            `json:"cwd,omitempty"`
 	TimeoutMS              *int64            `json:"timeout_ms,omitempty"`
@@ -152,12 +153,24 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	execCtx := r.Context()
+	execCtx, cancelExec := context.WithCancel(r.Context())
+	defer cancelExec()
 	cleanupCapabilityContext := func() {}
 	if claim != nil {
 		execCtx, cleanupCapabilityContext = contextForChildCapability(execCtx, claim)
 	}
 	defer cleanupCapabilityContext()
+	if req.RequestID != "" {
+		if parsed, err := uuid.Parse(req.RequestID); err != nil || parsed.String() != req.RequestID {
+			writeToolError(w, http.StatusBadRequest, "request_id must be a canonical UUID")
+			return
+		}
+		if !a.registerExecCancellation(id, req.RequestID, cancelExec) {
+			writeToolDomainError(w, http.StatusConflict, toolErrorConflict, "exec_bash request_id is already active", "", nil)
+			return
+		}
+		defer a.unregisterExecCancellation(id, req.RequestID)
+	}
 
 	execReq := types.ExecRequest{
 		Command: "bash",
@@ -231,6 +244,53 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, status, toolResponse{OK: status >= 200 && status < 300, Result: result})
+}
+
+func execCancellationKey(sessionID, requestID string) string {
+	return sessionID + "\x00" + requestID
+}
+
+func (a *App) registerExecCancellation(sessionID, requestID string, cancel context.CancelFunc) bool {
+	if a == nil || cancel == nil {
+		return false
+	}
+	key := execCancellationKey(sessionID, requestID)
+	a.execCancellationMu.Lock()
+	defer a.execCancellationMu.Unlock()
+	if a.execCancellations == nil {
+		a.execCancellations = make(map[string]context.CancelFunc)
+	}
+	if _, exists := a.execCancellations[key]; exists {
+		return false
+	}
+	a.execCancellations[key] = cancel
+	return true
+}
+
+func (a *App) unregisterExecCancellation(sessionID, requestID string) {
+	if a == nil {
+		return
+	}
+	a.execCancellationMu.Lock()
+	delete(a.execCancellations, execCancellationKey(sessionID, requestID))
+	a.execCancellationMu.Unlock()
+}
+
+func (a *App) cancelExecBashTool(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "id")
+	requestID := chi.URLParam(r, "requestID")
+	if parsed, err := uuid.Parse(requestID); err != nil || parsed.String() != requestID {
+		writeToolError(w, http.StatusBadRequest, "requestID must be a canonical UUID")
+		return
+	}
+	key := execCancellationKey(sessionID, requestID)
+	a.execCancellationMu.Lock()
+	cancel := a.execCancellations[key]
+	a.execCancellationMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"cancelled": cancel != nil, "request_id": requestID})
 }
 
 func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
