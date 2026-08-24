@@ -41,6 +41,7 @@ func testHandshake(manifest Manifest) Handshake {
 		Profile:         manifest.Profile,
 		ProfileDigest:   manifest.ProfileDigest,
 		AgentSHVersion:  "test",
+		EventToken:      strings.Repeat("7", 64),
 		Policy:          manifest.Policy,
 		VSockCID:        manifest.VSockCID,
 		VSockPort:       manifest.VSockPort,

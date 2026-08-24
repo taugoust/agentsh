@@ -188,7 +188,13 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		var handshake guestcontrol.Handshake
 		handshake, err = waitForHostGuest(readinessCtx, control, profile.Network.RequireReadyBeforePublish, runner.Done(), &runnerResult)
 		if err == nil {
-			if verifyErr := VerifyCIDLease(readinessCtx, request.CIDLeaseRoot, request.CIDLease, profile.VSock.CIDMin, profile.VSock.CIDMax); verifyErr != nil {
+			secret := HostMonitorGuestSecret{
+				SchemaVersion: HostMonitorSchemaVersion, MonitorID: request.MonitorID, SessionID: request.SessionID,
+				Generation: handshake.Generation, IncarnationID: handshake.IncarnationID, EventToken: handshake.EventToken,
+			}
+			if secretErr := WriteHostMonitorGuestSecret(stateDir, request, secret); secretErr != nil {
+				err = fmt.Errorf("persist authenticated guest control credential: %w", secretErr)
+			} else if verifyErr := VerifyCIDLease(readinessCtx, request.CIDLeaseRoot, request.CIDLease, profile.VSock.CIDMin, profile.VSock.CIDMax); verifyErr != nil {
 				err = fmt.Errorf("reverify host monitor CID lease before publication: %w", verifyErr)
 			} else {
 				relay, err = deps.newRelay(layout.RelayPath, control)

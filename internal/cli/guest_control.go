@@ -105,6 +105,7 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				Profile:         manifest.Profile,
 				ProfileDigest:   manifest.ProfileDigest,
 				AgentSHVersion:  version,
+				EventToken:      result.EventToken,
 				Policy:          manifest.Policy,
 				VSockCID:        manifest.VSockCID,
 				VSockPort:       server.Port(),

@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	ProviderName    = "microvm-external-runner"
+	ProviderName    = runtimeprovider.ExternalRunnerProvider
 	ProfileSchema   = "io.agentsh.microvm-external-runner-profile/v1"
 	maxProfileBytes = 64 * 1024
 )

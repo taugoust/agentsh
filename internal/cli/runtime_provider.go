@@ -302,7 +302,6 @@ func prepareDetachedRuntimeRequest(requestedSessionID string, workspaces []strin
 		if externalProfile.Name != profileName || externalProfile.Provider != profile.Provider {
 			return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q does not match its operator profile file", profileName)
 		}
-		return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q selects an external runner whose host provider is not enabled in this build", profileName)
 	default:
 		return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q selects unavailable provider %q", profileName, profile.Provider)
 	}
@@ -338,7 +337,24 @@ func prepareDetachedRuntimeRequest(requestedSessionID string, workspaces []strin
 }
 
 func detachedRuntimeRegistry(configPath string, cfg *config.Config) (*runtimeprovider.Registry, error) {
-	return runtimeprovider.NewRegistry(&nativeRuntimeProvider{configPath: configPath, preflightConfig: cfg})
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	profiles := make(map[string]string)
+	for name, profile := range cfg.Sessions.Runtime.Profiles {
+		if profile.Provider == externalrunner.ProviderName {
+			profiles[name] = profile.ProfileFile
+		}
+	}
+	external, err := externalrunner.NewProvider(externalrunner.ProviderOptions{
+		Enabled: cfg.Sessions.Runtime.EnableExternalRunners, Profiles: profiles,
+		CIDLeaseRoot: filepath.Join(detachedSessionsRoot(), ".external-runner-cids"), MonitorExecutable: executable,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return runtimeprovider.NewRegistry(&nativeRuntimeProvider{configPath: configPath, preflightConfig: cfg}, external)
 }
 
 func startDetachedRuntime(ctx context.Context, request runtimeprovider.Request, configPath string, cfg *config.Config) (*detachedSessionStartResult, error) {
@@ -508,8 +524,7 @@ func recoverDetachedSession(ctx context.Context, sessionID string) (detached.Run
 		// fresh session opts into the serialized provider lifecycle at creation.
 		return recoverNativeDetachedSession(ctx, sessionID)
 	}
-	provider := &nativeRuntimeProvider{}
-	registry, err := runtimeprovider.NewRegistry(provider)
+	registry, err := detachedRuntimeRegistryForManifest(manifest)
 	if err != nil {
 		return detached.RuntimeStatus{}, err
 	}
@@ -546,7 +561,7 @@ func stopDetachedSessionExact(ctx context.Context, sessionID string) error {
 	if inferred {
 		return stopNativeDetachedSessionExact(ctx, sessionID)
 	}
-	registry, err := runtimeprovider.NewRegistry(&nativeRuntimeProvider{})
+	registry, err := detachedRuntimeRegistryForManifest(manifest)
 	if err != nil {
 		return err
 	}
@@ -555,6 +570,29 @@ func stopDetachedSessionExact(ctx context.Context, sessionID string) error {
 		return err
 	}
 	return (runtimeprovider.Controller{CleanupTimeout: detachedRuntimeCleanupTimeout}).Stop(ctx, provider, stateDir, manifest, runtimeprovider.StopReasonUser)
+}
+
+func detachedRuntimeRegistryForManifest(manifest runtimeprovider.Manifest) (*runtimeprovider.Registry, error) {
+	native := &nativeRuntimeProvider{}
+	if manifest.Provider != externalrunner.ProviderName {
+		return runtimeprovider.NewRegistry(native)
+	}
+	request, err := externalrunner.ReadHostMonitorRequest(manifest.StateDir)
+	if err != nil {
+		return nil, err
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	external, err := externalrunner.NewProvider(externalrunner.ProviderOptions{
+		Enabled: true, Profiles: map[string]string{manifest.Profile: request.ProfileFile},
+		CIDLeaseRoot: request.CIDLeaseRoot, MonitorExecutable: executable,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return runtimeprovider.NewRegistry(native, external)
 }
 
 // Keep a compile-time assertion close to the adapter.

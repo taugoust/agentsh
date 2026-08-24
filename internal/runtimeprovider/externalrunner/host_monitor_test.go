@@ -318,7 +318,7 @@ func prepareHostMonitorFixture(t *testing.T) (string, HostMonitorRequest, Profil
 	}
 	request := HostMonitorRequest{
 		SchemaVersion: HostMonitorSchemaVersion, MonitorID: strings.Repeat("4", 64),
-		SessionID: filepath.Base(stateDir), StateDir: stateDir, ProfileFile: profilePath,
+		SessionID: filepath.Base(stateDir), StateDir: stateDir, SourceWorkspace: filepath.Join(t.TempDir(), "source"), ProfileFile: profilePath,
 		ProfileFileSHA256: profileFileDigest, ProfileName: profile.Name, ProfileDigest: profile.ProfileDigest, GuestProfileDigest: profile.Guest.ProfileDigest,
 		GuestPolicy: profile.Guest.Policy, GuestControlPort: profile.Guest.ControlPort, GuestSupervisorPort: profile.Guest.SupervisorPort,
 		GuestManifestSHA256: manifestDigest, ExpectedGuestGeneration: manifest.ExpectedGeneration, LaunchNonce: manifest.LaunchNonce,
@@ -336,7 +336,7 @@ func testHostHandshake(manifest guestcontrol.Manifest) guestcontrol.Handshake {
 		Generation: manifest.ExpectedGeneration, IncarnationID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 		LaunchNonce: manifest.LaunchNonce, GuestBootID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
 		Profile: manifest.Profile, ProfileDigest: manifest.ProfileDigest,
-		AgentSHVersion: "test", Policy: manifest.Policy, VSockCID: manifest.VSockCID,
+		AgentSHVersion: "test", EventToken: strings.Repeat("7", 64), Policy: manifest.Policy, VSockCID: manifest.VSockCID,
 		VSockPort: manifest.VSockPort, SupervisorPort: manifest.SupervisorPort,
 		Capabilities: []string{"exec_probe", "shutdown", "supervisor_proxy", manifest.ControlToken},
 	}

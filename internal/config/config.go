@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
-	"github.com/agentsh/agentsh/internal/runtimeprovider/externalrunner"
 	seccompPkg "github.com/agentsh/agentsh/internal/seccomp"
 	"gopkg.in/yaml.v3"
 )
@@ -2714,7 +2713,7 @@ func validateConfig(cfg *Config) error {
 			if profile.ProfileFile != "" {
 				return fmt.Errorf("sessions.runtime.profiles.%s.profile_file is not valid for native", name)
 			}
-		case externalrunner.ProviderName:
+		case runtimeprovider.ExternalRunnerProvider:
 			if name == cfg.Sessions.Runtime.DefaultProfile {
 				return fmt.Errorf("sessions.runtime external runner profile %q cannot be the default while experimental", name)
 			}

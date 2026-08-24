@@ -129,6 +129,7 @@ type Handshake struct {
 	Profile         string   `json:"profile"`
 	ProfileDigest   string   `json:"profile_digest"`
 	AgentSHVersion  string   `json:"agentsh_version"`
+	EventToken      string   `json:"event_token"`
 	Policy          string   `json:"policy"`
 	VSockCID        uint32   `json:"vsock_cid"`
 	VSockPort       uint32   `json:"vsock_port"`
@@ -143,7 +144,7 @@ func (h Handshake) Validate(manifest Manifest) error {
 		h.Policy != manifest.Policy || h.VSockCID != manifest.VSockCID || h.VSockPort != manifest.VSockPort || h.SupervisorPort != manifest.SupervisorPort {
 		return fmt.Errorf("guest control handshake identity mismatch")
 	}
-	if strings.TrimSpace(h.IncarnationID) == "" || strings.TrimSpace(h.GuestBootID) == "" || strings.TrimSpace(h.AgentSHVersion) == "" {
+	if strings.TrimSpace(h.IncarnationID) == "" || strings.TrimSpace(h.GuestBootID) == "" || strings.TrimSpace(h.AgentSHVersion) == "" || !validHexSecret(h.EventToken) {
 		return fmt.Errorf("guest control handshake is incomplete")
 	}
 	if !slices.Contains(h.Capabilities, "exec_probe") || !slices.Contains(h.Capabilities, "shutdown") || !slices.Contains(h.Capabilities, "supervisor_proxy") {
@@ -301,11 +302,46 @@ func writeResponse(writer io.Writer, response Response) error {
 	return encoder.Encode(response)
 }
 
+func ReadHandshake(path string, manifest Manifest) (Handshake, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return Handshake{}, fmt.Errorf("guest control handshake path must be clean and absolute")
+	}
+	before, err := os.Lstat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm() != 0o600 || before.Size() > MaxMessageBytes {
+		return Handshake{}, fmt.Errorf("guest control handshake has unsafe type, permissions, or size")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return Handshake{}, err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(before, opened) {
+		return Handshake{}, fmt.Errorf("guest control handshake identity changed while opening")
+	}
+	decoder := json.NewDecoder(io.LimitReader(file, MaxMessageBytes+1))
+	decoder.DisallowUnknownFields()
+	var handshake Handshake
+	if err := decoder.Decode(&handshake); err != nil || requireJSONEOF(decoder) != nil {
+		return Handshake{}, fmt.Errorf("decode guest control handshake")
+	}
+	public := handshake
+	if public.EventToken == "" {
+		public.EventToken = strings.Repeat("0", 64)
+	}
+	if err := public.Validate(manifest); err != nil {
+		return Handshake{}, err
+	}
+	return handshake, nil
+}
+
 func WriteHandshake(path string, handshake Handshake) error {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return fmt.Errorf("guest control handshake path must be clean and absolute")
 	}
-	data, err := json.MarshalIndent(handshake, "", "  ")
+	publicHandshake := handshake
+	publicHandshake.EventToken = ""
+	data, err := json.MarshalIndent(publicHandshake, "", "  ")
 	if err != nil {
 		return err
 	}

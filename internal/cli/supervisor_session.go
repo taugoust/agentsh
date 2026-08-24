@@ -23,6 +23,7 @@ import (
 	"github.com/agentsh/agentsh/internal/detachedreport"
 	"github.com/agentsh/agentsh/internal/nethelper"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/externalrunner"
 	"github.com/agentsh/agentsh/internal/server"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/google/uuid"
@@ -959,6 +960,20 @@ func detachedRuntimeHandshakeStatus(ctx context.Context, c *client.Client, meta 
 	var status detached.RuntimeStatus
 	if err := c.DoRawJSON(ctx, http.MethodGet, "/api/v1/detached/status", nil, &status); err != nil {
 		return detached.RuntimeStatus{}, fmt.Errorf("detached supervisor identity handshake failed for %s: %w", meta.SessionID, err)
+	}
+	providerManifest, manifestErr := runtimeprovider.ReadManifest(filepath.Join(detachedSessionsRoot(), meta.SessionID))
+	if manifestErr == nil && providerManifest.Provider == externalrunner.ProviderName {
+		hostStatus, hostErr := externalrunner.ReadHostMonitorStatus(providerManifest.StateDir)
+		if hostErr != nil || status.ProtocolVersion != meta.ProtocolVersion || status.SessionID != meta.SessionID ||
+			status.Generation != meta.Generation || status.IncarnationID != meta.IncarnationID ||
+			hostStatus.Monitor.PID != meta.OwnerPID || hostStatus.Monitor.StartIdentity != meta.OwnerStartIdentity || hostStatus.Monitor.BootID != meta.BootID {
+			return detached.RuntimeStatus{}, fmt.Errorf("external detached runtime identity handshake mismatch for expected session %s", meta.SessionID)
+		}
+		status.OwnerPID = meta.OwnerPID
+		status.OwnerStartIdentity = meta.OwnerStartIdentity
+		status.BootID = meta.BootID
+		status.Recoverable = false
+		return status, nil
 	}
 	if status.ProtocolVersion != meta.ProtocolVersion || status.SessionID != meta.SessionID ||
 		status.Generation != meta.Generation || status.IncarnationID != meta.IncarnationID ||

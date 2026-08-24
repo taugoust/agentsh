@@ -18,12 +18,13 @@ import (
 )
 
 const (
-	HostMonitorSchemaVersion = 1
-	HostMonitorRequestName   = "host-monitor-request.json"
-	HostMonitorStatusName    = "host-monitor-status.json"
-	HostMonitorLockName      = "host-monitor.lock"
-	HostMonitorSocketName    = "supervisor.sock"
-	HostMonitorMaxFileBytes  = 64 * 1024
+	HostMonitorSchemaVersion   = 1
+	HostMonitorRequestName     = "host-monitor-request.json"
+	HostMonitorStatusName      = "host-monitor-status.json"
+	HostMonitorLockName        = "host-monitor.lock"
+	HostMonitorSocketName      = "supervisor.sock"
+	HostMonitorGuestSecretName = "guest-secret.json"
+	HostMonitorMaxFileBytes    = 64 * 1024
 )
 
 type HostMonitorState string
@@ -50,6 +51,7 @@ type HostMonitorLayout struct {
 	GuestManifest string
 	RelayPath     string
 	RunnerLog     string
+	GuestSecret   string
 }
 
 func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
@@ -69,6 +71,7 @@ func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
 		GuestManifest: filepath.Join(controlDir, "request.json"),
 		RelayPath:     filepath.Join(hostDir, HostMonitorSocketName),
 		RunnerLog:     filepath.Join(runtimeDir, "logs", "runner.log"),
+		GuestSecret:   filepath.Join(hostDir, HostMonitorGuestSecretName),
 	}
 	return layout, nil
 }
@@ -78,6 +81,7 @@ type HostMonitorRequest struct {
 	MonitorID               string    `json:"monitor_id"`
 	SessionID               string    `json:"session_id"`
 	StateDir                string    `json:"state_dir"`
+	SourceWorkspace         string    `json:"source_workspace"`
 	ProfileFile             string    `json:"profile_file"`
 	ProfileFileSHA256       string    `json:"profile_file_sha256"`
 	ProfileName             string    `json:"profile_name"`
@@ -101,7 +105,8 @@ func (r HostMonitorRequest) Validate(stateDir string) error {
 	if err := runtimeprovider.ValidateName(r.SessionID); err != nil || !strings.HasPrefix(r.SessionID, "session-") {
 		return fmt.Errorf("host monitor session identity is invalid")
 	}
-	if !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir || r.StateDir != stateDir || filepath.Base(stateDir) != r.SessionID {
+	if !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir || r.StateDir != stateDir || filepath.Base(stateDir) != r.SessionID ||
+		!filepath.IsAbs(r.SourceWorkspace) || filepath.Clean(r.SourceWorkspace) != r.SourceWorkspace || pathsOverlap(r.SourceWorkspace, stateDir) {
 		return fmt.Errorf("host monitor request is not bound to its exact state directory")
 	}
 	profileErr := runtimeprovider.ValidateName(r.ProfileName)
@@ -123,6 +128,53 @@ func (r HostMonitorRequest) Validate(stateDir string) error {
 		return fmt.Errorf("host monitor request timestamp is invalid")
 	}
 	return nil
+}
+
+type HostMonitorGuestSecret struct {
+	SchemaVersion int    `json:"schema_version"`
+	MonitorID     string `json:"monitor_id"`
+	SessionID     string `json:"session_id"`
+	Generation    uint64 `json:"generation"`
+	IncarnationID string `json:"incarnation_id"`
+	EventToken    string `json:"event_token"`
+}
+
+func (s HostMonitorGuestSecret) Validate(request HostMonitorRequest) error {
+	if s.SchemaVersion != HostMonitorSchemaVersion || s.MonitorID != request.MonitorID || s.SessionID != request.SessionID ||
+		s.Generation != request.ExpectedGuestGeneration || !canonicalHostMonitorUUID(s.IncarnationID) || !validHexSecret(s.EventToken) {
+		return fmt.Errorf("host monitor guest secret identity is invalid")
+	}
+	return nil
+}
+
+func WriteHostMonitorGuestSecret(stateDir string, request HostMonitorRequest, secret HostMonitorGuestSecret) error {
+	layout, err := HostMonitorPaths(stateDir)
+	if err != nil {
+		return err
+	}
+	if err := secret.Validate(request); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(secret, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeExclusivePrivateFile(layout.GuestSecret, append(data, '\n'))
+}
+
+func ReadHostMonitorGuestSecret(stateDir string, request HostMonitorRequest) (HostMonitorGuestSecret, error) {
+	layout, err := HostMonitorPaths(stateDir)
+	if err != nil {
+		return HostMonitorGuestSecret{}, err
+	}
+	var secret HostMonitorGuestSecret
+	if err := readStrictPrivateJSON(layout.GuestSecret, &secret); err != nil {
+		return HostMonitorGuestSecret{}, err
+	}
+	if err := secret.Validate(request); err != nil {
+		return HostMonitorGuestSecret{}, err
+	}
+	return secret, nil
 }
 
 type HostProcessIdentity struct {

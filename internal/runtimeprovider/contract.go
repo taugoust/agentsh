@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	ContractVersion       = 1
-	ManifestSchemaVersion = 2
-	NativeProvider        = "native"
-	DefaultProfile        = "native"
+	ContractVersion        = 1
+	ManifestSchemaVersion  = 2
+	NativeProvider         = "native"
+	ExternalRunnerProvider = "microvm-external-runner"
+	DefaultProfile         = "native"
 )
 
 type State string
