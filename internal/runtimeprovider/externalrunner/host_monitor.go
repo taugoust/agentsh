@@ -196,6 +196,8 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 				err = fmt.Errorf("persist authenticated guest control credential: %w", secretErr)
 			} else if verifyErr := VerifyCIDLease(readinessCtx, request.CIDLeaseRoot, request.CIDLease, profile.VSock.CIDMin, profile.VSock.CIDMax); verifyErr != nil {
 				err = fmt.Errorf("reverify host monitor CID lease before publication: %w", verifyErr)
+			} else if relayPathErr := prepareHostMonitorRelayPath(layout.RelayPath); relayPathErr != nil {
+				err = relayPathErr
 			} else {
 				relay, err = deps.newRelay(layout.RelayPath, control)
 				if err == nil {

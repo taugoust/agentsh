@@ -69,7 +69,7 @@ func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
 		StatusPath:    filepath.Join(hostDir, HostMonitorStatusName),
 		LockPath:      filepath.Join(hostDir, HostMonitorLockName),
 		GuestManifest: filepath.Join(controlDir, "request.json"),
-		RelayPath:     filepath.Join(hostDir, HostMonitorSocketName),
+		RelayPath:     hostMonitorRelayPath(stateDir, hostDir),
 		RunnerLog:     filepath.Join(runtimeDir, "logs", "runner.log"),
 		GuestSecret:   filepath.Join(hostDir, HostMonitorGuestSecretName),
 	}
