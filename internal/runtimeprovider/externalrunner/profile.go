@@ -135,7 +135,7 @@ func (p Profile) Validate() error {
 	if !validPort(p.Guest.ControlPort) || !validPort(p.Guest.SupervisorPort) || p.Guest.ControlPort == p.Guest.SupervisorPort {
 		return fmt.Errorf("external runner guest VSOCK ports are invalid or reused")
 	}
-	if p.VSock.CIDMin < 3 || p.VSock.CIDMax == ^uint32(0) || p.VSock.CIDMin > p.VSock.CIDMax {
+	if p.VSock.CIDMin < 3 || p.VSock.CIDMax == ^uint32(0) || p.VSock.CIDMin > p.VSock.CIDMax || p.VSock.CIDMax-p.VSock.CIDMin > 65535 {
 		return fmt.Errorf("external runner VSOCK CID range is invalid")
 	}
 	if p.Network.Transport != "qemu-user" {

@@ -56,7 +56,7 @@ lib.optionalAttrs (stdenv.hostPlatform.system == "x86_64-linux") {
         ./internal/nethelper \
         ./internal/netmonitor \
         ./internal/proxy \
-        ./internal/runtimeprovider \
+        ./internal/runtimeprovider/... \
         ./internal/session \
         ./internal/store/composite \
         ./internal/store/jsonl \
