@@ -43,6 +43,18 @@ type WorkspaceDrift struct {
 	Reason string `json:"reason"`
 }
 
+func CaptureWorkspaceBaseline(ctx context.Context, source string) (WorkspaceBaseline, error) {
+	resolved, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		return WorkspaceBaseline{}, err
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return WorkspaceBaseline{}, err
+	}
+	return snapshotWorkspace(ctx, resolved)
+}
+
 func snapshotWorkspace(ctx context.Context, root string) (WorkspaceBaseline, error) {
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		return WorkspaceBaseline{}, fmt.Errorf("workspace snapshot root must be clean and absolute")
