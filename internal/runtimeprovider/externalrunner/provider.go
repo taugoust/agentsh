@@ -90,7 +90,11 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 			return nil, fmt.Errorf("create external runner layout: %w", err)
 		}
 	}
-	if err := stageWorkspace(ctx, request.Session.Workspace, layout.WorkspaceDir); err != nil {
+	baseline, err := stageWorkspace(ctx, request.Session.Workspace, layout.WorkspaceDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := WriteWorkspaceBaseline(layout.BaselinePath, baseline); err != nil {
 		return nil, err
 	}
 	lease, err := AllocateCID(ctx, p.options.CIDLeaseRoot, request.SessionID, profile.VSock.CIDMin, profile.VSock.CIDMax)

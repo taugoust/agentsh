@@ -11,35 +11,35 @@ import (
 	"strings"
 )
 
-func stageWorkspace(ctx context.Context, source, destination string) error {
+func stageWorkspace(ctx context.Context, source, destination string) (WorkspaceBaseline, error) {
 	source, err := filepath.EvalSymlinks(source)
 	if err != nil {
-		return fmt.Errorf("resolve staged workspace source: %w", err)
+		return WorkspaceBaseline{}, fmt.Errorf("resolve staged workspace source: %w", err)
 	}
 	source, err = filepath.Abs(source)
 	if err != nil {
-		return err
+		return WorkspaceBaseline{}, err
 	}
 	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination {
-		return fmt.Errorf("staged workspace destination must be clean and absolute")
+		return WorkspaceBaseline{}, fmt.Errorf("staged workspace destination must be clean and absolute")
 	}
 	if pathsOverlap(source, destination) {
-		return fmt.Errorf("staged workspace source and destination overlap")
+		return WorkspaceBaseline{}, fmt.Errorf("staged workspace source and destination overlap")
 	}
 	if info, err := os.Lstat(source); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("staged workspace source is not a direct directory")
+		return WorkspaceBaseline{}, fmt.Errorf("staged workspace source is not a direct directory")
 	}
 	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("staged workspace destination already exists or is ambiguous")
+		return WorkspaceBaseline{}, fmt.Errorf("staged workspace destination already exists or is ambiguous")
 	}
 	parent := filepath.Dir(destination)
 	temporary, err := os.MkdirTemp(parent, ".workspace-stage-")
 	if err != nil {
-		return err
+		return WorkspaceBaseline{}, err
 	}
 	if err := os.Chmod(temporary, 0o700); err != nil {
 		_ = os.RemoveAll(temporary)
-		return err
+		return WorkspaceBaseline{}, err
 	}
 	published := false
 	defer func() {
@@ -102,13 +102,27 @@ func stageWorkspace(ctx context.Context, source, destination string) error {
 		}
 	})
 	if err != nil {
-		return err
+		return WorkspaceBaseline{}, err
 	}
 	if err := os.Rename(temporary, destination); err != nil {
-		return fmt.Errorf("publish staged workspace: %w", err)
+		return WorkspaceBaseline{}, fmt.Errorf("publish staged workspace: %w", err)
 	}
 	published = true
-	return syncDirectory(parent)
+	if err := syncDirectory(parent); err != nil {
+		return WorkspaceBaseline{}, err
+	}
+	staged, err := snapshotWorkspace(ctx, destination)
+	if err != nil {
+		return WorkspaceBaseline{}, fmt.Errorf("snapshot staged workspace: %w", err)
+	}
+	baseline, err := snapshotWorkspace(ctx, source)
+	if err != nil {
+		return WorkspaceBaseline{}, fmt.Errorf("snapshot workspace source baseline: %w", err)
+	}
+	if drift := compareStagedWorkspaceContent(staged, baseline); len(drift) != 0 {
+		return WorkspaceBaseline{}, fmt.Errorf("workspace source changed during staging at %s", drift[0].Path)
+	}
+	return baseline, nil
 }
 
 func copyStagedRegularFile(ctx context.Context, source, destination string, scanned os.FileInfo) error {

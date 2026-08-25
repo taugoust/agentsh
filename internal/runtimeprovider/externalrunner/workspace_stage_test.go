@@ -26,8 +26,12 @@ func TestStageWorkspaceSkipsHostDirenvState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := stageWorkspace(context.Background(), source, destination); err != nil {
+	baseline, err := stageWorkspace(context.Background(), source, destination)
+	if err != nil {
 		t.Fatalf("stage workspace: %v", err)
+	}
+	if baseline.Source != source {
+		t.Fatalf("baseline source = %q", baseline.Source)
 	}
 	if contents, err := os.ReadFile(filepath.Join(destination, "README.md")); err != nil || string(contents) != "kept\n" {
 		t.Fatalf("staged ordinary file = %q, %v", contents, err)
@@ -50,7 +54,7 @@ func TestStageWorkspaceStillRejectsOtherAbsoluteSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := stageWorkspace(context.Background(), source, filepath.Join(root, "staged"))
+	_, err := stageWorkspace(context.Background(), source, filepath.Join(root, "staged"))
 	if err == nil || !strings.Contains(err.Error(), "refuses absolute symlink unsafe") {
 		t.Fatalf("stageWorkspace error = %v", err)
 	}

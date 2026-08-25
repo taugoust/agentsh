@@ -24,6 +24,7 @@ const (
 	HostMonitorLockName        = "host-monitor.lock"
 	HostMonitorSocketName      = "supervisor.sock"
 	HostMonitorGuestSecretName = "guest-secret.json"
+	WorkspaceBaselineName      = "workspace-baseline.json"
 	HostMonitorMaxFileBytes    = 64 * 1024
 )
 
@@ -52,6 +53,7 @@ type HostMonitorLayout struct {
 	RelayPath     string
 	RunnerLog     string
 	GuestSecret   string
+	BaselinePath  string
 }
 
 func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
@@ -72,6 +74,7 @@ func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
 		RelayPath:     hostMonitorRelayPath(stateDir, hostDir),
 		RunnerLog:     filepath.Join(runtimeDir, "logs", "runner.log"),
 		GuestSecret:   filepath.Join(hostDir, HostMonitorGuestSecretName),
+		BaselinePath:  filepath.Join(hostDir, WorkspaceBaselineName),
 	}
 	return layout, nil
 }

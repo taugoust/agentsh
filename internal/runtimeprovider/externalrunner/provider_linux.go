@@ -87,7 +87,11 @@ func stopExactHostMonitor(ctx context.Context, stateDir string, identity HostPro
 
 func exactHostMonitorTerminalEvidence(stateDir string, identity HostProcessIdentity) bool {
 	status, err := ReadHostMonitorStatus(stateDir)
-	if err != nil || status.Monitor.PID != identity.PID || status.Monitor.StartIdentity != identity.StartIdentity || status.Monitor.BootID != identity.BootID {
+	return err == nil && exactHostMonitorStatusTerminal(status, identity)
+}
+
+func exactHostMonitorStatusTerminal(status HostMonitorStatus, identity HostProcessIdentity) bool {
+	if status.Monitor.PID != identity.PID || status.Monitor.StartIdentity != identity.StartIdentity || status.Monitor.BootID != identity.BootID {
 		return false
 	}
 	return (status.State == HostMonitorStopped || status.State == HostMonitorFailed) && status.RunnerReaped && status.RelayClosed
