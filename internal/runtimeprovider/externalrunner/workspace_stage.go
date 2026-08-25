@@ -61,6 +61,15 @@ func stageWorkspace(ctx context.Context, source, destination string) error {
 		if relative == "." {
 			return nil
 		}
+		// .direnv is host-local generated state, is excluded from Draft review
+		// and Apply, and commonly contains absolute Nix-store symlinks that have
+		// no stable meaning inside the guest. Never stage it into the MicroVM.
+		if relative == ".direnv" {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		target := filepath.Join(temporary, relative)
 		info, err := os.Lstat(path)
 		if err != nil {
