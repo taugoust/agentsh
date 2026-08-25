@@ -100,6 +100,10 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 	return nil, fmt.Errorf("shadow workspaces are only supported on Linux")
 }
 
+func OpenMaterialized(ctx context.Context, id, real, work string, opts Options, createdAt time.Time) (*Workspace, error) {
+	return nil, fmt.Errorf("shadow workspaces are only supported on Linux")
+}
+
 func (w *Workspace) Diff(ctx context.Context) ([]byte, error) { return nil, fmt.Errorf("unsupported") }
 func (w *Workspace) Review(ctx context.Context) (Review, error) {
 	return Review{}, fmt.Errorf("unsupported")

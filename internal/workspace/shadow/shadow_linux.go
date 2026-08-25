@@ -409,6 +409,79 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 	return workspace, nil
 }
 
+// OpenMaterialized binds an already staged single-root workspace to the
+// journaled shadow review/finalization machinery without copying or deleting
+// either tree. The caller owns lifecycle cleanup for the materialized work root.
+func OpenMaterialized(ctx context.Context, id, real, work string, opts Options, createdAt time.Time) (*Workspace, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(id) == "" || strings.ContainsRune(id, filepath.Separator) {
+		return nil, fmt.Errorf("materialized shadow session identity is invalid")
+	}
+	realAbs, err := filepath.Abs(real)
+	if err != nil {
+		return nil, err
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(realAbs); resolveErr == nil {
+		realAbs = resolved
+	}
+	workAbs, err := filepath.Abs(work)
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Clean(workAbs) != workAbs || realAbs == workAbs || pathContains(realAbs, workAbs) || pathContains(workAbs, realAbs) {
+		return nil, fmt.Errorf("materialized shadow paths are invalid or overlap")
+	}
+	realInfo, err := os.Lstat(realAbs)
+	if err != nil || !realInfo.IsDir() || realInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("materialized shadow real root is not a direct directory")
+	}
+	workInfo, err := os.Lstat(workAbs)
+	if err != nil || !workInfo.IsDir() || workInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("materialized shadow work root is not a direct directory")
+	}
+	rsyncExecutable, err := runtimebin.Resolve("rsync")
+	if err != nil {
+		return nil, fmt.Errorf("resolve materialized shadow rsync: %w", err)
+	}
+	diffExecutable, err := runtimebin.Resolve("diff")
+	if err != nil {
+		return nil, fmt.Errorf("resolve materialized shadow diff: %w", err)
+	}
+	diffExcludes := cleanExcludes(opts.DiffExcludes)
+	if len(diffExcludes) == 0 {
+		diffExcludes = []string{".git", ".direnv"}
+	}
+	acceptExcludes := cleanExcludes(opts.AcceptExcludes)
+	if len(acceptExcludes) == 0 {
+		acceptExcludes = []string{".git", ".direnv"}
+	}
+	diffExcludes = reviewExcludes(diffExcludes, acceptExcludes)
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	ownerUID, ownerGID := owner(realInfo)
+	name := cleanRootName(filepath.Base(realAbs))
+	if name == "" {
+		name = "workspace"
+	}
+	workspace := &Workspace{
+		ID: id, Real: realAbs, Work: workAbs,
+		Roots:    []Root{{Name: name, Real: realAbs, Work: workAbs}},
+		OwnerUID: ownerUID, OwnerGID: ownerGID, CreatedAt: createdAt.UTC(), State: StateActive,
+		diffExcludes: diffExcludes, acceptExcludes: acceptExcludes, acceptChown: opts.AcceptChown,
+		diffExecutable: diffExecutable, rsyncExecutable: rsyncExecutable,
+	}
+	if err := workspace.loadReviewLocked(); err != nil {
+		return nil, err
+	}
+	if err := workspace.loadFinalizationLocked(); err != nil {
+		return nil, err
+	}
+	return workspace, nil
+}
+
 func (w *Workspace) reviewPath() string {
 	return filepath.Join(filepath.Dir(w.Work), reviewFileName)
 }
