@@ -50,15 +50,15 @@ func launchDetachedHostMonitor(executable, stateDir string) (HostProcessIdentity
 	return identity, nil
 }
 
-func stopExactHostMonitor(ctx context.Context, identity HostProcessIdentity) error {
+func stopExactHostMonitor(ctx context.Context, stateDir string, identity HostProcessIdentity) error {
 	if identity.PID <= 0 {
 		return nil
 	}
-	statusTerminal := func() bool {
-		return !detached.ProcessIdentityMatches(identity.PID, identity.StartIdentity, identity.BootID)
-	}
-	if statusTerminal() {
+	if exactHostMonitorTerminalEvidence(stateDir, identity) {
 		return nil
+	}
+	if !detached.ProcessIdentityMatches(identity.PID, identity.StartIdentity, identity.BootID) {
+		return fmt.Errorf("exact host monitor exited without terminal teardown evidence")
 	}
 	process, err := os.FindProcess(identity.PID)
 	if err != nil {
@@ -68,8 +68,14 @@ func stopExactHostMonitor(ctx context.Context, identity HostProcessIdentity) err
 		return err
 	}
 	for {
-		if statusTerminal() {
+		// The monitor persists this only after the runner is reaped and the relay
+		// is closed. Accepting that exact evidence avoids treating an exited but
+		// not-yet-reaped monitor process as an ambiguous teardown.
+		if exactHostMonitorTerminalEvidence(stateDir, identity) {
 			return nil
+		}
+		if !detached.ProcessIdentityMatches(identity.PID, identity.StartIdentity, identity.BootID) {
+			return fmt.Errorf("exact host monitor exited without terminal teardown evidence")
 		}
 		select {
 		case <-ctx.Done():
@@ -77,4 +83,12 @@ func stopExactHostMonitor(ctx context.Context, identity HostProcessIdentity) err
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+func exactHostMonitorTerminalEvidence(stateDir string, identity HostProcessIdentity) bool {
+	status, err := ReadHostMonitorStatus(stateDir)
+	if err != nil || status.Monitor.PID != identity.PID || status.Monitor.StartIdentity != identity.StartIdentity || status.Monitor.BootID != identity.BootID {
+		return false
+	}
+	return (status.State == HostMonitorStopped || status.State == HostMonitorFailed) && status.RunnerReaped && status.RelayClosed
 }

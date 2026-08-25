@@ -156,7 +156,7 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 	stopOnFailure := true
 	defer func() {
 		if stopOnFailure {
-			_ = stopExactHostMonitor(context.Background(), monitor)
+			_ = stopExactHostMonitor(context.Background(), request.StateDir, monitor)
 		}
 	}()
 	status, err := waitForHostMonitorReady(ctx, request.StateDir, monitor, profile.ReadinessTimeout())
@@ -314,7 +314,7 @@ func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.Co
 
 func (i *providerInstance) Stop(ctx context.Context, _ runtimeprovider.StopReason) error {
 	i.stopOnce.Do(func() {
-		i.stopErr = stopExactHostMonitor(ctx, i.status.Monitor)
+		i.stopErr = stopExactHostMonitor(ctx, i.request.StateDir, i.status.Monitor)
 	})
 	return i.stopErr
 }

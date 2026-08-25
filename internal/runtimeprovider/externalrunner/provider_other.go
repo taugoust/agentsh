@@ -11,6 +11,6 @@ func launchDetachedHostMonitor(string, string) (HostProcessIdentity, error) {
 	return HostProcessIdentity{}, fmt.Errorf("external MicroVM runners are supported only on Linux")
 }
 
-func stopExactHostMonitor(context.Context, HostProcessIdentity) error {
+func stopExactHostMonitor(context.Context, string, HostProcessIdentity) error {
 	return fmt.Errorf("external MicroVM runners are supported only on Linux")
 }
