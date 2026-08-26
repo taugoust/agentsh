@@ -272,6 +272,9 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		var handshake guestcontrol.Handshake
 		handshake, err = waitForHostGuest(readinessCtx, control, profile.Network.RequireReadyBeforePublish, runner.Done(), &runnerResult)
 		if err == nil {
+			err = validateHostMonitorGuestReadiness(request, profile, manifest, volume, handshake)
+		}
+		if err == nil {
 			secret := HostMonitorGuestSecret{
 				SchemaVersion: HostMonitorSchemaVersionV1, MonitorID: request.MonitorID, SessionID: request.SessionID,
 				Generation: handshake.Generation, IncarnationID: handshake.IncarnationID, EventToken: handshake.EventToken,
@@ -491,13 +494,44 @@ func validateHostMonitorBindings(request HostMonitorRequest, profile Profile, pr
 		return err
 	}
 	if request.SessionID != manifest.SessionID || request.CIDLease.CID != manifest.VSockCID ||
-		request.GuestProfileDigest != profile.Guest.ProfileDigest ||
+		request.GuestProfileDigest != profile.Guest.ProfileDigest || request.VolumeID != manifest.VolumeID ||
 		request.GuestManifestSHA256 != manifestDigest || request.ExpectedGuestGeneration != manifest.ExpectedGeneration || request.LaunchNonce != manifest.LaunchNonce ||
 		request.GuestPolicy != manifest.Policy || request.GuestControlPort != manifest.VSockPort || request.GuestSupervisorPort != manifest.SupervisorPort ||
-		profile.Name != manifest.Profile || profile.Guest.ProfileDigest != manifest.ProfileDigest ||
+		profile.Name != manifest.Profile || profile.Guest.ProfileDigest != manifest.ProfileDigest || profile.Guest.Protocol != manifest.ProtocolVersion ||
 		profile.Guest.Policy != manifest.Policy || profile.Guest.ControlPort != manifest.VSockPort ||
 		profile.Guest.SupervisorPort != manifest.SupervisorPort {
 		return fmt.Errorf("host monitor request, profile, lease, and guest manifest identities differ")
+	}
+	return nil
+}
+
+func validateHostMonitorGuestReadiness(request HostMonitorRequest, profile Profile, manifest guestcontrol.Manifest, volume *WorkspaceVolume, handshake guestcontrol.Handshake) error {
+	if err := handshake.Validate(manifest); err != nil {
+		return fmt.Errorf("validate authenticated guest readiness: %w", err)
+	}
+	if handshake.ProtocolVersion != profile.Guest.Protocol {
+		return fmt.Errorf("authenticated guest protocol differs from the immutable operator profile")
+	}
+	switch request.SchemaVersion {
+	case HostMonitorSchemaVersionV1:
+		if profile.Schema != ProfileSchemaV1 || volume != nil || request.VolumeID != "" || manifest.VolumeID != "" || handshake.VolumeID != "" {
+			return fmt.Errorf("legacy authenticated guest readiness contains workspace-volume state")
+		}
+	case HostMonitorSchemaVersionV2:
+		if profile.Schema != ProfileSchemaV2 || volume == nil || volume.Image == nil ||
+			!canonicalWorkspaceVolumeUUID(request.VolumeID) || volume.Manifest.VolumeID != request.VolumeID ||
+			manifest.VolumeID != request.VolumeID || handshake.VolumeID != request.VolumeID {
+			return fmt.Errorf("authenticated guest readiness does not prove the exact workspace volume")
+		}
+		volumeRequest := WorkspaceVolumeRequest{
+			StateDir: request.StateDir, SessionID: request.SessionID,
+			Profile: profile, ProfileFileSHA256: request.ProfileFileSHA256,
+		}
+		if err := volume.Manifest.matches(volumeRequest, request.VolumeID); err != nil {
+			return fmt.Errorf("authenticated guest readiness exact workspace volume: %w", err)
+		}
+	default:
+		return fmt.Errorf("host monitor schema version %d is unsupported", request.SchemaVersion)
 	}
 	return nil
 }

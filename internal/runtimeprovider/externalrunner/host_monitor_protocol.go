@@ -180,6 +180,17 @@ func hostMonitorSchemaVersionForProfile(profileSchema string) (int, error) {
 	}
 }
 
+func guestProtocolVersionForHostMonitorSchema(schemaVersion int) (int, error) {
+	switch schemaVersion {
+	case HostMonitorSchemaVersionV1:
+		return guestcontrol.ProtocolVersionV2, nil
+	case HostMonitorSchemaVersionV2:
+		return guestcontrol.ProtocolVersionV3, nil
+	default:
+		return 0, fmt.Errorf("host monitor schema version %d is unsupported", schemaVersion)
+	}
+}
+
 func validateHostMonitorProfileBinding(request HostMonitorRequest, profile Profile, profileFileDigest string) error {
 	expectedSchema, err := hostMonitorSchemaVersionForProfile(profile.Schema)
 	if err != nil {
@@ -280,6 +291,7 @@ type HostGuestIdentity struct {
 	VSockPort       uint32 `json:"vsock_port"`
 	SupervisorPort  uint32 `json:"supervisor_port"`
 	NetworkReady    bool   `json:"network_ready"`
+	VolumeID        string `json:"volume_id,omitempty"`
 }
 
 func publicHostGuestIdentity(handshake guestcontrol.Handshake) HostGuestIdentity {
@@ -289,7 +301,7 @@ func publicHostGuestIdentity(handshake guestcontrol.Handshake) HostGuestIdentity
 		GuestBootID: handshake.GuestBootID,
 		Profile:     handshake.Profile, ProfileDigest: handshake.ProfileDigest, Policy: handshake.Policy,
 		VSockCID: handshake.VSockCID, VSockPort: handshake.VSockPort, SupervisorPort: handshake.SupervisorPort,
-		NetworkReady: handshake.NetworkReady,
+		NetworkReady: handshake.NetworkReady, VolumeID: handshake.VolumeID,
 	}
 }
 
@@ -341,13 +353,17 @@ func (s HostMonitorStatus) Validate() error {
 		return fmt.Errorf("host monitor status error is invalid")
 	}
 	if s.SchemaVersion == HostMonitorSchemaVersionV1 {
-		if s.VolumeID != "" || s.VolumeClosed || s.StartupChildReaped {
-			return fmt.Errorf("host monitor v1 status contains schema-v2 fields")
+		if s.VolumeID != "" || s.VolumeClosed || s.StartupChildReaped ||
+			s.Guest != nil && (s.Guest.ProtocolVersion != guestcontrol.ProtocolVersionV2 || s.Guest.VolumeID != "") {
+			return fmt.Errorf("host monitor v1 status contains schema-v2 guest or volume fields")
 		}
 		return validateHostMonitorStatusV1State(s)
 	}
 	if !canonicalWorkspaceVolumeUUID(s.VolumeID) {
 		return fmt.Errorf("host monitor v2 workspace volume status is invalid")
+	}
+	if s.Guest != nil && (s.Guest.ProtocolVersion != guestcontrol.ProtocolVersionV3 || s.Guest.VolumeID != s.VolumeID) {
+		return fmt.Errorf("host monitor v2 guest volume identity is invalid")
 	}
 	if s.StartupChildReaped && s.State != HostMonitorFailed {
 		return fmt.Errorf("host monitor startup-child reap evidence is outside failed state")
@@ -511,8 +527,12 @@ func ReadHostMonitorStatus(stateDir string) (HostMonitorStatus, error) {
 	if status.Endpoint != nil && (status.Endpoint.Transport != "unix" || status.Endpoint.Address != layout.RelayPath) {
 		return HostMonitorStatus{}, fmt.Errorf("host monitor status endpoint is not the exact host relay")
 	}
-	if status.Guest != nil && (status.Guest.ProtocolVersion != guestcontrol.ProtocolVersion || status.Guest.SessionID != request.SessionID ||
-		status.Guest.Generation != request.ExpectedGuestGeneration ||
+	expectedGuestProtocol, err := guestProtocolVersionForHostMonitorSchema(request.SchemaVersion)
+	if err != nil {
+		return HostMonitorStatus{}, err
+	}
+	if status.Guest != nil && (status.Guest.ProtocolVersion != expectedGuestProtocol || status.Guest.SessionID != request.SessionID ||
+		status.Guest.Generation != request.ExpectedGuestGeneration || status.Guest.VolumeID != request.VolumeID ||
 		status.Guest.Profile != request.ProfileName || status.Guest.ProfileDigest != request.GuestProfileDigest || status.Guest.Policy != request.GuestPolicy ||
 		status.Guest.VSockCID != request.CIDLease.CID || status.Guest.VSockPort != request.GuestControlPort || status.Guest.SupervisorPort != request.GuestSupervisorPort ||
 		!canonicalHostMonitorUUID(status.Guest.IncarnationID) || !canonicalHostMonitorUUID(status.Guest.GuestBootID)) {

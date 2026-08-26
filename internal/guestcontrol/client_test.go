@@ -57,6 +57,31 @@ func TestClientAuthenticatesGuestOperations(t *testing.T) {
 	}
 }
 
+func TestClientRetainsProtocolV2Operations(t *testing.T) {
+	manifest := testManifest(t.TempDir())
+	manifest.ProtocolVersion = ProtocolVersionV2
+	manifest.VolumeID = ""
+	handshake := testHandshake(manifest)
+	handler := &fakeHandler{handshake: handshake}
+	client, err := newClient(manifest, pipeDialer(t, manifest, handler), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.Hello(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProtocolVersion != ProtocolVersionV2 || got.VolumeID != "" {
+		t.Fatalf("legacy handshake = %+v", got)
+	}
+	if _, err := client.ExecProbe(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestClientRefusesGuestWithoutStrictNetworkReadiness(t *testing.T) {
 	manifest := testManifest(t.TempDir())
 	handler := &fakeHandler{handshake: testHandshake(manifest)}

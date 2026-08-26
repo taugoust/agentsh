@@ -96,8 +96,8 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 		return nil, err
 	}
 	// Re-check after Preflight because the operator-owned profile file is read
-	// again. Public v2 launch remains closed until the guest authenticates the
-	// exact volume and mount evidence used for workspace publication.
+	// again. Public v2 launch remains closed until an operator-owned Nix runner
+	// and profile implement the now-authenticated guest volume contract.
 	if err := validateProviderLifecycleProfile(profile); err != nil {
 		return nil, err
 	}
@@ -160,13 +160,7 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 	if err != nil {
 		return nil, err
 	}
-	manifest := guestcontrol.Manifest{
-		ProtocolVersion: guestcontrol.ProtocolVersion, SessionID: request.SessionID,
-		LaunchNonce: launchNonce, ControlToken: controlToken, SupervisorToken: supervisorToken,
-		Profile: profile.Name, ProfileDigest: profile.Guest.ProfileDigest, Policy: profile.Guest.Policy,
-		Workspace: profile.Guest.Workspace, VSockCID: lease.CID, VSockPort: profile.Guest.ControlPort,
-		SupervisorPort: profile.Guest.SupervisorPort, ExpectedGeneration: 1,
-	}
+	manifest := newProviderGuestManifest(request.SessionID, profile, lease.CID, launchNonce, controlToken, supervisorToken, volumeID)
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return nil, err
@@ -263,7 +257,7 @@ func (p *Provider) Recover(ctx context.Context, manifest runtimeprovider.Manifes
 
 func validateProviderLifecycleProfile(profile Profile) error {
 	if profile.Schema != ProfileSchemaV1 {
-		return fmt.Errorf("external runner profile schema %q is not available until authenticated guest workspace-volume and mount evidence lands", profile.Schema)
+		return fmt.Errorf("external runner profile schema %q is not available until an operator Nix runner and profile implement protocol-v3 workspace volumes", profile.Schema)
 	}
 	return nil
 }
@@ -344,7 +338,7 @@ func (i *providerInstance) Probe(ctx context.Context) (runtimeprovider.Status, e
 
 func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.ControlPlaneSnapshot, error) {
 	if i.request.SchemaVersion != HostMonitorSchemaVersionV1 || i.profile.Schema != ProfileSchemaV1 {
-		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("external runner v2 control-plane publication requires authenticated guest volume and mount evidence")
+		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("external runner v2 control-plane publication remains disabled until its operator Nix runner and profile exist")
 	}
 	c := client.NewWithTimeout("unix://"+i.Endpoint().Address, "", 30*time.Second)
 	session, err := c.GetSession(ctx, i.request.SessionID)
@@ -493,6 +487,17 @@ func waitForHostMonitorReady(ctx context.Context, stateDir string, monitor HostP
 			return HostMonitorStatus{}, fmt.Errorf("timed out waiting for external runner host monitor")
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func newProviderGuestManifest(sessionID string, profile Profile, cid uint32, launchNonce, controlToken, supervisorToken, volumeID string) guestcontrol.Manifest {
+	return guestcontrol.Manifest{
+		ProtocolVersion: profile.Guest.Protocol, SessionID: sessionID,
+		LaunchNonce: launchNonce, ControlToken: controlToken, SupervisorToken: supervisorToken,
+		Profile: profile.Name, ProfileDigest: profile.Guest.ProfileDigest, Policy: profile.Guest.Policy,
+		Workspace: profile.Guest.Workspace, VSockCID: cid, VSockPort: profile.Guest.ControlPort,
+		SupervisorPort: profile.Guest.SupervisorPort, ExpectedGeneration: 1,
+		VolumeID: volumeID,
 	}
 }
 

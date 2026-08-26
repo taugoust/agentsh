@@ -100,28 +100,29 @@ func (r *SupervisorRelay) Serve(ctx context.Context, manifest Manifest, supervis
 }
 
 func relaySupervisorConnection(ctx context.Context, host controlConn, manifest Manifest, supervisorSocket string) error {
+	protocol := manifest.ProtocolVersion
 	defer host.Close()
 	_ = host.SetDeadline(time.Now().Add(defaultClientTimeout))
 	reader := bufio.NewReader(io.LimitReader(host, MaxMessageBytes+1))
 	line, err := reader.ReadBytes('\n')
 	if err != nil || len(line) > MaxMessageBytes {
-		return writeProxyResponse(host, ProxyResponse{ProtocolVersion: ProtocolVersion, Type: "connect", OK: false, Error: "invalid proxy authentication"})
+		return writeProxyResponse(host, ProxyResponse{ProtocolVersion: protocol, Type: "connect", OK: false, Error: "invalid proxy authentication"})
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(line)))
 	decoder.DisallowUnknownFields()
 	var request ProxyRequest
 	if err := decoder.Decode(&request); err != nil || requireJSONEOF(decoder) != nil ||
-		request.ProtocolVersion != ProtocolVersion || request.Type != "connect" || !validName(request.RequestID) ||
+		request.ProtocolVersion != protocol || request.Type != "connect" || !validName(request.RequestID) ||
 		request.LaunchNonce != manifest.LaunchNonce || !secretEqual(request.SupervisorToken, manifest.SupervisorToken) {
-		return writeProxyResponse(host, ProxyResponse{ProtocolVersion: ProtocolVersion, Type: "connect", RequestID: request.RequestID, OK: false, Error: "proxy authentication failed"})
+		return writeProxyResponse(host, ProxyResponse{ProtocolVersion: protocol, Type: "connect", RequestID: request.RequestID, OK: false, Error: "proxy authentication failed"})
 	}
 
 	guest, err := (&net.Dialer{}).DialContext(ctx, "unix", supervisorSocket)
 	if err != nil {
-		return writeProxyResponse(host, ProxyResponse{ProtocolVersion: ProtocolVersion, Type: "connect", RequestID: request.RequestID, OK: false, Error: "guest supervisor is unavailable"})
+		return writeProxyResponse(host, ProxyResponse{ProtocolVersion: protocol, Type: "connect", RequestID: request.RequestID, OK: false, Error: "guest supervisor is unavailable"})
 	}
 	defer guest.Close()
-	if err := writeProxyResponse(host, ProxyResponse{ProtocolVersion: ProtocolVersion, Type: "connect", RequestID: request.RequestID, OK: true}); err != nil {
+	if err := writeProxyResponse(host, ProxyResponse{ProtocolVersion: protocol, Type: "connect", RequestID: request.RequestID, OK: true}); err != nil {
 		return err
 	}
 	if err := host.SetDeadline(time.Time{}); err != nil {
@@ -184,7 +185,7 @@ func (c *Client) ConnectSupervisor(ctx context.Context) (io.ReadWriteCloser, err
 	}
 	requestID := uuid.NewString()
 	request := ProxyRequest{
-		ProtocolVersion: ProtocolVersion,
+		ProtocolVersion: c.manifest.ProtocolVersion,
 		Type:            "connect",
 		LaunchNonce:     c.manifest.LaunchNonce,
 		SupervisorToken: c.manifest.SupervisorToken,
@@ -199,7 +200,7 @@ func (c *Client) ConnectSupervisor(ctx context.Context) (io.ReadWriteCloser, err
 	if err := decoder.Decode(&response); err != nil {
 		return nil, contextOrError(ctx, fmt.Errorf("read guest supervisor authentication: %w", err))
 	}
-	if response.ProtocolVersion != ProtocolVersion || response.Type != "connect" || response.RequestID != requestID {
+	if response.ProtocolVersion != c.manifest.ProtocolVersion || response.Type != "connect" || response.RequestID != requestID {
 		return nil, fmt.Errorf("guest supervisor authentication response identity mismatch")
 	}
 	if !response.OK || response.Error != "" {

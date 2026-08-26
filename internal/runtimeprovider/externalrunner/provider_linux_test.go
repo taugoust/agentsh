@@ -24,6 +24,7 @@ func testProviderV2Profile(t *testing.T) Profile {
 	profile := testProfile(t)
 	profile.Schema = ProfileSchemaV2
 	profile.Name = "pi-linux-qemu-v2"
+	profile.Guest.Protocol = guestcontrol.ProtocolVersionV3
 	profile.WorkspaceVolume = &WorkspaceVolumeSpec{
 		Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
 		RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
@@ -46,7 +47,7 @@ func testProviderV2Request(t *testing.T, profile Profile) runtimeprovider.Reques
 	}
 }
 
-func TestProviderPreflightAndStartRejectV2UntilAuthenticatedGuestVolumeEvidence(t *testing.T) {
+func TestProviderPreflightAndStartRejectV2UntilOperatorNixRunnerAndProfile(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
 		t.Skip("external runner provider preflight is x86_64-only")
 	}
@@ -64,7 +65,7 @@ func TestProviderPreflightAndStartRejectV2UntilAuthenticatedGuestVolumeEvidence(
 		return "22222222-2222-4222-8222-222222222222", nil
 	}
 	request := testProviderV2Request(t, profile)
-	if _, err := provider.Preflight(context.Background(), request); err == nil || !strings.Contains(err.Error(), "authenticated guest workspace-volume and mount evidence") {
+	if _, err := provider.Preflight(context.Background(), request); err == nil || !strings.Contains(err.Error(), "operator Nix runner and profile") {
 		t.Fatalf("v2 Preflight error = %v", err)
 	}
 	instance, err := provider.Start(context.Background(), request)
@@ -72,7 +73,7 @@ func TestProviderPreflightAndStartRejectV2UntilAuthenticatedGuestVolumeEvidence(
 		_ = instance.Destroy(context.Background())
 		t.Fatal("rejected v2 Start returned an instance")
 	}
-	if err == nil || !strings.Contains(err.Error(), "authenticated guest workspace-volume and mount evidence") {
+	if err == nil || !strings.Contains(err.Error(), "operator Nix runner and profile") {
 		t.Fatalf("v2 Start error = %v", err)
 	}
 	if generatedVolumeID {
@@ -80,6 +81,21 @@ func TestProviderPreflightAndStartRejectV2UntilAuthenticatedGuestVolumeEvidence(
 	}
 	if _, err := os.Lstat(filepath.Join(request.StateDir, "runtime")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("rejected public v2 launch created runtime state: %v", err)
+	}
+}
+
+func TestProviderDormantV2ManifestCarriesExactRequestVolume(t *testing.T) {
+	profile := testProviderV2Profile(t)
+	request := testProviderV2Request(t, profile)
+	manifest := newProviderGuestManifest(
+		request.SessionID, profile, 41001,
+		strings.Repeat("1", 64), strings.Repeat("2", 64), strings.Repeat("3", 64), testWorkspaceVolumeID,
+	)
+	if manifest.ProtocolVersion != guestcontrol.ProtocolVersionV3 || manifest.VolumeID != testWorkspaceVolumeID {
+		t.Fatalf("dormant v2 manifest = %+v", manifest)
+	}
+	if err := manifest.Validate(profile.Guest.Workspace, profile.Name, profile.Guest.ProfileDigest, []string{profile.Guest.Policy}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -142,7 +158,7 @@ func TestProviderInstanceBindingRejectsProfileDigestSchemaAndVolumeContractDrift
 func TestProviderV2ControlPlaneDoesNotClaimHostWorktree(t *testing.T) {
 	stateDir, request, profile, _ := prepareV2HostMonitorFixture(t)
 	instance := &providerInstance{profile: profile, request: request}
-	if _, err := instance.ControlPlane(context.Background()); err == nil || !strings.Contains(err.Error(), "volume and mount evidence") {
+	if _, err := instance.ControlPlane(context.Background()); err == nil || !strings.Contains(err.Error(), "operator Nix runner and profile") {
 		t.Fatalf("v2 control plane did not fail closed: %v", err)
 	}
 	if _, err := os.Lstat(detached.MetadataPath(stateDir)); !errors.Is(err, os.ErrNotExist) {

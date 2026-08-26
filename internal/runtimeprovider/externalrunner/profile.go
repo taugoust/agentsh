@@ -184,12 +184,18 @@ func (p Profile) Validate() error {
 		if p.WorkspaceVolume != nil {
 			return fmt.Errorf("external runner v1 profile cannot define a workspace volume")
 		}
+		if p.Guest.Protocol != guestcontrol.ProtocolVersionV2 {
+			return fmt.Errorf("external runner v1 profile requires guest protocol version %d", guestcontrol.ProtocolVersionV2)
+		}
 	case ProfileSchemaV2:
 		if p.WorkspaceVolume == nil {
 			return fmt.Errorf("external runner v2 profile requires a workspace volume")
 		}
 		if err := p.WorkspaceVolume.Validate(); err != nil {
 			return err
+		}
+		if p.Guest.Protocol != guestcontrol.ProtocolVersionV3 {
+			return fmt.Errorf("external runner v2 profile requires guest protocol version %d", guestcontrol.ProtocolVersionV3)
 		}
 	default:
 		return fmt.Errorf("external runner profile schema %q is unsupported", p.Schema)
@@ -214,9 +220,6 @@ func (p Profile) Validate() error {
 	}
 	if !filepath.IsAbs(p.Guest.Workspace) || filepath.Clean(p.Guest.Workspace) != p.Guest.Workspace || p.Guest.Workspace == string(filepath.Separator) {
 		return fmt.Errorf("external runner guest workspace is invalid")
-	}
-	if p.Guest.Protocol != guestcontrol.ProtocolVersion {
-		return fmt.Errorf("external runner guest protocol version %d is unsupported", p.Guest.Protocol)
 	}
 	if !validPort(p.Guest.ControlPort) || !validPort(p.Guest.SupervisorPort) || p.Guest.ControlPort == p.Guest.SupervisorPort {
 		return fmt.Errorf("external runner guest VSOCK ports are invalid or reused")

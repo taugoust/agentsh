@@ -27,12 +27,13 @@ func testManifest(workspace string) Manifest {
 		VSockPort:          18081,
 		SupervisorPort:     18082,
 		ExpectedGeneration: 1,
+		VolumeID:           "22222222-2222-4222-8222-222222222222",
 	}
 }
 
 func testHandshake(manifest Manifest) Handshake {
 	return Handshake{
-		ProtocolVersion: ProtocolVersion,
+		ProtocolVersion: manifest.ProtocolVersion,
 		SessionID:       manifest.SessionID,
 		Generation:      manifest.ExpectedGeneration,
 		IncarnationID:   "incarnation-test",
@@ -47,6 +48,7 @@ func testHandshake(manifest Manifest) Handshake {
 		VSockPort:       manifest.VSockPort,
 		SupervisorPort:  manifest.SupervisorPort,
 		Capabilities:    []string{"exec_probe", "shutdown", "supervisor_proxy"},
+		VolumeID:        manifest.VolumeID,
 	}
 }
 
@@ -74,6 +76,61 @@ func TestReadManifestStrictAndProtected(t *testing.T) {
 	}
 	if _, err := ReadManifest(path, workspace, manifest.Profile, manifest.ProfileDigest, []string{"pi-autonomous"}); err == nil {
 		t.Fatal("group-readable guest manifest was accepted")
+	}
+}
+
+func TestManifestVersionsBindVolumeIdentity(t *testing.T) {
+	workspace := t.TempDir()
+	current := testManifest(workspace)
+	if err := current.Validate(workspace, current.Profile, current.ProfileDigest, []string{current.Policy}); err != nil {
+		t.Fatalf("protocol v3 manifest: %v", err)
+	}
+	missingVolume := current
+	missingVolume.VolumeID = ""
+	if err := missingVolume.Validate(workspace, current.Profile, current.ProfileDigest, []string{current.Policy}); err == nil {
+		t.Fatal("protocol v3 manifest without a volume identity was accepted")
+	}
+	noncanonicalVolume := current
+	noncanonicalVolume.VolumeID = strings.ToUpper("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	if err := noncanonicalVolume.Validate(workspace, current.Profile, current.ProfileDigest, []string{current.Policy}); err == nil {
+		t.Fatal("protocol v3 manifest with a noncanonical volume identity was accepted")
+	}
+
+	legacy := current
+	legacy.ProtocolVersion = ProtocolVersionV2
+	legacy.VolumeID = ""
+	if err := legacy.Validate(workspace, legacy.Profile, legacy.ProfileDigest, []string{legacy.Policy}); err != nil {
+		t.Fatalf("retained protocol v2 manifest: %v", err)
+	}
+	legacy.VolumeID = current.VolumeID
+	if err := legacy.Validate(workspace, legacy.Profile, legacy.ProfileDigest, []string{legacy.Policy}); err == nil {
+		t.Fatal("legacy protocol v2 manifest carrying a volume identity was accepted")
+	}
+}
+
+func TestHandshakeBindsManifestProtocolAndVolume(t *testing.T) {
+	manifest := testManifest(t.TempDir())
+	handshake := testHandshake(manifest)
+	if err := handshake.Validate(manifest); err != nil {
+		t.Fatal(err)
+	}
+	wrongVolume := handshake
+	wrongVolume.VolumeID = "33333333-3333-4333-8333-333333333333"
+	if err := wrongVolume.Validate(manifest); err == nil {
+		t.Fatal("handshake for a different volume was accepted")
+	}
+	wrongProtocol := handshake
+	wrongProtocol.ProtocolVersion = ProtocolVersionV2
+	if err := wrongProtocol.Validate(manifest); err == nil {
+		t.Fatal("handshake for a different protocol was accepted")
+	}
+
+	legacyManifest := manifest
+	legacyManifest.ProtocolVersion = ProtocolVersionV2
+	legacyManifest.VolumeID = ""
+	legacyHandshake := testHandshake(legacyManifest)
+	if err := legacyHandshake.Validate(legacyManifest); err != nil {
+		t.Fatalf("retained protocol v2 handshake: %v", err)
 	}
 }
 
@@ -201,6 +258,32 @@ func TestAuthenticatedProtocolOperations(t *testing.T) {
 	}
 	if handler.execs != 1 || handler.shutdowns != 1 {
 		t.Fatalf("handler calls exec=%d shutdown=%d", handler.execs, handler.shutdowns)
+	}
+}
+
+func TestRetainedProtocolV2OperationsUseManifestVersion(t *testing.T) {
+	manifest := testManifest(t.TempDir())
+	manifest.ProtocolVersion = ProtocolVersionV2
+	manifest.VolumeID = ""
+	handler := &fakeHandler{handshake: testHandshake(manifest)}
+	request := Request{
+		ProtocolVersion: manifest.ProtocolVersion,
+		Type:            "hello",
+		LaunchNonce:     manifest.LaunchNonce,
+		ControlToken:    manifest.ControlToken,
+		RequestID:       "legacy-hello",
+	}
+	response, shutdown := exchange(t, manifest, handler, request)
+	if shutdown || !response.OK || response.ProtocolVersion != ProtocolVersionV2 || response.Handshake == nil || response.Handshake.ProtocolVersion != ProtocolVersionV2 || response.Handshake.VolumeID != "" {
+		t.Fatalf("legacy response = %+v shutdown=%t", response, shutdown)
+	}
+
+	wrongVersion := request
+	wrongVersion.ProtocolVersion = ProtocolVersionV3
+	wrongVersion.RequestID = "wrong-version"
+	response, shutdown = exchange(t, manifest, handler, wrongVersion)
+	if shutdown || response.OK || response.ProtocolVersion != ProtocolVersionV2 || response.Error != "authentication failed" {
+		t.Fatalf("legacy wrong-version response = %+v shutdown=%t", response, shutdown)
 	}
 }
 

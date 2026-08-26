@@ -521,6 +521,59 @@ func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnl
 	}
 }
 
+func TestHostMonitorV2RejectsHandshakeForDifferentVolumeBeforeReadiness(t *testing.T) {
+	stateDir, request, _, manifest := prepareV2HostMonitorFixture(t)
+	start, boot, err := detached.CurrentProcessIdentity(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeHostRunner{
+		identity: HostProcessIdentity{PID: os.Getpid(), ProcessGroup: os.Getpid(), StartIdentity: start, BootID: boot},
+		done:     make(chan hostRunnerResult, 1), waitDone: make(chan struct{}),
+	}
+	handshake := testHostHandshake(manifest)
+	handshake.VolumeID = testOtherWorkspaceVolumeID
+	control := &fakeHostControl{handshake: handshake, runner: runner}
+	relayCalled := false
+	deps := hostMonitorDeps{
+		newControl: func(guestcontrol.Manifest) (hostMonitorControl, error) { return control, nil },
+		newRelay: func(string, hostMonitorControl) (hostMonitorRelay, error) {
+			relayCalled = true
+			return nil, errors.New("must not publish a mismatched volume")
+		},
+		createVolume: func(_ context.Context, got WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
+			return testOpenedHostMonitorVolume(t, got, volumeID, nil), nil
+		},
+		startRunner: func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error) {
+			return runner, nil
+		},
+		validateRunner: func(Profile) error { return nil },
+		lock:           func(context.Context, string) (io.Closer, error) { return nopCloser{}, nil },
+		now:            func() time.Time { return time.Now().UTC() },
+	}
+	if err := runHostMonitor(context.Background(), stateDir, deps); err == nil {
+		t.Fatal("host monitor accepted a handshake for a different volume")
+	}
+	if relayCalled {
+		t.Fatal("host monitor published readiness for a different volume")
+	}
+	status, err := ReadHostMonitorStatus(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != HostMonitorFailed || status.Guest != nil || status.Endpoint != nil || status.VolumeID != request.VolumeID || !status.VolumeClosed || !status.RunnerReaped {
+		t.Fatalf("mismatched-volume terminal status = %+v", status)
+	}
+}
+
+func TestHostMonitorV2BindingsRequireExactManifestVolume(t *testing.T) {
+	_, request, profile, manifest := prepareV2HostMonitorFixture(t)
+	manifest.VolumeID = testOtherWorkspaceVolumeID
+	if err := validateHostMonitorBindings(request, profile, request.ProfileFileSHA256, manifest, request.GuestManifestSHA256); err == nil {
+		t.Fatal("host monitor bindings accepted a manifest for a different volume")
+	}
+}
+
 func TestHostMonitorV2PreLaunchFailureClosesButDoesNotDeleteVolumeAndIsTerminal(t *testing.T) {
 	stateDir, request, _, _ := prepareV2HostMonitorFixture(t)
 	var volumeClosed atomic.Bool
@@ -829,9 +882,12 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 		}
 	}
 	profile := testProfile(t)
+	volumeID := ""
 	if schema == ProfileSchemaV2 {
 		profile.Schema = ProfileSchemaV2
 		profile.Name = "pi-linux-qemu-v2"
+		profile.Guest.Protocol = guestcontrol.ProtocolVersionV3
+		volumeID = testWorkspaceVolumeID
 		profile.WorkspaceVolume = &WorkspaceVolumeSpec{
 			Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
 			RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
@@ -850,13 +906,13 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 		t.Fatal(err)
 	}
 	manifest := guestcontrol.Manifest{
-		ProtocolVersion: guestcontrol.ProtocolVersion,
+		ProtocolVersion: profile.Guest.Protocol,
 		SessionID:       filepath.Base(stateDir), LaunchNonce: strings.Repeat("1", 64),
 		ControlToken: strings.Repeat("2", 64), SupervisorToken: strings.Repeat("3", 64),
 		Profile: profile.Name, ProfileDigest: profile.Guest.ProfileDigest,
 		Policy: profile.Guest.Policy, Workspace: profile.Guest.Workspace,
 		VSockCID: lease.CID, VSockPort: profile.Guest.ControlPort, SupervisorPort: profile.Guest.SupervisorPort,
-		ExpectedGeneration: 1,
+		ExpectedGeneration: 1, VolumeID: volumeID,
 	}
 	manifestData, err := json.Marshal(manifest)
 	if err != nil {
@@ -886,7 +942,7 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 		contract := *profile.WorkspaceVolume
 		request.ProfileSchema = profile.Schema
 		request.WorkspaceVolume = &contract
-		request.VolumeID = testWorkspaceVolumeID
+		request.VolumeID = volumeID
 	}
 	if err := WriteHostMonitorRequest(stateDir, request); err != nil {
 		t.Fatal(err)
@@ -896,12 +952,12 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 
 func testHostHandshake(manifest guestcontrol.Manifest) guestcontrol.Handshake {
 	return guestcontrol.Handshake{
-		ProtocolVersion: guestcontrol.ProtocolVersion, SessionID: manifest.SessionID,
+		ProtocolVersion: manifest.ProtocolVersion, SessionID: manifest.SessionID,
 		Generation: manifest.ExpectedGeneration, IncarnationID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 		LaunchNonce: manifest.LaunchNonce, GuestBootID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
 		Profile: manifest.Profile, ProfileDigest: manifest.ProfileDigest,
 		AgentSHVersion: "test", EventToken: strings.Repeat("7", 64), Policy: manifest.Policy, VSockCID: manifest.VSockCID,
 		VSockPort: manifest.VSockPort, SupervisorPort: manifest.SupervisorPort,
-		Capabilities: []string{"exec_probe", "shutdown", "supervisor_proxy", manifest.ControlToken},
+		Capabilities: []string{"exec_probe", "shutdown", "supervisor_proxy", manifest.ControlToken}, VolumeID: manifest.VolumeID,
 	}
 }

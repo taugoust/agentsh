@@ -2,6 +2,7 @@ package guestcontrol
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -74,6 +75,71 @@ func TestAuthenticatedSupervisorRelay(t *testing.T) {
 	}
 	if err := <-guestDone; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSupervisorRelayServerRetainsProtocolV2Authentication(t *testing.T) {
+	manifest := testManifest(t.TempDir())
+	manifest.ProtocolVersion = ProtocolVersionV2
+	manifest.VolumeID = ""
+	server, client := net.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		done <- relaySupervisorConnection(context.Background(), server, manifest, filepath.Join(t.TempDir(), "missing.sock"))
+	}()
+	request := ProxyRequest{
+		ProtocolVersion: manifest.ProtocolVersion, Type: "connect", RequestID: "legacy-connect",
+		LaunchNonce: manifest.LaunchNonce, SupervisorToken: manifest.SupervisorToken,
+	}
+	if err := json.NewEncoder(client).Encode(request); err != nil {
+		t.Fatal(err)
+	}
+	var response ProxyResponse
+	if err := json.NewDecoder(client).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	_ = client.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if response.ProtocolVersion != ProtocolVersionV2 || response.OK || response.RequestID != request.RequestID || response.Error != "guest supervisor is unavailable" {
+		t.Fatalf("legacy proxy response = %+v", response)
+	}
+}
+
+func TestSupervisorRelayClientRetainsProtocolV2Authentication(t *testing.T) {
+	manifest := testManifest(t.TempDir())
+	manifest.ProtocolVersion = ProtocolVersionV2
+	manifest.VolumeID = ""
+	requestSeen := make(chan ProxyRequest, 1)
+	dial := func(context.Context, uint32, uint32) (controlConn, error) {
+		server, client := net.Pipe()
+		go func() {
+			defer server.Close()
+			var request ProxyRequest
+			if err := json.NewDecoder(server).Decode(&request); err != nil {
+				return
+			}
+			requestSeen <- request
+			_ = json.NewEncoder(server).Encode(ProxyResponse{
+				ProtocolVersion: request.ProtocolVersion, Type: "connect", RequestID: request.RequestID, OK: true,
+			})
+			_, _ = io.Copy(io.Discard, server)
+		}()
+		return client, nil
+	}
+	client, err := newClient(manifest, dial, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := client.ConnectSupervisor(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.Close()
+	request := <-requestSeen
+	if request.ProtocolVersion != ProtocolVersionV2 {
+		t.Fatalf("legacy proxy request protocol = %d", request.ProtocolVersion)
 	}
 }
 

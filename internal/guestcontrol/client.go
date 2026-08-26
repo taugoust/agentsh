@@ -91,7 +91,7 @@ func (c *Client) exchange(ctx context.Context, operation string) (Response, erro
 	}
 	requestID := uuid.NewString()
 	request := Request{
-		ProtocolVersion: ProtocolVersion,
+		ProtocolVersion: c.manifest.ProtocolVersion,
 		Type:            operation,
 		LaunchNonce:     c.manifest.LaunchNonce,
 		ControlToken:    c.manifest.ControlToken,
@@ -137,7 +137,7 @@ func (c *Client) exchange(ctx context.Context, operation string) (Response, erro
 	if err := decoder.Decode(&response); err != nil || requireJSONEOF(decoder) != nil {
 		return Response{}, fmt.Errorf("decode guest control response")
 	}
-	if response.ProtocolVersion != ProtocolVersion || response.Type != operation || response.RequestID != requestID {
+	if response.ProtocolVersion != c.manifest.ProtocolVersion || response.Type != operation || response.RequestID != requestID {
 		return Response{}, fmt.Errorf("guest control response identity mismatch")
 	}
 	if !response.OK {

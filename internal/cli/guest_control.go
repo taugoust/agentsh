@@ -33,6 +33,7 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 	var manifestPath string
 	var handshakePath string
 	var workspace string
+	var volumeRoot string
 	var profile string
 	var profileDigest string
 	var allowedPolicies []string
@@ -52,6 +53,9 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 			}
 			manifest, err := guestcontrol.ReadManifest(manifestPath, workspace, profile, profileDigest, allowedPolicies)
 			if err != nil {
+				return err
+			}
+			if err := verifyGuestControlWorkspaceVolume(manifest, workspace, volumeRoot); err != nil {
 				return err
 			}
 			if strings.TrimSpace(probeCommand) == "" || !filepath.IsAbs(probeCommand) || filepath.Clean(probeCommand) != probeCommand {
@@ -96,7 +100,7 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 			}
 			networkReady := result.NetworkEnforcement != nil && result.NetworkEnforcement.Ready()
 			handler.handshake = guestcontrol.Handshake{
-				ProtocolVersion: guestcontrol.ProtocolVersion,
+				ProtocolVersion: manifest.ProtocolVersion,
 				SessionID:       manifest.SessionID,
 				Generation:      result.Generation,
 				IncarnationID:   result.IncarnationID,
@@ -112,6 +116,7 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				SupervisorPort:  relay.Port(),
 				NetworkReady:    networkReady,
 				Capabilities:    []string{"exec_probe", "shutdown", "supervisor_proxy"},
+				VolumeID:        manifest.VolumeID,
 			}
 			if localCID := server.LocalCID(); localCID != 0 && localCID != ^uint32(0) && localCID != manifest.VSockCID {
 				return fmt.Errorf("guest kernel reported VSOCK CID %d, expected %d", localCID, manifest.VSockCID)
@@ -157,6 +162,7 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Protected host request manifest")
 	cmd.Flags().StringVar(&handshakePath, "handshake", "", "Protected handshake output path")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Operator-owned staged workspace mount")
+	cmd.Flags().StringVar(&volumeRoot, "volume-root", "", "Operator-owned workspace volume root (required by protocol v3)")
 	cmd.Flags().StringVar(&profile, "profile", "", "Compiled operator-owned guest profile name")
 	cmd.Flags().StringVar(&profileDigest, "profile-digest", "", "Compiled operator-owned guest profile digest")
 	cmd.Flags().StringArrayVar(&allowedPolicies, "allowed-policy", nil, "Operator-allowed guest policy (repeatable)")

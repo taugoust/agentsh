@@ -36,7 +36,7 @@ func testProfile(t *testing.T) Profile {
 		Guest: Guest{
 			ProfileDigest: digest([]byte("guest-profile")),
 			Policy:        "pi-autonomous", Workspace: "/workspace",
-			Protocol: guestcontrol.ProtocolVersion, ControlPort: 18081, SupervisorPort: 18082,
+			Protocol: guestcontrol.ProtocolVersionV2, ControlPort: 18081, SupervisorPort: 18082,
 		},
 		VSock:    VSock{CIDMin: 41000, CIDMax: 41999},
 		Network:  Network{Transport: "qemu-user", Enforcement: "disabled-bringup"},
@@ -86,6 +86,7 @@ func TestReadProfileAndVerifyRunner(t *testing.T) {
 func TestProfileV2RequiresExactWorkspaceVolumeContract(t *testing.T) {
 	base := testProfile(t)
 	base.Schema = ProfileSchemaV2
+	base.Guest.Protocol = guestcontrol.ProtocolVersionV3
 	base.WorkspaceVolume = &WorkspaceVolumeSpec{
 		Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
 		RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
@@ -120,6 +121,33 @@ func TestProfileV2RequiresExactWorkspaceVolumeContract(t *testing.T) {
 				t.Fatal("invalid v2 workspace volume was accepted")
 			}
 		})
+	}
+}
+
+func TestProfileSchemaRequiresBoundGuestProtocol(t *testing.T) {
+	legacy := testProfile(t)
+	if legacy.Guest.Protocol != guestcontrol.ProtocolVersionV2 || legacy.Validate() != nil {
+		t.Fatalf("legacy profile protocol = %d", legacy.Guest.Protocol)
+	}
+	legacy.Guest.Protocol = guestcontrol.ProtocolVersionV3
+	if err := legacy.Validate(); err == nil {
+		t.Fatal("external profile v1 accepted guest protocol v3")
+	}
+
+	current := testProfile(t)
+	current.Schema = ProfileSchemaV2
+	current.Name = "pi-linux-qemu-v2"
+	current.Guest.Protocol = guestcontrol.ProtocolVersionV3
+	current.WorkspaceVolume = &WorkspaceVolumeSpec{
+		Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
+		RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
+	}
+	if err := current.Validate(); err != nil {
+		t.Fatalf("current profile: %v", err)
+	}
+	current.Guest.Protocol = guestcontrol.ProtocolVersionV2
+	if err := current.Validate(); err == nil {
+		t.Fatal("external profile v2 accepted guest protocol v2")
 	}
 }
 

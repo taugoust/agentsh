@@ -615,7 +615,7 @@
                 checkPhase = ''
                   runHook preCheck
                   go test -count=1 ./internal/runtimeprovider/externalrunner \
-                    -run '^Test(WorkspaceVolume|ProfileV[12].*WorkspaceVolume|Provider(PreflightAndStartRejectV2|OpenBinds|InstanceBinding|V2(ControlPlane|Destroy))|HostMonitorV[12]|LinuxHostRunnerV2|PartialLinuxHostRunner|ExactHostMonitorStatusTerminal)'
+                    -run '^Test(WorkspaceVolume|Profile(V[12].*WorkspaceVolume|SchemaRequiresBoundGuestProtocol)|Provider(PreflightAndStartRejectV2|DormantV2Manifest|OpenBinds|InstanceBinding|V2(ControlPlane|Destroy))|HostMonitorV[12]|LinuxHostRunnerV2|PartialLinuxHostRunner|ExactHostMonitorStatusTerminal)'
                   GOOS=darwin GOARCH=amd64 go test -c \
                     -o "$TMPDIR/workspace-volume-darwin.test" \
                     ./internal/runtimeprovider/externalrunner
@@ -657,6 +657,14 @@
               runHook preCheck
               go test ./internal/guestcontrol
               go test ./internal/cli -run '^TestGuestControl'
+              go test ./internal/runtimeprovider/externalrunner \
+                -run '^Test(ProfileSchemaRequiresBoundGuestProtocol|ProviderDormantV2Manifest|HostMonitorV2(RejectsHandshake|BindingsRequireExactManifestVolume))'
+              CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go test -c \
+                -o "$TMPDIR/guest-volume-darwin.test" \
+                ./internal/cli/guest_volume_other.go ./internal/cli/guest_volume_other_test.go
+              CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go test -c \
+                -o "$TMPDIR/guest-volume-windows.test.exe" \
+                ./internal/cli/guest_volume_other.go ./internal/cli/guest_volume_other_test.go
               runHook postCheck
             '';
           });

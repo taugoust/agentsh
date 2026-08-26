@@ -20,7 +20,14 @@ import (
 )
 
 const (
-	ProtocolVersion = 2
+	// ProtocolVersionV2 is retained for already-created legacy sessions. It
+	// predates workspace-volume identity and must never carry a VolumeID.
+	ProtocolVersionV2 = 2
+	// ProtocolVersionV3 binds the authenticated guest to one exact workspace
+	// volume. ProtocolVersion is the version used for new current manifests.
+	ProtocolVersionV3 = 3
+	ProtocolVersion   = ProtocolVersionV3
+
 	MaxMessageBytes = 64 * 1024
 )
 
@@ -38,10 +45,20 @@ type Manifest struct {
 	VSockPort          uint32 `json:"vsock_port"`
 	SupervisorPort     uint32 `json:"supervisor_port"`
 	ExpectedGeneration uint64 `json:"expected_generation"`
+	VolumeID           string `json:"volume_id,omitempty"`
 }
 
 func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest string, allowedPolicies []string) error {
-	if m.ProtocolVersion != ProtocolVersion {
+	switch m.ProtocolVersion {
+	case ProtocolVersionV2:
+		if m.VolumeID != "" {
+			return fmt.Errorf("guest control protocol version 2 cannot carry a volume identity")
+		}
+	case ProtocolVersionV3:
+		if !canonicalVolumeID(m.VolumeID) {
+			return fmt.Errorf("guest control volume identity is invalid")
+		}
+	default:
 		return fmt.Errorf("guest control protocol version %d is unsupported", m.ProtocolVersion)
 	}
 	if err := validateSessionID(m.SessionID); err != nil {
@@ -136,12 +153,14 @@ type Handshake struct {
 	SupervisorPort  uint32   `json:"supervisor_port"`
 	NetworkReady    bool     `json:"network_ready"`
 	Capabilities    []string `json:"capabilities"`
+	VolumeID        string   `json:"volume_id,omitempty"`
 }
 
 func (h Handshake) Validate(manifest Manifest) error {
-	if h.ProtocolVersion != ProtocolVersion || h.SessionID != manifest.SessionID || h.Generation != manifest.ExpectedGeneration ||
+	if h.ProtocolVersion != manifest.ProtocolVersion || h.SessionID != manifest.SessionID || h.Generation != manifest.ExpectedGeneration ||
 		h.LaunchNonce != manifest.LaunchNonce || h.Profile != manifest.Profile || h.ProfileDigest != manifest.ProfileDigest ||
-		h.Policy != manifest.Policy || h.VSockCID != manifest.VSockCID || h.VSockPort != manifest.VSockPort || h.SupervisorPort != manifest.SupervisorPort {
+		h.Policy != manifest.Policy || h.VSockCID != manifest.VSockCID || h.VSockPort != manifest.VSockPort || h.SupervisorPort != manifest.SupervisorPort ||
+		h.VolumeID != manifest.VolumeID {
 		return fmt.Errorf("guest control handshake identity mismatch")
 	}
 	if strings.TrimSpace(h.IncarnationID) == "" || strings.TrimSpace(h.GuestBootID) == "" || strings.TrimSpace(h.AgentSHVersion) == "" || !validHexSecret(h.EventToken) {
@@ -251,48 +270,49 @@ type deadlineReadWriter interface {
 }
 
 func handleConnection(ctx context.Context, conn deadlineReadWriter, manifest Manifest, handler Handler) (bool, error) {
+	protocol := manifest.ProtocolVersion
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 	reader := bufio.NewReader(io.LimitReader(conn, MaxMessageBytes+1))
 	line, err := reader.ReadBytes('\n')
 	if err != nil {
-		return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: "error", OK: false, Error: "invalid request framing"})
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "invalid request framing"})
 	}
 	if len(line) > MaxMessageBytes {
-		return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: "error", OK: false, Error: "request too large"})
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "request too large"})
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(line)))
 	decoder.DisallowUnknownFields()
 	var request Request
 	if err := decoder.Decode(&request); err != nil || requireJSONEOF(decoder) != nil {
-		return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: "error", OK: false, Error: "invalid request"})
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "invalid request"})
 	}
-	if request.ProtocolVersion != ProtocolVersion || request.LaunchNonce != manifest.LaunchNonce || !secretEqual(request.ControlToken, manifest.ControlToken) {
-		return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: "error", OK: false, Error: "authentication failed"})
+	if request.ProtocolVersion != protocol || request.LaunchNonce != manifest.LaunchNonce || !secretEqual(request.ControlToken, manifest.ControlToken) {
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "authentication failed"})
 	}
 	if !validName(request.RequestID) || len(request.RequestID) > 128 {
-		return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: request.Type, OK: false, Error: "invalid request identity"})
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, OK: false, Error: "invalid request identity"})
 	}
 	if !handler.ClaimRequest(request.RequestID) {
-		return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "duplicate request identity"})
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "duplicate request identity"})
 	}
 
 	switch request.Type {
 	case "hello":
 		handshake := handler.Handshake()
-		return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: "hello", RequestID: request.RequestID, OK: true, Handshake: &handshake})
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "hello", RequestID: request.RequestID, OK: true, Handshake: &handshake})
 	case "exec_probe":
 		result, err := handler.ExecProbe(ctx)
 		if err != nil {
-			return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: "exec_probe", RequestID: request.RequestID, OK: false, Error: boundedError(err)})
+			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "exec_probe", RequestID: request.RequestID, OK: false, Error: boundedError(err)})
 		}
-		return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: "exec_probe", RequestID: request.RequestID, OK: true, ExecProbe: &result})
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "exec_probe", RequestID: request.RequestID, OK: true, ExecProbe: &result})
 	case "shutdown":
 		if err := handler.Shutdown(ctx); err != nil {
-			return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: "shutdown", RequestID: request.RequestID, OK: false, Error: boundedError(err)})
+			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "shutdown", RequestID: request.RequestID, OK: false, Error: boundedError(err)})
 		}
-		return true, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: "shutdown", RequestID: request.RequestID, OK: true})
+		return true, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "shutdown", RequestID: request.RequestID, OK: true})
 	default:
-		return false, writeResponse(conn, Response{ProtocolVersion: ProtocolVersion, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "unsupported request type"})
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "unsupported request type"})
 	}
 }
 
@@ -386,6 +406,11 @@ func validateSessionID(value string) error {
 
 func validHexSecret(value string) bool {
 	return len(value) == 64 && validHex(value)
+}
+
+func canonicalVolumeID(value string) bool {
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed != uuid.Nil && parsed.Version() == 4 && parsed.Variant() == uuid.RFC4122 && parsed.String() == value
 }
 
 func validHex(value string) bool {

@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/agentsh/agentsh/internal/guestcontrol"
 )
 
 const (
@@ -29,6 +31,7 @@ func testWorkspaceVolumeRequest(t *testing.T) WorkspaceVolumeRequest {
 	profile := testProfile(t)
 	profile.Schema = ProfileSchemaV2
 	profile.Name = "pi-linux-qemu-v2"
+	profile.Guest.Protocol = guestcontrol.ProtocolVersionV3
 	profile.WorkspaceVolume = &WorkspaceVolumeSpec{
 		Model:            WorkspaceVolumeModel,
 		Format:           WorkspaceVolumeFormat,

@@ -12,7 +12,7 @@ func TestGuestControlCommandExposesFixedInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{
-		"manifest", "handshake", "workspace", "profile", "profile-digest",
+		"manifest", "handshake", "workspace", "volume-root", "profile", "profile-digest",
 		"allowed-policy", "probe-command", "probe-arg",
 	} {
 		if run.Flags().Lookup(name) == nil {
