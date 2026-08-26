@@ -63,6 +63,9 @@ func (p *Provider) Preflight(_ context.Context, request runtimeprovider.Request)
 	if err != nil {
 		return runtimeprovider.Capabilities{}, err
 	}
+	if err := validateProviderLifecycleProfile(profile); err != nil {
+		return runtimeprovider.Capabilities{}, err
+	}
 	if request.Provider != ProviderName || request.Session.Policy != profile.Guest.Policy || request.Session.WorkspaceMode != string(types.WorkspaceModeShadow) ||
 		len(request.Session.WorkspaceRoots) > 1 {
 		return runtimeprovider.Capabilities{}, fmt.Errorf("diagnostic external runner requires one staged shadow workspace and its fixed guest policy")
@@ -79,6 +82,12 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 	}
 	profile, profileFileDigest, err := p.profile(request.Profile)
 	if err != nil {
+		return nil, err
+	}
+	// Re-check after Preflight because the operator-owned profile file is read
+	// again. V2 parsing supports the storage foundation, but launching it before
+	// the host monitor owns the volume would silently retain the v1 host share.
+	if err := validateProviderLifecycleProfile(profile); err != nil {
 		return nil, err
 	}
 	layout, err := HostMonitorPaths(request.StateDir)
@@ -208,6 +217,13 @@ func (p *Provider) Recover(ctx context.Context, manifest runtimeprovider.Manifes
 		return nil, fmt.Errorf("diagnostic external runner is not live and cannot be recreated")
 	}
 	return instance, nil
+}
+
+func validateProviderLifecycleProfile(profile Profile) error {
+	if profile.Schema != ProfileSchemaV1 {
+		return fmt.Errorf("external runner profile schema %q is not available until workspace-volume host-monitor integration lands", profile.Schema)
+	}
+	return nil
 }
 
 func (p *Provider) profile(name string) (Profile, string, error) {

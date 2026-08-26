@@ -32,16 +32,18 @@
           inherit (pkgs) lib stdenv;
           rev = self.shortRev or self.dirtyShortRev or "unknown";
           version = "unstable-2026-06-17";
-          runtimePath = lib.makeBinPath (
-            lib.optionals stdenv.hostPlatform.isLinux [
-              pkgs.coreutils
-              pkgs.diffutils
-              pkgs.fuse3
-              pkgs.iproute2
-              pkgs.iptables
-              pkgs.rsync
-              pkgs.util-linux
-            ]
+          runtimePackages = lib.optionals stdenv.hostPlatform.isLinux [
+            pkgs.coreutils
+            pkgs.diffutils
+            pkgs.fuse3
+            pkgs.iproute2
+            pkgs.iptables
+            pkgs.rsync
+            pkgs.util-linux
+          ];
+          runtimePath = lib.makeBinPath runtimePackages;
+          internalRuntimePath = lib.makeBinPath (
+            runtimePackages ++ lib.optionals stdenv.hostPlatform.isLinux [ pkgs.qemu-utils ]
           );
 
           agentsh = pkgs.buildGoModule {
@@ -90,7 +92,7 @@
               "-X main.commit=${rev}"
             ]
             ++ lib.optionals stdenv.hostPlatform.isLinux [
-              "-X github.com/agentsh/agentsh/internal/workspace/runtimebin.packagedPath=${runtimePath}"
+              "-X github.com/agentsh/agentsh/internal/workspace/runtimebin.packagedPath=${internalRuntimePath}"
             ];
 
             preBuild = lib.optionalString stdenv.hostPlatform.isLinux ''
@@ -591,6 +593,63 @@
               runHook postCheck
             '';
           });
+
+          workspace-volume-tests =
+            if stdenv.hostPlatform.isLinux then
+              pkgs.buildGoModule {
+                pname = "agentsh-workspace-volume-tests";
+                version = "unstable-2026-06-17";
+                src = self;
+                vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+                nativeBuildInputs = [ pkgs.qemu-utils ];
+
+                env = {
+                  CGO_ENABLED = "0";
+                  GOTELEMETRY = "off";
+                };
+
+                buildPhase = ''
+                  runHook preBuild
+                  runHook postBuild
+                '';
+                checkPhase = ''
+                  runHook preCheck
+                  go test -count=1 ./internal/runtimeprovider/externalrunner \
+                    -run '^Test(WorkspaceVolume|ProfileV1StillRejectsWorkspaceVolume|ProviderPreflightAndStartRejectV2)'
+                  GOOS=darwin GOARCH=amd64 go test -c \
+                    -o "$TMPDIR/workspace-volume-darwin.test" \
+                    ./internal/runtimeprovider/externalrunner
+                  GOOS=windows GOARCH=amd64 go test -c \
+                    -o "$TMPDIR/workspace-volume-windows.test.exe" \
+                    ./internal/runtimeprovider/externalrunner
+                  go test -c \
+                    -ldflags='-X github.com/agentsh/agentsh/internal/workspace/runtimebin.packagedPath=${pkgs.qemu-utils}/bin' \
+                    -o "$TMPDIR/workspace-volume.test" \
+                    ./internal/runtimeprovider/externalrunner
+                  if [ "$(${pkgs.coreutils}/bin/id -u)" -eq 0 ]; then
+                    echo "workspace volume integration must run as an unprivileged builder" >&2
+                    exit 1
+                  fi
+                  mkdir -p "$TMPDIR/integration-home"
+                  PATH= \
+                    HOME="$TMPDIR/integration-home" \
+                    AGENTSH_TEST_PACKAGED_QEMU_IMG=1 \
+                    "$TMPDIR/workspace-volume.test" \
+                    -test.v -test.run '^TestWorkspaceVolumePackagedQEMUImgIntegration$'
+                  runHook postCheck
+                '';
+                installPhase = ''
+                  runHook preInstall
+                  mkdir -p "$out"
+                  touch "$out/passed"
+                  runHook postInstall
+                '';
+              }
+            else
+              pkgs.runCommand "agentsh-workspace-volume-tests-skipped" { } ''
+                mkdir -p "$out"
+                touch "$out/skipped-non-linux"
+              '';
 
           guest-control-protocol-tests = go-unit-tests.overrideAttrs (_: {
             pname = "agentsh-guest-control-protocol-tests";

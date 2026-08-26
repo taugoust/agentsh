@@ -79,6 +79,9 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 	if err != nil {
 		return err
 	}
+	if err := validateProviderLifecycleProfile(profile); err != nil {
+		return err
+	}
 	if profile.ProfileDigest == "" || profile.Name == "" {
 		return fmt.Errorf("host monitor external profile identity is incomplete")
 	}

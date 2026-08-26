@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,6 +80,75 @@ func TestReadProfileAndVerifyRunner(t *testing.T) {
 	}
 	if err := got.VerifyRunner(); err == nil || !strings.Contains(err.Error(), "digest mismatch") {
 		t.Fatalf("replaced runner error = %v", err)
+	}
+}
+
+func TestProfileV2RequiresExactWorkspaceVolumeContract(t *testing.T) {
+	base := testProfile(t)
+	base.Schema = ProfileSchemaV2
+	base.WorkspaceVolume = &WorkspaceVolumeSpec{
+		Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
+		RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
+	}
+	got, err := ReadProfile(writeProfile(t, base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.WorkspaceVolume == nil || *got.WorkspaceVolume != *base.WorkspaceVolume {
+		t.Fatalf("workspace volume = %#v, want %#v", got.WorkspaceVolume, base.WorkspaceVolume)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*Profile)
+	}{
+		{"missing", func(p *Profile) { p.WorkspaceVolume = nil }},
+		{"model", func(p *Profile) { p.WorkspaceVolume.Model = "host-directory" }},
+		{"format", func(p *Profile) { p.WorkspaceVolume.Format = "raw" }},
+		{"filesystem", func(p *Profile) { p.WorkspaceVolume.Filesystem = "xfs" }},
+		{"runner fd", func(p *Profile) { p.WorkspaceVolume.RunnerFD++ }},
+		{"virtual size below minimum", func(p *Profile) { p.WorkspaceVolume.VirtualSizeBytes = WorkspaceVolumeMinVirtualSizeBytes - 1 }},
+		{"virtual size above maximum", func(p *Profile) { p.WorkspaceVolume.VirtualSizeBytes = WorkspaceVolumeMaxVirtualSizeBytes + 1 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			profile := base
+			spec := *base.WorkspaceVolume
+			profile.WorkspaceVolume = &spec
+			test.mutate(&profile)
+			if err := profile.Validate(); err == nil {
+				t.Fatal("invalid v2 workspace volume was accepted")
+			}
+		})
+	}
+}
+
+func TestProfileV1StillRejectsWorkspaceVolume(t *testing.T) {
+	profile := testProfile(t)
+	profile.WorkspaceVolume = &WorkspaceVolumeSpec{
+		Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
+		RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
+	}
+	if err := profile.Validate(); err == nil {
+		t.Fatal("v1 profile with workspace volume was accepted")
+	}
+
+	for _, field := range []string{"workspace_volume", "WORKSPACE_VOLUME", "Workspace_Volume"} {
+		t.Run(field, func(t *testing.T) {
+			data, err := json.Marshal(testProfile(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			data[len(data)-1] = ','
+			data = append(data, []byte(fmt.Sprintf("%q:null}", field))...)
+			path := filepath.Join(t.TempDir(), "profile.json")
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ReadProfile(path); err == nil || !strings.Contains(err.Error(), "unknown field") {
+				t.Fatalf("v1 %s:null error = %v", field, err)
+			}
+		})
 	}
 }
 

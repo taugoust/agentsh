@@ -18,22 +18,37 @@ import (
 
 const (
 	ProviderName    = runtimeprovider.ExternalRunnerProvider
-	ProfileSchema   = "io.agentsh.microvm-external-runner-profile/v1"
+	ProfileSchemaV1 = "io.agentsh.microvm-external-runner-profile/v1"
+	ProfileSchemaV2 = "io.agentsh.microvm-external-runner-profile/v2"
+
+	// ProfileSchema remains the legacy schema so existing profile producers and
+	// callers retain their v1 behavior unless they explicitly select v2.
+	ProfileSchema = ProfileSchemaV1
+
+	WorkspaceVolumeModel      = "session-qcow2-ext4-v1"
+	WorkspaceVolumeFormat     = "qcow2"
+	WorkspaceVolumeFilesystem = "ext4"
+	WorkspaceVolumeRunnerFD   = 4
+
+	WorkspaceVolumeMinVirtualSizeBytes int64 = 1 << 30
+	WorkspaceVolumeMaxVirtualSizeBytes int64 = 256 << 30
+
 	maxProfileBytes = 64 * 1024
 )
 
 type Profile struct {
-	Schema        string   `json:"schema"`
-	ProfileDigest string   `json:"profile_digest"`
-	Name          string   `json:"name"`
-	Provider      string   `json:"provider"`
-	Status        string   `json:"status"`
-	System        string   `json:"system"`
-	Runner        Runner   `json:"runner"`
-	Guest         Guest    `json:"guest"`
-	VSock         VSock    `json:"vsock"`
-	Network       Network  `json:"network"`
-	Timeouts      Timeouts `json:"timeouts"`
+	Schema          string               `json:"schema"`
+	ProfileDigest   string               `json:"profile_digest"`
+	Name            string               `json:"name"`
+	Provider        string               `json:"provider"`
+	Status          string               `json:"status"`
+	System          string               `json:"system"`
+	Runner          Runner               `json:"runner"`
+	Guest           Guest                `json:"guest"`
+	VSock           VSock                `json:"vsock"`
+	Network         Network              `json:"network"`
+	Timeouts        Timeouts             `json:"timeouts"`
+	WorkspaceVolume *WorkspaceVolumeSpec `json:"workspace_volume,omitempty"`
 }
 
 type Runner struct {
@@ -65,6 +80,26 @@ type Network struct {
 type Timeouts struct {
 	ReadinessSeconds        int `json:"readiness_seconds"`
 	GracefulShutdownSeconds int `json:"graceful_shutdown_seconds"`
+}
+
+// WorkspaceVolumeSpec is the complete v2 operator contract for the private
+// session workspace block device. AgentSH does not infer or default any field.
+type WorkspaceVolumeSpec struct {
+	Model            string `json:"model"`
+	Format           string `json:"format"`
+	Filesystem       string `json:"filesystem"`
+	RunnerFD         int    `json:"runner_fd"`
+	VirtualSizeBytes int64  `json:"virtual_size_bytes"`
+}
+
+func (s WorkspaceVolumeSpec) Validate() error {
+	if s.Model != WorkspaceVolumeModel || s.Format != WorkspaceVolumeFormat || s.Filesystem != WorkspaceVolumeFilesystem || s.RunnerFD != WorkspaceVolumeRunnerFD {
+		return fmt.Errorf("external runner workspace volume contract is unsupported")
+	}
+	if s.VirtualSizeBytes < WorkspaceVolumeMinVirtualSizeBytes || s.VirtualSizeBytes > WorkspaceVolumeMaxVirtualSizeBytes {
+		return fmt.Errorf("external runner workspace volume virtual size is outside the supported range")
+	}
+	return nil
 }
 
 func ReadProfile(path string) (Profile, error) {
@@ -104,6 +139,29 @@ func ReadProfileSnapshot(path string) (Profile, string, error) {
 	if len(data) > maxProfileBytes {
 		return Profile{}, "", fmt.Errorf("external runner profile snapshot exceeds limit")
 	}
+	// workspace_volume was not a v1 field. Reject it before decoding into the
+	// shared Go type so adding v2 does not make any formerly-invalid v1 profile
+	// valid, including a field whose JSON value is null.
+	var envelope struct {
+		Schema string `json:"schema"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return Profile{}, "", fmt.Errorf("decode external runner profile: %w", err)
+	}
+	if envelope.Schema == ProfileSchemaV1 {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			return Profile{}, "", fmt.Errorf("decode external runner profile: %w", err)
+		}
+		// encoding/json matches object names to struct fields without regard to
+		// case. Preserve the v1 unknown-field contract for every spelling that
+		// the newly-added v2 field would otherwise accept, including null.
+		for name := range fields {
+			if strings.EqualFold(name, "workspace_volume") {
+				return Profile{}, "", fmt.Errorf("decode external runner profile: json: unknown field %q", name)
+			}
+		}
+	}
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
 	var profile Profile
@@ -121,7 +179,19 @@ func ReadProfileSnapshot(path string) (Profile, string, error) {
 }
 
 func (p Profile) Validate() error {
-	if p.Schema != ProfileSchema {
+	switch p.Schema {
+	case ProfileSchemaV1:
+		if p.WorkspaceVolume != nil {
+			return fmt.Errorf("external runner v1 profile cannot define a workspace volume")
+		}
+	case ProfileSchemaV2:
+		if p.WorkspaceVolume == nil {
+			return fmt.Errorf("external runner v2 profile requires a workspace volume")
+		}
+		if err := p.WorkspaceVolume.Validate(); err != nil {
+			return err
+		}
+	default:
 		return fmt.Errorf("external runner profile schema %q is unsupported", p.Schema)
 	}
 	if err := runtimeprovider.ValidateName(p.Name); err != nil {
