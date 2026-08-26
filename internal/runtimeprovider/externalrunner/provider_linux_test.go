@@ -4,19 +4,23 @@ package externalrunner
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/agentsh/agentsh/internal/detached"
+	"github.com/agentsh/agentsh/internal/guestcontrol"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
-func TestProviderPreflightAndStartRejectV2UntilHostMonitorIntegration(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
-		t.Skip("external runner provider preflight is x86_64-only")
-	}
+func testProviderV2Profile(t *testing.T) Profile {
+	t.Helper()
 	profile := testProfile(t)
 	profile.Schema = ProfileSchemaV2
 	profile.Name = "pi-linux-qemu-v2"
@@ -24,43 +28,196 @@ func TestProviderPreflightAndStartRejectV2UntilHostMonitorIntegration(t *testing
 		Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
 		RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
 	}
-	profilePath := writeProfile(t, profile)
+	return profile
+}
+
+func testProviderV2Request(t *testing.T, profile Profile) runtimeprovider.Request {
+	t.Helper()
+	sessionID := "session-11111111-1111-4111-8111-111111111111"
+	stateDir := filepath.Join(t.TempDir(), sessionID)
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return runtimeprovider.Request{
+		SessionID: sessionID, Provider: ProviderName, Profile: profile.Name, StateDir: stateDir,
+		Session: types.CreateSessionRequest{
+			ID: sessionID, Workspace: t.TempDir(), WorkspaceMode: string(types.WorkspaceModeShadow), Policy: profile.Guest.Policy,
+		},
+	}
+}
+
+func TestProviderPreflightAndStartRejectV2UntilAuthenticatedGuestVolumeEvidence(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("external runner provider preflight is x86_64-only")
+	}
+	profile := testProviderV2Profile(t)
 	provider, err := NewProvider(ProviderOptions{
-		Enabled: true, Profiles: map[string]string{profile.Name: profilePath},
+		Enabled: true, Profiles: map[string]string{profile.Name: writeProfile(t, profile)},
 		CIDLeaseRoot: filepath.Join(t.TempDir(), "cid-leases"), MonitorExecutable: filepath.Join(t.TempDir(), "agentsh"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionID := "session-11111111-1111-4111-8111-111111111111"
-	request := runtimeprovider.Request{
-		SessionID: sessionID, Provider: ProviderName, Profile: profile.Name,
-		StateDir: filepath.Join(t.TempDir(), sessionID),
-		Session: types.CreateSessionRequest{
-			ID: sessionID, Workspace: t.TempDir(), WorkspaceMode: string(types.WorkspaceModeShadow), Policy: profile.Guest.Policy,
-		},
+	generatedVolumeID := false
+	provider.workspaceVolumes.newID = func() (string, error) {
+		generatedVolumeID = true
+		return "22222222-2222-4222-8222-222222222222", nil
 	}
-	if _, err := provider.Preflight(context.Background(), request); err == nil || !strings.Contains(err.Error(), "host-monitor integration") {
+	request := testProviderV2Request(t, profile)
+	if _, err := provider.Preflight(context.Background(), request); err == nil || !strings.Contains(err.Error(), "authenticated guest workspace-volume and mount evidence") {
 		t.Fatalf("v2 Preflight error = %v", err)
 	}
-	if instance, err := provider.Start(context.Background(), request); err == nil || !strings.Contains(err.Error(), "host-monitor integration") {
-		if instance != nil {
-			_ = instance.Destroy(context.Background())
-		}
+	instance, err := provider.Start(context.Background(), request)
+	if instance != nil {
+		_ = instance.Destroy(context.Background())
+		t.Fatal("rejected v2 Start returned an instance")
+	}
+	if err == nil || !strings.Contains(err.Error(), "authenticated guest workspace-volume and mount evidence") {
 		t.Fatalf("v2 Start error = %v", err)
+	}
+	if generatedVolumeID {
+		t.Fatal("rejected public v2 launch generated or acquired workspace volume state")
+	}
+	if _, err := os.Lstat(filepath.Join(request.StateDir, "runtime")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rejected public v2 launch created runtime state: %v", err)
 	}
 }
 
-func TestExactHostMonitorStatusTerminalAcceptsReapedTerminalStatus(t *testing.T) {
-	for _, state := range []HostMonitorState{HostMonitorStopped, HostMonitorFailed} {
-		t.Run(string(state), func(t *testing.T) {
-			monitor := HostProcessIdentity{PID: 101, StartIdentity: "monitor-start", BootID: "boot-id"}
-			status := HostMonitorStatus{
-				State:        state,
-				Monitor:      monitor,
-				RunnerReaped: true,
-				RelayClosed:  true,
-			}
+func TestProviderOpenBindsImmutableRequestProfileSnapshot(t *testing.T) {
+	stateDir, request, profile, manifest := prepareHostMonitorFixture(t)
+	writeReadyProviderFixture(t, stateDir, request, profile, manifest)
+	provider, err := NewProvider(ProviderOptions{
+		Enabled: true, Profiles: map[string]string{profile.Name: request.ProfileFile},
+		CIDLeaseRoot: request.CIDLeaseRoot, MonitorExecutable: filepath.Join(t.TempDir(), "agentsh"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerManifest := runtimeprovider.Manifest{Profile: profile.Name, StateDir: stateDir}
+	if _, err := provider.Open(context.Background(), providerManifest); err != nil {
+		t.Fatalf("open exact immutable profile: %v", err)
+	}
+
+	// Keep the separately pinned profile digest unchanged while changing valid
+	// operator-profile bytes. Open must bind the file snapshot hash too.
+	profile.Timeouts.ReadinessSeconds++
+	data, err := json.Marshal(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(request.ProfileFile, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Open(context.Background(), providerManifest); err == nil || !strings.Contains(err.Error(), "immutable request profile binding") {
+		t.Fatalf("Open accepted operator profile file drift: %v", err)
+	}
+}
+
+func TestProviderInstanceBindingRejectsProfileDigestSchemaAndVolumeContractDrift(t *testing.T) {
+	_, request, profile, _ := prepareV2HostMonitorFixture(t)
+	if err := validateHostMonitorProfileBinding(request, profile, request.ProfileFileSHA256); err != nil {
+		t.Fatalf("exact v2 profile binding: %v", err)
+	}
+
+	digestDrift := profile
+	digestDrift.ProfileDigest = digest([]byte("different-operator-profile"))
+	if err := validateHostMonitorProfileBinding(request, digestDrift, request.ProfileFileSHA256); err == nil {
+		t.Fatal("instance binding accepted profile digest drift")
+	}
+	schemaDrift := profile
+	schemaDrift.Schema = ProfileSchemaV1
+	schemaDrift.WorkspaceVolume = nil
+	if err := validateHostMonitorProfileBinding(request, schemaDrift, request.ProfileFileSHA256); err == nil {
+		t.Fatal("instance binding accepted profile schema drift")
+	}
+	contractDrift := profile
+	contract := *profile.WorkspaceVolume
+	contract.VirtualSizeBytes += 1 << 30
+	contractDrift.WorkspaceVolume = &contract
+	if err := validateHostMonitorProfileBinding(request, contractDrift, request.ProfileFileSHA256); err == nil {
+		t.Fatal("instance binding accepted workspace volume contract drift")
+	}
+}
+
+func TestProviderV2ControlPlaneDoesNotClaimHostWorktree(t *testing.T) {
+	stateDir, request, profile, _ := prepareV2HostMonitorFixture(t)
+	instance := &providerInstance{profile: profile, request: request}
+	if _, err := instance.ControlPlane(context.Background()); err == nil || !strings.Contains(err.Error(), "volume and mount evidence") {
+		t.Fatalf("v2 control plane did not fail closed: %v", err)
+	}
+	if _, err := os.Lstat(detached.MetadataPath(stateDir)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("v2 control plane published host-worktree metadata: %v", err)
+	}
+}
+
+func TestProviderV2DestroyReleasesCIDButRetainsWorkspaceVolume(t *testing.T) {
+	stateDir, request, profile, _ := prepareV2HostMonitorFixture(t)
+	marker := filepath.Join(stateDir, "runtime", "volumes", "workspace", "retained")
+	if err := os.MkdirAll(filepath.Dir(marker), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte("retained\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	monitor := HostProcessIdentity{PID: 101, StartIdentity: "monitor-start", BootID: "boot-id"}
+	status := HostMonitorStatus{
+		SchemaVersion: request.SchemaVersion, Revision: 2,
+		MonitorID: request.MonitorID, SessionID: request.SessionID,
+		Profile: profile.Name, ExternalProfileDigest: profile.ProfileDigest, GuestProfileDigest: profile.Guest.ProfileDigest,
+		VolumeID: request.VolumeID, State: HostMonitorStopped, CreatedAt: now, UpdatedAt: now,
+		Monitor: monitor,
+		Runner: &HostProcessIdentity{
+			PID: 102, ProcessGroup: 102, StartIdentity: "runner-start", BootID: "boot-id",
+		},
+		RunnerExit: &HostRunnerExit{ExitCode: 0}, RunnerReaped: true, RelayClosed: true, VolumeClosed: true,
+	}
+	layout, err := HostMonitorPaths(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHostMonitorStatus(layout.StatusPath, status); err != nil {
+		t.Fatal(err)
+	}
+	instance := &providerInstance{profile: profile, request: request, status: HostMonitorStatus{Monitor: monitor}}
+	if err := instance.Destroy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCIDLease(context.Background(), request.CIDLeaseRoot, request.CIDLease, profile.VSock.CIDMin, profile.VSock.CIDMax); err == nil {
+		t.Fatal("provider Destroy retained the CID lease")
+	}
+	if data, err := os.ReadFile(marker); err != nil || string(data) != "retained\n" {
+		t.Fatalf("provider Destroy deleted the workspace volume: %q, %v", data, err)
+	}
+}
+
+func TestExactHostMonitorStatusTerminalAcceptsConsistentTerminalEvidence(t *testing.T) {
+	monitor := HostProcessIdentity{PID: 101, StartIdentity: "monitor-start", BootID: "boot-id"}
+	runner := &HostProcessIdentity{PID: 102, ProcessGroup: 102, StartIdentity: "runner-start", BootID: "boot-id"}
+	exit := &HostRunnerExit{ExitCode: 1}
+	volumeID := "22222222-2222-4222-8222-222222222222"
+	for name, status := range map[string]HostMonitorStatus{
+		"v1-stopped": {
+			SchemaVersion: HostMonitorSchemaVersionV1, State: HostMonitorStopped, Monitor: monitor,
+			Runner: runner, RunnerExit: exit, RunnerReaped: true, RelayClosed: true,
+		},
+		"v1-failed-after-runner": {
+			SchemaVersion: HostMonitorSchemaVersionV1, State: HostMonitorFailed, Monitor: monitor,
+			Runner: runner, RunnerExit: exit, RunnerReaped: true, RelayClosed: true,
+		},
+		"v1-true-no-child": {
+			SchemaVersion: HostMonitorSchemaVersionV1, State: HostMonitorFailed, Monitor: monitor, RelayClosed: true,
+		},
+		"v2-true-no-child": {
+			SchemaVersion: HostMonitorSchemaVersionV2, State: HostMonitorFailed, Monitor: monitor,
+			VolumeID: volumeID, RelayClosed: true, VolumeClosed: true,
+		},
+		"v2-startup-child-reaped": {
+			SchemaVersion: HostMonitorSchemaVersionV2, State: HostMonitorFailed, Monitor: monitor,
+			VolumeID: volumeID, RunnerExit: exit, StartupChildReaped: true, RelayClosed: true, VolumeClosed: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
 			if !exactHostMonitorStatusTerminal(status, monitor) {
 				t.Fatal("exact terminal teardown evidence was not accepted")
 			}
@@ -73,15 +230,88 @@ func TestExactHostMonitorStatusTerminalAcceptsReapedTerminalStatus(t *testing.T)
 	}
 }
 
-func TestExactHostMonitorStatusTerminalRejectsIncompleteCleanup(t *testing.T) {
+func TestExactHostMonitorStatusTerminalRejectsIncompleteOrMixedEvidence(t *testing.T) {
 	monitor := HostProcessIdentity{PID: 101, StartIdentity: "monitor-start", BootID: "boot-id"}
-	status := HostMonitorStatus{
-		State:        HostMonitorFailed,
-		Monitor:      monitor,
-		RunnerReaped: true,
-		RelayClosed:  false,
+	runner := &HostProcessIdentity{PID: 102, ProcessGroup: 102, StartIdentity: "runner-start", BootID: "boot-id"}
+	exit := &HostRunnerExit{ExitCode: 1}
+	volumeID := "22222222-2222-4222-8222-222222222222"
+	validRunnerFailure := HostMonitorStatus{
+		SchemaVersion: HostMonitorSchemaVersionV2, State: HostMonitorFailed, Monitor: monitor, VolumeID: volumeID,
+		Runner: runner, RunnerExit: exit, RunnerReaped: true, RelayClosed: true, VolumeClosed: true,
 	}
-	if exactHostMonitorStatusTerminal(status, monitor) {
-		t.Fatal("terminal evidence with an open relay was accepted")
+	openRelay := validRunnerFailure
+	openRelay.RelayClosed = false
+	openVolume := validRunnerFailure
+	openVolume.VolumeClosed = false
+	missingStoppedRunner := validRunnerFailure
+	missingStoppedRunner.State = HostMonitorStopped
+	missingStoppedRunner.Runner = nil
+	exitWithoutStartupMarker := validRunnerFailure
+	exitWithoutStartupMarker.Runner = nil
+	exitWithoutStartupMarker.RunnerReaped = false
+	startupMarkerWithoutExit := validRunnerFailure
+	startupMarkerWithoutExit.Runner = nil
+	startupMarkerWithoutExit.RunnerExit = nil
+	startupMarkerWithoutExit.RunnerReaped = false
+	startupMarkerWithoutExit.StartupChildReaped = true
+	startupMarkerWithRunnerReaped := validRunnerFailure
+	startupMarkerWithRunnerReaped.Runner = nil
+	startupMarkerWithRunnerReaped.StartupChildReaped = true
+	startupMarkerWithRunner := validRunnerFailure
+	startupMarkerWithRunner.StartupChildReaped = true
+	v1StartupMarker := HostMonitorStatus{
+		SchemaVersion: HostMonitorSchemaVersionV1, State: HostMonitorFailed, Monitor: monitor,
+		RunnerExit: exit, StartupChildReaped: true, RelayClosed: true,
+	}
+	for name, status := range map[string]HostMonitorStatus{
+		"open-relay":                           openRelay,
+		"open-volume":                          openVolume,
+		"stopped-without-runner":               missingStoppedRunner,
+		"exit-without-startup-marker":          exitWithoutStartupMarker,
+		"startup-marker-without-exit":          startupMarkerWithoutExit,
+		"startup-marker-with-runner-reaped":    startupMarkerWithRunnerReaped,
+		"startup-marker-with-published-runner": startupMarkerWithRunner,
+		"schema-v1-startup-marker":             v1StartupMarker,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if exactHostMonitorStatusTerminal(status, monitor) {
+				t.Fatal("incomplete or mixed terminal evidence was accepted")
+			}
+		})
+	}
+}
+
+func writeReadyProviderFixture(t *testing.T, stateDir string, request HostMonitorRequest, profile Profile, manifest guestcontrol.Manifest) {
+	t.Helper()
+	start, boot, err := detached.CurrentProcessIdentity(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handshake := testHostHandshake(manifest)
+	secret := HostMonitorGuestSecret{
+		SchemaVersion: HostMonitorSchemaVersionV1, MonitorID: request.MonitorID, SessionID: request.SessionID,
+		Generation: handshake.Generation, IncarnationID: handshake.IncarnationID, EventToken: handshake.EventToken,
+	}
+	if err := WriteHostMonitorGuestSecret(stateDir, request, secret); err != nil {
+		t.Fatal(err)
+	}
+	layout, err := HostMonitorPaths(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	status := HostMonitorStatus{
+		SchemaVersion: request.SchemaVersion, Revision: 1,
+		MonitorID: request.MonitorID, SessionID: request.SessionID,
+		Profile: profile.Name, ExternalProfileDigest: profile.ProfileDigest, GuestProfileDigest: profile.Guest.ProfileDigest,
+		State: HostMonitorControlReady, CreatedAt: now, UpdatedAt: now,
+		Monitor:     HostProcessIdentity{PID: os.Getpid(), StartIdentity: start, BootID: boot},
+		Runner:      &HostProcessIdentity{PID: os.Getpid(), ProcessGroup: os.Getpid(), StartIdentity: start, BootID: boot},
+		Guest:       pointerTo(publicHostGuestIdentity(handshake)),
+		Endpoint:    &runtimeprovider.Endpoint{Transport: "unix", Address: layout.RelayPath},
+		RelayClosed: false,
+	}
+	if err := writeHostMonitorStatus(layout.StatusPath, status); err != nil {
+		t.Fatal(err)
 	}
 }

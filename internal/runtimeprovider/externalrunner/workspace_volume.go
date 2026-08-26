@@ -193,8 +193,11 @@ func OpenWorkspaceVolume(ctx context.Context, request WorkspaceVolumeRequest, vo
 	return openWorkspaceVolume(ctx, request, volumeID)
 }
 
-// DeleteWorkspaceVolume is the only API that removes a published workspace
-// volume. It is idempotent for an already-removed exact volume ID.
+// DeleteWorkspaceVolume is the only low-level API that removes a published
+// workspace volume. It is idempotent for an already-removed exact volume ID.
+// The lease check prevents deletion while a monitor owns the volume, but this
+// primitive cannot establish session lifecycle: callers must additionally gate
+// deletion on higher-level exact terminal monitor and session evidence.
 func DeleteWorkspaceVolume(ctx context.Context, request WorkspaceVolumeRequest, volumeID string) error {
 	return deleteWorkspaceVolume(ctx, request, volumeID)
 }

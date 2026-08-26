@@ -17,7 +17,7 @@ func validateHostMonitorDirectory(path string) error {
 	return nil
 }
 
-func startHostRunner(Profile, HostMonitorLayout, uint32, io.Writer) (hostRunner, error) {
+func startHostRunner(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error) {
 	return nil, fmt.Errorf("external MicroVM host monitors are supported only on Linux")
 }
 

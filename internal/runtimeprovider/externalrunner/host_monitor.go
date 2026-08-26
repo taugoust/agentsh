@@ -41,16 +41,21 @@ type hostRunner interface {
 }
 
 type hostMonitorDeps struct {
-	newControl     func(guestcontrol.Manifest) (hostMonitorControl, error)
-	newRelay       func(string, hostMonitorControl) (hostMonitorRelay, error)
-	startRunner    func(Profile, HostMonitorLayout, uint32, io.Writer) (hostRunner, error)
+	newControl func(guestcontrol.Manifest) (hostMonitorControl, error)
+	newRelay   func(string, hostMonitorControl) (hostMonitorRelay, error)
+	// createVolume atomically creates or idempotently reopens the request-bound
+	// volume. startRunner must return a non-nil cleanup handle with an error if a
+	// direct child may have started.
+	createVolume   func(context.Context, WorkspaceVolumeRequest, string) (*WorkspaceVolume, error)
+	startRunner    func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error)
 	validateRunner func(Profile) error
 	lock           func(context.Context, string) (io.Closer, error)
 	now            func() time.Time
 }
 
-// RunHostMonitor owns one fixed external runner until exact terminal teardown.
-// Its only caller-controlled input is a protected session state directory.
+// RunHostMonitor owns one fixed external runner and any v2 workspace-volume
+// lease until exact terminal teardown. Its only caller-controlled input is a
+// protected session state directory.
 func RunHostMonitor(ctx context.Context, stateDir string) error {
 	return runHostMonitor(ctx, stateDir, productionHostMonitorDeps())
 }
@@ -79,11 +84,14 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 	if err != nil {
 		return err
 	}
-	if err := validateProviderLifecycleProfile(profile); err != nil {
-		return err
-	}
 	if profile.ProfileDigest == "" || profile.Name == "" {
 		return fmt.Errorf("host monitor external profile identity is incomplete")
+	}
+	if err := validateHostMonitorProfileBinding(request, profile, profileFileDigest); err != nil {
+		return err
+	}
+	if err := validateHostMonitorWorkspaceLayout(profile, layout); err != nil {
+		return err
 	}
 	if err := deps.validateRunner(profile); err != nil {
 		return err
@@ -108,10 +116,11 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 	}
 	now := deps.now()
 	status := HostMonitorStatus{
-		SchemaVersion: HostMonitorSchemaVersion, Revision: 1,
+		SchemaVersion: request.SchemaVersion, Revision: 1,
 		MonitorID: request.MonitorID, SessionID: request.SessionID,
 		Profile: profile.Name, ExternalProfileDigest: profile.ProfileDigest, GuestProfileDigest: profile.Guest.ProfileDigest,
-		State: HostMonitorInitializing, CreatedAt: now, UpdatedAt: now,
+		VolumeID: request.VolumeID,
+		State:    HostMonitorInitializing, CreatedAt: now, UpdatedAt: now,
 		Monitor:     HostProcessIdentity{PID: os.Getpid(), StartIdentity: startIdentity, BootID: bootID},
 		RelayClosed: true,
 	}
@@ -133,19 +142,86 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		return err
 	}
 
+	volumeRequired := profile.Schema == ProfileSchemaV2
+	var volume *WorkspaceVolume
+	closeVolume := func() error {
+		if !volumeRequired {
+			return nil
+		}
+		if volume == nil {
+			status.VolumeClosed = true
+			return nil
+		}
+		closeErr := volume.Close()
+		if closeErr == nil {
+			status.VolumeClosed = true
+		}
+		return closeErr
+	}
+	if volumeRequired {
+		volumeRequest := WorkspaceVolumeRequest{
+			StateDir: stateDir, SessionID: request.SessionID,
+			Profile: profile, ProfileFileSHA256: profileFileDigest,
+		}
+		var openErr error
+		if deps.createVolume == nil {
+			openErr = fmt.Errorf("host monitor workspace volume dependency is missing")
+		} else {
+			// The immutable schema-v2 request and initial status are durable before
+			// this first lease or volume state can exist.
+			volume, openErr = deps.createVolume(ctx, volumeRequest, request.VolumeID)
+		}
+		if openErr == nil {
+			openErr = validateCreatedHostMonitorVolume(volume, volumeRequest, request.VolumeID)
+		}
+		if openErr != nil {
+			closeErr := closeVolume()
+			cause := errors.Join(openErr, closeErr)
+			status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+			persistErr := persist(HostMonitorFailed)
+			return errors.Join(fmt.Errorf("create or reopen exact host monitor workspace volume: %w", openErr), closeErr, persistErr)
+		}
+	}
+
 	logFile, err := os.OpenFile(layout.RunnerLog, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		status.LastError = boundedHostMonitorError(err, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+		closeErr := closeVolume()
+		cause := errors.Join(err, closeErr)
+		status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
 		persistErr := persist(HostMonitorFailed)
-		return errors.Join(fmt.Errorf("create host monitor runner log: %w", err), persistErr)
+		return errors.Join(fmt.Errorf("create host monitor runner log: %w", err), closeErr, persistErr)
 	}
 	logWriter := &boundedLogWriter{writer: logFile, remaining: hostMonitorRunnerLogLimit}
-	runner, err := deps.startRunner(profile, layout, manifest.VSockCID, logWriter)
+	runner, err := deps.startRunner(profile, layout, manifest.VSockCID, volume, logWriter)
+	if err == nil && runner == nil {
+		err = fmt.Errorf("external runner startup returned no exact runner handle")
+	}
 	if err != nil {
-		_ = logFile.Close()
-		status.LastError = boundedHostMonitorError(err, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+		startupErr := err
+		var cleanupErr error
+		if runner != nil {
+			// A non-nil runner paired with a startup error means a direct child may
+			// exist. Reaping uses bounded attempts but fails closed indefinitely: no
+			// terminal failure is published and no volume lease is released until an
+			// exact exit result is available.
+			var startupChildResult *hostRunnerResult
+			startupChildResult, cleanupErr = reapPartiallyStartedHostRunner(runner, func(attemptErr error) {
+				status.LastError = boundedHostMonitorError(errors.Join(startupErr, attemptErr), manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+				_ = persist(HostMonitorInitializing)
+			})
+			if request.SchemaVersion == HostMonitorSchemaVersionV2 && startupChildResult != nil {
+				// A partially-started child has no publishable process identity. Keep
+				// its exact exit separate from true no-child prelaunch evidence.
+				status.StartupChildReaped = true
+				status.RunnerExit = pointerTo(startupChildResult.Exit)
+			}
+		}
+		logErr := errors.Join(logFile.Sync(), logFile.Close())
+		closeErr := closeVolume()
+		cause := errors.Join(startupErr, cleanupErr, logErr, closeErr)
+		status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
 		persistErr := persist(HostMonitorFailed)
-		return errors.Join(fmt.Errorf("start host monitor runner: %w", err), persistErr)
+		return errors.Join(fmt.Errorf("start host monitor runner: %w", startupErr), cleanupErr, logErr, closeErr, persistErr)
 	}
 	status.Runner = pointerTo(runner.Identity())
 	status.RelayClosed = true
@@ -158,23 +234,28 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			result, attemptErr := runner.EnsureStopped(cleanupCtx)
 			cancel()
-			cleanupErr = attemptErr
 			if result != nil {
 				status.RunnerExit = &result.Exit
 			}
-			if cleanupErr == nil {
+			if result != nil && attemptErr == nil {
 				status.RunnerReaped = true
+				cleanupErr = nil
 				break
 			}
+			if attemptErr == nil {
+				attemptErr = fmt.Errorf("external runner reaping returned no exact exit result")
+			}
+			cleanupErr = attemptErr
 			status.LastError = boundedHostMonitorError(errors.Join(err, forceErr, cleanupErr), manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
 			_ = persist(HostMonitorFailed)
 			_ = runner.ForceStop()
 			time.Sleep(time.Second)
 		}
-		status.LastError = boundedHostMonitorError(errors.Join(err, forceErr), manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+		volumeCloseErr := closeVolume()
+		status.LastError = boundedHostMonitorError(errors.Join(err, forceErr, cleanupErr, volumeCloseErr), manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
 		persistRequired(HostMonitorFailed)
 		_ = logFile.Close()
-		return errors.Join(err, forceErr)
+		return errors.Join(err, forceErr, cleanupErr, volumeCloseErr)
 	}
 
 	var relay hostMonitorRelay
@@ -192,7 +273,7 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		handshake, err = waitForHostGuest(readinessCtx, control, profile.Network.RequireReadyBeforePublish, runner.Done(), &runnerResult)
 		if err == nil {
 			secret := HostMonitorGuestSecret{
-				SchemaVersion: HostMonitorSchemaVersion, MonitorID: request.MonitorID, SessionID: request.SessionID,
+				SchemaVersion: HostMonitorSchemaVersionV1, MonitorID: request.MonitorID, SessionID: request.SessionID,
 				Generation: handshake.Generation, IncarnationID: handshake.IncarnationID, EventToken: handshake.EventToken,
 			}
 			if secretErr := WriteHostMonitorGuestSecret(stateDir, request, secret); secretErr != nil {
@@ -313,8 +394,11 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		if ensuredResult != nil {
 			runnerResult = ensuredResult
 		}
-		if ensureErr == nil {
+		if ensuredResult != nil && ensureErr == nil {
 			break
+		}
+		if ensureErr == nil {
+			ensureErr = fmt.Errorf("external runner reaping returned no exact exit result")
 		}
 		cause = errors.Join(cause, ensureErr)
 		terminalState = HostMonitorFailed
@@ -324,19 +408,23 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		_ = runner.ForceStop()
 		time.Sleep(time.Second)
 	}
+	status.RunnerExit = &runnerResult.Exit
+	status.RunnerReaped = true
+	// The monitor keeps both the mutable image descriptor and its exclusive
+	// lease until EnsureStopped has reaped the exact direct runner/QEMU process.
+	if closeErr := closeVolume(); closeErr != nil {
+		cause = errors.Join(cause, fmt.Errorf("close exact host monitor workspace volume: %w", closeErr))
+		terminalState = HostMonitorFailed
+	}
 	_ = logFile.Sync()
 	if closeErr := logFile.Close(); closeErr != nil {
 		cause = errors.Join(cause, closeErr)
 		terminalState = HostMonitorFailed
 	}
-	if runnerResult != nil {
-		status.RunnerExit = &runnerResult.Exit
-		status.RunnerReaped = true
-		if runnerResult.Err != nil && !forced {
-			cause = errors.Join(cause, runnerResult.Err)
-			if !stopRequested {
-				terminalState = HostMonitorFailed
-			}
+	if runnerResult.Err != nil && !forced {
+		cause = errors.Join(cause, runnerResult.Err)
+		if !stopRequested {
+			terminalState = HostMonitorFailed
 		}
 	}
 	status.Forced = forced
@@ -346,6 +434,37 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		return cause
 	}
 	return nil
+}
+
+func reapPartiallyStartedHostRunner(runner hostRunner, onRetry func(error)) (*hostRunnerResult, error) {
+	// Do not ask the runner to wait until process-group cleanup succeeds. Once
+	// ForceStop succeeds, never signal again: EnsureStopped may reap the leader,
+	// after which both its PID and PGID are reusable.
+	for {
+		forceErr := runner.ForceStop()
+		if forceErr == nil {
+			break
+		}
+		if onRetry != nil {
+			onRetry(forceErr)
+		}
+		time.Sleep(time.Second)
+	}
+	for {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		result, ensureErr := runner.EnsureStopped(cleanupCtx)
+		cancel()
+		if result != nil {
+			return result, ensureErr
+		}
+		if ensureErr == nil {
+			ensureErr = fmt.Errorf("external runner reaping returned no exact exit result")
+		}
+		if onRetry != nil {
+			onRetry(ensureErr)
+		}
+		time.Sleep(time.Second)
+	}
 }
 
 func waitForHostGuest(ctx context.Context, control hostMonitorControl, requireNetwork bool, done <-chan hostRunnerResult, runnerResult **hostRunnerResult) (guestcontrol.Handshake, error) {
@@ -368,8 +487,11 @@ func waitForHostGuest(ctx context.Context, control hostMonitorControl, requireNe
 }
 
 func validateHostMonitorBindings(request HostMonitorRequest, profile Profile, profileFileDigest string, manifest guestcontrol.Manifest, manifestDigest string) error {
+	if err := validateHostMonitorProfileBinding(request, profile, profileFileDigest); err != nil {
+		return err
+	}
 	if request.SessionID != manifest.SessionID || request.CIDLease.CID != manifest.VSockCID ||
-		request.ProfileFileSHA256 != profileFileDigest || request.ProfileName != profile.Name || request.ProfileDigest != profile.ProfileDigest || request.GuestProfileDigest != profile.Guest.ProfileDigest ||
+		request.GuestProfileDigest != profile.Guest.ProfileDigest ||
 		request.GuestManifestSHA256 != manifestDigest || request.ExpectedGuestGeneration != manifest.ExpectedGeneration || request.LaunchNonce != manifest.LaunchNonce ||
 		request.GuestPolicy != manifest.Policy || request.GuestControlPort != manifest.VSockPort || request.GuestSupervisorPort != manifest.SupervisorPort ||
 		profile.Name != manifest.Profile || profile.Guest.ProfileDigest != manifest.ProfileDigest ||
@@ -386,7 +508,7 @@ func validateHostMonitorLayout(stateDir string) (HostMonitorLayout, error) {
 		return HostMonitorLayout{}, err
 	}
 	for name, path := range map[string]string{
-		"state": layout.StateDir, "runtime": layout.RuntimeDir, "workspace": layout.WorkspaceDir,
+		"state": layout.StateDir, "runtime": layout.RuntimeDir,
 		"control": layout.ControlDir, "host": layout.HostDir, "logs": layout.LogsDir,
 	} {
 		if err := validateHostMonitorDirectory(path); err != nil {
@@ -394,6 +516,37 @@ func validateHostMonitorLayout(stateDir string) (HostMonitorLayout, error) {
 		}
 	}
 	return layout, nil
+}
+
+func validateHostMonitorWorkspaceLayout(profile Profile, layout HostMonitorLayout) error {
+	switch profile.Schema {
+	case ProfileSchemaV1:
+		if err := validateHostMonitorDirectory(layout.WorkspaceDir); err != nil {
+			return fmt.Errorf("host monitor workspace directory is missing or unsafe: %w", err)
+		}
+	case ProfileSchemaV2:
+		if _, err := os.Lstat(layout.WorkspaceDir); err == nil {
+			return fmt.Errorf("host monitor v2 runtime contains a forbidden staged workspace")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("inspect host monitor v2 staged workspace path: %w", err)
+		}
+	default:
+		return fmt.Errorf("host monitor external profile schema %q is unsupported", profile.Schema)
+	}
+	return nil
+}
+
+func validateCreatedHostMonitorVolume(volume *WorkspaceVolume, request WorkspaceVolumeRequest, volumeID string) error {
+	if volume == nil || volume.Image == nil {
+		return fmt.Errorf("host monitor workspace volume create returned no exact image")
+	}
+	if err := volume.Manifest.matches(request, volumeID); err != nil {
+		return err
+	}
+	if volume.RunnerFD() != WorkspaceVolumeRunnerFD {
+		return fmt.Errorf("host monitor workspace volume runner descriptor differs from the fixed contract")
+	}
+	return nil
 }
 
 func boundedHostMonitorError(err error, secrets ...string) string {

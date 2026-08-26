@@ -18,7 +18,13 @@ import (
 )
 
 const (
-	HostMonitorSchemaVersion   = 1
+	HostMonitorSchemaVersionV1 = 1
+	HostMonitorSchemaVersionV2 = 2
+
+	// HostMonitorSchemaVersion remains the v1 value for source compatibility.
+	// New artifacts must select a version from their bound profile schema.
+	HostMonitorSchemaVersion = HostMonitorSchemaVersionV1
+
 	HostMonitorRequestName     = "host-monitor-request.json"
 	HostMonitorStatusName      = "host-monitor-status.json"
 	HostMonitorLockName        = "host-monitor.lock"
@@ -80,30 +86,43 @@ func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
 }
 
 type HostMonitorRequest struct {
-	SchemaVersion           int       `json:"schema_version"`
-	MonitorID               string    `json:"monitor_id"`
-	SessionID               string    `json:"session_id"`
-	StateDir                string    `json:"state_dir"`
-	SourceWorkspace         string    `json:"source_workspace"`
-	ProfileFile             string    `json:"profile_file"`
-	ProfileFileSHA256       string    `json:"profile_file_sha256"`
-	ProfileName             string    `json:"profile_name"`
-	ProfileDigest           string    `json:"profile_digest"`
-	GuestProfileDigest      string    `json:"guest_profile_digest"`
-	GuestPolicy             string    `json:"guest_policy"`
-	GuestControlPort        uint32    `json:"guest_control_port"`
-	GuestSupervisorPort     uint32    `json:"guest_supervisor_port"`
-	GuestManifestSHA256     string    `json:"guest_manifest_sha256"`
-	ExpectedGuestGeneration uint64    `json:"expected_guest_generation"`
-	LaunchNonce             string    `json:"launch_nonce"`
-	CIDLeaseRoot            string    `json:"cid_lease_root"`
-	CIDLease                CIDLease  `json:"cid_lease"`
-	CreatedAt               time.Time `json:"created_at"`
+	SchemaVersion           int                  `json:"schema_version"`
+	MonitorID               string               `json:"monitor_id"`
+	SessionID               string               `json:"session_id"`
+	StateDir                string               `json:"state_dir"`
+	SourceWorkspace         string               `json:"source_workspace"`
+	VolumeID                string               `json:"volume_id,omitempty"`
+	ProfileFile             string               `json:"profile_file"`
+	ProfileFileSHA256       string               `json:"profile_file_sha256"`
+	ProfileName             string               `json:"profile_name"`
+	ProfileDigest           string               `json:"profile_digest"`
+	ProfileSchema           string               `json:"profile_schema,omitempty"`
+	WorkspaceVolume         *WorkspaceVolumeSpec `json:"workspace_volume,omitempty"`
+	GuestProfileDigest      string               `json:"guest_profile_digest"`
+	GuestPolicy             string               `json:"guest_policy"`
+	GuestControlPort        uint32               `json:"guest_control_port"`
+	GuestSupervisorPort     uint32               `json:"guest_supervisor_port"`
+	GuestManifestSHA256     string               `json:"guest_manifest_sha256"`
+	ExpectedGuestGeneration uint64               `json:"expected_guest_generation"`
+	LaunchNonce             string               `json:"launch_nonce"`
+	CIDLeaseRoot            string               `json:"cid_lease_root"`
+	CIDLease                CIDLease             `json:"cid_lease"`
+	CreatedAt               time.Time            `json:"created_at"`
 }
 
 func (r HostMonitorRequest) Validate(stateDir string) error {
-	if r.SchemaVersion != HostMonitorSchemaVersion || !validHexSecret(r.MonitorID) {
+	if (r.SchemaVersion != HostMonitorSchemaVersionV1 && r.SchemaVersion != HostMonitorSchemaVersionV2) || !validHexSecret(r.MonitorID) {
 		return fmt.Errorf("host monitor request schema or identity is invalid")
+	}
+	switch r.SchemaVersion {
+	case HostMonitorSchemaVersionV1:
+		if r.VolumeID != "" || r.ProfileSchema != "" || r.WorkspaceVolume != nil {
+			return fmt.Errorf("host monitor v1 request contains schema-v2 workspace volume fields")
+		}
+	case HostMonitorSchemaVersionV2:
+		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV2 || r.WorkspaceVolume == nil || r.WorkspaceVolume.Validate() != nil {
+			return fmt.Errorf("host monitor v2 workspace volume binding is invalid")
+		}
 	}
 	if err := runtimeprovider.ValidateName(r.SessionID); err != nil || !strings.HasPrefix(r.SessionID, "session-") {
 		return fmt.Errorf("host monitor session identity is invalid")
@@ -133,6 +152,57 @@ func (r HostMonitorRequest) Validate(stateDir string) error {
 	return nil
 }
 
+// UnmarshalJSON preserves the exact v1 unknown-field contract even though the
+// in-memory request type also carries schema-v2 fields.
+func (r *HostMonitorRequest) UnmarshalJSON(data []byte) error {
+	if hostMonitorJSONSchemaVersion(data) == HostMonitorSchemaVersionV1 {
+		if err := rejectHostMonitorJSONFields(data, "volume_id", "profile_schema", "workspace_volume"); err != nil {
+			return err
+		}
+	}
+	type requestAlias HostMonitorRequest
+	var decoded requestAlias
+	if err := decodeStrictHostMonitorJSON(data, &decoded); err != nil {
+		return err
+	}
+	*r = HostMonitorRequest(decoded)
+	return nil
+}
+
+func hostMonitorSchemaVersionForProfile(profileSchema string) (int, error) {
+	switch profileSchema {
+	case ProfileSchemaV1:
+		return HostMonitorSchemaVersionV1, nil
+	case ProfileSchemaV2:
+		return HostMonitorSchemaVersionV2, nil
+	default:
+		return 0, fmt.Errorf("host monitor external profile schema %q is unsupported", profileSchema)
+	}
+}
+
+func validateHostMonitorProfileBinding(request HostMonitorRequest, profile Profile, profileFileDigest string) error {
+	expectedSchema, err := hostMonitorSchemaVersionForProfile(profile.Schema)
+	if err != nil {
+		return err
+	}
+	if request.SchemaVersion != expectedSchema || request.ProfileFileSHA256 != profileFileDigest ||
+		request.ProfileName != profile.Name || request.ProfileDigest != profile.ProfileDigest || request.GuestProfileDigest != profile.Guest.ProfileDigest {
+		return fmt.Errorf("host monitor request and immutable operator profile identity differ")
+	}
+	switch profile.Schema {
+	case ProfileSchemaV1:
+		if request.ProfileSchema != "" || request.WorkspaceVolume != nil || request.VolumeID != "" {
+			return fmt.Errorf("host monitor v1 request contains a workspace volume contract")
+		}
+	case ProfileSchemaV2:
+		if request.ProfileSchema != profile.Schema || request.WorkspaceVolume == nil || profile.WorkspaceVolume == nil ||
+			*request.WorkspaceVolume != *profile.WorkspaceVolume || !canonicalWorkspaceVolumeUUID(request.VolumeID) {
+			return fmt.Errorf("host monitor v2 request workspace volume contract differs from its immutable operator profile")
+		}
+	}
+	return nil
+}
+
 type HostMonitorGuestSecret struct {
 	SchemaVersion int    `json:"schema_version"`
 	MonitorID     string `json:"monitor_id"`
@@ -143,7 +213,7 @@ type HostMonitorGuestSecret struct {
 }
 
 func (s HostMonitorGuestSecret) Validate(request HostMonitorRequest) error {
-	if s.SchemaVersion != HostMonitorSchemaVersion || s.MonitorID != request.MonitorID || s.SessionID != request.SessionID ||
+	if s.SchemaVersion != HostMonitorSchemaVersionV1 || s.MonitorID != request.MonitorID || s.SessionID != request.SessionID ||
 		s.Generation != request.ExpectedGuestGeneration || !canonicalHostMonitorUUID(s.IncarnationID) || !validHexSecret(s.EventToken) {
 		return fmt.Errorf("host monitor guest secret identity is invalid")
 	}
@@ -236,6 +306,7 @@ type HostMonitorStatus struct {
 	Profile               string                    `json:"profile,omitempty"`
 	ExternalProfileDigest string                    `json:"external_profile_digest,omitempty"`
 	GuestProfileDigest    string                    `json:"guest_profile_digest,omitempty"`
+	VolumeID              string                    `json:"volume_id,omitempty"`
 	State                 HostMonitorState          `json:"state"`
 	CreatedAt             time.Time                 `json:"created_at"`
 	UpdatedAt             time.Time                 `json:"updated_at"`
@@ -247,12 +318,14 @@ type HostMonitorStatus struct {
 	Forced                bool                      `json:"forced,omitempty"`
 	RunnerExit            *HostRunnerExit           `json:"runner_exit,omitempty"`
 	RunnerReaped          bool                      `json:"runner_reaped,omitempty"`
+	StartupChildReaped    bool                      `json:"startup_child_reaped,omitempty"`
 	RelayClosed           bool                      `json:"relay_closed,omitempty"`
+	VolumeClosed          bool                      `json:"volume_closed,omitempty"`
 	LastError             string                    `json:"last_error,omitempty"`
 }
 
 func (s HostMonitorStatus) Validate() error {
-	if s.SchemaVersion != HostMonitorSchemaVersion || s.Revision == 0 || !validHexSecret(s.MonitorID) {
+	if (s.SchemaVersion != HostMonitorSchemaVersionV1 && s.SchemaVersion != HostMonitorSchemaVersionV2) || s.Revision == 0 || !validHexSecret(s.MonitorID) {
 		return fmt.Errorf("host monitor status schema or identity is invalid")
 	}
 	if err := runtimeprovider.ValidateName(s.SessionID); err != nil || !strings.HasPrefix(s.SessionID, "session-") {
@@ -267,6 +340,28 @@ func (s HostMonitorStatus) Validate() error {
 	if strings.ContainsRune(s.LastError, '\x00') || len(s.LastError) > 4096 {
 		return fmt.Errorf("host monitor status error is invalid")
 	}
+	if s.SchemaVersion == HostMonitorSchemaVersionV1 {
+		if s.VolumeID != "" || s.VolumeClosed || s.StartupChildReaped {
+			return fmt.Errorf("host monitor v1 status contains schema-v2 fields")
+		}
+		return validateHostMonitorStatusV1State(s)
+	}
+	if !canonicalWorkspaceVolumeUUID(s.VolumeID) {
+		return fmt.Errorf("host monitor v2 workspace volume status is invalid")
+	}
+	if s.StartupChildReaped && s.State != HostMonitorFailed {
+		return fmt.Errorf("host monitor startup-child reap evidence is outside failed state")
+	}
+	if s.Runner != nil && s.VolumeClosed && !s.RunnerReaped {
+		return fmt.Errorf("host monitor closed its workspace volume before exact runner reaping")
+	}
+	return validateHostMonitorStatusV2State(s)
+}
+
+// Keep this state validator semantically exact with the schema-v1 protocol:
+// adding schema v2 must not make a formerly invalid v1 status valid or vice
+// versa.
+func validateHostMonitorStatusV1State(s HostMonitorStatus) error {
 	switch s.State {
 	case HostMonitorInitializing:
 	case HostMonitorBooting, HostMonitorStopping:
@@ -283,16 +378,82 @@ func (s HostMonitorStatus) Validate() error {
 			return fmt.Errorf("host monitor stopped state lacks exact teardown evidence")
 		}
 	case HostMonitorFailed:
-		if s.Runner == nil {
-			if s.RunnerExit != nil || s.RunnerReaped || !s.RelayClosed {
-				return fmt.Errorf("host monitor pre-launch failure evidence is inconsistent")
-			}
-		} else if s.Runner.Validate(true) != nil || (s.RunnerReaped && s.RunnerExit == nil) {
-			return fmt.Errorf("host monitor failed state has inconsistent runner evidence")
+		if s.Runner == nil && !s.RelayClosed {
+			return fmt.Errorf("host monitor prelaunch failure state has an open relay")
+		}
+		if err := validateHostMonitorFailedRunnerEvidence(s); err != nil {
+			return err
 		}
 	default:
 		return fmt.Errorf("host monitor state %q is unsupported", s.State)
 	}
+	return nil
+}
+
+func validateHostMonitorFailedRunnerEvidence(s HostMonitorStatus) error {
+	if s.Runner == nil {
+		if s.StartupChildReaped {
+			if s.SchemaVersion != HostMonitorSchemaVersionV2 || s.RunnerExit == nil || s.RunnerReaped {
+				return fmt.Errorf("host monitor startup-child reap evidence is inconsistent")
+			}
+			return nil
+		}
+		if s.RunnerExit != nil || s.RunnerReaped {
+			return fmt.Errorf("host monitor no-child prelaunch failure evidence is inconsistent")
+		}
+		return nil
+	}
+	if s.StartupChildReaped || s.Runner.Validate(true) != nil || (s.RunnerReaped && s.RunnerExit == nil) {
+		return fmt.Errorf("host monitor failed state has inconsistent runner evidence")
+	}
+	return nil
+}
+
+func validateHostMonitorStatusV2State(s HostMonitorStatus) error {
+	switch s.State {
+	case HostMonitorInitializing:
+	case HostMonitorBooting, HostMonitorStopping:
+		if s.Runner == nil || s.Runner.Validate(true) != nil {
+			return fmt.Errorf("host monitor state %s requires a runner identity", s.State)
+		}
+		if s.VolumeClosed {
+			return fmt.Errorf("host monitor state %s cannot have a closed workspace volume", s.State)
+		}
+	case HostMonitorControlReady:
+		if s.Runner == nil || s.Runner.Validate(true) != nil || s.Guest == nil || s.Endpoint == nil || s.Endpoint.Validate() != nil || s.RelayClosed ||
+			s.VolumeClosed || s.Guest.SessionID != s.SessionID || s.Guest.Profile != s.Profile || s.Guest.ProfileDigest != s.GuestProfileDigest {
+			return fmt.Errorf("host monitor control-ready state is incomplete")
+		}
+	case HostMonitorStopped:
+		if s.Runner == nil || s.Runner.Validate(true) != nil || s.RunnerExit == nil || !s.RunnerReaped || !s.RelayClosed || !s.VolumeClosed {
+			return fmt.Errorf("host monitor stopped state lacks exact teardown evidence")
+		}
+	case HostMonitorFailed:
+		if s.Runner == nil && !s.RelayClosed {
+			return fmt.Errorf("host monitor prelaunch failure state has an open relay")
+		}
+		if err := validateHostMonitorFailedRunnerEvidence(s); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("host monitor state %q is unsupported", s.State)
+	}
+	return nil
+}
+
+// UnmarshalJSON keeps schema-v2 status fields unknown to schema v1.
+func (s *HostMonitorStatus) UnmarshalJSON(data []byte) error {
+	if hostMonitorJSONSchemaVersion(data) == HostMonitorSchemaVersionV1 {
+		if err := rejectHostMonitorJSONFields(data, "volume_id", "volume_closed", "startup_child_reaped"); err != nil {
+			return err
+		}
+	}
+	type statusAlias HostMonitorStatus
+	var decoded statusAlias
+	if err := decodeStrictHostMonitorJSON(data, &decoded); err != nil {
+		return err
+	}
+	*s = HostMonitorStatus(decoded)
 	return nil
 }
 
@@ -342,8 +503,9 @@ func ReadHostMonitorStatus(stateDir string) (HostMonitorStatus, error) {
 	if err != nil {
 		return HostMonitorStatus{}, err
 	}
-	if status.SessionID != filepath.Base(stateDir) || status.SessionID != request.SessionID || status.MonitorID != request.MonitorID ||
-		status.Profile != request.ProfileName || status.ExternalProfileDigest != request.ProfileDigest || status.GuestProfileDigest != request.GuestProfileDigest {
+	if status.SchemaVersion != request.SchemaVersion || status.SessionID != filepath.Base(stateDir) || status.SessionID != request.SessionID || status.MonitorID != request.MonitorID ||
+		status.Profile != request.ProfileName || status.ExternalProfileDigest != request.ProfileDigest || status.GuestProfileDigest != request.GuestProfileDigest ||
+		status.VolumeID != request.VolumeID {
 		return HostMonitorStatus{}, fmt.Errorf("host monitor status is not bound to its immutable request")
 	}
 	if status.Endpoint != nil && (status.Endpoint.Transport != "unix" || status.Endpoint.Address != layout.RelayPath) {
@@ -465,12 +627,43 @@ func readStrictPrivateJSON(path string, target any) error {
 	if err != nil {
 		return err
 	}
+	return decodeStrictHostMonitorJSON(data, target)
+}
+
+func decodeStrictHostMonitorJSON(data []byte, target any) error {
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}
 	return requireEOF(decoder)
+}
+
+func hostMonitorJSONSchemaVersion(data []byte) int {
+	var envelope struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return 0
+	}
+	return envelope.SchemaVersion
+}
+
+func rejectHostMonitorJSONFields(data []byte, forbidden ...string) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for name := range fields {
+		for _, candidate := range forbidden {
+			// encoding/json matches tagged object names without regard to case.
+			// Reject every spelling the shared v2-capable Go type would accept.
+			if strings.EqualFold(name, candidate) {
+				return fmt.Errorf("json: unknown field %q", name)
+			}
+		}
+	}
+	return nil
 }
 
 func readPrivateHostMonitorFile(path string) ([]byte, error) {

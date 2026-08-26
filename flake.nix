@@ -589,7 +589,7 @@
               go test ./internal/runtimeprovider/...
               go test ./internal/config -run '^TestRuntimeProfiles'
               go test ./internal/api -run '^Test(CreateSessionRejectsCallerRuntimeSelection|GRPCCreateSessionRejectsCallerRuntimeSelection)$'
-              go test ./internal/cli -run '^TestRuntimeProvider'
+              go test ./internal/cli -run '^Test(RuntimeProvider|RuntimeMonitor)'
               runHook postCheck
             '';
           });
@@ -615,7 +615,7 @@
                 checkPhase = ''
                   runHook preCheck
                   go test -count=1 ./internal/runtimeprovider/externalrunner \
-                    -run '^Test(WorkspaceVolume|ProfileV1StillRejectsWorkspaceVolume|ProviderPreflightAndStartRejectV2)'
+                    -run '^Test(WorkspaceVolume|ProfileV[12].*WorkspaceVolume|Provider(PreflightAndStartRejectV2|OpenBinds|InstanceBinding|V2(ControlPlane|Destroy))|HostMonitorV[12]|LinuxHostRunnerV2|PartialLinuxHostRunner|ExactHostMonitorStatusTerminal)'
                   GOOS=darwin GOARCH=amd64 go test -c \
                     -o "$TMPDIR/workspace-volume-darwin.test" \
                     ./internal/runtimeprovider/externalrunner

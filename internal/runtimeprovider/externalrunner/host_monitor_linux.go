@@ -96,7 +96,146 @@ func (r *linuxHostRunner) EnsureStopped(ctx context.Context) (*hostRunnerResult,
 	}
 }
 
-func startHostRunner(profile Profile, layout HostMonitorLayout, cid uint32, output io.Writer) (hostRunner, error) {
+// partialLinuxHostRunner is returned only with a startup error after cmd.Start.
+// It deliberately carries no publishable process identity; it is an exact reap
+// handle that lets the monitor retain any v2 volume lease across bounded
+// cleanup attempts.
+type partialLinuxHostRunner struct {
+	cmd          *exec.Cmd
+	pidfd        int
+	processGroup int
+	done         chan hostRunnerResult
+	waitDone     chan struct{}
+
+	forceMu               sync.Mutex
+	processGroupCleaned   bool
+	signalLeader          func() error
+	killExactProcessGroup func() error
+	waitCommand           func() (*hostRunnerResult, error)
+	closePIDFD            func() error
+
+	waitOnce sync.Once
+	result   *hostRunnerResult
+	waitErr  error
+}
+
+func newPartialLinuxHostRunner(cmd *exec.Cmd, pidfd, processGroup int) *partialLinuxHostRunner {
+	runner := &partialLinuxHostRunner{
+		cmd: cmd, pidfd: pidfd, processGroup: processGroup,
+		done: make(chan hostRunnerResult, 1), waitDone: make(chan struct{}),
+	}
+	runner.signalLeader = func() error {
+		if pidfd >= 0 {
+			return unix.PidfdSendSignal(pidfd, unix.SIGKILL, nil, 0)
+		}
+		return cmd.Process.Kill()
+	}
+	runner.killExactProcessGroup = func() error {
+		if processGroup <= 0 {
+			return fmt.Errorf("partially-started external runner process group is missing")
+		}
+		return syscall.Kill(-processGroup, syscall.SIGKILL)
+	}
+	runner.waitCommand = func() (*hostRunnerResult, error) {
+		waitErr := cmd.Wait()
+		state := cmd.ProcessState
+		if state == nil {
+			return nil, errors.Join(fmt.Errorf("partially-started external runner wait returned no exact exit state"), waitErr)
+		}
+		result := &hostRunnerResult{
+			Exit: HostRunnerExit{ExitCode: state.ExitCode()},
+			Err:  waitErr,
+		}
+		if wait, ok := state.Sys().(syscall.WaitStatus); ok {
+			result.Exit.Signaled = wait.Signaled()
+		}
+		return result, nil
+	}
+	runner.closePIDFD = func() error {
+		if pidfd < 0 {
+			return nil
+		}
+		err := unix.Close(pidfd)
+		if errors.Is(err, syscall.EBADF) {
+			return nil
+		}
+		return err
+	}
+	return runner
+}
+
+func (r *partialLinuxHostRunner) Identity() HostProcessIdentity {
+	return HostProcessIdentity{PID: r.cmd.Process.Pid, ProcessGroup: r.processGroup}
+}
+
+// Done is observational for a partial runner. In particular, it must never
+// start cmd.Wait: the unreaped leader pins the expected PGID until an exact
+// process-group kill succeeds.
+func (r *partialLinuxHostRunner) Done() <-chan hostRunnerResult { return r.done }
+
+func (r *partialLinuxHostRunner) ForceStop() error {
+	r.forceMu.Lock()
+	defer r.forceMu.Unlock()
+	if r.processGroupCleaned {
+		// The successful group kill is an absorbing transition. The leader may
+		// already have been reaped and both its PID and PGID may now be reusable.
+		return nil
+	}
+
+	pidErr := r.signalLeader()
+	if errors.Is(pidErr, syscall.ESRCH) || errors.Is(pidErr, os.ErrProcessDone) {
+		pidErr = nil
+	}
+	groupErr := r.killExactProcessGroup()
+	if errors.Is(groupErr, syscall.ESRCH) {
+		// No member remains in the still-pinned expected group.
+		groupErr = nil
+	}
+	if groupErr == nil {
+		r.processGroupCleaned = true
+	}
+	return errors.Join(pidErr, groupErr)
+}
+
+func (r *partialLinuxHostRunner) startWaitAfterGroupCleanup() error {
+	r.forceMu.Lock()
+	defer r.forceMu.Unlock()
+	if !r.processGroupCleaned {
+		return fmt.Errorf("exact partially-started external runner process-group cleanup has not succeeded")
+	}
+	r.waitOnce.Do(func() {
+		go func() {
+			r.result, r.waitErr = r.waitCommand()
+			r.waitErr = errors.Join(r.waitErr, r.closePIDFD())
+			if r.result != nil {
+				r.done <- *r.result
+			}
+			close(r.waitDone)
+		}()
+	})
+	return nil
+}
+
+func (r *partialLinuxHostRunner) EnsureStopped(ctx context.Context) (*hostRunnerResult, error) {
+	if err := r.startWaitAfterGroupCleanup(); err != nil {
+		return nil, err
+	}
+	select {
+	case <-r.waitDone:
+		if r.result == nil {
+			return nil, r.waitErr
+		}
+		result := *r.result
+		return &result, r.waitErr
+	case <-ctx.Done():
+		return nil, fmt.Errorf("reap partially-started external runner: %w", ctx.Err())
+	}
+}
+
+func startHostRunner(profile Profile, layout HostMonitorLayout, cid uint32, volume *WorkspaceVolume, output io.Writer) (hostRunner, error) {
+	if err := validateHostRunnerWorkspaceVolume(profile, volume); err != nil {
+		return nil, err
+	}
 	runnerFile, err := os.Open(profile.Runner.Path)
 	if err != nil {
 		return nil, fmt.Errorf("open verified external runner: %w", err)
@@ -121,8 +260,14 @@ func startHostRunner(profile Profile, layout HostMonitorLayout, cid uint32, outp
 	runnerFDPath := filepath.Join(string(filepath.Separator), "proc", "self", "fd", "3")
 	cmd := exec.Command(runnerFDPath)
 	cmd.ExtraFiles = []*os.File{runnerFile}
+	if volume != nil {
+		// ExtraFiles starts at child descriptor 3. The exact hashed runner is fd
+		// 3 and the already-open mutable image is therefore the fixed v2 fd 4.
+		// No image path is placed in argv or the runner environment.
+		cmd.ExtraFiles = append(cmd.ExtraFiles, volume.Image)
+	}
 	cmd.Dir = layout.RuntimeDir
-	cmd.Env = []string{"PI_AGENT_MICROVM_VSOCK_CID=" + strconv.FormatUint(uint64(cid), 10)}
+	cmd.Env = fixedHostRunnerEnvironment(cid)
 	cmd.Stdin = nil
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -134,21 +279,23 @@ func startHostRunner(profile Profile, layout HostMonitorLayout, cid uint32, outp
 	pidfd, pidfdErr := unix.PidfdOpen(cmd.Process.Pid, 0)
 	startIdentity, bootID, identityErr := detached.CurrentProcessIdentity(cmd.Process.Pid)
 	processGroup, groupErr := syscall.Getpgid(cmd.Process.Pid)
-	if err := errors.Join(pidfdErr, identityErr, groupErr); err != nil || processGroup != cmd.Process.Pid {
-		if pidfdErr == nil {
-			_ = unix.PidfdSendSignal(pidfd, unix.SIGKILL, nil, 0)
-			_ = unix.Close(pidfd)
+	identityCaptureErr := errors.Join(pidfdErr, identityErr, groupErr)
+	if identityCaptureErr != nil || processGroup != cmd.Process.Pid {
+		startupErr := error(nil)
+		if identityCaptureErr != nil {
+			startupErr = fmt.Errorf("capture external runner identity: %w", identityCaptureErr)
 		} else {
-			_ = cmd.Process.Kill()
+			startupErr = fmt.Errorf("external runner did not become its exact process-group leader")
 		}
-		if groupErr == nil && processGroup == cmd.Process.Pid {
-			_ = syscall.Kill(-processGroup, syscall.SIGKILL)
+		if pidfdErr != nil {
+			pidfd = -1
 		}
-		cleanupErr := waitHostRunnerCommand(cmd)
-		if err != nil {
-			return nil, errors.Join(fmt.Errorf("capture external runner identity: %w", err), cleanupErr)
-		}
-		return nil, errors.Join(fmt.Errorf("external runner did not become its exact process-group leader"), cleanupErr)
+		// cmd.Start succeeded only after the child applied Setpgid, so the
+		// unreaped direct PID also pins the expected group identity even when the
+		// diagnostic Getpgid read raced with exit. Returning this cleanup handle
+		// makes every post-Start failure fail closed until exact reaping.
+		partial := newPartialLinuxHostRunner(cmd, pidfd, cmd.Process.Pid)
+		return partial, errors.Join(startupErr, partial.ForceStop())
 	}
 	runner := &linuxHostRunner{
 		identity: HostProcessIdentity{PID: cmd.Process.Pid, ProcessGroup: processGroup, StartIdentity: startIdentity, BootID: bootID},
@@ -167,19 +314,34 @@ func startHostRunner(profile Profile, layout HostMonitorLayout, cid uint32, outp
 	return runner, nil
 }
 
-func waitHostRunnerCommand(cmd *exec.Cmd) error {
-	waited := make(chan error, 1)
-	go func() { waited <- cmd.Wait() }()
-	select {
-	case err := <-waited:
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return nil
+func validateHostRunnerWorkspaceVolume(profile Profile, volume *WorkspaceVolume) error {
+	switch profile.Schema {
+	case ProfileSchemaV1:
+		if volume != nil {
+			return fmt.Errorf("external runner v1 received an unexpected workspace volume")
 		}
-		return err
-	case <-time.After(5 * time.Second):
-		return fmt.Errorf("timed out reaping failed external runner")
+		return nil
+	case ProfileSchemaV2:
+		if profile.WorkspaceVolume == nil || volume == nil || volume.Image == nil || volume.RunnerFD() != WorkspaceVolumeRunnerFD ||
+			volume.Manifest.WorkspaceVolume != *profile.WorkspaceVolume {
+			return fmt.Errorf("external runner v2 workspace volume is incomplete or differs from its profile")
+		}
+		info, err := volume.Image.Stat()
+		if err != nil || !safePrivateWorkspaceVolumeFile(info) {
+			return fmt.Errorf("external runner v2 workspace volume image descriptor is unsafe")
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || uint64(stat.Dev) != volume.Manifest.Image.Device || stat.Ino != volume.Manifest.Image.Inode {
+			return fmt.Errorf("external runner v2 workspace volume image descriptor identity differs from its manifest")
+		}
+		return nil
+	default:
+		return fmt.Errorf("external runner profile schema %q is unsupported", profile.Schema)
 	}
+}
+
+func fixedHostRunnerEnvironment(cid uint32) []string {
+	return []string{"PI_AGENT_MICROVM_VSOCK_CID=" + strconv.FormatUint(uint64(cid), 10)}
 }
 
 func validateHostMonitorDirectory(path string) error {

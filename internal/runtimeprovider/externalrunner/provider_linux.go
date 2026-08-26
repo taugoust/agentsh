@@ -68,9 +68,10 @@ func stopExactHostMonitor(ctx context.Context, stateDir string, identity HostPro
 		return err
 	}
 	for {
-		// The monitor persists this only after the runner is reaped and the relay
-		// is closed. Accepting that exact evidence avoids treating an exited but
-		// not-yet-reaped monitor process as an ambiguous teardown.
+		// The monitor persists this only after exact published-runner reaping,
+		// exact startup-child reaping, or a true no-child prelaunch failure, with
+		// the relay and any v2 volume closed. Accepting that evidence avoids
+		// treating an exited but not-yet-reaped monitor as ambiguous teardown.
 		if exactHostMonitorTerminalEvidence(stateDir, identity) {
 			return nil
 		}
@@ -88,11 +89,4 @@ func stopExactHostMonitor(ctx context.Context, stateDir string, identity HostPro
 func exactHostMonitorTerminalEvidence(stateDir string, identity HostProcessIdentity) bool {
 	status, err := ReadHostMonitorStatus(stateDir)
 	return err == nil && exactHostMonitorStatusTerminal(status, identity)
-}
-
-func exactHostMonitorStatusTerminal(status HostMonitorStatus, identity HostProcessIdentity) bool {
-	if status.Monitor.PID != identity.PID || status.Monitor.StartIdentity != identity.StartIdentity || status.Monitor.BootID != identity.BootID {
-		return false
-	}
-	return (status.State == HostMonitorStopped || status.State == HostMonitorFailed) && status.RunnerReaped && status.RelayClosed
 }

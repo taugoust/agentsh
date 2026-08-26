@@ -19,6 +19,7 @@ import (
 	"github.com/agentsh/agentsh/internal/guestcontrol"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
 	"github.com/agentsh/agentsh/pkg/types"
+	"github.com/google/uuid"
 )
 
 type ProviderOptions struct {
@@ -28,8 +29,13 @@ type ProviderOptions struct {
 	MonitorExecutable string
 }
 
+type providerWorkspaceVolumeDeps struct {
+	newID func() (string, error)
+}
+
 type Provider struct {
-	options ProviderOptions
+	options          ProviderOptions
+	workspaceVolumes providerWorkspaceVolumeDeps
 }
 
 func NewProvider(options ProviderOptions) (*Provider, error) {
@@ -47,7 +53,12 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 		profiles[name] = path
 	}
 	options.Profiles = profiles
-	return &Provider{options: options}, nil
+	return &Provider{
+		options: options,
+		workspaceVolumes: providerWorkspaceVolumeDeps{
+			newID: newProviderWorkspaceVolumeID,
+		},
+	}, nil
 }
 
 func (p *Provider) Name() string { return ProviderName }
@@ -85,8 +96,8 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 		return nil, err
 	}
 	// Re-check after Preflight because the operator-owned profile file is read
-	// again. V2 parsing supports the storage foundation, but launching it before
-	// the host monitor owns the volume would silently retain the v1 host share.
+	// again. Public v2 launch remains closed until the guest authenticates the
+	// exact volume and mount evidence used for workspace publication.
 	if err := validateProviderLifecycleProfile(profile); err != nil {
 		return nil, err
 	}
@@ -99,12 +110,33 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 			return nil, fmt.Errorf("create external runner layout: %w", err)
 		}
 	}
-	baseline, err := stageWorkspace(ctx, request.Session.Workspace, layout.WorkspaceDir)
-	if err != nil {
-		return nil, err
-	}
-	if err := WriteWorkspaceBaseline(layout.BaselinePath, baseline); err != nil {
-		return nil, err
+	volumeID := ""
+	switch profile.Schema {
+	case ProfileSchemaV1:
+		baseline, err := stageWorkspace(ctx, request.Session.Workspace, layout.WorkspaceDir)
+		if err != nil {
+			return nil, err
+		}
+		if err := WriteWorkspaceBaseline(layout.BaselinePath, baseline); err != nil {
+			return nil, err
+		}
+	case ProfileSchemaV2:
+		if p.workspaceVolumes.newID == nil {
+			return nil, fmt.Errorf("external runner workspace volume identity dependency is missing")
+		}
+		volumeID, err = p.workspaceVolumes.newID()
+		if err != nil {
+			return nil, fmt.Errorf("generate external runner workspace volume identity: %w", err)
+		}
+		if !canonicalWorkspaceVolumeUUID(volumeID) {
+			return nil, fmt.Errorf("generated external runner workspace volume identity is invalid")
+		}
+		// The provider persists only an opaque identity. After this identity is in
+		// the durable schema-v2 monitor request, the monitor creates or
+		// idempotently reopens the volume and acquires its first lease.
+		// Public Start cannot reach this branch while v2 admission is gated.
+	default:
+		return nil, fmt.Errorf("external runner profile schema %q is unsupported", profile.Schema)
 	}
 	lease, err := AllocateCID(ctx, p.options.CIDLeaseRoot, request.SessionID, profile.VSock.CIDMin, profile.VSock.CIDMax)
 	if err != nil {
@@ -150,14 +182,24 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 	if err != nil {
 		return nil, err
 	}
+	monitorSchema, err := hostMonitorSchemaVersionForProfile(profile.Schema)
+	if err != nil {
+		return nil, err
+	}
 	launchRequest := HostMonitorRequest{
-		SchemaVersion: HostMonitorSchemaVersion, MonitorID: monitorID,
+		SchemaVersion: monitorSchema, MonitorID: monitorID,
 		SessionID: request.SessionID, StateDir: request.StateDir, SourceWorkspace: request.Session.Workspace,
 		ProfileFile: p.options.Profiles[request.Profile], ProfileFileSHA256: profileFileDigest,
 		ProfileName: profile.Name, ProfileDigest: profile.ProfileDigest, GuestProfileDigest: profile.Guest.ProfileDigest,
 		GuestPolicy: profile.Guest.Policy, GuestControlPort: profile.Guest.ControlPort, GuestSupervisorPort: profile.Guest.SupervisorPort,
 		GuestManifestSHA256: manifestDigest, ExpectedGuestGeneration: 1, LaunchNonce: launchNonce,
 		CIDLeaseRoot: p.options.CIDLeaseRoot, CIDLease: lease, CreatedAt: time.Now().UTC(),
+	}
+	if profile.Schema == ProfileSchemaV2 {
+		contract := *profile.WorkspaceVolume
+		launchRequest.ProfileSchema = profile.Schema
+		launchRequest.WorkspaceVolume = &contract
+		launchRequest.VolumeID = volumeID
 	}
 	if err := WriteHostMonitorRequest(request.StateDir, launchRequest); err != nil {
 		return nil, err
@@ -176,7 +218,7 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 	if err != nil {
 		return nil, err
 	}
-	instance, err := p.instanceFromStatus(request.StateDir, profile, status)
+	instance, err := p.instanceFromStatus(request.StateDir, profile, profileFileDigest, status)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +231,7 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 }
 
 func (p *Provider) Open(_ context.Context, manifest runtimeprovider.Manifest) (runtimeprovider.Instance, error) {
-	profile, _, err := p.profile(manifest.Profile)
+	profile, profileFileDigest, err := p.profile(manifest.Profile)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +239,7 @@ func (p *Provider) Open(_ context.Context, manifest runtimeprovider.Manifest) (r
 	if err != nil {
 		return nil, err
 	}
-	instance, err := p.instanceFromStatus(manifest.StateDir, profile, status)
+	instance, err := p.instanceFromStatus(manifest.StateDir, profile, profileFileDigest, status)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +263,7 @@ func (p *Provider) Recover(ctx context.Context, manifest runtimeprovider.Manifes
 
 func validateProviderLifecycleProfile(profile Profile) error {
 	if profile.Schema != ProfileSchemaV1 {
-		return fmt.Errorf("external runner profile schema %q is not available until workspace-volume host-monitor integration lands", profile.Schema)
+		return fmt.Errorf("external runner profile schema %q is not available until authenticated guest workspace-volume and mount evidence lands", profile.Schema)
 	}
 	return nil
 }
@@ -241,13 +283,20 @@ func (p *Provider) profile(name string) (Profile, string, error) {
 	return profile, digest, nil
 }
 
-func (p *Provider) instanceFromStatus(stateDir string, profile Profile, status HostMonitorStatus) (*providerInstance, error) {
+func (p *Provider) instanceFromStatus(stateDir string, profile Profile, profileFileDigest string, status HostMonitorStatus) (*providerInstance, error) {
 	if status.Guest == nil || status.Endpoint == nil || status.Profile != profile.Name || status.GuestProfileDigest != profile.Guest.ProfileDigest {
 		return nil, fmt.Errorf("external runner status lacks an authenticated guest endpoint")
 	}
 	request, err := ReadHostMonitorRequest(stateDir)
 	if err != nil {
 		return nil, err
+	}
+	configuredProfile, ok := p.options.Profiles[profile.Name]
+	if !ok || request.ProfileFile != configuredProfile || request.StateDir != stateDir {
+		return nil, fmt.Errorf("external runner immutable request profile path binding differs from operator configuration")
+	}
+	if err := validateHostMonitorProfileBinding(request, profile, profileFileDigest); err != nil {
+		return nil, fmt.Errorf("external runner immutable request profile binding: %w", err)
 	}
 	secret, err := ReadHostMonitorGuestSecret(stateDir, request)
 	if err != nil {
@@ -294,6 +343,9 @@ func (i *providerInstance) Probe(ctx context.Context) (runtimeprovider.Status, e
 }
 
 func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.ControlPlaneSnapshot, error) {
+	if i.request.SchemaVersion != HostMonitorSchemaVersionV1 || i.profile.Schema != ProfileSchemaV1 {
+		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("external runner v2 control-plane publication requires authenticated guest volume and mount evidence")
+	}
 	c := client.NewWithTimeout("unix://"+i.Endpoint().Address, "", 30*time.Second)
 	session, err := c.GetSession(ctx, i.request.SessionID)
 	if err != nil {
@@ -346,13 +398,59 @@ func (i *providerInstance) Destroy(ctx context.Context) error {
 			i.destroyErr = err
 			return
 		}
-		if status.State != HostMonitorStopped && !(status.State == HostMonitorFailed && status.RunnerReaped && status.RelayClosed) {
+		if !hostMonitorStatusTerminal(status) {
 			i.destroyErr = fmt.Errorf("external runner lacks terminal teardown evidence")
 			return
 		}
+		// Workspace storage has a separate explicit lifecycle. Provider teardown
+		// releases only the runtime CID and never deletes a retained v2 volume;
+		// deletion remains gated by higher-level terminal session evidence.
 		i.destroyErr = ReleaseCID(ctx, i.request.CIDLeaseRoot, i.request.CIDLease, i.profile.VSock.CIDMin, i.profile.VSock.CIDMax)
 	})
 	return i.destroyErr
+}
+
+func hostMonitorStatusTerminal(status HostMonitorStatus) bool {
+	switch status.SchemaVersion {
+	case HostMonitorSchemaVersionV1:
+		if status.VolumeID != "" || status.VolumeClosed || status.StartupChildReaped {
+			return false
+		}
+	case HostMonitorSchemaVersionV2:
+		if !canonicalWorkspaceVolumeUUID(status.VolumeID) || !status.VolumeClosed {
+			return false
+		}
+	default:
+		return false
+	}
+	if !status.RelayClosed {
+		return false
+	}
+	switch status.State {
+	case HostMonitorStopped:
+		return !status.StartupChildReaped && status.Runner != nil && status.Runner.Validate(true) == nil &&
+			status.RunnerExit != nil && status.RunnerReaped
+	case HostMonitorFailed:
+		if validateHostMonitorFailedRunnerEvidence(status) != nil {
+			return false
+		}
+		if status.Runner == nil {
+			// Schema v2 has two distinct terminal startup-failure shapes: true
+			// no-child prelaunch evidence, or startup_child_reaped plus an exact
+			// exit. The shared validator rejects every mixed shape.
+			return true
+		}
+		return status.RunnerExit != nil && status.RunnerReaped
+	default:
+		return false
+	}
+}
+
+func exactHostMonitorStatusTerminal(status HostMonitorStatus, identity HostProcessIdentity) bool {
+	if status.Monitor.PID != identity.PID || status.Monitor.StartIdentity != identity.StartIdentity || status.Monitor.BootID != identity.BootID {
+		return false
+	}
+	return hostMonitorStatusTerminal(status)
 }
 
 func providerMonitorState(state HostMonitorState) (runtimeprovider.State, bool) {
@@ -404,6 +502,14 @@ func newProviderSecret() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(value), nil
+}
+
+func newProviderWorkspaceVolumeID() (string, error) {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return "", err
+	}
+	return id.String(), nil
 }
 
 var _ runtimeprovider.Provider = (*Provider)(nil)
