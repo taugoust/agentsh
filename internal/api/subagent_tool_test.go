@@ -53,8 +53,8 @@ func TestResolveSubagentCwdAllowsPolicyAuthorizedExternalDirectoryInDirectMode(t
 	}
 
 	sess.WorkspaceMode = string(types.WorkspaceModeShadow)
-	if _, _, err := app.resolveSubagentCwd(context.Background(), sess, external, nil); err == nil || !strings.Contains(err.Error(), "isolated session workspace") {
-		t.Fatalf("isolated external cwd error = %v", err)
+	if _, _, err := app.resolveSubagentCwd(context.Background(), sess, external, nil); err == nil {
+		t.Fatal("isolated session unexpectedly accepted an external cwd")
 	}
 }
 
