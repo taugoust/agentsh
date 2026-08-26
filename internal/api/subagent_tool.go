@@ -18,6 +18,7 @@ import (
 
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/session"
+	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -576,7 +577,7 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 			setSubagentTerminal(&res, terminal)
 		}
 	}()
-	cwd, virtualCwd, err := resolveSubagentCwd(s, spec.Cwd)
+	cwd, virtualCwd, err := a.resolveSubagentCwd(ctx, s, spec.Cwd, actor)
 	res.Cwd = virtualCwd
 	if err != nil {
 		res.Error = err.Error()
@@ -777,42 +778,48 @@ func appendSubagentTaskArgs(args []string, spec subagentItemRequest, protocol st
 	return append(args, spec.Task)
 }
 
-func resolveSubagentCwd(s *session.Session, reqCwd string) (real string, virtual string, err error) {
-	if strings.TrimSpace(reqCwd) != "" && filepath.IsAbs(reqCwd) {
-		root := filepath.Clean(s.WorkspaceMountPath())
-		candidate := filepath.Clean(reqCwd)
-		if session.IsRealPathUnder(candidate, root) {
-			rel, relErr := filepath.Rel(root, candidate)
-			if relErr != nil {
-				return "", "", relErr
-			}
-			vroot := s.EffectiveVirtualRoot()
-			virtual = filepath.ToSlash(filepath.Join(filepath.FromSlash(vroot), rel))
-			return validateSubagentCwdPath(s, candidate, virtual)
-		}
-	}
+func (a *App) resolveSubagentCwd(ctx context.Context, s *session.Session, reqCwd string, actor piToolActor) (real string, virtual string, err error) {
 	rp, err := resolveToolPath(s, ".", reqCwd)
 	if err != nil {
 		return "", "", err
 	}
-	if !rp.InWorkspace {
-		return "", "", errors.New("subagent cwd must be inside the session workspace")
+	resolved, err := filepath.EvalSymlinks(rp.Real)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve subagent cwd: %w", err)
 	}
-	return validateSubagentCwdPath(s, rp.Real, rp.Virtual)
-}
-
-func validateSubagentCwdPath(s *session.Session, realPath, virtualPath string) (string, string, error) {
-	info, statErr := os.Stat(realPath)
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return "", "", err
+	}
+	root := filepath.Clean(s.WorkspaceMountPath())
+	resolvedRoot, rootErr := filepath.EvalSymlinks(root)
+	if rootErr != nil {
+		return "", "", fmt.Errorf("resolve session workspace: %w", rootErr)
+	}
+	if session.IsRealPathUnder(resolved, resolvedRoot) {
+		info, statErr := os.Stat(resolved)
+		if statErr != nil {
+			return "", "", statErr
+		}
+		if !info.IsDir() {
+			return "", "", errors.New("subagent cwd is not a directory")
+		}
+		return resolved, rp.Virtual, nil
+	}
+	if s.WorkspaceMode != string(types.WorkspaceModeDirect) {
+		return "", "", errors.New("subagent cwd is outside the isolated session workspace")
+	}
+	if _, policyErr := a.enforceToolFilePolicy(ctx, s, "read", resolved, actor); policyErr != nil {
+		return "", "", fmt.Errorf("subagent cwd is not authorized by the session file policy: %w", policyErr)
+	}
+	info, statErr := os.Stat(resolved)
 	if statErr != nil {
 		return "", "", statErr
 	}
 	if !info.IsDir() {
 		return "", "", errors.New("subagent cwd is not a directory")
 	}
-	if err := ensureToolPathNoSymlinkEscape(realPath, s.WorkspaceMountPath()); err != nil {
-		return "", "", err
-	}
-	return realPath, virtualPath, nil
+	return resolved, filepath.ToSlash(resolved), nil
 }
 
 func sanitizedSubagentEnv(in []string) []string {

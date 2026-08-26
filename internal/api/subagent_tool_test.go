@@ -22,6 +22,42 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
+func TestResolveSubagentCwdAllowsPolicyAuthorizedExternalDirectoryInDirectMode(t *testing.T) {
+	workspace := t.TempDir()
+	external := t.TempDir()
+	denied := t.TempDir()
+	engine, err := policy.NewEngine(&policy.Policy{
+		Version: 1,
+		Name:    "external-subagent-cwd",
+		FileRules: []policy.FileRule{
+			{Name: "allow-external", Paths: []string{external}, Operations: []string{"read"}, Decision: string(types.DecisionAllow)},
+			{Name: "deny-other", Paths: []string{denied}, Operations: []string{"read"}, Decision: string(types.DecisionDeny)},
+		},
+	}, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := &session.Session{
+		ID: "session-test", Workspace: workspace, WorkspaceMount: workspace,
+		WorkspaceMode: string(types.WorkspaceModeDirect), VirtualRoot: filepath.ToSlash(workspace),
+	}
+	sess.SetPolicyEngine(engine)
+	app := &App{}
+
+	real, virtual, err := app.resolveSubagentCwd(context.Background(), sess, external, piToolActor{"kind": "parent"})
+	if err != nil || real != external || virtual != filepath.ToSlash(external) {
+		t.Fatalf("authorized external cwd = (%q, %q, %v)", real, virtual, err)
+	}
+	if _, _, err := app.resolveSubagentCwd(context.Background(), sess, denied, nil); err == nil || !strings.Contains(err.Error(), "not authorized") {
+		t.Fatalf("denied external cwd error = %v", err)
+	}
+
+	sess.WorkspaceMode = string(types.WorkspaceModeShadow)
+	if _, _, err := app.resolveSubagentCwd(context.Background(), sess, external, nil); err == nil || !strings.Contains(err.Error(), "isolated session workspace") {
+		t.Fatalf("isolated external cwd error = %v", err)
+	}
+}
+
 func TestSubagentExecutionTimeoutDefaultsAndOverrides(t *testing.T) {
 	app := &App{cfg: &config.Config{}}
 	got, err := app.subagentExecutionTimeout(nil, 0)
