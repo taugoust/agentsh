@@ -13,7 +13,7 @@ func TestGuestControlCommandExposesFixedInputs(t *testing.T) {
 	}
 	for _, name := range []string{
 		"manifest", "handshake", "workspace", "volume-root", "profile", "profile-digest",
-		"allowed-policy", "probe-command", "probe-arg",
+		"allowed-policy", "probe-command", "probe-arg", "git-command",
 	} {
 		if run.Flags().Lookup(name) == nil {
 			t.Fatalf("guest control run is missing --%s", name)

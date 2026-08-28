@@ -16,6 +16,7 @@ import (
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/guestcontrol"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/artifact"
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
@@ -39,15 +40,19 @@ func testProviderV2Request(t *testing.T, profile Profile) runtimeprovider.Reques
 	if err := os.Mkdir(stateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	descriptor := artifact.Descriptor{
+		SchemaVersion: artifact.SchemaVersion, ArtifactID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", SessionID: sessionID,
+		Kind: artifact.KindGitInputBundle, MediaType: artifact.MediaTypeGitBundle, SHA256: digest([]byte("input")), Size: 5, Complete: true, CreatedAt: time.Now().UTC(),
+	}
 	return runtimeprovider.Request{
-		SessionID: sessionID, Provider: ProviderName, Profile: profile.Name, StateDir: stateDir,
+		SessionID: sessionID, Provider: ProviderName, Profile: profile.Name, StateDir: stateDir, InputArtifact: &descriptor,
 		Session: types.CreateSessionRequest{
 			ID: sessionID, Workspace: t.TempDir(), WorkspaceMode: string(types.WorkspaceModeShadow), Policy: profile.Guest.Policy,
 		},
 	}
 }
 
-func TestProviderPreflightAndStartRejectV2UntilOperatorNixRunnerAndProfile(t *testing.T) {
+func TestProviderPreflightAdmitsV2WithExactGitInputArtifact(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
 		t.Skip("external runner provider preflight is x86_64-only")
 	}
@@ -59,28 +64,19 @@ func TestProviderPreflightAndStartRejectV2UntilOperatorNixRunnerAndProfile(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	generatedVolumeID := false
-	provider.workspaceVolumes.newID = func() (string, error) {
-		generatedVolumeID = true
-		return "22222222-2222-4222-8222-222222222222", nil
-	}
 	request := testProviderV2Request(t, profile)
-	if _, err := provider.Preflight(context.Background(), request); err == nil || !strings.Contains(err.Error(), "operator Nix runner and profile") {
+	if _, err := provider.Preflight(context.Background(), request); err != nil {
 		t.Fatalf("v2 Preflight error = %v", err)
 	}
-	instance, err := provider.Start(context.Background(), request)
-	if instance != nil {
-		_ = instance.Destroy(context.Background())
-		t.Fatal("rejected v2 Start returned an instance")
+	missing := *request.InputArtifact
+	request.InputArtifact = nil
+	if _, err := provider.Preflight(context.Background(), request); err == nil {
+		t.Fatal("v2 Preflight accepted a missing Git input artifact")
 	}
-	if err == nil || !strings.Contains(err.Error(), "operator Nix runner and profile") {
-		t.Fatalf("v2 Start error = %v", err)
-	}
-	if generatedVolumeID {
-		t.Fatal("rejected public v2 launch generated or acquired workspace volume state")
-	}
-	if _, err := os.Lstat(filepath.Join(request.StateDir, "runtime")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("rejected public v2 launch created runtime state: %v", err)
+	request.InputArtifact = &missing
+	request.InputArtifact.SessionID = "session-22222222-2222-4222-8222-222222222222"
+	if _, err := provider.Preflight(context.Background(), request); err == nil {
+		t.Fatal("v2 Preflight accepted a cross-session Git input artifact")
 	}
 }
 
@@ -155,14 +151,14 @@ func TestProviderInstanceBindingRejectsProfileDigestSchemaAndVolumeContractDrift
 	}
 }
 
-func TestProviderV2ControlPlaneDoesNotClaimHostWorktree(t *testing.T) {
+func TestProviderV2ControlPlaneRequiresAuthenticatedEndpoint(t *testing.T) {
 	stateDir, request, profile, _ := prepareV2HostMonitorFixture(t)
 	instance := &providerInstance{profile: profile, request: request}
-	if _, err := instance.ControlPlane(context.Background()); err == nil || !strings.Contains(err.Error(), "operator Nix runner and profile") {
-		t.Fatalf("v2 control plane did not fail closed: %v", err)
+	if _, err := instance.ControlPlane(context.Background()); err == nil {
+		t.Fatal("v2 control plane published without an authenticated endpoint")
 	}
 	if _, err := os.Lstat(detached.MetadataPath(stateDir)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("v2 control plane published host-worktree metadata: %v", err)
+		t.Fatalf("v2 control plane published premature metadata: %v", err)
 	}
 }
 
@@ -320,7 +316,7 @@ func writeReadyProviderFixture(t *testing.T, stateDir string, request HostMonito
 		SchemaVersion: request.SchemaVersion, Revision: 1,
 		MonitorID: request.MonitorID, SessionID: request.SessionID,
 		Profile: profile.Name, ExternalProfileDigest: profile.ProfileDigest, GuestProfileDigest: profile.Guest.ProfileDigest,
-		State: HostMonitorControlReady, CreatedAt: now, UpdatedAt: now,
+		VolumeID: request.VolumeID, State: HostMonitorControlReady, CreatedAt: now, UpdatedAt: now,
 		Monitor:     HostProcessIdentity{PID: os.Getpid(), StartIdentity: start, BootID: boot},
 		Runner:      &HostProcessIdentity{PID: os.Getpid(), ProcessGroup: os.Getpid(), StartIdentity: start, BootID: boot},
 		Guest:       pointerTo(publicHostGuestIdentity(handshake)),

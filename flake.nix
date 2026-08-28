@@ -43,7 +43,7 @@
           ];
           runtimePath = lib.makeBinPath runtimePackages;
           internalRuntimePath = lib.makeBinPath (
-            runtimePackages ++ lib.optionals stdenv.hostPlatform.isLinux [ pkgs.qemu-utils ]
+            runtimePackages ++ lib.optionals stdenv.hostPlatform.isLinux [ pkgs.git pkgs.qemu-utils ]
           );
 
           agentsh = pkgs.buildGoModule {
@@ -594,6 +594,16 @@
             '';
           });
 
+          git-draft-tests = go-unit-tests.overrideAttrs (old: {
+            pname = "agentsh-git-draft-tests";
+            nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.git ];
+            checkPhase = ''
+              runHook preCheck
+              AGENTSH_TEST_GIT=${pkgs.git}/bin/git go test -count=1 -v ./internal/runtimeprovider/gitdraft
+              runHook postCheck
+            '';
+          });
+
           workspace-volume-tests =
             if stdenv.hostPlatform.isLinux then
               pkgs.buildGoModule {
@@ -615,7 +625,7 @@
                 checkPhase = ''
                   runHook preCheck
                   go test -count=1 ./internal/runtimeprovider/externalrunner \
-                    -run '^Test(WorkspaceVolume|Profile(V[12].*WorkspaceVolume|SchemaRequiresBoundGuestProtocol)|Provider(PreflightAndStartRejectV2|DormantV2Manifest|OpenBinds|InstanceBinding|V2(ControlPlane|Destroy))|HostMonitorV[12]|LinuxHostRunnerV2|PartialLinuxHostRunner|ExactHostMonitorStatusTerminal)'
+                    -run '^Test(WorkspaceVolume|Profile(V[12].*WorkspaceVolume|SchemaRequiresBoundGuestProtocol)|Provider(PreflightAdmitsV2|DormantV2Manifest|OpenBinds|InstanceBinding|V2(ControlPlane|Destroy))|HostMonitorV[12]|LinuxHostRunnerV2|PartialLinuxHostRunner|ExactHostMonitorStatusTerminal)'
                   GOOS=darwin GOARCH=amd64 go test -c \
                     -o "$TMPDIR/workspace-volume-darwin.test" \
                     ./internal/runtimeprovider/externalrunner

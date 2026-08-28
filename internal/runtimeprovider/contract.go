@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/agentsh/agentsh/internal/detached"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/artifact"
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
@@ -46,11 +47,12 @@ const (
 // operator-owned executable/profile configuration; callers cannot pass raw
 // hypervisor arguments, shares, devices, or arbitrary host paths here.
 type Request struct {
-	SessionID string                     `json:"session_id"`
-	Provider  string                     `json:"provider"`
-	Profile   string                     `json:"profile"`
-	StateDir  string                     `json:"state_dir"`
-	Session   types.CreateSessionRequest `json:"session"`
+	SessionID     string                     `json:"session_id"`
+	Provider      string                     `json:"provider"`
+	Profile       string                     `json:"profile"`
+	StateDir      string                     `json:"state_dir"`
+	Session       types.CreateSessionRequest `json:"session"`
+	InputArtifact *artifact.Descriptor       `json:"input_artifact,omitempty"`
 }
 
 func (r Request) Validate() error {
@@ -71,6 +73,11 @@ func (r Request) Validate() error {
 	}
 	if strings.TrimSpace(r.Session.Workspace) == "" || !filepath.IsAbs(r.Session.Workspace) {
 		return fmt.Errorf("runtime request workspace must be absolute")
+	}
+	if r.InputArtifact != nil {
+		if err := r.InputArtifact.Validate(); err != nil || r.InputArtifact.SessionID != r.SessionID || r.InputArtifact.Kind != artifact.KindGitInputBundle {
+			return fmt.Errorf("runtime request input artifact is invalid or belongs to another session")
+		}
 	}
 	return nil
 }

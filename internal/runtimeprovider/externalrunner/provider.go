@@ -64,6 +64,9 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 func (p *Provider) Name() string { return ProviderName }
 
 func (p *Provider) Preflight(_ context.Context, request runtimeprovider.Request) (runtimeprovider.Capabilities, error) {
+	if err := request.Validate(); err != nil {
+		return runtimeprovider.Capabilities{}, err
+	}
 	if p == nil || !p.options.Enabled {
 		return runtimeprovider.Capabilities{}, fmt.Errorf("external runner operator ceiling is disabled")
 	}
@@ -79,7 +82,10 @@ func (p *Provider) Preflight(_ context.Context, request runtimeprovider.Request)
 	}
 	if request.Provider != ProviderName || request.Session.Policy != profile.Guest.Policy || request.Session.WorkspaceMode != string(types.WorkspaceModeShadow) ||
 		len(request.Session.WorkspaceRoots) > 1 {
-		return runtimeprovider.Capabilities{}, fmt.Errorf("diagnostic external runner requires one staged shadow workspace and its fixed guest policy")
+		return runtimeprovider.Capabilities{}, fmt.Errorf("external runner requires one isolated shadow workspace and its fixed guest policy")
+	}
+	if (profile.Schema == ProfileSchemaV1) != (request.InputArtifact == nil) {
+		return runtimeprovider.Capabilities{}, fmt.Errorf("only external runner v2 accepts and requires a Git input artifact")
 	}
 	return runtimeprovider.Capabilities{
 		ContractVersion: runtimeprovider.ContractVersion, Provider: ProviderName,
@@ -96,8 +102,7 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 		return nil, err
 	}
 	// Re-check after Preflight because the operator-owned profile file is read
-	// again. Public v2 launch remains closed until an operator-owned Nix runner
-	// and profile implement the now-authenticated guest volume contract.
+	// again and must remain an admitted lifecycle schema.
 	if err := validateProviderLifecycleProfile(profile); err != nil {
 		return nil, err
 	}
@@ -194,6 +199,7 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 		launchRequest.ProfileSchema = profile.Schema
 		launchRequest.WorkspaceVolume = &contract
 		launchRequest.VolumeID = volumeID
+		launchRequest.InputArtifact = request.InputArtifact
 	}
 	if err := WriteHostMonitorRequest(request.StateDir, launchRequest); err != nil {
 		return nil, err
@@ -256,10 +262,12 @@ func (p *Provider) Recover(ctx context.Context, manifest runtimeprovider.Manifes
 }
 
 func validateProviderLifecycleProfile(profile Profile) error {
-	if profile.Schema != ProfileSchemaV1 {
-		return fmt.Errorf("external runner profile schema %q is not available until an operator Nix runner and profile implement protocol-v3 workspace volumes", profile.Schema)
+	switch profile.Schema {
+	case ProfileSchemaV1, ProfileSchemaV2:
+		return nil
+	default:
+		return fmt.Errorf("external runner profile schema %q is unavailable", profile.Schema)
 	}
-	return nil
 }
 
 func (p *Provider) profile(name string) (Profile, string, error) {
@@ -337,8 +345,12 @@ func (i *providerInstance) Probe(ctx context.Context) (runtimeprovider.Status, e
 }
 
 func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.ControlPlaneSnapshot, error) {
-	if i.request.SchemaVersion != HostMonitorSchemaVersionV1 || i.profile.Schema != ProfileSchemaV1 {
-		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("external runner v2 control-plane publication remains disabled until its operator Nix runner and profile exist")
+	if i.status.Endpoint == nil || i.status.Guest == nil {
+		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("external runner control plane lacks an authenticated endpoint")
+	}
+	if (i.request.SchemaVersion == HostMonitorSchemaVersionV1) != (i.profile.Schema == ProfileSchemaV1) ||
+		(i.request.SchemaVersion == HostMonitorSchemaVersionV2) != (i.profile.Schema == ProfileSchemaV2) {
+		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("external runner control-plane schema binding is inconsistent")
 	}
 	c := client.NewWithTimeout("unix://"+i.Endpoint().Address, "", 30*time.Second)
 	session, err := c.GetSession(ctx, i.request.SessionID)
@@ -362,10 +374,17 @@ func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.Co
 	if err != nil {
 		return runtimeprovider.ControlPlaneSnapshot{}, err
 	}
+	worktree := layout.WorkspaceDir
+	if i.profile.Schema == ProfileSchemaV2 {
+		// The v2 workspace exists only inside the authenticated private volume.
+		// Publishing the fixed guest mount preserves provider-neutral cwd metadata
+		// without inventing a host path or exposing the qcow2 image location.
+		worktree = i.profile.Guest.Workspace
+	}
 	metadata := detached.Metadata{
 		SessionID: i.request.SessionID, ID: i.request.SessionID, CreatedAt: i.request.CreatedAt,
 		State: detached.LifecycleReady, Policy: i.request.GuestPolicy,
-		RealWorkspace: i.request.SourceWorkspace, WorkspaceMode: string(types.WorkspaceModeShadow), Worktree: layout.WorkspaceDir,
+		RealWorkspace: i.request.SourceWorkspace, WorkspaceMode: string(types.WorkspaceModeShadow), Worktree: worktree,
 		SupervisorSock: i.Endpoint().Address, EventToken: i.eventToken,
 		OwnerPID: i.status.Monitor.PID, OwnerStartIdentity: i.status.Monitor.StartIdentity, BootID: i.status.Monitor.BootID,
 		Generation: i.status.Guest.Generation, IncarnationID: i.status.Guest.IncarnationID,

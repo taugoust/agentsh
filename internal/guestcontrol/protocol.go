@@ -166,18 +166,20 @@ func (h Handshake) Validate(manifest Manifest) error {
 	if strings.TrimSpace(h.IncarnationID) == "" || strings.TrimSpace(h.GuestBootID) == "" || strings.TrimSpace(h.AgentSHVersion) == "" || !validHexSecret(h.EventToken) {
 		return fmt.Errorf("guest control handshake is incomplete")
 	}
-	if !slices.Contains(h.Capabilities, "exec_probe") || !slices.Contains(h.Capabilities, "shutdown") || !slices.Contains(h.Capabilities, "supervisor_proxy") {
+	if !slices.Contains(h.Capabilities, "exec_probe") || !slices.Contains(h.Capabilities, "shutdown") || !slices.Contains(h.Capabilities, "supervisor_proxy") ||
+		manifest.ProtocolVersion == ProtocolVersionV3 && (!slices.Contains(h.Capabilities, "artifact_import") || !slices.Contains(h.Capabilities, "artifact_export")) {
 		return fmt.Errorf("guest control handshake capabilities are incomplete")
 	}
 	return nil
 }
 
 type Request struct {
-	ProtocolVersion int    `json:"protocol_version"`
-	Type            string `json:"type"`
-	LaunchNonce     string `json:"launch_nonce"`
-	ControlToken    string `json:"control_token"`
-	RequestID       string `json:"request_id,omitempty"`
+	ProtocolVersion int               `json:"protocol_version"`
+	Type            string            `json:"type"`
+	LaunchNonce     string            `json:"launch_nonce"`
+	ControlToken    string            `json:"control_token"`
+	RequestID       string            `json:"request_id,omitempty"`
+	Artifact        *ArtifactTransfer `json:"artifact,omitempty"`
 }
 
 type ExecProbeResult struct {
@@ -187,13 +189,14 @@ type ExecProbeResult struct {
 }
 
 type Response struct {
-	ProtocolVersion int              `json:"protocol_version"`
-	Type            string           `json:"type"`
-	RequestID       string           `json:"request_id,omitempty"`
-	OK              bool             `json:"ok"`
-	Error           string           `json:"error,omitempty"`
-	Handshake       *Handshake       `json:"handshake,omitempty"`
-	ExecProbe       *ExecProbeResult `json:"exec_probe,omitempty"`
+	ProtocolVersion int               `json:"protocol_version"`
+	Type            string            `json:"type"`
+	RequestID       string            `json:"request_id,omitempty"`
+	OK              bool              `json:"ok"`
+	Error           string            `json:"error,omitempty"`
+	Handshake       *Handshake        `json:"handshake,omitempty"`
+	ExecProbe       *ExecProbeResult  `json:"exec_probe,omitempty"`
+	Artifact        *ArtifactTransfer `json:"artifact,omitempty"`
 }
 
 type Handler interface {
@@ -272,13 +275,10 @@ type deadlineReadWriter interface {
 func handleConnection(ctx context.Context, conn deadlineReadWriter, manifest Manifest, handler Handler) (bool, error) {
 	protocol := manifest.ProtocolVersion
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
-	reader := bufio.NewReader(io.LimitReader(conn, MaxMessageBytes+1))
-	line, err := reader.ReadBytes('\n')
-	if err != nil {
+	reader := bufio.NewReaderSize(conn, MaxMessageBytes+1)
+	line, err := reader.ReadSlice('\n')
+	if err != nil || len(line) > MaxMessageBytes {
 		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "invalid request framing"})
-	}
-	if len(line) > MaxMessageBytes {
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "request too large"})
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(line)))
 	decoder.DisallowUnknownFields()
@@ -294,6 +294,17 @@ func handleConnection(ctx context.Context, conn deadlineReadWriter, manifest Man
 	}
 	if !handler.ClaimRequest(request.RequestID) {
 		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "duplicate request identity"})
+	}
+	artifactOperation := request.Type == "artifact_import" || request.Type == "artifact_export"
+	if !artifactOperation && request.Artifact != nil {
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "unexpected artifact transfer identity"})
+	}
+	if artifactOperation {
+		deadline := time.Now().Add(artifactTransferTimeout)
+		if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+			deadline = contextDeadline
+		}
+		_ = conn.SetDeadline(deadline)
 	}
 
 	switch request.Type {
@@ -311,6 +322,37 @@ func handleConnection(ctx context.Context, conn deadlineReadWriter, manifest Man
 			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "shutdown", RequestID: request.RequestID, OK: false, Error: boundedError(err)})
 		}
 		return true, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "shutdown", RequestID: request.RequestID, OK: true})
+	case "artifact_import":
+		artifacts, ok := handler.(ArtifactImportHandler)
+		if protocol != ProtocolVersionV3 || !ok || request.Artifact == nil || request.Artifact.Kind != ArtifactKindGitInputBundle || request.Artifact.Validate() != nil {
+			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "artifact import is unavailable or invalid"})
+		}
+		limited := io.LimitReader(reader, request.Artifact.Size)
+		if err := artifacts.ImportArtifact(ctx, *request.Artifact, limited); err != nil {
+			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: boundedError(err)})
+		}
+		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: true, Artifact: request.Artifact})
+	case "artifact_export":
+		artifacts, ok := handler.(ArtifactExportHandler)
+		if protocol != ProtocolVersionV3 || !ok || request.Artifact == nil || request.Artifact.Kind != ArtifactKindGitResultBundle {
+			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "artifact export is unavailable or invalid"})
+		}
+		transfer, source, err := artifacts.ExportArtifact(ctx, request.Artifact.Kind)
+		if err != nil {
+			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: boundedError(err)})
+		}
+		defer source.Close()
+		if err := transfer.Validate(); err != nil || transfer.Kind != request.Artifact.Kind {
+			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "artifact export identity is invalid"})
+		}
+		if err := writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: true, Artifact: &transfer}); err != nil {
+			return false, err
+		}
+		written, err := io.CopyN(conn, source, transfer.Size)
+		if err != nil || written != transfer.Size {
+			return false, fmt.Errorf("stream guest artifact export: %w", err)
+		}
+		return false, nil
 	default:
 		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "unsupported request type"})
 	}

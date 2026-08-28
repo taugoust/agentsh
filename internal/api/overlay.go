@@ -18,6 +18,28 @@ import (
 	"github.com/google/uuid"
 )
 
+func (a *App) sealWorkspaceAdmission(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	a.sessionTopologyMu.Lock()
+	defer a.sessionTopologyMu.Unlock()
+	s, ok := a.sessions.Get(id)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+		return
+	}
+	if err := s.TrySealWorkspaceAdmission(); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+		return
+	}
+	ev := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "workspace_admission_sealed", SessionID: id}
+	if err := a.store.AppendEvent(r.Context(), ev); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace admission was sealed but audit persistence failed"})
+		return
+	}
+	a.broker.Publish(ev)
+	writeJSON(w, http.StatusOK, map[string]any{"sealed": true})
+}
+
 func (a *App) diffOverlay(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	s, ok := a.sessions.Get(id)

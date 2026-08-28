@@ -17,6 +17,21 @@ type Controller struct {
 
 // WithLifecycleLock serializes a provider-owned metadata transition with
 // controller Start/Recover/Stop operations for one exact state directory.
+func WithOperationLock(ctx context.Context, stateDir string, operation func() error) error {
+	if operation == nil {
+		return fmt.Errorf("runtime operation is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	lock, err := acquireOperationLock(stateDir)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	return operation()
+}
+
 func WithLifecycleLock(stateDir string, update func() error) error {
 	if update == nil {
 		return fmt.Errorf("runtime lifecycle update is nil")

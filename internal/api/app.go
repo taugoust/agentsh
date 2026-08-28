@@ -500,6 +500,7 @@ func (a *App) Router() http.Handler {
 		r.Get("/sessions/{id}/session-events/question-answers/{qid}", a.getSessionQuestionAnswerForSession)
 		r.Get("/sessions/{id}/history", a.sessionHistory)
 		r.Get("/sessions/{id}/overlay/diff", a.diffOverlay)
+		r.Post("/sessions/{id}/workspace/seal-admission", a.sealWorkspaceAdmission)
 		r.Get("/sessions/{id}/proxy", a.getProxyStatus)
 		r.Get("/sessions/{id}/output/{cmdID}", a.getOutputChunk)
 		r.Post("/sessions/{id}/kill/{cmdID}", a.killCommand)

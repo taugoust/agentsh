@@ -32,6 +32,10 @@ func testManifest(workspace string) Manifest {
 }
 
 func testHandshake(manifest Manifest) Handshake {
+	capabilities := []string{"exec_probe", "shutdown", "supervisor_proxy"}
+	if manifest.ProtocolVersion == ProtocolVersionV3 {
+		capabilities = append(capabilities, "artifact_import", "artifact_export")
+	}
 	return Handshake{
 		ProtocolVersion: manifest.ProtocolVersion,
 		SessionID:       manifest.SessionID,
@@ -47,7 +51,7 @@ func testHandshake(manifest Manifest) Handshake {
 		VSockCID:        manifest.VSockCID,
 		VSockPort:       manifest.VSockPort,
 		SupervisorPort:  manifest.SupervisorPort,
-		Capabilities:    []string{"exec_probe", "shutdown", "supervisor_proxy"},
+		Capabilities:    capabilities,
 		VolumeID:        manifest.VolumeID,
 	}
 }

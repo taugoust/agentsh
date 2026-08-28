@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/guestcontrol"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/artifact"
 )
 
 type fakeHostRunner struct {
@@ -113,6 +115,16 @@ func (c *fakeHostControl) Hello(context.Context, bool) (guestcontrol.Handshake, 
 }
 func (c *fakeHostControl) Shutdown(context.Context) error {
 	c.runner.stop(hostRunnerResult{Exit: HostRunnerExit{ExitCode: 0}})
+	return nil
+}
+func (c *fakeHostControl) ImportArtifact(_ context.Context, transfer guestcontrol.ArtifactTransfer, source io.Reader) error {
+	data, err := io.ReadAll(source)
+	if err != nil {
+		return err
+	}
+	if int64(len(data)) != transfer.Size {
+		return fmt.Errorf("test artifact size mismatch")
+	}
 	return nil
 }
 
@@ -943,6 +955,15 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 		request.ProfileSchema = profile.Schema
 		request.WorkspaceVolume = &contract
 		request.VolumeID = volumeID
+		store, storeErr := artifact.NewStore(stateDir, filepath.Base(stateDir), guestcontrol.MaxArtifactTransferBytes)
+		if storeErr != nil {
+			t.Fatal(storeErr)
+		}
+		descriptor, putErr := store.Put(context.Background(), artifact.KindGitInputBundle, strings.NewReader("test input bundle"))
+		if putErr != nil {
+			t.Fatal(putErr)
+		}
+		request.InputArtifact = &descriptor
 	}
 	if err := WriteHostMonitorRequest(stateDir, request); err != nil {
 		t.Fatal(err)
@@ -958,6 +979,6 @@ func testHostHandshake(manifest guestcontrol.Manifest) guestcontrol.Handshake {
 		Profile: manifest.Profile, ProfileDigest: manifest.ProfileDigest,
 		AgentSHVersion: "test", EventToken: strings.Repeat("7", 64), Policy: manifest.Policy, VSockCID: manifest.VSockCID,
 		VSockPort: manifest.VSockPort, SupervisorPort: manifest.SupervisorPort,
-		Capabilities: []string{"exec_probe", "shutdown", "supervisor_proxy", manifest.ControlToken}, VolumeID: manifest.VolumeID,
+		Capabilities: []string{"exec_probe", "shutdown", "supervisor_proxy", "artifact_import", "artifact_export", manifest.ControlToken}, VolumeID: manifest.VolumeID,
 	}
 }

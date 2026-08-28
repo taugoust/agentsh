@@ -21,8 +21,10 @@ import (
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/detachedreport"
+	"github.com/agentsh/agentsh/internal/guestcontrol"
 	"github.com/agentsh/agentsh/internal/nethelper"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/artifact"
 	"github.com/agentsh/agentsh/internal/runtimeprovider/externalrunner"
 	"github.com/agentsh/agentsh/internal/server"
 	"github.com/agentsh/agentsh/pkg/types"
@@ -535,6 +537,7 @@ func newSessionStartCmd() *cobra.Command {
 	var envInherit []string
 	var sessionID string
 	var runtimeProfile string
+	var runtimeInputBundle string
 	var controlTokenFile string
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -567,7 +570,7 @@ broker features remain out of scope.`,
 			if len(workspaces) == 0 {
 				workspaces = []string{"."}
 			}
-			res, err := startDetachedSupervisorSession(cmd.Context(), sessionID, workspaces, workspaceMode, policy, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile)
+			res, err := startDetachedSupervisorSessionWithInput(cmd.Context(), sessionID, workspaces, workspaceMode, policy, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, runtimeInputBundle)
 			if err != nil {
 				return err
 			}
@@ -598,6 +601,7 @@ broker features remain out of scope.`,
 	cmd.Flags().StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "Exact caller-preallocated session-UUID identity")
 	cmd.Flags().StringVar(&runtimeProfile, "runtime-profile", "", "Operator-configured detached runtime profile (default: sessions.runtime.default_profile)")
+	cmd.Flags().StringVar(&runtimeInputBundle, "runtime-input-bundle", "", "Trusted Git input bundle for an isolated external runtime")
 	cmd.Flags().StringVar(&controlTokenFile, "control-token-file", "", "Create a private detached-control credential file for a trusted wrapper")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	return cmd
@@ -686,6 +690,10 @@ func reserveDetachedSessionState(sessionID string) (string, error) {
 }
 
 func startDetachedSupervisorSession(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile string) (*detachedSessionStartResult, error) {
+	return startDetachedSupervisorSessionWithInput(ctx, requestedSessionID, workspaces, workspaceMode, policyName, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, "")
+}
+
+func startDetachedSupervisorSessionWithInput(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile, inputBundle string) (*detachedSessionStartResult, error) {
 	request, configPath, cfg, err := prepareDetachedRuntimeRequest(
 		requestedSessionID, workspaces, workspaceMode, policyName,
 		runtimeHomeMode, envBaseMode, envInherit, runtimeProfile,
@@ -693,7 +701,56 @@ func startDetachedSupervisorSession(ctx context.Context, requestedSessionID stri
 	if err != nil {
 		return nil, err
 	}
+	_, selected, err := cfg.Sessions.Runtime.ResolveProfile(runtimeProfile)
+	if err != nil {
+		return nil, err
+	}
+	if selected.Provider == externalrunner.ProviderName {
+		profile, profileErr := externalrunner.ReadProfile(selected.ProfileFile)
+		if profileErr != nil {
+			return nil, profileErr
+		}
+		switch profile.Schema {
+		case externalrunner.ProfileSchemaV1:
+			if strings.TrimSpace(inputBundle) != "" {
+				return nil, fmt.Errorf("legacy external runtime does not accept a Git input bundle")
+			}
+		case externalrunner.ProfileSchemaV2:
+			descriptor, ingestErr := ingestRuntimeInputBundle(ctx, request.StateDir, request.SessionID, inputBundle)
+			if ingestErr != nil {
+				return nil, ingestErr
+			}
+			request.InputArtifact = &descriptor
+		}
+	} else if strings.TrimSpace(inputBundle) != "" {
+		return nil, fmt.Errorf("runtime input bundles require an isolated external runtime profile")
+	}
 	return startDetachedRuntime(ctx, request, configPath, cfg)
+}
+
+func ingestRuntimeInputBundle(ctx context.Context, stateDir, sessionID, path string) (artifact.Descriptor, error) {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if !filepath.IsAbs(path) || path == string(filepath.Separator) {
+		return artifact.Descriptor{}, fmt.Errorf("external runtime Git input bundle path must be clean and absolute")
+	}
+	before, err := os.Lstat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 {
+		return artifact.Descriptor{}, fmt.Errorf("external runtime Git input bundle is not a direct regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return artifact.Descriptor{}, err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(before, opened) {
+		return artifact.Descriptor{}, fmt.Errorf("external runtime Git input bundle identity changed while opening")
+	}
+	store, err := artifact.NewStore(stateDir, sessionID, guestcontrol.MaxArtifactTransferBytes)
+	if err != nil {
+		return artifact.Descriptor{}, err
+	}
+	return store.Put(ctx, artifact.KindGitInputBundle, file)
 }
 
 func startNativeDetachedSupervisorSession(ctx context.Context, request runtimeprovider.Request, configPath string, preflightCfg *config.Config) (*detachedSessionStartResult, error) {

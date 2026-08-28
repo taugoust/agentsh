@@ -184,6 +184,30 @@ func TestWorkspaceFinalizationRequiresQuiescenceAndSealsAdmission(t *testing.T) 
 	}
 }
 
+func TestTrySealWorkspaceAdmissionIsQuiescentAndIdempotent(t *testing.T) {
+	s := &Session{ID: "session-seal", State: types.SessionStateReady}
+	activity, err := s.BeginWorkspaceActivity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TrySealWorkspaceAdmission(); !errors.Is(err, ErrWorkspaceBusy) {
+		t.Fatalf("seal with active writer error = %v", err)
+	}
+	activity.Release()
+	if err := s.TrySealWorkspaceAdmission(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TrySealWorkspaceAdmission(); err != nil {
+		t.Fatalf("repeated seal: %v", err)
+	}
+	if _, err := s.BeginWorkspaceActivity(); !errors.Is(err, ErrWorkspaceSealed) {
+		t.Fatalf("writer after seal error = %v", err)
+	}
+	if !s.WorkspaceTeardownAllowed() {
+		t.Fatal("completed seal blocked teardown")
+	}
+}
+
 func TestWorkspacePendingFinalizationBlocksWritersAndTeardown(t *testing.T) {
 	s := &Session{ID: "session-pending", State: types.SessionStateReady}
 	lease, err := s.TryBeginWorkspaceFinalization()

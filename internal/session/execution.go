@@ -561,6 +561,29 @@ func (s *Session) TryBeginWorkspaceFinalization() (*WorkspaceFinalizationLease, 
 	}
 }
 
+// TrySealWorkspaceAdmission atomically and permanently closes workspace writer
+// admission once the session is quiescent. It is used by trusted outer-runtime
+// sealing, where retries must remain read-only after the first accepted intent.
+func (s *Session) TrySealWorkspaceAdmission() error {
+	if s == nil {
+		return ErrWorkspaceSealed
+	}
+	s.execAdmissionMu.Lock()
+	defer s.execAdmissionMu.Unlock()
+	switch {
+	case s.workspaceFinalization == WorkspaceFinalizationComplete:
+		return nil
+	case s.workspaceFinalization == WorkspaceFinalizationRunning || s.workspaceFinalization == WorkspaceFinalizationPending:
+		return ErrWorkspaceFinalizing
+	case s.execActiveCount != 0 || s.execExclusiveWaiters != 0 || s.execSharedWaiters != 0 || s.workspaceActivities != 0:
+		return ErrWorkspaceBusy
+	default:
+		s.workspaceFinalization = WorkspaceFinalizationComplete
+		s.notifyExecutionChangedLocked()
+		return nil
+	}
+}
+
 func (s *Session) TryResumeWorkspaceFinalization() (*WorkspaceFinalizationLease, error) {
 	if s == nil {
 		return nil, ErrWorkspaceSealed

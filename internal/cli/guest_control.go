@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/agentsh/agentsh/internal/client"
 	"github.com/agentsh/agentsh/internal/guestcontrol"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/gitdraft"
 	"github.com/agentsh/agentsh/pkg/types"
 	"github.com/spf13/cobra"
 )
@@ -39,6 +41,7 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 	var allowedPolicies []string
 	var probeCommand string
 	var probeArgs []string
+	var gitCommand string
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Start one exact guest supervisor and authenticated VSOCK control endpoint",
@@ -61,6 +64,9 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 			if strings.TrimSpace(probeCommand) == "" || !filepath.IsAbs(probeCommand) || filepath.Clean(probeCommand) != probeCommand {
 				return fmt.Errorf("guest control probe command must be a fixed absolute executable")
 			}
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 && (!filepath.IsAbs(gitCommand) || filepath.Clean(gitCommand) != gitCommand) {
+				return fmt.Errorf("guest control protocol version 3 requires a fixed absolute Git executable")
+			}
 			if info, err := os.Lstat(probeCommand); err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("guest control probe command is invalid")
 			}
@@ -76,6 +82,9 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				sessionID: manifest.SessionID,
 				client:    client.NewWithTimeout("unix://"+result.SupervisorSock, "", 30*time.Second),
 				probe:     types.ExecRequest{Command: probeCommand, Args: append([]string(nil), probeArgs...), WorkingDir: workspace, IncludeEvents: "summary"},
+			}
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 {
+				handler.draft = &gitdraft.GuestWorkspace{SessionID: manifest.SessionID, Workspace: workspace, VolumeRoot: volumeRoot, Git: gitCommand}
 			}
 			defer func() {
 				cleanupCtx, cancel := context.WithTimeout(context.Background(), guestControlCleanupTimeout)
@@ -99,6 +108,10 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				return fmt.Errorf("read guest boot identity: %w", err)
 			}
 			networkReady := result.NetworkEnforcement != nil && result.NetworkEnforcement.Ready()
+			capabilities := []string{"exec_probe", "shutdown", "supervisor_proxy"}
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 {
+				capabilities = append(capabilities, "artifact_import", "artifact_export")
+			}
 			handler.handshake = guestcontrol.Handshake{
 				ProtocolVersion: manifest.ProtocolVersion,
 				SessionID:       manifest.SessionID,
@@ -115,7 +128,7 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				VSockPort:       server.Port(),
 				SupervisorPort:  relay.Port(),
 				NetworkReady:    networkReady,
-				Capabilities:    []string{"exec_probe", "shutdown", "supervisor_proxy"},
+				Capabilities:    capabilities,
 				VolumeID:        manifest.VolumeID,
 			}
 			if localCID := server.LocalCID(); localCID != 0 && localCID != ^uint32(0) && localCID != manifest.VSockCID {
@@ -168,6 +181,7 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 	cmd.Flags().StringArrayVar(&allowedPolicies, "allowed-policy", nil, "Operator-allowed guest policy (repeatable)")
 	cmd.Flags().StringVar(&probeCommand, "probe-command", "", "Fixed harmless executable used by the bring-up probe")
 	cmd.Flags().StringArrayVar(&probeArgs, "probe-arg", nil, "Fixed bring-up probe argument (repeatable)")
+	cmd.Flags().StringVar(&gitCommand, "git-command", "", "Fixed Git executable used for protocol-v3 Draft materialization")
 	for _, name := range []string{"manifest", "handshake", "workspace", "profile", "profile-digest", "allowed-policy", "probe-command"} {
 		_ = cmd.MarkFlagRequired(name)
 	}
@@ -179,6 +193,7 @@ type guestControlHandler struct {
 	client    *client.Client
 	probe     types.ExecRequest
 	handshake guestcontrol.Handshake
+	draft     *gitdraft.GuestWorkspace
 
 	requestMu sync.Mutex
 	requests  map[string]struct{}
@@ -203,6 +218,36 @@ func (h *guestControlHandler) ClaimRequest(requestID string) bool {
 	}
 	h.requests[requestID] = struct{}{}
 	return true
+}
+
+func (h *guestControlHandler) ImportArtifact(ctx context.Context, transfer guestcontrol.ArtifactTransfer, source io.Reader) error {
+	if h == nil || h.draft == nil {
+		return fmt.Errorf("guest Git Draft workspace is unavailable")
+	}
+	if err := h.draft.Import(ctx, transfer, source); err != nil {
+		return err
+	}
+	sealing, err := h.draft.Sealing()
+	if err != nil {
+		return err
+	}
+	if sealing {
+		return h.client.SealWorkspaceAdmission(ctx, h.sessionID)
+	}
+	return nil
+}
+
+func (h *guestControlHandler) ExportArtifact(ctx context.Context, kind string) (guestcontrol.ArtifactTransfer, io.ReadCloser, error) {
+	if h == nil || h.draft == nil || h.client == nil || kind != guestcontrol.ArtifactKindGitResultBundle {
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("guest Git Draft result export is unavailable")
+	}
+	if err := h.draft.BeginSeal(); err != nil {
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("persist guest sealing intent: %w", err)
+	}
+	if err := h.client.SealWorkspaceAdmission(ctx, h.sessionID); err != nil {
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("quiesce guest workspace before sealing: %w", err)
+	}
+	return h.draft.Seal(ctx)
 }
 
 func (h *guestControlHandler) ExecProbe(ctx context.Context) (guestcontrol.ExecProbeResult, error) {

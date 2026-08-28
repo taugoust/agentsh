@@ -14,6 +14,7 @@ import (
 
 	"github.com/agentsh/agentsh/internal/guestcontrol"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/artifact"
 	"github.com/google/uuid"
 )
 
@@ -98,6 +99,7 @@ type HostMonitorRequest struct {
 	ProfileDigest           string               `json:"profile_digest"`
 	ProfileSchema           string               `json:"profile_schema,omitempty"`
 	WorkspaceVolume         *WorkspaceVolumeSpec `json:"workspace_volume,omitempty"`
+	InputArtifact           *artifact.Descriptor `json:"input_artifact,omitempty"`
 	GuestProfileDigest      string               `json:"guest_profile_digest"`
 	GuestPolicy             string               `json:"guest_policy"`
 	GuestControlPort        uint32               `json:"guest_control_port"`
@@ -116,12 +118,13 @@ func (r HostMonitorRequest) Validate(stateDir string) error {
 	}
 	switch r.SchemaVersion {
 	case HostMonitorSchemaVersionV1:
-		if r.VolumeID != "" || r.ProfileSchema != "" || r.WorkspaceVolume != nil {
+		if r.VolumeID != "" || r.ProfileSchema != "" || r.WorkspaceVolume != nil || r.InputArtifact != nil {
 			return fmt.Errorf("host monitor v1 request contains schema-v2 workspace volume fields")
 		}
 	case HostMonitorSchemaVersionV2:
-		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV2 || r.WorkspaceVolume == nil || r.WorkspaceVolume.Validate() != nil {
-			return fmt.Errorf("host monitor v2 workspace volume binding is invalid")
+		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV2 || r.WorkspaceVolume == nil || r.WorkspaceVolume.Validate() != nil ||
+			r.InputArtifact == nil || r.InputArtifact.Validate() != nil || r.InputArtifact.SessionID != r.SessionID || r.InputArtifact.Kind != artifact.KindGitInputBundle {
+			return fmt.Errorf("host monitor v2 workspace volume or input artifact binding is invalid")
 		}
 	}
 	if err := runtimeprovider.ValidateName(r.SessionID); err != nil || !strings.HasPrefix(r.SessionID, "session-") {
@@ -156,7 +159,7 @@ func (r HostMonitorRequest) Validate(stateDir string) error {
 // in-memory request type also carries schema-v2 fields.
 func (r *HostMonitorRequest) UnmarshalJSON(data []byte) error {
 	if hostMonitorJSONSchemaVersion(data) == HostMonitorSchemaVersionV1 {
-		if err := rejectHostMonitorJSONFields(data, "volume_id", "profile_schema", "workspace_volume"); err != nil {
+		if err := rejectHostMonitorJSONFields(data, "volume_id", "profile_schema", "workspace_volume", "input_artifact"); err != nil {
 			return err
 		}
 	}
@@ -202,13 +205,14 @@ func validateHostMonitorProfileBinding(request HostMonitorRequest, profile Profi
 	}
 	switch profile.Schema {
 	case ProfileSchemaV1:
-		if request.ProfileSchema != "" || request.WorkspaceVolume != nil || request.VolumeID != "" {
-			return fmt.Errorf("host monitor v1 request contains a workspace volume contract")
+		if request.ProfileSchema != "" || request.WorkspaceVolume != nil || request.VolumeID != "" || request.InputArtifact != nil {
+			return fmt.Errorf("host monitor v1 request contains a workspace volume or input artifact contract")
 		}
 	case ProfileSchemaV2:
 		if request.ProfileSchema != profile.Schema || request.WorkspaceVolume == nil || profile.WorkspaceVolume == nil ||
-			*request.WorkspaceVolume != *profile.WorkspaceVolume || !canonicalWorkspaceVolumeUUID(request.VolumeID) {
-			return fmt.Errorf("host monitor v2 request workspace volume contract differs from its immutable operator profile")
+			*request.WorkspaceVolume != *profile.WorkspaceVolume || !canonicalWorkspaceVolumeUUID(request.VolumeID) || request.InputArtifact == nil ||
+			request.InputArtifact.Validate() != nil || request.InputArtifact.SessionID != request.SessionID || request.InputArtifact.Kind != artifact.KindGitInputBundle {
+			return fmt.Errorf("host monitor v2 request workspace volume or input artifact contract differs from its immutable operator profile")
 		}
 	}
 	return nil

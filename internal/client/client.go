@@ -134,6 +134,10 @@ func (c *Client) DestroySession(ctx context.Context, id string) error {
 	return c.doJSON(ctx, http.MethodDelete, "/api/v1/sessions/"+url.PathEscape(id), nil, nil, nil)
 }
 
+func (c *Client) SealWorkspaceAdmission(ctx context.Context, id string) error {
+	return c.doJSON(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(id)+"/workspace/seal-admission", nil, nil, nil)
+}
+
 func (c *Client) RebindSessionNethelper(ctx context.Context, id string, req types.NethelperRebindRequest) (types.NetworkEnforcement, error) {
 	return c.RebindSessionNethelperAuthorized(ctx, id, req, "")
 }

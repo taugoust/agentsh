@@ -89,14 +89,8 @@ func (c *Client) exchange(ctx context.Context, operation string) (Response, erro
 	if err := ctx.Err(); err != nil {
 		return Response{}, err
 	}
-	requestID := uuid.NewString()
-	request := Request{
-		ProtocolVersion: c.manifest.ProtocolVersion,
-		Type:            operation,
-		LaunchNonce:     c.manifest.LaunchNonce,
-		ControlToken:    c.manifest.ControlToken,
-		RequestID:       requestID,
-	}
+	request := c.newRequest(operation)
+	requestID := request.RequestID
 	conn, err := c.dial(ctx, c.manifest.VSockCID, c.manifest.VSockPort)
 	if err != nil {
 		return Response{}, fmt.Errorf("dial guest control endpoint: %w", err)
@@ -150,6 +144,16 @@ func (c *Client) exchange(ctx context.Context, operation string) (Response, erro
 		return Response{}, fmt.Errorf("guest control successful response included an error")
 	}
 	return response, nil
+}
+
+func (c *Client) newRequest(operation string) Request {
+	return Request{
+		ProtocolVersion: c.manifest.ProtocolVersion,
+		Type:            operation,
+		LaunchNonce:     c.manifest.LaunchNonce,
+		ControlToken:    c.manifest.ControlToken,
+		RequestID:       uuid.NewString(),
+	}
 }
 
 func contextOrError(ctx context.Context, err error) error {

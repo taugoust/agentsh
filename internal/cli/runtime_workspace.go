@@ -8,6 +8,8 @@ import (
 
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
 	"github.com/agentsh/agentsh/internal/runtimeprovider/externalrunner"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/gitdraft"
+	"github.com/agentsh/agentsh/internal/workspace/runtimebin"
 	"github.com/agentsh/agentsh/internal/workspace/shadow"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -38,6 +40,107 @@ func newRuntimeWorkspaceCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newRuntimeWorkspaceVerifyBaselineCmd())
 	cmd.AddCommand(newRuntimeWorkspaceApplyReviewedCmd())
+	cmd.AddCommand(newRuntimeWorkspaceSealGitDraftCmd())
+	cmd.AddCommand(newRuntimeWorkspacePrepareGitInputCmd())
+	cmd.AddCommand(newRuntimeWorkspaceExportGitResultCmd())
+	cmd.AddCommand(newRuntimeWorkspaceFinalizeGitDraftCmd())
+	return cmd
+}
+
+func newRuntimeWorkspaceFinalizeGitDraftCmd() *cobra.Command {
+	var stateDir string
+	var intent string
+	cmd := &cobra.Command{
+		Use:   "finalize-git-draft SESSION_ID",
+		Short: "Delete stopped MicroVM Draft storage under an absorbing terminal intent",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			record, err := externalrunner.FinalizeGitDraftStorage(cmd.Context(), args[0], stateDir, intent)
+			if err != nil {
+				return err
+			}
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetEscapeHTML(false)
+			return encoder.Encode(record)
+		},
+	}
+	cmd.Flags().StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
+	cmd.Flags().StringVar(&intent, "intent", "", "absorbing terminal intent: applied or discarded")
+	_ = cmd.MarkFlagRequired("state-dir")
+	_ = cmd.MarkFlagRequired("intent")
+	return cmd
+}
+
+func newRuntimeWorkspaceExportGitResultCmd() *cobra.Command {
+	var stateDir string
+	var output string
+	cmd := &cobra.Command{
+		Use:   "export-git-result SESSION_ID",
+		Short: "Export an exact verified MicroVM Git Draft result bundle",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			record, err := externalrunner.ExportGitDraftResult(cmd.Context(), args[0], stateDir, output)
+			if err != nil {
+				return err
+			}
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetEscapeHTML(false)
+			return encoder.Encode(record)
+		},
+	}
+	cmd.Flags().StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
+	cmd.Flags().StringVar(&output, "output", "", "new private result bundle output path")
+	_ = cmd.MarkFlagRequired("state-dir")
+	_ = cmd.MarkFlagRequired("output")
+	return cmd
+}
+
+func newRuntimeWorkspacePrepareGitInputCmd() *cobra.Command {
+	var repository string
+	var output string
+	cmd := &cobra.Command{
+		Use:   "prepare-git-input",
+		Short: "Create an immutable clean-repository input bundle for a MicroVM Draft",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			git, err := runtimebin.Resolve("git")
+			if err != nil {
+				return err
+			}
+			report, err := gitdraft.PrepareInputBundle(cmd.Context(), git, repository, output)
+			if err != nil {
+				return err
+			}
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetEscapeHTML(false)
+			return encoder.Encode(report)
+		},
+	}
+	cmd.Flags().StringVar(&repository, "repository", "", "canonical clean Git repository root")
+	cmd.Flags().StringVar(&output, "output", "", "new private Git bundle output path")
+	_ = cmd.MarkFlagRequired("repository")
+	_ = cmd.MarkFlagRequired("output")
+	return cmd
+}
+
+func newRuntimeWorkspaceSealGitDraftCmd() *cobra.Command {
+	var stateDir string
+	cmd := &cobra.Command{
+		Use:   "seal-git-draft SESSION_ID",
+		Short: "Quiesce and persist an immutable MicroVM Git Draft result",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			record, err := externalrunner.SealGitDraft(cmd.Context(), args[0], stateDir)
+			if err != nil {
+				return err
+			}
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetEscapeHTML(false)
+			return encoder.Encode(record)
+		},
+	}
+	cmd.Flags().StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
+	_ = cmd.MarkFlagRequired("state-dir")
 	return cmd
 }
 

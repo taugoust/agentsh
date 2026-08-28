@@ -13,6 +13,7 @@ import (
 	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/guestcontrol"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
+	"github.com/agentsh/agentsh/internal/runtimeprovider/artifact"
 )
 
 const hostMonitorRunnerLogLimit = 8 << 20
@@ -274,6 +275,9 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		if err == nil {
 			err = validateHostMonitorGuestReadiness(request, profile, manifest, volume, handshake)
 		}
+		if err == nil && request.SchemaVersion == HostMonitorSchemaVersionV2 {
+			err = importHostMonitorGitInput(readinessCtx, stateDir, request, control)
+		}
 		if err == nil {
 			secret := HostMonitorGuestSecret{
 				SchemaVersion: HostMonitorSchemaVersionV1, MonitorID: request.MonitorID, SessionID: request.SessionID,
@@ -501,6 +505,37 @@ func validateHostMonitorBindings(request HostMonitorRequest, profile Profile, pr
 		profile.Guest.Policy != manifest.Policy || profile.Guest.ControlPort != manifest.VSockPort ||
 		profile.Guest.SupervisorPort != manifest.SupervisorPort {
 		return fmt.Errorf("host monitor request, profile, lease, and guest manifest identities differ")
+	}
+	return nil
+}
+
+type hostMonitorArtifactImporter interface {
+	ImportArtifact(context.Context, guestcontrol.ArtifactTransfer, io.Reader) error
+}
+
+func importHostMonitorGitInput(ctx context.Context, stateDir string, request HostMonitorRequest, control hostMonitorControl) error {
+	if request.InputArtifact == nil {
+		return fmt.Errorf("host monitor v2 input artifact is missing")
+	}
+	importer, ok := control.(hostMonitorArtifactImporter)
+	if !ok {
+		return fmt.Errorf("guest control does not support authenticated artifact import")
+	}
+	store, err := artifact.NewStore(stateDir, request.SessionID, guestcontrol.MaxArtifactTransferBytes)
+	if err != nil {
+		return err
+	}
+	file, descriptor, err := store.Open(ctx, request.InputArtifact.ArtifactID, artifact.KindGitInputBundle)
+	if err != nil {
+		return fmt.Errorf("open exact Git input artifact: %w", err)
+	}
+	defer file.Close()
+	if descriptor != *request.InputArtifact {
+		return fmt.Errorf("Git input artifact descriptor changed before guest transfer")
+	}
+	transfer := guestcontrol.ArtifactTransfer{Kind: guestcontrol.ArtifactKindGitInputBundle, SHA256: descriptor.SHA256, Size: descriptor.Size}
+	if err := importer.ImportArtifact(ctx, transfer, file); err != nil {
+		return fmt.Errorf("import exact Git input artifact into guest: %w", err)
 	}
 	return nil
 }
