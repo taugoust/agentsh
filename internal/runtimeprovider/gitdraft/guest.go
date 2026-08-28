@@ -251,8 +251,19 @@ func (g GuestWorkspace) validate() error {
 	if !strings.HasPrefix(g.SessionID, "session-") || !cleanAbsolute(g.Workspace) || !cleanAbsolute(g.VolumeRoot) || !cleanAbsolute(g.Git) || g.Workspace == g.VolumeRoot {
 		return fmt.Errorf("Git Draft guest workspace configuration is invalid")
 	}
-	if rel, err := filepath.Rel(g.VolumeRoot, g.Workspace); err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-		return fmt.Errorf("Git Draft workspace is outside its volume")
+	rel, relErr := filepath.Rel(g.VolumeRoot, g.Workspace)
+	inside := relErr == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+	if !inside {
+		// Production exposes the volume's workspace subdirectory at the fixed
+		// guest path through a bind mount. Prove that alias by exact inode/device
+		// identity instead of trusting a lexically unrelated mountpoint.
+		expected := filepath.Join(g.VolumeRoot, "workspace")
+		workspaceInfo, workspaceErr := os.Lstat(g.Workspace)
+		expectedInfo, expectedErr := os.Lstat(expected)
+		if workspaceErr != nil || expectedErr != nil || !workspaceInfo.IsDir() || !expectedInfo.IsDir() ||
+			workspaceInfo.Mode()&os.ModeSymlink != 0 || expectedInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(workspaceInfo, expectedInfo) {
+			return fmt.Errorf("Git Draft workspace is outside its volume")
+		}
 	}
 	return nil
 }
