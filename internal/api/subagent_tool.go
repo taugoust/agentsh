@@ -698,6 +698,21 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		"PI_CODING_AGENT_DIR":         childAgentDir,
 		"PI_CODING_AGENT_SESSION_DIR": childSessionDir,
 	}
+	if runtime.Isolation == "draft" {
+		// The detached supervisor scrubs helper coordinates from its ambient
+		// environment after startup. A fixed operator-owned Draft worker still
+		// needs the exact protected paths so its nested pi-auto lifecycle can use
+		// the already-authenticated helper without sudo. Never expose these paths
+		// to ordinary shared/model-selected child runtimes.
+		binding := a.nethelperBinding.snapshot()
+		if binding.SocketPath != "" && binding.CredentialFile != "" {
+			childEnv["AGENTSH_NETHELPER_SOCKET"] = binding.SocketPath
+			childEnv["AGENTSH_NETHELPER_CREDENTIAL_FILE"] = binding.CredentialFile
+			if binding.BootstrapResultPath != "" {
+				childEnv["AGENTSH_NETHELPER_BOOTSTRAP_RESULT"] = binding.BootstrapResultPath
+			}
+		}
+	}
 	if deadline, ok := ctx.Deadline(); ok {
 		childEnv[subagentDeadlineEpochMSEnvironment] = strconv.FormatInt(deadline.UnixMilli(), 10)
 	}

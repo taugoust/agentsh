@@ -460,6 +460,8 @@ esac
 	draftScriptPath := filepath.Join(root, "draft-worker.sh")
 	draftScript := `#!/bin/sh
 cat >/dev/null
+[ "$AGENTSH_NETHELPER_SOCKET" = /run/agentsh/nethelper/1000/nethelper.sock ]
+[ "$AGENTSH_NETHELPER_CREDENTIAL_FILE" = /run/agentsh/nethelper/1000/instance-credential ]
 printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-111111111111","status":"completed","final":"Draft complete","summary":"one file changed","step":0,"task_count":1,"sealed":true}'
 `
 	if err := os.WriteFile(draftScriptPath, []byte(draftScript), 0o700); err != nil {
@@ -494,6 +496,12 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 		t.Fatal(err)
 	}
 	app := newTestApp(t, sessions, store)
+	app.nethelperBinding = newNethelperBindingState(
+		"/run/agentsh/nethelper/1000/nethelper.sock",
+		"/run/agentsh/nethelper/1000/instance-credential",
+		"",
+		"test-credential",
+	)
 	handler := app.Router()
 
 	for _, tc := range []struct {
