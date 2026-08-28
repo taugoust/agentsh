@@ -63,13 +63,12 @@ func VerifyResultBundles(ctx context.Context, git string, inputBundle, resultBun
 	if _, err := run("fetch", "--quiet", "--no-tags", resultPath, resultRef+":"+resultRef); err != nil {
 		return err
 	}
-	parents, err := run("rev-list", "--parents", "-n", "1", resultRef)
-	if err != nil {
-		return err
+	if _, err := run("merge-base", "--is-ancestor", baselineRef, resultRef); err != nil {
+		return fmt.Errorf("Git Draft result history does not descend from its baseline: %w", err)
 	}
-	fields := strings.Fields(strings.TrimSpace(parents))
-	if len(fields) != 2 || fields[0] != result || fields[1] != baseline {
-		return fmt.Errorf("Git Draft result is not a single synthetic child of its baseline")
+	commits, err := run("rev-list", "--count", baselineRef+".."+resultRef)
+	if err != nil || strings.TrimSpace(commits) == "0" {
+		return fmt.Errorf("Git Draft result history is empty: %w", err)
 	}
 	if got, err := run("rev-parse", "--verify", resultRef+"^{commit}"); err != nil || strings.TrimSpace(got) != result {
 		return fmt.Errorf("Git Draft result commit verification failed: %w", err)

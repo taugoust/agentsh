@@ -63,6 +63,15 @@ func TestGuestWorkspaceImportsAndSealsExactGitBundles(t *testing.T) {
 		t.Fatalf("idempotent import: %v", err)
 	}
 
+	if branch := strings.TrimSpace(runTestGit(t, git, workspace, "branch", "--show-current")); branch != "pi-auto-draft" {
+		t.Fatalf("draft branch = %q", branch)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "README.md"), []byte("committed result\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, git, workspace, "add", "README.md")
+	runTestGit(t, git, workspace, "commit", "--quiet", "-m", "agent commit")
+	agentCommit := strings.TrimSpace(runTestGit(t, git, workspace, "rev-parse", "HEAD"))
 	if err := os.WriteFile(filepath.Join(workspace, "README.md"), []byte("result\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -121,8 +130,11 @@ func TestGuestWorkspaceImportsAndSealsExactGitBundles(t *testing.T) {
 	_ = verifyResultFile.Close()
 	runTestGit(t, git, verify, "fetch", "--quiet", resultPath, resultRef+":"+resultRef)
 	parent := strings.TrimSpace(runTestGit(t, git, verify, "rev-parse", resultRef+"^"))
-	if parent != baseline {
-		t.Fatalf("result parent = %s, want %s", parent, baseline)
+	if parent != agentCommit {
+		t.Fatalf("result parent = %s, want preserved agent commit %s", parent, agentCommit)
+	}
+	if count := strings.TrimSpace(runTestGit(t, git, verify, "rev-list", "--count", baseline+".."+resultRef)); count != "2" {
+		t.Fatalf("result history count = %s, want 2", count)
 	}
 	mode := strings.Fields(runTestGit(t, git, verify, "ls-tree", resultRef, "README.md"))[0]
 	if mode != "100755" {

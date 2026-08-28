@@ -110,11 +110,18 @@ func (g GuestWorkspace) Import(ctx context.Context, transfer guestcontrol.Artifa
 	if _, err := g.git(ctx, g.Workspace, "fetch", "--quiet", "--no-tags", bundlePath, baselineRef+":"+baselineRef); err != nil {
 		return err
 	}
-	if _, err := g.git(ctx, g.Workspace, "checkout", "--quiet", "--detach", baseline); err != nil {
+	if _, err := g.git(ctx, g.Workspace, "checkout", "--quiet", "-b", "pi-auto-draft", baseline); err != nil {
 		return err
 	}
 	if _, err := g.git(ctx, g.Workspace, "reset", "--hard", "--quiet", baseline); err != nil {
 		return err
+	}
+	for key, value := range map[string]string{
+		"user.name": "Pi Auto", "user.email": "pi-auto@localhost", "commit.gpgSign": "false", "core.hooksPath": "/dev/null",
+	} {
+		if _, err := g.git(ctx, g.Workspace, "config", "--local", key, value); err != nil {
+			return err
+		}
 	}
 	record := state{SchemaVersion: stateSchema, SessionID: g.SessionID, InputSHA256: transfer.SHA256, Baseline: baseline}
 	if err := writeState(filepath.Join(controlDir, "state.json"), record); err != nil {
@@ -173,6 +180,17 @@ func (g GuestWorkspace) Seal(ctx context.Context) (guestcontrol.ArtifactTransfer
 	if err := g.verifyRepository(ctx, record.Baseline); err != nil {
 		return guestcontrol.ArtifactTransfer{}, nil, err
 	}
+	head, err := g.git(ctx, g.Workspace, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return guestcontrol.ArtifactTransfer{}, nil, err
+	}
+	head = strings.TrimSpace(head)
+	if !validOID(head) {
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("Git Draft HEAD object ID is invalid")
+	}
+	if _, err := g.git(ctx, g.Workspace, "merge-base", "--is-ancestor", record.Baseline, head); err != nil {
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("Git Draft history no longer descends from its baseline: %w", err)
+	}
 	if _, err := g.git(ctx, g.Workspace, "add", "-A", "--", "."); err != nil {
 		return guestcontrol.ArtifactTransfer{}, nil, err
 	}
@@ -184,7 +202,7 @@ func (g GuestWorkspace) Seal(ctx context.Context) (guestcontrol.ArtifactTransfer
 		"GIT_AUTHOR_NAME=AgentSH", "GIT_AUTHOR_EMAIL=agentsh@localhost",
 		"GIT_COMMITTER_NAME=AgentSH", "GIT_COMMITTER_EMAIL=agentsh@localhost",
 	}
-	result, err := g.gitEnv(ctx, g.Workspace, commitEnv, "commit-tree", strings.TrimSpace(tree), "-p", record.Baseline, "-m", "pi-auto result "+g.SessionID)
+	result, err := g.gitEnv(ctx, g.Workspace, commitEnv, "commit-tree", strings.TrimSpace(tree), "-p", head, "-m", "pi-auto result "+g.SessionID)
 	if err != nil {
 		return guestcontrol.ArtifactTransfer{}, nil, err
 	}
