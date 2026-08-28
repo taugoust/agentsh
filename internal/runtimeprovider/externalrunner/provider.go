@@ -63,6 +63,11 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 
 func (p *Provider) Name() string { return ProviderName }
 
+func (p *Provider) CanResumeStopped(manifest runtimeprovider.Manifest) bool {
+	profile, _, err := p.profile(manifest.Profile)
+	return err == nil && profile.Schema == ProfileSchemaV2 && manifest.Provider == ProviderName
+}
+
 func (p *Provider) Preflight(_ context.Context, request runtimeprovider.Request) (runtimeprovider.Capabilities, error) {
 	if err := request.Validate(); err != nil {
 		return runtimeprovider.Capabilities{}, err
@@ -89,7 +94,7 @@ func (p *Provider) Preflight(_ context.Context, request runtimeprovider.Request)
 	}
 	return runtimeprovider.Capabilities{
 		ContractVersion: runtimeprovider.ContractVersion, Provider: ProviderName,
-		Recoverable: false, Transports: []string{"unix"},
+		Recoverable: profile.Schema == ProfileSchemaV2, Transports: []string{"unix"},
 	}, nil
 }
 
@@ -250,15 +255,24 @@ func (p *Provider) Open(_ context.Context, manifest runtimeprovider.Manifest) (r
 }
 
 func (p *Provider) Recover(ctx context.Context, manifest runtimeprovider.Manifest) (runtimeprovider.Instance, error) {
+	profile, _, profileErr := p.profile(manifest.Profile)
+	if profileErr != nil {
+		return nil, profileErr
+	}
 	instance, err := p.Open(ctx, manifest)
+	if err == nil {
+		status, probeErr := instance.Probe(ctx)
+		if probeErr == nil && status.Ready {
+			return instance, nil
+		}
+	}
+	if profile.Schema == ProfileSchemaV2 {
+		return p.recoverV2(ctx, manifest.SessionID, manifest.StateDir, manifest.Profile)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("diagnostic external runner cannot recreate a stopped instance: %w", err)
+		return nil, fmt.Errorf("legacy diagnostic external runner cannot recreate a stopped instance: %w", err)
 	}
-	status, err := instance.Probe(ctx)
-	if err != nil || !status.Ready {
-		return nil, fmt.Errorf("diagnostic external runner is not live and cannot be recreated")
-	}
-	return instance, nil
+	return nil, fmt.Errorf("legacy diagnostic external runner is not live and cannot be recreated")
 }
 
 func validateProviderLifecycleProfile(profile Profile) error {
@@ -341,7 +355,7 @@ func (i *providerInstance) Probe(ctx context.Context) (runtimeprovider.Status, e
 		return runtimeprovider.Status{}, fmt.Errorf("external runner host monitor identity is no longer live")
 	}
 	identity := i.Identity()
-	return runtimeprovider.Status{Identity: identity, Endpoint: i.Endpoint(), State: state, Ready: ready, Recoverable: false, LastError: status.LastError}, ctx.Err()
+	return runtimeprovider.Status{Identity: identity, Endpoint: i.Endpoint(), State: state, Ready: ready, Recoverable: i.profile.Schema == ProfileSchemaV2, LastError: status.LastError}, ctx.Err()
 }
 
 func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.ControlPlaneSnapshot, error) {

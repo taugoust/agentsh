@@ -159,6 +159,12 @@ type Provider interface {
 // controller crash before an exact runtime identity reached the manifest. It
 // may only reconstruct a handle from provider-owned durable state and must not
 // start, recover, or adopt a runtime.
+// StoppedResumeProvider marks providers whose stopped compute lifecycle retains
+// independently-owned workspace state and may start a higher exact generation.
+type StoppedResumeProvider interface {
+	CanResumeStopped(Manifest) bool
+}
+
 type UnprovisionedCleanupProvider interface {
 	OpenUnprovisionedCleanup(context.Context, Manifest) (Instance, error)
 }

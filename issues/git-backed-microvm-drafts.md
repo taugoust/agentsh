@@ -2,15 +2,14 @@
 
 ## Status
 
-AgentSH now has the one-generation Git Draft data path: clean repository input preparation, durable complete artifacts, authenticated protocol-v3 bundle transfer, private volume materialization, quiescent synthetic result sealing, isolated host verification, exact result export, and journaled terminal storage deletion. The external v2 provider is admitted only with an exact session-bound input artifact.
+The AgentSH implementation is complete for downstream integration: clean repository input preparation, durable complete artifacts, authenticated protocol-v3 bundle transfer, private volume materialization, quiescent synthetic result sealing, isolated host verification, exact result export, journaled terminal storage deletion, and exact higher-generation volume recovery after stopped compute or monitor loss. The external v2 provider is admitted only with an exact session-bound input artifact. Recovery durably archives each prior monitor generation and preserves the same volume and artifact identities.
 
-Remaining before this issue is resolved:
+Remaining release work crosses into the operator runtime and frontend:
 
-- recover or resume the exact private volume under a new provider generation after intentional pause or monitor loss;
-- add deterministic crash coverage around generation rollover and every sealing/finalization phase;
 - run a complete packaged QEMU/KVM acceptance through the operator v2 runner;
-- require a strict network-ready profile for production admission while retaining explicitly diagnostic profiles for bring-up;
-- complete the downstream `pi-auto` Draft UX and compatibility migration in `nix-config`.
+- make the operator production profile strict-network-ready while retaining an explicitly diagnostic profile for bring-up;
+- complete the downstream `pi-auto` Draft UX and compatibility migration in `nix-config`;
+- add end-to-end crash injection around the runner-specific boot boundary once the updated operator runner is available.
 
 No deployment is part of this issue.
 

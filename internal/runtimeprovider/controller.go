@@ -156,8 +156,14 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 		if !sameManifestRevision(current, manifest) {
 			return fmt.Errorf("runtime-provider manifest changed before recovery")
 		}
-		if current.State == StateStopping || current.State == StateStopped {
+		if current.State == StateStopping {
 			return fmt.Errorf("runtime session %s is %s and cannot be recovered", current.SessionID, current.State)
+		}
+		if current.State == StateStopped {
+			resumable, ok := provider.(StoppedResumeProvider)
+			if !ok || !resumable.CanResumeStopped(current) {
+				return fmt.Errorf("runtime session %s is stopped and its provider does not retain resumable state", current.SessionID)
+			}
 		}
 		if current.CleanupPending || (!current.CleanupIntentKnown && current.State == StateFailed && !current.CleanupComplete) {
 			return fmt.Errorf("runtime session %s has incomplete or ambiguous cleanup and cannot be recovered", current.SessionID)
@@ -321,7 +327,7 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 		if readErr != nil {
 			return readErr
 		}
-		if current.State == StateStopping || current.State == StateStopped {
+		if current.State == StateStopping {
 			return fmt.Errorf("runtime session %s committed stop during recovery", current.SessionID)
 		}
 		if current.Provider != prepared.Provider || current.Profile != prepared.Profile ||

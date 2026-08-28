@@ -56,6 +56,10 @@ func (p *fakeProvider) Recover(context.Context, Manifest) (Instance, error) {
 	return p.instance, p.recoverErr
 }
 
+type resumableFakeProvider struct{ *fakeProvider }
+
+func (p *resumableFakeProvider) CanResumeStopped(Manifest) bool { return true }
+
 type fakeInstance struct {
 	mu              sync.Mutex
 	identity        Identity
@@ -139,6 +143,39 @@ func TestControllerStartPersistsReadyExactRuntime(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("manifest mode = %v, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestControllerResumesStoppedRetainedRuntimeAtHigherGeneration(t *testing.T) {
+	request, base, instance := readyFixture(t)
+	provider := &resumableFakeProvider{fakeProvider: base}
+	controller := Controller{CleanupTimeout: time.Second}
+	if _, err := controller.Start(context.Background(), provider, request); err != nil {
+		t.Fatal(err)
+	}
+	ready, err := ReadManifest(request.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Stop(context.Background(), provider, request.StateDir, ready, StopReasonUser); err != nil {
+		t.Fatal(err)
+	}
+	stopped, err := ReadManifest(request.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance.identity.Generation++
+	instance.identity.IncarnationID = "incarnation-resumed"
+	instance.status = Status{Identity: instance.identity, Endpoint: instance.endpoint, State: StateReady, Ready: true, Recoverable: true}
+	if _, err := controller.Recover(context.Background(), provider, request.StateDir, stopped); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := ReadManifest(request.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.State != StateReady || resumed.Identity.Generation != stopped.Identity.Generation+1 || resumed.CleanupComplete {
+		t.Fatalf("resumed manifest = %+v", resumed)
 	}
 }
 
