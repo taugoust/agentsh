@@ -285,7 +285,11 @@ func (p *Provider) Recover(ctx context.Context, manifest runtimeprovider.Manifes
 		}
 	}
 	if profile.Schema == ProfileSchemaV2 {
-		return p.recoverV2(ctx, manifest.SessionID, manifest.StateDir, manifest.Profile)
+		recovered, recoverErr := p.recoverV2(ctx, manifest.SessionID, manifest.StateDir, manifest.Profile)
+		if recoverErr != nil {
+			return nil, recoverErr
+		}
+		return recovered, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("legacy diagnostic external runner cannot recreate a stopped instance: %w", err)

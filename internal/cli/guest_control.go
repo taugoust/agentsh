@@ -71,9 +71,9 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				return fmt.Errorf("guest control probe command is invalid")
 			}
 
-			result, err := startDetachedSupervisorSession(
+			result, err := startDetachedSupervisorSessionAtGeneration(
 				cmd.Context(), manifest.SessionID, []string{workspace}, string(types.WorkspaceModeDirect),
-				manifest.Policy, "isolated", "minimal", nil, runtimeprovider.DefaultProfile,
+				manifest.Policy, "isolated", "minimal", nil, runtimeprovider.DefaultProfile, "", manifest.ExpectedGeneration,
 			)
 			if err != nil {
 				return fmt.Errorf("start guest AgentSH supervisor: %w", err)

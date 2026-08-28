@@ -690,10 +690,17 @@ func reserveDetachedSessionState(sessionID string) (string, error) {
 }
 
 func startDetachedSupervisorSession(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile string) (*detachedSessionStartResult, error) {
-	return startDetachedSupervisorSessionWithInput(ctx, requestedSessionID, workspaces, workspaceMode, policyName, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, "")
+	return startDetachedSupervisorSessionAtGeneration(ctx, requestedSessionID, workspaces, workspaceMode, policyName, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, "", 1)
 }
 
 func startDetachedSupervisorSessionWithInput(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile, inputBundle string) (*detachedSessionStartResult, error) {
+	return startDetachedSupervisorSessionAtGeneration(ctx, requestedSessionID, workspaces, workspaceMode, policyName, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, inputBundle, 1)
+}
+
+func startDetachedSupervisorSessionAtGeneration(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile, inputBundle string, expectedGeneration uint64) (*detachedSessionStartResult, error) {
+	if expectedGeneration == 0 {
+		return nil, fmt.Errorf("detached supervisor expected generation must be positive")
+	}
 	request, configPath, cfg, err := prepareDetachedRuntimeRequest(
 		requestedSessionID, workspaces, workspaceMode, policyName,
 		runtimeHomeMode, envBaseMode, envInherit, runtimeProfile,
@@ -701,6 +708,7 @@ func startDetachedSupervisorSessionWithInput(ctx context.Context, requestedSessi
 	if err != nil {
 		return nil, err
 	}
+	request.ExpectedGeneration = expectedGeneration
 	_, selected, err := cfg.Sessions.Runtime.ResolveProfile(runtimeProfile)
 	if err != nil {
 		return nil, err
@@ -837,6 +845,14 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 		SystemdUnit: launch.SystemdUnit, UsesSystemd: launch.UsesSystemd,
 		PrivateTmp: !detachedSupervisorNeedsHostTmp(serviceEnv),
 	}, createdAt)
+	// The child increments the retained recovery generation before publishing.
+	// Fresh host sessions start at one; recreated MicroVM guests seed the exact
+	// outer generation so stale handshakes cannot satisfy recovery.
+	expectedGeneration := request.ExpectedGeneration
+	if expectedGeneration == 0 {
+		expectedGeneration = 1
+	}
+	manifest.Generation = expectedGeneration - 1
 	manifest.Mutable.VolatileEnvironment = restartUnsafeServiceEnvironmentNames(serviceEnv)
 	if err := detached.WriteRecoveryManifest(stateDir, manifest); err != nil {
 		return nil, err

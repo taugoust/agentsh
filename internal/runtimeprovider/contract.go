@@ -47,12 +47,13 @@ const (
 // operator-owned executable/profile configuration; callers cannot pass raw
 // hypervisor arguments, shares, devices, or arbitrary host paths here.
 type Request struct {
-	SessionID     string                     `json:"session_id"`
-	Provider      string                     `json:"provider"`
-	Profile       string                     `json:"profile"`
-	StateDir      string                     `json:"state_dir"`
-	Session       types.CreateSessionRequest `json:"session"`
-	InputArtifact *artifact.Descriptor       `json:"input_artifact,omitempty"`
+	SessionID          string                     `json:"session_id"`
+	Provider           string                     `json:"provider"`
+	Profile            string                     `json:"profile"`
+	StateDir           string                     `json:"state_dir"`
+	Session            types.CreateSessionRequest `json:"session"`
+	InputArtifact      *artifact.Descriptor       `json:"input_artifact,omitempty"`
+	ExpectedGeneration uint64                     `json:"expected_generation,omitempty"`
 }
 
 func (r Request) Validate() error {
