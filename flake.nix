@@ -43,7 +43,11 @@
           ];
           runtimePath = lib.makeBinPath runtimePackages;
           internalRuntimePath = lib.makeBinPath (
-            runtimePackages ++ lib.optionals stdenv.hostPlatform.isLinux [ pkgs.git pkgs.qemu-utils ]
+            runtimePackages
+            ++ lib.optionals stdenv.hostPlatform.isLinux [
+              pkgs.git
+              pkgs.qemu-utils
+            ]
           );
 
           agentsh = pkgs.buildGoModule {

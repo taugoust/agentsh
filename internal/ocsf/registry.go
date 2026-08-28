@@ -118,6 +118,7 @@ var pendingTypes = map[string]struct{}{
 	"shadow_accepted":                    {},
 	"shadow_rejected":                    {},
 	"overlay_rejected":                   {},
+	"workspace_admission_sealed":         {},
 	"ebpf_attached":                      {},
 	"ebpf_attach_failed":                 {},
 	"ebpf_collector_failed":              {},
