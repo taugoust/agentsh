@@ -324,6 +324,10 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 		"AGENTSH_SUBAGENT_PROTOCOL=pi-json",
 		"AGENTSH_SUBAGENT_MAX_DEPTH=3",
 		"AGENTSH_SUBAGENT_RUNTIME=pi",
+		"AGENTSH_DRAFT_SUBAGENT_COMMAND=/nix/store/pi-auto-worker/bin/pi-auto-worker",
+		"AGENTSH_DRAFT_SUBAGENT_ARGS=--json",
+		"AGENTSH_DRAFT_SUBAGENT_HOME=/home/test",
+		"AGENTSH_DRAFT_SUBAGENT_STATE_DIR=/home/test/.local/state/pi-auto",
 	}, nil)
 	want := []string{
 		"AGENTSH_NETHELPER_CREDENTIAL_FILE=" + credentialFile,
@@ -338,6 +342,10 @@ func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 		"AGENTSH_SUBAGENT_PROTOCOL=pi-json",
 		"AGENTSH_SUBAGENT_MAX_DEPTH=3",
 		"AGENTSH_SUBAGENT_RUNTIME=pi",
+		"AGENTSH_DRAFT_SUBAGENT_COMMAND=/nix/store/pi-auto-worker/bin/pi-auto-worker",
+		"AGENTSH_DRAFT_SUBAGENT_ARGS=--json",
+		"AGENTSH_DRAFT_SUBAGENT_HOME=/home/test",
+		"AGENTSH_DRAFT_SUBAGENT_STATE_DIR=/home/test/.local/state/pi-auto",
 	}
 	if !reflect.DeepEqual(env, want) {
 		t.Fatalf("service env = %#v, want %#v", env, want)

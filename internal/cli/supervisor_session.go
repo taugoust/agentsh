@@ -375,6 +375,10 @@ var detachedSupervisorRuntimeEnvKeys = []string{
 	"AGENTSH_SUBAGENT_PROTOCOL",
 	"AGENTSH_SUBAGENT_MAX_DEPTH",
 	"AGENTSH_SUBAGENT_RUNTIME",
+	"AGENTSH_DRAFT_SUBAGENT_COMMAND",
+	"AGENTSH_DRAFT_SUBAGENT_ARGS",
+	"AGENTSH_DRAFT_SUBAGENT_HOME",
+	"AGENTSH_DRAFT_SUBAGENT_STATE_DIR",
 }
 
 func detachedSupervisorServiceEnv(env, inheritPatterns []string) []string {
