@@ -738,6 +738,7 @@ pkgs.testers.runNixOSTest {
           AGENTSH_NETHELPER_CREDENTIAL_FILE = "${releaseRuntimeRoot}/instance-credential";
           AGENTSH_NETHELPER_BOOTSTRAP_RESULT = "${releaseRuntimeRoot}/bootstrap.json";
           AGENTSH_DETACHED_SUPERVISOR_LAUNCH_MODE = "systemd-user-delegated";
+          PI_CODING_AGENT_DIR = "/home/theo/.pi/agent";
           XDG_CACHE_HOME = "/scratch/theo/.cache";
           XDG_CONFIG_HOME = "/home/theo/.config-rose";
           XDG_DATA_HOME = "/home/theo/.local/share";
@@ -878,6 +879,7 @@ pkgs.testers.runNixOSTest {
             "runtime_home_mode": "real",
             "env_base_mode": "minimal",
             "env_inherit": [
+                "PI_CODING_AGENT_DIR",
                 "XDG_CONFIG_HOME",
                 "XDG_CACHE_HOME",
                 "XDG_STATE_HOME",
