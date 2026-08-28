@@ -102,6 +102,49 @@ func TestSubagentExecutionTimeoutDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+func TestValidateSubagentIsolation(t *testing.T) {
+	for _, tc := range []struct {
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{input: "", want: "shared"},
+		{input: "shared", want: "shared"},
+		{input: "DRAFT", want: "draft"},
+		{input: "container", wantErr: true},
+	} {
+		got, err := validateSubagentIsolation(tc.input)
+		if tc.wantErr {
+			if err == nil {
+				t.Fatalf("isolation %q was accepted", tc.input)
+			}
+			continue
+		}
+		if err != nil || got != tc.want {
+			t.Fatalf("isolation %q = %q, %v; want %q", tc.input, got, err, tc.want)
+		}
+	}
+}
+
+func TestDraftSubagentRuntimeIsFixedAndBounded(t *testing.T) {
+	command := filepath.Join(t.TempDir(), "pi-auto-worker")
+	if err := os.WriteFile(command, []byte("worker"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENTSH_DRAFT_SUBAGENT_COMMAND", command)
+	t.Setenv("AGENTSH_DRAFT_SUBAGENT_ARGS", `--fixed "two words"`)
+	runtime, err := subagentRuntimeForIsolation(nil, "draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.Isolation != "draft" || runtime.Command != command || runtime.TaskMode != "json-stdin" || runtime.Protocol != "text" || runtime.MaxDepth != 1 {
+		t.Fatalf("Draft runtime = %+v", runtime)
+	}
+	if !reflect.DeepEqual(runtime.Args, []string{"--fixed", "two words"}) {
+		t.Fatalf("Draft args = %#v", runtime.Args)
+	}
+}
+
 func TestValidateSpawnSubagentRequestModes(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -414,11 +457,22 @@ esac
 		t.Fatal(err)
 	}
 
+	draftScriptPath := filepath.Join(root, "draft-worker.sh")
+	draftScript := `#!/bin/sh
+cat >/dev/null
+printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-111111111111","status":"completed","final":"Draft complete","summary":"one file changed","step":0,"task_count":1,"sealed":true}'
+`
+	if err := os.WriteFile(draftScriptPath, []byte(draftScript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
 	t.Setenv("AGENTSH_SUBAGENT_COMMAND", sh)
 	t.Setenv("AGENTSH_SUBAGENT_ARGS", strconv.Quote(scriptPath))
 	t.Setenv("AGENTSH_SUBAGENT_TASK_MODE", "arg")
 	t.Setenv("AGENTSH_SUBAGENT_PROTOCOL", "pi-json")
 	t.Setenv("AGENTSH_SUBAGENT_MAX_DEPTH", "1")
+	t.Setenv("AGENTSH_DRAFT_SUBAGENT_COMMAND", draftScriptPath)
+	t.Setenv("AGENTSH_DRAFT_SUBAGENT_ARGS", "")
 	t.Setenv("PI_CODING_AGENT_DIR", agentDir)
 
 	st := newSQLiteStore(t)
@@ -451,6 +505,7 @@ esac
 		wantChildStates []string
 	}{
 		{name: "completed", body: `{"task":"complete","systemPrompt":"system-prompt-sentinel","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
+		{name: "Draft completed", body: `{"mode":"draft","task":"complete","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
 		{name: "child receives deadline", body: `{"task":"deadline","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
 		{name: "large progress retains final", body: `{"task":"large","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
 		{name: "long final gets remote artifact", body: `{"task":"artifact","stream":true,"result_artifact_threshold_bytes":4096}`, wantState: "completed", wantTimeoutMS: 7_200_000},

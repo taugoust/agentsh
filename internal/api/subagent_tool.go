@@ -26,12 +26,14 @@ import (
 const (
 	maxSubagentParallelTasks           = 8
 	maxSubagentConcurrency             = 4
+	maxDraftSubagentConcurrency        = 2
 	maxSubagentTextBytes               = 2 * 1024 * 1024
 	subagentDeadlineEpochMSEnvironment = "AGENTSH_SUBAGENT_DEADLINE_EPOCH_MS"
 )
 
 type spawnSubagentToolRequest struct {
 	RequestID                    string                `json:"request_id,omitempty"`
+	Mode                         string                `json:"mode,omitempty"`
 	Task                         string                `json:"task,omitempty"`
 	SystemPrompt                 string                `json:"systemPrompt,omitempty"`
 	Model                        string                `json:"model,omitempty"`
@@ -55,6 +57,7 @@ type subagentItemRequest struct {
 
 type subagentRuntimeConfig struct {
 	Name      string
+	Isolation string
 	Command   string
 	Args      []string
 	TaskMode  string
@@ -95,6 +98,10 @@ type subagentResult struct {
 	ArtifactBytes       int64                        `json:"artifact_bytes,omitempty"`
 	ArtifactComplete    *bool                        `json:"artifact_complete,omitempty"`
 	ArtifactError       string                       `json:"artifact_error,omitempty"`
+	DraftID             string                       `json:"draft_id,omitempty"`
+	DraftStatus         string                       `json:"draft_status,omitempty"`
+	DraftSummary        string                       `json:"draft_summary,omitempty"`
+	DraftSealed         bool                         `json:"draft_sealed,omitempty"`
 }
 
 type spawnSubagentResult struct {
@@ -152,7 +159,12 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
 		return
 	}
-	runtime, err := subagentRuntimeFromEnv(a)
+	isolation, err := validateSubagentIsolation(req.Mode)
+	if err != nil {
+		writeToolError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	runtime, err := subagentRuntimeForIsolation(a, isolation)
 	if err != nil {
 		writeToolError(w, http.StatusConflict, err.Error())
 		return
@@ -162,7 +174,12 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if depth := subagentDepthFromActor(req.Actor); depth >= runtime.MaxDepth {
+	depth := subagentDepthFromActor(req.Actor)
+	if isolation == "draft" && depth != 0 {
+		writeToolError(w, http.StatusForbidden, "Draft subagents may be started only by the top-level supervised Pi")
+		return
+	}
+	if depth >= runtime.MaxDepth {
 		writeToolError(w, http.StatusForbidden, fmt.Sprintf("subagent recursion depth %d exceeds max %d", depth+1, runtime.MaxDepth))
 		return
 	}
@@ -216,6 +233,7 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	a.emitToolEvent(r.Context(), sessionID, "tool_spawn_subagent_start", "spawn_subagent", "", req.Actor, map[string]any{
 		"request_id": requestID,
 		"mode":       mode,
+		"isolation":  isolation,
 		"tasks":      len(specs),
 		"runtime":    runtime.Name,
 		"timeout_ms": timeout.Milliseconds(),
@@ -309,6 +327,43 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, toolResponse{OK: protocolOK, Result: result, Error: errString(runErr)})
 }
 
+func validateSubagentIsolation(value string) (string, error) {
+	switch isolation := strings.ToLower(strings.TrimSpace(value)); isolation {
+	case "", "shared":
+		return "shared", nil
+	case "draft":
+		return "draft", nil
+	default:
+		return "", fmt.Errorf("unsupported subagent mode %q; use shared or draft", value)
+	}
+}
+
+func subagentRuntimeForIsolation(a *App, isolation string) (subagentRuntimeConfig, error) {
+	if isolation != "draft" {
+		return subagentRuntimeFromEnv(a)
+	}
+	command := strings.TrimSpace(os.Getenv("AGENTSH_DRAFT_SUBAGENT_COMMAND"))
+	if command == "" {
+		return subagentRuntimeConfig{}, errors.New("AgentSH Draft subagent runtime is not configured")
+	}
+	if !filepath.IsAbs(command) || filepath.Clean(command) != command {
+		return subagentRuntimeConfig{}, errors.New("AGENTSH_DRAFT_SUBAGENT_COMMAND must be a clean absolute path")
+	}
+	if st, err := os.Stat(command); err != nil {
+		return subagentRuntimeConfig{}, fmt.Errorf("AGENTSH_DRAFT_SUBAGENT_COMMAND is not usable: %w", err)
+	} else if !st.Mode().IsRegular() {
+		return subagentRuntimeConfig{}, errors.New("AGENTSH_DRAFT_SUBAGENT_COMMAND is not a regular file")
+	}
+	args, err := splitCommandArgs(os.Getenv("AGENTSH_DRAFT_SUBAGENT_ARGS"))
+	if err != nil {
+		return subagentRuntimeConfig{}, fmt.Errorf("parse AGENTSH_DRAFT_SUBAGENT_ARGS: %w", err)
+	}
+	return subagentRuntimeConfig{
+		Name: "pi-auto-draft", Isolation: "draft", Command: command, Args: args,
+		TaskMode: "json-stdin", Protocol: "text", MaxDepth: 1,
+	}, nil
+}
+
 func subagentRuntimeFromEnv(a *App) (subagentRuntimeConfig, error) {
 	command := strings.TrimSpace(os.Getenv("AGENTSH_SUBAGENT_COMMAND"))
 	if command == "" {
@@ -357,7 +412,7 @@ func subagentRuntimeFromEnv(a *App) (subagentRuntimeConfig, error) {
 	if name == "" {
 		name = filepath.Base(command)
 	}
-	return subagentRuntimeConfig{Name: name, Command: command, Args: args, TaskMode: taskMode, Protocol: protocol, MaxDepth: maxDepth, SocketURL: socketURL}, nil
+	return subagentRuntimeConfig{Name: name, Isolation: "shared", Command: command, Args: args, TaskMode: taskMode, Protocol: protocol, MaxDepth: maxDepth, SocketURL: socketURL}, nil
 }
 
 func subagentDepthFromActor(actor piToolActor) int {
@@ -468,7 +523,7 @@ func (a *App) runSubagentModeSafely(ctx context.Context, s *session.Session, run
 func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, requestID, mode string, specs []subagentItemRequest, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (spawnSubagentResult, int, error) {
 	switch mode {
 	case "single":
-		res := a.runSingleSubagent(ctx, s, runtime, requestID, specs[0], "subagent", 0, actor, artifactThresholdBytes, stream)
+		res := a.runSingleSubagent(ctx, s, runtime, requestID, specs[0], "subagent", 0, mode, len(specs), actor, artifactThresholdBytes, stream)
 		if stream != nil {
 			_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "result": res})
 		}
@@ -482,7 +537,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		previous := ""
 		for i, spec := range specs {
 			spec.Task = strings.ReplaceAll(spec.Task, "{previous}", previous)
-			res := a.runSingleSubagent(ctx, s, runtime, requestID, spec, fmt.Sprintf("step %d", i+1), i+1, actor, artifactThresholdBytes, stream)
+			res := a.runSingleSubagent(ctx, s, runtime, requestID, spec, fmt.Sprintf("step %d", i+1), i+1, mode, len(specs), actor, artifactThresholdBytes, stream)
 			if stream != nil {
 				_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "step": i + 1, "result": res})
 			}
@@ -499,7 +554,11 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		return spawnSubagentResult{RequestID: requestID, Mode: mode, Final: final, Terminal: aggregateSubagentTerminal(results, nil), Results: results}, http.StatusOK, nil
 	case "parallel":
 		results := make([]subagentResult, len(specs))
-		sem := make(chan struct{}, maxSubagentConcurrency)
+		concurrency := maxSubagentConcurrency
+		if runtime.Isolation == "draft" {
+			concurrency = maxDraftSubagentConcurrency
+		}
+		sem := make(chan struct{}, concurrency)
 		var wg sync.WaitGroup
 		for i, spec := range specs {
 			wg.Add(1)
@@ -509,7 +568,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 				select {
 				case sem <- struct{}{}:
 					defer func() { <-sem }()
-					results[i] = a.runSingleSubagent(ctx, s, runtime, requestID, spec, label, 0, actor, artifactThresholdBytes, stream)
+					results[i] = a.runSingleSubagent(ctx, s, runtime, requestID, spec, label, 0, mode, len(specs), actor, artifactThresholdBytes, stream)
 				case <-ctx.Done():
 					results[i] = subagentResult{Label: label, Task: spec.Task, Model: spec.Model, Tools: spec.Tools, Runtime: runtime.Name, Command: runtime.Command}
 					setSubagentTerminal(&results[i], cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), "", subagentTerminationNatural, false))
@@ -544,7 +603,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 	}
 }
 
-func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, requestID string, spec subagentItemRequest, label string, step int, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (res subagentResult) {
+func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, requestID string, spec subagentItemRequest, label string, step int, invocationMode string, taskCount int, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (res subagentResult) {
 	started := time.Now()
 	subagentID := "subagent-" + uuid.NewString()
 	res = subagentResult{SubagentID: subagentID, Label: label, Task: spec.Task, Model: spec.Model, Tools: spec.Tools, Runtime: runtime.Name, Command: runtime.Command}
@@ -626,6 +685,11 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	childEnv := map[string]string{
 		"AGENTSH_SESSION_ID":          s.ID,
 		"AGENTSH_SUBAGENT_ID":         subagentID,
+		"AGENTSH_SUBAGENT_REQUEST_ID": requestID,
+		"AGENTSH_SUBAGENT_MODE":       invocationMode,
+		"AGENTSH_SUBAGENT_STEP":       strconv.Itoa(step),
+		"AGENTSH_SUBAGENT_TASK_COUNT": strconv.Itoa(taskCount),
+		"AGENTSH_SUBAGENT_ISOLATION":  runtime.Isolation,
 		"AGENTSH_SUBAGENT_DEPTH":      strconv.Itoa(childDepth),
 		"AGENTSH_SUBAGENT_CWD":        virtualCwd,
 		"AGENTSH_SUBAGENT_MODEL":      spec.Model,
@@ -709,6 +773,15 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		protocolOutcome = parseSubagentProtocolOutcome(runtime.Protocol, stdout.String())
 	}
 	res.Final = protocolOutcome.Final
+	if runtime.Isolation == "draft" && process.RunError == nil {
+		if err := applyDraftWorkerOutput(&res, protocolOutcome.Final); err != nil {
+			res.Error = err.Error()
+			terminal := failedSubagentTerminal(subagentFailureProtocol, 1, process.Signal, process.Termination, false, res.Error)
+			terminal.SideEffectsMayHaveOccurred = process.Started
+			setSubagentTerminal(&res, terminal)
+			return res
+		}
+	}
 	res.ModelStopReason = protocolOutcome.StopReason
 	res.ProtocolSettled = protocolOutcome.Settled
 	res.ProtocolDiagnostics = protocolOutcome.Diagnostics
@@ -761,6 +834,50 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	setSubagentTerminal(&res, completedSubagentTerminal(0, process.Termination))
 	a.persistSubagentFinalArtifact(s, &res, runtime.Protocol, artifactThresholdBytes)
 	return res
+}
+
+type draftWorkerOutput struct {
+	SchemaVersion int    `json:"schema_version"`
+	DraftID       string `json:"draft_id"`
+	Status        string `json:"status"`
+	Final         string `json:"final"`
+	Summary       string `json:"summary"`
+	Step          int    `json:"step"`
+	TaskCount     int    `json:"task_count"`
+	Sealed        bool   `json:"sealed"`
+}
+
+func applyDraftWorkerOutput(result *subagentResult, raw string) error {
+	var output draftWorkerOutput
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&output); err != nil {
+		return fmt.Errorf("decode Draft worker result: %w", err)
+	}
+	if output.SchemaVersion != 1 || !strings.HasPrefix(output.DraftID, "session-") || output.TaskCount < 1 || output.Step < 0 || output.Step > output.TaskCount {
+		return errors.New("Draft worker returned invalid lifecycle identity")
+	}
+	if _, err := uuid.Parse(strings.TrimPrefix(output.DraftID, "session-")); err != nil {
+		return errors.New("Draft worker returned invalid session identity")
+	}
+	if output.Status != "completed" {
+		return fmt.Errorf("Draft worker returned status %q", output.Status)
+	}
+	result.DraftID = output.DraftID
+	result.DraftStatus = output.Status
+	result.DraftSummary = output.Summary
+	result.DraftSealed = output.Sealed
+	result.Final = strings.TrimSpace(output.Final)
+	if result.Final == "" {
+		result.Final = "Draft subagent completed without a textual response."
+	}
+	if output.Sealed {
+		result.Final += "\n\nDraft: " + output.DraftID
+		if summary := strings.TrimSpace(output.Summary); summary != "" {
+			result.Final += "\n\n" + summary
+		}
+	}
+	return nil
 }
 
 func appendSubagentTaskArgs(args []string, spec subagentItemRequest, protocol string, promptFile string) []string {
