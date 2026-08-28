@@ -20,6 +20,35 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
+func TestCreateExternalRunnerLayoutAcceptsPreingestedArtifacts(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "session-11111111-1111-4111-8111-111111111111")
+	if err := os.Mkdir(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := artifact.NewStore(stateDir, filepath.Base(stateDir), guestcontrol.MaxArtifactTransferBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put(context.Background(), artifact.KindGitInputBundle, strings.NewReader("bundle")); err != nil {
+		t.Fatal(err)
+	}
+	layout, err := HostMonitorPaths(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createExternalRunnerLayout(layout); err != nil {
+		t.Fatalf("create layout after artifact ingestion: %v", err)
+	}
+	for _, path := range []string{layout.ControlDir, layout.HostDir, layout.LogsDir} {
+		if info, err := os.Lstat(path); err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
+			t.Fatalf("invalid created layout path %s: info=%v err=%v", path, info, err)
+		}
+	}
+	if err := createExternalRunnerLayout(layout); err == nil {
+		t.Fatal("expected stale provider-owned layout to fail closed")
+	}
+}
+
 func testProviderV2Profile(t *testing.T) Profile {
 	t.Helper()
 	profile := testProfile(t)

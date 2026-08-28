@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -98,6 +99,25 @@ func (p *Provider) Preflight(_ context.Context, request runtimeprovider.Request)
 	}, nil
 }
 
+func createExternalRunnerLayout(layout HostMonitorLayout) error {
+	if err := os.Mkdir(layout.RuntimeDir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create external runner runtime directory: %w", err)
+	}
+	info, err := os.Lstat(layout.RuntimeDir)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
+		return fmt.Errorf("external runner runtime directory is unsafe")
+	}
+	// Input artifact ingestion may create runtime/artifacts before provider
+	// startup. All provider-owned children remain exclusive so stale monitor
+	// state can never be mistaken for a fresh generation.
+	for _, path := range []string{layout.ControlDir, layout.HostDir, layout.LogsDir} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			return fmt.Errorf("create external runner layout: %w", err)
+		}
+	}
+	return nil
+}
+
 func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (runtimeprovider.Instance, error) {
 	if _, err := p.Preflight(ctx, request); err != nil {
 		return nil, err
@@ -115,10 +135,8 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 	if err != nil {
 		return nil, err
 	}
-	for _, path := range []string{layout.RuntimeDir, layout.ControlDir, layout.HostDir, layout.LogsDir} {
-		if err := os.Mkdir(path, 0o700); err != nil {
-			return nil, fmt.Errorf("create external runner layout: %w", err)
-		}
+	if err := createExternalRunnerLayout(layout); err != nil {
+		return nil, err
 	}
 	volumeID := ""
 	switch profile.Schema {
