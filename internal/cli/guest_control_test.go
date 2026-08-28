@@ -1,6 +1,11 @@
 package cli
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+)
 
 func TestGuestControlCommandExposesFixedInputs(t *testing.T) {
 	root := newGuestControlCmd("test")
@@ -18,6 +23,36 @@ func TestGuestControlCommandExposesFixedInputs(t *testing.T) {
 		if run.Flags().Lookup(name) == nil {
 			t.Fatalf("guest control run is missing --%s", name)
 		}
+	}
+}
+
+func TestGuestControlShutdownDoesNotWaitForInnerSystemdTimeout(t *testing.T) {
+	handler := &guestControlHandler{
+		sessionID:  "session-11111111-1111-4111-8111-111111111111",
+		stopBudget: time.Millisecond,
+		stopSession: func(ctx context.Context, _ string) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	if err := handler.Shutdown(context.Background()); err != nil {
+		t.Fatalf("outer-owned shutdown refused an expired inner stop budget: %v", err)
+	}
+	if !handler.shutdownDone {
+		t.Fatal("shutdown did not become idempotently complete")
+	}
+}
+
+func TestGuestControlShutdownReturnsImmediateInnerStopError(t *testing.T) {
+	failure := errors.New("inner stop failed")
+	handler := &guestControlHandler{
+		sessionID: "session-11111111-1111-4111-8111-111111111111",
+		stopSession: func(context.Context, string) error {
+			return failure
+		},
+	}
+	if err := handler.Shutdown(context.Background()); !errors.Is(err, failure) {
+		t.Fatalf("shutdown error = %v, want %v", err, failure)
 	}
 }
 

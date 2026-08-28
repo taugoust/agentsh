@@ -19,7 +19,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const guestControlCleanupTimeout = 30 * time.Second
+const (
+	guestControlCleanupTimeout       = 30 * time.Second
+	guestControlSupervisorStopBudget = 2 * time.Second
+)
 
 func newGuestControlCmd(version string) *cobra.Command {
 	cmd := &cobra.Command{
@@ -200,6 +203,8 @@ type guestControlHandler struct {
 
 	shutdownMu   sync.Mutex
 	shutdownDone bool
+	stopSession  func(context.Context, string) error
+	stopBudget   time.Duration
 }
 
 func (h *guestControlHandler) Handshake() guestcontrol.Handshake { return h.handshake }
@@ -274,7 +279,23 @@ func (h *guestControlHandler) Shutdown(ctx context.Context) error {
 	if h.shutdownDone {
 		return nil
 	}
-	if err := stopDetachedSessionExact(ctx, h.sessionID); err != nil {
+	stop := h.stopSession
+	if stop == nil {
+		stop = stopDetachedSessionExact
+	}
+	// The host monitor owns exact process-tree teardown. Give the inner
+	// supervisor a short graceful budget for terminal metadata, but do not make
+	// VM poweroff wait for its user-systemd stop timeout. Guest-control exit
+	// proceeds to audit sync and reboot, which reaps the isolated guest.
+	stopBudget := h.stopBudget
+	if stopBudget <= 0 {
+		stopBudget = guestControlSupervisorStopBudget
+	}
+	stopCtx, cancel := context.WithTimeout(ctx, stopBudget)
+	err := stop(stopCtx, h.sessionID)
+	budgetExpired := errors.Is(stopCtx.Err(), context.DeadlineExceeded)
+	cancel()
+	if err != nil && !budgetExpired {
 		return err
 	}
 	h.shutdownDone = true
