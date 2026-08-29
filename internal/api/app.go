@@ -518,6 +518,7 @@ func (a *App) Router() http.Handler {
 		r.Post("/sessions/{id}/tools/edit_file", a.editFileTool)
 		r.Post("/sessions/{id}/tools/spawn_subagent", a.spawnSubagentTool)
 		r.Post("/sessions/{id}/tools/spawn_subagent/{requestID}/cancel", a.cancelSubagentTool)
+		r.Post("/sessions/{id}/tools/request_draft_landing_approval", a.requestDraftLandingApproval)
 
 		r.Get("/events/search", a.searchEvents)
 
