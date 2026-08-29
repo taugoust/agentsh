@@ -156,7 +156,11 @@ func TestValidateSpawnSubagentRequestModes(t *testing.T) {
 		{name: "single", req: spawnSubagentToolRequest{Task: "summarize"}, mode: "single"},
 		{name: "parallel", req: spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: "a"}, {Task: "b"}}}, mode: "parallel"},
 		{name: "chain", req: spawnSubagentToolRequest{Chain: []subagentItemRequest{{Task: "a"}, {Task: "b"}}}, mode: "chain"},
-		{name: "multiple", req: spawnSubagentToolRequest{Task: "x", Tasks: []subagentItemRequest{{Task: "y"}}}, wantErr: true},
+		{name: "disposition", req: spawnSubagentToolRequest{Action: "apply", DraftID: "session-11111111-1111-4111-8111-111111111111"}, mode: "disposition"},
+		{name: "disposition missing id", req: spawnSubagentToolRequest{Action: "apply"}, wantErr: true},
+		{name: "disposition invalid action", req: spawnSubagentToolRequest{Action: "publish", DraftID: "session-11111111-1111-4111-8111-111111111111"}, wantErr: true},
+		{name: "multiple", req: spawnSubagentToolRequest{Task: "x", Action: "apply", DraftID: "session-11111111-1111-4111-8111-111111111111"}, wantErr: true},
+		{name: "multiple task forms", req: spawnSubagentToolRequest{Task: "x", Tasks: []subagentItemRequest{{Task: "y"}}}, wantErr: true},
 		{name: "empty item", req: spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: ""}}}, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

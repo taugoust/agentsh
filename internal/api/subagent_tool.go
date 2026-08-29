@@ -35,6 +35,8 @@ type spawnSubagentToolRequest struct {
 	RequestID                    string                `json:"request_id,omitempty"`
 	Mode                         string                `json:"mode,omitempty"`
 	Task                         string                `json:"task,omitempty"`
+	Action                       string                `json:"action,omitempty"`
+	DraftID                      string                `json:"draft_id,omitempty"`
 	SystemPrompt                 string                `json:"systemPrompt,omitempty"`
 	Model                        string                `json:"model,omitempty"`
 	Tools                        []string              `json:"tools,omitempty"`
@@ -49,6 +51,8 @@ type spawnSubagentToolRequest struct {
 
 type subagentItemRequest struct {
 	Task         string   `json:"task"`
+	Action       string   `json:"action,omitempty"`
+	DraftID      string   `json:"draft_id,omitempty"`
 	SystemPrompt string   `json:"systemPrompt,omitempty"`
 	Model        string   `json:"model,omitempty"`
 	Tools        []string `json:"tools,omitempty"`
@@ -172,6 +176,10 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 	mode, specs, err := validateSpawnSubagentRequest(req)
 	if err != nil {
 		writeToolError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if mode == "disposition" && isolation != "draft" {
+		writeToolError(w, http.StatusBadRequest, "Draft disposition requires mode=draft")
 		return
 	}
 	depth := subagentDepthFromActor(req.Actor)
@@ -440,6 +448,7 @@ func validateSpawnSubagentRequest(req spawnSubagentToolRequest) (string, []subag
 	hasSingle := strings.TrimSpace(req.Task) != ""
 	hasTasks := len(req.Tasks) > 0
 	hasChain := len(req.Chain) > 0
+	hasDisposition := strings.TrimSpace(req.Action) != "" || strings.TrimSpace(req.DraftID) != ""
 	count := 0
 	if hasSingle {
 		count++
@@ -450,8 +459,28 @@ func validateSpawnSubagentRequest(req spawnSubagentToolRequest) (string, []subag
 	if hasChain {
 		count++
 	}
+	if hasDisposition {
+		count++
+	}
 	if count != 1 {
-		return "", nil, errors.New("provide exactly one mode: task, non-empty tasks, or non-empty chain")
+		return "", nil, errors.New("provide exactly one mode: task, non-empty tasks, non-empty chain, or Draft disposition")
+	}
+	if hasDisposition {
+		action := strings.TrimSpace(req.Action)
+		switch action {
+		case "review", "apply", "discard":
+		default:
+			return "", nil, errors.New("Draft disposition action must be review, apply, or discard")
+		}
+		draftID := strings.TrimSpace(req.DraftID)
+		if !strings.HasPrefix(draftID, "session-") {
+			return "", nil, errors.New("Draft disposition requires an exact draft_id")
+		}
+		if _, err := uuid.Parse(strings.TrimPrefix(draftID, "session-")); err != nil {
+			return "", nil, errors.New("Draft disposition requires an exact draft_id")
+		}
+		item := subagentItemRequest{Task: fmt.Sprintf("%s Draft %s", action, draftID), Action: action, DraftID: draftID}
+		return "disposition", []subagentItemRequest{item}, nil
 	}
 	if hasSingle {
 		item := subagentItemRequest{Task: req.Task, SystemPrompt: req.SystemPrompt, Model: req.Model, Tools: req.Tools, Cwd: req.Cwd}
@@ -522,7 +551,7 @@ func (a *App) runSubagentModeSafely(ctx context.Context, s *session.Session, run
 
 func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, requestID, mode string, specs []subagentItemRequest, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (spawnSubagentResult, int, error) {
 	switch mode {
-	case "single":
+	case "single", "disposition":
 		res := a.runSingleSubagent(ctx, s, runtime, requestID, specs[0], "subagent", 0, mode, len(specs), actor, artifactThresholdBytes, stream)
 		if stream != nil {
 			_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "result": res})
@@ -741,7 +770,7 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	case "env":
 		env = withEnvOverrides(env, map[string]string{"AGENTSH_SUBAGENT_TASK": spec.Task})
 	case "json-stdin":
-		payload, _ := json.Marshal(map[string]any{"task": spec.Task, "systemPrompt": spec.SystemPrompt, "model": spec.Model, "tools": spec.Tools, "cwd": virtualCwd, "actor": map[string]any(actor)})
+		payload, _ := json.Marshal(map[string]any{"task": spec.Task, "action": spec.Action, "draft_id": spec.DraftID, "systemPrompt": spec.SystemPrompt, "model": spec.Model, "tools": spec.Tools, "cwd": virtualCwd, "actor": map[string]any(actor)})
 		stdin = string(payload)
 	}
 	res.Args = args
