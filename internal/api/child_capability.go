@@ -55,20 +55,29 @@ type childCapabilityHandle struct {
 	token  string
 }
 
+type childCapabilityPeerBinding uint8
+
+const (
+	childCapabilityExactPID childCapabilityPeerBinding = iota
+	childCapabilityProcessGroup
+)
+
 type childCapabilityClaim struct {
-	app        *App
-	digest     [32]byte
-	sessionID  string
-	sessionRef *session.Session
-	laneID     string
-	peerPID    int
-	peerBound  bool
-	stablePID  bool
-	lifecycle  context.Context
+	app         *App
+	digest      [32]byte
+	sessionID   string
+	sessionRef  *session.Session
+	laneID      string
+	peerPID     int
+	peerPGID    int
+	peerBinding childCapabilityPeerBinding
+	peerBound   bool
+	stablePID   bool
+	lifecycle   context.Context
 }
 
 func (c *childCapabilityClaim) sharedEligible() bool {
-	return c != nil && c.peerBound && c.stablePID
+	return c != nil && c.peerBound && c.peerBinding == childCapabilityExactPID && c.stablePID
 }
 
 func (c *childCapabilityClaim) validate() error {
@@ -383,7 +392,8 @@ func (a *App) authenticateChildCapabilityProcessGroup(r *http.Request, sessionID
 	}
 	return &childCapabilityClaim{
 		app: a, digest: digest, sessionID: sessionID, sessionRef: currentSession, laneID: laneID,
-		peerPID: peer.PID, peerBound: true, stablePID: true, lifecycle: lifecycle,
+		peerPID: peer.PID, peerPGID: pgid, peerBinding: childCapabilityProcessGroup,
+		peerBound: true, stablePID: true, lifecycle: lifecycle,
 	}, nil
 }
 
@@ -408,12 +418,24 @@ func (a *App) validateChildCapabilityClaim(claim *childCapabilityClaim) error {
 		return errChildCapabilityRevoked
 	}
 	pid := record.pid
+	pgid := record.pgid
 	startIdentity := record.processStartIdentity
 	bootID := record.bootID
 	stableIdentity := record.stableProcessIdentity
 	a.childCapabilityMu.Unlock()
-	if claim.peerBound && claim.peerPID != pid {
-		return errChildCapabilityInvalid
+	if claim.peerBound {
+		switch claim.peerBinding {
+		case childCapabilityExactPID:
+			if claim.peerPID != pid {
+				return errChildCapabilityInvalid
+			}
+		case childCapabilityProcessGroup:
+			if !stableIdentity || claim.peerPGID != pgid || !childPeerInProcessGroup(claim.peerPID, pgid) {
+				return errChildCapabilityInvalid
+			}
+		default:
+			return errChildCapabilityInvalid
+		}
 	}
 	if stableIdentity && !detached.ProcessIdentityMatches(pid, startIdentity, bootID) {
 		a.revokeChildCapabilityDigest(claim.digest, errChildCapabilityRevoked)

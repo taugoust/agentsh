@@ -280,6 +280,41 @@ func TestChildExecutionCapability_ForgedWrongProcessAndRevokedAreRejected(t *tes
 	assertCode("revoked", capability.token, os.Getpid(), toolErrorChildCapabilityRevoked)
 }
 
+func TestChildExecutionCapability_ProcessGroupControlClaimRevalidates(t *testing.T) {
+	app, sess, _ := newChildLaneTest(t, 2)
+	capability := activeChildCapabilityForTest(t, app, sess, "subagent-a")
+
+	client := exec.Command("sleep", "30")
+	if err := client.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = client.Process.Kill()
+		_ = client.Wait()
+	})
+	if got := getProcessGroupID(client.Process.Pid); got != getProcessGroupID(os.Getpid()) {
+		t.Fatalf("control client process group = %d, want owner group %d", got, getProcessGroupID(os.Getpid()))
+	}
+
+	req := childExecRequest(context.Background(), sess.ID, capability.token, "true")
+	req = req.WithContext(context.WithValue(req.Context(), ctxKeyUnixPeer, unixHTTPPeer{
+		PID: client.Process.Pid, Supported: true,
+	}))
+	claim, err := app.authenticateChildCapabilityProcessGroup(req, sess.ID)
+	if err != nil {
+		t.Fatalf("authenticate process-group control claim: %v", err)
+	}
+	if err := claim.validate(); err != nil {
+		t.Fatalf("revalidate process-group control claim: %v", err)
+	}
+	if claim.sharedEligible() {
+		t.Fatal("process-group control claim must not authorize ordinary shared child execution")
+	}
+	if _, err := app.authenticateChildCapability(context.Background(), req, sess.ID); !errors.Is(err, errChildCapabilityInvalid) {
+		t.Fatalf("ordinary exact-PID authentication error = %v, want %v", err, errChildCapabilityInvalid)
+	}
+}
+
 func TestChildExecutionCapability_RevocationCancelsTypedQueuedRequest(t *testing.T) {
 	app, sess, handler := newChildLaneTest(t, 1)
 	first := activeChildCapabilityForTest(t, app, sess, "subagent-a")
