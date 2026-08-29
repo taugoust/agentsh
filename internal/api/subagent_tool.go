@@ -173,6 +173,17 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusConflict, err.Error())
 		return
 	}
+	if isolation == "draft" && runtime.SocketURL == "" {
+		// Detached supervisors may override their listener at launch rather than
+		// in the static config. Bind fixed workers to the exact Unix listener that
+		// received this authenticated parent request.
+		if addr, ok := r.Context().Value(http.LocalAddrContextKey).(interface {
+			Network() string
+			String() string
+		}); ok && addr.Network() == "unix" && filepath.IsAbs(addr.String()) {
+			runtime.SocketURL = "unix://" + addr.String()
+		}
+	}
 	mode, specs, err := validateSpawnSubagentRequest(req)
 	if err != nil {
 		writeToolError(w, http.StatusBadRequest, err.Error())
