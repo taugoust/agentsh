@@ -31,9 +31,9 @@ func (a *App) requestDraftLandingApproval(w http.ResponseWriter, r *http.Request
 		writeToolError(w, http.StatusNotFound, "session not found")
 		return
 	}
-	claim, err := a.authenticateChildCapability(r.Context(), r, sessionID)
+	claim, err := a.authenticateChildCapabilityProcessGroup(r, sessionID)
 	if err != nil {
-		writeToolError(w, http.StatusUnauthorized, "valid active child capability required")
+		writeToolError(w, http.StatusUnauthorized, "valid active child process-group capability required")
 		return
 	}
 	if err := a.validateChildCapabilityClaim(claim); err != nil {

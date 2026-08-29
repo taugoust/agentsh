@@ -342,6 +342,51 @@ func (a *App) authenticateChildCapability(ctx context.Context, r *http.Request, 
 	}
 }
 
+// authenticateChildCapabilityProcessGroup is reserved for fixed child control
+// requests whose HTTP client is a subprocess of the capability owner (for
+// example curl invoked by an operator-owned worker). Ordinary tool execution
+// retains exact peer-PID binding.
+func (a *App) authenticateChildCapabilityProcessGroup(r *http.Request, sessionID string) (*childCapabilityClaim, error) {
+	if r == nil || !isUnixSocketRequest(r) {
+		return nil, errChildCapabilityInvalid
+	}
+	token := strings.TrimSpace(r.Header.Get(childCapabilityHeader))
+	digest, err := parseChildCapabilityToken(token)
+	if err != nil {
+		return nil, err
+	}
+	peer := unixHTTPPeerFromRequest(r)
+	if !peer.Supported {
+		return nil, errChildCapabilityInvalid
+	}
+	a.childCapabilityMu.Lock()
+	record := a.childCapabilities[digest]
+	if record == nil || record.sessionID != sessionID || record.revoked || !record.active {
+		a.childCapabilityMu.Unlock()
+		return nil, errChildCapabilityInvalid
+	}
+	currentSession, ok := a.sessions.Get(sessionID)
+	if !ok || currentSession != record.sessionRef {
+		a.childCapabilityMu.Unlock()
+		return nil, errChildCapabilityRevoked
+	}
+	pid := record.pid
+	pgid := record.pgid
+	startIdentity := record.processStartIdentity
+	bootID := record.bootID
+	stableIdentity := record.stableProcessIdentity
+	laneID := record.subagentID
+	lifecycle := record.lifecycle
+	a.childCapabilityMu.Unlock()
+	if !stableIdentity || !detached.ProcessIdentityMatches(pid, startIdentity, bootID) || !childPeerInProcessGroup(peer.PID, pgid) {
+		return nil, errChildCapabilityInvalid
+	}
+	return &childCapabilityClaim{
+		app: a, digest: digest, sessionID: sessionID, sessionRef: currentSession, laneID: laneID,
+		peerPID: peer.PID, peerBound: true, stablePID: true, lifecycle: lifecycle,
+	}, nil
+}
+
 func (a *App) validateChildCapabilityClaim(claim *childCapabilityClaim) error {
 	if a == nil || claim == nil {
 		return errChildCapabilityInvalid
