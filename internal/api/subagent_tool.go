@@ -366,9 +366,13 @@ func subagentRuntimeForIsolation(a *App, isolation string) (subagentRuntimeConfi
 	if err != nil {
 		return subagentRuntimeConfig{}, fmt.Errorf("parse AGENTSH_DRAFT_SUBAGENT_ARGS: %w", err)
 	}
+	socketURL := strings.TrimSpace(os.Getenv("AGENTSH_SESSION_SUPERVISOR"))
+	if socketURL == "" && a != nil && a.cfg != nil && a.cfg.Server.UnixSocket.Path != "" {
+		socketURL = "unix://" + a.cfg.Server.UnixSocket.Path
+	}
 	return subagentRuntimeConfig{
 		Name: "pi-auto-draft", Isolation: "draft", Command: command, Args: args,
-		TaskMode: "json-stdin", Protocol: "text", MaxDepth: 1,
+		TaskMode: "json-stdin", Protocol: "text", MaxDepth: 1, SocketURL: socketURL,
 	}, nil
 }
 
