@@ -930,11 +930,17 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifestPath := filepath.Join(stateDir, "runtime", "control", "request.json")
-	if err := os.WriteFile(manifestPath, manifestData, 0o600); err != nil {
+	layout, err := HostMonitorPaths(stateDir)
+	if err != nil {
 		t.Fatal(err)
 	}
-	manifestDigest, err := HostMonitorFileSHA256(manifestPath)
+	if err := os.WriteFile(layout.GuestManifest, manifestData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(layout.GuestManifestDelivery, manifestData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifestDigest, err := HostMonitorFileSHA256(layout.GuestManifest)
 	if err != nil {
 		t.Fatal(err)
 	}

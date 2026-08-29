@@ -49,6 +49,23 @@ func TestCreateExternalRunnerLayoutAcceptsPreingestedArtifacts(t *testing.T) {
 	}
 }
 
+func TestHostMonitorLayoutSeparatesAuthoritativeManifestFromGuestDelivery(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "session-11111111-1111-4111-8111-111111111111")
+	layout, err := HostMonitorPaths(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(layout.GuestManifest) != layout.HostDir {
+		t.Fatalf("authoritative guest manifest is not host-owned: %s", layout.GuestManifest)
+	}
+	if filepath.Dir(layout.GuestManifestDelivery) != layout.ControlDir {
+		t.Fatalf("guest manifest delivery copy is not isolated in control directory: %s", layout.GuestManifestDelivery)
+	}
+	if layout.GuestManifest == layout.GuestManifestDelivery {
+		t.Fatal("authoritative guest manifest aliases guest delivery copy")
+	}
+}
+
 func testProviderV2Profile(t *testing.T) Profile {
 	t.Helper()
 	profile := testProfile(t)

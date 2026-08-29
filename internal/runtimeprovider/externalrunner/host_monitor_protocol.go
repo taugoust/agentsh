@@ -47,20 +47,26 @@ const (
 )
 
 type HostMonitorLayout struct {
-	StateDir      string
-	RuntimeDir    string
-	WorkspaceDir  string
-	ControlDir    string
-	HostDir       string
-	LogsDir       string
-	RequestPath   string
-	StatusPath    string
-	LockPath      string
+	StateDir     string
+	RuntimeDir   string
+	WorkspaceDir string
+	ControlDir   string
+	HostDir      string
+	LogsDir      string
+	RequestPath  string
+	StatusPath   string
+	LockPath     string
+	// GuestManifest is the host-authoritative launch manifest snapshot. It must
+	// never reside in a directory exposed writable to the guest.
 	GuestManifest string
-	RelayPath     string
-	RunnerLog     string
-	GuestSecret   string
-	BaselinePath  string
+	// GuestManifestDelivery is an untrusted one-way delivery copy consumed by
+	// the external runner. A hostile guest may corrupt it; host code must never
+	// reread it as authority.
+	GuestManifestDelivery string
+	RelayPath             string
+	RunnerLog             string
+	GuestSecret           string
+	BaselinePath          string
 }
 
 func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
@@ -74,14 +80,15 @@ func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
 		StateDir: stateDir, RuntimeDir: runtimeDir,
 		WorkspaceDir: filepath.Join(runtimeDir, "workspace"),
 		ControlDir:   controlDir, HostDir: hostDir, LogsDir: filepath.Join(runtimeDir, "logs"),
-		RequestPath:   filepath.Join(hostDir, HostMonitorRequestName),
-		StatusPath:    filepath.Join(hostDir, HostMonitorStatusName),
-		LockPath:      filepath.Join(hostDir, HostMonitorLockName),
-		GuestManifest: filepath.Join(controlDir, "request.json"),
-		RelayPath:     hostMonitorRelayPath(stateDir, hostDir),
-		RunnerLog:     filepath.Join(runtimeDir, "logs", "runner.log"),
-		GuestSecret:   filepath.Join(hostDir, HostMonitorGuestSecretName),
-		BaselinePath:  filepath.Join(hostDir, WorkspaceBaselineName),
+		RequestPath:           filepath.Join(hostDir, HostMonitorRequestName),
+		StatusPath:            filepath.Join(hostDir, HostMonitorStatusName),
+		LockPath:              filepath.Join(hostDir, HostMonitorLockName),
+		GuestManifest:         filepath.Join(hostDir, "guest-manifest.json"),
+		GuestManifestDelivery: filepath.Join(controlDir, "request.json"),
+		RelayPath:             hostMonitorRelayPath(stateDir, hostDir),
+		RunnerLog:             filepath.Join(runtimeDir, "logs", "runner.log"),
+		GuestSecret:           filepath.Join(hostDir, HostMonitorGuestSecretName),
+		BaselinePath:          filepath.Join(hostDir, WorkspaceBaselineName),
 	}
 	return layout, nil
 }

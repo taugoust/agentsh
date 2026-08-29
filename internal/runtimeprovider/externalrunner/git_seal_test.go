@@ -64,6 +64,13 @@ func TestSealGitDraftPersistsExactResultAndIsIdempotent(t *testing.T) {
 	verifyGitSealResult = func(context.Context, *os.File, *os.File, string, string) error { return nil }
 	defer func() { newGitSealControl = previousControl; verifyGitSealResult = previousVerify }()
 
+	// The delivery copy is guest-visible and therefore untrusted. Corrupting it
+	// after readiness must not alter the host-authoritative manifest used to seal.
+	layout := HostMonitorLayoutMust(stateDir)
+	if err := os.WriteFile(layout.GuestManifestDelivery, []byte("guest-controlled\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	first, err := SealGitDraft(context.Background(), request.SessionID, stateDir)
 	if err != nil {
 		t.Fatal(err)

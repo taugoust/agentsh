@@ -127,7 +127,7 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if status.State != HostMonitorControlReady || status.Guest == nil || status.Endpoint == nil || status.VolumeID != request.VolumeID {
 			return fmt.Errorf("external Git Draft guest is not authenticated and ready")
 		}
-		profile, _, err := ReadProfileSnapshot(request.ProfileFile)
+		profile, profileFileDigest, err := ReadProfileSnapshot(request.ProfileFile)
 		if err != nil {
 			return err
 		}
@@ -135,9 +135,12 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if err != nil {
 			return err
 		}
-		guestManifest, _, err := ReadHostGuestManifestSnapshot(layout.GuestManifest, profile.Guest.Workspace, profile.Name, profile.Guest.ProfileDigest, []string{profile.Guest.Policy})
+		guestManifest, guestManifestDigest, err := ReadHostGuestManifestSnapshot(layout.GuestManifest, profile.Guest.Workspace, profile.Name, profile.Guest.ProfileDigest, []string{profile.Guest.Policy})
 		if err != nil {
 			return err
+		}
+		if err := validateHostMonitorBindings(request, profile, profileFileDigest, guestManifest, guestManifestDigest); err != nil {
+			return fmt.Errorf("validate authoritative Git Draft launch bindings: %w", err)
 		}
 		control, err := newGitSealControl(guestManifest)
 		if err != nil {

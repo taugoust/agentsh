@@ -193,8 +193,12 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 	if err != nil {
 		return nil, err
 	}
-	if err := writeExclusivePrivateFile(layout.GuestManifest, append(manifestData, '\n')); err != nil {
-		return nil, fmt.Errorf("write external runner guest manifest: %w", err)
+	manifestData = append(manifestData, '\n')
+	if err := writeExclusivePrivateFile(layout.GuestManifest, manifestData); err != nil {
+		return nil, fmt.Errorf("write authoritative external runner guest manifest: %w", err)
+	}
+	if err := writeExclusivePrivateFile(layout.GuestManifestDelivery, manifestData); err != nil {
+		return nil, fmt.Errorf("write external runner guest manifest delivery copy: %w", err)
 	}
 	manifestDigest, err := HostMonitorFileSHA256(layout.GuestManifest)
 	if err != nil {

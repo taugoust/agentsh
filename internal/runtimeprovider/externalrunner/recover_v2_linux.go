@@ -161,12 +161,15 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 	if err != nil {
 		return nil, err
 	}
-	if _, err := os.Lstat(layout.GuestManifest); errors.Is(err, os.ErrNotExist) {
-		if err := writeExclusivePrivateFile(layout.GuestManifest, append(guestData, '\n')); err != nil {
+	guestData = append(guestData, '\n')
+	for _, manifestPath := range []string{layout.GuestManifest, layout.GuestManifestDelivery} {
+		if _, err := os.Lstat(manifestPath); errors.Is(err, os.ErrNotExist) {
+			if err := writeExclusivePrivateFile(manifestPath, guestData); err != nil {
+				return nil, err
+			}
+		} else if err != nil {
 			return nil, err
 		}
-	} else if err != nil {
-		return nil, err
 	}
 	if _, err := os.Lstat(layout.RequestPath); errors.Is(err, os.ErrNotExist) {
 		if err := WriteHostMonitorRequest(stateDir, recovery.Request); err != nil {
