@@ -99,7 +99,7 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if err != nil {
 			return err
 		}
-		if request.SchemaVersion != HostMonitorSchemaVersionV2 || request.InputArtifact == nil {
+		if (request.SchemaVersion != HostMonitorSchemaVersionV2 && request.SchemaVersion != HostMonitorSchemaVersionV3) || request.InputArtifact == nil {
 			return fmt.Errorf("external runtime is not a Git-volume Draft")
 		}
 		store, err := artifact.NewStore(stateDir, sessionID, guestcontrol.MaxArtifactTransferBytes)

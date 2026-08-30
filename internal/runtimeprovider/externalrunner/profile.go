@@ -20,9 +20,10 @@ const (
 	ProviderName    = runtimeprovider.ExternalRunnerProvider
 	ProfileSchemaV1 = "io.agentsh.microvm-external-runner-profile/v1"
 	ProfileSchemaV2 = "io.agentsh.microvm-external-runner-profile/v2"
+	ProfileSchemaV3 = "io.agentsh.microvm-external-runner-profile/v3"
 
 	// ProfileSchema remains the legacy schema so existing profile producers and
-	// callers retain their v1 behavior unless they explicitly select v2.
+	// callers retain their v1 behavior unless they explicitly select a later schema.
 	ProfileSchema = ProfileSchemaV1
 
 	WorkspaceVolumeModel      = "session-qcow2-ext4-v1"
@@ -49,6 +50,7 @@ type Profile struct {
 	Network         Network              `json:"network"`
 	Timeouts        Timeouts             `json:"timeouts"`
 	WorkspaceVolume *WorkspaceVolumeSpec `json:"workspace_volume,omitempty"`
+	HostEgress      *HostEgressSpec      `json:"host_egress,omitempty"`
 }
 
 type Runner struct {
@@ -82,8 +84,28 @@ type Timeouts struct {
 	GracefulShutdownSeconds int `json:"graceful_shutdown_seconds"`
 }
 
-// WorkspaceVolumeSpec is the complete v2 operator contract for the private
-// session workspace block device. AgentSH does not infer or default any field.
+// HostEgressSpec is the complete v3 operator contract for the host-side
+// public-egress broker. PolicyFile is never supplied by a guest or session
+// caller; PolicySHA256 pins the exact bytes the monitor must compile. The
+// listener port is deliberately not profile-global: it is derived from each
+// session's exact leased CID and bound into that launch's request and manifest.
+type HostEgressSpec struct {
+	PolicyFile   string `json:"policy_file"`
+	PolicySHA256 string `json:"policy_sha256"`
+}
+
+func (s HostEgressSpec) Validate() error {
+	if !filepath.IsAbs(s.PolicyFile) || filepath.Clean(s.PolicyFile) != s.PolicyFile || strings.ContainsAny(s.PolicyFile, "\x00\r\n") {
+		return fmt.Errorf("external runner host egress policy path is invalid")
+	}
+	if !validSHA256(s.PolicySHA256) {
+		return fmt.Errorf("external runner host egress policy digest is invalid")
+	}
+	return nil
+}
+
+// WorkspaceVolumeSpec is the complete v2-and-later operator contract for the
+// private session workspace block device. AgentSH does not infer or default any field.
 type WorkspaceVolumeSpec struct {
 	Model            string `json:"model"`
 	Format           string `json:"format"`
@@ -139,26 +161,31 @@ func ReadProfileSnapshot(path string) (Profile, string, error) {
 	if len(data) > maxProfileBytes {
 		return Profile{}, "", fmt.Errorf("external runner profile snapshot exceeds limit")
 	}
-	// workspace_volume was not a v1 field. Reject it before decoding into the
-	// shared Go type so adding v2 does not make any formerly-invalid v1 profile
-	// valid, including a field whose JSON value is null.
+	// Later-schema fields remain unknown to older profiles, including when a
+	// field is spelled with different case or carries a JSON null value.
 	var envelope struct {
 		Schema string `json:"schema"`
 	}
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return Profile{}, "", fmt.Errorf("decode external runner profile: %w", err)
 	}
-	if envelope.Schema == ProfileSchemaV1 {
+	var forbidden []string
+	switch envelope.Schema {
+	case ProfileSchemaV1:
+		forbidden = []string{"workspace_volume", "host_egress"}
+	case ProfileSchemaV2:
+		forbidden = []string{"host_egress"}
+	}
+	if len(forbidden) > 0 {
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(data, &fields); err != nil {
 			return Profile{}, "", fmt.Errorf("decode external runner profile: %w", err)
 		}
-		// encoding/json matches object names to struct fields without regard to
-		// case. Preserve the v1 unknown-field contract for every spelling that
-		// the newly-added v2 field would otherwise accept, including null.
 		for name := range fields {
-			if strings.EqualFold(name, "workspace_volume") {
-				return Profile{}, "", fmt.Errorf("decode external runner profile: json: unknown field %q", name)
+			for _, candidate := range forbidden {
+				if strings.EqualFold(name, candidate) {
+					return Profile{}, "", fmt.Errorf("decode external runner profile: json: unknown field %q", name)
+				}
 			}
 		}
 	}
@@ -184,6 +211,9 @@ func (p Profile) Validate() error {
 		if p.WorkspaceVolume != nil {
 			return fmt.Errorf("external runner v1 profile cannot define a workspace volume")
 		}
+		if p.HostEgress != nil {
+			return fmt.Errorf("external runner v1 profile cannot define host egress")
+		}
 		if p.Guest.Protocol != guestcontrol.ProtocolVersionV2 {
 			return fmt.Errorf("external runner v1 profile requires guest protocol version %d", guestcontrol.ProtocolVersionV2)
 		}
@@ -194,8 +224,30 @@ func (p Profile) Validate() error {
 		if err := p.WorkspaceVolume.Validate(); err != nil {
 			return err
 		}
+		if p.HostEgress != nil {
+			return fmt.Errorf("external runner v2 profile cannot define host egress")
+		}
 		if p.Guest.Protocol != guestcontrol.ProtocolVersionV3 {
 			return fmt.Errorf("external runner v2 profile requires guest protocol version %d", guestcontrol.ProtocolVersionV3)
+		}
+	case ProfileSchemaV3:
+		if p.WorkspaceVolume == nil {
+			return fmt.Errorf("external runner v3 profile requires a workspace volume")
+		}
+		if err := p.WorkspaceVolume.Validate(); err != nil {
+			return err
+		}
+		if p.HostEgress == nil {
+			return fmt.Errorf("external runner v3 profile requires host-broker strict egress")
+		}
+		if err := p.HostEgress.Validate(); err != nil {
+			return err
+		}
+		if p.Guest.Protocol != guestcontrol.ProtocolVersionV4 {
+			return fmt.Errorf("external runner v3 profile requires guest protocol version %d", guestcontrol.ProtocolVersionV4)
+		}
+		if p.Status != "strict" || p.Network.Enforcement != "host-broker-strict" || !p.Network.RequireReadyBeforePublish {
+			return fmt.Errorf("external runner v3 profile must explicitly select host-broker strict egress")
 		}
 	default:
 		return fmt.Errorf("external runner profile schema %q is unsupported", p.Schema)
@@ -227,7 +279,17 @@ func (p Profile) Validate() error {
 	if p.VSock.CIDMin < 3 || p.VSock.CIDMax == ^uint32(0) || p.VSock.CIDMin > p.VSock.CIDMax || p.VSock.CIDMax-p.VSock.CIDMin > 65535 {
 		return fmt.Errorf("external runner VSOCK CID range is invalid")
 	}
-	if p.Network.Transport != "qemu-user" {
+	if p.Schema == ProfileSchemaV3 {
+		// There are 64,512 non-privileged VSOCK ports, two of which are
+		// reserved by the guest control contract. Keeping the lease range within
+		// that capacity lets the deterministic fallback mapping remain injective.
+		if uint64(p.VSock.CIDMax)-uint64(p.VSock.CIDMin)+1 > uint64(65535-1024+1-2) {
+			return fmt.Errorf("external runner v3 CID range exceeds per-session egress port capacity")
+		}
+		if p.Network.Transport != "vsock-explicit-proxy" {
+			return fmt.Errorf("external runner v3 network transport must be vsock-explicit-proxy")
+		}
+	} else if p.Network.Transport != "qemu-user" {
 		return fmt.Errorf("external runner network transport %q is unsupported", p.Network.Transport)
 	}
 	switch p.Status {
@@ -236,7 +298,11 @@ func (p Profile) Validate() error {
 			return fmt.Errorf("diagnostic external runner profile has inconsistent network admission")
 		}
 	case "strict":
-		if p.Network.Enforcement != "strict" || !p.Network.RequireReadyBeforePublish {
+		expectedEnforcement := "strict"
+		if p.Schema == ProfileSchemaV3 {
+			expectedEnforcement = "host-broker-strict"
+		}
+		if p.Network.Enforcement != expectedEnforcement || !p.Network.RequireReadyBeforePublish {
 			return fmt.Errorf("strict external runner profile has inconsistent network admission")
 		}
 	default:

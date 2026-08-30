@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -33,8 +34,11 @@ func testManifest(workspace string) Manifest {
 
 func testHandshake(manifest Manifest) Handshake {
 	capabilities := []string{"exec_probe", "shutdown", "supervisor_proxy"}
-	if manifest.ProtocolVersion == ProtocolVersionV3 {
+	if manifest.ProtocolVersion == ProtocolVersionV3 || manifest.ProtocolVersion == ProtocolVersionV4 {
 		capabilities = append(capabilities, "artifact_import", "artifact_export")
+	}
+	if manifest.ProtocolVersion == ProtocolVersionV4 {
+		capabilities = append(capabilities, "host_egress_proxy")
 	}
 	return Handshake{
 		ProtocolVersion: manifest.ProtocolVersion,
@@ -53,6 +57,77 @@ func testHandshake(manifest Manifest) Handshake {
 		SupervisorPort:  manifest.SupervisorPort,
 		Capabilities:    capabilities,
 		VolumeID:        manifest.VolumeID,
+		EgressPort:      manifest.EgressPort,
+		EgressReady:     manifest.ProtocolVersion == ProtocolVersionV4,
+	}
+}
+
+func TestProtocolV4BindsUniqueEgressEndpointAndOlderVersionsRejectField(t *testing.T) {
+	workspace := t.TempDir()
+	manifest := testManifest(workspace)
+	manifest.ProtocolVersion = ProtocolVersionV4
+	manifest.EgressPort = 41001
+	manifest.EgressToken = strings.Repeat("5", 64)
+	if err := manifest.Validate(workspace, manifest.Profile, manifest.ProfileDigest, []string{manifest.Policy}); err != nil {
+		t.Fatalf("protocol v4 manifest: %v", err)
+	}
+	handshake := testHandshake(manifest)
+	if err := handshake.Validate(manifest); err != nil {
+		t.Fatalf("protocol v4 handshake: %v", err)
+	}
+	claimsDirectNetwork := handshake
+	claimsDirectNetwork.NetworkReady = true
+	if err := claimsDirectNetwork.Validate(manifest); err == nil {
+		t.Fatal("protocol v4 readiness claimed direct-network enforcement")
+	}
+	missingEgressReadiness := handshake
+	missingEgressReadiness.EgressReady = false
+	if err := missingEgressReadiness.Validate(manifest); err == nil {
+		t.Fatal("protocol v4 handshake omitted explicit-proxy readiness")
+	}
+
+	for name, mutate := range map[string]func(*Manifest){
+		"missing port":     func(m *Manifest) { m.EgressPort = 0 },
+		"missing token":    func(m *Manifest) { m.EgressToken = "" },
+		"token reuse":      func(m *Manifest) { m.EgressToken = m.ControlToken },
+		"control reuse":    func(m *Manifest) { m.EgressPort = m.VSockPort },
+		"supervisor reuse": func(m *Manifest) { m.EgressPort = m.SupervisorPort },
+	} {
+		t.Run(name, func(t *testing.T) {
+			invalid := manifest
+			mutate(&invalid)
+			if err := invalid.Validate(workspace, invalid.Profile, invalid.ProfileDigest, []string{invalid.Policy}); err == nil {
+				t.Fatal("invalid protocol-v4 egress endpoint was accepted")
+			}
+		})
+	}
+
+	legacy := testManifest(workspace)
+	for _, field := range []string{"egress_port", "egress_token"} {
+		legacyData, err := json.Marshal(legacy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacyData[len(legacyData)-1] = ','
+		legacyData = append(legacyData, []byte(fmt.Sprintf(`%q:null}`, field))...)
+		var decoded Manifest
+		if err := json.Unmarshal(legacyData, &decoded); err == nil || !strings.Contains(err.Error(), "unknown field") {
+			t.Fatalf("protocol-v3 %s error = %v", field, err)
+		}
+	}
+
+	legacyHandshake := testHandshake(legacy)
+	for _, field := range []string{"egress_port", "egress_ready"} {
+		handshakeData, err := json.Marshal(legacyHandshake)
+		if err != nil {
+			t.Fatal(err)
+		}
+		handshakeData[len(handshakeData)-1] = ','
+		handshakeData = append(handshakeData, []byte(fmt.Sprintf(`%q:null}`, field))...)
+		var decodedHandshake Handshake
+		if err := json.Unmarshal(handshakeData, &decodedHandshake); err == nil || !strings.Contains(err.Error(), "unknown field") {
+			t.Fatalf("protocol-v3 handshake %s error = %v", field, err)
+		}
 	}
 }
 

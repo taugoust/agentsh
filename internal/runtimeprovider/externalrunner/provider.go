@@ -66,7 +66,7 @@ func (p *Provider) Name() string { return ProviderName }
 
 func (p *Provider) CanResumeStopped(manifest runtimeprovider.Manifest) bool {
 	profile, _, err := p.profile(manifest.Profile)
-	return err == nil && profile.Schema == ProfileSchemaV2 && manifest.Provider == ProviderName
+	return err == nil && (profile.Schema == ProfileSchemaV2 || profile.Schema == ProfileSchemaV3) && manifest.Provider == ProviderName
 }
 
 func (p *Provider) Preflight(_ context.Context, request runtimeprovider.Request) (runtimeprovider.Capabilities, error) {
@@ -95,7 +95,7 @@ func (p *Provider) Preflight(_ context.Context, request runtimeprovider.Request)
 	}
 	return runtimeprovider.Capabilities{
 		ContractVersion: runtimeprovider.ContractVersion, Provider: ProviderName,
-		Recoverable: profile.Schema == ProfileSchemaV2, Transports: []string{"unix"},
+		Recoverable: profile.Schema == ProfileSchemaV2 || profile.Schema == ProfileSchemaV3, Transports: []string{"unix"},
 	}, nil
 }
 
@@ -148,7 +148,7 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 		if err := WriteWorkspaceBaseline(layout.BaselinePath, baseline); err != nil {
 			return nil, err
 		}
-	case ProfileSchemaV2:
+	case ProfileSchemaV2, ProfileSchemaV3:
 		if p.workspaceVolumes.newID == nil {
 			return nil, fmt.Errorf("external runner workspace volume identity dependency is missing")
 		}
@@ -188,7 +188,17 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 	if err != nil {
 		return nil, err
 	}
-	manifest := newProviderGuestManifest(request.SessionID, profile, lease.CID, launchNonce, controlToken, supervisorToken, volumeID)
+	egressToken := ""
+	if profile.Schema == ProfileSchemaV3 {
+		egressToken, err = newProviderSecret()
+		if err != nil {
+			return nil, err
+		}
+	}
+	manifest, err := newProviderGuestManifest(request.SessionID, profile, lease.CID, launchNonce, controlToken, supervisorToken, egressToken, volumeID)
+	if err != nil {
+		return nil, err
+	}
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return nil, err
@@ -221,12 +231,17 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 		GuestManifestSHA256: manifestDigest, ExpectedGuestGeneration: 1, LaunchNonce: launchNonce,
 		CIDLeaseRoot: p.options.CIDLeaseRoot, CIDLease: lease, CreatedAt: time.Now().UTC(),
 	}
-	if profile.Schema == ProfileSchemaV2 {
+	if profile.Schema == ProfileSchemaV2 || profile.Schema == ProfileSchemaV3 {
 		contract := *profile.WorkspaceVolume
 		launchRequest.ProfileSchema = profile.Schema
 		launchRequest.WorkspaceVolume = &contract
 		launchRequest.VolumeID = volumeID
 		launchRequest.InputArtifact = request.InputArtifact
+		if profile.Schema == ProfileSchemaV3 {
+			hostEgress := *profile.HostEgress
+			launchRequest.HostEgress = &hostEgress
+			launchRequest.EgressPort = manifest.EgressPort
+		}
 	}
 	if err := WriteHostMonitorRequest(request.StateDir, launchRequest); err != nil {
 		return nil, err
@@ -288,7 +303,7 @@ func (p *Provider) Recover(ctx context.Context, manifest runtimeprovider.Manifes
 			return instance, nil
 		}
 	}
-	if profile.Schema == ProfileSchemaV2 {
+	if profile.Schema == ProfileSchemaV2 || profile.Schema == ProfileSchemaV3 {
 		recovered, recoverErr := p.recoverV2(ctx, manifest.SessionID, manifest.StateDir, manifest.Profile)
 		if recoverErr != nil {
 			return nil, recoverErr
@@ -303,7 +318,7 @@ func (p *Provider) Recover(ctx context.Context, manifest runtimeprovider.Manifes
 
 func validateProviderLifecycleProfile(profile Profile) error {
 	switch profile.Schema {
-	case ProfileSchemaV1, ProfileSchemaV2:
+	case ProfileSchemaV1, ProfileSchemaV2, ProfileSchemaV3:
 		return nil
 	default:
 		return fmt.Errorf("external runner profile schema %q is unavailable", profile.Schema)
@@ -381,7 +396,7 @@ func (i *providerInstance) Probe(ctx context.Context) (runtimeprovider.Status, e
 		return runtimeprovider.Status{}, fmt.Errorf("external runner host monitor identity is no longer live")
 	}
 	identity := i.Identity()
-	return runtimeprovider.Status{Identity: identity, Endpoint: i.Endpoint(), State: state, Ready: ready, Recoverable: i.profile.Schema == ProfileSchemaV2, LastError: status.LastError}, ctx.Err()
+	return runtimeprovider.Status{Identity: identity, Endpoint: i.Endpoint(), State: state, Ready: ready, Recoverable: i.profile.Schema == ProfileSchemaV2 || i.profile.Schema == ProfileSchemaV3, LastError: status.LastError}, ctx.Err()
 }
 
 func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.ControlPlaneSnapshot, error) {
@@ -389,7 +404,8 @@ func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.Co
 		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("external runner control plane lacks an authenticated endpoint")
 	}
 	if (i.request.SchemaVersion == HostMonitorSchemaVersionV1) != (i.profile.Schema == ProfileSchemaV1) ||
-		(i.request.SchemaVersion == HostMonitorSchemaVersionV2) != (i.profile.Schema == ProfileSchemaV2) {
+		(i.request.SchemaVersion == HostMonitorSchemaVersionV2) != (i.profile.Schema == ProfileSchemaV2) ||
+		(i.request.SchemaVersion == HostMonitorSchemaVersionV3) != (i.profile.Schema == ProfileSchemaV3) {
 		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("external runner control-plane schema binding is inconsistent")
 	}
 	c := client.NewWithTimeout("unix://"+i.Endpoint().Address, "", 30*time.Second)
@@ -415,7 +431,7 @@ func (i *providerInstance) ControlPlane(ctx context.Context) (runtimeprovider.Co
 		return runtimeprovider.ControlPlaneSnapshot{}, err
 	}
 	worktree := layout.WorkspaceDir
-	if i.profile.Schema == ProfileSchemaV2 {
+	if i.profile.Schema == ProfileSchemaV2 || i.profile.Schema == ProfileSchemaV3 {
 		// The v2 workspace exists only inside the authenticated private volume.
 		// Publishing the fixed guest mount preserves provider-neutral cwd metadata
 		// without inventing a host path or exposing the qcow2 image location.
@@ -470,7 +486,11 @@ func hostMonitorStatusTerminal(status HostMonitorStatus) bool {
 			return false
 		}
 	case HostMonitorSchemaVersionV2:
-		if !canonicalWorkspaceVolumeUUID(status.VolumeID) || !status.VolumeClosed {
+		if !canonicalWorkspaceVolumeUUID(status.VolumeID) || !status.VolumeClosed || status.EgressBrokerClosed {
+			return false
+		}
+	case HostMonitorSchemaVersionV3:
+		if !canonicalWorkspaceVolumeUUID(status.VolumeID) || !status.VolumeClosed || !status.EgressBrokerClosed {
 			return false
 		}
 	default:
@@ -549,15 +569,32 @@ func waitForHostMonitorReady(ctx context.Context, stateDir string, monitor HostP
 	}
 }
 
-func newProviderGuestManifest(sessionID string, profile Profile, cid uint32, launchNonce, controlToken, supervisorToken, volumeID string) guestcontrol.Manifest {
-	return guestcontrol.Manifest{
+func newProviderGuestManifest(sessionID string, profile Profile, cid uint32, launchNonce, controlToken, supervisorToken, egressToken, volumeID string) (guestcontrol.Manifest, error) {
+	egressPort := uint32(0)
+	if profile.Schema == ProfileSchemaV3 {
+		var err error
+		egressPort, err = deriveHostEgressPort(profile, cid)
+		if err != nil {
+			return guestcontrol.Manifest{}, err
+		}
+		if !guestcontrol.ValidEgressAuthenticationToken(egressToken) {
+			return guestcontrol.Manifest{}, fmt.Errorf("external runner v3 egress token is invalid")
+		}
+	} else if egressToken != "" {
+		return guestcontrol.Manifest{}, fmt.Errorf("legacy external runner manifest cannot carry an egress token")
+	}
+	manifest := guestcontrol.Manifest{
 		ProtocolVersion: profile.Guest.Protocol, SessionID: sessionID,
 		LaunchNonce: launchNonce, ControlToken: controlToken, SupervisorToken: supervisorToken,
 		Profile: profile.Name, ProfileDigest: profile.Guest.ProfileDigest, Policy: profile.Guest.Policy,
 		Workspace: profile.Guest.Workspace, VSockCID: cid, VSockPort: profile.Guest.ControlPort,
 		SupervisorPort: profile.Guest.SupervisorPort, ExpectedGeneration: 1,
-		VolumeID: volumeID,
+		VolumeID: volumeID, EgressPort: egressPort, EgressToken: egressToken,
 	}
+	if err := manifest.Validate(profile.Guest.Workspace, profile.Name, profile.Guest.ProfileDigest, []string{profile.Guest.Policy}); err != nil {
+		return guestcontrol.Manifest{}, err
+	}
+	return manifest, nil
 }
 
 func newProviderSecret() (string, error) {

@@ -24,8 +24,12 @@ const (
 	// predates workspace-volume identity and must never carry a VolumeID.
 	ProtocolVersionV2 = 2
 	// ProtocolVersionV3 binds the authenticated guest to one exact workspace
-	// volume. ProtocolVersion is the version used for new current manifests.
+	// volume.
 	ProtocolVersionV3 = 3
+	// ProtocolVersionV4 adds one launch-bound, token-authenticated guest-to-host
+	// egress VSOCK endpoint. ProtocolVersion deliberately remains v3 so no caller opts in
+	// without selecting the external-runner v3 profile contract.
+	ProtocolVersionV4 = 4
 	ProtocolVersion   = ProtocolVersionV3
 
 	MaxMessageBytes = 64 * 1024
@@ -46,6 +50,26 @@ type Manifest struct {
 	SupervisorPort     uint32 `json:"supervisor_port"`
 	ExpectedGeneration uint64 `json:"expected_generation"`
 	VolumeID           string `json:"volume_id,omitempty"`
+	EgressPort         uint32 `json:"egress_port,omitempty"`
+	EgressToken        string `json:"egress_token,omitempty"`
+}
+
+// UnmarshalJSON keeps the protocol-v2/v3 wire contract closed even though the
+// shared in-memory type also carries protocol-v4 fields.
+func (m *Manifest) UnmarshalJSON(data []byte) error {
+	protocol := protocolJSONVersion(data)
+	if protocol == ProtocolVersionV2 || protocol == ProtocolVersionV3 {
+		if err := rejectProtocolJSONFields(data, "egress_port", "egress_token"); err != nil {
+			return err
+		}
+	}
+	type manifestAlias Manifest
+	var decoded manifestAlias
+	if err := decodeStrictProtocolJSON(data, &decoded); err != nil {
+		return err
+	}
+	*m = Manifest(decoded)
+	return nil
 }
 
 func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest string, allowedPolicies []string) error {
@@ -54,9 +78,22 @@ func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest str
 		if m.VolumeID != "" {
 			return fmt.Errorf("guest control protocol version 2 cannot carry a volume identity")
 		}
+		if m.EgressPort != 0 || m.EgressToken != "" {
+			return fmt.Errorf("guest control protocol version 2 cannot carry an egress endpoint")
+		}
 	case ProtocolVersionV3:
 		if !canonicalVolumeID(m.VolumeID) {
 			return fmt.Errorf("guest control volume identity is invalid")
+		}
+		if m.EgressPort != 0 || m.EgressToken != "" {
+			return fmt.Errorf("guest control protocol version 3 cannot carry an egress endpoint")
+		}
+	case ProtocolVersionV4:
+		if !canonicalVolumeID(m.VolumeID) {
+			return fmt.Errorf("guest control volume identity is invalid")
+		}
+		if !validHexSecret(m.EgressToken) || secretEqual(m.EgressToken, m.ControlToken) || secretEqual(m.EgressToken, m.SupervisorToken) || secretEqual(m.EgressToken, m.LaunchNonce) {
+			return fmt.Errorf("guest control egress token is invalid or reused")
 		}
 	default:
 		return fmt.Errorf("guest control protocol version %d is unsupported", m.ProtocolVersion)
@@ -91,6 +128,9 @@ func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest str
 	}
 	if m.VSockPort < 1024 || m.VSockPort > 65535 || m.SupervisorPort < 1024 || m.SupervisorPort > 65535 || m.SupervisorPort == m.VSockPort {
 		return fmt.Errorf("guest control VSOCK ports are invalid or reused")
+	}
+	if m.ProtocolVersion == ProtocolVersionV4 && (m.EgressPort < 1024 || m.EgressPort > 65535 || m.EgressPort == m.VSockPort || m.EgressPort == m.SupervisorPort) {
+		return fmt.Errorf("guest control egress VSOCK port is invalid or reused")
 	}
 	if m.ExpectedGeneration == 0 {
 		return fmt.Errorf("guest control expected generation is missing")
@@ -154,21 +194,41 @@ type Handshake struct {
 	NetworkReady    bool     `json:"network_ready"`
 	Capabilities    []string `json:"capabilities"`
 	VolumeID        string   `json:"volume_id,omitempty"`
+	EgressPort      uint32   `json:"egress_port,omitempty"`
+	EgressReady     bool     `json:"egress_ready,omitempty"`
+}
+
+// UnmarshalJSON preserves protocol-v2/v3 rejection of the v4 egress field.
+func (h *Handshake) UnmarshalJSON(data []byte) error {
+	protocol := protocolJSONVersion(data)
+	if protocol == ProtocolVersionV2 || protocol == ProtocolVersionV3 {
+		if err := rejectProtocolJSONFields(data, "egress_port", "egress_ready"); err != nil {
+			return err
+		}
+	}
+	type handshakeAlias Handshake
+	var decoded handshakeAlias
+	if err := decodeStrictProtocolJSON(data, &decoded); err != nil {
+		return err
+	}
+	*h = Handshake(decoded)
+	return nil
 }
 
 func (h Handshake) Validate(manifest Manifest) error {
 	if h.ProtocolVersion != manifest.ProtocolVersion || h.SessionID != manifest.SessionID || h.Generation != manifest.ExpectedGeneration ||
 		h.LaunchNonce != manifest.LaunchNonce || h.Profile != manifest.Profile || h.ProfileDigest != manifest.ProfileDigest ||
 		h.Policy != manifest.Policy || h.VSockCID != manifest.VSockCID || h.VSockPort != manifest.VSockPort || h.SupervisorPort != manifest.SupervisorPort ||
-		h.VolumeID != manifest.VolumeID {
+		h.VolumeID != manifest.VolumeID || h.EgressPort != manifest.EgressPort || (manifest.ProtocolVersion != ProtocolVersionV4 && h.EgressReady) {
 		return fmt.Errorf("guest control handshake identity mismatch")
 	}
 	if strings.TrimSpace(h.IncarnationID) == "" || strings.TrimSpace(h.GuestBootID) == "" || strings.TrimSpace(h.AgentSHVersion) == "" || !validHexSecret(h.EventToken) {
 		return fmt.Errorf("guest control handshake is incomplete")
 	}
 	if !slices.Contains(h.Capabilities, "exec_probe") || !slices.Contains(h.Capabilities, "shutdown") || !slices.Contains(h.Capabilities, "supervisor_proxy") ||
-		manifest.ProtocolVersion == ProtocolVersionV3 && (!slices.Contains(h.Capabilities, "artifact_import") || !slices.Contains(h.Capabilities, "artifact_export")) {
-		return fmt.Errorf("guest control handshake capabilities are incomplete")
+		(manifest.ProtocolVersion == ProtocolVersionV3 || manifest.ProtocolVersion == ProtocolVersionV4) && (!slices.Contains(h.Capabilities, "artifact_import") || !slices.Contains(h.Capabilities, "artifact_export")) ||
+		manifest.ProtocolVersion == ProtocolVersionV4 && (!slices.Contains(h.Capabilities, "host_egress_proxy") || !h.EgressReady || h.NetworkReady) {
+		return fmt.Errorf("guest control handshake capabilities or readiness are incomplete")
 	}
 	return nil
 }
@@ -324,7 +384,7 @@ func handleConnection(ctx context.Context, conn deadlineReadWriter, manifest Man
 		return true, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "shutdown", RequestID: request.RequestID, OK: true})
 	case "artifact_import":
 		artifacts, ok := handler.(ArtifactImportHandler)
-		if protocol != ProtocolVersionV3 || !ok || request.Artifact == nil || request.Artifact.Kind != ArtifactKindGitInputBundle || request.Artifact.Validate() != nil {
+		if (protocol != ProtocolVersionV3 && protocol != ProtocolVersionV4) || !ok || request.Artifact == nil || request.Artifact.Kind != ArtifactKindGitInputBundle || request.Artifact.Validate() != nil {
 			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "artifact import is unavailable or invalid"})
 		}
 		limited := io.LimitReader(reader, request.Artifact.Size)
@@ -334,7 +394,7 @@ func handleConnection(ctx context.Context, conn deadlineReadWriter, manifest Man
 		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: true, Artifact: request.Artifact})
 	case "artifact_export":
 		artifacts, ok := handler.(ArtifactExportHandler)
-		if protocol != ProtocolVersionV3 || !ok || request.Artifact == nil || request.Artifact.Kind != ArtifactKindGitResultBundle {
+		if (protocol != ProtocolVersionV3 && protocol != ProtocolVersionV4) || !ok || request.Artifact == nil || request.Artifact.Kind != ArtifactKindGitResultBundle {
 			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "artifact export is unavailable or invalid"})
 		}
 		transfer, source, err := artifacts.ExportArtifact(ctx, request.Artifact.Kind)
@@ -482,6 +542,40 @@ func secretEqual(left, right string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
+}
+
+func protocolJSONVersion(data []byte) int {
+	var envelope struct {
+		ProtocolVersion int `json:"protocol_version"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return 0
+	}
+	return envelope.ProtocolVersion
+}
+
+func rejectProtocolJSONFields(data []byte, forbidden ...string) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for name := range fields {
+		for _, candidate := range forbidden {
+			if strings.EqualFold(name, candidate) {
+				return fmt.Errorf("json: unknown field %q", name)
+			}
+		}
+	}
+	return nil
+}
+
+func decodeStrictProtocolJSON(data []byte, target any) error {
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	return requireJSONEOF(decoder)
 }
 
 func requireJSONEOF(decoder *json.Decoder) error {

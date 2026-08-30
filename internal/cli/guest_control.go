@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agentsh/agentsh/internal/client"
+	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/guestcontrol"
 	"github.com/agentsh/agentsh/internal/runtimeprovider"
 	"github.com/agentsh/agentsh/internal/runtimeprovider/gitdraft"
@@ -22,7 +23,12 @@ import (
 const (
 	guestControlCleanupTimeout       = 30 * time.Second
 	guestControlSupervisorStopBudget = 2 * time.Second
+	guestEgressProbeTimeout          = 5 * time.Second
 )
+
+func guestEgressProxyEnvironment(proxyURL string) []string {
+	return []string{detached.EnvGuestEgressProxyURL + "=" + proxyURL}
+}
 
 func newGuestControlCmd(version string) *cobra.Command {
 	cmd := &cobra.Command{
@@ -67,15 +73,36 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 			if strings.TrimSpace(probeCommand) == "" || !filepath.IsAbs(probeCommand) || filepath.Clean(probeCommand) != probeCommand {
 				return fmt.Errorf("guest control probe command must be a fixed absolute executable")
 			}
-			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 && (!filepath.IsAbs(gitCommand) || filepath.Clean(gitCommand) != gitCommand) {
-				return fmt.Errorf("guest control protocol version 3 requires a fixed absolute Git executable")
+			if (manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 || manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4) && (!filepath.IsAbs(gitCommand) || filepath.Clean(gitCommand) != gitCommand) {
+				return fmt.Errorf("guest control protocol version %d requires a fixed absolute Git executable", manifest.ProtocolVersion)
 			}
 			if info, err := os.Lstat(probeCommand); err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("guest control probe command is invalid")
 			}
 
+			var egressRelay *guestcontrol.EgressRelay
+			supervisorCtx := cmd.Context()
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
+				egressRelay, err = guestcontrol.ListenEgressRelay(manifest.EgressPort, manifest.EgressToken)
+				if err != nil {
+					return err
+				}
+				defer egressRelay.Close()
+				probeCtx, cancelProbe := context.WithTimeout(cmd.Context(), guestEgressProbeTimeout)
+				err = egressRelay.ProbeHost(probeCtx)
+				cancelProbe()
+				if err != nil {
+					return err
+				}
+				proxyEnvironment := guestEgressProxyEnvironment(egressRelay.ProxyURL())
+				supervisorCtx, err = withDetachedSupervisorFixedEnvironment(supervisorCtx, proxyEnvironment)
+				if err != nil {
+					return err
+				}
+			}
+
 			result, err := startDetachedSupervisorSessionAtGeneration(
-				cmd.Context(), manifest.SessionID, []string{workspace}, string(types.WorkspaceModeDirect),
+				supervisorCtx, manifest.SessionID, []string{workspace}, string(types.WorkspaceModeDirect),
 				manifest.Policy, "isolated", "minimal", nil, runtimeprovider.DefaultProfile, "", manifest.ExpectedGeneration,
 			)
 			if err != nil {
@@ -86,7 +113,7 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				client:    client.NewWithTimeout("unix://"+result.SupervisorSock, "", 30*time.Second),
 				probe:     types.ExecRequest{Command: probeCommand, Args: append([]string(nil), probeArgs...), WorkingDir: workspace, IncludeEvents: "summary"},
 			}
-			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 {
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 || manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
 				handler.draft = &gitdraft.GuestWorkspace{SessionID: manifest.SessionID, Workspace: workspace, VolumeRoot: volumeRoot, Git: gitCommand}
 			}
 			defer func() {
@@ -112,8 +139,17 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 			}
 			networkReady := result.NetworkEnforcement != nil && result.NetworkEnforcement.Ready()
 			capabilities := []string{"exec_probe", "shutdown", "supervisor_proxy"}
-			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 {
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 || manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
 				capabilities = append(capabilities, "artifact_import", "artifact_export")
+			}
+			egressReady := false
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
+				// The v3 transport has no direct guest network to attest. Keep the
+				// legacy direct-network readiness bit false and report only the
+				// authenticated explicit-proxy readiness below.
+				networkReady = false
+				egressReady = egressRelay != nil
+				capabilities = append(capabilities, "host_egress_proxy")
 			}
 			handler.handshake = guestcontrol.Handshake{
 				ProtocolVersion: manifest.ProtocolVersion,
@@ -133,12 +169,17 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				NetworkReady:    networkReady,
 				Capabilities:    capabilities,
 				VolumeID:        manifest.VolumeID,
+				EgressPort:      manifest.EgressPort,
+				EgressReady:     egressReady,
 			}
 			if localCID := server.LocalCID(); localCID != 0 && localCID != ^uint32(0) && localCID != manifest.VSockCID {
 				return fmt.Errorf("guest kernel reported VSOCK CID %d, expected %d", localCID, manifest.VSockCID)
 			}
 			if err := handler.handshake.Validate(manifest); err != nil {
 				return err
+			}
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
+				return serveGuestControlV4(cmd.Context(), handshakePath, manifest, handler, server, relay, egressRelay, result.SupervisorSock)
 			}
 			if err := guestcontrol.WriteHandshake(handshakePath, handler.handshake); err != nil {
 				return fmt.Errorf("publish guest control handshake: %w", err)
@@ -178,17 +219,70 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Protected host request manifest")
 	cmd.Flags().StringVar(&handshakePath, "handshake", "", "Protected handshake output path")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Operator-owned staged workspace mount")
-	cmd.Flags().StringVar(&volumeRoot, "volume-root", "", "Operator-owned workspace volume root (required by protocol v3)")
+	cmd.Flags().StringVar(&volumeRoot, "volume-root", "", "Operator-owned workspace volume root (required by protocol v3 and later)")
 	cmd.Flags().StringVar(&profile, "profile", "", "Compiled operator-owned guest profile name")
 	cmd.Flags().StringVar(&profileDigest, "profile-digest", "", "Compiled operator-owned guest profile digest")
 	cmd.Flags().StringArrayVar(&allowedPolicies, "allowed-policy", nil, "Operator-allowed guest policy (repeatable)")
 	cmd.Flags().StringVar(&probeCommand, "probe-command", "", "Fixed harmless executable used by the bring-up probe")
 	cmd.Flags().StringArrayVar(&probeArgs, "probe-arg", nil, "Fixed bring-up probe argument (repeatable)")
-	cmd.Flags().StringVar(&gitCommand, "git-command", "", "Fixed Git executable used for protocol-v3 Draft materialization")
+	cmd.Flags().StringVar(&gitCommand, "git-command", "", "Fixed Git executable used for protocol-v3-and-later Draft materialization")
 	for _, name := range []string{"manifest", "handshake", "workspace", "profile", "profile-digest", "allowed-policy", "probe-command"} {
 		_ = cmd.MarkFlagRequired(name)
 	}
 	return cmd
+}
+
+func serveGuestControlV4(ctx context.Context, handshakePath string, manifest guestcontrol.Manifest, handler *guestControlHandler, control *guestcontrol.Server, supervisor *guestcontrol.SupervisorRelay, egress *guestcontrol.EgressRelay, supervisorSocket string) error {
+	if handler == nil || control == nil || supervisor == nil || egress == nil {
+		return fmt.Errorf("guest control protocol version 4 relay set is incomplete")
+	}
+	serveCtx, cancelServe := context.WithCancel(ctx)
+	defer cancelServe()
+	type serveResult struct {
+		kind string
+		err  error
+	}
+	results := make(chan serveResult, 3)
+	go func() { results <- serveResult{kind: "egress", err: egress.Serve(serveCtx)} }()
+	if err := guestcontrol.WriteHandshake(handshakePath, handler.handshake); err != nil {
+		cancelServe()
+		_ = egress.Close()
+		return fmt.Errorf("publish guest control handshake: %w", err)
+	}
+	go func() { results <- serveResult{kind: "control", err: control.Serve(serveCtx, manifest, handler)} }()
+	go func() {
+		results <- serveResult{kind: "supervisor", err: supervisor.Serve(serveCtx, manifest, supervisorSocket)}
+	}()
+
+	first := <-results
+	cancelServe()
+	_ = control.Close()
+	_ = supervisor.Close()
+	_ = egress.Close()
+	if first.kind == "control" && first.err == nil {
+		// Authenticated shutdown has already stopped the exact supervisor.
+		return nil
+	}
+	all := []serveResult{first}
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	for len(all) < 3 {
+		select {
+		case result := <-results:
+			all = append(all, result)
+		case <-deadline.C:
+			all = append(all, serveResult{}, serveResult{})
+		}
+	}
+	for _, result := range all {
+		if result.err != nil && !errors.Is(result.err, context.Canceled) {
+			return result.err
+		}
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return fmt.Errorf("guest control protocol version 4 relay stopped unexpectedly")
 }
 
 type guestControlHandler struct {

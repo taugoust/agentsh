@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/agentsh/agentsh/internal/config"
+	"github.com/agentsh/agentsh/internal/detached"
 	"github.com/agentsh/agentsh/internal/policy"
 	"github.com/agentsh/agentsh/internal/session"
 )
@@ -326,6 +327,64 @@ func TestBuildPolicyEnv_NetworkProxySetsHTTPProxy(t *testing.T) {
 // is set (via SetLLMProxy), the HTTP_PROXY env vars are NOT injected.
 // This is a regression test for a bug where LLM proxy caused HTTP_PROXY to be set,
 // which broke HTTPS CONNECT tunneling because the LLM proxy returns 400 for non-LLM requests.
+func TestBuildCommandEnvironment_TrustedGuestEgressProxyFinalOverride(t *testing.T) {
+	sessions := session.NewManager(10)
+	ws := filepath.Join(t.TempDir(), "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := sessions.Create(ws, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	trusted := "http://127.0.0.1:19083"
+	t.Setenv(detached.EnvGuestEgressProxyURL, trusted)
+	if err := applyTrustedGuestEgressProxy(sess); err != nil {
+		t.Fatal(err)
+	}
+	sess.SetEnvRuntimeConfig("inherit_allowed", []string{"*"})
+	sess.SetServiceEnvVars(map[string]string{"HTTP_PROXY": "http://service.invalid", "all_proxy": "http://service.invalid"})
+	sess.ReplaceDirenvEnvironment(map[string]string{"HTTPS_PROXY": "http://direnv.invalid", "http_proxy": "http://direnv.invalid"})
+	extra := &extraProcConfig{
+		envInject: map[string]string{"OPERATOR_OTHER": "kept"},
+		env:       map[string]string{"AGENTSH_NOTIFY_SOCK_FD": "7"},
+	}
+	env, err := buildCommandEnvironment(&config.Config{}, policy.ResolvedEnvPolicy{Allow: []string{"*"}}, []string{
+		"HTTP_PROXY=http://inherited.invalid",
+		detached.EnvGuestEgressProxyURL + "=" + trusted,
+		"https_proxy=http://inherited.invalid",
+		"ALL_PROXY=http://inherited.invalid",
+	}, sess, map[string]string{
+		"HTTPS_PROXY": "http://request.invalid",
+		"all_proxy":   "http://request.invalid",
+	}, extra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := envSliceToMap(env)
+	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+		if got[name] != trusted {
+			t.Fatalf("%s = %q, want trusted final proxy %q; env=%#v", name, got[name], trusted, got)
+		}
+	}
+	if _, leaked := got[detached.EnvGuestEgressProxyURL]; leaked {
+		t.Fatal("trusted proxy control environment leaked into command")
+	}
+
+	commandLocal := "http://127.0.0.1:19084"
+	extra.envInject = explicitProxyEnvironment(commandLocal)
+	env, err = buildCommandEnvironment(&config.Config{}, policy.ResolvedEnvPolicy{Allow: []string{"*"}}, nil, sess, nil, extra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = envSliceToMap(env)
+	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+		if got[name] != trusted {
+			t.Fatalf("immutable external %s = %q, want %q despite command-local override %q", name, got[name], trusted, commandLocal)
+		}
+	}
+}
+
 func TestBuildPolicyEnv_LLMProxyDoesNotSetHTTPProxy(t *testing.T) {
 	sessions := session.NewManager(10)
 	ws := filepath.Join(t.TempDir(), "ws")

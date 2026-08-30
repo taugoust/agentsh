@@ -151,6 +151,136 @@ func TestProfileSchemaRequiresBoundGuestProtocol(t *testing.T) {
 	}
 }
 
+func TestProfileV3RequiresExplicitHostBrokerStrictEgress(t *testing.T) {
+	policyData := []byte("version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n    domains: [example.com]\n    ports: [443]\n    decision: allow\n")
+	policyPath := filepath.Join(t.TempDir(), "host-egress.yaml")
+	if err := os.WriteFile(policyPath, policyData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	base := testProfile(t)
+	base.Schema = ProfileSchemaV3
+	base.Name = "pi-linux-vsock-v3"
+	base.Status = "strict"
+	base.Network.Transport = "vsock-explicit-proxy"
+	base.Network.Enforcement = "host-broker-strict"
+	base.Network.RequireReadyBeforePublish = true
+	base.Guest.Protocol = guestcontrol.ProtocolVersionV4
+	base.WorkspaceVolume = &WorkspaceVolumeSpec{
+		Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
+		RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
+	}
+	base.HostEgress = &HostEgressSpec{PolicyFile: policyPath, PolicySHA256: digest(policyData)}
+	got, err := ReadProfile(writeProfile(t, base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.HostEgress == nil || *got.HostEgress != *base.HostEgress || got.Guest.Protocol != guestcontrol.ProtocolVersionV4 {
+		t.Fatalf("v3 host egress profile = %+v", got)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*Profile)
+	}{
+		{"missing host egress", func(p *Profile) { p.HostEgress = nil }},
+		{"legacy qemu transport", func(p *Profile) { p.Network.Transport = "qemu-user" }},
+		{"legacy enforcement", func(p *Profile) { p.Network.Enforcement = "strict" }},
+		{"diagnostic status", func(p *Profile) {
+			p.Status = "diagnostic"
+			p.Network.Enforcement = "disabled-bringup"
+			p.Network.RequireReadyBeforePublish = false
+		}},
+		{"guest protocol v3", func(p *Profile) { p.Guest.Protocol = guestcontrol.ProtocolVersionV3 }},
+		{"policy path", func(p *Profile) { p.HostEgress.PolicyFile = "relative.yaml" }},
+		{"policy digest", func(p *Profile) { p.HostEgress.PolicySHA256 = "sha256:bad" }},
+		{"CID range exhausts port space", func(p *Profile) { p.VSock.CIDMin, p.VSock.CIDMax = 3, 65535 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			profile := base
+			volume := *base.WorkspaceVolume
+			hostEgress := *base.HostEgress
+			profile.WorkspaceVolume = &volume
+			profile.HostEgress = &hostEgress
+			test.mutate(&profile)
+			if err := profile.Validate(); err == nil {
+				t.Fatal("invalid v3 host egress profile was accepted")
+			}
+		})
+	}
+}
+
+func TestProfileV3DerivesDistinctPerCIDHostEgressPorts(t *testing.T) {
+	profile := testProfile(t)
+	profile.Schema = ProfileSchemaV3
+	profile.Guest.Protocol = guestcontrol.ProtocolVersionV4
+	profile.HostEgress = &HostEgressSpec{}
+	profile.VSock = VSock{CIDMin: 41000, CIDMax: 41002}
+
+	seen := map[uint32]bool{}
+	for cid := profile.VSock.CIDMin; cid <= profile.VSock.CIDMax; cid++ {
+		port, err := deriveHostEgressPort(profile, cid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if port != cid {
+			t.Fatalf("CID %d mapped to port %d, want exact leased CID", cid, port)
+		}
+		if seen[port] {
+			t.Fatalf("CID %d reused egress port %d", cid, port)
+		}
+		seen[port] = true
+	}
+
+	profile.VSock = VSock{CIDMin: 3, CIDMax: 5}
+	for cid := profile.VSock.CIDMin; cid <= profile.VSock.CIDMax; cid++ {
+		port, err := deriveHostEgressPort(profile, cid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !validPort(port) || port == profile.Guest.ControlPort || port == profile.Guest.SupervisorPort || seen[port] {
+			t.Fatalf("fallback CID %d mapped to invalid/reused port %d", cid, port)
+		}
+		seen[port] = true
+	}
+
+	profile.VSock = VSock{CIDMin: profile.Guest.ControlPort, CIDMax: profile.Guest.SupervisorPort}
+	controlFallback, err := deriveHostEgressPort(profile, profile.Guest.ControlPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	supervisorFallback, err := deriveHostEgressPort(profile, profile.Guest.SupervisorPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if controlFallback == supervisorFallback || controlFallback == profile.Guest.ControlPort || supervisorFallback == profile.Guest.SupervisorPort {
+		t.Fatalf("reserved-CID fallbacks collide or reuse reserved ports: %d, %d", controlFallback, supervisorFallback)
+	}
+}
+
+func TestProfileV2StillRejectsHostEgressField(t *testing.T) {
+	profile := testProfile(t)
+	profile.Schema = ProfileSchemaV2
+	profile.Guest.Protocol = guestcontrol.ProtocolVersionV3
+	profile.WorkspaceVolume = &WorkspaceVolumeSpec{
+		Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
+		RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
+	}
+	data, err := json.Marshal(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[len(data)-1] = ','
+	data = append(data, []byte(`"host_egress":null}`)...)
+	path := filepath.Join(t.TempDir(), "profile.json")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadProfile(path); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("v2 host_egress:null error = %v", err)
+	}
+}
+
 func TestProfileV1StillRejectsWorkspaceVolume(t *testing.T) {
 	profile := testProfile(t)
 	profile.WorkspaceVolume = &WorkspaceVolumeSpec{

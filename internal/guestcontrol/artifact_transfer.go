@@ -51,7 +51,7 @@ func (a ArtifactTransfer) Validate() error {
 	return nil
 }
 
-// ArtifactHandler is an optional protocol-v3 extension. Implementations must
+// ArtifactHandler is an optional protocol-v3-and-later extension. Implementations must
 // treat ImportArtifact as an exact, all-or-nothing byte transfer and return an
 // already-complete immutable stream from ExportArtifact.
 type ArtifactImportHandler interface {
@@ -63,7 +63,7 @@ type ArtifactExportHandler interface {
 }
 
 func (c *Client) ImportArtifact(ctx context.Context, transfer ArtifactTransfer, source io.Reader) error {
-	if c == nil || c.dial == nil || c.manifest.ProtocolVersion != ProtocolVersionV3 {
+	if c == nil || c.dial == nil || (c.manifest.ProtocolVersion != ProtocolVersionV3 && c.manifest.ProtocolVersion != ProtocolVersionV4) {
 		return fmt.Errorf("guest artifact import requires protocol version 3")
 	}
 	if err := transfer.Validate(); err != nil {
@@ -99,7 +99,7 @@ func (c *Client) ImportArtifact(ctx context.Context, transfer ArtifactTransfer, 
 }
 
 func (c *Client) ExportArtifact(ctx context.Context, kind string, destination io.Writer) (ArtifactTransfer, error) {
-	if c == nil || c.dial == nil || c.manifest.ProtocolVersion != ProtocolVersionV3 {
+	if c == nil || c.dial == nil || (c.manifest.ProtocolVersion != ProtocolVersionV3 && c.manifest.ProtocolVersion != ProtocolVersionV4) {
 		return ArtifactTransfer{}, fmt.Errorf("guest artifact export requires protocol version 3")
 	}
 	if kind != ArtifactKindGitResultBundle || destination == nil {

@@ -46,12 +46,12 @@ func verifyGuestControlWorkspaceVolume(manifest guestcontrol.Manifest, workspace
 	if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV2 {
 		return nil
 	}
-	if manifest.ProtocolVersion != guestcontrol.ProtocolVersionV3 {
+	if manifest.ProtocolVersion != guestcontrol.ProtocolVersionV3 && manifest.ProtocolVersion != guestcontrol.ProtocolVersionV4 {
 		return fmt.Errorf("guest control protocol version %d is unsupported", manifest.ProtocolVersion)
 	}
 	volumeRoot = strings.TrimSpace(volumeRoot)
 	if volumeRoot == "" {
-		return fmt.Errorf("guest control protocol version 3 requires --volume-root")
+		return fmt.Errorf("guest control protocol version %d requires --volume-root", manifest.ProtocolVersion)
 	}
 	if filepath.Clean(volumeRoot) != volumeRoot {
 		return fmt.Errorf("guest control volume root must be a dedicated clean absolute path")
@@ -63,7 +63,7 @@ func verifyGuestControlWorkspaceVolume(manifest guestcontrol.Manifest, workspace
 		return fmt.Errorf("guest control volume root must be a dedicated clean absolute path")
 	}
 	if workspace != expectedWorkspace {
-		return fmt.Errorf("guest control protocol version 3 requires the exact %s workspace mount", expectedWorkspace)
+		return fmt.Errorf("guest control protocol version %d requires the exact %s workspace mount", manifest.ProtocolVersion, expectedWorkspace)
 	}
 	if guestPathWithin(volumeRoot, workspace) {
 		return fmt.Errorf("guest control volume identity root must be outside the workspace mount")

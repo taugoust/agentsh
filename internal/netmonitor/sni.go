@@ -3,25 +3,30 @@ package netmonitor
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 )
 
 const (
-	tlsRecordHeaderLen      = 5
-	tlsHandshakeType        = 0x16
-	tlsHandshakeClientHello = 0x01
-	tlsExtensionSNI         = 0x0000
-	sniHostNameType         = 0x00
-	maxTLSRecordLen         = 16384 + 2048
+	tlsRecordHeaderLen               = 5
+	tlsHandshakeType                 = 0x16
+	tlsHandshakeClientHello          = 0x01
+	tlsExtensionSNI                  = 0x0000
+	tlsExtensionEncryptedClientHello = 0xfe0d
+	sniHostNameType                  = 0x00
+	maxTLSRecordLen                  = 16384 + 2048
+	maxStrictTLSClientHelloBytes     = 64 << 10
 )
 
 var (
-	ErrNotTLSRecord    = errors.New("sni: not a TLS handshake record")
-	ErrNotClientHello  = errors.New("sni: not a ClientHello")
-	ErrTruncatedRecord = errors.New("sni: truncated TLS record")
-	ErrNoSNIExtension  = errors.New("sni: no SNI extension found")
-	ErrMalformedSNI    = errors.New("sni: malformed SNI extension")
-	ErrRecordTooLarge  = errors.New("sni: rewritten record exceeds max size")
+	ErrNotTLSRecord         = errors.New("sni: not a TLS handshake record")
+	ErrNotClientHello       = errors.New("sni: not a ClientHello")
+	ErrTruncatedRecord      = errors.New("sni: truncated TLS record")
+	ErrNoSNIExtension       = errors.New("sni: no SNI extension found")
+	ErrMalformedSNI         = errors.New("sni: malformed SNI extension")
+	ErrMalformedClientHello = errors.New("sni: malformed ClientHello")
+	ErrRecordTooLarge       = errors.New("sni: rewritten record exceeds max size")
+	ErrClientHelloTooLarge  = errors.New("sni: ClientHello exceeds strict size limit")
 )
 
 // sniLocation holds byte offsets discovered during parsing of a TLS ClientHello.
@@ -194,6 +199,211 @@ func findSNI(record []byte) (*sniLocation, error) {
 	}
 
 	return nil, ErrNoSNIExtension
+}
+
+type tlsClientHelloInfo struct {
+	ServerName string
+	ECHOffered bool
+}
+
+// readBoundedTLSClientHello reads the first complete TLS ClientHello while
+// retaining its exact record framing for later forwarding. ClientHello
+// handshake fragmentation across records is supported, but both each record
+// and the complete buffered wire image are bounded.
+func readBoundedTLSClientHello(r io.Reader, maxBytes int) ([]byte, tlsClientHelloInfo, error) {
+	if maxBytes < tlsRecordHeaderLen+4 {
+		return nil, tlsClientHelloInfo{}, ErrClientHelloTooLarge
+	}
+
+	wire := make([]byte, 0, min(maxBytes, maxTLSRecordLen+tlsRecordHeaderLen))
+	handshake := make([]byte, 0, min(maxBytes, maxTLSRecordLen))
+	handshakeLen := -1
+
+	for {
+		var header [tlsRecordHeaderLen]byte
+		n, err := io.ReadFull(r, header[:])
+		if n > 0 {
+			wire = append(wire, header[:n]...)
+		}
+		if err != nil {
+			return wire, tlsClientHelloInfo{}, fmt.Errorf("read TLS ClientHello record header: %w", err)
+		}
+		if header[0] != tlsHandshakeType || header[1] != 0x03 {
+			return wire, tlsClientHelloInfo{}, ErrNotTLSRecord
+		}
+
+		payloadLen := int(binary.BigEndian.Uint16(header[3:5]))
+		if payloadLen == 0 {
+			return wire, tlsClientHelloInfo{}, ErrMalformedClientHello
+		}
+		if payloadLen > maxTLSRecordLen {
+			return wire, tlsClientHelloInfo{}, ErrClientHelloTooLarge
+		}
+		if len(wire)+payloadLen > maxBytes {
+			return wire, tlsClientHelloInfo{}, ErrClientHelloTooLarge
+		}
+
+		payload := make([]byte, payloadLen)
+		n, err = io.ReadFull(r, payload)
+		wire = append(wire, payload[:n]...)
+		if err != nil {
+			return wire, tlsClientHelloInfo{}, fmt.Errorf("read TLS ClientHello record payload: %w", err)
+		}
+		handshake = append(handshake, payload...)
+
+		if len(handshake) > 0 && handshake[0] != tlsHandshakeClientHello {
+			return wire, tlsClientHelloInfo{}, ErrNotClientHello
+		}
+		if len(handshake) >= 4 && handshakeLen < 0 {
+			handshakeLen = int(handshake[1])<<16 | int(handshake[2])<<8 | int(handshake[3])
+			if handshakeLen+4 > maxBytes {
+				return wire, tlsClientHelloInfo{}, ErrClientHelloTooLarge
+			}
+		}
+		if handshakeLen >= 0 && len(handshake) >= handshakeLen+4 {
+			info, err := parseTLSClientHello(handshake[:handshakeLen+4])
+			return wire, info, err
+		}
+	}
+}
+
+// parseTLSClientHello validates one complete ClientHello handshake and returns
+// its visible server_name. When ECH is offered this is necessarily the outer
+// SNI name; the encrypted inner name is intentionally not trusted for CONNECT
+// authority binding.
+func parseTLSClientHello(handshake []byte) (tlsClientHelloInfo, error) {
+	if len(handshake) < 4 {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+	if handshake[0] != tlsHandshakeClientHello {
+		return tlsClientHelloInfo{}, ErrNotClientHello
+	}
+	bodyLen := int(handshake[1])<<16 | int(handshake[2])<<8 | int(handshake[3])
+	if bodyLen != len(handshake)-4 {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+
+	pos := 4
+	end := len(handshake)
+	// legacy_version(2) + random(32)
+	if pos+34 > end {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+	pos += 34
+
+	if pos >= end {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+	sessionIDLen := int(handshake[pos])
+	pos++
+	if sessionIDLen > 32 || pos+sessionIDLen > end {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+	pos += sessionIDLen
+
+	if pos+2 > end {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+	cipherSuitesLen := int(binary.BigEndian.Uint16(handshake[pos : pos+2]))
+	pos += 2
+	if cipherSuitesLen < 2 || cipherSuitesLen%2 != 0 || pos+cipherSuitesLen > end {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+	pos += cipherSuitesLen
+
+	if pos >= end {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+	compressionMethodsLen := int(handshake[pos])
+	pos++
+	if compressionMethodsLen == 0 || pos+compressionMethodsLen > end {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+	pos += compressionMethodsLen
+
+	if pos == end {
+		return tlsClientHelloInfo{}, ErrNoSNIExtension
+	}
+	if pos+2 > end {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+	extensionsLen := int(binary.BigEndian.Uint16(handshake[pos : pos+2]))
+	pos += 2
+	if extensionsLen != end-pos {
+		return tlsClientHelloInfo{}, ErrMalformedClientHello
+	}
+
+	var info tlsClientHelloInfo
+	seenExtensions := make(map[uint16]struct{})
+	for pos < end {
+		if pos+4 > end {
+			return tlsClientHelloInfo{}, ErrMalformedClientHello
+		}
+		extensionType := binary.BigEndian.Uint16(handshake[pos : pos+2])
+		extensionLen := int(binary.BigEndian.Uint16(handshake[pos+2 : pos+4]))
+		pos += 4
+		if pos+extensionLen > end {
+			return tlsClientHelloInfo{}, ErrMalformedClientHello
+		}
+		if _, duplicate := seenExtensions[extensionType]; duplicate {
+			return tlsClientHelloInfo{}, ErrMalformedClientHello
+		}
+		seenExtensions[extensionType] = struct{}{}
+		extensionData := handshake[pos : pos+extensionLen]
+		pos += extensionLen
+
+		switch extensionType {
+		case tlsExtensionSNI:
+			serverName, err := parseStrictSNIExtension(extensionData)
+			if err != nil {
+				return tlsClientHelloInfo{}, err
+			}
+			info.ServerName = serverName
+		case tlsExtensionEncryptedClientHello:
+			info.ECHOffered = true
+		}
+	}
+	if info.ServerName == "" {
+		return info, ErrNoSNIExtension
+	}
+	return info, nil
+}
+
+func parseStrictSNIExtension(data []byte) (string, error) {
+	if len(data) < 2 {
+		return "", ErrMalformedSNI
+	}
+	listLen := int(binary.BigEndian.Uint16(data[:2]))
+	if listLen == 0 || listLen != len(data)-2 {
+		return "", ErrMalformedSNI
+	}
+
+	pos := 2
+	seenNameTypes := make(map[byte]struct{})
+	serverName := ""
+	for pos < len(data) {
+		if pos+3 > len(data) {
+			return "", ErrMalformedSNI
+		}
+		nameType := data[pos]
+		nameLen := int(binary.BigEndian.Uint16(data[pos+1 : pos+3]))
+		pos += 3
+		if nameLen == 0 || pos+nameLen > len(data) {
+			return "", ErrMalformedSNI
+		}
+		if _, duplicate := seenNameTypes[nameType]; duplicate {
+			return "", ErrMalformedSNI
+		}
+		seenNameTypes[nameType] = struct{}{}
+		if nameType == sniHostNameType {
+			serverName = string(data[pos : pos+nameLen])
+		}
+		pos += nameLen
+	}
+	if serverName == "" {
+		return "", ErrNoSNIExtension
+	}
+	return serverName, nil
 }
 
 // RewriteClientHelloSNI rewrites the SNI extension in a TLS ClientHello record.

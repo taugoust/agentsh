@@ -321,7 +321,7 @@ func validateHostRunnerWorkspaceVolume(profile Profile, volume *WorkspaceVolume)
 			return fmt.Errorf("external runner v1 received an unexpected workspace volume")
 		}
 		return nil
-	case ProfileSchemaV2:
+	case ProfileSchemaV2, ProfileSchemaV3:
 		if profile.WorkspaceVolume == nil || volume == nil || volume.Image == nil || volume.RunnerFD() != WorkspaceVolumeRunnerFD ||
 			volume.Manifest.WorkspaceVolume != *profile.WorkspaceVolume {
 			return fmt.Errorf("external runner v2 workspace volume is incomplete or differs from its profile")

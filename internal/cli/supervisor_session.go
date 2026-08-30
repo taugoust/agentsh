@@ -388,7 +388,7 @@ func detachedSupervisorServiceEnv(env, inheritPatterns []string) []string {
 	// file path; the supervisor reads it before serving requests. The generic
 	// subagent runtime configuration is non-secret control-plane data and must
 	// cross the systemd-run boundary so spawn_subagent works in detached mode.
-	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile, detached.EnvNetworkEnforcementRequested}
+	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile, detached.EnvNetworkEnforcementRequested, detached.EnvGuestEgressProxyURL}
 	keys = append(keys, detachedSupervisorRuntimeEnvKeys...)
 	seen := map[string]struct{}{}
 	for _, key := range keys {
@@ -426,7 +426,7 @@ func restartUnsafeServiceEnvironmentNames(assignments []string) []string {
 		switch name {
 		case "AGENTSH_DETACHED_EVENT_TOKEN", nethelper.EnvCredentialFile, nethelper.EnvSocket,
 			nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile,
-			detached.EnvNetworkEnforcementRequested, detached.EnvSupervisorLaunchMode:
+			detached.EnvNetworkEnforcementRequested, detached.EnvSupervisorLaunchMode, detached.EnvGuestEgressProxyURL:
 			continue
 		}
 		if !detached.RestartSafeEnvironmentName(name) {
@@ -693,6 +693,37 @@ func reserveDetachedSessionState(sessionID string) (string, error) {
 	return stateDir, nil
 }
 
+type detachedSupervisorFixedEnvironmentKey struct{}
+
+func withDetachedSupervisorFixedEnvironment(ctx context.Context, assignments []string) (context.Context, error) {
+	if len(assignments) == 0 {
+		return ctx, nil
+	}
+	fixed := make([]string, 0, len(assignments))
+	seen := make(map[string]struct{}, len(assignments))
+	for _, assignment := range assignments {
+		name, value, ok := strings.Cut(assignment, "=")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" || value == "" || strings.ContainsAny(name, "= \t\r\n") || strings.ContainsAny(value, "\x00\r\n") {
+			return nil, fmt.Errorf("fixed detached supervisor environment assignment is invalid")
+		}
+		if _, duplicate := seen[name]; duplicate {
+			return nil, fmt.Errorf("fixed detached supervisor environment assignment is duplicated")
+		}
+		seen[name] = struct{}{}
+		fixed = append(fixed, name+"="+value)
+	}
+	return context.WithValue(ctx, detachedSupervisorFixedEnvironmentKey{}, fixed), nil
+}
+
+func detachedSupervisorFixedEnvironment(ctx context.Context) []string {
+	if ctx == nil {
+		return nil
+	}
+	assignments, _ := ctx.Value(detachedSupervisorFixedEnvironmentKey{}).([]string)
+	return append([]string(nil), assignments...)
+}
+
 func startDetachedSupervisorSession(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile string) (*detachedSessionStartResult, error) {
 	return startDetachedSupervisorSessionAtGeneration(ctx, requestedSessionID, workspaces, workspaceMode, policyName, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, "", 1)
 }
@@ -727,7 +758,7 @@ func startDetachedSupervisorSessionAtGeneration(ctx context.Context, requestedSe
 			if strings.TrimSpace(inputBundle) != "" {
 				return nil, fmt.Errorf("legacy external runtime does not accept a Git input bundle")
 			}
-		case externalrunner.ProfileSchemaV2:
+		case externalrunner.ProfileSchemaV2, externalrunner.ProfileSchemaV3:
 			descriptor, ingestErr := ingestRuntimeInputBundle(ctx, request.StateDir, request.SessionID, inputBundle)
 			if ingestErr != nil {
 				return nil, ingestErr
@@ -798,6 +829,15 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 	}
 	eventToken := randomDetachedEventToken()
 	parentEnv := os.Environ()
+	fixedEnvironment := detachedSupervisorFixedEnvironment(ctx)
+	if len(fixedEnvironment) > 0 {
+		names := make([]string, 0, len(fixedEnvironment))
+		for _, assignment := range fixedEnvironment {
+			name, _, _ := strings.Cut(assignment, "=")
+			names = append(names, name)
+		}
+		parentEnv = append(withoutEnvAssignments(parentEnv, names...), fixedEnvironment...)
+	}
 	helperCredential, _ := lookupEnvAssignment(parentEnv, nethelper.EnvHelperInstanceCredential)
 	if strings.TrimSpace(helperCredential) == "" {
 		helperCredential, _ = lookupEnvAssignment(parentEnv, nethelper.EnvSessionNonce)
@@ -858,6 +898,17 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 	}
 	manifest.Generation = expectedGeneration - 1
 	manifest.Mutable.VolatileEnvironment = restartUnsafeServiceEnvironmentNames(serviceEnv)
+	if len(fixedEnvironment) > 0 {
+		fixedNames := make(map[string]struct{}, len(fixedEnvironment))
+		for _, assignment := range fixedEnvironment {
+			name, _, _ := strings.Cut(assignment, "=")
+			fixedNames[strings.ToLower(name)] = struct{}{}
+		}
+		manifest.Mutable.VolatileEnvironment = slices.DeleteFunc(manifest.Mutable.VolatileEnvironment, func(name string) bool {
+			_, fixed := fixedNames[strings.ToLower(name)]
+			return fixed
+		})
+	}
 	if err := detached.WriteRecoveryManifest(stateDir, manifest); err != nil {
 		return nil, err
 	}

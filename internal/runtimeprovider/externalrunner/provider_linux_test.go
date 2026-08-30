@@ -79,6 +79,25 @@ func testProviderV2Profile(t *testing.T) Profile {
 	return profile
 }
 
+func testProviderV3Profile(t *testing.T) Profile {
+	t.Helper()
+	profile := testProviderV2Profile(t)
+	policyData := []byte("version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n    domains: [example.com]\n    ports: [443]\n    decision: allow\n")
+	policyPath := filepath.Join(t.TempDir(), "host-egress.yaml")
+	if err := os.WriteFile(policyPath, policyData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	profile.Schema = ProfileSchemaV3
+	profile.Name = "pi-linux-vsock-v3"
+	profile.Status = "strict"
+	profile.Network.Transport = "vsock-explicit-proxy"
+	profile.Network.Enforcement = "host-broker-strict"
+	profile.Network.RequireReadyBeforePublish = true
+	profile.Guest.Protocol = guestcontrol.ProtocolVersionV4
+	profile.HostEgress = &HostEgressSpec{PolicyFile: policyPath, PolicySHA256: digest(policyData)}
+	return profile
+}
+
 func testProviderV2Request(t *testing.T, profile Profile) runtimeprovider.Request {
 	t.Helper()
 	sessionID := "session-11111111-1111-4111-8111-111111111111"
@@ -129,12 +148,50 @@ func TestProviderPreflightAdmitsV2WithExactGitInputArtifact(t *testing.T) {
 func TestProviderDormantV2ManifestCarriesExactRequestVolume(t *testing.T) {
 	profile := testProviderV2Profile(t)
 	request := testProviderV2Request(t, profile)
-	manifest := newProviderGuestManifest(
+	manifest, err := newProviderGuestManifest(
 		request.SessionID, profile, 41001,
-		strings.Repeat("1", 64), strings.Repeat("2", 64), strings.Repeat("3", 64), testWorkspaceVolumeID,
+		strings.Repeat("1", 64), strings.Repeat("2", 64), strings.Repeat("3", 64), "", testWorkspaceVolumeID,
 	)
-	if manifest.ProtocolVersion != guestcontrol.ProtocolVersionV3 || manifest.VolumeID != testWorkspaceVolumeID {
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.ProtocolVersion != guestcontrol.ProtocolVersionV3 || manifest.VolumeID != testWorkspaceVolumeID || manifest.EgressPort != 0 {
 		t.Fatalf("dormant v2 manifest = %+v", manifest)
+	}
+	if err := manifest.Validate(profile.Guest.Workspace, profile.Name, profile.Guest.ProfileDigest, []string{profile.Guest.Policy}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProviderV3PreflightAndManifestRequireHostBrokerContract(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("external runner provider preflight is x86_64-only")
+	}
+	profile := testProviderV3Profile(t)
+	provider, err := NewProvider(ProviderOptions{
+		Enabled: true, Profiles: map[string]string{profile.Name: writeProfile(t, profile)},
+		CIDLeaseRoot: filepath.Join(t.TempDir(), "cid-leases"), MonitorExecutable: filepath.Join(t.TempDir(), "agentsh"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := testProviderV2Request(t, profile)
+	capabilities, err := provider.Preflight(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !capabilities.Recoverable {
+		t.Fatal("v3 host-broker profile did not advertise generation recovery")
+	}
+	manifest, err := newProviderGuestManifest(
+		request.SessionID, profile, 41001,
+		strings.Repeat("1", 64), strings.Repeat("2", 64), strings.Repeat("3", 64), strings.Repeat("4", 64), testWorkspaceVolumeID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.ProtocolVersion != guestcontrol.ProtocolVersionV4 || manifest.EgressPort != 41001 || manifest.EgressToken != strings.Repeat("4", 64) {
+		t.Fatalf("v3 manifest = %+v", manifest)
 	}
 	if err := manifest.Validate(profile.Guest.Workspace, profile.Name, profile.Guest.ProfileDigest, []string{profile.Guest.Policy}); err != nil {
 		t.Fatal(err)

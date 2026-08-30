@@ -47,16 +47,17 @@ type hostMonitorDeps struct {
 	// createVolume atomically creates or idempotently reopens the request-bound
 	// volume. startRunner must return a non-nil cleanup handle with an error if a
 	// direct child may have started.
-	createVolume   func(context.Context, WorkspaceVolumeRequest, string) (*WorkspaceVolume, error)
-	startRunner    func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error)
-	validateRunner func(Profile) error
-	lock           func(context.Context, string) (io.Closer, error)
-	now            func() time.Time
+	createVolume      func(context.Context, WorkspaceVolumeRequest, string) (*WorkspaceVolume, error)
+	startEgressBroker func(context.Context, Profile, HostMonitorLayout, string, uint32, uint32, string) (hostEgressBroker, error)
+	startRunner       func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error)
+	validateRunner    func(Profile) error
+	lock              func(context.Context, string) (io.Closer, error)
+	now               func() time.Time
 }
 
-// RunHostMonitor owns one fixed external runner and any v2 workspace-volume
-// lease until exact terminal teardown. Its only caller-controlled input is a
-// protected session state directory.
+// RunHostMonitor owns one fixed external runner, any v2-or-later workspace
+// volume, and any v3 host egress broker until exact terminal teardown. Its only
+// caller-controlled input is a protected session state directory.
 func RunHostMonitor(ctx context.Context, stateDir string) error {
 	return runHostMonitor(ctx, stateDir, productionHostMonitorDeps())
 }
@@ -122,8 +123,9 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		Profile: profile.Name, ExternalProfileDigest: profile.ProfileDigest, GuestProfileDigest: profile.Guest.ProfileDigest,
 		VolumeID: request.VolumeID,
 		State:    HostMonitorInitializing, CreatedAt: now, UpdatedAt: now,
-		Monitor:     HostProcessIdentity{PID: os.Getpid(), StartIdentity: startIdentity, BootID: bootID},
-		RelayClosed: true,
+		Monitor:            HostProcessIdentity{PID: os.Getpid(), StartIdentity: startIdentity, BootID: bootID},
+		RelayClosed:        true,
+		EgressBrokerClosed: profile.Schema == ProfileSchemaV3,
 	}
 	persist := func(state HostMonitorState) error {
 		status.State = state
@@ -143,7 +145,7 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		return err
 	}
 
-	volumeRequired := profile.Schema == ProfileSchemaV2
+	volumeRequired := profile.Schema == ProfileSchemaV2 || profile.Schema == ProfileSchemaV3
 	var volume *WorkspaceVolume
 	closeVolume := func() error {
 		if !volumeRequired {
@@ -178,7 +180,7 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		if openErr != nil {
 			closeErr := closeVolume()
 			cause := errors.Join(openErr, closeErr)
-			status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+			status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 			persistErr := persist(HostMonitorFailed)
 			return errors.Join(fmt.Errorf("create or reopen exact host monitor workspace volume: %w", openErr), closeErr, persistErr)
 		}
@@ -188,17 +190,73 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 	if err != nil {
 		closeErr := closeVolume()
 		cause := errors.Join(err, closeErr)
-		status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+		status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 		persistErr := persist(HostMonitorFailed)
 		return errors.Join(fmt.Errorf("create host monitor runner log: %w", err), closeErr, persistErr)
 	}
 	logWriter := &boundedLogWriter{writer: logFile, remaining: hostMonitorRunnerLogLimit}
+
+	brokerRequired := profile.Schema == ProfileSchemaV3
+	var broker hostEgressBroker
+	closeBroker := func() error {
+		if !brokerRequired {
+			return nil
+		}
+		if broker == nil {
+			status.EgressBrokerClosed = true
+			return nil
+		}
+		closing := broker
+		closeErr := closing.Close()
+		select {
+		case <-closing.Done():
+			status.EgressBrokerClosed = true
+		default:
+			closeErr = errors.Join(closeErr, fmt.Errorf("host egress broker close returned before done"))
+			status.EgressBrokerClosed = false
+		}
+		closeErr = errors.Join(closeErr, closing.Err())
+		broker = nil
+		return closeErr
+	}
+	if brokerRequired {
+		var brokerErr error
+		if deps.startEgressBroker == nil {
+			brokerErr = fmt.Errorf("host monitor egress broker dependency is missing")
+		} else {
+			broker, brokerErr = deps.startEgressBroker(ctx, profile, layout, request.SessionID, request.CIDLease.CID, request.EgressPort, manifest.EgressToken)
+		}
+		if brokerErr == nil && broker == nil {
+			brokerErr = fmt.Errorf("host monitor egress broker startup returned no exact handle")
+		}
+		if brokerErr != nil {
+			brokerCloseErr := closeBroker()
+			logErr := errors.Join(logFile.Sync(), logFile.Close())
+			volumeCloseErr := closeVolume()
+			cause := errors.Join(brokerErr, brokerCloseErr, logErr, volumeCloseErr)
+			status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
+			persistErr := persist(HostMonitorFailed)
+			return errors.Join(fmt.Errorf("start host monitor egress broker: %w", brokerErr), brokerCloseErr, logErr, volumeCloseErr, persistErr)
+		}
+		status.EgressBrokerClosed = false
+		if err := persist(HostMonitorInitializing); err != nil {
+			brokerCloseErr := closeBroker()
+			logErr := errors.Join(logFile.Sync(), logFile.Close())
+			volumeCloseErr := closeVolume()
+			cause := errors.Join(err, brokerCloseErr, logErr, volumeCloseErr)
+			status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
+			persistErr := persist(HostMonitorFailed)
+			return errors.Join(err, brokerCloseErr, logErr, volumeCloseErr, persistErr)
+		}
+	}
+
 	runner, err := deps.startRunner(profile, layout, manifest.VSockCID, volume, logWriter)
 	if err == nil && runner == nil {
 		err = fmt.Errorf("external runner startup returned no exact runner handle")
 	}
 	if err != nil {
 		startupErr := err
+		brokerCloseErr := closeBroker()
 		var cleanupErr error
 		if runner != nil {
 			// A non-nil runner paired with a startup error means a direct child may
@@ -207,10 +265,10 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 			// exact exit result is available.
 			var startupChildResult *hostRunnerResult
 			startupChildResult, cleanupErr = reapPartiallyStartedHostRunner(runner, func(attemptErr error) {
-				status.LastError = boundedHostMonitorError(errors.Join(startupErr, attemptErr), manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+				status.LastError = boundedHostMonitorError(errors.Join(startupErr, attemptErr), manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 				_ = persist(HostMonitorInitializing)
 			})
-			if request.SchemaVersion == HostMonitorSchemaVersionV2 && startupChildResult != nil {
+			if (request.SchemaVersion == HostMonitorSchemaVersionV2 || request.SchemaVersion == HostMonitorSchemaVersionV3) && startupChildResult != nil {
 				// A partially-started child has no publishable process identity. Keep
 				// its exact exit separate from true no-child prelaunch evidence.
 				status.StartupChildReaped = true
@@ -219,15 +277,18 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		}
 		logErr := errors.Join(logFile.Sync(), logFile.Close())
 		closeErr := closeVolume()
-		cause := errors.Join(startupErr, cleanupErr, logErr, closeErr)
-		status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+		cause := errors.Join(startupErr, cleanupErr, brokerCloseErr, logErr, closeErr)
+		status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 		persistErr := persist(HostMonitorFailed)
-		return errors.Join(fmt.Errorf("start host monitor runner: %w", startupErr), cleanupErr, logErr, closeErr, persistErr)
+		return errors.Join(fmt.Errorf("start host monitor runner: %w", startupErr), cleanupErr, brokerCloseErr, logErr, closeErr, persistErr)
 	}
 	status.Runner = pointerTo(runner.Identity())
 	status.RelayClosed = true
 	if err := persist(HostMonitorBooting); err != nil {
-		status.LastError = boundedHostMonitorError(err, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+		status.LastError = boundedHostMonitorError(err, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
+		persistRequired(HostMonitorStopping)
+		brokerCloseErr := closeBroker()
+		status.LastError = boundedHostMonitorError(errors.Join(err, brokerCloseErr), manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 		persistRequired(HostMonitorStopping)
 		forceErr := runner.ForceStop()
 		var cleanupErr error
@@ -247,16 +308,16 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 				attemptErr = fmt.Errorf("external runner reaping returned no exact exit result")
 			}
 			cleanupErr = attemptErr
-			status.LastError = boundedHostMonitorError(errors.Join(err, forceErr, cleanupErr), manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+			status.LastError = boundedHostMonitorError(errors.Join(err, brokerCloseErr, forceErr, cleanupErr), manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 			_ = persist(HostMonitorFailed)
 			_ = runner.ForceStop()
 			time.Sleep(time.Second)
 		}
 		volumeCloseErr := closeVolume()
-		status.LastError = boundedHostMonitorError(errors.Join(err, forceErr, cleanupErr, volumeCloseErr), manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+		status.LastError = boundedHostMonitorError(errors.Join(err, brokerCloseErr, forceErr, cleanupErr, volumeCloseErr), manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 		persistRequired(HostMonitorFailed)
 		_ = logFile.Close()
-		return errors.Join(err, forceErr, cleanupErr, volumeCloseErr)
+		return errors.Join(err, brokerCloseErr, forceErr, cleanupErr, volumeCloseErr)
 	}
 
 	var relay hostMonitorRelay
@@ -271,12 +332,16 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 	control, err = deps.newControl(manifest)
 	if err == nil {
 		var handshake guestcontrol.Handshake
-		handshake, err = waitForHostGuest(readinessCtx, control, profile.Network.RequireReadyBeforePublish, runner.Done(), &runnerResult)
+		requireDirectNetwork := profile.Network.RequireReadyBeforePublish && profile.Schema != ProfileSchemaV3
+		handshake, err = waitForHostGuest(readinessCtx, control, requireDirectNetwork, runner.Done(), &runnerResult, broker)
 		if err == nil {
 			err = validateHostMonitorGuestReadiness(request, profile, manifest, volume, handshake)
 		}
-		if err == nil && request.SchemaVersion == HostMonitorSchemaVersionV2 {
+		if err == nil && (request.SchemaVersion == HostMonitorSchemaVersionV2 || request.SchemaVersion == HostMonitorSchemaVersionV3) {
 			err = importHostMonitorGitInput(readinessCtx, stateDir, request, control)
+		}
+		if err == nil {
+			err = hostEgressBrokerHealth(broker)
 		}
 		if err == nil {
 			secret := HostMonitorGuestSecret{
@@ -291,6 +356,9 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 				err = relayPathErr
 			} else {
 				relay, err = deps.newRelay(layout.RelayPath, control)
+				if err == nil {
+					err = hostEgressBrokerHealth(broker)
+				}
 				if err == nil {
 					guestIdentity := publicHostGuestIdentity(handshake)
 					status.Guest = &guestIdentity
@@ -316,6 +384,10 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 	relayCtx, cancelRelay := context.WithCancel(context.Background())
 	relayStarted := false
 	relayJoined := false
+	var brokerDone <-chan struct{}
+	if broker != nil {
+		brokerDone = broker.Done()
+	}
 	if cause == nil && relay != nil {
 		relayStarted = true
 		go func() { relayResults <- relay.Serve(relayCtx) }()
@@ -332,6 +404,13 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 			} else {
 				cause = fmt.Errorf("host supervisor relay stopped: %w", relayErr)
 			}
+		case <-brokerDone:
+			terminalState = HostMonitorFailed
+			if broker.Err() != nil {
+				cause = fmt.Errorf("host egress broker failed: %w", broker.Err())
+			} else {
+				cause = fmt.Errorf("host egress broker stopped unexpectedly")
+			}
 		case <-ctx.Done():
 			stopRequested = true
 			cause = nil
@@ -339,8 +418,10 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 	}
 
 	status.StopRequested = stopRequested
-	status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+	status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 	if status.Runner != nil {
+		// Publish stopping while the broker is still open. Closed evidence is
+		// recorded only after its Done signal below.
 		persistRequired(HostMonitorStopping)
 	}
 	cancelRelay()
@@ -366,9 +447,20 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 			status.RelayClosed = false
 			cause = errors.Join(cause, fmt.Errorf("host supervisor relay did not terminate"))
 			terminalState = HostMonitorFailed
-			status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
-			_ = persist(HostMonitorFailed)
+			status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
+			_ = persist(HostMonitorStopping)
 		}
+	}
+	brokerCloseErr := closeBroker()
+	if brokerCloseErr != nil {
+		cause = errors.Join(cause, fmt.Errorf("close host egress broker: %w", brokerCloseErr))
+		terminalState = HostMonitorFailed
+	}
+	status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
+	if status.Runner != nil {
+		// This second stopping revision is the first one allowed to claim that
+		// the exact broker has closed.
+		persistRequired(HostMonitorStopping)
 	}
 	if control != nil && runnerResult == nil {
 		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), profile.GracefulShutdownTimeout())
@@ -409,7 +501,7 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		}
 		cause = errors.Join(cause, ensureErr)
 		terminalState = HostMonitorFailed
-		status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+		status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 		status.RunnerReaped = false
 		_ = persist(HostMonitorFailed)
 		_ = runner.ForceStop()
@@ -435,7 +527,7 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		}
 	}
 	status.Forced = forced
-	status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.LaunchNonce)
+	status.LastError = boundedHostMonitorError(cause, manifest.ControlToken, manifest.SupervisorToken, manifest.EgressToken, manifest.LaunchNonce)
 	persistRequired(terminalState)
 	if terminalState == HostMonitorFailed {
 		return cause
@@ -474,7 +566,26 @@ func reapPartiallyStartedHostRunner(runner hostRunner, onRetry func(error)) (*ho
 	}
 }
 
-func waitForHostGuest(ctx context.Context, control hostMonitorControl, requireNetwork bool, done <-chan hostRunnerResult, runnerResult **hostRunnerResult) (guestcontrol.Handshake, error) {
+func hostEgressBrokerHealth(broker hostEgressBroker) error {
+	if broker == nil {
+		return nil
+	}
+	select {
+	case <-broker.Done():
+		if err := broker.Err(); err != nil {
+			return fmt.Errorf("host egress broker failed: %w", err)
+		}
+		return fmt.Errorf("host egress broker stopped unexpectedly")
+	default:
+		return nil
+	}
+}
+
+func waitForHostGuest(ctx context.Context, control hostMonitorControl, requireNetwork bool, done <-chan hostRunnerResult, runnerResult **hostRunnerResult, broker hostEgressBroker) (guestcontrol.Handshake, error) {
+	var brokerDone <-chan struct{}
+	if broker != nil {
+		brokerDone = broker.Done()
+	}
 	for {
 		attemptCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		handshake, err := control.Hello(attemptCtx, requireNetwork)
@@ -486,6 +597,11 @@ func waitForHostGuest(ctx context.Context, control hostMonitorControl, requireNe
 		case result := <-done:
 			*runnerResult = &result
 			return guestcontrol.Handshake{}, fmt.Errorf("external runner exited before authenticated readiness: %w", result.Err)
+		case <-brokerDone:
+			if err := broker.Err(); err != nil {
+				return guestcontrol.Handshake{}, fmt.Errorf("host egress broker failed before authenticated readiness: %w", err)
+			}
+			return guestcontrol.Handshake{}, fmt.Errorf("host egress broker stopped before authenticated readiness")
 		case <-ctx.Done():
 			return guestcontrol.Handshake{}, fmt.Errorf("wait for authenticated guest readiness: %w", ctx.Err())
 		case <-time.After(100 * time.Millisecond):
@@ -497,13 +613,21 @@ func validateHostMonitorBindings(request HostMonitorRequest, profile Profile, pr
 	if err := validateHostMonitorProfileBinding(request, profile, profileFileDigest); err != nil {
 		return err
 	}
+	expectedEgressPort := request.EgressPort
+	if profile.Schema == ProfileSchemaV3 {
+		derivedPort, err := deriveHostEgressPort(profile, request.CIDLease.CID)
+		if err != nil || expectedEgressPort != derivedPort {
+			return fmt.Errorf("host monitor request has an invalid per-CID egress endpoint")
+		}
+	}
 	if request.SessionID != manifest.SessionID || request.CIDLease.CID != manifest.VSockCID ||
 		request.GuestProfileDigest != profile.Guest.ProfileDigest || request.VolumeID != manifest.VolumeID ||
 		request.GuestManifestSHA256 != manifestDigest || request.ExpectedGuestGeneration != manifest.ExpectedGeneration || request.LaunchNonce != manifest.LaunchNonce ||
 		request.GuestPolicy != manifest.Policy || request.GuestControlPort != manifest.VSockPort || request.GuestSupervisorPort != manifest.SupervisorPort ||
 		profile.Name != manifest.Profile || profile.Guest.ProfileDigest != manifest.ProfileDigest || profile.Guest.Protocol != manifest.ProtocolVersion ||
 		profile.Guest.Policy != manifest.Policy || profile.Guest.ControlPort != manifest.VSockPort ||
-		profile.Guest.SupervisorPort != manifest.SupervisorPort {
+		profile.Guest.SupervisorPort != manifest.SupervisorPort || manifest.EgressPort != expectedEgressPort ||
+		(profile.Schema == ProfileSchemaV3) != guestcontrol.ValidEgressAuthenticationToken(manifest.EgressToken) {
 		return fmt.Errorf("host monitor request, profile, lease, and guest manifest identities differ")
 	}
 	return nil
@@ -552,11 +676,23 @@ func validateHostMonitorGuestReadiness(request HostMonitorRequest, profile Profi
 		if profile.Schema != ProfileSchemaV1 || volume != nil || request.VolumeID != "" || manifest.VolumeID != "" || handshake.VolumeID != "" {
 			return fmt.Errorf("legacy authenticated guest readiness contains workspace-volume state")
 		}
-	case HostMonitorSchemaVersionV2:
-		if profile.Schema != ProfileSchemaV2 || volume == nil || volume.Image == nil ||
+	case HostMonitorSchemaVersionV2, HostMonitorSchemaVersionV3:
+		expectedProfileSchema := ProfileSchemaV2
+		expectedEgressPort := uint32(0)
+		if request.SchemaVersion == HostMonitorSchemaVersionV3 {
+			expectedProfileSchema = ProfileSchemaV3
+			if request.HostEgress == nil {
+				return fmt.Errorf("authenticated guest readiness lacks the immutable host egress contract")
+			}
+			expectedEgressPort = request.EgressPort
+			if handshake.NetworkReady || !handshake.EgressReady {
+				return fmt.Errorf("authenticated guest readiness must prove only the explicit egress proxy, not direct-network enforcement")
+			}
+		}
+		if profile.Schema != expectedProfileSchema || volume == nil || volume.Image == nil ||
 			!canonicalWorkspaceVolumeUUID(request.VolumeID) || volume.Manifest.VolumeID != request.VolumeID ||
-			manifest.VolumeID != request.VolumeID || handshake.VolumeID != request.VolumeID {
-			return fmt.Errorf("authenticated guest readiness does not prove the exact workspace volume")
+			manifest.VolumeID != request.VolumeID || handshake.VolumeID != request.VolumeID || manifest.EgressPort != expectedEgressPort || handshake.EgressPort != expectedEgressPort {
+			return fmt.Errorf("authenticated guest readiness does not prove the exact workspace volume and egress endpoint")
 		}
 		volumeRequest := WorkspaceVolumeRequest{
 			StateDir: request.StateDir, SessionID: request.SessionID,
@@ -593,7 +729,7 @@ func validateHostMonitorWorkspaceLayout(profile Profile, layout HostMonitorLayou
 		if err := validateHostMonitorDirectory(layout.WorkspaceDir); err != nil {
 			return fmt.Errorf("host monitor workspace directory is missing or unsafe: %w", err)
 		}
-	case ProfileSchemaV2:
+	case ProfileSchemaV2, ProfileSchemaV3:
 		if _, err := os.Lstat(layout.WorkspaceDir); err == nil {
 			return fmt.Errorf("host monitor v2 runtime contains a forbidden staged workspace")
 		} else if !errors.Is(err, os.ErrNotExist) {

@@ -1372,6 +1372,12 @@ func (e storeEmitter) AppendEvent(ctx context.Context, ev types.Event) error {
 	return e.store.AppendEvent(ctx, ev)
 }
 func (e storeEmitter) Publish(ev types.Event) { e.broker.Publish(ev) }
+func (e storeEmitter) FlushSync(ctx context.Context) error {
+	if e.store == nil {
+		return fmt.Errorf("audit store is unavailable")
+	}
+	return e.store.FlushSync(ctx)
+}
 
 func (a *App) execInSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

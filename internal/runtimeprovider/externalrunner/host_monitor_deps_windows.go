@@ -19,6 +19,9 @@ func productionHostMonitorDeps() hostMonitorDeps {
 		createVolume: func(context.Context, WorkspaceVolumeRequest, string) (*WorkspaceVolume, error) {
 			return nil, unsupported()
 		},
+		startEgressBroker: func(context.Context, Profile, HostMonitorLayout, string, uint32, uint32, string) (hostEgressBroker, error) {
+			return nil, unsupported()
+		},
 		startRunner: func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error) {
 			return nil, unsupported()
 		},

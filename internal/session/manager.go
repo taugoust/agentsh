@@ -110,8 +110,9 @@ type Session struct {
 	workspaceUnmount func() error
 	runtimeCleanup   func() error
 
-	proxyURL   string // Network proxy URL (for HTTP_PROXY env vars)
-	proxyClose func() error
+	proxyURL      string // Network proxy URL (for HTTP_PROXY env vars)
+	proxyClose    func() error
+	proxyExternal bool // immutable launcher-owned relay; never replace with an in-session proxy
 
 	llmProxyURL   string // LLM proxy URL (for ANTHROPIC_BASE_URL, OPENAI_BASE_URL)
 	llmProxyClose func() error
@@ -1037,8 +1038,27 @@ func (s *Session) UnmountWorkspace() error {
 func (s *Session) SetProxy(url string, closeFn func() error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.proxyExternal {
+		return
+	}
 	s.proxyURL = url
 	s.proxyClose = closeFn
+}
+
+// SetExternalProxy installs a launcher-owned proxy relay that cannot be
+// replaced by session-local or command-local proxy construction.
+func (s *Session) SetExternalProxy(url string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.proxyURL = url
+	s.proxyClose = nil
+	s.proxyExternal = true
+}
+
+func (s *Session) ExternalProxy() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.proxyExternal
 }
 
 // SetProxyInstance stores the proxy instance for stats access.
@@ -1081,6 +1101,7 @@ func (s *Session) CloseProxy() error {
 	fn := s.proxyClose
 	s.proxyClose = nil
 	s.proxyURL = ""
+	s.proxyExternal = false
 	s.mu.Unlock()
 	if fn != nil {
 		return fn()

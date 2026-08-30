@@ -37,7 +37,7 @@ func FinalizeGitDraftStorage(ctx context.Context, sessionID, stateDir, intent st
 		if err != nil {
 			return err
 		}
-		if request.SchemaVersion != HostMonitorSchemaVersionV2 || request.InputArtifact == nil {
+		if (request.SchemaVersion != HostMonitorSchemaVersionV2 && request.SchemaVersion != HostMonitorSchemaVersionV3) || request.InputArtifact == nil {
 			return fmt.Errorf("runtime is not a Git-volume Draft")
 		}
 		status, err := ReadHostMonitorStatus(stateDir)

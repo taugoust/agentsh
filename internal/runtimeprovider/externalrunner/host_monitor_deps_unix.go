@@ -23,8 +23,9 @@ func productionHostMonitorDeps() hostMonitorDeps {
 			}
 			return guestcontrol.ListenHostRelay(path, client)
 		},
-		createVolume: CreateWorkspaceVolume,
-		startRunner:  startHostRunner,
+		createVolume:      CreateWorkspaceVolume,
+		startEgressBroker: startHostEgressBroker,
+		startRunner:       startHostRunner,
 		validateRunner: func(profile Profile) error {
 			store := filepath.Join(string(filepath.Separator), "nix", "store") + string(filepath.Separator)
 			if !strings.HasPrefix(profile.Runner.Path, store) {

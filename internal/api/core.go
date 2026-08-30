@@ -843,6 +843,10 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 		return types.Session{}, http.StatusBadRequest, err
 	}
 	s.SetEnvRuntimeConfig(envBaseMode, sessionEnvInherit(req, a.cfg))
+	if err := applyTrustedGuestEgressProxy(s); err != nil {
+		a.cleanupCreatedSession(s)
+		return types.Session{}, http.StatusInternalServerError, err
+	}
 	if err := a.setupRuntimeEnvironment(ctx, s, req.Home, runtimeHomeMode); err != nil {
 		a.cleanupCreatedSession(s)
 		return types.Session{}, http.StatusInternalServerError, err
@@ -933,9 +937,9 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 	}
 
 	// Profile sessions use the same explicit proxy-required network path as
-	// ordinary sessions. Without this, an enforced profile command would have no
-	// exact approval-capable endpoint to allow through its cgroup gate.
-	if a.cfg.Sandbox.Network.Enabled || commandJailRequired(a.cfg) {
+	// ordinary sessions, unless the trusted launcher already installed an
+	// immutable external relay.
+	if !s.ExternalProxy() && (a.cfg.Sandbox.Network.Enabled || commandJailRequired(a.cfg)) {
 		if err := a.startExplicitProxy(ctx, s); err != nil {
 			if commandJailRequired(a.cfg) {
 				a.cleanupCreatedSession(s)
@@ -1668,6 +1672,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		return types.Session{}, http.StatusBadRequest, err
 	}
 	s.SetEnvRuntimeConfig(envBaseMode, sessionEnvInherit(req, a.cfg))
+	if err := applyTrustedGuestEgressProxy(s); err != nil {
+		a.cleanupCreatedSession(s)
+		return types.Session{}, http.StatusInternalServerError, err
+	}
 	if err := a.setupRuntimeEnvironment(ctx, s, req.Home, runtimeHomeMode); err != nil {
 		a.cleanupCreatedSession(s)
 		return types.Session{}, http.StatusInternalServerError, err
@@ -1762,7 +1770,7 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 	// proxy is still started below when sandbox.network.enabled=true: it is the
 	// approval-capable path for tools that honor proxy env vars, and eBPF
 	// enforce mode can then block direct external connects that bypass it.
-	if a.cfg.Sandbox.Network.Transparent.Enabled {
+	if !s.ExternalProxy() && a.cfg.Sandbox.Network.Transparent.Enabled {
 		if err := a.tryStartTransparentNetwork(ctx, s); err != nil {
 			fail := types.Event{
 				ID:        uuid.NewString(),
@@ -1786,7 +1794,7 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 			a.broker.Publish(okEv)
 		}
 	}
-	if a.cfg.Sandbox.Network.Enabled || commandJailRequired(a.cfg) {
+	if !s.ExternalProxy() && (a.cfg.Sandbox.Network.Enabled || commandJailRequired(a.cfg)) {
 		if err := a.startExplicitProxy(ctx, s); err != nil {
 			if commandJailRequired(a.cfg) {
 				a.cleanupCreatedSession(s)
@@ -2241,7 +2249,7 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			a.recordNetworkCleanupFailure(id, cmdID, fmt.Errorf("close command-local network proxy: %w", closeErr))
 		}
 	}
-	if lease.Shared() && commandJailRequired(a.cfg) {
+	if lease.Shared() && commandJailRequired(a.cfg) && !s.ExternalProxy() {
 		var proxyErr error
 		commandProxy, proxyErr = a.startCommandExplicitProxy(ctx, s, cmdID)
 		if proxyErr != nil {

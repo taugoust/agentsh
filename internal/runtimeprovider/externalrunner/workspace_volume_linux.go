@@ -535,7 +535,7 @@ func workspaceVolumeCreateIntentFromManifest(manifest WorkspaceVolumeManifest) w
 
 func (i workspaceVolumeCreateIntent) matches(request WorkspaceVolumeRequest, volumeID string) error {
 	if i.SchemaVersion != WorkspaceVolumeManifestSchemaVersion || i.SessionID != request.SessionID || i.Provider != request.Profile.Provider ||
-		i.Profile != request.Profile.Name || i.ProfileSchema != ProfileSchemaV2 || i.ProfileSchema != request.Profile.Schema ||
+		i.Profile != request.Profile.Name || (i.ProfileSchema != ProfileSchemaV2 && i.ProfileSchema != ProfileSchemaV3) || i.ProfileSchema != request.Profile.Schema ||
 		i.ProfileDigest != request.Profile.ProfileDigest || i.ProfileFileSHA256 != request.ProfileFileSHA256 ||
 		i.VolumeID != volumeID || request.Profile.WorkspaceVolume == nil || i.WorkspaceVolume != *request.Profile.WorkspaceVolume {
 		return fmt.Errorf("%w: create intent does not match the exact session, profile, and volume", ErrWorkspaceVolumeInvalid)

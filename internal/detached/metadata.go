@@ -23,6 +23,10 @@ const (
 	// EnvSupervisorLaunchMode is diagnostic context only. Cgroup readiness is
 	// still derived from the runtime cgroup probe rather than this value.
 	EnvSupervisorLaunchMode = "AGENTSH_DETACHED_SUPERVISOR_LAUNCH_MODE"
+	// EnvGuestEgressProxyURL is a trusted launcher-to-supervisor control value.
+	// The API consumes it into session-owned final command environment state and
+	// scrubs the control name itself from every guest command.
+	EnvGuestEgressProxyURL = "AGENTSH_GUEST_EGRESS_PROXY_URL"
 )
 
 var ErrMetadataInvalid = errors.New("invalid detached supervisor metadata")

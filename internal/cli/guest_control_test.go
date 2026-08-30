@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/agentsh/agentsh/internal/detached"
 )
 
 func TestGuestControlCommandExposesFixedInputs(t *testing.T) {
@@ -23,6 +25,21 @@ func TestGuestControlCommandExposesFixedInputs(t *testing.T) {
 		if run.Flags().Lookup(name) == nil {
 			t.Fatalf("guest control run is missing --%s", name)
 		}
+	}
+}
+
+func TestGuestControlV4CarriesTrustedProxyControlEnvironment(t *testing.T) {
+	proxyURL := "http://127.0.0.1:19083"
+	assignments := guestEgressProxyEnvironment(proxyURL)
+	ctx, err := withDetachedSupervisorFixedEnvironment(context.Background(), assignments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixed := detachedSupervisorFixedEnvironment(ctx)
+	service := detachedSupervisorServiceEnv(fixed, nil)
+	want := detached.EnvGuestEgressProxyURL + "=" + proxyURL
+	if len(fixed) != 1 || fixed[0] != want || len(service) != 1 || service[0] != want {
+		t.Fatalf("fixed=%#v service=%#v, want trusted assignment %q", fixed, service, want)
 	}
 }
 

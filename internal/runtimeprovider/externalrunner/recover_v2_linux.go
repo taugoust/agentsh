@@ -34,8 +34,8 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 	if err != nil {
 		return nil, err
 	}
-	if profile.Schema != ProfileSchemaV2 {
-		return nil, fmt.Errorf("external recovery requires a v2 profile")
+	if profile.Schema != ProfileSchemaV2 && profile.Schema != ProfileSchemaV3 {
+		return nil, fmt.Errorf("external generation recovery requires a v2 or v3 profile")
 	}
 	layout, err := HostMonitorPaths(stateDir)
 	if err != nil {
@@ -74,6 +74,13 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 		if err != nil {
 			return nil, err
 		}
+		egressToken := ""
+		if profile.Schema == ProfileSchemaV3 {
+			egressToken, err = newProviderSecret()
+			if err != nil {
+				return nil, err
+			}
+		}
 		nextGeneration := oldRequest.ExpectedGuestGeneration + 1
 		nextLease := oldRequest.CIDLease
 		if verifyErr := VerifyCIDLease(ctx, oldRequest.CIDLeaseRoot, oldRequest.CIDLease, profile.VSock.CIDMin, profile.VSock.CIDMax); verifyErr != nil {
@@ -82,7 +89,10 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 				return nil, fmt.Errorf("allocate resumed external runner CID: %w", err)
 			}
 		}
-		guestManifest := newProviderGuestManifest(oldRequest.SessionID, profile, nextLease.CID, launchNonce, controlToken, supervisorToken, oldRequest.VolumeID)
+		guestManifest, err := newProviderGuestManifest(oldRequest.SessionID, profile, nextLease.CID, launchNonce, controlToken, supervisorToken, egressToken, oldRequest.VolumeID)
+		if err != nil {
+			return nil, err
+		}
 		guestManifest.ExpectedGeneration = nextGeneration
 		guestData, err := json.MarshalIndent(guestManifest, "", "  ")
 		if err != nil {
@@ -93,6 +103,12 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 		nextRequest := oldRequest
 		nextRequest.MonitorID = monitorID
 		nextRequest.CIDLease = nextLease
+		if profile.Schema == ProfileSchemaV3 {
+			nextRequest.EgressPort, err = deriveHostEgressPort(profile, nextLease.CID)
+			if err != nil {
+				return nil, err
+			}
+		}
 		nextRequest.ExpectedGuestGeneration = nextGeneration
 		nextRequest.LaunchNonce = launchNonce
 		nextRequest.GuestManifestSHA256 = "sha256:" + hex.EncodeToString(guestSum[:])
@@ -108,7 +124,7 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 	}
 	if recovery.SchemaVersion != 1 || recovery.SessionID != manifestSessionID || recovery.Request.SessionID != manifestSessionID || recovery.Request.ExpectedGuestGeneration != recovery.FromGeneration+1 ||
 		recovery.Request.ProfileName != profile.Name || recovery.Request.ProfileFileSHA256 != profileFileDigest || recovery.GuestManifest.ExpectedGeneration != recovery.Request.ExpectedGuestGeneration {
-		return nil, fmt.Errorf("external v2 generation recovery record is invalid")
+		return nil, fmt.Errorf("external generation recovery record is invalid")
 	}
 	archive := filepath.Join(layout.RuntimeDir, "generations", fmt.Sprintf("generation-%020d", recovery.FromGeneration))
 	if err := os.MkdirAll(archive, 0o700); err != nil {

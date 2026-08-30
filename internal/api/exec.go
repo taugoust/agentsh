@@ -1074,8 +1074,20 @@ func buildCommandEnvironment(cfg *config.Config, envPol policy.ResolvedEnvPolicy
 		// request/operator/service merge. The wrapper scrubs them before user exec.
 		env = overlayTrustedEnv(env, extra.env)
 	}
-	// This is deliberately last. Request env, inherited env, env_inject, service
-	// env, and wrapper additions all pass through the same case-insensitive scrub.
+	if s != nil {
+		// A session-owned explicit proxy is a security boundary, not a request
+		// default. Apply every spelling after request, inherited, direnv, policy,
+		// service, and wrapper environment construction.
+		env = overlayTrustedEnv(env, explicitProxyEnvironment(s.ProxyURL()))
+	}
+	if extra != nil && (s == nil || !s.ExternalProxy()) {
+		// A command-local proxy is even narrower for ordinary sessions. A
+		// launcher-owned external relay is immutable and must remain the final
+		// endpoint for every guest command.
+		env = overlayTrustedEnv(env, proxyEnvironmentSubset(extra.envInject))
+	}
+	// This is deliberately last. All sources pass through the same
+	// case-insensitive control-environment scrub.
 	return scrubReservedSupervisorEnvSlice(env), nil
 }
 
@@ -1092,6 +1104,25 @@ func explicitProxyEnvironment(proxyURL string) map[string]string {
 		"https_proxy": proxyURL,
 		"all_proxy":   proxyURL,
 	}
+}
+
+func proxyEnvironmentSubset(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	allowed := map[string]struct{}{
+		"HTTP_PROXY": {}, "HTTPS_PROXY": {}, "ALL_PROXY": {},
+	}
+	selected := make(map[string]string)
+	for key, value := range values {
+		if _, ok := allowed[strings.ToUpper(strings.TrimSpace(key))]; ok {
+			selected[key] = value
+		}
+	}
+	if len(selected) == 0 {
+		return nil
+	}
+	return selected
 }
 
 func mergeTrustedEnvironment(base map[string]string, override map[string]string) map[string]string {
@@ -1203,6 +1234,7 @@ func reservedSupervisorEnvKeys() []string {
 		"AGENTSH_INTERNAL_COMMAND_JAIL_EXEC_PATH",
 		detached.EnvNetworkEnforcementRequested,
 		detached.EnvSupervisorLaunchMode,
+		detached.EnvGuestEgressProxyURL,
 	}
 }
 

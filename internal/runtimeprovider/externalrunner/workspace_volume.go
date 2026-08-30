@@ -121,7 +121,7 @@ func (r WorkspaceVolumeRequest) validate() error {
 	if err := r.Profile.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrWorkspaceVolumeInvalid, err)
 	}
-	if r.Profile.Schema != ProfileSchemaV2 || r.Profile.WorkspaceVolume == nil {
+	if (r.Profile.Schema != ProfileSchemaV2 && r.Profile.Schema != ProfileSchemaV3) || r.Profile.WorkspaceVolume == nil {
 		return fmt.Errorf("%w: workspace volumes require an external runner v2 profile", ErrWorkspaceVolumeInvalid)
 	}
 	if !validSHA256(r.ProfileFileSHA256) {
@@ -140,7 +140,7 @@ func (m WorkspaceVolumeManifest) Validate() error {
 	if m.Provider != ProviderName {
 		return fmt.Errorf("%w: manifest provider is invalid", ErrWorkspaceVolumeInvalid)
 	}
-	if err := runtimeprovider.ValidateName(m.Profile); err != nil || m.ProfileSchema != ProfileSchemaV2 || !validSHA256(m.ProfileDigest) || !validSHA256(m.ProfileFileSHA256) {
+	if err := runtimeprovider.ValidateName(m.Profile); err != nil || (m.ProfileSchema != ProfileSchemaV2 && m.ProfileSchema != ProfileSchemaV3) || !validSHA256(m.ProfileDigest) || !validSHA256(m.ProfileFileSHA256) {
 		return fmt.Errorf("%w: manifest profile binding is invalid", ErrWorkspaceVolumeInvalid)
 	}
 	if !canonicalWorkspaceVolumeUUID(m.VolumeID) {

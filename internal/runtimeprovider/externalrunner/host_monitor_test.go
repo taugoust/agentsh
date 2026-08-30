@@ -105,15 +105,23 @@ func (r *partialStartupHostRunner) EnsureStopped(ctx context.Context) (*hostRunn
 }
 
 type fakeHostControl struct {
-	handshake guestcontrol.Handshake
-	runner    *fakeHostRunner
-	helloErr  error
+	handshake  guestcontrol.Handshake
+	runner     *fakeHostRunner
+	helloErr   error
+	onHello    func(bool)
+	onShutdown func()
 }
 
-func (c *fakeHostControl) Hello(context.Context, bool) (guestcontrol.Handshake, error) {
+func (c *fakeHostControl) Hello(_ context.Context, requireNetwork bool) (guestcontrol.Handshake, error) {
+	if c.onHello != nil {
+		c.onHello(requireNetwork)
+	}
 	return c.handshake, c.helloErr
 }
 func (c *fakeHostControl) Shutdown(context.Context) error {
+	if c.onShutdown != nil {
+		c.onShutdown()
+	}
 	c.runner.stop(hostRunnerResult{Exit: HostRunnerExit{ExitCode: 0}})
 	return nil
 }
@@ -743,8 +751,11 @@ func TestHostMonitorV1JSONKeepsSchemaV2FieldsUnknown(t *testing.T) {
 		isRequest bool
 	}{
 		{name: "request-volume", fixture: request, field: "volume_id", isRequest: true},
+		{name: "request-host-egress", fixture: request, field: "host_egress", isRequest: true},
+		{name: "request-egress-port", fixture: request, field: "egress_port", isRequest: true},
 		{name: "status-volume", fixture: status, field: "volume_closed"},
 		{name: "status-startup-child", fixture: status, field: "startup_child_reaped"},
+		{name: "status-egress-broker", fixture: status, field: "egress_broker_closed"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -773,6 +784,58 @@ func TestHostMonitorV1JSONKeepsSchemaV2FieldsUnknown(t *testing.T) {
 				t.Fatalf("schema-v1 fixture accepted %s: %v", test.field, decodeErr)
 			}
 		})
+	}
+}
+
+func TestHostMonitorV2JSONKeepsV3EgressFieldsUnknown(t *testing.T) {
+	_, request, _, _ := prepareV2HostMonitorFixture(t)
+	requestData, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requestFields map[string]json.RawMessage
+	if err := json.Unmarshal(requestData, &requestFields); err != nil {
+		t.Fatal(err)
+	}
+	requestFields["host_egress"] = json.RawMessage("null")
+	requestFields["egress_port"] = json.RawMessage("null")
+	requestData, err = json.Marshal(requestFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decodedRequest HostMonitorRequest
+	if err := json.Unmarshal(requestData, &decodedRequest); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("schema-v2 request accepted host_egress: %v", err)
+	}
+
+	start, boot, err := detached.CurrentProcessIdentity(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	status := HostMonitorStatus{
+		SchemaVersion: HostMonitorSchemaVersionV2, Revision: 1,
+		MonitorID: request.MonitorID, SessionID: request.SessionID,
+		Profile: request.ProfileName, ExternalProfileDigest: request.ProfileDigest, GuestProfileDigest: request.GuestProfileDigest,
+		VolumeID: request.VolumeID, State: HostMonitorInitializing, CreatedAt: now, UpdatedAt: now,
+		Monitor: HostProcessIdentity{PID: os.Getpid(), StartIdentity: start, BootID: boot}, RelayClosed: true,
+	}
+	statusData, err := json.Marshal(status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var statusFields map[string]json.RawMessage
+	if err := json.Unmarshal(statusData, &statusFields); err != nil {
+		t.Fatal(err)
+	}
+	statusFields["egress_broker_closed"] = json.RawMessage("null")
+	statusData, err = json.Marshal(statusFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decodedStatus HostMonitorStatus
+	if err := json.Unmarshal(statusData, &decodedStatus); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("schema-v2 status accepted egress_broker_closed: %v", err)
 	}
 }
 
@@ -875,6 +938,11 @@ func prepareV2HostMonitorFixture(t *testing.T) (string, HostMonitorRequest, Prof
 	return prepareHostMonitorFixtureForSchema(t, ProfileSchemaV2)
 }
 
+func prepareV3HostMonitorFixture(t *testing.T) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
+	t.Helper()
+	return prepareHostMonitorFixtureForSchema(t, ProfileSchemaV3)
+}
+
 func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
 	t.Helper()
 	stateDir := filepath.Join(t.TempDir(), "session-11111111-1111-4111-8111-111111111111")
@@ -895,14 +963,28 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 	}
 	profile := testProfile(t)
 	volumeID := ""
-	if schema == ProfileSchemaV2 {
-		profile.Schema = ProfileSchemaV2
+	if schema == ProfileSchemaV2 || schema == ProfileSchemaV3 {
+		profile.Schema = schema
 		profile.Name = "pi-linux-qemu-v2"
 		profile.Guest.Protocol = guestcontrol.ProtocolVersionV3
 		volumeID = testWorkspaceVolumeID
 		profile.WorkspaceVolume = &WorkspaceVolumeSpec{
 			Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
 			RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
+		}
+		if schema == ProfileSchemaV3 {
+			policyData := []byte("version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n    domains: [example.com]\n    ports: [443]\n    decision: allow\n")
+			policyPath := filepath.Join(t.TempDir(), "host-egress.yaml")
+			if err := os.WriteFile(policyPath, policyData, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			profile.Name = "pi-linux-vsock-v3"
+			profile.Status = "strict"
+			profile.Network.Transport = "vsock-explicit-proxy"
+			profile.Network.Enforcement = "host-broker-strict"
+			profile.Network.RequireReadyBeforePublish = true
+			profile.Guest.Protocol = guestcontrol.ProtocolVersionV4
+			profile.HostEgress = &HostEgressSpec{PolicyFile: policyPath, PolicySHA256: digest(policyData)}
 		}
 	}
 	profile.Timeouts.ReadinessSeconds = 1
@@ -925,6 +1007,13 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 		Policy: profile.Guest.Policy, Workspace: profile.Guest.Workspace,
 		VSockCID: lease.CID, VSockPort: profile.Guest.ControlPort, SupervisorPort: profile.Guest.SupervisorPort,
 		ExpectedGeneration: 1, VolumeID: volumeID,
+	}
+	if profile.HostEgress != nil {
+		manifest.EgressPort, err = deriveHostEgressPort(profile, lease.CID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifest.EgressToken = strings.Repeat("4", 64)
 	}
 	manifestData, err := json.Marshal(manifest)
 	if err != nil {
@@ -956,7 +1045,7 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 		GuestManifestSHA256: manifestDigest, ExpectedGuestGeneration: manifest.ExpectedGeneration, LaunchNonce: manifest.LaunchNonce,
 		CIDLeaseRoot: leaseRoot, CIDLease: lease, CreatedAt: time.Now().UTC(),
 	}
-	if schema == ProfileSchemaV2 {
+	if schema == ProfileSchemaV2 || schema == ProfileSchemaV3 {
 		contract := *profile.WorkspaceVolume
 		request.ProfileSchema = profile.Schema
 		request.WorkspaceVolume = &contract
@@ -970,6 +1059,11 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 			t.Fatal(putErr)
 		}
 		request.InputArtifact = &descriptor
+		if schema == ProfileSchemaV3 {
+			hostEgress := *profile.HostEgress
+			request.HostEgress = &hostEgress
+			request.EgressPort = manifest.EgressPort
+		}
 	}
 	if err := WriteHostMonitorRequest(stateDir, request); err != nil {
 		t.Fatal(err)
@@ -978,6 +1072,10 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 }
 
 func testHostHandshake(manifest guestcontrol.Manifest) guestcontrol.Handshake {
+	capabilities := []string{"exec_probe", "shutdown", "supervisor_proxy", "artifact_import", "artifact_export", manifest.ControlToken}
+	if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
+		capabilities = append(capabilities, "host_egress_proxy")
+	}
 	return guestcontrol.Handshake{
 		ProtocolVersion: manifest.ProtocolVersion, SessionID: manifest.SessionID,
 		Generation: manifest.ExpectedGeneration, IncarnationID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -985,6 +1083,7 @@ func testHostHandshake(manifest guestcontrol.Manifest) guestcontrol.Handshake {
 		Profile: manifest.Profile, ProfileDigest: manifest.ProfileDigest,
 		AgentSHVersion: "test", EventToken: strings.Repeat("7", 64), Policy: manifest.Policy, VSockCID: manifest.VSockCID,
 		VSockPort: manifest.VSockPort, SupervisorPort: manifest.SupervisorPort,
-		Capabilities: []string{"exec_probe", "shutdown", "supervisor_proxy", "artifact_import", "artifact_export", manifest.ControlToken}, VolumeID: manifest.VolumeID,
+		Capabilities: capabilities, VolumeID: manifest.VolumeID,
+		EgressPort: manifest.EgressPort, EgressReady: manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4,
 	}
 }

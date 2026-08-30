@@ -683,6 +683,30 @@
             '';
           });
 
+          microvm-host-egress-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-microvm-host-egress-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test -count=1 ./internal/netmonitor \
+                -run '^Test(StartProxyWithOptions|StartProxyStrict|ProxyPublicEgress|StrictPublicEgress|HandleConnectStrict|HandleConnectDefaultMode|ProxyStrictHTTP|MaybeApproveNoApprovals)'
+              go test -count=1 ./internal/guestcontrol \
+                -run '^Test(EgressRelay|ProtocolV4|ManifestVersionsBindVolumeIdentity|HandshakeBindsManifestProtocolAndVolume|RetainedProtocolV2OperationsUseManifestVersion)'
+              go test -count=1 ./internal/cli \
+                -run '^TestGuestControlV4'
+              go test -count=1 ./internal/api \
+                -run '^TestBuildCommandEnvironment_TrustedGuestEgressProxyFinalOverride$'
+              go test -count=1 ./internal/runtimeprovider/externalrunner \
+                -run '^Test(ProfileV[23].*(Host|Strict)|ProfileSchemaRequiresBoundGuestProtocol|ProfileV1StillRejectsWorkspaceVolume|Provider(V3|DormantV2)|CompileHostEgress|HostEgress(Approve|Broker)|HostNetworkAudit|VerifiedVSock|HostMonitorV[123]JSON|HostMonitorV3)'
+              CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go test -c \
+                -o "$TMPDIR/microvm-host-egress-darwin.test" \
+                ./internal/runtimeprovider/externalrunner
+              CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go test -c \
+                -o "$TMPDIR/microvm-host-egress-windows.test.exe" \
+                ./internal/runtimeprovider/externalrunner
+              runHook postCheck
+            '';
+          });
+
           # Stable focused gates consumed by lifecycle integration branches.
           detached-supervisor-recovery-tests = go-unit-tests.overrideAttrs (_: {
             pname = "agentsh-detached-supervisor-recovery-tests";
