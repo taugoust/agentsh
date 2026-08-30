@@ -818,8 +818,11 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 	stderrText := stderr.String()
 	if stream == nil {
 		res.Stdout = stdout.String()
-		res.Stderr = stderrText
 	}
+	// Preserve bounded stderr in terminal results even when stdout was streamed.
+	// Fixed workers use stderr for actionable startup/configuration failures;
+	// dropping it turns those failures into opaque protocol errors.
+	res.Stderr = stderrText
 	res.StdoutTruncated = stdout.truncated
 	res.StdoutTotalBytes = stdout.total
 	res.StderrTruncated = stderr.truncated
