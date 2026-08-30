@@ -60,14 +60,17 @@ type subagentItemRequest struct {
 }
 
 type subagentRuntimeConfig struct {
-	Name      string
-	Isolation string
-	Command   string
-	Args      []string
-	TaskMode  string
-	Protocol  string
-	MaxDepth  int
-	SocketURL string
+	Name                      string
+	Isolation                 string
+	Command                   string
+	Args                      []string
+	TaskMode                  string
+	Protocol                  string
+	MaxDepth                  int
+	SocketURL                 string
+	GuestEgressApprovalToken  string
+	GuestEgressApprovalTokens []string
+	GuestEgressParentSession  string
 }
 
 type subagentResult struct {
@@ -244,6 +247,31 @@ func (a *App) spawnSubagentTool(w http.ResponseWriter, r *http.Request) {
 		a.unregisterSubagentCancellation(sessionID, requestID)
 		cleanupContext()
 	}()
+	if isolation == "draft" && mode != "disposition" && a.approvals != nil {
+		delegationCount := 1
+		if mode == "parallel" {
+			delegationCount = len(specs)
+		}
+		delegations := make([]*guestEgressApprovalHandle, 0, delegationCount)
+		for i := 0; i < delegationCount; i++ {
+			delegation, delegationErr := a.mintGuestEgressApprovalDelegation(ctx, sessionID, requestID)
+			if delegationErr != nil {
+				for _, active := range delegations {
+					a.revokeGuestEgressApprovalDelegation(active)
+				}
+				writeToolError(w, http.StatusServiceUnavailable, delegationErr.Error())
+				return
+			}
+			delegations = append(delegations, delegation)
+			runtime.GuestEgressApprovalTokens = append(runtime.GuestEgressApprovalTokens, delegation.token)
+		}
+		defer func() {
+			for _, delegation := range delegations {
+				a.revokeGuestEgressApprovalDelegation(delegation)
+			}
+		}()
+		runtime.GuestEgressParentSession = sessionID
+	}
 	if err := a.beginDetachedSubagentOperation(requestID, detachedOperationSpawnSubagent, ""); err != nil {
 		writeToolError(w, http.StatusServiceUnavailable, err.Error())
 		return
@@ -564,10 +592,18 @@ func (a *App) runSubagentModeSafely(ctx context.Context, s *session.Session, run
 	return a.runSubagentMode(ctx, s, runtime, requestID, mode, specs, actor, artifactThresholdBytes, stream)
 }
 
+func subagentRuntimeWithEgressDelegation(runtime subagentRuntimeConfig, index int) subagentRuntimeConfig {
+	runtime.GuestEgressApprovalToken = ""
+	if index >= 0 && index < len(runtime.GuestEgressApprovalTokens) {
+		runtime.GuestEgressApprovalToken = runtime.GuestEgressApprovalTokens[index]
+	}
+	return runtime
+}
+
 func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime subagentRuntimeConfig, requestID, mode string, specs []subagentItemRequest, actor piToolActor, artifactThresholdBytes int64, stream *subagentStreamer) (spawnSubagentResult, int, error) {
 	switch mode {
 	case "single", "disposition":
-		res := a.runSingleSubagent(ctx, s, runtime, requestID, specs[0], "subagent", 0, mode, len(specs), actor, artifactThresholdBytes, stream)
+		res := a.runSingleSubagent(ctx, s, subagentRuntimeWithEgressDelegation(runtime, 0), requestID, specs[0], "subagent", 0, mode, len(specs), actor, artifactThresholdBytes, stream)
 		if stream != nil {
 			_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "result": res})
 		}
@@ -581,7 +617,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 		previous := ""
 		for i, spec := range specs {
 			spec.Task = strings.ReplaceAll(spec.Task, "{previous}", previous)
-			res := a.runSingleSubagent(ctx, s, runtime, requestID, spec, fmt.Sprintf("step %d", i+1), i+1, mode, len(specs), actor, artifactThresholdBytes, stream)
+			res := a.runSingleSubagent(ctx, s, subagentRuntimeWithEgressDelegation(runtime, 0), requestID, spec, fmt.Sprintf("step %d", i+1), i+1, mode, len(specs), actor, artifactThresholdBytes, stream)
 			if stream != nil {
 				_ = stream.Emit("subagent_result", map[string]any{"label": res.Label, "step": i + 1, "result": res})
 			}
@@ -612,7 +648,7 @@ func (a *App) runSubagentMode(ctx context.Context, s *session.Session, runtime s
 				select {
 				case sem <- struct{}{}:
 					defer func() { <-sem }()
-					results[i] = a.runSingleSubagent(ctx, s, runtime, requestID, spec, label, 0, mode, len(specs), actor, artifactThresholdBytes, stream)
+					results[i] = a.runSingleSubagent(ctx, s, subagentRuntimeWithEgressDelegation(runtime, i), requestID, spec, label, 0, mode, len(specs), actor, artifactThresholdBytes, stream)
 				case <-ctx.Done():
 					results[i] = subagentResult{Label: label, Task: spec.Task, Model: spec.Model, Tools: spec.Tools, Runtime: runtime.Name, Command: runtime.Command}
 					setSubagentTerminal(&results[i], cancelledSubagentTerminal(ctx, subagentCancellationExitCode(ctx), "", subagentTerminationNatural, false))
@@ -743,6 +779,11 @@ func (a *App) runSingleSubagent(ctx context.Context, s *session.Session, runtime
 		"PI_CODING_AGENT_SESSION_DIR": childSessionDir,
 	}
 	if runtime.Isolation == "draft" {
+		if runtime.GuestEgressApprovalToken != "" && runtime.GuestEgressParentSession != "" && runtime.SocketURL != "" {
+			childEnv["AGENTSH_HOST_EGRESS_APPROVAL_TOKEN"] = runtime.GuestEgressApprovalToken
+			childEnv["AGENTSH_HOST_EGRESS_APPROVAL_SESSION_ID"] = runtime.GuestEgressParentSession
+			childEnv["AGENTSH_HOST_EGRESS_APPROVAL_SUPERVISOR"] = runtime.SocketURL
+		}
 		// The detached supervisor scrubs helper coordinates from its ambient
 		// environment after startup. A fixed operator-owned Draft worker still
 		// needs the exact protected paths so its nested pi-auto lifecycle can use

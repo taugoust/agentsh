@@ -109,7 +109,7 @@ func (b *runningHostEgressBroker) Close() error {
 	return b.Err()
 }
 
-func startHostEgressBroker(ctx context.Context, profile Profile, layout HostMonitorLayout, sessionID string, expectedCID, egressPort uint32, egressToken string) (hostEgressBroker, error) {
+func startHostEgressBroker(ctx context.Context, profile Profile, layout HostMonitorLayout, sessionID string, expectedCID, egressPort uint32, egressToken string, approvalBinding *HostEgressApprovalBinding) (hostEgressBroker, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -128,19 +128,20 @@ func startHostEgressBroker(ctx context.Context, profile Profile, layout HostMoni
 	if err != nil {
 		return nil, err
 	}
+	approvalManager, err := newHostEgressApprovalManager(approvalBinding, sessionID, hostEgressApprovalEmitter{audit: audit})
+	if err != nil {
+		return nil, errors.Join(err, audit.Close())
+	}
 	listener, err := listenHostEgressVSock(egressPort, expectedCID, egressToken, hostEgressAuthTimeout)
 	if err != nil {
 		return nil, errors.Join(err, audit.Close())
 	}
-	// No approval manager is installed for v3 yet. The policy engine preserves
-	// approve decisions as enforced decisions, and netmonitor converts them to
-	// deny before DNS or dial when the manager is nil.
 	proxy, _, err := netmonitor.StartProxyWithOptions(netmonitor.ProxyStartOptions{
 		Listener:              listener,
 		StrictPublicEgress:    true,
 		MaxConnections:        hostEgressMaxConnections,
 		InitialRequestTimeout: hostEgressInitialHTTPTimeout,
-	}, sessionID, nil, engine, nil, audit)
+	}, sessionID, nil, engine, approvalManager, audit)
 	if err != nil {
 		return nil, errors.Join(err, listener.Close(), audit.Close())
 	}
@@ -201,6 +202,17 @@ func loadHostEgressPolicySnapshot(spec HostEgressSpec) (*policy.Policy, error) {
 	}
 	return document, nil
 }
+
+type hostEgressApprovalEmitter struct{ audit *hostNetworkAudit }
+
+func (e hostEgressApprovalEmitter) AppendEvent(ctx context.Context, event types.Event) error {
+	if e.audit == nil {
+		return fmt.Errorf("host egress approval audit is unavailable")
+	}
+	return e.audit.AppendEvent(ctx, event)
+}
+
+func (hostEgressApprovalEmitter) Publish(types.Event) {}
 
 type hostNetworkAudit struct {
 	mu       sync.Mutex

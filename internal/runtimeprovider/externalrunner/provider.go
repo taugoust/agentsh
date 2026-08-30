@@ -241,6 +241,11 @@ func (p *Provider) Start(ctx context.Context, request runtimeprovider.Request) (
 			hostEgress := *profile.HostEgress
 			launchRequest.HostEgress = &hostEgress
 			launchRequest.EgressPort = manifest.EgressPort
+			approvalBinding, bindingErr := hostEgressApprovalBindingFromEnvironment()
+			if bindingErr != nil {
+				return nil, bindingErr
+			}
+			launchRequest.HostEgressApproval = approvalBinding
 		}
 	}
 	if err := WriteHostMonitorRequest(request.StateDir, launchRequest); err != nil {

@@ -2,6 +2,7 @@ package externalrunner
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -96,32 +97,57 @@ func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
 	return layout, nil
 }
 
+const (
+	HostEgressApprovalTokenEnv      = "AGENTSH_HOST_EGRESS_APPROVAL_TOKEN"
+	HostEgressApprovalCredentialEnv = "AGENTSH_HOST_EGRESS_APPROVAL_CREDENTIAL_FILE"
+	HostEgressApprovalSessionEnv    = "AGENTSH_HOST_EGRESS_APPROVAL_SESSION_ID"
+	HostEgressApprovalSupervisorEnv = "AGENTSH_HOST_EGRESS_APPROVAL_SUPERVISOR"
+	HostEgressApprovalHeader        = "X-AgentSH-Guest-Egress-Approval"
+)
+
+type HostEgressApprovalBinding struct {
+	ParentSessionID string `json:"parent_session_id"`
+	SupervisorURL   string `json:"supervisor_url"`
+	Token           string `json:"token"`
+}
+
+func (b HostEgressApprovalBinding) Validate() error {
+	decoded, tokenErr := base64.RawURLEncoding.DecodeString(b.Token)
+	socketPath := strings.TrimPrefix(b.SupervisorURL, "unix://")
+	if runtimeprovider.ValidateName(b.ParentSessionID) != nil || !strings.HasPrefix(b.ParentSessionID, "session-") || tokenErr != nil || len(decoded) != 32 ||
+		!strings.HasPrefix(b.SupervisorURL, "unix://") || !filepath.IsAbs(socketPath) || filepath.Clean(socketPath) != socketPath {
+		return fmt.Errorf("host egress approval binding is invalid")
+	}
+	return nil
+}
+
 type HostMonitorRequest struct {
-	SchemaVersion           int                  `json:"schema_version"`
-	MonitorID               string               `json:"monitor_id"`
-	SessionID               string               `json:"session_id"`
-	StateDir                string               `json:"state_dir"`
-	SourceWorkspace         string               `json:"source_workspace"`
-	VolumeID                string               `json:"volume_id,omitempty"`
-	ProfileFile             string               `json:"profile_file"`
-	ProfileFileSHA256       string               `json:"profile_file_sha256"`
-	ProfileName             string               `json:"profile_name"`
-	ProfileDigest           string               `json:"profile_digest"`
-	ProfileSchema           string               `json:"profile_schema,omitempty"`
-	WorkspaceVolume         *WorkspaceVolumeSpec `json:"workspace_volume,omitempty"`
-	HostEgress              *HostEgressSpec      `json:"host_egress,omitempty"`
-	EgressPort              uint32               `json:"egress_port,omitempty"`
-	InputArtifact           *artifact.Descriptor `json:"input_artifact,omitempty"`
-	GuestProfileDigest      string               `json:"guest_profile_digest"`
-	GuestPolicy             string               `json:"guest_policy"`
-	GuestControlPort        uint32               `json:"guest_control_port"`
-	GuestSupervisorPort     uint32               `json:"guest_supervisor_port"`
-	GuestManifestSHA256     string               `json:"guest_manifest_sha256"`
-	ExpectedGuestGeneration uint64               `json:"expected_guest_generation"`
-	LaunchNonce             string               `json:"launch_nonce"`
-	CIDLeaseRoot            string               `json:"cid_lease_root"`
-	CIDLease                CIDLease             `json:"cid_lease"`
-	CreatedAt               time.Time            `json:"created_at"`
+	SchemaVersion           int                        `json:"schema_version"`
+	MonitorID               string                     `json:"monitor_id"`
+	SessionID               string                     `json:"session_id"`
+	StateDir                string                     `json:"state_dir"`
+	SourceWorkspace         string                     `json:"source_workspace"`
+	VolumeID                string                     `json:"volume_id,omitempty"`
+	ProfileFile             string                     `json:"profile_file"`
+	ProfileFileSHA256       string                     `json:"profile_file_sha256"`
+	ProfileName             string                     `json:"profile_name"`
+	ProfileDigest           string                     `json:"profile_digest"`
+	ProfileSchema           string                     `json:"profile_schema,omitempty"`
+	WorkspaceVolume         *WorkspaceVolumeSpec       `json:"workspace_volume,omitempty"`
+	HostEgress              *HostEgressSpec            `json:"host_egress,omitempty"`
+	EgressPort              uint32                     `json:"egress_port,omitempty"`
+	HostEgressApproval      *HostEgressApprovalBinding `json:"host_egress_approval,omitempty"`
+	InputArtifact           *artifact.Descriptor       `json:"input_artifact,omitempty"`
+	GuestProfileDigest      string                     `json:"guest_profile_digest"`
+	GuestPolicy             string                     `json:"guest_policy"`
+	GuestControlPort        uint32                     `json:"guest_control_port"`
+	GuestSupervisorPort     uint32                     `json:"guest_supervisor_port"`
+	GuestManifestSHA256     string                     `json:"guest_manifest_sha256"`
+	ExpectedGuestGeneration uint64                     `json:"expected_guest_generation"`
+	LaunchNonce             string                     `json:"launch_nonce"`
+	CIDLeaseRoot            string                     `json:"cid_lease_root"`
+	CIDLease                CIDLease                   `json:"cid_lease"`
+	CreatedAt               time.Time                  `json:"created_at"`
 }
 
 func (r HostMonitorRequest) Validate(stateDir string) error {
@@ -130,17 +156,17 @@ func (r HostMonitorRequest) Validate(stateDir string) error {
 	}
 	switch r.SchemaVersion {
 	case HostMonitorSchemaVersionV1:
-		if r.VolumeID != "" || r.ProfileSchema != "" || r.WorkspaceVolume != nil || r.HostEgress != nil || r.EgressPort != 0 || r.InputArtifact != nil {
+		if r.VolumeID != "" || r.ProfileSchema != "" || r.WorkspaceVolume != nil || r.HostEgress != nil || r.EgressPort != 0 || r.HostEgressApproval != nil || r.InputArtifact != nil {
 			return fmt.Errorf("host monitor v1 request contains schema-v2 workspace volume fields")
 		}
 	case HostMonitorSchemaVersionV2:
-		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV2 || r.WorkspaceVolume == nil || r.WorkspaceVolume.Validate() != nil || r.HostEgress != nil || r.EgressPort != 0 ||
+		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV2 || r.WorkspaceVolume == nil || r.WorkspaceVolume.Validate() != nil || r.HostEgress != nil || r.EgressPort != 0 || r.HostEgressApproval != nil ||
 			r.InputArtifact == nil || r.InputArtifact.Validate() != nil || r.InputArtifact.SessionID != r.SessionID || r.InputArtifact.Kind != artifact.KindGitInputBundle {
 			return fmt.Errorf("host monitor v2 workspace volume or input artifact binding is invalid")
 		}
 	case HostMonitorSchemaVersionV3:
 		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV3 || r.WorkspaceVolume == nil || r.WorkspaceVolume.Validate() != nil ||
-			r.HostEgress == nil || r.HostEgress.Validate() != nil || !validPort(r.EgressPort) || r.InputArtifact == nil || r.InputArtifact.Validate() != nil ||
+			r.HostEgress == nil || r.HostEgress.Validate() != nil || !validPort(r.EgressPort) || (r.HostEgressApproval != nil && r.HostEgressApproval.Validate() != nil) || r.InputArtifact == nil || r.InputArtifact.Validate() != nil ||
 			r.InputArtifact.SessionID != r.SessionID || r.InputArtifact.Kind != artifact.KindGitInputBundle {
 			return fmt.Errorf("host monitor v3 workspace, egress, or input artifact binding is invalid")
 		}

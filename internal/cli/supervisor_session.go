@@ -379,6 +379,12 @@ var detachedSupervisorRuntimeEnvKeys = []string{
 	"AGENTSH_DRAFT_SUBAGENT_ARGS",
 	"AGENTSH_DRAFT_SUBAGENT_HOME",
 	"AGENTSH_DRAFT_SUBAGENT_STATE_DIR",
+	// Host-only callback coordinates let a v3 runtime monitor delegate unknown
+	// egress decisions to the still-active trusted parent subagent request. They
+	// are service environment, never session command environment.
+	"AGENTSH_HOST_EGRESS_APPROVAL_CREDENTIAL_FILE",
+	"AGENTSH_HOST_EGRESS_APPROVAL_SESSION_ID",
+	"AGENTSH_HOST_EGRESS_APPROVAL_SUPERVISOR",
 }
 
 func detachedSupervisorServiceEnv(env, inheritPatterns []string) []string {

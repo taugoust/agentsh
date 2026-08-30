@@ -107,7 +107,7 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 			openedVolume = testOpenedHostMonitorVolume(t, got, volumeID, nil)
 			return openedVolume, nil
 		},
-		startEgressBroker: func(_ context.Context, got Profile, layout HostMonitorLayout, sessionID string, cid, port uint32, token string) (hostEgressBroker, error) {
+		startEgressBroker: func(_ context.Context, got Profile, layout HostMonitorLayout, sessionID string, cid, port uint32, token string, approval *HostEgressApprovalBinding) (hostEgressBroker, error) {
 			status, statusErr := ReadHostMonitorStatus(stateDir)
 			if statusErr != nil || status.State != HostMonitorInitializing || !status.EgressBrokerClosed {
 				t.Fatalf("broker startup preceded durable initializing evidence: %+v, %v", status, statusErr)

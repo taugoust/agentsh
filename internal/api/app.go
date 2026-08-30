@@ -115,6 +115,9 @@ type App struct {
 	childCapabilityMu sync.Mutex
 	childCapabilities map[[32]byte]*childCapabilityRecord
 
+	guestEgressApprovalMu          sync.Mutex
+	guestEgressApprovalDelegations map[[32]byte]*guestEgressApprovalDelegation
+
 	approvalUIMu sync.Mutex
 	approvalUIs  map[string]*approvalUIEndpoint
 
@@ -519,6 +522,7 @@ func (a *App) Router() http.Handler {
 		r.Post("/sessions/{id}/tools/spawn_subagent", a.spawnSubagentTool)
 		r.Post("/sessions/{id}/tools/spawn_subagent/{requestID}/cancel", a.cancelSubagentTool)
 		r.Post("/sessions/{id}/tools/request_draft_landing_approval", a.requestDraftLandingApproval)
+		r.Post("/sessions/{id}/tools/request_guest_egress_approval", a.requestGuestEgressApproval)
 
 		r.Get("/events/search", a.searchEvents)
 

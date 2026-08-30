@@ -48,7 +48,7 @@ type hostMonitorDeps struct {
 	// volume. startRunner must return a non-nil cleanup handle with an error if a
 	// direct child may have started.
 	createVolume      func(context.Context, WorkspaceVolumeRequest, string) (*WorkspaceVolume, error)
-	startEgressBroker func(context.Context, Profile, HostMonitorLayout, string, uint32, uint32, string) (hostEgressBroker, error)
+	startEgressBroker func(context.Context, Profile, HostMonitorLayout, string, uint32, uint32, string, *HostEgressApprovalBinding) (hostEgressBroker, error)
 	startRunner       func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error)
 	validateRunner    func(Profile) error
 	lock              func(context.Context, string) (io.Closer, error)
@@ -224,7 +224,7 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 		if deps.startEgressBroker == nil {
 			brokerErr = fmt.Errorf("host monitor egress broker dependency is missing")
 		} else {
-			broker, brokerErr = deps.startEgressBroker(ctx, profile, layout, request.SessionID, request.CIDLease.CID, request.EgressPort, manifest.EgressToken)
+			broker, brokerErr = deps.startEgressBroker(ctx, profile, layout, request.SessionID, request.CIDLease.CID, request.EgressPort, manifest.EgressToken, request.HostEgressApproval)
 		}
 		if brokerErr == nil && broker == nil {
 			brokerErr = fmt.Errorf("host monitor egress broker startup returned no exact handle")
