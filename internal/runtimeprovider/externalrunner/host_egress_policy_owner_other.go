@@ -4,4 +4,4 @@ package externalrunner
 
 import "os"
 
-func operatorPolicyOwnerTrusted(os.FileInfo) bool { return true }
+func operatorPolicyOwnerTrusted(string, os.FileInfo) bool { return true }

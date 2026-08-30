@@ -171,7 +171,7 @@ func loadHostEgressPolicySnapshot(spec HostEgressSpec) (*policy.Policy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inspect host egress policy snapshot: %w", err)
 	}
-	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() < 0 || before.Size() > maxHostEgressPolicyBytes || !operatorPolicyOwnerTrusted(before) {
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() < 0 || before.Size() > maxHostEgressPolicyBytes || !operatorPolicyOwnerTrusted(spec.PolicyFile, before) {
 		return nil, fmt.Errorf("host egress policy snapshot has unsafe type, ownership, permissions, or size")
 	}
 	file, err := os.Open(spec.PolicyFile)
@@ -180,7 +180,7 @@ func loadHostEgressPolicySnapshot(spec HostEgressSpec) (*policy.Policy, error) {
 	}
 	defer file.Close()
 	opened, err := file.Stat()
-	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) || opened.Mode().Perm()&0o022 != 0 || !operatorPolicyOwnerTrusted(opened) {
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) || opened.Mode().Perm()&0o022 != 0 || !operatorPolicyOwnerTrusted(spec.PolicyFile, opened) {
 		return nil, fmt.Errorf("host egress policy snapshot identity changed while opening")
 	}
 	data, err := io.ReadAll(io.LimitReader(file, maxHostEgressPolicyBytes+1))
