@@ -52,8 +52,10 @@ func (c *hostVSockConn) Close() error {
 const hostVSockAcceptFlags = unix.SOCK_CLOEXEC | unix.SOCK_NONBLOCK
 
 type rawHostVSockListener struct {
+	mu        sync.Mutex
 	fd        int
 	address   hostVSockAddr
+	closed    bool
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -62,7 +64,7 @@ func listenHostEgressVSock(port, expectedCID uint32, expectedToken string, authe
 	if port < 1024 || port > 65535 {
 		return nil, fmt.Errorf("host egress VSOCK port is invalid")
 	}
-	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM|unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK, 0)
 	if err != nil {
 		return nil, fmt.Errorf("create host egress VSOCK listener: %w", err)
 	}
@@ -96,8 +98,28 @@ func listenHostEgressVSock(port, expectedCID uint32, expectedToken string, authe
 
 func (l *rawHostVSockListener) Accept() (net.Conn, error) {
 	for {
-		fd, peer, err := unix.Accept4(l.fd, hostVSockAcceptFlags)
+		l.mu.Lock()
+		if l.closed || l.fd < 0 {
+			l.mu.Unlock()
+			return nil, net.ErrClosed
+		}
+		listenerFD := l.fd
+		fd, peer, err := unix.Accept4(listenerFD, hostVSockAcceptFlags)
+		l.mu.Unlock()
 		if err == unix.EINTR {
+			continue
+		}
+		if err == unix.EAGAIN || err == unix.EWOULDBLOCK {
+			ready, pollErr := unix.Poll([]unix.PollFd{{Fd: int32(listenerFD), Events: unix.POLLIN}}, 100)
+			if pollErr == unix.EINTR {
+				continue
+			}
+			if pollErr != nil {
+				return nil, pollErr
+			}
+			if ready == 0 {
+				continue
+			}
 			continue
 		}
 		if err != nil {
@@ -124,15 +146,23 @@ func (l *rawHostVSockListener) Accept() (net.Conn, error) {
 func (l *rawHostVSockListener) Addr() net.Addr { return l.address }
 
 func (l *rawHostVSockListener) Close() error {
-	if l == nil || l.fd < 0 {
+	if l == nil {
 		return nil
 	}
 	l.closeOnce.Do(func() {
-		shutdownErr := unix.Shutdown(l.fd, unix.SHUT_RDWR)
+		l.mu.Lock()
+		l.closed = true
+		fd := l.fd
+		l.fd = -1
+		l.mu.Unlock()
+		if fd < 0 {
+			return
+		}
+		shutdownErr := unix.Shutdown(fd, unix.SHUT_RDWR)
 		if shutdownErr == unix.ENOTCONN || shutdownErr == unix.EINVAL {
 			shutdownErr = nil
 		}
-		l.closeErr = errors.Join(shutdownErr, unix.Close(l.fd))
+		l.closeErr = errors.Join(shutdownErr, unix.Close(fd))
 	})
 	return l.closeErr
 }
