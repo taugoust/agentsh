@@ -562,6 +562,26 @@
             '';
           };
 
+          permission-gate-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-permission-gate-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test -count=1 ./internal/permissiongate
+              go test -count=1 ./internal/cli -run '^TestPermissionGate'
+              CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go test -c \
+                -o "$TMPDIR/permission-gate-darwin.test" \
+                ./internal/permissiongate
+              CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go test -c \
+                -o "$TMPDIR/permission-gate-windows.test.exe" \
+                ./internal/permissiongate
+              CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go test -c \
+                -o "$TMPDIR/permission-gate-cli-windows.test.exe" \
+                ./internal/cli/permission_gate.go \
+                ./internal/cli/exit.go
+              runHook postCheck
+            '';
+          });
+
           shadow-review-atomicity-tests = go-unit-tests.overrideAttrs (_: {
             pname = "agentsh-shadow-review-atomicity-tests";
             checkPhase = ''

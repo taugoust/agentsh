@@ -61,6 +61,7 @@ func NewRoot(version string) *cobra.Command {
 	cmd.AddCommand(newWrapCmd())
 	cmd.AddCommand(newActivateExtensionCmd())
 	cmd.AddCommand(newSkillcheckCmd())
+	cmd.AddCommand(newPermissionGateCmd())
 
 	return cmd
 }
