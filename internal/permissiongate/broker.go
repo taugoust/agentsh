@@ -23,7 +23,7 @@ type pendingPrompt struct {
 	matches []Match
 }
 
-// Broker serves the inherited, process-local authorization channel. It does
+// Broker serves one private, process-local authorization connection. It does
 // not execute Bash or apply any namespace, filesystem, or network controls.
 type Broker struct {
 	transport io.ReadWriter

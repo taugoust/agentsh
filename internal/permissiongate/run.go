@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ErrUnsupported is returned on platforms without Unix socketpairs and process
+// ErrUnsupported is returned on platforms without Unix sockets and process
 // groups.
 var ErrUnsupported = errors.New("permission-gate run is unsupported on this platform")
 
@@ -15,8 +15,8 @@ var ErrUnsupported = errors.New("permission-gate run is unsupported on this plat
 type RunOptions struct {
 	Command   []string
 	AuditPath string
-	// HandshakeTimeout bounds the initial Pi hello. Zero uses the secure
-	// platform default.
+	// HandshakeTimeout bounds the Pi rendezvous and initial hello. Zero uses the
+	// secure platform default.
 	HandshakeTimeout time.Duration
 
 	// Nil streams inherit the agentsh process streams. The explicit fields are
@@ -33,8 +33,8 @@ type RunResult struct {
 	RunID     string
 }
 
-// Run directly launches the requested command and brokers its inherited gate
-// channel. Platform files provide the Unix implementation and Windows stub.
+// Run directly launches the requested command and brokers its private gate
+// connection. Platform files provide the Unix implementation and Windows stub.
 func Run(ctx context.Context, options RunOptions) (RunResult, error) {
 	return run(ctx, options)
 }

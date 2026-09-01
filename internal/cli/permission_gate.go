@@ -22,7 +22,7 @@ func newPermissionGateRunCmd() *cobra.Command {
 	command := &cobra.Command{
 		Use:   "run [flags] -- COMMAND [ARGS...]",
 		Short: "Launch a command with the guard-only Permission Gate",
-		Long: `Launch Pi directly with an inherited Permission Gate channel.
+		Long: `Launch Pi directly with a private one-shot Unix Permission Gate rendezvous.
 
 This mode only classifies Bash authorization requests. It does not create
 namespaces or apply filesystem, network, or other sandbox restrictions.`,

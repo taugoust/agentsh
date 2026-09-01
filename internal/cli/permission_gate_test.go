@@ -17,6 +17,9 @@ func TestPermissionGateCommandRegistered(t *testing.T) {
 	if command == nil || command.Name() != "run" || command.Parent() == nil || command.Parent().Name() != "permission-gate" {
 		t.Fatalf("permission-gate run command was not registered: %#v", command)
 	}
+	if !strings.Contains(command.Long, "private one-shot Unix") {
+		t.Fatalf("rendezvous behavior missing from help: %q", command.Long)
+	}
 	if !strings.Contains(command.Long, "does not create\nnamespaces") {
 		t.Fatalf("guard-only behavior missing from help: %q", command.Long)
 	}

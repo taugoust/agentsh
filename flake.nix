@@ -562,12 +562,23 @@
             '';
           };
 
-          permission-gate-tests = go-unit-tests.overrideAttrs (_: {
+          permission-gate-tests = go-unit-tests.overrideAttrs (old: {
             pname = "agentsh-permission-gate-tests";
+            nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.bun ];
             checkPhase = ''
               runHook preCheck
               go test -count=1 ./internal/permissiongate
               go test -count=1 ./internal/cli -run '^TestPermissionGate'
+              go build -o "$TMPDIR/agentsh" ./cmd/agentsh
+              AGENTSH_PERMISSION_GATE_SOCKET=stale \
+                "$TMPDIR/agentsh" permission-gate run \
+                  --audit-log "$TMPDIR/bun-live-audit.jsonl" \
+                  -- ${pkgs.bun}/bin/bun \
+                    nix/checks/fixtures/permission-gate-bun-client.mjs \
+                  > "$TMPDIR/bun-live.out"
+              grep -qx 'permission-gate-bun-live-ok' "$TMPDIR/bun-live.out"
+              grep -q '"request_id":"bun-live-check"' "$TMPDIR/bun-live-audit.jsonl"
+              grep -q '"decision":"allow"' "$TMPDIR/bun-live-audit.jsonl"
               CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go test -c \
                 -o "$TMPDIR/permission-gate-darwin.test" \
                 ./internal/permissiongate

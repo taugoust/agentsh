@@ -11,13 +11,13 @@ import (
 )
 
 const (
-	// ProtocolVersion is the only inherited-FD protocol version understood by
+	// ProtocolVersion is the only permission gate protocol version understood by
 	// this implementation.
 	ProtocolVersion = 1
 
-	// EnvFD names the environment variable containing the inherited gate file
-	// descriptor in the launched Pi process.
-	EnvFD = "AGENTSH_PERMISSION_GATE_FD"
+	// EnvSocket names the environment variable containing the path to the
+	// one-shot private Unix rendezvous exposed to the launched Pi process.
+	EnvSocket = "AGENTSH_PERMISSION_GATE_SOCKET"
 
 	// MaxFrameBytes bounds every JSONL frame in either direction. Commands have
 	// a lower independent bound so response and metadata overhead always fit.
@@ -45,7 +45,7 @@ var (
 )
 
 // HelloRequest starts every protocol connection. Requiring an explicit hello
-// prevents an unrelated inherited-fd consumer from being mistaken for Pi.
+// prevents an unrelated rendezvous client from being mistaken for Pi.
 type HelloRequest struct {
 	V      int    `json:"v"`
 	Type   string `json:"type"`

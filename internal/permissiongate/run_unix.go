@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -58,42 +59,56 @@ func run(ctx context.Context, options RunOptions) (RunResult, error) {
 	result.RunID = runID
 	defer func() { _ = audit.Close() }()
 
-	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
-	if err != nil {
-		return result, fmt.Errorf("create permission gate socketpair: %w", err)
-	}
-	unix.CloseOnExec(fds[0])
-	unix.CloseOnExec(fds[1])
-	parentFile := os.NewFile(uintptr(fds[0]), "permission-gate-parent")
-	childFile := os.NewFile(uintptr(fds[1]), "permission-gate-child")
-	if parentFile == nil || childFile == nil {
-		if parentFile != nil {
-			_ = parentFile.Close()
-		}
-		if childFile != nil {
-			_ = childFile.Close()
-		}
-		return result, errors.New("create permission gate socket files")
-	}
-	defer childFile.Close()
-
-	transport, err := net.FileConn(parentFile)
-	_ = parentFile.Close()
-	if err != nil {
-		return result, fmt.Errorf("open permission gate transport: %w", err)
-	}
-	defer transport.Close()
 	handshakeTimeout := options.HandshakeTimeout
 	if handshakeTimeout <= 0 {
 		handshakeTimeout = defaultHandshakeTimeout
 	}
-	if err := transport.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
-		return result, fmt.Errorf("bound permission gate handshake: %w", err)
+
+	tempRoot, err := filepath.Abs(os.TempDir())
+	if err != nil {
+		return result, fmt.Errorf("resolve permission gate temporary directory: %w", err)
+	}
+	rendezvousDir, err := os.MkdirTemp(tempRoot, "agpg-")
+	if err != nil {
+		return result, fmt.Errorf("create permission gate rendezvous directory: %w", err)
+	}
+	if err := os.Chmod(rendezvousDir, 0o700); err != nil {
+		_ = os.RemoveAll(rendezvousDir)
+		return result, fmt.Errorf("secure permission gate rendezvous directory: %w", err)
+	}
+	socketPath := filepath.Join(rendezvousDir, "s")
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath, Net: "unix"})
+	if err != nil {
+		_ = os.RemoveAll(rendezvousDir)
+		return result, fmt.Errorf("listen for permission gate rendezvous: %w", err)
+	}
+	listener.SetUnlinkOnClose(true)
+	rendezvousOpen := true
+	cleanupRendezvous := func() error {
+		var cleanupErrs []error
+		if rendezvousOpen {
+			rendezvousOpen = false
+			if closeErr := listener.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+				cleanupErrs = append(cleanupErrs, fmt.Errorf("close listener: %w", closeErr))
+			}
+		}
+		if removeErr := os.Remove(socketPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("unlink socket: %w", removeErr))
+		}
+		if removeErr := os.RemoveAll(rendezvousDir); removeErr != nil {
+			cleanupErrs = append(cleanupErrs, fmt.Errorf("remove private directory: %w", removeErr))
+		}
+		return errors.Join(cleanupErrs...)
+	}
+	defer func() { _ = cleanupRendezvous() }()
+
+	handshakeDeadline := time.Now().Add(handshakeTimeout)
+	if err := listener.SetDeadline(handshakeDeadline); err != nil {
+		return result, fmt.Errorf("bound permission gate rendezvous: %w", err)
 	}
 
 	command := exec.Command(options.Command[0], options.Command[1:]...)
-	command.Env = withPermissionGateFD(os.Environ(), 3)
-	command.ExtraFiles = []*os.File{childFile}
+	command.Env = withPermissionGateSocket(os.Environ(), socketPath)
 	command.Stdin = options.Stdin
 	if command.Stdin == nil {
 		command.Stdin = os.Stdin
@@ -117,7 +132,6 @@ func run(ctx context.Context, options RunOptions) (RunResult, error) {
 	if err := command.Start(); err != nil {
 		return result, fmt.Errorf("start permission-gated command: %w", err)
 	}
-	_ = childFile.Close()
 
 	stopSignals := forwardSignals(command.Process.Pid)
 	defer stopSignals()
@@ -129,6 +143,79 @@ func run(ctx context.Context, options RunOptions) (RunResult, error) {
 	go func() {
 		waitCh <- command.Wait()
 	}()
+	acceptCh := make(chan struct {
+		connection *net.UnixConn
+		err        error
+	}, 1)
+	go func() {
+		connection, acceptErr := listener.AcceptUnix()
+		acceptCh <- struct {
+			connection *net.UnixConn
+			err        error
+		}{connection: connection, err: acceptErr}
+	}()
+
+	var transport *net.UnixConn
+	select {
+	case accepted := <-acceptCh:
+		if accepted.err != nil {
+			_ = cleanupRendezvous()
+			killProcessGroup(command.Process.Pid)
+			waitErr := <-waitCh
+			result.ExitCode = childExitCode(waitErr)
+			return result, fmt.Errorf("permission gate broker failed: accept rendezvous: %w", accepted.err)
+		}
+		if accepted.connection == nil {
+			_ = cleanupRendezvous()
+			killProcessGroup(command.Process.Pid)
+			waitErr := <-waitCh
+			result.ExitCode = childExitCode(waitErr)
+			return result, errors.New("permission gate broker failed: accepted nil rendezvous connection")
+		}
+		transport = accepted.connection
+		if err := verifyPermissionGatePeer(transport, command.Process.Pid); err != nil {
+			_ = transport.Close()
+			_ = cleanupRendezvous()
+			killProcessGroup(command.Process.Pid)
+			waitErr := <-waitCh
+			result.ExitCode = childExitCode(waitErr)
+			return result, fmt.Errorf("permission gate broker failed: verify rendezvous peer: %w", err)
+		}
+		// The rendezvous is one-shot. Retire its listener, socket path, and
+		// private directory before reading any protocol data from the client.
+		if err := cleanupRendezvous(); err != nil {
+			_ = transport.Close()
+			killProcessGroup(command.Process.Pid)
+			waitErr := <-waitCh
+			result.ExitCode = childExitCode(waitErr)
+			return result, fmt.Errorf("permission gate broker failed: retire rendezvous: %w", err)
+		}
+	case waitErr := <-waitCh:
+		_ = cleanupRendezvous()
+		accepted := <-acceptCh
+		if accepted.connection != nil {
+			_ = accepted.connection.Close()
+		}
+		return finishRunResult(result, waitErr)
+	case <-ctx.Done():
+		_ = cleanupRendezvous()
+		accepted := <-acceptCh
+		if accepted.connection != nil {
+			_ = accepted.connection.Close()
+		}
+		killProcessGroup(command.Process.Pid)
+		waitErr := <-waitCh
+		result.ExitCode = childExitCode(waitErr)
+		return result, ctx.Err()
+	}
+	defer transport.Close()
+	if err := transport.SetReadDeadline(handshakeDeadline); err != nil {
+		killProcessGroup(command.Process.Pid)
+		waitErr := <-waitCh
+		result.ExitCode = childExitCode(waitErr)
+		return result, fmt.Errorf("permission gate broker failed: bound handshake: %w", err)
+	}
+
 	brokerCh := make(chan error, 1)
 	go func() {
 		brokerCh <- NewBroker(transport, audit, runID).Serve()
@@ -173,6 +260,22 @@ func run(ctx context.Context, options RunOptions) (RunResult, error) {
 		return result, ctx.Err()
 	}
 
+	return finishRunResult(result, waitErr)
+}
+
+func withPermissionGateSocket(environment []string, socketPath string) []string {
+	filtered := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		key, _, found := strings.Cut(entry, "=")
+		if found && strings.EqualFold(key, EnvSocket) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return append(filtered, EnvSocket+"="+socketPath)
+}
+
+func finishRunResult(result RunResult, waitErr error) (RunResult, error) {
 	result.ExitCode = childExitCode(waitErr)
 	if waitErr != nil {
 		var exitErr *exec.ExitError
@@ -181,18 +284,6 @@ func run(ctx context.Context, options RunOptions) (RunResult, error) {
 		}
 	}
 	return result, nil
-}
-
-func withPermissionGateFD(environment []string, fd int) []string {
-	filtered := make([]string, 0, len(environment)+1)
-	for _, entry := range environment {
-		key, _, found := strings.Cut(entry, "=")
-		if found && strings.EqualFold(key, EnvFD) {
-			continue
-		}
-		filtered = append(filtered, entry)
-	}
-	return append(filtered, fmt.Sprintf("%s=%d", EnvFD, fd))
 }
 
 func forwardSignals(processGroup int) func() {

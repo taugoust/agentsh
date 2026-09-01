@@ -10,11 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -22,11 +22,12 @@ import (
 )
 
 const (
-	helperEnabledEnv = "AGENTSH_PERMISSION_GATE_TEST_HELPER"
-	helperModeEnv    = "AGENTSH_PERMISSION_GATE_TEST_MODE"
-	helperChildEnv   = "AGENTSH_PERMISSION_GATE_TEST_CHILD"
-	helperMarkerEnv  = "AGENTSH_PERMISSION_GATE_TEST_MARKER"
-	helperValueEnv   = "AGENTSH_PERMISSION_GATE_TEST_VALUE"
+	helperEnabledEnv      = "AGENTSH_PERMISSION_GATE_TEST_HELPER"
+	helperModeEnv         = "AGENTSH_PERMISSION_GATE_TEST_MODE"
+	helperChildEnv        = "AGENTSH_PERMISSION_GATE_TEST_CHILD"
+	helperMarkerEnv       = "AGENTSH_PERMISSION_GATE_TEST_MARKER"
+	helperValueEnv        = "AGENTSH_PERMISSION_GATE_TEST_VALUE"
+	helperSocketRecordEnv = "AGENTSH_PERMISSION_GATE_TEST_SOCKET_RECORD"
 )
 
 func TestPermissionGateHelperProcess(t *testing.T) {
@@ -38,34 +39,78 @@ func TestPermissionGateHelperProcess(t *testing.T) {
 		_ = os.WriteFile(os.Getenv(helperMarkerEnv), []byte("survived\n"), 0o600)
 		os.Exit(0)
 	}
-	if os.Getenv(helperModeEnv) == "silent" {
+	mode := os.Getenv(helperModeEnv)
+	socketPath := os.Getenv(EnvSocket)
+	if socketPath == "" || !filepath.IsAbs(socketPath) {
+		os.Exit(91)
+	}
+	if recordPath := os.Getenv(helperSocketRecordEnv); recordPath != "" {
+		if err := os.WriteFile(recordPath, []byte(socketPath), 0o600); err != nil {
+			os.Exit(92)
+		}
+	}
+	if mode == "silent" {
 		time.Sleep(5 * time.Second)
 		_ = os.WriteFile(os.Getenv(helperMarkerEnv), []byte("survived\n"), 0o600)
 		os.Exit(99)
 	}
+	if mode == "rendezvous" {
+		directoryInfo, err := os.Stat(filepath.Dir(socketPath))
+		if err != nil || !directoryInfo.IsDir() || directoryInfo.Mode().Perm() != 0o700 {
+			os.Exit(93)
+		}
+		socketInfo, err := os.Stat(socketPath)
+		if err != nil || socketInfo.Mode()&os.ModeSocket == 0 {
+			os.Exit(94)
+		}
+	}
 
-	fd, err := strconv.Atoi(os.Getenv(EnvFD))
-	if err != nil || fd < 3 {
-		os.Exit(91)
+	transport, err := net.DialTimeout("unix", socketPath, time.Second)
+	if err != nil {
+		os.Exit(95)
 	}
-	transport := os.NewFile(uintptr(fd), "permission-gate-test-client")
-	if transport == nil {
-		os.Exit(92)
+	defer transport.Close()
+	if mode == "connected-silent" {
+		time.Sleep(5 * time.Second)
+		_ = os.WriteFile(os.Getenv(helperMarkerEnv), []byte("survived\n"), 0o600)
+		os.Exit(99)
 	}
+	if mode == "rendezvous" {
+		deadline := time.Now().Add(time.Second)
+		for {
+			_, socketErr := os.Lstat(socketPath)
+			_, directoryErr := os.Stat(filepath.Dir(socketPath))
+			if os.IsNotExist(socketErr) && os.IsNotExist(directoryErr) {
+				break
+			}
+			if time.Now().After(deadline) {
+				os.Exit(96)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		second, secondErr := net.DialTimeout("unix", socketPath, 20*time.Millisecond)
+		if secondErr == nil {
+			_ = second.Close()
+			os.Exit(97)
+		}
+	}
+
 	reader := newFrameReader(transport)
 	if err := writeFrame(transport, HelloRequest{V: ProtocolVersion, Type: messageHello, Client: "pi-permission-gate"}); err != nil {
-		os.Exit(93)
+		os.Exit(98)
 	}
 	frame, err := reader.read()
 	if err != nil {
-		os.Exit(94)
+		os.Exit(99)
 	}
 	var hello HelloResponse
 	if json.Unmarshal(frame, &hello) != nil || hello.Service != "agentsh-permission-gate" {
-		os.Exit(95)
+		os.Exit(100)
 	}
 
-	switch os.Getenv(helperModeEnv) {
+	switch mode {
+	case "rendezvous":
+		os.Exit(0)
 	case "normal":
 		cwd, _ := os.Getwd()
 		if err := writeFrame(transport, AuthorizeRequest{
@@ -127,12 +172,66 @@ func permissionGateHelperCommand() []string {
 	return []string{os.Args[0], "-test.run=^TestPermissionGateHelperProcess$"}
 }
 
-func TestPermissionGateEnvironmentOnlyReplacesGateFD(t *testing.T) {
-	input := []string{"A=one", EnvFD + "=99", "B=two", strings.ToLower(EnvFD) + "=98"}
-	got := withPermissionGateFD(input, 3)
-	want := []string{"A=one", "B=two", EnvFD + "=3"}
+func TestPermissionGateEnvironmentOnlyReplacesGateSocket(t *testing.T) {
+	socketPath := filepath.Join("private", "gate.sock")
+	input := []string{"A=one", EnvSocket + "=old", "B=two", strings.ToLower(EnvSocket) + "=older"}
+	got := withPermissionGateSocket(input, socketPath)
+	want := []string{"A=one", "B=two", EnvSocket + "=" + socketPath}
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("environment = %q, want %q", got, want)
+	}
+}
+
+func TestPermissionGateRunUsesOneShotPrivateUnixRendezvous(t *testing.T) {
+	t.Setenv(helperEnabledEnv, "1")
+	t.Setenv(helperModeEnv, "rendezvous")
+	recordPath := filepath.Join(t.TempDir(), "socket-path")
+	t.Setenv(helperSocketRecordEnv, recordPath)
+
+	result, err := Run(t.Context(), RunOptions{
+		Command: permissionGateHelperCommand(), AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
+		Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("exit code = %d, want 0", result.ExitCode)
+	}
+	recorded, err := os.ReadFile(recordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	socketPath := string(recorded)
+	if socketPath == "" || !filepath.IsAbs(socketPath) {
+		t.Fatalf("rendezvous path = %q, want absolute path", socketPath)
+	}
+	if _, err := os.Lstat(socketPath); !os.IsNotExist(err) {
+		t.Fatalf("rendezvous socket was not unlinked: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(socketPath)); !os.IsNotExist(err) {
+		t.Fatalf("rendezvous directory was not removed: %v", err)
+	}
+}
+
+func TestPermissionGateRunStartFailureCleansRendezvous(t *testing.T) {
+	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
+	tempRoot := t.TempDir()
+	t.Setenv("TMPDIR", tempRoot)
+
+	_, err := Run(t.Context(), RunOptions{
+		Command: []string{filepath.Join(tempRoot, "missing-command")}, AuditPath: auditPath,
+		Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+	})
+	if err == nil || !strings.Contains(err.Error(), "start permission-gated command") {
+		t.Fatalf("Run() error = %v, want command start failure", err)
+	}
+	entries, err := os.ReadDir(tempRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("rendezvous cleanup left entries in %q: %v", tempRoot, entries)
 	}
 }
 
@@ -227,28 +326,38 @@ func TestPermissionGateRunForwardsSignals(t *testing.T) {
 	}
 }
 
-func TestPermissionGateRunMissingHandshakeFailsClosed(t *testing.T) {
-	t.Setenv(helperEnabledEnv, "1")
-	t.Setenv(helperModeEnv, "silent")
-	marker := filepath.Join(t.TempDir(), "survived")
-	t.Setenv(helperMarkerEnv, marker)
-	started := time.Now()
-	_, err := Run(t.Context(), RunOptions{
-		Command: permissionGateHelperCommand(), AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
-		HandshakeTimeout: 50 * time.Millisecond,
-		Stdin:            strings.NewReader(""),
-		Stdout:           &bytes.Buffer{},
-		Stderr:           &bytes.Buffer{},
-	})
-	if err == nil || !strings.Contains(err.Error(), "timeout") {
-		t.Fatalf("Run() error = %v, want handshake timeout", err)
-	}
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
-		t.Fatalf("handshake failure took %s; child was not promptly killed and reaped", elapsed)
-	}
-	time.Sleep(100 * time.Millisecond)
-	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
-		t.Fatalf("child survived missing handshake: %v", statErr)
+func TestPermissionGateRunHandshakeFailuresFailClosed(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		mode string
+	}{
+		{name: "no connection", mode: "silent"},
+		{name: "connected without hello", mode: "connected-silent"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(helperEnabledEnv, "1")
+			t.Setenv(helperModeEnv, test.mode)
+			marker := filepath.Join(t.TempDir(), "survived")
+			t.Setenv(helperMarkerEnv, marker)
+			started := time.Now()
+			_, err := Run(t.Context(), RunOptions{
+				Command: permissionGateHelperCommand(), AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
+				HandshakeTimeout: 50 * time.Millisecond,
+				Stdin:            strings.NewReader(""),
+				Stdout:           &bytes.Buffer{},
+				Stderr:           &bytes.Buffer{},
+			})
+			if err == nil || !strings.Contains(err.Error(), "timeout") {
+				t.Fatalf("Run() error = %v, want handshake timeout", err)
+			}
+			if elapsed := time.Since(started); elapsed > 2*time.Second {
+				t.Fatalf("handshake failure took %s; child was not promptly killed and reaped", elapsed)
+			}
+			time.Sleep(100 * time.Millisecond)
+			if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+				t.Fatalf("child survived missing handshake: %v", statErr)
+			}
+		})
 	}
 }
 
