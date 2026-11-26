@@ -62,8 +62,6 @@ func ParseFamily(value string) (nr int, name string, ok bool) {
 // DefaultBlockedFamilies returns the recommended-default list applied
 // when blocked_socket_families is unset in config. Each entry uses
 // OnBlockErrno (returns EAFNOSUPPORT to userspace).
-//
-// Rationale per docs/superpowers/specs/2026-04-29-socket-family-block-design.md.
 func DefaultBlockedFamilies() []BlockedFamily {
 	names := []string{
 		"AF_ALG", "AF_VSOCK", "AF_RDS", "AF_TIPC", "AF_KCM",

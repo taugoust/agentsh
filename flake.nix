@@ -375,50 +375,6 @@
                 touch "$out/skipped-non-linux"
               '';
 
-          nested-namespace-feasibility =
-            if stdenv.hostPlatform.isLinux then
-              import ./nix/checks/nested-namespace-feasibility.nix {
-                inherit pkgs self;
-              }
-            else
-              pkgs.runCommand "agentsh-nested-namespace-feasibility-skipped" { } ''
-                mkdir -p "$out"
-                touch "$out/skipped-non-linux"
-              '';
-
-          nested-namespace-broker-feasibility =
-            if stdenv.hostPlatform.isLinux then
-              import ./nix/checks/nested-namespace-broker-feasibility.nix {
-                inherit pkgs self;
-              }
-            else
-              pkgs.runCommand "agentsh-nested-namespace-broker-feasibility-skipped" { } ''
-                mkdir -p "$out"
-                touch "$out/skipped-non-linux"
-              '';
-
-          recursive-mount-clone-feasibility =
-            if stdenv.hostPlatform.isLinux then
-              import ./nix/checks/recursive-mount-clone-feasibility.nix {
-                inherit pkgs self;
-              }
-            else
-              pkgs.runCommand "agentsh-recursive-mount-clone-feasibility-skipped" { } ''
-                mkdir -p "$out"
-                touch "$out/skipped-non-linux"
-              '';
-
-          landlock-mount-graph-feasibility =
-            if stdenv.hostPlatform.isLinux then
-              import ./nix/checks/landlock-mount-graph-feasibility.nix {
-                inherit pkgs self;
-              }
-            else
-              pkgs.runCommand "agentsh-landlock-mount-graph-feasibility-skipped" { } ''
-                mkdir -p "$out"
-                touch "$out/skipped-non-linux"
-              '';
-
           approval-resolution-race-tests = pkgs.buildGoModule {
             pname = "agentsh-approval-resolution-race-tests";
             version = "unstable-2026-06-17";

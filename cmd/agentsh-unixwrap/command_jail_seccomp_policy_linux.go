@@ -1,4 +1,4 @@
-//go:build linux && cgo && !agentsh_nested_namespace_feasibility && !agentsh_mount_broker_feasibility
+//go:build linux && cgo
 
 package main
 

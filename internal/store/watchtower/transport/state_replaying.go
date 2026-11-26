@@ -31,10 +31,8 @@ import (
 // runConnecting (state_connecting.go) calls startRecv on accepted
 // SessionAck so runReplaying's recvEventCh / recvErrCh select arms
 // observe inbound BatchAck, ServerHeartbeat, Goaway, and stream-error
-// events concurrently with NextBatch + Send. Per the spec at
-// docs/superpowers/specs/2026-04-18-wtp-client-design.md:565 this
-// satisfies the "process inbound frames concurrently with replay"
-// contract.
+// events concurrently with NextBatch + Send, so inbound frames are
+// processed concurrently with replay.
 //
 // The exported test seam RunReplayingForTest lives in
 // state_replaying_internal_test.go (compiled out of the production

@@ -21,9 +21,7 @@ import (
 // guarantee: callers inside the transport package can still call
 // runReplaying directly. Production wiring inside the package (Task 22's
 // Run loop) MUST gate the call behind the recv-multiplexer plumbing
-// Tasks 17/18 introduce. See the Task 22 Run-loop snippet in
-// docs/superpowers/plans/2026-04-18-wtp-client.md "Task 16 — Deferred
-// to Task 17/18" for the structural dependency. Until then, only tests
+// Tasks 17/18 introduce. Until then, only tests
 // reach runReplaying — via this helper, which lives in *_test.go and is
 // compiled out of the production binary.
 //

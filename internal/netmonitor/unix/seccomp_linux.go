@@ -375,7 +375,6 @@ func prepareFilterProgramWithConfig(cfg FilterConfig) (*PreparedFilterProgram, e
 	// loadFilterWithRetry below — NOT through libseccomp's SetWaitKill,
 	// whose silent-no-op behavior on pre-2.6 headers motivated this
 	// design. The flag value is a kernel ABI constant in x/sys/unix.
-	// See docs/superpowers/specs/2026-05-11-libseccomp25-system-link-design.md.
 	var wantWaitKill bool
 	if cfg.WaitKillable != nil {
 		wantWaitKill = *cfg.WaitKillable

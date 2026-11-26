@@ -1,8 +1,7 @@
 //go:build linux
 
 // Package postgres implements the AgentSH PostgreSQL proxy per
-// docs/agentsh-db-access-spec.md §11–§14 and the macro design at
-// docs/superpowers/specs/2026-05-10-db-plan-04-pg-proxy-skeleton-design.md.
+// docs/agentsh-db-access-spec.md §11–§14.
 //
 // Plan 04a ships only the listener skeleton: bind Unix sockets per declared
 // db_service, peer-authenticate via SO_PEERCRED + UID-equality, accept and

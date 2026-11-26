@@ -28,8 +28,7 @@ Because the filters are installed before `execve`, the user's command inherits t
 regardless of which process tree it is in.
 
 This reuses the existing `agentsh-unixwrap` machinery. No new kernel interfaces are
-required. For the full design, see
-`docs/superpowers/specs/2026-05-02-shim-kernel-enforcement-design.md`.
+required.
 
 ## Configuration
 
@@ -143,4 +142,3 @@ authority.
 - Issue #283: unixwrap pre-resolves the command path before installing the
   seccomp filter so `exec.LookPath` probes are not intercepted by the
   file-monitor handler (v0.19.2)
-- Design spec: `docs/superpowers/specs/2026-05-02-shim-kernel-enforcement-design.md`

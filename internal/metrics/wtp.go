@@ -49,33 +49,8 @@ const (
 	// branch is added without a dedicated label it should be
 	// treated as a bug, not as expected unknown-bucket growth.
 	//
-	// MONITORING-ARTIFACT PREREQUISITE for the Tasks 18/19 emitter
-	// wiring. Operator-facing dashboards/alerts that filter on
-	// wtp_reconnects_total{reason=~...} will see TWO new series flip
-	// from zero to non-zero the moment the emitter call sites land.
-	// Per Task 22c Step 5 the operator team must update those
-	// artifacts BEFORE Tasks 18/19 ship — without that update,
-	// alerts keyed on a `reason=~"unknown"`-only filter would
-	// undercount the new branches and dashboards would silently miss
-	// them. The gate is enforced procedurally:
-	//
-	//   - The authoritative monitoring inventory + named-owner
-	//     sign-off lives in
-	//     `docs/superpowers/operator/wtp-monitoring-migration.md`,
-	//     which is CREATED OR UPDATED by Task 27a Step 1a (the file
-	//     does not yet exist in this tree at the time Task 22c
-	//     ships — Task 27a creates it).
-	//   - Task 18 and Task 19 each carry an explicit "Prerequisite
-	//     (rollout-order gate)" line in the implementation plan
-	//     naming this dependency. The gate is doc-enforced (plan
-	//     execution) NOT runtime-enforced (no CI/build check), so
-	//     implementers of Tasks 18/19 are responsible for verifying
-	//     Step 5 sign-off before landing emitter wiring.
-	//
-	// If Task 27a's monitoring-migration artifact has not yet
-	// landed when Tasks 18/19 are scheduled, treat that as the gate
-	// being unsatisfied: either land the artifact first (pulled
-	// forward from Task 27a) or block the emitter wiring.
+	// Dashboards and alerts that filter on wtp_reconnects_total{reason=~...}
+	// should include both labels. See docs/operations/watchtower-monitoring.md.
 	WTPReconnectReasonServerUpdateUnsupported WTPReconnectReason = "server_update_unsupported"
 	WTPReconnectReasonRecvUnknownFrame        WTPReconnectReason = "recv_unknown_frame"
 	WTPReconnectReasonUnknown                 WTPReconnectReason = "unknown"

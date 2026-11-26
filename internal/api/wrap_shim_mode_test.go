@@ -47,8 +47,7 @@ func newTestAppForWrapWithPermissivePolicy(t *testing.T, cfg *config.Config) (*A
 // TestWrapInit_ShimMode_PopulatesWrapperBinary verifies that wrap-init with
 // Mode=="shim" returns the same shape of response as agent mode: a populated
 // WrapperBinary. We deliberately do NOT short-circuit on the server based on
-// which features are configured — see the longer rationale in
-// docs/superpowers/specs/2026-05-02-shim-kernel-enforcement-design.md.
+// which features are configured.
 func TestWrapInit_ShimMode_PopulatesWrapperBinary(t *testing.T) {
 	cfg := &config.Config{}
 	// Use /bin/true as a stable wrapper path so the test runs in any CI

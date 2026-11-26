@@ -1095,7 +1095,6 @@ type DevelopmentPProfConfig struct {
 }
 
 // AuditWatchtowerConfig configures the WTP (Watchtower Transport Protocol) sink.
-// Spec: docs/superpowers/specs/2026-04-18-wtp-client-design.md §"Configuration & Wiring".
 type AuditWatchtowerConfig struct {
 	Enabled   bool   `yaml:"enabled"`
 	Endpoint  string `yaml:"endpoint"`   // host:port
