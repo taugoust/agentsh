@@ -54,6 +54,5 @@ func skipInCI(t *testing.T) {
 
 ## Issue Tracking
 
-- Track open work in `issues/*.md`; move completed issues to `issues/resolved/*.md`.
-- When resolving an issue, update `## Status` to `Resolved.` and add a brief `## Resolution` section with the commit hash(es) that fixed it.
-- Keep implementation plans out of tracked issues unless explicitly requested. Local/planning notes belong under ignored plan paths such as `plans/` or `issues/plans/`.
+- Track open work as GitHub Issues on `taugoust/agentsh`. Do not add issue files to the repository.
+- Keep implementation plans out of issues unless explicitly requested. Local/planning notes belong under ignored plan paths such as `plans/`.
