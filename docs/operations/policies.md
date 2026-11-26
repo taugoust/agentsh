@@ -15,14 +15,6 @@ Policies support variable substitution using `${VAR}` syntax. Variables are expa
 | `${HOME}` | User's home directory (from environment) | `/home/user` |
 | `${TMPDIR}` | System temp directory (from environment) | `/tmp` |
 
-On Windows, additional variables are available:
-| Variable | Description | Example Value |
-|----------|-------------|---------------|
-| `${USERPROFILE}` | User's profile directory | `C:\Users\user` |
-| `${APPDATA}` | Application data directory | `C:\Users\user\AppData\Roaming` |
-| `${LOCALAPPDATA}` | Local application data | `C:\Users\user\AppData\Local` |
-| `${TEMP}` / `${TMP}` | Temp directory | `C:\Users\user\AppData\Local\Temp` |
-
 ### How Project Root Detection Works
 
 When a session is created, agentsh walks up from the workspace directory looking for project markers. The detection follows this logic:
@@ -174,49 +166,11 @@ marker, AgentSH retains the compatibility behavior of inserting project rules
 before a recognized terminal catch-all deny, or appending them when no terminal
 deny is represented as a rule.
 
-## Platform-Specific Policies
-
-agentsh provides separate policy files for Unix/macOS and Windows:
-
-| Policy | Unix/macOS | Windows |
-|--------|-----------|---------|
-| Development | `dev-safe.yaml` | `dev-safe-windows.yaml` |
-| Agent Sandbox | `agent-sandbox.yaml` | `agent-sandbox-windows.yaml` |
-| CI Strict | `ci-strict.yaml` | `ci-strict-windows.yaml` |
-| Default | `default.yaml` | `default-windows.yaml` |
-| System Read-only | `system-readonly.yaml` | (cross-platform) |
-
-Windows policies include:
-- Windows file paths (`C:\Program Files\**`, `${APPDATA}\**`)
-- Windows registry rules (`HKCU\SOFTWARE\*`, etc.)
-- Windows-specific commands (`dir`, `type`, `findstr`, `msbuild`)
-- NuGet package registry access
-
-## File Rule Actions on macOS (ESF)
-
-On macOS, file I/O enforcement uses the Endpoint Security Framework (ESF) instead of Linux FUSE. ESF AUTH events are binary allow/deny -- there is no transparent file interception. This means actions that rely on interception on Linux are implemented as deny + async guidance on macOS. The end results are equivalent, but the mechanism differs.
-
-| Action | Linux (FUSE) | macOS (ESF) |
-|--------|-------------|-------------|
-| `allow` | Operation permitted, event logged | Same -- operation permitted via `es_respond_auth_result(ALLOW)`, event logged |
-| `deny` | Operation blocked, event logged | Same -- operation blocked via `es_respond_auth_result(DENY)`, event logged |
-| `redirect` | FUSE transparently rewrites the path; the process sees the alternative path as if it were the original | Operation **denied** at the ESF level. The agent receives guidance indicating the alternative path to use. This is a "deny + guidance" approach -- the agent must retry using the suggested path. |
-| `soft_delete` | FUSE intercepts the unlink and preserves the file transparently; the process believes the delete succeeded | Deletion **denied** via ESF and the file is preserved. The agent receives guidance explaining the file is protected. Same end result (file preserved) but via denial instead of transparent interception. |
-| `approve` | Operation held pending human approval; the process blocks until approved or denied | Operation **denied** via ESF and an approval flow is triggered asynchronously. If approved, the agent must retry the operation. |
-
-**Key takeaway:** On Linux, FUSE can transparently intercept and modify file operations mid-flight. On macOS, ESF can only allow or deny. Actions that require interception (`redirect`, `soft_delete`, `approve`) are implemented as deny + async notification/guidance, and the agent is expected to act on that guidance (e.g., retry with the redirected path, or retry after approval is granted).
-
 ## Signal Rules
 
 Signal rules control how signals (kill, terminate, stop, etc.) can be sent between processes within an agentsh session. This provides protection against runaway processes, accidental signal delivery to critical services, and enables graceful shutdown patterns.
 
-### Platform Support
-
-| Platform | Blocking | Redirect | Audit |
-|----------|----------|----------|-------|
-| Linux | Yes (seccomp) | Yes | Yes |
-| macOS | No | No | Yes (ES) |
-| Windows | Partial | No | Yes (ETW) |
+Signals are blocked, redirected, and audited through seccomp user-notify.
 
 ### Signal Specification
 
@@ -303,14 +257,6 @@ signal_rules:
 ## Network Redirect Rules
 
 Network redirect rules transparently reroute DNS queries and TCP connections, enabling use cases like routing LLM API calls through corporate proxies or switching AI providers without code changes.
-
-### Platform Support
-
-| Feature | Linux | macOS | Windows |
-|---------|-------|-------|---------|
-| DNS Redirect | ✅ eBPF | ✅ pf/proxy | ✅ WinDivert |
-| Connect Redirect | ✅ eBPF | ✅ pf/proxy | ✅ WinDivert |
-| SNI Rewrite | ✅ | ✅ | ✅ |
 
 ### DNS Redirect
 
@@ -429,7 +375,6 @@ This prevents bypass attacks where a blocked command is launched through an allo
 |----------|----------|
 | All | `env`, `nice`, `nohup`, `sudo`, `time`, `xargs` |
 | Linux | `busybox`, `doas`, `strace`, `ltrace`, `ld-linux*` |
-| Windows | `cmd.exe`, `powershell.exe`, `pwsh.exe`, `wsl.exe` |
 
 ### Policy Configuration
 

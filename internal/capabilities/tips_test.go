@@ -1,4 +1,4 @@
-//go:build linux || darwin || windows
+//go:build linux
 
 package capabilities
 
@@ -47,53 +47,6 @@ func TestGenerateTips_Linux(t *testing.T) {
 	}
 	if !hasNetworkTip {
 		t.Error("missing landlock_network tip")
-	}
-}
-
-func TestGenerateTips_Darwin(t *testing.T) {
-	caps := map[string]any{
-		"sandbox_exec": true,
-		"esf":          false,
-	}
-
-	tips := GenerateTips("darwin", caps)
-
-	hasESFTip := false
-	for _, tip := range tips {
-		if tip.Feature == "esf" {
-			hasESFTip = true
-			if tip.Action == "" {
-				t.Error("esf tip missing action")
-			}
-		}
-		if tip.Feature == "fuse_t" {
-			t.Error("unexpected fuse_t tip — FUSE-T support was removed")
-		}
-	}
-
-	if !hasESFTip {
-		t.Error("missing esf tip")
-	}
-}
-
-func TestGenerateTips_Windows(t *testing.T) {
-	caps := map[string]any{
-		"app_container": true,
-		"winfsp":        false,
-		"minifilter":    false,
-	}
-
-	tips := GenerateTips("windows", caps)
-
-	hasWinfspTip := false
-	for _, tip := range tips {
-		if tip.Feature == "winfsp" {
-			hasWinfspTip = true
-		}
-	}
-
-	if !hasWinfspTip {
-		t.Error("missing winfsp tip")
 	}
 }
 

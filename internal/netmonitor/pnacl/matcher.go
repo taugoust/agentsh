@@ -4,7 +4,6 @@ package pnacl
 
 import (
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -481,14 +480,6 @@ func matchProcessNameWithSpecificity(pattern, name string, strict bool) (bool, M
 	basename := strings.ToLower(filepath.Base(name))
 	if pattern == basename {
 		return true, MatchSpecificityExact
-	}
-
-	// On Windows, also try without .exe extension.
-	if runtime.GOOS == "windows" {
-		withoutExt := strings.TrimSuffix(basename, ".exe")
-		if pattern == withoutExt {
-			return true, MatchSpecificityExact
-		}
 	}
 
 	// Check if pattern contains wildcards for glob-like matching.

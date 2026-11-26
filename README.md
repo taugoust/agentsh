@@ -1,14 +1,10 @@
 # agentsh
 
-> **macOS note:** Native macOS enforcement via ESF (Endpoint Security Framework) + NE (Network Extension) is in **Alpha**. It works end-to-end — file, process, and network events flow through the system extension to the Go policy engine — but expect rough edges and breaking changes between releases. For production use today, we recommend Linux.
->
-> **Windows note:** We are working to get the minifilter drivers signed. Until then, only Windows WSL2 mode is fully supported for production use.
-
 **Secure, policy-enforced execution gateway for AI agents.**
 
 agentsh sits *under* your agent/tooling—intercepting **file**, **network**, **process**, and **signal** activity (including subprocess trees), enforcing the policy you define, and emitting **structured audit events**.
 
-> **Platform note:** Linux provides full enforcement (100% security score). macOS **ESF+NE** (90% score) is in **Alpha** — functional but not production-ready. Windows **WSL2** provides full Linux-equivalent enforcement (100% score); native Windows via minifilter driver + **AppContainer** (85% score) is pending driver signing. See the [Platform Comparison Matrix](docs/platform-comparison.md) for details.
+> **Platform note:** agentsh supports Linux only.
 
 ---
 
@@ -23,7 +19,7 @@ agentsh sits *under* your agent/tooling—intercepting **file**, **network**, **
   - PTY activity
   - LLM API requests with DLP and usage tracking
   - Postgres-family database traffic through declared `db_services`
-  - signal send/block (Linux enforced, macOS/Windows audit)
+  - signal send/block
   - database queries via the embedded **PostgreSQL proxy** — per-statement classification and policy
   - Route outbound HTTP API calls through declared services (**http_services**) with per-method, per-path rules, approval gating, and fail-closed host enforcement
 - **Two output modes**:
@@ -90,16 +86,7 @@ Containers isolate the host surface; agentsh adds **in-container runtime visibil
 
 ### Install
 
-**macOS (Homebrew)**
-
-```bash
-brew tap canyonroad/tap
-brew install --cask agentsh
-```
-
-This installs the AgentSH app bundle with the ESF+NE system extension. After installation you'll be prompted to approve the system extension in **System Settings > General > Login Items & Extensions**.
-
-**Linux (from a GitHub Release)**
+**From a GitHub Release**
 
 Download the `.deb`, `.rpm`, or `.apk` for your platform from the [releases page](https://github.com/erans/agentsh/releases).
 
@@ -108,21 +95,12 @@ Download the `.deb`, `.rpm`, or `.apk` for your platform from the [releases page
 sudo dpkg -i agentsh_<VERSION>_linux_amd64.deb
 ```
 
-**From source (Linux)**
+**From source**
 
 ```bash
 make build
 sudo install -m 0755 bin/agentsh bin/agentsh-shell-shim /usr/local/bin
 ```
-
-**From source (macOS)**
-
-```bash
-# ESF+NE mode (full enforcement — Alpha, requires Xcode 15+)
-make build-macos-enterprise
-```
-
-See [macOS Build Guide](docs/macos-build.md) for detailed macOS build instructions.
 
 ---
 
@@ -459,7 +437,7 @@ Current Postgres support includes:
 - Safe runtime `redirect` for read-only Postgres relation replacement.
 - Bypass detection and real-Postgres Docker E2E coverage in CI.
 
-The Postgres proxy runtime is Linux-only in-process code today. Use native Linux, WSL2, or a Linux VM environment for database enforcement.
+The Postgres proxy runtime is in-process code.
 
 See [Database Access Control](docs/agentsh-db-access-spec.md) and [Policy documentation](docs/operations/policies.md#database-access-policies-postgres-only-today).
 
@@ -580,14 +558,6 @@ connect_redirect:
 | `on_failure` | `fail_closed`, `fail_open`, `retry_original` | What happens if redirect fails |
 | `tls_mode` | `passthrough`, `rewrite_sni` | TLS handling for connect redirect |
 
-### Platform Support
-
-| Feature | Linux | macOS | Windows |
-|---------|-------|-------|---------|
-| DNS Redirect | ✅ eBPF | ✅ pf/proxy | ✅ WinDivert |
-| Connect Redirect | ✅ eBPF | ✅ pf/proxy | ✅ WinDivert |
-| SNI Rewrite | ✅ | ✅ | ✅ |
-
 ### Use Cases
 
 - **API Gateway Routing**: Route Anthropic/OpenAI calls through corporate LLM gateway
@@ -601,13 +571,7 @@ connect_redirect:
 
 agentsh intercepts signals (`kill`, `SIGTERM`, etc.) sent between processes, providing policy-based control over which signals can reach which targets.
 
-### Platform Support
-
-| Platform | Blocking | Redirect | Audit |
-|----------|----------|----------|-------|
-| Linux | Yes (seccomp user-notify) | Yes | Yes |
-| macOS | No | No | Yes (ES) |
-| Windows | Partial | No | Yes (ETW) |
+Signals are blocked, redirected, and audited through seccomp user-notify.
 
 ### Example Signal Rules
 
@@ -662,14 +626,6 @@ See [Policy Documentation](docs/operations/policies.md#signal-rules) for full co
 
 ---
 
-## macOS File I/O Monitoring
-
-On macOS, agentsh monitors file I/O using the Endpoint Security Framework (ESF), subscribing to both AUTH and NOTIFY events. Tracked operations include file open, create, delete, rename, write (detected via close-modified), and on macOS 26+, chmod and chown via attribute change events. Every file event is attributed to the originating session and command through PID-based resolution, providing full audit trails across subprocess trees.
-
-ESF provides kernel-level allow/deny enforcement but does not support transparent file interception like Linux FUSE. Policy actions that require interception -- such as `redirect` (path rewriting) and `soft_delete` (quarantine) -- are implemented as deny + guidance: the operation is blocked at the ESF level and the agent receives instructions to retry with the correct path or to acknowledge that the file is protected. See the [macOS ESF+NE architecture doc](docs/macos-esf-ne-architecture.md) for event stream details and the [policy documentation](docs/operations/policies.md#file-rule-actions-on-macos-esf) for per-action behavior.
-
----
-
 ## Starter policy packs
 
 You already have a default policy (`configs/policies/default.yaml`). These opinionated packs are available as separate files so teams can pick one:
@@ -717,7 +673,6 @@ Ready-to-use snippets for configuring AI coding assistants to use agentsh:
 * **HTTP services cookbook:** [`docs/cookbook/http-services.md`](docs/cookbook/http-services.md) - recipes for routing outbound HTTP API calls through declared services with rules and approval gating
 * **Sandbox SDK integrations cookbook:** [`docs/cookbook/sandbox-sdk-integrations.md`](docs/cookbook/sandbox-sdk-integrations.md) - `shim_install` config for Tensorlake / E2B / Modal / Daytona where commands run as siblings of the agentsh server
 * **Policy authoring skills:** [`skills/`](skills/) - AI-assistant skills for creating and editing policies in Claude Code, NanoClaw, etc.
-* **Platform comparison:** [`docs/platform-comparison.md`](docs/platform-comparison.md) - feature support, security scores, performance by platform
 * **Bubblewrap vs agentsh:** [`docs/bubblewrap-vs-agentsh-comparison.md`](docs/bubblewrap-vs-agentsh-comparison.md) - comparison with Bubblewrap for Linux container sandboxing
 * **Database access control:** [`docs/agentsh-db-access-spec.md`](docs/agentsh-db-access-spec.md) - PostgreSQL proxy taxonomy, effects model, `database_rules`, connection rules, threat model
 * **Security modes & `detect`:** [`docs/security-modes.md`](docs/security-modes.md) - enforcement modes, protection score, and what `agentsh detect` reports
@@ -725,9 +680,6 @@ Ready-to-use snippets for configuring AI coding assistants to use agentsh:
 * **ptrace mode:** [`docs/ptrace-support.md`](docs/ptrace-support.md) - PTRACE_SEIZE enforcement for restricted containers (`attach_mode`, seccomp prefilter)
 * **eBPF:** [`docs/ebpf.md`](docs/ebpf.md) - eBPF network tracing & policy enforcement
 * **LLM Proxy & DLP:** [`docs/llm-proxy.md`](docs/llm-proxy.md) - embedded proxy configuration, DLP patterns, usage tracking
-* **macOS build guide:** [`docs/macos-build.md`](docs/macos-build.md) - ESF+NE build instructions
-* **macOS ESF+NE architecture:** [`docs/macos-esf-ne-architecture.md`](docs/macos-esf-ne-architecture.md) - System Extension, XPC, and deployment details
-* **macOS XPC sandbox:** [`docs/macos-xpc-sandbox.md`](docs/macos-xpc-sandbox.md) - XPC/Mach IPC control for sandboxed processes
 * Environment variables (all `AGENTSH_*` overrides, auto-start toggles, transport selection): [`docs/spec.md` &sect;15.3 "Environment Variables"](docs/spec.md#153-environment-variables)
 * Architecture & data flow (FUSE + policy engine + API): inline comments in [`configs/server-config.yaml`](configs/server-config.yaml) and [`internal/netmonitor`](internal/netmonitor)
 * CLI help: `agentsh --help`, `agentsh exec --help`, `agentsh shim --help`

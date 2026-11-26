@@ -53,27 +53,6 @@ func traceparentFromContext(ctx context.Context) string {
 	return ""
 }
 
-// macSandboxWrapperConfig is passed to agentsh-macwrap via
-// AGENTSH_SANDBOX_CONFIG environment variable.
-type macSandboxWrapperConfig struct {
-	WorkspacePath string                       `json:"workspace_path"`
-	AllowedPaths  []string                     `json:"allowed_paths"`
-	AllowNetwork  bool                         `json:"allow_network"`
-	MachServices  macSandboxMachServicesConfig `json:"mach_services"`
-
-	// Dynamic seatbelt fields
-	CompiledProfile string   `json:"compiled_profile,omitempty"`
-	ExtensionTokens []string `json:"extension_tokens,omitempty"`
-}
-
-type macSandboxMachServicesConfig struct {
-	DefaultAction string   `json:"default_action"`
-	Allow         []string `json:"allow"`
-	Block         []string `json:"block"`
-	AllowPrefixes []string `json:"allow_prefixes"`
-	BlockPrefixes []string `json:"block_prefixes"`
-}
-
 // wrapperSetupResult contains the result of setting up the seccomp wrapper.
 type wrapperSetupResult struct {
 	wrappedReq types.ExecRequest
@@ -105,8 +84,8 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 	// Helper: return early without seccomp wrapping but with envInject applied.
 	earlyReturn := func() *wrapperSetupResult {
 		envInject := mergeEnvInject(a.cfg, sessionPolicy)
-		if len(envInject) > 0 || a.cmdResolver != nil || a.sessionTracker != nil || runtimeState != s {
-			return &wrapperSetupResult{wrappedReq: req, extraCfg: &extraProcConfig{envInject: envInject, cmdResolver: a.cmdResolver, sessionTracker: a.sessionTracker, commandState: runtimeState}}
+		if len(envInject) > 0 || runtimeState != s {
+			return &wrapperSetupResult{wrappedReq: req, extraCfg: &extraProcConfig{envInject: envInject, commandState: runtimeState}}
 		}
 		return &wrapperSetupResult{wrappedReq: req, extraCfg: nil}
 	}
@@ -301,8 +280,6 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 		ptraceSync:        a.ptraceTracer != nil && hasNotifyFeatures,
 		commandBoundary:   commandJailRequirements(jailRequired, runtimeState.CurrentSandboxComposition()),
 		commandState:      runtimeState,
-		cmdResolver:       a.cmdResolver,
-		sessionTracker:    a.sessionTracker,
 		blockList:         a.buildBlockListConfigFor(sessionID),
 	}
 
@@ -2384,10 +2361,6 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		wrappedReq = wrapperResult.wrappedReq
 		extraCfg = configureAttempt(wrapperResult.extraCfg)
 
-		// macOS: sandbox wrapper with XPC control.
-		if runtime.GOOS == "darwin" && a.cfg.Sandbox.XPC.Enabled && a.cfg.Sandbox.XPC.Mode == "enforce" {
-			a.wrapWithMacSandbox(&wrappedReq, origCommand, origArgs, s)
-		}
 		if !envPolicyResolved {
 			cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
 			envPolicy = cmdDecision.EnvPolicy
@@ -2898,87 +2871,6 @@ func (a *App) ensureFUSEMount(ctx context.Context, s *session.Session) {
 		fs:       fs,
 		deferred: true,
 	})
-}
-
-// wrapWithMacSandbox wraps command with agentsh-macwrap for XPC control.
-func (a *App) wrapWithMacSandbox(
-	req *types.ExecRequest,
-	origCommand string,
-	origArgs []string,
-	sess *session.Session,
-) {
-	wrapperBin := strings.TrimSpace(a.cfg.Sandbox.XPC.WrapperBin)
-	if wrapperBin == "" {
-		wrapperBin = "agentsh-macwrap"
-	}
-
-	if _, err := exec.LookPath(wrapperBin); err != nil {
-		return
-	}
-
-	// Build mach services config with defaults
-	machCfg := macSandboxMachServicesConfig{
-		DefaultAction: a.cfg.Sandbox.XPC.MachServices.DefaultAction,
-		Allow:         a.cfg.Sandbox.XPC.MachServices.Allow,
-		Block:         a.cfg.Sandbox.XPC.MachServices.Block,
-		AllowPrefixes: a.cfg.Sandbox.XPC.MachServices.AllowPrefixes,
-		BlockPrefixes: a.cfg.Sandbox.XPC.MachServices.BlockPrefixes,
-	}
-
-	if machCfg.DefaultAction == "" {
-		machCfg.DefaultAction = "deny"
-	}
-	if len(machCfg.Allow) == 0 && machCfg.DefaultAction == "deny" {
-		machCfg.Allow = DefaultXPCAllowList
-	}
-	if len(machCfg.BlockPrefixes) == 0 && machCfg.DefaultAction == "allow" {
-		machCfg.BlockPrefixes = DefaultXPCBlockPrefixes
-	}
-
-	cfg := macSandboxWrapperConfig{
-		WorkspacePath: sess.Workspace,
-		AllowedPaths:  []string{os.Getenv("HOME")},
-		AllowNetwork:  true,
-		MachServices:  machCfg,
-	}
-
-	// Compile policy-driven SBPL profile (darwin+cgo only, no-op on other platforms)
-	compileDarwinSandboxProfile(&cfg, a.policyEngineFor(sess), sess.Workspace)
-
-	// Write profile artifact for debugging/inspection
-	if cfg.CompiledProfile != "" && sess.ID != "" {
-		artifactDir := filepath.Join(os.Getenv("HOME"), ".agentsh", "sessions", sess.ID)
-		os.MkdirAll(artifactDir, 0700)
-		artifactPath := filepath.Join(artifactDir, "sandbox.sb")
-		if err := os.WriteFile(artifactPath, []byte(cfg.CompiledProfile), 0600); err != nil {
-			slog.Debug("failed to write sandbox profile artifact", "error", err)
-		}
-	}
-
-	cfgJSON, err := json.Marshal(cfg)
-	if err != nil {
-		return
-	}
-
-	if req.Env == nil {
-		req.Env = map[string]string{}
-	}
-
-	// Use file-based config if payload is too large for env var
-	cfgStr := string(cfgJSON)
-	if len(cfgStr) > 64*1024 {
-		tmpFile := fmt.Sprintf("/tmp/agentsh-sandbox-%s.json", sess.ID)
-		if err := os.WriteFile(tmpFile, cfgJSON, 0600); err != nil {
-			slog.Warn("failed to write sandbox config file", "error", err)
-			return
-		}
-		req.Env["AGENTSH_SANDBOX_CONFIG_FILE"] = tmpFile
-	} else {
-		req.Env["AGENTSH_SANDBOX_CONFIG"] = cfgStr
-	}
-
-	req.Command = wrapperBin
-	req.Args = append([]string{"--", origCommand}, origArgs...)
 }
 
 // emitPackageCheckEvent publishes a package check audit event.

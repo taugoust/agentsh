@@ -85,23 +85,6 @@ type Server struct {
 	app *api.App // for lifecycle management (ptrace tracer shutdown)
 
 	kmsProvider io.Closer // audit/kms.Provider for HMAC key lifecycle
-
-	// policySockCancel cancels the policy socket server context (macOS only).
-	policySockCancel context.CancelFunc
-	// policySockDone is closed when the policy socket server goroutine exits.
-	policySockDone chan struct{}
-
-	// cmdResolver is set on darwin to resolve PID→command_id for ESF events.
-	// Nil on non-darwin platforms.
-	cmdResolver interface {
-		RegisterCommand(pid int32, commandID string)
-	}
-
-	// sessionTracker is set on darwin to register PIDs with sessions for ESF.
-	// Nil on non-darwin platforms.
-	sessionTracker interface {
-		RegisterProcess(sessionID string, pid, ppid int32)
-	}
 }
 
 func New(cfg *config.Config) (*Server, error) {
@@ -835,16 +818,6 @@ func New(cfg *config.Config) (*Server, error) {
 		kmsProvider:      kmsProvider,
 	}
 
-	// Start the policy socket server (macOS only; no-op on other platforms).
-	srv.startPolicySocket(cfg, engine)
-	// Wire cmdResolver and sessionTracker into the app (darwin only).
-	if srv.cmdResolver != nil {
-		app.SetCmdResolver(srv.cmdResolver)
-	}
-	if srv.sessionTracker != nil {
-		app.SetSessionTracker(srv.sessionTracker)
-	}
-
 	ln, err := listenHTTP(cfg)
 	if err != nil {
 		_ = store.Close()
@@ -1118,8 +1091,6 @@ func (s *Server) Run(ctx context.Context) error {
 	if app != nil {
 		detachedStopCh = app.DetachedStopSignal()
 	}
-	policySockCancel := s.policySockCancel
-	policySockDone := s.policySockDone
 
 	if pprofLn != nil && pprofServer != nil {
 		go func() { _ = pprofServer.Serve(pprofLn) }()
@@ -1219,9 +1190,6 @@ func (s *Server) Run(ctx context.Context) error {
 				grpcServer.Stop()
 			}
 		}
-		if policySockCancel != nil {
-			policySockCancel()
-		}
 		httpErr := httpServer.Shutdown(shutdownCtx)
 		if app != nil {
 			app.Close()
@@ -1231,9 +1199,6 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 		if skillcheckDone != nil {
 			<-skillcheckDone
-		}
-		if policySockDone != nil {
-			<-policySockDone
 		}
 		return httpErr
 	}
@@ -1312,13 +1277,6 @@ func (s *Server) Close() error {
 	}
 	if s.kmsProvider != nil {
 		_ = s.kmsProvider.Close()
-	}
-	// Shut down the policy socket server (macOS only).
-	if s.policySockCancel != nil {
-		s.policySockCancel()
-		if s.policySockDone != nil {
-			<-s.policySockDone
-		}
 	}
 	return closeErr
 }

@@ -22,16 +22,6 @@ Security enforcement is provided through a combination of:
 | `landlock-only` | Landlock | ~80% | Landlock without FUSE granularity |
 | `minimal` | (none) | ~50% | Capability dropping and shim policy only |
 
-### macOS Modes
-
-| Mode | Requirements | Protection Level | Description |
-|------|--------------|------------------|-------------|
-| `esf` | System extension approved | ~90% | Endpoint Security Framework (Alpha) |
-| `lima` | limactl available | ~85% | Full Linux enforcement inside Lima VM |
-| `observation` | None | ~25% | Observation-only, no enforcement |
-
-Dynamic seatbelt modes generate SBPL profiles from policy at session start — replacing blanket allows with deny-default + specific allows for file paths, exec paths, Mach services, and network. Extension tokens provide runtime file access grants. See `docs/superpowers/specs/2026-03-23-dynamic-seatbelt-design.md` for details.
-
 ### Mode Selection
 
 By default, agentsh auto-detects the best available mode at startup.
@@ -194,9 +184,9 @@ Ptrace mode exposes Prometheus metrics at the `/metrics` endpoint:
 *Relies on PID namespace isolation + dropped CAP_KILL
 **Requires kernel 6.7+ (Landlock ABI v4)
 
-`http_services` enforcement runs entirely in the userspace proxy layer. It is not tied to any kernel primitive and applies identically on macOS, Linux, and Windows regardless of the active security mode.
+`http_services` enforcement runs entirely in the userspace proxy layer. It is not tied to any kernel primitive and applies identically regardless of the active security mode.
 
-Database access control is narrower today. The runtime DB proxy is Linux-only and targets Postgres-family services only; non-Linux builds include stubs that return unsupported for the proxy. Use native Linux, WSL2, or a Linux VM environment when you need `db_services`, `database_rules`, and `database_connection_rules` enforcement. MySQL, MongoDB, Snowflake, BigQuery, Databricks, ClickHouse, MSSQL, Cassandra, Redis, and Oracle are roadmap items, not current database enforcement targets.
+Database access control is narrower today. The runtime DB proxy targets Postgres-family services only. MySQL, MongoDB, Snowflake, BigQuery, Databricks, ClickHouse, MSSQL, Cassandra, Redis, and Oracle are roadmap items, not current database enforcement targets.
 
 ### Landlock ABI Versions
 

@@ -3,9 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 
 	"github.com/agentsh/agentsh/internal/platform"
 )
@@ -20,8 +17,6 @@ const (
 	ConfigSourceUser
 	// ConfigSourceSystem means config was loaded from system-wide directory.
 	ConfigSourceSystem
-	// ConfigSourceBundle means config was loaded from the macOS .app bundle Resources.
-	ConfigSourceBundle
 )
 
 // String returns a human-readable name for the config source.
@@ -33,8 +28,6 @@ func (s ConfigSource) String() string {
 		return "user"
 	case ConfigSourceSystem:
 		return "system"
-	case ConfigSourceBundle:
-		return "bundle"
 	default:
 		return "unknown"
 	}
@@ -69,60 +62,19 @@ func InitializePlatform(cfg *Config) (platform.Platform, error) {
 	return p, nil
 }
 
-// GetMountPoint returns the appropriate mount point for the current platform.
+// GetMountPoint returns the workspace mount point.
 func GetMountPoint(cfg *Config) string {
-	mode := platform.ParsePlatformMode(cfg.Platform.Mode)
-
-	switch mode {
-	case platform.ModeLinuxNative:
-		return cfg.Platform.MountPoints.Linux
-	case platform.ModeDarwinNative, platform.ModeDarwinLima:
-		return cfg.Platform.MountPoints.Darwin
-	case platform.ModeWindowsNative:
-		return cfg.Platform.MountPoints.Windows
-	case platform.ModeWindowsWSL2:
-		return cfg.Platform.MountPoints.WindowsWSL2
-	default:
-		// Fallback based on runtime OS
-		switch runtime.GOOS {
-		case "windows":
-			return cfg.Platform.MountPoints.Windows
-		case "darwin":
-			return cfg.Platform.MountPoints.Darwin
-		default:
-			return cfg.Platform.MountPoints.Linux
-		}
-	}
+	return cfg.Platform.MountPoints.Linux
 }
 
-// GetDataDir returns the platform-appropriate data directory.
+// GetDataDir returns the system data directory.
 func GetDataDir() string {
-	switch runtime.GOOS {
-	case "windows":
-		if dir := os.Getenv("PROGRAMDATA"); dir != "" {
-			return dir + `\agentsh`
-		}
-		return `C:\ProgramData\agentsh`
-	case "darwin":
-		return "/usr/local/var/agentsh"
-	default:
-		return "/var/lib/agentsh"
-	}
+	return "/var/lib/agentsh"
 }
 
-// GetConfigDir returns the platform-appropriate config directory.
+// GetConfigDir returns the system config directory.
 func GetConfigDir() string {
-	switch runtime.GOOS {
-	case "windows":
-		if dir := os.Getenv("PROGRAMDATA"); dir != "" {
-			return dir + `\agentsh`
-		}
-		return `C:\ProgramData\agentsh`
-	case "darwin":
-		return "/usr/local/etc/agentsh"
-	default:
-		return "/etc/agentsh"
-	}
+	return "/etc/agentsh"
 }
 
 // GetPoliciesDir returns the platform-appropriate policies directory.
@@ -130,95 +82,32 @@ func GetPoliciesDir() string {
 	return GetConfigDir() + string(os.PathSeparator) + "policies"
 }
 
-// GetBundleResourcesDir returns the Resources directory inside the macOS .app bundle,
-// or empty string if not running from a bundle or not on macOS.
-func GetBundleResourcesDir() string {
-	if runtime.GOOS != "darwin" {
-		return ""
-	}
-	execPath, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	execPath, err = filepath.EvalSymlinks(execPath)
-	if err != nil {
-		return ""
-	}
-	// Check if running from inside a .app bundle (e.g. /Applications/AgentSH.app/Contents/MacOS/agentsh)
-	if idx := strings.Index(execPath, ".app/"); idx >= 0 {
-		return filepath.Join(execPath[:idx+4], "Contents", "Resources")
-	}
-	return ""
-}
-
 // GetUserConfigDir returns the user-specific config directory.
 func GetUserConfigDir() string {
-	home, _ := os.UserHomeDir()
-	switch runtime.GOOS {
-	case "windows":
-		if appdata := os.Getenv("APPDATA"); appdata != "" {
-			return appdata + `\agentsh`
-		}
-		return home + `\AppData\Roaming\agentsh`
-	case "darwin":
-		return home + "/Library/Application Support/agentsh"
-	default:
-		if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-			return xdg + "/agentsh"
-		}
-		return home + "/.config/agentsh"
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return xdg + "/agentsh"
 	}
+	home, _ := os.UserHomeDir()
+	return home + "/.config/agentsh"
 }
 
 // GetUserDataDir returns the user-specific data directory.
 func GetUserDataDir() string {
-	home, _ := os.UserHomeDir()
-	switch runtime.GOOS {
-	case "windows":
-		if appdata := os.Getenv("APPDATA"); appdata != "" {
-			return appdata + `\agentsh`
-		}
-		return home + `\AppData\Roaming\agentsh`
-	case "darwin":
-		return home + "/Library/Application Support/agentsh"
-	default:
-		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-			return xdg + "/agentsh"
-		}
-		return home + "/.local/share/agentsh"
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		return xdg + "/agentsh"
 	}
+	home, _ := os.UserHomeDir()
+	return home + "/.local/share/agentsh"
 }
 
 // GetUserStateDir returns the user-specific state directory used for ephemeral
-// runtime artifacts (e.g., WTP WAL/cursor/replay store).
-//
-// Linux: honors XDG_STATE_HOME with a fallback to ~/.local/state, per the
-// XDG Base Directory Specification.
-//
-// macOS: there is no canonical state directory; we reuse the same path as
-// GetUserDataDir (~/Library/Application Support/agentsh).
-//
-// Windows: state lives under LOCALAPPDATA (non-roaming), NOT APPDATA. This
-// is a deliberate divergence from GetUserDataDir, which uses APPDATA
-// (roaming). Per-machine WAL segments, cursor positions, and replay-store
-// shards must not be roamed across hosts: they are tightly coupled to the
-// node's seq counter and would corrupt the chain if synced. State here is
-// machine-local by design; user-facing data (settings, history) stays in
-// APPDATA where roaming is appropriate.
+// runtime artifacts (e.g., WTP WAL/cursor/replay store). It honors
+// XDG_STATE_HOME with a fallback to ~/.local/state, per the XDG Base
+// Directory Specification.
 func GetUserStateDir() string {
-	home, _ := os.UserHomeDir()
-	switch runtime.GOOS {
-	case "windows":
-		if appdata := os.Getenv("LOCALAPPDATA"); appdata != "" {
-			return appdata + `\agentsh`
-		}
-		return home + `\AppData\Local\agentsh`
-	case "darwin":
-		return home + "/Library/Application Support/agentsh"
-	default:
-		if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-			return xdg + "/agentsh"
-		}
-		return home + "/.local/state/agentsh"
+	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
+		return xdg + "/agentsh"
 	}
+	home, _ := os.UserHomeDir()
+	return home + "/.local/state/agentsh"
 }

@@ -31,16 +31,8 @@ func IsCI() bool {
 
 // HasDisplay returns true if a display is available for showing dialogs.
 func HasDisplay() bool {
-	switch runtime.GOOS {
-	case "linux":
-		// Check for X11 or Wayland display
-		return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
-	case "darwin", "windows":
-		// macOS and Windows always have display available in desktop session
-		return true
-	default:
-		return false
-	}
+	// Check for X11 or Wayland display
+	return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
 }
 
 // IsWSL returns true if running in Windows Subsystem for Linux.

@@ -6,18 +6,9 @@ import (
 	"strings"
 )
 
-// GetSystemMounts returns the built-in read-only system mounts for the current platform.
+// GetSystemMounts returns the built-in read-only system mounts.
 func GetSystemMounts() []MountSpec {
-	switch runtime.GOOS {
-	case "linux":
-		return linuxSystemMounts()
-	case "darwin":
-		return darwinSystemMounts()
-	case "windows":
-		return windowsSystemMounts()
-	default:
-		return minimalSystemMounts()
-	}
+	return linuxSystemMounts()
 }
 
 func linuxSystemMounts() []MountSpec {
@@ -39,42 +30,6 @@ func linuxSystemMounts() []MountSpec {
 	}
 
 	return mounts
-}
-
-func darwinSystemMounts() []MountSpec {
-	mounts := []MountSpec{
-		{Path: "/usr", Policy: "system-readonly"},
-		{Path: "/bin", Policy: "system-readonly"},
-		{Path: "/sbin", Policy: "system-readonly"},
-		{Path: "/System/Library", Policy: "system-readonly"},
-		{Path: "/etc/hosts", Policy: "system-readonly"},
-		{Path: "/etc/resolv.conf", Policy: "system-readonly"},
-	}
-
-	// Add Homebrew paths if they exist
-	if _, err := os.Stat("/opt/homebrew"); err == nil {
-		mounts = append(mounts, MountSpec{Path: "/opt/homebrew", Policy: "system-readonly"})
-	}
-	if _, err := os.Stat("/usr/local/Cellar"); err == nil {
-		mounts = append(mounts, MountSpec{Path: "/usr/local/Cellar", Policy: "system-readonly"})
-	}
-
-	return mounts
-}
-
-func windowsSystemMounts() []MountSpec {
-	return []MountSpec{
-		{Path: "C:\\Windows\\System32", Policy: "system-readonly"},
-		{Path: "C:\\Program Files", Policy: "system-readonly"},
-		{Path: "C:\\Program Files (x86)", Policy: "system-readonly"},
-	}
-}
-
-func minimalSystemMounts() []MountSpec {
-	return []MountSpec{
-		{Path: "/usr", Policy: "system-readonly"},
-		{Path: "/bin", Policy: "system-readonly"},
-	}
 }
 
 func isRunningInContainer() bool {

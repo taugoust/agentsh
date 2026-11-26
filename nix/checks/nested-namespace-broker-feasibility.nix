@@ -1,6 +1,6 @@
 { pkgs, self }:
 let
-  vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+  vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
 
   mkGoFixture =
     {

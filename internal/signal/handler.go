@@ -1,5 +1,3 @@
-//go:build !windows
-
 // internal/signal/handler.go
 package signal
 

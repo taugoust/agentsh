@@ -191,22 +191,6 @@ func TestSystemdServiceTemplate(t *testing.T) {
 	}
 }
 
-func TestLaunchdPlistTemplate(t *testing.T) {
-	// Verify the template has required elements
-	if !strings.Contains(launchdPlistTemplate, "Label") {
-		t.Error("template should have Label key")
-	}
-	if !strings.Contains(launchdPlistTemplate, "ProgramArguments") {
-		t.Error("template should have ProgramArguments key")
-	}
-	if !strings.Contains(launchdPlistTemplate, "RunAtLoad") {
-		t.Error("template should have RunAtLoad key")
-	}
-	if !strings.Contains(launchdPlistTemplate, "ai.canyonroad.agentsh.daemon") {
-		t.Error("template should have correct label")
-	}
-}
-
 func TestPNACLSession(t *testing.T) {
 	session := PNACLSession{
 		ID:           "test-session-123",

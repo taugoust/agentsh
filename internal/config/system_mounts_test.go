@@ -1,7 +1,6 @@
 package config
 
 import (
-	"runtime"
 	"testing"
 )
 
@@ -19,29 +18,14 @@ func TestGetSystemMounts(t *testing.T) {
 		}
 	}
 
-	// Check for expected paths based on OS
-	switch runtime.GOOS {
-	case "linux":
-		found := false
-		for _, m := range mounts {
-			if m.Path == "/usr" {
-				found = true
-				break
-			}
+	found := false
+	for _, m := range mounts {
+		if m.Path == "/usr" {
+			found = true
+			break
 		}
-		if !found {
-			t.Error("expected /usr in Linux system mounts")
-		}
-	case "darwin":
-		found := false
-		for _, m := range mounts {
-			if m.Path == "/usr" {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Error("expected /usr in Darwin system mounts")
-		}
+	}
+	if !found {
+		t.Error("expected /usr in system mounts")
 	}
 }

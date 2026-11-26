@@ -81,16 +81,6 @@ type extraProcConfig struct {
 	// Original command name (before wrapping) for signal registry
 	origCommand string
 
-	// cmdResolver registers PID→command_id for ESF file event attribution (darwin).
-	cmdResolver interface {
-		RegisterCommand(pid int32, commandID string)
-	}
-
-	// sessionTracker registers PIDs with sessions for ESF event attribution (darwin).
-	sessionTracker interface {
-		RegisterProcess(sessionID string, pid, ppid int32)
-	}
-
 	// ptraceSync indicates the READY/GO handshake is enabled for hybrid mode.
 	// Only true when ptrace is active AND seccomp notify features are enabled.
 	ptraceSync bool
@@ -526,18 +516,6 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			commandState = extra.commandState
 		}
 		commandState.SetCurrentProcessPID(cmd.Process.Pid)
-		// Register PID→command_id for ESF event attribution.
-		if extra != nil && extra.cmdResolver != nil {
-			extra.cmdResolver.RegisterCommand(int32(cmd.Process.Pid), cmdID)
-		}
-		// Register PID→session for ESF event attribution and notify sysext.
-		// Register the server PID first so the sysext can track all children
-		// via FORK events (the server is the parent of all command processes).
-		if extra != nil && extra.sessionTracker != nil {
-			extra.sessionTracker.RegisterProcess(s.ID, int32(os.Getpid()), 0)
-			extra.sessionTracker.RegisterProcess(s.ID, int32(cmd.Process.Pid), int32(os.Getpid()))
-			notifySessionRegistered()
-		}
 		pgid = getProcessGroupID(cmd.Process.Pid)
 		if tracer == nil {
 			stopCancellationWatch := watchProcessGroupCancellation(ctx, cmd.Process.Pid, pgid)

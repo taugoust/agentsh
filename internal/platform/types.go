@@ -11,11 +11,11 @@ import (
 type Capabilities struct {
 	// Filesystem interception
 	HasFUSE            bool   `json:"has_fuse"`
-	FUSEImplementation string `json:"fuse_implementation,omitempty"` // "fuse3", "fuse-t", "winfsp"
+	FUSEImplementation string `json:"fuse_implementation,omitempty"` // "fuse3"
 
 	// Network interception
 	HasNetworkIntercept   bool   `json:"has_network_intercept"`
-	NetworkImplementation string `json:"network_implementation,omitempty"` // "iptables", "pf", "windivert", "wfp"
+	NetworkImplementation string `json:"network_implementation,omitempty"` // "iptables", "nftables"
 	CanRedirectTraffic    bool   `json:"can_redirect_traffic"`
 	CanInspectTLS         bool   `json:"can_inspect_tls"`
 
@@ -24,7 +24,6 @@ type Capabilities struct {
 	HasNetworkNamespace bool           `json:"has_network_namespace"`
 	HasPIDNamespace     bool           `json:"has_pid_namespace"`
 	HasUserNamespace    bool           `json:"has_user_namespace"`
-	HasAppContainer     bool           `json:"has_app_container"` // Windows-specific
 	IsolationLevel      IsolationLevel `json:"isolation_level"`
 
 	// Syscall filtering
@@ -33,20 +32,11 @@ type Capabilities struct {
 
 	// Resource control
 	HasCgroups           bool `json:"has_cgroups"`
-	HasJobObjects        bool `json:"has_job_objects"` // Windows-specific
 	CanLimitCPU          bool `json:"can_limit_cpu"`
 	CanLimitMemory       bool `json:"can_limit_memory"`
 	CanLimitDiskIO       bool `json:"can_limit_disk_io"`
 	CanLimitNetworkBW    bool `json:"can_limit_network_bw"`
 	CanLimitProcessCount bool `json:"can_limit_process_count"`
-
-	// Windows-specific: Registry monitoring
-	HasRegistryMonitoring bool `json:"has_registry_monitoring,omitempty"`
-	HasRegistryBlocking   bool `json:"has_registry_blocking,omitempty"`
-
-	// macOS-specific: Apple frameworks
-	HasEndpointSecurity bool `json:"has_endpoint_security,omitempty"`
-	HasNetworkExtension bool `json:"has_network_extension,omitempty"`
 }
 
 // IsolationLevel indicates the strength of process isolation available.
@@ -59,7 +49,7 @@ const (
 	// IsolationMinimal provides basic file restrictions only
 	IsolationMinimal
 
-	// IsolationPartial provides AppContainer or similar (Windows)
+	// IsolationPartial provides partial isolation (e.g. a subset of namespaces)
 	IsolationPartial
 
 	// IsolationFull provides full namespace isolation (Linux)
@@ -212,12 +202,6 @@ const (
 	EventEnvList   EventType = "env_list"
 	EventEnvWrite  EventType = "env_write"
 	EventEnvDelete EventType = "env_delete"
-
-	// Windows-only: Registry events
-	EventRegistryRead   EventType = "registry_read"
-	EventRegistryWrite  EventType = "registry_write"
-	EventRegistryCreate EventType = "registry_create"
-	EventRegistryDelete EventType = "registry_delete"
 )
 
 // FileOperation identifies file operation types.
@@ -241,18 +225,6 @@ const (
 	EnvOpList   EnvOperation = "list"
 	EnvOpWrite  EnvOperation = "write"
 	EnvOpDelete EnvOperation = "delete"
-)
-
-// RegistryOperation identifies registry operation types (Windows-only).
-type RegistryOperation string
-
-const (
-	RegOpQuery  RegistryOperation = "query"
-	RegOpSet    RegistryOperation = "set"
-	RegOpDelete RegistryOperation = "delete"
-	RegOpCreate RegistryOperation = "create"
-	RegOpRename RegistryOperation = "rename"
-	RegOpEnum   RegistryOperation = "enum"
 )
 
 // IOEvent represents an I/O operation event from platform interceptors.
@@ -369,18 +341,6 @@ const (
 
 	// ModeLinuxNative uses Linux native implementation
 	ModeLinuxNative
-
-	// ModeDarwinNative uses macOS native implementation
-	ModeDarwinNative
-
-	// ModeDarwinLima uses macOS with Lima VM
-	ModeDarwinLima
-
-	// ModeWindowsNative uses Windows native implementation
-	ModeWindowsNative
-
-	// ModeWindowsWSL2 uses Windows with WSL2
-	ModeWindowsWSL2
 )
 
 func (m PlatformMode) String() string {
@@ -389,35 +349,19 @@ func (m PlatformMode) String() string {
 		return "auto"
 	case ModeLinuxNative:
 		return "linux-native"
-	case ModeDarwinNative:
-		return "darwin-native"
-	case ModeDarwinLima:
-		return "darwin-lima"
-	case ModeWindowsNative:
-		return "windows-native"
-	case ModeWindowsWSL2:
-		return "windows-wsl2"
 	default:
 		return "unknown"
 	}
 }
 
 // ParsePlatformMode parses a platform mode string.
-// Accepts variations like "linux", "linux-native", "darwin", "windows-wsl2", etc.
+// Accepts "auto", "linux" and "linux-native"; anything else maps to ModeAuto.
 func ParsePlatformMode(s string) PlatformMode {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "auto", "":
 		return ModeAuto
 	case "linux", "linux-native":
 		return ModeLinuxNative
-	case "darwin", "darwin-native", "macos":
-		return ModeDarwinNative
-	case "darwin-lima", "lima":
-		return ModeDarwinLima
-	case "windows", "windows-native":
-		return ModeWindowsNative
-	case "windows-wsl2", "wsl2", "wsl":
-		return ModeWindowsWSL2
 	default:
 		return ModeAuto
 	}

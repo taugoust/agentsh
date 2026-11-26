@@ -844,7 +844,7 @@ resource_limits:
   idle_timeout: 30m
 
 # =============================================================================
-# SIGNAL RULES (Linux: enforced, macOS/Windows: audit only)
+# SIGNAL RULES
 # =============================================================================
 
 signal_rules:

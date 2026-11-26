@@ -246,9 +246,6 @@ func (m *mockWrapClient) ListMCPServers(ctx context.Context) ([]map[string]any, 
 }
 
 func TestSetupWrapInterception_CallsWrapInit(t *testing.T) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		t.Skip("wrap interception requires Linux or macOS")
-	}
 
 	// Redirect the state dir: platformSetupWrap opens the wrapper log
 	// file (issue #415) and must not touch the real ~/.local/state.
@@ -278,19 +275,13 @@ func TestSetupWrapInterception_CallsWrapInit(t *testing.T) {
 	assert.Equal(t, os.Getuid(), mc.wrapInitReq.CallerUID)
 	assert.Equal(t, "agent", mc.wrapInitReq.Mode, "client-spawned wrap mode must be explicit")
 
-	// Verify the launch config (OS-specific assertions)
-	if runtime.GOOS == "linux" {
-		assert.Equal(t, "/bin/true", lcfg.command, "command should be the wrapper binary")
-		assert.Equal(t, []string{"--", "/bin/echo", "hello"}, lcfg.args, "args should be -- agent-cmd agent-args")
-		assert.NotNil(t, lcfg.extraFiles, "extra files should be set (socket pair child)")
-		// notify child + wrapper log file (state dir redirected above).
-		assert.Len(t, lcfg.extraFiles, 2)
-		assert.NotNil(t, lcfg.postStart, "postStart should be set")
-	} else if runtime.GOOS == "darwin" {
-		// On macOS with a wrapper binary, we get the wrapper command + args, but no extraFiles/postStart
-		assert.Equal(t, "/bin/true", lcfg.command, "command should be the wrapper binary")
-		assert.Equal(t, []string{"--", "/bin/echo", "hello"}, lcfg.args, "args should be -- agent-cmd agent-args")
-	}
+	// Verify the launch config
+	assert.Equal(t, "/bin/true", lcfg.command, "command should be the wrapper binary")
+	assert.Equal(t, []string{"--", "/bin/echo", "hello"}, lcfg.args, "args should be -- agent-cmd agent-args")
+	assert.NotNil(t, lcfg.extraFiles, "extra files should be set (socket pair child)")
+	// notify child + wrapper log file (state dir redirected above).
+	assert.Len(t, lcfg.extraFiles, 2)
+	assert.NotNil(t, lcfg.postStart, "postStart should be set")
 
 	// Clean up
 	for _, f := range lcfg.extraFiles {
@@ -301,12 +292,6 @@ func TestSetupWrapInterception_CallsWrapInit(t *testing.T) {
 }
 
 func TestSetupWrapInterception_EmptyWrapperBinary(t *testing.T) {
-	if runtime.GOOS == "darwin" {
-		t.Skip("empty wrapper binary is valid on macOS (ES interception)")
-	}
-	if runtime.GOOS == "windows" {
-		t.Skip("empty wrapper binary is valid on Windows (driver interception)")
-	}
 
 	mc := &mockWrapClient{
 		wrapInitResp: types.WrapInitResponse{
@@ -570,9 +555,6 @@ func TestAppendWrapNetworkProxyEnv_NoProxyWhenSessionProxyEmpty(t *testing.T) {
 }
 
 func TestWrapLaunchConfig_EnvContainsSessionAndWrapper(t *testing.T) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		t.Skip("wrap interception requires Linux or macOS")
-	}
 
 	mc := &mockWrapClient{
 		wrapInitResp: types.WrapInitResponse{
@@ -684,9 +666,6 @@ func TestWrapLaunchConfig_AppliesEnvInject_PtraceMode(t *testing.T) {
 }
 
 func TestWrapLaunchConfig_EnvIncludesInSessionWhenSafe(t *testing.T) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		t.Skip("wrap interception requires Linux or macOS")
-	}
 
 	mc := &mockWrapClient{
 		wrapInitResp: types.WrapInitResponse{
@@ -717,9 +696,6 @@ func TestWrapLaunchConfig_EnvIncludesInSessionWhenSafe(t *testing.T) {
 }
 
 func TestWrapLaunchConfig_EnvOmitsInSessionWhenUnsafe(t *testing.T) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		t.Skip("wrap interception requires Linux or macOS")
-	}
 
 	mc := &mockWrapClient{
 		wrapInitResp: types.WrapInitResponse{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"runtime"
 	"time"
 )
 
@@ -114,14 +113,7 @@ func CanShowNotification() bool {
 
 // HasDisplay returns true if a display is available for showing notifications.
 func HasDisplay() bool {
-	switch runtime.GOOS {
-	case "linux":
-		return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
-	case "darwin", "windows":
-		return true
-	default:
-		return false
-	}
+	return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
 }
 
 // IsCI returns true if running in a CI environment.

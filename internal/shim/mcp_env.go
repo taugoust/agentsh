@@ -1,44 +1,21 @@
 package shim
 
 import (
-	"runtime"
 	"strings"
 )
 
 // standardVars are environment variables that are always passed through to MCP
 // server processes, even when an allowlist is configured. These are required
-// for basic process operation. The set is OS-aware: on Windows, critical
-// system variables (SYSTEMROOT, COMSPEC, etc.) are included.
-var standardVars = buildStandardVars()
-
-func buildStandardVars() map[string]bool {
-	vars := map[string]bool{
-		"PATH":            true,
-		"HOME":            true,
-		"USER":            true,
-		"SHELL":           true,
-		"TERM":            true,
-		"LANG":            true,
-		"TMPDIR":          true,
-		"XDG_RUNTIME_DIR": true,
-	}
-	if runtime.GOOS == "windows" {
-		for _, v := range []string{
-			"SYSTEMROOT",
-			"COMSPEC",
-			"TEMP",
-			"TMP",
-			"USERPROFILE",
-			"PATHEXT",
-			"APPDATA",
-			"LOCALAPPDATA",
-			"PROGRAMDATA",
-			"SYSTEMDRIVE",
-		} {
-			vars[v] = true
-		}
-	}
-	return vars
+// for basic process operation.
+var standardVars = map[string]bool{
+	"PATH":            true,
+	"HOME":            true,
+	"USER":            true,
+	"SHELL":           true,
+	"TERM":            true,
+	"LANG":            true,
+	"TMPDIR":          true,
+	"XDG_RUNTIME_DIR": true,
 }
 
 // sensitivePatterns are suffix patterns that are stripped by default when an
@@ -136,10 +113,7 @@ func envName(entry string) string {
 }
 
 // normalizeEnvKey returns the canonical form of an env var name for map lookups.
-// On Windows, env var names are case-insensitive, so we normalize to uppercase.
+// Env var names are case-sensitive, so the name is used as-is.
 func normalizeEnvKey(name string) string {
-	if runtime.GOOS == "windows" {
-		return strings.ToUpper(name)
-	}
 	return name
 }

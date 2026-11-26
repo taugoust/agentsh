@@ -1,4 +1,4 @@
-//go:build linux || darwin || windows
+//go:build linux
 
 package capabilities
 
@@ -70,42 +70,6 @@ var linuxTips = []tipDefinition{
 	},
 }
 
-var darwinTips = []tipDefinition{
-	{
-		Feature:  "esf",
-		CheckKey: "esf",
-		Impact:   "Using sandbox-exec instead of Endpoint Security",
-		Action:   "Install the agentsh macOS app bundle which includes the system extension.",
-	},
-	{
-		Feature:  "lima_available",
-		CheckKey: "lima_available",
-		Impact:   "No Linux VM isolation available",
-		Action:   "Install Lima: brew install lima && limactl start default",
-	},
-}
-
-var windowsTips = []tipDefinition{
-	{
-		Feature:  "winfsp",
-		CheckKey: "winfsp",
-		Impact:   "FUSE-style filesystem mounting disabled",
-		Action:   "Install WinFsp: winget install WinFsp.WinFsp",
-	},
-	{
-		Feature:  "minifilter",
-		CheckKey: "minifilter",
-		Impact:   "No kernel-level file interception",
-		Action:   "Install agentsh minifilter driver (requires Administrator)",
-	},
-	{
-		Feature:  "windivert",
-		CheckKey: "windivert",
-		Impact:   "Transparent network interception disabled",
-		Action:   "Install WinDivert for transparent TCP/DNS proxy",
-	},
-}
-
 // GenerateTips creates actionable tips based on missing capabilities.
 func GenerateTips(platform string, caps map[string]any) []Tip {
 	var definitions []tipDefinition
@@ -113,10 +77,6 @@ func GenerateTips(platform string, caps map[string]any) []Tip {
 	switch platform {
 	case "linux":
 		definitions = linuxTips
-	case "darwin":
-		definitions = darwinTips
-	case "windows":
-		definitions = windowsTips
 	default:
 		return nil
 	}
@@ -174,13 +134,6 @@ var tipsByBackend = map[string][]reasonTip{
 	"ptrace":                     {{Tip: Tip{Feature: "ptrace", Impact: "Syscall-level enforcement via ptrace unavailable", Action: "Add SYS_PTRACE capability"}}},
 	"pid-namespace":              {{Tip: Tip{Feature: "pid-namespace", Impact: "Process isolation unavailable", Action: "Run in a PID namespace (docker run --pid=host or unshare -p)"}}},
 	"capability-drop":            {{Tip: Tip{Feature: "capability-drop", Impact: "Process retains full Linux capabilities (privilege reduction inactive)", Action: "Start the process with a reduced capability set using systemd CapabilityBoundingSet= + User=, docker run --cap-drop=ALL, or an unprivileged user. Note: capabilities.DropCapabilities() only narrows the bounding set for exec'd children via PR_CAPBSET_DROP and does not lower the running process's permitted/effective sets, so calling it from inside the server is not a substitute for the startup-time mechanisms above."}}},
-	// Darwin
-	"esf":               {{Tip: Tip{Feature: "esf", Impact: "Endpoint Security Framework unavailable", Action: "Install the agentsh macOS app bundle with system extension"}}},
-	"network-extension": {{Tip: Tip{Feature: "network-extension", Impact: "Network filtering unavailable", Action: "Requires network extension entitlement from Apple"}}},
-	// Windows
-	"winfsp":     {{Tip: Tip{Feature: "winfsp", Impact: "Filesystem interception unavailable", Action: "Install WinFsp: https://winfsp.dev/"}}},
-	"minifilter": {{Tip: Tip{Feature: "minifilter", Impact: "Kernel-level file filtering unavailable", Action: "Install agentsh minifilter driver"}}},
-	"windivert":  {{Tip: Tip{Feature: "windivert", Impact: "Network interception unavailable", Action: "Install WinDivert: https://reqrypt.org/windivert.html"}}},
 }
 
 func lookupTip(backendName, detail string) *Tip {

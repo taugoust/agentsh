@@ -1,5 +1,3 @@
-//go:build !windows
-
 // internal/signal/registry_test.go
 package signal
 

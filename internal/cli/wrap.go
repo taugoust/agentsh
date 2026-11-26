@@ -133,13 +133,10 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 		return fmt.Errorf("agent not found: %s: %w", opts.agentCmd, err)
 	}
 
-	// 3. Try to set up exec interception (Linux seccomp / macOS ES)
-	var wrapCfg *wrapLaunchConfig
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		wrapCfg, err = setupWrapInterception(ctx, c, sessID, agentPath, opts.agentArgs, cfg)
-		if err != nil {
-			return fmt.Errorf("interception setup failed; refusing an unguarded client-spawned command: %w", err)
-		}
+	// 3. Set up exec interception (seccomp)
+	wrapCfg, err := setupWrapInterception(ctx, c, sessID, agentPath, opts.agentArgs, cfg)
+	if err != nil {
+		return fmt.Errorf("interception setup failed; refusing an unguarded client-spawned command: %w", err)
 	}
 	if wrapCfg != nil && wrapCfg.cleanup != nil {
 		defer wrapCfg.cleanup()
@@ -256,11 +253,6 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 		}
 
 		mechanism := "seccomp"
-		if runtime.GOOS == "darwin" {
-			mechanism = "ES"
-		} else if runtime.GOOS == "windows" {
-			mechanism = "driver"
-		}
 		if wrapCfg.ptracePostStart != nil {
 			mechanism = "ptrace"
 		}
@@ -349,10 +341,8 @@ func setupWrapInterception(ctx context.Context, c client.CLIClient, sessID strin
 		return nil, fmt.Errorf("wrap-init: %w", err)
 	}
 
-	// On Linux, the server must provide a wrapper binary for seccomp interception,
+	// The server must provide a wrapper binary for seccomp interception,
 	// unless ptrace mode is active (no wrapper needed).
-	// On macOS and Windows, an empty WrapperBinary is valid — interception is
-	// system-wide via the System Extension (macOS) or driver (Windows).
 	if !wrapResp.PtraceMode && wrapResp.WrapperBinary == "" && runtime.GOOS == "linux" {
 		return nil, fmt.Errorf("server returned empty wrapper binary")
 	}

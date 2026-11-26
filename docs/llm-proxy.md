@@ -329,7 +329,7 @@ When the proxy starts, it injects one env var per declared service into the chil
 - If `expose_as` is set, that exact string is used instead.
 - The value is the proxy base URL with the service prefix appended, e.g. `http://127.0.0.1:PORT/svc/github/`.
 - Child code should treat this as the new base URL and append its own path segments — e.g. `/repos/owner/repo/issues` becomes `http://127.0.0.1:PORT/svc/github/repos/owner/repo/issues`.
-- Env var names must match `[A-Za-z_][A-Za-z0-9_]*`, must not be `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, or `AGENTSH_SESSION_ID`, and must be unique across all declared services (comparison is case-insensitive on Windows).
+- Env var names must match `[A-Za-z_][A-Za-z0-9_]*`, must not be `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, or `AGENTSH_SESSION_ID`, and must be unique across all declared services.
 
 ### Credential substitution fields
 

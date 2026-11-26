@@ -100,29 +100,14 @@ type LinuxCgroupInfo struct {
 	Version     int      `json:"version"`
 }
 
-// DarwinRlimitInfo contains macOS rlimit details.
-type DarwinRlimitInfo struct {
-	LimitsSet []string `json:"limits_set"`
-	NiceValue int      `json:"nice_value,omitempty"`
-}
-
-// WindowsJobInfo contains Windows Job Object details.
-type WindowsJobInfo struct {
-	JobHandle    uint64 `json:"job_handle"`
-	LimitFlags   uint32 `json:"limit_flags"`
-	CPURateFlags uint32 `json:"cpu_rate_flags,omitempty"`
-}
-
 // ResourceLimitSetEvent - Limits applied to process/session.
 type ResourceLimitSetEvent struct {
 	BaseEvent
 
-	TargetPID    int               `json:"target_pid"`
-	TargetType   string            `json:"target_type"` // "session", "command", "process"
-	Limits       ResourceLimits    `json:"limits"`
-	LinuxCgroup  *LinuxCgroupInfo  `json:"linux_cgroup,omitempty"`
-	DarwinRlimit *DarwinRlimitInfo `json:"darwin_rlimit,omitempty"`
-	WindowsJob   *WindowsJobInfo   `json:"windows_job,omitempty"`
+	TargetPID   int              `json:"target_pid"`
+	TargetType  string           `json:"target_type"` // "session", "command", "process"
+	Limits      ResourceLimits   `json:"limits"`
+	LinuxCgroup *LinuxCgroupInfo `json:"linux_cgroup,omitempty"`
 }
 
 // ResourceLimitWarningEvent - Usage approaching threshold.
@@ -177,17 +162,16 @@ type ProcessAncestry struct {
 type ProcessSpawnEvent struct {
 	BaseEvent
 
-	ChildPID         int               `json:"child_pid"`
-	ChildComm        string            `json:"child_comm"`
-	ChildExe         string            `json:"child_exe"`
-	ChildArgs        []string          `json:"child_args"`
-	ParentPID        int               `json:"parent_pid"`
-	ParentComm       string            `json:"parent_comm"`
-	Ancestry         []ProcessAncestry `json:"ancestry,omitempty"`
-	Depth            int               `json:"depth"`
-	LinuxCgroupPath  string            `json:"linux_cgroup_path,omitempty"`
-	WindowsJobHandle uint64            `json:"windows_job_handle,omitempty"`
-	Expected         bool              `json:"expected"`
+	ChildPID        int               `json:"child_pid"`
+	ChildComm       string            `json:"child_comm"`
+	ChildExe        string            `json:"child_exe"`
+	ChildArgs       []string          `json:"child_args"`
+	ParentPID       int               `json:"parent_pid"`
+	ParentComm      string            `json:"parent_comm"`
+	Ancestry        []ProcessAncestry `json:"ancestry,omitempty"`
+	Depth           int               `json:"depth"`
+	LinuxCgroupPath string            `json:"linux_cgroup_path,omitempty"`
+	Expected        bool              `json:"expected"`
 }
 
 // ProcessExitEvent - Process exited.
@@ -241,19 +225,6 @@ type UnixSocketEvent struct {
 	Method       string `json:"method"`            // "seccomp", "dtrace", "poll"
 }
 
-// NamedPipeEvent - Windows named pipe operation.
-type NamedPipeEvent struct {
-	BaseEvent
-
-	Operation  string `json:"operation"`   // "open", "create", "connect"
-	Path       string `json:"path"`        // \\.\pipe\NAME
-	PipeMode   string `json:"pipe_mode"`   // "byte", "message"
-	AccessMode string `json:"access_mode"` // "read", "write", "readwrite"
-	IsServer   bool   `json:"is_server"`
-	Service    string `json:"service,omitempty"`
-	Method     string `json:"method"` // "etw", "minifilter", "poll"
-}
-
 // IPCEndpoint contains IPC endpoint info.
 type IPCEndpoint struct {
 	PID  int    `json:"pid"`
@@ -282,44 +253,6 @@ type SeccompBlockedEvent struct {
 	SyscallNr int    `json:"syscall_nr"`
 	Reason    string `json:"reason"` // "blocked_by_policy"
 	Action    string `json:"action"` // "killed"
-}
-
-// XPCConnectEvent - XPC/Mach service connection attempt (macOS).
-// Captured via ES_EVENT_TYPE_NOTIFY_XPC_CONNECT (macOS 14+) or sandbox violation logs.
-type XPCConnectEvent struct {
-	BaseEvent
-
-	// Process info
-	PID       int    `json:"pid"`
-	PPID      int    `json:"ppid"`
-	Comm      string `json:"comm"`
-	Exe       string `json:"exe"`
-	SigningID string `json:"signing_id,omitempty"`
-
-	// XPC connection details
-	ServiceName   string `json:"service_name"`
-	ServiceDomain string `json:"service_domain,omitempty"` // system, user, per-pid
-
-	// Decision
-	Allowed bool   `json:"allowed"`
-	Reason  string `json:"reason"` // allowlist, blocklist, default_allow, default_deny
-
-	// For blocked connections
-	BlockedBy string `json:"blocked_by,omitempty"` // sandbox_profile, esf_policy
-
-	// Source of detection
-	Source string `json:"source"` // esf, sandbox_log
-}
-
-// XPCSandboxViolationEvent - Sandbox denied mach-lookup (from system.log).
-type XPCSandboxViolationEvent struct {
-	BaseEvent
-
-	PID         int    `json:"pid"`
-	Comm        string `json:"comm"`
-	ServiceName string `json:"service_name"`
-	Operation   string `json:"operation"` // mach-lookup, mach-register
-	Profile     string `json:"profile,omitempty"`
 }
 
 // DNSRedirectEvent records DNS resolution redirects.

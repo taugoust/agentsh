@@ -26,9 +26,8 @@ func findDetachedSupervisorConfigPath() (string, config.ConfigSource) {
 // findConfigPathWithWorkingDirectory searches in this order:
 //  1. AGENTSH_CONFIG
 //  2. ./config.yml or ./config.yaml, when includeWorkingDirectory is true
-//  3. User-local config (~/.config/agentsh/config.yaml or platform equivalent)
-//  4. System-wide config (/etc/agentsh/config.yaml or platform equivalent)
-//  5. macOS app bundle Resources (fallback for Homebrew Cask installs)
+//  3. User-local config (~/.config/agentsh/config.yaml)
+//  4. System-wide config (/etc/agentsh/config.yaml)
 func findConfigPathWithWorkingDirectory(includeWorkingDirectory bool) (string, config.ConfigSource) {
 	if v := os.Getenv("AGENTSH_CONFIG"); v != "" {
 		return v, config.ConfigSourceEnv
@@ -55,15 +54,6 @@ func findConfigPathWithWorkingDirectory(includeWorkingDirectory bool) (string, c
 		systemConfig := filepath.Join(systemConfigDir, name)
 		if _, err := os.Stat(systemConfig); err == nil {
 			return systemConfig, config.ConfigSourceSystem
-		}
-	}
-
-	if bundleDir := config.GetBundleResourcesDir(); bundleDir != "" {
-		for _, name := range []string{"config.yaml", "config.yml"} {
-			bundleConfig := filepath.Join(bundleDir, name)
-			if _, err := os.Stat(bundleConfig); err == nil {
-				return bundleConfig, config.ConfigSourceBundle
-			}
 		}
 	}
 

@@ -129,7 +129,7 @@ An agent execution environment must provide:
 | Replace bash/zsh for humans | Different use case; humans need different UX |
 | Perfect security | Defense in depth, not impenetrable fortress |
 | Zero overhead | Monitoring has costs; aim for acceptable overhead |
-| Cross-platform (initially) | Focus on Linux first; macOS/Windows later |
+| Non-Linux platforms | agentsh supports Linux only |
 | Kernel modifications | Stay in userspace for easier deployment |
 
 ---
@@ -883,15 +883,7 @@ Signals can be specified individually or by group:
 }
 ```
 
-#### Platform Support
-
-| Platform | Blocking | Redirect | Audit |
-|----------|----------|----------|-------|
-| Linux | ✅ seccomp user-notify | ✅ | ✅ |
-| macOS | ❌ | ❌ | ✅ ES Framework |
-| Windows | ⚠️ Partial | ❌ | ✅ ETW |
-
-On platforms without blocking support, signals are logged but not intercepted.
+Signals are blocked, redirected, and audited through seccomp user-notify.
 
 ---
 
@@ -2357,18 +2349,11 @@ See [Section 9.2](#92-policy-configuration) for policy file format.
 
 ## 16. Deployment
 
-### 16.0 Cross-Platform Support
+### 16.0 Platform Support
 
-agentsh provides full security features on Linux. For Windows and macOS, we support deployment strategies that run agentsh inside a Linux environment.
+agentsh supports Linux only, natively or in a Linux container.
 
-| Platform | Strategy | Security Level |
-|----------|----------|----------------|
-| **Linux** | Native | ✅ Full |
-| **Windows** | WSL2 or Docker | ✅ Full |
-| **macOS** | Tiered (FUSE → sandbox → Lima/Docker) | ⚠️ Varies by tier |
-| **Container Dev** | Linux container with agentsh | ✅ Full |
-
-**See `docs/cross-platform.md` for platform-specific notes.**
+**See `docs/cross-platform.md` for platform notes.**
 
 ### 16.1 System Requirements (Linux Native)
 
@@ -2468,8 +2453,6 @@ spec:
 | Intent tracking | Medium | Associate operations with goals |
 | Multi-node | Medium | Distributed session management |
 | GPU passthrough | Low | Support for ML workloads |
-| Windows support | Low | Port to Windows |
-| macOS support | Low | Port to macOS |
 
 ### 17.2 eBPF Monitoring Mode
 

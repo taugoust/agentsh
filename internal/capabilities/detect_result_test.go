@@ -1,4 +1,4 @@
-//go:build linux || darwin || windows
+//go:build linux
 
 package capabilities
 
@@ -208,14 +208,14 @@ func TestTableFormat_Grouped(t *testing.T) {
 func TestTableFormat_FallbackFlat(t *testing.T) {
 	// No domains → falls back to flat capabilities
 	result := &DetectResult{
-		Platform:        "darwin",
-		SecurityMode:    "sandbox-exec",
+		Platform:        "linux",
+		SecurityMode:    "minimal",
 		ProtectionScore: 60,
-		Capabilities:    map[string]any{"sandbox_exec": true, "fuse_t": false},
+		Capabilities:    map[string]any{"seccomp": true, "fuse": false},
 	}
 	table := result.Table()
 	assert.Contains(t, table, "CAPABILITIES")
-	assert.Contains(t, table, "sandbox_exec")
+	assert.Contains(t, table, "seccomp")
 }
 
 func TestDetectResult_JSONContainsDomains(t *testing.T) {

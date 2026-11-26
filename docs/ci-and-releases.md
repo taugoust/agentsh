@@ -19,7 +19,7 @@ Current workflow:
 ## Releases (tags)
 
 Desired outputs:
-- Archives (at minimum): `.tar.gz` for Linux/macOS with:
+- Archives (at minimum): `.tar.gz` for Linux with:
   - `agentsh`
   - `agentsh-shell-shim`
 - OS packages:
@@ -35,7 +35,7 @@ Suggested approach: GoReleaser + nfpm
 
 Workflow shape:
 1) `push` tags `v*` triggers a `release.yml` workflow
-2) Build matrix for `linux/amd64`, `linux/arm64` (and optionally `darwin/amd64`, `darwin/arm64`)
+2) Build matrix for `linux/amd64`, `linux/arm64`
 3) Upload artifacts to the GitHub Release
 
 Current files:
