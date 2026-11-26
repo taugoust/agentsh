@@ -1126,6 +1126,7 @@
               pkgs.gnumake
               pkgs.llvm
               pkgs.llvmPackages.clang-unwrapped
+              pkgs.fuse
               pkgs.fuse3
               pkgs.libbpf
               pkgs.libseccomp
@@ -1145,6 +1146,7 @@
             ''
             + lib.optionalString stdenv.hostPlatform.isLinux ''
               export CGO_ENABLED=1
+              export CGO_CFLAGS="-I${pkgs.fuse.dev}/include"
               export BPF_CLANG=${pkgs.llvmPackages.clang-unwrapped}/bin/clang
               export BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
             ''
