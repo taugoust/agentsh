@@ -11,6 +11,8 @@ Read and follow [AGENTS.md](./AGENTS.md) for development rules.
 
 ## Build & Test
 
+Builds and tests go through the Nix flake only:
+
 ```bash
 nix build --no-link .#agentsh     # Build
 nix flake check                   # Run all checks

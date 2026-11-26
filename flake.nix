@@ -131,7 +131,7 @@
             doCheck = false;
 
             postInstall = ''
-              install -Dm644 packaging/bash_startup.sh \
+              install -Dm644 nix/package/bash_startup.sh \
                 $out/lib/agentsh/bash_startup.sh
 
               install -Dm644 config.yml \

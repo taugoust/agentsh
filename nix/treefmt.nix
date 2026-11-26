@@ -14,6 +14,5 @@
       "--case-indent"
       "--binary-next-line"
     ];
-    excludes = [ "packaging/completions/*" ];
   };
 }

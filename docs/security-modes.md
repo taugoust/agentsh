@@ -405,7 +405,7 @@ Note: In ptrace mode, there is a brief pre-attach window between fork and PTRACE
 
 ## Performance Benchmarks
 
-Measured with `make bench`, which runs a Dockerized workload under each mode (baseline with sandbox disabled, full seccomp+FUSE, ptrace with seccomp prefilter + config-driven BPF filter + config-aware exit stops + lazy BPF escalation + PTRACE_GET_SYSCALL_INFO) using a realistic policy with deny, redirect, and allow rules plus full audit logging. Results are median of 3 runs.
+Measured with a benchmark harness that runs a Dockerized workload under each mode (baseline with sandbox disabled, full seccomp+FUSE, ptrace with seccomp prefilter + config-driven BPF filter + config-aware exit stops + lazy BPF escalation + PTRACE_GET_SYSCALL_INFO) using a realistic policy with deny, redirect, and allow rules plus full audit logging. Results are median of 3 runs.
 
 ### Results
 
@@ -444,14 +444,6 @@ Measured with `make bench`, which runs a Dockerized workload under each mode (ba
 8. **Static deny support** via `SECCOMP_RET_ERRNO` enables BPF-level enforcement for policies that always deny certain syscalls (e.g., all network connections). Denied operations are handled entirely in-kernel without any ptrace stop.
 
 9. **Ptrace mode is designed for restricted environments** (e.g., AWS Fargate) where seccomp user-notify, eBPF, and FUSE are unavailable. The overhead tradeoff is acceptable for these environments where no alternative enforcement mechanism exists.
-
-### Reproducing
-
-```bash
-make bench
-```
-
-Requires Docker with `--cap-add SYS_ADMIN --cap-add SYS_PTRACE --device /dev/fuse --security-opt seccomp=unconfined`. Total runtime ~15-20 minutes.
 
 ## Related Documentation
 

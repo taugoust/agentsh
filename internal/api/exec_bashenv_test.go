@@ -17,8 +17,8 @@ func TestBashStartupScript_DisablesBuiltins(t *testing.T) {
 		t.Skip("bash startup script tests require Unix shell")
 	}
 	// Find bash_startup.sh relative to this test file
-	// Test runs from internal/api/, script is at ../../packaging/bash_startup.sh
-	scriptPath := filepath.Join("..", "..", "packaging", "bash_startup.sh")
+	// Test runs from internal/api/, script is at ../../nix/package/bash_startup.sh
+	scriptPath := filepath.Join("..", "..", "nix", "package", "bash_startup.sh")
 
 	// Verify script exists
 	absScript, err := filepath.Abs(scriptPath)
@@ -49,7 +49,7 @@ func TestBashStartupScript_KeepsCommandBuiltin(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("bash startup script tests require Unix shell")
 	}
-	scriptPath := filepath.Join("..", "..", "packaging", "bash_startup.sh")
+	scriptPath := filepath.Join("..", "..", "nix", "package", "bash_startup.sh")
 	absScript, err := filepath.Abs(scriptPath)
 	if err != nil {
 		t.Fatalf("failed to get absolute path: %v", err)
@@ -75,7 +75,7 @@ func TestBashStartupScript_SyntaxValid(t *testing.T) {
 		t.Skip("bash startup script tests require Unix shell")
 	}
 	// Find bash_startup.sh relative to this test file
-	scriptPath := filepath.Join("..", "..", "packaging", "bash_startup.sh")
+	scriptPath := filepath.Join("..", "..", "nix", "package", "bash_startup.sh")
 
 	absScript, err := filepath.Abs(scriptPath)
 	if err != nil {

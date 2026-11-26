@@ -83,11 +83,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-export GOCACHE="${GOCACHE:-$repo_root/.gocache}"
-export GOMODCACHE="${GOMODCACHE:-$repo_root/.gomodcache}"
-export GOPATH="${GOPATH:-$repo_root/.gopath}"
-
-make build >/dev/null
+# Build through the flake and link the binaries into ./bin, where the checks
+# below expect them.
+nix_out="$(nix build --no-link --print-out-paths "path:$repo_root#default")"
+mkdir -p bin
+for name in agentsh agentsh-shell-shim agentsh-unixwrap; do
+  ln -sfn "$nix_out/bin/$name" "bin/$name"
+done
 
 set +e
 host_guard_out="$(./bin/agentsh shim install-shell --root / --shim "$repo_root/bin/agentsh-shell-shim" 2>&1)"

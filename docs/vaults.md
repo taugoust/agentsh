@@ -938,7 +938,7 @@ audit:
 ```
 
 This is the full setup. No cloud, no Vault, no network dependencies.
-Good for `go test ./...` and `make dev`.
+Good for local development and `nix flake check`.
 
 ### 4.4 Kubernetes deployment (Vault + service account)
 

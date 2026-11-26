@@ -3,15 +3,14 @@
 ## CI (feature branches + main)
 
 Goals:
-- Catch regressions early: `go test ./...` + `make smoke`
+- Catch regressions early: `nix flake check` + `bash scripts/smoke.sh`
 - Keep it fast and deterministic
 
 Implementation:
 - GitHub Actions workflow on:
   - `pull_request` (feature branches)
   - `push` to `main`
-- Cache the repo-local Go caches used by `Makefile` / `scripts/smoke.sh`:
-  - `.gocache`, `.gomodcache`, `.gopath`
+- Cache the Nix store used by the flake builds and checks
 
 Current workflow:
 - `.github/workflows/ci.yml`
@@ -27,8 +26,8 @@ Desired outputs:
   - RHEL/Fedora: `.rpm`
   - Alpine: `.apk` (requires a musl-compatible binary; `CGO_ENABLED=0` static Go builds should be fine)
 
-Suggested approach: GoReleaser + nfpm
-- Use GoReleaser to:
+Suggested approach: Nix + nfpm
+- Build with the flake (`nix build`), the only supported build path, to:
   - Build `agentsh` and `agentsh-shell-shim` per target
   - Produce `.tar.gz` archives
   - Produce `.deb/.rpm/.apk` via nfpm (no postinst actions at first; packages should not automatically replace `/bin/sh`)
@@ -40,7 +39,6 @@ Workflow shape:
 
 Current files:
 - `.github/workflows/release.yml`
-- `.goreleaser.yml`
 
 Open decisions before implementing packages:
 - Install locations:
