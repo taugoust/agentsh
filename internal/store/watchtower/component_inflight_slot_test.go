@@ -67,7 +67,9 @@ func TestStore_TransportLossInflightSlot_RetiredByBatchAck(t *testing.T) {
 		MaxInflight:             1,
 		BackoffInitial:          10 * time.Millisecond,
 		BackoffMax:              50 * time.Millisecond,
-		Logger:                  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New: %v", err)
@@ -151,5 +153,8 @@ func TestStore_TransportLossInflightSlot_RetiredByBatchAck(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatal("valid event seq=1 did not arrive at srvFree within deadline; inflight slot may not have been retired")
+	t.Fatal(
+		"valid event seq=1 did not arrive at srvFree within deadline; inflight slot may not have " +
+			"been retired",
+	)
 }

@@ -46,7 +46,11 @@ func TestEncryptor_RoundTrip(t *testing.T) {
 
 			// Ciphertext should be longer than plaintext (nonce + tag)
 			if len(ciphertext) <= len(tc.plaintext) {
-				t.Errorf("ciphertext too short: got %d, want > %d", len(ciphertext), len(tc.plaintext))
+				t.Errorf(
+					"ciphertext too short: got %d, want > %d",
+					len(ciphertext),
+					len(tc.plaintext),
+				)
 			}
 
 			decrypted, err := enc.Decrypt(ciphertext)
@@ -108,7 +112,12 @@ func TestEncryptor_InvalidKey(t *testing.T) {
 			key := make([]byte, tc.keyLen)
 			_, err := NewEncryptor(key)
 			if (err != nil) != tc.wantErr {
-				t.Errorf("NewEncryptor(%d bytes): got err=%v, wantErr=%v", tc.keyLen, err, tc.wantErr)
+				t.Errorf(
+					"NewEncryptor(%d bytes): got err=%v, wantErr=%v",
+					tc.keyLen,
+					err,
+					tc.wantErr,
+				)
 			}
 		})
 	}

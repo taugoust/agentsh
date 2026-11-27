@@ -164,7 +164,8 @@ type MCPCrossServerEvent struct {
 	SessionID string    `json:"session_id"`
 
 	// Which detection rule fired
-	Rule     string `json:"rule"`     // "read_then_send", "burst", "cross_server_flow", "shadow_tool"
+	// "read_then_send", "burst", "cross_server_flow", "shadow_tool"
+	Rule     string `json:"rule"`
 	Severity string `json:"severity"` // "critical", "high", "medium"
 
 	// The tool call that was blocked

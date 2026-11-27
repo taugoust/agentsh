@@ -98,11 +98,23 @@ type ErrIdentityMismatch struct {
 func (e *ErrIdentityMismatch) Error() string {
 	switch e.MismatchedField {
 	case "session_id":
-		return fmt.Sprintf("wal.Open: session_id mismatch: persisted=%q opts=%q", e.PersistedSessionID, e.ExpectedSessionID)
+		return fmt.Sprintf(
+			"wal.Open: session_id mismatch: persisted=%q opts=%q",
+			e.PersistedSessionID,
+			e.ExpectedSessionID,
+		)
 	case "context_digest":
-		return fmt.Sprintf("wal.Open: context_digest mismatch: persisted=%q opts=%q", e.PersistedContextDigest, e.ExpectedContextDigest)
+		return fmt.Sprintf(
+			"wal.Open: context_digest mismatch: persisted=%q opts=%q",
+			e.PersistedContextDigest,
+			e.ExpectedContextDigest,
+		)
 	default:
-		return fmt.Sprintf("wal.Open: key_fingerprint mismatch: persisted=%q opts=%q", e.PersistedKeyFingerprint, e.ExpectedKeyFingerprint)
+		return fmt.Sprintf(
+			"wal.Open: key_fingerprint mismatch: persisted=%q opts=%q",
+			e.PersistedKeyFingerprint,
+			e.ExpectedKeyFingerprint,
+		)
 	}
 }
 
@@ -445,8 +457,10 @@ func Open(opts Options) (*WAL, error) {
 	// size.
 	maxRec := int(opts.SegmentSize - int64(SegmentHeaderSize))
 	if maxRec <= 0 || uint64(maxRec) > MaxFramedPayload {
-		return nil, fmt.Errorf("wal: SegmentSize %d invalid; need room for header+record within MaxFramedPayload",
-			opts.SegmentSize)
+		return nil, fmt.Errorf(
+			"wal: SegmentSize %d invalid; need room for header+record within MaxFramedPayload",
+			opts.SegmentSize,
+		)
 	}
 	// SyncDeferred is documented as a forward-compatible mode but the
 	// periodic-sync hook is not yet implemented. Accepting it would let
@@ -456,13 +470,22 @@ func Open(opts Options) (*WAL, error) {
 	// until the timer task is wired up; the failure is at Open time so
 	// callers can adjust configuration before any events are written.
 	if opts.SyncMode != SyncImmediate {
-		return nil, errors.New("wal.Open: only SyncImmediate is implemented; SyncDeferred requires the periodic-sync timer hook")
+		return nil, errors.New(
+			"wal.Open: only SyncImmediate is implemented; SyncDeferred requires the " +
+				"periodic-sync timer hook",
+		)
 	}
 	segDir := filepath.Join(opts.Dir, "segments")
 	if err := os.MkdirAll(segDir, 0o700); err != nil {
 		return nil, fmt.Errorf("mkdir segments: %w", err)
 	}
-	w := &WAL{opts: opts, maxRec: maxRec, segDir: segDir, perGenDataHighWater: make(map[uint32]uint64), perGenAnyReplayable: make(map[uint32]struct{})}
+	w := &WAL{
+		opts:                opts,
+		maxRec:              maxRec,
+		segDir:              segDir,
+		perGenDataHighWater: make(map[uint32]uint64),
+		perGenAnyReplayable: make(map[uint32]struct{}),
+	}
 	// Load the ack watermark BEFORE recover() so the overflow path (which
 	// can fire on the very first Append after Open) sees a consistent
 	// view: sealed segments fully covered by ack are silently GC'd, while
@@ -500,7 +523,8 @@ func Open(opts Options) (*WAL, error) {
 				ExpectedContextDigest:   opts.ContextDigest,
 			}
 		}
-		if m.KeyFingerprint != "" && opts.KeyFingerprint != "" && m.KeyFingerprint != opts.KeyFingerprint {
+		if m.KeyFingerprint != "" && opts.KeyFingerprint != "" &&
+			m.KeyFingerprint != opts.KeyFingerprint {
 			return nil, &ErrIdentityMismatch{
 				MismatchedField:         "key_fingerprint",
 				PersistedSessionID:      m.SessionID,
@@ -511,7 +535,8 @@ func Open(opts Options) (*WAL, error) {
 				ExpectedContextDigest:   opts.ContextDigest,
 			}
 		}
-		if m.ContextDigest != "" && opts.ContextDigest != "" && m.ContextDigest != opts.ContextDigest {
+		if m.ContextDigest != "" && opts.ContextDigest != "" &&
+			m.ContextDigest != opts.ContextDigest {
 			return nil, &ErrIdentityMismatch{
 				MismatchedField:         "context_digest",
 				PersistedSessionID:      m.SessionID,
@@ -1169,7 +1194,11 @@ func (w *WAL) Append(seq int64, gen uint32, payload []byte) (AppendResult, error
 	// it after the 16-byte segment header; this is a clean failure because
 	// no I/O has been attempted yet.
 	if int64(recordOverhead+len(payload)) > w.opts.SegmentSize-int64(SegmentHeaderSize) {
-		return AppendResult{}, &AppendError{Class: FailureClean, Op: "append", Err: fmt.Errorf("payload %d exceeds segment budget", len(payload))}
+		return AppendResult{}, &AppendError{
+			Class: FailureClean,
+			Op:    "append",
+			Err:   fmt.Errorf("payload %d exceeds segment budget", len(payload)),
+		}
 	}
 	// Test-only injector hook (see SetAppendInjector). Production code
 	// MUST NOT install an injector — the hook is gated behind a
@@ -1352,7 +1381,12 @@ func (w *WAL) sealCurrentLocked() error {
 func (w *WAL) openNewSegmentLocked(gen uint32, flags uint16) (*Segment, error) {
 	idx := w.nextIndex
 	w.nextIndex++
-	return OpenSegment(w.segDir, idx, SegmentHeader{Version: SegmentVersion, Flags: flags, Generation: gen}, w.maxRec)
+	return OpenSegment(
+		w.segDir,
+		idx,
+		SegmentHeader{Version: SegmentVersion, Flags: flags, Generation: gen},
+		w.maxRec,
+	)
 }
 
 // Close seals the live segment (if any) without removing INPROGRESS — instead
@@ -1651,7 +1685,10 @@ func (w *WAL) MarkAcked(gen uint32, seq uint64) error {
 // reports its highest known-good seq rather than failing outright; the
 // caller decides whether that's safe to act on. Errors opening the file
 // or parsing the header are propagated.
-func segmentHighSeqAndGen(path string, maxPayload int) (hiSeq uint64, hasUser bool, gen uint32, hasAnyPayload bool, err error) {
+func segmentHighSeqAndGen(
+	path string,
+	maxPayload int,
+) (hiSeq uint64, hasUser bool, gen uint32, hasAnyPayload bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return 0, false, 0, false, err
@@ -1821,7 +1858,12 @@ func (w *WAL) dropOldestLocked() (loss LossRecord, dropped bool, hasUserRange bo
 	w.prunePerGenMapsLocked()
 	// hasUserRange == !first: we observed at least one real record.
 	hasUserRange = !first
-	return LossRecord{FromSequence: fromSeq, ToSequence: toSeq, Generation: hdr.Generation, Reason: LossReasonOverflow}, true, hasUserRange, nil
+	return LossRecord{
+		FromSequence: fromSeq,
+		ToSequence:   toSeq,
+		Generation:   hdr.Generation,
+		Reason:       LossReasonOverflow,
+	}, true, hasUserRange, nil
 }
 
 // segmentFullyAckedLocked reports whether the segment described by

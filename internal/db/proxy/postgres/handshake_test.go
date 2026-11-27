@@ -79,7 +79,10 @@ func TestDispatch_GSSENCRequest_RespondsN(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	if err := pc.run(ctx); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, net.ErrClosed) {
+	if err := pc.run(
+		ctx,
+	); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) &&
+		!errors.Is(err, net.ErrClosed) {
 		t.Logf("run returned: %v (acceptable on EOF)", err)
 	}
 }
@@ -147,7 +150,10 @@ func TestDispatch_Replication_DefaultDeny(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := pc.run(ctx); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) {
+	if err := pc.run(
+		ctx,
+	); err != nil && !errors.Is(err, io.EOF) &&
+		!errors.Is(err, io.ErrClosedPipe) {
 		t.Logf("run on replication=true returned: %v", err)
 	}
 	<-clientDone
@@ -180,15 +186,20 @@ func TestDispatch_Passthrough_BytePumpAfterS(t *testing.T) {
 		AgentSessionID:  testAgentSessionID,
 		SessionResolver: staticResolver{sessionID: testAgentSessionID, ok: true},
 		Logger:          slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: upLn.Addr().String(),
-			TLSMode:  "passthrough",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "passthrough"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: upLn.Addr().String(),
+				TLSMode:  "passthrough",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "unused.sock"),
+				},
+				Service: policy.DBService{Name: "appdb", TLSMode: "passthrough"},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -293,15 +304,24 @@ database_connection_rules:
 		SessionResolver: staticResolver{sessionID: testAgentSessionID, ok: true},
 		Policy:          rs,
 		Logger:          slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: upLn.Addr().String(),
-			TLSMode:  "terminate_plaintext_upstream",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_plaintext_upstream", TrustedNetwork: true},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: upLn.Addr().String(),
+				TLSMode:  "terminate_plaintext_upstream",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "unused.sock"),
+				},
+				Service: policy.DBService{
+					Name:           "appdb",
+					TLSMode:        "terminate_plaintext_upstream",
+					TrustedNetwork: true,
+				},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -409,15 +429,24 @@ database_connection_rules:
 		SessionResolver: staticResolver{sessionID: testAgentSessionID, ok: true},
 		Policy:          rs,
 		Logger:          slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: upAddr,
-			TLSMode:  "terminate_plaintext_upstream",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_plaintext_upstream", TrustedNetwork: true},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: upAddr,
+				TLSMode:  "terminate_plaintext_upstream",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "unused.sock"),
+				},
+				Service: policy.DBService{
+					Name:           "appdb",
+					TLSMode:        "terminate_plaintext_upstream",
+					TrustedNetwork: true,
+				},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -525,15 +554,24 @@ database_connection_rules:
 		SessionResolver: staticResolver{sessionID: testAgentSessionID, ok: true},
 		Policy:          rs,
 		Logger:          slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: upLn.Addr().String(),
-			TLSMode:  "terminate_plaintext_upstream",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_plaintext_upstream", TrustedNetwork: true},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: upLn.Addr().String(),
+				TLSMode:  "terminate_plaintext_upstream",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "unused.sock"),
+				},
+				Service: policy.DBService{
+					Name:           "appdb",
+					TLSMode:        "terminate_plaintext_upstream",
+					TrustedNetwork: true,
+				},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -601,15 +639,24 @@ func TestDispatch_CancelRequest_ExpiredEmitsLifecycle(t *testing.T) {
 		AgentSessionID:  testAgentSessionID,
 		SessionResolver: staticResolver{sessionID: testAgentSessionID, ok: true},
 		Logger:          slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: "127.0.0.1:1",
-			TLSMode:  "terminate_plaintext_upstream",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_plaintext_upstream", TrustedNetwork: true},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: "127.0.0.1:1",
+				TLSMode:  "terminate_plaintext_upstream",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "unused.sock"),
+				},
+				Service: policy.DBService{
+					Name:           "appdb",
+					TLSMode:        "terminate_plaintext_upstream",
+					TrustedNetwork: true,
+				},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -695,15 +742,24 @@ database_connection_rules:
 		SessionResolver: staticResolver{sessionID: testAgentSessionID, ok: true},
 		Policy:          rs,
 		Logger:          slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: upAddr,
-			TLSMode:  "terminate_plaintext_upstream",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_plaintext_upstream", TrustedNetwork: true},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: upAddr,
+				TLSMode:  "terminate_plaintext_upstream",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "unused.sock"),
+				},
+				Service: policy.DBService{
+					Name:           "appdb",
+					TLSMode:        "terminate_plaintext_upstream",
+					TrustedNetwork: true,
+				},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -800,15 +856,24 @@ database_connection_rules:
 		SessionResolver: staticResolver{sessionID: testAgentSessionID, ok: true},
 		Policy:          rs,
 		Logger:          slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: upAddr,
-			TLSMode:  "terminate_plaintext_upstream",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_plaintext_upstream", TrustedNetwork: true},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: upAddr,
+				TLSMode:  "terminate_plaintext_upstream",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "unused.sock"),
+				},
+				Service: policy.DBService{
+					Name:           "appdb",
+					TLSMode:        "terminate_plaintext_upstream",
+					TrustedNetwork: true,
+				},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -917,15 +982,24 @@ database_connection_rules:
 		SessionResolver: staticResolver{sessionID: testAgentSessionID, ok: true},
 		Policy:          rs,
 		Logger:          slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: upLn.Addr().String(),
-			TLSMode:  "terminate_plaintext_upstream",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_plaintext_upstream", TrustedNetwork: true},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: upLn.Addr().String(),
+				TLSMode:  "terminate_plaintext_upstream",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "unused.sock"),
+				},
+				Service: policy.DBService{
+					Name:           "appdb",
+					TLSMode:        "terminate_plaintext_upstream",
+					TrustedNetwork: true,
+				},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

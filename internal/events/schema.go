@@ -200,7 +200,8 @@ type ProcessKillInfo struct {
 type ProcessTreeKillEvent struct {
 	BaseEvent
 
-	Reason          string            `json:"reason"` // "timeout", "limit_exceeded", "session_end", "manual", "policy"
+	// "timeout", "limit_exceeded", "session_end", "manual", "policy"
+	Reason          string            `json:"reason"`
 	Signal          int               `json:"signal"`
 	ProcessesKilled []ProcessKillInfo `json:"processes_killed"`
 	TotalKilled     int               `json:"total_killed"`

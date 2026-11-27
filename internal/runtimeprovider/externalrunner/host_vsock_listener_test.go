@@ -121,7 +121,11 @@ func TestVerifiedVSockListenerRequiresExactPeerCIDAndLaunchTokenBeforeHTTP(t *te
 		t.Fatalf("accepted peer CID = %d", peer.VSockCID())
 	}
 	buffer := make([]byte, len("CONNECT exact.example:443 HTTP/1.1\r\n"))
-	if _, err := io.ReadFull(accepted, buffer); err != nil || string(buffer) != "CONNECT exact.example:443 HTTP/1.1\r\n" {
+	if _, err := io.ReadFull(
+		accepted,
+		buffer,
+	); err != nil ||
+		string(buffer) != "CONNECT exact.example:443 HTTP/1.1\r\n" {
 		t.Fatalf("first accepted HTTP bytes = %q, %v", buffer, err)
 	}
 	buffer = buffer[:1]

@@ -39,11 +39,21 @@ func dbServiceConfigFromProxyServices(services []dbProxyService) (dbservice.Conf
 	for _, svc := range services {
 		host, portText, err := net.SplitHostPort(svc.DBService.Upstream)
 		if err != nil {
-			return dbservice.Config{}, fmt.Errorf("db service %q upstream %q: %w", svc.Name, svc.DBService.Upstream, err)
+			return dbservice.Config{}, fmt.Errorf(
+				"db service %q upstream %q: %w",
+				svc.Name,
+				svc.DBService.Upstream,
+				err,
+			)
 		}
 		port, err := strconv.Atoi(portText)
 		if err != nil || port <= 0 {
-			return dbservice.Config{}, fmt.Errorf("db service %q upstream %q: invalid port %q", svc.Name, svc.DBService.Upstream, portText)
+			return dbservice.Config{}, fmt.Errorf(
+				"db service %q upstream %q: invalid port %q",
+				svc.Name,
+				svc.DBService.Upstream,
+				portText,
+			)
 		}
 		cfg.Services = append(cfg.Services, dbservice.Service{
 			Name:    svc.Name,
@@ -70,11 +80,21 @@ func mergeDBUnavoidabilityBundle(base *policy.Policy, bundle dbservice.Bundle) *
 		base = &policy.Policy{}
 	}
 	merged := clonePolicy(base)
-	merged.NetworkRules = append(append([]policy.NetworkRule(nil), bundle.Policy.NetworkRules...), merged.NetworkRules...)
-	merged.CommandRules = append(append([]policy.CommandRule(nil), bundle.Policy.CommandRules...), merged.CommandRules...)
-	merged.UnixRules = append(append([]policy.UnixSocketRule(nil), bundle.Policy.UnixRules...), merged.UnixRules...)
-	merged.DnsRedirectRules = append(append([]policy.DnsRedirectRule(nil), bundle.Policy.DnsRedirectRules...), merged.DnsRedirectRules...)
-	merged.ConnectRedirectRules = append(append([]policy.ConnectRedirectRule(nil), bundle.Policy.ConnectRedirectRules...), merged.ConnectRedirectRules...)
+	merged.NetworkRules = append(
+		append([]policy.NetworkRule(nil), bundle.Policy.NetworkRules...),
+		merged.NetworkRules...)
+	merged.CommandRules = append(
+		append([]policy.CommandRule(nil), bundle.Policy.CommandRules...),
+		merged.CommandRules...)
+	merged.UnixRules = append(
+		append([]policy.UnixSocketRule(nil), bundle.Policy.UnixRules...),
+		merged.UnixRules...)
+	merged.DnsRedirectRules = append(
+		append([]policy.DnsRedirectRule(nil), bundle.Policy.DnsRedirectRules...),
+		merged.DnsRedirectRules...)
+	merged.ConnectRedirectRules = append(
+		append([]policy.ConnectRedirectRule(nil), bundle.Policy.ConnectRedirectRules...),
+		merged.ConnectRedirectRules...)
 	merged.Metadata = append(merged.Metadata, bundle.Metadata...)
 	return merged
 }
@@ -87,7 +107,13 @@ func collectSortedDBProxyServices(rs *dbpolicy.RuleSet, stateDir string) []dbPro
 	return services
 }
 
-func (a *App) compileDBPolicyForSession(ctx context.Context, s *session.Session, base *policy.Policy, policyVars map[string]string, enforceApprovals bool) (*policy.Engine, *dbpolicy.RuleSet, string, error) {
+func (a *App) compileDBPolicyForSession(
+	ctx context.Context,
+	s *session.Session,
+	base *policy.Policy,
+	policyVars map[string]string,
+	enforceApprovals bool,
+) (*policy.Engine, *dbpolicy.RuleSet, string, error) {
 	_ = ctx
 	if base == nil {
 		return a.policy, nil, "", nil
@@ -103,7 +129,17 @@ func (a *App) compileDBPolicyForSession(ctx context.Context, s *session.Session,
 		return nil, nil, "", err
 	}
 	for _, w := range warns {
-		slog.Warn("db policy warning", "code", w.Code, "rule", w.Rule, "field", w.Field, "message", w.Message)
+		slog.Warn(
+			"db policy warning",
+			"code",
+			w.Code,
+			"rule",
+			w.Rule,
+			"field",
+			w.Field,
+			"message",
+			w.Message,
+		)
 	}
 	if rs.Unavoidability() == dbservice.UnavoidabilityOff || len(rs.AllServices()) == 0 {
 		engine, err := policy.NewEngineWithVariables(base, enforceApprovals, true, policyVars)
@@ -142,16 +178,22 @@ func (a *App) withCompositionRuntimeControlRule(p *policy.Policy) (*policy.Polic
 	}
 	root, err := a.compositionRuntimeControlRoot()
 	if err != nil {
-		return nil, fmt.Errorf("composition runtime unavailable while compiling session policy: %w", err)
+		return nil, fmt.Errorf(
+			"composition runtime unavailable while compiling session policy: %w",
+			err,
+		)
 	}
 	clone := clonePolicy(p)
-	clone.FileRules = append([]policy.FileRule{{
-		Name:        "deny-agentsh-composition-runtime",
-		Description: "Keep AgentSH's private composition and helper runtime outside project and payload authority",
-		Paths:       []string{root, filepath.Join(root, "**")},
-		Operations:  []string{"*"},
-		Decision:    "deny",
-	}}, clone.FileRules...)
+	clone.FileRules = append([]policy.FileRule{
+		{
+			Name: "deny-agentsh-composition-runtime",
+			Description: "Keep AgentSH's private composition and helper runtime outside project " +
+				"and payload authority",
+			Paths:      []string{root, filepath.Join(root, "**")},
+			Operations: []string{"*"},
+			Decision:   "deny",
+		},
+	}, clone.FileRules...)
 	return clone, nil
 }
 
@@ -172,13 +214,24 @@ func automaticCompositionRuntimeControlRoot(root string) (string, error) {
 	// internal rule authoritative for both the current and every future lease.
 	leaseRuntime := filepath.Dir(root)
 	uidRuntime := filepath.Dir(leaseRuntime)
-	if filepath.Base(root) != "composition" || filepath.Dir(uidRuntime) != filepath.Join(string(filepath.Separator), "run", "agentsh", "nethelper") {
+	if filepath.Base(root) != "composition" ||
+		filepath.Dir(
+			uidRuntime,
+		) != filepath.Join(
+			string(filepath.Separator),
+			"run",
+			"agentsh",
+			"nethelper",
+		) {
 		return "", fmt.Errorf("automatic composition runtime has unexpected helper topology")
 	}
 	return uidRuntime, nil
 }
 
-func withSessionParentTraversalRules(p *policy.Policy, policyVars map[string]string) *policy.Policy {
+func withSessionParentTraversalRules(
+	p *policy.Policy,
+	policyVars map[string]string,
+) *policy.Policy {
 	if p == nil {
 		return nil
 	}
@@ -189,25 +242,28 @@ func withSessionParentTraversalRules(p *policy.Policy, policyVars map[string]str
 	clone := clonePolicy(p)
 	rules := []policy.FileRule{
 		{
-			Name:        "allow-session-parent-context-files",
-			Description: "Allow reading AgentSH/Pi context files in parent directories of the effective session workspace",
-			Paths:       sessionParentContextFilePaths(paths),
-			Operations:  []string{"read", "open", "stat", "readlink", "access"},
-			Decision:    "allow",
+			Name: "allow-session-parent-context-files",
+			Description: "Allow reading AgentSH/Pi context files in parent directories of the " +
+				"effective session workspace",
+			Paths:      sessionParentContextFilePaths(paths),
+			Operations: []string{"read", "open", "stat", "readlink", "access"},
+			Decision:   "allow",
 		},
 		{
-			Name:        "allow-session-parent-directory-open",
-			Description: "Allow opening parent directories of the effective session workspace for context discovery",
-			Paths:       sessionParentDirectoryOpenPaths(paths),
-			Operations:  []string{"open"},
-			Decision:    "allow",
+			Name: "allow-session-parent-directory-open",
+			Description: "Allow opening parent directories of the effective session workspace " +
+				"for context discovery",
+			Paths:      sessionParentDirectoryOpenPaths(paths),
+			Operations: []string{"open"},
+			Decision:   "allow",
 		},
 		{
-			Name:        "allow-session-parent-path-traversal",
-			Description: "Allow metadata traversal of parent directories for the effective session workspace",
-			Paths:       paths,
-			Operations:  []string{"stat", "readlink", "access"},
-			Decision:    "allow",
+			Name: "allow-session-parent-path-traversal",
+			Description: "Allow metadata traversal of parent directories for the effective " +
+				"session workspace",
+			Paths:      paths,
+			Operations: []string{"stat", "readlink", "access"},
+			Decision:   "allow",
 		},
 	}
 	clone.FileRules = append(rules, clone.FileRules...)
@@ -266,13 +322,22 @@ func sessionParentTraversalPaths(policyVars map[string]string) []string {
 	return out
 }
 
-func (a *App) startSessionDBProxy(ctx context.Context, s *session.Session, rs *dbpolicy.RuleSet, stateDir string) error {
-	if rs == nil || rs.Unavoidability() == dbservice.UnavoidabilityOff || len(rs.AllServices()) == 0 {
+func (a *App) startSessionDBProxy(
+	ctx context.Context,
+	s *session.Session,
+	rs *dbpolicy.RuleSet,
+	stateDir string,
+) error {
+	if rs == nil || rs.Unavoidability() == dbservice.UnavoidabilityOff ||
+		len(rs.AllServices()) == 0 {
 		return nil
 	}
 	resolver, ok := a.dbProxySessionResolver().(postgres.SessionResolver)
 	if !ok || resolver == nil {
-		return fmt.Errorf("DB proxy session resolver is required when DB unavoidability is %s", rs.Unavoidability())
+		return fmt.Errorf(
+			"DB proxy session resolver is required when DB unavoidability is %s",
+			rs.Unavoidability(),
+		)
 	}
 
 	proxyCtx, cancel := context.WithCancel(context.Background())
@@ -290,7 +355,12 @@ func (a *App) startSessionDBProxy(ctx context.Context, s *session.Session, rs *d
 		cancel()
 		return err
 	}
-	if err := waitForDBProxyListenersOrStartError(ctx, services, 2*time.Second, startErrCh); err != nil {
+	if err := waitForDBProxyListenersOrStartError(
+		ctx,
+		services,
+		2*time.Second,
+		startErrCh,
+	); err != nil {
 		cancel()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer shutdownCancel()
@@ -307,7 +377,13 @@ func (a *App) startSessionDBProxy(ctx context.Context, s *session.Session, rs *d
 	return nil
 }
 
-func (a *App) emitCommandDBBypassAttempt(ctx context.Context, s *session.Session, sessionID string, commandID string, dec policy.Decision) {
+func (a *App) emitCommandDBBypassAttempt(
+	ctx context.Context,
+	s *session.Session,
+	sessionID string,
+	commandID string,
+	dec policy.Decision,
+) {
 	if a == nil || a.dbBypass == nil || dec.EffectiveDecision != types.DecisionDeny {
 		return
 	}
@@ -325,7 +401,12 @@ func (a *App) emitCommandDBBypassAttempt(ctx context.Context, s *session.Session
 	})
 }
 
-func waitForDBProxyListenersOrStartError(ctx context.Context, services []dbProxyService, timeout time.Duration, startErrCh <-chan error) error {
+func waitForDBProxyListenersOrStartError(
+	ctx context.Context,
+	services []dbProxyService,
+	timeout time.Duration,
+	startErrCh <-chan error,
+) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		select {
@@ -376,7 +457,11 @@ func dbProxyStartupError(err error) error {
 	return fmt.Errorf("DB proxy failed during startup: %w", err)
 }
 
-func monitorSessionDBProxyStart(s *session.Session, proxyCtx context.Context, startErrCh <-chan error) {
+func monitorSessionDBProxyStart(
+	s *session.Session,
+	proxyCtx context.Context,
+	startErrCh <-chan error,
+) {
 	go func() {
 		err, ok := <-startErrCh
 		if !ok || proxyCtx.Err() != nil {
@@ -414,7 +499,9 @@ func clonePolicy(p *policy.Policy) *policy.Policy {
 	clone.RegistryRules = append([]policy.RegistryRule(nil), p.RegistryRules...)
 	clone.SignalRules = append([]policy.SignalRule(nil), p.SignalRules...)
 	clone.DnsRedirectRules = append([]policy.DnsRedirectRule(nil), p.DnsRedirectRules...)
-	clone.ConnectRedirectRules = append([]policy.ConnectRedirectRule(nil), p.ConnectRedirectRules...)
+	clone.ConnectRedirectRules = append(
+		[]policy.ConnectRedirectRule(nil),
+		p.ConnectRedirectRules...)
 	clone.PackageRules = append([]policy.PackageRule(nil), p.PackageRules...)
 	clone.HTTPServices = append([]policy.HTTPService(nil), p.HTTPServices...)
 	if p.EnvInject != nil {

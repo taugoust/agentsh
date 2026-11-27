@@ -34,8 +34,13 @@ type cgroupManager interface {
 var (
 	ebpfCheckSupport                    = ebpftrace.CheckSupport
 	ebpfAttachConnectToCgroup           = ebpftrace.AttachConnectToCgroup
-	ebpfAttachConnectToCgroupFailClosed = func(cgroupPath string) (*ebpf.Collection, func() error, error) {
-		attachment, err := ebpftrace.AttachConnectToCgroupWithOptions(cgroupPath, ebpftrace.CgroupAttachOptions{FailClosedBeforeAttach: true})
+	ebpfAttachConnectToCgroupFailClosed = func(
+		cgroupPath string,
+	) (*ebpf.Collection, func() error, error) {
+		attachment, err := ebpftrace.AttachConnectToCgroupWithOptions(
+			cgroupPath,
+			ebpftrace.CgroupAttachOptions{FailClosedBeforeAttach: true},
+		)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -45,7 +50,9 @@ var (
 	ebpfCgroupID             = ebpftrace.CgroupID
 	ebpfPopulateAllowlist    = ebpftrace.PopulateAllowlist
 	ebpfCleanupAllowlist     = ebpftrace.CleanupAllowlist
-	nethelperClientForSocket = func(socketPath string) *nethelper.Client { return nethelper.NewClient(socketPath) }
+	nethelperClientForSocket = func(socketPath string) *nethelper.Client {
+		return nethelper.NewClient(socketPath)
+	}
 )
 
 // cgroupBestEffortDegradable reports whether an unenforceable resource-limit
@@ -67,10 +74,29 @@ func cgroupBestEffortDegradable(cfg *config.Config) bool {
 // event, then returns a no-op cleanup so the wrap proceeds without the limit.
 // errorType distinguishes the resource-limits-unavailable case from the
 // total-cgroup-unavailable case for downstream alerting. See issue #411.
-func emitCgroupDegradedAndContinue(ctx context.Context, emit storeEmitter, sessionID, cmdID, errorType, reason string, lim policy.Limits) (func() error, error) {
-	slog.Warn("cgroup: enforcement unavailable; running without it (best_effort)",
-		"session_id", sessionID, "command_id", cmdID, "error_type", errorType, "reason", reason,
-		"max_memory_mb", lim.MaxMemoryMB, "cpu_quota_pct", lim.CPUQuotaPercent, "pids_max", lim.PidsMax)
+func emitCgroupDegradedAndContinue(
+	ctx context.Context,
+	emit storeEmitter,
+	sessionID, cmdID, errorType, reason string,
+	lim policy.Limits,
+) (func() error, error) {
+	slog.Warn(
+		"cgroup: enforcement unavailable; running without it (best_effort)",
+		"session_id",
+		sessionID,
+		"command_id",
+		cmdID,
+		"error_type",
+		errorType,
+		"reason",
+		reason,
+		"max_memory_mb",
+		lim.MaxMemoryMB,
+		"cpu_quota_pct",
+		lim.CPUQuotaPercent,
+		"pids_max",
+		lim.PidsMax,
+	)
 	ev := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now().UTC(),
@@ -117,17 +143,39 @@ func sessionNetworkProxyEndpoints(app *App, sessionID string) networkProxyEndpoi
 	if !ok || sess == nil {
 		return networkProxyEndpoints{}
 	}
-	return networkProxyEndpoints{ProxyURL: strings.TrimSpace(sess.ProxyURL()), LLMProxyURL: strings.TrimSpace(sess.LLMProxyURL())}
+	return networkProxyEndpoints{
+		ProxyURL:    strings.TrimSpace(sess.ProxyURL()),
+		LLMProxyURL: strings.TrimSpace(sess.LLMProxyURL()),
+	}
 }
 
-func applyCgroupV2(ctx context.Context, emit storeEmitter, app *App, sessionID, cmdID string, pid int, lim policy.Limits, m *metrics.Collector, pol *policy.Engine) (func() error, error) {
+func applyCgroupV2(
+	ctx context.Context,
+	emit storeEmitter,
+	app *App,
+	sessionID, cmdID string,
+	pid int,
+	lim policy.Limits,
+	m *metrics.Collector,
+	pol *policy.Engine,
+) (func() error, error) {
 	return applyCgroupV2WithProxyEndpoints(ctx, emit, app, sessionID, cmdID, pid, lim, m, pol, nil)
 }
 
 // applyCgroupV2WithProxyEndpoints binds a command-specific explicit proxy to
 // this command's cgroup registration. A nil override preserves the exclusive
 // session proxy path; a non-nil override is authoritative and never falls back.
-func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app *App, sessionID, cmdID string, pid int, lim policy.Limits, m *metrics.Collector, pol *policy.Engine, proxyOverride *networkProxyEndpoints) (func() error, error) {
+func applyCgroupV2WithProxyEndpoints(
+	ctx context.Context,
+	emit storeEmitter,
+	app *App,
+	sessionID, cmdID string,
+	pid int,
+	lim policy.Limits,
+	m *metrics.Collector,
+	pol *policy.Engine,
+	proxyOverride *networkProxyEndpoints,
+) (func() error, error) {
 	cfg := app.cfg
 	proxyEndpoints := sessionNetworkProxyEndpoints(app, sessionID)
 	if proxyOverride != nil {
@@ -170,14 +218,26 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 		}
 	}
 
-	cg, err := app.cgroupMgr.Apply("agentsh-"+sanitizeCgroupTag(sessionID)+"-"+sanitizeCgroupTag(cmdID), pid, cgLimits)
+	cg, err := app.cgroupMgr.Apply(
+		"agentsh-"+sanitizeCgroupTag(sessionID)+"-"+sanitizeCgroupTag(cmdID),
+		pid,
+		cgLimits,
+	)
 	if err != nil {
 		var ue *limits.CgroupUnavailableError
 		var rlue *limits.CgroupResourceLimitsUnavailableError
 		switch {
 		case errors.As(err, &rlue):
 			if cgroupBestEffortDegradable(cfg) {
-				return emitCgroupDegradedAndContinue(ctx, emit, sessionID, cmdID, "resource_limits_unavailable", rlue.Reason, lim)
+				return emitCgroupDegradedAndContinue(
+					ctx,
+					emit,
+					sessionID,
+					cmdID,
+					"resource_limits_unavailable",
+					rlue.Reason,
+					lim,
+				)
 			}
 			ev := types.Event{
 				ID:        uuid.NewString(),
@@ -198,7 +258,15 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 			return nil, err
 		case errors.As(err, &ue):
 			if cgroupBestEffortDegradable(cfg) {
-				return emitCgroupDegradedAndContinue(ctx, emit, sessionID, cmdID, "cgroup_unavailable", ue.Reason, lim)
+				return emitCgroupDegradedAndContinue(
+					ctx,
+					emit,
+					sessionID,
+					cmdID,
+					"cgroup_unavailable",
+					ue.Reason,
+					lim,
+				)
 			}
 			ev := types.Event{
 				ID:        uuid.NewString(),
@@ -299,7 +367,10 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 			// detached only after that lock, so cleanup never opens an allow-all
 			// interval for a lingering process in the command cgroup.
 			if err := ebpfCleanupAllowlist(allowlistColl, allowCgid); err != nil {
-				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("lock and clear eBPF policy: %w", err))
+				cleanupErr = errors.Join(
+					cleanupErr,
+					fmt.Errorf("lock and clear eBPF policy: %w", err),
+				)
 			}
 			allowlistColl = nil
 			allowCgid = 0
@@ -358,7 +429,11 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 			}
 			_ = emit.AppendEvent(context.Background(), ev)
 			emit.Publish(ev)
-			app.recordNetworkCleanupFailure(sessionID, cmdID, fmt.Errorf("network resource cleanup: %w", kernelErr))
+			app.recordNetworkCleanupFailure(
+				sessionID,
+				cmdID,
+				fmt.Errorf("network resource cleanup: %w", kernelErr),
+			)
 		}
 		if kernelErr == nil && cgroupErr == nil {
 			// A command attachment is inactive only after both the helper/eBPF
@@ -377,7 +452,10 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 		partialCleanupSucceeded := true
 		if cleanupErr := cleanupEBPFResources(); cleanupErr != nil {
 			partialCleanupSucceeded = false
-			setupErr = errors.Join(setupErr, fmt.Errorf("cleanup partial network setup: %w", cleanupErr))
+			setupErr = errors.Join(
+				setupErr,
+				fmt.Errorf("cleanup partial network setup: %w", cleanupErr),
+			)
 		}
 		ev := types.Event{
 			ID:        uuid.NewString(),
@@ -420,10 +498,23 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 	if ebpfRequested {
 		helperSock := app.nethelperBindingSnapshot().SocketPath
 		if ebpfStrictSetup && helperSock == "" {
-			return setupFailure(fmt.Errorf("strict eBPF enforcement requires the installed privileged nethelper socket"))
+			return setupFailure(
+				fmt.Errorf(
+					"strict eBPF enforcement requires the installed privileged nethelper socket",
+				),
+			)
 		}
 		if helperSock != "" {
-			cleanup, err := setupEBPFViaNethelperWithProxyEndpoints(ctx, emit, app, sessionID, cmdID, cg.Path, pol, proxyEndpoints)
+			cleanup, err := setupEBPFViaNethelperWithProxyEndpoints(
+				ctx,
+				emit,
+				app,
+				sessionID,
+				cmdID,
+				cg.Path,
+				pol,
+				proxyEndpoints,
+			)
 			if err == nil {
 				helperCleanup = cleanup
 				return cleanupResources, nil
@@ -456,7 +547,9 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 			_ = emit.AppendEvent(ctx, ev)
 			emit.Publish(ev)
 			if ebpfStrictSetup {
-				return setupFailure(fmt.Errorf("nethelper eBPF setup failed while required/enforced: %w", err))
+				return setupFailure(
+					fmt.Errorf("nethelper eBPF setup failed while required/enforced: %w", err),
+				)
 			}
 		}
 
@@ -478,7 +571,9 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 				m.IncEBPFUnavailable()
 			}
 			if ebpfStrictSetup {
-				return setupFailure(fmt.Errorf("ebpf required/enforced but unsupported: %s", status.Reason))
+				return setupFailure(
+					fmt.Errorf("ebpf required/enforced but unsupported: %s", status.Reason),
+				)
 			}
 		} else {
 			attachConnect := ebpfAttachConnectToCgroup
@@ -503,7 +598,9 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 					m.IncEBPFAttachFail()
 				}
 				if ebpfStrictSetup {
-					return setupFailure(fmt.Errorf("ebpf attach failed while required/enforced: %w", err))
+					return setupFailure(
+						fmt.Errorf("ebpf attach failed while required/enforced: %w", err),
+					)
 				}
 			} else {
 				ebpfDetach = detach
@@ -527,7 +624,13 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 						_ = emit.AppendEvent(ctx, ev)
 						emit.Publish(ev)
 						if ebpfStrictSetup {
-							return setupFailure(fmt.Errorf("ebpf enforcement setup failed while required/enforced: cgroup id: %w", cgErr))
+							return setupFailure(
+								fmt.Errorf(
+									"ebpf enforcement setup failed while required/enforced: "+
+										"cgroup id: %w",
+									cgErr,
+								),
+							)
 						}
 					} else {
 						allowlistColl = coll
@@ -544,20 +647,42 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 						if strings.TrimSpace(proxyEndpoints.ProxyURL) != "" {
 							proxyRequired = true
 							var proxyErr error
-							ep, cidrs, proxyErr = buildProxyOnlyAllowedEndpoints(proxyEndpoints.ProxyURL, proxyEndpoints.LLMProxyURL)
+							ep, cidrs, proxyErr = buildProxyOnlyAllowedEndpoints(
+								proxyEndpoints.ProxyURL,
+								proxyEndpoints.LLMProxyURL,
+							)
 							if proxyErr != nil {
-								return setupFailure(fmt.Errorf("build exact proxy-required allowlist: %w", proxyErr))
+								return setupFailure(
+									fmt.Errorf(
+										"build exact proxy-required allowlist: %w",
+										proxyErr,
+									),
+								)
 							}
 							if len(cidrs) != 0 {
-								return setupFailure(fmt.Errorf("proxy-required allowlist unexpectedly contains CIDR rules"))
+								return setupFailure(
+									fmt.Errorf(
+										"proxy-required allowlist unexpectedly contains CIDR rules",
+									),
+								)
 							}
 							for _, key := range ep {
 								if key.Protocol != 6 || key.Dport == 0 {
-									return setupFailure(fmt.Errorf("proxy-required allowlist contains a non-TCP or all-port entry"))
+									return setupFailure(
+										fmt.Errorf(
+											"proxy-required allowlist contains a non-TCP or " +
+												"all-port entry",
+										),
+									)
 								}
 								endpointID := allowKeyEndpointID(key)
 								if endpointID == "" {
-									return setupFailure(fmt.Errorf("proxy-required allowlist contains an unsupported address family"))
+									return setupFailure(
+										fmt.Errorf(
+											"proxy-required allowlist contains an unsupported " +
+												"address family",
+										),
+									)
 								}
 								proxyEndpointIDs = append(proxyEndpointIDs, endpointID)
 							}
@@ -569,12 +694,29 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 							hasDomains = false
 							ttlHint = 0
 						} else {
-							return setupFailure(fmt.Errorf("proxy-required eBPF setup has no ready AgentSH network proxy"))
+							return setupFailure(
+								fmt.Errorf(
+									"proxy-required eBPF setup has no ready AgentSH network proxy",
+								),
+							)
 						}
 						if !strict {
-							return setupFailure(fmt.Errorf("eBPF enforce mode could not establish a default-deny endpoint set"))
+							return setupFailure(
+								fmt.Errorf(
+									"eBPF enforce mode could not establish a default-deny " +
+										"endpoint set",
+								),
+							)
 						}
-						if err := ebpfPopulateAllowlist(coll, cgid, ep, cidrs, denyKeys, denyCidrs, strict); err != nil {
+						if err := ebpfPopulateAllowlist(
+							coll,
+							cgid,
+							ep,
+							cidrs,
+							denyKeys,
+							denyCidrs,
+							strict,
+						); err != nil {
 							ev := types.Event{
 								ID:        uuid.NewString(),
 								Timestamp: time.Now().UTC(),
@@ -591,7 +733,13 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 								m.IncEBPFAttachFail()
 							}
 							if ebpfStrictSetup {
-								return setupFailure(fmt.Errorf("ebpf enforcement setup failed while required/enforced: populate allowlist: %w", err))
+								return setupFailure(
+									fmt.Errorf(
+										"ebpf enforcement setup failed while required/enforced: "+
+											"populate allowlist: %w",
+										err,
+									),
+								)
 							}
 							// best effort disable default deny and clear entries
 							_ = ebpfCleanupAllowlist(coll, cgid)
@@ -606,8 +754,10 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 								SessionID: sessionID,
 								CommandID: cmdID,
 								Fields: map[string]any{
-									"reason":                             "proxy-required gate active; only exact AgentSH proxy TCP endpoints are allowed",
-									"tier":                               "cgroup-ebpf-proxy-required",
+									"reason": "proxy-required gate active; only exact AgentSH " +
+										"proxy TCP endpoints are allowed",
+									"tier": "cgroup-ebpf-proxy-required",
+
 									"runtime_enforcement_status":         "active",
 									"cgroup_id":                          cgid,
 									"allow_entries":                      len(ep),
@@ -626,14 +776,20 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 									"quic_blocked":                       true,
 									"command_dns_required":               false,
 									"unsupported_traffic_action":         "deny",
-									"blocked_traffic_classes":            []string{"direct-tcp", "local-non-proxy-tcp", "udp", "quic", "command-dns"},
-									"raw_socket_blocking_configured":     true,
-									"raw_socket_blocking_proven":         false,
-									"unsupported_traffic_blocked":        false,
-									"transparent_redirect_supported":     false,
-									"network_policy_enforced":            false,
-									"proxy_url":                          proxyEndpoints.ProxyURL,
-									"llm_proxy_url":                      proxyEndpoints.LLMProxyURL,
+									"blocked_traffic_classes": []string{
+										"direct-tcp",
+										"local-non-proxy-tcp",
+										"udp",
+										"quic",
+										"command-dns",
+									},
+									"raw_socket_blocking_configured": true,
+									"raw_socket_blocking_proven":     false,
+									"unsupported_traffic_blocked":    false,
+									"transparent_redirect_supported": false,
+									"network_policy_enforced":        false,
+									"proxy_url":                      proxyEndpoints.ProxyURL,
+									"llm_proxy_url":                  proxyEndpoints.LLMProxyURL,
 								},
 							}
 							_ = emit.AppendEvent(ctx, ev)
@@ -656,8 +812,20 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 									case <-refreshCtx.Done():
 										return
 									case <-t.C:
-										ep2, cidrs2, deny2, denyCidrs2, strict2, _, ttl2 := buildAllowedEndpoints(pol, base)
-										if err := ebpfPopulateAllowlist(coll, cgid, ep2, cidrs2, deny2, denyCidrs2, strict2); err != nil {
+										ep2, cidrs2, deny2, denyCidrs2, strict2, _, ttl2 :=
+											buildAllowedEndpoints(
+												pol,
+												base,
+											)
+										if err := ebpfPopulateAllowlist(
+											coll,
+											cgid,
+											ep2,
+											cidrs2,
+											deny2,
+											denyCidrs2,
+											strict2,
+										); err != nil {
 											ev := types.Event{
 												ID:        uuid.NewString(),
 												Timestamp: time.Now().UTC(),
@@ -701,12 +869,18 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 							"quic_blocked":                       proxyRequired && strict,
 							"command_dns_required":               !proxyRequired,
 							"unsupported_traffic_action":         "deny",
-							"blocked_traffic_classes":            []string{"direct-tcp", "local-non-proxy-tcp", "udp", "quic", "command-dns"},
-							"raw_socket_blocking_configured":     true,
-							"raw_socket_blocking_proven":         false,
-							"unsupported_traffic_blocked":        false,
-							"network_policy_enforced":            false,
-							"transparent_redirect_supported":     false,
+							"blocked_traffic_classes": []string{
+								"direct-tcp",
+								"local-non-proxy-tcp",
+								"udp",
+								"quic",
+								"command-dns",
+							},
+							"raw_socket_blocking_configured": true,
+							"raw_socket_blocking_proven":     false,
+							"unsupported_traffic_blocked":    false,
+							"network_policy_enforced":        false,
+							"transparent_redirect_supported": false,
 						}
 						if !proxyRequired {
 							attachmentEvidence["tier"] = "cgroup-ebpf-gate"
@@ -740,14 +914,21 @@ func applyCgroupV2WithProxyEndpoints(ctx context.Context, emit storeEmitter, app
 					_ = emit.AppendEvent(ctx, ev)
 					emit.Publish(ev)
 					if ebpfRequired {
-						return setupFailure(fmt.Errorf("ebpf collector failed and required: %w", cerr))
+						return setupFailure(
+							fmt.Errorf("ebpf collector failed and required: %w", cerr),
+						)
 					}
 					// Event collection is not part of the connect/sendmsg decision
 					// path. In enforce mode retain the successfully populated gate;
 					// detaching it because telemetry failed would be fail open.
 					if !ebpfEnforce {
 						if cleanupErr := cleanupEBPFResources(); cleanupErr != nil {
-							return setupFailure(fmt.Errorf("cleanup after optional collector failure: %w", cleanupErr))
+							return setupFailure(
+								fmt.Errorf(
+									"cleanup after optional collector failure: %w",
+									cleanupErr,
+								),
+							)
 						}
 					}
 				} else {
@@ -800,7 +981,14 @@ func (e *nethelperSetupFailure) Unwrap() error {
 	return e.cause
 }
 
-func setupEBPFViaNethelperWithProxyEndpoints(ctx context.Context, emit storeEmitter, app *App, sessionID, cmdID, cgroupPath string, pol *policy.Engine, endpoints networkProxyEndpoints) (func() error, error) {
+func setupEBPFViaNethelperWithProxyEndpoints(
+	ctx context.Context,
+	emit storeEmitter,
+	app *App,
+	sessionID, cmdID, cgroupPath string,
+	pol *policy.Engine,
+	endpoints networkProxyEndpoints,
+) (func() error, error) {
 	if app == nil || app.cfg == nil {
 		return nil, fmt.Errorf("app config unavailable")
 	}
@@ -834,7 +1022,8 @@ func setupEBPFViaNethelperWithProxyEndpoints(ctx context.Context, emit storeEmit
 	}
 	supervisorCgroup := ""
 	if app.cgroupMgr != nil {
-		if probe := app.cgroupMgr.Probe(); probe != nil && strings.TrimSpace(probe.OwnCgroup) != "" {
+		if probe := app.cgroupMgr.Probe(); probe != nil &&
+			strings.TrimSpace(probe.OwnCgroup) != "" {
 			supervisorCgroup = probe.OwnCgroup
 		}
 	}
@@ -889,7 +1078,9 @@ func setupEBPFViaNethelperWithProxyEndpoints(ctx context.Context, emit storeEmit
 	}
 	failRegisteredSetup := func(setupErr error) (func() error, error) {
 		cleaned := true
-		if cleanupErr := cleanupRegistration(nethelper.CleanupReasonRegistrationFailed); cleanupErr != nil {
+		if cleanupErr := cleanupRegistration(
+			nethelper.CleanupReasonRegistrationFailed,
+		); cleanupErr != nil {
 			cleaned = false
 			cleanupEvent := types.Event{
 				ID:        uuid.NewString(),
@@ -919,16 +1110,29 @@ func setupEBPFViaNethelperWithProxyEndpoints(ctx context.Context, emit storeEmit
 	}
 	if strictSetup {
 		if strings.TrimSpace(regResp.RegistrationID) == "" {
-			return failRegisteredSetup(fmt.Errorf("nethelper registration response omitted the helper-selected registration_id"))
+			return failRegisteredSetup(
+				fmt.Errorf(
+					"nethelper registration response omitted the helper-selected registration_id",
+				),
+			)
 		}
-		if strings.TrimSpace(regResp.PinPath) == "" || !filepath.IsAbs(regResp.PinPath) || filepath.Clean(regResp.PinPath) != regResp.PinPath {
-			return failRegisteredSetup(fmt.Errorf("nethelper registration response omitted a canonical helper-selected pin path"))
+		if strings.TrimSpace(regResp.PinPath) == "" || !filepath.IsAbs(regResp.PinPath) ||
+			filepath.Clean(regResp.PinPath) != regResp.PinPath {
+			return failRegisteredSetup(
+				fmt.Errorf(
+					"nethelper registration response omitted a canonical helper-selected pin path",
+				),
+			)
 		}
 	}
 
 	allow, deny, defaultDeny, warning := helperPolicyEntries(app, pol, proxyAllow)
 	if strictSetup && !defaultDeny {
-		return failRegisteredSetup(fmt.Errorf("proxy-required nethelper mode could not establish a default-deny endpoint set"))
+		return failRegisteredSetup(
+			fmt.Errorf(
+				"proxy-required nethelper mode could not establish a default-deny endpoint set",
+			),
+		)
 	}
 	updReq := nethelper.UpdatePolicyMapRequest{
 		ProtocolVersion: nethelper.CurrentProtocolVersion,
@@ -957,15 +1161,26 @@ func setupEBPFViaNethelperWithProxyEndpoints(ctx context.Context, emit storeEmit
 	helperWarnings := append([]string{}, regResp.Warnings...)
 	helperWarnings = append(helperWarnings, updResp.Warnings...)
 	pinReloaded := warningsContain(helperWarnings, "reloaded pinned")
-	helperAuthenticated := strings.TrimSpace(regReq.HelperInstanceCredential) != "" && strings.TrimSpace(regResp.RegistrationID) != ""
-	registrationEvidenceID := nethelperRegistrationEvidenceID(regResp.RegistrationID, sessionID, regResp.CgroupID)
+	helperAuthenticated := strings.TrimSpace(regReq.HelperInstanceCredential) != "" &&
+		strings.TrimSpace(regResp.RegistrationID) != ""
+	registrationEvidenceID := nethelperRegistrationEvidenceID(
+		regResp.RegistrationID,
+		sessionID,
+		regResp.CgroupID,
+	)
 	allowedTransport := "policy-map"
 	unsupportedTrafficAction := "policy-map"
 	var blockedTrafficClasses []string
 	if proxyRequired {
 		allowedTransport = "tcp"
 		unsupportedTrafficAction = "deny"
-		blockedTrafficClasses = []string{"direct-tcp", "local-non-proxy-tcp", "udp", "quic", "command-dns"}
+		blockedTrafficClasses = []string{
+			"direct-tcp",
+			"local-non-proxy-tcp",
+			"udp",
+			"quic",
+			"command-dns",
+		}
 	}
 	evFields := map[string]any{
 		"path":                               cgroupPath,
@@ -1048,7 +1263,11 @@ func setupEBPFViaNethelperWithProxyEndpoints(ctx context.Context, emit storeEmit
 	return cleanup, nil
 }
 
-func helperPolicyEntries(app *App, pol *policy.Engine, proxyAllow []nethelper.PolicyMapEntry) ([]nethelper.PolicyMapEntry, []nethelper.PolicyMapEntry, bool, string) {
+func helperPolicyEntries(
+	app *App,
+	pol *policy.Engine,
+	proxyAllow []nethelper.PolicyMapEntry,
+) ([]nethelper.PolicyMapEntry, []nethelper.PolicyMapEntry, bool, string) {
 	cfg := app.cfg
 	if cfg == nil {
 		return nil, nil, false, "config unavailable"
@@ -1060,23 +1279,34 @@ func helperPolicyEntries(app *App, pol *policy.Engine, proxyAllow []nethelper.Po
 		}
 		allow := append([]nethelper.PolicyMapEntry(nil), proxyAllow...)
 		for _, entry := range allow {
-			if strings.TrimSpace(entry.IP) == "" || strings.TrimSpace(entry.CIDR) != "" || entry.Port <= 0 || entry.Protocol.Normalized() != nethelper.TransportProtocolTCP {
-				return nil, nil, false, "proxy-required gate rejected a non-exact, non-TCP, or all-port proxy entry"
+			if strings.TrimSpace(entry.IP) == "" || strings.TrimSpace(entry.CIDR) != "" ||
+				entry.Port <= 0 ||
+				entry.Protocol.Normalized() != nethelper.TransportProtocolTCP {
+				return nil, nil, false,
+					"proxy-required gate rejected a non-exact, non-TCP, or all-port proxy entry"
 			}
 		}
-		return allow, nil, true, "proxy-required gate active: only exact AgentSH proxy TCP address+port endpoints are allowed; direct TCP, local non-proxy TCP, and UDP/QUIC are default-denied"
+		return allow, nil, true,
+			"proxy-required gate active: only exact AgentSH proxy TCP address+port endpoints are " +
+				"allowed; direct TCP, local non-proxy TCP, and UDP/QUIC are default-denied"
 	}
 
 	maxTTL := time.Duration(cfg.Sandbox.Network.EBPF.DNSMaxTTLSeconds) * time.Second
-	allowKeys, allowCIDRs, denyKeys, denyCIDRs, strict, hasDomains, _ := buildAllowedEndpoints(pol, maxTTL)
+	allowKeys, allowCIDRs, denyKeys, denyCIDRs, strict, hasDomains, _ := buildAllowedEndpoints(
+		pol,
+		maxTTL,
+	)
 	if len(allowKeys) == 0 && len(allowCIDRs) == 0 && !cfg.Sandbox.Network.EBPF.EnforceWithoutDNS {
 		strict = false
 	}
-	allow := append(policyEntriesFromAllowKeys(allowKeys), policyEntriesFromAllowCIDRs(allowCIDRs)...)
+	allow := append(
+		policyEntriesFromAllowKeys(allowKeys),
+		policyEntriesFromAllowCIDRs(allowCIDRs)...)
 	deny := append(policyEntriesFromAllowKeys(denyKeys), policyEntriesFromAllowCIDRs(denyCIDRs)...)
 	warning := ""
 	if hasDomains && strict && cfg.Sandbox.Network.EBPF.DNSRefreshSeconds > 0 {
-		warning = "helper map DNS refresh is not implemented in this supervisor path; entries are a startup snapshot"
+		warning = "helper map DNS refresh is not implemented in this supervisor path; entries " +
+			"are a startup snapshot"
 	}
 	return allow, deny, cfg.Sandbox.Network.EBPF.Enforce && strict, warning
 }
@@ -1088,7 +1318,9 @@ type nethelperProxyGateConfig struct {
 	endpointIDs []string
 }
 
-func nethelperProxyGateForEndpoints(endpoints networkProxyEndpoints) (*nethelperProxyGateConfig, error) {
+func nethelperProxyGateForEndpoints(
+	endpoints networkProxyEndpoints,
+) (*nethelperProxyGateConfig, error) {
 	proxyURL := strings.TrimSpace(endpoints.ProxyURL)
 	if proxyURL == "" {
 		return nil, nil
@@ -1104,22 +1336,33 @@ func nethelperProxyGateForEndpoints(endpoints networkProxyEndpoints) (*nethelper
 	if err != nil {
 		return nil, fmt.Errorf("resolve primary proxy endpoint: %w", err)
 	}
-	primary := &nethelper.ProxyEndpoint{Host: primaryAddrPort.Addr().String(), Port: int(primaryAddrPort.Port())}
+	primary := &nethelper.ProxyEndpoint{
+		Host: primaryAddrPort.Addr().String(),
+		Port: int(primaryAddrPort.Port()),
+	}
 	if err := primary.Validate(); err != nil {
 		return nil, fmt.Errorf("validate primary proxy endpoint: %w", err)
 	}
 	allow := policyEntriesFromAllowKeys(keys)
 	if len(allow) != len(keys) {
-		return nil, fmt.Errorf("convert exact proxy-required endpoints: converted %d of %d entries", len(allow), len(keys))
+		return nil, fmt.Errorf(
+			"convert exact proxy-required endpoints: converted %d of %d entries",
+			len(allow),
+			len(keys),
+		)
 	}
 	endpointIDs := make([]string, 0, len(keys))
 	for _, key := range keys {
 		if key.Protocol != 6 || key.Dport == 0 {
-			return nil, fmt.Errorf("resolve exact proxy-required endpoints: non-TCP or all-port rule")
+			return nil, fmt.Errorf(
+				"resolve exact proxy-required endpoints: non-TCP or all-port rule",
+			)
 		}
 		endpointID := allowKeyEndpointID(key)
 		if endpointID == "" {
-			return nil, fmt.Errorf("resolve exact proxy-required endpoints: unsupported address family")
+			return nil, fmt.Errorf(
+				"resolve exact proxy-required endpoints: unsupported address family",
+			)
 		}
 		endpointIDs = append(endpointIDs, endpointID)
 	}
@@ -1215,9 +1458,16 @@ func allowKeyEndpointID(key ebpftrace.AllowKey) string {
 	return netip.AddrPortFrom(addr, key.Dport).String()
 }
 
-func validateNethelperRegistrationResponse(req nethelper.RegisterSessionCgroupRequest, resp nethelper.RegisterSessionCgroupResponse) error {
+func validateNethelperRegistrationResponse(
+	req nethelper.RegisterSessionCgroupRequest,
+	resp nethelper.RegisterSessionCgroupResponse,
+) error {
 	if resp.ProtocolVersion != nethelper.CurrentProtocolVersion {
-		return fmt.Errorf("nethelper registration response protocol_version=%d, want %d", resp.ProtocolVersion, nethelper.CurrentProtocolVersion)
+		return fmt.Errorf(
+			"nethelper registration response protocol_version=%d, want %d",
+			resp.ProtocolVersion,
+			nethelper.CurrentProtocolVersion,
+		)
 	}
 	if resp.CgroupID == 0 {
 		return fmt.Errorf("nethelper registration response omitted cgroup_id")
@@ -1229,17 +1479,32 @@ func validateNethelperRegistrationResponse(req nethelper.RegisterSessionCgroupRe
 		return fmt.Errorf("nethelper registration response request_id mismatch")
 	}
 	if resp.Tier.Normalized() != req.Tier.Normalized() {
-		return fmt.Errorf("nethelper registration response tier %q does not match requested %q", resp.Tier.Normalized(), req.Tier.Normalized())
+		return fmt.Errorf(
+			"nethelper registration response tier %q does not match requested %q",
+			resp.Tier.Normalized(),
+			req.Tier.Normalized(),
+		)
 	}
 	if resp.Mode.Normalized() != req.Mode.Normalized() {
-		return fmt.Errorf("nethelper registration response mode %q does not match requested %q", resp.Mode.Normalized(), req.Mode.Normalized())
+		return fmt.Errorf(
+			"nethelper registration response mode %q does not match requested %q",
+			resp.Mode.Normalized(),
+			req.Mode.Normalized(),
+		)
 	}
 	return nil
 }
 
-func validateNethelperUpdateResponse(req nethelper.UpdatePolicyMapRequest, resp nethelper.UpdatePolicyMapResponse) error {
+func validateNethelperUpdateResponse(
+	req nethelper.UpdatePolicyMapRequest,
+	resp nethelper.UpdatePolicyMapResponse,
+) error {
 	if resp.ProtocolVersion != nethelper.CurrentProtocolVersion {
-		return fmt.Errorf("nethelper map response protocol_version=%d, want %d", resp.ProtocolVersion, nethelper.CurrentProtocolVersion)
+		return fmt.Errorf(
+			"nethelper map response protocol_version=%d, want %d",
+			resp.ProtocolVersion,
+			nethelper.CurrentProtocolVersion,
+		)
 	}
 	if resp.SessionID != "" && resp.SessionID != req.SessionID {
 		return fmt.Errorf("nethelper map response session_id mismatch")
@@ -1248,10 +1513,20 @@ func validateNethelperUpdateResponse(req nethelper.UpdatePolicyMapRequest, resp 
 		return fmt.Errorf("nethelper map response request_id mismatch")
 	}
 	if resp.DefaultDeny != req.DefaultDeny {
-		return fmt.Errorf("nethelper map response default_deny=%t, requested %t", resp.DefaultDeny, req.DefaultDeny)
+		return fmt.Errorf(
+			"nethelper map response default_deny=%t, requested %t",
+			resp.DefaultDeny,
+			req.DefaultDeny,
+		)
 	}
 	if resp.AllowEntries != len(req.Allow) || resp.DenyEntries != len(req.Deny) {
-		return fmt.Errorf("nethelper map response entry counts allow=%d deny=%d, requested allow=%d deny=%d", resp.AllowEntries, resp.DenyEntries, len(req.Allow), len(req.Deny))
+		return fmt.Errorf(
+			"nethelper map response entry counts allow=%d deny=%d, requested allow=%d deny=%d",
+			resp.AllowEntries,
+			resp.DenyEntries,
+			len(req.Allow),
+			len(req.Deny),
+		)
 	}
 	return nil
 }

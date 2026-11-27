@@ -65,7 +65,10 @@ func (s *Session) ConfigureOutputArtifacts(maxBytes int64) error {
 func (s *Session) NewOutputArtifactWriter(name string) (*OutputArtifactWriter, error) {
 	runtimeTmp := s.RuntimeTmpPath()
 	if runtimeTmp == "" || !filepath.IsAbs(runtimeTmp) {
-		return nil, fmt.Errorf("%w: RuntimeTmp is not an absolute path", ErrOutputArtifactsUnavailable)
+		return nil, fmt.Errorf(
+			"%w: RuntimeTmp is not an absolute path",
+			ErrOutputArtifactsUnavailable,
+		)
 	}
 	runtimeTmp = filepath.Clean(runtimeTmp)
 
@@ -88,7 +91,10 @@ func (s *Session) NewOutputArtifactWriter(name string) (*OutputArtifactWriter, e
 
 	root := filepath.Join(runtimeTmp, outputArtifactDirName)
 	if !IsRealPathUnder(root, runtimeTmp) {
-		return nil, fmt.Errorf("%w: artifact root escapes RuntimeTmp", ErrOutputArtifactsUnavailable)
+		return nil, fmt.Errorf(
+			"%w: artifact root escapes RuntimeTmp",
+			ErrOutputArtifactsUnavailable,
+		)
 	}
 	if err := ensurePrivateArtifactDir(root); err != nil {
 		return nil, err
@@ -329,8 +335,12 @@ func (s *Session) RestoreOutputArtifacts(paths []string) error {
 		if err != nil {
 			return fmt.Errorf("restore output artifact %s: %w", candidate, err)
 		}
-		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
-			return fmt.Errorf("restore output artifact %s: invalid file type or permissions", candidate)
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 ||
+			info.Mode().Perm()&0o077 != 0 {
+			return fmt.Errorf(
+				"restore output artifact %s: invalid file type or permissions",
+				candidate,
+			)
 		}
 		registrations[candidate] = outputArtifactRegistration{info: info}
 	}
@@ -369,7 +379,12 @@ func outputArtifactPrefix(name string) string {
 	var prefix strings.Builder
 	for _, r := range name {
 		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '.',
+			r == '_',
+			r == '-':
 			prefix.WriteRune(r)
 		default:
 			prefix.WriteByte('-')

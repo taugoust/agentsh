@@ -33,7 +33,11 @@ type RuleMatch struct {
 	Selector string
 }
 
-func ExplainStatement(stmt effects.ClassifiedStatement, rs *RuleSet, svc ServiceID) StatementExplanation {
+func ExplainStatement(
+	stmt effects.ClassifiedStatement,
+	rs *RuleSet,
+	svc ServiceID,
+) StatementExplanation {
 	if rs == nil {
 		return StatementExplanation{Decision: implicitDeny(stmt, 0, "policy not loaded")}
 	}
@@ -48,7 +52,10 @@ func ExplainStatement(stmt effects.ClassifiedStatement, rs *RuleSet, svc Service
 		applicableNames = append(applicableNames, r.src.Name)
 	}
 	if len(stmt.Effects) == 0 {
-		return StatementExplanation{Decision: implicitDeny(stmt, 0, "no effects on statement"), ApplicableRules: applicableNames}
+		return StatementExplanation{
+			Decision:        implicitDeny(stmt, 0, "no effects on statement"),
+			ApplicableRules: applicableNames,
+		}
 	}
 	return StatementExplanation{
 		Decision:        foldEffects(stmt, perEffect),
@@ -57,7 +64,11 @@ func ExplainStatement(stmt effects.ClassifiedStatement, rs *RuleSet, svc Service
 	}
 }
 
-func explainEffect(index int, e effects.Effect, applicable []*compiledStatementRule) (effectDecision, EffectExplanation) {
+func explainEffect(
+	index int,
+	e effects.Effect,
+	applicable []*compiledStatementRule,
+) (effectDecision, EffectExplanation) {
 	d := evaluateEffect(e, applicable)
 	ex := EffectExplanation{
 		Index:      index,
@@ -85,11 +96,18 @@ func explainEffect(index int, e effects.Effect, applicable []*compiledStatementR
 				continue
 			}
 			if r.verb == VerbDeny {
-				ex.DenyRules = appendRuleMatchUnique(ex.DenyRules, denySeen, RuleMatch{RuleName: r.src.Name, Verb: r.verb, Selector: selector})
+				ex.DenyRules = appendRuleMatchUnique(
+					ex.DenyRules,
+					denySeen,
+					RuleMatch{RuleName: r.src.Name, Verb: r.verb, Selector: selector},
+				)
 				continue
 			}
 			cov.Covered = true
-			cov.CoveringRules = append(cov.CoveringRules, RuleMatch{RuleName: r.src.Name, Verb: r.verb, Selector: selector})
+			cov.CoveringRules = append(
+				cov.CoveringRules,
+				RuleMatch{RuleName: r.src.Name, Verb: r.verb, Selector: selector},
+			)
 		}
 		if !cov.Covered {
 			cov.UncoveredReason = "no matching non-deny rule covers object"
@@ -99,7 +117,11 @@ func explainEffect(index int, e effects.Effect, applicable []*compiledStatementR
 	return d, ex
 }
 
-func explainNoObjectEffect(e effects.Effect, applicable []*compiledStatementRule, ex *EffectExplanation) {
+func explainNoObjectEffect(
+	e effects.Effect,
+	applicable []*compiledStatementRule,
+	ex *EffectExplanation,
+) {
 	switch {
 	case isResolvedOnlyFunctionEffect(e):
 		explainResolvedOnlyFunctionEffect(e, applicable, ex)
@@ -108,7 +130,11 @@ func explainNoObjectEffect(e effects.Effect, applicable []*compiledStatementRule
 	}
 }
 
-func explainResolvedOnlyFunctionEffect(e effects.Effect, applicable []*compiledStatementRule, ex *EffectExplanation) {
+func explainResolvedOnlyFunctionEffect(
+	e effects.Effect,
+	applicable []*compiledStatementRule,
+	ex *EffectExplanation,
+) {
 	coverSeen := map[string]struct{}{}
 	denySeen := map[string]struct{}{}
 	for _, r := range applicable {
@@ -143,7 +169,11 @@ func resolvedOnlyFunctionRuleSelector(r *compiledStatementRule, e effects.Effect
 	return "", false
 }
 
-func explainObjectlessEffect(e effects.Effect, applicable []*compiledStatementRule, ex *EffectExplanation) {
+func explainObjectlessEffect(
+	e effects.Effect,
+	applicable []*compiledStatementRule,
+	ex *EffectExplanation,
+) {
 	coverSeen := map[string]struct{}{}
 	denySeen := map[string]struct{}{}
 	for _, r := range applicable {
@@ -162,7 +192,11 @@ func explainObjectlessEffect(e effects.Effect, applicable []*compiledStatementRu
 	}
 }
 
-func appendRuleMatchUnique(matches []RuleMatch, seen map[string]struct{}, match RuleMatch) []RuleMatch {
+func appendRuleMatchUnique(
+	matches []RuleMatch,
+	seen map[string]struct{},
+	match RuleMatch,
+) []RuleMatch {
 	key := match.RuleName + "\x00" + match.Selector
 	if _, ok := seen[key]; ok {
 		return matches

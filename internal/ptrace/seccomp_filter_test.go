@@ -192,8 +192,11 @@ func TestBPFWithArgFiltersNoFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(progWithFilters) != len(progForActions) {
-		t.Errorf("with no arg filters: instruction count = %d, want %d (same as buildBPFForActions)",
-			len(progWithFilters), len(progForActions))
+		t.Errorf(
+			"with no arg filters: instruction count = %d, want %d (same as buildBPFForActions)",
+			len(progWithFilters),
+			len(progForActions),
+		)
 	}
 }
 
@@ -251,7 +254,12 @@ func TestBPFWithArgFiltersOpenatAndSendto(t *testing.T) {
 				continue
 			}
 			if prog[target].Code != bpfRET|bpfK {
-				t.Errorf("JSET at %d: Jt target %d is not a RET (Code=0x%x)", i, target, prog[target].Code)
+				t.Errorf(
+					"JSET at %d: Jt target %d is not a RET (Code=0x%x)",
+					i,
+					target,
+					prog[target].Code,
+				)
 			}
 		}
 	}
@@ -265,7 +273,12 @@ func TestBPFWithArgFiltersOpenatAndSendto(t *testing.T) {
 				continue
 			}
 			if prog[target].Code != bpfRET|bpfK {
-				t.Errorf("JEQ 0 at %d: Jf target %d is not a RET (Code=0x%x)", i, target, prog[target].Code)
+				t.Errorf(
+					"JEQ 0 at %d: Jf target %d is not a RET (Code=0x%x)",
+					i,
+					target,
+					prog[target].Code,
+				)
 			}
 		}
 	}

@@ -16,7 +16,11 @@ func TestCommandExecutableSessionApprovalMatchesDifferentArgs(t *testing.T) {
 	}
 	m.SetScoped(ctx, "s1", "cmd-prev", scope, true, "ok", "approve-sqlite")
 
-	sameExecutableDifferentArgs, ok := NewCommandScope("sqlite3", []string{"events.db", "select 2"}, "approve-sqlite")
+	sameExecutableDifferentArgs, ok := NewCommandScope(
+		"sqlite3",
+		[]string{"events.db", "select 2"},
+		"approve-sqlite",
+	)
 	if !ok {
 		t.Fatal("failed to build default scope")
 	}
@@ -43,18 +47,30 @@ func TestCommandInvocationSessionApprovalRemainsNarrow(t *testing.T) {
 	m := New("api", time.Minute, nil)
 	ctx := context.Background()
 
-	scope, ok := NewCommandInvocationScope("sqlite3", []string{"events.db", "select 1"}, "approve-sqlite")
+	scope, ok := NewCommandInvocationScope(
+		"sqlite3",
+		[]string{"events.db", "select 1"},
+		"approve-sqlite",
+	)
 	if !ok {
 		t.Fatal("failed to build invocation scope")
 	}
 	m.SetScoped(ctx, "s1", "cmd-prev", scope, true, "ok", "approve-sqlite")
 
-	same, _ := NewCommandInvocationScope("sqlite3", []string{"events.db", "select 1"}, "approve-sqlite")
+	same, _ := NewCommandInvocationScope(
+		"sqlite3",
+		[]string{"events.db", "select 1"},
+		"approve-sqlite",
+	)
 	if dec, ok := m.CheckScoped(ctx, "s1", "cmd-next", same); !ok || !dec.Approved {
 		t.Fatalf("same invocation did not hit: %+v ok=%v", dec, ok)
 	}
 
-	different, _ := NewCommandInvocationScope("sqlite3", []string{"events.db", "select 2"}, "approve-sqlite")
+	different, _ := NewCommandInvocationScope(
+		"sqlite3",
+		[]string{"events.db", "select 2"},
+		"approve-sqlite",
+	)
 	if _, ok := m.CheckScoped(ctx, "s1", "cmd-next", different); ok {
 		t.Fatal("different invocation unexpectedly used exact scoped approval")
 	}

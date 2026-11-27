@@ -23,7 +23,11 @@ func permissiveTestEngine(t *testing.T) *policy.Engine {
 		Version: 1,
 		Name:    "permissive-test",
 		CommandRules: []policy.CommandRule{
-			{Name: "allow-test-commands", Commands: []string{"sh", "bash", "sh.real", "bash.real", "echo", "true"}, Decision: "allow"},
+			{
+				Name:     "allow-test-commands",
+				Commands: []string{"sh", "bash", "sh.real", "bash.real", "echo", "true"},
+				Decision: "allow",
+			},
 		},
 	}, false, true)
 	if err != nil {
@@ -35,7 +39,10 @@ func permissiveTestEngine(t *testing.T) *policy.Engine {
 // newTestAppForWrapWithPermissivePolicy mirrors newTestAppForWrap but
 // installs a permissive policy engine so shim-mode wrap-init's pre-check
 // admits bash/sh test invocations.
-func newTestAppForWrapWithPermissivePolicy(t *testing.T, cfg *config.Config) (*App, *session.Manager) {
+func newTestAppForWrapWithPermissivePolicy(
+	t *testing.T,
+	cfg *config.Config,
+) (*App, *session.Manager) {
 	t.Helper()
 	mgr := session.NewManager(5)
 	store := composite.New(mockEventStore{}, nil)
@@ -112,9 +119,15 @@ func TestWrapInit_ShimMode_NoFeaturesConfigured(t *testing.T) {
 		t.Fatalf("got code %d, want 200", code)
 	}
 	if resp.WrapperBinary == "" {
-		t.Fatal("server short-circuited (empty WrapperBinary) in shim mode; the spec mandates no server-side predicate")
+		t.Fatal(
+			"server short-circuited (empty WrapperBinary) in shim mode; the spec mandates no " +
+				"server-side predicate",
+		)
 	}
 	if resp.NotifySocket == "" {
-		t.Fatal("got empty NotifySocket; both WrapperBinary and NotifySocket must be populated for the install signal")
+		t.Fatal(
+			"got empty NotifySocket; both WrapperBinary and NotifySocket must be populated for " +
+				"the install signal",
+		)
 	}
 }

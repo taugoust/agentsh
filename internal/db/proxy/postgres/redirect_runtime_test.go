@@ -17,7 +17,10 @@ type fakeRedirectPlanner struct {
 	calls int
 }
 
-func (f *fakeRedirectPlanner) PlanRedirect(context.Context, redirectRuntimeInput) (redirectRuntimePlan, error) {
+func (f *fakeRedirectPlanner) PlanRedirect(
+	context.Context,
+	redirectRuntimeInput,
+) (redirectRuntimePlan, error) {
 	f.calls++
 	if f.err != nil {
 		return redirectRuntimePlan{}, f.err
@@ -38,21 +41,35 @@ func TestRedirectRuntime_PlansAndClassifiesRewrittenSQL(t *testing.T) {
 
 	stmt := effects.ClassifiedStatement{
 		RawVerb: "SELECT",
-		Effects: []effects.Effect{{
-			Group:   effects.GroupRead,
-			Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Schema: "public", Name: "users"}},
-		}},
+		Effects: []effects.Effect{
+			{
+				Group: effects.GroupRead,
+				Objects: []effects.ObjectRef{
+					{Kind: effects.ObjectTable, Schema: "public", Name: "users"},
+				},
+			},
+		},
 	}
-	decision := policy.Decision{Verb: policy.VerbRedirect, RuleName: "redirect-users", RuleKind: policy.RuleKindStatement}
+	decision := policy.Decision{
+		Verb:     policy.VerbRedirect,
+		RuleName: "redirect-users",
+		RuleKind: policy.RuleKindStatement,
+	}
 
-	plan, ok := pc.planRuntimeRedirect(context.Background(), "select id from public.users", stmt, decision)
+	plan, ok := pc.planRuntimeRedirect(
+		context.Background(),
+		"select id from public.users",
+		stmt,
+		decision,
+	)
 	if !ok {
 		t.Fatalf("planRuntimeRedirect rejected: %+v", plan)
 	}
 	if planner.calls != 1 {
 		t.Fatalf("planner calls = %d, want 1", planner.calls)
 	}
-	if plan.RewrittenSQL != "select id from public.safe_users" || len(plan.RewrittenStatements) != 1 {
+	if plan.RewrittenSQL != "select id from public.safe_users" ||
+		len(plan.RewrittenStatements) != 1 {
 		t.Fatalf("unexpected runtime plan: %+v", plan)
 	}
 	if plan.RewrittenStatements[0].RawVerb != "SELECT" {
@@ -67,8 +84,15 @@ func TestRedirectRuntime_FailsClosedOnPlannerError(t *testing.T) {
 	pc, _, _ := newSimpleQueryFixture(t)
 	pc.redirectPlanner = &fakeRedirectPlanner{err: errors.New("unsupported_statement")}
 
-	stmt := effects.ClassifiedStatement{RawVerb: "SELECT", Effects: []effects.Effect{{Group: effects.GroupRead}}}
-	decision := policy.Decision{Verb: policy.VerbRedirect, RuleName: "redirect-users", RuleKind: policy.RuleKindStatement}
+	stmt := effects.ClassifiedStatement{
+		RawVerb: "SELECT",
+		Effects: []effects.Effect{{Group: effects.GroupRead}},
+	}
+	decision := policy.Decision{
+		Verb:     policy.VerbRedirect,
+		RuleName: "redirect-users",
+		RuleKind: policy.RuleKindStatement,
+	}
 
 	plan, ok := pc.planRuntimeRedirect(context.Background(), "select 1", stmt, decision)
 	if ok {
@@ -88,8 +112,15 @@ func TestRedirectRuntime_FailsClosedOnUnsafeReclassification(t *testing.T) {
 		TargetRelation: "public.safe_users",
 	}}
 
-	stmt := effects.ClassifiedStatement{RawVerb: "SELECT", Effects: []effects.Effect{{Group: effects.GroupRead}}}
-	decision := policy.Decision{Verb: policy.VerbRedirect, RuleName: "redirect-users", RuleKind: policy.RuleKindStatement}
+	stmt := effects.ClassifiedStatement{
+		RawVerb: "SELECT",
+		Effects: []effects.Effect{{Group: effects.GroupRead}},
+	}
+	decision := policy.Decision{
+		Verb:     policy.VerbRedirect,
+		RuleName: "redirect-users",
+		RuleKind: policy.RuleKindStatement,
+	}
 
 	plan, ok := pc.planRuntimeRedirect(context.Background(), "select 1", stmt, decision)
 	if ok {

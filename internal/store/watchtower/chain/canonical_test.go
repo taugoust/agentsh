@@ -21,7 +21,8 @@ func TestEncodeCanonical_KeyOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"context_digest":"0123456789abcdef","event_hash":"cafef00d","format_version":2,"generation":7,"key_fingerprint":"sha256:aabbccdd","prev_hash":"deadbeef","sequence":42}`
+	want := `{"context_digest":"0123456789abcdef","event_hash":"cafef00d","format_version":2,` +
+		`"generation":7,"key_fingerprint":"sha256:aabbccdd","prev_hash":"deadbeef","sequence":42}`
 	if string(got) != want {
 		t.Errorf("EncodeCanonical mismatch\ngot:  %s\nwant: %s", got, want)
 	}
@@ -114,7 +115,12 @@ func TestEncodeCanonical_InvalidUTF8Rejected(t *testing.T) {
 		t.Fatalf("expected ErrInvalidUTF8, got %v", err)
 	}
 	// Ensure all four string fields are validated, not just the first.
-	rec2 := IntegrityRecord{ContextDigest: "good", EventHash: "good", KeyFingerprint: "k\x80", PrevHash: "good"}
+	rec2 := IntegrityRecord{
+		ContextDigest:  "good",
+		EventHash:      "good",
+		KeyFingerprint: "k\x80",
+		PrevHash:       "good",
+	}
 	_, err = EncodeCanonical(rec2)
 	if !errors.Is(err, ErrInvalidUTF8) {
 		t.Fatalf("expected ErrInvalidUTF8 for KeyFingerprint, got %v", err)

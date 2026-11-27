@@ -63,7 +63,11 @@ func (r *npmResolver) CanResolve(command string, args []string) bool {
 	}
 }
 
-func (r *npmResolver) Resolve(ctx context.Context, workDir string, command []string) (*pkgcheck.InstallPlan, error) {
+func (r *npmResolver) Resolve(
+	ctx context.Context,
+	workDir string,
+	command []string,
+) (*pkgcheck.InstallPlan, error) {
 	// Extract package args (skip the subcommand, filter flags)
 	var packages []string
 	var args []string

@@ -23,7 +23,15 @@ func TestAppendEventHonorsContextWhileWriterLockIsHeld(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	err := s.AppendEvent(ctx, types.Event{ID: "blocked", SessionID: "sess", Type: "command_finished", Timestamp: time.Now()})
+	err := s.AppendEvent(
+		ctx,
+		types.Event{
+			ID:        "blocked",
+			SessionID: "sess",
+			Type:      "command_finished",
+			Timestamp: time.Now(),
+		},
+	)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("AppendEvent error = %v, want deadline exceeded", err)
 	}
@@ -46,7 +54,10 @@ func TestAppendAndRotate(t *testing.T) {
 
 	// Force size beyond threshold then trigger rotation on next append.
 	payload := strings.Repeat("x", 2<<20) // >1MB
-	if err := store.AppendEvent(context.Background(), types.Event{ID: "2", Type: payload}); err != nil {
+	if err := store.AppendEvent(
+		context.Background(),
+		types.Event{ID: "2", Type: payload},
+	); err != nil {
 		t.Fatalf("AppendEvent large: %v", err)
 	}
 	if err := store.AppendEvent(context.Background(), types.Event{ID: "3", Type: "b"}); err != nil {
@@ -68,7 +79,9 @@ func TestWriteRaw(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	raw := []byte(`{"id":"1","type":"test","integrity":{"sequence":1,"prev_hash":"","entry_hash":"abc123"}}`)
+	raw := []byte(
+		`{"id":"1","type":"test","integrity":{"sequence":1,"prev_hash":"","entry_hash":"abc123"}}`,
+	)
 	if err := store.WriteRaw(context.Background(), raw); err != nil {
 		t.Fatalf("WriteRaw: %v", err)
 	}
@@ -133,10 +146,16 @@ func TestJSONLStore_RotationKeepsAuditLockHeld(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	payload := strings.Repeat("x", 2<<20)
-	if err := store.AppendEvent(context.Background(), types.Event{ID: "1", Type: payload}); err != nil {
+	if err := store.AppendEvent(
+		context.Background(),
+		types.Event{ID: "1", Type: payload},
+	); err != nil {
 		t.Fatalf("AppendEvent large: %v", err)
 	}
-	if err := store.AppendEvent(context.Background(), types.Event{ID: "2", Type: "rotate"}); err != nil {
+	if err := store.AppendEvent(
+		context.Background(),
+		types.Event{ID: "2", Type: "rotate"},
+	); err != nil {
 		t.Fatalf("AppendEvent rotate: %v", err)
 	}
 

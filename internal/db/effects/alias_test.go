@@ -51,7 +51,17 @@ func TestExpandAliases_CompoundAliases(t *testing.T) {
 		{"EXPORT", []Group{GroupBulkExport, GroupUnsafeIO}},
 		{"MUTATE", []Group{GroupWrite, GroupModify, GroupDelete}},
 		{"SCHEMA", []Group{GroupSchemaCreate, GroupSchemaAlter, GroupSchemaDestroy}},
-		{"DANGEROUS", []Group{GroupSchemaDestroy, GroupPrivilege, GroupUnsafeIO, GroupProcedural, GroupBulkExport, GroupLock}},
+		{
+			"DANGEROUS",
+			[]Group{
+				GroupSchemaDestroy,
+				GroupPrivilege,
+				GroupUnsafeIO,
+				GroupProcedural,
+				GroupBulkExport,
+				GroupLock,
+			},
+		},
 	}
 	for _, tc := range cases {
 		got, ok := ExpandAlias(tc.alias)

@@ -12,7 +12,9 @@ import (
 
 func TestWAL_OpenEmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +26,9 @@ func TestWAL_OpenEmptyDir(t *testing.T) {
 
 func TestWAL_AppendThenReplay(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +42,9 @@ func TestWAL_AppendThenReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reopen and verify high-watermark recovered.
-	w2, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w2, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +56,9 @@ func TestWAL_AppendThenReplay(t *testing.T) {
 
 func TestWAL_RejectsClosedAppend(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +76,9 @@ func TestWAL_RejectsClosedAppend(t *testing.T) {
 
 func TestWAL_RejectsOversizedPayload(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 1024, MaxTotalBytes: 8 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 1024, MaxTotalBytes: 8 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +114,9 @@ func listSegments(t *testing.T, dir string) []string {
 // closure.
 func TestWAL_HighWaterSequenceMatchesReader(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +160,14 @@ func TestWAL_HighWaterSequenceMatchesReader(t *testing.T) {
 func TestWAL_EarliestDataSequence(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		dir := t.TempDir()
-		w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+		w, err := Open(
+			Options{
+				Dir:           dir,
+				SegmentSize:   4 * 1024,
+				MaxTotalBytes: 64 * 1024,
+				SyncMode:      SyncImmediate,
+			},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -164,7 +183,14 @@ func TestWAL_EarliestDataSequence(t *testing.T) {
 
 	t.Run("single_segment", func(t *testing.T) {
 		dir := t.TempDir()
-		w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+		w, err := Open(
+			Options{
+				Dir:           dir,
+				SegmentSize:   4 * 1024,
+				MaxTotalBytes: 64 * 1024,
+				SyncMode:      SyncImmediate,
+			},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,7 +214,9 @@ func TestWAL_EarliestDataSequence(t *testing.T) {
 		dir := t.TempDir()
 		// Tight per-segment budget so 50 records spread across many segments
 		// and MarkAcked(1, 20) reclaims the oldest sealed segment(s).
-		w, err := Open(Options{Dir: dir, SegmentSize: 256, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+		w, err := Open(
+			Options{Dir: dir, SegmentSize: 256, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -204,16 +232,31 @@ func TestWAL_EarliestDataSequence(t *testing.T) {
 		}
 		seq, ok, err := w.EarliestDataSequence(1)
 		if err != nil || !ok {
-			t.Fatalf("EarliestDataSequence(1) after GC = (%d, %v, %v); want (>20, true, nil)", seq, ok, err)
+			t.Fatalf(
+				"EarliestDataSequence(1) after GC = (%d, %v, %v); want (>20, true, nil)",
+				seq,
+				ok,
+				err,
+			)
 		}
 		if seq <= 20 {
-			t.Errorf("EarliestDataSequence(1) after MarkAcked(1, 20) = %d; want > 20 (oldest survivors)", seq)
+			t.Errorf(
+				"EarliestDataSequence(1) after MarkAcked(1, 20) = %d; want > 20 (oldest survivors)",
+				seq,
+			)
 		}
 	})
 
 	t.Run("mixed_gen_on_disk", func(t *testing.T) {
 		dir := t.TempDir()
-		w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+		w, err := Open(
+			Options{
+				Dir:           dir,
+				SegmentSize:   4 * 1024,
+				MaxTotalBytes: 64 * 1024,
+				SyncMode:      SyncImmediate,
+			},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -261,7 +304,9 @@ func TestWAL_EarliestDataSequence(t *testing.T) {
 // other generations are populated.
 func TestWAL_WrittenDataHighWaterReturnsFalseForFutureGen(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +334,9 @@ func TestWAL_WrittenDataHighWaterReturnsFalseForFutureGen(t *testing.T) {
 // could ack an unwritten generation and trigger lower-gen GC of unsent data.
 func TestWAL_WrittenDataHighWaterReturnsFalseForGenWithOnlyHeader(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +376,12 @@ func TestWAL_WrittenDataHighWaterReturnsFalseForGenWithOnlyHeader(t *testing.T) 
 	// Pick an unused index past anything on disk to avoid collisions.
 	headerOnlyIdx := uint64(time.Now().UnixNano())
 	// OpenSegment writes the header and fsyncs.
-	seg, err := OpenSegment(segDir, headerOnlyIdx, SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 2}, 4*1024-int(SegmentHeaderSize))
+	seg, err := OpenSegment(
+		segDir,
+		headerOnlyIdx,
+		SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 2},
+		4*1024-int(SegmentHeaderSize),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +390,9 @@ func TestWAL_WrittenDataHighWaterReturnsFalseForGenWithOnlyHeader(t *testing.T) 
 	}
 	// Reopen the WAL: recovery seeds w.highGen from the header but no
 	// RecordData was decoded for gen=2.
-	w2, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w2, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,8 +410,12 @@ func TestWAL_WrittenDataHighWaterReturnsFalseForGenWithOnlyHeader(t *testing.T) 
 	}
 	seq, ok, err = w2.WrittenDataHighWater(2)
 	if err != nil || !ok || seq != 1 {
-		t.Errorf("after Append in gen=2, WrittenDataHighWater(2) = (%d, %v, %v); want (1, true, nil)",
-			seq, ok, err)
+		t.Errorf(
+			"after Append in gen=2, WrittenDataHighWater(2) = (%d, %v, %v); want (1, true, nil)",
+			seq,
+			ok,
+			err,
+		)
 	}
 }
 
@@ -366,7 +424,9 @@ func TestWAL_WrittenDataHighWaterReturnsFalseForGenWithOnlyHeader(t *testing.T) 
 // generations alone.
 func TestWAL_WrittenDataHighWaterTracksAppend(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +438,12 @@ func TestWAL_WrittenDataHighWaterTracksAppend(t *testing.T) {
 	}
 	seq, ok, err := w.WrittenDataHighWater(1)
 	if err != nil || !ok || seq != 5 {
-		t.Errorf("after 5 appends, WrittenDataHighWater(1) = (%d, %v, %v); want (5, true, nil)", seq, ok, err)
+		t.Errorf(
+			"after 5 appends, WrittenDataHighWater(1) = (%d, %v, %v); want (5, true, nil)",
+			seq,
+			ok,
+			err,
+		)
 	}
 	for s := int64(6); s <= 8; s++ {
 		if _, err := w.Append(s, 1, []byte("p")); err != nil {
@@ -387,7 +452,12 @@ func TestWAL_WrittenDataHighWaterTracksAppend(t *testing.T) {
 	}
 	seq, ok, err = w.WrittenDataHighWater(1)
 	if err != nil || !ok || seq != 8 {
-		t.Errorf("after 3 more appends, WrittenDataHighWater(1) = (%d, %v, %v); want (8, true, nil)", seq, ok, err)
+		t.Errorf(
+			"after 3 more appends, WrittenDataHighWater(1) = (%d, %v, %v); want (8, true, nil)",
+			seq,
+			ok,
+			err,
+		)
 	}
 	if _, ok2, err2 := w.WrittenDataHighWater(2); err2 != nil || ok2 {
 		t.Errorf("WrittenDataHighWater(2) bumped by gen=1 appends: ok=%v err=%v", ok2, err2)
@@ -398,7 +468,9 @@ func TestWAL_WrittenDataHighWaterTracksAppend(t *testing.T) {
 // tracking after multiple generation rolls.
 func TestWAL_WrittenDataHighWaterAfterRoll(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +517,9 @@ func TestWAL_WrittenDataHighWaterAfterRoll(t *testing.T) {
 func TestWAL_HasDataBelowGeneration(t *testing.T) {
 	// Fresh WAL: no data anywhere, every threshold returns false.
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +527,12 @@ func TestWAL_HasDataBelowGeneration(t *testing.T) {
 	for _, threshold := range []uint32{0, 1, 5, 1 << 20} {
 		below, err := w.HasDataBelowGeneration(threshold)
 		if err != nil || below {
-			t.Errorf("fresh HasDataBelowGeneration(%d) = (%v, %v); want (false, nil)", threshold, below, err)
+			t.Errorf(
+				"fresh HasDataBelowGeneration(%d) = (%v, %v); want (false, nil)",
+				threshold,
+				below,
+				err,
+			)
 		}
 	}
 	// Append data in gen=2: thresholds <=2 stay false, >=3 returns true.
@@ -497,7 +576,13 @@ func TestWAL_HasDataBelowGeneration(t *testing.T) {
 	} {
 		below, err := w.HasDataBelowGeneration(tc.threshold)
 		if err != nil || below != tc.want {
-			t.Errorf("HasDataBelowGeneration(%d) = (%v, %v); want (%v, nil)", tc.threshold, below, err, tc.want)
+			t.Errorf(
+				"HasDataBelowGeneration(%d) = (%v, %v); want (%v, nil)",
+				tc.threshold,
+				below,
+				err,
+				tc.want,
+			)
 		}
 	}
 }
@@ -507,7 +592,9 @@ func TestWAL_HasDataBelowGeneration(t *testing.T) {
 // closed-state contract).
 func TestWAL_HasDataBelowGenerationAfterClose(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +616,9 @@ func TestWAL_HasDataBelowGenerationAfterClose(t *testing.T) {
 func TestWAL_HasReplayableRecords(t *testing.T) {
 	// Fresh WAL: nothing written, every generation returns false.
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,19 +656,34 @@ func TestWAL_HasReplayableRecords(t *testing.T) {
 	// AppendLoss while w.current is gen=2 must seed perGenAnyReplayable
 	// keyed by the SEGMENT generation (gen=2), not by loss.Generation.
 	// Pass a distinct loss.Generation to make the keying observable.
-	if err := w.AppendLoss(LossRecord{FromSequence: 2, ToSequence: 5, Generation: 99, Reason: "ack_regression_after_gc"}); err != nil {
+	if err := w.AppendLoss(
+		LossRecord{
+			FromSequence: 2,
+			ToSequence:   5,
+			Generation:   99,
+			Reason:       "ack_regression_after_gc",
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	got2, err := w.HasReplayableRecords(2)
 	if err != nil || !got2 {
-		t.Errorf("after AppendLoss into gen=2 segment, HasReplayableRecords(2) = (%v, %v); want (true, nil)", got2, err)
+		t.Errorf(
+			"after AppendLoss into gen=2 segment, HasReplayableRecords(2) = (%v, %v); want "+
+				"(true, nil)",
+			got2,
+			err,
+		)
 	}
 	got99, err := w.HasReplayableRecords(99)
 	if err != nil {
 		t.Fatalf("HasReplayableRecords(99) err = %v", err)
 	}
 	if got99 {
-		t.Errorf("HasReplayableRecords(99) = true; want false — set keys on segment generation, not loss.Generation")
+		t.Errorf(
+			"HasReplayableRecords(99) = true; want false — set keys on segment generation, not " +
+				"loss.Generation",
+		)
 	}
 }
 
@@ -592,7 +696,9 @@ func TestWAL_HasReplayableRecords(t *testing.T) {
 // TestWAL_WrittenDataHighWaterIgnoresLossMarkers.
 func TestWAL_HasReplayableRecords_LossOnlyGeneration(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,11 +715,18 @@ func TestWAL_HasReplayableRecords_LossOnlyGeneration(t *testing.T) {
 	}
 	segDir := filepath.Join(dir, "segments")
 	idx := uint64(time.Now().UnixNano())
-	seg, err := OpenSegment(segDir, idx, SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 2}, 4*1024-int(SegmentHeaderSize))
+	seg, err := OpenSegment(
+		segDir,
+		idx,
+		SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 2},
+		4*1024-int(SegmentHeaderSize),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	lossPayload := encodeLossPayload(LossRecord{FromSequence: 0, ToSequence: 0, Generation: 2, Reason: "crc_corruption"})
+	lossPayload := encodeLossPayload(
+		LossRecord{FromSequence: 0, ToSequence: 0, Generation: 2, Reason: "crc_corruption"},
+	)
 	if err := seg.WriteRecord(lossPayload); err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +738,9 @@ func TestWAL_HasReplayableRecords_LossOnlyGeneration(t *testing.T) {
 	}
 	// Re-Open: the recovery scan must seed perGenAnyReplayable[2] from the
 	// hand-constructed loss-only segment.
-	w2, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w2, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +770,9 @@ func TestWAL_HasReplayableRecords_LossOnlyGeneration(t *testing.T) {
 // real record is written or recovered.
 func TestWAL_HasReplayableRecords_HeaderOnlySegmentDoesNotSeed(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -665,7 +782,12 @@ func TestWAL_HasReplayableRecords_HeaderOnlySegmentDoesNotSeed(t *testing.T) {
 	for _, gen := range []uint32{0, 1, 2} {
 		got, err := w.HasReplayableRecords(gen)
 		if err != nil || got {
-			t.Errorf("header-only gen=%d HasReplayableRecords = (%v, %v); want (false, nil)", gen, got, err)
+			t.Errorf(
+				"header-only gen=%d HasReplayableRecords = (%v, %v); want (false, nil)",
+				gen,
+				got,
+				err,
+			)
 		}
 	}
 }
@@ -677,7 +799,9 @@ func TestWAL_HasReplayableRecords_HeaderOnlySegmentDoesNotSeed(t *testing.T) {
 // empty stages for ack-collected generations.
 func TestWAL_HasReplayableRecords_AfterFullGC(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 256, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 256, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -703,7 +827,11 @@ func TestWAL_HasReplayableRecords_AfterFullGC(t *testing.T) {
 	// All gen=1 segments now removed by the GC pass; perGenAnyReplayable[1]
 	// must be pruned alongside perGenDataHighWater[1].
 	if got, err := w.HasReplayableRecords(1); err != nil || got {
-		t.Errorf("after full GC of gen=1, HasReplayableRecords(1) = (%v, %v); want (false, nil)", got, err)
+		t.Errorf(
+			"after full GC of gen=1, HasReplayableRecords(1) = (%v, %v); want (false, nil)",
+			got,
+			err,
+		)
 	}
 	// gen=2 still has its live segment with a data record — must remain true.
 	if got, err := w.HasReplayableRecords(2); err != nil || !got {
@@ -716,7 +844,9 @@ func TestWAL_HasReplayableRecords_AfterFullGC(t *testing.T) {
 // HasDataBelowGeneration / WrittenDataHighWater closed-state contract).
 func TestWAL_HasReplayableRecordsAfterClose(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -733,7 +863,9 @@ func TestWAL_HasReplayableRecordsAfterClose(t *testing.T) {
 // header-only generation).
 func TestWAL_WrittenDataHighWaterIgnoresLossMarkers(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -743,7 +875,9 @@ func TestWAL_WrittenDataHighWaterIgnoresLossMarkers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := w.AppendLoss(LossRecord{FromSequence: 4, ToSequence: 10, Generation: 1, Reason: "overflow"}); err != nil {
+	if err := w.AppendLoss(
+		LossRecord{FromSequence: 4, ToSequence: 10, Generation: 1, Reason: "overflow"},
+	); err != nil {
 		t.Fatal(err)
 	}
 	// Drive a gen roll via Append in gen=2.
@@ -753,14 +887,26 @@ func TestWAL_WrittenDataHighWaterIgnoresLossMarkers(t *testing.T) {
 	// Revert the in-memory state by asserting baseline before the second loss.
 	seq1, ok1, err1 := w.WrittenDataHighWater(1)
 	if err1 != nil || !ok1 || seq1 != 3 {
-		t.Errorf("WrittenDataHighWater(1) = (%d, %v, %v); want (3, true, nil) — loss marker after seq 3 must not bump",
-			seq1, ok1, err1)
+		t.Errorf(
+			"WrittenDataHighWater(1) = (%d, %v, %v); want (3, true, nil) — loss marker after seq "+
+				"3 must not bump",
+			seq1,
+			ok1,
+			err1,
+		)
 	}
 	// Now append a loss marker in gen=2 (the only kind of "record" past the
 	// initial Append in gen=2 — but that initial Append already bumped seq=1).
 	// Use a fresh directory to test the "only loss markers in gen=2" case.
 	dir2 := t.TempDir()
-	w2, err := Open(Options{Dir: dir2, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w2, err := Open(
+		Options{
+			Dir:           dir2,
+			SegmentSize:   4 * 1024,
+			MaxTotalBytes: 64 * 1024,
+			SyncMode:      SyncImmediate,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -781,11 +927,18 @@ func TestWAL_WrittenDataHighWaterIgnoresLossMarkers(t *testing.T) {
 	}
 	segDir2 := filepath.Join(dir2, "segments")
 	idx := uint64(time.Now().UnixNano())
-	seg, err := OpenSegment(segDir2, idx, SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 2}, 4*1024-int(SegmentHeaderSize))
+	seg, err := OpenSegment(
+		segDir2,
+		idx,
+		SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 2},
+		4*1024-int(SegmentHeaderSize),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	lossPayload := encodeLossPayload(LossRecord{FromSequence: 0, ToSequence: 0, Generation: 2, Reason: "crc_corruption"})
+	lossPayload := encodeLossPayload(
+		LossRecord{FromSequence: 0, ToSequence: 0, Generation: 2, Reason: "crc_corruption"},
+	)
 	if err := seg.WriteRecord(lossPayload); err != nil {
 		t.Fatal(err)
 	}
@@ -795,7 +948,14 @@ func TestWAL_WrittenDataHighWaterIgnoresLossMarkers(t *testing.T) {
 	if err := seg.Close(); err != nil {
 		t.Fatal(err)
 	}
-	w3, err := Open(Options{Dir: dir2, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w3, err := Open(
+		Options{
+			Dir:           dir2,
+			SegmentSize:   4 * 1024,
+			MaxTotalBytes: 64 * 1024,
+			SyncMode:      SyncImmediate,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -805,7 +965,11 @@ func TestWAL_WrittenDataHighWaterIgnoresLossMarkers(t *testing.T) {
 		t.Fatalf("WrittenDataHighWater(2) err = %v, want nil", err2)
 	}
 	if ok2 || seq2 != 0 {
-		t.Errorf("loss-marker-only gen=2 WrittenDataHighWater = (%d, %v); want (0, false)", seq2, ok2)
+		t.Errorf(
+			"loss-marker-only gen=2 WrittenDataHighWater = (%d, %v); want (0, false)",
+			seq2,
+			ok2,
+		)
 	}
 }
 
@@ -824,7 +988,14 @@ func TestWAL_WrittenDataHighWater_IsConstantTime(t *testing.T) {
 
 	// High-segment-count WAL.
 	dirHigh := t.TempDir()
-	wHigh, err := Open(Options{Dir: dirHigh, SegmentSize: 256, MaxTotalBytes: 16 * 1024 * 1024, SyncMode: SyncImmediate})
+	wHigh, err := Open(
+		Options{
+			Dir:           dirHigh,
+			SegmentSize:   256,
+			MaxTotalBytes: 16 * 1024 * 1024,
+			SyncMode:      SyncImmediate,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -838,7 +1009,12 @@ func TestWAL_WrittenDataHighWater_IsConstantTime(t *testing.T) {
 	// Sanity baseline.
 	seq, ok, err := wHigh.WrittenDataHighWater(1)
 	if err != nil || !ok || seq != 5000 {
-		t.Fatalf("baseline WrittenDataHighWater(1) = (%d, %v, %v); want (5000, true, nil)", seq, ok, err)
+		t.Fatalf(
+			"baseline WrittenDataHighWater(1) = (%d, %v, %v); want (5000, true, nil)",
+			seq,
+			ok,
+			err,
+		)
 	}
 
 	startHigh := time.Now()
@@ -849,7 +1025,14 @@ func TestWAL_WrittenDataHighWater_IsConstantTime(t *testing.T) {
 
 	// Low-segment-count WAL.
 	dirLow := t.TempDir()
-	wLow, err := Open(Options{Dir: dirLow, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	wLow, err := Open(
+		Options{
+			Dir:           dirLow,
+			SegmentSize:   4 * 1024,
+			MaxTotalBytes: 64 * 1024,
+			SyncMode:      SyncImmediate,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -869,7 +1052,12 @@ func TestWAL_WrittenDataHighWater_IsConstantTime(t *testing.T) {
 	// approach yields effectively the same per-call latency. Approach 2
 	// would yield ~100x and trip this assertion.
 	if tHigh > 5*tLow && tHigh > 10*time.Microsecond {
-		t.Errorf("WrittenDataHighWater scales with segment count: tHigh=%v tLow=%v (want tHigh < 5*tLow)", tHigh, tLow)
+		t.Errorf(
+			"WrittenDataHighWater scales with segment count: tHigh=%v tLow=%v (want tHigh "+
+				"< 5*tLow)",
+			tHigh,
+			tLow,
+		)
 	}
 
 	// Future-gen short-circuit: also O(1) (no scan needed for an absent gen).

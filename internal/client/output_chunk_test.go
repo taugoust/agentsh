@@ -9,7 +9,8 @@ import (
 
 func TestOutputChunkSuccess(t *testing.T) {
 	srv := newHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("stream") != "stdout" || r.URL.Query().Get("offset") != "5" || r.URL.Query().Get("limit") != "3" {
+		if r.URL.Query().Get("stream") != "stdout" || r.URL.Query().Get("offset") != "5" ||
+			r.URL.Query().Get("limit") != "3" {
 			t.Fatalf("unexpected query: %v", r.URL.RawQuery)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": "abc", "total": 10})

@@ -22,7 +22,10 @@ type resolutionRaceEmitter struct {
 	requestRelease <-chan struct{}
 }
 
-func newResolutionRaceEmitter(requestCount int, requestRelease <-chan struct{}) *resolutionRaceEmitter {
+func newResolutionRaceEmitter(
+	requestCount int,
+	requestRelease <-chan struct{},
+) *resolutionRaceEmitter {
 	return &resolutionRaceEmitter{
 		requested:      make(chan types.Event, requestCount),
 		requestRelease: requestRelease,
@@ -60,7 +63,11 @@ type resolutionRaceRequestResult struct {
 	err        error
 }
 
-func startResolutionRaceRequest(m *Manager, ctx context.Context, req Request) <-chan resolutionRaceRequestResult {
+func startResolutionRaceRequest(
+	m *Manager,
+	ctx context.Context,
+	req Request,
+) <-chan resolutionRaceRequestResult {
 	result := make(chan resolutionRaceRequestResult, 1)
 	go func() {
 		resolution, err := m.RequestApproval(ctx, req)
@@ -177,7 +184,9 @@ func TestApprovalResolutionDuplicateIDCannotReplacePending(t *testing.T) {
 	}
 	firstResult := startResolutionRaceRequest(m, ctx, firstRequest)
 	requested := receiveResolutionRace(t, emitter.requested)
-	if requested.SessionID != firstRequest.SessionID || requested.Fields["approval_id"] != approvalID || requested.Fields["target"] != firstRequest.Target {
+	if requested.SessionID != firstRequest.SessionID ||
+		requested.Fields["approval_id"] != approvalID ||
+		requested.Fields["target"] != firstRequest.Target {
 		t.Fatalf("first requested event = %+v, want original request", requested)
 	}
 	firstPending := getResolutionRacePending(t, m, approvalID)
@@ -194,7 +203,9 @@ func TestApprovalResolutionDuplicateIDCannotReplacePending(t *testing.T) {
 	if duplicate.err == nil || duplicate.err.Error() != duplicateError {
 		t.Fatalf("duplicate request error = %v, want %q", duplicate.err, duplicateError)
 	}
-	if duplicate.resolution.Approved || duplicate.resolution.Reason != duplicateError || duplicate.resolution.Scope != ScopeOnce || duplicate.resolution.At.IsZero() {
+	if duplicate.resolution.Approved || duplicate.resolution.Reason != duplicateError ||
+		duplicate.resolution.Scope != ScopeOnce ||
+		duplicate.resolution.At.IsZero() {
 		t.Fatalf("duplicate request resolution = %+v, want clear denial", duplicate.resolution)
 	}
 
@@ -203,10 +214,21 @@ func TestApprovalResolutionDuplicateIDCannotReplacePending(t *testing.T) {
 	pendingCount := len(m.pending)
 	m.mu.Unlock()
 	if !stillPending || pendingCount != 1 || currentPending != firstPending {
-		t.Fatalf("pending entry after duplicate: present=%v count=%d pointer=%p, want original %p", stillPending, pendingCount, currentPending, firstPending)
+		t.Fatalf(
+			"pending entry after duplicate: present=%v count=%d pointer=%p, want original %p",
+			stillPending,
+			pendingCount,
+			currentPending,
+			firstPending,
+		)
 	}
-	if currentPending.req.SessionID != firstRequest.SessionID || currentPending.req.CommandID != firstRequest.CommandID || currentPending.req.Target != firstRequest.Target {
-		t.Fatalf("pending request after duplicate = %+v, want original session/command/target", currentPending.req)
+	if currentPending.req.SessionID != firstRequest.SessionID ||
+		currentPending.req.CommandID != firstRequest.CommandID ||
+		currentPending.req.Target != firstRequest.Target {
+		t.Fatalf(
+			"pending request after duplicate = %+v, want original session/command/target",
+			currentPending.req,
+		)
 	}
 
 	m.rateMu.Lock()
@@ -215,31 +237,52 @@ func TestApprovalResolutionDuplicateIDCannotReplacePending(t *testing.T) {
 	rateEntries := len(m.sessionCounts)
 	m.rateMu.Unlock()
 	if originalRate != 1 || hijackRateExists || rateEntries != 1 {
-		t.Fatalf("rate counters after duplicate: original=%d hijackPresent=%v entries=%d, want 1/false/1", originalRate, hijackRateExists, rateEntries)
+		t.Fatalf(
+			"rate counters after duplicate: original=%d hijackPresent=%v entries=%d, want "+
+				"1/false/1",
+			originalRate,
+			hijackRateExists,
+			rateEntries,
+		)
 	}
 
 	if !m.Resolve(approvalID, true, "original approved") {
 		t.Fatal("original request did not resolve")
 	}
 	terminal := m.observePending(firstPending)
-	if terminal.cause != terminalCauseDecision || !terminal.resolution.Approved || terminal.resolution.Reason != "original approved" {
+	if terminal.cause != terminalCauseDecision || !terminal.resolution.Approved ||
+		terminal.resolution.Reason != "original approved" {
 		t.Fatalf("original terminal resolution = %+v cause=%v", terminal.resolution, terminal.cause)
 	}
 	releaseResolutionRaceGate(gate)
 
 	first := receiveResolutionRace(t, firstResult)
 	if first.err != nil || first.resolution != terminal.resolution {
-		t.Fatalf("original request result = %+v err=%v, want stored decision %+v", first.resolution, first.err, terminal.resolution)
+		t.Fatalf(
+			"original request result = %+v err=%v, want stored decision %+v",
+			first.resolution,
+			first.err,
+			terminal.resolution,
+		)
 	}
 
 	appended, published := emitter.events()
-	for name, events := range map[string][]types.Event{"appended": appended, "published": published} {
+	for name, events := range map[string][]types.Event{
+		"appended":  appended,
+		"published": published,
+	} {
 		requestedEvents := resolutionRaceEventsOfType(events, "approval_requested")
 		resolvedEvents := resolutionRaceEventsOfType(events, "approval_resolved")
 		if len(requestedEvents) != 1 || len(resolvedEvents) != 1 {
-			t.Fatalf("%s event counts: requested=%d resolved=%d, want 1/1", name, len(requestedEvents), len(resolvedEvents))
+			t.Fatalf(
+				"%s event counts: requested=%d resolved=%d, want 1/1",
+				name,
+				len(requestedEvents),
+				len(resolvedEvents),
+			)
 		}
-		if requestedEvents[0].SessionID != firstRequest.SessionID || requestedEvents[0].Fields["target"] != firstRequest.Target {
+		if requestedEvents[0].SessionID != firstRequest.SessionID ||
+			requestedEvents[0].Fields["target"] != firstRequest.Target {
 			t.Fatalf("%s requested event was hijacked: %+v", name, requestedEvents[0])
 		}
 	}
@@ -292,7 +335,8 @@ func TestApprovalResolutionSingleWinner(t *testing.T) {
 	if terminal.cause != terminalCauseDecision {
 		t.Fatalf("terminal cause = %v, want decision", terminal.cause)
 	}
-	if terminal.resolution.Approved != winner.approved || terminal.resolution.Reason != winner.reason {
+	if terminal.resolution.Approved != winner.approved ||
+		terminal.resolution.Reason != winner.reason {
 		t.Fatalf("terminal resolution = %+v, want winner %+v", terminal.resolution, winner)
 	}
 	if terminal.resolution.Scope != ScopeOnce || terminal.resolution.At.IsZero() {
@@ -327,8 +371,13 @@ func TestApprovalResolutionDecisionBeatsReadyNonDecision(t *testing.T) {
 		}
 		cancel()
 		terminal := m.waitForPendingResolution(ctx, p, nil)
-		if !terminal.resolution.Approved || terminal.resolution.Reason != "operator approved" || terminal.cause != terminalCauseDecision {
-			t.Fatalf("terminal resolution = %+v cause=%v, want explicit approval", terminal.resolution, terminal.cause)
+		if !terminal.resolution.Approved || terminal.resolution.Reason != "operator approved" ||
+			terminal.cause != terminalCauseDecision {
+			t.Fatalf(
+				"terminal resolution = %+v cause=%v, want explicit approval",
+				terminal.resolution,
+				terminal.cause,
+			)
 		}
 		if err := terminalError(ctx, terminal.cause); err != nil {
 			t.Fatalf("decision winner returned error: %v", err)
@@ -345,8 +394,13 @@ func TestApprovalResolutionDecisionBeatsReadyNonDecision(t *testing.T) {
 		timeout := make(chan time.Time)
 		close(timeout)
 		terminal := m.waitForPendingResolution(context.Background(), p, timeout)
-		if terminal.resolution.Approved || terminal.resolution.Reason != "operator denied" || terminal.cause != terminalCauseDecision {
-			t.Fatalf("terminal resolution = %+v cause=%v, want explicit denial", terminal.resolution, terminal.cause)
+		if terminal.resolution.Approved || terminal.resolution.Reason != "operator denied" ||
+			terminal.cause != terminalCauseDecision {
+			t.Fatalf(
+				"terminal resolution = %+v cause=%v, want explicit denial",
+				terminal.resolution,
+				terminal.cause,
+			)
 		}
 		if err := terminalError(context.Background(), terminal.cause); err != nil {
 			t.Fatalf("decision winner returned error: %v", err)
@@ -362,8 +416,14 @@ func TestApprovalResolutionCancellationWins(t *testing.T) {
 	cancel()
 
 	terminal := m.waitForPendingResolution(ctx, p, nil)
-	if terminal.cause != terminalCauseCanceled || terminal.resolution.Approved || terminal.resolution.Reason != "context canceled" || terminal.resolution.Scope != ScopeOnce {
-		t.Fatalf("terminal resolution = %+v cause=%v, want cancellation", terminal.resolution, terminal.cause)
+	if terminal.cause != terminalCauseCanceled || terminal.resolution.Approved ||
+		terminal.resolution.Reason != "context canceled" ||
+		terminal.resolution.Scope != ScopeOnce {
+		t.Fatalf(
+			"terminal resolution = %+v cause=%v, want cancellation",
+			terminal.resolution,
+			terminal.cause,
+		)
 	}
 	if err := terminalError(ctx, terminal.cause); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation error = %v, want context.Canceled", err)
@@ -384,10 +444,20 @@ func TestApprovalResolutionTimeoutWins(t *testing.T) {
 	close(timeout)
 
 	terminal := m.waitForPendingResolution(context.Background(), p, timeout)
-	if terminal.cause != terminalCauseTimedOut || terminal.resolution.Approved || terminal.resolution.Reason != "approval timeout" || terminal.resolution.Scope != ScopeOnce {
-		t.Fatalf("terminal resolution = %+v cause=%v, want timeout", terminal.resolution, terminal.cause)
+	if terminal.cause != terminalCauseTimedOut || terminal.resolution.Approved ||
+		terminal.resolution.Reason != "approval timeout" ||
+		terminal.resolution.Scope != ScopeOnce {
+		t.Fatalf(
+			"terminal resolution = %+v cause=%v, want timeout",
+			terminal.resolution,
+			terminal.cause,
+		)
 	}
-	if err := terminalError(context.Background(), terminal.cause); err == nil || err.Error() != "approval timeout" {
+	if err := terminalError(
+		context.Background(),
+		terminal.cause,
+	); err == nil ||
+		err.Error() != "approval timeout" {
 		t.Fatalf("timeout error = %v, want approval timeout", err)
 	}
 	if m.Resolve(p.req.ID, true, "late approval") || m.Resolve(p.req.ID, false, "late denial") {
@@ -431,17 +501,26 @@ func TestApprovalResolutionEventMatchesDecisionWinner(t *testing.T) {
 		t.Fatalf("decision winner returned error after cancellation: %v", got.err)
 	}
 	if got.resolution != winner.resolution {
-		t.Fatalf("returned resolution = %+v, want stored winner %+v", got.resolution, winner.resolution)
+		t.Fatalf(
+			"returned resolution = %+v, want stored winner %+v",
+			got.resolution,
+			winner.resolution,
+		)
 	}
 
 	appended, published := emitter.events()
-	for name, events := range map[string][]types.Event{"appended": appended, "published": published} {
+	for name, events := range map[string][]types.Event{
+		"appended":  appended,
+		"published": published,
+	} {
 		resolved := resolutionRaceEventsOfType(events, "approval_resolved")
 		if len(resolved) != 1 {
 			t.Fatalf("%s approval_resolved events = %d, want 1", name, len(resolved))
 		}
 		event := resolved[0]
-		if event.Fields["approval_id"] != "event-truth" || event.Fields["approved"] != true || event.Fields["reason"] != "operator approved" || event.Fields["scope"] != ScopeOnce {
+		if event.Fields["approval_id"] != "event-truth" || event.Fields["approved"] != true ||
+			event.Fields["reason"] != "operator approved" ||
+			event.Fields["scope"] != ScopeOnce {
 			t.Fatalf("%s resolved event does not match decision winner: %+v", name, event.Fields)
 		}
 		if event.Fields["reason"] == "context canceled" {
@@ -484,22 +563,36 @@ func TestApprovalResolutionScopeAndCleanupByTerminalCause(t *testing.T) {
 			if got.err != nil {
 				t.Fatalf("scoped decision returned error: %v", got.err)
 			}
-			if got.resolution.Scope != resolutionScope || got.resolution.ScopeKey != scope.Key || m.observePending(p).cause != terminalCauseDecision {
+			if got.resolution.Scope != resolutionScope || got.resolution.ScopeKey != scope.Key ||
+				m.observePending(p).cause != terminalCauseDecision {
 				t.Fatalf("scoped terminal resolution = %+v", got.resolution)
 			}
 
 			m.mu.Lock()
 			sessionDecision, sessionOK := m.scoped[request.SessionID][scope.Key]
-			commandDecision, commandOK := m.commandScoped[request.SessionID][request.CommandID][scope.Key]
+			commandDecision, commandOK :=
+				m.commandScoped[request.SessionID][request.CommandID][scope.Key]
 			m.mu.Unlock()
 			switch resolutionScope {
 			case ScopeOnce:
 				if !commandOK || !commandDecision.Approved || sessionOK {
-					t.Fatalf("once scope state: command=%+v ok=%v session=%+v ok=%v", commandDecision, commandOK, sessionDecision, sessionOK)
+					t.Fatalf(
+						"once scope state: command=%+v ok=%v session=%+v ok=%v",
+						commandDecision,
+						commandOK,
+						sessionDecision,
+						sessionOK,
+					)
 				}
 			case ScopeSession:
 				if !sessionOK || !sessionDecision.Approved || commandOK {
-					t.Fatalf("session scope state: session=%+v ok=%v command=%+v ok=%v", sessionDecision, sessionOK, commandDecision, commandOK)
+					t.Fatalf(
+						"session scope state: session=%+v ok=%v command=%+v ok=%v",
+						sessionDecision,
+						sessionOK,
+						commandDecision,
+						commandOK,
+					)
 				}
 			}
 			assertResolutionRaceCleanup(t, m)
@@ -527,7 +620,8 @@ func TestApprovalResolutionScopeAndCleanupByTerminalCause(t *testing.T) {
 		releaseResolutionRaceGate(gate)
 
 		got := receiveResolutionRace(t, result)
-		if !errors.Is(got.err, context.Canceled) || got.resolution.Reason != "context canceled" || m.observePending(p).cause != terminalCauseCanceled {
+		if !errors.Is(got.err, context.Canceled) || got.resolution.Reason != "context canceled" ||
+			m.observePending(p).cause != terminalCauseCanceled {
 			t.Fatalf("cancellation result = %+v err=%v", got.resolution, got.err)
 		}
 		assertNoResolutionRaceScopes(t, m, request.SessionID)
@@ -553,7 +647,9 @@ func TestApprovalResolutionScopeAndCleanupByTerminalCause(t *testing.T) {
 		releaseResolutionRaceGate(gate)
 
 		got := receiveResolutionRace(t, result)
-		if got.err == nil || got.err.Error() != "approval timeout" || got.resolution.Reason != "approval timeout" || m.observePending(p).cause != terminalCauseTimedOut {
+		if got.err == nil || got.err.Error() != "approval timeout" ||
+			got.resolution.Reason != "approval timeout" ||
+			m.observePending(p).cause != terminalCauseTimedOut {
 			t.Fatalf("timeout result = %+v err=%v", got.resolution, got.err)
 		}
 		assertNoResolutionRaceScopes(t, m, request.SessionID)
@@ -582,8 +678,16 @@ func TestApprovalResolutionSessionCoverageUsesTerminalTransition(t *testing.T) {
 		}
 	}
 
-	first := startResolutionRaceRequest(m, context.Background(), request("covered-first", "command-1"))
-	second := startResolutionRaceRequest(m, context.Background(), request("covered-second", "command-2"))
+	first := startResolutionRaceRequest(
+		m,
+		context.Background(),
+		request("covered-first", "command-1"),
+	)
+	second := startResolutionRaceRequest(
+		m,
+		context.Background(),
+		request("covered-second", "command-2"),
+	)
 	seen := make(map[any]bool)
 	for i := 0; i < 2; i++ {
 		seen[receiveResolutionRace(t, emitter.requested).Fields["approval_id"]] = true
@@ -594,7 +698,14 @@ func TestApprovalResolutionSessionCoverageUsesTerminalTransition(t *testing.T) {
 	firstPending := getResolutionRacePending(t, m, "covered-first")
 	secondPending := getResolutionRacePending(t, m, "covered-second")
 
-	if !m.ResolveForSessionWithScopeTarget("covered-session", "covered-first", true, "operator", ScopeSession, scope) {
+	if !m.ResolveForSessionWithScopeTarget(
+		"covered-session",
+		"covered-first",
+		true,
+		"operator",
+		ScopeSession,
+		scope,
+	) {
 		t.Fatal("session decision did not resolve source approval")
 	}
 	firstTerminal := m.observePending(firstPending)
@@ -603,8 +714,16 @@ func TestApprovalResolutionSessionCoverageUsesTerminalTransition(t *testing.T) {
 		"covered-first":  firstTerminal,
 		"covered-second": secondTerminal,
 	} {
-		if terminal.cause != terminalCauseDecision || !terminal.resolution.Approved || terminal.resolution.Reason != "operator" || terminal.resolution.Scope != ScopeSession || terminal.resolution.ScopeKey != scope.Key {
-			t.Fatalf("%s terminal resolution = %+v cause=%v", id, terminal.resolution, terminal.cause)
+		if terminal.cause != terminalCauseDecision || !terminal.resolution.Approved ||
+			terminal.resolution.Reason != "operator" ||
+			terminal.resolution.Scope != ScopeSession ||
+			terminal.resolution.ScopeKey != scope.Key {
+			t.Fatalf(
+				"%s terminal resolution = %+v cause=%v",
+				id,
+				terminal.resolution,
+				terminal.cause,
+			)
 		}
 	}
 	if m.Resolve("covered-second", false, "late denial") {
@@ -623,13 +742,19 @@ func TestApprovalResolutionSessionCoverageUsesTerminalTransition(t *testing.T) {
 		"covered-second": second,
 	} {
 		result := receiveResolutionRace(t, resultChannel)
-		if result.err != nil || !result.resolution.Approved || result.resolution.Reason != "operator" || result.resolution.Scope != ScopeSession || result.resolution.ScopeKey != scope.Key {
+		if result.err != nil || !result.resolution.Approved ||
+			result.resolution.Reason != "operator" ||
+			result.resolution.Scope != ScopeSession ||
+			result.resolution.ScopeKey != scope.Key {
 			t.Fatalf("%s waiter result = %+v err=%v", id, result.resolution, result.err)
 		}
 	}
 
 	appended, published := emitter.events()
-	for name, events := range map[string][]types.Event{"appended": appended, "published": published} {
+	for name, events := range map[string][]types.Event{
+		"appended":  appended,
+		"published": published,
+	} {
 		resolved := resolutionRaceEventsOfType(events, "approval_resolved")
 		if len(resolved) != 2 {
 			t.Fatalf("%s resolved event count = %d, want 2", name, len(resolved))
@@ -637,7 +762,8 @@ func TestApprovalResolutionSessionCoverageUsesTerminalTransition(t *testing.T) {
 		ids := make(map[any]int)
 		for _, event := range resolved {
 			ids[event.Fields["approval_id"]]++
-			if event.Fields["approved"] != true || event.Fields["reason"] != "operator" || event.Fields["scope"] != ScopeSession {
+			if event.Fields["approved"] != true || event.Fields["reason"] != "operator" ||
+				event.Fields["scope"] != ScopeSession {
 				t.Fatalf("%s covered resolved event = %+v", name, event.Fields)
 			}
 		}

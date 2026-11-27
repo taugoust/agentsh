@@ -37,7 +37,8 @@ func TestConfig_Dependencies_TokenRef(t *testing.T) {
 	if len(deps) != 1 {
 		t.Fatalf("Dependencies() length = %d, want 1", len(deps))
 	}
-	if deps[0].Scheme != tokenRef.Scheme || deps[0].Host != tokenRef.Host || deps[0].Path != tokenRef.Path {
+	if deps[0].Scheme != tokenRef.Scheme || deps[0].Host != tokenRef.Host ||
+		deps[0].Path != tokenRef.Path {
 		t.Errorf("Dependencies()[0] = {%s, %s, %s}, want {%s, %s, %s}",
 			deps[0].Scheme, deps[0].Host, deps[0].Path,
 			tokenRef.Scheme, tokenRef.Host, tokenRef.Path)
@@ -109,7 +110,11 @@ func TestConfig_Dependencies_LiteralOverridesRef(t *testing.T) {
 
 // mockVaultServer returns an httptest.Server that simulates a minimal
 // Vault HTTP API sufficient for the Provider tests.
-func mockVaultServer(t *testing.T, expectedToken string, kvData map[string]map[string]interface{}) *httptest.Server {
+func mockVaultServer(
+	t *testing.T,
+	expectedToken string,
+	kvData map[string]map[string]interface{},
+) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify token on all KV/lookup calls.
@@ -136,7 +141,9 @@ func mockVaultServer(t *testing.T, expectedToken string, kvData map[string]map[s
 		// AppRole login
 		case r.Method == http.MethodPut && r.URL.Path == "/v1/auth/approle/login":
 			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["role_id"] == "" || body["secret_id"] == "" {
+			if err := json.NewDecoder(r.Body).
+				Decode(&body); err != nil || body["role_id"] == "" ||
+				body["secret_id"] == "" {
 				writeVaultError(w, http.StatusBadRequest, "missing role_id or secret_id")
 				return
 			}
@@ -206,8 +213,13 @@ func writeVaultError(w http.ResponseWriter, status int, msg string) {
 // noopResolver is a RefResolver that always returns an error.
 // Used for configs with no chained refs.
 func noopResolver(_ context.Context, ref secrets.SecretRef) (secrets.SecretValue, error) {
-	return secrets.SecretValue{}, fmt.Errorf("noopResolver: unexpected resolve call for %s://%s/%s#%s",
-		ref.Scheme, ref.Host, ref.Path, ref.Field)
+	return secrets.SecretValue{}, fmt.Errorf(
+		"noopResolver: unexpected resolve call for %s://%s/%s#%s",
+		ref.Scheme,
+		ref.Host,
+		ref.Path,
+		ref.Field,
+	)
 }
 
 // ---------------------------------------------------------------------------

@@ -110,13 +110,20 @@ func buildAgentshBinary(t *testing.T) string {
 	return out
 }
 
-func startServerContainer(t *testing.T, ctx context.Context, bin, configPath, policiesDir, workspace string) (string, func()) {
+func startServerContainer(
+	t *testing.T,
+	ctx context.Context,
+	bin, configPath, policiesDir, workspace string,
+) (string, func()) {
 	t.Helper()
 
 	binds := []testcontainers.ContainerMount{
 		testcontainers.BindMount(bin, "/usr/local/bin/agentsh"),
 		testcontainers.BindMount(configPath, "/config.yaml"),
-		testcontainers.BindMount(filepath.Join(filepath.Dir(configPath), "keys.yaml"), "/keys.yaml"),
+		testcontainers.BindMount(
+			filepath.Join(filepath.Dir(configPath), "keys.yaml"),
+			"/keys.yaml",
+		),
 		testcontainers.BindMount(policiesDir, "/policies"),
 		testcontainers.BindMount(workspace, "/workspace"),
 	}
@@ -141,7 +148,9 @@ func startServerContainer(t *testing.T, ctx context.Context, bin, configPath, po
 		WaitingFor: wait.ForHTTP("/health").
 			WithPort("18080/tcp").
 			WithStartupTimeout(60 * time.Second).
-			WithStatusCodeMatcher(func(code int) bool { return code == http.StatusOK || code == http.StatusNotFound }),
+			WithStatusCodeMatcher(func(code int) bool {
+				return code == http.StatusOK || code == http.StatusNotFound
+			}),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

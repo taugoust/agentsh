@@ -44,9 +44,12 @@ func main() {
 	conf, confErr := shim.ReadShimConf(shimConfRoot())
 	if confErr != nil {
 		if strings.HasPrefix(confErr.Error(), "shim.conf:") {
-			fatalWithHint(127,
+			fatalWithHint(
+				127,
 				fmt.Sprintf("agentsh-shell-shim: %v", confErr),
-				"Fix the value in "+shim.ShimConfPath(shimConfRoot())+" or remove the invalid line.",
+				"Fix the value in "+shim.ShimConfPath(
+					shimConfRoot(),
+				)+" or remove the invalid line.",
 			)
 		}
 		debugLog("read shim.conf: %v (fail-closed: assuming force=true)", confErr)
@@ -70,12 +73,19 @@ func main() {
 	// agentsh-CLI invocations without duplicating the check.
 	if isAgentshCommand(os.Args[1:]) {
 		if realShellErr != nil {
-			fatalWithHint(127,
+			fatalWithHint(
+				127,
 				fmt.Sprintf("agentsh-shell-shim: resolve real shell: %v", realShellErr),
-				fmt.Sprintf("Expected %s.real to exist next to the shim (or in /bin or /usr/bin).", shellName),
+				fmt.Sprintf(
+					"Expected %s.real to exist next to the shim (or in /bin or /usr/bin).",
+					shellName,
+				),
 			)
 		}
-		debugLog("agentsh CLI bypass: command is agentsh itself, executing real shell %s", realShell)
+		debugLog(
+			"agentsh CLI bypass: command is agentsh itself, executing real shell %s",
+			realShell,
+		)
 		runAndExit(realShell, argv0, os.Args[1:], os.Environ())
 		return
 	}
@@ -95,9 +105,11 @@ func main() {
 			WorkDir: wd,
 		})
 		if sessErr != nil {
-			fatalWithHint(127,
+			fatalWithHint(
+				127,
 				fmt.Sprintf("agentsh-shell-shim: resolve session id: %v", sessErr),
-				"Set AGENTSH_SESSION_ID (best), or set AGENTSH_SESSION_FILE to a writable file path for a stable ID.",
+				"Set AGENTSH_SESSION_ID (best), or set AGENTSH_SESSION_FILE to a writable file "+
+					"path for a stable ID.",
 			)
 		}
 		debugLog("resolved session: id=%s file=%s wd=%s", sessID, sessFile, wd)
@@ -114,10 +126,17 @@ func main() {
 	// and when realShell could not be resolved (we fall through to the
 	// in-session guard, which has its own PATH fallback).
 	if len(os.Args) > 1 && realShellErr == nil {
-		mode, modeErr := kernelinstall.ResolveMode(conf.ShimInstall, os.Getenv("AGENTSH_SHIM_INSTALL"))
+		mode, modeErr := kernelinstall.ResolveMode(
+			conf.ShimInstall,
+			os.Getenv("AGENTSH_SHIM_INSTALL"),
+		)
 		if modeErr != nil {
-			fatalWithHint(126, "agentsh-shell-shim: shim_install mode: "+modeErr.Error(),
-				"Set shim_install in /etc/agentsh/shim.conf or AGENTSH_SHIM_INSTALL to one of: auto, on, off.")
+			fatalWithHint(
+				126,
+				"agentsh-shell-shim: shim_install mode: "+modeErr.Error(),
+				"Set shim_install in /etc/agentsh/shim.conf or AGENTSH_SHIM_INSTALL to one of: "+
+					"auto, on, off.",
+			)
 		}
 		if mode != kernelinstall.ModeOff {
 			resolveSession()
@@ -166,9 +185,13 @@ func main() {
 			// Fall back to looking up the shell in PATH (skipping ourselves)
 			inSessShell, inSessErr = lookupShellInPath(shellName)
 			if inSessErr != nil {
-				fatalWithHint(127,
+				fatalWithHint(
+					127,
 					fmt.Sprintf("agentsh-shell-shim: in-session: could not find %s", shellName),
-					fmt.Sprintf("Tried %s.real and PATH lookup. Ensure the real shell is available.", shellName),
+					fmt.Sprintf(
+						"Tried %s.real and PATH lookup. Ensure the real shell is available.",
+						shellName,
+					),
 				)
 			}
 		}
@@ -182,9 +205,13 @@ func main() {
 	// resolved — the in-session guard above already returned, so we are not on
 	// that bypass path.
 	if realShellErr != nil {
-		fatalWithHint(127,
+		fatalWithHint(
+			127,
 			fmt.Sprintf("agentsh-shell-shim: resolve real shell: %v", realShellErr),
-			fmt.Sprintf("Expected %s.real to exist next to the shim (or in /bin or /usr/bin).", shellName),
+			fmt.Sprintf(
+				"Expected %s.real to exist next to the shim (or in /bin or /usr/bin).",
+				shellName,
+			),
 		)
 	}
 
@@ -240,9 +267,11 @@ func main() {
 		srvNetwork, srvAddr, srvErr := serverAddrFromEnv()
 		if srvErr != nil {
 			// Non-empty but invalid server address — fail-closed.
-			hint := "Fix the AGENTSH_SERVER value or unset it to use the default (http://127.0.0.1:18080)."
+			hint := "Fix the AGENTSH_SERVER value or unset it to use the default " +
+				"(http://127.0.0.1:18080)."
 			if strings.ToLower(strings.TrimSpace(os.Getenv("AGENTSH_TRANSPORT"))) == "grpc" {
-				hint = "Fix the AGENTSH_GRPC_ADDR value or unset it to use the default (127.0.0.1:9090)."
+				hint = "Fix the AGENTSH_GRPC_ADDR value or unset it to use the default " +
+					"(127.0.0.1:9090)."
 			}
 			fatalWithHint(127,
 				fmt.Sprintf("agentsh-shell-shim: ready_gate: %v", srvErr),
@@ -262,20 +291,34 @@ func main() {
 			if local && isTransientDialError(dialErr) {
 				// Transient error (ECONNREFUSED, ENOENT, timeout) on a local
 				// server — likely "not started yet" during boot. Fall through.
-				debugLog("ready_gate: local server not reachable at %s:%s (%v), falling through to real shell %s", srvNetwork, srvAddr, dialErr, realShell)
+				debugLog(
+					"ready_gate: local server not reachable at %s:%s (%v), falling through to "+
+						"real shell %s",
+					srvNetwork,
+					srvAddr,
+					dialErr,
+					realShell,
+				)
 				runAndExit(realShell, argv0, os.Args[1:], os.Environ())
 				return
 			}
 			if local {
 				// Hard error (EACCES, etc.) on a local endpoint — fail-closed.
-				fatalWithHint(127,
-					fmt.Sprintf("agentsh-shell-shim: local server dial error at %s: %v", srvAddr, dialErr),
+				fatalWithHint(
+					127,
+					fmt.Sprintf(
+						"agentsh-shell-shim: local server dial error at %s: %v",
+						srvAddr,
+						dialErr,
+					),
 					"Check unix socket permissions or server configuration.",
 				)
 			}
-			fatalWithHint(127,
+			fatalWithHint(
+				127,
 				fmt.Sprintf("agentsh-shell-shim: remote server not reachable at %s", srvAddr),
-				"The agentsh server is configured as a remote endpoint and is not responding. Check server availability.",
+				"The agentsh server is configured as a remote endpoint and is not responding. "+
+					"Check server availability.",
 			)
 		}
 	}
@@ -284,7 +327,10 @@ func main() {
 	if err != nil {
 		hint := "Set AGENTSH_BIN=/path/to/agentsh or ensure `agentsh` is available on PATH."
 		if v := strings.TrimSpace(os.Getenv("AGENTSH_BIN")); v != "" {
-			hint = fmt.Sprintf("AGENTSH_BIN is set to %q but wasn't executable; fix it or unset it to use PATH.", v)
+			hint = fmt.Sprintf(
+				"AGENTSH_BIN is set to %q but wasn't executable; fix it or unset it to use PATH.",
+				v,
+			)
 		}
 		fatalWithHint(127, fmt.Sprintf("agentsh-shell-shim: resolve agentsh: %v", err), hint)
 	}
@@ -450,8 +496,8 @@ func resolveAgentshBin() (string, error) {
 func resolveRealShell(shellName string) (string, error) {
 	var candidates []string
 
-	// Prefer resolving relative to argv[0] when it includes a path, since callers often exec "/bin/sh"
-	// with argv0 "sh" or "/bin/sh" depending on the harness.
+	// Prefer resolving relative to argv[0] when it includes a path, since callers often exec
+	// "/bin/sh" with argv0 "sh" or "/bin/sh" depending on the harness.
 	if strings.Contains(os.Args[0], "/") {
 		p := os.Args[0]
 		if !filepath.IsAbs(p) {
@@ -459,7 +505,10 @@ func resolveRealShell(shellName string) (string, error) {
 				p = filepath.Join(wd, p)
 			}
 		}
-		candidates = append(candidates, filepath.Join(filepath.Dir(filepath.Clean(p)), shellName+".real"))
+		candidates = append(
+			candidates,
+			filepath.Join(filepath.Dir(filepath.Clean(p)), shellName+".real"),
+		)
 	}
 
 	// Common install locations.
@@ -468,7 +517,8 @@ func resolveRealShell(shellName string) (string, error) {
 		filepath.Join("/usr/bin", shellName+".real"),
 	)
 
-	// Fallback to the actual executable's directory (works when shim is installed as a copy into /bin).
+	// Fallback to the actual executable's directory (works when shim is installed as a copy into
+	// /bin).
 	if exe, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(exe), shellName+".real"))
 	}
@@ -564,9 +614,11 @@ func runAndExit(path string, argv0 string, args []string, env []string) {
 
 	debugLog("runAndExit: path=%s argv0=%s args=%v", path, argv0, args)
 	if err := cmd.Start(); err != nil {
-		fatalWithHint(127,
+		fatalWithHint(
+			127,
 			fmt.Sprintf("agentsh-shell-shim: run %s: %v", path, err),
-			"If you see 'permission denied' in a container, check that the shim and agentsh binaries are executable.",
+			"If you see 'permission denied' in a container, check that the shim and agentsh "+
+				"binaries are executable.",
 		)
 	}
 
@@ -584,9 +636,11 @@ func runAndExit(path string, argv0 string, args []string, env []string) {
 		if ee, ok := waitErr.(*exec.ExitError); ok {
 			os.Exit(ee.ExitCode())
 		}
-		fatalWithHint(127,
+		fatalWithHint(
+			127,
 			fmt.Sprintf("agentsh-shell-shim: run %s: %v", path, waitErr),
-			"If you see 'permission denied' in a container, check that the shim and agentsh binaries are executable.",
+			"If you see 'permission denied' in a container, check that the shim and agentsh "+
+				"binaries are executable.",
 		)
 	}
 	os.Exit(0)
@@ -639,7 +693,10 @@ func serverAddrFromEnv() (network, addr string, err error) {
 	// scheme prefix from address (client.NewGRPC accepts "grpc://host:port").
 	transport := strings.ToLower(strings.TrimSpace(os.Getenv("AGENTSH_TRANSPORT")))
 	if transport != "" && transport != "http" && transport != "grpc" {
-		return "", "", fmt.Errorf("invalid AGENTSH_TRANSPORT value %q (expected http or grpc)", transport)
+		return "", "", fmt.Errorf(
+			"invalid AGENTSH_TRANSPORT value %q (expected http or grpc)",
+			transport,
+		)
 	}
 	if transport == "grpc" {
 		grpcAddr := strings.TrimSpace(os.Getenv("AGENTSH_GRPC_ADDR"))
@@ -679,13 +736,20 @@ func serverAddrFromEnv() (network, addr string, err error) {
 		}
 		sockPath = strings.TrimSpace(sockPath)
 		if sockPath == "" {
-			return "", "", fmt.Errorf("invalid AGENTSH_SERVER: unix URL with empty socket path %q", raw)
+			return "", "", fmt.Errorf(
+				"invalid AGENTSH_SERVER: unix URL with empty socket path %q",
+				raw,
+			)
 		}
 		return "unix", sockPath, nil
 	case "http", "https":
 		host := u.Hostname()
 		if host == "" {
-			return "", "", fmt.Errorf("invalid AGENTSH_SERVER: %s URL with empty host %q", u.Scheme, raw)
+			return "", "", fmt.Errorf(
+				"invalid AGENTSH_SERVER: %s URL with empty host %q",
+				u.Scheme,
+				raw,
+			)
 		}
 		port := u.Port()
 		if port == "" {
@@ -698,7 +762,11 @@ func serverAddrFromEnv() (network, addr string, err error) {
 		}
 		return "tcp", net.JoinHostPort(host, port), nil
 	default:
-		return "", "", fmt.Errorf("invalid AGENTSH_SERVER: unsupported scheme %q in %q (expected http, https, or unix)", u.Scheme, raw)
+		return "", "", fmt.Errorf(
+			"invalid AGENTSH_SERVER: unsupported scheme %q in %q (expected http, https, or unix)",
+			u.Scheme,
+			raw,
+		)
 	}
 }
 

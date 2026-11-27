@@ -59,8 +59,9 @@ type Reader struct {
 	segments []segmentEntry // remaining segments in numeric-index order
 	current  *os.File
 	curHdr   SegmentHeader
-	curIdx   uint64 // numeric segment index of `current`; used to detect rollover from .INPROGRESS to .seg.
-	curLive  bool   // true if `current` is an .INPROGRESS file (re-tail on EOF)
+	// numeric segment index of `current`; used to detect rollover from .INPROGRESS to .seg.
+	curIdx  uint64
+	curLive bool // true if `current` is an .INPROGRESS file (re-tail on EOF)
 	// nextScanIdx is the smallest segment index NOT yet enqueued in
 	// `segments` from a previous scan. When `segments` empties and `current`
 	// is nil, Next re-reads the directory and adds segments with idx >=
@@ -152,7 +153,12 @@ func (w *WAL) NewReader(opts ReaderOptions) (*Reader, error) {
 	if w.closed {
 		return nil, ErrClosed
 	}
-	r := &Reader{w: w, notify: make(chan struct{}, 1), nextSeq: opts.Start, readerGen: opts.Generation}
+	r := &Reader{
+		w:         w,
+		notify:    make(chan struct{}, 1),
+		nextSeq:   opts.Start,
+		readerGen: opts.Generation,
+	}
 	if err := r.rescanLocked(); err != nil {
 		return nil, err
 	}
@@ -237,7 +243,8 @@ func (r *Reader) maybeDemoteLiveLocked() (bool, error) {
 		if idx > r.curIdx {
 			hasNewer = true
 		}
-		if idx == r.curIdx && strings.HasSuffix(name, sealedSuffix) && !strings.HasSuffix(name, inprogressSuffix) {
+		if idx == r.curIdx && strings.HasSuffix(name, sealedSuffix) &&
+			!strings.HasSuffix(name, inprogressSuffix) {
 			sealedSamePath = true
 		}
 	}
@@ -484,7 +491,10 @@ func (r *Reader) nextLocked() (Record, bool, error) {
 		if isLossMarker(payload) {
 			loss, ok := decodeLossPayload(payload)
 			if !ok {
-				return Record{}, false, fmt.Errorf("reader: malformed loss marker payload (len=%d)", len(payload))
+				return Record{}, false, fmt.Errorf(
+					"reader: malformed loss marker payload (len=%d)",
+					len(payload),
+				)
 			}
 			// Loss markers are NOT subject to the nextSeq filter — every
 			// loss notice MUST flow to the transport so the receiver can
@@ -494,7 +504,10 @@ func (r *Reader) nextLocked() (Record, bool, error) {
 		}
 		seq, gen, ok := parseSeqGen(payload)
 		if !ok {
-			return Record{}, false, fmt.Errorf("reader: malformed seq/gen frame (len=%d)", len(payload))
+			return Record{}, false, fmt.Errorf(
+				"reader: malformed seq/gen frame (len=%d)",
+				len(payload),
+			)
 		}
 		// Update lastGoodSeq/Gen even for sub-cursor records so the loss
 		// anchor tracks correctly across a future CRC mismatch.
@@ -507,7 +520,12 @@ func (r *Reader) nextLocked() (Record, bool, error) {
 			continue
 		}
 		r.lastEmittedSeq = seq
-		return Record{Kind: RecordData, Sequence: seq, Generation: gen, Payload: payload[12:]}, true, nil
+		return Record{
+			Kind:       RecordData,
+			Sequence:   seq,
+			Generation: gen,
+			Payload:    payload[12:],
+		}, true, nil
 	}
 }
 

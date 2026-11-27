@@ -77,7 +77,8 @@ func snapshotWorkspace(ctx context.Context, root string) (WorkspaceBaseline, err
 			return err
 		}
 		relative, err := filepath.Rel(root, path)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		if err != nil || relative == ".." ||
+			strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			return fmt.Errorf("workspace snapshot traversal escaped its root")
 		}
 		if relative == "." {
@@ -166,7 +167,9 @@ func hashWorkspaceFile(ctx context.Context, path string, scanned os.FileInfo) (s
 		}
 	}
 	after, err := file.Stat()
-	if err != nil || !os.SameFile(before, after) || before.Size() != after.Size() || before.Mode() != after.Mode() || !before.ModTime().Equal(after.ModTime()) {
+	if err != nil || !os.SameFile(before, after) || before.Size() != after.Size() ||
+		before.Mode() != after.Mode() ||
+		!before.ModTime().Equal(after.ModTime()) {
 		return "", fmt.Errorf("workspace file changed while hashing")
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
@@ -179,7 +182,8 @@ func compareStagedWorkspaceContent(staged, source WorkspaceBaseline) []Workspace
 		sourceByPath[entry.Path] = entry
 	}
 	for index := range staged.Entries {
-		if sourceEntry, ok := sourceByPath[staged.Entries[index].Path]; ok && sourceEntry.Type == staged.Entries[index].Type {
+		if sourceEntry, ok := sourceByPath[staged.Entries[index].Path]; ok &&
+			sourceEntry.Type == staged.Entries[index].Type {
 			staged.Entries[index].Mode = sourceEntry.Mode
 		}
 	}
@@ -218,7 +222,13 @@ func compareWorkspaceBaselines(expected, current WorkspaceBaseline) []WorkspaceD
 		case !currentOK:
 			drift = append(drift, WorkspaceDrift{Path: path, Reason: "removed from real workspace"})
 		case expectedEntry != currentEntry:
-			drift = append(drift, WorkspaceDrift{Path: path, Reason: "content, type, mode, or symlink target changed"})
+			drift = append(
+				drift,
+				WorkspaceDrift{
+					Path:   path,
+					Reason: "content, type, mode, or symlink target changed",
+				},
+			)
 		}
 	}
 	return drift
@@ -243,7 +253,9 @@ func WriteWorkspaceBaseline(path string, baseline WorkspaceBaseline) error {
 
 func ReadWorkspaceBaseline(path string) (WorkspaceBaseline, error) {
 	before, err := os.Lstat(path)
-	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm() != 0o600 || before.Size() > workspaceBaselineMaxBytes {
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 ||
+		before.Mode().Perm() != 0o600 ||
+		before.Size() > workspaceBaselineMaxBytes {
 		return WorkspaceBaseline{}, fmt.Errorf("workspace baseline file is unsafe")
 	}
 	file, err := os.Open(path)
@@ -263,7 +275,8 @@ func ReadWorkspaceBaseline(path string) (WorkspaceBaseline, error) {
 		return WorkspaceBaseline{}, fmt.Errorf("workspace baseline exceeds size limit")
 	}
 	after, err := file.Stat()
-	if err != nil || !os.SameFile(opened, after) || opened.Size() != after.Size() || !opened.ModTime().Equal(after.ModTime()) {
+	if err != nil || !os.SameFile(opened, after) || opened.Size() != after.Size() ||
+		!opened.ModTime().Equal(after.ModTime()) {
 		return WorkspaceBaseline{}, fmt.Errorf("workspace baseline changed while reading")
 	}
 	var baseline WorkspaceBaseline
@@ -278,7 +291,10 @@ func ReadWorkspaceBaseline(path string) (WorkspaceBaseline, error) {
 	return baseline, baseline.Validate()
 }
 
-func VerifyWorkspaceBaseline(ctx context.Context, baseline WorkspaceBaseline) ([]WorkspaceDrift, error) {
+func VerifyWorkspaceBaseline(
+	ctx context.Context,
+	baseline WorkspaceBaseline,
+) ([]WorkspaceDrift, error) {
 	if err := baseline.Validate(); err != nil {
 		return nil, err
 	}
@@ -291,7 +307,8 @@ func VerifyWorkspaceBaseline(ctx context.Context, baseline WorkspaceBaseline) ([
 }
 
 func (b WorkspaceBaseline) Validate() error {
-	if b.SchemaVersion != WorkspaceBaselineSchemaVersion || !filepath.IsAbs(b.Source) || filepath.Clean(b.Source) != b.Source {
+	if b.SchemaVersion != WorkspaceBaselineSchemaVersion || !filepath.IsAbs(b.Source) ||
+		filepath.Clean(b.Source) != b.Source {
 		return fmt.Errorf("workspace baseline identity is invalid")
 	}
 	if b.RootMode > 0o777 {
@@ -304,7 +321,10 @@ func (b WorkspaceBaseline) Validate() error {
 			return fmt.Errorf("workspace baseline path is invalid")
 		}
 		relative := string(decoded)
-		if filepath.IsAbs(relative) || filepath.Clean(relative) != relative || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || workspaceReviewExcluded(relative) {
+		if filepath.IsAbs(relative) || filepath.Clean(relative) != relative || relative == "." ||
+			relative == ".." ||
+			strings.HasPrefix(relative, ".."+string(filepath.Separator)) ||
+			workspaceReviewExcluded(relative) {
 			return fmt.Errorf("workspace baseline path is unsafe")
 		}
 		if previous != "" && entry.Path <= previous {
@@ -317,7 +337,8 @@ func (b WorkspaceBaseline) Validate() error {
 				return fmt.Errorf("workspace baseline directory is invalid")
 			}
 		case "regular":
-			if entry.Mode > 0o777 || entry.Size < 0 || len(entry.SHA256) != sha256.Size*2 || entry.Target != "" {
+			if entry.Mode > 0o777 || entry.Size < 0 || len(entry.SHA256) != sha256.Size*2 ||
+				entry.Target != "" {
 				return fmt.Errorf("workspace baseline regular file is invalid")
 			}
 			if _, err := hex.DecodeString(entry.SHA256); err != nil {

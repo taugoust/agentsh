@@ -257,7 +257,12 @@ func TestMakePolicyInstallHook_NoTrustStore_ReturnsNil(t *testing.T) {
 	if hook != nil {
 		t.Fatal("hook non-nil despite empty trust store")
 	}
-	hook = makePolicyInstallHook(config.PoliciesConfig{Signing: config.SigningConfig{TrustStore: "/tmp/x"}}, nil, nil, false)
+	hook = makePolicyInstallHook(
+		config.PoliciesConfig{Signing: config.SigningConfig{TrustStore: "/tmp/x"}},
+		nil,
+		nil,
+		false,
+	)
 	if hook != nil {
 		t.Fatal("hook non-nil despite empty policies dir")
 	}
@@ -476,10 +481,12 @@ command_rules:
 	f.appHolder.Store(app)
 
 	// Sanity: under P1, safe-tool allowed, dangerous-tool denied.
-	if dec := app.Policy().CheckCommand("safe-tool", nil); dec.EffectiveDecision != types.DecisionAllow {
+	if dec := app.Policy().
+		CheckCommand("safe-tool", nil); dec.EffectiveDecision != types.DecisionAllow {
 		t.Fatalf("P1 sanity: safe-tool = %s, want allow", dec.EffectiveDecision)
 	}
-	if dec := app.Policy().CheckCommand("dangerous-tool", nil); dec.EffectiveDecision != types.DecisionDeny {
+	if dec := app.Policy().
+		CheckCommand("dangerous-tool", nil); dec.EffectiveDecision != types.DecisionDeny {
 		t.Fatalf("P1 sanity: dangerous-tool = %s, want deny", dec.EffectiveDecision)
 	}
 
@@ -502,10 +509,12 @@ command_rules:
 	// Behavioral assertion: P2 is now in effect. Same app, same
 	// getter, decisions have flipped because SwapPolicy installed the
 	// new engine.
-	if dec := app.Policy().CheckCommand("safe-tool", nil); dec.EffectiveDecision != types.DecisionDeny {
+	if dec := app.Policy().
+		CheckCommand("safe-tool", nil); dec.EffectiveDecision != types.DecisionDeny {
 		t.Errorf("P2 reload: safe-tool = %s, want deny (rule flipped)", dec.EffectiveDecision)
 	}
-	if dec := app.Policy().CheckCommand("dangerous-tool", nil); dec.EffectiveDecision != types.DecisionAllow {
+	if dec := app.Policy().
+		CheckCommand("dangerous-tool", nil); dec.EffectiveDecision != types.DecisionAllow {
 		t.Errorf("P2 reload: dangerous-tool = %s, want allow (rule flipped)", dec.EffectiveDecision)
 	}
 }

@@ -61,10 +61,14 @@ func exactLoopbackProxyAddrPort(rawURL string) (netip.AddrPort, error) {
 		return netip.AddrPort{}, fmt.Errorf("parse proxy URL: %w", err)
 	}
 	if u.Scheme != "http" || u.Host == "" || u.User != nil || u.Opaque != "" {
-		return netip.AddrPort{}, fmt.Errorf("proxy URL must be an unauthenticated http URL with an explicit host and port")
+		return netip.AddrPort{}, fmt.Errorf(
+			"proxy URL must be an unauthenticated http URL with an explicit host and port",
+		)
 	}
 	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return netip.AddrPort{}, fmt.Errorf("proxy URL must identify a listener endpoint, not a path, query, or fragment")
+		return netip.AddrPort{}, fmt.Errorf(
+			"proxy URL must identify a listener endpoint, not a path, query, or fragment",
+		)
 	}
 	host := u.Hostname()
 	portText := u.Port()
@@ -73,7 +77,11 @@ func exactLoopbackProxyAddrPort(rawURL string) (netip.AddrPort, error) {
 	}
 	addr, err := netip.ParseAddr(host)
 	if err != nil {
-		return netip.AddrPort{}, fmt.Errorf("proxy host %q must be an exact IP address: %w", host, err)
+		return netip.AddrPort{}, fmt.Errorf(
+			"proxy host %q must be an exact IP address: %w",
+			host,
+			err,
+		)
 	}
 	if addr.Zone() != "" {
 		return netip.AddrPort{}, fmt.Errorf("proxy address must not contain an IPv6 zone")
@@ -91,8 +99,20 @@ func exactLoopbackProxyAddrPort(rawURL string) (netip.AddrPort, error) {
 
 // buildAllowedEndpoints converts policy/network rules into ebpf allowlist entries and CIDRs.
 // Best-effort: expands allow network rules into concrete IP/port tuples and prefix matches.
-// Returns: allow entries, allow cidrs, deny entries, deny cidrs, strict flag, hasDomains flag, ttlHint (min TTL observed, 0 if none).
-func buildAllowedEndpoints(p *policy.Engine, maxTTL time.Duration) ([]ebpf.AllowKey, []ebpf.AllowCIDR, []ebpf.AllowKey, []ebpf.AllowCIDR, bool, bool, time.Duration) {
+// Returns: allow entries, allow cidrs, deny entries, deny cidrs, strict flag, hasDomains flag,
+// ttlHint (min TTL observed, 0 if none).
+func buildAllowedEndpoints(
+	p *policy.Engine,
+	maxTTL time.Duration,
+) (
+	[]ebpf.AllowKey,
+	[]ebpf.AllowCIDR,
+	[]ebpf.AllowKey,
+	[]ebpf.AllowCIDR,
+	bool,
+	bool,
+	time.Duration,
+) {
 	if p == nil {
 		return nil, nil, nil, nil, false, false, 0
 	}
@@ -272,7 +292,8 @@ func buildAllowedEndpoints(p *policy.Engine, maxTTL time.Duration) ([]ebpf.Allow
 	denyCIDRs = dedupCIDRs(denyCIDRs)
 
 	// Enable default-deny only if coverage is exact.
-	return out, cidrOut, denyOut, denyCIDRs, canDefaultDeny && (len(out) > 0 || len(cidrOut) > 0), hasDomains, ttlHint
+	return out, cidrOut, denyOut, denyCIDRs, canDefaultDeny &&
+		(len(out) > 0 || len(cidrOut) > 0), hasDomains, ttlHint
 }
 
 func dedupAllowKeys(in []ebpf.AllowKey) []ebpf.AllowKey {

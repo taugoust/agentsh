@@ -44,7 +44,9 @@ func TestAuditVerifyCmd_Help(t *testing.T) {
 	}
 
 	output := out.String()
-	for _, needle := range []string{"--config", "--tolerate-unsigned", "--tolerate-truncation", "--from-sequence"} {
+	for _, needle := range []string{
+		"--config", "--tolerate-unsigned", "--tolerate-truncation", "--from-sequence",
+	} {
 		if !bytes.Contains([]byte(output), []byte(needle)) {
 			t.Fatalf("help output missing %q", needle)
 		}

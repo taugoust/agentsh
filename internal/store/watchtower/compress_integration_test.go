@@ -36,7 +36,11 @@ import (
 func skipOnWindowsCIIfSlow(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip("integration test skipped on Windows: end-to-end gRPC+WAL timing is unreliable on Windows CI runners; unit tests + wire goldens cover the compression path on this platform")
+		t.Skip(
+			"integration test skipped on Windows: end-to-end gRPC+WAL timing is unreliable on " +
+				"Windows CI runners; unit tests + wire goldens cover the compression path on " +
+				"this platform",
+		)
 	}
 }
 
@@ -148,7 +152,11 @@ func TestStore_CompressionRoundTrip(t *testing.T) {
 				time.Sleep(50 * time.Millisecond)
 			}
 			if err := srv.AssertReplayObserved(1, total); err != nil {
-				t.Fatalf("AssertReplayObserved after deadline: %v\nReceived batches: %s", err, dumpReceivedBatchSummary(srv))
+				t.Fatalf(
+					"AssertReplayObserved after deadline: %v\nReceived batches: %s",
+					err,
+					dumpReceivedBatchSummary(srv),
+				)
 			}
 
 			// Confirm at least one batch was actually compressed (not silently
@@ -164,7 +172,12 @@ func TestStore_CompressionRoundTrip(t *testing.T) {
 				}
 			}
 			if compressedSeen == 0 {
-				t.Fatalf("no batches recorded with compression=%v + non-nil compressed_payload (total=%d batches); compress wiring is not exercising the codec", tc.wantAlgo, totalSeen)
+				t.Fatalf(
+					"no batches recorded with compression=%v + non-nil compressed_payload "+
+						"(total=%d batches); compress wiring is not exercising the codec",
+					tc.wantAlgo,
+					totalSeen,
+				)
 			}
 			t.Logf("algo=%s: %d/%d batches compressed", tc.algo, compressedSeen, totalSeen)
 		})
@@ -235,7 +248,11 @@ func TestStore_CompressionSizeEnvelope(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if err := srv.AssertReplayObserved(1, total); err != nil {
-		t.Fatalf("AssertReplayObserved: %v\nReceived batches: %s", err, dumpReceivedBatchSummary(srv))
+		t.Fatalf(
+			"AssertReplayObserved: %v\nReceived batches: %s",
+			err,
+			dumpReceivedBatchSummary(srv),
+		)
 	}
 
 	for i, b := range srv.Batches() {
@@ -307,7 +324,11 @@ func TestStore_CompressionWireShapeConformance(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if err := srv.AssertReplayObserved(1, total); err != nil {
-		t.Fatalf("AssertReplayObserved: %v\nReceived batches: %s", err, dumpReceivedBatchSummary(srv))
+		t.Fatalf(
+			"AssertReplayObserved: %v\nReceived batches: %s",
+			err,
+			dumpReceivedBatchSummary(srv),
+		)
 	}
 
 	for i, b := range srv.Batches() {

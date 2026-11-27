@@ -40,7 +40,12 @@ func newTestApp(t *testing.T, sessions *session.Manager, store *composite.Store)
 			{Name: "allow-all", Commands: []string{"*"}, Decision: "allow"},
 		},
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 		NetworkRules: []policy.NetworkRule{
 			{Name: "allow-all", Domains: []string{"**"}, Decision: "allow"},
@@ -49,7 +54,19 @@ func newTestApp(t *testing.T, sessions *session.Manager, store *composite.Store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewApp(cfg, sessions, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	return NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 }
 
 func newSQLiteStore(t *testing.T) *sqlite.Store {
@@ -81,7 +98,11 @@ func TestPatchSession_UpdatesCwdAndEnv(t *testing.T) {
 	h := app.Router()
 
 	reqBody := `{"cwd":"/workspace/sub","env":{"FOO":"bar"},"unset":["BAZ"]}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/sessions/"+s.ID, strings.NewReader(reqBody))
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/sessions/"+s.ID,
+		strings.NewReader(reqBody),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -121,7 +142,11 @@ func TestKillCommand_KillsRunningExec(t *testing.T) {
 	execDone := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		body := `{"command":"sleep","args":["30"]}`
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+s.ID+"/exec", strings.NewReader(body))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/sessions/"+s.ID+"/exec",
+			strings.NewReader(body),
+		)
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, req)
 		execDone <- rr
@@ -140,7 +165,11 @@ func TestKillCommand_KillsRunningExec(t *testing.T) {
 		t.Fatalf("expected running command id, got empty")
 	}
 
-	killReq := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+s.ID+"/kill/"+cmdID, strings.NewReader(`{}`))
+	killReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+s.ID+"/kill/"+cmdID,
+		strings.NewReader(`{}`),
+	)
 	killRR := httptest.NewRecorder()
 	h.ServeHTTP(killRR, killReq)
 	if killRR.Code != http.StatusOK {

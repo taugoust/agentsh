@@ -9,8 +9,17 @@ import (
 	"github.com/google/uuid"
 )
 
-func (a *App) applyCommandApproval(ctx context.Context, sessionID, cmdID string, command string, args []string, actor map[string]any, pre *policy.Decision) error {
-	if pre == nil || pre.PolicyDecision != types.DecisionApprove || pre.EffectiveDecision != types.DecisionApprove || a.approvals == nil {
+func (a *App) applyCommandApproval(
+	ctx context.Context,
+	sessionID, cmdID string,
+	command string,
+	args []string,
+	actor map[string]any,
+	pre *policy.Decision,
+) error {
+	if pre == nil || pre.PolicyDecision != types.DecisionApprove ||
+		pre.EffectiveDecision != types.DecisionApprove ||
+		a.approvals == nil {
 		return nil
 	}
 
@@ -31,7 +40,11 @@ func (a *App) applyCommandApproval(ctx context.Context, sessionID, cmdID string,
 			}
 			return nil
 		}
-		if invocation, invocationOK := approvals.NewCommandInvocationScope(command, args, pre.Rule); invocationOK {
+		if invocation, invocationOK := approvals.NewCommandInvocationScope(
+			command,
+			args,
+			pre.Rule,
+		); invocationOK {
 			if cached, ok := a.approvals.CheckScoped(ctx, sessionID, cmdID, invocation); ok {
 				if cached.Approved {
 					pre.EffectiveDecision = types.DecisionAllow

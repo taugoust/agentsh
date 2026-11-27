@@ -38,7 +38,13 @@ func TestSQLPrepared_Prepare_Deny_HandledAndDoesNotCache(t *testing.T) {
 		Effects:      []effects.Effect{{Group: effects.GroupDelete}},
 	}}
 	decisions := []policy.Decision{{Verb: policy.VerbDeny, RuleName: "block-delete"}}
-	handled, acts := Intercept(stmts, decisions, cache, statemachine.ConnState{LastUpstreamRFQ: 'I'}, nil)
+	handled, acts := Intercept(
+		stmts,
+		decisions,
+		cache,
+		statemachine.ConnState{LastUpstreamRFQ: 'I'},
+		nil,
+	)
 	if !handled {
 		t.Fatal("PREPARE deny should be handled by Intercept")
 	}
@@ -64,7 +70,11 @@ func TestSQLPrepared_Execute_CacheHit_AllowNotHandled(t *testing.T) {
 	}}
 	handled, acts := Intercept(stmts, nil, cache, statemachine.ConnState{}, nil)
 	if handled {
-		t.Fatalf("EXECUTE with cache hit should return Handled=false; caller evaluates rewritten stmts. acts=%v", acts)
+		t.Fatalf(
+			"EXECUTE with cache hit should return Handled=false; caller evaluates rewritten "+
+				"stmts. acts=%v",
+			acts,
+		)
 	}
 	if stmts[0].Effects[0].Group != effects.GroupRead {
 		t.Fatalf("stmts[0] not rewritten; Group=%v", stmts[0].Effects[0].Group)
@@ -88,19 +98,29 @@ func TestSQLPrepared_Execute_CacheMiss_HandledWithDenyRoute(t *testing.T) {
 	if !ok {
 		t.Fatalf("acts[0]=%T want SynthError", acts[0])
 	}
-	if !contains(se.Message, "SQL_PREPARED_CACHE_MISS") && !contains(se.Message, "prepared statement") {
+	if !contains(se.Message, "SQL_PREPARED_CACHE_MISS") &&
+		!contains(se.Message, "prepared statement") {
 		t.Errorf("error message lacks cache-miss indication: %q", se.Message)
 	}
 }
 
 func TestSQLPrepared_DeallocateNamed_EvictsAndNotHandled(t *testing.T) {
 	cache := preparedcache.New(0)
-	cache.Put("s1", preparedcache.Entry{Classification: effects.ClassifiedStatement{RawVerb: "SELECT"}})
+	cache.Put(
+		"s1",
+		preparedcache.Entry{Classification: effects.ClassifiedStatement{RawVerb: "SELECT"}},
+	)
 	stmts := []effects.ClassifiedStatement{{
 		RawVerb:      "DEALLOCATE",
 		PreparedName: "s1",
 	}}
-	handled, _ := Intercept(stmts, []policy.Decision{{Verb: policy.VerbAllow}}, cache, statemachine.ConnState{}, nil)
+	handled, _ := Intercept(
+		stmts,
+		[]policy.Decision{{Verb: policy.VerbAllow}},
+		cache,
+		statemachine.ConnState{},
+		nil,
+	)
 	if handled {
 		t.Error("DEALLOCATE should return Handled=false so caller forwards Q to upstream")
 	}
@@ -114,7 +134,13 @@ func TestSQLPrepared_DeallocateAll_ClearsAndNotHandled(t *testing.T) {
 	cache.Put("a", preparedcache.Entry{})
 	cache.Put("b", preparedcache.Entry{})
 	stmts := []effects.ClassifiedStatement{{RawVerb: "DEALLOCATE", PreparedName: ""}}
-	handled, _ := Intercept(stmts, []policy.Decision{{Verb: policy.VerbAllow}}, cache, statemachine.ConnState{}, nil)
+	handled, _ := Intercept(
+		stmts,
+		[]policy.Decision{{Verb: policy.VerbAllow}},
+		cache,
+		statemachine.ConnState{},
+		nil,
+	)
 	if handled {
 		t.Error("DEALLOCATE ALL should not be handled (forward Q to upstream)")
 	}
@@ -126,11 +152,21 @@ func TestSQLPrepared_DeallocateAll_ClearsAndNotHandled(t *testing.T) {
 func TestSQLPrepared_DiscardAll_ClearsAndNotHandled(t *testing.T) {
 	cache := preparedcache.New(0)
 	cache.Put("a", preparedcache.Entry{})
-	stmts := []effects.ClassifiedStatement{{
-		RawVerb: "DISCARD",
-		Effects: []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardAll}},
-	}}
-	handled, _ := Intercept(stmts, []policy.Decision{{Verb: policy.VerbAllow}}, cache, statemachine.ConnState{}, nil)
+	stmts := []effects.ClassifiedStatement{
+		{
+			RawVerb: "DISCARD",
+			Effects: []effects.Effect{
+				{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardAll},
+			},
+		},
+	}
+	handled, _ := Intercept(
+		stmts,
+		[]policy.Decision{{Verb: policy.VerbAllow}},
+		cache,
+		statemachine.ConnState{},
+		nil,
+	)
 	if handled {
 		t.Error("DISCARD ALL should not be handled (forward Q to upstream)")
 	}
@@ -142,11 +178,21 @@ func TestSQLPrepared_DiscardAll_ClearsAndNotHandled(t *testing.T) {
 func TestSQLPrepared_DiscardPlans_ClearsAndNotHandled(t *testing.T) {
 	cache := preparedcache.New(0)
 	cache.Put("a", preparedcache.Entry{})
-	stmts := []effects.ClassifiedStatement{{
-		RawVerb: "DISCARD",
-		Effects: []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardPlans}},
-	}}
-	handled, _ := Intercept(stmts, []policy.Decision{{Verb: policy.VerbAllow}}, cache, statemachine.ConnState{}, nil)
+	stmts := []effects.ClassifiedStatement{
+		{
+			RawVerb: "DISCARD",
+			Effects: []effects.Effect{
+				{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardPlans},
+			},
+		},
+	}
+	handled, _ := Intercept(
+		stmts,
+		[]policy.Decision{{Verb: policy.VerbAllow}},
+		cache,
+		statemachine.ConnState{},
+		nil,
+	)
 	if handled {
 		t.Error("DISCARD PLANS should not be handled")
 	}
@@ -158,11 +204,21 @@ func TestSQLPrepared_DiscardPlans_ClearsAndNotHandled(t *testing.T) {
 func TestSQLPrepared_DiscardTemp_DoesNotTouchCache(t *testing.T) {
 	cache := preparedcache.New(0)
 	cache.Put("a", preparedcache.Entry{})
-	stmts := []effects.ClassifiedStatement{{
-		RawVerb: "DISCARD",
-		Effects: []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardTemp}},
-	}}
-	handled, _ := Intercept(stmts, []policy.Decision{{Verb: policy.VerbAllow}}, cache, statemachine.ConnState{}, nil)
+	stmts := []effects.ClassifiedStatement{
+		{
+			RawVerb: "DISCARD",
+			Effects: []effects.Effect{
+				{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardTemp},
+			},
+		},
+	}
+	handled, _ := Intercept(
+		stmts,
+		[]policy.Decision{{Verb: policy.VerbAllow}},
+		cache,
+		statemachine.ConnState{},
+		nil,
+	)
 	if handled {
 		t.Error("DISCARD TEMP should not be handled")
 	}
@@ -182,11 +238,20 @@ func contains(s, sub string) bool {
 
 func TestSQLPrepared_ExpectedActionShape_DenyRouteMatch(t *testing.T) {
 	cache := preparedcache.New(0)
-	stmts := []effects.ClassifiedStatement{{RawVerb: "PREPARE_DELETE", PreparedName: "x", Effects: []effects.Effect{{Group: effects.GroupDelete}}}}
+	stmts := []effects.ClassifiedStatement{
+		{
+			RawVerb:      "PREPARE_DELETE",
+			PreparedName: "x",
+			Effects:      []effects.Effect{{Group: effects.GroupDelete}},
+		},
+	}
 	decisions := []policy.Decision{{Verb: policy.VerbDeny, RuleName: "rule1"}}
 	_, acts := Intercept(stmts, decisions, cache, statemachine.ConnState{LastUpstreamRFQ: 'I'}, nil)
 	want := []statemachine.Action{
-		&statemachine.ActionSynthError{SQLState: "42501", Message: "denied by AgentSH policy: rule1"},
+		&statemachine.ActionSynthError{
+			SQLState: "42501",
+			Message:  "denied by AgentSH policy: rule1",
+		},
 		&statemachine.ActionSynthReadyForQuery{Status: 'I'},
 	}
 	if diff := cmp.Diff(want, acts); diff != "" {

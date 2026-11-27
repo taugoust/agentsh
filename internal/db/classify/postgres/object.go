@@ -17,7 +17,11 @@ import (
 // ResolutionUnresolved — handlers should generally guard their inputs before
 // calling, but the defensive return keeps the dispatcher's "always emit at
 // least one effect" invariant safe.
-func extractRelation(rv *pg_query.RangeVar, sess SessionState, kind effects.ObjectKind) (effects.ObjectRef, effects.Resolution) {
+func extractRelation(
+	rv *pg_query.RangeVar,
+	sess SessionState,
+	kind effects.ObjectKind,
+) (effects.ObjectRef, effects.Resolution) {
 	if rv == nil {
 		return effects.ObjectRef{Kind: kind}, effects.ResolutionUnresolved
 	}

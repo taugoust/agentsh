@@ -32,7 +32,14 @@ var notifySetupStatusTimeout = 30 * time.Second
 // platformSetupWrap creates a socket pair, configures the wrapper launch, and
 // returns a postStart function that receives the notify fd from the wrapper and
 // forwards it to the server's Unix listener socket.
-func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, sessID string, agentPath string, agentArgs []string, cfg *clientConfig) (*wrapLaunchConfig, error) {
+func platformSetupWrap(
+	ctx context.Context,
+	wrapResp types.WrapInitResponse,
+	sessID string,
+	agentPath string,
+	agentArgs []string,
+	cfg *clientConfig,
+) (*wrapLaunchConfig, error) {
 	if err := validateWrapCommandJail(wrapResp); err != nil {
 		return nil, err
 	}
@@ -49,7 +56,12 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 		}
 		notifySocket := wrapResp.NotifySocket
 
-		env := buildWrapEnv(wrapenv.Filter(os.Environ(), wrapResp.EnvPolicy), sessID, cfg.serverAddr, wrapResp.SafeToBypassShellShim)
+		env := buildWrapEnv(
+			wrapenv.Filter(os.Environ(), wrapResp.EnvPolicy),
+			sessID,
+			cfg.serverAddr,
+			wrapResp.SafeToBypassShellShim,
+		)
 		// Overlay sandbox.env_inject so injected vars reach the command in
 		// ptrace mode too, matching the seccomp/shim paths (issue #374).
 		env = envinject.Apply(env, wrapResp.EnvInject)
@@ -139,7 +151,11 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	// objects only after its trusted command-jail setup.
 	var compositionParentFile, compositionChildFile *os.File
 	if hasCompositionSetup {
-		setupFDs, setupErr := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+		setupFDs, setupErr := unix.Socketpair(
+			unix.AF_UNIX,
+			unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC,
+			0,
+		)
 		if setupErr != nil {
 			parentFile.Close()
 			childFile.Close()
@@ -147,7 +163,12 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 		}
 		compositionParentFile = os.NewFile(uintptr(setupFDs[0]), "composition-setup-parent")
 		compositionChildFile = os.NewFile(uintptr(setupFDs[1]), "composition-setup-child")
-		if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(setupFDs[1]), unix.F_SETFD, 0); errno != 0 {
+		if _, _, errno := unix.Syscall(
+			unix.SYS_FCNTL,
+			uintptr(setupFDs[1]),
+			unix.F_SETFD,
+			0,
+		); errno != 0 {
 			parentFile.Close()
 			childFile.Close()
 			compositionParentFile.Close()
@@ -174,7 +195,12 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 		signalChildFile = os.NewFile(uintptr(sigFds[1]), "signal-child")
 
 		// Clear CLOEXEC on the child fd so it survives exec
-		if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(sigFds[1]), unix.F_SETFD, 0); errno != 0 {
+		if _, _, errno := unix.Syscall(
+			unix.SYS_FCNTL,
+			uintptr(sigFds[1]),
+			unix.F_SETFD,
+			0,
+		); errno != 0 {
 			parentFile.Close()
 			childFile.Close()
 			if compositionParentFile != nil {
@@ -190,9 +216,19 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	// Bound every wrapper-control receive. Raw recvmsg/read calls bypass Go's
 	// netpoll deadlines, so use the socket-level timeout.
 	readyTimeout := unix.NsecToTimeval(notifySetupStatusTimeout.Nanoseconds())
-	_ = unix.SetsockoptTimeval(int(parentFile.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &readyTimeout)
+	_ = unix.SetsockoptTimeval(
+		int(parentFile.Fd()),
+		unix.SOL_SOCKET,
+		unix.SO_RCVTIMEO,
+		&readyTimeout,
+	)
 	if signalParentFile != nil {
-		_ = unix.SetsockoptTimeval(int(signalParentFile.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &readyTimeout)
+		_ = unix.SetsockoptTimeval(
+			int(signalParentFile.Fd()),
+			unix.SOL_SOCKET,
+			unix.SO_RCVTIMEO,
+			&readyTimeout,
+		)
 	}
 
 	var cleanupOnce sync.Once
@@ -218,7 +254,12 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	// Build env for the wrapped process. Remove every supervisor/wrapper control
 	// spelling before trusted values are added; os.Getenv uses the first exact
 	// entry, so append-only merging would let an inherited value bypass the jail.
-	env := buildWrapEnv(wrapenv.Filter(os.Environ(), wrapResp.EnvPolicy), sessID, cfg.serverAddr, wrapResp.SafeToBypassShellShim)
+	env := buildWrapEnv(
+		wrapenv.Filter(os.Environ(), wrapResp.EnvPolicy),
+		sessID,
+		cfg.serverAddr,
+		wrapResp.SafeToBypassShellShim,
+	)
 	// Overlay operator-configured sandbox.env_inject (override semantics)
 	// before the internal markers, matching the shim and server-spawned exec
 	// paths so injected vars reach the executed command (issue #374).
@@ -241,7 +282,9 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	// always selected locally from ExtraFiles and cannot be supplied by the
 	// server map or inherited environment.
 	for k, v := range wrapResp.WrapperEnv {
-		if strings.EqualFold(k, "AGENTSH_NOTIFY_SOCK_FD") || strings.EqualFold(k, "AGENTSH_SIGNAL_SOCK_FD") || strings.EqualFold(k, composition.SetupFDEnv) {
+		if strings.EqualFold(k, "AGENTSH_NOTIFY_SOCK_FD") ||
+			strings.EqualFold(k, "AGENTSH_SIGNAL_SOCK_FD") ||
+			strings.EqualFold(k, composition.SetupFDEnv) {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
@@ -278,7 +321,11 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 	if logErr != nil {
 		// Debug, not Warn: the CLI's stderr is the user's terminal and
 		// the wrapper falls back to it anyway (legacy behavior).
-		slog.Debug("wrap: wrapper log file unavailable; wrapper diagnostics stay on stderr", "error", logErr)
+		slog.Debug(
+			"wrap: wrapper log file unavailable; wrapper diagnostics stay on stderr",
+			"error",
+			logErr,
+		)
 	} else {
 		env = append(env, fmt.Sprintf("%s=%d", wrapperlog.EnvKey, 3+len(extraFiles)))
 		extraFiles = append(extraFiles, logFile)
@@ -320,7 +367,17 @@ func platformSetupWrap(ctx context.Context, wrapResp types.WrapInitResponse, ses
 			}
 		},
 		postStart: func(childPID int) error {
-			return completeLineageWrapHandoff(parentFile, compositionParentFile, signalParentFile, notifySocket, signalSocket, childPID, wrapResp.CommandJail != nil, sessID, foregroundTTY)
+			return completeLineageWrapHandoff(
+				parentFile,
+				compositionParentFile,
+				signalParentFile,
+				notifySocket,
+				signalSocket,
+				childPID,
+				wrapResp.CommandJail != nil,
+				sessID,
+				foregroundTTY,
+			)
 		},
 	}, nil
 }
@@ -354,7 +411,11 @@ func recvNotifyFD(sock *os.File) (int, error) {
 	for _, message := range msgs {
 		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SCM_RIGHTS {
 			closeReceived()
-			return -1, fmt.Errorf("unexpected notify ancillary level=%d type=%d", message.Header.Level, message.Header.Type)
+			return -1, fmt.Errorf(
+				"unexpected notify ancillary level=%d type=%d",
+				message.Header.Level,
+				message.Header.Type,
+			)
 		}
 		fds, parseErr := unix.ParseUnixRights(&message)
 		if parseErr != nil {
@@ -419,7 +480,9 @@ func validateWrapCommandJail(resp types.WrapInitResponse) error {
 	configRequiresJail := wire.CommandJail != nil && wire.CommandJail.Required
 	if resp.CommandJail == nil {
 		if configRequiresJail {
-			return fmt.Errorf("server requires a command jail but omitted Linux launch requirements")
+			return fmt.Errorf(
+				"server requires a command jail but omitted Linux launch requirements",
+			)
 		}
 		return nil
 	}
@@ -427,17 +490,25 @@ func validateWrapCommandJail(resp types.WrapInitResponse) error {
 		return fmt.Errorf("server returned incomplete Linux command-jail requirements")
 	}
 	if !configRequiresJail {
-		return fmt.Errorf("server returned Linux command-jail launch requirements without a required wrapper jail")
+		return fmt.Errorf(
+			"server returned Linux command-jail launch requirements without a required " +
+				"wrapper jail",
+		)
 	}
 	mode, err := wrapResponseCompositionMode(resp)
 	if err != nil {
 		return err
 	}
 	if mode != "" && !resp.CommandJail.MapCurrentUserToNonRoot {
-		return fmt.Errorf("server selected %s without the required non-root namespace identity", mode)
+		return fmt.Errorf(
+			"server selected %s without the required non-root namespace identity",
+			mode,
+		)
 	}
 	if mode == "" && resp.CommandJail.MapCurrentUserToNonRoot {
-		return fmt.Errorf("server requested a non-root namespace identity without sandbox composition")
+		return fmt.Errorf(
+			"server requested a non-root namespace identity without sandbox composition",
+		)
 	}
 	return nil
 }
@@ -464,7 +535,10 @@ func wrapResponseCompositionMode(resp types.WrapInitResponse) (string, error) {
 			return "", fmt.Errorf("sandbox composition is unavailable in ptrace wrap mode")
 		}
 		if resp.CommandJail == nil {
-			return "", fmt.Errorf("server selected %s without Linux command-jail requirements", wire.SandboxComposition)
+			return "", fmt.Errorf(
+				"server selected %s without Linux command-jail requirements",
+				wire.SandboxComposition,
+			)
 		}
 		return wire.SandboxComposition, nil
 	default:
@@ -472,7 +546,10 @@ func wrapResponseCompositionMode(resp types.WrapInitResponse) (string, error) {
 	}
 }
 
-func configureWrapCommandBoundary(attr *syscall.SysProcAttr, requirements *types.LinuxCommandJailRequirements) error {
+func configureWrapCommandBoundary(
+	attr *syscall.SysProcAttr,
+	requirements *types.LinuxCommandJailRequirements,
+) error {
 	if requirements == nil {
 		return nil
 	}
@@ -480,20 +557,27 @@ func configureWrapCommandBoundary(attr *syscall.SysProcAttr, requirements *types
 		return fmt.Errorf("strict command boundary requirements are incomplete")
 	}
 	if len(attr.UidMappings) != 0 || len(attr.GidMappings) != 0 || attr.Credential != nil {
-		return fmt.Errorf("strict command boundary cannot compose with existing credentials or mappings")
+		return fmt.Errorf(
+			"strict command boundary cannot compose with existing credentials or mappings",
+		)
 	}
 	if attr.Pdeathsig != 0 && attr.Pdeathsig != syscall.SIGKILL {
 		return fmt.Errorf("strict command boundary requires SIGKILL parent-death behavior")
 	}
-	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
+	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID |
+		unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
 	attr.Pdeathsig = syscall.SIGKILL
 	namespaceID := 0
 	if requirements.MapCurrentUserToNonRoot {
 		namespaceID = 1
 		attr.AmbientCaps = append(attr.AmbientCaps, unix.CAP_SYS_ADMIN, unix.CAP_SETPCAP)
 	}
-	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Geteuid(), Size: 1}}
-	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1}}
+	attr.UidMappings = []syscall.SysProcIDMap{
+		{ContainerID: namespaceID, HostID: os.Geteuid(), Size: 1},
+	}
+	attr.GidMappings = []syscall.SysProcIDMap{
+		{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1},
+	}
 	attr.GidMappingsEnableSetgroups = false
 	return nil
 }
@@ -527,7 +611,12 @@ func reclaimTerminal() {
 	signal.Ignore(syscall.SIGTTOU)
 	defer signal.Reset(syscall.SIGTTOU)
 	pgid := int32(unix.Getpgrp())
-	_, _, _ = unix.Syscall(unix.SYS_IOCTL, os.Stdin.Fd(), unix.TIOCSPGRP, uintptr(unsafe.Pointer(&pgid)))
+	_, _, _ = unix.Syscall(
+		unix.SYS_IOCTL,
+		os.Stdin.Fd(),
+		unix.TIOCSPGRP,
+		uintptr(unsafe.Pointer(&pgid)),
+	)
 }
 
 // stripEnvKey returns env without any KEY=... entries for key.

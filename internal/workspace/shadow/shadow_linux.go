@@ -124,7 +124,12 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 	return CreateMulti(ctx, id, []RootSpec{{Path: real}}, opts)
 }
 
-func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options) (*Workspace, error) {
+func CreateMulti(
+	ctx context.Context,
+	id string,
+	specs []RootSpec,
+	opts Options,
+) (*Workspace, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, fmt.Errorf("session id is required")
 	}
@@ -166,7 +171,8 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 		if name == "" {
 			name = cleanRootName(filepath.Base(realAbs))
 		}
-		if name == "" || name == "." || name == ".." || strings.ContainsRune(name, filepath.Separator) {
+		if name == "" || name == "." || name == ".." ||
+			strings.ContainsRune(name, filepath.Separator) {
 			return nil, fmt.Errorf("invalid workspace root name %q", spec.Name)
 		}
 		if _, ok := seenNames[name]; ok {
@@ -252,13 +258,22 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 				return nil, fmt.Errorf("chown shadow root %s: %w", roots[i].Name, err)
 			}
 		}
-		args := []string{"-a", "--delete", "--chown=" + strconv.Itoa(ownerUID) + ":" + strconv.Itoa(ownerGID)}
+		args := []string{
+			"-a",
+			"--delete",
+			"--chown=" + strconv.Itoa(ownerUID) + ":" + strconv.Itoa(ownerGID),
+		}
 		args = append(args, withTrailingSeparator(roots[i].Real), withTrailingSeparator(dest))
 		cmd := exec.CommandContext(ctx, rsyncExecutable, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if !isRsyncVanished(err) {
 				_ = cleanup.RemoveAllWritable(sessionDir)
-				return nil, fmt.Errorf("copy shadow workspace root %s: %w: %s", roots[i].Name, err, strings.TrimSpace(string(out)))
+				return nil, fmt.Errorf(
+					"copy shadow workspace root %s: %w: %s",
+					roots[i].Name,
+					err,
+					strings.TrimSpace(string(out)),
+				)
 			}
 		}
 		roots[i].Work = dest
@@ -286,7 +301,14 @@ func CreateMulti(ctx context.Context, id string, specs []RootSpec, opts Options)
 // OpenMulti reopens an already materialized retained shadow workspace without
 // copying from the real roots or deleting any shadow data. expected is the
 // durable identity captured after the original CreateMulti completed.
-func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, expected []Root, createdAt time.Time) (*Workspace, error) {
+func OpenMulti(
+	ctx context.Context,
+	id string,
+	specs []RootSpec,
+	opts Options,
+	expected []Root,
+	createdAt time.Time,
+) (*Workspace, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -346,7 +368,8 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 		if name == "" {
 			name = cleanRootName(filepath.Base(realAbs))
 		}
-		if name == "" || name == "." || name == ".." || strings.ContainsRune(name, filepath.Separator) {
+		if name == "" || name == "." || name == ".." ||
+			strings.ContainsRune(name, filepath.Separator) {
 			return nil, fmt.Errorf("invalid workspace root name %q", spec.Name)
 		}
 		if _, duplicate := seenNames[name]; duplicate {
@@ -365,7 +388,8 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 			return nil, fmt.Errorf("retained shadow root %s is not a real directory", name)
 		}
 		want := expected[i]
-		if want.Name != name || filepath.Clean(want.Real) != filepath.Clean(realAbs) || filepath.Clean(want.Work) != filepath.Clean(rootWork) {
+		if want.Name != name || filepath.Clean(want.Real) != filepath.Clean(realAbs) ||
+			filepath.Clean(want.Work) != filepath.Clean(rootWork) {
 			return nil, fmt.Errorf("retained shadow root %d identity mismatch", i)
 		}
 		roots = append(roots, Root{Name: name, Real: realAbs, Work: rootWork})
@@ -412,7 +436,12 @@ func OpenMulti(ctx context.Context, id string, specs []RootSpec, opts Options, e
 // OpenMaterialized binds an already staged single-root workspace to the
 // journaled shadow review/finalization machinery without copying or deleting
 // either tree. The caller owns lifecycle cleanup for the materialized work root.
-func OpenMaterialized(ctx context.Context, id, real, work string, opts Options, createdAt time.Time) (*Workspace, error) {
+func OpenMaterialized(
+	ctx context.Context,
+	id, real, work string,
+	opts Options,
+	createdAt time.Time,
+) (*Workspace, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -430,7 +459,8 @@ func OpenMaterialized(ctx context.Context, id, real, work string, opts Options, 
 	if err != nil {
 		return nil, err
 	}
-	if filepath.Clean(workAbs) != workAbs || realAbs == workAbs || pathContains(realAbs, workAbs) || pathContains(workAbs, realAbs) {
+	if filepath.Clean(workAbs) != workAbs || realAbs == workAbs || pathContains(realAbs, workAbs) ||
+		pathContains(workAbs, realAbs) {
 		return nil, fmt.Errorf("materialized shadow paths are invalid or overlap")
 	}
 	realInfo, err := os.Lstat(realAbs)
@@ -546,7 +576,11 @@ func (w *Workspace) persistFinalizationValueLocked(finalization *Finalization) e
 	if finalization == nil {
 		return fmt.Errorf("shadow finalization is absent")
 	}
-	if err := persistPrivateJSON(w.finalizationPath(), ".finalization-*.json", finalization); err != nil {
+	if err := persistPrivateJSON(
+		w.finalizationPath(),
+		".finalization-*.json",
+		finalization,
+	); err != nil {
 		return fmt.Errorf("persist shadow finalization: %w", err)
 	}
 	return nil
@@ -594,9 +628,19 @@ func (w *Workspace) loadReviewLocked() error {
 	if err := decoder.Decode(&review); err != nil {
 		return fmt.Errorf("decode retained shadow review: %w", err)
 	}
-	expected, digestErr := reviewDigest(review.Generation, review.BaseHash, review.ShadowHash, review.DiffHash)
-	if review.SchemaVersion != reviewSchemaVersion || review.Generation == 0 || !validSHA256Digest(review.Hash) ||
-		!validSHA256Digest(review.BaseHash) || !validSHA256Digest(review.ShadowHash) || !validSHA256Digest(review.DiffHash) || digestErr != nil || expected != review.Hash {
+	expected, digestErr := reviewDigest(
+		review.Generation,
+		review.BaseHash,
+		review.ShadowHash,
+		review.DiffHash,
+	)
+	if review.SchemaVersion != reviewSchemaVersion || review.Generation == 0 ||
+		!validSHA256Digest(review.Hash) ||
+		!validSHA256Digest(review.BaseHash) ||
+		!validSHA256Digest(review.ShadowHash) ||
+		!validSHA256Digest(review.DiffHash) ||
+		digestErr != nil ||
+		expected != review.Hash {
 		return fmt.Errorf("retained shadow review is invalid")
 	}
 	w.latestReview = review
@@ -617,10 +661,13 @@ func (w *Workspace) loadFinalizationLocked() error {
 	if err := decoder.Decode(&finalization); err != nil {
 		return fmt.Errorf("decode retained shadow finalization: %w", err)
 	}
-	if (finalization.SchemaVersion < 1 || finalization.SchemaVersion > 2) && finalization.SchemaVersion != finalizationSchemaVersion {
+	if (finalization.SchemaVersion < 1 || finalization.SchemaVersion > 2) &&
+		finalization.SchemaVersion != finalizationSchemaVersion {
 		return fmt.Errorf("retained shadow finalization has unsupported schema")
 	}
-	if finalization.SchemaVersion < finalizationSchemaVersion && finalization.Action == FinalizationAccept && finalization.SnapshotDir == "" {
+	if finalization.SchemaVersion < finalizationSchemaVersion &&
+		finalization.Action == FinalizationAccept &&
+		finalization.SnapshotDir == "" {
 		finalization.SnapshotDir = w.finalizationSnapshotDir()
 		if finalization.Phase != FinalizationApplied {
 			_, shadowHash, hashErr := w.treeHashesLocked(context.Background())
@@ -654,19 +701,37 @@ func (w *Workspace) loadFinalizationLocked() error {
 			return err
 		}
 	}
-	if finalization.SchemaVersion != finalizationSchemaVersion || strings.TrimSpace(finalization.ID) == "" ||
+	if finalization.SchemaVersion != finalizationSchemaVersion ||
+		strings.TrimSpace(finalization.ID) == "" ||
 		(finalization.Action != FinalizationAccept && finalization.Action != FinalizationReject) ||
-		(finalization.Phase != FinalizationPrepared && finalization.Phase != FinalizationApplying && finalization.Phase != FinalizationApplied) || finalization.CreatedAt.IsZero() {
+		(finalization.Phase != FinalizationPrepared &&
+			finalization.Phase != FinalizationApplying &&
+			finalization.Phase != FinalizationApplied) ||
+		finalization.CreatedAt.IsZero() {
 		return fmt.Errorf("retained shadow finalization is invalid")
 	}
-	if finalization.Action == FinalizationAccept && (finalization.ReviewGeneration == 0 || finalization.ReviewHash == "" || finalization.ShadowHash == "" ||
-		!filepath.IsAbs(finalization.SnapshotDir) || filepath.Clean(finalization.SnapshotDir) != finalization.SnapshotDir || finalization.SnapshotDir != w.finalizationSnapshotDir()) {
+	if finalization.Action == FinalizationAccept &&
+		(finalization.ReviewGeneration == 0 ||
+			finalization.ReviewHash == "" ||
+			finalization.ShadowHash == "" ||
+			!filepath.IsAbs(finalization.SnapshotDir) ||
+			filepath.Clean(finalization.SnapshotDir) != finalization.SnapshotDir ||
+			finalization.SnapshotDir != w.finalizationSnapshotDir()) {
 		return fmt.Errorf("retained shadow accept finalization is incomplete")
 	}
 	if finalization.Action == FinalizationAccept {
-		expected, digestErr := reviewDigest(finalization.ReviewGeneration, finalization.BaseHash, finalization.ShadowHash, finalization.DiffHash)
-		if digestErr != nil || expected != finalization.ReviewHash || w.latestReview.Generation != finalization.ReviewGeneration || w.latestReview.Hash != finalization.ReviewHash ||
-			w.latestReview.BaseHash != finalization.BaseHash || w.latestReview.ShadowHash != finalization.ShadowHash || w.latestReview.DiffHash != finalization.DiffHash {
+		expected, digestErr := reviewDigest(
+			finalization.ReviewGeneration,
+			finalization.BaseHash,
+			finalization.ShadowHash,
+			finalization.DiffHash,
+		)
+		if digestErr != nil || expected != finalization.ReviewHash ||
+			w.latestReview.Generation != finalization.ReviewGeneration ||
+			w.latestReview.Hash != finalization.ReviewHash ||
+			w.latestReview.BaseHash != finalization.BaseHash ||
+			w.latestReview.ShadowHash != finalization.ShadowHash ||
+			w.latestReview.DiffHash != finalization.DiffHash {
 			return fmt.Errorf("retained shadow finalization does not match its review")
 		}
 	}
@@ -715,7 +780,10 @@ func (w *Workspace) Review(ctx context.Context) (Review, error) {
 		return Review{}, err
 	}
 	if verifiedBase != baseHash || verifiedShadow != shadowHash {
-		return Review{}, fmt.Errorf("%w: workspace changed while review was generated", ErrStaleReview)
+		return Review{}, fmt.Errorf(
+			"%w: workspace changed while review was generated",
+			ErrStaleReview,
+		)
 	}
 	diffSum := sha256.Sum256(out)
 	generation := w.latestReview.Generation + 1
@@ -777,16 +845,37 @@ func (w *Workspace) diffLocked(ctx context.Context) ([]byte, error) {
 			for _, ex := range w.diffExcludes {
 				planArgs = append(planArgs, "--exclude="+ex)
 			}
-			planArgs = append(planArgs, withTrailingSeparator(root.Work), withTrailingSeparator(root.Real))
-			planOut, planErr := exec.CommandContext(ctx, rsyncExecutable, planArgs...).CombinedOutput()
+			planArgs = append(
+				planArgs,
+				withTrailingSeparator(root.Work),
+				withTrailingSeparator(root.Real),
+			)
+			planOut, planErr := exec.CommandContext(ctx, rsyncExecutable, planArgs...).
+				CombinedOutput()
 			if planErr == nil {
-				fmt.Fprintf(&combined, "Itemized shadow Apply plan for root %s (unified diff unavailable):\n", root.Name)
+				fmt.Fprintf(
+					&combined,
+					"Itemized shadow Apply plan for root %s (unified diff unavailable):\n",
+					root.Name,
+				)
 				combined.Write(planOut)
 				continue
 			}
-			return combined.Bytes(), fmt.Errorf("diff shadow workspace root %s: %w: %s; itemized fallback: %v: %s", root.Name, err, strings.TrimSpace(string(out)), planErr, strings.TrimSpace(string(planOut)))
+			return combined.Bytes(), fmt.Errorf(
+				"diff shadow workspace root %s: %w: %s; itemized fallback: %v: %s",
+				root.Name,
+				err,
+				strings.TrimSpace(string(out)),
+				planErr,
+				strings.TrimSpace(string(planOut)),
+			)
 		}
-		return combined.Bytes(), fmt.Errorf("diff shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
+		return combined.Bytes(), fmt.Errorf(
+			"diff shadow workspace root %s: %w: %s",
+			root.Name,
+			err,
+			strings.TrimSpace(string(out)),
+		)
 	}
 	return combined.Bytes(), nil
 }
@@ -798,7 +887,10 @@ func (w *Workspace) workspaceRootsLocked() []Root {
 	return []Root{{Name: filepath.Base(w.Real), Real: w.Real, Work: w.Work}}
 }
 
-func (w *Workspace) hashRootSetLocked(ctx context.Context, pathFor func(Root) string) (string, error) {
+func (w *Workspace) hashRootSetLocked(
+	ctx context.Context,
+	pathFor func(Root) string,
+) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -879,7 +971,10 @@ func hashTree(ctx context.Context, hasher io.Writer, root string, excludes []str
 		if err := writeField("kind", []byte(kind)); err != nil {
 			return err
 		}
-		if err := writeField("mode", []byte(strconv.FormatUint(uint64(info.Mode()), 8))); err != nil {
+		if err := writeField(
+			"mode",
+			[]byte(strconv.FormatUint(uint64(info.Mode()), 8)),
+		); err != nil {
 			return err
 		}
 		switch kind {
@@ -924,11 +1019,16 @@ func (w *Workspace) ValidateReview(ctx context.Context, generation uint64, hash 
 	return w.validateReviewLocked(ctx, generation, hash)
 }
 
-func (w *Workspace) validateReviewLocked(ctx context.Context, generation uint64, hash string) error {
+func (w *Workspace) validateReviewLocked(
+	ctx context.Context,
+	generation uint64,
+	hash string,
+) error {
 	if w.State != StateActive || w.finalization != nil {
 		return ErrInactive
 	}
-	if generation == 0 || generation != w.latestReview.Generation || hash == "" || hash != w.latestReview.Hash {
+	if generation == 0 || generation != w.latestReview.Generation || hash == "" ||
+		hash != w.latestReview.Hash {
 		return ErrStaleReview
 	}
 	baseHash, shadowHash, err := w.treeHashesLocked(ctx)
@@ -963,21 +1063,34 @@ func (w *Workspace) createFinalizationSnapshotLocked(ctx context.Context) error 
 			args = append(args, "--exclude="+excluded)
 		}
 		args = append(args, withTrailingSeparator(root.Work), withTrailingSeparator(destination))
-		if output, err := exec.CommandContext(ctx, rsyncExecutable, args...).CombinedOutput(); err != nil {
-			return fmt.Errorf("snapshot shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(output)))
+		if output, err := exec.CommandContext(ctx, rsyncExecutable, args...).
+			CombinedOutput(); err != nil {
+			return fmt.Errorf(
+				"snapshot shadow workspace root %s: %w: %s",
+				root.Name,
+				err,
+				strings.TrimSpace(string(output)),
+			)
 		}
 	}
 	return nil
 }
 
-func (w *Workspace) PrepareAccept(ctx context.Context, finalizationID string, generation uint64, hash string) (Finalization, error) {
+func (w *Workspace) PrepareAccept(
+	ctx context.Context,
+	finalizationID string,
+	generation uint64,
+	hash string,
+) (Finalization, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if strings.TrimSpace(finalizationID) == "" {
 		return Finalization{}, fmt.Errorf("shadow finalization id is required")
 	}
 	if w.finalization != nil {
-		if w.finalization.ID == finalizationID && w.finalization.Action == FinalizationAccept && w.finalization.ReviewGeneration == generation && w.finalization.ReviewHash == hash {
+		if w.finalization.ID == finalizationID && w.finalization.Action == FinalizationAccept &&
+			w.finalization.ReviewGeneration == generation &&
+			w.finalization.ReviewHash == hash {
 			return *w.finalization, nil
 		}
 		return Finalization{}, fmt.Errorf("a different shadow finalization is already prepared")
@@ -997,10 +1110,21 @@ func (w *Workspace) PrepareAccept(ctx context.Context, finalizationID string, ge
 		return Finalization{}, ErrStaleReview
 	}
 	finalization := &Finalization{
-		SchemaVersion: finalizationSchemaVersion, ID: finalizationID, Action: FinalizationAccept, Phase: FinalizationPrepared,
-		ReviewGeneration: generation, ReviewHash: hash, BaseHash: w.latestReview.BaseHash,
-		ShadowHash: w.latestReview.ShadowHash, DiffHash: w.latestReview.DiffHash, SnapshotDir: w.finalizationSnapshotDir(),
-		AcceptExcludes: append([]string(nil), w.acceptExcludes...), AcceptChown: w.acceptChown, CreatedAt: time.Now().UTC(),
+		SchemaVersion:    finalizationSchemaVersion,
+		ID:               finalizationID,
+		Action:           FinalizationAccept,
+		Phase:            FinalizationPrepared,
+		ReviewGeneration: generation,
+		ReviewHash:       hash,
+		BaseHash:         w.latestReview.BaseHash,
+		ShadowHash:       w.latestReview.ShadowHash,
+		DiffHash:         w.latestReview.DiffHash,
+		SnapshotDir:      w.finalizationSnapshotDir(),
+		AcceptExcludes: append(
+			[]string(nil),
+			w.acceptExcludes...),
+		AcceptChown: w.acceptChown,
+		CreatedAt:   time.Now().UTC(),
 	}
 	w.finalization = finalization
 	if err := w.persistFinalizationLocked(); err != nil {
@@ -1011,7 +1135,10 @@ func (w *Workspace) PrepareAccept(ctx context.Context, finalizationID string, ge
 	return *finalization, nil
 }
 
-func (w *Workspace) PrepareReject(ctx context.Context, finalizationID string) (Finalization, error) {
+func (w *Workspace) PrepareReject(
+	ctx context.Context,
+	finalizationID string,
+) (Finalization, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -1029,7 +1156,13 @@ func (w *Workspace) PrepareReject(ctx context.Context, finalizationID string) (F
 	if w.State != StateActive {
 		return Finalization{}, ErrInactive
 	}
-	finalization := &Finalization{SchemaVersion: finalizationSchemaVersion, ID: finalizationID, Action: FinalizationReject, Phase: FinalizationPrepared, CreatedAt: time.Now().UTC()}
+	finalization := &Finalization{
+		SchemaVersion: finalizationSchemaVersion,
+		ID:            finalizationID,
+		Action:        FinalizationReject,
+		Phase:         FinalizationPrepared,
+		CreatedAt:     time.Now().UTC(),
+	}
 	w.finalization = finalization
 	if err := w.persistFinalizationLocked(); err != nil {
 		w.finalization = nil
@@ -1123,10 +1256,19 @@ func (w *Workspace) applyAcceptLocked(ctx context.Context) error {
 		if w.acceptChown && w.OwnerUID >= 0 && w.OwnerGID >= 0 {
 			args = append(args, "--chown="+strconv.Itoa(w.OwnerUID)+":"+strconv.Itoa(w.OwnerGID))
 		}
-		args = append(args, withTrailingSeparator(w.snapshotRoot(root)), withTrailingSeparator(root.Real))
+		args = append(
+			args,
+			withTrailingSeparator(w.snapshotRoot(root)),
+			withTrailingSeparator(root.Real),
+		)
 		cmd := exec.CommandContext(ctx, rsyncExecutable, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("accept shadow workspace root %s: %w: %s", root.Name, err, strings.TrimSpace(string(out)))
+			return fmt.Errorf(
+				"accept shadow workspace root %s: %w: %s",
+				root.Name,
+				err,
+				strings.TrimSpace(string(out)),
+			)
 		}
 	}
 	baseHash, err := w.hashRootSetLocked(ctx, func(root Root) string { return root.Real })
@@ -1146,7 +1288,9 @@ func (w *Workspace) applyAcceptLocked(ctx context.Context) error {
 func (w *Workspace) AcceptReviewed(ctx context.Context, generation uint64, hash string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.finalization == nil || w.finalization.Action != FinalizationAccept || w.finalization.ReviewGeneration != generation || w.finalization.ReviewHash != hash {
+	if w.finalization == nil || w.finalization.Action != FinalizationAccept ||
+		w.finalization.ReviewGeneration != generation ||
+		w.finalization.ReviewHash != hash {
 		return ErrStaleReview
 	}
 	return w.applyFinalizationLocked(ctx, w.finalization.ID)
@@ -1217,17 +1361,20 @@ func owner(info fs.FileInfo) (int, int) {
 
 func pathContains(parent, child string) bool {
 	rel, err := filepath.Rel(parent, child)
-	return err == nil && rel != ".." && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return err == nil && rel != ".." && rel != "." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func validateNonOverlappingRoots(roots []Root, sessionDir string) error {
 	for i, root := range roots {
-		if root.Real == sessionDir || pathContains(root.Real, sessionDir) || pathContains(sessionDir, root.Real) {
+		if root.Real == sessionDir || pathContains(root.Real, sessionDir) ||
+			pathContains(sessionDir, root.Real) {
 			return fmt.Errorf("shadow session directory overlaps workspace root %s", root.Real)
 		}
 		for j := i + 1; j < len(roots); j++ {
 			other := roots[j].Real
-			if root.Real == other || pathContains(root.Real, other) || pathContains(other, root.Real) {
+			if root.Real == other || pathContains(root.Real, other) ||
+				pathContains(other, root.Real) {
 				return fmt.Errorf("workspace roots overlap: %s and %s", root.Real, other)
 			}
 		}

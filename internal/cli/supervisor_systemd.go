@@ -43,7 +43,16 @@ type detachedSupervisorLaunch struct {
 }
 
 func detachedSupervisorRunArgs(stateDir, sockPath, configPath string) []string {
-	return []string{"supervisor", "run", "--state-dir", stateDir, "--socket", sockPath, "--config", configPath}
+	return []string{
+		"supervisor",
+		"run",
+		"--state-dir",
+		stateDir,
+		"--socket",
+		sockPath,
+		"--config",
+		configPath,
+	}
 }
 
 func buildDetachedSupervisorLaunch(req detachedSupervisorLaunchRequest) detachedSupervisorLaunch {
@@ -68,7 +77,15 @@ func buildDetachedSupervisorLaunch(req detachedSupervisorLaunchRequest) detached
 	launch.Path = systemdRunPath
 	serviceEnv := withoutEnvAssignments(req.ServiceEnv, detached.EnvSupervisorLaunchMode)
 	serviceEnv = append(serviceEnv, detached.EnvSupervisorLaunchMode+"=systemd-user-delegated")
-	launch.Args = buildSystemdRunDetachedSupervisorArgs(unit, req.Dir, req.ServiceEnvFile, req.ServiceLogFile, serviceEnv, req.Exe, req.Args)
+	launch.Args = buildSystemdRunDetachedSupervisorArgs(
+		unit,
+		req.Dir,
+		req.ServiceEnvFile,
+		req.ServiceLogFile,
+		serviceEnv,
+		req.Exe,
+		req.Args,
+	)
 	// systemd-run needs the user's bus/runtime environment, but must never carry
 	// either credential in its own inspectable environment. The service receives
 	// secrets only through the protected EnvironmentFile.
@@ -111,7 +128,12 @@ func chooseDetachedSupervisorSystemdRun(req detachedSupervisorLaunchRequest) (st
 	return systemdRunPath, true
 }
 
-func buildSystemdRunDetachedSupervisorArgs(unit, workDir, serviceEnvFile, serviceLogFile string, serviceEnv []string, exe string, supervisorArgs []string) []string {
+func buildSystemdRunDetachedSupervisorArgs(
+	unit, workDir, serviceEnvFile, serviceLogFile string,
+	serviceEnv []string,
+	exe string,
+	supervisorArgs []string,
+) []string {
 	privateTmp := "yes"
 	if detachedSupervisorNeedsHostTmp(serviceEnv) {
 		// OpenSSH creates forwarded-agent sockets below the host /tmp. A private
@@ -176,7 +198,16 @@ func detachedSupervisorNeedsHostTmp(serviceEnv []string) bool {
 	}
 	clean := filepath.Clean(strings.TrimSpace(sock))
 	return strings.HasPrefix(clean, string(filepath.Separator)+"tmp"+string(filepath.Separator)) ||
-		strings.HasPrefix(clean, string(filepath.Separator)+"var"+string(filepath.Separator)+"tmp"+string(filepath.Separator))
+		strings.HasPrefix(
+			clean,
+			string(
+				filepath.Separator,
+			)+"var"+string(
+				filepath.Separator,
+			)+"tmp"+string(
+				filepath.Separator,
+			),
+		)
 }
 
 func isSensitiveSupervisorAssignment(assignment string) bool {
@@ -184,7 +215,11 @@ func isSensitiveSupervisorAssignment(assignment string) bool {
 	if !ok {
 		return false
 	}
-	for _, sensitive := range []string{"AGENTSH_DETACHED_EVENT_TOKEN", nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce} {
+	for _, sensitive := range []string{
+		"AGENTSH_DETACHED_EVENT_TOKEN",
+		nethelper.EnvHelperInstanceCredential,
+		nethelper.EnvSessionNonce,
+	} {
 		if strings.EqualFold(strings.TrimSpace(name), sensitive) {
 			return true
 		}
@@ -350,7 +385,11 @@ func stopDetachedSupervisorSystemdUnit(ctx context.Context, unit string) error {
 	// --collect can remove a transient unit between the load-state query and
 	// stop. Recheck machine-readable state so that an already absent exact unit
 	// is idempotent without relying on localized stderr text.
-	if current, stateErr := detachedSupervisorSystemdUnitLoadState(ctx, unit); stateErr == nil && current == "not-found" {
+	if current, stateErr := detachedSupervisorSystemdUnitLoadState(
+		ctx,
+		unit,
+	); stateErr == nil &&
+		current == "not-found" {
 		return nil
 	}
 	msg := strings.TrimSpace(string(out))
@@ -361,7 +400,15 @@ func stopDetachedSupervisorSystemdUnit(ctx context.Context, unit string) error {
 }
 
 func detachedSupervisorSystemdUnitLoadState(ctx context.Context, unit string) (string, error) {
-	cmd := exec.CommandContext(ctx, "systemctl", "--user", "show", "--property=LoadState", "--value", unit)
+	cmd := exec.CommandContext(
+		ctx,
+		"systemctl",
+		"--user",
+		"show",
+		"--property=LoadState",
+		"--value",
+		unit,
+	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))

@@ -288,11 +288,13 @@ func TestEncodeBatchMessage_DataLossData_ThreeFrames(t *testing.T) {
 	if msgs[2].GetEventBatch() == nil {
 		t.Fatalf("msgs[2]: expected EventBatch, got %T", msgs[2].Msg)
 	}
-	if msgs[0].GetEventBatch().GetFromSequence() != 10 || msgs[0].GetEventBatch().GetToSequence() != 10 {
+	if msgs[0].GetEventBatch().GetFromSequence() != 10 ||
+		msgs[0].GetEventBatch().GetToSequence() != 10 {
 		t.Fatalf("msgs[0] EventBatch: from=%d to=%d, want 10/10",
 			msgs[0].GetEventBatch().GetFromSequence(), msgs[0].GetEventBatch().GetToSequence())
 	}
-	if msgs[2].GetEventBatch().GetFromSequence() != 12 || msgs[2].GetEventBatch().GetToSequence() != 12 {
+	if msgs[2].GetEventBatch().GetFromSequence() != 12 ||
+		msgs[2].GetEventBatch().GetToSequence() != 12 {
 		t.Fatalf("msgs[2] EventBatch: from=%d to=%d, want 12/12",
 			msgs[2].GetEventBatch().GetFromSequence(), msgs[2].GetEventBatch().GetToSequence())
 	}
@@ -552,7 +554,11 @@ func TestRunLive_PolicyPushEvent_InvokesOnPolicyPushed(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		_, runErr := tr.runLive(ctx, rdr, LiveOptions{
-			Batcher:     BatcherOptions{MaxRecords: 8, MaxBytes: 64 * 1024, MaxAge: 20 * time.Millisecond},
+			Batcher: BatcherOptions{
+				MaxRecords: 8,
+				MaxBytes:   64 * 1024,
+				MaxAge:     20 * time.Millisecond,
+			},
 			MaxInflight: 8,
 		})
 		done <- runErr

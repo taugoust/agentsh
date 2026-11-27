@@ -18,7 +18,8 @@ func TestClassifyCreateTable_Smoke(t *testing.T) {
 	if prim.Subtype != effects.SubtypeCreateTable {
 		t.Fatalf("primary subtype: got %v want create_table", prim.Subtype)
 	}
-	if len(prim.Objects) != 1 || prim.Objects[0].Name != "foo" || prim.Objects[0].Kind != effects.ObjectTable {
+	if len(prim.Objects) != 1 || prim.Objects[0].Name != "foo" ||
+		prim.Objects[0].Kind != effects.ObjectTable {
 		t.Fatalf("objects: got %+v want [{table foo}]", prim.Objects)
 	}
 }
@@ -59,7 +60,10 @@ func TestClassifyCreateIndex(t *testing.T) {
 		t.Fatalf("index object: got %+v", prim.Objects[0])
 	}
 	if prim.Objects[0].Schema != "public" {
-		t.Fatalf("index schema: got %q want public (inherited from relation)", prim.Objects[0].Schema)
+		t.Fatalf(
+			"index schema: got %q want public (inherited from relation)",
+			prim.Objects[0].Schema,
+		)
 	}
 }
 

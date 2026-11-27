@@ -20,7 +20,9 @@ import (
 // plus one live INPROGRESS, leaving a sealed file we can corrupt safely.
 func TestWAL_CRCFailureEmitsCoarseLossRange(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,14 +66,21 @@ func TestWAL_CRCFailureEmitsCoarseLossRange(t *testing.T) {
 	// flip invalidates CRC.
 	const corruptOff = SegmentHeaderSize + 30
 	if len(data) <= corruptOff {
-		t.Fatalf("segment %s too short (%d bytes) to corrupt at off=%d", sealed, len(data), corruptOff)
+		t.Fatalf(
+			"segment %s too short (%d bytes) to corrupt at off=%d",
+			sealed,
+			len(data),
+			corruptOff,
+		)
 	}
 	data[corruptOff] ^= 0xFF
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	w2, err := Open(Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w2, err := Open(
+		Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +116,10 @@ func TestWAL_CRCFailureEmitsCoarseLossRange(t *testing.T) {
 		t.Errorf("Loss.Reason = %q, want %q", lossRec.Loss.Reason, "crc_corruption")
 	}
 	if !sawDataBeforeLoss {
-		t.Errorf("expected at least one RecordData from earlier sealed segments before the loss; saw none")
+		t.Errorf(
+			"expected at least one RecordData from earlier sealed segments before the loss; " +
+				"saw none",
+		)
 	}
 }
 
@@ -125,7 +137,9 @@ func TestReader_CRCInLaterSegmentReportsContinuingSequence(t *testing.T) {
 	// (seq=2 on disk) so the CRC fault lands in a NON-INITIAL segment
 	// within the same generation.
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +184,9 @@ func TestReader_CRCInLaterSegmentReportsContinuingSequence(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w2, err := Open(Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate})
+	w2, err := Open(
+		Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +222,10 @@ func TestReader_CRCInLaterSegmentReportsContinuingSequence(t *testing.T) {
 	// segment + 1). With fix: lastGoodSeq carries across the segment
 	// boundary, so after seq=1 was read from segment idx=1, FromSequence=2.
 	if loss.FromSequence != 2 {
-		t.Errorf("loss.FromSequence = %d, want 2 (continuing from segment idx=1)", loss.FromSequence)
+		t.Errorf(
+			"loss.FromSequence = %d, want 2 (continuing from segment idx=1)",
+			loss.FromSequence,
+		)
 	}
 }
 
@@ -216,7 +235,9 @@ func TestReader_CRCInLaterSegmentReportsContinuingSequence(t *testing.T) {
 // fields preserved (FromSequence, ToSequence, Generation, Reason).
 func TestReader_SurfacesAppendedLossMarker(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

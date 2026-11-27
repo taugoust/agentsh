@@ -35,7 +35,11 @@ file_rules:
     operations: ["*"]
     decision: allow
 `
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policyContent), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policyContent),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	workspace := filepath.Join(dir, "ws")
@@ -81,7 +85,12 @@ file_rules:
 	// Create session.
 	createReq, _ := structpb.NewStruct(map[string]any{"workspace": workspace, "policy": "default"})
 	createResp := &structpb.Struct{}
-	if err := conn.Invoke(ctx, "/agentsh.v1.Agentsh/CreateSession", createReq, createResp); err != nil {
+	if err := conn.Invoke(
+		ctx,
+		"/agentsh.v1.Agentsh/CreateSession",
+		createReq,
+		createResp,
+	); err != nil {
 		t.Fatal(err)
 	}
 	cb, _ := protojson.Marshal(createResp)
@@ -171,7 +180,11 @@ file_rules:
     operations: ["*"]
     decision: allow
 `
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policyContent), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policyContent),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	workspace := filepath.Join(dir, "ws")
@@ -217,7 +230,12 @@ file_rules:
 	// Create session.
 	createReq, _ := structpb.NewStruct(map[string]any{"workspace": workspace, "policy": "default"})
 	createResp := &structpb.Struct{}
-	if err := conn.Invoke(ctx, "/agentsh.v1.Agentsh/CreateSession", createReq, createResp); err != nil {
+	if err := conn.Invoke(
+		ctx,
+		"/agentsh.v1.Agentsh/CreateSession",
+		createReq,
+		createResp,
+	); err != nil {
 		t.Fatal(err)
 	}
 	cb, _ := protojson.Marshal(createResp)
@@ -262,7 +280,8 @@ file_rules:
 			break
 		}
 		b, _ := protojson.Marshal(msg)
-		if strings.Contains(string(b), "\"type\":\"command_finished\"") || strings.Contains(string(b), "\"type\":\"command_started\"") {
+		if strings.Contains(string(b), "\"type\":\"command_finished\"") ||
+			strings.Contains(string(b), "\"type\":\"command_started\"") {
 			cancel()
 			select {
 			case <-errCh:

@@ -72,7 +72,10 @@ func (m *Manifest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest string, allowedPolicies []string) error {
+func (m Manifest) Validate(
+	workspace, expectedProfile, expectedProfileDigest string,
+	allowedPolicies []string,
+) error {
 	switch m.ProtocolVersion {
 	case ProtocolVersionV2:
 		if m.VolumeID != "" {
@@ -92,7 +95,9 @@ func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest str
 		if !canonicalVolumeID(m.VolumeID) {
 			return fmt.Errorf("guest control volume identity is invalid")
 		}
-		if !validHexSecret(m.EgressToken) || secretEqual(m.EgressToken, m.ControlToken) || secretEqual(m.EgressToken, m.SupervisorToken) || secretEqual(m.EgressToken, m.LaunchNonce) {
+		if !validHexSecret(m.EgressToken) || secretEqual(m.EgressToken, m.ControlToken) ||
+			secretEqual(m.EgressToken, m.SupervisorToken) ||
+			secretEqual(m.EgressToken, m.LaunchNonce) {
 			return fmt.Errorf("guest control egress token is invalid or reused")
 		}
 	default:
@@ -104,16 +109,21 @@ func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest str
 	if !validHexSecret(m.LaunchNonce) {
 		return fmt.Errorf("guest control launch nonce is invalid")
 	}
-	if !validHexSecret(m.ControlToken) || !validHexSecret(m.SupervisorToken) || secretEqual(m.ControlToken, m.SupervisorToken) {
+	if !validHexSecret(m.ControlToken) || !validHexSecret(m.SupervisorToken) ||
+		secretEqual(m.ControlToken, m.SupervisorToken) {
 		return fmt.Errorf("guest control tokens are invalid or reused")
 	}
 	if !validName(m.Profile) || !validName(m.Policy) {
 		return fmt.Errorf("guest control profile or policy is invalid")
 	}
 	if m.Profile != expectedProfile || m.ProfileDigest != expectedProfileDigest {
-		return fmt.Errorf("guest control profile identity does not match the compiled guest profile")
+		return fmt.Errorf(
+			"guest control profile identity does not match the compiled guest profile",
+		)
 	}
-	if !strings.HasPrefix(m.ProfileDigest, "sha256:") || len(m.ProfileDigest) != len("sha256:")+64 || !validHex(m.ProfileDigest[len("sha256:"):]) {
+	if !strings.HasPrefix(m.ProfileDigest, "sha256:") ||
+		len(m.ProfileDigest) != len("sha256:")+64 ||
+		!validHex(m.ProfileDigest[len("sha256:"):]) {
 		return fmt.Errorf("guest control profile digest is invalid")
 	}
 	workspace = filepath.Clean(workspace)
@@ -126,10 +136,16 @@ func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest str
 	if m.VSockCID < 3 || m.VSockCID == ^uint32(0) {
 		return fmt.Errorf("guest control VSOCK CID is invalid")
 	}
-	if m.VSockPort < 1024 || m.VSockPort > 65535 || m.SupervisorPort < 1024 || m.SupervisorPort > 65535 || m.SupervisorPort == m.VSockPort {
+	if m.VSockPort < 1024 || m.VSockPort > 65535 || m.SupervisorPort < 1024 ||
+		m.SupervisorPort > 65535 ||
+		m.SupervisorPort == m.VSockPort {
 		return fmt.Errorf("guest control VSOCK ports are invalid or reused")
 	}
-	if m.ProtocolVersion == ProtocolVersionV4 && (m.EgressPort < 1024 || m.EgressPort > 65535 || m.EgressPort == m.VSockPort || m.EgressPort == m.SupervisorPort) {
+	if m.ProtocolVersion == ProtocolVersionV4 &&
+		(m.EgressPort < 1024 ||
+			m.EgressPort > 65535 ||
+			m.EgressPort == m.VSockPort ||
+			m.EgressPort == m.SupervisorPort) {
 		return fmt.Errorf("guest control egress VSOCK port is invalid or reused")
 	}
 	if m.ExpectedGeneration == 0 {
@@ -138,7 +154,10 @@ func (m Manifest) Validate(workspace, expectedProfile, expectedProfileDigest str
 	return nil
 }
 
-func ReadManifest(path, workspace, expectedProfile, expectedProfileDigest string, allowedPolicies []string) (Manifest, error) {
+func ReadManifest(
+	path, workspace, expectedProfile, expectedProfileDigest string,
+	allowedPolicies []string,
+) (Manifest, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return Manifest{}, fmt.Errorf("guest control manifest path must be clean and absolute")
 	}
@@ -146,8 +165,12 @@ func ReadManifest(path, workspace, expectedProfile, expectedProfileDigest string
 	if err != nil {
 		return Manifest{}, fmt.Errorf("inspect guest control manifest: %w", err)
 	}
-	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o077 != 0 || before.Size() > MaxMessageBytes {
-		return Manifest{}, fmt.Errorf("guest control manifest has unsafe type, permissions, or size")
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 ||
+		before.Mode().Perm()&0o077 != 0 ||
+		before.Size() > MaxMessageBytes {
+		return Manifest{}, fmt.Errorf(
+			"guest control manifest has unsafe type, permissions, or size",
+		)
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -170,7 +193,12 @@ func ReadManifest(path, workspace, expectedProfile, expectedProfileDigest string
 	if err := requireJSONEOF(decoder); err != nil {
 		return Manifest{}, fmt.Errorf("decode guest control manifest: %w", err)
 	}
-	if err := manifest.Validate(workspace, expectedProfile, expectedProfileDigest, allowedPolicies); err != nil {
+	if err := manifest.Validate(
+		workspace,
+		expectedProfile,
+		expectedProfileDigest,
+		allowedPolicies,
+	); err != nil {
 		return Manifest{}, err
 	}
 	return manifest, nil
@@ -216,18 +244,36 @@ func (h *Handshake) UnmarshalJSON(data []byte) error {
 }
 
 func (h Handshake) Validate(manifest Manifest) error {
-	if h.ProtocolVersion != manifest.ProtocolVersion || h.SessionID != manifest.SessionID || h.Generation != manifest.ExpectedGeneration ||
-		h.LaunchNonce != manifest.LaunchNonce || h.Profile != manifest.Profile || h.ProfileDigest != manifest.ProfileDigest ||
-		h.Policy != manifest.Policy || h.VSockCID != manifest.VSockCID || h.VSockPort != manifest.VSockPort || h.SupervisorPort != manifest.SupervisorPort ||
-		h.VolumeID != manifest.VolumeID || h.EgressPort != manifest.EgressPort || (manifest.ProtocolVersion != ProtocolVersionV4 && h.EgressReady) {
+	if h.ProtocolVersion != manifest.ProtocolVersion || h.SessionID != manifest.SessionID ||
+		h.Generation != manifest.ExpectedGeneration ||
+		h.LaunchNonce != manifest.LaunchNonce ||
+		h.Profile != manifest.Profile ||
+		h.ProfileDigest != manifest.ProfileDigest ||
+		h.Policy != manifest.Policy ||
+		h.VSockCID != manifest.VSockCID ||
+		h.VSockPort != manifest.VSockPort ||
+		h.SupervisorPort != manifest.SupervisorPort ||
+		h.VolumeID != manifest.VolumeID ||
+		h.EgressPort != manifest.EgressPort ||
+		(manifest.ProtocolVersion != ProtocolVersionV4 && h.EgressReady) {
 		return fmt.Errorf("guest control handshake identity mismatch")
 	}
-	if strings.TrimSpace(h.IncarnationID) == "" || strings.TrimSpace(h.GuestBootID) == "" || strings.TrimSpace(h.AgentSHVersion) == "" || !validHexSecret(h.EventToken) {
+	if strings.TrimSpace(h.IncarnationID) == "" || strings.TrimSpace(h.GuestBootID) == "" ||
+		strings.TrimSpace(h.AgentSHVersion) == "" ||
+		!validHexSecret(h.EventToken) {
 		return fmt.Errorf("guest control handshake is incomplete")
 	}
-	if !slices.Contains(h.Capabilities, "exec_probe") || !slices.Contains(h.Capabilities, "shutdown") || !slices.Contains(h.Capabilities, "supervisor_proxy") ||
-		(manifest.ProtocolVersion == ProtocolVersionV3 || manifest.ProtocolVersion == ProtocolVersionV4) && (!slices.Contains(h.Capabilities, "artifact_import") || !slices.Contains(h.Capabilities, "artifact_export")) ||
-		manifest.ProtocolVersion == ProtocolVersionV4 && (!slices.Contains(h.Capabilities, "host_egress_proxy") || !h.EgressReady || h.NetworkReady) {
+	if !slices.Contains(h.Capabilities, "exec_probe") ||
+		!slices.Contains(h.Capabilities, "shutdown") ||
+		!slices.Contains(h.Capabilities, "supervisor_proxy") ||
+		(manifest.ProtocolVersion == ProtocolVersionV3 ||
+			manifest.ProtocolVersion == ProtocolVersionV4) &&
+			(!slices.Contains(h.Capabilities, "artifact_import") ||
+				!slices.Contains(h.Capabilities, "artifact_export")) ||
+		manifest.ProtocolVersion == ProtocolVersionV4 &&
+			(!slices.Contains(h.Capabilities, "host_egress_proxy") ||
+				!h.EgressReady ||
+				h.NetworkReady) {
 		return fmt.Errorf("guest control handshake capabilities or readiness are incomplete")
 	}
 	return nil
@@ -290,7 +336,11 @@ func (s *Server) Serve(ctx context.Context, manifest Manifest, handler Handler) 
 		return fmt.Errorf("guest control server is not initialized")
 	}
 	if s.localCID != 0 && s.localCID != ^uint32(0) && s.localCID != manifest.VSockCID {
-		return fmt.Errorf("guest control local VSOCK CID %d does not match manifest CID %d", s.localCID, manifest.VSockCID)
+		return fmt.Errorf(
+			"guest control local VSOCK CID %d does not match manifest CID %d",
+			s.localCID,
+			manifest.VSockCID,
+		)
 	}
 	handshake := handler.Handshake()
 	if err := handshake.Validate(manifest); err != nil {
@@ -332,32 +382,83 @@ type deadlineReadWriter interface {
 	SetDeadline(time.Time) error
 }
 
-func handleConnection(ctx context.Context, conn deadlineReadWriter, manifest Manifest, handler Handler) (bool, error) {
+func handleConnection(
+	ctx context.Context,
+	conn deadlineReadWriter,
+	manifest Manifest,
+	handler Handler,
+) (bool, error) {
 	protocol := manifest.ProtocolVersion
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 	reader := bufio.NewReaderSize(conn, MaxMessageBytes+1)
 	line, err := reader.ReadSlice('\n')
 	if err != nil || len(line) > MaxMessageBytes {
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "invalid request framing"})
+		return false, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            "error",
+				OK:              false,
+				Error:           "invalid request framing",
+			},
+		)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(line)))
 	decoder.DisallowUnknownFields()
 	var request Request
 	if err := decoder.Decode(&request); err != nil || requireJSONEOF(decoder) != nil {
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "invalid request"})
+		return false, writeResponse(
+			conn,
+			Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "invalid request"},
+		)
 	}
-	if request.ProtocolVersion != protocol || request.LaunchNonce != manifest.LaunchNonce || !secretEqual(request.ControlToken, manifest.ControlToken) {
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "error", OK: false, Error: "authentication failed"})
+	if request.ProtocolVersion != protocol || request.LaunchNonce != manifest.LaunchNonce ||
+		!secretEqual(request.ControlToken, manifest.ControlToken) {
+		return false, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            "error",
+				OK:              false,
+				Error:           "authentication failed",
+			},
+		)
 	}
 	if !validName(request.RequestID) || len(request.RequestID) > 128 {
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, OK: false, Error: "invalid request identity"})
+		return false, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            request.Type,
+				OK:              false,
+				Error:           "invalid request identity",
+			},
+		)
 	}
 	if !handler.ClaimRequest(request.RequestID) {
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "duplicate request identity"})
+		return false, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            request.Type,
+				RequestID:       request.RequestID,
+				OK:              false,
+				Error:           "duplicate request identity",
+			},
+		)
 	}
 	artifactOperation := request.Type == "artifact_import" || request.Type == "artifact_export"
 	if !artifactOperation && request.Artifact != nil {
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "unexpected artifact transfer identity"})
+		return false, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            request.Type,
+				RequestID:       request.RequestID,
+				OK:              false,
+				Error:           "unexpected artifact transfer identity",
+			},
+		)
 	}
 	if artifactOperation {
 		deadline := time.Now().Add(artifactTransferTimeout)
@@ -370,42 +471,154 @@ func handleConnection(ctx context.Context, conn deadlineReadWriter, manifest Man
 	switch request.Type {
 	case "hello":
 		handshake := handler.Handshake()
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "hello", RequestID: request.RequestID, OK: true, Handshake: &handshake})
+		return false, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            "hello",
+				RequestID:       request.RequestID,
+				OK:              true,
+				Handshake:       &handshake,
+			},
+		)
 	case "exec_probe":
 		result, err := handler.ExecProbe(ctx)
 		if err != nil {
-			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "exec_probe", RequestID: request.RequestID, OK: false, Error: boundedError(err)})
+			return false, writeResponse(
+				conn,
+				Response{
+					ProtocolVersion: protocol,
+					Type:            "exec_probe",
+					RequestID:       request.RequestID,
+					OK:              false,
+					Error:           boundedError(err),
+				},
+			)
 		}
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "exec_probe", RequestID: request.RequestID, OK: true, ExecProbe: &result})
+		return false, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            "exec_probe",
+				RequestID:       request.RequestID,
+				OK:              true,
+				ExecProbe:       &result,
+			},
+		)
 	case "shutdown":
 		if err := handler.Shutdown(ctx); err != nil {
-			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "shutdown", RequestID: request.RequestID, OK: false, Error: boundedError(err)})
+			return false, writeResponse(
+				conn,
+				Response{
+					ProtocolVersion: protocol,
+					Type:            "shutdown",
+					RequestID:       request.RequestID,
+					OK:              false,
+					Error:           boundedError(err),
+				},
+			)
 		}
-		return true, writeResponse(conn, Response{ProtocolVersion: protocol, Type: "shutdown", RequestID: request.RequestID, OK: true})
+		return true, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            "shutdown",
+				RequestID:       request.RequestID,
+				OK:              true,
+			},
+		)
 	case "artifact_import":
 		artifacts, ok := handler.(ArtifactImportHandler)
-		if (protocol != ProtocolVersionV3 && protocol != ProtocolVersionV4) || !ok || request.Artifact == nil || request.Artifact.Kind != ArtifactKindGitInputBundle || request.Artifact.Validate() != nil {
-			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "artifact import is unavailable or invalid"})
+		if (protocol != ProtocolVersionV3 && protocol != ProtocolVersionV4) || !ok ||
+			request.Artifact == nil ||
+			request.Artifact.Kind != ArtifactKindGitInputBundle ||
+			request.Artifact.Validate() != nil {
+			return false, writeResponse(
+				conn,
+				Response{
+					ProtocolVersion: protocol,
+					Type:            request.Type,
+					RequestID:       request.RequestID,
+					OK:              false,
+					Error:           "artifact import is unavailable or invalid",
+				},
+			)
 		}
 		limited := io.LimitReader(reader, request.Artifact.Size)
 		if err := artifacts.ImportArtifact(ctx, *request.Artifact, limited); err != nil {
-			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: boundedError(err)})
+			return false, writeResponse(
+				conn,
+				Response{
+					ProtocolVersion: protocol,
+					Type:            request.Type,
+					RequestID:       request.RequestID,
+					OK:              false,
+					Error:           boundedError(err),
+				},
+			)
 		}
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: true, Artifact: request.Artifact})
+		return false, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            request.Type,
+				RequestID:       request.RequestID,
+				OK:              true,
+				Artifact:        request.Artifact,
+			},
+		)
 	case "artifact_export":
 		artifacts, ok := handler.(ArtifactExportHandler)
-		if (protocol != ProtocolVersionV3 && protocol != ProtocolVersionV4) || !ok || request.Artifact == nil || request.Artifact.Kind != ArtifactKindGitResultBundle {
-			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "artifact export is unavailable or invalid"})
+		if (protocol != ProtocolVersionV3 && protocol != ProtocolVersionV4) || !ok ||
+			request.Artifact == nil ||
+			request.Artifact.Kind != ArtifactKindGitResultBundle {
+			return false, writeResponse(
+				conn,
+				Response{
+					ProtocolVersion: protocol,
+					Type:            request.Type,
+					RequestID:       request.RequestID,
+					OK:              false,
+					Error:           "artifact export is unavailable or invalid",
+				},
+			)
 		}
 		transfer, source, err := artifacts.ExportArtifact(ctx, request.Artifact.Kind)
 		if err != nil {
-			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: boundedError(err)})
+			return false, writeResponse(
+				conn,
+				Response{
+					ProtocolVersion: protocol,
+					Type:            request.Type,
+					RequestID:       request.RequestID,
+					OK:              false,
+					Error:           boundedError(err),
+				},
+			)
 		}
 		defer source.Close()
 		if err := transfer.Validate(); err != nil || transfer.Kind != request.Artifact.Kind {
-			return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "artifact export identity is invalid"})
+			return false, writeResponse(
+				conn,
+				Response{
+					ProtocolVersion: protocol,
+					Type:            request.Type,
+					RequestID:       request.RequestID,
+					OK:              false,
+					Error:           "artifact export identity is invalid",
+				},
+			)
 		}
-		if err := writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: true, Artifact: &transfer}); err != nil {
+		if err := writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            request.Type,
+				RequestID:       request.RequestID,
+				OK:              true,
+				Artifact:        &transfer,
+			},
+		); err != nil {
 			return false, err
 		}
 		written, err := io.CopyN(conn, source, transfer.Size)
@@ -414,7 +627,16 @@ func handleConnection(ctx context.Context, conn deadlineReadWriter, manifest Man
 		}
 		return false, nil
 	default:
-		return false, writeResponse(conn, Response{ProtocolVersion: protocol, Type: request.Type, RequestID: request.RequestID, OK: false, Error: "unsupported request type"})
+		return false, writeResponse(
+			conn,
+			Response{
+				ProtocolVersion: protocol,
+				Type:            request.Type,
+				RequestID:       request.RequestID,
+				OK:              false,
+				Error:           "unsupported request type",
+			},
+		)
 	}
 }
 
@@ -435,7 +657,10 @@ func WriteHandshake(path string, handshake Handshake) error {
 		return err
 	}
 	parent := filepath.Dir(path)
-	if info, err := os.Lstat(parent); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+	if info, err := os.Lstat(
+		parent,
+	); err != nil || !info.IsDir() ||
+		info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("guest control handshake directory is invalid")
 	}
 	tmp, err := os.CreateTemp(parent, ".handshake-*")
@@ -479,7 +704,9 @@ func validHexSecret(value string) bool {
 
 func canonicalVolumeID(value string) bool {
 	parsed, err := uuid.Parse(value)
-	return err == nil && parsed != uuid.Nil && parsed.Version() == 4 && parsed.Variant() == uuid.RFC4122 && parsed.String() == value
+	return err == nil && parsed != uuid.Nil && parsed.Version() == 4 &&
+		parsed.Variant() == uuid.RFC4122 &&
+		parsed.String() == value
 }
 
 func validHex(value string) bool {

@@ -45,7 +45,9 @@ func TestStore_AppendEvent_DeliversRealEventBatch(t *testing.T) {
 		BatchMaxAge:     50 * time.Millisecond,
 		AllowStubMapper: true,
 		Dialer:          srv.DialerFor(),
-		Logger:          slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New: %v", err)
@@ -111,7 +113,10 @@ func TestStore_AppendEvent_DeliversRealEventBatch(t *testing.T) {
 		break
 	}
 	if !sawRealBody {
-		t.Fatalf("no batch carried a non-empty UncompressedEvents body; encoder may have regressed to a stub")
+		t.Fatalf(
+			"no batch carried a non-empty UncompressedEvents body; encoder may have regressed " +
+				"to a stub",
+		)
 	}
 }
 
@@ -174,6 +179,9 @@ func TestEncoderE2E_WithOCSFMapper(t *testing.T) {
 		t.Fatalf("chain.Compute(tampered): %v", err)
 	}
 	if cleanResult.EntryHash() == tamperedResult.EntryHash() {
-		t.Fatal("chain tamper check: clean and tampered payloads produced identical EntryHash — payload bytes are not part of the HMAC input")
+		t.Fatal(
+			"chain tamper check: clean and tampered payloads produced identical EntryHash — " +
+				"payload bytes are not part of the HMAC input",
+		)
 	}
 }

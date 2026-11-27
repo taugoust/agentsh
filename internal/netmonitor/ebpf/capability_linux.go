@@ -47,7 +47,10 @@ func CheckSupport() SupportStatus {
 
 	if _, err := os.Stat("/sys/kernel/btf/vmlinux"); err != nil {
 		if _, dirErr := os.Stat("/sys/kernel/btf"); dirErr != nil {
-			return SupportStatus{Supported: false, Reason: ReasonBTFNotPresent + " (missing /sys/kernel/btf/vmlinux)"}
+			return SupportStatus{
+				Supported: false,
+				Reason:    ReasonBTFNotPresent + " (missing /sys/kernel/btf/vmlinux)",
+			}
 		}
 	}
 
@@ -60,7 +63,10 @@ func CheckSupport() SupportStatus {
 		return SupportStatus{Supported: false, Reason: ReasonKernelVersionUnknown}
 	}
 	if major < 5 || (major == 5 && minor < 8) {
-		return SupportStatus{Supported: false, Reason: fmt.Sprintf("%s %d.%d < 5.8", ReasonKernelTooOld, major, minor)}
+		return SupportStatus{
+			Supported: false,
+			Reason:    fmt.Sprintf("%s %d.%d < 5.8", ReasonKernelTooOld, major, minor),
+		}
 	}
 
 	// Warn (but do not fail) on potential lockdown/LSM restrictions; attach may still fail.

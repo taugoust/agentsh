@@ -101,7 +101,12 @@ func probeCapabilityDrop() ProbeResult {
 // inputs and assert the exact Available/Detail combinations for each
 // branch (full permitted + bounding unknown, reduced permitted, etc.)
 // without depending on the live process's capability state.
-func probeCapabilityDropFrom(data [2]unix.CapUserData, bndLow, bndHigh uint32, bndErr error, lastCap int) ProbeResult {
+func probeCapabilityDropFrom(
+	data [2]unix.CapUserData,
+	bndLow, bndHigh uint32,
+	bndErr error,
+	lastCap int,
+) ProbeResult {
 	report := capsDropped(data, bndLow, bndHigh, bndErr != nil, lastCap)
 	if bndErr != nil {
 		report.bndErr = bndErr
@@ -211,7 +216,12 @@ func (r capDropReport) detailNotDropped() string {
 // still full can restore its effective set via capset(2) on the next
 // syscall, so counting that as a drop would produce the same false
 // positives #198 is trying to eliminate.
-func capsDropped(data [2]unix.CapUserData, bndLow, bndHigh uint32, bndUnknown bool, lastCap int) capDropReport {
+func capsDropped(
+	data [2]unix.CapUserData,
+	bndLow, bndHigh uint32,
+	bndUnknown bool,
+	lastCap int,
+) capDropReport {
 	if lastCap < 0 {
 		return capDropReport{}
 	}
@@ -291,7 +301,15 @@ func realReadCapBoundingSet(lastCap int) (low, high uint32, err error) {
 		lastCap = 63
 	}
 	for cap := 0; cap <= lastCap; cap++ {
-		r1, _, errno := unix.Syscall6(unix.SYS_PRCTL, unix.PR_CAPBSET_READ, uintptr(cap), 0, 0, 0, 0)
+		r1, _, errno := unix.Syscall6(
+			unix.SYS_PRCTL,
+			unix.PR_CAPBSET_READ,
+			uintptr(cap),
+			0,
+			0,
+			0,
+			0,
+		)
 		if errno != 0 {
 			// EINVAL means the kernel doesn't recognise this cap number —
 			// treat as "not present in bounding set" and keep going so

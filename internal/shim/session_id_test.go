@@ -157,7 +157,13 @@ func TestResolveSessionID_WorkspaceScope_UsesGitRoot(t *testing.T) {
 		t.Fatalf("ResolveSessionID (2) failed: %v", err)
 	}
 	if id2 != id1 || path2 != path1 {
-		t.Fatalf("expected same session for same repo root, got id=%q path=%q vs id=%q path=%q", id1, path1, id2, path2)
+		t.Fatalf(
+			"expected same session for same repo root, got id=%q path=%q vs id=%q path=%q",
+			id1,
+			path1,
+			id2,
+			path2,
+		)
 	}
 }
 
@@ -189,7 +195,13 @@ func TestResolveSessionID_GlobalScope(t *testing.T) {
 		t.Fatalf("ResolveSessionID (2) failed: %v", err)
 	}
 	if id2 != id1 || path2 != path1 {
-		t.Fatalf("expected stable global session, got id=%q path=%q vs id=%q path=%q", id1, path1, id2, path2)
+		t.Fatalf(
+			"expected stable global session, got id=%q path=%q vs id=%q path=%q",
+			id1,
+			path1,
+			id2,
+			path2,
+		)
 	}
 }
 

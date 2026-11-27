@@ -75,7 +75,13 @@ func BenchmarkFileIOOverhead(b *testing.B) {
 
 	dir := b.TempDir()
 	script := dir + "/bench.sh"
-	if err := os.WriteFile(script, []byte("#!/bin/sh\ni=0\nwhile [ $i -lt 100 ]; do\n    cat /dev/null\n    i=$((i+1))\ndone\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		script,
+		[]byte(
+			"#!/bin/sh\ni=0\nwhile [ $i -lt 100 ]; do\n    cat /dev/null\n    i=$((i+1))\ndone\n",
+		),
+		0o755,
+	); err != nil {
 		b.Fatal(err)
 	}
 

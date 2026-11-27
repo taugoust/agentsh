@@ -114,9 +114,17 @@ func recvLocalMessage(file *os.File, expectedType uint16) (*LocalMessage, error)
 	return recvLocalMessageWith(file, expectedType, unix.Recvmsg)
 }
 
-type localRecvmsg func(fd int, p, oob []byte, flags int) (n, oobn, recvflags int, from unix.Sockaddr, err error)
+type localRecvmsg func(
+	fd int,
+	p, oob []byte,
+	flags int,
+) (n, oobn, recvflags int, from unix.Sockaddr, err error)
 
-func recvLocalMessageWith(file *os.File, expectedType uint16, recv localRecvmsg) (*LocalMessage, error) {
+func recvLocalMessageWith(
+	file *os.File,
+	expectedType uint16,
+	recv localRecvmsg,
+) (*LocalMessage, error) {
 	if file == nil {
 		return nil, errors.New("nil local handoff socket")
 	}
@@ -153,7 +161,8 @@ func recvLocalMessageWith(file *os.File, expectedType uint16, recv localRecvmsg)
 	}
 	knownFlags := uint32(localFlagCommandJail | localFlagFileLookup)
 	frameFlags := binaryUint32(frame[8:12])
-	if frameFlags&^knownFlags != 0 || expectedType == localFramePrelude && frameFlags&localFlagFileLookup != 0 {
+	if frameFlags&^knownFlags != 0 ||
+		expectedType == localFramePrelude && frameFlags&localFlagFileLookup != 0 {
 		return nil, errors.New("invalid local handoff flags")
 	}
 
@@ -185,7 +194,11 @@ func recvLocalMessageWith(file *os.File, expectedType uint16, recv localRecvmsg)
 			received = append(received, fds...)
 		default:
 			closeReceived()
-			return nil, fmt.Errorf("unexpected local ancillary level=%d type=%d", message.Header.Level, message.Header.Type)
+			return nil, fmt.Errorf(
+				"unexpected local ancillary level=%d type=%d",
+				message.Header.Level,
+				message.Header.Type,
+			)
 		}
 	}
 	if credentials == nil || credentials.Pid <= 0 {
@@ -199,9 +212,14 @@ func recvLocalMessageWith(file *os.File, expectedType uint16, recv localRecvmsg)
 			expectedFDs++
 		}
 	}
-	if len(received) != expectedFDs || (expectedFDs > 0 && rightsMessages != 1) || (expectedFDs == 0 && rightsMessages != 0) {
+	if len(received) != expectedFDs || (expectedFDs > 0 && rightsMessages != 1) ||
+		(expectedFDs == 0 && rightsMessages != 0) {
 		closeReceived()
-		return nil, fmt.Errorf("local handoff received %d descriptors, want %d", len(received), expectedFDs)
+		return nil, fmt.Errorf(
+			"local handoff received %d descriptors, want %d",
+			len(received),
+			expectedFDs,
+		)
 	}
 	for _, receivedFD := range received {
 		unix.CloseOnExec(receivedFD)

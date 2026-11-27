@@ -45,7 +45,8 @@ func TestHandleConnectDeniedWrites403(t *testing.T) {
 	}
 	client.Close()
 	<-done
-	if len(em.events) == 0 || em.events[0].Type != "net_connect" || em.events[0].Policy.EffectiveDecision != types.DecisionDeny {
+	if len(em.events) == 0 || em.events[0].Type != "net_connect" ||
+		em.events[0].Policy.EffectiveDecision != types.DecisionDeny {
 		t.Fatalf("expected deny event recorded, got %+v", em.events)
 	}
 }

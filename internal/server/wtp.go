@@ -48,8 +48,12 @@ func resolveLogGoawayMessage(cfgVal *bool, logger *slog.Logger) bool {
 			"value", defaultV)
 		return defaultV
 	case *cfgVal:
-		logger.Warn("watchtower: log_goaway_message=true; goaway_message text will be logged after client-side sanitization, depends on server-side no-secrets contract",
-			"see", "github.com/canyonroad/wtp-protos proto/canyonroad/wtp/v1/wtp.proto Goaway.message")
+		logger.Warn(
+			"watchtower: log_goaway_message=true; goaway_message text will be logged after "+
+				"client-side sanitization, depends on server-side no-secrets contract",
+			"see",
+			"github.com/canyonroad/wtp-protos proto/canyonroad/wtp/v1/wtp.proto Goaway.message",
+		)
 		return true
 	default:
 		// explicit false — no log
@@ -141,7 +145,10 @@ func buildWatchtowerStore(
 	// their startup logs.
 	tlsEnabled := !cfg.TLS.Insecure
 	if cfg.TLS.Insecure {
-		slog.Warn("watchtower: TLS disabled via tls.insecure=true; traffic is plaintext — do not use in production")
+		slog.Warn(
+			"watchtower: TLS disabled via tls.insecure=true; traffic is plaintext — do not use " +
+				"in production",
+		)
 	}
 
 	// Resolve LogGoawayMessage three-state to the transport.Options bool.
@@ -270,14 +277,20 @@ func resolveAuthBearer(auth config.WatchtowerAuthConfig) (string, error) {
 		}
 		token := strings.TrimSpace(string(data))
 		if token == "" {
-			return "", fmt.Errorf("watchtower auth: token file %q is empty after whitespace trim", auth.TokenFile)
+			return "", fmt.Errorf(
+				"watchtower auth: token file %q is empty after whitespace trim",
+				auth.TokenFile,
+			)
 		}
 		return token, nil
 	}
 	if auth.TokenEnv != "" {
 		token := strings.TrimSpace(os.Getenv(auth.TokenEnv))
 		if token == "" {
-			return "", fmt.Errorf("watchtower auth: token env %q is empty or not set", auth.TokenEnv)
+			return "", fmt.Errorf(
+				"watchtower auth: token env %q is empty or not set",
+				auth.TokenEnv,
+			)
 		}
 		return token, nil
 	}
@@ -287,7 +300,11 @@ func resolveAuthBearer(auth config.WatchtowerAuthConfig) (string, error) {
 
 // BuildWatchtowerStoreForTest is a thin export of buildWatchtowerStore
 // for white-box tests. Production callers use buildWatchtowerStore.
-func BuildWatchtowerStoreForTest(ctx context.Context, cfg config.AuditWatchtowerConfig, m compact.Mapper) (store.EventStore, error) {
+func BuildWatchtowerStoreForTest(
+	ctx context.Context,
+	cfg config.AuditWatchtowerConfig,
+	m compact.Mapper,
+) (store.EventStore, error) {
 	return buildWatchtowerStore(ctx, cfg, config.PoliciesConfig{}, nil, nil, false, m)
 }
 
@@ -298,7 +315,9 @@ func BuildWatchtowerStoreForTest(ctx context.Context, cfg config.AuditWatchtower
 // buildWatchtowerStore — this export is a thin pass-through so tests exercise
 // the same code path production uses. The caseLabel return is test-only
 // bookkeeping; production does not need it.
-func ResolveLogGoawayMessageForTest(cfg config.AuditWatchtowerConfig) (resolved bool, caseLabel string) {
+func ResolveLogGoawayMessageForTest(
+	cfg config.AuditWatchtowerConfig,
+) (resolved bool, caseLabel string) {
 	// Derive the label WITHOUT duplicating the resolution logic: call the
 	// shared helper first (with a discard logger so tests stay silent),
 	// then classify the pointer state to produce the stable test label.

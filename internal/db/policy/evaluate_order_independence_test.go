@@ -27,11 +27,22 @@ func TestEvaluate_R14OrderIndependent(t *testing.T) {
 
 		for p := 0; p < permutations; p++ {
 			permuted := append([]*compiledStatementRule(nil), original...)
-			rng.Shuffle(len(permuted), func(i, j int) { permuted[i], permuted[j] = permuted[j], permuted[i] })
+			rng.Shuffle(
+				len(permuted),
+				func(i, j int) { permuted[i], permuted[j] = permuted[j], permuted[i] },
+			)
 			rs.statement = permuted
 			got := Evaluate(c.stmt, rs, c.service)
 			if got.Verb != baseline.Verb {
-				t.Errorf("[%s] permutation %d: Verb=%v want %v (baseline rule=%q got rule=%q)", c.name, p, got.Verb, baseline.Verb, baseline.RuleName, got.RuleName)
+				t.Errorf(
+					"[%s] permutation %d: Verb=%v want %v (baseline rule=%q got rule=%q)",
+					c.name,
+					p,
+					got.Verb,
+					baseline.Verb,
+					baseline.RuleName,
+					got.RuleName,
+				)
 			}
 		}
 	}

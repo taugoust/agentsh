@@ -95,7 +95,11 @@ func projectFields(fields map[string]any, rules []FieldRule) (map[string]any, er
 		}
 		if v == nil {
 			if r.Required {
-				return nil, fmt.Errorf("%w: %s: transform returned nil", ErrMissingRequiredField, r.Key)
+				return nil, fmt.Errorf(
+					"%w: %s: transform returned nil",
+					ErrMissingRequiredField,
+					r.Key,
+				)
 			}
 			continue
 		}
@@ -107,7 +111,11 @@ func projectFields(fields map[string]any, rules []FieldRule) (map[string]any, er
 // safeProject runs the projector under a recover() guard. Any panic is
 // converted into ErrProjectFailed with the panic value in the wrapped
 // message.
-func safeProject(p Projector, ev types.Event, allowed map[string]any) (msg proto.Message, err error) {
+func safeProject(
+	p Projector,
+	ev types.Event,
+	allowed map[string]any,
+) (msg proto.Message, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			msg = nil

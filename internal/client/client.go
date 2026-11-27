@@ -79,7 +79,10 @@ func NewWithTimeout(baseURL string, apiKey string, timeout time.Duration) *Clien
 	}
 }
 
-func (c *Client) CreateSession(ctx context.Context, workspace, policy string) (types.Session, error) {
+func (c *Client) CreateSession(
+	ctx context.Context,
+	workspace, policy string,
+) (types.Session, error) {
 	var out types.Session
 	reqBody := types.CreateSessionRequest{Workspace: workspace, Policy: policy}
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sessions", nil, reqBody, &out); err != nil {
@@ -88,7 +91,10 @@ func (c *Client) CreateSession(ctx context.Context, workspace, policy string) (t
 	return out, nil
 }
 
-func (c *Client) CreateSessionWithID(ctx context.Context, id, workspace, policy string) (types.Session, error) {
+func (c *Client) CreateSessionWithID(
+	ctx context.Context,
+	id, workspace, policy string,
+) (types.Session, error) {
 	var out types.Session
 	reqBody := types.CreateSessionRequest{ID: id, Workspace: workspace, Policy: policy}
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sessions", nil, reqBody, &out); err != nil {
@@ -97,7 +103,10 @@ func (c *Client) CreateSessionWithID(ctx context.Context, id, workspace, policy 
 	return out, nil
 }
 
-func (c *Client) CreateSessionWithRequest(ctx context.Context, req types.CreateSessionRequest) (types.Session, error) {
+func (c *Client) CreateSessionWithRequest(
+	ctx context.Context,
+	req types.CreateSessionRequest,
+) (types.Session, error) {
 	var out types.Session
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sessions", nil, req, &out); err != nil {
 		return out, err
@@ -105,7 +114,10 @@ func (c *Client) CreateSessionWithRequest(ctx context.Context, req types.CreateS
 	return out, nil
 }
 
-func (c *Client) CreateSessionWithProfile(ctx context.Context, profile string) (types.Session, error) {
+func (c *Client) CreateSessionWithProfile(
+	ctx context.Context,
+	profile string,
+) (types.Session, error) {
 	var out types.Session
 	reqBody := types.CreateSessionRequest{Profile: profile}
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sessions", nil, reqBody, &out); err != nil {
@@ -124,7 +136,14 @@ func (c *Client) ListSessions(ctx context.Context) ([]types.Session, error) {
 
 func (c *Client) GetSession(ctx context.Context, id string) (types.Session, error) {
 	var out types.Session
-	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/sessions/"+url.PathEscape(id), nil, nil, &out); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		"/api/v1/sessions/"+url.PathEscape(id),
+		nil,
+		nil,
+		&out,
+	); err != nil {
 		return out, err
 	}
 	return out, nil
@@ -135,14 +154,30 @@ func (c *Client) DestroySession(ctx context.Context, id string) error {
 }
 
 func (c *Client) SealWorkspaceAdmission(ctx context.Context, id string) error {
-	return c.doJSON(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(id)+"/workspace/seal-admission", nil, nil, nil)
+	return c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/v1/sessions/"+url.PathEscape(id)+"/workspace/seal-admission",
+		nil,
+		nil,
+		nil,
+	)
 }
 
-func (c *Client) RebindSessionNethelper(ctx context.Context, id string, req types.NethelperRebindRequest) (types.NetworkEnforcement, error) {
+func (c *Client) RebindSessionNethelper(
+	ctx context.Context,
+	id string,
+	req types.NethelperRebindRequest,
+) (types.NetworkEnforcement, error) {
 	return c.RebindSessionNethelperAuthorized(ctx, id, req, "")
 }
 
-func (c *Client) RebindSessionNethelperAuthorized(ctx context.Context, id string, req types.NethelperRebindRequest, recoveryToken string) (types.NetworkEnforcement, error) {
+func (c *Client) RebindSessionNethelperAuthorized(
+	ctx context.Context,
+	id string,
+	req types.NethelperRebindRequest,
+	recoveryToken string,
+) (types.NetworkEnforcement, error) {
 	var out types.NetworkEnforcement
 	path := "/api/v1/sessions/" + url.PathEscape(id) + "/network-enforcement/helper/rebind"
 	raw, err := json.Marshal(req)
@@ -159,9 +194,20 @@ func (c *Client) RebindSessionNethelperAuthorized(ctx context.Context, id string
 	return out, nil
 }
 
-func (c *Client) PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error) {
+func (c *Client) PatchSession(
+	ctx context.Context,
+	id string,
+	req types.SessionPatchRequest,
+) (types.Session, error) {
 	var out types.Session
-	if err := c.doJSON(ctx, http.MethodPatch, "/api/v1/sessions/"+url.PathEscape(id), nil, req, &out); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodPatch,
+		"/api/v1/sessions/"+url.PathEscape(id),
+		nil,
+		req,
+		&out,
+	); err != nil {
 		return out, err
 	}
 	return out, nil
@@ -187,10 +233,20 @@ func (c *Client) DiffSessionOverlayReview(ctx context.Context, id string) (Overl
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		return OverlayReview{}, &HTTPError{Method: http.MethodGet, Path: "/api/v1/sessions/" + url.PathEscape(id) + "/overlay/diff", Status: resp.Status, StatusCode: resp.StatusCode, Body: string(b)}
+		return OverlayReview{}, &HTTPError{
+			Method:     http.MethodGet,
+			Path:       "/api/v1/sessions/" + url.PathEscape(id) + "/overlay/diff",
+			Status:     resp.Status,
+			StatusCode: resp.StatusCode,
+			Body:       string(b),
+		}
 	}
 	generation, _ := strconv.ParseUint(resp.Header.Get("X-AgentSH-Review-Generation"), 10, 64)
-	return OverlayReview{Body: resp.Body, Generation: generation, Hash: resp.Header.Get("X-AgentSH-Review-Hash")}, nil
+	return OverlayReview{
+		Body:       resp.Body,
+		Generation: generation,
+		Hash:       resp.Header.Get("X-AgentSH-Review-Hash"),
+	}, nil
 }
 
 func (c *Client) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
@@ -198,7 +254,12 @@ func (c *Client) DiffSessionOverlay(ctx context.Context, id string) (io.ReadClos
 	return review.Body, err
 }
 
-func (c *Client) AcceptSessionOverlayReviewed(ctx context.Context, id string, generation uint64, hash string) (types.Session, error) {
+func (c *Client) AcceptSessionOverlayReviewed(
+	ctx context.Context,
+	id string,
+	generation uint64,
+	hash string,
+) (types.Session, error) {
 	var out types.Session
 	path := "/api/v1/sessions/" + url.PathEscape(id) + "/overlay/accept"
 	body := map[string]any{}
@@ -225,9 +286,20 @@ func (c *Client) RejectSessionOverlay(ctx context.Context, id string) (types.Ses
 	return out, nil
 }
 
-func (c *Client) Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error) {
+func (c *Client) Exec(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (types.ExecResponse, error) {
 	var out types.ExecResponse
-	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(sessionID)+"/exec", nil, req, &out); err != nil {
+	if err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/v1/sessions/"+url.PathEscape(sessionID)+"/exec",
+		nil,
+		req,
+		&out,
+	); err != nil {
 		return out, err
 	}
 	return out, nil
@@ -238,7 +310,11 @@ func (c *Client) KillCommand(ctx context.Context, sessionID string, commandID st
 	return c.doJSON(ctx, http.MethodPost, path, nil, map[string]any{}, nil)
 }
 
-func (c *Client) QuerySessionEvents(ctx context.Context, sessionID string, q url.Values) ([]types.Event, error) {
+func (c *Client) QuerySessionEvents(
+	ctx context.Context,
+	sessionID string,
+	q url.Values,
+) ([]types.Event, error) {
 	var out []types.Event
 	path := "/api/v1/sessions/" + url.PathEscape(sessionID) + "/history"
 	if err := c.doJSON(ctx, http.MethodGet, path, q, nil, &out); err != nil {
@@ -255,7 +331,12 @@ func (c *Client) SearchEvents(ctx context.Context, q url.Values) ([]types.Event,
 	return out, nil
 }
 
-func (c *Client) OutputChunk(ctx context.Context, sessionID, commandID string, stream string, offset, limit int64) (map[string]any, error) {
+func (c *Client) OutputChunk(
+	ctx context.Context,
+	sessionID, commandID string,
+	stream string,
+	offset, limit int64,
+) (map[string]any, error) {
 	q := url.Values{}
 	q.Set("stream", stream)
 	q.Set("offset", fmt.Sprintf("%d", offset))
@@ -276,11 +357,22 @@ func (c *Client) ListApprovals(ctx context.Context) ([]map[string]any, error) {
 	return out, nil
 }
 
-func (c *Client) ResolveApproval(ctx context.Context, id string, decision string, reason string) error {
+func (c *Client) ResolveApproval(
+	ctx context.Context,
+	id string,
+	decision string,
+	reason string,
+) error {
 	return c.ResolveApprovalWithScope(ctx, id, decision, reason, "")
 }
 
-func (c *Client) ResolveApprovalWithScope(ctx context.Context, id string, decision string, reason string, scope string) error {
+func (c *Client) ResolveApprovalWithScope(
+	ctx context.Context,
+	id string,
+	decision string,
+	reason string,
+	scope string,
+) error {
 	body := map[string]any{"decision": decision, "reason": reason}
 	if scope != "" {
 		body["scope"] = scope
@@ -288,7 +380,10 @@ func (c *Client) ResolveApprovalWithScope(ctx context.Context, id string, decisi
 	return c.doJSON(ctx, http.MethodPost, "/api/v1/approvals/"+url.PathEscape(id), nil, body, nil)
 }
 
-func (c *Client) PolicyTest(ctx context.Context, sessionID, operation, path string) (map[string]any, error) {
+func (c *Client) PolicyTest(
+	ctx context.Context,
+	sessionID, operation, path string,
+) (map[string]any, error) {
 	body := map[string]any{
 		"operation": operation,
 		"path":      path,
@@ -312,7 +407,11 @@ func (c *Client) GetProxyStatus(ctx context.Context, sessionID string) (map[stri
 	return out, nil
 }
 
-func (c *Client) WrapInit(ctx context.Context, sessionID string, req types.WrapInitRequest) (types.WrapInitResponse, error) {
+func (c *Client) WrapInit(
+	ctx context.Context,
+	sessionID string,
+	req types.WrapInitRequest,
+) (types.WrapInitResponse, error) {
 	var out types.WrapInitResponse
 	path := "/api/v1/sessions/" + url.PathEscape(sessionID) + "/wrap-init"
 	if err := c.doJSON(ctx, http.MethodPost, path, nil, req, &out); err != nil {
@@ -363,11 +462,22 @@ func (c *Client) StreamSessionEvents(ctx context.Context, sessionID string) (io.
 // DoRawJSON sends a JSON request using the raw body as-is and decodes the JSON
 // response into out. It is intended for proxy paths that must preserve request
 // fields not modeled by the typed client helpers.
-func (c *Client) DoRawJSON(ctx context.Context, method, path string, rawBody []byte, out any) error {
+func (c *Client) DoRawJSON(
+	ctx context.Context,
+	method, path string,
+	rawBody []byte,
+	out any,
+) error {
 	return c.doJSONRaw(ctx, method, path, nil, rawBody, out)
 }
 
-func (c *Client) doJSON(ctx context.Context, method, path string, q url.Values, body any, out any) error {
+func (c *Client) doJSON(
+	ctx context.Context,
+	method, path string,
+	q url.Values,
+	body any,
+	out any,
+) error {
 	var raw []byte
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -379,11 +489,24 @@ func (c *Client) doJSON(ctx context.Context, method, path string, q url.Values, 
 	return c.doJSONRaw(ctx, method, path, q, raw, out)
 }
 
-func (c *Client) doJSONRaw(ctx context.Context, method, path string, q url.Values, rawBody []byte, out any) error {
+func (c *Client) doJSONRaw(
+	ctx context.Context,
+	method, path string,
+	q url.Values,
+	rawBody []byte,
+	out any,
+) error {
 	return c.doJSONRawHeaders(ctx, method, path, q, rawBody, nil, out)
 }
 
-func (c *Client) doJSONRawHeaders(ctx context.Context, method, path string, q url.Values, rawBody []byte, headers http.Header, out any) error {
+func (c *Client) doJSONRawHeaders(
+	ctx context.Context,
+	method, path string,
+	q url.Values,
+	rawBody []byte,
+	headers http.Header,
+	out any,
+) error {
 	u := c.baseURL + path
 	if q != nil && len(q) > 0 {
 		u += "?" + q.Encode()
@@ -495,7 +618,11 @@ func (c *Client) GetTaintTrace(ctx context.Context, pid int) (*types.TaintTrace,
 
 // WatchTaints watches for taint events via SSE.
 // Note: Server endpoint not yet implemented.
-func (c *Client) WatchTaints(ctx context.Context, agentOnly bool, handler func(types.TaintEvent)) error {
+func (c *Client) WatchTaints(
+	ctx context.Context,
+	agentOnly bool,
+	handler func(types.TaintEvent),
+) error {
 	path := "/api/v1/taints/events"
 	if agentOnly {
 		path += "?agent_only=true"

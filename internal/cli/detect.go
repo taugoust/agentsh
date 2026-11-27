@@ -53,7 +53,8 @@ Use 'agentsh detect config' to generate an optimized configuration.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&outputFormat, "output", "o", "table", "Output format: table, json, yaml")
+	cmd.Flags().
+		StringVarP(&outputFormat, "output", "o", "table", "Output format: table, json, yaml")
 
 	cmd.AddCommand(newDetectConfigCmd())
 

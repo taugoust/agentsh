@@ -56,7 +56,11 @@ type fakeDetachedSupervisor struct {
 
 func startFakeDetachedSupervisor(t *testing.T, dir, sessionID string) *fakeDetachedSupervisor {
 	t.Helper()
-	f := &fakeDetachedSupervisor{t: t, session: sessionID, sock: filepath.Join(dir, sessionID+".sock")}
+	f := &fakeDetachedSupervisor{
+		t:       t,
+		session: sessionID,
+		sock:    filepath.Join(dir, sessionID+".sock"),
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/detached/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -72,34 +76,37 @@ func startFakeDetachedSupervisor(t *testing.T, dir, sessionID string) *fakeDetac
 			OwnerPID:        os.Getpid(),
 		})
 	})
-	mux.HandleFunc("/api/v1/detached/control/exchange", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.NotFound(w, r)
-			return
-		}
-		var request detachedtransport.ExchangeRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		ack := request.AckFloor
-		f.mu.Lock()
-		for _, record := range request.Records {
-			ack = record.Sequence
-			if record.ID == f.acceptApprovalID && record.Resolution != nil {
-				f.approvalRaw, _ = json.Marshal(record.Resolution)
+	mux.HandleFunc(
+		"/api/v1/detached/control/exchange",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.NotFound(w, r)
+				return
 			}
-		}
-		pending := append([]approvals.Request(nil), f.approvals...)
-		f.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(detachedtransport.ExchangeResponse{
-			Version:  detachedtransport.Version,
-			Identity: request.Identity,
-			Ack:      ack,
-			Cursor:   request.Cursor,
-			Pending:  pending,
-		})
-	})
+			var request detachedtransport.ExchangeRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			ack := request.AckFloor
+			f.mu.Lock()
+			for _, record := range request.Records {
+				ack = record.Sequence
+				if record.ID == f.acceptApprovalID && record.Resolution != nil {
+					f.approvalRaw, _ = json.Marshal(record.Resolution)
+				}
+			}
+			pending := append([]approvals.Request(nil), f.approvals...)
+			f.mu.Unlock()
+			_ = json.NewEncoder(w).Encode(detachedtransport.ExchangeResponse{
+				Version:  detachedtransport.Version,
+				Identity: request.Identity,
+				Ack:      ack,
+				Cursor:   request.Cursor,
+				Pending:  pending,
+			})
+		},
+	)
 	mux.HandleFunc("/api/v1/approvals", func(w http.ResponseWriter, r *http.Request) {
 		f.maybeDelay()
 		if r.Method != http.MethodGet {
@@ -244,7 +251,19 @@ func newDetachedAggregationTestApp(t *testing.T, roots []string, timeout string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, session.NewManager(10), composite.New(nil, nil), engine, events.NewBroker(), apiKeyAuth, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		session.NewManager(10),
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		apiKeyAuth,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	return app.Router()
 }
 
@@ -318,8 +337,13 @@ func TestDetachedSupervisorsListReportsNetworkEnforcement(t *testing.T) {
 	if network["cgroup_delegated"] != true {
 		t.Fatalf("cgroup_delegated = %#v, want true", network["cgroup_delegated"])
 	}
-	if got[0]["network_enforcement_source"] != "metadata-snapshot-stale" || got[0]["network_enforcement_live"] != false {
-		t.Fatalf("network evidence source = %#v live=%#v, want stale metadata snapshot", got[0]["network_enforcement_source"], got[0]["network_enforcement_live"])
+	if got[0]["network_enforcement_source"] != "metadata-snapshot-stale" ||
+		got[0]["network_enforcement_live"] != false {
+		t.Fatalf(
+			"network evidence source = %#v live=%#v, want stale metadata snapshot",
+			got[0]["network_enforcement_source"],
+			got[0]["network_enforcement_live"],
+		)
 	}
 }
 
@@ -327,8 +351,12 @@ func TestDetachedSupervisorsAggregateSessionEventsAndForwardAckAnswer(t *testing
 	root := t.TempDir()
 	f1 := startFakeDetachedSupervisor(t, shortSocketDir(t), "sess-1")
 	f2 := startFakeDetachedSupervisor(t, shortSocketDir(t), "sess-2")
-	f1.events = []map[string]any{{"id": "ev-1", "session_id": "sess-1", "title": "one", "acked": false}}
-	f2.events = []map[string]any{{"id": "ev-2", "session_id": "sess-2", "title": "two", "acked": false}}
+	f1.events = []map[string]any{
+		{"id": "ev-1", "session_id": "sess-1", "title": "one", "acked": false},
+	}
+	f2.events = []map[string]any{
+		{"id": "ev-2", "session_id": "sess-2", "title": "two", "acked": false},
+	}
 	f2.acceptAckID = "ev-2"
 	f2.acceptAnswerID = "ev-2"
 	writeDetachedMetadata(t, root, f1)
@@ -358,7 +386,8 @@ func TestDetachedSupervisorsAggregateSessionEventsAndForwardAckAnswer(t *testing
 		t.Fatal("expected ack to be forwarded to supervisor owning ev-2")
 	}
 
-	answerBody := `{"questionnaire_id":"q1","answers":[{"id":"scope","value":"all"}],"scope_path":"/tmp/raw"}`
+	answerBody := `{"questionnaire_id":"q1","answers":[{"id":"scope","value":"all"}],` +
+		`"scope_path":"/tmp/raw"}`
 	rr = doApproverRequest(h, http.MethodPost, "/api/v1/session-events/ev-2/answer", answerBody)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("answer status=%d body=%s", rr.Code, rr.Body.String())
@@ -391,7 +420,8 @@ func TestDetachedSupervisorsAggregateApprovalsAndForwardRawResolution(t *testing
 		t.Fatalf("unexpected approvals: %#v", approvals)
 	}
 
-	body := `{"decision":"approve","reason":"ok","scope":"session","scope_kind":"file","scope_key":"file:read:/tmp/a","scope_path":"/tmp/a","scope_prefix":true}`
+	body := `{"decision":"approve","reason":"ok","scope":"session","scope_kind":"file",` +
+		`"scope_key":"file:read:/tmp/a","scope_path":"/tmp/a","scope_prefix":true}`
 	rr = doApproverRequest(h, http.MethodPost, "/api/v1/approvals/apr-1", body)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("resolve status=%d body=%s", rr.Code, rr.Body.String())
@@ -399,7 +429,10 @@ func TestDetachedSupervisorsAggregateApprovalsAndForwardRawResolution(t *testing
 	f.mu.Lock()
 	raw := string(f.approvalRaw)
 	f.mu.Unlock()
-	for _, want := range []string{`"scope_kind":"file"`, `"scope_key":"file:read:/tmp/a"`, `"scope_path":"/tmp/a"`, `"scope_prefix":true`} {
+	for _, want := range []string{
+		`"scope_kind":"file"`, `"scope_key":"file:read:/tmp/a"`, `"scope_path":"/tmp/a"`,
+		`"scope_prefix":true`,
+	} {
 		if !strings.Contains(raw, want) {
 			t.Fatalf("raw approval JSON missing %s: %s", want, raw)
 		}
@@ -416,7 +449,10 @@ func TestDetachedSupervisorFailuresDoNotBreakGlobalEndpoints(t *testing.T) {
 	slow.delay = 200 * time.Millisecond
 	writeDetachedMetadata(t, root, slow)
 
-	missing := &fakeDetachedSupervisor{session: "sess-missing", sock: filepath.Join(shortSocketDir(t), "missing.sock")}
+	missing := &fakeDetachedSupervisor{
+		session: "sess-missing",
+		sock:    filepath.Join(shortSocketDir(t), "missing.sock"),
+	}
 	writeDetachedMetadata(t, root, missing)
 
 	h := newDetachedAggregationTestApp(t, []string{root}, "20ms")
@@ -457,7 +493,13 @@ func TestDetachedSessionsPushEventsWithToken(t *testing.T) {
 	}
 	h := newDetachedAggregationTestApp(t, []string{root}, "20ms")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/detached-sessions/sess-push/session-events", strings.NewReader(`{"id":"ev-push","type":"agent.turn.completed","title":"ready","message":"done"}`))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/detached-sessions/sess-push/session-events",
+		strings.NewReader(
+			`{"id":"ev-push","type":"agent.turn.completed","title":"ready","message":"done"}`,
+		),
+	)
 	req.Header.Set("X-AgentSH-Session-Event-Token", "tok-push")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

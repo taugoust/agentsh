@@ -56,7 +56,11 @@ func (s *compositionSetupState) cleanupPoolPaths() error {
 	remaining := make([]string, 0, len(s.poolSlots))
 	for index := len(s.poolSlots) - 1; index >= 0; index-- {
 		slot := s.poolSlots[index]
-		if err := detachCompositionMount(slot, unix.MNT_DETACH); err != nil && err != unix.EINVAL && err != unix.ENOENT {
+		if err := detachCompositionMount(
+			slot,
+			unix.MNT_DETACH,
+		); err != nil && err != unix.EINVAL &&
+			err != unix.ENOENT {
 			errs = append(errs, fmt.Errorf("detach composition pool slot %q: %w", slot, err))
 		}
 		if err := os.Remove(slot); err != nil && !os.IsNotExist(err) {
@@ -165,7 +169,12 @@ func mountSyntheticTmpfs(target string, maxBytes int64) error {
 	if err != nil {
 		return err
 	}
-	fsFDValue, _, errno := unix.Syscall(sysFSOpen, uintptr(unsafe.Pointer(filesystem)), fsOpenCloexec, 0)
+	fsFDValue, _, errno := unix.Syscall(
+		sysFSOpen,
+		uintptr(unsafe.Pointer(filesystem)),
+		fsOpenCloexec,
+		0,
+	)
 	if errno != 0 {
 		return fmt.Errorf("fsopen tmpfs: %w", errno)
 	}
@@ -238,7 +247,10 @@ func cloneSyntheticMount(path string) (*os.File, error) {
 // enforced. A later fresh mount cannot inherit rights from an underlying tagged
 // directory, so each bounded pool slot is itself a pre-enforcement mount and
 // rule object.
-func prepareCompositionSetup(cfg *WrapperConfig, prepared *preparedLandlockRuleset) (_ *compositionSetupState, resultErr error) {
+func prepareCompositionSetup(
+	cfg *WrapperConfig,
+	prepared *preparedLandlockRuleset,
+) (_ *compositionSetupState, resultErr error) {
 	if cfg == nil || cfg.SandboxComposition == "" {
 		return nil, nil
 	}
@@ -248,7 +260,9 @@ func prepareCompositionSetup(cfg *WrapperConfig, prepared *preparedLandlockRules
 	if cfg.CommandJail == nil || !cfg.CommandJail.Required {
 		return nil, fmt.Errorf("composition requires the strict command jail")
 	}
-	if !filepath.IsAbs(cfg.CompositionScratchRoot) || cfg.CompositionSyntheticMounts <= 0 || cfg.CompositionMaxTransitions <= 0 || cfg.CompositionMaxDataBytes <= 0 {
+	if !filepath.IsAbs(cfg.CompositionScratchRoot) || cfg.CompositionSyntheticMounts <= 0 ||
+		cfg.CompositionMaxTransitions <= 0 ||
+		cfg.CompositionMaxDataBytes <= 0 {
 		return nil, fmt.Errorf("composition synthetic pool configuration is invalid")
 	}
 	poolRoot, err := os.MkdirTemp(cfg.CompositionScratchRoot, ".agentsh-composition-pool-")
@@ -260,13 +274,21 @@ func prepareCompositionSetup(cfg *WrapperConfig, prepared *preparedLandlockRules
 		return nil, fmt.Errorf("protect composition pool: %w", err)
 	}
 
-	capacity := len(prepared.objects) + len(cfg.DenyPaths) + cfg.CompositionSyntheticMounts + cfg.CompositionMaxTransitions
+	capacity := len(
+		prepared.objects,
+	) + len(
+		cfg.DenyPaths,
+	) + cfg.CompositionSyntheticMounts + cfg.CompositionMaxTransitions
 	state := &compositionSetupState{
-		kinds:    make([]composition.SetupObjectKind, 0, capacity),
-		paths:    make([]string, 0, capacity),
-		rights:   make([]uint64, 0, capacity),
-		files:    make([]*os.File, 0, capacity),
-		owned:    make([]*os.File, 0, len(cfg.DenyPaths)+cfg.CompositionSyntheticMounts+cfg.CompositionMaxTransitions),
+		kinds:  make([]composition.SetupObjectKind, 0, capacity),
+		paths:  make([]string, 0, capacity),
+		rights: make([]uint64, 0, capacity),
+		files:  make([]*os.File, 0, capacity),
+		owned: make(
+			[]*os.File,
+			0,
+			len(cfg.DenyPaths)+cfg.CompositionSyntheticMounts+cfg.CompositionMaxTransitions,
+		),
 		poolRoot: poolRoot,
 	}
 	defer func() {
@@ -358,7 +380,10 @@ func prepareCompositionSetup(cfg *WrapperConfig, prepared *preparedLandlockRules
 		state.owned = append(state.owned, mountObject)
 	}
 	if len(state.files) > 240 {
-		return nil, fmt.Errorf("composition setup requires %d descriptors, maximum 240", len(state.files))
+		return nil, fmt.Errorf(
+			"composition setup requires %d descriptors, maximum 240",
+			len(state.files),
+		)
 	}
 
 	// The cloned mount FDs and retained Landlock objects remain authoritative
@@ -389,5 +414,12 @@ func publishCompositionSetup(state *compositionSetupState) error {
 	}
 	defer connection.Close()
 	defer os.Unsetenv(composition.SetupFDEnv)
-	return composition.SendSetup(connection, composition.Mode, state.kinds, state.paths, state.rights, state.files)
+	return composition.SendSetup(
+		connection,
+		composition.Mode,
+		state.kinds,
+		state.paths,
+		state.rights,
+		state.files,
+	)
 }

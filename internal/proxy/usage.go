@@ -122,7 +122,8 @@ func usageHasTokenFields(body []byte, dialect Dialect) bool {
 	case DialectAnthropic:
 		return isNonNegativeInt(fields["input_tokens"]) && isNonNegativeInt(fields["output_tokens"])
 	case DialectOpenAI:
-		return isNonNegativeInt(fields["prompt_tokens"]) && isNonNegativeInt(fields["completion_tokens"])
+		return isNonNegativeInt(fields["prompt_tokens"]) &&
+			isNonNegativeInt(fields["completion_tokens"])
 	default:
 		return false
 	}

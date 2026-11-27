@@ -12,7 +12,10 @@ import (
 
 func loadFixture(t *testing.T, name string) skillcheck.ScanRequest {
 	t.Helper()
-	ref, files, err := skillcheck.LoadSkill(filepath.Join("..", "testdata", "skills", name), skillcheck.DefaultLoaderLimits())
+	ref, files, err := skillcheck.LoadSkill(
+		filepath.Join("..", "testdata", "skills", name),
+		skillcheck.DefaultLoaderLimits(),
+	)
 	if err != nil {
 		t.Fatalf("load %s: %v", name, err)
 	}
@@ -39,7 +42,8 @@ func TestLocal_HiddenUnicode(t *testing.T) {
 
 func TestLocal_EvalEnv(t *testing.T) {
 	findings := scanWithLocal(t, "eval-env")
-	if !hasType(findings, skillcheck.FindingExfiltration) && !hasType(findings, skillcheck.FindingPolicyViolation) {
+	if !hasType(findings, skillcheck.FindingExfiltration) &&
+		!hasType(findings, skillcheck.FindingPolicyViolation) {
 		t.Errorf("expected exfil/policy finding for eval $env, got %+v", findings)
 	}
 }

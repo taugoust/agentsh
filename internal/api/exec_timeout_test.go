@@ -89,13 +89,21 @@ func TestCommandTimeoutResolver(t *testing.T) {
 			}
 			wantEffectiveMS := commandtimeout.CeilMilliseconds(test.wantDuration)
 			if resolved.Metadata.EffectiveMS != wantEffectiveMS {
-				t.Fatalf("effective_ms = %d, want %d", resolved.Metadata.EffectiveMS, wantEffectiveMS)
+				t.Fatalf(
+					"effective_ms = %d, want %d",
+					resolved.Metadata.EffectiveMS,
+					wantEffectiveMS,
+				)
 			}
 			if resolved.Metadata.Source != test.wantSource {
 				t.Fatalf("source = %q, want %q", resolved.Metadata.Source, test.wantSource)
 			}
 			if !equalInt64Pointers(resolved.Metadata.RequestedMS, test.wantRequested) {
-				t.Fatalf("requested_ms = %v, want %v", resolved.Metadata.RequestedMS, test.wantRequested)
+				t.Fatalf(
+					"requested_ms = %v, want %v",
+					resolved.Metadata.RequestedMS,
+					test.wantRequested,
+				)
 			}
 		})
 	}
@@ -113,9 +121,14 @@ func TestCommandTimeoutMetadataReportsBoundedApprovalAllowance(t *testing.T) {
 }
 
 func TestCommandTimeoutResolverRejectsInvalidExplicitValues(t *testing.T) {
-	for _, value := range []string{"not-a-duration", "0", "0s", "-1ms", "500us", "0.5ms", "2562048h"} {
+	for _, value := range []string{
+		"not-a-duration", "0", "0s", "-1ms", "500us", "0.5ms", "2562048h",
+	} {
 		t.Run(value, func(t *testing.T) {
-			if _, err := resolveCommandTimeout(types.ExecRequest{Timeout: value}, time.Second); err == nil {
+			if _, err := resolveCommandTimeout(
+				types.ExecRequest{Timeout: value},
+				time.Second,
+			); err == nil {
 				t.Fatalf("explicit timeout %q was accepted", value)
 			}
 		})
@@ -130,9 +143,24 @@ func TestCommandTimeoutTerminationClassificationUsesRunnerError(t *testing.T) {
 		wantReason string
 		wantCode   string
 	}{
-		{name: "command timeout", execErr: errCommandTimeout, wantReason: types.TerminationReasonCommandTimeout, wantCode: "E_COMMAND_TIMEOUT"},
-		{name: "caller deadline", execErr: context.DeadlineExceeded, wantReason: types.TerminationReasonCallerDeadline, wantCode: "E_COMMAND_FAILED"},
-		{name: "caller cancellation", execErr: context.Canceled, wantReason: types.TerminationReasonCallerCancelled, wantCode: "E_COMMAND_FAILED"},
+		{
+			name:       "command timeout",
+			execErr:    errCommandTimeout,
+			wantReason: types.TerminationReasonCommandTimeout,
+			wantCode:   "E_COMMAND_TIMEOUT",
+		},
+		{
+			name:       "caller deadline",
+			execErr:    context.DeadlineExceeded,
+			wantReason: types.TerminationReasonCallerDeadline,
+			wantCode:   "E_COMMAND_FAILED",
+		},
+		{
+			name:       "caller cancellation",
+			execErr:    context.Canceled,
+			wantReason: types.TerminationReasonCallerCancelled,
+			wantCode:   "E_COMMAND_FAILED",
+		},
 		{name: "ordinary failure", execErr: failure, wantCode: "E_COMMAND_FAILED"},
 		{name: "success remains success"},
 	}
@@ -207,7 +235,11 @@ func TestCommandTimeoutApprovalExtensionsShareFirstAllowance(t *testing.T) {
 
 	wantMaximum := initialDeadline.Add(allowance)
 	for i, extra := range []time.Duration{allowance, time.Second, 24 * time.Hour} {
-		if !extendCommandTimeoutAt(extender, extra, initialDeadline.Add(time.Duration(i+1)*time.Nanosecond)) {
+		if !extendCommandTimeoutAt(
+			extender,
+			extra,
+			initialDeadline.Add(time.Duration(i+1)*time.Nanosecond),
+		) {
 			t.Fatalf("pre-deadline extension %d was rejected", i+2)
 		}
 	}
@@ -217,7 +249,12 @@ func TestCommandTimeoutApprovalExtensionsShareFirstAllowance(t *testing.T) {
 	maximum := extender.maximumDeadline
 	extender.mu.Unlock()
 	if !deadline.Equal(wantMaximum) || !maximum.Equal(wantMaximum) {
-		t.Fatalf("deadline=%s maximum=%s, want one cumulative allowance ending %s", deadline, maximum, wantMaximum)
+		t.Fatalf(
+			"deadline=%s maximum=%s, want one cumulative allowance ending %s",
+			deadline,
+			maximum,
+			wantMaximum,
+		)
 	}
 	if cause := context.Cause(ctx); cause != nil {
 		t.Fatalf("context ended during accepted extensions: %v", cause)
@@ -243,7 +280,11 @@ func TestCommandTimeoutAcceptedBoundaryExtensionIsNotLost(t *testing.T) {
 	expired := extender.expireLocked(initialDeadline)
 	extender.mu.Unlock()
 	if expired || context.Cause(ctx) != nil {
-		t.Fatalf("stale timer discarded accepted extension: expired=%v cause=%v", expired, context.Cause(ctx))
+		t.Fatalf(
+			"stale timer discarded accepted extension: expired=%v cause=%v",
+			expired,
+			context.Cause(ctx),
+		)
 	}
 
 	maximumDeadline := initialDeadline.Add(allowance)
@@ -255,7 +296,11 @@ func TestCommandTimeoutAcceptedBoundaryExtensionIsNotLost(t *testing.T) {
 	}
 }
 
-func extendCommandTimeoutAt(extender *commandTimeoutExtender, extra time.Duration, now time.Time) bool {
+func extendCommandTimeoutAt(
+	extender *commandTimeoutExtender,
+	extra time.Duration,
+	now time.Time,
+) bool {
 	extender.mu.Lock()
 	defer extender.mu.Unlock()
 	return extender.extendLocked(extra, now)
@@ -276,7 +321,12 @@ func TestCommandTimeoutCompletionImmediatelyBeforeDeadlineWins(t *testing.T) {
 	state := extender.terminal
 	extender.mu.Unlock()
 	if lateExpiryWon || state != commandTerminalCompleted || context.Cause(ctx) != nil {
-		t.Fatalf("late timer rewrote completion: expired=%t state=%d cause=%v", lateExpiryWon, state, context.Cause(ctx))
+		t.Fatalf(
+			"late timer rewrote completion: expired=%t state=%d cause=%v",
+			lateExpiryWon,
+			state,
+			context.Cause(ctx),
+		)
 	}
 }
 
@@ -291,7 +341,11 @@ func TestCommandTimeoutCompletionImmediatelyAfterDeadlineCannotEscape(t *testing
 		t.Fatal("completion after the effective deadline won")
 	}
 	if !commandTimedOut(ctx) || !errors.Is(context.Cause(ctx), errCommandTimeout) {
-		t.Fatalf("late completion was not timeout: state=%d cause=%v", extender.terminal, context.Cause(ctx))
+		t.Fatalf(
+			"late completion was not timeout: state=%d cause=%v",
+			extender.terminal,
+			context.Cause(ctx),
+		)
 	}
 }
 

@@ -55,7 +55,11 @@ func TestIntegrityChain_Wrap(t *testing.T) {
 
 	formatVersion, ok := integrity["format_version"].(float64)
 	if !ok || int(formatVersion) != IntegrityFormatVersion {
-		t.Errorf("integrity.format_version = %v, want %d", integrity["format_version"], IntegrityFormatVersion)
+		t.Errorf(
+			"integrity.format_version = %v, want %d",
+			integrity["format_version"],
+			IntegrityFormatVersion,
+		)
 	}
 
 	// Check prev_hash (should be empty for first entry)
@@ -104,7 +108,10 @@ func TestIntegrityChain_Restore_ContinuesFromLastWrittenSequence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewIntegrityChain() error = %v", err)
 	}
-	if err := chain.Restore(41, "0000000000000000000000000000000000000000000000000000000000000000"); err != nil {
+	if err := chain.Restore(
+		41,
+		"0000000000000000000000000000000000000000000000000000000000000000",
+	); err != nil {
 		t.Fatalf("Restore() error = %v", err)
 	}
 
@@ -122,7 +129,7 @@ func TestIntegrityChain_Restore_ContinuesFromLastWrittenSequence(t *testing.T) {
 	if got := int64(integrity["sequence"].(float64)); got != 42 {
 		t.Fatalf("sequence = %d, want 42", got)
 	}
-	if got := integrity["prev_hash"].(string); got != "0000000000000000000000000000000000000000000000000000000000000000" {
+	if got := integrity["prev_hash"].(string); got != strings.Repeat("0", 64) {
 		t.Fatalf("prev_hash = %q, want zero hex", got)
 	}
 }
@@ -144,7 +151,11 @@ func TestKeyFingerprint_IsDeterministic(t *testing.T) {
 		t.Fatalf("KeyFingerprint() = %q, want %q", got, want)
 	}
 	if got != KeyFingerprint(testKey) {
-		t.Fatalf("KeyFingerprint() should be deterministic, got %q then %q", got, KeyFingerprint(testKey))
+		t.Fatalf(
+			"KeyFingerprint() should be deterministic, got %q then %q",
+			got,
+			KeyFingerprint(testKey),
+		)
 	}
 
 	chain, err := NewIntegrityChain(testKey)
@@ -203,7 +214,13 @@ func TestIntegrityChain_VerifyHash_UsesOwnKeyAndCanonicalPayload(t *testing.T) {
 	prevHash := integrity["prev_hash"].(string)
 	entryHash := integrity["entry_hash"].(string)
 
-	ok, err := chain.VerifyHash(formatVersion, sequence, prevHash, []byte(`{"b":2,"a":1}`), entryHash)
+	ok, err := chain.VerifyHash(
+		formatVersion,
+		sequence,
+		prevHash,
+		[]byte(`{"b":2,"a":1}`),
+		entryHash,
+	)
 	if err != nil {
 		t.Fatalf("VerifyHash() error = %v", err)
 	}
@@ -211,7 +228,13 @@ func TestIntegrityChain_VerifyHash_UsesOwnKeyAndCanonicalPayload(t *testing.T) {
 		t.Fatal("VerifyHash() = false, want true")
 	}
 
-	ok, err = chain.VerifyHash(formatVersion, sequence, prevHash, []byte(`{"b":3,"a":1}`), entryHash)
+	ok, err = chain.VerifyHash(
+		formatVersion,
+		sequence,
+		prevHash,
+		[]byte(`{"b":3,"a":1}`),
+		entryHash,
+	)
 	if err != nil {
 		t.Fatalf("VerifyHash() tampered error = %v", err)
 	}
@@ -991,8 +1014,12 @@ func TestIntegrityChain_Restore_PartialFailure_LeavesStateIntact(t *testing.T) {
 	}
 	integrity := result["integrity"].(map[string]any)
 	if got := int64(integrity["sequence"].(float64)); got != s0.Sequence+1 {
-		t.Fatalf("post-Restore Wrap sequence = %d, want %d (S0.Sequence+1; allocator advanced by failed Restore)",
-			got, s0.Sequence+1)
+		t.Fatalf(
+			"post-Restore Wrap sequence = %d, want %d (S0.Sequence+1; allocator advanced by "+
+				"failed Restore)",
+			got,
+			s0.Sequence+1,
+		)
 	}
 	if got := integrity["prev_hash"].(string); got != s0.PrevHash {
 		t.Fatalf("post-Restore Wrap prev_hash = %q, want %q (chain advanced by failed Restore)",

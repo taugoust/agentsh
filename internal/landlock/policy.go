@@ -228,7 +228,12 @@ func DeriveWritePathsFromPolicy(p *policy.Policy) []string {
 	return paths
 }
 
-func deriveFilePathsFromPolicy(p *policy.Policy, decision string, opMatch func(policy.FileRule) bool, excludeDenyOverlap bool) []string {
+func deriveFilePathsFromPolicy(
+	p *policy.Policy,
+	decision string,
+	opMatch func(policy.FileRule) bool,
+	excludeDenyOverlap bool,
+) []string {
 	if p == nil {
 		return nil
 	}
@@ -275,7 +280,18 @@ func fileRuleHasReadOp(rule policy.FileRule) bool {
 func fileRuleHasWriteOp(rule policy.FileRule) bool {
 	for _, op := range rule.Operations {
 		switch strings.ToLower(op) {
-		case "write", "create", "mkdir", "delete", "rmdir", "rename", "link", "symlink", "chmod", "chown", "mknod", "*":
+		case "write",
+			"create",
+			"mkdir",
+			"delete",
+			"rmdir",
+			"rename",
+			"link",
+			"symlink",
+			"chmod",
+			"chown",
+			"mknod",
+			"*":
 			return true
 		}
 	}

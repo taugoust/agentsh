@@ -31,11 +31,21 @@ func newDetachedReviewCmd(op string) *cobra.Command {
 					return err
 				}
 				if review.Generation != 0 && review.Hash != "" {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Review generation: %d\nReview hash: %s\n", review.Generation, review.Hash)
+					fmt.Fprintf(
+						cmd.ErrOrStderr(),
+						"Review generation: %d\nReview hash: %s\n",
+						review.Generation,
+						review.Hash,
+					)
 				}
 				return nil
 			case "accept":
-				s, err := c.AcceptSessionOverlayReviewed(cmd.Context(), id, reviewGeneration, reviewHash)
+				s, err := c.AcceptSessionOverlayReviewed(
+					cmd.Context(),
+					id,
+					reviewGeneration,
+					reviewHash,
+				)
 				if err != nil {
 					return err
 				}
@@ -52,8 +62,11 @@ func newDetachedReviewCmd(op string) *cobra.Command {
 		},
 	}
 	if op == "accept" {
-		cmd.Flags().Uint64Var(&reviewGeneration, "review-generation", 0, "Fresh shadow review generation returned by diff")
-		cmd.Flags().StringVar(&reviewHash, "review-hash", "", "Fresh shadow review hash returned by diff")
+		cmd.Flags().
+			Uint64Var(&reviewGeneration, "review-generation", 0,
+				"Fresh shadow review generation returned by diff")
+		cmd.Flags().
+			StringVar(&reviewHash, "review-hash", "", "Fresh shadow review hash returned by diff")
 	}
 	return cmd
 }

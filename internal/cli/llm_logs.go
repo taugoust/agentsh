@@ -247,7 +247,15 @@ func GetSessionLLMLogPath(sessionID string) (string, error) {
 
 	// Try ~/.local/share/agentsh/sessions (XDG data dir)
 	if home, err := os.UserHomeDir(); err == nil {
-		path := filepath.Join(home, ".local", "share", "agentsh", "sessions", sessionID, "llm-requests.jsonl")
+		path := filepath.Join(
+			home,
+			".local",
+			"share",
+			"agentsh",
+			"sessions",
+			sessionID,
+			"llm-requests.jsonl",
+		)
 		if _, err := os.Stat(path); err == nil {
 			return path, nil
 		}

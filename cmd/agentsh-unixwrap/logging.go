@@ -39,24 +39,42 @@ func setupLogging() {
 	}
 	fd, err := strconv.Atoi(val)
 	if err != nil || fd < 0 {
-		log.Printf("warning: invalid %s=%q; wrapper diagnostics stay on stderr", wrapperlog.EnvKey, val)
+		log.Printf(
+			"warning: invalid %s=%q; wrapper diagnostics stay on stderr",
+			wrapperlog.EnvKey,
+			val,
+		)
 		return
 	}
 	var st unix.Stat_t
 	if err := unix.Fstat(fd, &st); err != nil {
-		log.Printf("warning: %s=%d is not a usable fd (%v); wrapper diagnostics stay on stderr", wrapperlog.EnvKey, fd, err)
+		log.Printf(
+			"warning: %s=%d is not a usable fd (%v); wrapper diagnostics stay on stderr",
+			wrapperlog.EnvKey,
+			fd,
+			err,
+		)
 		return
 	}
 	// Close-on-exec: the wrapped command must never inherit the log
 	// destination. All wrapper logging happens before syscall.Exec, and
 	// pipe-backed parents rely on this close for drain-goroutine EOF.
 	if _, err := unix.FcntlInt(uintptr(fd), unix.F_SETFD, unix.FD_CLOEXEC); err != nil {
-		log.Printf("warning: set FD_CLOEXEC on %s=%d: %v; wrapper diagnostics stay on stderr", wrapperlog.EnvKey, fd, err)
+		log.Printf(
+			"warning: set FD_CLOEXEC on %s=%d: %v; wrapper diagnostics stay on stderr",
+			wrapperlog.EnvKey,
+			fd,
+			err,
+		)
 		return
 	}
 	f := os.NewFile(uintptr(fd), "wrapper-log")
 	if f == nil {
-		log.Printf("warning: cannot adopt %s=%d; wrapper diagnostics stay on stderr", wrapperlog.EnvKey, fd)
+		log.Printf(
+			"warning: cannot adopt %s=%d; wrapper diagnostics stay on stderr",
+			wrapperlog.EnvKey,
+			fd,
+		)
 		return
 	}
 	// Warm the Local timezone cache NOW, before any seccomp filter

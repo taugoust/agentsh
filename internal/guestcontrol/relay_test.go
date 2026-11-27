@@ -51,7 +51,9 @@ func TestAuthenticatedSupervisorRelay(t *testing.T) {
 			return nil, fmt.Errorf("unexpected endpoint %d:%d", cid, port)
 		}
 		server, client := net.Pipe()
-		go func() { _ = relaySupervisorConnection(context.Background(), server, manifest, socketPath) }()
+		go func() {
+			_ = relaySupervisorConnection(context.Background(), server, manifest, socketPath)
+		}()
 		return client, nil
 	}
 	client, err := newClient(manifest, dial, time.Second)
@@ -85,7 +87,8 @@ func TestSupervisorRelayServerRetainsProtocolV2Authentication(t *testing.T) {
 	server, client := net.Pipe()
 	done := make(chan error, 1)
 	go func() {
-		done <- relaySupervisorConnection(context.Background(), server, manifest, filepath.Join(t.TempDir(), "missing.sock"))
+		done <- relaySupervisorConnection(context.Background(), server, manifest,
+			filepath.Join(t.TempDir(), "missing.sock"))
 	}()
 	request := ProxyRequest{
 		ProtocolVersion: manifest.ProtocolVersion, Type: "connect", RequestID: "legacy-connect",
@@ -102,7 +105,9 @@ func TestSupervisorRelayServerRetainsProtocolV2Authentication(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if response.ProtocolVersion != ProtocolVersionV2 || response.OK || response.RequestID != request.RequestID || response.Error != "guest supervisor is unavailable" {
+	if response.ProtocolVersion != ProtocolVersionV2 || response.OK ||
+		response.RequestID != request.RequestID ||
+		response.Error != "guest supervisor is unavailable" {
 		t.Fatalf("legacy proxy response = %+v", response)
 	}
 }
@@ -122,7 +127,10 @@ func TestSupervisorRelayClientRetainsProtocolV2Authentication(t *testing.T) {
 			}
 			requestSeen <- request
 			_ = json.NewEncoder(server).Encode(ProxyResponse{
-				ProtocolVersion: request.ProtocolVersion, Type: "connect", RequestID: request.RequestID, OK: true,
+				ProtocolVersion: request.ProtocolVersion,
+				Type:            "connect",
+				RequestID:       request.RequestID,
+				OK:              true,
 			})
 			_, _ = io.Copy(io.Discard, server)
 		}()
@@ -185,7 +193,12 @@ func TestSupervisorRelayRejectsWrongCredential(t *testing.T) {
 	dial := func(context.Context, uint32, uint32) (controlConn, error) {
 		server, client := net.Pipe()
 		go func() {
-			_ = relaySupervisorConnection(context.Background(), server, manifest, filepath.Join(t.TempDir(), "unused.sock"))
+			_ = relaySupervisorConnection(
+				context.Background(),
+				server,
+				manifest,
+				filepath.Join(t.TempDir(), "unused.sock"),
+			)
 		}()
 		return client, nil
 	}

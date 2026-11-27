@@ -13,8 +13,8 @@ import (
 	"github.com/agentsh/agentsh/internal/netmonitor/ebpf"
 )
 
-// Integration test: attach BPF to a temp cgroup, populate allowlist, attempt a denied connect via nc.
-// Requires root; skipped otherwise.
+// Integration test: attach BPF to a temp cgroup, populate allowlist, attempt a denied connect via
+// nc. Requires root; skipped otherwise.
 func TestIntegration_AttachAndEnforce(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("needs root")
@@ -31,14 +31,22 @@ func TestIntegration_AttachAndEnforce(t *testing.T) {
 		t.Skipf("cgroup mkdir failed: %v", err)
 	}
 	origCgroup, _ := limits.CurrentCgroupDir()
-	if err := os.WriteFile(filepath.Join(cgDir, "cgroup.procs"), []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(cgDir, "cgroup.procs"),
+		[]byte(strconv.Itoa(os.Getpid())),
+		0o644,
+	); err != nil {
 		_ = os.Remove(cgDir)
 		t.Skipf("cgroup attach failed: %v", err)
 	}
 	defer func() {
 		// Move process back so the cgroup can be removed.
 		if origCgroup != "" {
-			if err := os.WriteFile(filepath.Join(origCgroup, "cgroup.procs"), []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
+			if err := os.WriteFile(
+				filepath.Join(origCgroup, "cgroup.procs"),
+				[]byte(strconv.Itoa(os.Getpid())),
+				0o644,
+			); err != nil {
 				t.Errorf("restore cgroup: %v", err)
 			}
 		}
@@ -88,13 +96,21 @@ func TestIntegration_DenyWithoutDefaultDeny(t *testing.T) {
 		t.Skipf("cgroup mkdir failed: %v", err)
 	}
 	origCgroup, _ := limits.CurrentCgroupDir()
-	if err := os.WriteFile(filepath.Join(cgDir, "cgroup.procs"), []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(cgDir, "cgroup.procs"),
+		[]byte(strconv.Itoa(os.Getpid())),
+		0o644,
+	); err != nil {
 		_ = os.Remove(cgDir)
 		t.Skipf("cgroup attach failed: %v", err)
 	}
 	defer func() {
 		if origCgroup != "" {
-			if err := os.WriteFile(filepath.Join(origCgroup, "cgroup.procs"), []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
+			if err := os.WriteFile(
+				filepath.Join(origCgroup, "cgroup.procs"),
+				[]byte(strconv.Itoa(os.Getpid())),
+				0o644,
+			); err != nil {
 				t.Errorf("restore cgroup: %v", err)
 			}
 		}

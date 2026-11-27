@@ -21,7 +21,9 @@ import (
 // classifySet maps SET / SET LOCAL / SET SESSION AUTHORIZATION / SET ROLE.
 func classifySet(cs *effects.ClassifiedStatement, s *pg_query.VariableSetStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil VariableSetStmt"
 		return
 	}
@@ -38,7 +40,11 @@ func classifySet(cs *effects.ClassifiedStatement, s *pg_query.VariableSetStmt) {
 // mapSetSubtype picks the session subtype + RawVerb prefix for a SET-family
 // statement. SET LOCAL is treated as a no-op subtype regardless of the GUC
 // being set — Plan 03 §7.4 only tracks the session-scoped form.
-func mapSetSubtype(k pg_query.VariableSetKind, name string, isLocal bool) (effects.Subtype, string) {
+func mapSetSubtype(
+	k pg_query.VariableSetKind,
+	name string,
+	isLocal bool,
+) (effects.Subtype, string) {
 	if isLocal {
 		// SET LOCAL is transaction-scoped — we tag it for diagnostics but the
 		// applier ignores it. RawVerb format: "SET_LOCAL=<name>:<values>".
@@ -74,31 +80,45 @@ func mapSetSubtype(k pg_query.VariableSetKind, name string, isLocal bool) (effec
 // classifyShow — SHOW name | SHOW ALL is a read of session state.
 func classifyShow(cs *effects.ClassifiedStatement) {
 	cs.RawVerb = "SHOW"
-	cs.Effects = []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}}
+	cs.Effects = []effects.Effect{
+		{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+	}
 }
 
 // classifyDiscard maps DISCARD ALL / PLANS / TEMP / SEQUENCES.
 func classifyDiscard(cs *effects.ClassifiedStatement, s *pg_query.DiscardStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DiscardStmt"
 		return
 	}
 	switch s.Target {
 	case pg_query.DiscardMode_DISCARD_ALL:
 		cs.RawVerb = "DISCARD_ALL"
-		cs.Effects = []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardAll}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardAll},
+		}
 	case pg_query.DiscardMode_DISCARD_PLANS:
 		cs.RawVerb = "DISCARD_PLANS"
-		cs.Effects = []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardPlans}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardPlans},
+		}
 	case pg_query.DiscardMode_DISCARD_TEMP:
 		cs.RawVerb = "DISCARD_TEMP"
-		cs.Effects = []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardTemp}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardTemp},
+		}
 	case pg_query.DiscardMode_DISCARD_SEQUENCES:
 		cs.RawVerb = "DISCARD_SEQUENCES"
-		cs.Effects = []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardSequences}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardSequences},
+		}
 	default:
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: discard target"
 	}
 }
@@ -111,7 +131,9 @@ func classifyDiscard(cs *effects.ClassifiedStatement, s *pg_query.DiscardStmt) {
 // token like "BEGIN".
 func classifyTransaction(cs *effects.ClassifiedStatement, s *pg_query.TransactionStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil TransactionStmt"
 		return
 	}

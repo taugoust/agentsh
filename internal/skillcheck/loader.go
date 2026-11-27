@@ -72,11 +72,20 @@ func LoadSkill(path string, limits LoaderLimits) (*SkillRef, map[string][]byte, 
 		}
 		size := fi.Size()
 		if size > limits.PerFileBytes {
-			return fmt.Errorf("loader: per-file size limit exceeded for %s (%d > %d)", p, size, limits.PerFileBytes)
+			return fmt.Errorf(
+				"loader: per-file size limit exceeded for %s (%d > %d)",
+				p,
+				size,
+				limits.PerFileBytes,
+			)
 		}
 		totalSize += size
 		if totalSize > limits.TotalBytes {
-			return fmt.Errorf("loader: total size limit exceeded (%d > %d)", totalSize, limits.TotalBytes)
+			return fmt.Errorf(
+				"loader: total size limit exceeded (%d > %d)",
+				totalSize,
+				limits.TotalBytes,
+			)
 		}
 		data, err := os.ReadFile(p)
 		if err != nil {

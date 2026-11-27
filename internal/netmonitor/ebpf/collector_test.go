@@ -142,7 +142,8 @@ func TestEvaluateConnectRedirect_MatchingRule(t *testing.T) {
 		receivedEvent = ev
 	})
 
-	// Create event with IP that maps to api.anthropic.com (140.82.114.4 = 0x0472528c in little-endian)
+	// Create event with IP that maps to api.anthropic.com (140.82.114.4 = 0x0472528c in
+	// little-endian)
 	ev := &ConnectEvent{
 		Family:  2,
 		DstIPv4: 0x0472528c,

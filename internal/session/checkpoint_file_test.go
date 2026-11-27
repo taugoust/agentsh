@@ -498,10 +498,18 @@ func TestFileCheckpointStorage_SkipHiddenDirs(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(workspace, ".git"), 0755); err != nil {
 		t.Fatalf("create .git: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, ".git", "config"), []byte("git config"), 0644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace, ".git", "config"),
+		[]byte("git config"),
+		0644,
+	); err != nil {
 		t.Fatalf("write .git/config: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("content"), 0644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace, "file.txt"),
+		[]byte("content"),
+		0644,
+	); err != nil {
 		t.Fatalf("write file.txt: %v", err)
 	}
 

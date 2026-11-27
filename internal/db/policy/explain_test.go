@@ -7,6 +7,7 @@ import (
 )
 
 func TestExplainStatement_ReturnsCoverageAndDecision(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -73,6 +74,7 @@ database_rules:
 }
 
 func TestExplainStatement_ResolvedOnlyFunctionReportsFunctionCoverage(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -112,6 +114,7 @@ database_rules:
 }
 
 func TestExplainStatement_ResolvedOnlyFunctionReportsBroadDeny(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:

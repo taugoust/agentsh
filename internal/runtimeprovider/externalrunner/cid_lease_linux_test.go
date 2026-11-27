@@ -23,7 +23,13 @@ func TestCIDLeasesAreDurableAndConcurrent(t *testing.T) {
 		group.Add(1)
 		go func(index int) {
 			defer group.Done()
-			lease, err := AllocateCID(context.Background(), root, "session-concurrent-"+strings.Repeat("x", index+1), 41000, 41015)
+			lease, err := AllocateCID(
+				context.Background(),
+				root,
+				"session-concurrent-"+strings.Repeat("x", index+1),
+				41000,
+				41015,
+			)
 			if err != nil {
 				errorsCh <- err
 				return
@@ -51,7 +57,14 @@ func TestCIDLeasesAreDurableAndConcurrent(t *testing.T) {
 	if len(seen) != count {
 		t.Fatalf("allocated %d CIDs, want %d", len(seen), count)
 	}
-	if _, err := AllocateCID(context.Background(), root, "session-exhausted", 41000, 41015); err == nil || !strings.Contains(err.Error(), "exhausted") {
+	if _, err := AllocateCID(
+		context.Background(),
+		root,
+		"session-exhausted",
+		41000,
+		41015,
+	); err == nil ||
+		!strings.Contains(err.Error(), "exhausted") {
 		t.Fatalf("exhausted allocation error = %v", err)
 	}
 	for _, lease := range seen {
@@ -69,7 +82,14 @@ func TestCIDLeaseReleaseRequiresExactIdentity(t *testing.T) {
 	}
 	wrong := lease
 	wrong.LeaseID = strings.Repeat("9", 64)
-	if err := ReleaseCID(context.Background(), root, wrong, 42000, 42000); err == nil || !strings.Contains(err.Error(), "identity mismatch") {
+	if err := ReleaseCID(
+		context.Background(),
+		root,
+		wrong,
+		42000,
+		42000,
+	); err == nil ||
+		!strings.Contains(err.Error(), "identity mismatch") {
 		t.Fatalf("wrong lease release error = %v", err)
 	}
 	if err := VerifyCIDLease(context.Background(), root, lease, 42000, 42000); err != nil {
@@ -88,7 +108,13 @@ func TestCIDLeaseRejectsUnsafeRootAndHonorsLockCancellation(t *testing.T) {
 	if err := os.Mkdir(unsafeRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := AllocateCID(context.Background(), unsafeRoot, "session-unsafe", 43000, 43001); err == nil {
+	if _, err := AllocateCID(
+		context.Background(),
+		unsafeRoot,
+		"session-unsafe",
+		43000,
+		43001,
+	); err == nil {
 		t.Fatal("CID allocator accepted a non-private lease root")
 	}
 
@@ -101,7 +127,16 @@ func TestCIDLeaseRejectsUnsafeRootAndHonorsLockCancellation(t *testing.T) {
 	defer dir.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	if _, err := AllocateCID(ctx, root, "session-cancelled", 43000, 43001); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := AllocateCID(
+		ctx,
+		root,
+		"session-cancelled",
+		43000,
+		43001,
+	); !errors.Is(
+		err,
+		context.DeadlineExceeded,
+	) {
 		t.Fatalf("contended allocation error = %v", err)
 	}
 }

@@ -114,7 +114,9 @@ func TestCollectStaticAllowsMultipleHandlers(t *testing.T) {
 	if len(allows) != 5 {
 		t.Fatalf("expected 5 allows from both handlers, got %d", len(allows))
 	}
-	for _, nr := range []int{unix.SYS_CONNECT, unix.SYS_BIND, unix.SYS_OPENAT, unix.SYS_OPENAT2, unix.SYS_UNLINKAT} {
+	for _, nr := range []int{
+		unix.SYS_CONNECT, unix.SYS_BIND, unix.SYS_OPENAT, unix.SYS_OPENAT2, unix.SYS_UNLINKAT,
+	} {
 		if !allows[nr] {
 			t.Errorf("syscall %d missing from allows", nr)
 		}

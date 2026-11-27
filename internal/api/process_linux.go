@@ -43,7 +43,11 @@ func resumeTracedProcess(pid int) error {
 		return fmt.Errorf("wait for traced process: %w", err)
 	}
 	if ws.Exited() || ws.Signaled() {
-		return fmt.Errorf("stopped process exited before enforcement release (exited=%t signaled=%t)", ws.Exited(), ws.Signaled())
+		return fmt.Errorf(
+			"stopped process exited before enforcement release (exited=%t signaled=%t)",
+			ws.Exited(),
+			ws.Signaled(),
+		)
 	}
 	if !ws.Stopped() {
 		return fmt.Errorf("process did not enter a ptrace stop before enforcement release")

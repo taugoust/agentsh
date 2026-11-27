@@ -47,15 +47,24 @@ func NewGRPC(addr string, apiKey string) (*GRPCClient, error) {
 	return &GRPCClient{addr: a, apiKey: apiKey, conn: conn}, nil
 }
 
-func (c *GRPCClient) CreateSession(ctx context.Context, workspace, policy string) (types.Session, error) {
+func (c *GRPCClient) CreateSession(
+	ctx context.Context,
+	workspace, policy string,
+) (types.Session, error) {
 	return c.createSession(ctx, "", workspace, policy)
 }
 
-func (c *GRPCClient) CreateSessionWithID(ctx context.Context, id, workspace, policy string) (types.Session, error) {
+func (c *GRPCClient) CreateSessionWithID(
+	ctx context.Context,
+	id, workspace, policy string,
+) (types.Session, error) {
 	return c.createSession(ctx, id, workspace, policy)
 }
 
-func (c *GRPCClient) CreateSessionWithRequest(ctx context.Context, req types.CreateSessionRequest) (types.Session, error) {
+func (c *GRPCClient) CreateSessionWithRequest(
+	ctx context.Context,
+	req types.CreateSessionRequest,
+) (types.Session, error) {
 	var out types.Session
 	reqBody := map[string]any{}
 	if req.ID != "" {
@@ -130,7 +139,10 @@ func (c *GRPCClient) CreateSessionWithRequest(ctx context.Context, req types.Cre
 	return out, nil
 }
 
-func (c *GRPCClient) createSession(ctx context.Context, id, workspace, policy string) (types.Session, error) {
+func (c *GRPCClient) createSession(
+	ctx context.Context,
+	id, workspace, policy string,
+) (types.Session, error) {
 	var out types.Session
 	reqBody := map[string]any{
 		"workspace": workspace,
@@ -188,7 +200,11 @@ func (c *GRPCClient) DestroySession(ctx context.Context, id string) error {
 	return c.invokeUnary(ctx, "/agentsh.v1.Agentsh/DestroySession", in, resp)
 }
 
-func (c *GRPCClient) PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error) {
+func (c *GRPCClient) PatchSession(
+	ctx context.Context,
+	id string,
+	req types.SessionPatchRequest,
+) (types.Session, error) {
 	var out types.Session
 	body := map[string]any{"id": id}
 	if req.Cwd != "" {
@@ -213,7 +229,11 @@ func (c *GRPCClient) PatchSession(ctx context.Context, id string, req types.Sess
 	return out, nil
 }
 
-func (c *GRPCClient) Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error) {
+func (c *GRPCClient) Exec(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (types.ExecResponse, error) {
 	var out types.ExecResponse
 	body := map[string]any{
 		"session_id":     sessionID,
@@ -238,7 +258,11 @@ func (c *GRPCClient) Exec(ctx context.Context, sessionID string, req types.ExecR
 	return out, nil
 }
 
-func (c *GRPCClient) ExecStream(ctx context.Context, sessionID string, req types.ExecRequest) (io.ReadCloser, error) {
+func (c *GRPCClient) ExecStream(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (io.ReadCloser, error) {
 	body := map[string]any{
 		"session_id":  sessionID,
 		"command":     req.Command,
@@ -293,7 +317,10 @@ func (c *GRPCClient) ExecStream(ctx context.Context, sessionID string, req types
 	return pr, nil
 }
 
-func (c *GRPCClient) StreamSessionEvents(ctx context.Context, sessionID string) (io.ReadCloser, error) {
+func (c *GRPCClient) StreamSessionEvents(
+	ctx context.Context,
+	sessionID string,
+) (io.ReadCloser, error) {
 	in, err := jsonToStruct(map[string]any{"session_id": sessionID})
 	if err != nil {
 		return nil, err
@@ -322,7 +349,8 @@ func (c *GRPCClient) StreamSessionEvents(ctx context.Context, sessionID string) 
 			}
 			b, _ := protojson.Marshal(msg)
 			trim := strings.TrimSpace(string(b))
-			// If server sends {"event":"ready"} for parity with SSE, output {} like SSE clients expect.
+			// If server sends {"event":"ready"} for parity with SSE, output {} like SSE clients
+			// expect.
 			if trim == `{"event":"ready"}` {
 				trim = "{}"
 			}
@@ -345,7 +373,11 @@ func (c *GRPCClient) KillCommand(ctx context.Context, sessionID, commandID strin
 	return c.invokeUnary(ctx, "/agentsh.v1.Agentsh/KillCommand", in, resp)
 }
 
-func (c *GRPCClient) QuerySessionEvents(ctx context.Context, sessionID string, q url.Values) ([]types.Event, error) {
+func (c *GRPCClient) QuerySessionEvents(
+	ctx context.Context,
+	sessionID string,
+	q url.Values,
+) ([]types.Event, error) {
 	body := map[string]any{"session_id": sessionID}
 	if cmdID := q.Get("command_id"); cmdID != "" {
 		body["command_id"] = cmdID
@@ -442,7 +474,11 @@ func (c *GRPCClient) SearchEvents(ctx context.Context, q url.Values) ([]types.Ev
 	return out, nil
 }
 
-func (c *GRPCClient) OutputChunk(ctx context.Context, sessionID, commandID, stream string, offset, limit int64) (map[string]any, error) {
+func (c *GRPCClient) OutputChunk(
+	ctx context.Context,
+	sessionID, commandID, stream string,
+	offset, limit int64,
+) (map[string]any, error) {
 	in, err := jsonToStruct(map[string]any{
 		"session_id": sessionID,
 		"command_id": commandID,
@@ -479,7 +515,10 @@ func (c *GRPCClient) ResolveApproval(ctx context.Context, id, decision, reason s
 	return c.ResolveApprovalWithScope(ctx, id, decision, reason, "")
 }
 
-func (c *GRPCClient) ResolveApprovalWithScope(ctx context.Context, id, decision, reason, scope string) error {
+func (c *GRPCClient) ResolveApprovalWithScope(
+	ctx context.Context,
+	id, decision, reason, scope string,
+) error {
 	body := map[string]any{
 		"id":       id,
 		"decision": decision,
@@ -496,7 +535,10 @@ func (c *GRPCClient) ResolveApprovalWithScope(ctx context.Context, id, decision,
 	return c.invokeUnary(ctx, "/agentsh.v1.Agentsh/ResolveApproval", in, resp)
 }
 
-func (c *GRPCClient) PolicyTest(ctx context.Context, sessionID, operation, path string) (map[string]any, error) {
+func (c *GRPCClient) PolicyTest(
+	ctx context.Context,
+	sessionID, operation, path string,
+) (map[string]any, error) {
 	body := map[string]any{
 		"operation": operation,
 		"path":      path,
@@ -543,7 +585,12 @@ func (c *GRPCClient) ListMCPServers(ctx context.Context) ([]map[string]any, erro
 	return nil, fmt.Errorf("ListMCPServers not supported via gRPC")
 }
 
-func (c *GRPCClient) invokeUnary(ctx context.Context, method string, in *structpb.Struct, out *structpb.Struct) error {
+func (c *GRPCClient) invokeUnary(
+	ctx context.Context,
+	method string,
+	in *structpb.Struct,
+	out *structpb.Struct,
+) error {
 	if c == nil || c.conn == nil {
 		return fmt.Errorf("grpc client not initialized")
 	}
@@ -551,7 +598,11 @@ func (c *GRPCClient) invokeUnary(ctx context.Context, method string, in *structp
 	return c.conn.Invoke(ctx, method, in, out)
 }
 
-func (c *GRPCClient) newServerStream(ctx context.Context, method string, in *structpb.Struct) (grpc.ClientStream, error) {
+func (c *GRPCClient) newServerStream(
+	ctx context.Context,
+	method string,
+	in *structpb.Struct,
+) (grpc.ClientStream, error) {
 	if c == nil || c.conn == nil {
 		return nil, fmt.Errorf("grpc client not initialized")
 	}

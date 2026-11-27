@@ -211,7 +211,11 @@ func TestSetupLogging_NoSelfDeadlockUnderFileMonitor(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestSetupLogging_NoSelfDeadlockUnderFileMonitor$")
+	cmd := exec.CommandContext(
+		ctx,
+		exe,
+		"-test.run=^TestSetupLogging_NoSelfDeadlockUnderFileMonitor$",
+	)
 	cmd.ExtraFiles = []*os.File{logW} // fd 3 in the child
 	cmd.Env = append(os.Environ(),
 		wrapperFMHelperEnv+"=1",
@@ -223,7 +227,11 @@ func TestSetupLogging_NoSelfDeadlockUnderFileMonitor(t *testing.T) {
 
 	runErr := cmd.Run()
 	if ctx.Err() != nil {
-		t.Fatalf("child deadlocked under file-monitor filter (#415 tz lazy-load regression)\noutput:\n%s", out.String())
+		t.Fatalf(
+			"child deadlocked under file-monitor filter (#415 tz lazy-load regression)\n"+
+				"output:\n%s",
+			out.String(),
+		)
 	}
 	if runErr != nil {
 		if ee, ok := runErr.(*exec.ExitError); ok && ee.ExitCode() == 3 {

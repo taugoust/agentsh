@@ -7,7 +7,8 @@ import (
 )
 
 func TestRedshiftFirstKeyword_Unload(t *testing.T) {
-	sql := "UNLOAD ('SELECT * FROM customers') TO 's3://bucket/data.csv' IAM_ROLE 'arn:aws:iam::123:role/redshift'"
+	sql := "UNLOAD ('SELECT * FROM customers') TO 's3://bucket/data.csv' IAM_ROLE " +
+		"'arn:aws:iam::123:role/redshift'"
 	cs, ok := redshiftFirstKeyword(sql, effects.ParserBackendLibPgQuery)
 	if !ok {
 		t.Fatalf("expected ok=true for UNLOAD")
@@ -49,7 +50,12 @@ func TestRedshiftFirstKeyword_Unload(t *testing.T) {
 			t.Fatalf("effects[%d] object count: got %d want 1", idx, len(objs))
 		}
 		if objs[0].Kind != effects.ObjectFilesystemPath {
-			t.Fatalf("effects[%d].obj kind: got %v want filesystem_path (case %d)", idx, objs[0].Kind, i)
+			t.Fatalf(
+				"effects[%d].obj kind: got %v want filesystem_path (case %d)",
+				idx,
+				objs[0].Kind,
+				i,
+			)
 		}
 		if objs[0].Path != "s3://bucket/data.csv" {
 			t.Fatalf("effects[%d].obj path: got %q want s3://bucket/data.csv", idx, objs[0].Path)
@@ -73,7 +79,10 @@ func TestRedshiftFirstKeyword_UnloadNoToClause(t *testing.T) {
 		if e.Group == effects.GroupBulkExport {
 			found = true
 			if len(e.Objects) != 1 || e.Objects[0].Path != "" {
-				t.Fatalf("bulk_export object: got %+v want single empty-path filesystem_path", e.Objects)
+				t.Fatalf(
+					"bulk_export object: got %+v want single empty-path filesystem_path",
+					e.Objects,
+				)
 			}
 		}
 	}
@@ -107,7 +116,8 @@ func TestRedshiftFirstKeyword_CopyFromS3(t *testing.T) {
 	if e.Objects[0].Kind != effects.ObjectTable || e.Objects[0].Name != "events" {
 		t.Fatalf("objects[0]: got %+v want table/events", e.Objects[0])
 	}
-	if e.Objects[1].Kind != effects.ObjectFilesystemPath || e.Objects[1].Path != "s3://logs/events.json" {
+	if e.Objects[1].Kind != effects.ObjectFilesystemPath ||
+		e.Objects[1].Path != "s3://logs/events.json" {
 		t.Fatalf("objects[1]: got %+v want filesystem_path/s3://logs/events.json", e.Objects[1])
 	}
 }
@@ -129,7 +139,9 @@ func TestRedshiftFirstKeyword_Unknown(t *testing.T) {
 		"WUT IS THIS",
 		"",
 		"   ",
-		"SELECT 1",                           // valid pg syntax — never reaches the fallback in practice, but it's not Redshift-specific so fallback returns false
+		// valid pg syntax — never reaches the fallback in practice, but it's not Redshift-specific
+		// so fallback returns false
+		"SELECT 1",
 		"COPY events FROM 'localfile.csv'",   // not s3://
 		"COPY events TO 's3://bucket/key'",   // not FROM
 		"UNLOADX ('select 1') to 's3://x/y'", // not exactly UNLOAD

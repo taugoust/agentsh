@@ -13,16 +13,32 @@ func TestThreatFeedsDefaults(t *testing.T) {
 		t.Errorf("expected default Action %q, got %q", "deny", cfg.ThreatFeeds.Action)
 	}
 	if cfg.ThreatFeeds.SyncInterval != 6*time.Hour {
-		t.Errorf("expected default SyncInterval %v, got %v", 6*time.Hour, cfg.ThreatFeeds.SyncInterval)
+		t.Errorf(
+			"expected default SyncInterval %v, got %v",
+			6*time.Hour,
+			cfg.ThreatFeeds.SyncInterval,
+		)
 	}
 	if cfg.ThreatFeeds.Realtime.Timeout != 500*time.Millisecond {
-		t.Errorf("expected default Realtime.Timeout %v, got %v", 500*time.Millisecond, cfg.ThreatFeeds.Realtime.Timeout)
+		t.Errorf(
+			"expected default Realtime.Timeout %v, got %v",
+			500*time.Millisecond,
+			cfg.ThreatFeeds.Realtime.Timeout,
+		)
 	}
 	if cfg.ThreatFeeds.Realtime.CacheTTL != 1*time.Hour {
-		t.Errorf("expected default Realtime.CacheTTL %v, got %v", 1*time.Hour, cfg.ThreatFeeds.Realtime.CacheTTL)
+		t.Errorf(
+			"expected default Realtime.CacheTTL %v, got %v",
+			1*time.Hour,
+			cfg.ThreatFeeds.Realtime.CacheTTL,
+		)
 	}
 	if cfg.ThreatFeeds.Realtime.OnTimeout != "local-only" {
-		t.Errorf("expected default Realtime.OnTimeout %q, got %q", "local-only", cfg.ThreatFeeds.Realtime.OnTimeout)
+		t.Errorf(
+			"expected default Realtime.OnTimeout %q, got %q",
+			"local-only",
+			cfg.ThreatFeeds.Realtime.OnTimeout,
+		)
 	}
 }
 
@@ -40,16 +56,32 @@ func TestThreatFeedsDefaultsNotOverridden(t *testing.T) {
 		t.Errorf("expected Action %q to not be overridden, got %q", "log", cfg.ThreatFeeds.Action)
 	}
 	if cfg.ThreatFeeds.SyncInterval != 1*time.Hour {
-		t.Errorf("expected SyncInterval %v to not be overridden, got %v", 1*time.Hour, cfg.ThreatFeeds.SyncInterval)
+		t.Errorf(
+			"expected SyncInterval %v to not be overridden, got %v",
+			1*time.Hour,
+			cfg.ThreatFeeds.SyncInterval,
+		)
 	}
 	if cfg.ThreatFeeds.Realtime.Timeout != 200*time.Millisecond {
-		t.Errorf("expected Realtime.Timeout %v to not be overridden, got %v", 200*time.Millisecond, cfg.ThreatFeeds.Realtime.Timeout)
+		t.Errorf(
+			"expected Realtime.Timeout %v to not be overridden, got %v",
+			200*time.Millisecond,
+			cfg.ThreatFeeds.Realtime.Timeout,
+		)
 	}
 	if cfg.ThreatFeeds.Realtime.CacheTTL != 30*time.Minute {
-		t.Errorf("expected Realtime.CacheTTL %v to not be overridden, got %v", 30*time.Minute, cfg.ThreatFeeds.Realtime.CacheTTL)
+		t.Errorf(
+			"expected Realtime.CacheTTL %v to not be overridden, got %v",
+			30*time.Minute,
+			cfg.ThreatFeeds.Realtime.CacheTTL,
+		)
 	}
 	if cfg.ThreatFeeds.Realtime.OnTimeout != "allow" {
-		t.Errorf("expected Realtime.OnTimeout %q to not be overridden, got %q", "allow", cfg.ThreatFeeds.Realtime.OnTimeout)
+		t.Errorf(
+			"expected Realtime.OnTimeout %q to not be overridden, got %q",
+			"allow",
+			cfg.ThreatFeeds.Realtime.OnTimeout,
+		)
 	}
 }
 

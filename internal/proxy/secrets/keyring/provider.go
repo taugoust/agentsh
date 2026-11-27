@@ -121,7 +121,10 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	// context state. This preserves the documented precedence:
 	// closed beats canceled.
 	if p.closed.Load() {
-		return secrets.SecretValue{}, fmt.Errorf("%w: provider closed", secrets.ErrKeyringUnavailable)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: provider closed",
+			secrets.ErrKeyringUnavailable,
+		)
 	}
 
 	// Honor an already-canceled context before we try to acquire
@@ -149,7 +152,10 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	// the backend. The atomic load after RLock sees the Store,
 	// so we reject the stale Fetch here instead.
 	if p.closed.Load() {
-		return secrets.SecretValue{}, fmt.Errorf("%w: provider closed", secrets.ErrKeyringUnavailable)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: provider closed",
+			secrets.ErrKeyringUnavailable,
+		)
 	}
 
 	// Test seam: see testFetchPostRLockHook. Nil in production.
@@ -158,16 +164,29 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	}
 
 	if ref.Scheme != "keyring" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: wrong scheme %q", secrets.ErrInvalidURI, ref.Scheme)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: wrong scheme %q",
+			secrets.ErrInvalidURI,
+			ref.Scheme,
+		)
 	}
 	if ref.Host == "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: keyring URI missing service (host)", secrets.ErrInvalidURI)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: keyring URI missing service (host)",
+			secrets.ErrInvalidURI,
+		)
 	}
 	if ref.Path == "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: keyring URI missing user (path)", secrets.ErrInvalidURI)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: keyring URI missing user (path)",
+			secrets.ErrInvalidURI,
+		)
 	}
 	if ref.Field != "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: keyring entries are scalar", secrets.ErrFieldNotSupported)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: keyring entries are scalar",
+			secrets.ErrFieldNotSupported,
+		)
 	}
 
 	// Re-check ctx in case cancellation happened while we were

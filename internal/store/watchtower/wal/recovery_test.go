@@ -21,7 +21,9 @@ import (
 // harness for filesystem ops.
 func TestWAL_AppendAfterAmbiguousLatchesFatal(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +62,9 @@ func TestWAL_AppendAfterAmbiguousLatchesFatal(t *testing.T) {
 // configuration before any events are written.
 func TestWAL_OpenRejectsSyncDeferred(t *testing.T) {
 	dir := t.TempDir()
-	_, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncDeferred})
+	_, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncDeferred},
+	)
 	if err == nil {
 		t.Fatal("Open with SyncDeferred must fail until the periodic-sync hook is implemented")
 	}
@@ -78,7 +82,9 @@ func TestWAL_OpenRejectsSyncDeferred(t *testing.T) {
 // both records.
 func TestWAL_RecoverTruncatesCorruptTail(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +131,9 @@ func TestWAL_RecoverTruncatesCorruptTail(t *testing.T) {
 
 	// Reopen: recovery must scan, hit the bad tail, truncate, and reopen
 	// for append. Then a fresh Append should land at the truncated offset.
-	w2, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w2, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatalf("reopen after corrupt tail failed: %v", err)
 	}
@@ -139,7 +147,9 @@ func TestWAL_RecoverTruncatesCorruptTail(t *testing.T) {
 	// Final reopen + manual scan of the live file: the recovered
 	// high-watermark MUST reach seq=1, proving the second record is
 	// readable past the formerly-corrupt offset.
-	w3, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w3, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +183,10 @@ func TestWAL_RecoverPicksNumericMaxIndex(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer f.Close()
-		if err := WriteSegmentHeader(f, SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 0}); err != nil {
+		if err := WriteSegmentHeader(
+			f,
+			SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 0},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -190,7 +203,9 @@ func TestWAL_RecoverPicksNumericMaxIndex(t *testing.T) {
 	// (because "1..." < "9...") so the buggy code would treat the sealed
 	// segment as "later." Numeric order correctly puts the inProgress
 	// segment as the live one.
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatalf("Open with mixed digit-count indices failed: %v", err)
 	}
@@ -232,7 +247,14 @@ func TestWAL_RecoverFailsOnSmallerSegmentSize(t *testing.T) {
 	// the smaller-restart per-record budget (smallSize - 16 - 8 - 12).
 	const largeSize int64 = 4 * 1024
 	const smallSize int64 = 256
-	w, err := Open(Options{Dir: dir, SegmentSize: largeSize, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{
+			Dir:           dir,
+			SegmentSize:   largeSize,
+			MaxTotalBytes: 64 * 1024,
+			SyncMode:      SyncImmediate,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,9 +275,18 @@ func TestWAL_RecoverFailsOnSmallerSegmentSize(t *testing.T) {
 
 	// Reopen with the smaller segment size: recovery must surface a hard
 	// error instead of silently truncating the previously-valid record.
-	_, err = Open(Options{Dir: dir, SegmentSize: smallSize, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	_, err = Open(
+		Options{
+			Dir:           dir,
+			SegmentSize:   smallSize,
+			MaxTotalBytes: 64 * 1024,
+			SyncMode:      SyncImmediate,
+		},
+	)
 	if err == nil {
-		t.Fatal("Open with smaller segment_size must fail rather than silently truncate valid records")
+		t.Fatal(
+			"Open with smaller segment_size must fail rather than silently truncate valid records",
+		)
 	}
 	// The error must NOT be ErrCorruptFrame: that would put recovery on
 	// the truncate-and-continue path, which is the bug being regressed.

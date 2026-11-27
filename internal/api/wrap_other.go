@@ -7,11 +7,9 @@ import (
 	"errors"
 	"io"
 	"net"
-	"net/http"
 	"os"
 
 	"github.com/agentsh/agentsh/internal/session"
-	"github.com/agentsh/agentsh/pkg/types"
 )
 
 var (
@@ -36,11 +34,31 @@ func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
 	return errWrapNotSupported
 }
 
-func (a *App) acceptNotifyFDLineage(context.Context, net.Listener, string, string, *session.Session, bool, int, bool, *approvalUIEndpoint) bool {
+func (a *App) acceptNotifyFDLineage(
+	context.Context,
+	net.Listener,
+	string,
+	string,
+	*session.Session,
+	bool,
+	int,
+	bool,
+	*approvalUIEndpoint,
+) bool {
 	return false
 }
 
-func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+func startNotifyHandlerForWrap(
+	ctx context.Context,
+	notifyFD *os.File,
+	compositionSetup *os.File,
+	sessionID string,
+	a *App,
+	execveEnabled bool,
+	wrapperPID int,
+	s *session.Session,
+	cleanup func() error,
+) error {
 	if notifyFD != nil {
 		_ = notifyFD.Close()
 	}
@@ -50,7 +68,13 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 	return errWrapNotSupported
 }
 
-func startSignalHandlerForWrap(ctx context.Context, signalFD *os.File, sessionID string, a *App, s *session.Session) {
+func startSignalHandlerForWrap(
+	ctx context.Context,
+	signalFD *os.File,
+	sessionID string,
+	a *App,
+	s *session.Session,
+) {
 	if signalFD != nil {
 		signalFD.Close()
 	}
@@ -68,7 +92,14 @@ func validateWrapperPIDPinForNotify(pin *os.File) error {
 	return errWrapNotSupported
 }
 
-func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socketPath string, sessionID string, expectedUID int, activity *session.WorkspaceActivityLease) {
+func (a *App) acceptPtracePID(
+	ctx context.Context,
+	listener net.Listener,
+	socketPath string,
+	sessionID string,
+	expectedUID int,
+	activity *session.WorkspaceActivityLease,
+) {
 	activity.Release()
 	listener.Close()
 }

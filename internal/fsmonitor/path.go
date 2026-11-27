@@ -8,12 +8,18 @@ import (
 	"github.com/agentsh/agentsh/internal/pathutil"
 )
 
-// resolveRealPathUnderRoot maps a virtual path (under virtualRoot) to a real path under realRoot and verifies
-// it does not escape via ".." components or symlinks.
+// resolveRealPathUnderRoot maps a virtual path (under virtualRoot) to a real path under realRoot
+// and verifies it does not escape via ".." components or symlinks.
 //
 // If mustExist is true, the target is expected to exist and will be evaluated directly.
-// If mustExist is false, the parent directory is evaluated for symlink escape and the final path may not exist yet.
-func resolveRealPathUnderRoot(realRoot string, virtPath string, mustExist bool, virtualRoot string) (string, error) {
+// If mustExist is false, the parent directory is evaluated for symlink escape and the final path
+// may not exist yet.
+func resolveRealPathUnderRoot(
+	realRoot string,
+	virtPath string,
+	mustExist bool,
+	virtualRoot string,
+) (string, error) {
 	virtPath = filepath.ToSlash(virtPath)
 	if !pathutil.IsUnderRoot(virtPath, virtualRoot) {
 		return "", fmt.Errorf("path must be under %s", virtualRoot)

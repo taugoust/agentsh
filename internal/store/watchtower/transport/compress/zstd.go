@@ -25,7 +25,12 @@ type zstdEncoder struct {
 
 func newZstdEncoder(level int) (Encoder, error) {
 	if level < minZstdLevel || level > maxZstdLevel {
-		return nil, fmt.Errorf("compress/zstd: level %d out of range [%d,%d]", level, minZstdLevel, maxZstdLevel)
+		return nil, fmt.Errorf(
+			"compress/zstd: level %d out of range [%d,%d]",
+			level,
+			minZstdLevel,
+			maxZstdLevel,
+		)
 	}
 	enc, err := zstd.NewWriter(nil,
 		zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)),

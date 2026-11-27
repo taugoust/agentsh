@@ -72,7 +72,12 @@ func TestSignFile_CustomOutput(t *testing.T) {
 	policyPath := filepath.Join(dir, "test.yaml")
 	os.WriteFile(policyPath, []byte("version: 1\nname: test\n"), 0o644)
 	customSig := filepath.Join(dir, "custom.sig")
-	if err := SignFile(policyPath, filepath.Join(dir, "private.key.json"), customSig, "custom-signer"); err != nil {
+	if err := SignFile(
+		policyPath,
+		filepath.Join(dir, "private.key.json"),
+		customSig,
+		"custom-signer",
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(customSig); err != nil {

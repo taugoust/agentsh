@@ -42,7 +42,11 @@ import (
 //
 // Loss markers (wal.RecordLoss) are ignored when replaying: loss
 // markers advance the WAL tail but do NOT advance the audit chain.
-func restoreChainFromWAL(innerChain *audit.SinkChain, w *wal.WAL, opts Options) (lastEventHash string, lastEventGen uint32, err error) {
+func restoreChainFromWAL(
+	innerChain *audit.SinkChain,
+	w *wal.WAL,
+	opts Options,
+) (lastEventHash string, lastEventGen uint32, err error) {
 	lastGen := w.HighGeneration()
 
 	// Find the highest generation that carries data records.
@@ -123,7 +127,12 @@ func restoreChainFromWAL(innerChain *audit.SinkChain, w *wal.WAL, opts Options) 
 		if err != nil {
 			return "", 0, fmt.Errorf("EncodeCanonical(seq=%d): %w", ir.GetSequence(), err)
 		}
-		cr, err := temp.Compute(int(ir.GetFormatVersion()), int64(ir.GetSequence()), ir.GetGeneration(), canonIR)
+		cr, err := temp.Compute(
+			int(ir.GetFormatVersion()),
+			int64(ir.GetSequence()),
+			ir.GetGeneration(),
+			canonIR,
+		)
 		if err != nil {
 			return "", 0, fmt.Errorf("ephemeral Compute(seq=%d): %w", ir.GetSequence(), err)
 		}

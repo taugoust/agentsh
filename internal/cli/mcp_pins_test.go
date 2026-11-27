@@ -34,7 +34,17 @@ func TestMCPPinsTrustCmd(t *testing.T) {
 	defer os.Unsetenv("AGENTSH_PINS_PATH")
 
 	cmd := newMCPPinsCmd()
-	cmd.SetArgs([]string{"trust", "--server", "filesystem", "--tool", "read_file", "--hash", "abc123def456"})
+	cmd.SetArgs(
+		[]string{
+			"trust",
+			"--server",
+			"filesystem",
+			"--tool",
+			"read_file",
+			"--hash",
+			"abc123def456",
+		},
+	)
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 
@@ -72,7 +82,9 @@ func TestMCPPinsResetCmd(t *testing.T) {
 
 	// First trust a tool
 	cmd := newMCPPinsCmd()
-	cmd.SetArgs([]string{"trust", "--server", "filesystem", "--tool", "read_file", "--hash", "abc123"})
+	cmd.SetArgs(
+		[]string{"trust", "--server", "filesystem", "--tool", "read_file", "--hash", "abc123"},
+	)
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	if err := cmd.Execute(); err != nil {
@@ -116,7 +128,17 @@ func TestMCPPinsDiffCmd(t *testing.T) {
 
 	// First trust a tool
 	cmd := newMCPPinsCmd()
-	cmd.SetArgs([]string{"trust", "--server", "filesystem", "--tool", "read_file", "--hash", "abc123def456"})
+	cmd.SetArgs(
+		[]string{
+			"trust",
+			"--server",
+			"filesystem",
+			"--tool",
+			"read_file",
+			"--hash",
+			"abc123def456",
+		},
+	)
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	if err := cmd.Execute(); err != nil {

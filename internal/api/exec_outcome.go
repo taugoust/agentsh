@@ -10,7 +10,11 @@ import (
 )
 
 func normalizeExecOutcome(started bool, exitCode int, err error) *types.ExecOutcome {
-	o := &types.ExecOutcome{CommandStarted: started, DispatchState: "started", FailureKind: types.ExecFailureNone}
+	o := &types.ExecOutcome{
+		CommandStarted: started,
+		DispatchState:  "started",
+		FailureKind:    types.ExecFailureNone,
+	}
 	if !started {
 		o.DispatchState = "not_dispatched"
 	}
@@ -28,20 +32,25 @@ func normalizeExecOutcome(started bool, exitCode int, err error) *types.ExecOutc
 	var start *commandStartError
 	switch {
 	case started && errors.As(err, &postStartCleanup):
-		o.Code, o.FailureKind, o.DispatchState = "E_POST_START_CLEANUP", types.ExecFailurePostStart, "started"
+		o.Code, o.FailureKind, o.DispatchState =
+			"E_POST_START_CLEANUP", types.ExecFailurePostStart, "started"
 	case errors.As(err, &enforcement):
 		if started {
 			// The authoritative start signal wins over an enforcement error's
 			// pre-exec origin. In particular, cleanup can fail after user code has
 			// run; reporting that as a refusal would make unsafe replay look safe.
-			o.Code, o.FailureKind, o.DispatchState = "E_POST_START_CLEANUP", types.ExecFailurePostStart, "started"
+			o.Code, o.FailureKind, o.DispatchState =
+				"E_POST_START_CLEANUP", types.ExecFailurePostStart, "started"
 		} else {
-			o.Code, o.FailureKind, o.DispatchState = enforcement.code, types.ExecFailurePreExec, "pre_exec_refused"
+			o.Code, o.FailureKind, o.DispatchState =
+				enforcement.code, types.ExecFailurePreExec, "pre_exec_refused"
 		}
 	case errors.As(err, &validation):
-		o.Code, o.FailureKind, o.DispatchState = validation.code, types.ExecFailureValidation, "pre_start_refused"
+		o.Code, o.FailureKind, o.DispatchState =
+			validation.code, types.ExecFailureValidation, "pre_start_refused"
 	case errors.As(err, &start):
-		o.Code, o.FailureKind, o.DispatchState = "E_COMMAND_START", types.ExecFailureStart, "start_failed"
+		o.Code, o.FailureKind, o.DispatchState =
+			"E_COMMAND_START", types.ExecFailureStart, "start_failed"
 	case errors.Is(err, errCommandTimeout):
 		o.Code, o.FailureKind = "E_COMMAND_TIMEOUT", types.ExecFailureCommandTimeout
 	case errors.Is(err, errChildCapabilityRevoked):
@@ -55,7 +64,11 @@ func normalizeExecOutcome(started bool, exitCode int, err error) *types.ExecOutc
 	}
 	if jailFailure := commandJailFailureFrom(err); jailFailure != nil {
 		o.Code = jailFailure.code()
-		applyCommandAttemptDiagnostics(o, 1, []types.ExecAttemptDiagnostic{jailFailure.diagnostic(1)})
+		applyCommandAttemptDiagnostics(
+			o,
+			1,
+			[]types.ExecAttemptDiagnostic{jailFailure.diagnostic(1)},
+		)
 	}
 	return o
 }

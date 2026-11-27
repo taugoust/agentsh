@@ -54,10 +54,18 @@ func scrapeMetricsFor(t *testing.T, c *metrics.Collector) string {
 // component_metrics_helpers_test.go file rather than cloning a third
 // time.
 func reasonCounterRE(reason string) *regexp.Regexp {
-	return regexp.MustCompile(`wtp_session_init_failures_total\{reason="` + regexp.QuoteMeta(reason) + `"\} (\d+)`)
+	return regexp.MustCompile(
+		`wtp_session_init_failures_total\{reason="` + regexp.QuoteMeta(reason) + `"\} (\d+)`,
+	)
 }
 
-func waitForReasonCounter(t *testing.T, c *metrics.Collector, reason string, want int, deadline time.Duration) (int, string) {
+func waitForReasonCounter(
+	t *testing.T,
+	c *metrics.Collector,
+	reason string,
+	want int,
+	deadline time.Duration,
+) (int, string) {
 	t.Helper()
 	re := reasonCounterRE(reason)
 	end := time.Now().Add(deadline)
@@ -76,7 +84,11 @@ func waitForReasonCounter(t *testing.T, c *metrics.Collector, reason string, wan
 	return -1, body
 }
 
-func baseSessionInitOpts(t *testing.T, dialer transport.Dialer, c *metrics.Collector) watchtower.Options {
+func baseSessionInitOpts(
+	t *testing.T,
+	dialer transport.Dialer,
+	c *metrics.Collector,
+) watchtower.Options {
 	t.Helper()
 	return watchtower.Options{
 		WALDir:          t.TempDir(),
@@ -254,7 +266,8 @@ func TestStore_SessionInit_SendFailed(t *testing.T) {
 // sharing the same metrics.WTPMetrics handle.
 func TestStore_SessionInit_Unknown(t *testing.T) {
 	t.Skip("validator-failure path is unreachable from a component test today: " +
-		"wtpv1.ValidateSessionInit (gen/go/canyonroad/wtp/v1/validate.go:265 in the github.com/canyonroad/wtp-protos repo) only rejects " +
+		"wtpv1.ValidateSessionInit (gen/go/canyonroad/wtp/v1/validate.go:265 in the " +
+		"github.com/canyonroad/wtp-protos repo) only rejects " +
 		"Algorithm==UNSPECIFIED, but watchtower.Options.validate() " +
 		"(internal/store/watchtower/options.go) maps every accepted HMACAlgorithm to " +
 		"a non-UNSPECIFIED proto enum. Unit coverage for IncSessionInitFailures(unknown) " +

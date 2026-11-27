@@ -20,60 +20,107 @@ import (
 	"github.com/google/uuid"
 )
 
-func (a *App) configureExecveComposition(handler any, s *session.Session, wrapperCfg seccompWrapperConfig, setupConnection *os.File, wrapperPID int) error {
-	return a.configureExecveCompositionForState(handler, s, s, wrapperCfg, setupConnection, wrapperPID)
+func (a *App) configureExecveComposition(
+	handler any,
+	s *session.Session,
+	wrapperCfg seccompWrapperConfig,
+	setupConnection *os.File,
+	wrapperPID int,
+) error {
+	return a.configureExecveCompositionForState(
+		handler,
+		s,
+		s,
+		wrapperCfg,
+		setupConnection,
+		wrapperPID,
+	)
 }
 
-func (a *App) configureExecveCompositionForState(handler any, s *session.Session, runtimeState session.CommandRuntimeState, wrapperCfg seccompWrapperConfig, setupConnection *os.File, wrapperPID int) error {
+func (a *App) configureExecveCompositionForState(
+	handler any,
+	s *session.Session,
+	runtimeState session.CommandRuntimeState,
+	wrapperCfg seccompWrapperConfig,
+	setupConnection *os.File,
+	wrapperPID int,
+) error {
 	if wrapperCfg.SandboxComposition == "" {
 		return nil
 	}
-	if s == nil || runtimeState == nil || wrapperCfg.SandboxComposition != bubblewrapCompositionMode {
+	if s == nil || runtimeState == nil ||
+		wrapperCfg.SandboxComposition != bubblewrapCompositionMode {
 		return fmt.Errorf("unsupported selected composition mode %q", wrapperCfg.SandboxComposition)
 	}
 	h, ok := handler.(*unixmon.ExecveHandler)
 	if !ok || h == nil {
-		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: exec interception handler is unavailable")
+		return fmt.Errorf(
+			"E_COMPOSITION_BACKEND_UNAVAILABLE: exec interception handler is unavailable",
+		)
 	}
 	if !wrapperCfg.LandlockEnabled {
 		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: Landlock is not active")
 	}
-	if !wrapperCfg.FileMonitorEnabled || !wrapperCfg.InterceptMetadata || wrapperCfg.WriteOnlyOpens || !wrapperCfg.BlockIOUring {
-		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: enforced source-aware read/write and metadata file interception is not active")
+	if !wrapperCfg.FileMonitorEnabled || !wrapperCfg.InterceptMetadata ||
+		wrapperCfg.WriteOnlyOpens ||
+		!wrapperCfg.BlockIOUring {
+		return fmt.Errorf(
+			"E_COMPOSITION_BACKEND_UNAVAILABLE: enforced source-aware read/write and metadata " +
+				"file interception is not active",
+		)
 	}
 	if wrapperPID <= 0 {
 		return fmt.Errorf("E_COMPOSITION_REQUESTER_CHANGED: trusted wrapper PID is invalid")
 	}
 	if setupConnection == nil {
-		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: trusted composition setup channel is unavailable")
+		return fmt.Errorf(
+			"E_COMPOSITION_BACKEND_UNAVAILABLE: trusted composition setup channel is unavailable",
+		)
 	}
 	ceiling := a.cfg.Sandbox.Composition.Bubblewrap
 	adapterPath, err := resolveCompositionExecutable(ceiling.AdapterPath, "agentsh-bwrap-adapter")
 	if err != nil {
 		return err
 	}
-	helperPath, err := resolveCompositionExecutable(ceiling.MountHelperPath, "agentsh-composition-mount-helper")
+	helperPath, err := resolveCompositionExecutable(
+		ceiling.MountHelperPath,
+		"agentsh-composition-mount-helper",
+	)
 	if err != nil {
 		return err
 	}
-	wrapperPath, err := resolveCompositionExecutable(a.cfg.Sandbox.UnixSockets.WrapperBin, "agentsh-unixwrap")
+	wrapperPath, err := resolveCompositionExecutable(
+		a.cfg.Sandbox.UnixSockets.WrapperBin,
+		"agentsh-unixwrap",
+	)
 	if err != nil {
 		return err
 	}
 	wrapperPath = compositionProcessExecutablePath(wrapperPath)
 	scratch := wrapperCfg.CompositionScratchRoot
 	if scratch == "" || !filepath.IsAbs(scratch) || filepath.Clean(scratch) != scratch {
-		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: trusted composition scratch root is unavailable")
+		return fmt.Errorf(
+			"E_COMPOSITION_BACKEND_UNAVAILABLE: trusted composition scratch root is unavailable",
+		)
 	}
 	pathRegistry := unixmon.NewCompositionPathRegistry()
 	broker, err := composition.NewBroker(composition.BrokerConfig{
-		HelperPath:               helperPath,
-		AdapterPath:              adapterPath,
-		ScratchRoot:              scratch,
-		ReadRoots:                concreteCompositionRoots(wrapperCfg.CompositionAllowRead, wrapperCfg.Workspace),
-		ListRoots:                concreteCompositionRoots(wrapperCfg.CompositionAllowList, ""),
-		WriteRoots:               concreteCompositionRoots(wrapperCfg.CompositionAllowWrite, wrapperCfg.Workspace),
-		ExecuteRoots:             concreteCompositionRoots(wrapperCfg.CompositionAllowExecute, wrapperCfg.Workspace),
+		HelperPath:  helperPath,
+		AdapterPath: adapterPath,
+		ScratchRoot: scratch,
+		ReadRoots: concreteCompositionRoots(
+			wrapperCfg.CompositionAllowRead,
+			wrapperCfg.Workspace,
+		),
+		ListRoots: concreteCompositionRoots(wrapperCfg.CompositionAllowList, ""),
+		WriteRoots: concreteCompositionRoots(
+			wrapperCfg.CompositionAllowWrite,
+			wrapperCfg.Workspace,
+		),
+		ExecuteRoots: concreteCompositionRoots(
+			wrapperCfg.CompositionAllowExecute,
+			wrapperCfg.Workspace,
+		),
 		DenyRoots:                concreteCompositionRoots(wrapperCfg.DenyPaths, ""),
 		MaxPlanOperations:        ceiling.MaxPlanOperations,
 		MaxDataBytes:             ceiling.MaxDataBytes,
@@ -85,7 +132,10 @@ func (a *App) configureExecveCompositionForState(handler any, s *session.Session
 		SetupSyntheticRW:         ceiling.MaxSyntheticMounts,
 		RequireSetupPathsRemoved: true,
 		DeviceIOCTLRoots:         ceiling.DeviceIOCTLPaths,
-		PublishNormalizedPlan: func(parentPID, targetPID int, snapshot composition.NormalizedPlanSnapshot) {
+		PublishNormalizedPlan: func(
+			parentPID, targetPID int,
+			snapshot composition.NormalizedPlanSnapshot,
+		) {
 			event := types.Event{
 				ID:        uuid.NewString(),
 				Timestamp: time.Now().UTC(),
@@ -174,7 +224,10 @@ func resolveCompositionExecutable(configured, name string) (string, error) {
 func compositionProcessExecutablePath(path string) string {
 	path = filepath.Clean(path)
 	hidden := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+"-wrapped")
-	if info, err := os.Stat(hidden); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+	if info, err := os.Stat(
+		hidden,
+	); err == nil && info.Mode().IsRegular() &&
+		info.Mode().Perm()&0o111 != 0 {
 		return hidden
 	}
 	return path

@@ -86,7 +86,8 @@ func (a *Allowlist) IsReadOnlyRegistryCall(urlPath string) bool {
 		return false
 	}
 	// Generic: .tgz, .tar.gz, .whl downloads
-	if strings.HasSuffix(urlPath, ".tgz") || strings.HasSuffix(urlPath, ".tar.gz") || strings.HasSuffix(urlPath, ".whl") {
+	if strings.HasSuffix(urlPath, ".tgz") || strings.HasSuffix(urlPath, ".tar.gz") ||
+		strings.HasSuffix(urlPath, ".whl") {
 		return false
 	}
 

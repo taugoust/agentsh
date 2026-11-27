@@ -16,7 +16,11 @@ func TestEngine_CheckCommand_ShellCDerive(t *testing.T) {
 		Name:    "test",
 		CommandRules: []CommandRule{
 			{Name: "deny-shutdown", Commands: []string{"shutdown"}, Decision: "deny"},
-			{Name: "allow-shells", Commands: []string{"sh", "bash", "dash", "zsh"}, Decision: "allow"},
+			{
+				Name:     "allow-shells",
+				Commands: []string{"sh", "bash", "dash", "zsh"},
+				Decision: "allow",
+			},
 			{Name: "allow-reboot-absolute", Commands: []string{"/sbin/reboot"}, Decision: "allow"},
 		},
 	}
@@ -33,87 +37,437 @@ func TestEngine_CheckCommand_ShellCDerive(t *testing.T) {
 		rule     string
 	}{
 		// --- the bug fix ---
-		{"sh -c 'shutdown now' → derived deny", "/bin/sh", []string{"-c", "shutdown now"}, types.DecisionDeny, "deny-shutdown"},
-		{"bash -c 'shutdown' → derived deny", "/bin/bash", []string{"-c", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"bash -euxc 'shutdown' → clustered safe options, derived deny", "/bin/bash", []string{"-euxc", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -e -c 'shutdown' → split safe option + c, derived deny", "/bin/sh", []string{"-e", "-c", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"bash -e -u -c 'shutdown' → multi-split, derived deny", "/bin/bash", []string{"-e", "-u", "-c", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -l -c 'shutdown' → login flag is safe, derive past it to inner deny", "/bin/sh", []string{"-l", "-c", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"bash -lc 'shutdown' → login+c cluster derives to inner deny", "/bin/bash", []string{"-lc", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"bash -ilxc 'shutdown' → mixed safe shorts cluster derives", "/bin/bash", []string{"-ilxc", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -pc 'shutdown' → privileged flag still bypass-deny", "/bin/sh", []string{"-pc", "shutdown"}, types.DecisionDeny, "shellc-wrapper-bypass"},
-		{"bash -o errexit -c 'shutdown' → operand option hides -c, bypass-deny", "/bin/bash", []string{"-o", "errexit", "-c", "shutdown"}, types.DecisionDeny, "shellc-wrapper-bypass"},
-		{"sh -c 'shutdown now' argv0 → POSIX positional params ignored, derived deny", "/bin/sh", []string{"-c", "shutdown now", "argv0_name"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'shutdown' argv0 p1 p2 → positional params ignored, derived deny", "/bin/sh", []string{"-c", "shutdown", "argv0_name", "p1", "p2"}, types.DecisionDeny, "deny-shutdown"},
-		{"uppercase shell path (case-insensitive FS) → derived deny", "/BIN/SH", []string{"-c", "shutdown now"}, types.DecisionDeny, "deny-shutdown"},
-		{"dash -c 'exec shutdown' → wrapper stripped, derived deny", "/bin/dash", []string{"-c", "exec shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'nohup shutdown' → wrapper stripped, derived deny", "/bin/sh", []string{"-c", "nohup shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'nice shutdown' → wrapper stripped, derived deny", "/bin/sh", []string{"-c", "nice shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"bash -c 'nohup exec shutdown' → chained wrappers, derived deny", "/bin/bash", []string{"-c", "nohup exec shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'nice -n 19 shutdown' → nice -n N parsed, derived deny", "/bin/sh", []string{"-c", "nice -n 19 shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'nice -n -5 shutdown' → nice -n negative parsed, derived deny", "/bin/sh", []string{"-c", "nice -n -5 shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"absolute path shutdown via sh", "sh", []string{"-c", "/sbin/shutdown now"}, types.DecisionDeny, "deny-shutdown"},
+		{
+			"sh -c 'shutdown now' → derived deny",
+			"/bin/sh",
+			[]string{"-c", "shutdown now"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"bash -c 'shutdown' → derived deny",
+			"/bin/bash",
+			[]string{"-c", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"bash -euxc 'shutdown' → clustered safe options, derived deny",
+			"/bin/bash",
+			[]string{"-euxc", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -e -c 'shutdown' → split safe option + c, derived deny",
+			"/bin/sh",
+			[]string{"-e", "-c", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"bash -e -u -c 'shutdown' → multi-split, derived deny",
+			"/bin/bash",
+			[]string{"-e", "-u", "-c", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -l -c 'shutdown' → login flag is safe, derive past it to inner deny",
+			"/bin/sh",
+			[]string{"-l", "-c", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"bash -lc 'shutdown' → login+c cluster derives to inner deny",
+			"/bin/bash",
+			[]string{"-lc", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"bash -ilxc 'shutdown' → mixed safe shorts cluster derives",
+			"/bin/bash",
+			[]string{"-ilxc", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -pc 'shutdown' → privileged flag still bypass-deny",
+			"/bin/sh",
+			[]string{"-pc", "shutdown"},
+			types.DecisionDeny,
+			"shellc-wrapper-bypass",
+		},
+		{
+			"bash -o errexit -c 'shutdown' → operand option hides -c, bypass-deny",
+			"/bin/bash",
+			[]string{"-o", "errexit", "-c", "shutdown"},
+			types.DecisionDeny,
+			"shellc-wrapper-bypass",
+		},
+		{
+			"sh -c 'shutdown now' argv0 → POSIX positional params ignored, derived deny",
+			"/bin/sh",
+			[]string{"-c", "shutdown now", "argv0_name"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'shutdown' argv0 p1 p2 → positional params ignored, derived deny",
+			"/bin/sh",
+			[]string{"-c", "shutdown", "argv0_name", "p1", "p2"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"uppercase shell path (case-insensitive FS) → derived deny",
+			"/BIN/SH",
+			[]string{"-c", "shutdown now"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"dash -c 'exec shutdown' → wrapper stripped, derived deny",
+			"/bin/dash",
+			[]string{"-c", "exec shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'nohup shutdown' → wrapper stripped, derived deny",
+			"/bin/sh",
+			[]string{"-c", "nohup shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'nice shutdown' → wrapper stripped, derived deny",
+			"/bin/sh",
+			[]string{"-c", "nice shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"bash -c 'nohup exec shutdown' → chained wrappers, derived deny",
+			"/bin/bash",
+			[]string{"-c", "nohup exec shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'nice -n 19 shutdown' → nice -n N parsed, derived deny",
+			"/bin/sh",
+			[]string{"-c", "nice -n 19 shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'nice -n -5 shutdown' → nice -n negative parsed, derived deny",
+			"/bin/sh",
+			[]string{"-c", "nice -n -5 shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"absolute path shutdown via sh",
+			"sh",
+			[]string{"-c", "/sbin/shutdown now"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
 		// --- time/env transparent wrappers (R15) ---
-		{"sh -c 'time shutdown' → time stripped, derived deny", "/bin/sh", []string{"-c", "time shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'env shutdown' → env stripped, derived deny", "/bin/sh", []string{"-c", "env shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'time nohup shutdown' → time+nohup chained, derived deny", "/bin/sh", []string{"-c", "time nohup shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'env nohup shutdown' → env+nohup chained, derived deny", "/bin/sh", []string{"-c", "env nohup shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'exec env shutdown' → exec+env chained, derived deny", "/bin/sh", []string{"-c", "exec env shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'time -p shutdown' → time flag bypass", "/bin/sh", []string{"-c", "time -p shutdown"}, types.DecisionDeny, "shellc-wrapper-bypass"},
-		{"sh -c 'env -i shutdown' → env flag bypass", "/bin/sh", []string{"-c", "env -i shutdown"}, types.DecisionDeny, "shellc-wrapper-bypass"},
-		{"sh -c 'env -u PATH shutdown' → env -u bypass", "/bin/sh", []string{"-c", "env -u PATH shutdown"}, types.DecisionDeny, "shellc-wrapper-bypass"},
-		{"sh -c 'env VAR=val shutdown' → env with assign is byte-allowlist evasion bypass", "/bin/sh", []string{"-c", "env VAR=val shutdown"}, types.DecisionDeny, "shellc-wrapper-bypass"},
+		{
+			"sh -c 'time shutdown' → time stripped, derived deny",
+			"/bin/sh",
+			[]string{"-c", "time shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'env shutdown' → env stripped, derived deny",
+			"/bin/sh",
+			[]string{"-c", "env shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'time nohup shutdown' → time+nohup chained, derived deny",
+			"/bin/sh",
+			[]string{"-c", "time nohup shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'env nohup shutdown' → env+nohup chained, derived deny",
+			"/bin/sh",
+			[]string{"-c", "env nohup shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'exec env shutdown' → exec+env chained, derived deny",
+			"/bin/sh",
+			[]string{"-c", "exec env shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'time -p shutdown' → time flag bypass",
+			"/bin/sh",
+			[]string{"-c", "time -p shutdown"},
+			types.DecisionDeny,
+			"shellc-wrapper-bypass",
+		},
+		{
+			"sh -c 'env -i shutdown' → env flag bypass",
+			"/bin/sh",
+			[]string{"-c", "env -i shutdown"},
+			types.DecisionDeny,
+			"shellc-wrapper-bypass",
+		},
+		{
+			"sh -c 'env -u PATH shutdown' → env -u bypass",
+			"/bin/sh",
+			[]string{"-c", "env -u PATH shutdown"},
+			types.DecisionDeny,
+			"shellc-wrapper-bypass",
+		},
+		{
+			"sh -c 'env VAR=val shutdown' → env with assign is byte-allowlist evasion bypass",
+			"/bin/sh",
+			[]string{"-c", "env VAR=val shutdown"},
+			types.DecisionDeny,
+			"shellc-wrapper-bypass",
+		},
 		// --- zsh treated as known shell: outer allow bin=zsh doesn't mask inner deny.
-		{"zsh -c 'shutdown' → derived deny", "zsh", []string{"-c", "shutdown now"}, types.DecisionDeny, "deny-shutdown"},
-		{"zsh -c 'nohup shutdown' → wrapper stripped, derived deny", "/usr/bin/zsh", []string{"-c", "nohup shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"zsh -c 'exec -a foo shutdown' → bypass deny", "zsh", []string{"-c", "exec -a foo shutdown"}, types.DecisionDeny, "shellc-wrapper-bypass"},
+		{
+			"zsh -c 'shutdown' → derived deny",
+			"zsh",
+			[]string{"-c", "shutdown now"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"zsh -c 'nohup shutdown' → wrapper stripped, derived deny",
+			"/usr/bin/zsh",
+			[]string{"-c", "nohup shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"zsh -c 'exec -a foo shutdown' → bypass deny",
+			"zsh",
+			[]string{"-c", "exec -a foo shutdown"},
+			types.DecisionDeny,
+			"shellc-wrapper-bypass",
+		},
 		// --- env-assignment parse-through: strip leading NAME=VALUE and
 		// derive past them so `deny-shutdown` fires instead of falling
 		// back to the outer shell allow.
-		{"sh -c 'PATH=/tmp shutdown' → assign parse-through, derived deny", "/bin/sh", []string{"-c", "PATH=/tmp shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'FOO=bar shutdown now' → assign parse-through with arg, derived deny", "/bin/sh", []string{"-c", "FOO=bar shutdown now"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'PATH=/tmp nohup shutdown' → assign + wrapper parse-through, derived deny", "/bin/sh", []string{"-c", "PATH=/tmp nohup shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'FOO=1 BAR=2 nice -n 19 shutdown' → multi-assign + nice -n parse-through, derived deny", "/bin/sh", []string{"-c", "FOO=1 BAR=2 nice -n 19 shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'FOO= exec shutdown' → empty-value assign + exec parse-through, derived deny", "/bin/sh", []string{"-c", "FOO= exec shutdown"}, types.DecisionDeny, "deny-shutdown"},
+		{
+			"sh -c 'PATH=/tmp shutdown' → assign parse-through, derived deny",
+			"/bin/sh",
+			[]string{"-c", "PATH=/tmp shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'FOO=bar shutdown now' → assign parse-through with arg, derived deny",
+			"/bin/sh",
+			[]string{"-c", "FOO=bar shutdown now"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'PATH=/tmp nohup shutdown' → assign + wrapper parse-through, derived deny",
+			"/bin/sh",
+			[]string{"-c", "PATH=/tmp nohup shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'FOO=1 BAR=2 nice -n 19 shutdown' → multi-assign + nice -n parse-through, " +
+				"derived deny",
+			"/bin/sh",
+			[]string{"-c", "FOO=1 BAR=2 nice -n 19 shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'FOO= exec shutdown' → empty-value assign + exec parse-through, derived deny",
+			"/bin/sh",
+			[]string{"-c", "FOO= exec shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
 		// --- nested derivation ---
-		{"sh -c 'bash -c shutdown' → recursive derive", "/bin/sh", []string{"-c", "bash -c shutdown"}, types.DecisionDeny, "deny-shutdown"},
+		{
+			"sh -c 'bash -c shutdown' → recursive derive",
+			"/bin/sh",
+			[]string{"-c", "bash -c shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
 
 		// --- original allow path still works when derived command has no explicit rule ---
-		{"sh -c 'ls' → no ls rule, fall back to shell allow", "/bin/sh", []string{"-c", "ls"}, types.DecisionAllow, "allow-shells"},
-		{"sh -c 'echo hi' → builtin rejects derive, shell allow", "/bin/sh", []string{"-c", "echo hi"}, types.DecisionAllow, "allow-shells"},
+		{
+			"sh -c 'ls' → no ls rule, fall back to shell allow",
+			"/bin/sh",
+			[]string{"-c", "ls"},
+			types.DecisionAllow,
+			"allow-shells",
+		},
+		{
+			"sh -c 'echo hi' → builtin rejects derive, shell allow",
+			"/bin/sh",
+			[]string{"-c", "echo hi"},
+			types.DecisionAllow,
+			"allow-shells",
+		},
 
 		// --- opaque scripts (metachars, pipes, subshells, globs, …) fail
 		// closed because policy contains a restrictive command rule
 		// (`deny-shutdown`). Without this, `sh -c "shutdown; true"` would
 		// silently fall through to `allow-shells`.
-		{"sh -c 'ls | wc' → pipe is opaque", "/bin/sh", []string{"-c", "ls | wc"}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'shutdown; true' → semicolon is opaque", "/bin/sh", []string{"-c", "shutdown; true"}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'foo && shutdown' → && is opaque", "/bin/sh", []string{"-c", "foo && shutdown"}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'shutdown || true' → || is opaque", "/bin/sh", []string{"-c", "shutdown || true"}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'foo > out' → redirect is opaque", "/bin/sh", []string{"-c", "foo > out"}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'foo < in' → redirect-in is opaque", "/bin/sh", []string{"-c", "foo < in"}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c '(shutdown)' → subshell is opaque", "/bin/sh", []string{"-c", "(shutdown)"}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'ls *.go' → glob is opaque", "/bin/sh", []string{"-c", "ls *.go"}, types.DecisionDeny, "shellc-opaque-script"},
+		{
+			"sh -c 'ls | wc' → pipe is opaque",
+			"/bin/sh",
+			[]string{"-c", "ls | wc"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'shutdown; true' → semicolon is opaque",
+			"/bin/sh",
+			[]string{"-c", "shutdown; true"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'foo && shutdown' → && is opaque",
+			"/bin/sh",
+			[]string{"-c", "foo && shutdown"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'shutdown || true' → || is opaque",
+			"/bin/sh",
+			[]string{"-c", "shutdown || true"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'foo > out' → redirect is opaque",
+			"/bin/sh",
+			[]string{"-c", "foo > out"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'foo < in' → redirect-in is opaque",
+			"/bin/sh",
+			[]string{"-c", "foo < in"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c '(shutdown)' → subshell is opaque",
+			"/bin/sh",
+			[]string{"-c", "(shutdown)"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'ls *.go' → glob is opaque",
+			"/bin/sh",
+			[]string{"-c", "ls *.go"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
 		// Double-quoted simple args parse cleanly now (the tokenizer
 		// reads `"hi there"` as a single literal), so `echo "hi there"`
 		// derives to the echo builtin and falls back to the outer shell
 		// allow rule — same as `echo hi` without quotes.
-		{"sh -c 'echo \"hi there\"' → quoted arg parses, echo is builtin, fall back to shell allow", "/bin/sh", []string{"-c", "echo \"hi there\""}, types.DecisionAllow, "allow-shells"},
+		{
+			"sh -c 'echo \"hi there\"' → quoted arg parses, echo is builtin, fall back to " +
+				"shell allow",
+			"/bin/sh",
+			[]string{"-c", "echo \"hi there\""},
+			types.DecisionAllow,
+			"allow-shells",
+		},
 		// Expansion-bearing double quotes stay opaque: `"$VAR"`, ``"`cmd`"``,
 		// and `"\n"` invoke parameter expansion, command substitution, or
 		// C-style escapes whose resolved argv we can't predict.
-		{"sh -c 'echo \"$VAR\"' → double-quote expansion is opaque", "/bin/sh", []string{"-c", "echo \"$VAR\""}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'echo \"`date`\"' → double-quote backtick is opaque", "/bin/sh", []string{"-c", "echo \"`date`\""}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'echo \"\\n\"' → double-quote backslash is opaque", "/bin/sh", []string{"-c", "echo \"\\n\""}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'echo \"unterminated' → unterminated quote is opaque", "/bin/sh", []string{"-c", "echo \"hi"}, types.DecisionDeny, "shellc-opaque-script"},
+		{
+			"sh -c 'echo \"$VAR\"' → double-quote expansion is opaque",
+			"/bin/sh",
+			[]string{"-c", "echo \"$VAR\""},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'echo \"`date`\"' → double-quote backtick is opaque",
+			"/bin/sh",
+			[]string{"-c", "echo \"`date`\""},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'echo \"\\n\"' → double-quote backslash is opaque",
+			"/bin/sh",
+			[]string{"-c", "echo \"\\n\""},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'echo \"unterminated' → unterminated quote is opaque",
+			"/bin/sh",
+			[]string{"-c", "echo \"hi"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
 		// --- inner command with quoted arg derives past the quotes to
 		// the denied binary, so `deny-shutdown` fires at the derived
 		// level even when the user quotes the args.
-		{"sh -c 'shutdown \"now\"' → quoted arg, derived deny", "/bin/sh", []string{"-c", "shutdown \"now\""}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'shutdown 'now'' → single-quoted arg, derived deny", "/bin/sh", []string{"-c", "shutdown 'now'"}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'shutdown \"\"' → empty quoted arg, derived deny", "/bin/sh", []string{"-c", "shutdown \"\""}, types.DecisionDeny, "deny-shutdown"},
-		{"sh -c 'echo $FOO' → variable expansion is opaque", "/bin/sh", []string{"-c", "echo $FOO"}, types.DecisionDeny, "shellc-opaque-script"},
-		{"sh -c 'echo `date`' → command substitution is opaque", "/bin/sh", []string{"-c", "echo `date`"}, types.DecisionDeny, "shellc-opaque-script"},
+		{
+			"sh -c 'shutdown \"now\"' → quoted arg, derived deny",
+			"/bin/sh",
+			[]string{"-c", "shutdown \"now\""},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'shutdown 'now'' → single-quoted arg, derived deny",
+			"/bin/sh",
+			[]string{"-c", "shutdown 'now'"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'shutdown \"\"' → empty quoted arg, derived deny",
+			"/bin/sh",
+			[]string{"-c", "shutdown \"\""},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"sh -c 'echo $FOO' → variable expansion is opaque",
+			"/bin/sh",
+			[]string{"-c", "echo $FOO"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"sh -c 'echo `date`' → command substitution is opaque",
+			"/bin/sh",
+			[]string{"-c", "echo `date`"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
 
 		// --- bare invocations unchanged ---
 		{"bare sh", "/bin/sh", nil, types.DecisionAllow, "allow-shells"},
@@ -125,7 +479,12 @@ func TestEngine_CheckCommand_ShellCDerive(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dec := e.CheckCommand(tc.command, tc.args)
 			if dec.PolicyDecision != tc.decision {
-				t.Errorf("decision: got %s, want %s (rule=%q)", dec.PolicyDecision, tc.decision, dec.Rule)
+				t.Errorf(
+					"decision: got %s, want %s (rule=%q)",
+					dec.PolicyDecision,
+					tc.decision,
+					dec.Rule,
+				)
 			}
 			if dec.Rule != tc.rule {
 				t.Errorf("rule: got %q, want %q", dec.Rule, tc.rule)
@@ -222,7 +581,12 @@ func TestEngine_CheckCommand_ShellCDerive_ApproveEscalates(t *testing.T) {
 		Version: 1,
 		Name:    "test",
 		CommandRules: []CommandRule{
-			{Name: "approve-shutdown", Commands: []string{"shutdown"}, Decision: "approve", Message: "needs approval"},
+			{
+				Name:     "approve-shutdown",
+				Commands: []string{"shutdown"},
+				Decision: "approve",
+				Message:  "needs approval",
+			},
 			{Name: "allow-shells", Commands: []string{"sh", "bash"}, Decision: "allow"},
 		},
 	}
@@ -299,7 +663,10 @@ func TestEngine_CheckCommand_ShellCDerive_AuditEscalates(t *testing.T) {
 		t.Fatalf("PolicyDecision: got %s, want audit (rule=%q)", dec.PolicyDecision, dec.Rule)
 	}
 	if dec.EffectiveDecision != types.DecisionAllow {
-		t.Errorf("EffectiveDecision: got %s, want allow (audit is allow+log)", dec.EffectiveDecision)
+		t.Errorf(
+			"EffectiveDecision: got %s, want allow (audit is allow+log)",
+			dec.EffectiveDecision,
+		)
 	}
 	if dec.Rule != "audit-sudo" {
 		t.Errorf("Rule: got %q, want audit-sudo", dec.Rule)
@@ -441,7 +808,8 @@ func TestEngine_CheckCommand_ShellCDerive_ApprovePreservesShellEnvPolicy(t *test
 	if dec.PolicyDecision != types.DecisionApprove {
 		t.Fatalf("PolicyDecision: got %s, want approve", dec.PolicyDecision)
 	}
-	if !containsString(dec.EnvPolicy.Allow, "PATH") || !containsString(dec.EnvPolicy.Allow, "HOME") {
+	if !containsString(dec.EnvPolicy.Allow, "PATH") ||
+		!containsString(dec.EnvPolicy.Allow, "HOME") {
 		t.Errorf("expected shell env Allow to survive, got %v", dec.EnvPolicy.Allow)
 	}
 	if containsString(dec.EnvPolicy.Allow, "INNER_ONLY") {
@@ -530,8 +898,16 @@ func TestEngine_CheckCommand_ShellCDerive_BypassFailsClosed(t *testing.T) {
 		{"nohup -x", "/bin/sh", []string{"-c", "nohup -x shutdown"}},
 		{"nice -n bogus (non-numeric)", "/bin/sh", []string{"-c", "nice -n bogus shutdown"}},
 		{"nice -19 (unsupported form)", "/bin/sh", []string{"-c", "nice -19 shutdown"}},
-		{"nice --adjustment=N (byte-allowlist evasion)", "/bin/sh", []string{"-c", "nice --adjustment=19 shutdown"}},
-		{"nohup --preserve-status=1 (byte-allowlist evasion)", "/bin/sh", []string{"-c", "nohup --preserve-status=1 shutdown"}},
+		{
+			"nice --adjustment=N (byte-allowlist evasion)",
+			"/bin/sh",
+			[]string{"-c", "nice --adjustment=19 shutdown"},
+		},
+		{
+			"nohup --preserve-status=1 (byte-allowlist evasion)",
+			"/bin/sh",
+			[]string{"-c", "nohup --preserve-status=1 shutdown"},
+		},
 		// Unsafe shell options hiding -c. -l/-i/-v/-B/-H/-s are now in the
 		// safe set (they don't affect -c parsing), so the bypass cases here
 		// are the ones we haven't audited or that take arguments.
@@ -539,15 +915,39 @@ func TestEngine_CheckCommand_ShellCDerive_BypassFailsClosed(t *testing.T) {
 		{"bash -rc shutdown (restricted + c)", "/bin/bash", []string{"-rc", "shutdown"}},
 		{"sh -ac shutdown (allexport + c)", "/bin/sh", []string{"-ac", "shutdown"}},
 		{"bash -nc shutdown (no-execute + c)", "/bin/bash", []string{"-nc", "shutdown"}},
-		{"bash -o errexit -c shutdown (operand option)", "/bin/bash", []string{"-o", "errexit", "-c", "shutdown"}},
-		{"bash +o noclobber -c shutdown (plus-form)", "/bin/bash", []string{"+o", "noclobber", "-c", "shutdown"}},
-		{"bash --rcfile=X -c shutdown (long option)", "/bin/bash", []string{"--rcfile=/tmp/rc", "-c", "shutdown"}},
-		{"bash --norc -c shutdown (long option)", "/bin/bash", []string{"--norc", "-c", "shutdown"}},
-		{"bash --init-file=X -c shutdown (long option)", "/bin/bash", []string{"--init-file=/tmp/rc", "-c", "shutdown"}},
+		{
+			"bash -o errexit -c shutdown (operand option)",
+			"/bin/bash",
+			[]string{"-o", "errexit", "-c", "shutdown"},
+		},
+		{
+			"bash +o noclobber -c shutdown (plus-form)",
+			"/bin/bash",
+			[]string{"+o", "noclobber", "-c", "shutdown"},
+		},
+		{
+			"bash --rcfile=X -c shutdown (long option)",
+			"/bin/bash",
+			[]string{"--rcfile=/tmp/rc", "-c", "shutdown"},
+		},
+		{
+			"bash --norc -c shutdown (long option)",
+			"/bin/bash",
+			[]string{"--norc", "-c", "shutdown"},
+		},
+		{
+			"bash --init-file=X -c shutdown (long option)",
+			"/bin/bash",
+			[]string{"--init-file=/tmp/rc", "-c", "shutdown"},
+		},
 		// Env-assignment prefix with inner bypass (parse-through strips
 		// the assignment but the inner form is still unparsable).
 		{"assign + exec -a", "/bin/sh", []string{"-c", "VAR=x exec -a foo shutdown"}},
-		{"assign + nohup --preserve-status", "/bin/sh", []string{"-c", "PATH=/tmp nohup --preserve-status=1 shutdown"}},
+		{
+			"assign + nohup --preserve-status",
+			"/bin/sh",
+			[]string{"-c", "PATH=/tmp nohup --preserve-status=1 shutdown"},
+		},
 		// assign + command -v is introspection (issue #377): removed from bypass table.
 		// Env-assignment with a dirty VALUE (byte outside the narrow
 		// allowlist). The shell accepts these, but we can't safely
@@ -561,7 +961,11 @@ func TestEngine_CheckCommand_ShellCDerive_BypassFailsClosed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dec := e.CheckCommand(tc.command, tc.args)
 			if dec.PolicyDecision != types.DecisionDeny {
-				t.Errorf("PolicyDecision: got %s, want deny (rule=%q)", dec.PolicyDecision, dec.Rule)
+				t.Errorf(
+					"PolicyDecision: got %s, want deny (rule=%q)",
+					dec.PolicyDecision,
+					dec.Rule,
+				)
 			}
 			if dec.Rule != "shellc-wrapper-bypass" {
 				t.Errorf("Rule: got %q, want shellc-wrapper-bypass", dec.Rule)
@@ -642,7 +1046,11 @@ func TestEngine_CheckCommand_ShellCDerive_OpaqueAllowOnlyPolicy(t *testing.T) {
 	}
 	dec := e.CheckCommand("/bin/sh", []string{"-c", "ls | wc"})
 	if dec.PolicyDecision != types.DecisionAllow {
-		t.Fatalf("expected allow (no restrictive rule), got %s (rule=%q)", dec.PolicyDecision, dec.Rule)
+		t.Fatalf(
+			"expected allow (no restrictive rule), got %s (rule=%q)",
+			dec.PolicyDecision,
+			dec.Rule,
+		)
 	}
 	if dec.Rule != "allow-shells" {
 		t.Errorf("expected allow-shells, got %q", dec.Rule)
@@ -717,7 +1125,11 @@ func TestEngine_CheckCommand_ShellCDerive_DepthCapAllowOnlyFailsClosed(t *testin
 	}
 	dec := e.CheckCommand("/bin/sh", []string{"-c", "bash -c shutdown"})
 	if dec.PolicyDecision != types.DecisionDeny {
-		t.Fatalf("expected deny (cap exceeded fails closed), got %s (rule=%q)", dec.PolicyDecision, dec.Rule)
+		t.Fatalf(
+			"expected deny (cap exceeded fails closed), got %s (rule=%q)",
+			dec.PolicyDecision,
+			dec.Rule,
+		)
 	}
 	if dec.Rule != "shellc-depth-exceeded" {
 		t.Errorf("expected rule shellc-depth-exceeded, got %q", dec.Rule)
@@ -745,7 +1157,11 @@ func TestEngine_CheckCommand_ShellCDerive_DepthCapLoopCompletes(t *testing.T) {
 	// (not a shell), so the post-loop check sees ok=false and doesn't fire.
 	dec := e.CheckCommand("/bin/sh", []string{"-c", "ls"})
 	if dec.PolicyDecision != types.DecisionAllow {
-		t.Fatalf("expected allow (loop completes cleanly), got %s (rule=%q)", dec.PolicyDecision, dec.Rule)
+		t.Fatalf(
+			"expected allow (loop completes cleanly), got %s (rule=%q)",
+			dec.PolicyDecision,
+			dec.Rule,
+		)
 	}
 	if dec.Rule != "allow-shells" {
 		t.Errorf("expected allow-shells, got %q", dec.Rule)
@@ -770,7 +1186,11 @@ func TestEngine_CheckCommand_ShellCDerive_ShimRealSuffix(t *testing.T) {
 		Name:    "test",
 		CommandRules: []CommandRule{
 			{Name: "deny-shutdown", Commands: []string{"shutdown"}, Decision: "deny"},
-			{Name: "allow-shim-shells", Commands: []string{"sh", "bash", "sh.real", "bash.real"}, Decision: "allow"},
+			{
+				Name:     "allow-shim-shells",
+				Commands: []string{"sh", "bash", "sh.real", "bash.real"},
+				Decision: "allow",
+			},
 		},
 	}
 	e, err := NewEngine(p, false, true)
@@ -786,25 +1206,84 @@ func TestEngine_CheckCommand_ShellCDerive_ShimRealSuffix(t *testing.T) {
 		rule     string
 	}{
 		// --- primary regression cases ---
-		{"/bin/sh.real -c 'shutdown now' → derived deny (shim flow)", "/bin/sh.real", []string{"-c", "shutdown now"}, types.DecisionDeny, "deny-shutdown"},
-		{"/bin/bash.real -c 'shutdown' → derived deny (shim flow)", "/bin/bash.real", []string{"-c", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"/usr/bin/sh.real -c 'shutdown' → derived deny (alt install path)", "/usr/bin/sh.real", []string{"-c", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
+		{
+			"/bin/sh.real -c 'shutdown now' → derived deny (shim flow)",
+			"/bin/sh.real",
+			[]string{"-c", "shutdown now"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"/bin/bash.real -c 'shutdown' → derived deny (shim flow)",
+			"/bin/bash.real",
+			[]string{"-c", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"/usr/bin/sh.real -c 'shutdown' → derived deny (alt install path)",
+			"/usr/bin/sh.real",
+			[]string{"-c", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
 		// --- ensure wrapper/opaque handling still applies through .real ---
-		{"/bin/sh.real -c 'nohup shutdown' → wrapper stripped, derived deny", "/bin/sh.real", []string{"-c", "nohup shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"/bin/sh.real -c 'shutdown; true' → opaque is deny-on-restrictive-policy", "/bin/sh.real", []string{"-c", "shutdown; true"}, types.DecisionDeny, "shellc-opaque-script"},
-		{"/bin/sh.real -l -c 'shutdown' → login flag is safe via shim, derive past it", "/bin/sh.real", []string{"-l", "-c", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
-		{"/bin/sh.real -pc 'shutdown' → privileged stays bypass via shim", "/bin/sh.real", []string{"-pc", "shutdown"}, types.DecisionDeny, "shellc-wrapper-bypass"},
+		{
+			"/bin/sh.real -c 'nohup shutdown' → wrapper stripped, derived deny",
+			"/bin/sh.real",
+			[]string{"-c", "nohup shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"/bin/sh.real -c 'shutdown; true' → opaque is deny-on-restrictive-policy",
+			"/bin/sh.real",
+			[]string{"-c", "shutdown; true"},
+			types.DecisionDeny,
+			"shellc-opaque-script",
+		},
+		{
+			"/bin/sh.real -l -c 'shutdown' → login flag is safe via shim, derive past it",
+			"/bin/sh.real",
+			[]string{"-l", "-c", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
+		{
+			"/bin/sh.real -pc 'shutdown' → privileged stays bypass via shim",
+			"/bin/sh.real",
+			[]string{"-pc", "shutdown"},
+			types.DecisionDeny,
+			"shellc-wrapper-bypass",
+		},
 		// --- allow path when inner has no explicit rule ---
-		{"/bin/sh.real -c 'ls' → no ls rule, fall back to shim-shells allow", "/bin/sh.real", []string{"-c", "ls"}, types.DecisionAllow, "allow-shim-shells"},
+		{
+			"/bin/sh.real -c 'ls' → no ls rule, fall back to shim-shells allow",
+			"/bin/sh.real",
+			[]string{"-c", "ls"},
+			types.DecisionAllow,
+			"allow-shim-shells",
+		},
 		// --- bare invocation of .real still allowed ---
-		{"bare /bin/sh.real → allow", "/bin/sh.real", nil, types.DecisionAllow, "allow-shim-shells"},
+		{
+			"bare /bin/sh.real → allow",
+			"/bin/sh.real",
+			nil,
+			types.DecisionAllow,
+			"allow-shim-shells",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			dec := e.CheckCommand(tc.command, tc.args)
 			if dec.PolicyDecision != tc.decision {
-				t.Errorf("decision: got %s, want %s (rule=%q)", dec.PolicyDecision, tc.decision, dec.Rule)
+				t.Errorf(
+					"decision: got %s, want %s (rule=%q)",
+					dec.PolicyDecision,
+					tc.decision,
+					dec.Rule,
+				)
 			}
 			if dec.Rule != tc.rule {
 				t.Errorf("rule: got %q, want %q", dec.Rule, tc.rule)
@@ -829,9 +1308,17 @@ func TestEngine_CheckCommand_RealSuffix_PolicyOmitsRealVariant(t *testing.T) {
 		Name:    "shim-policy-without-real-variants",
 		CommandRules: []CommandRule{
 			{Name: "deny-shutdown", Commands: []string{"shutdown"}, Decision: "deny"},
-			{Name: "allow-safe-commands", Commands: []string{"echo", "ls", "cat"}, Decision: "allow"},
+			{
+				Name:     "allow-safe-commands",
+				Commands: []string{"echo", "ls", "cat"},
+				Decision: "allow",
+			},
 			// Operator wrote the canonical name only — no `.real` variants.
-			{Name: "allow-shells", Commands: []string{"sh", "bash", "dash", "zsh"}, Decision: "allow"},
+			{
+				Name:     "allow-shells",
+				Commands: []string{"sh", "bash", "dash", "zsh"},
+				Decision: "allow",
+			},
 		},
 	}
 	e, err := NewEngine(p, false, true)
@@ -847,20 +1334,49 @@ func TestEngine_CheckCommand_RealSuffix_PolicyOmitsRealVariant(t *testing.T) {
 		rule     string
 	}{
 		// The exact scenario from #270 — the trivial case must allow.
-		{"/bin/bash.real -c 'echo hello' (#270 trivial case)", "/bin/bash.real", []string{"-c", "echo hello"}, types.DecisionAllow, "allow-shells"},
-		{"/bin/sh.real -c 'echo hi'", "/bin/sh.real", []string{"-c", "echo hi"}, types.DecisionAllow, "allow-shells"},
+		{
+			"/bin/bash.real -c 'echo hello' (#270 trivial case)",
+			"/bin/bash.real",
+			[]string{"-c", "echo hello"},
+			types.DecisionAllow,
+			"allow-shells",
+		},
+		{
+			"/bin/sh.real -c 'echo hi'",
+			"/bin/sh.real",
+			[]string{"-c", "echo hi"},
+			types.DecisionAllow,
+			"allow-shells",
+		},
 		// Bare shim-routed shell still allows.
 		{"/bin/bash.real (bare)", "/bin/bash.real", nil, types.DecisionAllow, "allow-shells"},
 		// Inner-deny still fires through .real (does not regress shim-real bypass coverage).
-		{"/bin/bash.real -c 'shutdown' → derived deny", "/bin/bash.real", []string{"-c", "shutdown"}, types.DecisionDeny, "deny-shutdown"},
+		{
+			"/bin/bash.real -c 'shutdown' → derived deny",
+			"/bin/bash.real",
+			[]string{"-c", "shutdown"},
+			types.DecisionDeny,
+			"deny-shutdown",
+		},
 		// Case insensitivity preserved through .real strip.
-		{"/bin/BASH.REAL -c 'echo ok'", "/bin/BASH.REAL", []string{"-c", "echo ok"}, types.DecisionAllow, "allow-shells"},
+		{
+			"/bin/BASH.REAL -c 'echo ok'",
+			"/bin/BASH.REAL",
+			[]string{"-c", "echo ok"},
+			types.DecisionAllow,
+			"allow-shells",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			dec := e.CheckCommand(tc.command, tc.args)
 			if dec.PolicyDecision != tc.decision {
-				t.Errorf("decision: got %s, want %s (rule=%q)", dec.PolicyDecision, tc.decision, dec.Rule)
+				t.Errorf(
+					"decision: got %s, want %s (rule=%q)",
+					dec.PolicyDecision,
+					tc.decision,
+					dec.Rule,
+				)
 			}
 			if dec.Rule != tc.rule {
 				t.Errorf("rule: got %q, want %q", dec.Rule, tc.rule)

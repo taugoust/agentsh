@@ -44,10 +44,18 @@ func TestReceiver_NonTypedErrorClassifiedAsClassifierBypass(t *testing.T) {
 	ClassifyAndIncInvalidFrame(logger, m, bare)
 
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 2 {
-		t.Errorf("DroppedInvalidFrame(classifier_bypass) = %d, want 2 (counter MUST be unconditional even when WARN is rate-limited)", got)
+		t.Errorf(
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 2 (counter MUST be unconditional "+
+				"even when WARN is rate-limited)",
+			got,
+		)
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonUnknown); got != 0 {
-		t.Errorf("DroppedInvalidFrame(unknown) = %d, want 0 (classifier_bypass and unknown MUST be disjoint)", got)
+		t.Errorf(
+			"DroppedInvalidFrame(unknown) = %d, want 0 (classifier_bypass and unknown MUST be "+
+				"disjoint)",
+			got,
+		)
 	}
 
 	out := buf.String()
@@ -56,7 +64,12 @@ func TestReceiver_NonTypedErrorClassifiedAsClassifierBypass(t *testing.T) {
 		logged = strings.Count(strings.TrimRight(out, "\n"), "\n") + 1
 	}
 	if logged != 1 {
-		t.Errorf("WARN log emitted %d entries for 2 bare-error calls; want exactly 1 (first allowed, second throttled by shared limiter)\nlog:\n%s", logged, out)
+		t.Errorf(
+			"WARN log emitted %d entries for 2 bare-error calls; want exactly 1 (first allowed, "+
+				"second throttled by shared limiter)\nlog:\n%s",
+			logged,
+			out,
+		)
 	}
 	if want := "non-typed frame validation error"; !strings.Contains(out, want) {
 		t.Errorf("expected WARN message %q in log output\nlog:\n%s", want, out)
@@ -96,10 +109,17 @@ func TestReceiver_PerPathLimiterNotStarvedByMetricsSide(t *testing.T) {
 	ClassifyAndIncInvalidFrame(logger, m, bare)
 
 	if buf.Len() == 0 {
-		t.Error("receiver-side WARN was suppressed after metrics-side drain — limiters are not per-path")
+		t.Error(
+			"receiver-side WARN was suppressed after metrics-side drain — limiters are not " +
+				"per-path",
+		)
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 3 {
-		t.Errorf("DroppedInvalidFrame(classifier_bypass) = %d, want 3 (2 metrics drains + 1 receiver call — counter must be unconditional)", got)
+		t.Errorf(
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 3 (2 metrics drains + 1 receiver "+
+				"call — counter must be unconditional)",
+			got,
+		)
 	}
 }
 

@@ -31,12 +31,19 @@ func (p *localProvider) Capabilities() []skillcheck.FindingType {
 
 var (
 	reEvalEnv         = regexp.MustCompile(`(?m)\beval\s+["']?\$\{?[A-Z_][A-Z0-9_]*`)
-	rePromptInjection = regexp.MustCompile(`(?i)ignore (all )?(previous|prior) instructions|<system>|<\|system\|>`)
+	rePromptInjection = regexp.MustCompile(
+		`(?i)ignore (all )?(previous|prior) instructions|<system>|<\|system\|>`,
+	)
 	reBase64Blob      = regexp.MustCompile(`[A-Za-z0-9+/]{1000,}={0,2}`)
-	reShellWriteVerbs = regexp.MustCompile(`(?m)\b(rm\s+-rf|curl\s+-X\s+POST|wget\s+--post|chmod\s+\+x)\b`)
+	reShellWriteVerbs = regexp.MustCompile(
+		`(?m)\b(rm\s+-rf|curl\s+-X\s+POST|wget\s+--post|chmod\s+\+x)\b`,
+	)
 )
 
-func (p *localProvider) Scan(ctx context.Context, req skillcheck.ScanRequest) (*skillcheck.ScanResponse, error) {
+func (p *localProvider) Scan(
+	ctx context.Context,
+	req skillcheck.ScanRequest,
+) (*skillcheck.ScanResponse, error) {
 	start := time.Now()
 	var findings []skillcheck.Finding
 
@@ -97,8 +104,11 @@ func (p *localProvider) Scan(ctx context.Context, req skillcheck.ScanRequest) (*
 				Skill:    req.Skill,
 				Severity: skillcheck.SeverityHigh,
 				Title:    "Skill body exceeds declared scope in " + path,
-				Detail:   "manifest declares only: " + strings.Join(req.Skill.Manifest.Allowed, ","),
-				Reasons:  []skillcheck.Reason{{Code: "scope_mismatch"}},
+				Detail: "manifest declares only: " + strings.Join(
+					req.Skill.Manifest.Allowed,
+					",",
+				),
+				Reasons: []skillcheck.Reason{{Code: "scope_mismatch"}},
 			})
 		}
 	}

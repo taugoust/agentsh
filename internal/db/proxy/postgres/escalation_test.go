@@ -130,7 +130,13 @@ func TestSpine_Escalation_UnknownFunction_DeniedWhenEscalateOn(t *testing.T) {
 	up := newFakeUpstream(t, withFakeUpstreamScript(authOKThenQueryForEscalation))
 	upAddr := up.Address()
 
-	h := startSpineHarness(t, upstreamWithLocalhostHost(upAddr), "terminate_plaintext_upstream", nil, "")
+	h := startSpineHarness(
+		t,
+		upstreamWithLocalhostHost(upAddr),
+		"terminate_plaintext_upstream",
+		nil,
+		"",
+	)
 	h.srv.SetPolicy(loadRuleSet(t, escalationPolicyYAML(upAddr, true)))
 
 	stop := runServer(t, h.srv)
@@ -179,7 +185,13 @@ func TestSpine_Escalation_UnknownFunction_AllowedWhenEscalateOff(t *testing.T) {
 	up := newFakeUpstream(t, withFakeUpstreamScript(authOKThenQueryForEscalation))
 	upAddr := up.Address()
 
-	h := startSpineHarness(t, upstreamWithLocalhostHost(upAddr), "terminate_plaintext_upstream", nil, "")
+	h := startSpineHarness(
+		t,
+		upstreamWithLocalhostHost(upAddr),
+		"terminate_plaintext_upstream",
+		nil,
+		"",
+	)
 	h.srv.SetPolicy(loadRuleSet(t, escalationPolicyYAML(upAddr, false)))
 
 	stop := runServer(t, h.srv)

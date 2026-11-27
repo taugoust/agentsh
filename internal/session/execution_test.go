@@ -41,7 +41,13 @@ func waitForExecutionWaiters(t *testing.T, sess *Session, exclusive, shared int)
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("execution waiters = exclusive:%d shared:%d, want exclusive:%d shared:%d", gotExclusive, gotShared, exclusive, shared)
+			t.Fatalf(
+				"execution waiters = exclusive:%d shared:%d, want exclusive:%d shared:%d",
+				gotExclusive,
+				gotShared,
+				exclusive,
+				shared,
+			)
 		}
 		time.Sleep(time.Millisecond)
 	}
@@ -49,8 +55,16 @@ func waitForExecutionWaiters(t *testing.T, sess *Session, exclusive, shared int)
 
 func TestExecutionLanes_DifferentChildrenOverlapAndBusyTracksAll(t *testing.T) {
 	sess := newExecutionTestSession(t)
-	first := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 2})
-	second := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-b", Shared: true, SharedLimit: 2})
+	first := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 2},
+	)
+	second := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-b", Shared: true, SharedLimit: 2},
+	)
 	first.Runtime().SetCurrentProcessPID(101)
 	second.Runtime().SetCurrentProcessPID(202)
 
@@ -75,12 +89,19 @@ func TestExecutionLanes_DifferentChildrenOverlapAndBusyTracksAll(t *testing.T) {
 
 func TestExecutionLanes_SameChildSerializes(t *testing.T) {
 	sess := newExecutionTestSession(t)
-	first := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 2})
+	first := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 2},
+	)
 
 	acquired := make(chan *ExecutionLease, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		lease, err := sess.AcquireExecution(context.Background(), ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-a", Shared: true, SharedLimit: 2})
+		lease, err := sess.AcquireExecution(
+			context.Background(),
+			ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-a", Shared: true, SharedLimit: 2},
+		)
 		if err != nil {
 			errCh <- err
 			return
@@ -111,12 +132,23 @@ func TestExecutionLanes_SameChildSerializes(t *testing.T) {
 
 func TestExecutionLanes_AggregateCap(t *testing.T) {
 	sess := newExecutionTestSession(t)
-	first := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 2})
-	second := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-b", Shared: true, SharedLimit: 2})
+	first := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 2},
+	)
+	second := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-b", Shared: true, SharedLimit: 2},
+	)
 
 	acquired := make(chan *ExecutionLease, 1)
 	go func() {
-		lease, _ := sess.AcquireExecution(context.Background(), ExecutionAdmission{CommandID: "cmd-c", LaneID: "child-c", Shared: true, SharedLimit: 2})
+		lease, _ := sess.AcquireExecution(
+			context.Background(),
+			ExecutionAdmission{CommandID: "cmd-c", LaneID: "child-c", Shared: true, SharedLimit: 2},
+		)
 		acquired <- lease
 	}()
 	waitForExecutionWaiters(t, sess, 0, 1)
@@ -142,11 +174,18 @@ func TestExecutionLanes_AggregateCap(t *testing.T) {
 
 func TestExecutionLanes_ExclusiveWaiterDrainsAndBlocksNewSharedWork(t *testing.T) {
 	sess := newExecutionTestSession(t)
-	first := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 2})
+	first := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 2},
+	)
 
 	exclusive := make(chan *ExecutionLease, 1)
 	go func() {
-		lease, _ := sess.AcquireExecution(context.Background(), ExecutionAdmission{CommandID: "root"})
+		lease, _ := sess.AcquireExecution(
+			context.Background(),
+			ExecutionAdmission{CommandID: "root"},
+		)
 		exclusive <- lease
 	}()
 	// Wait until the exclusive request has registered itself as a waiter.
@@ -154,7 +193,10 @@ func TestExecutionLanes_ExclusiveWaiterDrainsAndBlocksNewSharedWork(t *testing.T
 
 	shared := make(chan *ExecutionLease, 1)
 	go func() {
-		lease, _ := sess.AcquireExecution(context.Background(), ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-b", Shared: true, SharedLimit: 2})
+		lease, _ := sess.AcquireExecution(
+			context.Background(),
+			ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-b", Shared: true, SharedLimit: 2},
+		)
 		shared <- lease
 	}()
 	waitForExecutionWaiters(t, sess, 1, 1)
@@ -177,7 +219,16 @@ func TestExecutionLanes_ExclusiveWaiterDrainsAndBlocksNewSharedWork(t *testing.T
 
 func TestExecutionLanes_SharedCommandAttributionIsImmutable(t *testing.T) {
 	sess := newExecutionTestSession(t)
-	lease := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-original", LaneID: "child-a", Shared: true, SharedLimit: 2})
+	lease := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{
+			CommandID:   "cmd-original",
+			LaneID:      "child-a",
+			Shared:      true,
+			SharedLimit: 2,
+		},
+	)
 	defer lease.Release()
 	lease.Runtime().SetCurrentCommandID("cmd-overwrite-attempt")
 	if got := lease.Runtime().CurrentCommandID(); got != "cmd-original" {
@@ -198,7 +249,11 @@ func TestExecutionLanes_CommandProcessResolvesSharedAndExclusiveState(t *testing
 	}
 	exclusive.Release()
 
-	shared := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "child", LaneID: "child-a", Shared: true, SharedLimit: 2})
+	shared := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{CommandID: "child", LaneID: "child-a", Shared: true, SharedLimit: 2},
+	)
 	shared.Runtime().SetCurrentProcessPID(202)
 	if pid, running := sess.CommandProcess("child"); !running || pid != 202 {
 		t.Fatalf("shared process = (%d, %t), want (202, true)", pid, running)
@@ -211,13 +266,20 @@ func TestExecutionLanes_CommandProcessResolvesSharedAndExclusiveState(t *testing
 
 func TestExecutionLanes_CancelledQueueIsTypedAndNeverAcquires(t *testing.T) {
 	sess := newExecutionTestSession(t)
-	first := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 1})
+	first := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{CommandID: "cmd-a", LaneID: "child-a", Shared: true, SharedLimit: 1},
+	)
 
 	ctx, cancel := context.WithCancelCause(context.Background())
 	marker := errors.New("child capability revoked")
 	result := make(chan error, 1)
 	go func() {
-		lease, err := sess.AcquireExecution(ctx, ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-b", Shared: true, SharedLimit: 1})
+		lease, err := sess.AcquireExecution(
+			ctx,
+			ExecutionAdmission{CommandID: "cmd-b", LaneID: "child-b", Shared: true, SharedLimit: 1},
+		)
 		if lease != nil {
 			lease.Release()
 		}
@@ -235,7 +297,11 @@ func TestExecutionLanes_CancelledQueueIsTypedAndNeverAcquires(t *testing.T) {
 	}
 	first.Release()
 
-	fresh := acquireExecutionForTest(t, sess, ExecutionAdmission{CommandID: "cmd-c", LaneID: "child-b", Shared: true, SharedLimit: 1})
+	fresh := acquireExecutionForTest(
+		t,
+		sess,
+		ExecutionAdmission{CommandID: "cmd-c", LaneID: "child-b", Shared: true, SharedLimit: 1},
+	)
 	fresh.Release()
 	if got := sess.ActiveExecutionCount(); got != 0 {
 		t.Fatalf("cancelled waiter acquired later; active = %d", got)

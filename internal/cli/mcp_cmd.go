@@ -73,7 +73,10 @@ func newMCPToolsCmd() *cobra.Command {
 				}
 
 				// Table output
-				cmd.Println("SERVER              TOOL                HASH        LAST SEEN            DETECTIONS")
+				cmd.Println(
+					"SERVER              TOOL                HASH        LAST SEEN            " +
+						"DETECTIONS",
+				)
 				for _, t := range tools {
 					detections := fmt.Sprintf("%d", t.DetectionCount)
 					if t.MaxSeverity != "" {
@@ -117,7 +120,10 @@ func newMCPToolsCmd() *cobra.Command {
 			if jsonOut {
 				return printJSON(cmd, tools)
 			}
-			cmd.Println("SERVER              TOOL                HASH        LAST SEEN            DETECTIONS")
+			cmd.Println(
+				"SERVER              TOOL                HASH        LAST SEEN            " +
+					"DETECTIONS",
+			)
 			for _, t := range tools {
 				sid, _ := t["server_id"].(string)
 				tn, _ := t["tool_name"].(string)
@@ -369,7 +375,9 @@ func newMCPEventsCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&sessionID, "session", "", "Filter by session ID")
 	cmd.Flags().StringVar(&serverID, "server", "", "Filter by server ID")
-	cmd.Flags().StringVar(&eventType, "type", "", "Event type: mcp_tool_seen|mcp_tool_changed|mcp_detection")
+	cmd.Flags().
+		StringVar(&eventType, "type", "",
+			"Event type: mcp_tool_seen|mcp_tool_changed|mcp_detection")
 	cmd.Flags().StringVar(&since, "since", "", "Start time (RFC3339) or duration (e.g. 1h)")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Result limit")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
@@ -431,7 +439,10 @@ func newMCPCallsCmd() *cobra.Command {
 						d := types.DecisionDeny
 						q.Decision = &d
 					default:
-						return fmt.Errorf("invalid --action %q: must be \"allow\" or \"block\"", action)
+						return fmt.Errorf(
+							"invalid --action %q: must be \"allow\" or \"block\"",
+							action,
+						)
 					}
 				}
 				if since != "" {
@@ -457,7 +468,9 @@ func newMCPCallsCmd() *cobra.Command {
 				}
 
 				// Table output
-				cmd.Println("TIMESTAMP            TOOL                SERVER              ACTION  REASON")
+				cmd.Println(
+					"TIMESTAMP            TOOL                SERVER              ACTION  REASON",
+				)
 				for _, e := range events {
 					tool, _ := e.Fields["tool_name"].(string)
 					server, _ := e.Fields["server_id"].(string)
@@ -532,7 +545,9 @@ func newMCPCallsCmd() *cobra.Command {
 			}
 
 			// Table output
-			cmd.Println("TIMESTAMP            TOOL                SERVER              ACTION  REASON")
+			cmd.Println(
+				"TIMESTAMP            TOOL                SERVER              ACTION  REASON",
+			)
 			for _, e := range events {
 				tool, _ := e.Fields["tool_name"].(string)
 				server, _ := e.Fields["server_id"].(string)

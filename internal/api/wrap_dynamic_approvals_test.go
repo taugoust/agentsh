@@ -17,7 +17,12 @@ func TestDeriveLandlockAllowPaths_IncludesApproveOnlyWhenDynamicFileApprovalsAct
 	}
 	boolPtr := func(v bool) *bool { return &v }
 	pol := &policy.Policy{FileRules: []policy.FileRule{
-		{Name: "approve-env", Paths: []string{"/repo/.env"}, Operations: []string{"open"}, Decision: "approve"},
+		{
+			Name:       "approve-env",
+			Paths:      []string{"/repo/.env"},
+			Operations: []string{"open"},
+			Decision:   "approve",
+		},
 	}}
 	engine, err := policy.NewEngine(pol, true, true)
 	if err != nil {
@@ -54,7 +59,12 @@ func TestDeriveLandlockAllowPaths_DenyPathDoesNotWidenApprove(t *testing.T) {
 	}
 	boolPtr := func(v bool) *bool { return &v }
 	pol := &policy.Policy{FileRules: []policy.FileRule{
-		{Name: "approve-secret", Paths: []string{"/repo/secret/**"}, Operations: []string{"open"}, Decision: "approve"},
+		{
+			Name:       "approve-secret",
+			Paths:      []string{"/repo/secret/**"},
+			Operations: []string{"open"},
+			Decision:   "approve",
+		},
 	}}
 	engine, err := policy.NewEngine(pol, true, true)
 	if err != nil {

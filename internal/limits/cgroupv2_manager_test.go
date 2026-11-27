@@ -25,7 +25,11 @@ func TestManagerApply_NestedWritesLimits(t *testing.T) {
 		t.Fatalf("mode: %q", m.Probe().Mode)
 	}
 
-	cg, err := m.Apply("agentsh-sess-cmd", 4242, CgroupV2Limits{MaxMemoryBytes: 16 << 20, PidsMax: 64})
+	cg, err := m.Apply(
+		"agentsh-sess-cmd",
+		4242,
+		CgroupV2Limits{MaxMemoryBytes: 16 << 20, PidsMax: 64},
+	)
 	if err != nil {
 		t.Fatalf("apply: %v", err)
 	}

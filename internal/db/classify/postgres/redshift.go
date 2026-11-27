@@ -21,7 +21,10 @@ var (
 
 // redshiftFirstKeyword is invoked from classifyWithBackend on Redshift parse
 // failure. Returns ok=false → fall through to unknown.
-func redshiftFirstKeyword(sql string, backend effects.ParserBackend) (effects.ClassifiedStatement, bool) {
+func redshiftFirstKeyword(
+	sql string,
+	backend effects.ParserBackend,
+) (effects.ClassifiedStatement, bool) {
 	switch {
 	case unloadRE.MatchString(sql):
 		s3 := ""

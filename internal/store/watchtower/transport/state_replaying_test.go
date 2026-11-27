@@ -187,10 +187,19 @@ func TestRunReplaying_SendFailureClosesConn(t *testing.T) {
 		t.Fatalf("state: got %s, want StateConnecting", st)
 	}
 	if got, want := conn.closeCalls, 1; got != want {
-		t.Fatalf("Close calls: got %d, want %d (every error path on a held Conn must Close exactly once)", got, want)
+		t.Fatalf(
+			"Close calls: got %d, want %d (every error path on a held Conn must Close "+
+				"exactly once)",
+			got,
+			want,
+		)
 	}
 	if got, want := conn.closeSendCalls, 0; got != want {
-		t.Fatalf("CloseSend calls: got %d, want %d (CloseSend is half-close, not teardown)", got, want)
+		t.Fatalf(
+			"CloseSend calls: got %d, want %d (CloseSend is half-close, not teardown)",
+			got,
+			want,
+		)
 	}
 	if transport.HasConnForTest(tr) {
 		t.Fatal("Transport.conn must be nil after error path so the next dial replaces it cleanly")

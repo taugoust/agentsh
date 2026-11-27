@@ -181,7 +181,10 @@ func (h *LeakGuardHook) logLeak(ctx *RequestContext, serviceName, requestHost st
 	)
 }
 
-func (h *LeakGuardHook) logCrossService(ctx *RequestContext, sourceService, targetService, requestHost string) {
+func (h *LeakGuardHook) logCrossService(
+	ctx *RequestContext,
+	sourceService, targetService, requestHost string,
+) {
 	h.logger.Warn("secret_cross_service_use",
 		"session_id", ctx.SessionID,
 		"request_id", ctx.RequestID,
@@ -204,7 +207,10 @@ type HeaderInjectionHook struct {
 // for serviceName into the header specified by headerName using template.
 // The template must contain "{{secret}}" which is replaced with the real
 // credential at request time.
-func NewHeaderInjectionHook(serviceName, headerName, template string, table *credsub.Table) *HeaderInjectionHook {
+func NewHeaderInjectionHook(
+	serviceName, headerName, template string,
+	table *credsub.Table,
+) *HeaderInjectionHook {
 	return &HeaderInjectionHook{
 		serviceName: serviceName,
 		headerName:  headerName,

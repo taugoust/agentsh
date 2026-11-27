@@ -41,7 +41,12 @@ func TestWTPInvalidFrameReason_ParityWithValidator(t *testing.T) {
 	validatorDedup := make(map[wtpv1.ValidationReason]struct{}, len(validatorSlice))
 	for _, r := range validatorSlice {
 		if _, dup := validatorDedup[r]; dup {
-			t.Errorf("wtpv1.AllValidationReasons() contains duplicate reason %q — aliases are forbidden (see gen/go/canyonroad/wtp/v1/validate.go in the github.com/canyonroad/wtp-protos repo)", r)
+			t.Errorf(
+				"wtpv1.AllValidationReasons() contains duplicate reason %q — aliases are "+
+					"forbidden (see gen/go/canyonroad/wtp/v1/validate.go in the "+
+					"github.com/canyonroad/wtp-protos repo)",
+				r,
+			)
 		}
 		validatorDedup[r] = struct{}{}
 	}
@@ -49,7 +54,11 @@ func TestWTPInvalidFrameReason_ParityWithValidator(t *testing.T) {
 	metricsDedup := make(map[metrics.WTPInvalidFrameReason]struct{}, len(metricsSlice))
 	for _, r := range metricsSlice {
 		if _, dup := metricsDedup[r]; dup {
-			t.Errorf("metrics.ValidationReasons() contains duplicate reason %q — aliases are forbidden (see internal/metrics/wtp.go)", r)
+			t.Errorf(
+				"metrics.ValidationReasons() contains duplicate reason %q — aliases are "+
+					"forbidden (see internal/metrics/wtp.go)",
+				r,
+			)
 		}
 		metricsDedup[r] = struct{}{}
 	}
@@ -57,7 +66,11 @@ func TestWTPInvalidFrameReason_ParityWithValidator(t *testing.T) {
 	metricsOnlyDedup := make(map[metrics.WTPInvalidFrameReason]struct{}, len(metricsOnlySlice))
 	for _, r := range metricsOnlySlice {
 		if _, dup := metricsOnlyDedup[r]; dup {
-			t.Errorf("metrics.MetricsOnlyReasons() contains duplicate reason %q — aliases are forbidden (see internal/metrics/wtp.go)", r)
+			t.Errorf(
+				"metrics.MetricsOnlyReasons() contains duplicate reason %q — aliases are "+
+					"forbidden (see internal/metrics/wtp.go)",
+				r,
+			)
 		}
 		metricsOnlyDedup[r] = struct{}{}
 	}
@@ -68,31 +81,58 @@ func TestWTPInvalidFrameReason_ParityWithValidator(t *testing.T) {
 	// Length equality catches alias duplication (multiple constants
 	// pointing at one string value) that a map-based dedupe would
 	// silently mask. Either side gaining an alias fails the test.
-	if got, want := len(wtpv1.AllValidationReasons()), len(metrics.ValidationReasons()); got != want {
-		t.Errorf("len(wtpv1.AllValidationReasons())=%d vs len(metrics.ValidationReasons())=%d — alias duplication or drift between gen/go/canyonroad/wtp/v1/validate.go (github.com/canyonroad/wtp-protos repo) and internal/metrics/wtp.go", got, want)
+	if got, want := len(
+		wtpv1.AllValidationReasons(),
+	), len(
+		metrics.ValidationReasons(),
+	); got != want {
+		t.Errorf(
+			"len(wtpv1.AllValidationReasons())=%d vs len(metrics.ValidationReasons())=%d — alias "+
+				"duplication or drift between gen/go/canyonroad/wtp/v1/validate.go "+
+				"(github.com/canyonroad/wtp-protos repo) and internal/metrics/wtp.go",
+			got,
+			want,
+		)
 	}
 
 	// 1. Forward: every validator reason must have a metrics constant in the shared set.
 	for r := range validatorAll {
 		if _, ok := metricsShared[metrics.WTPInvalidFrameReason(string(r))]; !ok {
-			t.Errorf("metrics package is missing WTPInvalidFrameReason constant for validator reason %q; add the constant to internal/metrics/wtp.go and append it to wtpInvalidFrameReasonsValid + wtpInvalidFrameReasonsEmitOrder + validationReasonsShared (returned by ValidationReasons())",
-				r)
+			t.Errorf(
+				"metrics package is missing WTPInvalidFrameReason constant for validator reason "+
+					"%q; add the constant to internal/metrics/wtp.go and append it to "+
+					"wtpInvalidFrameReasonsValid + wtpInvalidFrameReasonsEmitOrder + "+
+					"validationReasonsShared (returned by ValidationReasons())",
+				r,
+			)
 		}
 	}
 
 	// 2. Reverse: every metrics shared reason must have a validator constant.
 	for r := range metricsShared {
 		if _, ok := validatorAll[wtpv1.ValidationReason(string(r))]; !ok {
-			t.Errorf("validator package is missing ValidationReason constant for metrics reason %q; add the constant to gen/go/canyonroad/wtp/v1/validate.go (github.com/canyonroad/wtp-protos repo) and append it to allValidationReasons (returned by AllValidationReasons())",
-				r)
+			t.Errorf(
+				"validator package is missing ValidationReason constant for metrics reason %q; "+
+					"add the constant to gen/go/canyonroad/wtp/v1/validate.go "+
+					"(github.com/canyonroad/wtp-protos repo) and append it to "+
+					"allValidationReasons (returned by AllValidationReasons())",
+				r,
+			)
 		}
 	}
 
 	// 3. Disjoint: metrics-only reasons MUST NOT appear on the validator side.
 	for _, r := range metrics.MetricsOnlyReasons() {
 		if _, ok := validatorAll[wtpv1.ValidationReason(string(r))]; ok {
-			t.Errorf("metrics-only reason %q accidentally appears in wtpv1.AllValidationReasons() — the design contract is that classifier_bypass and decompress_error have NO proto-side counterpart; remove it from gen/go/canyonroad/wtp/v1/validate.go's allValidationReasons (github.com/canyonroad/wtp-protos repo) or remove it from internal/metrics/wtp.go's MetricsOnlyReasons() (whichever was added in error)",
-				r)
+			t.Errorf(
+				"metrics-only reason %q accidentally appears in wtpv1.AllValidationReasons() — "+
+					"the design contract is that classifier_bypass and decompress_error have NO "+
+					"proto-side counterpart; remove it from "+
+					"gen/go/canyonroad/wtp/v1/validate.go's allValidationReasons "+
+					"(github.com/canyonroad/wtp-protos repo) or remove it from "+
+					"internal/metrics/wtp.go's MetricsOnlyReasons() (whichever was added in error)",
+				r,
+			)
 		}
 	}
 
@@ -107,14 +147,23 @@ func TestWTPInvalidFrameReason_ParityWithValidator(t *testing.T) {
 	valid := metrics.ValidWTPInvalidFrameReasons()
 	for r := range valid {
 		if _, ok := covered[r]; !ok {
-			t.Errorf("metrics constant %q is in ValidWTPInvalidFrameReasons() but in NEITHER ValidationReasons() NOR MetricsOnlyReasons(); add it to one of those getters in internal/metrics/wtp.go so the parity test can classify it",
-				r)
+			t.Errorf(
+				"metrics constant %q is in ValidWTPInvalidFrameReasons() but in NEITHER "+
+					"ValidationReasons() NOR MetricsOnlyReasons(); add it to one of those "+
+					"getters in internal/metrics/wtp.go so the parity test can classify it",
+				r,
+			)
 		}
 	}
 	for r := range covered {
 		if _, ok := valid[r]; !ok {
-			t.Errorf("metrics constant %q appears in ValidationReasons() or MetricsOnlyReasons() but is NOT in ValidWTPInvalidFrameReasons() (the always-emit set); add it to wtpInvalidFrameReasonsValid in internal/metrics/wtp.go so it is registered for emit",
-				r)
+			t.Errorf(
+				"metrics constant %q appears in ValidationReasons() or MetricsOnlyReasons() but "+
+					"is NOT in ValidWTPInvalidFrameReasons() (the always-emit set); add it to "+
+					"wtpInvalidFrameReasonsValid in internal/metrics/wtp.go so it is registered "+
+					"for emit",
+				r,
+			)
 		}
 	}
 }
@@ -132,7 +181,9 @@ func TestClassifierBypassWARN_RateLimited(t *testing.T) {
 
 	var buf bytes.Buffer
 	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	slog.SetDefault(
+		slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})),
+	)
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	c := metrics.New()
@@ -141,8 +192,14 @@ func TestClassifierBypassWARN_RateLimited(t *testing.T) {
 		c.WTP().IncDroppedInvalidFrame(metrics.WTPInvalidFrameReason("not-a-canonical-reason"))
 	}
 
-	if got := c.WTP().DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != burst {
-		t.Errorf("DroppedInvalidFrame(classifier_bypass) = %d, want %d (counter MUST track true volume regardless of WARN throttling)", got, burst)
+	if got := c.WTP().
+		DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != burst {
+		t.Errorf(
+			"DroppedInvalidFrame(classifier_bypass) = %d, want %d (counter MUST track true "+
+				"volume regardless of WARN throttling)",
+			got,
+			burst,
+		)
 	}
 
 	logged := 0
@@ -150,9 +207,18 @@ func TestClassifierBypassWARN_RateLimited(t *testing.T) {
 		logged = strings.Count(strings.TrimRight(buf.String(), "\n"), "\n") + 1
 	}
 	if logged > 11 {
-		t.Errorf("WARN log emitted %d entries for %d invalid-label calls — rate-limiter failed to throttle (expected ≤11)", logged, burst)
+		t.Errorf(
+			"WARN log emitted %d entries for %d invalid-label calls — rate-limiter failed to "+
+				"throttle (expected ≤11)",
+			logged,
+			burst,
+		)
 	}
 	if logged < 1 {
-		t.Errorf("WARN log emitted %d entries — first emission per burst MUST be allowed (token bucket starts full)", logged)
+		t.Errorf(
+			"WARN log emitted %d entries — first emission per burst MUST be allowed (token "+
+				"bucket starts full)",
+			logged,
+		)
 	}
 }

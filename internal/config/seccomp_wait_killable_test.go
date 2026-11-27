@@ -61,7 +61,8 @@ func TestWaitKillableFilterCompositionTriggersBug(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "socket + file_monitor disabled but enforce_without_fuse on (intercept_metadata defaults true)",
+			name: "socket + file_monitor disabled but enforce_without_fuse on " +
+				"(intercept_metadata defaults true)",
 			cfg: seccompComposition(SandboxSeccompConfig{
 				UnixSocket: SandboxSeccompUnixConfig{Enabled: true},
 				FileMonitor: SandboxSeccompFileMonitorConfig{
@@ -72,7 +73,8 @@ func TestWaitKillableFilterCompositionTriggersBug(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "socket + file_monitor disabled, enforce_without_fuse on, intercept_metadata explicitly off",
+			name: "socket + file_monitor disabled, enforce_without_fuse on, intercept_metadata " +
+				"explicitly off",
 			cfg: seccompComposition(SandboxSeccompConfig{
 				UnixSocket: SandboxSeccompUnixConfig{Enabled: true},
 				FileMonitor: SandboxSeccompFileMonitorConfig{
@@ -118,7 +120,9 @@ func TestUnixSocketNotifyEnabled(t *testing.T) {
 		{name: "both off", cfg: SandboxConfig{}, want: false},
 		{
 			name: "seccomp.unix_socket on",
-			cfg:  SandboxConfig{Seccomp: SandboxSeccompConfig{UnixSocket: SandboxSeccompUnixConfig{Enabled: true}}},
+			cfg: SandboxConfig{
+				Seccomp: SandboxSeccompConfig{UnixSocket: SandboxSeccompUnixConfig{Enabled: true}},
+			},
 			want: true,
 		},
 		{
@@ -140,7 +144,9 @@ func TestUnixSocketNotifyEnabled(t *testing.T) {
 			name: "either field true wins",
 			cfg: SandboxConfig{
 				UnixSockets: SandboxUnixSocketsConfig{Enabled: ff},
-				Seccomp:     SandboxSeccompConfig{UnixSocket: SandboxSeccompUnixConfig{Enabled: true}},
+				Seccomp: SandboxSeccompConfig{
+					UnixSocket: SandboxSeccompUnixConfig{Enabled: true},
+				},
 			},
 			want: true,
 		},

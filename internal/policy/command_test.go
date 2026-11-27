@@ -8,23 +8,54 @@ import (
 
 func TestEngine_InternalDirenvProvenanceRequiredForCommandAndExecve(t *testing.T) {
 	p := &Policy{Version: 1, Name: "internal-provenance", CommandRules: []CommandRule{
-		{Name: "allow-server-direnv-export", Commands: []string{"direnv"}, ArgsPatterns: []string{`^(direnv )?export json$`}, Decision: "allow", Context: ContextConfig{MinDepth: 0, MaxDepth: 0}, InternalProvenance: string(CommandProvenanceDirenvRefresh)},
-		{Name: "deny-generic-direnv-export", Commands: []string{"direnv"}, Decision: "deny", Context: ContextConfig{MinDepth: 0, MaxDepth: 0}},
+		{
+			Name:               "allow-server-direnv-export",
+			Commands:           []string{"direnv"},
+			ArgsPatterns:       []string{`^(direnv )?export json$`},
+			Decision:           "allow",
+			Context:            ContextConfig{MinDepth: 0, MaxDepth: 0},
+			InternalProvenance: string(CommandProvenanceDirenvRefresh),
+		},
+		{
+			Name:     "deny-generic-direnv-export",
+			Commands: []string{"direnv"},
+			Decision: "deny",
+			Context:  ContextConfig{MinDepth: 0, MaxDepth: 0},
+		},
 	}}
 	e, err := NewEngine(p, false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	generic := e.CheckCommandWithExecve("direnv", []string{"export", "json"}, true, ShellCOpaqueEnforce)
-	internal := e.CheckCommandWithExecveProvenance("direnv", []string{"export", "json"}, true, ShellCOpaqueEnforce, CommandProvenanceDirenvRefresh)
-	if generic.Rule != "deny-generic-direnv-export" || internal.Rule != "allow-server-direnv-export" {
+	generic := e.CheckCommandWithExecve(
+		"direnv",
+		[]string{"export", "json"},
+		true,
+		ShellCOpaqueEnforce,
+	)
+	internal := e.CheckCommandWithExecveProvenance(
+		"direnv",
+		[]string{"export", "json"},
+		true,
+		ShellCOpaqueEnforce,
+		CommandProvenanceDirenvRefresh,
+	)
+	if generic.Rule != "deny-generic-direnv-export" ||
+		internal.Rule != "allow-server-direnv-export" {
 		t.Fatalf("command decisions: generic=%s internal=%s", generic.Rule, internal.Rule)
 	}
 
 	generic = e.CheckExecve("/usr/bin/direnv", []string{"direnv", "export", "json"}, 0)
-	internal = e.CheckExecveWithAliasesProvenance("/usr/bin/direnv", nil, []string{"direnv", "export", "json"}, 0, CommandProvenanceDirenvRefresh)
-	if generic.Rule != "deny-generic-direnv-export" || internal.Rule != "allow-server-direnv-export" {
+	internal = e.CheckExecveWithAliasesProvenance(
+		"/usr/bin/direnv",
+		nil,
+		[]string{"direnv", "export", "json"},
+		0,
+		CommandProvenanceDirenvRefresh,
+	)
+	if generic.Rule != "deny-generic-direnv-export" ||
+		internal.Rule != "allow-server-direnv-export" {
 		t.Fatalf("execve decisions: generic=%s internal=%s", generic.Rule, internal.Rule)
 	}
 }
@@ -186,11 +217,21 @@ func TestEngine_CheckCommand_MixedRules(t *testing.T) {
 		rule     string
 	}{
 		// Full path match takes precedence (first rule wins)
-		{"/usr/bin/python3 allowed", "/usr/bin/python3", types.DecisionAllow, "allow-system-python"},
+		{
+			"/usr/bin/python3 allowed",
+			"/usr/bin/python3",
+			types.DecisionAllow,
+			"allow-system-python",
+		},
 		// Basename matches
 		{"python denied", "python", types.DecisionDeny, "deny-python-everywhere-else"},
 		{"python3 denied", "python3", types.DecisionDeny, "deny-python-everywhere-else"},
-		{"/tmp/python3 denied via basename", "/tmp/python3", types.DecisionDeny, "deny-python-everywhere-else"},
+		{
+			"/tmp/python3 denied via basename",
+			"/tmp/python3",
+			types.DecisionDeny,
+			"deny-python-everywhere-else",
+		},
 	}
 
 	for _, tc := range tests {
@@ -319,7 +360,12 @@ func TestEngine_CheckCommand_WithArgs(t *testing.T) {
 		{"rm -rf denied", "rm", []string{"-rf", "/"}, types.DecisionDeny},
 		{"rm -fr denied", "rm", []string{"-fr", "/"}, types.DecisionDeny},
 		{"rm --force denied", "rm", []string{"--force", "-r", "/"}, types.DecisionDeny},
-		{"rm without dangerous args denied (default)", "rm", []string{"file.txt"}, types.DecisionDeny}, // default deny
+		{
+			"rm without dangerous args denied (default)",
+			"rm",
+			[]string{"file.txt"},
+			types.DecisionDeny,
+		}, // default deny
 		{"/bin/rm -rf denied", "/bin/rm", []string{"-rf", "/"}, types.DecisionDeny},
 	}
 
@@ -453,11 +499,26 @@ func TestEngine_CheckCommand_GitSafetyRules(t *testing.T) {
 		rule     string
 	}{
 		// push to main/master should be blocked
-		{"push origin main", []string{"push", "origin", "main"}, types.DecisionDeny, "no-direct-push-to-main"},
+		{
+			"push origin main",
+			[]string{"push", "origin", "main"},
+			types.DecisionDeny,
+			"no-direct-push-to-main",
+		},
 		{"push main", []string{"push", "main"}, types.DecisionDeny, "no-direct-push-to-main"},
-		{"push origin master", []string{"push", "origin", "master"}, types.DecisionDeny, "no-direct-push-to-main"},
+		{
+			"push origin master",
+			[]string{"push", "origin", "master"},
+			types.DecisionDeny,
+			"no-direct-push-to-main",
+		},
 		// push to feature branch should be allowed
-		{"push origin feature", []string{"push", "origin", "feature"}, types.DecisionAllow, "allow-git"},
+		{
+			"push origin feature",
+			[]string{"push", "origin", "feature"},
+			types.DecisionAllow,
+			"allow-git",
+		},
 		// checkout main should be allowed (not a push)
 		{"checkout main", []string{"checkout", "main"}, types.DecisionAllow, "allow-git"},
 
@@ -465,11 +526,21 @@ func TestEngine_CheckCommand_GitSafetyRules(t *testing.T) {
 		{"push --force", []string{"push", "--force"}, types.DecisionDeny, "no-force-push"},
 		{"push -f", []string{"push", "-f"}, types.DecisionDeny, "no-force-push"},
 		// push origin main --force matches no-direct-push-to-main first (rule order)
-		{"push origin main --force", []string{"push", "origin", "main", "--force"}, types.DecisionDeny, "no-direct-push-to-main"},
+		{
+			"push origin main --force",
+			[]string{"push", "origin", "main", "--force"},
+			types.DecisionDeny,
+			"no-direct-push-to-main",
+		},
 
 		// hard reset should be blocked
 		{"reset --hard", []string{"reset", "--hard"}, types.DecisionDeny, "no-hard-reset"},
-		{"reset --hard HEAD~1", []string{"reset", "--hard", "HEAD~1"}, types.DecisionDeny, "no-hard-reset"},
+		{
+			"reset --hard HEAD~1",
+			[]string{"reset", "--hard", "HEAD~1"},
+			types.DecisionDeny,
+			"no-hard-reset",
+		},
 		// soft reset should be allowed
 		{"reset --soft", []string{"reset", "--soft"}, types.DecisionAllow, "allow-git"},
 
@@ -485,7 +556,12 @@ func TestEngine_CheckCommand_GitSafetyRules(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dec := e.CheckCommand("git", tc.args)
 			if dec.PolicyDecision != tc.decision {
-				t.Errorf("expected decision %s, got %s (rule=%s)", tc.decision, dec.PolicyDecision, dec.Rule)
+				t.Errorf(
+					"expected decision %s, got %s (rule=%s)",
+					tc.decision,
+					dec.PolicyDecision,
+					dec.Rule,
+				)
 			}
 			if dec.Rule != tc.rule {
 				t.Errorf("expected rule %q, got %q", tc.rule, dec.Rule)

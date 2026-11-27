@@ -20,14 +20,20 @@ type ReapExpiredSessionsResult struct {
 // ReapExpiredSessions serializes hard/idle expiry with session topology and
 // helper rebinding. It intentionally leaves expired sessions installed while a
 // staged candidate's cleanup cannot be authenticated as complete.
-func (a *App) ReapExpiredSessions(now time.Time, sessionTimeout, idleTimeout time.Duration) []*session.Session {
+func (a *App) ReapExpiredSessions(
+	now time.Time,
+	sessionTimeout, idleTimeout time.Duration,
+) []*session.Session {
 	return a.ReapExpiredSessionsWithResult(now, sessionTimeout, idleTimeout).Sessions
 }
 
 // ReapExpiredSessionsWithResult additionally reports whether expiry removed
 // the exact session owned by this detached supervisor. Its durable stopping
 // transition is committed before the manager removes that session.
-func (a *App) ReapExpiredSessionsWithResult(now time.Time, sessionTimeout, idleTimeout time.Duration) ReapExpiredSessionsResult {
+func (a *App) ReapExpiredSessionsWithResult(
+	now time.Time,
+	sessionTimeout, idleTimeout time.Duration,
+) ReapExpiredSessionsResult {
 	var result ReapExpiredSessionsResult
 	if a == nil || a.sessions == nil {
 		return result
@@ -49,26 +55,34 @@ func (a *App) ReapExpiredSessionsWithResult(now time.Time, sessionTimeout, idleT
 		detachedSessionID = runtime.Manifest().SessionID
 	}
 
-	reaped, err := a.sessions.ReapExpiredGuarded(now, sessionTimeout, idleTimeout, func(sess *session.Session) error {
-		if sess != nil && !sess.WorkspaceTeardownAllowed() {
-			return fmt.Errorf("session %s workspace finalization is running or pending", sess.ID)
-		}
-		isDetached := runtime != nil && sess != nil && sess.ID == detachedSessionID
-		if isDetached {
-			if err := runtime.MarkStopping(); err != nil {
-				return fmt.Errorf("persist detached session expiry for %s: %w", sess.ID, err)
+	reaped, err := a.sessions.ReapExpiredGuarded(
+		now,
+		sessionTimeout,
+		idleTimeout,
+		func(sess *session.Session) error {
+			if sess != nil && !sess.WorkspaceTeardownAllowed() {
+				return fmt.Errorf(
+					"session %s workspace finalization is running or pending",
+					sess.ID,
+				)
 			}
-		}
-		if sess != nil {
-			if err := sess.UnmountWorkspace(); err != nil {
-				return fmt.Errorf("session %s workspace teardown: %w", sess.ID, err)
+			isDetached := runtime != nil && sess != nil && sess.ID == detachedSessionID
+			if isDetached {
+				if err := runtime.MarkStopping(); err != nil {
+					return fmt.Errorf("persist detached session expiry for %s: %w", sess.ID, err)
+				}
 			}
-		}
-		if isDetached {
-			result.DetachedSupervisorExpired = true
-		}
-		return nil
-	})
+			if sess != nil {
+				if err := sess.UnmountWorkspace(); err != nil {
+					return fmt.Errorf("session %s workspace teardown: %w", sess.ID, err)
+				}
+			}
+			if isDetached {
+				result.DetachedSupervisorExpired = true
+			}
+			return nil
+		},
+	)
 	result.Sessions = reaped
 	for _, sess := range reaped {
 		if sess == nil {
@@ -90,7 +104,10 @@ func (a *App) ReapExpiredSessionsWithResult(now time.Time, sessionTimeout, idleT
 func (a *App) detachedRuntimeStatus() detached.RuntimeStatus {
 	status := a.detachedRuntime.RuntimeStatus()
 	switch status.LifecycleState {
-	case detached.LifecycleProvisioning, detached.LifecycleRecovering, detached.LifecycleReady, detached.LifecycleDegraded:
+	case detached.LifecycleProvisioning,
+		detached.LifecycleRecovering,
+		detached.LifecycleReady,
+		detached.LifecycleDegraded:
 		if _, ok := a.sessions.Get(status.SessionID); !ok {
 			status.LifecycleState = detached.LifecycleFailed
 			status.Recoverable = false

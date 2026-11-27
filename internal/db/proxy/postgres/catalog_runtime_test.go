@@ -54,17 +54,21 @@ func TestCatalogSnapshotStore_LoadOrGetCachesByServiceDatabaseUser(t *testing.T)
 }
 
 func TestCatalogSnapshotStore_CachesSnapshotButLoadsSearchPathPerConnection(t *testing.T) {
-	store := newCatalogSnapshotStore(catalogRuntimeLoaderFunc(func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
-		searchPath := []string{"public"}
-		if pc.state.appName == "tenant-client" {
-			searchPath = []string{"tenant", "public"}
-		}
-		return catalog.NewSnapshot([]catalog.Relation{{
-			OID:  7,
-			Name: catalog.Name{Schema: "public", Name: "users"},
-			Kind: catalog.RelationTable,
-		}}, nil), searchPath, "", nil
-	}))
+	store := newCatalogSnapshotStore(
+		catalogRuntimeLoaderFunc(
+			func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
+				searchPath := []string{"public"}
+				if pc.state.appName == "tenant-client" {
+					searchPath = []string{"tenant", "public"}
+				}
+				return catalog.NewSnapshot([]catalog.Relation{{
+					OID:  7,
+					Name: catalog.Name{Schema: "public", Name: "users"},
+					Kind: catalog.RelationTable,
+				}}, nil), searchPath, "", nil
+			},
+		),
+	)
 	first := store.loadOrGet(context.Background(), &proxyConn{
 		svc: Service{Name: "appdb"},
 		state: &connState{
@@ -86,19 +90,24 @@ func TestCatalogSnapshotStore_CachesSnapshotButLoadsSearchPathPerConnection(t *t
 	if len(first.SearchPath) != 1 || first.SearchPath[0] != "public" {
 		t.Fatalf("first SearchPath = %#v, want [public]", first.SearchPath)
 	}
-	if len(second.SearchPath) != 2 || second.SearchPath[0] != "tenant" || second.SearchPath[1] != "public" {
+	if len(second.SearchPath) != 2 || second.SearchPath[0] != "tenant" ||
+		second.SearchPath[1] != "public" {
 		t.Fatalf("second SearchPath = %#v, want [tenant public]", second.SearchPath)
 	}
 }
 
 func TestProxyConnRefreshesCatalogSearchPathAfterSuccessfulSessionChange(t *testing.T) {
-	store := newCatalogSnapshotStore(catalogRuntimeLoaderFunc(func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
-		searchPath := []string{"public"}
-		if pc.state.appName == "tenant-client" {
-			searchPath = []string{"tenant", "public"}
-		}
-		return catalog.NewSnapshot(nil, nil), searchPath, "", nil
-	}))
+	store := newCatalogSnapshotStore(
+		catalogRuntimeLoaderFunc(
+			func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
+				searchPath := []string{"public"}
+				if pc.state.appName == "tenant-client" {
+					searchPath = []string{"tenant", "public"}
+				}
+				return catalog.NewSnapshot(nil, nil), searchPath, "", nil
+			},
+		),
+	)
 	pc := &proxyConn{
 		srv: &Server{catalogStore: store},
 		svc: Service{Name: "appdb"},
@@ -121,19 +130,24 @@ func TestProxyConnRefreshesCatalogSearchPathAfterSuccessfulSessionChange(t *test
 		}},
 	}}, upstreamResult{RowsByStmt: []*int64{nil}})
 
-	if len(pc.state.catalog.SearchPath) != 2 || pc.state.catalog.SearchPath[0] != "tenant" || pc.state.catalog.SearchPath[1] != "public" {
+	if len(pc.state.catalog.SearchPath) != 2 || pc.state.catalog.SearchPath[0] != "tenant" ||
+		pc.state.catalog.SearchPath[1] != "public" {
 		t.Fatalf("SearchPath = %#v, want [tenant public]", pc.state.catalog.SearchPath)
 	}
 }
 
 func TestProxyConnRefreshesCatalogSearchPathAfterSuccessfulSetLocal(t *testing.T) {
-	store := newCatalogSnapshotStore(catalogRuntimeLoaderFunc(func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
-		searchPath := []string{"public"}
-		if pc.state.appName == "tenant-client" {
-			searchPath = []string{"tenant", "public"}
-		}
-		return catalog.NewSnapshot(nil, nil), searchPath, "", nil
-	}))
+	store := newCatalogSnapshotStore(
+		catalogRuntimeLoaderFunc(
+			func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
+				searchPath := []string{"public"}
+				if pc.state.appName == "tenant-client" {
+					searchPath = []string{"tenant", "public"}
+				}
+				return catalog.NewSnapshot(nil, nil), searchPath, "", nil
+			},
+		),
+	)
 	pc := &proxyConn{
 		srv: &Server{catalogStore: store},
 		svc: Service{Name: "appdb"},
@@ -156,19 +170,24 @@ func TestProxyConnRefreshesCatalogSearchPathAfterSuccessfulSetLocal(t *testing.T
 		}},
 	}}, upstreamResult{RowsByStmt: []*int64{nil}})
 
-	if len(pc.state.catalog.SearchPath) != 2 || pc.state.catalog.SearchPath[0] != "tenant" || pc.state.catalog.SearchPath[1] != "public" {
+	if len(pc.state.catalog.SearchPath) != 2 || pc.state.catalog.SearchPath[0] != "tenant" ||
+		pc.state.catalog.SearchPath[1] != "public" {
 		t.Fatalf("SearchPath = %#v, want [tenant public]", pc.state.catalog.SearchPath)
 	}
 }
 
 func TestProxyConnRefreshesCatalogSearchPathAfterRollbackTo(t *testing.T) {
-	store := newCatalogSnapshotStore(catalogRuntimeLoaderFunc(func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
-		searchPath := []string{"public"}
-		if pc.state.appName == "tenant-client" {
-			searchPath = []string{"tenant", "public"}
-		}
-		return catalog.NewSnapshot(nil, nil), searchPath, "", nil
-	}))
+	store := newCatalogSnapshotStore(
+		catalogRuntimeLoaderFunc(
+			func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
+				searchPath := []string{"public"}
+				if pc.state.appName == "tenant-client" {
+					searchPath = []string{"tenant", "public"}
+				}
+				return catalog.NewSnapshot(nil, nil), searchPath, "", nil
+			},
+		),
+	)
 	pc := &proxyConn{
 		srv: &Server{catalogStore: store},
 		svc: Service{Name: "appdb"},
@@ -195,13 +214,17 @@ func TestProxyConnRefreshesCatalogSearchPathAfterRollbackTo(t *testing.T) {
 }
 
 func TestProxyConnRefreshesCatalogSearchPathAfterResetSessionAuthorization(t *testing.T) {
-	store := newCatalogSnapshotStore(catalogRuntimeLoaderFunc(func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
-		searchPath := []string{"public"}
-		if pc.state.appName == "tenant-client" {
-			searchPath = []string{"tenant", "public"}
-		}
-		return catalog.NewSnapshot(nil, nil), searchPath, "", nil
-	}))
+	store := newCatalogSnapshotStore(
+		catalogRuntimeLoaderFunc(
+			func(_ context.Context, pc *proxyConn) (catalog.Snapshot, []string, string, error) {
+				searchPath := []string{"public"}
+				if pc.state.appName == "tenant-client" {
+					searchPath = []string{"tenant", "public"}
+				}
+				return catalog.NewSnapshot(nil, nil), searchPath, "", nil
+			},
+		),
+	)
 	pc := &proxyConn{
 		srv: &Server{catalogStore: store},
 		svc: Service{Name: "appdb"},
@@ -268,7 +291,10 @@ func TestProxyConnDefersSnapshotRefreshInsideTransaction(t *testing.T) {
 		t.Fatal("catalogSnapshotRefreshPending = false, want true")
 	}
 	if pc.state.catalog.UnavailableReason != "session_state_changed" {
-		t.Fatalf("UnavailableReason = %q, want session_state_changed", pc.state.catalog.UnavailableReason)
+		t.Fatalf(
+			"UnavailableReason = %q, want session_state_changed",
+			pc.state.catalog.UnavailableReason,
+		)
 	}
 }
 
@@ -287,11 +313,13 @@ func TestProxyConnRefreshesPendingSnapshotAtTransactionEnd(t *testing.T) {
 		srv: &Server{catalogStore: store},
 		svc: Service{Name: "appdb"},
 		state: &connState{
-			dbService:                     "appdb",
-			database:                      "app",
-			dbUser:                        "agent",
-			smState:                       &statemachine.ConnState{LastUpstreamRFQ: 'I'},
-			catalog:                       catalogRuntimeContext{UnavailableReason: "session_state_changed"},
+			dbService: "appdb",
+			database:  "app",
+			dbUser:    "agent",
+			smState:   &statemachine.ConnState{LastUpstreamRFQ: 'I'},
+			catalog: catalogRuntimeContext{
+				UnavailableReason: "session_state_changed",
+			},
 			catalogRefreshPending:         true,
 			catalogSnapshotRefreshPending: true,
 		},
@@ -308,7 +336,11 @@ func TestProxyConnRefreshesPendingSnapshotAtTransactionEnd(t *testing.T) {
 		t.Fatalf("snapshot loads = %d, want 1 after transaction end", snapshotLoads)
 	}
 	if pc.state.catalogRefreshPending || pc.state.catalogSnapshotRefreshPending {
-		t.Fatalf("pending flags not cleared: refresh=%v snapshot=%v", pc.state.catalogRefreshPending, pc.state.catalogSnapshotRefreshPending)
+		t.Fatalf(
+			"pending flags not cleared: refresh=%v snapshot=%v",
+			pc.state.catalogRefreshPending,
+			pc.state.catalogSnapshotRefreshPending,
+		)
 	}
 	if pc.state.catalog.UnavailableReason != "" {
 		t.Fatalf("UnavailableReason = %q, want empty", pc.state.catalog.UnavailableReason)
@@ -330,11 +362,13 @@ func TestProxyConnRefreshPendingCatalogContextDefersSnapshotInTransaction(t *tes
 		srv: &Server{catalogStore: store},
 		svc: Service{Name: "appdb"},
 		state: &connState{
-			dbService:                     "appdb",
-			database:                      "app",
-			dbUser:                        "agent",
-			smState:                       &statemachine.ConnState{LastUpstreamRFQ: 'T'},
-			catalog:                       catalogRuntimeContext{UnavailableReason: "session_state_changed"},
+			dbService: "appdb",
+			database:  "app",
+			dbUser:    "agent",
+			smState:   &statemachine.ConnState{LastUpstreamRFQ: 'T'},
+			catalog: catalogRuntimeContext{
+				UnavailableReason: "session_state_changed",
+			},
 			catalogRefreshPending:         true,
 			catalogSnapshotRefreshPending: true,
 		},
@@ -346,7 +380,11 @@ func TestProxyConnRefreshPendingCatalogContextDefersSnapshotInTransaction(t *tes
 		t.Fatalf("snapshot loads = %d, want 0 while in transaction", snapshotLoads)
 	}
 	if !pc.state.catalogRefreshPending || !pc.state.catalogSnapshotRefreshPending {
-		t.Fatalf("pending flags cleared: refresh=%v snapshot=%v", pc.state.catalogRefreshPending, pc.state.catalogSnapshotRefreshPending)
+		t.Fatalf(
+			"pending flags cleared: refresh=%v snapshot=%v",
+			pc.state.catalogRefreshPending,
+			pc.state.catalogSnapshotRefreshPending,
+		)
 	}
 }
 
@@ -357,13 +395,19 @@ func TestProxyConnMarksCatalogRefreshPendingForExecutedPortal(t *testing.T) {
 	}
 	pc.wireCache.Put(wirePortalCacheKey("p"), preparedcache.Entry{CatalogRefreshSearchPath: true})
 
-	pc.markCatalogRefreshPendingForExecute(&pgproto3.Execute{Portal: "p"}, []statemachine.Action{&statemachine.ActionForward{}})
+	pc.markCatalogRefreshPendingForExecute(
+		&pgproto3.Execute{Portal: "p"},
+		[]statemachine.Action{&statemachine.ActionForward{}},
+	)
 
 	if !pc.state.catalogRefreshPending {
 		t.Fatal("catalogRefreshPending = false, want true")
 	}
 	if pc.state.catalog.UnavailableReason != "session_state_changed" {
-		t.Fatalf("UnavailableReason = %q, want session_state_changed", pc.state.catalog.UnavailableReason)
+		t.Fatalf(
+			"UnavailableReason = %q, want session_state_changed",
+			pc.state.catalog.UnavailableReason,
+		)
 	}
 }
 
@@ -404,7 +448,10 @@ func TestCatalogSnapshotStore_LoadFailureIsCachedAsUnavailable(t *testing.T) {
 			return []string{"public"}, "", nil
 		},
 	})
-	pc := &proxyConn{svc: Service{Name: "appdb"}, state: &connState{dbService: "appdb", database: "app", dbUser: "agent"}}
+	pc := &proxyConn{
+		svc:   Service{Name: "appdb"},
+		state: &connState{dbService: "appdb", database: "app", dbUser: "agent"},
+	}
 	got := store.loadOrGet(context.Background(), pc)
 	if got.UnavailableReason != "snapshot_load_failed" {
 		t.Fatalf("UnavailableReason = %q", got.UnavailableReason)
@@ -426,7 +473,10 @@ func TestCatalogSnapshotStore_LoadOrGetCoalescesConcurrentMisses(t *testing.T) {
 			return []string{"public"}, "", nil
 		},
 	})
-	pc := &proxyConn{svc: Service{Name: "appdb"}, state: &connState{dbService: "appdb", database: "app", dbUser: "agent"}}
+	pc := &proxyConn{
+		svc:   Service{Name: "appdb"},
+		state: &connState{dbService: "appdb", database: "app", dbUser: "agent"},
+	}
 
 	start := make(chan struct{})
 	results := make(chan catalogRuntimeContext, 2)
@@ -468,11 +518,17 @@ type splitCatalogRuntimeLoader struct {
 	loadSearchPath func(context.Context, *proxyConn) ([]string, string, error)
 }
 
-func (l splitCatalogRuntimeLoader) LoadCatalogSnapshot(ctx context.Context, pc *proxyConn) (catalog.Snapshot, string, error) {
+func (l splitCatalogRuntimeLoader) LoadCatalogSnapshot(
+	ctx context.Context,
+	pc *proxyConn,
+) (catalog.Snapshot, string, error) {
 	return l.loadSnapshot(ctx, pc)
 }
 
-func (l splitCatalogRuntimeLoader) LoadCurrentSearchPath(ctx context.Context, pc *proxyConn) ([]string, string, error) {
+func (l splitCatalogRuntimeLoader) LoadCurrentSearchPath(
+	ctx context.Context,
+	pc *proxyConn,
+) ([]string, string, error) {
 	return l.loadSearchPath(ctx, pc)
 }
 
@@ -516,12 +572,17 @@ func TestPGProtoCatalogQueryer_DrainsReadyForQueryAfterErrorResponse(t *testing.
 			serverErr <- errors.New("expected Query")
 			return
 		}
-		be.Send(&pgproto3.ErrorResponse{Severity: "ERROR", Code: "42P01", Message: "missing relation"})
+		be.Send(
+			&pgproto3.ErrorResponse{Severity: "ERROR", Code: "42P01", Message: "missing relation"},
+		)
 		be.Send(&pgproto3.ReadyForQuery{TxStatus: 'E'})
 		serverErr <- be.Flush()
 	}()
 
-	rows, err := (pgprotoCatalogQueryer{pc: pc}).Query(context.Background(), "select * from missing_relation")
+	rows, err := (pgprotoCatalogQueryer{pc: pc}).Query(
+		context.Background(),
+		"select * from missing_relation",
+	)
 	if rows != nil {
 		t.Fatalf("rows = %#v, want nil", rows)
 	}

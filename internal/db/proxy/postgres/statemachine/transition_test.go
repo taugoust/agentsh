@@ -16,6 +16,7 @@ import (
 
 func dummyRules(t *testing.T) *policy.RuleSet {
 	t.Helper()
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: t
 db_services:
@@ -33,6 +34,7 @@ db_services:
 }
 
 func denyDeletePolicyYAML() string {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	return `version: 1
 name: t
 db_services:
@@ -164,6 +166,7 @@ func TestTransition_Parse_Deny_OutOfTx(t *testing.T) {
 }
 
 func TestTransition_Parse_Approve_EmitsApproverWait(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	yaml := `version: 1
 name: t
 db_services:
@@ -180,7 +183,13 @@ database_rules:
     timeout: 60s
 `
 	cache := NewFakeCacheView()
-	next, acts := Transition(ConnState{LastUpstreamRFQ: 'I'}, &ParseFrame{Name: "s1", SQL: "DELETE FROM users"}, cache, mustDecode(t, yaml), "appdb")
+	next, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I'},
+		&ParseFrame{Name: "s1", SQL: "DELETE FROM users"},
+		cache,
+		mustDecode(t, yaml),
+		"appdb",
+	)
 	if len(acts) != 1 {
 		t.Fatalf("len(acts)=%d want 1", len(acts))
 	}
@@ -225,7 +234,13 @@ func TestTransition_Bind_CacheHit_Forwards(t *testing.T) {
 	s := ConnState{LastUpstreamRFQ: 'I'}
 	cache := NewFakeCacheView()
 	cache.Put("s1", CacheValue{Verb: "SELECT"})
-	next, acts := Transition(s, &BindFrame{Portal: "p1", Statement: "s1"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	next, acts := Transition(
+		s,
+		&BindFrame{Portal: "p1", Statement: "s1"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	want := []Action{&ActionForward{}}
 	if diff := cmp.Diff(want, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
@@ -239,7 +254,13 @@ func TestTransition_Bind_DistinctPortalPopulatesPortalKeyAndExecuteForwards(t *t
 	s := ConnState{LastUpstreamRFQ: 'I'}
 	cache := NewFakeCacheView()
 	cache.Put("s1", CacheValue{Verb: "SELECT"})
-	_, bindActs := Transition(s, &BindFrame{Portal: "p1", Statement: "s1"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, bindActs := Transition(
+		s,
+		&BindFrame{Portal: "p1", Statement: "s1"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, bindActs); diff != "" {
 		t.Fatalf("Bind acts diff: %s", diff)
 	}
@@ -250,7 +271,13 @@ func TestTransition_Bind_DistinctPortalPopulatesPortalKeyAndExecuteForwards(t *t
 		t.Fatal("Bind populated raw portal name in prepared statement keyspace")
 	}
 
-	_, execActs := Transition(s, &ExecuteFrame{Portal: "p1"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, execActs := Transition(
+		s,
+		&ExecuteFrame{Portal: "p1"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, execActs); diff != "" {
 		t.Errorf("Execute acts diff: %s", diff)
 	}
@@ -260,15 +287,33 @@ func TestTransition_Bind_SamePortalClosePortalRetainsPreparedStatement(t *testin
 	s := ConnState{LastUpstreamRFQ: 'I'}
 	cache := NewFakeCacheView()
 	cache.Put("s", CacheValue{Verb: "SELECT"})
-	_, bindActs := Transition(s, &BindFrame{Portal: "s", Statement: "s"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, bindActs := Transition(
+		s,
+		&BindFrame{Portal: "s", Statement: "s"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, bindActs); diff != "" {
 		t.Fatalf("Bind acts diff: %s", diff)
 	}
-	_, closeActs := Transition(s, &CloseFrame{ObjectType: 'P', Name: "s"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, closeActs := Transition(
+		s,
+		&CloseFrame{ObjectType: 'P', Name: "s"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, closeActs); diff != "" {
 		t.Fatalf("Close acts diff: %s", diff)
 	}
-	_, secondBindActs := Transition(s, &BindFrame{Portal: "again", Statement: "s"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, secondBindActs := Transition(
+		s,
+		&BindFrame{Portal: "again", Statement: "s"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, secondBindActs); diff != "" {
 		t.Errorf("second Bind acts diff: %s", diff)
 	}
@@ -277,7 +322,13 @@ func TestTransition_Bind_SamePortalClosePortalRetainsPreparedStatement(t *testin
 func TestTransition_Bind_CacheMiss_SynthErrorAndAbsorb(t *testing.T) {
 	s := ConnState{LastUpstreamRFQ: 'I'}
 	cache := NewFakeCacheView()
-	next, acts := Transition(s, &BindFrame{Portal: "p1", Statement: "missing"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	next, acts := Transition(
+		s,
+		&BindFrame{Portal: "p1", Statement: "missing"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if len(acts) != 1 {
 		t.Fatalf("len(acts)=%d want 1", len(acts))
 	}
@@ -296,7 +347,13 @@ func TestTransition_Bind_CacheMiss_SynthErrorAndAbsorb(t *testing.T) {
 func TestTransition_Bind_Absorbing_Suppresses(t *testing.T) {
 	s := ConnState{LastUpstreamRFQ: 'I', Absorbing: true}
 	cache := NewFakeCacheView()
-	_, acts := Transition(s, &BindFrame{Portal: "p", Statement: "x"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		s,
+		&BindFrame{Portal: "p", Statement: "x"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionSuppress{}}, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
 	}
@@ -304,7 +361,13 @@ func TestTransition_Bind_Absorbing_Suppresses(t *testing.T) {
 
 func TestTransition_Describe_NotAbsorbing_Forwards(t *testing.T) {
 	cache := NewFakeCacheView()
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'I'}, &DescribeFrame{ObjectType: 'S', Name: "s1"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I'},
+		&DescribeFrame{ObjectType: 'S', Name: "s1"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
 	}
@@ -312,7 +375,13 @@ func TestTransition_Describe_NotAbsorbing_Forwards(t *testing.T) {
 
 func TestTransition_Describe_Absorbing_Suppresses(t *testing.T) {
 	cache := NewFakeCacheView()
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'I', Absorbing: true}, &DescribeFrame{ObjectType: 'S', Name: "s1"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I', Absorbing: true},
+		&DescribeFrame{ObjectType: 'S', Name: "s1"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionSuppress{}}, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
 	}
@@ -321,7 +390,13 @@ func TestTransition_Describe_Absorbing_Suppresses(t *testing.T) {
 func TestTransition_Execute_CacheHit_AllowForwards(t *testing.T) {
 	cache := NewFakeCacheView()
 	cache.Put(portalCacheKey("p1"), CacheValue{Verb: "SELECT"})
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'I'}, &ExecuteFrame{Portal: "p1"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I'},
+		&ExecuteFrame{Portal: "p1"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
 	}
@@ -329,7 +404,13 @@ func TestTransition_Execute_CacheHit_AllowForwards(t *testing.T) {
 
 func TestTransition_Execute_CacheMiss_SynthErrorAndAbsorb(t *testing.T) {
 	cache := NewFakeCacheView()
-	next, acts := Transition(ConnState{LastUpstreamRFQ: 'I'}, &ExecuteFrame{Portal: "missing"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	next, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I'},
+		&ExecuteFrame{Portal: "missing"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if len(acts) < 1 {
 		t.Fatalf("len(acts)=%d", len(acts))
 	}
@@ -343,7 +424,13 @@ func TestTransition_Execute_CacheMiss_SynthErrorAndAbsorb(t *testing.T) {
 
 func TestTransition_Flush_NotAbsorbing_Forwards(t *testing.T) {
 	cache := NewFakeCacheView()
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'I'}, &FlushFrame{}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I'},
+		&FlushFrame{},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
 	}
@@ -351,7 +438,13 @@ func TestTransition_Flush_NotAbsorbing_Forwards(t *testing.T) {
 
 func TestTransition_Flush_Absorbing_Suppresses(t *testing.T) {
 	cache := NewFakeCacheView()
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'I', Absorbing: true}, &FlushFrame{}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I', Absorbing: true},
+		&FlushFrame{},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionSuppress{}}, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
 	}
@@ -360,7 +453,13 @@ func TestTransition_Flush_Absorbing_Suppresses(t *testing.T) {
 func TestTransition_Close_DeletesCacheEntry(t *testing.T) {
 	cache := NewFakeCacheView()
 	cache.Put("s1", CacheValue{Verb: "SELECT"})
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'I'}, &CloseFrame{ObjectType: 'S', Name: "s1"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I'},
+		&CloseFrame{ObjectType: 'S', Name: "s1"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
 	}
@@ -373,7 +472,13 @@ func TestTransition_Close_PortalDeletesOnlyPortalKey(t *testing.T) {
 	cache := NewFakeCacheView()
 	cache.Put("s", CacheValue{Verb: "SELECT"})
 	cache.Put(portalCacheKey("s"), CacheValue{Verb: "SELECT"})
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'I'}, &CloseFrame{ObjectType: 'P', Name: "s"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I'},
+		&CloseFrame{ObjectType: 'P', Name: "s"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
 	}
@@ -389,7 +494,13 @@ func TestTransition_Close_PortalDeletesOnlyPortalKey(t *testing.T) {
 
 func TestTransition_Query_AllowForwards(t *testing.T) {
 	cache := NewFakeCacheView()
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'I'}, &QueryFrame{SQL: "SELECT id FROM users"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I'},
+		&QueryFrame{SQL: "SELECT id FROM users"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if diff := cmp.Diff([]Action{&ActionForward{}}, acts); diff != "" {
 		t.Errorf("diff: %s", diff)
 	}
@@ -397,7 +508,13 @@ func TestTransition_Query_AllowForwards(t *testing.T) {
 
 func TestTransition_Query_DenyOutOfTx_NotDirty(t *testing.T) {
 	cache := NewFakeCacheView()
-	next, acts := Transition(ConnState{LastUpstreamRFQ: 'I'}, &QueryFrame{SQL: "DELETE FROM users"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	next, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'I'},
+		&QueryFrame{SQL: "DELETE FROM users"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if len(acts) != 2 {
 		t.Fatalf("len(acts)=%d want 2", len(acts))
 	}
@@ -414,7 +531,13 @@ func TestTransition_Query_DenyOutOfTx_NotDirty(t *testing.T) {
 
 func TestTransition_Query_DenyInTx_TerminateDefault(t *testing.T) {
 	cache := NewFakeCacheView()
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'T'}, &QueryFrame{SQL: "DELETE FROM users"}, cache, mustDecode(t, denyDeletePolicyYAML()), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'T'},
+		&QueryFrame{SQL: "DELETE FROM users"},
+		cache,
+		mustDecode(t, denyDeletePolicyYAML()),
+		"appdb",
+	)
 	if len(acts) != 2 {
 		t.Fatalf("len(acts)=%d want 2 (SynthError + Close)", len(acts))
 	}
@@ -431,6 +554,7 @@ func TestTransition_Query_DenyInTx_TerminateDefault(t *testing.T) {
 }
 
 func TestTransition_Query_DenyInTx_RollbackThenContinue(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	yaml := `version: 1
 name: t
 db_services:
@@ -447,7 +571,13 @@ database_rules:
     deny_mode_in_tx: rollback_then_continue
 `
 	cache := NewFakeCacheView()
-	_, acts := Transition(ConnState{LastUpstreamRFQ: 'T'}, &QueryFrame{SQL: "DELETE FROM users"}, cache, mustDecode(t, yaml), "appdb")
+	_, acts := Transition(
+		ConnState{LastUpstreamRFQ: 'T'},
+		&QueryFrame{SQL: "DELETE FROM users"},
+		cache,
+		mustDecode(t, yaml),
+		"appdb",
+	)
 	if len(acts) != 4 {
 		t.Fatalf("len(acts)=%d want 4", len(acts))
 	}

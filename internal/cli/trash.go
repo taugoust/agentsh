@@ -48,7 +48,14 @@ func newTrashListCmd() *cobra.Command {
 				if session != "" && e.Session != session {
 					continue
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%d bytes\t%s ago\n", e.Token, e.OriginalPath, e.Size, time.Since(e.Created).Round(time.Second))
+				fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"%s\t%s\t%d bytes\t%s ago\n",
+					e.Token,
+					e.OriginalPath,
+					e.Size,
+					time.Since(e.Created).Round(time.Second),
+				)
 			}
 			return nil
 		},

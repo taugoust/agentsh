@@ -12,7 +12,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func configureStoppedStart(attr *syscall.SysProcAttr, required bool, boundary *types.LinuxCommandJailRequirements) error {
+func configureStoppedStart(
+	attr *syscall.SysProcAttr,
+	required bool,
+	boundary *types.LinuxCommandJailRequirements,
+) error {
 	if boundary != nil {
 		if !boundary.Complete() {
 			return fmt.Errorf("PTY command-boundary requirements are incomplete")
@@ -21,12 +25,15 @@ func configureStoppedStart(attr *syscall.SysProcAttr, required bool, boundary *t
 			return fmt.Errorf("PTY command boundary requires a stopped-child barrier")
 		}
 		if len(attr.UidMappings) != 0 || len(attr.GidMappings) != 0 || attr.Credential != nil {
-			return fmt.Errorf("PTY command boundary cannot compose with existing credentials or mappings")
+			return fmt.Errorf(
+				"PTY command boundary cannot compose with existing credentials or mappings",
+			)
 		}
 		if attr.Pdeathsig != 0 && attr.Pdeathsig != syscall.SIGKILL {
 			return fmt.Errorf("PTY command boundary requires SIGKILL parent-death behavior")
 		}
-		attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
+		attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID |
+			unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
 		attr.Pdeathsig = syscall.SIGKILL
 		attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Geteuid(), Size: 1}}
 		attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getegid(), Size: 1}}

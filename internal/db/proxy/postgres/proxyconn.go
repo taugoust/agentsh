@@ -59,9 +59,10 @@ type connState struct {
 	// smState carries the Extended Query state machine's per-connection
 	// state (Plan 05a). LastUpstreamRFQ replaces the 04c byte field; the
 	// dispatcher and authforward write it directly.
-	smState                       *statemachine.ConnState
-	redactionTier                 policy.RedactionTier // resolved at handshake end
-	tlsMode                       string               // svc.TLSMode at handshake end, for EventTLS.Mode
+	smState       *statemachine.ConnState
+	redactionTier policy.RedactionTier // resolved at handshake end
+	// svc.TLSMode at handshake end, for EventTLS.Mode
+	tlsMode                       string
 	catalog                       catalogRuntimeContext
 	catalogRefreshPending         bool
 	catalogSnapshotRefreshPending bool
@@ -235,8 +236,12 @@ func (pc *proxyConn) emitFrameTooLarge(ctx context.Context, size int) {
 		ClientIdentity: pc.state.clientIdentity,
 		Kind:           "db_handshake_fail",
 		ErrorCode:      "FRAME_TOO_LARGE",
-		Reason:         fmt.Sprintf("statement too large for AgentSH proxy: %d bytes > %d cap", size, pc.srv.cfg.MaxQueryBytes),
-		PeerUID:        pc.state.peerUID,
+		Reason: fmt.Sprintf(
+			"statement too large for AgentSH proxy: %d bytes > %d cap",
+			size,
+			pc.srv.cfg.MaxQueryBytes,
+		),
+		PeerUID: pc.state.peerUID,
 	})
 }
 

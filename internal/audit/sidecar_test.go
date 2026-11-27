@@ -61,7 +61,10 @@ func TestReadSidecar_RejectsUnsupportedFutureFormat(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "future.chain")
-	data := []byte(`{"format_version":3,"sequence":17,"prev_hash":"abcd1234","key_fingerprint":"sha256:00112233445566778899aabbccddeeff"}`)
+	data := []byte(
+		`{"format_version":3,"sequence":17,"prev_hash":"abcd1234",` +
+			`"key_fingerprint":"sha256:00112233445566778899aabbccddeeff"}`,
+	)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatalf("os.WriteFile() error = %v", err)
 	}

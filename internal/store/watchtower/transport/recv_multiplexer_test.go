@@ -153,8 +153,12 @@ func TestRecvMultiplexer_BatchAckServerAckExceedsLocalSeqIsAnomaly(t *testing.T)
 		t.Fatalf("remoteReplayCursor mutated: %+v", RemoteReplayCursorForTest(env.tr))
 	}
 
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_seq" {
-		t.Fatalf("anomaly metric: got %v, want [server_ack_exceeds_local_seq]", env.metrics.anomalousAckReasons)
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_seq" {
+		t.Fatalf(
+			"anomaly metric: got %v, want [server_ack_exceeds_local_seq]",
+			env.metrics.anomalousAckReasons,
+		)
 	}
 	if len(env.metrics.ackHWMs) != 0 {
 		t.Fatalf("SetAckHighWatermark unexpectedly called: %v", env.metrics.ackHWMs)
@@ -184,10 +188,16 @@ func TestRecvMultiplexer_BatchAckServerAckExceedsLocalSeqIsAnomaly(t *testing.T)
 		t.Fatalf("WARN local_persisted_gen: got %v, want 7", w.Attrs["local_persisted_gen"])
 	}
 	if v, ok := w.Attrs["wal_written_data_high_seq"].(float64); !ok || uint64(v) != 50 {
-		t.Fatalf("WARN wal_written_data_high_seq: got %v, want 50", w.Attrs["wal_written_data_high_seq"])
+		t.Fatalf(
+			"WARN wal_written_data_high_seq: got %v, want 50",
+			w.Attrs["wal_written_data_high_seq"],
+		)
 	}
 	if v, ok := w.Attrs["wal_written_data_high_ok"].(bool); !ok || !v {
-		t.Fatalf("WARN wal_written_data_high_ok: got %v, want true", w.Attrs["wal_written_data_high_ok"])
+		t.Fatalf(
+			"WARN wal_written_data_high_ok: got %v, want true",
+			w.Attrs["wal_written_data_high_ok"],
+		)
 	}
 }
 
@@ -211,7 +221,8 @@ func TestRecvMultiplexer_BatchAckLowerGenIsAnomaly(t *testing.T) {
 		t.Fatalf("remoteReplayCursor mutated: %+v", RemoteReplayCursorForTest(env.tr))
 	}
 
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "stale_generation" {
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "stale_generation" {
 		t.Fatalf("anomaly metric: got %v, want [stale_generation]", env.metrics.anomalousAckReasons)
 	}
 	if len(env.metrics.ackHWMs) != 0 {
@@ -223,7 +234,10 @@ func TestRecvMultiplexer_BatchAckLowerGenIsAnomaly(t *testing.T) {
 		t.Fatalf("WARN entries: got %d, want 1", got)
 	}
 	if got := countLevel(entries, "INFO"); got != 0 {
-		t.Fatalf("INFO entries: got %d, want 0 (cross-gen lower is NOT a legitimate ResendNeeded)", got)
+		t.Fatalf(
+			"INFO entries: got %d, want 0 (cross-gen lower is NOT a legitimate ResendNeeded)",
+			got,
+		)
 	}
 	w := firstLevel(entries, "WARN")
 	if w.Attrs["frame"] != "batch_ack" {
@@ -285,8 +299,12 @@ func TestRecvMultiplexer_BatchAckHigherGenButOnlyHeaderExists_Anomaly(t *testing
 		t.Fatalf("remoteReplayCursor mutated: %+v", RemoteReplayCursorForTest(env.tr))
 	}
 
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "unwritten_generation" {
-		t.Fatalf("anomaly metric: got %v, want [unwritten_generation]", env.metrics.anomalousAckReasons)
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "unwritten_generation" {
+		t.Fatalf(
+			"anomaly metric: got %v, want [unwritten_generation]",
+			env.metrics.anomalousAckReasons,
+		)
 	}
 	if len(env.metrics.ackHWMs) != 0 {
 		t.Fatalf("SetAckHighWatermark unexpectedly called: %v", env.metrics.ackHWMs)
@@ -304,7 +322,10 @@ func TestRecvMultiplexer_BatchAckHigherGenButOnlyHeaderExists_Anomaly(t *testing
 		t.Fatalf("WARN reason: got %v, want unwritten_generation", w.Attrs["reason"])
 	}
 	if v, ok := w.Attrs["wal_written_data_high_ok"].(bool); !ok || v {
-		t.Fatalf("WARN wal_written_data_high_ok: got %v, want false", w.Attrs["wal_written_data_high_ok"])
+		t.Fatalf(
+			"WARN wal_written_data_high_ok: got %v, want false",
+			w.Attrs["wal_written_data_high_ok"],
+		)
 	}
 
 	// Lower-gen segments must still be on disk (round-11 SAFETY proof; the
@@ -346,8 +367,12 @@ func TestRecvMultiplexer_BatchAckHigherGenBeyondPerGenDataHW_Anomaly(t *testing.
 		t.Fatalf("remoteReplayCursor mutated: %+v", RemoteReplayCursorForTest(env.tr))
 	}
 
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_data" {
-		t.Fatalf("anomaly metric: got %v, want [server_ack_exceeds_local_data]", env.metrics.anomalousAckReasons)
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_data" {
+		t.Fatalf(
+			"anomaly metric: got %v, want [server_ack_exceeds_local_data]",
+			env.metrics.anomalousAckReasons,
+		)
 	}
 	if len(env.metrics.ackHWMs) != 0 {
 		t.Fatalf("SetAckHighWatermark unexpectedly called: %v", env.metrics.ackHWMs)
@@ -365,7 +390,10 @@ func TestRecvMultiplexer_BatchAckHigherGenBeyondPerGenDataHW_Anomaly(t *testing.
 		t.Fatalf("WARN reason: got %v, want server_ack_exceeds_local_data", w.Attrs["reason"])
 	}
 	if v, ok := w.Attrs["wal_written_data_high_seq"].(float64); !ok || uint64(v) != 10 {
-		t.Fatalf("WARN wal_written_data_high_seq: got %v, want 10", w.Attrs["wal_written_data_high_seq"])
+		t.Fatalf(
+			"WARN wal_written_data_high_seq: got %v, want 10",
+			w.Attrs["wal_written_data_high_seq"],
+		)
 	}
 }
 
@@ -431,8 +459,12 @@ func TestRecvMultiplexer_ServerHeartbeatServerAckExceedsLocalSeqIsAnomaly(t *tes
 		t.Fatalf("persistedAck mutated: %+v", PersistedAckForTest(env.tr))
 	}
 
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_seq" {
-		t.Fatalf("anomaly metric: got %v, want [server_ack_exceeds_local_seq]", env.metrics.anomalousAckReasons)
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_seq" {
+		t.Fatalf(
+			"anomaly metric: got %v, want [server_ack_exceeds_local_seq]",
+			env.metrics.anomalousAckReasons,
+		)
 	}
 
 	entries := parseLogBuffer(t, env.logBuf)
@@ -447,10 +479,16 @@ func TestRecvMultiplexer_ServerHeartbeatServerAckExceedsLocalSeqIsAnomaly(t *tes
 		t.Fatalf("WARN reason: got %v, want server_ack_exceeds_local_seq", w.Attrs["reason"])
 	}
 	if v, ok := w.Attrs["wal_written_data_high_seq"].(float64); !ok || uint64(v) != 50 {
-		t.Fatalf("WARN wal_written_data_high_seq: got %v, want 50", w.Attrs["wal_written_data_high_seq"])
+		t.Fatalf(
+			"WARN wal_written_data_high_seq: got %v, want 50",
+			w.Attrs["wal_written_data_high_seq"],
+		)
 	}
 	if v, ok := w.Attrs["wal_written_data_high_ok"].(bool); !ok || !v {
-		t.Fatalf("WARN wal_written_data_high_ok: got %v, want true", w.Attrs["wal_written_data_high_ok"])
+		t.Fatalf(
+			"WARN wal_written_data_high_ok: got %v, want true",
+			w.Attrs["wal_written_data_high_ok"],
+		)
 	}
 }
 
@@ -480,7 +518,8 @@ func TestRecvMultiplexer_BatchAckWALReadFailureIsAnomaly(t *testing.T) {
 		t.Fatalf("remoteReplayCursor mutated: %+v", RemoteReplayCursorForTest(env.tr))
 	}
 
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "wal_read_failure" {
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "wal_read_failure" {
 		t.Fatalf("anomaly metric: got %v, want [wal_read_failure]", env.metrics.anomalousAckReasons)
 	}
 
@@ -591,7 +630,10 @@ func TestRecvMultiplexer_BatchAckAdoptedDoesNotAdvanceOnMarkAckedFailure(t *test
 		t.Fatalf("SetAckHighWatermark called on failure path: %v", env.metrics.ackHWMs)
 	}
 	if len(env.metrics.anomalousAckReasons) != 0 {
-		t.Fatalf("anomaly counter incremented on rollback path: %v", env.metrics.anomalousAckReasons)
+		t.Fatalf(
+			"anomaly counter incremented on rollback path: %v",
+			env.metrics.anomalousAckReasons,
+		)
 	}
 
 	entries := parseLogBuffer(t, env.logBuf)
@@ -697,7 +739,12 @@ func TestRecvMultiplexer_BatchAckReturnsOutcomeKind(t *testing.T) {
 
 		got := env.tr.applyAckFromRecv("batch_ack", 7, 100)
 		if got != AckOutcomeNoOp {
-			t.Fatalf("rolled-back ack: got outcome %v, want AckOutcomeNoOp (rollback path must report NoOp so runLive's inflight-- gate stays closed AND log/metric semantics match the no-cursor-moved contract)", got)
+			t.Fatalf(
+				"rolled-back ack: got outcome %v, want AckOutcomeNoOp (rollback path must report "+
+					"NoOp so runLive's inflight-- gate stays closed AND log/metric semantics "+
+					"match the no-cursor-moved contract)",
+				got,
+			)
 		}
 	})
 
@@ -735,7 +782,10 @@ func TestRecvMultiplexer_BatchAckReturnsOutcomeKind(t *testing.T) {
 			t.Fatalf("applyAckFromRecv outcome: got %v, want AckOutcomeAdopted", got)
 		}
 		if persisted := PersistedAckForTest(env.tr); persisted.Generation != 2 {
-			t.Fatalf("persistedAck.Generation: got %d, want 2 (cross-gen adopt)", persisted.Generation)
+			t.Fatalf(
+				"persistedAck.Generation: got %d, want 2 (cross-gen adopt)",
+				persisted.Generation,
+			)
 		}
 	})
 }

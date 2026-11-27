@@ -85,7 +85,9 @@ func (r *piProtocolReducer) appendLinePart(part []byte) {
 			return
 		}
 		if r.eventType == "" && len(r.line) >= maxPiProtocolEventTypePrefixBytes {
-			r.recordDiagnostic(subagentProtocolDiagnostic{Kind: "missing_event_type", Bytes: r.lineBytes})
+			r.recordDiagnostic(
+				subagentProtocolDiagnostic{Kind: "missing_event_type", Bytes: r.lineBytes},
+			)
 			r.discardLine = true
 			r.line = nil
 			return
@@ -96,7 +98,13 @@ func (r *piProtocolReducer) appendLinePart(part []byte) {
 		return
 	}
 	if len(r.line)+len(part) > maxPiProtocolRelevantLineBytes {
-		r.recordDiagnostic(subagentProtocolDiagnostic{Kind: "oversized_line", Event: r.eventType, Bytes: r.lineBytes})
+		r.recordDiagnostic(
+			subagentProtocolDiagnostic{
+				Kind:  "oversized_line",
+				Event: r.eventType,
+				Bytes: r.lineBytes,
+			},
+		)
 		r.discardLine = true
 		r.line = nil
 		return
@@ -112,7 +120,13 @@ func (r *piProtocolReducer) finishLine() {
 
 	var event map[string]any
 	if err := json.Unmarshal(bytes.TrimSpace(r.line), &event); err != nil {
-		r.recordDiagnostic(subagentProtocolDiagnostic{Kind: "malformed_line", Event: r.eventType, Bytes: r.lineBytes})
+		r.recordDiagnostic(
+			subagentProtocolDiagnostic{
+				Kind:  "malformed_line",
+				Event: r.eventType,
+				Bytes: r.lineBytes,
+			},
+		)
 		return
 	}
 	eventType, _ := event["type"].(string)
@@ -210,7 +224,10 @@ func parsePiSubagentProtocol(stdout string) subagentProtocolOutcome {
 	return reducer.outcome()
 }
 
-func piProtocolOutcome(state piProtocolState, diagnostics []subagentProtocolDiagnostic) subagentProtocolOutcome {
+func piProtocolOutcome(
+	state piProtocolState,
+	diagnostics []subagentProtocolDiagnostic,
+) subagentProtocolOutcome {
 	outcome := subagentProtocolOutcome{
 		Final:       state.final,
 		StopReason:  state.stopReason,
@@ -245,7 +262,8 @@ func piProtocolOutcome(state piProtocolState, diagnostics []subagentProtocolDiag
 	}
 	if piStopReasonToolUse(state.stopReason) {
 		outcome.FailureKind = subagentFailureProtocol
-		outcome.ErrorMessage = "child Pi settled after a tool-use turn without a final assistant response"
+		outcome.ErrorMessage = "child Pi settled after a tool-use turn without a final assistant " +
+			"response"
 		return outcome
 	}
 	if state.final == "" {
@@ -270,7 +288,9 @@ func piStopReasonFailed(stopReason, errorMessage string) bool {
 }
 
 func piStopReasonToolUse(stopReason string) bool {
-	normalized := strings.ToLower(strings.NewReplacer("_", "", "-", "").Replace(strings.TrimSpace(stopReason)))
+	normalized := strings.ToLower(
+		strings.NewReplacer("_", "", "-", "").Replace(strings.TrimSpace(stopReason)),
+	)
 	return normalized == "tooluse"
 }
 
@@ -282,7 +302,9 @@ func piMessageContentText(content any) string {
 		parts := make([]string, 0, len(value))
 		for _, item := range value {
 			if object, ok := item.(map[string]any); ok {
-				if blockType, _ := object["type"].(string); blockType == "text" || blockType == "text_delta" || blockType == "markdown" {
+				if blockType, _ := object["type"].(string); blockType == "text" ||
+					blockType == "text_delta" ||
+					blockType == "markdown" {
 					if text, _ := object["text"].(string); text != "" {
 						parts = append(parts, text)
 					}

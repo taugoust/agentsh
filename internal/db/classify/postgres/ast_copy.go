@@ -24,10 +24,17 @@ import (
 )
 
 // classifyCopy dispatches a CopyStmt to the correct variant handler.
-func classifyCopy(cs *effects.ClassifiedStatement, s *pg_query.CopyStmt, sess SessionState, opts Options) {
+func classifyCopy(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CopyStmt,
+	sess SessionState,
+	opts Options,
+) {
 	cs.RawVerb = "COPY"
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CopyStmt"
 		return
 	}
@@ -39,16 +46,44 @@ func classifyCopy(cs *effects.ClassifiedStatement, s *pg_query.CopyStmt, sess Se
 	switch {
 	case s.Relation != nil && hasProgram && !isFrom:
 		// COPY t TO PROGRAM 'cmd'
-		appendCopyEffects(cs, s, sess, effects.SubtypeCopyToProgram, effects.GroupBulkExport, "TO_PROGRAM")
+		appendCopyEffects(
+			cs,
+			s,
+			sess,
+			effects.SubtypeCopyToProgram,
+			effects.GroupBulkExport,
+			"TO_PROGRAM",
+		)
 	case s.Relation != nil && hasProgram && isFrom:
 		// COPY t FROM PROGRAM 'cmd'
-		appendCopyEffects(cs, s, sess, effects.SubtypeCopyFromProgram, effects.GroupBulkLoad, "FROM_PROGRAM")
+		appendCopyEffects(
+			cs,
+			s,
+			sess,
+			effects.SubtypeCopyFromProgram,
+			effects.GroupBulkLoad,
+			"FROM_PROGRAM",
+		)
 	case s.Relation != nil && hasFile && !isFrom:
 		// COPY t TO '/path'
-		appendCopyEffects(cs, s, sess, effects.SubtypeCopyToPath, effects.GroupBulkExport, "TO_PATH")
+		appendCopyEffects(
+			cs,
+			s,
+			sess,
+			effects.SubtypeCopyToPath,
+			effects.GroupBulkExport,
+			"TO_PATH",
+		)
 	case s.Relation != nil && hasFile && isFrom:
 		// COPY t FROM '/path'
-		appendCopyEffects(cs, s, sess, effects.SubtypeCopyFromPath, effects.GroupBulkLoad, "FROM_PATH")
+		appendCopyEffects(
+			cs,
+			s,
+			sess,
+			effects.SubtypeCopyFromPath,
+			effects.GroupBulkLoad,
+			"FROM_PATH",
+		)
 	case s.Relation != nil && !isFrom:
 		// COPY t TO STDOUT
 		appendCopyStdoutEffects(cs, s, sess)
@@ -69,7 +104,9 @@ func classifyCopy(cs *effects.ClassifiedStatement, s *pg_query.CopyStmt, sess Se
 		appendCopyQueryEffects(cs, s, sess, opts)
 		cs.BulkOp = effects.BulkOpOut
 	default:
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: COPY shape not recognized"
 	}
 }
@@ -79,7 +116,14 @@ func classifyCopy(cs *effects.ClassifiedStatement, s *pg_query.CopyStmt, sess Se
 // plus the path/program ObjectRef, then a secondary bulk_load or bulk_export
 // effect carrying just the table. TO_PATH / TO_PROGRAM additionally append a
 // read effect on the table per Appendix B (the export reads the source).
-func appendCopyEffects(cs *effects.ClassifiedStatement, s *pg_query.CopyStmt, sess SessionState, sub effects.Subtype, sec effects.Group, suffix string) {
+func appendCopyEffects(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CopyStmt,
+	sess SessionState,
+	sub effects.Subtype,
+	sec effects.Group,
+	suffix string,
+) {
 	cs.RawVerb = "COPY_" + suffix
 	tgt, tgtRes := extractRelation(s.Relation, sess, effects.ObjectTable)
 	primaryObjs := []effects.ObjectRef{tgt}
@@ -118,7 +162,11 @@ func appendCopyEffects(cs *effects.ClassifiedStatement, s *pg_query.CopyStmt, se
 
 // appendCopyStdoutEffects handles the canonical `COPY t TO STDOUT` case:
 // primary bulk_export(copy_to_stdout) + secondary read on the table.
-func appendCopyStdoutEffects(cs *effects.ClassifiedStatement, s *pg_query.CopyStmt, sess SessionState) {
+func appendCopyStdoutEffects(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CopyStmt,
+	sess SessionState,
+) {
 	cs.RawVerb = "COPY_TO_STDOUT"
 	tgt, res := extractRelation(s.Relation, sess, effects.ObjectTable)
 	cs.Effects = []effects.Effect{
@@ -145,7 +193,12 @@ func appendCopyStdoutEffects(cs *effects.ClassifiedStatement, s *pg_query.CopySt
 // The primary bulk_export effect itself carries no Objects: each inner effect
 // already references the relations it touches, and adding the wrapped query
 // would double-count.
-func appendCopyQueryEffects(cs *effects.ClassifiedStatement, s *pg_query.CopyStmt, sess SessionState, opts Options) {
+func appendCopyQueryEffects(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CopyStmt,
+	sess SessionState,
+	opts Options,
+) {
 	cs.RawVerb = "COPY_QUERY_TO_STDOUT"
 	cs.Effects = append(cs.Effects, effects.Effect{
 		Group:   effects.GroupBulkExport,
@@ -154,7 +207,13 @@ func appendCopyQueryEffects(cs *effects.ClassifiedStatement, s *pg_query.CopyStm
 	if s.Query == nil {
 		return
 	}
-	inner := classifyNestedRawStmt(DialectPostgres, &pg_query.RawStmt{Stmt: s.Query}, sess, opts, cs.ParserBackend)
+	inner := classifyNestedRawStmt(
+		DialectPostgres,
+		&pg_query.RawStmt{Stmt: s.Query},
+		sess,
+		opts,
+		cs.ParserBackend,
+	)
 	cs.Effects = append(cs.Effects, inner.Effects...)
 }
 

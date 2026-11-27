@@ -49,7 +49,11 @@ func TestDNSCache_LookupByIP(t *testing.T) {
 	c := NewDNSCache(5 * time.Minute)
 	c.Record("example.com", []net.IP{net.ParseIP("93.184.216.34")}, time.Unix(1000, 0).UTC())
 
-	if d, ok := c.LookupByIP(net.ParseIP("93.184.216.34"), time.Unix(1001, 0).UTC()); !ok || d != "example.com" {
+	if d, ok := c.LookupByIP(
+		net.ParseIP("93.184.216.34"),
+		time.Unix(1001, 0).UTC(),
+	); !ok ||
+		d != "example.com" {
 		t.Fatalf("expected hit for ip -> example.com, got %q ok=%v", d, ok)
 	}
 	if d, ok := c.LookupByIP(net.ParseIP("1.1.1.1"), time.Unix(1001, 0).UTC()); ok {

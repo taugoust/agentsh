@@ -61,7 +61,12 @@ type ReceivedSetup struct {
 	SenderGID uint32
 }
 
-func objectMetadata(kind SetupObjectKind, path string, rights uint64, file *os.File) (SetupObject, error) {
+func objectMetadata(
+	kind SetupObjectKind,
+	path string,
+	rights uint64,
+	file *os.File,
+) (SetupObject, error) {
 	if file == nil {
 		return SetupObject{}, errors.New("nil setup object descriptor")
 	}
@@ -81,14 +86,33 @@ func objectMetadata(kind SetupObjectKind, path string, rights uint64, file *os.F
 
 // SendSetup transfers exact Landlock/synthetic objects over a trusted
 // SOCK_SEQPACKET setup channel. Descriptor order is identical to message order.
-func SendSetup(connection *os.File, mode string, kinds []SetupObjectKind, paths []string, rights []uint64, files []*os.File) error {
+func SendSetup(
+	connection *os.File,
+	mode string,
+	kinds []SetupObjectKind,
+	paths []string,
+	rights []uint64,
+	files []*os.File,
+) error {
 	if connection == nil {
 		return errors.New("composition setup channel is missing")
 	}
-	if len(files) == 0 || len(files) > maxSetupObjects || len(kinds) != len(files) || len(paths) != len(files) || len(rights) != len(files) {
-		return fmt.Errorf("invalid composition setup object vectors: files=%d kinds=%d paths=%d rights=%d", len(files), len(kinds), len(paths), len(rights))
+	if len(files) == 0 || len(files) > maxSetupObjects || len(kinds) != len(files) ||
+		len(paths) != len(files) ||
+		len(rights) != len(files) {
+		return fmt.Errorf(
+			"invalid composition setup object vectors: files=%d kinds=%d paths=%d rights=%d",
+			len(files),
+			len(kinds),
+			len(paths),
+			len(rights),
+		)
 	}
-	message := SetupMessage{Version: SetupProtocolVersion, Mode: mode, Objects: make([]SetupObject, len(files))}
+	message := SetupMessage{
+		Version: SetupProtocolVersion,
+		Mode:    mode,
+		Objects: make([]SetupObject, len(files)),
+	}
 	fds := make([]int, len(files))
 	for index, file := range files {
 		metadata, err := objectMetadata(kinds[index], paths[index], rights[index], file)
@@ -107,7 +131,13 @@ func SendSetup(connection *os.File, mode string, kinds []SetupObjectKind, paths 
 	}
 	oob := append(
 		unix.UnixRights(fds...),
-		unix.UnixCredentials(&unix.Ucred{Pid: int32(os.Getpid()), Uid: uint32(os.Geteuid()), Gid: uint32(os.Getegid())})...,
+		unix.UnixCredentials(
+			&unix.Ucred{
+				Pid: int32(os.Getpid()),
+				Uid: uint32(os.Geteuid()),
+				Gid: uint32(os.Getegid()),
+			},
+		)...,
 	)
 	written, err := unix.SendmsgN(int(connection.Fd()), encoded, oob, nil, unix.MSG_NOSIGNAL)
 	if err != nil {
@@ -155,7 +185,10 @@ func receiveSetupPacket(connection *os.File) ([]byte, []int, *unix.Ucred, error)
 	for _, control := range controlMessages {
 		if control.Header.Level != unix.SOL_SOCKET {
 			closeFDs()
-			return nil, nil, nil, fmt.Errorf("composition setup carried ancillary level %d", control.Header.Level)
+			return nil, nil, nil, fmt.Errorf(
+				"composition setup carried ancillary level %d",
+				control.Header.Level,
+			)
 		}
 		switch control.Header.Type {
 		case unix.SCM_RIGHTS:
@@ -173,12 +206,18 @@ func receiveSetupPacket(connection *os.File) ([]byte, []int, *unix.Ucred, error)
 			credentials, credentialsErr := unix.ParseUnixCredentials(&control)
 			if credentialsErr != nil {
 				closeFDs()
-				return nil, nil, nil, fmt.Errorf("parse composition setup credentials: %w", credentialsErr)
+				return nil, nil, nil, fmt.Errorf(
+					"parse composition setup credentials: %w",
+					credentialsErr,
+				)
 			}
 			sender = credentials
 		default:
 			closeFDs()
-			return nil, nil, nil, fmt.Errorf("composition setup carried unknown ancillary type %d", control.Header.Type)
+			return nil, nil, nil, fmt.Errorf(
+				"composition setup carried unknown ancillary type %d",
+				control.Header.Type,
+			)
 		}
 	}
 	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || n > maxSetupBytes {
@@ -195,7 +234,12 @@ func receiveSetupPacket(connection *os.File) ([]byte, []int, *unix.Ucred, error)
 func requireSetupChannelEOF(connection *os.File) error {
 	payload := make([]byte, 1)
 	oob := make([]byte, unix.CmsgSpace(maxSetupObjects*4)+unix.CmsgSpace(unix.SizeofUcred))
-	n, oobn, flags, _, err := unix.Recvmsg(int(connection.Fd()), payload, oob, unix.MSG_CMSG_CLOEXEC)
+	n, oobn, flags, _, err := unix.Recvmsg(
+		int(connection.Fd()),
+		payload,
+		oob,
+		unix.MSG_CMSG_CLOEXEC,
+	)
 	if err != nil {
 		return fmt.Errorf("confirm sealed composition setup channel: %w", err)
 	}
@@ -248,13 +292,24 @@ func ReceiveSetup(connection *os.File) (*ReceivedSetup, error) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, errors.New("decode composition setup: trailing JSON value")
 	}
-	if message.Version != SetupProtocolVersion || message.Mode != Mode || len(message.Objects) == 0 || len(message.Objects) > maxSetupObjects {
-		return nil, fmt.Errorf("invalid composition setup header: version=%d mode=%q objects=%d", message.Version, message.Mode, len(message.Objects))
+	if message.Version != SetupProtocolVersion || message.Mode != Mode ||
+		len(message.Objects) == 0 ||
+		len(message.Objects) > maxSetupObjects {
+		return nil, fmt.Errorf(
+			"invalid composition setup header: version=%d mode=%q objects=%d",
+			message.Version,
+			message.Mode,
+			len(message.Objects),
+		)
 	}
 	rootCount := 0
 	for index, object := range message.Objects {
 		if !filepath.IsAbs(object.Path) || filepath.Clean(object.Path) != object.Path {
-			return nil, fmt.Errorf("composition setup object %d has invalid path %q", index, object.Path)
+			return nil, fmt.Errorf(
+				"composition setup object %d has invalid path %q",
+				index,
+				object.Path,
+			)
 		}
 		switch object.Kind {
 		case SetupObjectPolicy:
@@ -275,14 +330,22 @@ func ReceiveSetup(connection *os.File) (*ReceivedSetup, error) {
 				return nil, fmt.Errorf("composition synthetic object %d has no rights", index)
 			}
 		default:
-			return nil, fmt.Errorf("composition setup object %d has unknown kind %q", index, object.Kind)
+			return nil, fmt.Errorf(
+				"composition setup object %d has unknown kind %q",
+				index,
+				object.Kind,
+			)
 		}
 	}
 	if rootCount == 0 {
 		return nil, errors.New("composition setup omits synthetic roots")
 	}
 	if len(fds) != len(message.Objects) {
-		return nil, fmt.Errorf("composition setup descriptor count %d does not match object count %d", len(fds), len(message.Objects))
+		return nil, fmt.Errorf(
+			"composition setup descriptor count %d does not match object count %d",
+			len(fds),
+			len(message.Objects),
+		)
 	}
 
 	setup := &ReceivedSetup{
@@ -301,8 +364,15 @@ func ReceiveSetup(connection *os.File) (*ReceivedSetup, error) {
 		}
 		// os.File owns this descriptor from here onward.
 		fds[index] = -1
-		actual, statErr := objectMetadata(message.Objects[index].Kind, message.Objects[index].Path, message.Objects[index].Rights, file)
-		if statErr != nil || actual.Device != message.Objects[index].Device || actual.Inode != message.Objects[index].Inode || actual.Mode != message.Objects[index].Mode {
+		actual, statErr := objectMetadata(
+			message.Objects[index].Kind,
+			message.Objects[index].Path,
+			message.Objects[index].Rights,
+			file,
+		)
+		if statErr != nil || actual.Device != message.Objects[index].Device ||
+			actual.Inode != message.Objects[index].Inode ||
+			actual.Mode != message.Objects[index].Mode {
 			_ = file.Close()
 			setup.Close()
 			if statErr != nil {
@@ -329,7 +399,11 @@ func sameObject(left, right *os.File) (bool, error) {
 	return leftStat.Dev == rightStat.Dev && leftStat.Ino == rightStat.Ino, nil
 }
 
-func retainedObjectContains(object *ReceivedSetupObject, source *os.File, sourcePath string) (bool, error) {
+func retainedObjectContains(
+	object *ReceivedSetupObject,
+	source *os.File,
+	sourcePath string,
+) (bool, error) {
 	if object == nil || object.File == nil || source == nil || !filepath.IsAbs(sourcePath) {
 		return false, nil
 	}
@@ -340,13 +414,22 @@ func retainedObjectContains(object *ReceivedSetupObject, source *os.File, source
 	if objectStat.Mode&unix.S_IFMT != unix.S_IFDIR {
 		return sameObject(object.File, source)
 	}
-	objectPath, err := os.Readlink(filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprint(object.File.Fd())))
+	objectPath, err := os.Readlink(
+		filepath.Join(
+			string(filepath.Separator),
+			"proc",
+			"self",
+			"fd",
+			fmt.Sprint(object.File.Fd()),
+		),
+	)
 	if err != nil || !filepath.IsAbs(objectPath) || strings.HasSuffix(objectPath, " (deleted)") {
 		return false, fmt.Errorf("resolve retained policy object path")
 	}
 	objectPath = filepath.Clean(objectPath)
 	relative, err := filepath.Rel(objectPath, filepath.Clean(sourcePath))
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+	if err != nil || relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return false, nil
 	}
 	if relative == "." {
@@ -374,18 +457,28 @@ func retainedObjectContains(object *ReceivedSetupObject, source *os.File, source
 // object identity.
 func (s *ReceivedSetup) PolicyRights(source *os.File, sourcePath string) (uint64, bool, error) {
 	if s == nil || source == nil {
-		return 0, false, typedError("E_COMPOSITION_SETUP_MISSING", "retained policy objects are unavailable")
+		return 0, false, typedError(
+			"E_COMPOSITION_SETUP_MISSING",
+			"retained policy objects are unavailable",
+		)
 	}
 	var rights uint64
 	matched := false
 	for index := range s.Objects {
 		object := &s.Objects[index]
-		if (object.Kind != SetupObjectPolicy && object.Kind != SetupObjectSyntheticRoot && object.Kind != SetupObjectSyntheticRW) || object.File == nil {
+		if (object.Kind != SetupObjectPolicy &&
+			object.Kind != SetupObjectSyntheticRoot &&
+			object.Kind != SetupObjectSyntheticRW) ||
+			object.File == nil {
 			continue
 		}
 		contains, err := retainedObjectContains(object, source, sourcePath)
 		if err != nil {
-			return 0, false, typedError("E_COMPOSITION_SETUP_INVALID", "validate retained policy object: %v", err)
+			return 0, false, typedError(
+				"E_COMPOSITION_SETUP_INVALID",
+				"validate retained policy object: %v",
+				err,
+			)
 		}
 		if contains {
 			rights |= object.Rights
@@ -400,7 +493,10 @@ func (s *ReceivedSetup) PolicyRights(source *os.File, sourcePath string) (uint64
 // pathname no longer starts with the configured deny spelling.
 func (s *ReceivedSetup) DeniedPolicyObject(source *os.File, sourcePath string) (bool, error) {
 	if s == nil || source == nil {
-		return false, typedError("E_COMPOSITION_SETUP_MISSING", "retained policy objects are unavailable")
+		return false, typedError(
+			"E_COMPOSITION_SETUP_MISSING",
+			"retained policy objects are unavailable",
+		)
 	}
 	for index := range s.Objects {
 		object := &s.Objects[index]
@@ -409,7 +505,11 @@ func (s *ReceivedSetup) DeniedPolicyObject(source *os.File, sourcePath string) (
 		}
 		contains, err := retainedObjectContains(object, source, sourcePath)
 		if err != nil {
-			return false, typedError("E_COMPOSITION_SETUP_INVALID", "validate retained denied object: %v", err)
+			return false, typedError(
+				"E_COMPOSITION_SETUP_INVALID",
+				"validate retained denied object: %v",
+				err,
+			)
 		}
 		if contains {
 			return true, nil
@@ -425,21 +525,33 @@ func (s *ReceivedSetup) DeniedPolicyObject(source *os.File, sourcePath string) (
 // security boundary.
 func (s *ReceivedSetup) HasRightsDescendant(source *os.File, rightsMask uint64) (bool, error) {
 	if s == nil || source == nil {
-		return false, typedError("E_COMPOSITION_SETUP_MISSING", "retained policy objects are unavailable")
+		return false, typedError(
+			"E_COMPOSITION_SETUP_MISSING",
+			"retained policy objects are unavailable",
+		)
 	}
 	if rightsMask == 0 {
 		return false, typedError("E_COMPOSITION_SETUP_INVALID", "descendant rights mask is empty")
 	}
 	var sourceStatus unix.Stat_t
 	if err := unix.Fstat(int(source.Fd()), &sourceStatus); err != nil {
-		return false, typedError("E_COMPOSITION_SETUP_INVALID", "stat recursive bind source: %v", err)
+		return false, typedError(
+			"E_COMPOSITION_SETUP_INVALID",
+			"stat recursive bind source: %v",
+			err,
+		)
 	}
 	if sourceStatus.Mode&unix.S_IFMT != unix.S_IFDIR {
 		return false, nil
 	}
-	sourcePath, err := os.Readlink(filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprint(source.Fd())))
+	sourcePath, err := os.Readlink(
+		filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprint(source.Fd())),
+	)
 	if err != nil || !filepath.IsAbs(sourcePath) || strings.HasSuffix(sourcePath, " (deleted)") {
-		return false, typedError("E_COMPOSITION_SETUP_INVALID", "resolve recursive bind source identity")
+		return false, typedError(
+			"E_COMPOSITION_SETUP_INVALID",
+			"resolve recursive bind source identity",
+		)
 	}
 	sourcePath = filepath.Clean(sourcePath)
 	for index := range s.Objects {
@@ -447,13 +559,27 @@ func (s *ReceivedSetup) HasRightsDescendant(source *os.File, rightsMask uint64) 
 		if object.Kind != SetupObjectPolicy || object.File == nil || object.Rights&rightsMask == 0 {
 			continue
 		}
-		objectPath, pathErr := os.Readlink(filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprint(object.File.Fd())))
-		if pathErr != nil || !filepath.IsAbs(objectPath) || strings.HasSuffix(objectPath, " (deleted)") {
-			return false, typedError("E_COMPOSITION_SETUP_INVALID", "resolve retained mutation object %d", index)
+		objectPath, pathErr := os.Readlink(
+			filepath.Join(
+				string(filepath.Separator),
+				"proc",
+				"self",
+				"fd",
+				fmt.Sprint(object.File.Fd()),
+			),
+		)
+		if pathErr != nil || !filepath.IsAbs(objectPath) ||
+			strings.HasSuffix(objectPath, " (deleted)") {
+			return false, typedError(
+				"E_COMPOSITION_SETUP_INVALID",
+				"resolve retained mutation object %d",
+				index,
+			)
 		}
 		objectPath = filepath.Clean(objectPath)
 		relative, relErr := filepath.Rel(sourcePath, objectPath)
-		if relErr != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		if relErr != nil || relative == "." || relative == ".." ||
+			strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			continue
 		}
 		fd, openErr := unix.Openat2(int(source.Fd()), relative, &unix.OpenHow{
@@ -466,12 +592,21 @@ func (s *ReceivedSetup) HasRightsDescendant(source *os.File, rightsMask uint64) 
 		resolved := os.NewFile(uintptr(fd), "composition-mutation-descendant")
 		if resolved == nil {
 			_ = unix.Close(fd)
-			return false, typedError("E_COMPOSITION_SETUP_INVALID", "retain mutation descendant %d", index)
+			return false, typedError(
+				"E_COMPOSITION_SETUP_INVALID",
+				"retain mutation descendant %d",
+				index,
+			)
 		}
 		same, sameErr := sameObject(resolved, object.File)
 		_ = resolved.Close()
 		if sameErr != nil {
-			return false, typedError("E_COMPOSITION_SETUP_INVALID", "compare mutation descendant %d: %v", index, sameErr)
+			return false, typedError(
+				"E_COMPOSITION_SETUP_INVALID",
+				"compare mutation descendant %d: %v",
+				index,
+				sameErr,
+			)
 		}
 		if same {
 			return true, nil

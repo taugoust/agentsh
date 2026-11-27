@@ -16,7 +16,11 @@ type RefResolver func(ctx context.Context, ref SecretRef) (SecretValue, error)
 // resolver can fetch secrets from providers that have already been
 // constructed (for auth chaining like vault's token_ref pointing
 // at keyring://...).
-type ConstructorFunc func(ctx context.Context, cfg ProviderConfig, resolver RefResolver) (SecretProvider, error)
+type ConstructorFunc func(
+	ctx context.Context,
+	cfg ProviderConfig,
+	resolver RefResolver,
+) (SecretProvider, error)
 
 // Registry holds constructed providers keyed by their config name.
 // It is constructed by NewRegistry, which resolves auth-chaining
@@ -48,7 +52,11 @@ type Registry struct {
 // dependencies return ErrCyclicDependency. If any constructor
 // fails, all already-constructed providers are closed before the
 // error is returned.
-func NewRegistry(ctx context.Context, configs map[string]ProviderConfig, constructors map[string]ConstructorFunc) (*Registry, error) {
+func NewRegistry(
+	ctx context.Context,
+	configs map[string]ProviderConfig,
+	constructors map[string]ConstructorFunc,
+) (*Registry, error) {
 	// Validate inputs: no nil configs or constructors.
 	for name, cfg := range configs {
 		if cfg == nil || isNilInterface(cfg) {
@@ -67,7 +75,11 @@ func NewRegistry(ctx context.Context, configs map[string]ProviderConfig, constru
 			return nil, fmt.Errorf("config %q has empty TypeName", name)
 		}
 		if _, ok := constructors[cfg.TypeName()]; !ok {
-			return nil, fmt.Errorf("no constructor registered for provider type %q (config %q)", cfg.TypeName(), name)
+			return nil, fmt.Errorf(
+				"no constructor registered for provider type %q (config %q)",
+				cfg.TypeName(),
+				name,
+			)
 		}
 	}
 
@@ -76,7 +88,12 @@ func NewRegistry(ctx context.Context, configs map[string]ProviderConfig, constru
 	for name, cfg := range configs {
 		scheme := cfg.TypeName()
 		if existing, dup := schemeToName[scheme]; dup {
-			return nil, fmt.Errorf("duplicate provider type %q: configs %q and %q", scheme, existing, name)
+			return nil, fmt.Errorf(
+				"duplicate provider type %q: configs %q and %q",
+				scheme,
+				existing,
+				name,
+			)
 		}
 		schemeToName[scheme] = name
 	}
@@ -93,7 +110,11 @@ func NewRegistry(ctx context.Context, configs map[string]ProviderConfig, constru
 		for _, dep := range cfg.Dependencies() {
 			depName, ok := schemeToName[dep.Scheme]
 			if !ok {
-				return nil, fmt.Errorf("config %q depends on scheme %q, but no provider handles that scheme", name, dep.Scheme)
+				return nil, fmt.Errorf(
+					"config %q depends on scheme %q, but no provider handles that scheme",
+					name,
+					dep.Scheme,
+				)
 			}
 			graph[depName] = append(graph[depName], name)
 			inDegree[name]++
@@ -154,7 +175,13 @@ func NewRegistry(ctx context.Context, configs map[string]ProviderConfig, constru
 		}
 		resolver := func(fetchCtx context.Context, ref SecretRef) (SecretValue, error) {
 			if !declaredRefs[refKey(ref)] {
-				return SecretValue{}, fmt.Errorf("ref %s://%s/%s not declared in Dependencies() for config %q", ref.Scheme, ref.Host, ref.Path, name)
+				return SecretValue{}, fmt.Errorf(
+					"ref %s://%s/%s not declared in Dependencies() for config %q",
+					ref.Scheme,
+					ref.Host,
+					ref.Path,
+					name,
+				)
 			}
 			provName, ok := schemeToName[ref.Scheme]
 			if !ok {
@@ -162,7 +189,10 @@ func NewRegistry(ctx context.Context, configs map[string]ProviderConfig, constru
 			}
 			p, ok := providers[provName]
 			if !ok {
-				return SecretValue{}, fmt.Errorf("provider %q not yet constructed (dependency ordering bug)", provName)
+				return SecretValue{}, fmt.Errorf(
+					"provider %q not yet constructed (dependency ordering bug)",
+					provName,
+				)
 			}
 			return p.Fetch(fetchCtx, ref)
 		}
@@ -173,14 +203,23 @@ func NewRegistry(ctx context.Context, configs map[string]ProviderConfig, constru
 			for i := len(providers) - 1; i >= 0; i-- {
 				_ = providers[order[i]].Close()
 			}
-			return nil, fmt.Errorf("constructing provider %q (type %q): %w", name, cfg.TypeName(), err)
+			return nil, fmt.Errorf(
+				"constructing provider %q (type %q): %w",
+				name,
+				cfg.TypeName(),
+				err,
+			)
 		}
 		if p == nil || isNilInterface(p) {
 			// A constructor returning (nil, nil) or a typed-nil is a bug; fail loudly.
 			for i := len(providers) - 1; i >= 0; i-- {
 				_ = providers[order[i]].Close()
 			}
-			return nil, fmt.Errorf("constructor for provider %q (type %q) returned a nil provider", name, cfg.TypeName())
+			return nil, fmt.Errorf(
+				"constructor for provider %q (type %q) returned a nil provider",
+				name,
+				cfg.TypeName(),
+			)
 		}
 		providers[name] = p
 	}

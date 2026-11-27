@@ -57,8 +57,13 @@ func (b *Broker) Publish(ev types.Event) {
 			// Drop on slow subscriber, log and count.
 			count := b.dropped.Add(1)
 			if count == 1 || count%100 == 0 {
-				fmt.Fprintf(os.Stderr, "events: dropped event (session=%s type=%s, total dropped=%d)\n",
-					ev.SessionID, ev.Type, count)
+				fmt.Fprintf(
+					os.Stderr,
+					"events: dropped event (session=%s type=%s, total dropped=%d)\n",
+					ev.SessionID,
+					ev.Type,
+					count,
+				)
 			}
 		}
 	}

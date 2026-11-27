@@ -73,8 +73,11 @@ type HostMonitorLayout struct {
 }
 
 func HostMonitorPaths(stateDir string) (HostMonitorLayout, error) {
-	if !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir || filepath.Base(stateDir) == stateDir {
-		return HostMonitorLayout{}, fmt.Errorf("host monitor state directory must be clean and absolute")
+	if !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir ||
+		filepath.Base(stateDir) == stateDir {
+		return HostMonitorLayout{}, fmt.Errorf(
+			"host monitor state directory must be clean and absolute",
+		)
 	}
 	runtimeDir := filepath.Join(stateDir, "runtime")
 	hostDir := filepath.Join(runtimeDir, "host")
@@ -114,8 +117,13 @@ type HostEgressApprovalBinding struct {
 func (b HostEgressApprovalBinding) Validate() error {
 	decoded, tokenErr := base64.RawURLEncoding.DecodeString(b.Token)
 	socketPath := strings.TrimPrefix(b.SupervisorURL, "unix://")
-	if runtimeprovider.ValidateName(b.ParentSessionID) != nil || !strings.HasPrefix(b.ParentSessionID, "session-") || tokenErr != nil || len(decoded) != 32 ||
-		!strings.HasPrefix(b.SupervisorURL, "unix://") || !filepath.IsAbs(socketPath) || filepath.Clean(socketPath) != socketPath {
+	if runtimeprovider.ValidateName(b.ParentSessionID) != nil ||
+		!strings.HasPrefix(b.ParentSessionID, "session-") ||
+		tokenErr != nil ||
+		len(decoded) != 32 ||
+		!strings.HasPrefix(b.SupervisorURL, "unix://") ||
+		!filepath.IsAbs(socketPath) ||
+		filepath.Clean(socketPath) != socketPath {
 		return fmt.Errorf("host egress approval binding is invalid")
 	}
 	return nil
@@ -151,47 +159,100 @@ type HostMonitorRequest struct {
 }
 
 func (r HostMonitorRequest) Validate(stateDir string) error {
-	if (r.SchemaVersion != HostMonitorSchemaVersionV1 && r.SchemaVersion != HostMonitorSchemaVersionV2 && r.SchemaVersion != HostMonitorSchemaVersionV3) || !validHexSecret(r.MonitorID) {
+	if (r.SchemaVersion != HostMonitorSchemaVersionV1 &&
+		r.SchemaVersion != HostMonitorSchemaVersionV2 &&
+		r.SchemaVersion != HostMonitorSchemaVersionV3) ||
+		!validHexSecret(r.MonitorID) {
 		return fmt.Errorf("host monitor request schema or identity is invalid")
 	}
 	switch r.SchemaVersion {
 	case HostMonitorSchemaVersionV1:
-		if r.VolumeID != "" || r.ProfileSchema != "" || r.WorkspaceVolume != nil || r.HostEgress != nil || r.EgressPort != 0 || r.HostEgressApproval != nil || r.InputArtifact != nil {
+		if r.VolumeID != "" || r.ProfileSchema != "" || r.WorkspaceVolume != nil ||
+			r.HostEgress != nil ||
+			r.EgressPort != 0 ||
+			r.HostEgressApproval != nil ||
+			r.InputArtifact != nil {
 			return fmt.Errorf("host monitor v1 request contains schema-v2 workspace volume fields")
 		}
 	case HostMonitorSchemaVersionV2:
-		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV2 || r.WorkspaceVolume == nil || r.WorkspaceVolume.Validate() != nil || r.HostEgress != nil || r.EgressPort != 0 || r.HostEgressApproval != nil ||
-			r.InputArtifact == nil || r.InputArtifact.Validate() != nil || r.InputArtifact.SessionID != r.SessionID || r.InputArtifact.Kind != artifact.KindGitInputBundle {
-			return fmt.Errorf("host monitor v2 workspace volume or input artifact binding is invalid")
+		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV2 ||
+			r.WorkspaceVolume == nil ||
+			r.WorkspaceVolume.Validate() != nil ||
+			r.HostEgress != nil ||
+			r.EgressPort != 0 ||
+			r.HostEgressApproval != nil ||
+			r.InputArtifact == nil ||
+			r.InputArtifact.Validate() != nil ||
+			r.InputArtifact.SessionID != r.SessionID ||
+			r.InputArtifact.Kind != artifact.KindGitInputBundle {
+			return fmt.Errorf(
+				"host monitor v2 workspace volume or input artifact binding is invalid",
+			)
 		}
 	case HostMonitorSchemaVersionV3:
-		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV3 || r.WorkspaceVolume == nil || r.WorkspaceVolume.Validate() != nil ||
-			r.HostEgress == nil || r.HostEgress.Validate() != nil || !validPort(r.EgressPort) || (r.HostEgressApproval != nil && r.HostEgressApproval.Validate() != nil) || r.InputArtifact == nil || r.InputArtifact.Validate() != nil ||
-			r.InputArtifact.SessionID != r.SessionID || r.InputArtifact.Kind != artifact.KindGitInputBundle {
-			return fmt.Errorf("host monitor v3 workspace, egress, or input artifact binding is invalid")
+		if !canonicalWorkspaceVolumeUUID(r.VolumeID) || r.ProfileSchema != ProfileSchemaV3 ||
+			r.WorkspaceVolume == nil ||
+			r.WorkspaceVolume.Validate() != nil ||
+			r.HostEgress == nil ||
+			r.HostEgress.Validate() != nil ||
+			!validPort(r.EgressPort) ||
+			(r.HostEgressApproval != nil && r.HostEgressApproval.Validate() != nil) ||
+			r.InputArtifact == nil ||
+			r.InputArtifact.Validate() != nil ||
+			r.InputArtifact.SessionID != r.SessionID ||
+			r.InputArtifact.Kind != artifact.KindGitInputBundle {
+			return fmt.Errorf(
+				"host monitor v3 workspace, egress, or input artifact binding is invalid",
+			)
 		}
 	}
-	if err := runtimeprovider.ValidateName(r.SessionID); err != nil || !strings.HasPrefix(r.SessionID, "session-") {
+	if err := runtimeprovider.ValidateName(
+		r.SessionID,
+	); err != nil ||
+		!strings.HasPrefix(r.SessionID, "session-") {
 		return fmt.Errorf("host monitor session identity is invalid")
 	}
-	if !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir || r.StateDir != stateDir || filepath.Base(stateDir) != r.SessionID ||
-		!filepath.IsAbs(r.SourceWorkspace) || filepath.Clean(r.SourceWorkspace) != r.SourceWorkspace || pathsOverlap(r.SourceWorkspace, stateDir) {
+	if !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir ||
+		r.StateDir != stateDir ||
+		filepath.Base(stateDir) != r.SessionID ||
+		!filepath.IsAbs(r.SourceWorkspace) ||
+		filepath.Clean(r.SourceWorkspace) != r.SourceWorkspace ||
+		pathsOverlap(r.SourceWorkspace, stateDir) {
 		return fmt.Errorf("host monitor request is not bound to its exact state directory")
 	}
 	profileErr := runtimeprovider.ValidateName(r.ProfileName)
 	policyErr := runtimeprovider.ValidateName(r.GuestPolicy)
-	if profileErr != nil || policyErr != nil || !validSHA256(r.ProfileFileSHA256) || !validSHA256(r.ProfileDigest) || !validSHA256(r.GuestProfileDigest) ||
-		!validSHA256(r.GuestManifestSHA256) || !validHexSecret(r.LaunchNonce) || r.ExpectedGuestGeneration == 0 ||
-		!validPort(r.GuestControlPort) || !validPort(r.GuestSupervisorPort) || r.GuestControlPort == r.GuestSupervisorPort ||
-		r.SchemaVersion == HostMonitorSchemaVersionV3 && (r.EgressPort == r.GuestControlPort || r.EgressPort == r.GuestSupervisorPort || r.EgressPort != r.CIDLease.CID && validPort(r.CIDLease.CID) && r.CIDLease.CID != r.GuestControlPort && r.CIDLease.CID != r.GuestSupervisorPort) {
+	if profileErr != nil || policyErr != nil || !validSHA256(r.ProfileFileSHA256) ||
+		!validSHA256(r.ProfileDigest) ||
+		!validSHA256(r.GuestProfileDigest) ||
+		!validSHA256(r.GuestManifestSHA256) ||
+		!validHexSecret(r.LaunchNonce) ||
+		r.ExpectedGuestGeneration == 0 ||
+		!validPort(r.GuestControlPort) ||
+		!validPort(r.GuestSupervisorPort) ||
+		r.GuestControlPort == r.GuestSupervisorPort ||
+		r.SchemaVersion == HostMonitorSchemaVersionV3 &&
+			(r.EgressPort == r.GuestControlPort ||
+				r.EgressPort == r.GuestSupervisorPort ||
+				r.EgressPort != r.CIDLease.CID &&
+					validPort(r.CIDLease.CID) &&
+					r.CIDLease.CID != r.GuestControlPort &&
+					r.CIDLease.CID != r.GuestSupervisorPort) {
 		return fmt.Errorf("host monitor immutable launch binding is invalid")
 	}
-	for name, path := range map[string]string{"profile": r.ProfileFile, "CID lease root": r.CIDLeaseRoot} {
+	for name, path := range map[string]string{
+		"profile":        r.ProfileFile,
+		"CID lease root": r.CIDLeaseRoot,
+	} {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 			return fmt.Errorf("host monitor %s path must be clean and absolute", name)
 		}
 	}
-	if err := r.CIDLease.Validate(r.CIDLease.CID, r.CIDLease.CID); err != nil || r.CIDLease.SessionID != r.SessionID {
+	if err := r.CIDLease.Validate(
+		r.CIDLease.CID,
+		r.CIDLease.CID,
+	); err != nil ||
+		r.CIDLease.SessionID != r.SessionID {
 		return fmt.Errorf("host monitor CID lease identity is invalid")
 	}
 	if r.CreatedAt.IsZero() || r.CreatedAt.After(time.Now().UTC().Add(5*time.Minute)) {
@@ -205,7 +266,15 @@ func (r HostMonitorRequest) Validate(stateDir string) error {
 func (r *HostMonitorRequest) UnmarshalJSON(data []byte) error {
 	switch hostMonitorJSONSchemaVersion(data) {
 	case HostMonitorSchemaVersionV1:
-		if err := rejectHostMonitorJSONFields(data, "volume_id", "profile_schema", "workspace_volume", "host_egress", "egress_port", "input_artifact"); err != nil {
+		if err := rejectHostMonitorJSONFields(
+			data,
+			"volume_id",
+			"profile_schema",
+			"workspace_volume",
+			"host_egress",
+			"egress_port",
+			"input_artifact",
+		); err != nil {
 			return err
 		}
 	case HostMonitorSchemaVersionV2:
@@ -231,7 +300,10 @@ func hostMonitorSchemaVersionForProfile(profileSchema string) (int, error) {
 	case ProfileSchemaV3:
 		return HostMonitorSchemaVersionV3, nil
 	default:
-		return 0, fmt.Errorf("host monitor external profile schema %q is unsupported", profileSchema)
+		return 0, fmt.Errorf(
+			"host monitor external profile schema %q is unsupported",
+			profileSchema,
+		)
 	}
 }
 
@@ -248,32 +320,66 @@ func guestProtocolVersionForHostMonitorSchema(schemaVersion int) (int, error) {
 	}
 }
 
-func validateHostMonitorProfileBinding(request HostMonitorRequest, profile Profile, profileFileDigest string) error {
+func validateHostMonitorProfileBinding(
+	request HostMonitorRequest,
+	profile Profile,
+	profileFileDigest string,
+) error {
 	expectedSchema, err := hostMonitorSchemaVersionForProfile(profile.Schema)
 	if err != nil {
 		return err
 	}
 	if request.SchemaVersion != expectedSchema || request.ProfileFileSHA256 != profileFileDigest ||
-		request.ProfileName != profile.Name || request.ProfileDigest != profile.ProfileDigest || request.GuestProfileDigest != profile.Guest.ProfileDigest {
+		request.ProfileName != profile.Name ||
+		request.ProfileDigest != profile.ProfileDigest ||
+		request.GuestProfileDigest != profile.Guest.ProfileDigest {
 		return fmt.Errorf("host monitor request and immutable operator profile identity differ")
 	}
 	switch profile.Schema {
 	case ProfileSchemaV1:
-		if request.ProfileSchema != "" || request.WorkspaceVolume != nil || request.HostEgress != nil || request.EgressPort != 0 || request.VolumeID != "" || request.InputArtifact != nil {
-			return fmt.Errorf("host monitor v1 request contains a workspace volume or input artifact contract")
+		if request.ProfileSchema != "" || request.WorkspaceVolume != nil ||
+			request.HostEgress != nil ||
+			request.EgressPort != 0 ||
+			request.VolumeID != "" ||
+			request.InputArtifact != nil {
+			return fmt.Errorf(
+				"host monitor v1 request contains a workspace volume or input artifact contract",
+			)
 		}
 	case ProfileSchemaV2:
-		if request.ProfileSchema != profile.Schema || request.WorkspaceVolume == nil || profile.WorkspaceVolume == nil || request.HostEgress != nil || request.EgressPort != 0 ||
-			*request.WorkspaceVolume != *profile.WorkspaceVolume || !canonicalWorkspaceVolumeUUID(request.VolumeID) || request.InputArtifact == nil ||
-			request.InputArtifact.Validate() != nil || request.InputArtifact.SessionID != request.SessionID || request.InputArtifact.Kind != artifact.KindGitInputBundle {
-			return fmt.Errorf("host monitor v2 request workspace volume or input artifact contract differs from its immutable operator profile")
+		if request.ProfileSchema != profile.Schema || request.WorkspaceVolume == nil ||
+			profile.WorkspaceVolume == nil ||
+			request.HostEgress != nil ||
+			request.EgressPort != 0 ||
+			*request.WorkspaceVolume != *profile.WorkspaceVolume ||
+			!canonicalWorkspaceVolumeUUID(request.VolumeID) ||
+			request.InputArtifact == nil ||
+			request.InputArtifact.Validate() != nil ||
+			request.InputArtifact.SessionID != request.SessionID ||
+			request.InputArtifact.Kind != artifact.KindGitInputBundle {
+			return fmt.Errorf(
+				"host monitor v2 request workspace volume or input artifact contract differs " +
+					"from its immutable operator profile",
+			)
 		}
 	case ProfileSchemaV3:
 		expectedPort, portErr := deriveHostEgressPort(profile, request.CIDLease.CID)
-		if request.ProfileSchema != profile.Schema || request.WorkspaceVolume == nil || profile.WorkspaceVolume == nil || request.HostEgress == nil || profile.HostEgress == nil ||
-			*request.WorkspaceVolume != *profile.WorkspaceVolume || *request.HostEgress != *profile.HostEgress || request.EgressPort != expectedPort || portErr != nil || !canonicalWorkspaceVolumeUUID(request.VolumeID) ||
-			request.InputArtifact == nil || request.InputArtifact.Validate() != nil || request.InputArtifact.SessionID != request.SessionID || request.InputArtifact.Kind != artifact.KindGitInputBundle {
-			return fmt.Errorf("host monitor v3 request contract differs from its immutable operator profile")
+		if request.ProfileSchema != profile.Schema || request.WorkspaceVolume == nil ||
+			profile.WorkspaceVolume == nil ||
+			request.HostEgress == nil ||
+			profile.HostEgress == nil ||
+			*request.WorkspaceVolume != *profile.WorkspaceVolume ||
+			*request.HostEgress != *profile.HostEgress ||
+			request.EgressPort != expectedPort ||
+			portErr != nil ||
+			!canonicalWorkspaceVolumeUUID(request.VolumeID) ||
+			request.InputArtifact == nil ||
+			request.InputArtifact.Validate() != nil ||
+			request.InputArtifact.SessionID != request.SessionID ||
+			request.InputArtifact.Kind != artifact.KindGitInputBundle {
+			return fmt.Errorf(
+				"host monitor v3 request contract differs from its immutable operator profile",
+			)
 		}
 	}
 	return nil
@@ -289,14 +395,21 @@ type HostMonitorGuestSecret struct {
 }
 
 func (s HostMonitorGuestSecret) Validate(request HostMonitorRequest) error {
-	if s.SchemaVersion != HostMonitorSchemaVersionV1 || s.MonitorID != request.MonitorID || s.SessionID != request.SessionID ||
-		s.Generation != request.ExpectedGuestGeneration || !canonicalHostMonitorUUID(s.IncarnationID) || !validHexSecret(s.EventToken) {
+	if s.SchemaVersion != HostMonitorSchemaVersionV1 || s.MonitorID != request.MonitorID ||
+		s.SessionID != request.SessionID ||
+		s.Generation != request.ExpectedGuestGeneration ||
+		!canonicalHostMonitorUUID(s.IncarnationID) ||
+		!validHexSecret(s.EventToken) {
 		return fmt.Errorf("host monitor guest secret identity is invalid")
 	}
 	return nil
 }
 
-func WriteHostMonitorGuestSecret(stateDir string, request HostMonitorRequest, secret HostMonitorGuestSecret) error {
+func WriteHostMonitorGuestSecret(
+	stateDir string,
+	request HostMonitorRequest,
+	secret HostMonitorGuestSecret,
+) error {
 	layout, err := HostMonitorPaths(stateDir)
 	if err != nil {
 		return err
@@ -311,7 +424,10 @@ func WriteHostMonitorGuestSecret(stateDir string, request HostMonitorRequest, se
 	return writeExclusivePrivateFile(layout.GuestSecret, append(data, '\n'))
 }
 
-func ReadHostMonitorGuestSecret(stateDir string, request HostMonitorRequest) (HostMonitorGuestSecret, error) {
+func ReadHostMonitorGuestSecret(
+	stateDir string,
+	request HostMonitorRequest,
+) (HostMonitorGuestSecret, error) {
 	layout, err := HostMonitorPaths(stateDir)
 	if err != nil {
 		return HostMonitorGuestSecret{}, err
@@ -368,7 +484,8 @@ func (i *HostGuestIdentity) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return err
 	}
-	if envelope.ProtocolVersion == guestcontrol.ProtocolVersionV2 || envelope.ProtocolVersion == guestcontrol.ProtocolVersionV3 {
+	if envelope.ProtocolVersion == guestcontrol.ProtocolVersionV2 ||
+		envelope.ProtocolVersion == guestcontrol.ProtocolVersionV3 {
 		if err := rejectHostMonitorJSONFields(data, "egress_port", "egress_ready"); err != nil {
 			return err
 		}
@@ -384,12 +501,21 @@ func (i *HostGuestIdentity) UnmarshalJSON(data []byte) error {
 
 func publicHostGuestIdentity(handshake guestcontrol.Handshake) HostGuestIdentity {
 	return HostGuestIdentity{
-		ProtocolVersion: handshake.ProtocolVersion, SessionID: handshake.SessionID,
-		Generation: handshake.Generation, IncarnationID: handshake.IncarnationID,
-		GuestBootID: handshake.GuestBootID,
-		Profile:     handshake.Profile, ProfileDigest: handshake.ProfileDigest, Policy: handshake.Policy,
-		VSockCID: handshake.VSockCID, VSockPort: handshake.VSockPort, SupervisorPort: handshake.SupervisorPort,
-		NetworkReady: handshake.NetworkReady, VolumeID: handshake.VolumeID, EgressPort: handshake.EgressPort, EgressReady: handshake.EgressReady,
+		ProtocolVersion: handshake.ProtocolVersion,
+		SessionID:       handshake.SessionID,
+		Generation:      handshake.Generation,
+		IncarnationID:   handshake.IncarnationID,
+		GuestBootID:     handshake.GuestBootID,
+		Profile:         handshake.Profile,
+		ProfileDigest:   handshake.ProfileDigest,
+		Policy:          handshake.Policy,
+		VSockCID:        handshake.VSockCID,
+		VSockPort:       handshake.VSockPort,
+		SupervisorPort:  handshake.SupervisorPort,
+		NetworkReady:    handshake.NetworkReady,
+		VolumeID:        handshake.VolumeID,
+		EgressPort:      handshake.EgressPort,
+		EgressReady:     handshake.EgressReady,
 	}
 }
 
@@ -426,10 +552,17 @@ type HostMonitorStatus struct {
 }
 
 func (s HostMonitorStatus) Validate() error {
-	if (s.SchemaVersion != HostMonitorSchemaVersionV1 && s.SchemaVersion != HostMonitorSchemaVersionV2 && s.SchemaVersion != HostMonitorSchemaVersionV3) || s.Revision == 0 || !validHexSecret(s.MonitorID) {
+	if (s.SchemaVersion != HostMonitorSchemaVersionV1 &&
+		s.SchemaVersion != HostMonitorSchemaVersionV2 &&
+		s.SchemaVersion != HostMonitorSchemaVersionV3) ||
+		s.Revision == 0 ||
+		!validHexSecret(s.MonitorID) {
 		return fmt.Errorf("host monitor status schema or identity is invalid")
 	}
-	if err := runtimeprovider.ValidateName(s.SessionID); err != nil || !strings.HasPrefix(s.SessionID, "session-") {
+	if err := runtimeprovider.ValidateName(
+		s.SessionID,
+	); err != nil ||
+		!strings.HasPrefix(s.SessionID, "session-") {
 		return fmt.Errorf("host monitor status session identity is invalid")
 	}
 	if s.CreatedAt.IsZero() || s.UpdatedAt.Before(s.CreatedAt) {
@@ -443,7 +576,11 @@ func (s HostMonitorStatus) Validate() error {
 	}
 	if s.SchemaVersion == HostMonitorSchemaVersionV1 {
 		if s.VolumeID != "" || s.VolumeClosed || s.StartupChildReaped || s.EgressBrokerClosed ||
-			s.Guest != nil && (s.Guest.ProtocolVersion != guestcontrol.ProtocolVersionV2 || s.Guest.VolumeID != "" || s.Guest.EgressPort != 0 || s.Guest.EgressReady) {
+			s.Guest != nil &&
+				(s.Guest.ProtocolVersion != guestcontrol.ProtocolVersionV2 ||
+					s.Guest.VolumeID != "" ||
+					s.Guest.EgressPort != 0 ||
+					s.Guest.EgressReady) {
 			return fmt.Errorf("host monitor v1 status contains schema-v2 guest or volume fields")
 		}
 		return validateHostMonitorStatusV1State(s)
@@ -452,10 +589,20 @@ func (s HostMonitorStatus) Validate() error {
 		return fmt.Errorf("host monitor v2 workspace volume status is invalid")
 	}
 	if s.SchemaVersion == HostMonitorSchemaVersionV2 {
-		if s.EgressBrokerClosed || s.Guest != nil && (s.Guest.ProtocolVersion != guestcontrol.ProtocolVersionV3 || s.Guest.VolumeID != s.VolumeID || s.Guest.EgressPort != 0 || s.Guest.EgressReady) {
+		if s.EgressBrokerClosed ||
+			s.Guest != nil &&
+				(s.Guest.ProtocolVersion != guestcontrol.ProtocolVersionV3 ||
+					s.Guest.VolumeID != s.VolumeID ||
+					s.Guest.EgressPort != 0 ||
+					s.Guest.EgressReady) {
 			return fmt.Errorf("host monitor v2 guest volume identity is invalid")
 		}
-	} else if s.Guest != nil && (s.Guest.ProtocolVersion != guestcontrol.ProtocolVersionV4 || s.Guest.VolumeID != s.VolumeID || !validPort(s.Guest.EgressPort) || !s.Guest.EgressReady || s.Guest.NetworkReady) {
+	} else if s.Guest != nil &&
+		(s.Guest.ProtocolVersion != guestcontrol.ProtocolVersionV4 ||
+			s.Guest.VolumeID != s.VolumeID ||
+			!validPort(s.Guest.EgressPort) ||
+			!s.Guest.EgressReady ||
+			s.Guest.NetworkReady) {
 		return fmt.Errorf("host monitor v3 guest volume or egress identity is invalid")
 	}
 	if s.SchemaVersion == HostMonitorSchemaVersionV3 {
@@ -481,12 +628,19 @@ func validateHostMonitorStatusV1State(s HostMonitorStatus) error {
 			return fmt.Errorf("host monitor state %s requires a runner identity", s.State)
 		}
 	case HostMonitorControlReady:
-		if s.Runner == nil || s.Runner.Validate(true) != nil || s.Guest == nil || s.Endpoint == nil || s.Endpoint.Validate() != nil || s.RelayClosed ||
-			s.Guest.SessionID != s.SessionID || s.Guest.Profile != s.Profile || s.Guest.ProfileDigest != s.GuestProfileDigest {
+		if s.Runner == nil || s.Runner.Validate(true) != nil || s.Guest == nil ||
+			s.Endpoint == nil ||
+			s.Endpoint.Validate() != nil ||
+			s.RelayClosed ||
+			s.Guest.SessionID != s.SessionID ||
+			s.Guest.Profile != s.Profile ||
+			s.Guest.ProfileDigest != s.GuestProfileDigest {
 			return fmt.Errorf("host monitor control-ready state is incomplete")
 		}
 	case HostMonitorStopped:
-		if s.Runner == nil || s.Runner.Validate(true) != nil || s.RunnerExit == nil || !s.RunnerReaped || !s.RelayClosed {
+		if s.Runner == nil || s.Runner.Validate(true) != nil || s.RunnerExit == nil ||
+			!s.RunnerReaped ||
+			!s.RelayClosed {
 			return fmt.Errorf("host monitor stopped state lacks exact teardown evidence")
 		}
 	case HostMonitorFailed:
@@ -505,7 +659,10 @@ func validateHostMonitorStatusV1State(s HostMonitorStatus) error {
 func validateHostMonitorFailedRunnerEvidence(s HostMonitorStatus) error {
 	if s.Runner == nil {
 		if s.StartupChildReaped {
-			if (s.SchemaVersion != HostMonitorSchemaVersionV2 && s.SchemaVersion != HostMonitorSchemaVersionV3) || s.RunnerExit == nil || s.RunnerReaped {
+			if (s.SchemaVersion != HostMonitorSchemaVersionV2 &&
+				s.SchemaVersion != HostMonitorSchemaVersionV3) ||
+				s.RunnerExit == nil ||
+				s.RunnerReaped {
 				return fmt.Errorf("host monitor startup-child reap evidence is inconsistent")
 			}
 			return nil
@@ -515,7 +672,8 @@ func validateHostMonitorFailedRunnerEvidence(s HostMonitorStatus) error {
 		}
 		return nil
 	}
-	if s.StartupChildReaped || s.Runner.Validate(true) != nil || (s.RunnerReaped && s.RunnerExit == nil) {
+	if s.StartupChildReaped || s.Runner.Validate(true) != nil ||
+		(s.RunnerReaped && s.RunnerExit == nil) {
 		return fmt.Errorf("host monitor failed state has inconsistent runner evidence")
 	}
 	return nil
@@ -529,15 +687,27 @@ func validateHostMonitorStatusV2State(s HostMonitorStatus) error {
 			return fmt.Errorf("host monitor state %s requires a runner identity", s.State)
 		}
 		if s.VolumeClosed {
-			return fmt.Errorf("host monitor state %s cannot have a closed workspace volume", s.State)
+			return fmt.Errorf(
+				"host monitor state %s cannot have a closed workspace volume",
+				s.State,
+			)
 		}
 	case HostMonitorControlReady:
-		if s.Runner == nil || s.Runner.Validate(true) != nil || s.Guest == nil || s.Endpoint == nil || s.Endpoint.Validate() != nil || s.RelayClosed ||
-			s.VolumeClosed || s.Guest.SessionID != s.SessionID || s.Guest.Profile != s.Profile || s.Guest.ProfileDigest != s.GuestProfileDigest {
+		if s.Runner == nil || s.Runner.Validate(true) != nil || s.Guest == nil ||
+			s.Endpoint == nil ||
+			s.Endpoint.Validate() != nil ||
+			s.RelayClosed ||
+			s.VolumeClosed ||
+			s.Guest.SessionID != s.SessionID ||
+			s.Guest.Profile != s.Profile ||
+			s.Guest.ProfileDigest != s.GuestProfileDigest {
 			return fmt.Errorf("host monitor control-ready state is incomplete")
 		}
 	case HostMonitorStopped:
-		if s.Runner == nil || s.Runner.Validate(true) != nil || s.RunnerExit == nil || !s.RunnerReaped || !s.RelayClosed || !s.VolumeClosed {
+		if s.Runner == nil || s.Runner.Validate(true) != nil || s.RunnerExit == nil ||
+			!s.RunnerReaped ||
+			!s.RelayClosed ||
+			!s.VolumeClosed {
 			return fmt.Errorf("host monitor stopped state lacks exact teardown evidence")
 		}
 	case HostMonitorFailed:
@@ -563,20 +733,38 @@ func validateHostMonitorStatusV3State(s HostMonitorStatus) error {
 	switch s.State {
 	case HostMonitorInitializing:
 	case HostMonitorBooting:
-		if s.Runner == nil || s.Runner.Validate(true) != nil || s.VolumeClosed || s.EgressBrokerClosed {
-			return fmt.Errorf("host monitor state %s requires an open egress broker, volume, and runner identity", s.State)
+		if s.Runner == nil || s.Runner.Validate(true) != nil || s.VolumeClosed ||
+			s.EgressBrokerClosed {
+			return fmt.Errorf(
+				"host monitor state %s requires an open egress broker, volume, and runner identity",
+				s.State,
+			)
 		}
 	case HostMonitorStopping:
 		if s.Runner == nil || s.Runner.Validate(true) != nil || s.VolumeClosed {
-			return fmt.Errorf("host monitor state %s requires a runner identity and open volume", s.State)
+			return fmt.Errorf(
+				"host monitor state %s requires a runner identity and open volume",
+				s.State,
+			)
 		}
 	case HostMonitorControlReady:
-		if s.Runner == nil || s.Runner.Validate(true) != nil || s.Guest == nil || s.Endpoint == nil || s.Endpoint.Validate() != nil || s.RelayClosed ||
-			s.VolumeClosed || s.EgressBrokerClosed || s.Guest.SessionID != s.SessionID || s.Guest.Profile != s.Profile || s.Guest.ProfileDigest != s.GuestProfileDigest {
+		if s.Runner == nil || s.Runner.Validate(true) != nil || s.Guest == nil ||
+			s.Endpoint == nil ||
+			s.Endpoint.Validate() != nil ||
+			s.RelayClosed ||
+			s.VolumeClosed ||
+			s.EgressBrokerClosed ||
+			s.Guest.SessionID != s.SessionID ||
+			s.Guest.Profile != s.Profile ||
+			s.Guest.ProfileDigest != s.GuestProfileDigest {
 			return fmt.Errorf("host monitor control-ready state is incomplete")
 		}
 	case HostMonitorStopped:
-		if s.Runner == nil || s.Runner.Validate(true) != nil || s.RunnerExit == nil || !s.RunnerReaped || !s.RelayClosed || !s.VolumeClosed || !s.EgressBrokerClosed {
+		if s.Runner == nil || s.Runner.Validate(true) != nil || s.RunnerExit == nil ||
+			!s.RunnerReaped ||
+			!s.RelayClosed ||
+			!s.VolumeClosed ||
+			!s.EgressBrokerClosed {
 			return fmt.Errorf("host monitor stopped state lacks exact teardown evidence")
 		}
 	case HostMonitorFailed:
@@ -599,7 +787,13 @@ func validateHostMonitorStatusV3State(s HostMonitorStatus) error {
 func (s *HostMonitorStatus) UnmarshalJSON(data []byte) error {
 	switch hostMonitorJSONSchemaVersion(data) {
 	case HostMonitorSchemaVersionV1:
-		if err := rejectHostMonitorJSONFields(data, "volume_id", "volume_closed", "startup_child_reaped", "egress_broker_closed"); err != nil {
+		if err := rejectHostMonitorJSONFields(
+			data,
+			"volume_id",
+			"volume_closed",
+			"startup_child_reaped",
+			"egress_broker_closed",
+		); err != nil {
 			return err
 		}
 	case HostMonitorSchemaVersionV2:
@@ -662,26 +856,48 @@ func ReadHostMonitorStatus(stateDir string) (HostMonitorStatus, error) {
 	if err != nil {
 		return HostMonitorStatus{}, err
 	}
-	if status.SchemaVersion != request.SchemaVersion || status.SessionID != filepath.Base(stateDir) || status.SessionID != request.SessionID || status.MonitorID != request.MonitorID ||
-		status.Profile != request.ProfileName || status.ExternalProfileDigest != request.ProfileDigest || status.GuestProfileDigest != request.GuestProfileDigest ||
+	if status.SchemaVersion != request.SchemaVersion ||
+		status.SessionID != filepath.Base(stateDir) ||
+		status.SessionID != request.SessionID ||
+		status.MonitorID != request.MonitorID ||
+		status.Profile != request.ProfileName ||
+		status.ExternalProfileDigest != request.ProfileDigest ||
+		status.GuestProfileDigest != request.GuestProfileDigest ||
 		status.VolumeID != request.VolumeID {
-		return HostMonitorStatus{}, fmt.Errorf("host monitor status is not bound to its immutable request")
+		return HostMonitorStatus{}, fmt.Errorf(
+			"host monitor status is not bound to its immutable request",
+		)
 	}
-	if status.Endpoint != nil && (status.Endpoint.Transport != "unix" || status.Endpoint.Address != layout.RelayPath) {
-		return HostMonitorStatus{}, fmt.Errorf("host monitor status endpoint is not the exact host relay")
+	if status.Endpoint != nil &&
+		(status.Endpoint.Transport != "unix" || status.Endpoint.Address != layout.RelayPath) {
+		return HostMonitorStatus{}, fmt.Errorf(
+			"host monitor status endpoint is not the exact host relay",
+		)
 	}
 	expectedGuestProtocol, err := guestProtocolVersionForHostMonitorSchema(request.SchemaVersion)
 	if err != nil {
 		return HostMonitorStatus{}, err
 	}
 	expectedEgressPort := request.EgressPort
-	if status.Guest != nil && (status.Guest.ProtocolVersion != expectedGuestProtocol || status.Guest.SessionID != request.SessionID ||
-		status.Guest.Generation != request.ExpectedGuestGeneration || status.Guest.VolumeID != request.VolumeID ||
-		status.Guest.Profile != request.ProfileName || status.Guest.ProfileDigest != request.GuestProfileDigest || status.Guest.Policy != request.GuestPolicy ||
-		status.Guest.VSockCID != request.CIDLease.CID || status.Guest.VSockPort != request.GuestControlPort || status.Guest.SupervisorPort != request.GuestSupervisorPort || status.Guest.EgressPort != expectedEgressPort ||
-		status.Guest.EgressReady != (request.SchemaVersion == HostMonitorSchemaVersionV3) || request.SchemaVersion == HostMonitorSchemaVersionV3 && status.Guest.NetworkReady ||
-		!canonicalHostMonitorUUID(status.Guest.IncarnationID) || !canonicalHostMonitorUUID(status.Guest.GuestBootID)) {
-		return HostMonitorStatus{}, fmt.Errorf("host monitor guest status is not bound to the immutable launch identity")
+	if status.Guest != nil &&
+		(status.Guest.ProtocolVersion != expectedGuestProtocol ||
+			status.Guest.SessionID != request.SessionID ||
+			status.Guest.Generation != request.ExpectedGuestGeneration ||
+			status.Guest.VolumeID != request.VolumeID ||
+			status.Guest.Profile != request.ProfileName ||
+			status.Guest.ProfileDigest != request.GuestProfileDigest ||
+			status.Guest.Policy != request.GuestPolicy ||
+			status.Guest.VSockCID != request.CIDLease.CID ||
+			status.Guest.VSockPort != request.GuestControlPort ||
+			status.Guest.SupervisorPort != request.GuestSupervisorPort ||
+			status.Guest.EgressPort != expectedEgressPort ||
+			status.Guest.EgressReady != (request.SchemaVersion == HostMonitorSchemaVersionV3) ||
+			request.SchemaVersion == HostMonitorSchemaVersionV3 && status.Guest.NetworkReady ||
+			!canonicalHostMonitorUUID(status.Guest.IncarnationID) ||
+			!canonicalHostMonitorUUID(status.Guest.GuestBootID)) {
+		return HostMonitorStatus{}, fmt.Errorf(
+			"host monitor guest status is not bound to the immutable launch identity",
+		)
 	}
 	return status, nil
 }
@@ -757,7 +973,10 @@ func writeHostMonitorStatus(path string, status HostMonitorStatus) error {
 	return syncDirectory(parent)
 }
 
-func ReadHostGuestManifestSnapshot(path, workspace, profile, profileDigest string, policies []string) (guestcontrol.Manifest, string, error) {
+func ReadHostGuestManifestSnapshot(
+	path, workspace, profile, profileDigest string,
+	policies []string,
+) (guestcontrol.Manifest, string, error) {
 	data, err := readPrivateHostMonitorFile(path)
 	if err != nil {
 		return guestcontrol.Manifest{}, "", err
@@ -836,7 +1055,9 @@ func readPrivateHostMonitorFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm() != 0o600 || before.Size() > HostMonitorMaxFileBytes {
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 ||
+		before.Mode().Perm() != 0o600 ||
+		before.Size() > HostMonitorMaxFileBytes {
 		return nil, fmt.Errorf("protected host monitor file has unsafe type, permissions, or size")
 	}
 	file, err := os.Open(path)

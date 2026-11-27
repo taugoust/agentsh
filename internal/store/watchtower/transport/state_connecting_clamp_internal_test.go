@@ -179,7 +179,12 @@ func newClampTestEnv(t *testing.T, opts Options) *clampTestEnv {
 // driveSessionAck preloads a SessionAck onto a freshly-constructed conn,
 // runs RunOnce(StateConnecting), and asserts the post-state. Returns the
 // recv'd state and any error.
-func (env *clampTestEnv) driveSessionAck(t *testing.T, gen uint32, seq uint64, accepted bool) (State, error) {
+func (env *clampTestEnv) driveSessionAck(
+	t *testing.T,
+	gen uint32,
+	seq uint64,
+	accepted bool,
+) (State, error) {
 	t.Helper()
 	fc := &internalFakeConn{
 		recvMsg: &wtpv1.ServerMessage{
@@ -386,7 +391,8 @@ func TestApplyServerAckTuple_EqualTuple(t *testing.T) {
 	if _, err := env.driveSessionAck(t, 7, 100, true); err != nil {
 		t.Fatalf("driveSessionAck: %v", err)
 	}
-	if len(env.metrics.ackHWMs) != 0 || env.metrics.resendNeeded != 0 || len(env.metrics.anomalousAckReasons) != 0 {
+	if len(env.metrics.ackHWMs) != 0 || env.metrics.resendNeeded != 0 ||
+		len(env.metrics.anomalousAckReasons) != 0 {
 		t.Fatalf("metrics moved on NoOp: %+v", env.metrics)
 	}
 	entries := parseLogBuffer(t, env.logBuf)
@@ -475,7 +481,8 @@ func TestApplyServerAckTuple_ServerAckExceedsLocalSeqIsAnomaly(t *testing.T) {
 	if _, err := env.driveSessionAck(t, 7, 60, true); err != nil {
 		t.Fatalf("driveSessionAck: %v", err)
 	}
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_seq" {
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_seq" {
 		t.Fatalf("anomaly metric: got %v", env.metrics.anomalousAckReasons)
 	}
 
@@ -515,7 +522,8 @@ func TestApplyServerAckTuple_LowerGenIsAnomaly(t *testing.T) {
 	if _, err := env.driveSessionAck(t, 7, 200, true); err != nil {
 		t.Fatalf("driveSessionAck: %v", err)
 	}
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "stale_generation" {
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "stale_generation" {
 		t.Fatalf("anomaly metric: got %v", env.metrics.anomalousAckReasons)
 	}
 	entries := parseLogBuffer(t, env.logBuf)
@@ -653,7 +661,8 @@ func TestApplyServerAckTuple_HigherSameGenBeyondPerGenDataHW_Anomaly(t *testing.
 	appendDataInGen(t, env.w, 1, 8, 10)
 
 	outcome := ApplyServerAckTupleForTest(env.tr, 8, 999)
-	if outcome.Kind != AckOutcomeAnomaly || outcome.AnomalyReason != "server_ack_exceeds_local_data" {
+	if outcome.Kind != AckOutcomeAnomaly ||
+		outcome.AnomalyReason != "server_ack_exceeds_local_data" {
 		t.Fatalf("got %+v, want Anomaly/server_ack_exceeds_local_data", outcome)
 	}
 	if PersistedAckForTest(env.tr) != (AckCursor{Sequence: 100, Generation: 7}) {
@@ -663,7 +672,8 @@ func TestApplyServerAckTuple_HigherSameGenBeyondPerGenDataHW_Anomaly(t *testing.
 	if _, err := env.driveSessionAck(t, 8, 999, true); err != nil {
 		t.Fatalf("driveSessionAck: %v", err)
 	}
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_data" {
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "server_ack_exceeds_local_data" {
 		t.Fatalf("anomaly metric: got %v", env.metrics.anomalousAckReasons)
 	}
 	entries := parseLogBuffer(t, env.logBuf)
@@ -701,7 +711,8 @@ func TestApplyServerAckTuple_WALReadFailureIsAnomaly(t *testing.T) {
 	if _, err := env.driveSessionAck(t, 7, 60, true); err != nil {
 		t.Fatalf("driveSessionAck: %v", err)
 	}
-	if len(env.metrics.anomalousAckReasons) != 1 || env.metrics.anomalousAckReasons[0] != "wal_read_failure" {
+	if len(env.metrics.anomalousAckReasons) != 1 ||
+		env.metrics.anomalousAckReasons[0] != "wal_read_failure" {
 		t.Fatalf("anomaly metric: got %v", env.metrics.anomalousAckReasons)
 	}
 
@@ -774,7 +785,10 @@ func TestApplyServerAckTuple_AdoptedDoesNotAdvanceOnMarkAckedFailure(t *testing.
 		t.Fatalf("SetAckHighWatermark called on failure path: %v", env.metrics.ackHWMs)
 	}
 	if len(env.metrics.anomalousAckReasons) != 0 {
-		t.Fatalf("anomaly counter incremented on rollback path: %v", env.metrics.anomalousAckReasons)
+		t.Fatalf(
+			"anomaly counter incremented on rollback path: %v",
+			env.metrics.anomalousAckReasons,
+		)
 	}
 
 	entries := parseLogBuffer(t, env.logBuf)
@@ -825,10 +839,17 @@ func TestApplyServerAckTuple_EmitsMetricOnAdopted(t *testing.T) {
 		t.Fatalf("MarkAcked calls: got %d, want 3", markCount)
 	}
 	if len(env.metrics.ackHWMs) != 3 {
-		t.Fatalf("SetAckHighWatermark calls: got %d, want 3 (%v)", len(env.metrics.ackHWMs), env.metrics.ackHWMs)
+		t.Fatalf(
+			"SetAckHighWatermark calls: got %d, want 3 (%v)",
+			len(env.metrics.ackHWMs),
+			env.metrics.ackHWMs,
+		)
 	}
 	if env.metrics.ackHWMs[len(env.metrics.ackHWMs)-1] != 300 {
-		t.Fatalf("last SetAckHighWatermark: got %d, want 300", env.metrics.ackHWMs[len(env.metrics.ackHWMs)-1])
+		t.Fatalf(
+			"last SetAckHighWatermark: got %d, want 300",
+			env.metrics.ackHWMs[len(env.metrics.ackHWMs)-1],
+		)
 	}
 
 	// Fourth call: NoOp. cursors at (300, 1).
@@ -931,7 +952,10 @@ func TestApplyServerAckTuple_FirstApplyValidatesAgainstWAL(t *testing.T) {
 
 		outcome := ApplyServerAckTupleForTest(env.tr, 1, 0)
 		if outcome.Kind != AckOutcomeAdopted {
-			t.Fatalf("kind: got %v, want Adopted (same-gen seq=0 with no lower-gen data)", outcome.Kind)
+			t.Fatalf(
+				"kind: got %v, want Adopted (same-gen seq=0 with no lower-gen data)",
+				outcome.Kind,
+			)
 		}
 		if got := PersistedAckForTest(env.tr); got != (AckCursor{Sequence: 0, Generation: 1}) {
 			t.Fatalf("persistedAck: got %+v, want {0,1}", got)

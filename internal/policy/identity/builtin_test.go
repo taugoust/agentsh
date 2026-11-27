@@ -40,7 +40,12 @@ func TestBuiltinIdentities_HavePlatformMatches(t *testing.T) {
 			// GetPlatformMatch should return something
 			pm := identity.GetPlatformMatch()
 			if pm != nil {
-				assert.False(t, pm.IsEmpty(), "identity %q platform match should not be empty", name)
+				assert.False(
+					t,
+					pm.IsEmpty(),
+					"identity %q platform match should not be empty",
+					name,
+				)
 			}
 		})
 	}
@@ -79,8 +84,9 @@ func TestBuiltinIdentities_CursorMatching(t *testing.T) {
 
 	// Platform-specific test cases
 	// Linux patterns: Comm: []string{"cursor", "Cursor"}, ExePath: []string{"*/cursor", "*/Cursor"}
-	// Darwin patterns: Comm: []string{"Cursor", "Cursor Helper*"}, ExePath: []string{"*/Cursor.app/*"}
-	// Windows patterns: ExeName: []string{"Cursor.exe", "cursor.exe"}, ExePath: []string{"*\\Cursor\\*"}
+	// Darwin patterns: Comm: []string{"Cursor", "Cursor Helper*"}, ExePath:
+	// []string{"*/Cursor.app/*"} Windows patterns: ExeName: []string{"Cursor.exe", "cursor.exe"},
+	// ExePath: []string{"*\\Cursor\\*"}
 
 	tests := []struct {
 		name     string
@@ -147,9 +153,10 @@ func TestBuiltinIdentities_VSCodeMatching(t *testing.T) {
 	require.NoError(t, err)
 
 	// Platform-specific test cases
-	// Linux patterns: Comm: []string{"code", "code-oss"}, ExePath: []string{"*/code", "*/code-oss", "*/vscode/*"}
-	// Darwin patterns: Comm: []string{"Code", "Code Helper*"}, ExePath: []string{"*/Visual Studio Code.app/*", "*/VSCode.app/*"}
-	// Windows patterns: ExeName: []string{"Code.exe", "code.exe"}, ExePath: []string{"*\\Microsoft VS Code\\*"}
+	// Linux patterns: Comm: []string{"code", "code-oss"}, ExePath: []string{"*/code", "*/code-oss",
+	// "*/vscode/*"} Darwin patterns: Comm: []string{"Code", "Code Helper*"}, ExePath:
+	// []string{"*/Visual Studio Code.app/*", "*/VSCode.app/*"} Windows patterns: ExeName:
+	// []string{"Code.exe", "code.exe"}, ExePath: []string{"*\\Microsoft VS Code\\*"}
 
 	tests := []struct {
 		name     string
@@ -182,8 +189,10 @@ func TestBuiltinIdentities_VSCodeMatching(t *testing.T) {
 			platform: "linux",
 		},
 		{
-			name:     "vscode exe path darwin",
-			info:     &ProcessInfo{ExePath: "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"},
+			name: "vscode exe path darwin",
+			info: &ProcessInfo{
+				ExePath: "/Applications/Visual Studio Code.app/Contents/MacOS/Electron",
+			},
 			want:     true,
 			platform: "darwin",
 		},
@@ -262,7 +271,9 @@ func TestBuiltinIdentities_MultipleMatches(t *testing.T) {
 	var info *ProcessInfo
 	if runtime.GOOS == "windows" {
 		// Windows matches ExeName pattern against the exe name extracted from ExePath
-		info = &ProcessInfo{ExePath: "C:\\Users\\test\\AppData\\Local\\Programs\\Cursor\\Cursor.exe"}
+		info = &ProcessInfo{
+			ExePath: "C:\\Users\\test\\AppData\\Local\\Programs\\Cursor\\Cursor.exe",
+		}
 	} else {
 		// Linux/Darwin use Comm
 		info = &ProcessInfo{Comm: "Cursor"}

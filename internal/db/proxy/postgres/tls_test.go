@@ -95,15 +95,20 @@ database_connection_rules:
 			ServerName: "localhost",
 			MinVersion: tls.VersionTLS12,
 		},
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: upAddr,
-			TLSMode:  "terminate_reissue",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "_unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_reissue"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: upAddr,
+				TLSMode:  "terminate_reissue",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "_unused.sock"),
+				},
+				Service: policy.DBService{Name: "appdb", TLSMode: "terminate_reissue"},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -169,7 +174,8 @@ database_connection_rules:
 	cancel()
 	select {
 	case err := <-srvDone:
-		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) &&
+			!errors.Is(err, net.ErrClosed) {
 			t.Logf("server returned: %v", err)
 		}
 	case <-time.After(2 * time.Second):

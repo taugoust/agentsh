@@ -124,7 +124,10 @@ func TestEscalation_OptionOn_UnknownFn_ProceduralEmitted(t *testing.T) {
 	got, err := New(DialectPostgres).Classify(
 		"SELECT my_volatile()",
 		SessionState{},
-		Options{EscalateUnknownFunctions: true, SafeFunctionAllowlist: map[string]struct{}{"now": {}}},
+		Options{
+			EscalateUnknownFunctions: true,
+			SafeFunctionAllowlist:    map[string]struct{}{"now": {}},
+		},
 	)
 	if err != nil {
 		t.Fatalf("Classify: %v", err)
@@ -149,7 +152,10 @@ func TestEscalation_OptionOn_AllowlistedFn_NoProcedural(t *testing.T) {
 	got, err := New(DialectPostgres).Classify(
 		"SELECT now()",
 		SessionState{},
-		Options{EscalateUnknownFunctions: true, SafeFunctionAllowlist: map[string]struct{}{"now": {}}},
+		Options{
+			EscalateUnknownFunctions: true,
+			SafeFunctionAllowlist:    map[string]struct{}{"now": {}},
+		},
 	)
 	if err != nil {
 		t.Fatalf("Classify: %v", err)

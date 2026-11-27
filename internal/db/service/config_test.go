@@ -88,6 +88,7 @@ services:
 }
 
 func TestParseConfig_Validate_RejectsDuplicateNames(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	in := []byte(`
 services:
   - {name: appdb, family: postgres, dialect: postgres, upstream: {host: x, port: 1}, listen: {kind: unix, path: /a}, tls_mode: passthrough}

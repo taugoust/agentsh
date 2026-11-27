@@ -11,7 +11,14 @@ import (
 
 func TestJournalReplaysExactRecordsAndRejectsConflictsAcrossExactIdentity(t *testing.T) {
 	identity := Identity{SessionID: "session-one", Generation: 2, IncarnationID: "incarnation-two"}
-	request := approvals.Request{ID: "approval-one", SessionID: identity.SessionID, Kind: "file", Target: "/work/a", CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute)}
+	request := approvals.Request{
+		ID:        "approval-one",
+		SessionID: identity.SessionID,
+		Kind:      "file",
+		Target:    "/work/a",
+		CreatedAt: time.Now().UTC(),
+		ExpiresAt: time.Now().UTC().Add(time.Minute),
+	}
 	record, err := NewApprovalRequest(1, request)
 	if err != nil {
 		t.Fatal(err)
@@ -31,14 +38,31 @@ func TestJournalReplaysExactRecordsAndRejectsConflictsAcrossExactIdentity(t *tes
 	if err := conflict.seal(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := journal.Put(identity, conflict); err == nil || !strings.Contains(err.Error(), "conflicting") {
+	if _, err := journal.Put(
+		identity,
+		conflict,
+	); err == nil ||
+		!strings.Contains(err.Error(), "conflicting") {
 		t.Fatalf("conflict error = %v", err)
 	}
-	late, err := NewApprovalRequest(1, approvals.Request{ID: "late", SessionID: identity.SessionID, Kind: "file", CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute)})
+	late, err := NewApprovalRequest(
+		1,
+		approvals.Request{
+			ID:        "late",
+			SessionID: identity.SessionID,
+			Kind:      "file",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(time.Minute),
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := journal.Put(identity, late); err == nil || !strings.Contains(err.Error(), "contiguous") {
+	if _, err := journal.Put(
+		identity,
+		late,
+	); err == nil ||
+		!strings.Contains(err.Error(), "contiguous") {
 		t.Fatalf("late sequence error = %v", err)
 	}
 	got := journal.Since(identity, 0, 10, KindApprovalRequested)
@@ -49,7 +73,12 @@ func TestJournalReplaysExactRecordsAndRejectsConflictsAcrossExactIdentity(t *tes
 
 func TestExchangeResponseAllowsCumulativeAckWithoutNewRecords(t *testing.T) {
 	identity := Identity{SessionID: "session-one", Generation: 1, IncarnationID: "incarnation-one"}
-	response := ExchangeResponse{Version: Version, Identity: identity, Ack: 7, Pending: []approvals.Request{{ID: "pending", SessionID: identity.SessionID}}}
+	response := ExchangeResponse{
+		Version:  Version,
+		Identity: identity,
+		Ack:      7,
+		Pending:  []approvals.Request{{ID: "pending", SessionID: identity.SessionID}},
+	}
 	if err := response.Validate(identity, 0, 0, 0, false); err != nil {
 		t.Fatal(err)
 	}
@@ -60,15 +89,29 @@ func TestExchangeResponseAllowsCumulativeAckWithoutNewRecords(t *testing.T) {
 
 func TestExchangeStrictlyValidatesVersionDigestAndOrdering(t *testing.T) {
 	identity := Identity{SessionID: "session-one", Generation: 1, IncarnationID: "incarnation-one"}
-	first, err := NewApprovalResolution(2, "a", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
+	first, err := NewApprovalResolution(
+		2,
+		"a",
+		approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := NewApprovalResolution(1, "b", approvals.Resolution{Approved: false, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
+	second, err := NewApprovalResolution(
+		1,
+		"b",
+		approvals.Resolution{Approved: false, Scope: approvals.ScopeOnce, At: time.Now().UTC()},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := ExchangeRequest{Version: Version, Identity: identity, Credential: "credential", Limit: 16, Records: []Record{first, second}}
+	request := ExchangeRequest{
+		Version:    Version,
+		Identity:   identity,
+		Credential: "credential",
+		Limit:      16,
+		Records:    []Record{first, second},
+	}
 	if err := request.Validate(); err == nil || !strings.Contains(err.Error(), "ordered") {
 		t.Fatalf("ordering error = %v", err)
 	}

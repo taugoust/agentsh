@@ -60,10 +60,34 @@ func TestNativeLookupWorkerDistinguishesLookupFailuresAndSymlinks(t *testing.T) 
 		class     Class
 		reason    Reason
 	}{
-		{"inaccessible parent is not absent", "blocked/missing", OperationOpen, ClassInaccessible, ReasonErrno},
-		{"non-directory ancestor is distinct", "regular/child", OperationOpen, ClassNotDirectory, ReasonErrno},
-		{"dangling followed symlink is conservative", "dangling", OperationOpen, ClassUnknown, ReasonSymlinkContext},
-		{"readlink metadata sees dangling symlink", "dangling", OperationReadlinkMetadata, ClassExists, ReasonNone},
+		{
+			"inaccessible parent is not absent",
+			"blocked/missing",
+			OperationOpen,
+			ClassInaccessible,
+			ReasonErrno,
+		},
+		{
+			"non-directory ancestor is distinct",
+			"regular/child",
+			OperationOpen,
+			ClassNotDirectory,
+			ReasonErrno,
+		},
+		{
+			"dangling followed symlink is conservative",
+			"dangling",
+			OperationOpen,
+			ClassUnknown,
+			ReasonSymlinkContext,
+		},
+		{
+			"readlink metadata sees dangling symlink",
+			"dangling",
+			OperationReadlinkMetadata,
+			ClassExists,
+			ReasonNone,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -79,7 +103,11 @@ func runNativeWorker(t *testing.T, workerPath, directory, path string) Result {
 	return runNativeWorkerOperation(t, workerPath, directory, path, OperationOpen)
 }
 
-func runNativeWorkerOperation(t *testing.T, workerPath, directory, path string, operation Operation) Result {
+func runNativeWorkerOperation(
+	t *testing.T,
+	workerPath, directory, path string,
+	operation Operation,
+) Result {
 	t.Helper()
 	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
@@ -109,7 +137,9 @@ func runNativeWorkerOperation(t *testing.T, workerPath, directory, path string, 
 	}
 	_ = child.Close()
 	label := ""
-	if data, err := os.ReadFile(filepath.Join(string(filepath.Separator), "proc", "self", "attr", "current")); err == nil {
+	if data, err := os.ReadFile(
+		filepath.Join(string(filepath.Separator), "proc", "self", "attr", "current"),
+	); err == nil {
 		label = strings.TrimRight(string(data), "\n\x00")
 	}
 	packet, err := EncodeRequest(Request{

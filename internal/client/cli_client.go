@@ -14,15 +14,27 @@ import (
 type CLIClient interface {
 	CreateSession(ctx context.Context, workspace, policy string) (types.Session, error)
 	CreateSessionWithID(ctx context.Context, id, workspace, policy string) (types.Session, error)
-	CreateSessionWithRequest(ctx context.Context, req types.CreateSessionRequest) (types.Session, error)
+	CreateSessionWithRequest(
+		ctx context.Context,
+		req types.CreateSessionRequest,
+	) (types.Session, error)
 	ListSessions(ctx context.Context) ([]types.Session, error)
 	GetSession(ctx context.Context, id string) (types.Session, error)
 	DestroySession(ctx context.Context, id string) error
-	PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error)
+	PatchSession(
+		ctx context.Context,
+		id string,
+		req types.SessionPatchRequest,
+	) (types.Session, error)
 	DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error)
 	DiffSessionOverlayReview(ctx context.Context, id string) (OverlayReview, error)
 	AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error)
-	AcceptSessionOverlayReviewed(ctx context.Context, id string, generation uint64, hash string) (types.Session, error)
+	AcceptSessionOverlayReviewed(
+		ctx context.Context,
+		id string,
+		generation uint64,
+		hash string,
+	) (types.Session, error)
 	RejectSessionOverlay(ctx context.Context, id string) (types.Session, error)
 
 	Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error)
@@ -33,7 +45,12 @@ type CLIClient interface {
 	SearchEvents(ctx context.Context, q url.Values) ([]types.Event, error)
 	StreamSessionEvents(ctx context.Context, sessionID string) (io.ReadCloser, error)
 
-	OutputChunk(ctx context.Context, sessionID, commandID string, stream string, offset, limit int64) (map[string]any, error)
+	OutputChunk(
+		ctx context.Context,
+		sessionID, commandID string,
+		stream string,
+		offset, limit int64,
+	) (map[string]any, error)
 
 	ListApprovals(ctx context.Context) ([]map[string]any, error)
 	ResolveApproval(ctx context.Context, id string, decision string, reason string) error
@@ -48,7 +65,11 @@ type CLIClient interface {
 	WatchTaints(ctx context.Context, agentOnly bool, handler func(types.TaintEvent)) error
 
 	// Wrap-related operations
-	WrapInit(ctx context.Context, sessionID string, req types.WrapInitRequest) (types.WrapInitResponse, error)
+	WrapInit(
+		ctx context.Context,
+		sessionID string,
+		req types.WrapInitRequest,
+	) (types.WrapInitResponse, error)
 
 	// MCP-related operations
 	ListMCPTools(ctx context.Context, q url.Values) ([]map[string]any, error)
@@ -92,42 +113,62 @@ type HybridClient struct {
 	grpc *GRPCClient
 }
 
-func (h *HybridClient) CreateSession(ctx context.Context, workspace, policy string) (types.Session, error) {
+func (h *HybridClient) CreateSession(
+	ctx context.Context,
+	workspace, policy string,
+) (types.Session, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.CreateSession(ctx, workspace, policy)
 	}
 	return h.Client.CreateSession(ctx, workspace, policy)
 }
 
-func (h *HybridClient) CreateSessionWithID(ctx context.Context, id, workspace, policy string) (types.Session, error) {
+func (h *HybridClient) CreateSessionWithID(
+	ctx context.Context,
+	id, workspace, policy string,
+) (types.Session, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.CreateSessionWithID(ctx, id, workspace, policy)
 	}
 	return h.Client.CreateSessionWithID(ctx, id, workspace, policy)
 }
 
-func (h *HybridClient) CreateSessionWithRequest(ctx context.Context, req types.CreateSessionRequest) (types.Session, error) {
+func (h *HybridClient) CreateSessionWithRequest(
+	ctx context.Context,
+	req types.CreateSessionRequest,
+) (types.Session, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.CreateSessionWithRequest(ctx, req)
 	}
 	return h.Client.CreateSessionWithRequest(ctx, req)
 }
 
-func (h *HybridClient) Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error) {
+func (h *HybridClient) Exec(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (types.ExecResponse, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.Exec(ctx, sessionID, req)
 	}
 	return h.Client.Exec(ctx, sessionID, req)
 }
 
-func (h *HybridClient) ExecStream(ctx context.Context, sessionID string, req types.ExecRequest) (io.ReadCloser, error) {
+func (h *HybridClient) ExecStream(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (io.ReadCloser, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.ExecStream(ctx, sessionID, req)
 	}
 	return h.Client.ExecStream(ctx, sessionID, req)
 }
 
-func (h *HybridClient) StreamSessionEvents(ctx context.Context, sessionID string) (io.ReadCloser, error) {
+func (h *HybridClient) StreamSessionEvents(
+	ctx context.Context,
+	sessionID string,
+) (io.ReadCloser, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.StreamSessionEvents(ctx, sessionID)
 	}
@@ -159,15 +200,28 @@ func (h *HybridClient) DestroySession(ctx context.Context, id string) error {
 }
 
 // PatchSession patches a session. Uses gRPC if available.
-func (h *HybridClient) RebindSessionNethelper(ctx context.Context, id string, req types.NethelperRebindRequest) (types.NetworkEnforcement, error) {
+func (h *HybridClient) RebindSessionNethelper(
+	ctx context.Context,
+	id string,
+	req types.NethelperRebindRequest,
+) (types.NetworkEnforcement, error) {
 	return h.Client.RebindSessionNethelper(ctx, id, req)
 }
 
-func (h *HybridClient) RebindSessionNethelperAuthorized(ctx context.Context, id string, req types.NethelperRebindRequest, recoveryToken string) (types.NetworkEnforcement, error) {
+func (h *HybridClient) RebindSessionNethelperAuthorized(
+	ctx context.Context,
+	id string,
+	req types.NethelperRebindRequest,
+	recoveryToken string,
+) (types.NetworkEnforcement, error) {
 	return h.Client.RebindSessionNethelperAuthorized(ctx, id, req, recoveryToken)
 }
 
-func (h *HybridClient) PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error) {
+func (h *HybridClient) PatchSession(
+	ctx context.Context,
+	id string,
+	req types.SessionPatchRequest,
+) (types.Session, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.PatchSession(ctx, id, req)
 	}
@@ -195,7 +249,11 @@ func (h *HybridClient) KillCommand(ctx context.Context, sessionID, commandID str
 }
 
 // QuerySessionEvents queries events for a session. Uses gRPC if available.
-func (h *HybridClient) QuerySessionEvents(ctx context.Context, sessionID string, q url.Values) ([]types.Event, error) {
+func (h *HybridClient) QuerySessionEvents(
+	ctx context.Context,
+	sessionID string,
+	q url.Values,
+) ([]types.Event, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.QuerySessionEvents(ctx, sessionID, q)
 	}
@@ -211,7 +269,11 @@ func (h *HybridClient) SearchEvents(ctx context.Context, q url.Values) ([]types.
 }
 
 // OutputChunk retrieves output chunks. Uses gRPC if available.
-func (h *HybridClient) OutputChunk(ctx context.Context, sessionID, commandID, stream string, offset, limit int64) (map[string]any, error) {
+func (h *HybridClient) OutputChunk(
+	ctx context.Context,
+	sessionID, commandID, stream string,
+	offset, limit int64,
+) (map[string]any, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.OutputChunk(ctx, sessionID, commandID, stream, offset, limit)
 	}
@@ -231,7 +293,10 @@ func (h *HybridClient) ResolveApproval(ctx context.Context, id, decision, reason
 	return h.ResolveApprovalWithScope(ctx, id, decision, reason, "")
 }
 
-func (h *HybridClient) ResolveApprovalWithScope(ctx context.Context, id, decision, reason, scope string) error {
+func (h *HybridClient) ResolveApprovalWithScope(
+	ctx context.Context,
+	id, decision, reason, scope string,
+) error {
 	if h != nil && h.grpc != nil {
 		return h.grpc.ResolveApprovalWithScope(ctx, id, decision, reason, scope)
 	}
@@ -239,7 +304,10 @@ func (h *HybridClient) ResolveApprovalWithScope(ctx context.Context, id, decisio
 }
 
 // PolicyTest tests policy. Uses gRPC if available.
-func (h *HybridClient) PolicyTest(ctx context.Context, sessionID, operation, path string) (map[string]any, error) {
+func (h *HybridClient) PolicyTest(
+	ctx context.Context,
+	sessionID, operation, path string,
+) (map[string]any, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.PolicyTest(ctx, sessionID, operation, path)
 	}
@@ -247,7 +315,10 @@ func (h *HybridClient) PolicyTest(ctx context.Context, sessionID, operation, pat
 }
 
 // GetProxyStatus gets the proxy status for a session. Uses gRPC if available.
-func (h *HybridClient) GetProxyStatus(ctx context.Context, sessionID string) (map[string]any, error) {
+func (h *HybridClient) GetProxyStatus(
+	ctx context.Context,
+	sessionID string,
+) (map[string]any, error) {
 	if h != nil && h.grpc != nil {
 		return h.grpc.GetProxyStatus(ctx, sessionID)
 	}
@@ -255,7 +326,10 @@ func (h *HybridClient) GetProxyStatus(ctx context.Context, sessionID string) (ma
 }
 
 // ListTaints lists all tainted processes.
-func (h *HybridClient) ListTaints(ctx context.Context, sessionID string) ([]types.TaintInfo, error) {
+func (h *HybridClient) ListTaints(
+	ctx context.Context,
+	sessionID string,
+) ([]types.TaintInfo, error) {
 	return h.Client.ListTaints(ctx, sessionID)
 }
 
@@ -270,12 +344,20 @@ func (h *HybridClient) GetTaintTrace(ctx context.Context, pid int) (*types.Taint
 }
 
 // WatchTaints watches for taint events.
-func (h *HybridClient) WatchTaints(ctx context.Context, agentOnly bool, handler func(types.TaintEvent)) error {
+func (h *HybridClient) WatchTaints(
+	ctx context.Context,
+	agentOnly bool,
+	handler func(types.TaintEvent),
+) error {
 	return h.Client.WatchTaints(ctx, agentOnly, handler)
 }
 
 // WrapInit initializes seccomp wrapping for a session.
-func (h *HybridClient) WrapInit(ctx context.Context, sessionID string, req types.WrapInitRequest) (types.WrapInitResponse, error) {
+func (h *HybridClient) WrapInit(
+	ctx context.Context,
+	sessionID string,
+	req types.WrapInitRequest,
+) (types.WrapInitResponse, error) {
 	return h.Client.WrapInit(ctx, sessionID, req)
 }
 

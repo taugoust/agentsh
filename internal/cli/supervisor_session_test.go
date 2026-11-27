@@ -37,10 +37,16 @@ func TestDetachedSupervisorStrictNetworkHasNoMigrationWarning(t *testing.T) {
 	}
 
 	stateDir := t.TempDir()
-	if err := configureSupervisorMVP(cfg, stateDir, filepath.Join(stateDir, "supervisor.sock")); err != nil {
+	if err := configureSupervisorMVP(
+		cfg,
+		stateDir,
+		filepath.Join(stateDir, "supervisor.sock"),
+	); err != nil {
 		t.Fatalf("configureSupervisorMVP should preserve strict network setup: %v", err)
 	}
-	if !cfg.Sandbox.Network.Enabled || !cfg.Sandbox.Network.EBPF.Enabled || !cfg.Sandbox.Network.EBPF.Enforce || !cfg.Sandbox.Network.EBPF.Required {
+	if !cfg.Sandbox.Network.Enabled || !cfg.Sandbox.Network.EBPF.Enabled ||
+		!cfg.Sandbox.Network.EBPF.Enforce ||
+		!cfg.Sandbox.Network.EBPF.Required {
 		t.Fatalf("strict network configuration was not preserved: %+v", cfg.Sandbox.Network)
 	}
 	if !cfg.Development.DetachedControlOnly || cfg.Development.AllowUnauthenticatedUnixApprovals {
@@ -55,7 +61,11 @@ func TestConfigureSupervisorMVPStillDisablesBestEffortNetworkPieces(t *testing.T
 	cfg.Sandbox.Cgroups.Enabled = true
 
 	stateDir := t.TempDir()
-	if err := configureSupervisorMVP(cfg, stateDir, filepath.Join(stateDir, "supervisor.sock")); err != nil {
+	if err := configureSupervisorMVP(
+		cfg,
+		stateDir,
+		filepath.Join(stateDir, "supervisor.sock"),
+	); err != nil {
 		t.Fatalf("configureSupervisorMVP: %v", err)
 	}
 	if cfg.Sandbox.Network.Enabled {
@@ -102,30 +112,50 @@ func TestConfigureSupervisorMVPPreservesStrictEBPFFailClosed(t *testing.T) {
 	cfg.Sandbox.Network.EBPF.Required = true
 	cfg.Sandbox.Network.EBPF.Enforce = true
 	cfg.Sandbox.Cgroups.Enabled = true
-	cfg.Sandbox.Cgroups.BasePath = filepath.Join(string(filepath.Separator), "sys", "fs", "cgroup", "system.slice", "agentsh.service")
+	cfg.Sandbox.Cgroups.BasePath = filepath.Join(
+		string(filepath.Separator),
+		"sys",
+		"fs",
+		"cgroup",
+		"system.slice",
+		"agentsh.service",
+	)
 
 	stateDir := t.TempDir()
-	if err := configureSupervisorMVP(cfg, stateDir, filepath.Join(stateDir, "supervisor.sock")); err != nil {
+	if err := configureSupervisorMVP(
+		cfg,
+		stateDir,
+		filepath.Join(stateDir, "supervisor.sock"),
+	); err != nil {
 		t.Fatalf("configureSupervisorMVP: %v", err)
 	}
 	if !cfg.Sandbox.Network.Enabled {
 		t.Fatal("network proxy path should remain enabled for strict detached eBPF")
 	}
-	if !cfg.Sandbox.Network.EBPF.Enabled || !cfg.Sandbox.Network.EBPF.Required || !cfg.Sandbox.Network.EBPF.Enforce {
+	if !cfg.Sandbox.Network.EBPF.Enabled || !cfg.Sandbox.Network.EBPF.Required ||
+		!cfg.Sandbox.Network.EBPF.Enforce {
 		t.Fatalf("strict eBPF flags were not preserved: %+v", cfg.Sandbox.Network.EBPF)
 	}
 	if cfg.Sandbox.Cgroups.Enabled {
-		t.Fatal("detached strict eBPF should use attach-only cgroup probing, not resource-controller mode")
+		t.Fatal(
+			"detached strict eBPF should use attach-only cgroup probing, not " +
+				"resource-controller mode",
+		)
 	}
 	if cfg.Sandbox.Cgroups.BasePath != "" {
-		t.Fatalf("detached supervisor retained unrelated daemon cgroup base path %q", cfg.Sandbox.Cgroups.BasePath)
+		t.Fatalf(
+			"detached supervisor retained unrelated daemon cgroup base path %q",
+			cfg.Sandbox.Cgroups.BasePath,
+		)
 	}
 	if cfg.Sandbox.Network.Transparent.Enabled {
 		t.Fatal("transparent netns remains unsupported in detached MVP")
 	}
 }
 
-func TestDetachedSupervisorNetworkEnforcementForStrictNethelperLaunchDoesNotClaimEnforced(t *testing.T) {
+func TestDetachedSupervisorNetworkEnforcementForStrictNethelperLaunchDoesNotClaimEnforced(
+	t *testing.T,
+) {
 	cfg := &config.Config{}
 	cfg.Sandbox.Network.Enabled = true
 	cfg.Sandbox.Network.EBPF.Enforce = true
@@ -212,7 +242,10 @@ func TestDetachedSessionStartResultJSONIncludesNetworkEnforcement(t *testing.T) 
 func TestBuildDetachedSupervisorLaunchRecordsNethelperSocket(t *testing.T) {
 	req := testDetachedSupervisorLaunchRequest()
 	req.GOOS = "linux"
-	req.Env = append(req.Env, "AGENTSH_NETHELPER_SOCKET="+filepath.Join("run", "agentsh", "nethelper.sock"))
+	req.Env = append(
+		req.Env,
+		"AGENTSH_NETHELPER_SOCKET="+filepath.Join("run", "agentsh", "nethelper.sock"),
+	)
 
 	launch := buildDetachedSupervisorLaunch(req)
 	if launch.NethelperSocket != filepath.Join("run", "agentsh", "nethelper.sock") {
@@ -297,7 +330,16 @@ func TestBuildDetachedSupervisorLaunchFallsBackOffLinux(t *testing.T) {
 }
 
 func TestWithoutEnvAssignmentsRemovesExistingSupervisorSecrets(t *testing.T) {
-	env := withoutEnvAssignments([]string{"PATH=bin", "AGENTSH_DETACHED_EVENT_TOKEN=old", "agentsh_nethelper_session_nonce=old", "AGENTSH_NETHELPER_SOCKET=sock"}, "AGENTSH_DETACHED_EVENT_TOKEN", "AGENTSH_NETHELPER_SESSION_NONCE")
+	env := withoutEnvAssignments(
+		[]string{
+			"PATH=bin",
+			"AGENTSH_DETACHED_EVENT_TOKEN=old",
+			"agentsh_nethelper_session_nonce=old",
+			"AGENTSH_NETHELPER_SOCKET=sock",
+		},
+		"AGENTSH_DETACHED_EVENT_TOKEN",
+		"AGENTSH_NETHELPER_SESSION_NONCE",
+	)
 	want := []string{"PATH=bin", "AGENTSH_NETHELPER_SOCKET=sock"}
 	if !reflect.DeepEqual(env, want) {
 		t.Fatalf("env = %#v, want %#v", env, want)
@@ -307,7 +349,13 @@ func TestWithoutEnvAssignmentsRemovesExistingSupervisorSecrets(t *testing.T) {
 func TestDetachedSupervisorServiceEnvIncludesNethelperSocket(t *testing.T) {
 	credentialFile := filepath.Join("run", "agentsh", "instance-credential")
 	bootstrapResult := filepath.Join("run", "agentsh", "bootstrap.json")
-	recoveryToken := filepath.Join("run", "user", "1000", "agentsh-wrapper-control", "nethelper-recovery.token")
+	recoveryToken := filepath.Join(
+		"run",
+		"user",
+		"1000",
+		"agentsh-wrapper-control",
+		"nethelper-recovery.token",
+	)
 	env := detachedSupervisorServiceEnv([]string{
 		"PATH=bin",
 		"AGENTSH_NETHELPER_SOCKET=" + filepath.Join("run", "agentsh", "nethelper.sock"),
@@ -409,12 +457,20 @@ func TestBuildSystemdRunDetachedSupervisorArgsCreatesRestartableUnit(t *testing.
 	if launch.Dir != req.Dir {
 		t.Fatalf("Dir = %q, want %q", launch.Dir, req.Dir)
 	}
-	wantLaunchEnv := withoutEnvAssignments(req.Env, "AGENTSH_DETACHED_EVENT_TOKEN", nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, detached.EnvSupervisorLaunchMode)
+	wantLaunchEnv := withoutEnvAssignments(
+		req.Env,
+		"AGENTSH_DETACHED_EVENT_TOKEN",
+		nethelper.EnvHelperInstanceCredential,
+		nethelper.EnvSessionNonce,
+		detached.EnvSupervisorLaunchMode,
+	)
 	if !reflect.DeepEqual(launch.Env, wantLaunchEnv) {
 		t.Fatalf("Env = %#v, want %#v", launch.Env, wantLaunchEnv)
 	}
 	if launch.OwnerPIDFromCommand {
-		t.Fatal("systemd-run launch should not treat the systemd-run client PID as the supervisor PID")
+		t.Fatal(
+			"systemd-run launch should not treat the systemd-run client PID as the supervisor PID",
+		)
 	}
 
 	unit := detachedSupervisorSystemdUnit(req.SessionID)
@@ -488,18 +544,30 @@ func TestDetachedSupervisorSystemdUnitSanitizesSessionID(t *testing.T) {
 
 func testDetachedSupervisorLaunchRequest() detachedSupervisorLaunchRequest {
 	return detachedSupervisorLaunchRequest{
-		Exe:            "agentsh",
-		Args:           detachedSupervisorRunArgs("state", "sock", "config.yml"),
-		Env:            []string{"PATH=bin", "AGENTSH_DETACHED_EVENT_TOKEN=token"},
-		Dir:            "workspace",
-		SessionID:      "session-123",
-		ServiceEnv:     []string{"AGENTSH_DETACHED_EVENT_TOKEN=token", "AGENTSH_NETHELPER_CREDENTIAL_FILE=credential-file"},
+		Exe:       "agentsh",
+		Args:      detachedSupervisorRunArgs("state", "sock", "config.yml"),
+		Env:       []string{"PATH=bin", "AGENTSH_DETACHED_EVENT_TOKEN=token"},
+		Dir:       "workspace",
+		SessionID: "session-123",
+		ServiceEnv: []string{
+			"AGENTSH_DETACHED_EVENT_TOKEN=token",
+			"AGENTSH_NETHELPER_CREDENTIAL_FILE=credential-file",
+		},
 		ServiceEnvFile: filepath.Join(string(filepath.Separator), "state", "supervisor.env"),
-		ServiceLogFile: filepath.Join(string(filepath.Separator), "state", "logs", "supervisor.log"),
+		ServiceLogFile: filepath.Join(
+			string(filepath.Separator),
+			"state",
+			"logs",
+			"supervisor.log",
+		),
 	}
 }
 
-func assertDirectDetachedSupervisorLaunch(t *testing.T, launch detachedSupervisorLaunch, req detachedSupervisorLaunchRequest) {
+func assertDirectDetachedSupervisorLaunch(
+	t *testing.T,
+	launch detachedSupervisorLaunch,
+	req detachedSupervisorLaunchRequest,
+) {
 	t.Helper()
 	if launch.UsesSystemd {
 		t.Fatal("expected direct launch, got systemd-run")
@@ -534,7 +602,10 @@ func TestDetachedSessionIDRequiresCanonicalCallerIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate detached session ID: %v", err)
 	}
-	if _, err := uuid.Parse(strings.TrimPrefix(generated, "session-")); err != nil || !strings.HasPrefix(generated, "session-") {
+	if _, err := uuid.Parse(
+		strings.TrimPrefix(generated, "session-"),
+	); err != nil ||
+		!strings.HasPrefix(generated, "session-") {
 		t.Fatalf("generated non-canonical ID %q", generated)
 	}
 	for _, invalid := range []string{
@@ -549,7 +620,8 @@ func TestDetachedSessionIDRequiresCanonicalCallerIdentity(t *testing.T) {
 			t.Errorf("detachedSessionID(%q) unexpectedly succeeded", invalid)
 		}
 	}
-	if newSessionStartCmd().Flags().Lookup("session-id") == nil || newSessionStartCmd().Flags().Lookup("control-token-file") == nil {
+	if newSessionStartCmd().Flags().Lookup("session-id") == nil ||
+		newSessionStartCmd().Flags().Lookup("control-token-file") == nil {
 		t.Fatal("session start does not expose exact identity and private control credential flags")
 	}
 
@@ -563,7 +635,10 @@ func TestDetachedSessionIDRequiresCanonicalCallerIdentity(t *testing.T) {
 	if filepath.Base(stateDir) != canonical {
 		t.Fatalf("reserved state directory = %q", stateDir)
 	}
-	if _, err := reserveDetachedSessionState(canonical); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if _, err := reserveDetachedSessionState(
+		canonical,
+	); err == nil ||
+		!strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("caller identity collision error = %v", err)
 	}
 }
@@ -598,7 +673,10 @@ func TestWriteDetachedControlTokenFileRequiresPrivateExclusiveDestination(t *tes
 	if err := os.Mkdir(public, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeDetachedControlTokenFile(filepath.Join(public, "control.token"), "secret"); err == nil {
+	if err := writeDetachedControlTokenFile(
+		filepath.Join(public, "control.token"),
+		"secret",
+	); err == nil {
 		t.Fatal("public token directory was accepted")
 	}
 }
@@ -607,12 +685,20 @@ func TestValidateDetachedStopAuthorityRequiresExactTopology(t *testing.T) {
 	sessionID := "session-11111111-1111-4111-8111-111111111111"
 	stateDir := filepath.Join(t.TempDir(), sessionID)
 	meta := supervisorMetadata{
-		SessionID: sessionID, ID: sessionID, SupervisorSock: filepath.Join(stateDir, "supervisor.sock"),
-		ProtocolVersion: detached.ProtocolVersion, Generation: 2, IncarnationID: "incarnation-test",
+		SessionID:       sessionID,
+		ID:              sessionID,
+		SupervisorSock:  filepath.Join(stateDir, "supervisor.sock"),
+		ProtocolVersion: detached.ProtocolVersion,
+		Generation:      2,
+		IncarnationID:   "incarnation-test",
 	}
 	manifest := detached.NewRecoveryManifest(sessionID, types.CreateSessionRequest{
 		ID: sessionID, Workspace: t.TempDir(),
-	}, detached.LaunchSpec{Executable: "/bin/agentsh", WorkingDir: t.TempDir(), EnvironmentFile: filepath.Join(stateDir, "supervisor.env")}, time.Now())
+	}, detached.LaunchSpec{
+		Executable:      "/bin/agentsh",
+		WorkingDir:      t.TempDir(),
+		EnvironmentFile: filepath.Join(stateDir, "supervisor.env"),
+	}, time.Now())
 	manifest.Generation = meta.Generation
 	manifest.IncarnationID = meta.IncarnationID
 	if err := validateDetachedStopAuthority(sessionID, stateDir, meta, manifest, nil); err != nil {
@@ -621,23 +707,45 @@ func TestValidateDetachedStopAuthorityRequiresExactTopology(t *testing.T) {
 
 	wrongSocket := meta
 	wrongSocket.SupervisorSock = filepath.Join(t.TempDir(), "supervisor.sock")
-	if err := validateDetachedStopAuthority(sessionID, stateDir, wrongSocket, manifest, nil); err == nil {
+	if err := validateDetachedStopAuthority(
+		sessionID,
+		stateDir,
+		wrongSocket,
+		manifest,
+		nil,
+	); err == nil {
 		t.Fatal("socket outside exact state directory was accepted")
 	}
 	wrongUnit := meta
-	wrongUnit.SystemdUnit = "agentsh-supervisor-session-22222222-2222-4222-8222-222222222222.service"
-	if err := validateDetachedStopAuthority(sessionID, stateDir, wrongUnit, manifest, nil); err == nil {
+	wrongUnit.SystemdUnit =
+		"agentsh-supervisor-session-22222222-2222-4222-8222-222222222222.service"
+	if err := validateDetachedStopAuthority(
+		sessionID,
+		stateDir,
+		wrongUnit,
+		manifest,
+		nil,
+	); err == nil {
 		t.Fatal("wrong exact systemd unit was accepted")
 	}
 	wrongManifest := manifest
 	wrongManifest.IncarnationID = "different-incarnation"
-	if err := validateDetachedStopAuthority(sessionID, stateDir, meta, wrongManifest, nil); err == nil {
+	if err := validateDetachedStopAuthority(
+		sessionID,
+		stateDir,
+		meta,
+		wrongManifest,
+		nil,
+	); err == nil {
 		t.Fatal("mismatched recovery incarnation was accepted")
 	}
 }
 
 func TestExactDetachedSessionNotFoundRequiresProtocolV2Typed404(t *testing.T) {
-	missing := &client.HTTPError{StatusCode: http.StatusNotFound, Body: `{"error":"session not found"}`}
+	missing := &client.HTTPError{
+		StatusCode: http.StatusNotFound,
+		Body:       `{"error":"session not found"}`,
+	}
 	meta := supervisorMetadata{ProtocolVersion: detached.ProtocolVersion}
 	if !isExactDetachedSessionNotFound(missing, meta) {
 		t.Fatal("exact protocol-v2 session-not-found response was not classified as idempotent")
@@ -765,7 +873,11 @@ func TestStopDetachedSessionExact_ContinuesAfterIdentityChecked404(t *testing.T)
 		t.Fatal(err)
 	}
 
-	if err := stopDetachedSessionExact(context.Background(), sessionID); err == nil || !strings.Contains(err.Error(), "identity handshake mismatch") {
+	if err := stopDetachedSessionExact(
+		context.Background(),
+		sessionID,
+	); err == nil ||
+		!strings.Contains(err.Error(), "identity handshake mismatch") {
 		t.Fatalf("mismatched live socket stop error = %v", err)
 	}
 	if destroys.Load() != 0 {

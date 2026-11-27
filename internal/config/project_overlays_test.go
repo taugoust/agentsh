@@ -21,7 +21,9 @@ func loadProjectOverlayTestConfig(data []byte) (*Config, error) {
 }
 
 func TestProjectOverlaysDefaults(t *testing.T) {
-	cfg, err := loadProjectOverlayTestConfig([]byte("policies:\n  project_overlays:\n    enabled: true\n"))
+	cfg, err := loadProjectOverlayTestConfig(
+		[]byte("policies:\n  project_overlays:\n    enabled: true\n"),
+	)
 	if err != nil {
 		t.Fatalf("loadFromBytes: %v", err)
 	}
@@ -35,7 +37,12 @@ func TestProjectOverlaysDefaults(t *testing.T) {
 }
 
 func TestProjectOverlaysExplicitNoApproval(t *testing.T) {
-	cfg, err := loadProjectOverlayTestConfig([]byte("policies:\n  project_overlays:\n    enabled: true\n    require_approval: false\n    on_denied: ignore\n"))
+	cfg, err := loadProjectOverlayTestConfig(
+		[]byte(
+			"policies:\n  project_overlays:\n    enabled: true\n    require_approval: false\n" +
+				"    on_denied: ignore\n",
+		),
+	)
 	if err != nil {
 		t.Fatalf("loadFromBytes: %v", err)
 	}

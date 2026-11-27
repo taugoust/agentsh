@@ -25,7 +25,11 @@ func TestCompileBlockOn_DefaultsAndOverrides(t *testing.T) {
 		Match: policy.PackageMatch{FindingType: "malware"}, Action: "deny",
 	})
 	denyCritVuln := containsRule(rules, policy.PackageRule{
-		Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "critical"}, Action: "deny",
+		Match: policy.PackageMatch{
+			FindingType: "vulnerability",
+			Severity:    "critical",
+		},
+		Action: "deny",
 	})
 	warnHighVuln := containsRule(rules, policy.PackageRule{
 		Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "high"}, Action: "warn",
@@ -99,7 +103,11 @@ func TestCompileBlockOnRules_NoCatchAll(t *testing.T) {
 	}
 	// CompileBlockOn should have exactly one more rule than CompileBlockOnRules.
 	if len(allRules) != len(rules)+1 {
-		t.Errorf("CompileBlockOn len=%d, CompileBlockOnRules len=%d; expected exactly 1 more", len(allRules), len(rules))
+		t.Errorf(
+			"CompileBlockOn len=%d, CompileBlockOnRules len=%d; expected exactly 1 more",
+			len(allRules),
+			len(rules),
+		)
 	}
 }
 
@@ -112,7 +120,13 @@ func TestBlockOnConfig_ValidateRejectsTypos(t *testing.T) {
 
 func TestBlockOnConfig_ValidateAcceptsAllValidCombinations(t *testing.T) {
 	cases := []BlockOnConfig{
-		{Malware: "any", Vulnerability: "critical", License: "never", Reputation: "never", Provenance: "never"},
+		{
+			Malware:       "any",
+			Vulnerability: "critical",
+			License:       "never",
+			Reputation:    "never",
+			Provenance:    "never",
+		},
 		{Malware: "critical", Vulnerability: "high"},
 		{Malware: "never", Vulnerability: "medium", License: "any"},
 		{}, // all empty is fine

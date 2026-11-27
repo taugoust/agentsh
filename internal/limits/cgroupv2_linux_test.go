@@ -17,9 +17,14 @@ func TestEnableControllers_ReturnsError(t *testing.T) {
 	// Create a fake FS where subtree_control exists but WriteString injects EBUSY.
 	f := newFakeCgroupFS()
 	f.seedFile("/sys/fs/cgroup/system.slice/agentsh.service/cgroup.subtree_control", "")
-	f.openErrs["/sys/fs/cgroup/system.slice/agentsh.service/cgroup.subtree_control:write"] = syscall.EBUSY
+	f.openErrs["/sys/fs/cgroup/system.slice/agentsh.service/cgroup.subtree_control:write"] =
+		syscall.EBUSY
 
-	err := enableControllersFS(f, "/sys/fs/cgroup/system.slice/agentsh.service", []string{"cpu", "memory", "pids"})
+	err := enableControllersFS(
+		f,
+		"/sys/fs/cgroup/system.slice/agentsh.service",
+		[]string{"cpu", "memory", "pids"},
+	)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -42,7 +47,11 @@ func TestEnableControllers_OpenFileFailure(t *testing.T) {
 	f.seedDir("/sys/fs/cgroup/system.slice/agentsh.service")
 	// Do NOT seed cgroup.subtree_control — OpenFile will return ENOENT.
 
-	err := enableControllersFS(f, "/sys/fs/cgroup/system.slice/agentsh.service", []string{"cpu", "memory", "pids"})
+	err := enableControllersFS(
+		f,
+		"/sys/fs/cgroup/system.slice/agentsh.service",
+		[]string{"cpu", "memory", "pids"},
+	)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -77,9 +86,13 @@ func TestManagerApply_CreatesAndCleansUp_Integration(t *testing.T) {
 		t.Skipf("cgroup enforcement unavailable: %s", m.Probe().Reason)
 	}
 
-	cg, err := m.Apply("agentsh-test-"+strings.ReplaceAll(t.Name(), "/", "_"), cmd.Process.Pid, CgroupV2Limits{
-		PidsMax: 100,
-	})
+	cg, err := m.Apply(
+		"agentsh-test-"+strings.ReplaceAll(t.Name(), "/", "_"),
+		cmd.Process.Pid,
+		CgroupV2Limits{
+			PidsMax: 100,
+		},
+	)
 	if err != nil {
 		t.Skipf("cannot apply cgroup limits in this environment: %v", err)
 	}

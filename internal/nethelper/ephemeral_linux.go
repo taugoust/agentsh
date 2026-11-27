@@ -49,7 +49,8 @@ func ValidateCompositionScratchMetadata(mode, uid, gid uint32) error {
 	permissions := mode & permissionMask
 	if fileType != expectedType || permissions != expectedMode || uid != 0 || gid != 0 {
 		return fmt.Errorf(
-			"composition runtime has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d gid=%d; expected type=%#o mode=%#o uid=0 gid=0)",
+			"composition runtime has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d "+
+				"gid=%d; expected type=%#o mode=%#o uid=0 gid=0)",
 			fileType,
 			permissions,
 			uid,
@@ -70,7 +71,8 @@ func ValidateCompositionLeaseDirectoryMetadata(mode, uid, gid uint32) error {
 	permissions := mode & permissionMask
 	if fileType != uint32(unix.S_IFDIR) || permissions&0o022 != 0 || uid != 0 || gid != 0 {
 		return fmt.Errorf(
-			"composition lease directory has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d gid=%d)",
+			"composition lease directory has unsafe type, mode, or ownership (type=%#o mode=%#o "+
+				"uid=%d gid=%d)",
 			fileType,
 			permissions,
 			uid,
@@ -104,8 +106,9 @@ func EphemeralPathsForUID(uid uint32, leaseID string) (EphemeralLeasePaths, erro
 	pinLeaseDir := filepath.Join(ephemeralPinBase, uidText, leaseID)
 	leaseSuffix := strings.TrimPrefix(leaseID, "lease-")
 	return EphemeralLeasePaths{
-		LeaseID:                leaseID,
-		UnitName:               "agentsh-nethelper-ephemeral-" + uidText + "-" + leaseSuffix + ".service",
+		LeaseID: leaseID,
+		UnitName: "agentsh-nethelper-ephemeral-" + uidText + "-" + leaseSuffix +
+			".service",
 		RuntimeDir:             leaseDir,
 		SocketPath:             filepath.Join(leaseDir, "nethelper.sock"),
 		CredentialFile:         filepath.Join(leaseDir, "instance-credential"),
@@ -143,7 +146,10 @@ func ValidateEphemeralServiceInvocation(uid uint32, leaseID string) (EphemeralLe
 	}
 	expected := filepath.Join(cgroupV2Root(), "system.slice", paths.UnitName)
 	if filepath.Clean(cgroupPath) != expected {
-		return paths, fmt.Errorf("ephemeral nethelper must run in transient unit %s", paths.UnitName)
+		return paths, fmt.Errorf(
+			"ephemeral nethelper must run in transient unit %s",
+			paths.UnitName,
+		)
 	}
 	return paths, nil
 }
@@ -162,7 +168,10 @@ func ValidateHelperSocketForUID(socketPath string, expectedUID uint32) error {
 	return validateSocketFileOwner(socketPath, expectedUID, false)
 }
 
-func ListenEphemeralUnixForUID(socketPath string, expectedUID, expectedGID uint32) (net.Listener, error) {
+func ListenEphemeralUnixForUID(
+	socketPath string,
+	expectedUID, expectedGID uint32,
+) (net.Listener, error) {
 	if os.Geteuid() != 0 {
 		return nil, fmt.Errorf("ephemeral nethelper listener must run as root")
 	}
@@ -174,7 +183,10 @@ func ListenEphemeralUnixForUID(socketPath string, expectedUID, expectedGID uint3
 	}
 	if info, err := os.Lstat(socketPath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeSocket == 0 {
-			return nil, fmt.Errorf("refusing to replace invalid ephemeral helper socket %s", socketPath)
+			return nil, fmt.Errorf(
+				"refusing to replace invalid ephemeral helper socket %s",
+				socketPath,
+			)
 		}
 		if err := validateSocketFileOwner(socketPath, expectedUID, false); err != nil {
 			return nil, err
@@ -232,7 +244,8 @@ func DropEphemeralSetupCapabilities() error {
 	if err := unix.Capget(&header, &verify[0]); err != nil {
 		return fmt.Errorf("verify ephemeral helper capabilities: %w", err)
 	}
-	if verify[word].Effective&(^(mask)) != 0 || verify[word].Permitted&(^(mask)) != 0 || verify[word].Inheritable&(^(mask)) != 0 {
+	if verify[word].Effective&(^(mask)) != 0 || verify[word].Permitted&(^(mask)) != 0 ||
+		verify[word].Inheritable&(^(mask)) != 0 {
 		return fmt.Errorf("ephemeral socket-setup capability remained active")
 	}
 	return nil

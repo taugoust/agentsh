@@ -7,7 +7,9 @@ import (
 	"github.com/agentsh/agentsh/internal/session"
 )
 
-var subagentPrivateKeyPattern = regexp.MustCompile(`-----BEGIN [^-\n]*PRIVATE KEY-----[\s\S]*?-----END [^-\n]*PRIVATE KEY-----`)
+var subagentPrivateKeyPattern = regexp.MustCompile(
+	`-----BEGIN [^-\n]*PRIVATE KEY-----[\s\S]*?-----END [^-\n]*PRIVATE KEY-----`,
+)
 
 func sanitizeSubagentArtifactFinal(value string) string {
 	value = strings.TrimSpace(stripSubagentTerminalControls(value))
@@ -16,7 +18,12 @@ func sanitizeSubagentArtifactFinal(value string) string {
 	return subagentPrivateKeyPattern.ReplaceAllString(value, "[private key redacted]")
 }
 
-func (a *App) persistSubagentFinalArtifact(s *session.Session, result *subagentResult, protocol string, thresholdBytes int64) {
+func (a *App) persistSubagentFinalArtifact(
+	s *session.Session,
+	result *subagentResult,
+	protocol string,
+	thresholdBytes int64,
+) {
 	if s == nil || result == nil || thresholdBytes <= 0 {
 		return
 	}
@@ -26,8 +33,12 @@ func (a *App) persistSubagentFinalArtifact(s *session.Session, result *subagentR
 	if protocol == "pi-json" && !result.ProtocolSettled {
 		return
 	}
-	normalizedStop := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(result.ModelStopReason, "_", ""), "-", ""))
-	if normalizedStop == "tooluse" || normalizedStop == "error" || normalizedStop == "aborted" || normalizedStop == "cancelled" || normalizedStop == "canceled" {
+	normalizedStop := strings.ToLower(
+		strings.ReplaceAll(strings.ReplaceAll(result.ModelStopReason, "_", ""), "-", ""),
+	)
+	if normalizedStop == "tooluse" || normalizedStop == "error" || normalizedStop == "aborted" ||
+		normalizedStop == "cancelled" ||
+		normalizedStop == "canceled" {
 		return
 	}
 
@@ -40,7 +51,10 @@ func (a *App) persistSubagentFinalArtifact(s *session.Session, result *subagentR
 	result.FinalTruncated = true
 	result.FinalTotalBytes = totalBytes
 	result.FinalInlineBytes = thresholdBytes
-	artifact, err := s.WriteOutputArtifact("subagent-"+result.Label+".md", strings.NewReader(visibleFinal))
+	artifact, err := s.WriteOutputArtifact(
+		"subagent-"+result.Label+".md",
+		strings.NewReader(visibleFinal),
+	)
 	if err != nil {
 		complete := false
 		result.ArtifactComplete = &complete

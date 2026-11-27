@@ -24,7 +24,14 @@ import (
 
 func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 	if a.ptraceFailed.Load() {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "ptrace tracer exited unexpectedly; refusing to execute commands without enforcement"})
+		writeJSON(
+			w,
+			http.StatusServiceUnavailable,
+			map[string]any{
+				"error": "ptrace tracer exited unexpectedly; refusing to execute commands " +
+					"without enforcement",
+			},
+		)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -51,7 +58,11 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 	start := time.Now().UTC()
 	unlock, admissionErr := s.LockExecContext(r.Context())
 	if admissionErr != nil {
-		writeJSON(w, http.StatusRequestTimeout, map[string]any{"error": "execution admission cancelled", "command_started": false})
+		writeJSON(
+			w,
+			http.StatusRequestTimeout,
+			map[string]any{"error": "execution admission cancelled", "command_started": false},
+		)
 		return
 	}
 	defer unlock()
@@ -68,10 +79,23 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pre := engine.CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+	pre := engine.CheckCommandWithExecve(
+		req.Command,
+		req.Args,
+		a.execveEnforcementActive(),
+		a.shellCOpaqueMode(),
+	)
 	compositionErrorCode := a.applySandboxCompositionSelection(s, &pre)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
-	approvalErr := a.applyCommandApproval(r.Context(), id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
+	approvalErr := a.applyCommandApproval(
+		r.Context(),
+		id,
+		cmdID,
+		originalCmd,
+		originalArgs,
+		req.Actor,
+		&pre,
+	)
 	preEv := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: start,
@@ -130,7 +154,8 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 		}
 		if pre.PolicyDecision == types.DecisionApprove {
 			code = "E_APPROVAL_DENIED"
-			if approvalErr != nil && strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {
+			if approvalErr != nil &&
+				strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {
 				code = "E_APPROVAL_TIMEOUT"
 			}
 		}
@@ -140,11 +165,16 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 			Timestamp: start,
 			Request:   req,
 			Result: types.ExecResult{
-
 				ExitCode:       126,
 				CommandTimeout: timeoutResolution.Metadata,
 				DurationMs:     int64(time.Since(start).Milliseconds()),
-				Outcome:        &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureDenied, Code: code, Message: "command denied by policy"},
+				Outcome: &types.ExecOutcome{
+					CommandStarted: false,
+					DispatchState:  "not_dispatched",
+					FailureKind:    types.ExecFailureDenied,
+					Code:           code,
+					Message:        "command denied by policy",
+				},
 
 				Error: &types.ExecError{
 					Code:       code,
@@ -164,7 +194,14 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming not supported", "command_timeout": timeoutResolution.Metadata})
+		writeJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]any{
+				"error":           "streaming not supported",
+				"command_timeout": timeoutResolution.Metadata,
+			},
+		)
 		return
 	}
 
@@ -176,12 +213,28 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(http.StatusOK)
 		flusher.Flush()
-		startEv := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "command_started", SessionID: id, CommandID: cmdID, CommandTimeout: &timeoutResolution.Metadata,
-			Fields: map[string]any{"command": req.Command, "args": req.Args}}
+		startEv := types.Event{
+			ID:             uuid.NewString(),
+			Timestamp:      time.Now().UTC(),
+			Type:           "command_started",
+			SessionID:      id,
+			CommandID:      cmdID,
+			CommandTimeout: &timeoutResolution.Metadata,
+			Fields:         map[string]any{"command": req.Command, "args": req.Args},
+		}
 		s.InjectTraceContext(startEv.Fields)
 		_ = a.store.AppendEvent(r.Context(), startEv)
 		a.broker.Publish(startEv)
-		_ = writeSSE(w, flusher, "start", map[string]any{"command_id": cmdID, "command_started": true, "command_timeout": timeoutResolution.Metadata})
+		_ = writeSSE(
+			w,
+			flusher,
+			"start",
+			map[string]any{
+				"command_id":      cmdID,
+				"command_started": true,
+				"command_timeout": timeoutResolution.Metadata,
+			},
+		)
 
 	}
 
@@ -211,22 +264,67 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 			a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
 			if attemptCount == 1 {
 				message := fmt.Sprintf("pre-exec boundary unavailable: %v", wrapperResult.setupErr)
-				writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": message, "command_timeout": timeoutResolution.Metadata, "outcome": &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Code: "E_PRE_EXEC_BOUNDARY", Message: message, AttemptCount: 1}})
+				writeJSON(
+					w,
+					http.StatusServiceUnavailable,
+					map[string]any{
+						"error":           message,
+						"command_timeout": timeoutResolution.Metadata,
+						"outcome": &types.ExecOutcome{
+							CommandStarted: false,
+							DispatchState:  "pre_exec_refused",
+							FailureKind:    types.ExecFailurePreExec,
+							Code:           "E_PRE_EXEC_BOUNDARY",
+							Message:        message,
+							AttemptCount:   1,
+						},
+					},
+				)
 				return
 			}
 			exitCode = 127
-			execErr = markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr))
-			attemptDiagnostics = append(attemptDiagnostics, types.ExecAttemptDiagnostic{Attempt: attemptCount, ProtocolStage: "command_boundary_setup"})
+			execErr = markPreExecEnforcementError(
+				"E_PRE_EXEC_BOUNDARY",
+				fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr),
+			)
+			attemptDiagnostics = append(
+				attemptDiagnostics,
+				types.ExecAttemptDiagnostic{
+					Attempt:       attemptCount,
+					ProtocolStage: "command_boundary_setup",
+				},
+			)
 			break
 		}
 		wrappedReq = wrapperResult.wrappedReq
 		extraCfg = wrapperResult.extraCfg
 		if !envPolicyResolved {
-			cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+			cmdDecision := engine.CheckCommandWithExecve(
+				wrappedReq.Command,
+				wrappedReq.Args,
+				a.execveEnforcementActive(),
+				a.shellCOpaqueMode(),
+			)
 			envPolicy = cmdDecision.EnvPolicy
 			envPolicyResolved = true
 		}
-		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesStreamingEmitResolvedTimeout(r.Context(), s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, emit, a.cgroupHook(id, cmdID, reserveLineagePIDs(limits, extraCfg)), extraCfg, a.ptraceTracer, id, onStarted)
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources,
+			execErr =
+			runCommandWithResourcesStreamingEmitResolvedTimeout(
+				r.Context(),
+				s,
+				cmdID,
+				wrappedReq,
+				a.cfg,
+				envPolicy,
+				timeoutResolution.Duration,
+				emit,
+				a.cgroupHook(id, cmdID, reserveLineagePIDs(limits, extraCfg)),
+				extraCfg,
+				a.ptraceTracer,
+				id,
+				onStarted,
+			)
 		failure := commandJailFailureFrom(execErr)
 		if failure == nil {
 			break
@@ -242,16 +340,36 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 	if !commandStarted {
 		outcome := normalizeExecOutcome(false, exitCode, execErr)
 		applyCommandAttemptDiagnostics(outcome, attemptCount, attemptDiagnostics)
-		writeJSON(w, execFailureHTTPStatus(outcome), map[string]any{"command_id": cmdID, "command_timeout": timeoutResolution.Metadata, "outcome": outcome, "error": outcome.Message})
+		writeJSON(
+			w,
+			execFailureHTTPStatus(outcome),
+			map[string]any{
+				"command_id":      cmdID,
+				"command_timeout": timeoutResolution.Metadata,
+				"outcome":         outcome,
+				"error":           outcome.Message,
+			},
+		)
 		return
 	}
 	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(r.Context())
 	defer cancelTerminalPersistence()
 
-	if !commandStarted && commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
+	if !commandStarted && commandBoundaryRequired(extraCfg) &&
+		shouldRecordNetworkEnforcementFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
 	}
-	_ = a.store.SaveOutput(terminalCtx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
+	_ = a.store.SaveOutput(
+		terminalCtx,
+		id,
+		cmdID,
+		stdoutB,
+		stderrB,
+		stdoutTotal,
+		stderrTotal,
+		stdoutTrunc,
+		stderrTrunc,
+	)
 
 	// Check if process was killed by seccomp (SIGSYS) and emit event
 	emitSeccompBlockedIfSIGSYS(terminalCtx, a.store, a.broker, id, cmdID, execErr)
@@ -310,16 +428,78 @@ func (a *App) execInSessionStream(w http.ResponseWriter, r *http.Request) {
 
 type emitFunc func(event string, payload map[string]any) error
 
-func runCommandWithResourcesStreamingEmit(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, envPol policy.ResolvedEnvPolicy, policyLimit time.Duration, emit emitFunc, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string, onStarted func()) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
+func runCommandWithResourcesStreamingEmit(
+	ctx context.Context,
+	s *session.Session,
+	cmdID string,
+	req types.ExecRequest,
+	cfg *config.Config,
+	envPol policy.ResolvedEnvPolicy,
+	policyLimit time.Duration,
+	emit emitFunc,
+	hook postStartHook,
+	extra *extraProcConfig,
+	tracer any,
+	sessionID string,
+	onStarted func(),
+) (
+	exitCode int,
+	stdout []byte,
+	stderr []byte,
+	stdoutTotal int64,
+	stderrTotal int64,
+	stdoutTrunc bool,
+	stderrTrunc bool,
+	resources types.ExecResources,
+	err error,
+) {
 	resolution, resolveErr := resolveCommandTimeout(req, policyLimit)
 	if resolveErr != nil {
 		closePreStartProcessFiles(extra)
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, resolveErr
 	}
-	return runCommandWithResourcesStreamingEmitResolvedTimeout(ctx, s, cmdID, req, cfg, envPol, resolution.Duration, emit, hook, extra, tracer, sessionID, onStarted)
+	return runCommandWithResourcesStreamingEmitResolvedTimeout(
+		ctx,
+		s,
+		cmdID,
+		req,
+		cfg,
+		envPol,
+		resolution.Duration,
+		emit,
+		hook,
+		extra,
+		tracer,
+		sessionID,
+		onStarted,
+	)
 }
 
-func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, envPol policy.ResolvedEnvPolicy, timeout time.Duration, emit emitFunc, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string, onStarted func()) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
+func runCommandWithResourcesStreamingEmitResolvedTimeout(
+	ctx context.Context,
+	s *session.Session,
+	cmdID string,
+	req types.ExecRequest,
+	cfg *config.Config,
+	envPol policy.ResolvedEnvPolicy,
+	timeout time.Duration,
+	emit emitFunc,
+	hook postStartHook,
+	extra *extraProcConfig,
+	tracer any,
+	sessionID string,
+	onStarted func(),
+) (
+	exitCode int,
+	stdout []byte,
+	stderr []byte,
+	stdoutTotal int64,
+	stderrTotal int64,
+	stdoutTrunc bool,
+	stderrTrunc bool,
+	resources types.ExecResources,
+	err error,
+) {
 
 	ctx, cancel := withExtendableCommandTimeout(ctx, timeout)
 	defer cancel()
@@ -352,12 +532,22 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		notifyStarted()
 		completeCommandExecution(ctx, time.Now())
 		if len(out) > 0 {
-			_ = emit("stdout", map[string]any{"command_id": cmdID, "stream": "stdout", "data": string(out)})
+			_ = emit(
+				"stdout",
+				map[string]any{"command_id": cmdID, "stream": "stdout", "data": string(out)},
+			)
 		}
 		if len(errOut) > 0 {
-			_ = emit("stderr", map[string]any{"command_id": cmdID, "stream": "stderr", "data": string(errOut)})
+			_ = emit(
+				"stderr",
+				map[string]any{"command_id": cmdID, "stream": "stderr", "data": string(errOut)},
+			)
 		}
-		return code, out, errOut, int64(len(out)), int64(len(errOut)), false, false, types.ExecResources{}, nil
+		return code, out, errOut, int64(
+				len(out),
+			), int64(
+				len(errOut),
+			), false, false, types.ExecResources{}, nil
 	}
 
 	s.RecordHistory(strings.TrimSpace(req.Command + " " + strings.Join(req.Args, " ")))
@@ -365,7 +555,12 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 	workdir, err := resolveWorkingDir(s, req.WorkingDir)
 	if err != nil {
 		msg := []byte(err.Error() + "\n")
-		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, &commandPreStartError{code: "E_INVALID_WORKING_DIRECTORY", err: err}
+		return 2, []byte{}, msg, 0, int64(
+				len(msg),
+			), false, false, types.ExecResources{}, &commandPreStartError{
+				code: "E_INVALID_WORKING_DIRECTORY",
+				err:  err,
+			}
 	}
 	if barrierErr := validatePreExecBarrierPath(hook, tracer, extra); barrierErr != nil {
 		closePreStartProcessFiles(extra)
@@ -406,14 +601,24 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 	} else {
 		cmd.SysProcAttr = getSysProcAttr()
 	}
-	if boundaryErr := configureCommandBoundaryProcess(cmd.SysProcAttr, commandBoundary); boundaryErr != nil {
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", boundaryErr)
+	if boundaryErr := configureCommandBoundaryProcess(
+		cmd.SysProcAttr,
+		commandBoundary,
+	); boundaryErr != nil {
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{},
+			markPreExecEnforcementError(
+				"E_PRE_EXEC_BOUNDARY",
+				boundaryErr,
+			)
 	}
 
 	env, envErr := buildCommandEnvironment(cfg, envPol, os.Environ(), s, req.Env, extra)
 	if envErr != nil {
 		closePreStartProcessFiles(extra)
-		return 2, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandPreStartError{code: "E_INVALID_ENVIRONMENT", err: envErr}
+		return 2, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandPreStartError{
+			code: "E_INVALID_ENVIRONMENT",
+			err:  envErr,
+		}
 	}
 	cmd.Env = env
 
@@ -434,7 +639,10 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		notifyStarted()
-		return emit("stdout", map[string]any{"command_id": cmdID, "stream": "stdout", "data": string(chunk)})
+		return emit(
+			"stdout",
+			map[string]any{"command_id": cmdID, "stream": "stdout", "data": string(chunk)},
+		)
 	})
 	stderrW := newCaptureWriter(defaultMaxOutputBytes, func(chunk []byte) error {
 		if emit == nil || len(chunk) == 0 {
@@ -443,7 +651,10 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		notifyStarted()
-		return emit("stderr", map[string]any{"command_id": cmdID, "stream": "stderr", "data": string(chunk)})
+		return emit(
+			"stderr",
+			map[string]any{"command_id": cmdID, "stream": "stderr", "data": string(chunk)},
+		)
 	})
 	cmd.Stdout = stdoutW
 	cmd.Stderr = stderrW
@@ -456,14 +667,20 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		stdoutPipeR, stdoutPipeW, pipeErr = os.Pipe()
 		if pipeErr != nil {
 			extra.closeWrapperLogPipe()
-			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("stdout pipe: %w", pipeErr)
+			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+				"stdout pipe: %w",
+				pipeErr,
+			)
 		}
 		stderrPipeR, stderrPipeW, pipeErr = os.Pipe()
 		if pipeErr != nil {
 			extra.closeWrapperLogPipe()
 			stdoutPipeR.Close()
 			stdoutPipeW.Close()
-			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("stderr pipe: %w", pipeErr)
+			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+				"stderr pipe: %w",
+				pipeErr,
+			)
 		}
 		cmd.Stdout = stdoutPipeW
 		cmd.Stderr = stderrPipeW
@@ -510,7 +727,9 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 		if stderrPipeW != nil {
 			stderrPipeW.Close()
 		}
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandStartError{err: fmt.Errorf("start: %w", err)}
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandStartError{
+			err: fmt.Errorf("start: %w", err),
+		}
 	}
 	if extra != nil && extra.onProcessStarted != nil {
 		pid := cmd.Process.Pid
@@ -530,7 +749,11 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			if stderrPipeW != nil {
 				stderrPipeW.Close()
 			}
-			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError("E_DETACHED_COMMAND_JOURNAL", persistErr)
+			return 127, nil, nil, 0, 0, false, false, types.ExecResources{},
+				markPreExecEnforcementError(
+					"E_DETACHED_COMMAND_JOURNAL",
+					persistErr,
+				)
 		}
 	}
 
@@ -566,19 +789,28 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			defer stopCancellationWatch()
 		}
 
-		hasWrapperHandlers := extra != nil && (extra.notifyParentSock != nil || (extra.signalParentSock != nil && extra.signalEngine != nil))
+		hasWrapperHandlers := extra != nil &&
+			(extra.notifyParentSock != nil ||
+				(extra.signalParentSock != nil && extra.signalEngine != nil))
 		wrapperHandlersStarted := false
 		var commandBoundaryReady chan error
 		if tracer == nil && commandBoundaryRequired(extra) {
 			commandBoundaryReady = make(chan error, 1)
-			handlerLifecycle = startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, commandBoundaryReady)
+			handlerLifecycle = startWrapperHandlers(
+				ctx,
+				extra,
+				cmd.Process.Pid,
+				pgid,
+				commandBoundaryReady,
+			)
 			extraOwnershipTransferred = true
 			wrapperHandlersStarted = true
 		}
 		if tracer != nil && hasWrapperHandlers {
-			// HYBRID MODE: ptrace for execve interception + seccomp wrapper for sockets/files/Landlock.
-			// The wrapper must complete seccomp setup BEFORE ptrace attaches to prevent deadlock.
-			// Protocol: wrapper does seccomp init → READY byte → server attaches ptrace → GO byte → wrapper exec's.
+			// HYBRID MODE: ptrace for execve interception + seccomp wrapper for
+			// sockets/files/Landlock. The wrapper must complete seccomp setup BEFORE ptrace
+			// attaches to prevent deadlock. Protocol: wrapper does seccomp init → READY byte →
+			// server attaches ptrace → GO byte → wrapper exec's.
 			ptraceDone := make(chan struct{})
 			go func() {
 				select {
@@ -596,7 +828,13 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			if extra.ptraceSync {
 				ptraceReady = make(chan error, 1)
 			}
-			handlerLifecycle = startWrapperHandlers(handlerCtx, extra, cmd.Process.Pid, pgid, ptraceReady)
+			handlerLifecycle = startWrapperHandlers(
+				handlerCtx,
+				extra,
+				cmd.Process.Pid,
+				pgid,
+				ptraceReady,
+			)
 			extraOwnershipTransferred = true
 
 			// 2. Wait for wrapper to signal READY (only when ptrace sync is enabled).
@@ -614,12 +852,21 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 					_ = killProcessGroup(pgid)
 					waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid wrapper ready: %w", readyErr)
+					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+						"hybrid wrapper ready: %w",
+						readyErr,
+					)
 				}
 			}
 
 			// 3. Attach ptrace NOW — wrapper is idle, waiting for GO byte.
-			waitExit, resume, attachErr := ptraceExecAttach(tracer, cmd.Process.Pid, sessionID, cmdID, hook != nil)
+			waitExit, resume, attachErr := ptraceExecAttach(
+				tracer,
+				cmd.Process.Pid,
+				sessionID,
+				cmdID,
+				hook != nil,
+			)
 			if attachErr != nil {
 				close(ptraceDone)
 				handlerCancel()
@@ -627,7 +874,10 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				_ = killProcessGroup(pgid)
 				waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 				cmd.Process.Release()
-				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid ptrace attach: %w", attachErr)
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+					"hybrid ptrace attach: %w",
+					attachErr,
+				)
 			}
 
 			// 4-6. Enforce once, then resume and send GO. Release steps are
@@ -655,7 +905,13 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			notifyStarted()
 			// 7. Wait for exit via ptrace exit channel
 			waitStart := time.Now()
-			slog.Debug("exec_stream waiting for command (hybrid)", "command", req.Command, "pid", cmd.Process.Pid)
+			slog.Debug(
+				"exec_stream waiting for command (hybrid)",
+				"command",
+				req.Command,
+				"pid",
+				cmd.Process.Pid,
+			)
 			result := waitExit()
 			completeCommandExecution(ctx, time.Now())
 			close(ptraceDone)
@@ -665,7 +921,17 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				_ = killProcessGroup(pgid)
 			}
 			waitDuration := time.Since(waitStart)
-			slog.Debug("exec_stream command finished (hybrid)", "command", req.Command, "pid", cmd.Process.Pid, "exit_code", result.exitCode, "wait_duration_ms", waitDuration.Milliseconds())
+			slog.Debug(
+				"exec_stream command finished (hybrid)",
+				"command",
+				req.Command,
+				"pid",
+				cmd.Process.Pid,
+				"exit_code",
+				result.exitCode,
+				"wait_duration_ms",
+				waitDuration.Milliseconds(),
+			)
 			waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 			stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 			stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
@@ -677,12 +943,20 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
-				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
+				return 124, stdout, append(
+						stderr,
+						[]byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(
+						len("command timed out\n"),
+					), true, true, resources, errCommandTimeout
 			}
 			if commandContextError(ctx) != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc,
+					resources, commandContextError(
+						ctx,
+					)
 			}
-			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
+			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc,
+				stderrTrunc, resources, result.err
 		} else if tracer != nil {
 			// FULL PTRACE MODE: ptrace handles everything (no seccomp wrapper).
 			// Context cancellation watcher: start BEFORE attach
@@ -696,16 +970,28 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				}
 			}()
 
-			waitExit, resume, attachErr := ptraceExecAttach(tracer, cmd.Process.Pid, sessionID, cmdID, hook != nil)
+			waitExit, resume, attachErr := ptraceExecAttach(
+				tracer,
+				cmd.Process.Pid,
+				sessionID,
+				cmdID,
+				hook != nil,
+			)
 			if attachErr != nil {
 				close(ptraceDone)
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
 				waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 				cmd.Process.Release()
-				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace attach: %w", attachErr)
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+					"ptrace attach: %w",
+					attachErr,
+				)
 			}
-			if releaseErr := barrier.Release(cmd.Process.Pid, preExecReleaseStep{name: "ptrace resume", run: resume}); releaseErr != nil {
+			if releaseErr := barrier.Release(
+				cmd.Process.Pid,
+				preExecReleaseStep{name: "ptrace resume", run: resume},
+			); releaseErr != nil {
 				close(ptraceDone)
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
@@ -718,7 +1004,13 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 			notifyStarted()
 			// Tracer-managed wait: block on exit channel instead of cmd.Wait()
 			waitStart := time.Now()
-			slog.Debug("exec_stream waiting for command (ptrace)", "command", req.Command, "pid", cmd.Process.Pid)
+			slog.Debug(
+				"exec_stream waiting for command (ptrace)",
+				"command",
+				req.Command,
+				"pid",
+				cmd.Process.Pid,
+			)
 			result := waitExit()
 			completeCommandExecution(ctx, time.Now())
 			close(ptraceDone)
@@ -727,7 +1019,17 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				_ = killProcessGroup(pgid)
 			}
 			waitDuration := time.Since(waitStart)
-			slog.Debug("exec_stream command finished (ptrace)", "command", req.Command, "pid", cmd.Process.Pid, "exit_code", result.exitCode, "wait_duration_ms", waitDuration.Milliseconds())
+			slog.Debug(
+				"exec_stream command finished (ptrace)",
+				"command",
+				req.Command,
+				"pid",
+				cmd.Process.Pid,
+				"exit_code",
+				result.exitCode,
+				"wait_duration_ms",
+				waitDuration.Milliseconds(),
+			)
 			waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 			stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 			stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
@@ -739,22 +1041,41 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
-				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
+				return 124, stdout, append(
+						stderr,
+						[]byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(
+						len("command timed out\n"),
+					), true, true, resources, errCommandTimeout
 			}
 			if commandContextError(ctx) != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc,
+					resources, commandContextError(
+						ctx,
+					)
 			}
-			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
+			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc,
+				stderrTrunc, resources, result.err
 		} else if hook != nil {
 			releaseSteps := make([]preExecReleaseStep, 0, 3)
 			if !commandBoundaryRequired(extra) {
-				releaseSteps = append(releaseSteps, preExecReleaseStep{name: "resume traced process", run: func() error {
-					return resumeTracedProcess(cmd.Process.Pid)
-				}})
+				releaseSteps = append(
+					releaseSteps,
+					preExecReleaseStep{name: "resume traced process", run: func() error {
+						return resumeTracedProcess(cmd.Process.Pid)
+					}},
+				)
 			}
-			releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
+			releaseSteps = append(
+				releaseSteps,
+				commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
 			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
-				releaseErr = finalizeCommandBoundaryFailure(cmd, pgid, barrier, handlerLifecycle, releaseErr)
+				releaseErr = finalizeCommandBoundaryFailure(
+					cmd,
+					pgid,
+					barrier,
+					handlerLifecycle,
+					releaseErr,
+				)
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 		}
@@ -773,7 +1094,19 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 	waitErr := cmd.Wait()
 	completeCommandExecution(ctx, time.Now())
 	waitDuration := time.Since(waitStart)
-	slog.Debug("exec_stream command finished", "command", req.Command, "pid", cmd.Process.Pid, "wait_error", waitErr, "ctx_err", commandContextError(ctx), "wait_duration_ms", waitDuration.Milliseconds())
+	slog.Debug(
+		"exec_stream command finished",
+		"command",
+		req.Command,
+		"pid",
+		cmd.Process.Pid,
+		"wait_error",
+		waitErr,
+		"ctx_err",
+		commandContextError(ctx),
+		"wait_duration_ms",
+		waitDuration.Milliseconds(),
+	)
 	stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 	stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
 	stdoutTrunc, stderrTrunc = stdoutW.truncated, stderrW.truncated
@@ -785,18 +1118,27 @@ func runCommandWithResourcesStreamingEmitResolvedTimeout(ctx context.Context, s 
 	}
 
 	if commandTimedOut(ctx) {
-		return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
+		return 124, stdout, append(
+				stderr,
+				[]byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(
+				len("command timed out\n"),
+			), true, true, resources, errCommandTimeout
 	}
 	if commandContextError(ctx) != nil {
-		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
+		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources,
+			commandContextError(
+				ctx,
+			)
 	}
 	if waitErr == nil {
 		return 0, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, err
 	}
 	if ee := (*exec.ExitError)(nil); errors.As(waitErr, &ee) {
-		return ee.ExitCode(), stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, err
+		return ee.ExitCode(), stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc,
+			resources, err
 	}
-	return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, waitErr
+	return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources,
+		waitErr
 }
 
 func writeSSE(w io.Writer, flusher http.Flusher, event string, v any) error {

@@ -82,12 +82,28 @@ func TestBridgeEventToRegistry_MissingFields(t *testing.T) {
 		fields    map[string]interface{}
 	}{
 		{"seen/nil fields", "mcp_tool_seen", nil},
-		{"seen/empty server_id", "mcp_tool_seen", map[string]interface{}{"server_id": "", "tool_name": "t"}},
-		{"seen/empty tool_name", "mcp_tool_seen", map[string]interface{}{"server_id": "s", "tool_name": ""}},
+		{
+			"seen/empty server_id",
+			"mcp_tool_seen",
+			map[string]interface{}{"server_id": "", "tool_name": "t"},
+		},
+		{
+			"seen/empty tool_name",
+			"mcp_tool_seen",
+			map[string]interface{}{"server_id": "s", "tool_name": ""},
+		},
 		{"seen/missing tool_name", "mcp_tool_seen", map[string]interface{}{"server_id": "s"}},
 		{"changed/nil fields", "mcp_tool_changed", nil},
-		{"changed/empty server_id", "mcp_tool_changed", map[string]interface{}{"server_id": "", "tool_name": "t"}},
-		{"changed/empty tool_name", "mcp_tool_changed", map[string]interface{}{"server_id": "s", "tool_name": ""}},
+		{
+			"changed/empty server_id",
+			"mcp_tool_changed",
+			map[string]interface{}{"server_id": "", "tool_name": "t"},
+		},
+		{
+			"changed/empty tool_name",
+			"mcp_tool_changed",
+			map[string]interface{}{"server_id": "s", "tool_name": ""},
+		},
 		{"changed/missing tool_name", "mcp_tool_changed", map[string]interface{}{"server_id": "s"}},
 	}
 

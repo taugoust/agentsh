@@ -283,16 +283,30 @@ func validateUniqueJSONObject(payload []byte) error {
 
 func decodeNamespaceMapRequest(payload []byte, nonce string) (NamespaceMapRequest, error) {
 	if err := validateUniqueJSONObject(payload); err != nil {
-		return NamespaceMapRequest{}, typedError("E_COMPOSITION_OPTION_UNSUPPORTED", "decode namespace map request: %v", err)
+		return NamespaceMapRequest{}, typedError(
+			"E_COMPOSITION_OPTION_UNSUPPORTED",
+			"decode namespace map request: %v",
+			err,
+		)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	var request NamespaceMapRequest
 	if err := decoder.Decode(&request); err != nil {
-		return NamespaceMapRequest{}, typedError("E_COMPOSITION_OPTION_UNSUPPORTED", "decode namespace map request: %v", err)
+		return NamespaceMapRequest{}, typedError(
+			"E_COMPOSITION_OPTION_UNSUPPORTED",
+			"decode namespace map request: %v",
+			err,
+		)
 	}
-	if request.Version != ProtocolVersion || request.Type != NamespaceMapRequestType || request.UID != 1 || request.GID != 1 || request.Nonce != nonce {
-		return NamespaceMapRequest{}, typedError("E_COMPOSITION_OPTION_UNSUPPORTED", "invalid namespace map request")
+	if request.Version != ProtocolVersion || request.Type != NamespaceMapRequestType ||
+		request.UID != 1 ||
+		request.GID != 1 ||
+		request.Nonce != nonce {
+		return NamespaceMapRequest{}, typedError(
+			"E_COMPOSITION_OPTION_UNSUPPORTED",
+			"invalid namespace map request",
+		)
 	}
 	return request, nil
 }
@@ -308,7 +322,10 @@ func decodePlanRequest(payload []byte, nonce string, maxOperations int) (Plan, e
 		return Plan{}, typedError("E_COMPOSITION_OPTION_UNSUPPORTED", "decode plan: %v", err)
 	}
 	if plan.Nonce != nonce {
-		return Plan{}, typedError("E_COMPOSITION_REQUESTER_CHANGED", "mount-plan nonce does not match this one-shot channel")
+		return Plan{}, typedError(
+			"E_COMPOSITION_REQUESTER_CHANGED",
+			"mount-plan nonce does not match this one-shot channel",
+		)
 	}
 	if err := ValidatePlan(plan, maxOperations); err != nil {
 		return Plan{}, err

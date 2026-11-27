@@ -98,7 +98,10 @@ func loadRawFilter(prog []byte, withWaitKill bool) (int, error) {
 		return -1, errors.New("seccomp export produced empty filter")
 	}
 	if len(prog)%8 != 0 {
-		return -1, fmt.Errorf("seccomp export produced unaligned filter: %d bytes (want multiple of 8)", len(prog))
+		return -1, fmt.Errorf(
+			"seccomp export produced unaligned filter: %d bytes (want multiple of 8)",
+			len(prog),
+		)
 	}
 
 	// Pin the calling goroutine to the OS thread that will receive
@@ -186,8 +189,12 @@ func loadFilterWithRetry(prog []byte, withWaitKill bool, snapshot []any) (int, b
 	if !errors.Is(err, unix.EINVAL) {
 		return -1, false, err
 	}
-	slog.Warn("seccomp: WaitKillable rejected at filter load time; falling back to SIGURG signal mask only",
-		"error", err)
+	slog.Warn(
+		"seccomp: WaitKillable rejected at filter load time; falling back to SIGURG signal "+
+			"mask only",
+		"error",
+		err,
+	)
 
 	start = time.Now()
 	fd, err = loadRawFilter(prog, false)

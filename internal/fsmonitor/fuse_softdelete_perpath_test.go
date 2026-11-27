@@ -34,7 +34,12 @@ func TestFUSE_PerPathSoftDelete_UnderMonitorMode(t *testing.T) {
 		Version: 1,
 		Name:    "per-path-soft-delete",
 		FileRules: []policy.FileRule{
-			{Name: "sd", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "soft_delete"},
+			{
+				Name:       "sd",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "soft_delete",
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, false, true)
@@ -89,7 +94,11 @@ func TestFUSE_PerPathSoftDelete_UnderMonitorMode(t *testing.T) {
 	}
 
 	if notifiedPath == "" || notifiedToken == "" {
-		t.Fatalf("expected NotifySoftDelete to fire; got path=%q token=%q", notifiedPath, notifiedToken)
+		t.Fatalf(
+			"expected NotifySoftDelete to fire; got path=%q token=%q",
+			notifiedPath,
+			notifiedToken,
+		)
 	}
 }
 
@@ -126,7 +135,11 @@ func TestFUSE_PerPathAllow_UnderMonitorMode(t *testing.T) {
 		Policy:    engine,
 		Emit:      &typeCaptureEmitter{},
 		FUSEAudit: &FUSEAuditHooks{
-			Config: config.FUSEAuditConfig{Enabled: &enabled, Mode: "monitor", TrashPath: ".agentsh_trash"},
+			Config: config.FUSEAuditConfig{
+				Enabled:   &enabled,
+				Mode:      "monitor",
+				TrashPath: ".agentsh_trash",
+			},
 		},
 	}
 

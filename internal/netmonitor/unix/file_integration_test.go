@@ -17,8 +17,16 @@ import (
 func TestFileHandler_FullPipeline(t *testing.T) {
 	pol := &mockFilePolicy{
 		decisions: map[string]FilePolicyDecision{
-			"/workspace/src/main.go": {Decision: "allow", EffectiveDecision: "allow", Rule: "workspace-allow"},
-			"/etc/shadow":            {Decision: "deny", EffectiveDecision: "deny", Rule: "system-deny"},
+			"/workspace/src/main.go": {
+				Decision:          "allow",
+				EffectiveDecision: "allow",
+				Rule:              "workspace-allow",
+			},
+			"/etc/shadow": {
+				Decision:          "deny",
+				EffectiveDecision: "deny",
+				Rule:              "system-deny",
+			},
 		},
 	}
 	emit := &mockFileEmitter{}
@@ -203,7 +211,11 @@ func TestFileHandler_FullPipeline(t *testing.T) {
 func TestEmulatedOpen_AllowRoutesToAddFD(t *testing.T) {
 	pol := &mockFilePolicy{
 		decisions: map[string]FilePolicyDecision{
-			"/workspace/data.txt": {Decision: "allow", EffectiveDecision: "allow", Rule: "workspace-rw"},
+			"/workspace/data.txt": {
+				Decision:          "allow",
+				EffectiveDecision: "allow",
+				Rule:              "workspace-rw",
+			},
 		},
 	}
 	emit := &mockFileEmitter{}
@@ -387,7 +399,11 @@ func TestEmulatedOpen_NonOpenSyscall_UsesContinuePath(t *testing.T) {
 func TestEmulatedOpen_WriteOperation(t *testing.T) {
 	pol := &mockFilePolicy{
 		decisions: map[string]FilePolicyDecision{
-			"/workspace/out.log": {Decision: "allow", EffectiveDecision: "allow", Rule: "workspace-rw"},
+			"/workspace/out.log": {
+				Decision:          "allow",
+				EffectiveDecision: "allow",
+				Rule:              "workspace-rw",
+			},
 		},
 	}
 	emit := &mockFileEmitter{}
@@ -471,7 +487,11 @@ func TestFilterConfig_InterceptMetadata(t *testing.T) {
 func TestEmulatedOpen_ShellRedirect(t *testing.T) {
 	pol := &mockFilePolicy{
 		decisions: map[string]FilePolicyDecision{
-			"/workspace/new.txt": {Decision: "allow", EffectiveDecision: "allow", Rule: "workspace-rw"},
+			"/workspace/new.txt": {
+				Decision:          "allow",
+				EffectiveDecision: "allow",
+				Rule:              "workspace-rw",
+			},
 		},
 	}
 	emit := &mockFileEmitter{}
@@ -629,7 +649,11 @@ func TestIOUringBlocking_RawSyscall(t *testing.T) {
 	case unix.EFAULT, unix.EINVAL, unix.ENOSYS, unix.EPERM:
 		t.Logf("io_uring_setup returned expected error: %v", errno)
 	default:
-		t.Errorf("io_uring_setup returned unexpected error: %v (expected EFAULT, EINVAL, ENOSYS, or EPERM)", errno)
+		t.Errorf(
+			"io_uring_setup returned unexpected error: %v (expected EFAULT, EINVAL, ENOSYS, "+
+				"or EPERM)",
+			errno,
+		)
 	}
 
 	// Verify the related syscall numbers.

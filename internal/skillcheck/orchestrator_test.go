@@ -67,7 +67,11 @@ func TestOrchestrator_RecordsErrors(t *testing.T) {
 
 func TestOrchestrator_PerProviderTimeout(t *testing.T) {
 	o := NewOrchestrator(OrchestratorConfig{Providers: map[string]ProviderEntry{
-		"slow": {Provider: stubProvider{name: "slow", delay: 200 * time.Millisecond}, Timeout: 10 * time.Millisecond, OnFailure: "warn"},
+		"slow": {
+			Provider:  stubProvider{name: "slow", delay: 200 * time.Millisecond},
+			Timeout:   10 * time.Millisecond,
+			OnFailure: "warn",
+		},
 	}})
 	findings, errs := o.ScanAll(context.Background(), ScanRequest{})
 	if len(findings) != 0 {

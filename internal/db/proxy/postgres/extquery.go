@@ -71,7 +71,11 @@ func (pc *proxyConn) handleExtendedFrame(ctx context.Context, msg pgproto3.Front
 	return pc.executeActions(ctx, msg, actions)
 }
 
-func (pc *proxyConn) tryHandleRedirectParse(ctx context.Context, parse *pgproto3.Parse, stmts []effects.ClassifiedStatement) (bool, error) {
+func (pc *proxyConn) tryHandleRedirectParse(
+	ctx context.Context,
+	parse *pgproto3.Parse,
+	stmts []effects.ClassifiedStatement,
+) (bool, error) {
 	rs := pc.srv.policy()
 	decisions := make([]policy.Decision, len(stmts))
 	redirectIndex := -1
@@ -97,13 +101,41 @@ func (pc *proxyConn) tryHandleRedirectParse(ctx context.Context, parse *pgproto3
 			plan.SourceRelation = decisions[redirectIndex].Redirect.SourceRelation
 			plan.TargetRelation = decisions[redirectIndex].Redirect.TargetRelation
 		}
-		pc.emitRedirectRejectedEvent(ctx, stmts[redirectIndex], decisions[redirectIndex], parse.Query, sha256HexBatch(parse.Query), plan)
-		return true, pc.executeActions(ctx, parse, statemachine.DenyRoute(*pc.state.smState, policy.StatementRule{}, "redirect rejected by AgentSH policy: multi-statement redirect unsupported", sqlstateRedirectRejected))
+		pc.emitRedirectRejectedEvent(
+			ctx,
+			stmts[redirectIndex],
+			decisions[redirectIndex],
+			parse.Query,
+			sha256HexBatch(parse.Query),
+			plan,
+		)
+		return true, pc.executeActions(
+			ctx,
+			parse,
+			statemachine.DenyRoute(
+				*pc.state.smState,
+				policy.StatementRule{},
+				"redirect rejected by AgentSH policy: multi-statement redirect unsupported",
+				sqlstateRedirectRejected,
+			),
+		)
 	}
 	plan, ok := pc.planRuntimeRedirect(ctx, parse.Query, stmts[0], decisions[0])
 	if !ok {
-		pc.emitRedirectRejectedEvent(ctx, stmts[0], decisions[0], parse.Query, sha256HexBatch(parse.Query), plan)
-		actions := statemachine.DenyRoute(*pc.state.smState, policy.StatementRule{}, "redirect rejected by AgentSH policy: "+plan.RejectionReason, sqlstateRedirectRejected)
+		pc.emitRedirectRejectedEvent(
+			ctx,
+			stmts[0],
+			decisions[0],
+			parse.Query,
+			sha256HexBatch(parse.Query),
+			plan,
+		)
+		actions := statemachine.DenyRoute(
+			*pc.state.smState,
+			policy.StatementRule{},
+			"redirect rejected by AgentSH policy: "+plan.RejectionReason,
+			sqlstateRedirectRejected,
+		)
 		next := *pc.state.smState
 		if !containsCloseAction(actions) {
 			next.Absorbing = true
@@ -163,7 +195,11 @@ func (pc *proxyConn) preserveRedirectPortalMetadata(bind *pgproto3.Bind) {
 
 // executeActions runs each Action against the per-connection I/O.
 // origFrame is the original frontend frame, used for ActionForward.
-func (pc *proxyConn) executeActions(ctx context.Context, origFrame pgproto3.FrontendMessage, actions []statemachine.Action) error {
+func (pc *proxyConn) executeActions(
+	ctx context.Context,
+	origFrame pgproto3.FrontendMessage,
+	actions []statemachine.Action,
+) error {
 	for _, act := range actions {
 		switch a := act.(type) {
 		case *statemachine.ActionForward:
@@ -201,7 +237,9 @@ func (pc *proxyConn) executeActions(ctx context.Context, origFrame pgproto3.Fron
 			// drop on the floor
 		case *statemachine.ActionInjectRollback:
 			if pc.state.upstreamFE == nil {
-				return fmt.Errorf("postgres.executeActions: upstreamFE not initialized for ROLLBACK")
+				return fmt.Errorf(
+					"postgres.executeActions: upstreamFE not initialized for ROLLBACK",
+				)
 			}
 			pc.state.upstreamFE.Send(&pgproto3.Query{String: "ROLLBACK"})
 			if err := pc.state.upstreamFE.Flush(); err != nil {
@@ -239,7 +277,10 @@ func actionsCanForward(actions []statemachine.Action) bool {
 	return false
 }
 
-func (pc *proxyConn) markCatalogRefreshPendingForExecute(exec *pgproto3.Execute, actions []statemachine.Action) {
+func (pc *proxyConn) markCatalogRefreshPendingForExecute(
+	exec *pgproto3.Execute,
+	actions []statemachine.Action,
+) {
 	if exec == nil || pc.wireCache == nil || !actionsCanForward(actions) {
 		return
 	}
@@ -248,9 +289,15 @@ func (pc *proxyConn) markCatalogRefreshPendingForExecute(exec *pgproto3.Execute,
 		return
 	}
 	if entry.Redirect != nil {
-		pc.pendingRedirectExec = append(pc.pendingRedirectExec, pendingRedirectExecute{Entry: entry})
+		pc.pendingRedirectExec = append(
+			pc.pendingRedirectExec,
+			pendingRedirectExecute{Entry: entry},
+		)
 	}
-	pc.markCatalogRefreshPendingForNeeds(entry.CatalogRefreshSearchPath, entry.CatalogRefreshSnapshot)
+	pc.markCatalogRefreshPendingForNeeds(
+		entry.CatalogRefreshSearchPath,
+		entry.CatalogRefreshSnapshot,
+	)
 }
 
 func (pc *proxyConn) emitPendingRedirectExecuteEvents(ctx context.Context, result upstreamResult) {
@@ -273,10 +320,15 @@ func (pc *proxyConn) emitPendingRedirectExecuteEvents(ctx context.Context, resul
 		}
 		redir := p.Entry.Redirect
 		ev := buildStatementEvent(buildArgs{
-			Stmt:            redir.OriginalClassification,
-			StmtIndex:       i,
-			BatchTotal:      len(pending),
-			Decision:        policy.Decision{Verb: policy.VerbRedirect, RuleKind: policy.RuleKindStatement, RuleName: redir.Rule, MatchingEffectIndex: 0},
+			Stmt:       redir.OriginalClassification,
+			StmtIndex:  i,
+			BatchTotal: len(pending),
+			Decision: policy.Decision{
+				Verb:                policy.VerbRedirect,
+				RuleKind:            policy.RuleKindStatement,
+				RuleName:            redir.Rule,
+				MatchingEffectIndex: 0,
+			},
 			SQL:             redir.OriginalSQL,
 			Tier:            pc.state.redactionTier,
 			Conn:            *pc.state,

@@ -52,7 +52,15 @@ func TestMultiMountProfile(t *testing.T) {
 	writeFile(t, configPath, multiMountConfigYAML)
 
 	// Start container with multiple mount bindings
-	endpoint, cleanup := startMultiMountServerContainer(t, ctx, bin, configPath, policiesDir, workspace, configDir)
+	endpoint, cleanup := startMultiMountServerContainer(
+		t,
+		ctx,
+		bin,
+		configPath,
+		policiesDir,
+		workspace,
+		configDir,
+	)
 	t.Cleanup(func() { cleanup() })
 
 	cli := client.New(endpoint, "test-key")
@@ -87,7 +95,11 @@ func TestMultiMountProfile(t *testing.T) {
 			t.Fatalf("Exec cat workspace: %v", err)
 		}
 		if resp.Result.ExitCode != 0 {
-			t.Fatalf("cat workspace failed: exit=%d stderr=%s", resp.Result.ExitCode, resp.Result.Stderr)
+			t.Fatalf(
+				"cat workspace failed: exit=%d stderr=%s",
+				resp.Result.ExitCode,
+				resp.Result.Stderr,
+			)
 		}
 		if resp.Result.Stdout != "workspace content" {
 			t.Errorf("expected 'workspace content', got %q", resp.Result.Stdout)
@@ -104,7 +116,11 @@ func TestMultiMountProfile(t *testing.T) {
 			t.Fatalf("Exec cat config: %v", err)
 		}
 		if resp.Result.ExitCode != 0 {
-			t.Fatalf("cat config failed: exit=%d stderr=%s", resp.Result.ExitCode, resp.Result.Stderr)
+			t.Fatalf(
+				"cat config failed: exit=%d stderr=%s",
+				resp.Result.ExitCode,
+				resp.Result.Stderr,
+			)
 		}
 		if resp.Result.Stdout != "config content" {
 			t.Errorf("expected 'config content', got %q", resp.Result.Stdout)
@@ -121,7 +137,11 @@ func TestMultiMountProfile(t *testing.T) {
 			t.Fatalf("Exec write workspace: %v", err)
 		}
 		if resp.Result.ExitCode != 0 {
-			t.Fatalf("write workspace failed: exit=%d stderr=%s", resp.Result.ExitCode, resp.Result.Stderr)
+			t.Fatalf(
+				"write workspace failed: exit=%d stderr=%s",
+				resp.Result.ExitCode,
+				resp.Result.Stderr,
+			)
 		}
 
 		// Verify file was written
@@ -133,7 +153,11 @@ func TestMultiMountProfile(t *testing.T) {
 			t.Fatalf("Exec cat new file: %v", err)
 		}
 		if verifyResp.Result.ExitCode != 0 {
-			t.Fatalf("cat new file failed: exit=%d stderr=%s", verifyResp.Result.ExitCode, verifyResp.Result.Stderr)
+			t.Fatalf(
+				"cat new file failed: exit=%d stderr=%s",
+				verifyResp.Result.ExitCode,
+				verifyResp.Result.Stderr,
+			)
 		}
 		if verifyResp.Result.Stdout != "new content\n" {
 			t.Errorf("expected 'new content\\n', got %q", verifyResp.Result.Stdout)
@@ -182,13 +206,20 @@ func TestMultiMountProfile(t *testing.T) {
 }
 
 // startMultiMountServerContainer starts a server container with multiple directory mounts.
-func startMultiMountServerContainer(t *testing.T, ctx context.Context, bin, configPath, policiesDir, workspace, configDir string) (string, func()) {
+func startMultiMountServerContainer(
+	t *testing.T,
+	ctx context.Context,
+	bin, configPath, policiesDir, workspace, configDir string,
+) (string, func()) {
 	t.Helper()
 
 	binds := []testcontainers.ContainerMount{
 		testcontainers.BindMount(bin, "/usr/local/bin/agentsh"),
 		testcontainers.BindMount(configPath, "/config.yaml"),
-		testcontainers.BindMount(filepath.Join(filepath.Dir(configPath), "keys.yaml"), "/keys.yaml"),
+		testcontainers.BindMount(
+			filepath.Join(filepath.Dir(configPath), "keys.yaml"),
+			"/keys.yaml",
+		),
 		testcontainers.BindMount(policiesDir, "/policies"),
 		testcontainers.BindMount(workspace, "/host-workspace"),
 		testcontainers.BindMount(configDir, "/host-config"),
@@ -214,7 +245,9 @@ func startMultiMountServerContainer(t *testing.T, ctx context.Context, bin, conf
 		WaitingFor: wait.ForHTTP("/health").
 			WithPort("18080/tcp").
 			WithStartupTimeout(60 * time.Second).
-			WithStatusCodeMatcher(func(code int) bool { return code == http.StatusOK || code == http.StatusNotFound }),
+			WithStatusCodeMatcher(func(code int) bool {
+				return code == http.StatusOK || code == http.StatusNotFound
+			}),
 	}
 
 	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

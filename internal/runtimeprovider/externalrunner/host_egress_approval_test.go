@@ -29,7 +29,9 @@ func TestRemoteHostEgressApprovalUsesBoundUnixSupervisor(t *testing.T) {
 	}
 	requestSeen := make(chan remoteHostEgressApprovalRequest, 1)
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/sessions/"+binding.ParentSessionID+"/tools/request_guest_egress_approval" || r.Header.Get(HostEgressApprovalHeader) != token {
+		if r.URL.Path != "/api/v1/sessions/"+binding.ParentSessionID+
+			"/tools/request_guest_egress_approval" ||
+			r.Header.Get(HostEgressApprovalHeader) != token {
 			http.Error(w, "bad binding", http.StatusUnauthorized)
 			return
 		}
@@ -39,22 +41,40 @@ func TestRemoteHostEgressApprovalUsesBoundUnixSupervisor(t *testing.T) {
 			return
 		}
 		requestSeen <- request
-		_ = json.NewEncoder(w).Encode(approvals.Resolution{Approved: true, Reason: "operator", Scope: approvals.ScopeSession, At: time.Now().UTC(), ScopeKind: "network", ScopeKey: "network:test", ScopeLabel: "unknown.example:443"})
+		_ = json.NewEncoder(w).
+			Encode(approvals.Resolution{
+				Approved:   true,
+				Reason:     "operator",
+				Scope:      approvals.ScopeSession,
+				At:         time.Now().UTC(),
+				ScopeKind:  "network",
+				ScopeKey:   "network:test",
+				ScopeLabel: "unknown.example:443",
+			})
 	})}
 	go server.Serve(listener)
 	defer server.Shutdown(context.Background())
 
-	manager, err := newHostEgressApprovalManager(binding, "session-22222222-2222-2222-2222-222222222222", nil)
+	manager, err := newHostEgressApprovalManager(
+		binding,
+		"session-22222222-2222-2222-2222-222222222222",
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolution, err := manager.RequestApproval(context.Background(), approvals.Request{Kind: "network", Target: "unknown.example:443", Rule: "unknown-egress"})
+	resolution, err := manager.RequestApproval(
+		context.Background(),
+		approvals.Request{Kind: "network", Target: "unknown.example:443", Rule: "unknown-egress"},
+	)
 	if err != nil || !resolution.Approved || resolution.Scope != approvals.ScopeSession {
 		t.Fatalf("resolution = %+v, err = %v", resolution, err)
 	}
 	select {
 	case request := <-requestSeen:
-		if request.DraftSessionID != "session-22222222-2222-2222-2222-222222222222" || request.Target != "unknown.example:443" || request.Kind != "network" {
+		if request.DraftSessionID != "session-22222222-2222-2222-2222-222222222222" ||
+			request.Target != "unknown.example:443" ||
+			request.Kind != "network" {
 			t.Fatalf("unexpected remote request: %+v", request)
 		}
 	case <-time.After(time.Second):
@@ -63,7 +83,10 @@ func TestRemoteHostEgressApprovalUsesBoundUnixSupervisor(t *testing.T) {
 }
 
 func TestHostEgressApprovalEnvironmentFailsClosedWhenPartial(t *testing.T) {
-	for _, name := range []string{HostEgressApprovalTokenEnv, HostEgressApprovalCredentialEnv, HostEgressApprovalSessionEnv, HostEgressApprovalSupervisorEnv} {
+	for _, name := range []string{
+		HostEgressApprovalTokenEnv, HostEgressApprovalCredentialEnv, HostEgressApprovalSessionEnv,
+		HostEgressApprovalSupervisorEnv,
+	} {
 		t.Setenv(name, "")
 	}
 	if binding, err := hostEgressApprovalBindingFromEnvironment(); err != nil || binding != nil {
@@ -76,7 +99,10 @@ func TestHostEgressApprovalEnvironmentFailsClosedWhenPartial(t *testing.T) {
 }
 
 func TestHostEgressApprovalCredentialFile(t *testing.T) {
-	for _, name := range []string{HostEgressApprovalTokenEnv, HostEgressApprovalCredentialEnv, HostEgressApprovalSessionEnv, HostEgressApprovalSupervisorEnv} {
+	for _, name := range []string{
+		HostEgressApprovalTokenEnv, HostEgressApprovalCredentialEnv, HostEgressApprovalSessionEnv,
+		HostEgressApprovalSupervisorEnv,
+	} {
 		t.Setenv(name, "")
 	}
 	token := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
@@ -86,7 +112,10 @@ func TestHostEgressApprovalCredentialFile(t *testing.T) {
 	}
 	t.Setenv(HostEgressApprovalCredentialEnv, path)
 	t.Setenv(HostEgressApprovalSessionEnv, "session-11111111-1111-1111-1111-111111111111")
-	t.Setenv(HostEgressApprovalSupervisorEnv, "unix://"+filepath.Join(t.TempDir(), "supervisor.sock"))
+	t.Setenv(
+		HostEgressApprovalSupervisorEnv,
+		"unix://"+filepath.Join(t.TempDir(), "supervisor.sock"),
+	)
 	binding, err := hostEgressApprovalBindingFromEnvironment()
 	if err != nil || binding == nil || binding.Token != token {
 		t.Fatalf("credential binding = %+v, %v", binding, err)

@@ -50,7 +50,12 @@ func TestManager_ResolveWithWebAuthn_WrongMode(t *testing.T) {
 func TestManager_ResolveWithWebAuthn_ApprovalNotFound(t *testing.T) {
 	m := New("webauthn", 0, nil)
 	m.SetWebAuthnApprover(&WebAuthnApprover{})
-	err := m.ResolveWithWebAuthn(context.Background(), "nonexistent-approval", "user-1", []byte("{}"))
+	err := m.ResolveWithWebAuthn(
+		context.Background(),
+		"nonexistent-approval",
+		"user-1",
+		[]byte("{}"),
+	)
 	if err == nil {
 		t.Error("expected error when approval not found")
 	}

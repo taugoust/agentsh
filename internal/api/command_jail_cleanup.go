@@ -16,19 +16,34 @@ const (
 // finalizeCommandBoundaryFailure kills and reaps an unreleased wrapper, joins
 // every parent-side handler/log drain, and only then removes helper/eBPF/cgroup
 // resources. The resulting commandJailFailure is the sole retry authority.
-func finalizePTYCommandBoundaryFailure(processState *os.ProcessState, waitErr, cleanupErr error, lifecycle *wrapperHandlerLifecycle, runErr error) error {
+func finalizePTYCommandBoundaryFailure(
+	processState *os.ProcessState,
+	waitErr, cleanupErr error,
+	lifecycle *wrapperHandlerLifecycle,
+	runErr error,
+) error {
 	processReaped := processState != nil
 	handlersJoined := lifecycle.stopAndWait(commandJailHandlerJoinLimit)
 	if failure := commandJailFailureFrom(runErr); failure != nil {
 		exitCode, signal := processExitEvidence(processState)
-		failure.finalize(exitCode, signal, lifecycle.wrapperLogTail(), processReaped, handlersJoined, cleanupErr)
+		failure.finalize(
+			exitCode,
+			signal,
+			lifecycle.wrapperLogTail(),
+			processReaped,
+			handlersJoined,
+			cleanupErr,
+		)
 	}
 	resultErr := runErr
 	if !processReaped && waitErr != nil {
 		resultErr = errors.Join(resultErr, fmt.Errorf("reap command-jail wrapper: %w", waitErr))
 	}
 	if !handlersJoined {
-		resultErr = errors.Join(resultErr, errors.New("command-jail handler cleanup did not complete"))
+		resultErr = errors.Join(
+			resultErr,
+			errors.New("command-jail handler cleanup did not complete"),
+		)
 	}
 	if cleanupErr != nil {
 		resultErr = errors.Join(resultErr, markPostStartCleanupError(cleanupErr))
@@ -36,7 +51,13 @@ func finalizePTYCommandBoundaryFailure(processState *os.ProcessState, waitErr, c
 	return resultErr
 }
 
-func finalizeCommandBoundaryFailure(cmd *exec.Cmd, pgid int, barrier *preExecBarrier, lifecycle *wrapperHandlerLifecycle, runErr error) error {
+func finalizeCommandBoundaryFailure(
+	cmd *exec.Cmd,
+	pgid int,
+	barrier *preExecBarrier,
+	lifecycle *wrapperHandlerLifecycle,
+	runErr error,
+) error {
 	failure := commandJailFailureFrom(runErr)
 	var waitErr error
 
@@ -67,7 +88,14 @@ func finalizeCommandBoundaryFailure(cmd *exec.Cmd, pgid int, barrier *preExecBar
 
 	if failure != nil {
 		exitCode, signal := processExitEvidence(cmd.ProcessState)
-		failure.finalize(exitCode, signal, lifecycle.wrapperLogTail(), processReaped, handlersJoined, cleanupErr)
+		failure.finalize(
+			exitCode,
+			signal,
+			lifecycle.wrapperLogTail(),
+			processReaped,
+			handlersJoined,
+			cleanupErr,
+		)
 	}
 
 	resultErr := runErr
@@ -75,7 +103,10 @@ func finalizeCommandBoundaryFailure(cmd *exec.Cmd, pgid int, barrier *preExecBar
 		resultErr = errors.Join(resultErr, fmt.Errorf("reap command-jail wrapper: %w", waitErr))
 	}
 	if !handlersJoined {
-		resultErr = errors.Join(resultErr, errors.New("command-jail handler cleanup did not complete"))
+		resultErr = errors.Join(
+			resultErr,
+			errors.New("command-jail handler cleanup did not complete"),
+		)
 	}
 	if cleanupErr != nil {
 		resultErr = errors.Join(resultErr, markPostStartCleanupError(cleanupErr))

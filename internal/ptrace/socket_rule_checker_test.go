@@ -38,17 +38,35 @@ func TestSocketRuleChecker_Check_MatchMissTypeMaskAndNilReceiver(t *testing.T) {
 		t.Fatalf("expected NETLINK_XFRM socket match with masked type; got rule=%+v ok=%v", got, ok)
 	}
 
-	if _, ok := c.Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW), uint64(unix.NETLINK_ROUTE)); ok {
+	if _, ok := c.Check(
+		uint64(unix.SYS_SOCKET),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_RAW),
+		uint64(unix.NETLINK_ROUTE),
+	); ok {
 		t.Fatal("NETLINK_ROUTE must not match a NETLINK_XFRM socket rule")
 	}
-	if _, ok := c.Check(uint64(unix.SYS_BIND), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW), uint64(unix.NETLINK_XFRM)); ok {
+	if _, ok := c.Check(
+		uint64(unix.SYS_BIND),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_RAW),
+		uint64(unix.NETLINK_XFRM),
+	); ok {
 		t.Fatal("non-socket syscalls must not match socket tuple rules")
 	}
-	if _, ok := NewSocketRuleChecker(nil).Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW), uint64(unix.NETLINK_XFRM)); ok {
+	if _, ok := NewSocketRuleChecker(
+		nil,
+	).Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW),
+		uint64(unix.NETLINK_XFRM)); ok {
 		t.Fatal("empty checker should never match")
 	}
 	var nilChecker *SocketRuleChecker
-	if _, ok := nilChecker.Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW), uint64(unix.NETLINK_XFRM)); ok {
+	if _, ok := nilChecker.Check(
+		uint64(unix.SYS_SOCKET),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_RAW),
+		uint64(unix.NETLINK_XFRM),
+	); ok {
 		t.Fatal("nil checker should never match")
 	}
 }
@@ -66,10 +84,20 @@ func TestSocketRuleChecker_Check_SocketpairUsesProtocolArg2(t *testing.T) {
 	}
 	c := NewSocketRuleChecker([]seccomp.SocketRule{rule})
 
-	if _, ok := c.Check(uint64(unix.SYS_SOCKETPAIR), uint64(unix.AF_NETLINK), uint64(unix.SOCK_DGRAM), uint64(unix.NETLINK_XFRM)); !ok {
+	if _, ok := c.Check(
+		uint64(unix.SYS_SOCKETPAIR),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_DGRAM),
+		uint64(unix.NETLINK_XFRM),
+	); !ok {
 		t.Fatal("socketpair(AF_NETLINK, SOCK_DGRAM, NETLINK_XFRM) should match")
 	}
-	if _, ok := c.Check(uint64(unix.SYS_SOCKETPAIR), uint64(unix.AF_NETLINK), uint64(unix.SOCK_DGRAM), uint64(unix.NETLINK_ROUTE)); ok {
+	if _, ok := c.Check(
+		uint64(unix.SYS_SOCKETPAIR),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_DGRAM),
+		uint64(unix.NETLINK_ROUTE),
+	); ok {
 		t.Fatal("socketpair protocol arg2 must be honored")
 	}
 }
@@ -92,10 +120,23 @@ func TestSocketRuleChecker_ConstructionCopiesRulePointers(t *testing.T) {
 	typ = unix.SOCK_DGRAM
 	proto = unix.NETLINK_ROUTE
 
-	if _, ok := c.Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW), uint64(unix.NETLINK_XFRM)); !ok {
-		t.Fatal("checker should retain original Type/Protocol values after caller mutates input pointers")
+	if _, ok := c.Check(
+		uint64(unix.SYS_SOCKET),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_RAW),
+		uint64(unix.NETLINK_XFRM),
+	); !ok {
+		t.Fatal(
+			"checker should retain original Type/Protocol values after caller mutates input " +
+				"pointers",
+		)
 	}
-	if _, ok := c.Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_DGRAM), uint64(unix.NETLINK_ROUTE)); ok {
+	if _, ok := c.Check(
+		uint64(unix.SYS_SOCKET),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_DGRAM),
+		uint64(unix.NETLINK_ROUTE),
+	); ok {
 		t.Fatal("checker should not observe caller mutations to input Type/Protocol pointers")
 	}
 }
@@ -113,17 +154,32 @@ func TestSocketRuleChecker_CheckReturnsRuleCopy(t *testing.T) {
 	}
 	c := NewSocketRuleChecker([]seccomp.SocketRule{rule})
 
-	got, ok := c.Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW), uint64(unix.NETLINK_XFRM))
+	got, ok := c.Check(
+		uint64(unix.SYS_SOCKET),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_RAW),
+		uint64(unix.NETLINK_XFRM),
+	)
 	if !ok {
 		t.Fatal("expected initial socket rule match")
 	}
 	*got.Type = unix.SOCK_DGRAM
 	*got.Protocol = unix.NETLINK_ROUTE
 
-	if _, ok := c.Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW), uint64(unix.NETLINK_XFRM)); !ok {
+	if _, ok := c.Check(
+		uint64(unix.SYS_SOCKET),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_RAW),
+		uint64(unix.NETLINK_XFRM),
+	); !ok {
 		t.Fatal("mutating returned rule pointers should not mutate checker-owned rule")
 	}
-	if _, ok := c.Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_DGRAM), uint64(unix.NETLINK_ROUTE)); ok {
+	if _, ok := c.Check(
+		uint64(unix.SYS_SOCKET),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_DGRAM),
+		uint64(unix.NETLINK_ROUTE),
+	); ok {
 		t.Fatal("checker should not observe mutations to a rule returned by Check")
 	}
 }
@@ -170,7 +226,12 @@ func TestSocketRuleChecker_ApplyLogEmitsPtraceEventAndDenies(t *testing.T) {
 		t.Fatalf("event type=%q, want seccomp_socket_rule_blocked", ev.Type)
 	}
 	if ev.SessionID != "sess-socket-rule" || ev.Source != "ptrace" || ev.PID != 100 {
-		t.Fatalf("unexpected event identity: session=%q source=%q pid=%d", ev.SessionID, ev.Source, ev.PID)
+		t.Fatalf(
+			"unexpected event identity: session=%q source=%q pid=%d",
+			ev.SessionID,
+			ev.Source,
+			ev.PID,
+		)
 	}
 	assertField(t, ev.Fields, "rule_name", "dirtyfrag-xfrm")
 	assertField(t, ev.Fields, "family_name", "AF_NETLINK")

@@ -246,12 +246,13 @@ func detectFindings(events []types.Event) []Finding {
 	// MCP tool security findings
 	if len(mcpChangedEvents) > 0 {
 		findings = append(findings, Finding{
-			Severity:    SeverityCritical,
-			Category:    "mcp_rug_pull",
-			Title:       "MCP tool changes detected",
-			Description: "MCP tool definitions changed after initial registration (potential rug pull attack)",
-			Count:       len(mcpChangedEvents),
-			Events:      mcpChangedEvents,
+			Severity: SeverityCritical,
+			Category: "mcp_rug_pull",
+			Title:    "MCP tool changes detected",
+			Description: "MCP tool definitions changed after initial registration (potential rug " +
+				"pull attack)",
+			Count:  len(mcpChangedEvents),
+			Events: mcpChangedEvents,
 		})
 	}
 

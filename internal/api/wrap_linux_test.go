@@ -62,7 +62,8 @@ func waitForConnClosed(t *testing.T, conn net.Conn) {
 	if err == nil {
 		t.Fatal("expected connection to be closed")
 	}
-	if !errors.Is(err, net.ErrClosed) && !errors.Is(err, io.EOF) && !errors.Is(err, syscall.ECONNRESET) {
+	if !errors.Is(err, net.ErrClosed) && !errors.Is(err, io.EOF) &&
+		!errors.Is(err, syscall.ECONNRESET) {
 		t.Fatalf("expected closed connection, got %v", err)
 	}
 }
@@ -87,7 +88,17 @@ func withNotifyHandoffHook(t *testing.T) chan struct{} {
 
 	called := make(chan struct{})
 	prev := startNotifyHandlerForWrapHook
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+	startNotifyHandlerForWrapHook = func(
+		ctx context.Context,
+		notifyFD *os.File,
+		compositionSetup *os.File,
+		sessionID string,
+		a *App,
+		execveEnabled bool,
+		wrapperPID int,
+		s *session.Session,
+		cleanup func() error,
+	) error {
 		if cleanup != nil {
 			_ = cleanup()
 		}
@@ -103,7 +114,10 @@ func withNotifyHandoffHook(t *testing.T) chan struct{} {
 	return called
 }
 
-func withWrapperPIDValidationHook(t *testing.T, fn func(wrapperPID, peerPID int, peerUID uint32) (*os.File, error)) {
+func withWrapperPIDValidationHook(
+	t *testing.T,
+	fn func(wrapperPID, peerPID int, peerUID uint32) (*os.File, error),
+) {
 	t.Helper()
 	prev := validateWrapperPIDForNotifyHook
 	validateWrapperPIDForNotifyHook = fn
@@ -163,7 +177,17 @@ func TestStartNotifyHandlerForWrap_CleansUpAfterProbeFailure(t *testing.T) {
 		return nil
 	}
 
-	if err := startNotifyHandlerForWrap(context.Background(), notifyFD, nil, "test-session", app, false, 999999999, nil, cleanup); err == nil {
+	if err := startNotifyHandlerForWrap(
+		context.Background(),
+		notifyFD,
+		nil,
+		"test-session",
+		app,
+		false,
+		999999999,
+		nil,
+		cleanup,
+	); err == nil {
 		t.Fatal("expected synchronous handler startup failure")
 	}
 
@@ -183,7 +207,17 @@ func TestAcceptNotifyFD_TransfersCompositionSetupEndpoint(t *testing.T) {
 
 	called := make(chan struct{})
 	previous := startNotifyHandlerForWrapHook
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, gotSession *session.Session, cleanup func() error) error {
+	startNotifyHandlerForWrapHook = func(
+		ctx context.Context,
+		notifyFD *os.File,
+		compositionSetup *os.File,
+		sessionID string,
+		a *App,
+		execveEnabled bool,
+		wrapperPID int,
+		gotSession *session.Session,
+		cleanup func() error,
+	) error {
 		defer close(called)
 		if compositionSetup == nil {
 			return fmt.Errorf("composition setup endpoint is nil")
@@ -223,7 +257,12 @@ func TestAcceptNotifyFD_TransfersCompositionSetupEndpoint(t *testing.T) {
 	setupChild := os.NewFile(uintptr(setupFDs[1]), "setup-child")
 	defer setupParent.Close()
 	defer setupChild.Close()
-	if err := wraphandoff.SendNotifyFDWithSetup(conn, int(notifyR.Fd()), int(setupParent.Fd()), wraphandoff.Metadata{WrapperPID: os.Getpid()}); err != nil {
+	if err := wraphandoff.SendNotifyFDWithSetup(
+		conn,
+		int(notifyR.Fd()),
+		int(setupParent.Fd()),
+		wraphandoff.Metadata{WrapperPID: os.Getpid()},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := wraphandoff.ReadStatus(conn); err != nil {
@@ -262,7 +301,17 @@ func TestAcceptNotifyFD_RejectsWrongUID(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, 99999, false, nil)
+		app.acceptNotifyFD(
+			context.Background(),
+			listener,
+			socketPath,
+			s.ID,
+			s,
+			false,
+			99999,
+			false,
+			nil,
+		)
 	}()
 
 	conn, err := net.Dial("unix", socketPath)
@@ -304,7 +353,17 @@ func TestAcceptNotifyFD_RejectsNegativeUID(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, -1, false, nil)
+		app.acceptNotifyFD(
+			context.Background(),
+			listener,
+			socketPath,
+			s.ID,
+			s,
+			false,
+			-1,
+			false,
+			nil,
+		)
 	}()
 
 	conn, err := net.Dial("unix", socketPath)
@@ -362,7 +421,17 @@ func TestAcceptNotifyFD_AcceptsMatchingUID(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, currentUID, false, nil)
+		app.acceptNotifyFD(
+			context.Background(),
+			listener,
+			socketPath,
+			s.ID,
+			s,
+			false,
+			currentUID,
+			false,
+			nil,
+		)
 	}()
 
 	conn, err := net.Dial("unix", socketPath)
@@ -416,7 +485,17 @@ func TestAcceptNotifyFD_AcceptsLegacyZeroUID(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, 0, false, nil)
+		app.acceptNotifyFD(
+			context.Background(),
+			listener,
+			socketPath,
+			s.ID,
+			s,
+			false,
+			0,
+			false,
+			nil,
+		)
 	}()
 
 	conn, err := net.Dial("unix", socketPath)
@@ -464,11 +543,27 @@ func TestAcceptNotifyFD_UsesMetadataWrapperPIDForCgroupBeforeAck(t *testing.T) {
 	prevStart := startNotifyHandlerForWrapHook
 	setupCalled := make(chan int, 1)
 	startCalled := make(chan struct{})
-	wrapCgroupSetupForNotifyHook = func(ctx context.Context, a *App, s *session.Session, sessionID string, wrapperPID int) (func() error, error) {
+	wrapCgroupSetupForNotifyHook = func(
+		ctx context.Context,
+		a *App,
+		s *session.Session,
+		sessionID string,
+		wrapperPID int,
+	) (func() error, error) {
 		setupCalled <- wrapperPID
 		return func() error { return nil }, nil
 	}
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+	startNotifyHandlerForWrapHook = func(
+		ctx context.Context,
+		notifyFD *os.File,
+		compositionSetup *os.File,
+		sessionID string,
+		a *App,
+		execveEnabled bool,
+		wrapperPID int,
+		s *session.Session,
+		cleanup func() error,
+	) error {
 		_ = notifyFD.Close()
 		if cleanup != nil {
 			_ = cleanup()
@@ -476,9 +571,12 @@ func TestAcceptNotifyFD_UsesMetadataWrapperPIDForCgroupBeforeAck(t *testing.T) {
 		close(startCalled)
 		return nil
 	}
-	withWrapperPIDValidationHook(t, func(wrapperPID, peerPID int, peerUID uint32) (*os.File, error) {
-		return nil, nil
-	})
+	withWrapperPIDValidationHook(
+		t,
+		func(wrapperPID, peerPID int, peerUID uint32) (*os.File, error) {
+			return nil, nil
+		},
+	)
 	t.Cleanup(func() {
 		wrapCgroupSetupForNotifyHook = prevSetup
 		startNotifyHandlerForWrapHook = prevStart
@@ -508,7 +606,11 @@ func TestAcceptNotifyFD_UsesMetadataWrapperPIDForCgroupBeforeAck(t *testing.T) {
 		_ = pipeW.Close()
 	})
 
-	if err := wraphandoff.SendNotifyFD(conn, int(pipeR.Fd()), wraphandoff.Metadata{WrapperPID: 7777, CommandJail: true}); err != nil {
+	if err := wraphandoff.SendNotifyFD(
+		conn,
+		int(pipeR.Fd()),
+		wraphandoff.Metadata{WrapperPID: 7777, CommandJail: true},
+	); err != nil {
 		t.Fatalf("send handoff: %v", err)
 	}
 	if err := wraphandoff.ReadStatus(conn); err != nil {
@@ -534,7 +636,13 @@ func TestAcceptNotifyFD_RejectsStrictShimWithoutCommandJailCapability(t *testing
 
 	prevSetup := wrapCgroupSetupForNotifyHook
 	setupCalled := make(chan struct{}, 1)
-	wrapCgroupSetupForNotifyHook = func(context.Context, *App, *session.Session, string, int) (func() error, error) {
+	wrapCgroupSetupForNotifyHook = func(
+		context.Context,
+		*App,
+		*session.Session,
+		string,
+		int,
+	) (func() error, error) {
 		setupCalled <- struct{}{}
 		return func() error { return nil }, nil
 	}
@@ -565,7 +673,11 @@ func TestAcceptNotifyFD_RejectsStrictShimWithoutCommandJailCapability(t *testing
 		_ = pipeW.Close()
 	})
 
-	if err := wraphandoff.SendNotifyFD(conn, int(pipeR.Fd()), wraphandoff.Metadata{WrapperPID: 7777}); err != nil {
+	if err := wraphandoff.SendNotifyFD(
+		conn,
+		int(pipeR.Fd()),
+		wraphandoff.Metadata{WrapperPID: 7777},
+	); err != nil {
 		t.Fatalf("send handoff: %v", err)
 	}
 	if err := wraphandoff.ReadStatus(conn); err == nil {
@@ -597,7 +709,13 @@ func TestAcceptNotifyFD_RejectsMetadataPIDThatIsNotPeerChild(t *testing.T) {
 
 	prevSetup := wrapCgroupSetupForNotifyHook
 	setupCalled := make(chan struct{}, 1)
-	wrapCgroupSetupForNotifyHook = func(ctx context.Context, a *App, s *session.Session, sessionID string, wrapperPID int) (func() error, error) {
+	wrapCgroupSetupForNotifyHook = func(
+		ctx context.Context,
+		a *App,
+		s *session.Session,
+		sessionID string,
+		wrapperPID int,
+	) (func() error, error) {
 		setupCalled <- struct{}{}
 		return func() error { return nil }, nil
 	}
@@ -617,7 +735,17 @@ func TestAcceptNotifyFD_RejectsMetadataPIDThatIsNotPeerChild(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, os.Getuid(), false, nil)
+		app.acceptNotifyFD(
+			context.Background(),
+			listener,
+			socketPath,
+			s.ID,
+			s,
+			false,
+			os.Getuid(),
+			false,
+			nil,
+		)
 	}()
 
 	conn := dialUnixConn(t, socketPath)
@@ -630,7 +758,11 @@ func TestAcceptNotifyFD_RejectsMetadataPIDThatIsNotPeerChild(t *testing.T) {
 		_ = pipeW.Close()
 	})
 
-	if err := wraphandoff.SendNotifyFD(conn, int(pipeR.Fd()), wraphandoff.Metadata{WrapperPID: os.Getpid()}); err != nil {
+	if err := wraphandoff.SendNotifyFD(
+		conn,
+		int(pipeR.Fd()),
+		wraphandoff.Metadata{WrapperPID: os.Getpid()},
+	); err != nil {
 		t.Fatalf("send handoff: %v", err)
 	}
 	if err := wraphandoff.ReadStatus(conn); err == nil {
@@ -673,7 +805,17 @@ func TestAcceptNotifyFD_RejectsMissingMetadataWhenEBPFRequired(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, 0, false, nil)
+		app.acceptNotifyFD(
+			context.Background(),
+			listener,
+			socketPath,
+			s.ID,
+			s,
+			false,
+			0,
+			false,
+			nil,
+		)
 	}()
 
 	conn := dialUnixConn(t, socketPath)
@@ -715,16 +857,25 @@ func TestAcceptNotifyFD_RejectsWhenNotifyHandlerFailsBeforeAck(t *testing.T) {
 	prevSetup := wrapCgroupSetupForNotifyHook
 	setupCalled := make(chan int, 1)
 	var cleanupCalls atomic.Int32
-	wrapCgroupSetupForNotifyHook = func(ctx context.Context, a *App, s *session.Session, sessionID string, wrapperPID int) (func() error, error) {
+	wrapCgroupSetupForNotifyHook = func(
+		ctx context.Context,
+		a *App,
+		s *session.Session,
+		sessionID string,
+		wrapperPID int,
+	) (func() error, error) {
 		setupCalled <- wrapperPID
 		return func() error {
 			cleanupCalls.Add(1)
 			return nil
 		}, nil
 	}
-	withWrapperPIDValidationHook(t, func(wrapperPID, peerPID int, peerUID uint32) (*os.File, error) {
-		return nil, nil
-	})
+	withWrapperPIDValidationHook(
+		t,
+		func(wrapperPID, peerPID int, peerUID uint32) (*os.File, error) {
+			return nil, nil
+		},
+	)
 	t.Cleanup(func() {
 		wrapCgroupSetupForNotifyHook = prevSetup
 	})
@@ -740,7 +891,17 @@ func TestAcceptNotifyFD_RejectsWhenNotifyHandlerFailsBeforeAck(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, 0, false, nil)
+		app.acceptNotifyFD(
+			context.Background(),
+			listener,
+			socketPath,
+			s.ID,
+			s,
+			false,
+			0,
+			false,
+			nil,
+		)
 	}()
 
 	conn := dialUnixConn(t, socketPath)
@@ -753,7 +914,11 @@ func TestAcceptNotifyFD_RejectsWhenNotifyHandlerFailsBeforeAck(t *testing.T) {
 		_ = pipeW.Close()
 	})
 
-	if err := wraphandoff.SendNotifyFD(conn, int(pipeR.Fd()), wraphandoff.Metadata{WrapperPID: missingWrapperPID}); err != nil {
+	if err := wraphandoff.SendNotifyFD(
+		conn,
+		int(pipeR.Fd()),
+		wraphandoff.Metadata{WrapperPID: missingWrapperPID},
+	); err != nil {
 		t.Fatalf("send handoff: %v", err)
 	}
 	if err := wraphandoff.ReadStatus(conn); err == nil {
@@ -793,7 +958,17 @@ func TestAcceptNotifyFD_ContinuesAfterWrongUID(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(context.Background(), listener, socketPath, s.ID, s, false, os.Getuid()+1, false, nil)
+		app.acceptNotifyFD(
+			context.Background(),
+			listener,
+			socketPath,
+			s.ID,
+			s,
+			false,
+			os.Getuid()+1,
+			false,
+			nil,
+		)
 	}()
 
 	firstConn := dialUnixConn(t, socketPath)
@@ -927,7 +1102,14 @@ func TestAcceptPtracePID_ContinuesAfterWrongUID(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		app.acceptPtracePID(context.Background(), listener, socketPath, s.ID, os.Getuid()+1, activity)
+		app.acceptPtracePID(
+			context.Background(),
+			listener,
+			socketPath,
+			s.ID,
+			os.Getuid()+1,
+			activity,
+		)
 	}()
 
 	firstConn := dialUnixConn(t, socketPath)

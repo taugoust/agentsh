@@ -99,7 +99,8 @@ func TestCheckEBPFCgroupAttach_UnavailableMode(t *testing.T) {
 	if r.Available {
 		t.Errorf("Mode=Unavailable should be Available=false; got %+v", r)
 	}
-	if r.Error == nil || !strings.Contains(r.Error.Error(), "cgroup attach feasibility unavailable") {
+	if r.Error == nil ||
+		!strings.Contains(r.Error.Error(), "cgroup attach feasibility unavailable") {
 		t.Errorf("Error should name cgroup-attach blocker; got %v", r.Error)
 	}
 }

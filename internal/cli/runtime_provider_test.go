@@ -42,7 +42,9 @@ sessions:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if request.Provider != runtimeprovider.NativeProvider || request.Profile != "compatibility" || request.SessionID != sessionID || request.Session.ID != sessionID {
+	if request.Provider != runtimeprovider.NativeProvider || request.Profile != "compatibility" ||
+		request.SessionID != sessionID ||
+		request.Session.ID != sessionID {
 		t.Fatalf("runtime request = %+v", request)
 	}
 	if gotConfigPath != configPath || cfg.Sessions.Runtime.DefaultProfile != "workstation" {
@@ -63,7 +65,11 @@ sessions:
 	if err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("unknown runtime profile error = %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(detachedSessionsRoot(), unknownID)); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(
+		filepath.Join(detachedSessionsRoot(), unknownID),
+	); !os.IsNotExist(
+		statErr,
+	) {
 		t.Fatalf("unknown profile reserved state before validation: %v", statErr)
 	}
 }
@@ -96,7 +102,11 @@ sessions:
 	if err == nil || !strings.Contains(err.Error(), "operator ceiling") {
 		t.Fatalf("external runtime error = %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(detachedSessionsRoot(), sessionID)); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(
+		filepath.Join(detachedSessionsRoot(), sessionID),
+	); !os.IsNotExist(
+		statErr,
+	) {
 		t.Fatalf("disabled external profile reserved state: %v", statErr)
 	}
 }
@@ -111,13 +121,20 @@ func TestRuntimeProviderDefaultsToNativeAndExposesStartFlag(t *testing.T) {
 	}
 	t.Setenv("AGENTSH_CONFIG", configPath)
 	request, _, _, err := prepareDetachedRuntimeRequest(
-		"session-"+uuid.NewString(), []string{t.TempDir()}, string(types.WorkspaceModeDirect), "default",
-		"", "", nil, "",
+		"session-"+uuid.NewString(),
+		[]string{t.TempDir()},
+		string(types.WorkspaceModeDirect),
+		"default",
+		"",
+		"",
+		nil,
+		"",
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if request.Provider != runtimeprovider.NativeProvider || request.Profile != runtimeprovider.DefaultProfile {
+	if request.Provider != runtimeprovider.NativeProvider ||
+		request.Profile != runtimeprovider.DefaultProfile {
 		t.Fatalf("default runtime = %s/%s", request.Provider, request.Profile)
 	}
 	if request.Session.RealPaths == nil || !*request.Session.RealPaths {
@@ -172,10 +189,13 @@ func TestRuntimeProviderInfersProtocolV2NativeManifestWithoutChangingLegacyFiles
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !legacy || manifest.Provider != runtimeprovider.NativeProvider || manifest.Profile != runtimeprovider.DefaultProfile || manifest.State != runtimeprovider.StateReady {
+	if !legacy || manifest.Provider != runtimeprovider.NativeProvider ||
+		manifest.Profile != runtimeprovider.DefaultProfile ||
+		manifest.State != runtimeprovider.StateReady {
 		t.Fatalf("inferred runtime manifest = %+v, legacy=%t", manifest, legacy)
 	}
-	if manifest.Identity.Generation != 4 || manifest.Identity.IncarnationID != "incarnation-4" || manifest.Endpoint.Address != meta.SupervisorSock {
+	if manifest.Identity.Generation != 4 || manifest.Identity.IncarnationID != "incarnation-4" ||
+		manifest.Endpoint.Address != meta.SupervisorSock {
 		t.Fatalf("inferred runtime identity = %+v / %+v", manifest.Identity, manifest.Endpoint)
 	}
 	if _, err := os.Stat(runtimeprovider.ManifestPath(stateDir)); !os.IsNotExist(err) {
@@ -197,9 +217,19 @@ func TestRuntimeProviderKeepsProtocolV1RecoveryPath(t *testing.T) {
 	if err := os.WriteFile(envFile, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	recovery := detached.NewRecoveryManifest(sessionID, types.CreateSessionRequest{ID: sessionID, Workspace: workspace}, detached.LaunchSpec{
-		Executable: filepath.Join(root, "agentsh"), WorkingDir: workspace, EnvironmentFile: envFile,
-	}, time.Now().UTC())
+	recovery := detached.NewRecoveryManifest(
+		sessionID,
+		types.CreateSessionRequest{ID: sessionID, Workspace: workspace},
+		detached.LaunchSpec{
+			Executable: filepath.Join(
+				root,
+				"agentsh",
+			),
+			WorkingDir:      workspace,
+			EnvironmentFile: envFile,
+		},
+		time.Now().UTC(),
+	)
 	if err := detached.WriteRecoveryManifest(stateDir, recovery); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +239,11 @@ func TestRuntimeProviderKeepsProtocolV1RecoveryPath(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, legacy, err := runtimeManifestForDetachedSession(sessionID, stateDir); !legacy || !errors.Is(err, errLegacyRuntimeProviderIdentity) {
+	if _, legacy, err := runtimeManifestForDetachedSession(
+		sessionID,
+		stateDir,
+	); !legacy ||
+		!errors.Is(err, errLegacyRuntimeProviderIdentity) {
 		t.Fatalf("protocol-v1 runtime inference = legacy %t, error %v", legacy, err)
 	}
 }

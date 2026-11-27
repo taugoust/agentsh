@@ -40,18 +40,27 @@ type state struct {
 	ResultSize    int64  `json:"result_size,omitempty"`
 }
 
-func (g GuestWorkspace) Import(ctx context.Context, transfer guestcontrol.ArtifactTransfer, source io.Reader) error {
+func (g GuestWorkspace) Import(
+	ctx context.Context,
+	transfer guestcontrol.ArtifactTransfer,
+	source io.Reader,
+) error {
 	if err := g.validate(); err != nil {
 		return err
 	}
-	if transfer.Kind != guestcontrol.ArtifactKindGitInputBundle || transfer.Validate() != nil || source == nil {
+	if transfer.Kind != guestcontrol.ArtifactKindGitInputBundle || transfer.Validate() != nil ||
+		source == nil {
 		return fmt.Errorf("Git Draft input artifact is invalid")
 	}
 	controlDir := filepath.Join(g.VolumeRoot, ".agentsh-draft")
 	if err := os.Mkdir(controlDir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
 		return err
 	}
-	if err := os.Mkdir(filepath.Join(g.VolumeRoot, ".agentsh-home"), 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+	if err := os.Mkdir(
+		filepath.Join(g.VolumeRoot, ".agentsh-home"),
+		0o700,
+	); err != nil &&
+		!errors.Is(err, os.ErrExist) {
 		return err
 	}
 	if existing, err := g.readState(); err == nil {
@@ -107,23 +116,45 @@ func (g GuestWorkspace) Import(ctx context.Context, transfer guestcontrol.Artifa
 	if _, err := g.git(ctx, g.Workspace, "init", "--quiet"); err != nil {
 		return err
 	}
-	if _, err := g.git(ctx, g.Workspace, "fetch", "--quiet", "--no-tags", bundlePath, baselineRef+":"+baselineRef); err != nil {
+	if _, err := g.git(
+		ctx,
+		g.Workspace,
+		"fetch",
+		"--quiet",
+		"--no-tags",
+		bundlePath,
+		baselineRef+":"+baselineRef,
+	); err != nil {
 		return err
 	}
-	if _, err := g.git(ctx, g.Workspace, "checkout", "--quiet", "-b", "pi-auto-draft", baseline); err != nil {
+	if _, err := g.git(
+		ctx,
+		g.Workspace,
+		"checkout",
+		"--quiet",
+		"-b",
+		"pi-auto-draft",
+		baseline,
+	); err != nil {
 		return err
 	}
 	if _, err := g.git(ctx, g.Workspace, "reset", "--hard", "--quiet", baseline); err != nil {
 		return err
 	}
 	for key, value := range map[string]string{
-		"user.name": "Pi Auto", "user.email": "pi-auto@localhost", "commit.gpgSign": "false", "core.hooksPath": "/dev/null",
+		"user.name": "Pi Auto", "user.email": "pi-auto@localhost", "commit.gpgSign": "false",
+		"core.hooksPath": "/dev/null",
 	} {
 		if _, err := g.git(ctx, g.Workspace, "config", "--local", key, value); err != nil {
 			return err
 		}
 	}
-	record := state{SchemaVersion: stateSchema, SessionID: g.SessionID, InputSHA256: transfer.SHA256, Baseline: baseline}
+	record := state{
+		SchemaVersion: stateSchema,
+		SessionID:     g.SessionID,
+		InputSHA256:   transfer.SHA256,
+		Baseline:      baseline,
+	}
 	if err := writeState(filepath.Join(controlDir, "state.json"), record); err != nil {
 		return err
 	}
@@ -162,7 +193,9 @@ func (g GuestWorkspace) Seal(ctx context.Context) (guestcontrol.ArtifactTransfer
 		return guestcontrol.ArtifactTransfer{}, nil, err
 	}
 	if !record.Sealing {
-		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("Git Draft sealing intent is not durable")
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf(
+			"Git Draft sealing intent is not durable",
+		)
 	}
 	resultPath := filepath.Join(g.VolumeRoot, ".agentsh-draft", "result.bundle")
 	if record.Result != "" {
@@ -170,7 +203,13 @@ func (g GuestWorkspace) Seal(ctx context.Context) (guestcontrol.ArtifactTransfer
 		if err != nil {
 			return guestcontrol.ArtifactTransfer{}, nil, err
 		}
-		transfer := guestcontrol.ArtifactTransfer{Kind: guestcontrol.ArtifactKindGitResultBundle, SHA256: record.ResultSHA256, Size: record.ResultSize, BaselineCommit: record.Baseline, ResultCommit: record.Result}
+		transfer := guestcontrol.ArtifactTransfer{
+			Kind:           guestcontrol.ArtifactKindGitResultBundle,
+			SHA256:         record.ResultSHA256,
+			Size:           record.ResultSize,
+			BaselineCommit: record.Baseline,
+			ResultCommit:   record.Result,
+		}
 		if err := verifyFile(file, transfer); err != nil {
 			_ = file.Close()
 			return guestcontrol.ArtifactTransfer{}, nil, err
@@ -186,10 +225,22 @@ func (g GuestWorkspace) Seal(ctx context.Context) (guestcontrol.ArtifactTransfer
 	}
 	head = strings.TrimSpace(head)
 	if !validOID(head) {
-		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("Git Draft HEAD object ID is invalid")
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf(
+			"Git Draft HEAD object ID is invalid",
+		)
 	}
-	if _, err := g.git(ctx, g.Workspace, "merge-base", "--is-ancestor", record.Baseline, head); err != nil {
-		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("Git Draft history no longer descends from its baseline: %w", err)
+	if _, err := g.git(
+		ctx,
+		g.Workspace,
+		"merge-base",
+		"--is-ancestor",
+		record.Baseline,
+		head,
+	); err != nil {
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf(
+			"Git Draft history no longer descends from its baseline: %w",
+			err,
+		)
 	}
 	if _, err := g.git(ctx, g.Workspace, "add", "-A", "--", "."); err != nil {
 		return guestcontrol.ArtifactTransfer{}, nil, err
@@ -202,20 +253,40 @@ func (g GuestWorkspace) Seal(ctx context.Context) (guestcontrol.ArtifactTransfer
 		"GIT_AUTHOR_NAME=AgentSH", "GIT_AUTHOR_EMAIL=agentsh@localhost",
 		"GIT_COMMITTER_NAME=AgentSH", "GIT_COMMITTER_EMAIL=agentsh@localhost",
 	}
-	result, err := g.gitEnv(ctx, g.Workspace, commitEnv, "commit-tree", strings.TrimSpace(tree), "-p", head, "-m", "pi-auto result "+g.SessionID)
+	result, err := g.gitEnv(
+		ctx,
+		g.Workspace,
+		commitEnv,
+		"commit-tree",
+		strings.TrimSpace(tree),
+		"-p",
+		head,
+		"-m",
+		"pi-auto result "+g.SessionID,
+	)
 	if err != nil {
 		return guestcontrol.ArtifactTransfer{}, nil, err
 	}
 	result = strings.TrimSpace(result)
 	if !validOID(result) {
-		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("Git Draft result object ID is invalid")
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf(
+			"Git Draft result object ID is invalid",
+		)
 	}
 	if _, err := g.git(ctx, g.Workspace, "update-ref", resultRef, result); err != nil {
 		return guestcontrol.ArtifactTransfer{}, nil, err
 	}
 	temporary := resultPath + ".tmp"
 	_ = os.Remove(temporary)
-	if _, err := g.git(ctx, g.Workspace, "bundle", "create", temporary, resultRef, "^"+record.Baseline); err != nil {
+	if _, err := g.git(
+		ctx,
+		g.Workspace,
+		"bundle",
+		"create",
+		temporary,
+		resultRef,
+		"^"+record.Baseline,
+	); err != nil {
 		return guestcontrol.ArtifactTransfer{}, nil, err
 	}
 	file, err := os.Open(temporary)
@@ -234,7 +305,10 @@ func (g GuestWorkspace) Seal(ctx context.Context) (guestcontrol.ArtifactTransfer
 	}
 	record.Sealing = true
 	record.Result, record.ResultSHA256, record.ResultSize = result, transfer.SHA256, transfer.Size
-	if err := writeState(filepath.Join(g.VolumeRoot, ".agentsh-draft", "state.json"), record); err != nil {
+	if err := writeState(
+		filepath.Join(g.VolumeRoot, ".agentsh-draft", "state.json"),
+		record,
+	); err != nil {
 		return guestcontrol.ArtifactTransfer{}, nil, err
 	}
 	file, err = os.Open(resultPath)
@@ -266,11 +340,16 @@ func (g GuestWorkspace) verifyRepository(ctx context.Context, baseline string) e
 }
 
 func (g GuestWorkspace) validate() error {
-	if !strings.HasPrefix(g.SessionID, "session-") || !cleanAbsolute(g.Workspace) || !cleanAbsolute(g.VolumeRoot) || !cleanAbsolute(g.Git) || g.Workspace == g.VolumeRoot {
+	if !strings.HasPrefix(g.SessionID, "session-") || !cleanAbsolute(g.Workspace) ||
+		!cleanAbsolute(g.VolumeRoot) ||
+		!cleanAbsolute(g.Git) ||
+		g.Workspace == g.VolumeRoot {
 		return fmt.Errorf("Git Draft guest workspace configuration is invalid")
 	}
 	rel, relErr := filepath.Rel(g.VolumeRoot, g.Workspace)
-	inside := relErr == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+	inside := relErr == nil && rel != "." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator)) &&
+		!filepath.IsAbs(rel)
 	if !inside {
 		// Production exposes the volume's workspace subdirectory at the fixed
 		// guest path through a bind mount. Prove that alias by exact inode/device
@@ -278,8 +357,11 @@ func (g GuestWorkspace) validate() error {
 		expected := filepath.Join(g.VolumeRoot, "workspace")
 		workspaceInfo, workspaceErr := os.Lstat(g.Workspace)
 		expectedInfo, expectedErr := os.Lstat(expected)
-		if workspaceErr != nil || expectedErr != nil || !workspaceInfo.IsDir() || !expectedInfo.IsDir() ||
-			workspaceInfo.Mode()&os.ModeSymlink != 0 || expectedInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(workspaceInfo, expectedInfo) {
+		if workspaceErr != nil || expectedErr != nil || !workspaceInfo.IsDir() ||
+			!expectedInfo.IsDir() ||
+			workspaceInfo.Mode()&os.ModeSymlink != 0 ||
+			expectedInfo.Mode()&os.ModeSymlink != 0 ||
+			!os.SameFile(workspaceInfo, expectedInfo) {
 			return fmt.Errorf("Git Draft workspace is outside its volume")
 		}
 	}
@@ -295,11 +377,19 @@ func (g GuestWorkspace) readState() (state, error) {
 	var record state
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&record); err != nil || record.SchemaVersion != stateSchema || record.SessionID != g.SessionID || !validOID(record.Baseline) {
+	if err := decoder.Decode(
+		&record,
+	); err != nil || record.SchemaVersion != stateSchema || record.SessionID != g.SessionID ||
+		!validOID(record.Baseline) {
 		return state{}, fmt.Errorf("Git Draft state is invalid")
 	}
 	resultPresent := record.Result != "" || record.ResultSHA256 != "" || record.ResultSize != 0
-	if resultPresent && (!record.Sealing || !validOID(record.Result) || record.Result == record.Baseline || !validSHA256(record.ResultSHA256) || record.ResultSize <= 0) {
+	if resultPresent &&
+		(!record.Sealing ||
+			!validOID(record.Result) ||
+			record.Result == record.Baseline ||
+			!validSHA256(record.ResultSHA256) ||
+			record.ResultSize <= 0) {
 		return state{}, fmt.Errorf("Git Draft result state is invalid")
 	}
 	return record, nil
@@ -309,14 +399,31 @@ func (g GuestWorkspace) git(ctx context.Context, directory string, args ...strin
 	return g.gitEnv(ctx, directory, nil, args...)
 }
 
-func (g GuestWorkspace) gitEnv(ctx context.Context, directory string, extra []string, args ...string) (string, error) {
+func (g GuestWorkspace) gitEnv(
+	ctx context.Context,
+	directory string,
+	extra []string,
+	args ...string,
+) (string, error) {
 	fixed := []string{"-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false"}
 	cmd := exec.CommandContext(ctx, g.Git, append(fixed, args...)...)
 	cmd.Dir = directory
-	cmd.Env = append([]string{"HOME=" + filepath.Join(g.VolumeRoot, ".agentsh-home"), "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_LFS_SKIP_SMUDGE=1", "LC_ALL=C"}, extra...)
+	cmd.Env = append(
+		[]string{
+			"HOME=" + filepath.Join(g.VolumeRoot, ".agentsh-home"),
+			"GIT_CONFIG_NOSYSTEM=1",
+			"GIT_TERMINAL_PROMPT=0",
+			"GIT_LFS_SKIP_SMUDGE=1",
+			"LC_ALL=C",
+		},
+		extra...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("trusted Git operation %q failed: %s", args[0], bounded(string(output)))
+		return "", fmt.Errorf(
+			"trusted Git operation %q failed: %s",
+			args[0],
+			bounded(string(output)),
+		)
 	}
 	return string(output), nil
 }
@@ -353,12 +460,18 @@ func describeFile(file *os.File, kind string) (guestcontrol.ArtifactTransfer, er
 		return guestcontrol.ArtifactTransfer{}, fmt.Errorf("Git Draft artifact exceeds its limit")
 	}
 	_, _ = file.Seek(0, io.SeekStart)
-	return guestcontrol.ArtifactTransfer{Kind: kind, SHA256: "sha256:" + hex.EncodeToString(hasher.Sum(nil)), Size: size}, nil
+	return guestcontrol.ArtifactTransfer{
+		Kind:   kind,
+		SHA256: "sha256:" + hex.EncodeToString(hasher.Sum(nil)),
+		Size:   size,
+	}, nil
 }
 
 func verifyFile(file *os.File, transfer guestcontrol.ArtifactTransfer) error {
 	got, err := describeFile(file, transfer.Kind)
-	if err != nil || got.Kind != transfer.Kind || got.SHA256 != transfer.SHA256 || got.Size != transfer.Size || transfer.Validate() != nil {
+	if err != nil || got.Kind != transfer.Kind || got.SHA256 != transfer.SHA256 ||
+		got.Size != transfer.Size ||
+		transfer.Validate() != nil {
 		return fmt.Errorf("Git Draft result artifact integrity check failed")
 	}
 	return nil
@@ -373,7 +486,8 @@ func syncDir(path string) error {
 	return handle.Sync()
 }
 func cleanAbsolute(path string) bool {
-	return filepath.IsAbs(path) && filepath.Clean(path) == path && !strings.ContainsAny(path, "\x00\r\n")
+	return filepath.IsAbs(path) && filepath.Clean(path) == path &&
+		!strings.ContainsAny(path, "\x00\r\n")
 }
 func validSHA256(value string) bool {
 	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") {

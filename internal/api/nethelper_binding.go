@@ -37,7 +37,11 @@ func readRecoveryTokenFile(path string) (string, string) {
 	defer file.Close()
 	openedInfo, err := file.Stat()
 	pathInfo, pathErr := os.Lstat(path)
-	if err != nil || pathErr != nil || pathInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(openedInfo, pathInfo) || !openedInfo.Mode().IsRegular() || openedInfo.Mode().Perm()&0o077 != 0 || !helperPathOwnedByCurrentUser(openedInfo) {
+	if err != nil || pathErr != nil || pathInfo.Mode()&os.ModeSymlink != 0 ||
+		!os.SameFile(openedInfo, pathInfo) ||
+		!openedInfo.Mode().IsRegular() ||
+		openedInfo.Mode().Perm()&0o077 != 0 ||
+		!helperPathOwnedByCurrentUser(openedInfo) {
 		return "", ""
 	}
 	data, err := io.ReadAll(io.LimitReader(file, 514))
@@ -57,7 +61,8 @@ func readRecoveryTokenFile(path string) (string, string) {
 }
 
 func validateWrapperRecoveryTokenPath(path string) error {
-	if strings.TrimSpace(path) == "" || filepath.Base(path) != nethelper.WrapperRecoveryTokenFilename {
+	if strings.TrimSpace(path) == "" ||
+		filepath.Base(path) != nethelper.WrapperRecoveryTokenFilename {
 		return fmt.Errorf("recovery token must use the fixed wrapper-owned filename")
 	}
 	if err := validateOwnedProtectedPath(path, false); err != nil {
@@ -72,7 +77,9 @@ func validateWrapperRecoveryTokenPath(path string) error {
 		return fmt.Errorf("recovery token container contains a symlink component")
 	}
 	info, err := os.Lstat(container)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 || !helperPathOwnedByCurrentUser(info) {
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 ||
+		info.Mode().Perm()&0o077 != 0 ||
+		!helperPathOwnedByCurrentUser(info) {
 		return fmt.Errorf("recovery token container must be a private wrapper-owned directory")
 	}
 	return nil
@@ -132,20 +139,33 @@ type nethelperBindingState struct {
 	uncertain *uncertainCandidateCleanup
 }
 
-func newNethelperBindingState(socketPath, credentialFile, bootstrapPath, credential string) *nethelperBindingState {
+func newNethelperBindingState(
+	socketPath, credentialFile, bootstrapPath, credential string,
+) *nethelperBindingState {
 	binding := nethelperBinding{
-		SocketPath: strings.TrimSpace(socketPath), CredentialFile: strings.TrimSpace(credentialFile),
-		BootstrapResultPath: strings.TrimSpace(bootstrapPath), Credential: strings.TrimSpace(credential),
+		SocketPath: strings.TrimSpace(
+			socketPath,
+		),
+		CredentialFile: strings.TrimSpace(credentialFile),
+		BootstrapResultPath: strings.TrimSpace(
+			bootstrapPath,
+		),
+		Credential:      strings.TrimSpace(credential),
 		ProtocolVersion: nethelper.CurrentProtocolVersion,
 	}
 	if binding.BootstrapResultPath == "" && binding.SocketPath != "" {
-		binding.BootstrapResultPath = filepath.Join(filepath.Dir(binding.SocketPath), "bootstrap.json")
+		binding.BootstrapResultPath = filepath.Join(
+			filepath.Dir(binding.SocketPath),
+			"bootstrap.json",
+		)
 	}
 	if binding.BootstrapResultPath != "" {
 		if result, err := readNethelperBootstrapResult(binding.BootstrapResultPath); err == nil &&
 			result.Validate(time.Now().UTC()) == nil &&
-			result.SocketPath == binding.SocketPath && result.CredentialFile == binding.CredentialFile &&
-			result.ResultFile == binding.BootstrapResultPath && bootstrapResultMatchesFixedPaths(result) {
+			result.SocketPath == binding.SocketPath &&
+			result.CredentialFile == binding.CredentialFile &&
+			result.ResultFile == binding.BootstrapResultPath &&
+			bootstrapResultMatchesFixedPaths(result) {
 			binding.Kind = "ephemeral"
 			binding.UnitName = result.UnitName
 			binding.BootstrapSchemaVersion = result.BootstrapSchemaVersion
@@ -180,7 +200,12 @@ func (s *nethelperBindingState) replace(binding nethelperBinding) {
 	s.mu.Unlock()
 }
 
-func (s *nethelperBindingState) recordUncertainCandidate(sessionID string, binding nethelperBinding, attachment *types.NetworkAttachmentEvidence, reason string) {
+func (s *nethelperBindingState) recordUncertainCandidate(
+	sessionID string,
+	binding nethelperBinding,
+	attachment *types.NetworkAttachmentEvidence,
+	reason string,
+) {
 	if s == nil {
 		return
 	}
@@ -190,7 +215,13 @@ func (s *nethelperBindingState) recordUncertainCandidate(sessionID string, bindi
 		evidence = &copy
 	}
 	s.mu.Lock()
-	s.uncertain = &uncertainCandidateCleanup{SessionID: strings.TrimSpace(sessionID), Binding: binding.clone(), Attachment: evidence, Reason: reason, RecordedAt: time.Now().UTC()}
+	s.uncertain = &uncertainCandidateCleanup{
+		SessionID:  strings.TrimSpace(sessionID),
+		Binding:    binding.clone(),
+		Attachment: evidence,
+		Reason:     reason,
+		RecordedAt: time.Now().UTC(),
+	}
 	s.mu.Unlock()
 }
 
@@ -212,7 +243,9 @@ func (s *nethelperBindingState) uncertainCandidate() *uncertainCandidateCleanup 
 	return &copy
 }
 
-func (s *nethelperBindingState) confirmUncertainCandidateCleanup(pending *uncertainCandidateCleanup) bool {
+func (s *nethelperBindingState) confirmUncertainCandidateCleanup(
+	pending *uncertainCandidateCleanup,
+) bool {
 	if s == nil || pending == nil || pending.Attachment == nil {
 		return false
 	}
@@ -220,11 +253,13 @@ func (s *nethelperBindingState) confirmUncertainCandidateCleanup(pending *uncert
 	defer s.mu.Unlock()
 	current := s.uncertain
 	if current == nil || current.Attachment == nil || current.SessionID != pending.SessionID ||
-		current.Binding.Generation != pending.Binding.Generation || current.Binding.LeaseID != pending.Binding.LeaseID {
+		current.Binding.Generation != pending.Binding.Generation ||
+		current.Binding.LeaseID != pending.Binding.LeaseID {
 		return false
 	}
 	got, want := current.Attachment, pending.Attachment
-	if got.RegistrationID != want.RegistrationID || got.CgroupID != want.CgroupID || got.CgroupPath != want.CgroupPath {
+	if got.RegistrationID != want.RegistrationID || got.CgroupID != want.CgroupID ||
+		got.CgroupPath != want.CgroupPath {
 		return false
 	}
 	// CleanupSession is intentionally non-idempotent. Commit this progress before
@@ -239,13 +274,19 @@ func (s *nethelperBindingState) resolveUncertainCandidate(binding nethelperBindi
 		return
 	}
 	s.mu.Lock()
-	if s.uncertain != nil && s.uncertain.Binding.Generation == binding.Generation && s.uncertain.Binding.LeaseID == binding.LeaseID {
+	if s.uncertain != nil && s.uncertain.Binding.Generation == binding.Generation &&
+		s.uncertain.Binding.LeaseID == binding.LeaseID {
 		s.uncertain = nil
 	}
 	s.mu.Unlock()
 }
 
-func (s *nethelperBindingState) updateHealth(generation uint64, status nethelper.InstanceStatusResponse, checkedAt time.Time, reason string) {
+func (s *nethelperBindingState) updateHealth(
+	generation uint64,
+	status nethelper.InstanceStatusResponse,
+	checkedAt time.Time,
+	reason string,
+) {
 	if s == nil {
 		return
 	}
@@ -339,22 +380,32 @@ func (a *App) resolveCandidateCleanup(ctx context.Context) error {
 	}
 	if pending.Attachment != nil {
 		attachment := pending.Attachment
-		if pending.SessionID == "" || attachment.RegistrationID == "" || attachment.CgroupID == 0 || strings.TrimSpace(attachment.CgroupPath) == "" {
+		if pending.SessionID == "" || attachment.RegistrationID == "" || attachment.CgroupID == 0 ||
+			strings.TrimSpace(attachment.CgroupPath) == "" {
 			return fmt.Errorf("candidate cleanup tombstone lacks exact registration identity")
 		}
 		cleanupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		request := nethelper.CleanupSessionRequest{
 			ProtocolVersion: nethelper.CurrentProtocolVersion,
-			RequestID:       "candidate-cleanup-" + uuid.NewString(), SessionID: pending.SessionID,
-			RegistrationID: attachment.RegistrationID, CgroupID: attachment.CgroupID, CgroupPath: attachment.CgroupPath,
-			Reason: nethelper.CleanupReasonRegistrationFailed,
+			RequestID:       "candidate-cleanup-" + uuid.NewString(),
+			SessionID:       pending.SessionID,
+			RegistrationID:  attachment.RegistrationID,
+			CgroupID:        attachment.CgroupID,
+			CgroupPath:      attachment.CgroupPath,
+			Reason:          nethelper.CleanupReasonRegistrationFailed,
 		}
 		var resp nethelper.CleanupSessionResponse
 		var cleanupErr error
 		if a.nethelperCleanupForTest != nil {
-			resp, cleanupErr = a.nethelperCleanupForTest(cleanupCtx, pending.Binding.clone(), request)
+			resp, cleanupErr = a.nethelperCleanupForTest(
+				cleanupCtx,
+				pending.Binding.clone(),
+				request,
+			)
 		} else {
-			resp, cleanupErr = nethelperClientForSocket(pending.Binding.SocketPath).CleanupSession(cleanupCtx, request)
+			resp, cleanupErr = nethelperClientForSocket(
+				pending.Binding.SocketPath,
+			).CleanupSession(cleanupCtx, request)
 		}
 		cancel()
 		if cleanupErr != nil {
@@ -372,7 +423,11 @@ func (a *App) resolveCandidateCleanup(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("candidate cleanup status is uncertain: %w", err)
 		}
-		return fmt.Errorf("candidate cleanup unresolved: status=%s active_registrations=%d", status.Status, status.ActiveRegistrationCount)
+		return fmt.Errorf(
+			"candidate cleanup unresolved: status=%s active_registrations=%d",
+			status.Status,
+			status.ActiveRegistrationCount,
+		)
 	}
 	a.nethelperBinding.resolveUncertainCandidate(pending.Binding)
 	return nil
@@ -385,12 +440,18 @@ func (a *App) nethelperBindingSnapshot() nethelperBinding {
 	return a.nethelperBinding.snapshot()
 }
 
-func (a *App) authenticatedNethelperStatus(ctx context.Context, binding nethelperBinding) (nethelper.InstanceStatusResponse, error) {
+func (a *App) authenticatedNethelperStatus(
+	ctx context.Context,
+	binding nethelperBinding,
+) (nethelper.InstanceStatusResponse, error) {
 	if a != nil && a.nethelperStatusForTest != nil {
 		return a.nethelperStatusForTest(ctx, binding.clone())
 	}
-	if strings.TrimSpace(binding.SocketPath) == "" || strings.TrimSpace(binding.LeaseID) == "" || strings.TrimSpace(binding.Credential) == "" {
-		return nethelper.InstanceStatusResponse{}, fmt.Errorf("ephemeral helper binding lacks socket, lease, or in-memory credential")
+	if strings.TrimSpace(binding.SocketPath) == "" || strings.TrimSpace(binding.LeaseID) == "" ||
+		strings.TrimSpace(binding.Credential) == "" {
+		return nethelper.InstanceStatusResponse{}, fmt.Errorf(
+			"ephemeral helper binding lacks socket, lease, or in-memory credential",
+		)
 	}
 	statusCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -403,40 +464,58 @@ func (a *App) authenticatedNethelperStatus(ctx context.Context, binding nethelpe
 	})
 }
 
-func (a *App) authenticatedCompositionRuntimeAttestation(ctx context.Context, binding nethelperBinding) (nethelper.AttestCompositionRuntimeResponse, error) {
+func (a *App) authenticatedCompositionRuntimeAttestation(
+	ctx context.Context,
+	binding nethelperBinding,
+) (nethelper.AttestCompositionRuntimeResponse, error) {
 	if a != nil && a.nethelperAttestationForTest != nil {
 		return a.nethelperAttestationForTest(ctx, binding.clone())
 	}
-	if strings.TrimSpace(binding.SocketPath) == "" || strings.TrimSpace(binding.LeaseID) == "" || strings.TrimSpace(binding.Credential) == "" {
-		return nethelper.AttestCompositionRuntimeResponse{}, fmt.Errorf("ephemeral helper binding lacks socket, lease, or in-memory credential")
+	if strings.TrimSpace(binding.SocketPath) == "" || strings.TrimSpace(binding.LeaseID) == "" ||
+		strings.TrimSpace(binding.Credential) == "" {
+		return nethelper.AttestCompositionRuntimeResponse{}, fmt.Errorf(
+			"ephemeral helper binding lacks socket, lease, or in-memory credential",
+		)
 	}
 	attestationCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	client := nethelperClientForSocket(binding.SocketPath)
-	return client.AttestCompositionRuntime(attestationCtx, nethelper.AttestCompositionRuntimeRequest{
-		ProtocolVersion:          nethelper.CurrentProtocolVersion,
-		RequestID:                "composition-attestation-" + uuid.NewString(),
-		LeaseID:                  binding.LeaseID,
-		HelperInstanceCredential: binding.Credential,
-	})
+	return client.AttestCompositionRuntime(
+		attestationCtx,
+		nethelper.AttestCompositionRuntimeRequest{
+			ProtocolVersion:          nethelper.CurrentProtocolVersion,
+			RequestID:                "composition-attestation-" + uuid.NewString(),
+			LeaseID:                  binding.LeaseID,
+			HelperInstanceCredential: binding.Credential,
+		},
+	)
 }
 
-func (a *App) nethelperLifecycleEvidence(ctx context.Context) (*types.NethelperLifecycleEvidence, error) {
+func (a *App) nethelperLifecycleEvidence(
+	ctx context.Context,
+) (*types.NethelperLifecycleEvidence, error) {
 	binding := a.nethelperBindingSnapshot()
 	if binding.SocketPath == "" {
 		return nil, nil
 	}
 	now := time.Now().UTC()
 	evidence := &types.NethelperLifecycleEvidence{
-		SchemaVersion: nethelperLifecycleSchemaVersion,
-		HelperKind:    binding.Kind, LeaseID: binding.LeaseID, UnitName: binding.UnitName,
-		ProtocolVersion: binding.ProtocolVersion, Capabilities: append([]string(nil), binding.Capabilities...),
-		SoftExpiresAt: binding.SoftExpiresAt, HardExpiresAt: binding.HardExpiresAt,
-		BindingGeneration: binding.Generation, RenewalGeneration: binding.RenewalGeneration,
+		SchemaVersion:           nethelperLifecycleSchemaVersion,
+		HelperKind:              binding.Kind,
+		LeaseID:                 binding.LeaseID,
+		UnitName:                binding.UnitName,
+		ProtocolVersion:         binding.ProtocolVersion,
+		Capabilities:            append([]string(nil), binding.Capabilities...),
+		SoftExpiresAt:           binding.SoftExpiresAt,
+		HardExpiresAt:           binding.HardExpiresAt,
+		BindingGeneration:       binding.Generation,
+		RenewalGeneration:       binding.RenewalGeneration,
 		ActiveRegistrationCount: binding.ActiveRegistrations,
 		SocketLive:              helperPathFileLive(binding.SocketPath, true),
 		CredentialSourceLive:    helperPathFileLive(binding.CredentialFile, false),
-		Status:                  binding.LastStatus, TerminalReason: binding.LastReason, LastCheckedAt: binding.LastCheckedAt,
+		Status:                  binding.LastStatus,
+		TerminalReason:          binding.LastReason,
+		LastCheckedAt:           binding.LastCheckedAt,
 	}
 	if binding.LeaseID == "" {
 		evidence.Status = "legacy-unavailable"
@@ -447,7 +526,12 @@ func (a *App) nethelperLifecycleEvidence(ctx context.Context) (*types.NethelperL
 	status, err := a.authenticatedNethelperStatus(ctx, binding)
 	evidence.LastCheckedAt = now
 	if err != nil {
-		a.nethelperBinding.updateHealth(binding.Generation, status, now, boundedLifecycleReason(err))
+		a.nethelperBinding.updateHealth(
+			binding.Generation,
+			status,
+			now,
+			boundedLifecycleReason(err),
+		)
 		evidence.Status = "failed"
 		evidence.TerminalReason = boundedLifecycleReason(err)
 		if status.Status != "" {
@@ -516,11 +600,20 @@ func validateOwnedProtectedPath(path string, wantSocket bool) error {
 	return nil
 }
 
-func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation uint64) (nethelperBinding, error) {
+func (a *App) loadCandidateNethelperBinding(
+	req helperRebindRequest,
+	generation uint64,
+) (nethelperBinding, error) {
 	if runtime.GOOS != "linux" {
-		return nethelperBinding{}, fmt.Errorf("ephemeral helper rebinding is supported only on Linux")
+		return nethelperBinding{}, fmt.Errorf(
+			"ephemeral helper rebinding is supported only on Linux",
+		)
 	}
-	for name, path := range map[string]string{"bootstrap_result_path": req.BootstrapResultPath, "socket_path": req.SocketPath, "credential_file": req.CredentialFile} {
+	for name, path := range map[string]string{
+		"bootstrap_result_path": req.BootstrapResultPath,
+		"socket_path":           req.SocketPath,
+		"credential_file":       req.CredentialFile,
+	} {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 			return nethelperBinding{}, fmt.Errorf("%s must be absolute and canonical", name)
 		}
@@ -539,27 +632,43 @@ func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation 
 	if !identitySupported || result.UID != currentUID || result.GID != currentGID {
 		return nethelperBinding{}, fmt.Errorf("bootstrap uid/gid does not match the supervisor")
 	}
-	if result.ResultFile != req.BootstrapResultPath || result.SocketPath != req.SocketPath || result.CredentialFile != req.CredentialFile {
-		return nethelperBinding{}, fmt.Errorf("candidate paths do not match protected bootstrap metadata")
+	if result.ResultFile != req.BootstrapResultPath || result.SocketPath != req.SocketPath ||
+		result.CredentialFile != req.CredentialFile {
+		return nethelperBinding{}, fmt.Errorf(
+			"candidate paths do not match protected bootstrap metadata",
+		)
 	}
 	runtimeDir := filepath.Dir(result.SocketPath)
-	if filepath.Dir(result.CredentialFile) != runtimeDir || filepath.Dir(result.ResultFile) != runtimeDir {
-		return nethelperBinding{}, fmt.Errorf("candidate metadata paths do not share one protected runtime directory")
+	if filepath.Dir(result.CredentialFile) != runtimeDir ||
+		filepath.Dir(result.ResultFile) != runtimeDir {
+		return nethelperBinding{}, fmt.Errorf(
+			"candidate metadata paths do not share one protected runtime directory",
+		)
 	}
 	resolvedRuntimeDir, err := filepath.EvalSymlinks(runtimeDir)
 	if err != nil || filepath.Clean(resolvedRuntimeDir) != runtimeDir {
-		return nethelperBinding{}, fmt.Errorf("candidate runtime directory contains a symlink component")
+		return nethelperBinding{}, fmt.Errorf(
+			"candidate runtime directory contains a symlink component",
+		)
 	}
 	runtimeInfo, err := os.Lstat(runtimeDir)
-	if err != nil || !runtimeInfo.IsDir() || runtimeInfo.Mode()&os.ModeSymlink != 0 || runtimeInfo.Mode().Perm()&0o022 != 0 {
+	if err != nil || !runtimeInfo.IsDir() || runtimeInfo.Mode()&os.ModeSymlink != 0 ||
+		runtimeInfo.Mode().Perm()&0o022 != 0 {
 		return nethelperBinding{}, fmt.Errorf("candidate runtime directory has unsafe type or mode")
 	}
 	if strings.TrimSpace(req.ExpectedLeaseID) != result.LeaseID {
 		return nethelperBinding{}, fmt.Errorf("candidate lease does not match expected_lease_id")
 	}
 	expected, err := nethelper.EphemeralPathsForUID(result.UID, result.LeaseID)
-	if err != nil || expected.UnitName != result.UnitName || expected.SocketPath != result.SocketPath || expected.CredentialFile != result.CredentialFile || expected.ResultFile != result.ResultFile || expected.PinRoot != result.PinRoot || expected.CompositionScratchRoot != result.CompositionScratchRoot {
-		return nethelperBinding{}, fmt.Errorf("bootstrap metadata does not match fixed helper-selected paths")
+	if err != nil || expected.UnitName != result.UnitName ||
+		expected.SocketPath != result.SocketPath ||
+		expected.CredentialFile != result.CredentialFile ||
+		expected.ResultFile != result.ResultFile ||
+		expected.PinRoot != result.PinRoot ||
+		expected.CompositionScratchRoot != result.CompositionScratchRoot {
+		return nethelperBinding{}, fmt.Errorf(
+			"bootstrap metadata does not match fixed helper-selected paths",
+		)
 	}
 	if err := validateOwnedProtectedPath(req.SocketPath, true); err != nil {
 		return nethelperBinding{}, fmt.Errorf("validate candidate socket: %w", err)
@@ -576,22 +685,44 @@ func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation 
 		credential[i] = 0
 	}
 	if len(value) < 32 || len(value) > 512 || strings.ContainsAny(value, " \t\r\n") {
-		return nethelperBinding{}, fmt.Errorf("candidate credential source contains an invalid credential")
+		return nethelperBinding{}, fmt.Errorf(
+			"candidate credential source contains an invalid credential",
+		)
 	}
 	candidate := nethelperBinding{
-		Kind: "ephemeral", LeaseID: result.LeaseID, UnitName: result.UnitName,
-		UID: result.UID, GID: result.GID,
-		SocketPath: result.SocketPath, CredentialFile: result.CredentialFile,
-		BootstrapResultPath: result.ResultFile, CompositionScratchRoot: result.CompositionScratchRoot, Credential: value,
-		ProtocolVersion: result.ProtocolVersion, BootstrapSchemaVersion: result.BootstrapSchemaVersion, CreatedAt: result.StartedAt,
-		HardExpiresAt: result.ExpiresAt, SoftLease: time.Duration(result.SoftLeaseSeconds) * time.Second,
-		RenewalRequired: result.RenewalRequired, Generation: generation,
+		Kind:                   "ephemeral",
+		LeaseID:                result.LeaseID,
+		UnitName:               result.UnitName,
+		UID:                    result.UID,
+		GID:                    result.GID,
+		SocketPath:             result.SocketPath,
+		CredentialFile:         result.CredentialFile,
+		BootstrapResultPath:    result.ResultFile,
+		CompositionScratchRoot: result.CompositionScratchRoot,
+		Credential:             value,
+		ProtocolVersion:        result.ProtocolVersion,
+		BootstrapSchemaVersion: result.BootstrapSchemaVersion,
+		CreatedAt:              result.StartedAt,
+		HardExpiresAt:          result.ExpiresAt,
+		SoftLease:              time.Duration(result.SoftLeaseSeconds) * time.Second,
+		RenewalRequired:        result.RenewalRequired,
+		Generation:             generation,
 	}
-	attestation, err := a.authenticatedCompositionRuntimeAttestation(context.Background(), candidate)
+	attestation, err := a.authenticatedCompositionRuntimeAttestation(
+		context.Background(),
+		candidate,
+	)
 	if err != nil {
-		return nethelperBinding{}, fmt.Errorf("authenticate candidate composition runtime inode: %w", err)
+		return nethelperBinding{}, fmt.Errorf(
+			"authenticate candidate composition runtime inode: %w",
+			err,
+		)
 	}
-	if err := validateLeaseCompositionScratchRoot(result.CompositionScratchRoot, expected.RuntimeDir, attestation.Attestation); err != nil {
+	if err := validateLeaseCompositionScratchRoot(
+		result.CompositionScratchRoot,
+		expected.RuntimeDir,
+		attestation.Attestation,
+	); err != nil {
 		return nethelperBinding{}, fmt.Errorf("validate candidate composition runtime: %w", err)
 	}
 	return candidate, nil
@@ -599,13 +730,18 @@ func (a *App) loadCandidateNethelperBinding(req helperRebindRequest, generation 
 
 func bootstrapResultMatchesFixedPaths(result nethelper.BootstrapResult) bool {
 	expected, err := nethelper.EphemeralPathsForUID(result.UID, result.LeaseID)
-	return err == nil && expected.UnitName == result.UnitName && expected.SocketPath == result.SocketPath &&
-		expected.CredentialFile == result.CredentialFile && expected.ResultFile == result.ResultFile &&
-		expected.PinRoot == result.PinRoot && expected.CompositionScratchRoot == result.CompositionScratchRoot
+	return err == nil && expected.UnitName == result.UnitName &&
+		expected.SocketPath == result.SocketPath &&
+		expected.CredentialFile == result.CredentialFile &&
+		expected.ResultFile == result.ResultFile &&
+		expected.PinRoot == result.PinRoot &&
+		expected.CompositionScratchRoot == result.CompositionScratchRoot
 }
 
 func helperBindingCleanupUncertain(report *types.NetworkEnforcement) bool {
-	return report != nil && report.Status == types.NetworkEnforcementStatusFailed && report.Attachment != nil && strings.TrimSpace(report.Attachment.CgroupPath) != ""
+	return report != nil && report.Status == types.NetworkEnforcementStatusFailed &&
+		report.Attachment != nil &&
+		strings.TrimSpace(report.Attachment.CgroupPath) != ""
 }
 
 var errHelperGenerationConflict = errors.New("nethelper binding generation conflict")

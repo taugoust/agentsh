@@ -39,7 +39,12 @@ func ExtractToolCalls(body []byte, dialect Dialect) []ToolCall {
 //	  "stop_reason": "tool_use",
 //	  "content": [
 //	    {"type": "text", "text": "..."},
-//	    {"type": "tool_use", "id": "toolu_01A09q90qw90lq917835lq9", "name": "get_weather", "input": {"location": "San Francisco, CA"}}
+//	    {
+//	      "type": "tool_use",
+//	      "id": "toolu_01A09q90qw90lq917835lq9",
+//	      "name": "get_weather",
+//	      "input": {"location": "San Francisco, CA"}
+//	    }
 //	  ]
 //	}
 func extractAnthropicToolCalls(body []byte) []ToolCall {
@@ -85,7 +90,10 @@ func extractAnthropicToolCalls(body []byte) []ToolCall {
 //	      "tool_calls": [{
 //	        "id": "call_KlZ3...",
 //	        "type": "function",
-//	        "function": {"name": "get_weather", "arguments": "{\"location\": \"San Francisco, CA\"}"}
+//	        "function": {
+//	          "name": "get_weather",
+//	          "arguments": "{\"location\": \"San Francisco, CA\"}"
+//	        }
 //	      }]
 //	    }
 //	  }]
@@ -178,7 +186,12 @@ func interceptMCPToolCalls(
 		var decision mcpinspect.PolicyDecision
 		var crossServerDec *mcpinspect.CrossServerDecision
 		if analyzer != nil {
-			if block, _ := analyzer.CheckAndRecord(entry.ServerID, call.Name, call.ID, requestID); block != nil {
+			if block, _ := analyzer.CheckAndRecord(
+				entry.ServerID,
+				call.Name,
+				call.ID,
+				requestID,
+			); block != nil {
 				decision = mcpinspect.PolicyDecision{Allowed: false, Reason: block.Reason}
 				crossServerDec = block
 			}
@@ -195,8 +208,13 @@ func interceptMCPToolCalls(
 
 		// Version pin check (only if nothing above blocked).
 		var reason string
-		if crossServerDec == nil && decision == (mcpinspect.PolicyDecision{}) && versionPinCfg != nil && versionPinCfg.Enabled {
-			if pinnedHash, pinned := registry.PinnedHash(call.Name); pinned && entry.ToolHash != pinnedHash {
+		if crossServerDec == nil && decision == (mcpinspect.PolicyDecision{}) &&
+			versionPinCfg != nil &&
+			versionPinCfg.Enabled {
+			if pinnedHash, pinned := registry.PinnedHash(
+				call.Name,
+			); pinned &&
+				entry.ToolHash != pinnedHash {
 				switch versionPinCfg.OnChange {
 				case "block":
 					decision = mcpinspect.PolicyDecision{
@@ -206,8 +224,12 @@ func interceptMCPToolCalls(
 					}
 				case "alert":
 					// Don't set decision -- allow the call. But set reason for the event.
-					reason = fmt.Sprintf("tool %q hash changed (pinned: %s, current: %s) [alert only]",
-						call.Name, pinnedHash, entry.ToolHash)
+					reason = fmt.Sprintf(
+						"tool %q hash changed (pinned: %s, current: %s) [alert only]",
+						call.Name,
+						pinnedHash,
+						entry.ToolHash,
+					)
 				}
 			}
 		}
@@ -393,7 +415,10 @@ func rewriteOpenAIResponse(body []byte, blockedNames map[string]bool) []byte {
 				continue
 			}
 			if blockedNames[tc.Function.Name] {
-				blockedMessages = append(blockedMessages, fmt.Sprintf("[agentsh] Tool '%s' blocked by policy", tc.Function.Name))
+				blockedMessages = append(
+					blockedMessages,
+					fmt.Sprintf("[agentsh] Tool '%s' blocked by policy", tc.Function.Name),
+				)
 			} else {
 				kept = append(kept, tcRaw)
 			}
@@ -468,7 +493,12 @@ func interceptMCPToolCallsFromList(
 		var decision mcpinspect.PolicyDecision
 		var crossServerDec *mcpinspect.CrossServerDecision
 		if analyzer != nil {
-			if block, _ := analyzer.CheckAndRecord(entry.ServerID, call.Name, call.ID, requestID); block != nil {
+			if block, _ := analyzer.CheckAndRecord(
+				entry.ServerID,
+				call.Name,
+				call.ID,
+				requestID,
+			); block != nil {
 				decision = mcpinspect.PolicyDecision{Allowed: false, Reason: block.Reason}
 				crossServerDec = block
 			}

@@ -73,7 +73,13 @@ func TestApplyArgv0Override(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := applyArgv0Override(tc.args, tc.override)
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("applyArgv0Override(%v, %q) = %v, want %v", tc.args, tc.override, got, tc.want)
+				t.Errorf(
+					"applyArgv0Override(%v, %q) = %v, want %v",
+					tc.args,
+					tc.override,
+					got,
+					tc.want,
+				)
 			}
 		})
 	}

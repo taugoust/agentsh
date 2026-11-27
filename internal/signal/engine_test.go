@@ -299,7 +299,12 @@ func TestCheckSignalGroup(t *testing.T) {
 	ctx := &TargetContext{IsChild: true}
 
 	// All @fatal signals should match
-	for _, sig := range []int{int(unix.SIGKILL), int(unix.SIGTERM), int(unix.SIGQUIT), int(unix.SIGABRT)} {
+	for _, sig := range []int{
+		int(unix.SIGKILL),
+		int(unix.SIGTERM),
+		int(unix.SIGQUIT),
+		int(unix.SIGABRT),
+	} {
 		dec := engine.Check(sig, ctx)
 		assert.Equal(t, DecisionAllow, dec.Action, "expected ALLOW for signal %d", sig)
 	}

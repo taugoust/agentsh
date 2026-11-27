@@ -17,7 +17,12 @@ import (
 // every event Type literal found into `out` (keyed by string value,
 // valued by position string). Pulled out of scanTypeLiterals so the
 // CallExpr branch can be unit-tested against in-memory sources.
-func walkEventTypeLiterals(f *ast.File, fset *token.FileSet, consts map[string]string, out map[string]string) {
+func walkEventTypeLiterals(
+	f *ast.File,
+	fset *token.FileSet,
+	consts map[string]string,
+	out map[string]string,
+) {
 	addLit := func(s string, pos token.Pos) {
 		if s == "" {
 			return

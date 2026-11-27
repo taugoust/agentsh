@@ -116,13 +116,16 @@ type compiledNetworkRule struct {
 }
 
 type compiledCommandRule struct {
-	rule                  CommandRule
-	basenames             map[string]struct{} // Commands without paths (e.g., "sh") - match by basename
-	basenameGlobs         []glob.Glob         // Glob patterns for basenames (e.g., "go*", "*")
-	fullPaths             map[string]struct{} // Commands with paths (e.g., "/bin/sh") - match exact path
-	pathGlobs             []glob.Glob         // Glob patterns for paths (e.g., "/usr/*/sh")
-	argsRegexes           []*regexp.Regexp    // Regex patterns matched against joined args string
-	workingDirectoryRoots []string            // Clean absolute roots matched against the normalized request cwd
+	rule CommandRule
+	// Commands without paths (e.g., "sh") - match by basename
+	basenames     map[string]struct{}
+	basenameGlobs []glob.Glob // Glob patterns for basenames (e.g., "go*", "*")
+	// Commands with paths (e.g., "/bin/sh") - match exact path
+	fullPaths   map[string]struct{}
+	pathGlobs   []glob.Glob      // Glob patterns for paths (e.g., "/usr/*/sh")
+	argsRegexes []*regexp.Regexp // Regex patterns matched against joined args string
+	// Clean absolute roots matched against the normalized request cwd
+	workingDirectoryRoots []string
 }
 
 type compiledUnixRule struct {
@@ -205,7 +208,12 @@ func NewEngine(p *Policy, enforceApprovals bool, enforceRedirects bool) (*Engine
 				// Fall back to path-separator compilation.
 				g, err = glob.Compile(strings.ToLower(pat))
 				if err != nil {
-					return nil, fmt.Errorf("compile network rule %q domain %q: %w", r.Name, pat, err)
+					return nil, fmt.Errorf(
+						"compile network rule %q domain %q: %w",
+						r.Name,
+						pat,
+						err,
+					)
 				}
 			}
 			cr.domainGlobs = append(cr.domainGlobs, g)
@@ -221,8 +229,13 @@ func NewEngine(p *Policy, enforceApprovals bool, enforceRedirects bool) (*Engine
 	}
 
 	for _, r := range p.CommandRules {
-		if r.InternalProvenance != "" && r.InternalProvenance != string(CommandProvenanceDirenvRefresh) {
-			return nil, fmt.Errorf("command rule %q has unknown internal_provenance %q", r.Name, r.InternalProvenance)
+		if r.InternalProvenance != "" &&
+			r.InternalProvenance != string(CommandProvenanceDirenvRefresh) {
+			return nil, fmt.Errorf(
+				"command rule %q has unknown internal_provenance %q",
+				r.Name,
+				r.InternalProvenance,
+			)
 		}
 		cr := compiledCommandRule{
 			rule:      r,
@@ -271,13 +284,23 @@ func NewEngine(p *Policy, enforceApprovals bool, enforceRedirects bool) (*Engine
 		for _, pat := range r.ArgsPatterns {
 			re, err := regexp.Compile(pat)
 			if err != nil {
-				return nil, fmt.Errorf("compile command rule %q arg pattern %q: %w", r.Name, pat, err)
+				return nil, fmt.Errorf(
+					"compile command rule %q arg pattern %q: %w",
+					r.Name,
+					pat,
+					err,
+				)
 			}
 			cr.argsRegexes = append(cr.argsRegexes, re)
 		}
 		for _, root := range r.WorkingDirectoryRoots {
 			if !filepath.IsAbs(root) || filepath.Clean(root) != root {
-				return nil, fmt.Errorf("compile command rule %q working directory root %q: expected a clean absolute path", r.Name, root)
+				return nil, fmt.Errorf(
+					"compile command rule %q working directory root %q: expected a clean "+
+						"absolute path",
+					r.Name,
+					root,
+				)
 			}
 			cr.workingDirectoryRoots = append(cr.workingDirectoryRoots, root)
 		}
@@ -404,7 +427,12 @@ func NewEngine(p *Policy, enforceApprovals bool, enforceRedirects bool) (*Engine
 
 // NewEngineWithVariables creates an engine with variable expansion.
 // Variables in policy paths are expanded before glob compilation.
-func NewEngineWithVariables(p *Policy, enforceApprovals bool, enforceRedirects bool, vars map[string]string) (*Engine, error) {
+func NewEngineWithVariables(
+	p *Policy,
+	enforceApprovals bool,
+	enforceRedirects bool,
+	vars map[string]string,
+) (*Engine, error) {
 	// Deep copy and expand the policy
 	expanded, err := expandPolicy(p, vars)
 	if err != nil {
@@ -485,7 +513,12 @@ func expandPolicy(p *Policy, vars map[string]string) (*Policy, error) {
 		for j, root := range rule.WorkingDirectoryRoots {
 			expandedRoot, err := ExpandVariables(root, vars)
 			if err != nil {
-				return nil, fmt.Errorf("command rule %q working directory root %q: %w", rule.Name, root, err)
+				return nil, fmt.Errorf(
+					"command rule %q working directory root %q: %w",
+					rule.Name,
+					root,
+					err,
+				)
 			}
 			expandedRule.WorkingDirectoryRoots[j] = expandedRoot
 		}
@@ -573,8 +606,13 @@ func (e *Engine) CheckNetworkIP(domain string, ip net.IP, port int) Decision {
 	if e.threatStore != nil && domain != "" {
 		if result, matched := e.threatStore.Check(domain); matched {
 			if e.threatAction == "deny" {
-				dec := e.wrapDecision("deny", "threat-feed:"+result.FeedName,
-					"domain matched threat feed: "+result.FeedName+" (matched: "+result.MatchedDomain+")", nil)
+				dec := e.wrapDecision(
+					"deny",
+					"threat-feed:"+result.FeedName,
+					"domain matched threat feed: "+result.FeedName+" (matched: "+
+						result.MatchedDomain+")",
+					nil,
+				)
 				dec.ThreatFeed = result.FeedName
 				dec.ThreatMatch = result.MatchedDomain
 				dec.ThreatAction = "deny"
@@ -654,9 +692,10 @@ func (e *Engine) CheckNetworkIP(domain string, ip net.IP, port int) Decision {
 type ShellCOpaqueMode int
 
 const (
-	ShellCOpaqueEnforce ShellCOpaqueMode = iota // run only under active per-exec enforcement; else deny
-	ShellCOpaqueAllow                           // run even without per-exec enforcement
-	ShellCOpaqueDeny                            // always deny opaque scripts
+	// run only under active per-exec enforcement; else deny
+	ShellCOpaqueEnforce ShellCOpaqueMode = iota
+	ShellCOpaqueAllow                    // run even without per-exec enforcement
+	ShellCOpaqueDeny                     // always deny opaque scripts
 )
 
 // ParseShellCOpaqueMode maps a config string to a mode. Unknown/empty values
@@ -678,7 +717,14 @@ func ParseShellCOpaqueMode(s string) ShellCOpaqueMode {
 // restrictive command rule is present). See CheckCommandWithExecve for callers
 // on an execve-policed execution path.
 func (e *Engine) CheckCommand(command string, args []string) Decision {
-	return e.checkCommand(command, args, false, ShellCOpaqueEnforce, CommandProvenanceNone, CommandMatchContext{})
+	return e.checkCommand(
+		command,
+		args,
+		false,
+		ShellCOpaqueEnforce,
+		CommandProvenanceNone,
+		CommandMatchContext{},
+	)
 }
 
 // CheckCommandWithExecve is CheckCommand for callers whose execution path has
@@ -686,25 +732,70 @@ func (e *Engine) CheckCommand(command string, args []string) Decision {
 // inner execve is policed by CheckExecve. When execveEnforcementActive is true
 // the opaque shell-c pre-deny is skipped — the script runs and its inner
 // commands are enforced precisely at exec time. Issue #375.
-func (e *Engine) CheckCommandWithExecve(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode) Decision {
-	return e.CheckCommandWithExecveProvenance(command, args, execveEnforcementActive, opaqueMode, CommandProvenanceNone)
+func (e *Engine) CheckCommandWithExecve(
+	command string,
+	args []string,
+	execveEnforcementActive bool,
+	opaqueMode ShellCOpaqueMode,
+) Decision {
+	return e.CheckCommandWithExecveProvenance(
+		command,
+		args,
+		execveEnforcementActive,
+		opaqueMode,
+		CommandProvenanceNone,
+	)
 }
 
 // CheckCommandWithExecveProvenance evaluates a command with server-owned
 // execution provenance. Public request handlers must use CommandProvenanceNone.
-func (e *Engine) CheckCommandWithExecveProvenance(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode, provenance CommandProvenance) Decision {
-	return e.CheckCommandWithExecveProvenanceContext(command, args, execveEnforcementActive, opaqueMode, provenance, CommandMatchContext{})
+func (e *Engine) CheckCommandWithExecveProvenance(
+	command string,
+	args []string,
+	execveEnforcementActive bool,
+	opaqueMode ShellCOpaqueMode,
+	provenance CommandProvenance,
+) Decision {
+	return e.CheckCommandWithExecveProvenanceContext(
+		command,
+		args,
+		execveEnforcementActive,
+		opaqueMode,
+		provenance,
+		CommandMatchContext{},
+	)
 }
 
 // CheckCommandWithExecveProvenanceContext evaluates a direct request using
 // server-normalized match context. Runtime execve checks intentionally receive
 // no request context and therefore cannot accidentally satisfy a cwd-scoped
 // command rule.
-func (e *Engine) CheckCommandWithExecveProvenanceContext(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode, provenance CommandProvenance, matchContext CommandMatchContext) Decision {
-	return e.checkCommand(command, args, execveEnforcementActive, opaqueMode, provenance, matchContext)
+func (e *Engine) CheckCommandWithExecveProvenanceContext(
+	command string,
+	args []string,
+	execveEnforcementActive bool,
+	opaqueMode ShellCOpaqueMode,
+	provenance CommandProvenance,
+	matchContext CommandMatchContext,
+) Decision {
+	return e.checkCommand(
+		command,
+		args,
+		execveEnforcementActive,
+		opaqueMode,
+		provenance,
+		matchContext,
+	)
 }
 
-func (e *Engine) checkCommand(command string, args []string, execveEnforcementActive bool, opaqueMode ShellCOpaqueMode, provenance CommandProvenance, matchContext CommandMatchContext) Decision {
+func (e *Engine) checkCommand(
+	command string,
+	args []string,
+	execveEnforcementActive bool,
+	opaqueMode ShellCOpaqueMode,
+	provenance CommandProvenance,
+	matchContext CommandMatchContext,
+) Decision {
 	result, _ := e.matchCommandRules(command, args, provenance, matchContext)
 	// For `<shell> -c "<simple-cmd>"` invocations, also evaluate the
 	// underlying binary so a rule like `deny bin=shutdown` fires for
@@ -735,9 +826,15 @@ func (e *Engine) checkCommand(command string, args []string, execveEnforcementAc
 					if reason := shellparse.BypassReason(cur, curArgs); reason != "" {
 						msg = "bypass attempt: " + reason
 					}
-					denyDec := e.wrapDecision(string(types.DecisionDeny), "shellc-wrapper-bypass", msg, nil)
+					denyDec := e.wrapDecision(
+						string(types.DecisionDeny),
+						"shellc-wrapper-bypass",
+						msg,
+						nil,
+					)
 					if dec := denyDec; decisionStrictness(dec.PolicyDecision) > resultStrictness {
-						if dec.PolicyDecision == types.DecisionAudit || dec.PolicyDecision == types.DecisionApprove {
+						if dec.PolicyDecision == types.DecisionAudit ||
+							dec.PolicyDecision == types.DecisionApprove {
 							dec.EnvPolicy = result.EnvPolicy
 						}
 						result = dec
@@ -753,8 +850,12 @@ func (e *Engine) checkCommand(command string, args []string, execveEnforcementAc
 				switch opaqueMode {
 				case ShellCOpaqueAllow:
 					if !execveEnforcementActive {
-						slog.Warn("sandbox.seccomp.shellc.opaque=allow: running opaque shell script without per-exec enforcement",
-							"reason", shellparse.OpaqueReason(cur, curArgs))
+						slog.Warn(
+							"sandbox.seccomp.shellc.opaque=allow: running opaque shell script "+
+								"without per-exec enforcement",
+							"reason",
+							shellparse.OpaqueReason(cur, curArgs),
+						)
 					}
 					// fall through: no pre-deny.
 				default: // ShellCOpaqueEnforce, ShellCOpaqueDeny
@@ -764,9 +865,18 @@ func (e *Engine) checkCommand(command string, args []string, execveEnforcementAc
 						if reason := shellparse.OpaqueReason(cur, curArgs); reason != "" {
 							msg = "opaque shell script: contains " + reason
 						}
-						msg += "; set sandbox.seccomp.shellc.opaque=allow to run it without per-exec enforcement, or enable execve enforcement (seccomp.execve + unix_sockets, or ptrace) to run it under policy"
-						denyDec := e.wrapDecision(string(types.DecisionDeny), "shellc-opaque-script", msg, nil)
-						if dec := denyDec; decisionStrictness(dec.PolicyDecision) > resultStrictness {
+						msg += "; set sandbox.seccomp.shellc.opaque=allow to run it without " +
+							"per-exec enforcement, or enable execve enforcement (seccomp.execve " +
+							"+ unix_sockets, or ptrace) to run it under policy"
+						denyDec := e.wrapDecision(
+							string(types.DecisionDeny),
+							"shellc-opaque-script",
+							msg,
+							nil,
+						)
+						if dec := denyDec; decisionStrictness(
+							dec.PolicyDecision,
+						) > resultStrictness {
 							result = dec
 							resultStrictness = decisionStrictness(dec.PolicyDecision)
 						}
@@ -792,7 +902,8 @@ func (e *Engine) checkCommand(command string, args []string, execveEnforcementAc
 			// deny (no execution) and redirect (command replaced with
 			// a different target) the derived rule's EnvPolicy is
 			// appropriate as-is.
-			if dec.PolicyDecision == types.DecisionAudit || dec.PolicyDecision == types.DecisionApprove {
+			if dec.PolicyDecision == types.DecisionAudit ||
+				dec.PolicyDecision == types.DecisionApprove {
 				dec.EnvPolicy = result.EnvPolicy
 			}
 			result = dec
@@ -807,7 +918,12 @@ func (e *Engine) checkCommand(command string, args []string, execveEnforcementAc
 	// call also returns !ok (no false positive); if the loop ran to
 	// completion with each level ok, this call tests the (N+1)th level.
 	if _, _, ok := shellparse.DerivePolicyTarget(cur, curArgs); ok {
-		denyDec := e.wrapDecision(string(types.DecisionDeny), "shellc-depth-exceeded", "nested shell-c chain exceeded max derivation depth", nil)
+		denyDec := e.wrapDecision(
+			string(types.DecisionDeny),
+			"shellc-depth-exceeded",
+			"nested shell-c chain exceeded max derivation depth",
+			nil,
+		)
 		if s := decisionStrictness(denyDec.PolicyDecision); s > resultStrictness {
 			result = denyDec
 		}
@@ -842,7 +958,12 @@ func decisionStrictness(d types.Decision) int {
 // When no rule matched, matched=false and the returned Decision is the
 // default-deny fall-through (kept here so callers that don't care about
 // match status continue to see deny-by-default).
-func (e *Engine) matchCommandRules(command string, args []string, provenance CommandProvenance, matchContext CommandMatchContext) (Decision, bool) {
+func (e *Engine) matchCommandRules(
+	command string,
+	args []string,
+	provenance CommandProvenance,
+	matchContext CommandMatchContext,
+) (Decision, bool) {
 	cmdLower := strings.ToLower(command)
 	cmdBase := strings.ToLower(filepath.Base(command))
 	// The shim install renames the original shell to <name>.real and places
@@ -873,7 +994,8 @@ func (e *Engine) matchCommandRules(command string, args []string, provenance Com
 		commandMatched := false
 
 		// If no commands specified, rule applies to all commands
-		if len(r.basenames) == 0 && len(r.basenameGlobs) == 0 && len(r.fullPaths) == 0 && len(r.pathGlobs) == 0 {
+		if len(r.basenames) == 0 && len(r.basenameGlobs) == 0 && len(r.fullPaths) == 0 &&
+			len(r.pathGlobs) == 0 {
 			commandMatched = true
 		} else {
 			// Check full path matches first (more specific)
@@ -1006,7 +1128,13 @@ func (e *Engine) CheckFile(p string, operation string) Decision {
 
 				// Handle file redirect if configured
 				if r.redirectTo != "" && dec.PolicyDecision == types.DecisionRedirect {
-					dec.FileRedirect = computeFileRedirect(p, operation, r.redirectTo, r.preserveTree, r.rule.Message)
+					dec.FileRedirect = computeFileRedirect(
+						p,
+						operation,
+						r.redirectTo,
+						r.preserveTree,
+						r.rule.Message,
+					)
 				}
 
 				return dec
@@ -1024,7 +1152,11 @@ func (e *Engine) CheckFile(p string, operation string) Decision {
 }
 
 // computeFileRedirect calculates the redirected path for a file operation.
-func computeFileRedirect(originalPath, operation, targetBase string, preserveTree bool, msg string) *types.FileRedirectInfo {
+func computeFileRedirect(
+	originalPath, operation, targetBase string,
+	preserveTree bool,
+	msg string,
+) *types.FileRedirectInfo {
 	var newPath string
 	if preserveTree {
 		// /home/user/file.txt -> /workspace/.scratch/home/user/file.txt
@@ -1042,8 +1174,8 @@ func computeFileRedirect(originalPath, operation, targetBase string, preserveTre
 	}
 }
 
-// CheckUnixSocket evaluates unix_socket_rules against a path and operation (connect|bind|listen|sendto).
-// Paths for abstract sockets should be passed as "@name".
+// CheckUnixSocket evaluates unix_socket_rules against a path and operation
+// (connect|bind|listen|sendto). Paths for abstract sockets should be passed as "@name".
 func (e *Engine) CheckUnixSocket(path string, operation string) Decision {
 	operation = strings.ToLower(strings.TrimSpace(operation))
 	for _, r := range e.compiledUnixRules {
@@ -1112,7 +1244,11 @@ func (e *Engine) CheckEnv(name string) EnvDecision {
 	if len(e.compiledEnvAllow) == 0 {
 		for _, secret := range defaultSecretDeny {
 			if name == secret {
-				return EnvDecision{Allowed: false, MatchedBy: "default-secret-deny", Pattern: secret}
+				return EnvDecision{
+					Allowed:   false,
+					MatchedBy: "default-secret-deny",
+					Pattern:   secret,
+				}
 			}
 		}
 		// No allow patterns and not denied = allow
@@ -1168,8 +1304,13 @@ func (e *Engine) CheckNetworkCtx(ctx context.Context, domain string, port int) D
 	if e.threatStore != nil && domain != "" {
 		if entry, matched := e.threatStore.Check(domain); matched {
 			if e.threatAction == "deny" {
-				dec := e.wrapDecision("deny", "threat-feed:"+entry.FeedName,
-					"domain matched threat feed: "+entry.FeedName+" (matched: "+entry.MatchedDomain+")", nil)
+				dec := e.wrapDecision(
+					"deny",
+					"threat-feed:"+entry.FeedName,
+					"domain matched threat feed: "+entry.FeedName+" (matched: "+
+						entry.MatchedDomain+")",
+					nil,
+				)
 				dec.ThreatFeed = entry.FeedName
 				dec.ThreatMatch = entry.MatchedDomain
 				dec.ThreatAction = "deny"
@@ -1277,7 +1418,12 @@ func matchOp(ops map[string]struct{}, op string) bool {
 	return ok
 }
 
-func (e *Engine) wrapDecision(decision string, rule string, msg string, redirect *CommandRedirect) Decision {
+func (e *Engine) wrapDecision(
+	decision string,
+	rule string,
+	msg string,
+	redirect *CommandRedirect,
+) Decision {
 	pd := types.Decision(strings.ToLower(decision))
 	switch pd {
 	case types.DecisionAllow:
@@ -1291,7 +1437,10 @@ func (e *Engine) wrapDecision(decision string, rule string, msg string, redirect
 				EffectiveDecision: pd,
 				Rule:              rule,
 				Message:           msg,
-				Approval:          &types.ApprovalInfo{Required: true, Mode: types.ApprovalModeEnforced},
+				Approval: &types.ApprovalInfo{
+					Required: true,
+					Mode:     types.ApprovalModeEnforced,
+				},
 			}
 		}
 		return Decision{
@@ -1336,7 +1485,12 @@ func (e *Engine) wrapDecision(decision string, rule string, msg string, redirect
 		}
 	default:
 		// Safe fallback.
-		return Decision{PolicyDecision: types.DecisionDeny, EffectiveDecision: types.DecisionDeny, Rule: "invalid-policy-decision", Message: "invalid decision in policy"}
+		return Decision{
+			PolicyDecision:    types.DecisionDeny,
+			EffectiveDecision: types.DecisionDeny,
+			Rule:              "invalid-policy-decision",
+			Message:           "invalid decision in policy",
+		}
 	}
 }
 
@@ -1460,7 +1614,8 @@ func (e *Engine) EvaluateConnectRedirect(hostPort string) *ConnectRedirectResult
 
 // CheckExecve evaluates an execve call against command rules with depth context support.
 // Returns the decision from the first matching rule, or default deny if none match.
-// The depth parameter represents the ancestry depth: 0 = direct (user-typed), 1+ = nested (script-spawned).
+// The depth parameter represents the ancestry depth: 0 = direct (user-typed), 1+ = nested
+// (script-spawned).
 func (e *Engine) CheckExecve(filename string, argv []string, depth int) Decision {
 	return e.CheckExecveWithAliasesProvenance(filename, nil, argv, depth, CommandProvenanceNone)
 }
@@ -1471,13 +1626,24 @@ func (e *Engine) CheckExecve(filename string, argv []string, depth int) Decision
 // policies like `commands: [rm]` to match Nix multicall binaries where the
 // canonical executable is `/nix/store/.../bin/coreutils` but the raw exec path
 // was `/nix/store/.../bin/rm`.
-func (e *Engine) CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) Decision {
+func (e *Engine) CheckExecveWithAliases(
+	filename string,
+	aliases []string,
+	argv []string,
+	depth int,
+) Decision {
 	return e.CheckExecveWithAliasesProvenance(filename, aliases, argv, depth, CommandProvenanceNone)
 }
 
 // CheckExecveWithAliasesProvenance is the runtime-exec counterpart to
 // CheckCommandWithExecveProvenance.
-func (e *Engine) CheckExecveWithAliasesProvenance(filename string, aliases []string, argv []string, depth int, provenance CommandProvenance) Decision {
+func (e *Engine) CheckExecveWithAliasesProvenance(
+	filename string,
+	aliases []string,
+	argv []string,
+	depth int,
+	provenance CommandProvenance,
+) Decision {
 	candidates := execveCommandCandidates(filename, aliases)
 
 	for _, r := range e.compiledCommandRules {
@@ -1496,7 +1662,8 @@ func (e *Engine) CheckExecveWithAliasesProvenance(filename string, aliases []str
 		commandMatched := false
 
 		// If no commands specified, rule applies to all commands
-		if len(r.basenames) == 0 && len(r.basenameGlobs) == 0 && len(r.fullPaths) == 0 && len(r.pathGlobs) == 0 {
+		if len(r.basenames) == 0 && len(r.basenameGlobs) == 0 && len(r.fullPaths) == 0 &&
+			len(r.pathGlobs) == 0 {
 			commandMatched = true
 		} else {
 			for _, cand := range candidates {

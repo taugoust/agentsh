@@ -24,19 +24,32 @@ func TestShadowReviewRequiresFreshPreconditionAndQuiescence(t *testing.T) {
 	manager := session.NewManager(10)
 	app := newTestApp(t, manager, composite.New(st, st))
 	realRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(realRoot, "value.txt"), []byte("real\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(realRoot, "value.txt"),
+		[]byte("real\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	sess, err := manager.Create(realRoot, "default")
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspace, err := shadow.Create(context.Background(), sess.ID, realRoot, shadow.Options{BaseDir: t.TempDir()})
+	workspace, err := shadow.Create(
+		context.Background(),
+		sess.ID,
+		realRoot,
+		shadow.Options{BaseDir: t.TempDir()},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sess.SetShadow(workspace)
-	if err := os.WriteFile(filepath.Join(workspace.Work, "value.txt"), []byte("draft is newer\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace.Work, "value.txt"),
+		[]byte("draft is newer\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -45,10 +58,16 @@ func TestShadowReviewRequiresFreshPreconditionAndQuiescence(t *testing.T) {
 		t.Fatal(err)
 	}
 	blockedReview := httptest.NewRecorder()
-	app.Router().ServeHTTP(blockedReview, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sess.ID+"/overlay/diff", nil))
+	app.Router().
+		ServeHTTP(blockedReview,
+			httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sess.ID+"/overlay/diff", nil))
 	activity.Release()
 	if blockedReview.Code != http.StatusConflict {
-		t.Fatalf("review with active writer status=%d body=%s", blockedReview.Code, blockedReview.Body.String())
+		t.Fatalf(
+			"review with active writer status=%d body=%s",
+			blockedReview.Code,
+			blockedReview.Body.String(),
+		)
 	}
 
 	diffReq := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sess.ID+"/overlay/diff", nil)
@@ -64,7 +83,14 @@ func TestShadowReviewRequiresFreshPreconditionAndQuiescence(t *testing.T) {
 	}
 
 	missing := httptest.NewRecorder()
-	missingReq := withSessionID(httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/overlay/accept", bytes.NewReader([]byte(`{}`))), sess.ID)
+	missingReq := withSessionID(
+		httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/overlay/accept",
+			bytes.NewReader([]byte(`{}`)),
+		),
+		sess.ID,
+	)
 	app.acceptOverlay(missing, missingReq)
 	if missing.Code != http.StatusPreconditionRequired {
 		t.Fatalf("missing precondition status=%d body=%s", missing.Code, missing.Body.String())
@@ -75,18 +101,36 @@ func TestShadowReviewRequiresFreshPreconditionAndQuiescence(t *testing.T) {
 		t.Fatal(err)
 	}
 	busy := httptest.NewRecorder()
-	busyReq := withSessionID(httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/overlay/accept", bytes.NewReader(reviewBody(t, generation, hash))), sess.ID)
+	busyReq := withSessionID(
+		httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/overlay/accept",
+			bytes.NewReader(reviewBody(t, generation, hash)),
+		),
+		sess.ID,
+	)
 	app.acceptOverlay(busy, busyReq)
 	activity.Release()
 	if busy.Code != http.StatusConflict {
 		t.Fatalf("busy finalization status=%d body=%s", busy.Code, busy.Body.String())
 	}
 
-	if err := os.WriteFile(filepath.Join(realRoot, "concurrent.txt"), []byte("changed"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(realRoot, "concurrent.txt"),
+		[]byte("changed"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	stale := httptest.NewRecorder()
-	staleReq := withSessionID(httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/overlay/accept", bytes.NewReader(reviewBody(t, generation, hash))), sess.ID)
+	staleReq := withSessionID(
+		httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/overlay/accept",
+			bytes.NewReader(reviewBody(t, generation, hash)),
+		),
+		sess.ID,
+	)
 	app.acceptOverlay(stale, staleReq)
 	if stale.Code != http.StatusPreconditionFailed {
 		t.Fatalf("stale finalization status=%d body=%s", stale.Code, stale.Body.String())

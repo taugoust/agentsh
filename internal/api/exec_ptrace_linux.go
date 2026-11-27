@@ -24,7 +24,12 @@ type ptraceExecResult struct {
 //
 // Registration ordering: RegisterExitNotify is called BEFORE AttachPID to
 // guarantee the channel exists before the tracer can dispatch exit events.
-func ptraceExecAttach(tracer any, pid int, sessionID, commandID string, keepStopped bool) (waitExit func() ptraceExecResult, resume func() error, err error) {
+func ptraceExecAttach(
+	tracer any,
+	pid int,
+	sessionID, commandID string,
+	keepStopped bool,
+) (waitExit func() ptraceExecResult, resume func() error, err error) {
 	tr, ok := tracer.(*ptrace.Tracer)
 	if !ok || tr == nil {
 		return nil, nil, fmt.Errorf("ptraceExecAttach: invalid tracer type %T", tracer)

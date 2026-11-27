@@ -27,7 +27,12 @@ import "github.com/agentsh/agentsh/internal/audit"
 // the interface (e.g. dropping Commit's error return) would lose the
 // integrity guarantees the chain is meant to provide.
 type SinkChainAPI interface {
-	Compute(formatVersion int, sequence int64, generation uint32, payload []byte) (*audit.ComputeResult, error)
+	Compute(
+		formatVersion int,
+		sequence int64,
+		generation uint32,
+		payload []byte,
+	) (*audit.ComputeResult, error)
 	Commit(result *audit.ComputeResult) error
 	Fatal(reason error)
 	PeekPrevHash() string

@@ -183,7 +183,8 @@ func TestAppendEvent_DropsOnMapperFailure(t *testing.T) {
 	if got := entry["reason"]; got != "mapper_failure" {
 		t.Fatalf("reason = %v, want mapper_failure", got)
 	}
-	if got := entry["err"]; got == nil || !strings.Contains(got.(string), "synthetic mapper failure") {
+	if got := entry["err"]; got == nil ||
+		!strings.Contains(got.(string), "synthetic mapper failure") {
 		t.Fatalf("err attr = %v, want non-empty containing %q", got, "synthetic mapper failure")
 	}
 }
@@ -240,10 +241,18 @@ func TestAppendEvent_MapperReturningWrappedSentinelStaysMapperFailure(t *testing
 				t.Fatalf("DroppedMapperFailure() = %d, want 1", got)
 			}
 			if got := wtp.DroppedInvalidMapper(); got != 0 {
-				t.Fatalf("DroppedInvalidMapper() = %d, want 0 (inner sentinel must NOT leak past classifier)", got)
+				t.Fatalf(
+					"DroppedInvalidMapper() = %d, want 0 (inner sentinel must NOT leak past "+
+						"classifier)",
+					got,
+				)
 			}
 			if got := wtp.DroppedInvalidTimestamp(); got != 0 {
-				t.Fatalf("DroppedInvalidTimestamp() = %d, want 0 (inner sentinel must NOT leak past classifier)", got)
+				t.Fatalf(
+					"DroppedInvalidTimestamp() = %d, want 0 (inner sentinel must NOT leak past "+
+						"classifier)",
+					got,
+				)
 			}
 
 			entry := f.findDropWarn(t)

@@ -51,7 +51,13 @@ type spineHarness struct {
 // becomes the RootCAs for the upstream-side tls.Config so terminate_reissue
 // can verify-full the fake upstream's leaf. extraRule is appended verbatim
 // to the database_connection_rules block.
-func startSpineHarness(t *testing.T, upAddr string, tlsMode string, upTLSPool *x509.CertPool, extraRule string) *spineHarness {
+func startSpineHarness(
+	t *testing.T,
+	upAddr string,
+	tlsMode string,
+	upTLSPool *x509.CertPool,
+	extraRule string,
+) *spineHarness {
 	t.Helper()
 	sockDir := t.TempDir()
 	sockPath := filepath.Join(sockDir, "appdb.sock")
@@ -100,9 +106,11 @@ database_connection_rules:
 		Policy:                   rs,
 		Logger:                   slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		UpstreamTLSConfigForTest: upTLSCfg,
-		catalogLoaderForTest: catalogRuntimeLoaderFunc(func(context.Context, *proxyConn) (catalog.Snapshot, []string, string, error) {
-			return catalog.NewSnapshot(nil, nil), []string{"public"}, "", nil
-		}),
+		catalogLoaderForTest: catalogRuntimeLoaderFunc(
+			func(context.Context, *proxyConn) (catalog.Snapshot, []string, string, error) {
+				return catalog.NewSnapshot(nil, nil), []string{"public"}, "", nil
+			},
+		),
 		Services: []Service{{
 			Name:     "appdb",
 			Family:   "postgres",
@@ -283,14 +291,23 @@ func TestSpine_TerminateReissue_AuthOK_CloseAtRFQ(t *testing.T) {
 		t.Fatal("never received BackendKeyData")
 	}
 	if bkd.ProcessID == 42 && bytes.Equal(bkd.SecretKey, wantSecret) {
-		t.Fatalf("client received exact real upstream BKD pair: PID=%d SecretKey=%x", bkd.ProcessID, bkd.SecretKey)
+		t.Fatalf(
+			"client received exact real upstream BKD pair: PID=%d SecretKey=%x",
+			bkd.ProcessID,
+			bkd.SecretKey,
+		)
 	}
 	entry, status := h.srv.cancelMap.Lookup(bkd.ProcessID, bkd.SecretKey)
 	if status != cancelLookupFound {
 		t.Fatalf("cancelMap.Lookup status = %v, want %v", status, cancelLookupFound)
 	}
 	if entry.RealPID != 42 || !bytes.Equal(entry.RealSecret, wantSecret) {
-		t.Fatalf("cancel map entry = (%d,%x), want (42,%x)", entry.RealPID, entry.RealSecret, wantSecret)
+		t.Fatalf(
+			"cancel map entry = (%d,%x), want (42,%x)",
+			entry.RealPID,
+			entry.RealSecret,
+			wantSecret,
+		)
 	}
 	if up.AcceptedConns() == 0 {
 		t.Fatal("upstream never received a connection")
@@ -315,14 +332,23 @@ func TestSpine_TerminatePlaintextUpstream_AuthOK_CloseAtRFQ(t *testing.T) {
 		t.Fatal("never received BackendKeyData")
 	}
 	if bkd.ProcessID == 42 && bytes.Equal(bkd.SecretKey, wantSecret) {
-		t.Fatalf("client received exact real upstream BKD pair: PID=%d SecretKey=%x", bkd.ProcessID, bkd.SecretKey)
+		t.Fatalf(
+			"client received exact real upstream BKD pair: PID=%d SecretKey=%x",
+			bkd.ProcessID,
+			bkd.SecretKey,
+		)
 	}
 	entry, status := h.srv.cancelMap.Lookup(bkd.ProcessID, bkd.SecretKey)
 	if status != cancelLookupFound {
 		t.Fatalf("cancelMap.Lookup status = %v, want %v", status, cancelLookupFound)
 	}
 	if entry.RealPID != 42 || !bytes.Equal(entry.RealSecret, wantSecret) {
-		t.Fatalf("cancel map entry = (%d,%x), want (42,%x)", entry.RealPID, entry.RealSecret, wantSecret)
+		t.Fatalf(
+			"cancel map entry = (%d,%x), want (42,%x)",
+			entry.RealPID,
+			entry.RealSecret,
+			wantSecret,
+		)
 	}
 	if up.AcceptedConns() == 0 {
 		t.Fatal("upstream never received a connection")
@@ -352,7 +378,9 @@ func TestSpine_CancelRequest_UsesSyntheticKeyAndForwardsRealKey(t *testing.T) {
 			return
 		}
 		be.Send(&pgproto3.AuthenticationOk{})
-		be.Send(&pgproto3.BackendKeyData{ProcessID: 42, SecretKey: append([]byte(nil), wantSecret...)})
+		be.Send(
+			&pgproto3.BackendKeyData{ProcessID: 42, SecretKey: append([]byte(nil), wantSecret...)},
+		)
 		be.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
 		if err := be.Flush(); err != nil {
 			upstreamDone <- fmt.Errorf("flush auth: %w", err)
@@ -380,7 +408,13 @@ func TestSpine_CancelRequest_UsesSyntheticKeyAndForwardsRealKey(t *testing.T) {
     match_kind: cancel
     decision: allow
 `
-	h := startSpineHarness(t, upstreamWithLocalhostHost(upLn.Addr().String()), "terminate_plaintext_upstream", nil, rule)
+	h := startSpineHarness(
+		t,
+		upstreamWithLocalhostHost(upLn.Addr().String()),
+		"terminate_plaintext_upstream",
+		nil,
+		rule,
+	)
 	h.srv.cancelMap = newCancelMap(cancelMapConfig{
 		Max: 10,
 		Generate: fixedCancelKeyGenerator([]generatedCancelKey{
@@ -404,14 +438,23 @@ func TestSpine_CancelRequest_UsesSyntheticKeyAndForwardsRealKey(t *testing.T) {
 		t.Fatal("never received BackendKeyData")
 	}
 	if bkd.ProcessID == 42 && bytes.Equal(bkd.SecretKey, wantSecret) {
-		t.Fatalf("client received exact real upstream BKD pair: PID=%d SecretKey=%x", bkd.ProcessID, bkd.SecretKey)
+		t.Fatalf(
+			"client received exact real upstream BKD pair: PID=%d SecretKey=%x",
+			bkd.ProcessID,
+			bkd.SecretKey,
+		)
 	}
 	entry, status := h.srv.cancelMap.Lookup(bkd.ProcessID, bkd.SecretKey)
 	if status != cancelLookupFound {
 		t.Fatalf("cancelMap.Lookup status = %v, want %v", status, cancelLookupFound)
 	}
 	if entry.RealPID != 42 || !bytes.Equal(entry.RealSecret, wantSecret) {
-		t.Fatalf("cancel map entry = (%d,%x), want (42,%x)", entry.RealPID, entry.RealSecret, wantSecret)
+		t.Fatalf(
+			"cancel map entry = (%d,%x), want (42,%x)",
+			entry.RealPID,
+			entry.RealSecret,
+			wantSecret,
+		)
 	}
 
 	cancelConn, err := net.Dial("unix", h.sock)
@@ -419,7 +462,9 @@ func TestSpine_CancelRequest_UsesSyntheticKeyAndForwardsRealKey(t *testing.T) {
 		t.Fatalf("dial unix cancel: %v", err)
 	}
 	defer cancelConn.Close()
-	if _, err := cancelConn.Write(buildCancelPacketBytes(bkd.ProcessID, bkd.SecretKey)); err != nil {
+	if _, err := cancelConn.Write(
+		buildCancelPacketBytes(bkd.ProcessID, bkd.SecretKey),
+	); err != nil {
 		t.Fatalf("write cancel: %v", err)
 	}
 
@@ -712,7 +757,8 @@ func TestSpine_ReplicationOptIn_BytePump_EmitsDVW(t *testing.T) {
 	evs := h.sink.DrainLifecycle()
 	var found *events.LifecycleEvent
 	for i := range evs {
-		if evs[i].Kind == "degraded_visibility_warning" && evs[i].DegradedReason == "replication_passthrough" {
+		if evs[i].Kind == "degraded_visibility_warning" &&
+			evs[i].DegradedReason == "replication_passthrough" {
 			found = &evs[i]
 			break
 		}
@@ -880,8 +926,12 @@ func renameSocketForPgx(t *testing.T, oldPath string, port int) string {
 // sub-protocol (single 'Q' frames) — the Plan 04c proxy only supports Simple
 // Query in phase 1; Extended Query (Parse/Bind/Execute) is denied.
 func pgxConnString(sockDir string, port int) string {
-	return fmt.Sprintf("host=%s port=%d user=alice dbname=app sslmode=disable default_query_exec_mode=simple_protocol",
-		sockDir, port)
+	return fmt.Sprintf(
+		"host=%s port=%d user=alice dbname=app sslmode=disable "+
+			"default_query_exec_mode=simple_protocol",
+		sockDir,
+		port,
+	)
 }
 
 // pgxErrorCode extracts the SQLSTATE from a pg error, returning "" otherwise.
@@ -1017,7 +1067,9 @@ func TestSpine_Plan04c_SimpleQuery_DenyPreTx(t *testing.T) {
 		be.Send(&pgproto3.ParameterStatus{Name: "standard_conforming_strings", Value: "on"})
 		be.Send(&pgproto3.ParameterStatus{Name: "client_encoding", Value: "UTF8"})
 		be.Send(&pgproto3.ParameterStatus{Name: "server_version", Value: "16.0"})
-		be.Send(&pgproto3.BackendKeyData{ProcessID: 42, SecretKey: append([]byte(nil), wantSecret...)})
+		be.Send(
+			&pgproto3.BackendKeyData{ProcessID: 42, SecretKey: append([]byte(nil), wantSecret...)},
+		)
 		be.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
 		if err := be.Flush(); err != nil {
 			return fmt.Errorf("flush handshake: %w", err)
@@ -1108,7 +1160,9 @@ func TestSpine_Plan04c_SimpleQuery_DenyInTx_Terminates(t *testing.T) {
 		be.Send(&pgproto3.ParameterStatus{Name: "standard_conforming_strings", Value: "on"})
 		be.Send(&pgproto3.ParameterStatus{Name: "client_encoding", Value: "UTF8"})
 		be.Send(&pgproto3.ParameterStatus{Name: "server_version", Value: "16.0"})
-		be.Send(&pgproto3.BackendKeyData{ProcessID: 42, SecretKey: append([]byte(nil), wantSecret...)})
+		be.Send(
+			&pgproto3.BackendKeyData{ProcessID: 42, SecretKey: append([]byte(nil), wantSecret...)},
+		)
 		be.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
 		if err := be.Flush(); err != nil {
 			return fmt.Errorf("flush handshake: %w", err)
@@ -1196,7 +1250,11 @@ func TestSpine_Plan04c_SimpleQuery_DenyInTx_Terminates(t *testing.T) {
 		t.Fatalf("no deny event among %+v", evs)
 	}
 	if deny.TxContext.DenyAction != "connection_terminated" {
-		t.Fatalf("DenyAction = %q want connection_terminated (event=%+v)", deny.TxContext.DenyAction, deny)
+		t.Fatalf(
+			"DenyAction = %q want connection_terminated (event=%+v)",
+			deny.TxContext.DenyAction,
+			deny,
+		)
 	}
 }
 
@@ -1276,7 +1334,13 @@ func TestSpine_SQLPrepare_DenyOverPGX(t *testing.T) {
 	up := newFakeUpstream(t, withFakeUpstreamScript(prepareDenyScript))
 	upAddr := up.Address()
 
-	h := startSpineHarness(t, upstreamWithLocalhostHost(upAddr), "terminate_plaintext_upstream", nil, "")
+	h := startSpineHarness(
+		t,
+		upstreamWithLocalhostHost(upAddr),
+		"terminate_plaintext_upstream",
+		nil,
+		"",
+	)
 	h.srv.SetPolicy(loadRuleSet(t, prepareDenyPolicyYAML(upAddr)))
 
 	stop := runServer(t, h.srv)
@@ -1368,7 +1432,13 @@ func TestSpine_CopyToStdout_BytesOutCount(t *testing.T) {
 	up := newFakeUpstream(t, withFakeUpstreamScript(copyToStdoutScript))
 	upAddr := up.Address()
 
-	h := startSpineHarness(t, upstreamWithLocalhostHost(upAddr), "terminate_plaintext_upstream", nil, "")
+	h := startSpineHarness(
+		t,
+		upstreamWithLocalhostHost(upAddr),
+		"terminate_plaintext_upstream",
+		nil,
+		"",
+	)
 	h.srv.SetPolicy(loadRuleSet(t, pgxSpinePolicyYAML(upAddr, false)))
 
 	stop := runServer(t, h.srv)
@@ -1452,7 +1522,13 @@ func TestSpine_ApprovalTimeout_DenyAfterTimeout(t *testing.T) {
 	up := newFakeUpstream(t, withFakeUpstreamScript(approvalTimeoutScript))
 	upAddr := up.Address()
 
-	h := startSpineHarness(t, upstreamWithLocalhostHost(upAddr), "terminate_plaintext_upstream", nil, "")
+	h := startSpineHarness(
+		t,
+		upstreamWithLocalhostHost(upAddr),
+		"terminate_plaintext_upstream",
+		nil,
+		"",
+	)
 	h.srv.SetPolicy(loadRuleSet(t, approvalTimeoutPolicyYAML(upAddr)))
 
 	stop := runServer(t, h.srv)
@@ -1561,7 +1637,11 @@ database_rules:
 // It mirrors the pattern in handRolledTerminateReissueHandshake but goes
 // further: after reading the startup response (AuthOk + params + BKD + RFQ)
 // it sends a FunctionCall and reads the reply.
-func sendRawFrontendFunctionCall(t *testing.T, h *spineHarness, functionOID uint32) pgproto3.BackendMessage {
+func sendRawFrontendFunctionCall(
+	t *testing.T,
+	h *spineHarness,
+	functionOID uint32,
+) pgproto3.BackendMessage {
 	t.Helper()
 
 	raw, err := net.Dial("unix", h.sock)
@@ -1657,7 +1737,13 @@ func TestSpine_FunctionCall_OptInForwards(t *testing.T) {
 	up := newFakeUpstream(t, withFakeUpstreamScript(funcCallOptInScript))
 	upAddr := up.Address()
 
-	h := startSpineHarness(t, upstreamWithLocalhostHost(upAddr), "terminate_plaintext_upstream", nil, "")
+	h := startSpineHarness(
+		t,
+		upstreamWithLocalhostHost(upAddr),
+		"terminate_plaintext_upstream",
+		nil,
+		"",
+	)
 	h.srv.SetPolicy(loadRuleSet(t, funcCallOptInPolicyYAML(upAddr)))
 
 	stop := runServer(t, h.srv)

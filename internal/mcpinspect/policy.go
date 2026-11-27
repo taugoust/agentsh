@@ -60,7 +60,10 @@ func (p *PolicyEvaluator) Evaluate(serverID, toolName, hash string) PolicyDecisi
 	case "", "none":
 		return PolicyDecision{Allowed: true, Reason: "no tool policy configured"}
 	default:
-		return PolicyDecision{Allowed: false, Reason: fmt.Sprintf("unknown tool_policy %q; denying", p.cfg.ToolPolicy)}
+		return PolicyDecision{
+			Allowed: false,
+			Reason:  fmt.Sprintf("unknown tool_policy %q; denying", p.cfg.ToolPolicy),
+		}
 	}
 }
 
@@ -92,7 +95,10 @@ func (p *PolicyEvaluator) evaluateServerPolicy(serverID string) (PolicyDecision,
 
 	default:
 		// Unknown server policy value — fail closed
-		return PolicyDecision{Allowed: false, Reason: fmt.Sprintf("unknown server_policy %q; denying", p.cfg.ServerPolicy)}, true
+		return PolicyDecision{
+			Allowed: false,
+			Reason:  fmt.Sprintf("unknown server_policy %q; denying", p.cfg.ServerPolicy),
+		}, true
 	}
 }
 
@@ -134,7 +140,10 @@ func (p *PolicyEvaluator) evaluateDenylist(serverID, toolName, hash string) Poli
 	return PolicyDecision{Allowed: true, Reason: "no matching denylist rule"}
 }
 
-func (p *PolicyEvaluator) matchesRule(rule config.MCPToolRule, serverID, toolName, hash string) bool {
+func (p *PolicyEvaluator) matchesRule(
+	rule config.MCPToolRule,
+	serverID, toolName, hash string,
+) bool {
 	// Check server match (glob)
 	if !matchesPattern(rule.Server, serverID) {
 		return false

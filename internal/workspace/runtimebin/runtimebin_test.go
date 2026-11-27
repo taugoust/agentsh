@@ -38,7 +38,11 @@ func TestResolvePackagedPathFailsClosedWithoutAmbientFallback(t *testing.T) {
 		t.Skip("executable fixture uses Unix permission bits")
 	}
 	ambientBin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(ambientBin, "rsync"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(ambientBin, "rsync"),
+		[]byte("#!/bin/sh\nexit 0\n"),
+		0o755,
+	); err != nil {
 		t.Fatal(err)
 	}
 

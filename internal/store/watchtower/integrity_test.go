@@ -114,7 +114,11 @@ func TestStore_WALAmbiguousFailure_LatchesFatal(t *testing.T) {
 	s := mkIntegrityStore(t)
 
 	wal.SetAppendInjector(func() error {
-		return &wal.AppendError{Class: wal.FailureAmbiguous, Op: "fsync", Err: errors.New("io error")}
+		return &wal.AppendError{
+			Class: wal.FailureAmbiguous,
+			Op:    "fsync",
+			Err:   errors.New("io error"),
+		}
 	})
 	t.Cleanup(func() { wal.SetAppendInjector(nil) })
 
@@ -140,7 +144,10 @@ func TestStore_WALAmbiguousFailure_LatchesFatal(t *testing.T) {
 	// exit. Operators polling the health surface should see the
 	// original I/O error, not a nil result.
 	if gotErr := s.Err(); gotErr == nil {
-		t.Error("Store.Err() returned nil after fatal latch — operators cannot discover the cause pre-Close")
+		t.Error(
+			"Store.Err() returned nil after fatal latch — operators cannot discover the cause " +
+				"pre-Close",
+		)
 	}
 }
 
@@ -287,7 +294,11 @@ func TestStore_AppendEvent_PopulatesIntegrityRecord(t *testing.T) {
 	sum := sha256.Sum256(canonical)
 	wantEventHash := hex.EncodeToString(sum[:])
 	if got := ir.GetEventHash(); got != wantEventHash {
-		t.Errorf("IntegrityRecord.EventHash = %q, want %q — event_hash is not sha256(canonical event)", got, wantEventHash)
+		t.Errorf(
+			"IntegrityRecord.EventHash = %q, want %q — event_hash is not sha256(canonical event)",
+			got,
+			wantEventHash,
+		)
 	}
 }
 
@@ -369,7 +380,10 @@ func TestStore_AppendEvent_GenerationRollResetsPrevHash(t *testing.T) {
 		t.Fatalf("unmarshal gen=2 record: %v", err)
 	}
 	if got := ce.GetIntegrity().GetPrevHash(); got != "" {
-		t.Errorf("IntegrityRecord.PrevHash on gen=2 first record = %q, want \"\" (generation roll)", got)
+		t.Errorf(
+			"IntegrityRecord.PrevHash on gen=2 first record = %q, want \"\" (generation roll)",
+			got,
+		)
 	}
 	if got := ce.GetIntegrity().GetGeneration(); got != 2 {
 		t.Errorf("IntegrityRecord.Generation = %d, want 2", got)
@@ -414,7 +428,10 @@ func TestStore_AppendEvent_ConcurrentCallersDoNotLatchFatal(t *testing.T) {
 		t.Fatalf("%d/%d concurrent AppendEvent calls failed — serialisation regression", failed, n)
 	}
 	if err := s.Err(); err != nil {
-		t.Errorf("Store.Err() = %v after concurrent appends; store should not be latched fatal", err)
+		t.Errorf(
+			"Store.Err() = %v after concurrent appends; store should not be latched fatal",
+			err,
+		)
 	}
 }
 
@@ -480,7 +497,11 @@ func TestStore_RestartRestoresChainState(t *testing.T) {
 	t.Cleanup(func() { _ = s2.Close() })
 
 	if got := s2.PeekPrevHash(); got != prevBeforeClose {
-		t.Fatalf("post-restart PeekPrevHash = %q, want %q (chain state not restored)", got, prevBeforeClose)
+		t.Fatalf(
+			"post-restart PeekPrevHash = %q, want %q (chain state not restored)",
+			got,
+			prevBeforeClose,
+		)
 	}
 
 	// Phase 3: append seq=3 in the same generation. Its stored
@@ -542,7 +563,12 @@ func TestStore_RestartRestoresChainState(t *testing.T) {
 		t.Fatalf("unmarshal seq=3: %v", err)
 	}
 	if got := ce.GetIntegrity().GetPrevHash(); got != wantPrevForSeq3 {
-		t.Errorf("seq=3 IntegrityRecord.PrevHash = %q, want %q (wire chain not restored: should equal seq=2's EventHash)", got, wantPrevForSeq3)
+		t.Errorf(
+			"seq=3 IntegrityRecord.PrevHash = %q, want %q (wire chain not restored: should equal "+
+				"seq=2's EventHash)",
+			got,
+			wantPrevForSeq3,
+		)
 	}
 	_ = prevBeforeClose // HMAC chain restoration verified above by PeekPrevHash check.
 }
@@ -590,7 +616,10 @@ func TestStore_TransportSessionInitUsesConfiguredAlgorithm(t *testing.T) {
 	}
 
 	if got := init.GetAlgorithm(); got != wtpv1.HashAlgorithm_HASH_ALGORITHM_HMAC_SHA512 {
-		t.Errorf("SessionInit.Algorithm = %v, want HMAC_SHA512 (configured via Options.HMACAlgorithm)", got)
+		t.Errorf(
+			"SessionInit.Algorithm = %v, want HMAC_SHA512 (configured via Options.HMACAlgorithm)",
+			got,
+		)
 	}
 	if got := init.GetKeyFingerprint(); got != keyFP {
 		t.Errorf("SessionInit.KeyFingerprint = %q, want %q", got, keyFP)
@@ -671,7 +700,11 @@ func TestStore_RestartRestoresChainState_Gen0Only(t *testing.T) {
 	t.Cleanup(func() { _ = s2.Close() })
 
 	if got := s2.PeekPrevHash(); got != prev {
-		t.Errorf("post-restart PeekPrevHash (gen=0) = %q, want %q — restore scan missed gen=0", got, prev)
+		t.Errorf(
+			"post-restart PeekPrevHash (gen=0) = %q, want %q — restore scan missed gen=0",
+			got,
+			prev,
+		)
 	}
 }
 
@@ -761,7 +794,12 @@ func TestStore_RestartRestoresChainState_IgnoresTrailingLossMarker(t *testing.T)
 	t.Cleanup(func() { _ = s2.Close() })
 
 	if got := s2.PeekPrevHash(); got != prev {
-		t.Errorf("post-restart PeekPrevHash after trailing loss marker = %q, want %q — restore fell back to fresh chain", got, prev)
+		t.Errorf(
+			"post-restart PeekPrevHash after trailing loss marker = %q, want %q — restore fell "+
+				"back to fresh chain",
+			got,
+			prev,
+		)
 	}
 }
 
@@ -882,7 +920,11 @@ func TestStore_AgentIDChangeAcrossRestartsQuarantines(t *testing.T) {
 
 	// Fresh WAL → genesis chain state (empty prev_hash).
 	if got := s2.PeekPrevHash(); got != "" {
-		t.Errorf("post-AgentID-change PeekPrevHash = %q, want \"\" (quarantine did not produce a fresh WAL)", got)
+		t.Errorf(
+			"post-AgentID-change PeekPrevHash = %q, want \"\" (quarantine did not produce a "+
+				"fresh WAL)",
+			got,
+		)
 	}
 
 	// A quarantine sibling MUST exist next to the fresh WAL dir
@@ -901,6 +943,9 @@ func TestStore_AgentIDChangeAcrossRestartsQuarantines(t *testing.T) {
 		}
 	}
 	if !foundQuarantine {
-		t.Error("no quarantine sibling found after AgentID change — wal.Open did not detect context_digest mismatch")
+		t.Error(
+			"no quarantine sibling found after AgentID change — wal.Open did not detect " +
+				"context_digest mismatch",
+		)
 	}
 }

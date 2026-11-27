@@ -51,7 +51,11 @@ func (c Controller) cleanupTimeout() time.Duration {
 	return c.CleanupTimeout
 }
 
-func (c Controller) Start(ctx context.Context, provider Provider, request Request) (Instance, error) {
+func (c Controller) Start(
+	ctx context.Context,
+	provider Provider,
+	request Request,
+) (Instance, error) {
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
@@ -66,7 +70,10 @@ func (c Controller) Start(ctx context.Context, provider Provider, request Reques
 	manifest := NewManifest(request, time.Now().UTC())
 	if err := WithLifecycleLock(request.StateDir, func() error {
 		if _, err := ReadManifest(request.StateDir); err == nil {
-			return fmt.Errorf("runtime-provider manifest already exists for session %s", request.SessionID)
+			return fmt.Errorf(
+				"runtime-provider manifest already exists for session %s",
+				request.SessionID,
+			)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
@@ -81,7 +88,11 @@ func (c Controller) Start(ctx context.Context, provider Provider, request Reques
 	}
 	capabilities, err := provider.Preflight(ctx, request)
 	if err != nil {
-		return nil, c.failWithoutInstance(request.StateDir, manifest, fmt.Errorf("runtime provider preflight: %w", err))
+		return nil, c.failWithoutInstance(
+			request.StateDir,
+			manifest,
+			fmt.Errorf("runtime provider preflight: %w", err),
+		)
 	}
 	if err := validateCapabilities(capabilities, request.Provider); err != nil {
 		return nil, c.failWithoutInstance(request.StateDir, manifest, err)
@@ -89,27 +100,65 @@ func (c Controller) Start(ctx context.Context, provider Provider, request Reques
 	instance, err := provider.Start(ctx, request)
 	if err != nil {
 		if instance == nil {
-			return nil, c.failWithoutInstance(request.StateDir, manifest, fmt.Errorf("start runtime provider: %w", err))
+			return nil, c.failWithoutInstance(
+				request.StateDir,
+				manifest,
+				fmt.Errorf("start runtime provider: %w", err),
+			)
 		}
-		return nil, c.failStarted(request.StateDir, manifest, instance, StopReasonStartupFailed, fmt.Errorf("start runtime provider: %w", err))
+		return nil, c.failStarted(
+			request.StateDir,
+			manifest,
+			instance,
+			StopReasonStartupFailed,
+			fmt.Errorf("start runtime provider: %w", err),
+		)
 	}
 	if instance == nil {
-		return nil, c.failWithoutInstance(request.StateDir, manifest, fmt.Errorf("runtime provider returned no instance"))
+		return nil, c.failWithoutInstance(
+			request.StateDir,
+			manifest,
+			fmt.Errorf("runtime provider returned no instance"),
+		)
 	}
 	identity := instance.Identity()
 	endpoint := instance.Endpoint()
 	if err := validateIdentityForRequest(identity, request); err != nil {
-		return nil, c.failStarted(request.StateDir, manifest, instance, StopReasonStartupFailed, err)
+		return nil, c.failStarted(
+			request.StateDir,
+			manifest,
+			instance,
+			StopReasonStartupFailed,
+			err,
+		)
 	}
 	if err := endpoint.Validate(); err != nil {
-		return nil, c.failStarted(request.StateDir, manifest, instance, StopReasonStartupFailed, err)
+		return nil, c.failStarted(
+			request.StateDir,
+			manifest,
+			instance,
+			StopReasonStartupFailed,
+			err,
+		)
 	}
 	status, err := instance.Probe(ctx)
 	if err != nil {
-		return nil, c.failStarted(request.StateDir, manifest, instance, StopReasonStartupFailed, fmt.Errorf("probe runtime provider: %w", err))
+		return nil, c.failStarted(
+			request.StateDir,
+			manifest,
+			instance,
+			StopReasonStartupFailed,
+			fmt.Errorf("probe runtime provider: %w", err),
+		)
 	}
 	if err := validateReadyStatus(status, identity, endpoint); err != nil {
-		return nil, c.failStarted(request.StateDir, manifest, instance, StopReasonStartupFailed, err)
+		return nil, c.failStarted(
+			request.StateDir,
+			manifest,
+			instance,
+			StopReasonStartupFailed,
+			err,
+		)
 	}
 	manifest.State = StateReady
 	manifest.Identity = identity
@@ -121,20 +170,40 @@ func (c Controller) Start(ctx context.Context, provider Provider, request Reques
 		if readErr != nil {
 			return readErr
 		}
-		if current.State == StateFinalizing || current.State == StateStopping || current.State == StateStopped || current.State == StateFailed || current.CleanupPending {
-			return fmt.Errorf("runtime session %s committed incompatible state %s during startup", current.SessionID, current.State)
+		if current.State == StateFinalizing || current.State == StateStopping ||
+			current.State == StateStopped ||
+			current.State == StateFailed ||
+			current.CleanupPending {
+			return fmt.Errorf(
+				"runtime session %s committed incompatible state %s during startup",
+				current.SessionID,
+				current.State,
+			)
 		}
-		if current.Provider != manifest.Provider || current.Profile != manifest.Profile || current.SessionID != manifest.SessionID || current.StateDir != manifest.StateDir {
+		if current.Provider != manifest.Provider || current.Profile != manifest.Profile ||
+			current.SessionID != manifest.SessionID ||
+			current.StateDir != manifest.StateDir {
 			return fmt.Errorf("runtime-provider manifest changed during startup")
 		}
 		return WriteManifest(request.StateDir, manifest)
 	}); err != nil {
-		return nil, c.failStarted(request.StateDir, manifest, instance, StopReasonStartupFailed, fmt.Errorf("persist ready runtime provider: %w", err))
+		return nil, c.failStarted(
+			request.StateDir,
+			manifest,
+			instance,
+			StopReasonStartupFailed,
+			fmt.Errorf("persist ready runtime provider: %w", err),
+		)
 	}
 	return instance, nil
 }
 
-func (c Controller) Recover(ctx context.Context, provider Provider, stateDir string, manifest Manifest) (Instance, error) {
+func (c Controller) Recover(
+	ctx context.Context,
+	provider Provider,
+	stateDir string,
+	manifest Manifest,
+) (Instance, error) {
 	if err := validateManifestStateDir(stateDir, manifest); err != nil {
 		return nil, err
 	}
@@ -157,19 +226,37 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 			return fmt.Errorf("runtime-provider manifest changed before recovery")
 		}
 		if current.State == StateStopping {
-			return fmt.Errorf("runtime session %s is %s and cannot be recovered", current.SessionID, current.State)
+			return fmt.Errorf(
+				"runtime session %s is %s and cannot be recovered",
+				current.SessionID,
+				current.State,
+			)
 		}
 		if current.State == StateStopped {
 			resumable, ok := provider.(StoppedResumeProvider)
 			if !ok || !resumable.CanResumeStopped(current) {
-				return fmt.Errorf("runtime session %s is stopped and its provider does not retain resumable state", current.SessionID)
+				return fmt.Errorf(
+					"runtime session %s is stopped and its provider does not retain "+
+						"resumable state",
+					current.SessionID,
+				)
 			}
 		}
-		if current.CleanupPending || (!current.CleanupIntentKnown && current.State == StateFailed && !current.CleanupComplete) {
-			return fmt.Errorf("runtime session %s has incomplete or ambiguous cleanup and cannot be recovered", current.SessionID)
+		if current.CleanupPending ||
+			(!current.CleanupIntentKnown &&
+				current.State == StateFailed &&
+				!current.CleanupComplete) {
+			return fmt.Errorf(
+				"runtime session %s has incomplete or ambiguous cleanup and cannot be recovered",
+				current.SessionID,
+			)
 		}
-		if current.State == StateFailed && !current.CleanupComplete && !manifestHasExactRuntime(current) {
-			return fmt.Errorf("runtime session %s has unbound incomplete cleanup and cannot be recovered", current.SessionID)
+		if current.State == StateFailed && !current.CleanupComplete &&
+			!manifestHasExactRuntime(current) {
+			return fmt.Errorf(
+				"runtime session %s has unbound incomplete cleanup and cannot be recovered",
+				current.SessionID,
+			)
 		}
 		return nil
 	}); err != nil {
@@ -185,7 +272,9 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 			status, probeErr := existing.Probe(ctx)
 			if probeErr == nil {
 				if manifest.State == StateFinalizing {
-					if status.Identity == manifest.Identity && status.Endpoint == manifest.Endpoint && status.State == StateFinalizing {
+					if status.Identity == manifest.Identity &&
+						status.Endpoint == manifest.Endpoint &&
+						status.State == StateFinalizing {
 						return existing, nil
 					}
 				} else if validateReadyStatus(status, manifest.Identity, manifest.Endpoint) == nil {
@@ -194,9 +283,15 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 						if readErr != nil {
 							return readErr
 						}
-						if latest.CleanupPending || latest.State == StateFinalizing || latest.State == StateStopping || latest.State == StateStopped || latest.State == StateFailed ||
-							latest.Identity != manifest.Identity || latest.Endpoint != manifest.Endpoint {
-							return fmt.Errorf("runtime-provider manifest changed after readiness probe")
+						if latest.CleanupPending || latest.State == StateFinalizing ||
+							latest.State == StateStopping ||
+							latest.State == StateStopped ||
+							latest.State == StateFailed ||
+							latest.Identity != manifest.Identity ||
+							latest.Endpoint != manifest.Endpoint {
+							return fmt.Errorf(
+								"runtime-provider manifest changed after readiness probe",
+							)
 						}
 						return nil
 					}); err != nil {
@@ -241,12 +336,26 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 	instance, err := provider.Recover(ctx, manifest)
 	if err != nil {
 		if instance == nil {
-			return nil, c.failWithoutInstance(stateDir, manifest, fmt.Errorf("recover runtime provider: %w", err))
+			return nil, c.failWithoutInstance(
+				stateDir,
+				manifest,
+				fmt.Errorf("recover runtime provider: %w", err),
+			)
 		}
-		return nil, c.failStarted(stateDir, manifest, instance, StopReasonRecoveryFailed, fmt.Errorf("recover runtime provider: %w", err))
+		return nil, c.failStarted(
+			stateDir,
+			manifest,
+			instance,
+			StopReasonRecoveryFailed,
+			fmt.Errorf("recover runtime provider: %w", err),
+		)
 	}
 	if instance == nil {
-		return nil, c.failWithoutInstance(stateDir, manifest, fmt.Errorf("runtime provider recovery returned no instance"))
+		return nil, c.failWithoutInstance(
+			stateDir,
+			manifest,
+			fmt.Errorf("runtime provider recovery returned no instance"),
+		)
 	}
 	identity := instance.Identity()
 	endpoint := instance.Endpoint()
@@ -256,14 +365,29 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 	if err := endpoint.Validate(); err != nil {
 		return nil, c.failStarted(stateDir, manifest, instance, StopReasonRecoveryFailed, err)
 	}
-	if prior.Generation != 0 && identity.Generation == prior.Generation && manifest.Endpoint != (Endpoint{}) && endpoint != manifest.Endpoint {
-		return nil, c.failStarted(stateDir, manifest, instance, StopReasonRecoveryFailed, fmt.Errorf("recovered runtime provider changed an existing endpoint"))
+	if prior.Generation != 0 && identity.Generation == prior.Generation &&
+		manifest.Endpoint != (Endpoint{}) &&
+		endpoint != manifest.Endpoint {
+		return nil, c.failStarted(
+			stateDir,
+			manifest,
+			instance,
+			StopReasonRecoveryFailed,
+			fmt.Errorf("recovered runtime provider changed an existing endpoint"),
+		)
 	}
 	status, err := instance.Probe(ctx)
 	if err != nil {
-		return nil, c.failStarted(stateDir, manifest, instance, StopReasonRecoveryFailed, fmt.Errorf("probe recovered runtime provider: %w", err))
+		return nil, c.failStarted(
+			stateDir,
+			manifest,
+			instance,
+			StopReasonRecoveryFailed,
+			fmt.Errorf("probe recovered runtime provider: %w", err),
+		)
 	}
-	if resumeFinalizing && status.Identity == identity && status.Endpoint == endpoint && status.State == StateStopped {
+	if resumeFinalizing && status.Identity == identity && status.Endpoint == endpoint &&
+		status.State == StateStopped {
 		manifest.State = StateStopped
 		manifest.Identity = identity
 		manifest.Endpoint = endpoint
@@ -276,10 +400,13 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 			if readErr != nil {
 				return readErr
 			}
-			if current.State == StateStopped && current.CleanupComplete && current.Identity == identity && current.Endpoint == endpoint {
+			if current.State == StateStopped && current.CleanupComplete &&
+				current.Identity == identity &&
+				current.Endpoint == endpoint {
 				return nil
 			}
-			if !sameManifestLineage(current, prepared) || current.State != StateFinalizing || current.Identity.Generation > identity.Generation {
+			if !sameManifestLineage(current, prepared) || current.State != StateFinalizing ||
+				current.Identity.Generation > identity.Generation {
 				return fmt.Errorf("runtime-provider finalization changed during recovery")
 			}
 			return WriteManifest(stateDir, manifest)
@@ -288,7 +415,8 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 		}
 		return instance, nil
 	}
-	if resumeFinalizing && status.Identity == identity && status.Endpoint == endpoint && status.State == StateFinalizing {
+	if resumeFinalizing && status.Identity == identity && status.Endpoint == endpoint &&
+		status.State == StateFinalizing {
 		manifest.State = StateFinalizing
 		manifest.Identity = identity
 		manifest.Endpoint = endpoint
@@ -301,8 +429,11 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 			if readErr != nil {
 				return readErr
 			}
-			if !sameManifestLineage(current, prepared) || current.State != StateFinalizing || current.Identity.Generation > identity.Generation ||
-				(current.Identity.Generation == identity.Generation && current.Identity.IncarnationID != "" && current.Identity != identity) {
+			if !sameManifestLineage(current, prepared) || current.State != StateFinalizing ||
+				current.Identity.Generation > identity.Generation ||
+				(current.Identity.Generation == identity.Generation &&
+					current.Identity.IncarnationID != "" &&
+					current.Identity != identity) {
 				return fmt.Errorf("runtime-provider finalization changed during recovery")
 			}
 			return WriteManifest(stateDir, manifest)
@@ -312,7 +443,10 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 		return instance, nil
 	}
 	if resumeFinalizing {
-		return nil, fmt.Errorf("recovered finalizing runtime reported unexpected state %s", status.State)
+		return nil, fmt.Errorf(
+			"recovered finalizing runtime reported unexpected state %s",
+			status.State,
+		)
 	}
 	if err := validateReadyStatus(status, identity, endpoint); err != nil {
 		return nil, c.failStarted(stateDir, manifest, instance, StopReasonRecoveryFailed, err)
@@ -328,18 +462,34 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 			return readErr
 		}
 		if current.State == StateStopping {
-			return fmt.Errorf("runtime session %s committed stop during recovery", current.SessionID)
+			return fmt.Errorf(
+				"runtime session %s committed stop during recovery",
+				current.SessionID,
+			)
 		}
 		if current.Provider != prepared.Provider || current.Profile != prepared.Profile ||
 			current.SessionID != prepared.SessionID || current.StateDir != prepared.StateDir ||
-			(current.State != StateRecovering && current.State != StateReady && current.State != StateDegraded) || current.CleanupPending ||
-			!current.CreatedAt.Equal(prepared.CreatedAt) || current.Identity.Generation > identity.Generation ||
-			(current.Identity.Generation == identity.Generation && current.Identity.IncarnationID != "" && current.Identity != identity) {
+			(current.State != StateRecovering &&
+				current.State != StateReady &&
+				current.State != StateDegraded) ||
+			current.CleanupPending ||
+			!current.CreatedAt.Equal(
+				prepared.CreatedAt,
+			) || current.Identity.Generation > identity.Generation ||
+			(current.Identity.Generation == identity.Generation &&
+				current.Identity.IncarnationID != "" &&
+				current.Identity != identity) {
 			return fmt.Errorf("runtime-provider manifest changed during recovery")
 		}
 		return WriteManifest(stateDir, manifest)
 	}); err != nil {
-		return nil, c.failStarted(stateDir, manifest, instance, StopReasonRecoveryFailed, fmt.Errorf("persist recovered runtime provider: %w", err))
+		return nil, c.failStarted(
+			stateDir,
+			manifest,
+			instance,
+			StopReasonRecoveryFailed,
+			fmt.Errorf("persist recovered runtime provider: %w", err),
+		)
 	}
 	return instance, nil
 }
@@ -347,7 +497,13 @@ func (c Controller) Recover(ctx context.Context, provider Provider, stateDir str
 // Stop commits to exact cleanup only after Open has returned an identity-bound
 // handle. Stop and Destroy then use a fresh bounded context, so cancellation of
 // the caller cannot strand an already-committed runtime teardown.
-func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string, manifest Manifest, reason StopReason) error {
+func (c Controller) Stop(
+	ctx context.Context,
+	provider Provider,
+	stateDir string,
+	manifest Manifest,
+	reason StopReason,
+) error {
 	if err := validateManifestStateDir(stateDir, manifest); err != nil {
 		return err
 	}
@@ -371,16 +527,21 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 		}
 		manifest = current
 		if manifest.State == StateFinalizing {
-			return fmt.Errorf("runtime session %s is finalizing and cannot be stopped", manifest.SessionID)
+			return fmt.Errorf(
+				"runtime session %s is finalizing and cannot be stopped",
+				manifest.SessionID,
+			)
 		}
-		if (manifest.State == StateStopped || manifest.State == StateFailed) && manifest.CleanupComplete {
+		if (manifest.State == StateStopped || manifest.State == StateFailed) &&
+			manifest.CleanupComplete {
 			return nil
 		}
 		var openErr error
 		if manifestHasExactRuntime(manifest) {
 			instance, openErr = provider.Open(ctx, manifest)
 		} else {
-			if manifest.State != StateProvisioning && !(manifest.State == StateFailed && manifest.CleanupPending) {
+			if manifest.State != StateProvisioning &&
+				!(manifest.State == StateFailed && manifest.CleanupPending) {
 				return fmt.Errorf("runtime provider has no exact identity for cleanup")
 			}
 			cleaner, ok := provider.(UnprovisionedCleanupProvider)
@@ -465,8 +626,14 @@ func (c Controller) Stop(ctx context.Context, provider Provider, stateDir string
 }
 
 func validateUnprovisionedCleanupIdentity(identity Identity, manifest Manifest) error {
-	if identity.ContractVersion != ContractVersion || identity.Provider != manifest.Provider || identity.Profile != manifest.Profile || identity.SessionID != manifest.SessionID ||
-		identity.Generation != 0 || identity.IncarnationID != "" || identity.OwnerPID != 0 || identity.OwnerStartIdentity != "" || identity.BootID != "" {
+	if identity.ContractVersion != ContractVersion || identity.Provider != manifest.Provider ||
+		identity.Profile != manifest.Profile ||
+		identity.SessionID != manifest.SessionID ||
+		identity.Generation != 0 ||
+		identity.IncarnationID != "" ||
+		identity.OwnerPID != 0 ||
+		identity.OwnerStartIdentity != "" ||
+		identity.BootID != "" {
 		return fmt.Errorf("runtime provider returned an invalid unprovisioned cleanup identity")
 	}
 	return nil
@@ -477,8 +644,14 @@ func writeManifestIfCleanupStillCurrent(stateDir string, intent, replacement Man
 	if err != nil {
 		return err
 	}
-	if current.Provider != intent.Provider || current.Profile != intent.Profile || current.SessionID != intent.SessionID || current.StateDir != intent.StateDir ||
-		current.Identity != intent.Identity || current.Endpoint != intent.Endpoint || current.State != intent.State || !current.CleanupPending || current.CleanupComplete {
+	if current.Provider != intent.Provider || current.Profile != intent.Profile ||
+		current.SessionID != intent.SessionID ||
+		current.StateDir != intent.StateDir ||
+		current.Identity != intent.Identity ||
+		current.Endpoint != intent.Endpoint ||
+		current.State != intent.State ||
+		!current.CleanupPending ||
+		current.CleanupComplete {
 		return fmt.Errorf("runtime-provider incarnation changed during exact cleanup")
 	}
 	return WriteManifest(stateDir, replacement)
@@ -496,7 +669,9 @@ func (c Controller) failWithoutInstance(stateDir string, manifest Manifest, caus
 		if err != nil {
 			return err
 		}
-		if current.State == StateFinalizing || current.State == StateStopping || current.State == StateStopped || current.CleanupPending {
+		if current.State == StateFinalizing || current.State == StateStopping ||
+			current.State == StateStopped ||
+			current.CleanupPending {
 			return nil
 		}
 		if !sameManifestRevision(current, expected) {
@@ -507,12 +682,21 @@ func (c Controller) failWithoutInstance(stateDir string, manifest Manifest, caus
 	return errors.Join(cause, writeErr)
 }
 
-func (c Controller) failStarted(stateDir string, manifest Manifest, instance Instance, reason StopReason, cause error) error {
+func (c Controller) failStarted(
+	stateDir string,
+	manifest Manifest,
+	instance Instance,
+	reason StopReason,
+	cause error,
+) error {
 	original := manifest
 	identity := instance.Identity()
 	endpoint := instance.Endpoint()
 	bindingErr := identity.ValidateComplete()
-	if bindingErr == nil && (identity.Provider != manifest.Provider || identity.Profile != manifest.Profile || identity.SessionID != manifest.SessionID) {
+	if bindingErr == nil &&
+		(identity.Provider != manifest.Provider ||
+			identity.Profile != manifest.Profile ||
+			identity.SessionID != manifest.SessionID) {
 		bindingErr = fmt.Errorf("runtime provider returned a different exact identity")
 	}
 	if bindingErr == nil {
@@ -542,17 +726,28 @@ func (c Controller) failStarted(stateDir string, manifest Manifest, instance Ins
 		if err != nil {
 			return err
 		}
-		if current.State == StateFinalizing || current.State == StateStopping || current.State == StateStopped {
-			return fmt.Errorf("runtime session %s committed state %s while handling provider failure", current.SessionID, current.State)
+		if current.State == StateFinalizing || current.State == StateStopping ||
+			current.State == StateStopped {
+			return fmt.Errorf(
+				"runtime session %s committed state %s while handling provider failure",
+				current.SessionID,
+				current.State,
+			)
 		}
 		if !sameManifestLineage(current, original) {
 			return fmt.Errorf("runtime-provider manifest changed before failed-instance cleanup")
 		}
 		if bindingErr == nil {
 			if current.Identity.Generation > identity.Generation ||
-				(current.Identity.Generation == identity.Generation && current.Identity.IncarnationID != "" && current.Identity != identity) ||
-				(current.Identity.Generation == identity.Generation && current.Endpoint != (Endpoint{}) && current.Endpoint != endpoint) {
-				return fmt.Errorf("runtime-provider incarnation changed before failed-instance cleanup")
+				(current.Identity.Generation == identity.Generation &&
+					current.Identity.IncarnationID != "" &&
+					current.Identity != identity) ||
+				(current.Identity.Generation == identity.Generation &&
+					current.Endpoint != (Endpoint{}) &&
+					current.Endpoint != endpoint) {
+				return fmt.Errorf(
+					"runtime-provider incarnation changed before failed-instance cleanup",
+				)
 			}
 		} else if current.Identity != original.Identity || current.Endpoint != original.Endpoint {
 			return fmt.Errorf("runtime-provider incarnation changed before unbound cleanup")
@@ -600,13 +795,17 @@ func (c Controller) failStarted(stateDir string, manifest Manifest, instance Ins
 }
 
 func manifestHasExactRuntime(manifest Manifest) bool {
-	return validateIdentityForManifest(manifest.Identity, manifest) == nil && manifest.Endpoint.Validate() == nil
+	return validateIdentityForManifest(manifest.Identity, manifest) == nil &&
+		manifest.Endpoint.Validate() == nil
 }
 
 func sameManifestLineage(current, supplied Manifest) bool {
-	return current.SchemaVersion == supplied.SchemaVersion && current.ContractVersion == supplied.ContractVersion &&
-		current.Provider == supplied.Provider && current.Profile == supplied.Profile &&
-		current.SessionID == supplied.SessionID && current.StateDir == supplied.StateDir &&
+	return current.SchemaVersion == supplied.SchemaVersion &&
+		current.ContractVersion == supplied.ContractVersion &&
+		current.Provider == supplied.Provider &&
+		current.Profile == supplied.Profile &&
+		current.SessionID == supplied.SessionID &&
+		current.StateDir == supplied.StateDir &&
 		current.CreatedAt.Equal(supplied.CreatedAt)
 }
 
@@ -629,7 +828,8 @@ func sameManifestRevision(current, supplied Manifest) bool {
 		current.State == supplied.State && current.CreatedAt.Equal(supplied.CreatedAt) &&
 		current.UpdatedAt.Equal(supplied.UpdatedAt) && current.Identity == supplied.Identity &&
 		current.Endpoint == supplied.Endpoint && current.LastError == supplied.LastError &&
-		current.CleanupComplete == supplied.CleanupComplete && current.CleanupPending == supplied.CleanupPending &&
+		current.CleanupComplete == supplied.CleanupComplete &&
+		current.CleanupPending == supplied.CleanupPending &&
 		current.CleanupIntentKnown == supplied.CleanupIntentKnown
 }
 
@@ -638,7 +838,11 @@ func validateProviderSelection(provider Provider, expected string) error {
 		return fmt.Errorf("runtime provider is nil")
 	}
 	if strings.TrimSpace(provider.Name()) != expected {
-		return fmt.Errorf("runtime provider identity mismatch: got %q, want %q", provider.Name(), expected)
+		return fmt.Errorf(
+			"runtime provider identity mismatch: got %q, want %q",
+			provider.Name(),
+			expected,
+		)
 	}
 	return nil
 }
@@ -654,7 +858,8 @@ func validateIdentityForRequest(identity Identity, request Request) error {
 	if err := identity.ValidateComplete(); err != nil {
 		return err
 	}
-	if identity.Provider != request.Provider || identity.Profile != request.Profile || identity.SessionID != request.SessionID {
+	if identity.Provider != request.Provider || identity.Profile != request.Profile ||
+		identity.SessionID != request.SessionID {
 		return fmt.Errorf("runtime provider returned a different exact identity")
 	}
 	return nil
@@ -664,7 +869,8 @@ func validateIdentityForManifest(identity Identity, manifest Manifest) error {
 	if err := identity.ValidateComplete(); err != nil {
 		return err
 	}
-	if identity.Provider != manifest.Provider || identity.Profile != manifest.Profile || identity.SessionID != manifest.SessionID {
+	if identity.Provider != manifest.Provider || identity.Profile != manifest.Profile ||
+		identity.SessionID != manifest.SessionID {
 		return fmt.Errorf("runtime provider manifest identity mismatch")
 	}
 	if manifest.Identity.Generation != 0 && identity != manifest.Identity {
@@ -677,7 +883,8 @@ func validateRecoveredIdentity(identity, prior Identity, manifest Manifest) erro
 	if err := identity.ValidateComplete(); err != nil {
 		return err
 	}
-	if identity.Provider != manifest.Provider || identity.Profile != manifest.Profile || identity.SessionID != manifest.SessionID {
+	if identity.Provider != manifest.Provider || identity.Profile != manifest.Profile ||
+		identity.SessionID != manifest.SessionID {
 		return fmt.Errorf("recovered runtime provider returned a different exact identity")
 	}
 	if prior.Generation == 0 {
@@ -700,7 +907,11 @@ func validateReadyStatus(status Status, identity Identity, endpoint Endpoint) er
 		return fmt.Errorf("runtime provider readiness identity mismatch")
 	}
 	if !status.Ready || (status.State != StateReady && status.State != StateDegraded) {
-		return fmt.Errorf("runtime provider is not ready: state=%s: %s", status.State, status.LastError)
+		return fmt.Errorf(
+			"runtime provider is not ready: state=%s: %s",
+			status.State,
+			status.LastError,
+		)
 	}
 	return nil
 }

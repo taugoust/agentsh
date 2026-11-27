@@ -72,9 +72,14 @@ func TestConfigureCommandJailProcessUsesNonRootCompositionIdentity(t *testing.T)
 		t.Fatal(err)
 	}
 	if attr.UidMappings[0].ContainerID != 1 || attr.GidMappings[0].ContainerID != 1 {
-		t.Fatalf("non-root mappings not installed: uid=%+v gid=%+v", attr.UidMappings, attr.GidMappings)
+		t.Fatalf(
+			"non-root mappings not installed: uid=%+v gid=%+v",
+			attr.UidMappings,
+			attr.GidMappings,
+		)
 	}
-	if len(attr.AmbientCaps) != 2 || attr.AmbientCaps[0] != unix.CAP_SYS_ADMIN || attr.AmbientCaps[1] != unix.CAP_SETPCAP {
+	if len(attr.AmbientCaps) != 2 || attr.AmbientCaps[0] != unix.CAP_SYS_ADMIN ||
+		attr.AmbientCaps[1] != unix.CAP_SETPCAP {
 		t.Fatalf("ambient setup capabilities = %v", attr.AmbientCaps)
 	}
 }
@@ -119,7 +124,11 @@ func TestInstall_ModeOff_ReturnsSkip(t *testing.T) {
 func requireUnfilteredSeccompProcess(t *testing.T) {
 	t.Helper()
 	if count := seccompFilterCount(); count > 0 {
-		t.Skipf("requires an unfiltered process; inherited Seccomp_filters=%d (covered by the native VM check)", count)
+		t.Skipf(
+			"requires an unfiltered process; inherited Seccomp_filters=%d (covered by the native "+
+				"VM check)",
+			count,
+		)
 	}
 }
 
@@ -216,7 +225,10 @@ func TestInstall_AlreadyFiltered_ModeOnAlsoSkips(t *testing.T) {
 // (parent_comm=agentsh, caller_seccomp_state="mode=0 filter_count=0")
 // that the rc1 diagnostic showed succeeding.
 func TestInstall_NotFiltered_ProceedsAsBefore(t *testing.T) {
-	handler, calls := makeWrapInitHandler(200, types.WrapInitResponse{}) // empty resp → ResultSkip via existing path
+	handler, calls := makeWrapInitHandler(
+		200,
+		types.WrapInitResponse{},
+	) // empty resp → ResultSkip via existing path
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 
@@ -409,7 +421,11 @@ func TestAssembleWrapperEnv_EnvInjectCannotShadowWrapperLogFD(t *testing.T) {
 	)
 	for _, e := range env {
 		if strings.HasPrefix(e, wrapperlog.EnvKey+"=") {
-			t.Fatalf("env_inject value for %s survived into wrapper env: %v", wrapperlog.EnvKey, env)
+			t.Fatalf(
+				"env_inject value for %s survived into wrapper env: %v",
+				wrapperlog.EnvKey,
+				env,
+			)
 		}
 	}
 }
@@ -579,7 +595,11 @@ func TestInstall_PtraceModeNACK_ModeAuto(t *testing.T) {
 		t.Fatalf("Install error: %v", err)
 	}
 	if res.Action != ResultSkip {
-		t.Errorf("action = %v (reason=%q), want ResultSkip on NACK in ModeAuto", res.Action, res.Reason)
+		t.Errorf(
+			"action = %v (reason=%q), want ResultSkip on NACK in ModeAuto",
+			res.Action,
+			res.Reason,
+		)
 	}
 }
 
@@ -626,6 +646,10 @@ func TestInstall_PtraceModeNACK_ModeOn(t *testing.T) {
 		t.Fatalf("Install error: %v", err)
 	}
 	if res.Action != ResultFailClosed {
-		t.Errorf("action = %v (reason=%q), want ResultFailClosed on NACK in ModeOn", res.Action, res.Reason)
+		t.Errorf(
+			"action = %v (reason=%q), want ResultFailClosed on NACK in ModeOn",
+			res.Action,
+			res.Reason,
+		)
 	}
 }

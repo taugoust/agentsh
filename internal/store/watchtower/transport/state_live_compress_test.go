@@ -190,10 +190,12 @@ func TestEncodeBatchMessage_ZstdRecordsRatioAndBytes(t *testing.T) {
 	if rec.ratios[0].ratio <= 0 {
 		t.Fatalf("ratio = %v; want > 0", rec.ratios[0].ratio)
 	}
-	if len(rec.compressedBytes) != 1 || rec.compressedBytes[0].algo != "zstd" || rec.compressedBytes[0].n <= 0 {
+	if len(rec.compressedBytes) != 1 || rec.compressedBytes[0].algo != "zstd" ||
+		rec.compressedBytes[0].n <= 0 {
 		t.Fatalf("compressedBytes = %v; want one zstd entry with n > 0", rec.compressedBytes)
 	}
-	if len(rec.uncompressedBytes) != 1 || rec.uncompressedBytes[0].algo != "zstd" || rec.uncompressedBytes[0].n <= 0 {
+	if len(rec.uncompressedBytes) != 1 || rec.uncompressedBytes[0].algo != "zstd" ||
+		rec.uncompressedBytes[0].n <= 0 {
 		t.Fatalf("uncompressedBytes = %v; want one zstd entry with n > 0", rec.uncompressedBytes)
 	}
 	if len(rec.compressErrors) != 0 {

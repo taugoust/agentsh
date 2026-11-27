@@ -75,7 +75,15 @@ func TestCompile_Glob(t *testing.T) {
 			p, err := Compile(tt.pattern)
 			require.NoError(t, err)
 			assert.Equal(t, PatternTypeGlob, p.Type)
-			assert.Equal(t, tt.want, p.Match(tt.input), "pattern %q should match %q = %v", tt.pattern, tt.input, tt.want)
+			assert.Equal(
+				t,
+				tt.want,
+				p.Match(tt.input),
+				"pattern %q should match %q = %v",
+				tt.pattern,
+				tt.input,
+				tt.want,
+			)
 		})
 	}
 }
@@ -102,7 +110,15 @@ func TestCompile_Regex(t *testing.T) {
 			p, err := Compile(tt.pattern)
 			require.NoError(t, err)
 			assert.Equal(t, PatternTypeRegex, p.Type)
-			assert.Equal(t, tt.want, p.Match(tt.input), "pattern %q should match %q = %v", tt.pattern, tt.input, tt.want)
+			assert.Equal(
+				t,
+				tt.want,
+				p.Match(tt.input),
+				"pattern %q should match %q = %v",
+				tt.pattern,
+				tt.input,
+				tt.want,
+			)
 		})
 	}
 }

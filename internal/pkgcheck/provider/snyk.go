@@ -122,7 +122,10 @@ type snykReference struct {
 	Title string `json:"title,omitempty"`
 }
 
-func (p *snykProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequest) (*pkgcheck.CheckResponse, error) {
+func (p *snykProvider) CheckBatch(
+	ctx context.Context,
+	req pkgcheck.CheckRequest,
+) (*pkgcheck.CheckResponse, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("snyk: API key is required")
 	}
@@ -290,7 +293,11 @@ func (p *snykProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequest
 	return resp, nil
 }
 
-func (p *snykProvider) fetchIssues(ctx context.Context, ecosystem string, pkg pkgcheck.PackageRef) ([]pkgcheck.Finding, error) {
+func (p *snykProvider) fetchIssues(
+	ctx context.Context,
+	ecosystem string,
+	pkg pkgcheck.PackageRef,
+) ([]pkgcheck.Finding, error) {
 	reqURL := fmt.Sprintf("%s/rest/orgs/%s/packages/%s%%2F%s/issues?version=%s",
 		p.baseURL,
 		url.PathEscape(p.orgID),
@@ -336,7 +343,10 @@ func (p *snykProvider) fetchIssues(ctx context.Context, ecosystem string, pkg pk
 	return p.mapIssues(pkg, &issuesResp), nil
 }
 
-func (p *snykProvider) mapIssues(pkg pkgcheck.PackageRef, resp *snykIssuesResponse) []pkgcheck.Finding {
+func (p *snykProvider) mapIssues(
+	pkg pkgcheck.PackageRef,
+	resp *snykIssuesResponse,
+) []pkgcheck.Finding {
 	var findings []pkgcheck.Finding
 
 	for _, issue := range resp.Data {

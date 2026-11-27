@@ -42,16 +42,30 @@ type GitResultRecord struct {
 }
 
 func (r GitResultRecord) Validate(request HostMonitorRequest) error {
-	if r.SchemaVersion != GitResultSchemaVersion || r.SessionID != request.SessionID || r.VolumeID != request.VolumeID || request.InputArtifact == nil ||
-		r.InputArtifactID != request.InputArtifact.ArtifactID || r.InputSHA256 != request.InputArtifact.SHA256 || r.ResultArtifact.Validate() != nil ||
-		r.ResultArtifact.SessionID != request.SessionID || r.ResultArtifact.Kind != artifact.KindGitResultBundle || !validGitResultOID(r.BaselineCommit) ||
-		!validGitResultOID(r.ResultCommit) || r.BaselineCommit == r.ResultCommit || r.CreatedAt.IsZero() {
-		return fmt.Errorf("external runner Git result record is invalid or not bound to its immutable request")
+	if r.SchemaVersion != GitResultSchemaVersion || r.SessionID != request.SessionID ||
+		r.VolumeID != request.VolumeID ||
+		request.InputArtifact == nil ||
+		r.InputArtifactID != request.InputArtifact.ArtifactID ||
+		r.InputSHA256 != request.InputArtifact.SHA256 ||
+		r.ResultArtifact.Validate() != nil ||
+		r.ResultArtifact.SessionID != request.SessionID ||
+		r.ResultArtifact.Kind != artifact.KindGitResultBundle ||
+		!validGitResultOID(r.BaselineCommit) ||
+		!validGitResultOID(r.ResultCommit) ||
+		r.BaselineCommit == r.ResultCommit ||
+		r.CreatedAt.IsZero() {
+		return fmt.Errorf(
+			"external runner Git result record is invalid or not bound to its immutable request",
+		)
 	}
 	return nil
 }
 
-func WriteGitResultRecord(stateDir string, request HostMonitorRequest, record GitResultRecord) error {
+func WriteGitResultRecord(
+	stateDir string,
+	request HostMonitorRequest,
+	record GitResultRecord,
+) error {
 	if err := record.Validate(request); err != nil {
 		return err
 	}
@@ -63,7 +77,10 @@ func WriteGitResultRecord(stateDir string, request HostMonitorRequest, record Gi
 	if err != nil {
 		return err
 	}
-	return writeExclusivePrivateFile(filepath.Join(layout.HostDir, GitResultRecordName), append(data, '\n'))
+	return writeExclusivePrivateFile(
+		filepath.Join(layout.HostDir, GitResultRecordName),
+		append(data, '\n'),
+	)
 }
 
 func ReadGitResultRecord(stateDir string, request HostMonitorRequest) (GitResultRecord, error) {
@@ -72,7 +89,10 @@ func ReadGitResultRecord(stateDir string, request HostMonitorRequest) (GitResult
 		return GitResultRecord{}, err
 	}
 	var record GitResultRecord
-	if err := readStrictPrivateJSON(filepath.Join(layout.HostDir, GitResultRecordName), &record); err != nil {
+	if err := readStrictPrivateJSON(
+		filepath.Join(layout.HostDir, GitResultRecordName),
+		&record,
+	); err != nil {
 		return GitResultRecord{}, err
 	}
 	if err := record.Validate(request); err != nil {

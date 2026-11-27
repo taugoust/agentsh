@@ -60,7 +60,12 @@ func TestDNSInterceptor_DenyDoesNotForwardAndRefuses(t *testing.T) {
 		Version: 1,
 		Name:    "test",
 		NetworkRules: []policy.NetworkRule{
-			{Name: "deny-example", Domains: []string{"example.com"}, Ports: []int{53}, Decision: "deny"},
+			{
+				Name:     "deny-example",
+				Domains:  []string{"example.com"},
+				Ports:    []int{53},
+				Decision: "deny",
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, false, true)
@@ -132,7 +137,8 @@ func startUDPUpstream(t *testing.T) net.PacketConn {
 		}
 		t.Fatal(err)
 	}
-	// If anything forwards to the upstream, respond with a minimal "NOERROR" reply so tests can detect the difference.
+	// If anything forwards to the upstream, respond with a minimal "NOERROR" reply so tests can
+	// detect the difference.
 	go func() {
 		buf := make([]byte, 2048)
 		for {
@@ -277,7 +283,12 @@ func TestDNSInterceptor_MonitorOnlyPreservesThreatMetadata(t *testing.T) {
 		Version: 1,
 		Name:    "test",
 		NetworkRules: []policy.NetworkRule{
-			{Name: "allow-safe", Domains: []string{"safe.com"}, Ports: []int{53}, Decision: "allow"},
+			{
+				Name:     "allow-safe",
+				Domains:  []string{"safe.com"},
+				Ports:    []int{53},
+				Decision: "allow",
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, false, true)

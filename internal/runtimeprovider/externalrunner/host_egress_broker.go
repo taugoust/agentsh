@@ -45,7 +45,10 @@ type runningHostEgressBroker struct {
 	err      error
 }
 
-func newRunningHostEgressBroker(proxy *netmonitor.Proxy, audit *hostNetworkAudit) (*runningHostEgressBroker, error) {
+func newRunningHostEgressBroker(
+	proxy *netmonitor.Proxy,
+	audit *hostNetworkAudit,
+) (*runningHostEgressBroker, error) {
 	if proxy == nil || audit == nil || proxy.Done() == nil || audit.Done() == nil {
 		return nil, fmt.Errorf("host egress broker health dependencies are incomplete")
 	}
@@ -109,15 +112,28 @@ func (b *runningHostEgressBroker) Close() error {
 	return b.Err()
 }
 
-func startHostEgressBroker(ctx context.Context, profile Profile, layout HostMonitorLayout, sessionID string, expectedCID, egressPort uint32, egressToken string, approvalBinding *HostEgressApprovalBinding) (hostEgressBroker, error) {
+func startHostEgressBroker(
+	ctx context.Context,
+	profile Profile,
+	layout HostMonitorLayout,
+	sessionID string,
+	expectedCID, egressPort uint32,
+	egressToken string,
+	approvalBinding *HostEgressApprovalBinding,
+) (hostEgressBroker, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if profile.Schema != ProfileSchemaV3 || profile.HostEgress == nil || profile.Network.Transport != "vsock-explicit-proxy" || profile.Network.Enforcement != "host-broker-strict" {
-		return nil, fmt.Errorf("host egress broker requires an explicit external runner v3 strict profile")
+	if profile.Schema != ProfileSchemaV3 || profile.HostEgress == nil ||
+		profile.Network.Transport != "vsock-explicit-proxy" ||
+		profile.Network.Enforcement != "host-broker-strict" {
+		return nil, fmt.Errorf(
+			"host egress broker requires an explicit external runner v3 strict profile",
+		)
 	}
 	expectedPort, err := deriveHostEgressPort(profile, expectedCID)
-	if err != nil || egressPort != expectedPort || !guestcontrol.ValidEgressAuthenticationToken(egressToken) {
+	if err != nil || egressPort != expectedPort ||
+		!guestcontrol.ValidEgressAuthenticationToken(egressToken) {
 		return nil, fmt.Errorf("host egress broker launch endpoint or token binding is invalid")
 	}
 	engine, err := compileHostEgressPolicy(*profile.HostEgress)
@@ -128,11 +144,20 @@ func startHostEgressBroker(ctx context.Context, profile Profile, layout HostMoni
 	if err != nil {
 		return nil, err
 	}
-	approvalManager, err := newHostEgressApprovalManager(approvalBinding, sessionID, hostEgressApprovalEmitter{audit: audit})
+	approvalManager, err := newHostEgressApprovalManager(
+		approvalBinding,
+		sessionID,
+		hostEgressApprovalEmitter{audit: audit},
+	)
 	if err != nil {
 		return nil, errors.Join(err, audit.Close())
 	}
-	listener, err := listenHostEgressVSock(egressPort, expectedCID, egressToken, hostEgressAuthTimeout)
+	listener, err := listenHostEgressVSock(
+		egressPort,
+		expectedCID,
+		egressToken,
+		hostEgressAuthTimeout,
+	)
 	if err != nil {
 		return nil, errors.Join(err, audit.Close())
 	}
@@ -172,8 +197,14 @@ func loadHostEgressPolicySnapshot(spec HostEgressSpec) (*policy.Policy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inspect host egress policy snapshot: %w", err)
 	}
-	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() < 0 || before.Size() > maxHostEgressPolicyBytes || !operatorPolicyOwnerTrusted(spec.PolicyFile, before) {
-		return nil, fmt.Errorf("host egress policy snapshot has unsafe type, ownership, permissions, or size")
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 ||
+		before.Mode().Perm()&0o022 != 0 ||
+		before.Size() < 0 ||
+		before.Size() > maxHostEgressPolicyBytes ||
+		!operatorPolicyOwnerTrusted(spec.PolicyFile, before) {
+		return nil, fmt.Errorf(
+			"host egress policy snapshot has unsafe type, ownership, permissions, or size",
+		)
 	}
 	file, err := os.Open(spec.PolicyFile)
 	if err != nil {
@@ -181,7 +212,9 @@ func loadHostEgressPolicySnapshot(spec HostEgressSpec) (*policy.Policy, error) {
 	}
 	defer file.Close()
 	opened, err := file.Stat()
-	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) || opened.Mode().Perm()&0o022 != 0 || !operatorPolicyOwnerTrusted(spec.PolicyFile, opened) {
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) ||
+		opened.Mode().Perm()&0o022 != 0 ||
+		!operatorPolicyOwnerTrusted(spec.PolicyFile, opened) {
 		return nil, fmt.Errorf("host egress policy snapshot identity changed while opening")
 	}
 	data, err := io.ReadAll(io.LimitReader(file, maxHostEgressPolicyBytes+1))
@@ -242,7 +275,12 @@ func openHostNetworkAuditWithLimit(path string, maxBytes int64) (*hostNetworkAud
 		closeErr := file.Close()
 		removeErr := os.Remove(path)
 		rollbackSyncErr := syncDirectory(filepath.Dir(path))
-		return nil, errors.Join(fmt.Errorf("persist durable host network audit identity: %w", err), closeErr, removeErr, rollbackSyncErr)
+		return nil, errors.Join(
+			fmt.Errorf("persist durable host network audit identity: %w", err),
+			closeErr,
+			removeErr,
+			rollbackSyncErr,
+		)
 	}
 	return &hostNetworkAudit{file: file, maxBytes: maxBytes, done: make(chan struct{})}, nil
 }

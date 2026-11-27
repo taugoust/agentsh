@@ -27,8 +27,10 @@ func decodeApprovalResolution(raw []byte) (approvals.Resolution, error) {
 	if err := decodeRawJSON(raw, &req); err != nil {
 		return approvals.Resolution{}, err
 	}
-	approved := strings.EqualFold(req.Decision, "approve") || strings.EqualFold(req.Decision, "allow")
-	if !approved && !strings.EqualFold(req.Decision, "deny") && !strings.EqualFold(req.Decision, "reject") {
+	approved := strings.EqualFold(req.Decision, "approve") ||
+		strings.EqualFold(req.Decision, "allow")
+	if !approved && !strings.EqualFold(req.Decision, "deny") &&
+		!strings.EqualFold(req.Decision, "reject") {
 		return approvals.Resolution{}, errApprovalInvalidDecision{}
 	}
 	scope, err := approvals.NormalizeResolutionScope(req.Scope)
@@ -53,6 +55,8 @@ func decodeApprovalResolution(raw []byte) (approvals.Resolution, error) {
 func sameResolutionDecision(a, b approvals.Resolution) bool {
 	return a.Approved == b.Approved && a.Reason == b.Reason && a.Scope == b.Scope &&
 		a.ScopeKind == b.ScopeKind && a.ScopeKey == b.ScopeKey && a.ScopeLabel == b.ScopeLabel &&
-		a.ScopeOperation == b.ScopeOperation && a.ScopePath == b.ScopePath && a.ScopeRule == b.ScopeRule &&
+		a.ScopeOperation == b.ScopeOperation &&
+		a.ScopePath == b.ScopePath &&
+		a.ScopeRule == b.ScopeRule &&
 		a.ScopePrefix == b.ScopePrefix
 }

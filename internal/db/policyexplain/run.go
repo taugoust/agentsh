@@ -46,12 +46,16 @@ func Run(rs *dbpolicy.RuleSet, warns []dbpolicy.Warning, opts Options) (Report, 
 	}
 	if catalogSource == "none" && rs.UsesCanonicalSelectors(opts.Service) {
 		report.Warnings = append(report.Warnings, WarningReport{
-			Code:    "catalog_fixture_missing_for_canonical_selector",
-			Message: "catalog fixture not supplied; canonical relation and function selectors cannot match offline classification",
+			Code: "catalog_fixture_missing_for_canonical_selector",
+			Message: "catalog fixture not supplied; canonical relation and function selectors " +
+				"cannot match offline classification",
 		})
 	}
 	for i, stmt := range stmts {
-		report.Statements = append(report.Statements, statementReport(i, stmt, dbpolicy.ExplainStatement(stmt, rs, opts.Service)))
+		report.Statements = append(
+			report.Statements,
+			statementReport(i, stmt, dbpolicy.ExplainStatement(stmt, rs, opts.Service)),
+		)
 	}
 	return report, nil
 }
@@ -66,12 +70,19 @@ func defaultString(s, fallback string) string {
 func warningReports(warns []dbpolicy.Warning) []WarningReport {
 	out := make([]WarningReport, 0, len(warns))
 	for _, w := range warns {
-		out = append(out, WarningReport{Rule: w.Rule, Field: w.Field, Code: w.Code, Message: w.Message})
+		out = append(
+			out,
+			WarningReport{Rule: w.Rule, Field: w.Field, Code: w.Code, Message: w.Message},
+		)
 	}
 	return out
 }
 
-func statementReport(index int, stmt effects.ClassifiedStatement, ex dbpolicy.StatementExplanation) StatementReport {
+func statementReport(
+	index int,
+	stmt effects.ClassifiedStatement,
+	ex dbpolicy.StatementExplanation,
+) StatementReport {
 	out := StatementReport{
 		Index:         index,
 		RawVerb:       stmt.RawVerb,

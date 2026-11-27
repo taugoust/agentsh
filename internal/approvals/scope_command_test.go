@@ -20,12 +20,20 @@ func TestNewCommandExecutableScope_IgnoresArgs(t *testing.T) {
 		t.Fatalf("label/path = %q/%q, want sqlite3", scope.Label, scope.Path)
 	}
 
-	sameExecutable, ok := NewCommandScope("sqlite3", []string{"events.db", "select 2"}, "approve-sqlite")
+	sameExecutable, ok := NewCommandScope(
+		"sqlite3",
+		[]string{"events.db", "select 2"},
+		"approve-sqlite",
+	)
 	if !ok {
 		t.Fatal("same executable NewCommandScope returned !ok")
 	}
 	if sameExecutable.Key != scope.Key {
-		t.Fatalf("same executable key mismatch across args: %q != %q", sameExecutable.Key, scope.Key)
+		t.Fatalf(
+			"same executable key mismatch across args: %q != %q",
+			sameExecutable.Key,
+			scope.Key,
+		)
 	}
 }
 
@@ -39,16 +47,29 @@ func TestNewCommandExecutableScope_NixStorePathUsesPathNotArgv(t *testing.T) {
 		t.Fatalf("label/path = %q/%q, want %q", scope.Label, scope.Path, command)
 	}
 
-	fromDefaultA, ok := NewCommandScope(command, []string{"events.db", "select 1"}, "approve-unknown-nix-store-executables")
+	fromDefaultA, ok := NewCommandScope(
+		command,
+		[]string{"events.db", "select 1"},
+		"approve-unknown-nix-store-executables",
+	)
 	if !ok {
 		t.Fatal("NewCommandScope A returned !ok")
 	}
-	fromDefaultB, ok := NewCommandScope(command, []string{"events.db", "select 2", "limit", "50"}, "approve-unknown-nix-store-executables")
+	fromDefaultB, ok := NewCommandScope(
+		command,
+		[]string{"events.db", "select 2", "limit", "50"},
+		"approve-unknown-nix-store-executables",
+	)
 	if !ok {
 		t.Fatal("NewCommandScope B returned !ok")
 	}
 	if fromDefaultA.Key != fromDefaultB.Key || fromDefaultA.Key != scope.Key {
-		t.Fatalf("nix executable key changed with argv: scope=%q a=%q b=%q", scope.Key, fromDefaultA.Key, fromDefaultB.Key)
+		t.Fatalf(
+			"nix executable key changed with argv: scope=%q a=%q b=%q",
+			scope.Key,
+			fromDefaultA.Key,
+			fromDefaultB.Key,
+		)
 	}
 }
 

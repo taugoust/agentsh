@@ -74,14 +74,23 @@ func NewFileLookupBroker(cfg FileLookupBrokerConfig) (FileLookupBroker, error) {
 		return nil, fmt.Errorf("authenticate file lookup broker endpoint: %w", err)
 	}
 	if int(peer.Pid) != cfg.ExpectedWrapperPID {
-		return nil, fmt.Errorf("file lookup broker peer pid %d does not match wrapper pid %d", peer.Pid, cfg.ExpectedWrapperPID)
+		return nil, fmt.Errorf(
+			"file lookup broker peer pid %d does not match wrapper pid %d",
+			peer.Pid,
+			cfg.ExpectedWrapperPID,
+		)
 	}
 	if err := unix.SetNonblock(fd, true); err != nil {
 		return nil, fmt.Errorf("make file lookup broker endpoint nonblocking: %w", err)
 	}
 
 	deadline := time.Now().Add(cfg.Timeout)
-	helloPacket, err := receiveLookupPacket(context.Background(), fd, lookupproto.HelloPacketSize(), deadline)
+	helloPacket, err := receiveLookupPacket(
+		context.Background(),
+		fd,
+		lookupproto.HelloPacketSize(),
+		deadline,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("receive file lookup broker hello: %w", err)
 	}
@@ -92,7 +101,8 @@ func NewFileLookupBroker(cfg FileLookupBrokerConfig) (FileLookupBroker, error) {
 	// PIDs in the hello are viewed in the wrapper's PID namespace and are
 	// capability diagnostics only. Host identities are authenticated by
 	// SCM_CREDENTIALS in the handoff and SO_PEERCRED above.
-	if hello.MaxPacketBytes > lookupproto.MaxPacketBytes || time.Duration(hello.WorkerTimeoutMS)*time.Millisecond > maxFileLookupTimeout {
+	if hello.MaxPacketBytes > lookupproto.MaxPacketBytes ||
+		time.Duration(hello.WorkerTimeoutMS)*time.Millisecond > maxFileLookupTimeout {
 		return nil, errors.New("file lookup broker advertised unsupported limits")
 	}
 
@@ -150,7 +160,10 @@ func (b *lineageFileLookupBroker) availableFD() (int, bool) {
 	return b.fd, true
 }
 
-func (b *lineageFileLookupBroker) ProbeFileLookup(ctx context.Context, req FileLookupRequest) FileLookupResult {
+func (b *lineageFileLookupBroker) ProbeFileLookup(
+	ctx context.Context,
+	req FileLookupRequest,
+) FileLookupResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -213,7 +226,8 @@ func (b *lineageFileLookupBroker) ProbeFileLookup(ctx context.Context, req FileL
 	}
 
 	deadline := time.Now().Add(b.timeout)
-	if callerDeadline, hasDeadline := ctx.Deadline(); hasDeadline && callerDeadline.Before(deadline) {
+	if callerDeadline, hasDeadline := ctx.Deadline(); hasDeadline &&
+		callerDeadline.Before(deadline) {
 		deadline = callerDeadline
 	}
 	if err := sendLookupPacket(ctx, fd, wire, deadline); err != nil {
@@ -502,7 +516,8 @@ func sendLookupPacket(ctx context.Context, fd int, packet []byte, deadline time.
 			}
 			return nil
 		}
-		if !errors.Is(err, unix.EAGAIN) && !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EINTR) {
+		if !errors.Is(err, unix.EAGAIN) && !errors.Is(err, unix.EWOULDBLOCK) &&
+			!errors.Is(err, unix.EINTR) {
 			return err
 		}
 		if errors.Is(err, unix.EINTR) {
@@ -514,7 +529,11 @@ func sendLookupPacket(ctx context.Context, fd int, packet []byte, deadline time.
 	}
 }
 
-func receiveLookupPacket(ctx context.Context, fd, exactSize int, deadline time.Time) ([]byte, error) {
+func receiveLookupPacket(
+	ctx context.Context,
+	fd, exactSize int,
+	deadline time.Time,
+) ([]byte, error) {
 	if exactSize <= 0 || exactSize > lookupproto.MaxPacketBytes {
 		return nil, errors.New("invalid lookup packet size")
 	}

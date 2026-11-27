@@ -19,7 +19,8 @@ func TestParseBubblewrapSupportedMatrix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !plan.UnsharePID || !plan.UnshareIPC || !plan.UnshareUTS || !plan.UnshareCgroup || !plan.DieWithParent {
+	if !plan.UnsharePID || !plan.UnshareIPC || !plan.UnshareUTS || !plan.UnshareCgroup ||
+		!plan.DieWithParent {
 		t.Fatalf("namespace plan incomplete: %+v", plan)
 	}
 	if len(plan.Operations) != 7 {
@@ -69,7 +70,11 @@ func TestBubblewrap0112OptionMatrixIsCompleteAndClassified(t *testing.T) {
 				t.Fatalf("denied option %q omits stable code", option.Option)
 			}
 		default:
-			t.Fatalf("option %q has unknown classification %q", option.Option, option.Classification)
+			t.Fatalf(
+				"option %q has unknown classification %q",
+				option.Option,
+				option.Classification,
+			)
 		}
 	}
 }
@@ -110,13 +115,20 @@ func TestParseCapturedQShellBubblewrap0112Invocation(t *testing.T) {
 	}
 	for operation, count := range want {
 		if counts[operation] != count {
-			t.Fatalf("%s operations = %d, want %d (all=%v)", operation, counts[operation], count, counts)
+			t.Fatalf(
+				"%s operations = %d, want %d (all=%v)",
+				operation,
+				counts[operation],
+				count,
+				counts,
+			)
 		}
 	}
 	if plan.UnsharePID {
 		t.Fatal("captured --proc unexpectedly requested an unobserved fresh PID namespace")
 	}
-	if plan.Cwd != "/scratch/theo/qshell-project/qshell" || len(plan.Command) != 3 || plan.Command[2] != "true" {
+	if plan.Cwd != "/scratch/theo/qshell-project/qshell" || len(plan.Command) != 3 ||
+		plan.Command[2] != "true" {
 		t.Fatalf("captured payload mismatch: cwd=%q command=%v", plan.Cwd, plan.Command)
 	}
 	if err := ValidatePlan(plan, 256); err != nil {
@@ -126,19 +138,27 @@ func TestParseCapturedQShellBubblewrap0112Invocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("snapshot captured normalized plan: %v", err)
 	}
-	if snapshot.Cwd != plan.Cwd || snapshot.OperationCount != len(plan.Operations) || len(snapshot.Operations) != len(plan.Operations) || len(snapshot.Digest) != 64 {
+	if snapshot.Cwd != plan.Cwd || snapshot.OperationCount != len(plan.Operations) ||
+		len(snapshot.Operations) != len(plan.Operations) ||
+		len(snapshot.Digest) != 64 {
 		t.Fatalf("normalized plan snapshot header mismatch: %+v", snapshot)
 	}
 	for index, operation := range plan.Operations {
 		actual := snapshot.Operations[index]
-		if actual.Index != index || actual.Type != operation.Type || actual.Source != operation.Source || actual.Target != operation.Target || actual.ReadOnly != operation.ReadOnly || actual.Recursive != operation.Recursive || actual.Try != operation.Try {
+		if actual.Index != index || actual.Type != operation.Type ||
+			actual.Source != operation.Source ||
+			actual.Target != operation.Target ||
+			actual.ReadOnly != operation.ReadOnly ||
+			actual.Recursive != operation.Recursive ||
+			actual.Try != operation.Try {
 			t.Fatalf("normalized operation %d mismatch: got=%+v want=%+v", index, actual, operation)
 		}
 	}
 	findOperation := func(operationType OperationType, source, target string) int {
 		t.Helper()
 		for index, operation := range snapshot.Operations {
-			if operation.Type == operationType && operation.Source == source && operation.Target == target {
+			if operation.Type == operationType && operation.Source == source &&
+				operation.Target == target {
 				return index
 			}
 		}
@@ -148,7 +168,13 @@ func TestParseCapturedQShellBubblewrap0112Invocation(t *testing.T) {
 	scratchBind := findOperation(OperationBind, "/scratch", "/scratch")
 	lastMask := findOperation(OperationTmpfs, "", "/tmp/.X11-unix")
 	if nixBind != 2 || scratchBind <= nixBind || lastMask != len(snapshot.Operations)-1 {
-		t.Fatalf("captured normalized operation order changed: nix=%d scratch=%d last-mask=%d digest=%s", nixBind, scratchBind, lastMask, snapshot.Digest)
+		t.Fatalf(
+			"captured normalized operation order changed: nix=%d scratch=%d last-mask=%d digest=%s",
+			nixBind,
+			scratchBind,
+			lastMask,
+			snapshot.Digest,
+		)
 	}
 }
 

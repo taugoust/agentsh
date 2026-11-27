@@ -111,7 +111,12 @@ func (e *commandJailFailure) code() string {
 	return "E_PRE_EXEC_RELEASE"
 }
 
-func (e *commandJailFailure) finalize(exitCode *int, signal, logTail string, processReaped, handlersJoined bool, cleanupErr error) {
+func (e *commandJailFailure) finalize(
+	exitCode *int,
+	signal, logTail string,
+	processReaped, handlersJoined bool,
+	cleanupErr error,
+) {
 	if e == nil {
 		return
 	}
@@ -132,7 +137,9 @@ func (e *commandJailFailure) observedReadyEOF() bool {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.stage == commandJailStageReadyWait && e.readyBytes == 0 && errors.Is(e.readErr, io.EOF) && !e.goAttempted
+	return e.stage == commandJailStageReadyWait && e.readyBytes == 0 &&
+		errors.Is(e.readErr, io.EOF) &&
+		!e.goAttempted
 }
 
 func (e *commandJailFailure) provenCleanPreGO() bool {
@@ -141,7 +148,9 @@ func (e *commandJailFailure) provenCleanPreGO() bool {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.stage == commandJailStageReadyWait && !e.goAttempted && e.processReaped && e.handlersJoined && e.cleanupComplete
+	return e.stage == commandJailStageReadyWait && !e.goAttempted && e.processReaped &&
+		e.handlersJoined &&
+		e.cleanupComplete
 }
 
 // boundaryCleanupComplete reports only whether the failed attempt left any
@@ -210,7 +219,11 @@ func shouldRetryCommandJailAttempt(ctx context.Context, attempt int, err error) 
 	return failure != nil && failure.retryableReadyEOF(ctx)
 }
 
-func (a *App) emitCommandJailAttempt(sessionID, commandID string, diagnostic types.ExecAttemptDiagnostic, retrying bool) {
+func (a *App) emitCommandJailAttempt(
+	sessionID, commandID string,
+	diagnostic types.ExecAttemptDiagnostic,
+	retrying bool,
+) {
 	if a == nil {
 		return
 	}
@@ -244,7 +257,11 @@ func (a *App) emitCommandJailAttempt(sessionID, commandID string, diagnostic typ
 	}
 }
 
-func applyCommandAttemptDiagnostics(outcome *types.ExecOutcome, attemptCount int, attempts []types.ExecAttemptDiagnostic) {
+func applyCommandAttemptDiagnostics(
+	outcome *types.ExecOutcome,
+	attemptCount int,
+	attempts []types.ExecAttemptDiagnostic,
+) {
 	if outcome == nil {
 		return
 	}

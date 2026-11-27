@@ -22,11 +22,17 @@ func TestReadTextLineWindow_PaginatesWithoutLoadingPrefix(t *testing.T) {
 }
 
 func TestReadTextLineWindow_ByteBoundAndLongLine(t *testing.T) {
-	window, err := readTextLineWindow(strings.NewReader(strings.Repeat("x", 100)+"\ntail\n"), 1, 10, 16)
+	window, err := readTextLineWindow(
+		strings.NewReader(strings.Repeat("x", 100)+"\ntail\n"),
+		1,
+		10,
+		16,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(window.Content) != 16 || !window.Truncated || !window.ByteTruncated || window.NextOffset != 0 {
+	if len(window.Content) != 16 || !window.Truncated || !window.ByteTruncated ||
+		window.NextOffset != 0 {
 		t.Fatalf("long-line window = %+v", window)
 	}
 }

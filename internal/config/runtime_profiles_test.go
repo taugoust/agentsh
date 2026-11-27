@@ -16,7 +16,8 @@ func TestRuntimeProfilesDefaultToNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if name != runtimeprovider.DefaultProfile || profile.Provider != runtimeprovider.NativeProvider {
+	if name != runtimeprovider.DefaultProfile ||
+		profile.Provider != runtimeprovider.NativeProvider {
 		t.Fatalf("default runtime profile = %q %+v", name, profile)
 	}
 }
@@ -35,7 +36,10 @@ sessions:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for requested, want := range map[string]string{"": "workstation", "compatibility": "compatibility"} {
+	for requested, want := range map[string]string{
+		"":              "workstation",
+		"compatibility": "compatibility",
+	} {
 		name, profile, err := cfg.Sessions.Runtime.ResolveProfile(requested)
 		if err != nil {
 			t.Fatalf("ResolveProfile(%q): %v", requested, err)
@@ -112,8 +116,14 @@ sessions:
 		t.Fatal(err)
 	}
 	profile := cfg.Sessions.Runtime.Profiles["pi-linux-qemu-v1"]
-	if cfg.Sessions.Runtime.EnableExternalRunners || profile.Provider != "microvm-external-runner" || profile.ProfileFile == "" {
-		t.Fatalf("external runtime profile = %+v, ceiling=%t", profile, cfg.Sessions.Runtime.EnableExternalRunners)
+	if cfg.Sessions.Runtime.EnableExternalRunners ||
+		profile.Provider != "microvm-external-runner" ||
+		profile.ProfileFile == "" {
+		t.Fatalf(
+			"external runtime profile = %+v, ceiling=%t",
+			profile,
+			cfg.Sessions.Runtime.EnableExternalRunners,
+		)
 	}
 }
 

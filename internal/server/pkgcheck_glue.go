@@ -24,7 +24,10 @@ var errMissingAPIKeyValue = errors.New("env var is unset or empty")
 //   - the name is not a known built-in and provCfg.Type != "exec"
 //   - the provider requires an API key but provCfg.APIKeyEnv is empty
 //   - the provider requires an API key but the env var is unset
-func buildProviderEntry(name string, provCfg config.ProviderConfig) (pkgcheck.ProviderEntry, error) {
+func buildProviderEntry(
+	name string,
+	provCfg config.ProviderConfig,
+) (pkgcheck.ProviderEntry, error) {
 	prov, err := buildProvider(name, provCfg)
 	if err != nil {
 		return pkgcheck.ProviderEntry{}, err
@@ -45,7 +48,10 @@ func buildProvider(name string, provCfg config.ProviderConfig) (pkgcheck.CheckPr
 	// exec providers are identified by their Type field rather than name.
 	if provCfg.Type == "exec" {
 		if provCfg.Command == "" {
-			return nil, fmt.Errorf("pkgcheck provider %q: type=exec requires a non-empty command", name)
+			return nil, fmt.Errorf(
+				"pkgcheck provider %q: type=exec requires a non-empty command",
+				name,
+			)
 		}
 		return provider.NewExecProvider(name, provider.ExecProviderConfig{
 			Command: provCfg.Command,
@@ -100,7 +106,11 @@ func buildProvider(name string, provCfg config.ProviderConfig) (pkgcheck.CheckPr
 		}), nil
 
 	default:
-		return nil, fmt.Errorf("pkgcheck provider %q: unknown provider name (known: osv, depsdev, local, snyk, socket, exec)", name)
+		return nil, fmt.Errorf(
+			"pkgcheck provider %q: unknown provider name (known: osv, depsdev, local, snyk, "+
+				"socket, exec)",
+			name,
+		)
 	}
 }
 
@@ -114,7 +124,12 @@ func requireAPIKey(providerName, apiKeyEnv string) (string, error) {
 	}
 	val := os.Getenv(apiKeyEnv)
 	if val == "" {
-		return "", fmt.Errorf("pkgcheck provider %q: %w: %s", providerName, errMissingAPIKeyValue, apiKeyEnv)
+		return "", fmt.Errorf(
+			"pkgcheck provider %q: %w: %s",
+			providerName,
+			errMissingAPIKeyValue,
+			apiKeyEnv,
+		)
 	}
 	return val, nil
 }
@@ -229,6 +244,9 @@ func buildResolver(name string, rc config.ResolverConfig) (pkgcheck.Resolver, er
 			Timeout:       rc.Timeout,
 		}), nil
 	default:
-		return nil, fmt.Errorf("pkgcheck resolver %q: unknown resolver name (known: npm, pnpm, yarn, pip, uv, poetry)", name)
+		return nil, fmt.Errorf(
+			"pkgcheck resolver %q: unknown resolver name (known: npm, pnpm, yarn, pip, uv, poetry)",
+			name,
+		)
 	}
 }

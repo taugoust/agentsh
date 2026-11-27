@@ -105,7 +105,10 @@ func TestEndToEnd_QuarantineRoundTrip(t *testing.T) {
 		t.Fatalf("skill was not quarantined within 10s")
 	}
 	if entries, _ := trash.List(trashDir); len(entries) == 0 {
-		t.Fatalf("trash list is empty after quarantine completed (race between source removal and manifest write?)")
+		t.Fatalf(
+			"trash list is empty after quarantine completed (race between source removal and " +
+				"manifest write?)",
+		)
 	}
 
 	// Use CLI to confirm we can list the quarantined entry.
@@ -140,7 +143,9 @@ func TestEndToEnd_QuarantineRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read restored SKILL.md: %v", err)
 	}
-	fixtureContent, err := os.ReadFile(filepath.Join("testdata", "skills", "malicious-e2e", "SKILL.md"))
+	fixtureContent, err := os.ReadFile(
+		filepath.Join("testdata", "skills", "malicious-e2e", "SKILL.md"),
+	)
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}

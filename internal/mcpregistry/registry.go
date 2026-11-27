@@ -38,7 +38,8 @@ type OverwrittenTool struct {
 
 // RegistryCallbacks allows external components to be notified of registry events.
 type RegistryCallbacks struct {
-	OnMultiServer func()                                          // called once when 2nd distinct server registers
+	// called once when 2nd distinct server registers
+	OnMultiServer func()
 	OnOverwrite   func(toolName, oldServerID, newServerID string) // called on tool name collision
 }
 
@@ -90,7 +91,10 @@ func (r *Registry) SetCallbacks(cb RegistryCallbacks) {
 //
 // For network servers (non-empty serverAddr), the address is recorded in
 // the address map so the network monitor can look it up, even if tools is empty.
-func (r *Registry) Register(serverID, serverType, serverAddr string, tools []ToolInfo) []OverwrittenTool {
+func (r *Registry) Register(
+	serverID, serverType, serverAddr string,
+	tools []ToolInfo,
+) []OverwrittenTool {
 	now := time.Now()
 
 	r.mu.Lock()

@@ -16,7 +16,9 @@ func FormatMarkdown(r *Report) string {
 		sb.WriteString(" (Detailed)")
 	}
 	sb.WriteString("\n")
-	sb.WriteString(fmt.Sprintf("**Generated:** %s\n\n", r.GeneratedAt.Format("2006-01-02 15:04:05 UTC")))
+	sb.WriteString(
+		fmt.Sprintf("**Generated:** %s\n\n", r.GeneratedAt.Format("2006-01-02 15:04:05 UTC")),
+	)
 
 	// Overview
 	sb.WriteString("## Overview\n")
@@ -57,7 +59,9 @@ func FormatMarkdown(r *Report) string {
 		sb.WriteString("## Findings\n")
 		for _, f := range r.Findings {
 			icon := severityIcon(f.Severity)
-			sb.WriteString(fmt.Sprintf("%s **%s** (%d) - %s\n", icon, f.Title, f.Count, f.Description))
+			sb.WriteString(
+				fmt.Sprintf("%s **%s** (%d) - %s\n", icon, f.Title, f.Count, f.Description),
+			)
 		}
 		sb.WriteString("\n")
 	}
@@ -65,13 +69,31 @@ func FormatMarkdown(r *Report) string {
 	// Top Activity (summary level)
 	sb.WriteString("## Top Activity\n")
 	if len(r.Activity.TopPaths) > 0 {
-		sb.WriteString(fmt.Sprintf("**Files (%d ops):** %s\n", r.Activity.FileOps, formatTopN(r.Activity.TopPaths)))
+		sb.WriteString(
+			fmt.Sprintf(
+				"**Files (%d ops):** %s\n",
+				r.Activity.FileOps,
+				formatTopN(r.Activity.TopPaths),
+			),
+		)
 	}
 	if len(r.Activity.TopHosts) > 0 {
-		sb.WriteString(fmt.Sprintf("**Network (%d conns):** %s\n", r.Activity.NetworkOps, formatTopN(r.Activity.TopHosts)))
+		sb.WriteString(
+			fmt.Sprintf(
+				"**Network (%d conns):** %s\n",
+				r.Activity.NetworkOps,
+				formatTopN(r.Activity.TopHosts),
+			),
+		)
 	}
 	if len(r.Activity.TopCmds) > 0 {
-		sb.WriteString(fmt.Sprintf("**Commands (%d):** %s\n", r.Activity.Commands, formatTopN(r.Activity.TopCmds)))
+		sb.WriteString(
+			fmt.Sprintf(
+				"**Commands (%d):** %s\n",
+				r.Activity.Commands,
+				formatTopN(r.Activity.TopCmds),
+			),
+		)
 	}
 	sb.WriteString("\n")
 
@@ -122,25 +144,39 @@ func FormatMarkdown(r *Report) string {
 		sb.WriteString(fmt.Sprintf("| Tools Seen | %d |\n", r.MCPSummary.ToolsSeen))
 		sb.WriteString(fmt.Sprintf("| Servers | %d |\n", r.MCPSummary.ServersCount))
 		if r.MCPSummary.DetectionsTotal > 0 {
-			sb.WriteString(fmt.Sprintf("| Security Detections | %d |\n", r.MCPSummary.DetectionsTotal))
+			sb.WriteString(
+				fmt.Sprintf("| Security Detections | %d |\n", r.MCPSummary.DetectionsTotal),
+			)
 		}
 		if r.MCPSummary.ChangedTools > 0 {
-			sb.WriteString(fmt.Sprintf("| Changed Tools (Rug Pull) | %d |\n", r.MCPSummary.ChangedTools))
+			sb.WriteString(
+				fmt.Sprintf("| Changed Tools (Rug Pull) | %d |\n", r.MCPSummary.ChangedTools),
+			)
 		}
 		if r.MCPSummary.ToolCallsTotal > 0 {
-			sb.WriteString(fmt.Sprintf("| Tool Calls Observed | %d |\n", r.MCPSummary.ToolCallsTotal))
+			sb.WriteString(
+				fmt.Sprintf("| Tool Calls Observed | %d |\n", r.MCPSummary.ToolCallsTotal),
+			)
 		}
 		if r.MCPSummary.InterceptedTotal > 0 {
-			sb.WriteString(fmt.Sprintf("| Intercepted (Proxy) | %d |\n", r.MCPSummary.InterceptedTotal))
+			sb.WriteString(
+				fmt.Sprintf("| Intercepted (Proxy) | %d |\n", r.MCPSummary.InterceptedTotal),
+			)
 		}
 		if r.MCPSummary.InterceptedBlocked > 0 {
-			sb.WriteString(fmt.Sprintf("| Blocked by Proxy | %d |\n", r.MCPSummary.InterceptedBlocked))
+			sb.WriteString(
+				fmt.Sprintf("| Blocked by Proxy | %d |\n", r.MCPSummary.InterceptedBlocked),
+			)
 		}
 		if r.MCPSummary.CrossServerBlocked > 0 {
-			sb.WriteString(fmt.Sprintf("| Cross-Server Blocked | %d |\n", r.MCPSummary.CrossServerBlocked))
+			sb.WriteString(
+				fmt.Sprintf("| Cross-Server Blocked | %d |\n", r.MCPSummary.CrossServerBlocked),
+			)
 		}
 		if r.MCPSummary.NetworkConnections > 0 {
-			sb.WriteString(fmt.Sprintf("| Network Connections | %d |\n", r.MCPSummary.NetworkConnections))
+			sb.WriteString(
+				fmt.Sprintf("| Network Connections | %d |\n", r.MCPSummary.NetworkConnections),
+			)
 		}
 		sb.WriteString("\n")
 
@@ -223,7 +259,14 @@ func FormatMarkdown(r *Report) string {
 		if len(r.CommandHistory) > 0 {
 			sb.WriteString("## Command History\n")
 			for i, cmd := range r.CommandHistory {
-				sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", i+1, cmd.Timestamp.Format("15:04:05"), cmd.Command))
+				sb.WriteString(
+					fmt.Sprintf(
+						"%d. [%s] %s\n",
+						i+1,
+						cmd.Timestamp.Format("15:04:05"),
+						cmd.Command,
+					),
+				)
 			}
 			sb.WriteString("\n")
 		}

@@ -161,7 +161,15 @@ func TestNeedsExitStop(t *testing.T) {
 		{"pread64 always true", unix.SYS_PREAD64, false, false, false, nil, true},
 		{"execve always true", unix.SYS_EXECVE, false, false, false, nil, true},
 		{"execveat always true", unix.SYS_EXECVEAT, false, false, false, nil, true},
-		{"unlinkat never needs exit", unix.SYS_UNLINKAT, true, true, true, stubFileHandler{}, false},
+		{
+			"unlinkat never needs exit",
+			unix.SYS_UNLINKAT,
+			true,
+			true,
+			true,
+			stubFileHandler{},
+			false,
+		},
 		{"write never needs exit", unix.SYS_WRITE, true, true, true, stubFileHandler{}, false},
 	}
 	for _, tt := range tests {

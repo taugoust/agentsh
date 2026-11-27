@@ -120,9 +120,13 @@ Examples:
 
 	cmd.Flags().StringVar(&level, "level", "", "Report level: summary or detailed (required)")
 	cmd.Flags().StringVar(&output, "output", "", "Output file path (default: stdout)")
-	cmd.Flags().BoolVar(&directDB, "direct-db", false, "Query local database directly (offline mode)")
-	cmd.Flags().StringVar(&dbPath, "db-path", "", "Path to events database (default: ./data/events.db)")
-	cmd.Flags().StringVar(&sessionsDir, "sessions-dir", "", "Path to sessions directory for LLM stats (default: ~/.agentsh/sessions)")
+	cmd.Flags().
+		BoolVar(&directDB, "direct-db", false, "Query local database directly (offline mode)")
+	cmd.Flags().
+		StringVar(&dbPath, "db-path", "", "Path to events database (default: ./data/events.db)")
+	cmd.Flags().
+		StringVar(&sessionsDir, "sessions-dir", "",
+			"Path to sessions directory for LLM stats (default: ~/.agentsh/sessions)")
 	_ = cmd.MarkFlagRequired("level")
 
 	return cmd
@@ -133,13 +137,20 @@ type memoryEventStore struct {
 	events []types.Event
 }
 
-func (m *memoryEventStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (m *memoryEventStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return m.events, nil
 }
 func (m *memoryEventStore) AppendEvent(ctx context.Context, ev types.Event) error { return nil }
 func (m *memoryEventStore) Close() error                                          { return nil }
 
-func loadReportFromAPI(ctx context.Context, cfg *clientConfig, sessionArg string) (types.Session, []types.Event, error) {
+func loadReportFromAPI(
+	ctx context.Context,
+	cfg *clientConfig,
+	sessionArg string,
+) (types.Session, []types.Event, error) {
 	c, err := client.NewForCLI(client.CLIOptions{
 		HTTPBaseURL: cfg.serverAddr,
 		GRPCAddr:    cfg.grpcAddr,
@@ -172,7 +183,10 @@ func loadReportFromAPI(ctx context.Context, cfg *clientConfig, sessionArg string
 
 	sess, err := c.GetSession(ctx, sessionID)
 	if err != nil {
-		return types.Session{}, nil, fmt.Errorf("get session: %w (hint: run 'agentsh session list')", err)
+		return types.Session{}, nil, fmt.Errorf(
+			"get session: %w (hint: run 'agentsh session list')",
+			err,
+		)
 	}
 
 	// Query events with ascending order
@@ -186,7 +200,10 @@ func loadReportFromAPI(ctx context.Context, cfg *clientConfig, sessionArg string
 	return sess, events, nil
 }
 
-func loadReportFromDB(ctx context.Context, dbPath, sessionArg string) (types.Session, []types.Event, error) {
+func loadReportFromDB(
+	ctx context.Context,
+	dbPath, sessionArg string,
+) (types.Session, []types.Event, error) {
 	store, err := sqlite.Open(dbPath)
 	if err != nil {
 		return types.Session{}, nil, fmt.Errorf("open database: %w", err)

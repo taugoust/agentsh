@@ -61,10 +61,12 @@ type mitigationSyscalls struct {
 
 func EffectiveSeccompRulesForConfig(in SandboxSeccompConfig) (EffectiveSeccompRules, error) {
 	out := EffectiveSeccompRules{
-		SocketRules:           append([]SandboxSeccompSocketRuleConfig(nil), in.SocketRules...),
-		BlockedSocketFamilies: append([]SandboxSeccompSocketFamilyConfig(nil), in.BlockedSocketFamilies...),
-		SyscallBlock:          append([]string(nil), in.Syscalls.Block...),
-		SyscallOnBlock:        in.Syscalls.OnBlock,
+		SocketRules: append([]SandboxSeccompSocketRuleConfig(nil), in.SocketRules...),
+		BlockedSocketFamilies: append(
+			[]SandboxSeccompSocketFamilyConfig(nil),
+			in.BlockedSocketFamilies...),
+		SyscallBlock:   append([]string(nil), in.Syscalls.Block...),
+		SyscallOnBlock: in.Syscalls.OnBlock,
 	}
 	if out.SyscallOnBlock == "" {
 		out.SyscallOnBlock = "errno"
@@ -77,14 +79,29 @@ func EffectiveSeccompRulesForConfig(in SandboxSeccompConfig) (EffectiveSeccompRu
 	for _, request := range requests {
 		doc, info, err := loadMitigationSet(request.id, in.MitigationDirs)
 		if err != nil {
-			return EffectiveSeccompRules{}, fmt.Errorf("%s[%d]: %w", request.field, request.index, err)
+			return EffectiveSeccompRules{}, fmt.Errorf(
+				"%s[%d]: %w",
+				request.field,
+				request.index,
+				err,
+			)
 		}
-		if doc.Seccomp.Syscalls.OnBlock != "" && doc.Seccomp.Syscalls.OnBlock != out.SyscallOnBlock {
-			return EffectiveSeccompRules{}, fmt.Errorf("%s[%d] %q: seccomp.syscalls.on_block %q conflicts with effective sandbox.seccomp.syscalls.on_block %q",
-				request.field, request.index, request.id, doc.Seccomp.Syscalls.OnBlock, out.SyscallOnBlock)
+		if doc.Seccomp.Syscalls.OnBlock != "" &&
+			doc.Seccomp.Syscalls.OnBlock != out.SyscallOnBlock {
+			return EffectiveSeccompRules{}, fmt.Errorf(
+				"%s[%d] %q: seccomp.syscalls.on_block %q conflicts with effective "+
+					"sandbox.seccomp.syscalls.on_block %q",
+				request.field,
+				request.index,
+				request.id,
+				doc.Seccomp.Syscalls.OnBlock,
+				out.SyscallOnBlock,
+			)
 		}
 		out.SocketRules = append(out.SocketRules, doc.Seccomp.SocketRules...)
-		out.BlockedSocketFamilies = append(out.BlockedSocketFamilies, doc.Seccomp.BlockedSocketFamilies...)
+		out.BlockedSocketFamilies = append(
+			out.BlockedSocketFamilies,
+			doc.Seccomp.BlockedSocketFamilies...)
 		out.SyscallBlock = append(out.SyscallBlock, doc.Seccomp.Syscalls.Block...)
 		out.LoadedMitigations = append(out.LoadedMitigations, info)
 	}
@@ -143,10 +160,17 @@ func loadMitigationSet(id string, dirs []string) (mitigationDocument, Mitigation
 		return mitigationDocument{}, MitigationLoadInfo{}, err
 	}
 	if builtinFound && externalFound {
-		return mitigationDocument{}, MitigationLoadInfo{}, fmt.Errorf("%q exists as both built-in and external mitigation %q", id, externalPath)
+		return mitigationDocument{}, MitigationLoadInfo{}, fmt.Errorf(
+			"%q exists as both built-in and external mitigation %q",
+			id,
+			externalPath,
+		)
 	}
 	if !builtinFound && !externalFound {
-		return mitigationDocument{}, MitigationLoadInfo{}, fmt.Errorf("unknown mitigation set %q", id)
+		return mitigationDocument{}, MitigationLoadInfo{}, fmt.Errorf(
+			"unknown mitigation set %q",
+			id,
+		)
 	}
 
 	source := "builtin"
@@ -198,10 +222,18 @@ func readExternalMitigation(id string, dirs []string) ([]byte, string, bool, err
 				return nil, "", false, fmt.Errorf("stat external mitigation %q: %w", candidate, err)
 			}
 			if !info.Mode().IsRegular() {
-				return nil, "", false, fmt.Errorf("external mitigation path %q is not a regular file", candidate)
+				return nil, "", false, fmt.Errorf(
+					"external mitigation path %q is not a regular file",
+					candidate,
+				)
 			}
 			if foundPath != "" {
-				return nil, "", false, fmt.Errorf("mitigation set %q found in multiple external files: %q and %q", id, foundPath, candidate)
+				return nil, "", false, fmt.Errorf(
+					"mitigation set %q found in multiple external files: %q and %q",
+					id,
+					foundPath,
+					candidate,
+				)
 			}
 			foundPath = candidate
 		}
@@ -232,18 +264,29 @@ func decodeMitigation(requestedID string, data []byte, source string) (mitigatio
 			return mitigationDocument{}, fmt.Errorf("parse mitigation %q: %w", source, err)
 		}
 	} else {
-		return mitigationDocument{}, fmt.Errorf("mitigation %q: multiple YAML documents are not allowed", source)
+		return mitigationDocument{}, fmt.Errorf(
+			"mitigation %q: multiple YAML documents are not allowed",
+			source,
+		)
 	}
 	if doc.Version != 1 {
 		return mitigationDocument{}, fmt.Errorf("mitigation %q: version must be 1", source)
 	}
 	if doc.ID != requestedID {
-		return mitigationDocument{}, fmt.Errorf("mitigation %q: id %q does not match requested id %q", source, doc.ID, requestedID)
+		return mitigationDocument{}, fmt.Errorf(
+			"mitigation %q: id %q does not match requested id %q",
+			source,
+			doc.ID,
+			requestedID,
+		)
 	}
 	if len(doc.Seccomp.SocketRules) == 0 &&
 		len(doc.Seccomp.BlockedSocketFamilies) == 0 &&
 		len(doc.Seccomp.Syscalls.Block) == 0 {
-		return mitigationDocument{}, fmt.Errorf("mitigation %q: empty mitigations are not allowed", source)
+		return mitigationDocument{}, fmt.Errorf(
+			"mitigation %q: empty mitigations are not allowed",
+			source,
+		)
 	}
 	return doc, nil
 }

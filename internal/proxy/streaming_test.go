@@ -159,14 +159,18 @@ func TestSSEProxyTransport_SSEResponse(t *testing.T) {
 	}
 
 	// Check body was captured
-	expectedBody := "event: message\ndata: {\"text\": \"Hello\"}\n\nevent: message\ndata: {\"text\": \"World\"}\n\n"
+	expectedBody := "event: message\ndata: {\"text\": \"Hello\"}\n\nevent: message\n" +
+		"data: {\"text\": \"World\"}\n\n"
 	if string(callbackBody) != expectedBody {
 		t.Errorf("Callback body = %q, want %q", string(callbackBody), expectedBody)
 	}
 
 	// Check recorder received the streamed response
 	if rec.Header().Get("Content-Type") != "text/event-stream" {
-		t.Errorf("Recorder Content-Type = %q, want text/event-stream", rec.Header().Get("Content-Type"))
+		t.Errorf(
+			"Recorder Content-Type = %q, want text/event-stream",
+			rec.Header().Get("Content-Type"),
+		)
 	}
 	if rec.Body.String() != expectedBody {
 		t.Errorf("Recorder body = %q, want %q", rec.Body.String(), expectedBody)
@@ -406,7 +410,18 @@ func TestSSEProxyTransport_WithInterceptor(t *testing.T) {
 	)
 
 	// Configure the interceptor on the transport.
-	transport.SetInterceptor(reg, policy, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, nil, nil)
+	transport.SetInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	// Make request through transport.
 	req, _ := http.NewRequest("POST", sseServer.URL+"/v1/messages", nil)

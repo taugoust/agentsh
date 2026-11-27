@@ -53,7 +53,10 @@ func NewOrchestrator(cfg OrchestratorConfig) *Orchestrator {
 
 // CheckAll dispatches the request to all configured providers in parallel and
 // collects the merged findings and any provider errors.
-func (o *Orchestrator) CheckAll(ctx context.Context, req CheckRequest) ([]Finding, []ProviderError) {
+func (o *Orchestrator) CheckAll(
+	ctx context.Context,
+	req CheckRequest,
+) ([]Finding, []ProviderError) {
 	if len(o.cfg.Providers) == 0 {
 		return nil, nil
 	}
@@ -135,7 +138,10 @@ func isLocalProvider(p CheckProvider) bool {
 // no packages eligible for external scanning and there are no local providers,
 // external providers are not invoked at all to avoid spurious API-key /
 // transport errors from a fan-out over an empty list.
-func (o *Orchestrator) CheckAllWithPrivacy(ctx context.Context, req CheckRequest) ([]Finding, []ProviderError, []SkippedPackage) {
+func (o *Orchestrator) CheckAllWithPrivacy(
+	ctx context.Context,
+	req CheckRequest,
+) ([]Finding, []ProviderError, []SkippedPackage) {
 	fullPackages := req.Packages
 	var skipped []SkippedPackage
 	if o.cfg.PrivacyFilter != nil {

@@ -34,7 +34,10 @@ functions:
 	if got := fixture.SearchPath; len(got) != 2 || got[0] != "public" || got[1] != "pg_catalog" {
 		t.Fatalf("SearchPath = %#v", got)
 	}
-	if rel, ok := fixture.Snapshot.RelationByOID(16384); !ok || rel.Name.String() != "public.users" {
+	if rel, ok := fixture.Snapshot.RelationByOID(
+		16384,
+	); !ok ||
+		rel.Name.String() != "public.users" {
 		t.Fatalf("relation lookup = %+v, %v", rel, ok)
 	}
 	if fn, ok := fixture.Snapshot.FunctionByOID(2200); !ok || fn.IdentityArgs != "integer" {

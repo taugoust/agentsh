@@ -15,7 +15,9 @@ import (
 func TestWAL_OverflowEmitsLossMarker(t *testing.T) {
 	dir := t.TempDir()
 	// Tight budget: 4 KiB segments, 12 KiB cap → 3 segments max.
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 12 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 12 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +81,9 @@ func TestWAL_OverflowEmitsLossMarker(t *testing.T) {
 // path and leave a marker on disk — which the assertions catch.
 func TestWAL_OverflowAfterAck_OnlyDropsAcked(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 12 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 12 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +136,11 @@ func TestWAL_OverflowAfterAck_OnlyDropsAcked(t *testing.T) {
 		totalBytes += st.Size()
 	}
 	if totalBytes >= 10*1044 {
-		t.Errorf("ack-driven GC did not reclaim any segments: totalBytes=%d, want <%d", totalBytes, 10*1044)
+		t.Errorf(
+			"ack-driven GC did not reclaim any segments: totalBytes=%d, want <%d",
+			totalBytes,
+			10*1044,
+		)
 	}
 
 	// Assertion 3: budget is respected.
@@ -203,7 +211,12 @@ func TestWAL_MarkAckedReclaimsSegmentsContainingLossMarkers(t *testing.T) {
 	}
 	after := countSealed()
 	if after >= before {
-		t.Errorf("MarkAcked freed nothing (sealed before=%d, after=%d) — segmentHighSeq likely misread a loss marker as a huge seq", before, after)
+		t.Errorf(
+			"MarkAcked freed nothing (sealed before=%d, after=%d) — segmentHighSeq likely "+
+				"misread a loss marker as a huge seq",
+			before,
+			after,
+		)
 	}
 }
 
@@ -286,7 +299,10 @@ func TestWAL_DropOldestSegmentAtSeqZeroEmitsLossMarker(t *testing.T) {
 	}
 	if loss.ToSequence != 0 || loss.FromSequence != 0 {
 		w.mu.Unlock()
-		t.Fatalf("loss=%+v: expected FromSequence=0 ToSequence=0 for a single-record seq=0 segment", loss)
+		t.Fatalf(
+			"loss=%+v: expected FromSequence=0 ToSequence=0 for a single-record seq=0 segment",
+			loss,
+		)
 	}
 	// The caller must emit a loss marker even though ToSequence==0. The
 	// pre-fix code branched on `dropped.ToSequence == 0` and skipped
@@ -372,7 +388,10 @@ func TestWAL_OverflowOnFreshWALEmitsLossEvenAtSeqZero(t *testing.T) {
 		}
 	}
 	if !sawMarker {
-		t.Errorf("no TransportLoss marker after overflow on fresh WAL: ackPresent=false must block silent GC of the seq=0 segment")
+		t.Errorf(
+			"no TransportLoss marker after overflow on fresh WAL: ackPresent=false must block " +
+				"silent GC of the seq=0 segment",
+		)
 	}
 }
 
@@ -432,7 +451,9 @@ func TestWAL_GcAckedRespectsGenerationBoundary(t *testing.T) {
 	// payload guarantees every record gets its own sealed segment, which
 	// is what we need to assert per-segment generations crisply.
 	// MaxTotalBytes is generous so overflow GC never fires during setup.
-	w, err := Open(Options{Dir: dir, SegmentSize: 56, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 56, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,10 +492,18 @@ func TestWAL_GcAckedRespectsGenerationBoundary(t *testing.T) {
 	// on disk: the round-2 bug would have silently dropped it.
 	for _, s := range afterSealed {
 		if s.gen < 7 {
-			t.Errorf("sealed segment gen=%d still on disk after acking (gen=7,seq=3) — should have been GCd", s.gen)
+			t.Errorf(
+				"sealed segment gen=%d still on disk after acking (gen=7,seq=3) — should have "+
+					"been GCd",
+				s.gen,
+			)
 		}
 		if s.gen == 7 {
-			t.Errorf("sealed gen=7 segment idx=%d survived ack of (7,3) — gcAckedLocked should have reclaimed it", s.idx)
+			t.Errorf(
+				"sealed gen=7 segment idx=%d survived ack of (7,3) — gcAckedLocked should have "+
+					"reclaimed it",
+				s.idx,
+			)
 		}
 	}
 	var anyGen8Surviving bool
@@ -485,7 +514,10 @@ func TestWAL_GcAckedRespectsGenerationBoundary(t *testing.T) {
 		}
 	}
 	if !anyGen8Surviving {
-		t.Errorf("no gen=8 sealed segment survived gcAckedLocked; expected at least one (we acked only through (gen=7, seq=3))")
+		t.Errorf(
+			"no gen=8 sealed segment survived gcAckedLocked; expected at least one (we acked " +
+				"only through (gen=7, seq=3))",
+		)
 	}
 	// Sanity: at least one gen=7 segment must have been reclaimed across
 	// the MarkAcked sweep + the explicit gcAckedLocked call.
@@ -502,8 +534,13 @@ func TestWAL_GcAckedRespectsGenerationBoundary(t *testing.T) {
 		}
 	}
 	if gen7BeforeCount == gen7AfterCount && gen7BeforeCount > 0 {
-		t.Errorf("ack of (gen=7,seq=3) did not reclaim any gen=7 segment: before=%d after=%d explicit-gc-removed=%d",
-			gen7BeforeCount, gen7AfterCount, n)
+		t.Errorf(
+			"ack of (gen=7,seq=3) did not reclaim any gen=7 segment: before=%d after=%d "+
+				"explicit-gc-removed=%d",
+			gen7BeforeCount,
+			gen7AfterCount,
+			n,
+		)
 	}
 }
 
@@ -518,7 +555,10 @@ func TestWAL_OpenWithLegacyV1MetaHonorsAckWatermark(t *testing.T) {
 	// Step 1: write a legacy v1 meta.json by hand with a watermark at
 	// (gen=0, seq=4). Real pre-v2 deployments would have produced exactly
 	// this shape via MarkAcked.
-	raw := []byte(`{"format_version":1,"ack_high_watermark_seq":4,"ack_high_watermark_gen":0,"session_id":"","key_fingerprint":""}`)
+	raw := []byte(
+		`{"format_version":1,"ack_high_watermark_seq":4,"ack_high_watermark_gen":0,` +
+			`"session_id":"","key_fingerprint":""}`,
+	)
 	if err := os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -535,9 +575,16 @@ func TestWAL_OpenWithLegacyV1MetaHonorsAckWatermark(t *testing.T) {
 	gotGen := w.ackHighGen
 	w.mu.Unlock()
 	if !gotPresent {
-		t.Errorf("ackPresent after legacy v1 reopen = false; want true (legacy file's existence implied a persisted ack)")
+		t.Errorf(
+			"ackPresent after legacy v1 reopen = false; want true (legacy file's existence " +
+				"implied a persisted ack)",
+		)
 	}
 	if gotSeq != 4 || gotGen != 0 {
-		t.Errorf("ack watermark after legacy v1 reopen = (gen=%d, seq=%d); want (0, 4)", gotGen, gotSeq)
+		t.Errorf(
+			"ack watermark after legacy v1 reopen = (gen=%d, seq=%d); want (0, 4)",
+			gotGen,
+			gotSeq,
+		)
 	}
 }

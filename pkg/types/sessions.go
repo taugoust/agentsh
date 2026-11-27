@@ -33,7 +33,11 @@ func (s SessionState) IsTerminal() bool {
 // IsActive returns true if the session is currently active.
 func (s SessionState) IsActive() bool {
 	switch s {
-	case SessionStateStarting, SessionStateCreating, SessionStateRunning, SessionStateReady, SessionStateBusy:
+	case SessionStateStarting,
+		SessionStateCreating,
+		SessionStateRunning,
+		SessionStateReady,
+		SessionStateBusy:
 		return true
 	default:
 		return false
@@ -102,23 +106,25 @@ type CreateShadowOptions struct {
 }
 
 type Session struct {
-	ID                 string                `json:"id"`
-	State              SessionState          `json:"state"`
-	CreatedAt          time.Time             `json:"created_at"`
-	Workspace          string                `json:"workspace"`
-	WorkspaceMount     string                `json:"workspace_mount,omitempty"` // effective workspace path (FUSE/overlay/shadow if active)
-	WorkspaceMode      string                `json:"workspace_mode,omitempty"`
-	Overlay            *OverlayInfo          `json:"overlay,omitempty"`
-	Shadow             *ShadowInfo           `json:"shadow,omitempty"`
-	Policy             string                `json:"policy"`
-	Profile            string                `json:"profile,omitempty"`
-	Mounts             []MountInfo           `json:"mounts,omitempty"`
-	Cwd                string                `json:"cwd"`
-	VirtualRoot        string                `json:"virtual_root,omitempty"`
-	ProxyURL           string                `json:"proxy_url,omitempty"`
-	LLMProxyURL        string                `json:"llm_proxy_url,omitempty"`
-	DBProxySocketDir   string                `json:"db_proxy_socket_dir,omitempty"`
-	TOTPSecret         string                `json:"-"` // Hidden from JSON/API, used for TOTP approval mode
+	ID        string       `json:"id"`
+	State     SessionState `json:"state"`
+	CreatedAt time.Time    `json:"created_at"`
+	Workspace string       `json:"workspace"`
+	// effective workspace path (FUSE/overlay/shadow if active)
+	WorkspaceMount   string       `json:"workspace_mount,omitempty"`
+	WorkspaceMode    string       `json:"workspace_mode,omitempty"`
+	Overlay          *OverlayInfo `json:"overlay,omitempty"`
+	Shadow           *ShadowInfo  `json:"shadow,omitempty"`
+	Policy           string       `json:"policy"`
+	Profile          string       `json:"profile,omitempty"`
+	Mounts           []MountInfo  `json:"mounts,omitempty"`
+	Cwd              string       `json:"cwd"`
+	VirtualRoot      string       `json:"virtual_root,omitempty"`
+	ProxyURL         string       `json:"proxy_url,omitempty"`
+	LLMProxyURL      string       `json:"llm_proxy_url,omitempty"`
+	DBProxySocketDir string       `json:"db_proxy_socket_dir,omitempty"`
+	// Hidden from JSON/API, used for TOTP approval mode
+	TOTPSecret         string                `json:"-"`
 	ProjectRoot        string                `json:"project_root,omitempty"`
 	GitRoot            string                `json:"git_root,omitempty"`
 	RuntimeHome        string                `json:"runtime_home,omitempty"`
@@ -184,21 +190,28 @@ type WorkspaceRoot struct {
 }
 
 type CreateSessionRequest struct {
-	ID                string                `json:"id,omitempty"`
-	Workspace         string                `json:"workspace,omitempty"`
-	WorkspaceRoots    []WorkspaceRoot       `json:"workspace_roots,omitempty"`
-	Policy            string                `json:"policy,omitempty"`
-	Profile           string                `json:"profile,omitempty"`
-	Home              string                `json:"home,omitempty"`                // User's home directory for ${HOME} policy expansion
-	RuntimeHomeMode   string                `json:"runtime_home_mode,omitempty"`   // Process HOME mode: "isolated" (default) or "real"
-	EnvBaseMode       string                `json:"env_base_mode,omitempty"`       // Child env base: "minimal" (default) or "inherit_allowed"
-	EnvInherit        []string              `json:"env_inherit,omitempty"`         // Env names/patterns to offer in addition to minimal base
-	DetectProjectRoot *bool                 `json:"detect_project_root,omitempty"` // Override server default
-	ProjectRoot       string                `json:"project_root,omitempty"`        // Explicit override
-	RealPaths         *bool                 `json:"real_paths,omitempty"`          // Use actual host paths instead of /workspace
-	WorkspaceMode     string                `json:"workspace_mode,omitempty"`      // "direct" (default), "overlay", or "shadow"
-	Overlay           *CreateOverlayOptions `json:"overlay,omitempty"`
-	Shadow            *CreateShadowOptions  `json:"shadow,omitempty"`
+	ID             string          `json:"id,omitempty"`
+	Workspace      string          `json:"workspace,omitempty"`
+	WorkspaceRoots []WorkspaceRoot `json:"workspace_roots,omitempty"`
+	Policy         string          `json:"policy,omitempty"`
+	Profile        string          `json:"profile,omitempty"`
+	// User's home directory for ${HOME} policy expansion
+	Home string `json:"home,omitempty"`
+	// Process HOME mode: "isolated" (default) or "real"
+	RuntimeHomeMode string `json:"runtime_home_mode,omitempty"`
+	// Child env base: "minimal" (default) or "inherit_allowed"
+	EnvBaseMode string `json:"env_base_mode,omitempty"`
+	// Env names/patterns to offer in addition to minimal base
+	EnvInherit []string `json:"env_inherit,omitempty"`
+	// Override server default
+	DetectProjectRoot *bool  `json:"detect_project_root,omitempty"`
+	ProjectRoot       string `json:"project_root,omitempty"` // Explicit override
+	// Use actual host paths instead of /workspace
+	RealPaths *bool `json:"real_paths,omitempty"`
+	// "direct" (default), "overlay", or "shadow"
+	WorkspaceMode string                `json:"workspace_mode,omitempty"`
+	Overlay       *CreateOverlayOptions `json:"overlay,omitempty"`
+	Shadow        *CreateShadowOptions  `json:"shadow,omitempty"`
 }
 
 type SessionPatchRequest struct {

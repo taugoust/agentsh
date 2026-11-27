@@ -45,7 +45,8 @@ func TestResolveRealPathUnderRoot_AllowsInTreeSymlink(t *testing.T) {
 
 func TestResolveRealPathUnderRoot_UsesParentForCreate(t *testing.T) {
 	root := t.TempDir()
-	// Parent is a symlink to /etc, so creating under it should be blocked even though the file doesn't exist yet.
+	// Parent is a symlink to /etc, so creating under it should be blocked even though the file
+	// doesn't exist yet.
 	if err := os.Symlink("/etc", filepath.Join(root, "p")); err != nil {
 		t.Skipf("symlink not supported: %v", err)
 	}
@@ -68,7 +69,12 @@ func TestEvalEscapedSymlink_ResolvesOutsideTarget(t *testing.T) {
 	}
 
 	// Sanity: resolveRealPathUnderRoot rejects this with a symlink-escape error.
-	if _, err := resolveRealPathUnderRoot(root, "/workspace/bin/python", true, "/workspace"); err == nil {
+	if _, err := resolveRealPathUnderRoot(
+		root,
+		"/workspace/bin/python",
+		true,
+		"/workspace",
+	); err == nil {
 		t.Fatalf("expected resolveRealPathUnderRoot to fail on escaping symlink")
 	}
 
@@ -125,6 +131,9 @@ func TestEvalEscapedSymlink_DotDotEscapeToExistingSiblingReturnsEmpty(t *testing
 	}
 
 	if got := evalEscapedSymlink(root, "/workspace/../outside/secret", "/workspace"); got != "" {
-		t.Fatalf("..-escape to existing sibling must return empty (stay workspace-escape); got %q", got)
+		t.Fatalf(
+			"..-escape to existing sibling must return empty (stay workspace-escape); got %q",
+			got,
+		)
 	}
 }

@@ -28,7 +28,11 @@ func hostEgressApprovalTokenFromEnvironment() (string, error) {
 		return direct, nil
 	}
 	before, err := os.Lstat(credentialFile)
-	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o077 != 0 || before.Size() < 1 || before.Size() > 256 || !operatorPolicyOwnerTrusted(credentialFile, before) {
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 ||
+		before.Mode().Perm()&0o077 != 0 ||
+		before.Size() < 1 ||
+		before.Size() > 256 ||
+		!operatorPolicyOwnerTrusted(credentialFile, before) {
 		return "", fmt.Errorf("host egress approval credential file is unsafe")
 	}
 	file, err := os.Open(credentialFile)
@@ -83,7 +87,11 @@ type remoteHostEgressApprovalRequest struct {
 	Message        string `json:"message,omitempty"`
 }
 
-func newHostEgressApprovalManager(binding *HostEgressApprovalBinding, draftSessionID string, emit approvals.Emitter) (*approvals.Manager, error) {
+func newHostEgressApprovalManager(
+	binding *HostEgressApprovalBinding,
+	draftSessionID string,
+	emit approvals.Emitter,
+) (*approvals.Manager, error) {
 	if binding == nil {
 		return nil, nil
 	}
@@ -92,20 +100,35 @@ func newHostEgressApprovalManager(binding *HostEgressApprovalBinding, draftSessi
 	}
 	manager := approvals.New("remote", hostEgressApprovalTimeout, emit)
 	manager.SetDetachedRequestObserver(func(ctx context.Context, req approvals.Request) error {
-		resolution, err := requestParentHostEgressApproval(ctx, *binding, remoteHostEgressApprovalRequest{
-			DraftSessionID: draftSessionID,
-			Kind:           req.Kind,
-			Target:         req.Target,
-			Rule:           req.Rule,
-			Message:        req.Message,
-		})
+		resolution, err := requestParentHostEgressApproval(
+			ctx,
+			*binding,
+			remoteHostEgressApprovalRequest{
+				DraftSessionID: draftSessionID,
+				Kind:           req.Kind,
+				Target:         req.Target,
+				Rule:           req.Rule,
+				Message:        req.Message,
+			},
+		)
 		if err != nil {
 			return err
 		}
-		if !manager.ResolveWithScopeTarget(req.ID, resolution.Approved, resolution.Reason, resolution.Scope, approvals.Scope{
-			Kind: resolution.ScopeKind, Key: resolution.ScopeKey, Label: resolution.ScopeLabel,
-			Operation: resolution.ScopeOperation, Path: resolution.ScopePath, Rule: resolution.ScopeRule, Prefix: resolution.ScopePrefix,
-		}) {
+		if !manager.ResolveWithScopeTarget(
+			req.ID,
+			resolution.Approved,
+			resolution.Reason,
+			resolution.Scope,
+			approvals.Scope{
+				Kind:      resolution.ScopeKind,
+				Key:       resolution.ScopeKey,
+				Label:     resolution.ScopeLabel,
+				Operation: resolution.ScopeOperation,
+				Path:      resolution.ScopePath,
+				Rule:      resolution.ScopeRule,
+				Prefix:    resolution.ScopePrefix,
+			},
+		) {
 			return fmt.Errorf("remote host egress approval was no longer pending")
 		}
 		return nil
@@ -113,7 +136,11 @@ func newHostEgressApprovalManager(binding *HostEgressApprovalBinding, draftSessi
 	return manager, nil
 }
 
-func requestParentHostEgressApproval(ctx context.Context, binding HostEgressApprovalBinding, request remoteHostEgressApprovalRequest) (approvals.Resolution, error) {
+func requestParentHostEgressApproval(
+	ctx context.Context,
+	binding HostEgressApprovalBinding,
+	request remoteHostEgressApprovalRequest,
+) (approvals.Resolution, error) {
 	if err := binding.Validate(); err != nil {
 		return approvals.Resolution{}, err
 	}
@@ -130,8 +157,14 @@ func requestParentHostEgressApproval(ctx context.Context, binding HostEgressAppr
 	}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}
-	endpoint := "http://unix/api/v1/sessions/" + binding.ParentSessionID + "/tools/request_guest_egress_approval"
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	endpoint := "http://unix/api/v1/sessions/" + binding.ParentSessionID +
+		"/tools/request_guest_egress_approval"
+	httpRequest, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		endpoint,
+		bytes.NewReader(payload),
+	)
 	if err != nil {
 		return approvals.Resolution{}, err
 	}
@@ -143,7 +176,10 @@ func requestParentHostEgressApproval(ctx context.Context, binding HostEgressAppr
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return approvals.Resolution{}, fmt.Errorf("parent host egress approval failed with HTTP %d", response.StatusCode)
+		return approvals.Resolution{}, fmt.Errorf(
+			"parent host egress approval failed with HTTP %d",
+			response.StatusCode,
+		)
 	}
 	var resolution approvals.Resolution
 	decoder := json.NewDecoder(response.Body)
@@ -155,7 +191,9 @@ func requestParentHostEgressApproval(ctx context.Context, binding HostEgressAppr
 		resolution.Scope = approvals.ScopeOnce
 	}
 	if resolution.Scope != approvals.ScopeOnce && resolution.Scope != approvals.ScopeSession {
-		return approvals.Resolution{}, errors.New("parent host egress approval returned an invalid scope")
+		return approvals.Resolution{}, errors.New(
+			"parent host egress approval returned an invalid scope",
+		)
 	}
 	return resolution, nil
 }

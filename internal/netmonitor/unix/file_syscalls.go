@@ -72,7 +72,11 @@ func isReadOnlyFileOp(nr int32, flags uint32) bool {
 	switch nr {
 	case unix.SYS_OPENAT, unix.SYS_OPENAT2:
 		return isReadOnlyOpen(flags)
-	case unix.SYS_STATX, unix.SYS_NEWFSTATAT, unix.SYS_FACCESSAT, unix.SYS_FACCESSAT2, unix.SYS_READLINKAT:
+	case unix.SYS_STATX,
+		unix.SYS_NEWFSTATAT,
+		unix.SYS_FACCESSAT,
+		unix.SYS_FACCESSAT2,
+		unix.SYS_READLINKAT:
 		return true
 	default:
 		if isLegacyOpenSyscallNr(nr) {
@@ -313,15 +317,29 @@ func readOpenHowExactWithFallback(pid int, howPtr, howSize uint64) (OpenHowConte
 	return readOpenHowExactImpl(pid, howPtr, howSize, true)
 }
 
-func readOpenHowExactImpl(pid int, howPtr, howSize uint64, useFallback bool) (OpenHowContext, error) {
+func readOpenHowExactImpl(
+	pid int,
+	howPtr, howSize uint64,
+	useFallback bool,
+) (OpenHowContext, error) {
 	if howPtr == 0 {
 		return OpenHowContext{}, ErrNullPtr
 	}
 	if howSize < openHowSizeVersion0 {
-		return OpenHowContext{}, fmt.Errorf("%w: got %d, need at least %d", ErrOpenHowTooSmall, howSize, openHowSizeVersion0)
+		return OpenHowContext{}, fmt.Errorf(
+			"%w: got %d, need at least %d",
+			ErrOpenHowTooSmall,
+			howSize,
+			openHowSizeVersion0,
+		)
 	}
 	if howSize > maxOpenHowSize {
-		return OpenHowContext{}, fmt.Errorf("%w: got %d, maximum %d", ErrOpenHowTooLarge, howSize, maxOpenHowSize)
+		return OpenHowContext{}, fmt.Errorf(
+			"%w: got %d, maximum %d",
+			ErrOpenHowTooLarge,
+			howSize,
+			maxOpenHowSize,
+		)
 	}
 
 	buf := make([]byte, int(howSize))
@@ -333,7 +351,12 @@ func readOpenHowExactImpl(pid int, howPtr, howSize uint64, useFallback bool) (Op
 			if readErr != nil {
 				return OpenHowContext{}, fmt.Errorf("%w: open_how: %v", ErrReadMemory, readErr)
 			}
-			return OpenHowContext{}, fmt.Errorf("%w: open_how: short read (%d/%d bytes)", ErrReadMemory, n, len(buf))
+			return OpenHowContext{}, fmt.Errorf(
+				"%w: open_how: short read (%d/%d bytes)",
+				ErrReadMemory,
+				n,
+				len(buf),
+			)
 		}
 		fallbackN, fallbackErr := readProcMemStrict(pid, howPtr, buf)
 		if fallbackErr != nil || fallbackN != len(buf) {
@@ -388,7 +411,12 @@ func readOpenHowResolve(pid int, howPtr uint64) (uint64, error) {
 		return 0, fmt.Errorf("read open_how resolve: %w", err)
 	}
 	if n != len(buf) {
-		return 0, fmt.Errorf("%w: open_how resolve: short read (%d/%d bytes)", ErrReadMemory, n, len(buf))
+		return 0, fmt.Errorf(
+			"%w: open_how resolve: short read (%d/%d bytes)",
+			ErrReadMemory,
+			n,
+			len(buf),
+		)
 	}
 	return binary.NativeEndian.Uint64(buf[:]), nil
 }
@@ -488,15 +516,28 @@ func resolvePathAt(pid int, dirfd int32, pathPtr uint64) (string, error) {
 	return resolved, err
 }
 
-func resolvePathAtWithRaw(pid int, dirfd int32, pathPtr uint64) (rawPath, resolvedPath string, err error) {
+func resolvePathAtWithRaw(
+	pid int,
+	dirfd int32,
+	pathPtr uint64,
+) (rawPath, resolvedPath string, err error) {
 	return resolvePathAtDetailed(pid, dirfd, pathPtr, false)
 }
 
-func resolvePathAtWithRawFallback(pid int, dirfd int32, pathPtr uint64) (rawPath, resolvedPath string, err error) {
+func resolvePathAtWithRawFallback(
+	pid int,
+	dirfd int32,
+	pathPtr uint64,
+) (rawPath, resolvedPath string, err error) {
 	return resolvePathAtDetailed(pid, dirfd, pathPtr, true)
 }
 
-func resolvePathAtDetailed(pid int, dirfd int32, pathPtr uint64, useFallback bool) (string, string, error) {
+func resolvePathAtDetailed(
+	pid int,
+	dirfd int32,
+	pathPtr uint64,
+	useFallback bool,
+) (string, string, error) {
 	var rawPath string
 	var err error
 	if useFallback {

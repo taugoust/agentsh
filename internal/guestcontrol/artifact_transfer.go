@@ -44,7 +44,8 @@ func (a ArtifactTransfer) Validate() error {
 			return fmt.Errorf("Git input byte transfer cannot claim result identity")
 		}
 	case ArtifactKindGitResultBundle:
-		if !validGitOID(a.BaselineCommit) || !validGitOID(a.ResultCommit) || a.BaselineCommit == a.ResultCommit {
+		if !validGitOID(a.BaselineCommit) || !validGitOID(a.ResultCommit) ||
+			a.BaselineCommit == a.ResultCommit {
 			return fmt.Errorf("Git result transfer commit identity is invalid")
 		}
 	}
@@ -62,8 +63,14 @@ type ArtifactExportHandler interface {
 	ExportArtifact(context.Context, string) (ArtifactTransfer, io.ReadCloser, error)
 }
 
-func (c *Client) ImportArtifact(ctx context.Context, transfer ArtifactTransfer, source io.Reader) error {
-	if c == nil || c.dial == nil || (c.manifest.ProtocolVersion != ProtocolVersionV3 && c.manifest.ProtocolVersion != ProtocolVersionV4) {
+func (c *Client) ImportArtifact(
+	ctx context.Context,
+	transfer ArtifactTransfer,
+	source io.Reader,
+) error {
+	if c == nil || c.dial == nil ||
+		(c.manifest.ProtocolVersion != ProtocolVersionV3 &&
+			c.manifest.ProtocolVersion != ProtocolVersionV4) {
 		return fmt.Errorf("guest artifact import requires protocol version 3")
 	}
 	if err := transfer.Validate(); err != nil {
@@ -88,7 +95,12 @@ func (c *Client) ImportArtifact(ctx context.Context, transfer ArtifactTransfer, 
 	if got := "sha256:" + hex.EncodeToString(hasher.Sum(nil)); got != transfer.SHA256 {
 		return fmt.Errorf("guest artifact import source digest mismatch")
 	}
-	response, err := readArtifactResponse(conn, c.manifest.ProtocolVersion, request.Type, request.RequestID)
+	response, err := readArtifactResponse(
+		conn,
+		c.manifest.ProtocolVersion,
+		request.Type,
+		request.RequestID,
+	)
 	if err != nil {
 		return contextOrError(ctx, err)
 	}
@@ -98,23 +110,43 @@ func (c *Client) ImportArtifact(ctx context.Context, transfer ArtifactTransfer, 
 	return nil
 }
 
-func (c *Client) ExportArtifact(ctx context.Context, kind string, destination io.Writer) (ArtifactTransfer, error) {
-	if c == nil || c.dial == nil || (c.manifest.ProtocolVersion != ProtocolVersionV3 && c.manifest.ProtocolVersion != ProtocolVersionV4) {
+func (c *Client) ExportArtifact(
+	ctx context.Context,
+	kind string,
+	destination io.Writer,
+) (ArtifactTransfer, error) {
+	if c == nil || c.dial == nil ||
+		(c.manifest.ProtocolVersion != ProtocolVersionV3 &&
+			c.manifest.ProtocolVersion != ProtocolVersionV4) {
 		return ArtifactTransfer{}, fmt.Errorf("guest artifact export requires protocol version 3")
 	}
 	if kind != ArtifactKindGitResultBundle || destination == nil {
-		return ArtifactTransfer{}, fmt.Errorf("guest artifact export requires a result bundle destination")
+		return ArtifactTransfer{}, fmt.Errorf(
+			"guest artifact export requires a result bundle destination",
+		)
 	}
-	conn, request, err := c.openArtifactConnection(ctx, "artifact_export", &ArtifactTransfer{Kind: kind})
+	conn, request, err := c.openArtifactConnection(
+		ctx,
+		"artifact_export",
+		&ArtifactTransfer{Kind: kind},
+	)
 	if err != nil {
 		return ArtifactTransfer{}, err
 	}
 	defer conn.Close()
 	if err := json.NewEncoder(conn).Encode(request); err != nil {
-		return ArtifactTransfer{}, contextOrError(ctx, fmt.Errorf("write guest artifact export request: %w", err))
+		return ArtifactTransfer{}, contextOrError(
+			ctx,
+			fmt.Errorf("write guest artifact export request: %w", err),
+		)
 	}
 	reader := bufio.NewReaderSize(conn, MaxMessageBytes+1)
-	response, err := readArtifactResponseFrom(reader, c.manifest.ProtocolVersion, request.Type, request.RequestID)
+	response, err := readArtifactResponseFrom(
+		reader,
+		c.manifest.ProtocolVersion,
+		request.Type,
+		request.RequestID,
+	)
 	if err != nil {
 		return ArtifactTransfer{}, contextOrError(ctx, err)
 	}
@@ -128,7 +160,10 @@ func (c *Client) ExportArtifact(ctx context.Context, kind string, destination io
 	hasher := sha256.New()
 	written, err := io.CopyN(io.MultiWriter(destination, hasher), reader, transfer.Size)
 	if err != nil || written != transfer.Size {
-		return ArtifactTransfer{}, contextOrError(ctx, fmt.Errorf("read guest artifact export: %w", err))
+		return ArtifactTransfer{}, contextOrError(
+			ctx,
+			fmt.Errorf("read guest artifact export: %w", err),
+		)
 	}
 	if got := "sha256:" + hex.EncodeToString(hasher.Sum(nil)); got != transfer.SHA256 {
 		return ArtifactTransfer{}, fmt.Errorf("guest artifact export digest mismatch")
@@ -136,7 +171,11 @@ func (c *Client) ExportArtifact(ctx context.Context, kind string, destination io
 	return transfer, nil
 }
 
-func (c *Client) openArtifactConnection(ctx context.Context, operation string, transfer *ArtifactTransfer) (controlConn, Request, error) {
+func (c *Client) openArtifactConnection(
+	ctx context.Context,
+	operation string,
+	transfer *ArtifactTransfer,
+) (controlConn, Request, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, Request{}, err
 	}
@@ -157,11 +196,24 @@ func (c *Client) openArtifactConnection(ctx context.Context, operation string, t
 	return conn, request, nil
 }
 
-func readArtifactResponse(reader io.Reader, protocol int, operation, requestID string) (Response, error) {
-	return readArtifactResponseFrom(bufio.NewReaderSize(reader, MaxMessageBytes+1), protocol, operation, requestID)
+func readArtifactResponse(
+	reader io.Reader,
+	protocol int,
+	operation, requestID string,
+) (Response, error) {
+	return readArtifactResponseFrom(
+		bufio.NewReaderSize(reader, MaxMessageBytes+1),
+		protocol,
+		operation,
+		requestID,
+	)
 }
 
-func readArtifactResponseFrom(reader *bufio.Reader, protocol int, operation, requestID string) (Response, error) {
+func readArtifactResponseFrom(
+	reader *bufio.Reader,
+	protocol int,
+	operation, requestID string,
+) (Response, error) {
 	line, err := reader.ReadString('\n')
 	if err != nil || len(line) > MaxMessageBytes {
 		return Response{}, fmt.Errorf("read guest artifact response")
@@ -172,11 +224,16 @@ func readArtifactResponseFrom(reader *bufio.Reader, protocol int, operation, req
 	if err := decoder.Decode(&response); err != nil || requireJSONEOF(decoder) != nil {
 		return Response{}, fmt.Errorf("decode guest artifact response")
 	}
-	if response.ProtocolVersion != protocol || response.Type != operation || response.RequestID != requestID {
+	if response.ProtocolVersion != protocol || response.Type != operation ||
+		response.RequestID != requestID {
 		return Response{}, fmt.Errorf("guest artifact response identity mismatch")
 	}
 	if !response.OK {
-		return Response{}, fmt.Errorf("guest control %s failed: %s", operation, boundedError(errors.New(response.Error)))
+		return Response{}, fmt.Errorf(
+			"guest control %s failed: %s",
+			operation,
+			boundedError(errors.New(response.Error)),
+		)
 	}
 	if response.Error != "" {
 		return Response{}, fmt.Errorf("guest artifact successful response included an error")

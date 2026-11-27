@@ -3,6 +3,7 @@ package policy
 import "testing"
 
 func TestEvaluate_AuditDoesNotCoverUnrelatedObject(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -12,11 +13,16 @@ database_rules:
 `)
 	d := Evaluate(tableRead("customers", "orders"), rs, "appdb")
 	if d.Verb != VerbDeny || d.RuleName != "" {
-		t.Fatalf("verb = %v, RuleName = %q; want implicit deny (orders uncovered)", d.Verb, d.RuleName)
+		t.Fatalf(
+			"verb = %v, RuleName = %q; want implicit deny (orders uncovered)",
+			d.Verb,
+			d.RuleName,
+		)
 	}
 }
 
 func TestEvaluate_AuditAndAllowOnSameObjectYieldsAudit(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:

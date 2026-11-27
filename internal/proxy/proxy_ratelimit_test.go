@@ -210,7 +210,13 @@ func TestProxy_TPM_Returns429(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// Report 500 input + 500 output = 1000 total tokens
-		w.Write([]byte(`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":500,"output_tokens":500}}`))
+		w.Write(
+			[]byte(
+				`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text",` +
+					`"text":"ok"}],"model":"claude-sonnet-4-20250514",` +
+					`"usage":{"input_tokens":500,"output_tokens":500}}`,
+			),
+		)
 	}))
 	defer upstream.Close()
 
@@ -257,8 +263,13 @@ func TestProxy_TPM_Returns429(t *testing.T) {
 	proxyURL := "http://" + addr.String()
 
 	makeRequest := func() *http.Response {
-		req, _ := http.NewRequest("POST", proxyURL+"/v1/messages",
-			strings.NewReader(`{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"hi"}]}`))
+		req, _ := http.NewRequest(
+			"POST",
+			proxyURL+"/v1/messages",
+			strings.NewReader(
+				`{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"hi"}]}`,
+			),
+		)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("x-api-key", "test-key")
 		resp, err := http.DefaultClient.Do(req)
@@ -270,7 +281,8 @@ func TestProxy_TPM_Returns429(t *testing.T) {
 		return resp
 	}
 
-	// First request succeeds; upstream reports 1000 tokens which depletes the 100-token burst budget.
+	// First request succeeds; upstream reports 1000 tokens which depletes the 100-token burst
+	// budget.
 	//nolint:bodyclose // makeRequest returns an already drained and closed body.
 	resp1 := makeRequest()
 	if resp1.StatusCode == http.StatusTooManyRequests {
@@ -292,7 +304,13 @@ func TestProxy_RPM_Returns429(t *testing.T) {
 	// Create a mock upstream that returns a valid Anthropic response
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":5,"output_tokens":2}}`))
+		w.Write(
+			[]byte(
+				`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text",` +
+					`"text":"ok"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":5,` +
+					`"output_tokens":2}}`,
+			),
+		)
 	}))
 	defer upstream.Close()
 
@@ -339,8 +357,13 @@ func TestProxy_RPM_Returns429(t *testing.T) {
 	proxyURL := "http://" + addr.String()
 
 	makeRequest := func() *http.Response {
-		req, _ := http.NewRequest("POST", proxyURL+"/v1/messages",
-			strings.NewReader(`{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"hi"}]}`))
+		req, _ := http.NewRequest(
+			"POST",
+			proxyURL+"/v1/messages",
+			strings.NewReader(
+				`{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"hi"}]}`,
+			),
+		)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("x-api-key", "test-key")
 		resp, err := http.DefaultClient.Do(req)
@@ -375,7 +398,12 @@ func TestProxy_TPM_FallbackChargeOnMissingUsage(t *testing.T) {
 	// that omit usage or SSE streams without include_usage.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-sonnet-4-20250514"}`))
+		w.Write(
+			[]byte(
+				`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text",` +
+					`"text":"ok"}],"model":"claude-sonnet-4-20250514"}`,
+			),
+		)
 	}))
 	defer upstream.Close()
 
@@ -425,8 +453,13 @@ func TestProxy_TPM_FallbackChargeOnMissingUsage(t *testing.T) {
 	proxyURL := "http://" + addr.String()
 
 	makeRequest := func() *http.Response {
-		req, _ := http.NewRequest("POST", proxyURL+"/v1/messages",
-			strings.NewReader(`{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"hi"}]}`))
+		req, _ := http.NewRequest(
+			"POST",
+			proxyURL+"/v1/messages",
+			strings.NewReader(
+				`{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"hi"}]}`,
+			),
+		)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("x-api-key", "test-key")
 		resp, err := http.DefaultClient.Do(req)
@@ -451,7 +484,10 @@ func TestProxy_TPM_FallbackChargeOnMissingUsage(t *testing.T) {
 	//nolint:bodyclose // makeRequest returns an already drained and closed body.
 	resp2 := makeRequest()
 	if resp2.StatusCode != http.StatusTooManyRequests {
-		t.Errorf("second request should be 429 (TPM depleted from fallback charge), got %d", resp2.StatusCode)
+		t.Errorf(
+			"second request should be 429 (TPM depleted from fallback charge), got %d",
+			resp2.StatusCode,
+		)
 	}
 }
 

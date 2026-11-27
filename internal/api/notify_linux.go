@@ -64,7 +64,11 @@ func (a *notifyEmitterAdapter) Publish(ev types.Event) {
 
 // createExecveHandler creates an ExecveHandler from the configuration.
 // Returns nil if the config is not valid or policy is nil.
-func createExecveHandler(cfg config.ExecveConfig, pol *policy.Engine, approvalMgr *approvals.Manager) any {
+func createExecveHandler(
+	cfg config.ExecveConfig,
+	pol *policy.Engine,
+	approvalMgr *approvals.Manager,
+) any {
 	if !cfg.Enabled {
 		return nil
 	}
@@ -107,20 +111,56 @@ type policyEngineWrapper struct {
 	engine *policy.Engine
 }
 
-func (w *policyEngineWrapper) CheckExecve(filename string, argv []string, depth int) unixmon.PolicyDecision {
+func (w *policyEngineWrapper) CheckExecve(
+	filename string,
+	argv []string,
+	depth int,
+) unixmon.PolicyDecision {
 	return w.toUnixPolicyDecision(w.engine.CheckExecve(filename, argv, depth))
 }
 
-func (w *policyEngineWrapper) CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) unixmon.PolicyDecision {
+func (w *policyEngineWrapper) CheckExecveWithAliases(
+	filename string,
+	aliases []string,
+	argv []string,
+	depth int,
+) unixmon.PolicyDecision {
 	return w.toUnixPolicyDecision(w.engine.CheckExecveWithAliases(filename, aliases, argv, depth))
 }
 
-func (w *policyEngineWrapper) CheckExecveWithProvenance(filename string, argv []string, depth int, provenance string) unixmon.PolicyDecision {
-	return w.toUnixPolicyDecision(w.engine.CheckExecveWithAliasesProvenance(filename, nil, argv, depth, policy.CommandProvenance(provenance)))
+func (w *policyEngineWrapper) CheckExecveWithProvenance(
+	filename string,
+	argv []string,
+	depth int,
+	provenance string,
+) unixmon.PolicyDecision {
+	return w.toUnixPolicyDecision(
+		w.engine.CheckExecveWithAliasesProvenance(
+			filename,
+			nil,
+			argv,
+			depth,
+			policy.CommandProvenance(provenance),
+		),
+	)
 }
 
-func (w *policyEngineWrapper) CheckExecveWithAliasesAndProvenance(filename string, aliases []string, argv []string, depth int, provenance string) unixmon.PolicyDecision {
-	return w.toUnixPolicyDecision(w.engine.CheckExecveWithAliasesProvenance(filename, aliases, argv, depth, policy.CommandProvenance(provenance)))
+func (w *policyEngineWrapper) CheckExecveWithAliasesAndProvenance(
+	filename string,
+	aliases []string,
+	argv []string,
+	depth int,
+	provenance string,
+) unixmon.PolicyDecision {
+	return w.toUnixPolicyDecision(
+		w.engine.CheckExecveWithAliasesProvenance(
+			filename,
+			aliases,
+			argv,
+			depth,
+			policy.CommandProvenance(provenance),
+		),
+	)
 }
 
 func (w *policyEngineWrapper) toUnixPolicyDecision(dec policy.Decision) unixmon.PolicyDecision {
@@ -141,7 +181,10 @@ type approvalRequesterAdapter struct {
 	sensitive     func() bool
 }
 
-func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req unixmon.ApprovalRequest) (bool, error) {
+func (a *approvalRequesterAdapter) RequestExecApproval(
+	ctx context.Context,
+	req unixmon.ApprovalRequest,
+) (bool, error) {
 	commandID := ""
 	if a.commandIDFunc != nil {
 		commandID = a.commandIDFunc()
@@ -162,7 +205,11 @@ func (a *approvalRequesterAdapter) RequestExecApproval(ctx context.Context, req 
 		if cached, ok := a.mgr.CheckScoped(ctx, req.SessionID, commandID, scope); ok {
 			return cached.Approved, nil
 		}
-		if invocation, invocationOK := approvals.NewCommandInvocationScope(req.Command, req.Args, req.Rule); invocationOK {
+		if invocation, invocationOK := approvals.NewCommandInvocationScope(
+			req.Command,
+			req.Args,
+			req.Rule,
+		); invocationOK {
 			if cached, ok := a.mgr.CheckScoped(ctx, req.SessionID, commandID, invocation); ok {
 				return cached.Approved, nil
 			}
@@ -200,7 +247,15 @@ func notifyHandlerRecover(sessID string, store eventStore, broker eventBroker) {
 	if r == nil {
 		return
 	}
-	slog.Error("panic in notify handler", "recover", r, "session_id", sessID, "stack", string(debug.Stack()))
+	slog.Error(
+		"panic in notify handler",
+		"recover",
+		r,
+		"session_id",
+		sessID,
+		"stack",
+		string(debug.Stack()),
+	)
 	ev := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now().UTC(),
@@ -246,11 +301,70 @@ func notifyHandlerRecover(sessID string, store eventStore, broker eventBroker) {
 // *unixmon.BlockListConfig). A nil or zero-ActionByNr value is treated as
 // "no block-list notify routing needed" — safe for errno/kill modes which are
 // kernel-side.
-func startNotifyHandler(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session, expectedWrapperPID int, compositionControlRoot string, compositionSetup *os.File, configureComposition compositionConfigurer) <-chan struct{} {
-	return startNotifyHandlerForState(ctx, parentSock, sessID, pol, store, broker, execveHandler, fileMonitorCfg, landlockEnabled, blockList, ptraceReady, commandJailRequired, approvalsMgr, sess, sess, expectedWrapperPID, compositionControlRoot, compositionSetup, configureComposition)
+func startNotifyHandler(
+	ctx context.Context,
+	parentSock *os.File,
+	sessID string,
+	pol *policy.Engine,
+	store eventStore,
+	broker eventBroker,
+	execveHandler any,
+	fileMonitorCfg config.SandboxSeccompFileMonitorConfig,
+	landlockEnabled bool,
+	blockList any,
+	ptraceReady chan<- error,
+	commandJailRequired bool,
+	approvalsMgr *approvals.Manager,
+	sess *session.Session,
+	expectedWrapperPID int,
+	compositionControlRoot string,
+	compositionSetup *os.File,
+	configureComposition compositionConfigurer,
+) <-chan struct{} {
+	return startNotifyHandlerForState(
+		ctx,
+		parentSock,
+		sessID,
+		pol,
+		store,
+		broker,
+		execveHandler,
+		fileMonitorCfg,
+		landlockEnabled,
+		blockList,
+		ptraceReady,
+		commandJailRequired,
+		approvalsMgr,
+		sess,
+		sess,
+		expectedWrapperPID,
+		compositionControlRoot,
+		compositionSetup,
+		configureComposition,
+	)
 }
 
-func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID string, pol *policy.Engine, store eventStore, broker eventBroker, execveHandler any, fileMonitorCfg config.SandboxSeccompFileMonitorConfig, landlockEnabled bool, blockList any, ptraceReady chan<- error, commandJailRequired bool, approvalsMgr *approvals.Manager, sess *session.Session, runtimeState session.CommandRuntimeState, expectedWrapperPID int, compositionControlRoot string, compositionSetup *os.File, configureComposition compositionConfigurer) <-chan struct{} {
+func startNotifyHandlerForState(
+	ctx context.Context,
+	parentSock *os.File,
+	sessID string,
+	pol *policy.Engine,
+	store eventStore,
+	broker eventBroker,
+	execveHandler any,
+	fileMonitorCfg config.SandboxSeccompFileMonitorConfig,
+	landlockEnabled bool,
+	blockList any,
+	ptraceReady chan<- error,
+	commandJailRequired bool,
+	approvalsMgr *approvals.Manager,
+	sess *session.Session,
+	runtimeState session.CommandRuntimeState,
+	expectedWrapperPID int,
+	compositionControlRoot string,
+	compositionSetup *os.File,
+	configureComposition compositionConfigurer,
+) <-chan struct{} {
 	done := make(chan struct{})
 	if parentSock == nil {
 		if compositionSetup != nil {
@@ -270,7 +384,8 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 		defer func() {
 			if ptraceReady != nil && !readySignaled {
 				select {
-				case ptraceReady <- fmt.Errorf("notify handler exited before pre-fork lineage readiness"):
+				case ptraceReady <- fmt.Errorf("notify handler exited before pre-fork lineage " +
+					"readiness"):
 				default:
 				}
 			}
@@ -282,7 +397,11 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 		// an endpoint, so it is only a legacy fallback when no started PID was bound.
 		wrapperPID := expectedWrapperPID
 		if wrapperPID <= 0 {
-			ucred, err := unix.GetsockoptUcred(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_PEERCRED)
+			ucred, err := unix.GetsockoptUcred(
+				int(parentSock.Fd()),
+				unix.SOL_SOCKET,
+				unix.SO_PEERCRED,
+			)
 			if err != nil {
 				slog.Debug("failed to get socket peer credentials", "error", err)
 			} else {
@@ -296,8 +415,19 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 		// apply. SO_RCVTIMEO is a kernel-level timeout that works with raw
 		// blocking recvmsg.
 		tv := unix.NsecToTimeval(recvFDTimeout.Nanoseconds())
-		if err := unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &tv); err != nil {
-			slog.Debug("failed to set SO_RCVTIMEO on notify socket", "error", err, "session_id", sessID)
+		if err := unix.SetsockoptTimeval(
+			int(parentSock.Fd()),
+			unix.SOL_SOCKET,
+			unix.SO_RCVTIMEO,
+			&tv,
+		); err != nil {
+			slog.Debug(
+				"failed to set SO_RCVTIMEO on notify socket",
+				"error",
+				err,
+				"session_id",
+				sessID,
+			)
 			// Don't return - RecvFD will still work, just without a timeout
 		}
 
@@ -306,8 +436,18 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 		// which every payload and lookup worker must inherit from.
 		slog.Debug("waiting for pre-fork lineage handoff", "session_id", sessID)
 		prelude, err := wraphandoff.RecvLocalPrelude(parentSock)
-		if err != nil || prelude == nil || prelude.Sender == nil || int(prelude.Sender.Pid) != wrapperPID || prelude.Metadata.CommandJail != commandJailRequired {
-			slog.Debug("invalid pre-fork lineage handoff", "error", err, "wrapper_pid", wrapperPID, "session_id", sessID)
+		if err != nil || prelude == nil || prelude.Sender == nil ||
+			int(prelude.Sender.Pid) != wrapperPID ||
+			prelude.Metadata.CommandJail != commandJailRequired {
+			slog.Debug(
+				"invalid pre-fork lineage handoff",
+				"error",
+				err,
+				"wrapper_pid",
+				wrapperPID,
+				"session_id",
+				sessID,
+			)
 			return
 		}
 		if ptraceReady != nil {
@@ -318,25 +458,53 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 			}
 		} else {
 			if n, releaseErr := parentSock.Write([]byte{'G'}); releaseErr != nil || n != 1 {
-				slog.Debug("release pre-fork lineage barrier failed", "error", releaseErr, "bytes", n, "session_id", sessID)
+				slog.Debug(
+					"release pre-fork lineage barrier failed",
+					"error",
+					releaseErr,
+					"bytes",
+					n,
+					"session_id",
+					sessID,
+				)
 				return
 			}
 		}
 
 		payloadTimeout := unix.NsecToTimeval((30 * time.Second).Nanoseconds())
-		_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &payloadTimeout)
+		_ = unix.SetsockoptTimeval(
+			int(parentSock.Fd()),
+			unix.SOL_SOCKET,
+			unix.SO_RCVTIMEO,
+			&payloadTimeout,
+		)
 		payload, err := wraphandoff.RecvLocalPayload(parentSock)
 		if err != nil || payload == nil || payload.NotifyFD == nil || payload.Sender == nil {
 			if payload != nil {
 				payload.Close()
 			}
-			slog.Debug("failed to receive payload lineage handoff", "error", err, "session_id", sessID)
+			slog.Debug(
+				"failed to receive payload lineage handoff",
+				"error",
+				err,
+				"session_id",
+				sessID,
+			)
 			return
 		}
 		defer payload.Close()
 		payloadPID := int(payload.Sender.Pid)
-		if payload.Metadata.CommandJail != commandJailRequired || !payloadLineageMatches(payloadPID, wrapperPID) {
-			slog.Debug("payload lineage handoff rejected", "payload_pid", payloadPID, "wrapper_pid", wrapperPID, "session_id", sessID)
+		if payload.Metadata.CommandJail != commandJailRequired ||
+			!payloadLineageMatches(payloadPID, wrapperPID) {
+			slog.Debug(
+				"payload lineage handoff rejected",
+				"payload_pid",
+				payloadPID,
+				"wrapper_pid",
+				wrapperPID,
+				"session_id",
+				sessID,
+			)
 			return
 		}
 		notifyFD := payload.NotifyFD
@@ -349,8 +517,23 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 				_ = lookupEndpoint.Close()
 			}
 		}()
-		slog.Debug("received child-owned notify fd", "fd", notifyFD.Fd(), "payload_pid", payloadPID, "wrapper_pid", wrapperPID, "session_id", sessID)
-		_ = unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
+		slog.Debug(
+			"received child-owned notify fd",
+			"fd",
+			notifyFD.Fd(),
+			"payload_pid",
+			payloadPID,
+			"wrapper_pid",
+			wrapperPID,
+			"session_id",
+			sessID,
+		)
+		_ = unix.SetsockoptTimeval(
+			int(parentSock.Fd()),
+			unix.SOL_SOCKET,
+			unix.SO_RCVTIMEO,
+			&unix.Timeval{},
+		)
 
 		var h *unixmon.ExecveHandler
 		if execveHandler != nil {
@@ -367,14 +550,25 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 					default:
 					}
 				}
-				slog.Debug("composition notify setup failed", "error", err, "wrapper_pid", wrapperPID, "session_id", sessID)
+				slog.Debug(
+					"composition notify setup failed",
+					"error",
+					err,
+					"wrapper_pid",
+					wrapperPID,
+					"session_id",
+					sessID,
+				)
 				return
 			}
 			if h != nil {
 				defer h.CloseComposition()
 			}
 		} else if compositionSetup != nil {
-			err := fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: composition setup channel has no bound configurer")
+			err := fmt.Errorf(
+				"E_COMPOSITION_BACKEND_UNAVAILABLE: composition setup channel has no bound " +
+					"configurer",
+			)
 			if ptraceReady != nil {
 				select {
 				case ptraceReady <- err:
@@ -413,7 +607,13 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 				ExpectedPayloadPID: payloadPID, Timeout: 250 * time.Millisecond,
 			})
 			if brokerErr != nil {
-				slog.Debug("file lookup broker unavailable", "error", brokerErr, "session_id", sessID)
+				slog.Debug(
+					"file lookup broker unavailable",
+					"error",
+					brokerErr,
+					"session_id",
+					sessID,
+				)
 				_ = lookupEndpoint.Close()
 			} else {
 				fileLookupBroker = candidate
@@ -424,7 +624,15 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 
 		// Create file handler if configured and hand off the optional probe API.
 		// Handler decisions deliberately do not consume it until phase 5.
-		fileHandler := createFileHandlerForState(fileMonitorCfg, pol, emitter, landlockEnabled, approvalsMgr, sess, runtimeState)
+		fileHandler := createFileHandlerForState(
+			fileMonitorCfg,
+			pol,
+			emitter,
+			landlockEnabled,
+			approvalsMgr,
+			sess,
+			runtimeState,
+		)
 		if fileHandler != nil && fileLookupBroker != nil {
 			fileHandler.SetFileLookupProbe(fileLookupBroker)
 		}
@@ -444,7 +652,10 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 				if runtimeState != nil {
 					commandIDFunc = runtimeState.CurrentCommandID
 				}
-				adapter := &approvalRequesterAdapter{mgr: approvalsMgr, commandIDFunc: commandIDFunc}
+				adapter := &approvalRequesterAdapter{
+					mgr:           approvalsMgr,
+					commandIDFunc: commandIDFunc,
+				}
 				if runtimeState != nil {
 					adapter.sensitive = runtimeState.CurrentExecutionSensitive
 				}
@@ -471,10 +682,22 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 					h.SetStubSymlinkPath(symlinkPath)
 					defer cleanup()
 				} else {
-					slog.Warn("exec: failed to create stub symlink", "error", symlinkErr, "session_id", sessID)
+					slog.Warn(
+						"exec: failed to create stub symlink",
+						"error",
+						symlinkErr,
+						"session_id",
+						sessID,
+					)
 				}
 			} else {
-				slog.Warn("exec: agentsh-stub not found, redirect will deny", "error", err, "session_id", sessID)
+				slog.Warn(
+					"exec: agentsh-stub not found, redirect will deny",
+					"error",
+					err,
+					"session_id",
+					sessID,
+				)
 			}
 		}
 
@@ -498,7 +721,8 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 			} else if pvrErr != nil {
 				if pol != nil {
 					slog.Warn("ProcessVMReadv failed — socket monitoring will be degraded "+
-						"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for file monitoring",
+						"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for "+
+						"file monitoring",
 						"payload_pid", payloadPID, "pvr_error", pvrErr)
 				} else {
 					slog.Debug("ProcessVMReadv failed but /proc/mem fallback works",
@@ -515,12 +739,26 @@ func startNotifyHandlerForState(ctx context.Context, parentSock *os.File, sessID
 		// non-nil *BlockListConfig (possibly with empty ActionByNr).
 		bl, _ := blockList.(*unixmon.BlockListConfig)
 		if bl != nil && len(bl.ActionByNr) > 0 && emitter == nil {
-			slog.Warn("seccomp: on_block=log/log_and_kill selected but no event emitter wired; events will be dropped",
-				"session_id", sessID)
+			slog.Warn(
+				"seccomp: on_block=log/log_and_kill selected but no event emitter wired; events "+
+					"will be dropped",
+				"session_id",
+				sessID,
+			)
 		}
 		go func() {
 			defer close(serveDone)
-			slog.Debug("starting ServeNotifyWithExecve", "session_id", sessID, "has_execve_handler", h != nil, "has_file_handler", fileHandler != nil, "has_policy", pol != nil)
+			slog.Debug(
+				"starting ServeNotifyWithExecve",
+				"session_id",
+				sessID,
+				"has_execve_handler",
+				h != nil,
+				"has_file_handler",
+				fileHandler != nil,
+				"has_policy",
+				pol != nil,
+			)
 			unixmon.ServeNotifyWithExecve(ctx, notifyFD, sessID, pol, emitter, h, fileHandler, bl)
 			slog.Debug("ServeNotifyWithExecve returned", "session_id", sessID)
 		}()

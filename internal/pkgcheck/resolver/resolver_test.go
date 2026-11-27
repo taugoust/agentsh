@@ -668,13 +668,19 @@ func TestNPMResolver_CustomConfig(t *testing.T) {
 // --- Registry field tests ---
 
 func TestNPMResolver_PlanCarriesRegistry(t *testing.T) {
-	plan, err := parseNPMDryRunOutput([]byte(`{"added":[{"name":"express","version":"4.18.2"}]}`), []string{"express"})
+	plan, err := parseNPMDryRunOutput(
+		[]byte(`{"added":[{"name":"express","version":"4.18.2"}]}`),
+		[]string{"express"},
+	)
 	require.NoError(t, err)
 	assert.Equal(t, "registry.npmjs.org", plan.Registry)
 }
 
 func TestPipResolver_PlanCarriesRegistry(t *testing.T) {
-	plan, err := parsePipDryRunOutput([]byte(`{"install":[{"metadata":{"name":"flask","version":"3.0.0"},"requested":true}]}`), []string{"flask"})
+	plan, err := parsePipDryRunOutput(
+		[]byte(`{"install":[{"metadata":{"name":"flask","version":"3.0.0"},"requested":true}]}`),
+		[]string{"flask"},
+	)
 	require.NoError(t, err)
 	assert.Equal(t, "pypi.org", plan.Registry)
 }
@@ -686,13 +692,19 @@ func TestUVResolver_PlanCarriesRegistry(t *testing.T) {
 }
 
 func TestPNPMResolver_PlanCarriesRegistry(t *testing.T) {
-	plan, err := parsePNPMDryRunOutput([]byte(`{"added":[{"name":"react","version":"18.2.0"}]}`), []string{"react"})
+	plan, err := parsePNPMDryRunOutput(
+		[]byte(`{"added":[{"name":"react","version":"18.2.0"}]}`),
+		[]string{"react"},
+	)
 	require.NoError(t, err)
 	assert.Equal(t, "registry.npmjs.org", plan.Registry)
 }
 
 func TestYarnResolver_PlanCarriesRegistry(t *testing.T) {
-	plan, err := parseYarnDryRunOutput([]byte(`{"added":[{"name":"typescript","version":"5.3.3"}]}`), []string{"typescript"})
+	plan, err := parseYarnDryRunOutput(
+		[]byte(`{"added":[{"name":"typescript","version":"5.3.3"}]}`),
+		[]string{"typescript"},
+	)
 	require.NoError(t, err)
 	assert.Equal(t, "registry.npmjs.org", plan.Registry)
 }
@@ -701,7 +713,10 @@ func TestPoetryResolver_PlanCarriesDefaultRegistry(t *testing.T) {
 	// Poetry source registries live in pyproject.toml; we don't parse it.
 	// The resolver defaults to pypi.org so the privacy filter works like pip/uv.
 	// Operators using a private registry must allowlist it via ExternalScanRegistries.
-	plan, err := parsePoetryDryRunOutput([]byte(`{"added":[{"name":"django","version":"5.0.1"}]}`), []string{"django"})
+	plan, err := parsePoetryDryRunOutput(
+		[]byte(`{"added":[{"name":"django","version":"5.0.1"}]}`),
+		[]string{"django"},
+	)
 	require.NoError(t, err)
 	assert.Equal(t, "pypi.org", plan.Registry)
 }
@@ -838,7 +853,11 @@ func TestNPMResolver_DetectRegistry(t *testing.T) {
 		want string
 	}{
 		{"default (no flag)", []string{"install", "lodash"}, "registry.npmjs.org"},
-		{"--registry space", []string{"install", "--registry", "https://internal.example/"}, "https://internal.example/"},
+		{
+			"--registry space",
+			[]string{"install", "--registry", "https://internal.example/"},
+			"https://internal.example/",
+		},
 		{"--registry=", []string{"install", "--registry=https://x/"}, "https://x/"},
 		{"--registry last", []string{"--registry", "https://r/"}, "https://r/"},
 	}
@@ -858,7 +877,11 @@ func TestPNPMResolver_DetectRegistry(t *testing.T) {
 		want string
 	}{
 		{"default", []string{"add", "react"}, "registry.npmjs.org"},
-		{"--registry space", []string{"add", "--registry", "https://internal.example/"}, "https://internal.example/"},
+		{
+			"--registry space",
+			[]string{"add", "--registry", "https://internal.example/"},
+			"https://internal.example/",
+		},
 		{"--registry=", []string{"add", "--registry=https://x/"}, "https://x/"},
 	}
 	for _, tt := range tests {
@@ -877,7 +900,11 @@ func TestYarnResolver_DetectRegistry(t *testing.T) {
 		want string
 	}{
 		{"default", []string{"add", "typescript"}, "registry.npmjs.org"},
-		{"--registry space", []string{"add", "--registry", "https://internal.example/"}, "https://internal.example/"},
+		{
+			"--registry space",
+			[]string{"add", "--registry", "https://internal.example/"},
+			"https://internal.example/",
+		},
 		{"--registry=", []string{"add", "--registry=https://x/"}, "https://x/"},
 	}
 	for _, tt := range tests {
@@ -896,14 +923,44 @@ func TestPipResolver_DetectRegistry(t *testing.T) {
 		want string
 	}{
 		{"default", []string{"install", "requests"}, "pypi.org"},
-		{"--index-url space", []string{"install", "--index-url", "https://internal/simple"}, "https://internal/simple"},
-		{"--index-url=", []string{"install", "--index-url=https://internal/simple"}, "https://internal/simple"},
-		{"-i space", []string{"install", "-i", "https://internal/simple"}, "https://internal/simple"},
+		{
+			"--index-url space",
+			[]string{"install", "--index-url", "https://internal/simple"},
+			"https://internal/simple",
+		},
+		{
+			"--index-url=",
+			[]string{"install", "--index-url=https://internal/simple"},
+			"https://internal/simple",
+		},
+		{
+			"-i space",
+			[]string{"install", "-i", "https://internal/simple"},
+			"https://internal/simple",
+		},
 		// --extra-index-url → ambiguous origin, return ""
-		{"--extra-index-url space", []string{"install", "requests", "--extra-index-url", "https://internal/simple"}, ""},
-		{"--extra-index-url=", []string{"install", "requests", "--extra-index-url=https://internal/simple"}, ""},
+		{
+			"--extra-index-url space",
+			[]string{"install", "requests", "--extra-index-url", "https://internal/simple"},
+			"",
+		},
+		{
+			"--extra-index-url=",
+			[]string{"install", "requests", "--extra-index-url=https://internal/simple"},
+			"",
+		},
 		// --index-url plus --extra-index-url → still ambiguous
-		{"index-url + extra", []string{"install", "--index-url", "https://primary/", "--extra-index-url", "https://extra/"}, ""},
+		{
+			"index-url + extra",
+			[]string{
+				"install",
+				"--index-url",
+				"https://primary/",
+				"--extra-index-url",
+				"https://extra/",
+			},
+			"",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -921,11 +978,27 @@ func TestUVResolver_DetectRegistry(t *testing.T) {
 		want string
 	}{
 		{"default", []string{"pip", "install", "flask"}, "pypi.org"},
-		{"--index-url space", []string{"pip", "install", "--index-url", "https://internal/simple"}, "https://internal/simple"},
-		{"--index-url=", []string{"pip", "install", "--index-url=https://internal/simple"}, "https://internal/simple"},
+		{
+			"--index-url space",
+			[]string{"pip", "install", "--index-url", "https://internal/simple"},
+			"https://internal/simple",
+		},
+		{
+			"--index-url=",
+			[]string{"pip", "install", "--index-url=https://internal/simple"},
+			"https://internal/simple",
+		},
 		// --extra-index-url → ambiguous origin, return ""
-		{"--extra-index-url space", []string{"pip", "install", "flask", "--extra-index-url", "https://internal/simple"}, ""},
-		{"--extra-index-url=", []string{"pip", "install", "flask", "--extra-index-url=https://internal/simple"}, ""},
+		{
+			"--extra-index-url space",
+			[]string{"pip", "install", "flask", "--extra-index-url", "https://internal/simple"},
+			"",
+		},
+		{
+			"--extra-index-url=",
+			[]string{"pip", "install", "flask", "--extra-index-url=https://internal/simple"},
+			"",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1062,7 +1135,10 @@ func TestNPMResolver_ExtractRegistryFlags(t *testing.T) {
 		want []string
 	}{
 		{[]string{"install", "lodash"}, nil},
-		{[]string{"install", "--registry", "https://internal/", "lodash"}, []string{"--registry", "https://internal/"}},
+		{
+			[]string{"install", "--registry", "https://internal/", "lodash"},
+			[]string{"--registry", "https://internal/"},
+		},
 		{[]string{"install", "--registry=https://x/", "lodash"}, []string{"--registry=https://x/"}},
 		{nil, nil},
 	}
@@ -1081,7 +1157,10 @@ func TestPNPMResolver_ExtractRegistryFlags(t *testing.T) {
 		want []string
 	}{
 		{[]string{"add", "react"}, nil},
-		{[]string{"add", "--registry", "https://internal/", "react"}, []string{"--registry", "https://internal/"}},
+		{
+			[]string{"add", "--registry", "https://internal/", "react"},
+			[]string{"--registry", "https://internal/"},
+		},
 		{[]string{"add", "--registry=https://x/", "react"}, []string{"--registry=https://x/"}},
 	}
 	for _, c := range cases {
@@ -1099,7 +1178,10 @@ func TestYarnResolver_ExtractRegistryFlags(t *testing.T) {
 		want []string
 	}{
 		{[]string{"add", "typescript"}, nil},
-		{[]string{"add", "--registry", "https://internal/", "typescript"}, []string{"--registry", "https://internal/"}},
+		{
+			[]string{"add", "--registry", "https://internal/", "typescript"},
+			[]string{"--registry", "https://internal/"},
+		},
 		{[]string{"add", "--registry=https://x/", "typescript"}, []string{"--registry=https://x/"}},
 	}
 	for _, c := range cases {
@@ -1117,13 +1199,35 @@ func TestPipResolver_ExtractIndexURLFlags(t *testing.T) {
 		want []string
 	}{
 		{[]string{"install", "requests"}, nil},
-		{[]string{"install", "--index-url", "https://internal/simple", "requests"}, []string{"--index-url", "https://internal/simple"}},
-		{[]string{"install", "--index-url=https://internal/simple", "requests"}, []string{"--index-url=https://internal/simple"}},
-		{[]string{"install", "-i", "https://internal/simple", "requests"}, []string{"-i", "https://internal/simple"}},
-		{[]string{"install", "--extra-index-url", "https://extra/simple", "requests"}, []string{"--extra-index-url", "https://extra/simple"}},
-		{[]string{"install", "--extra-index-url=https://extra/simple", "requests"}, []string{"--extra-index-url=https://extra/simple"}},
 		{
-			[]string{"install", "--index-url", "https://primary/", "--extra-index-url", "https://extra/", "requests"},
+			[]string{"install", "--index-url", "https://internal/simple", "requests"},
+			[]string{"--index-url", "https://internal/simple"},
+		},
+		{
+			[]string{"install", "--index-url=https://internal/simple", "requests"},
+			[]string{"--index-url=https://internal/simple"},
+		},
+		{
+			[]string{"install", "-i", "https://internal/simple", "requests"},
+			[]string{"-i", "https://internal/simple"},
+		},
+		{
+			[]string{"install", "--extra-index-url", "https://extra/simple", "requests"},
+			[]string{"--extra-index-url", "https://extra/simple"},
+		},
+		{
+			[]string{"install", "--extra-index-url=https://extra/simple", "requests"},
+			[]string{"--extra-index-url=https://extra/simple"},
+		},
+		{
+			[]string{
+				"install",
+				"--index-url",
+				"https://primary/",
+				"--extra-index-url",
+				"https://extra/",
+				"requests",
+			},
 			[]string{"--index-url", "https://primary/", "--extra-index-url", "https://extra/"},
 		},
 	}
@@ -1142,11 +1246,28 @@ func TestUVResolver_ExtractIndexURLFlags(t *testing.T) {
 		want []string
 	}{
 		{[]string{"pip", "install", "flask"}, nil},
-		{[]string{"pip", "install", "--index-url", "https://internal/simple", "flask"}, []string{"--index-url", "https://internal/simple"}},
-		{[]string{"pip", "install", "--index-url=https://internal/simple", "flask"}, []string{"--index-url=https://internal/simple"}},
-		{[]string{"pip", "install", "--extra-index-url", "https://extra/simple", "flask"}, []string{"--extra-index-url", "https://extra/simple"}},
 		{
-			[]string{"pip", "install", "--index-url", "https://primary/", "--extra-index-url", "https://extra/", "flask"},
+			[]string{"pip", "install", "--index-url", "https://internal/simple", "flask"},
+			[]string{"--index-url", "https://internal/simple"},
+		},
+		{
+			[]string{"pip", "install", "--index-url=https://internal/simple", "flask"},
+			[]string{"--index-url=https://internal/simple"},
+		},
+		{
+			[]string{"pip", "install", "--extra-index-url", "https://extra/simple", "flask"},
+			[]string{"--extra-index-url", "https://extra/simple"},
+		},
+		{
+			[]string{
+				"pip",
+				"install",
+				"--index-url",
+				"https://primary/",
+				"--extra-index-url",
+				"https://extra/",
+				"flask",
+			},
 			[]string{"--index-url", "https://primary/", "--extra-index-url", "https://extra/"},
 		},
 	}

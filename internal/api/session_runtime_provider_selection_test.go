@@ -21,7 +21,9 @@ func TestCreateSessionRejectsCallerRuntimeSelection(t *testing.T) {
 	handler := app.Router()
 	workspace := filepath.ToSlash(t.TempDir())
 
-	for _, field := range []string{"runtime", "runtime_profile", "runtime_provider", "runtime_options"} {
+	for _, field := range []string{
+		"runtime", "runtime_profile", "runtime_provider", "runtime_options",
+	} {
 		t.Run(field, func(t *testing.T) {
 			value := `"project-selected"`
 			if field == "runtime" || field == "runtime_options" {
@@ -31,8 +33,13 @@ func TestCreateSessionRejectsCallerRuntimeSelection(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body))
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req)
-			if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "runtime selection is operator-owned") {
-				t.Fatalf("runtime selection response = %d %s", recorder.Code, recorder.Body.String())
+			if recorder.Code != http.StatusBadRequest ||
+				!strings.Contains(recorder.Body.String(), "runtime selection is operator-owned") {
+				t.Fatalf(
+					"runtime selection response = %d %s",
+					recorder.Code,
+					recorder.Body.String(),
+				)
 			}
 		})
 	}
@@ -40,11 +47,14 @@ func TestCreateSessionRejectsCallerRuntimeSelection(t *testing.T) {
 
 func TestGRPCCreateSessionRejectsCallerRuntimeSelection(t *testing.T) {
 	app := &App{}
-	for _, field := range []string{"runtime", "runtime_profile", "runtime_provider", "runtime_options"} {
+	for _, field := range []string{
+		"runtime", "runtime_profile", "runtime_provider", "runtime_options",
+	} {
 		t.Run(field, func(t *testing.T) {
 			body := []byte(fmt.Sprintf(`{%q:"project-selected"}`, field))
 			_, err := app.grpcCreateSession(context.Background(), body)
-			if status.Code(err) != codes.InvalidArgument || !strings.Contains(err.Error(), "runtime selection is operator-owned") {
+			if status.Code(err) != codes.InvalidArgument ||
+				!strings.Contains(err.Error(), "runtime selection is operator-owned") {
 				t.Fatalf("gRPC runtime selection error = %v", err)
 			}
 		})

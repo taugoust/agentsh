@@ -73,7 +73,8 @@ func (pc *proxyConn) handleStartupMessage(ctx context.Context, m *pgproto3.Start
 	pc.state.dbUser = m.Parameters["user"]
 	pc.state.database = m.Parameters["database"]
 	pc.state.appName = m.Parameters["application_name"]
-	if v, ok := m.Parameters["replication"]; ok && v != "" && v != "false" && v != "off" && v != "0" {
+	if v, ok := m.Parameters["replication"]; ok && v != "" && v != "false" && v != "off" &&
+		v != "0" {
 		pc.state.replication = true
 	}
 
@@ -127,7 +128,10 @@ func (pc *proxyConn) dialUpstreamAndForward(ctx context.Context, m *pgproto3.Sta
 	pc.state.upstreamFE.Send(m)
 	if err := pc.state.upstreamFE.Flush(); err != nil {
 		pc.emitHandshakeFail(ctx, upstreamDialFailEventCode)
-		return pc.synthesizeError(upstreamDialFailErrorCode, fmt.Sprintf("AgentSH DB proxy: upstream send StartupMessage: %v", err))
+		return pc.synthesizeError(
+			upstreamDialFailErrorCode,
+			fmt.Sprintf("AgentSH DB proxy: upstream send StartupMessage: %v", err),
+		)
 	}
 
 	if err := forwardAuth(ctx, pc); err != nil {
@@ -158,14 +162,18 @@ func isTLSError(err error) bool {
 		return false
 	}
 	s := err.Error()
-	return strings.Contains(s, "tls:") || strings.Contains(s, "x509:") || strings.Contains(s, "TLS handshake")
+	return strings.Contains(s, "tls:") || strings.Contains(s, "x509:") ||
+		strings.Contains(s, "TLS handshake")
 }
 
 // forwardReplicationStartupAndPump is the replication-allowed allow path.
 // Dials upstream per service.TLSMode, forwards the StartupMessage, emits
 // degraded_visibility_warning{reason: replication_passthrough}, then runs
 // bytePump until either side closes.
-func (pc *proxyConn) forwardReplicationStartupAndPump(ctx context.Context, m *pgproto3.StartupMessage) error {
+func (pc *proxyConn) forwardReplicationStartupAndPump(
+	ctx context.Context,
+	m *pgproto3.StartupMessage,
+) error {
 	conn, fe, err := dialUpstream(ctx, pc.svc, pc.srv.cfg)
 	if err != nil {
 		code := upstreamDialFailEventCode
@@ -186,7 +194,10 @@ func (pc *proxyConn) forwardReplicationStartupAndPump(ctx context.Context, m *pg
 	pc.state.upstreamFE.Send(m)
 	if err := pc.state.upstreamFE.Flush(); err != nil {
 		pc.emitHandshakeFail(ctx, upstreamDialFailEventCode)
-		return pc.synthesizeError(upstreamDialFailErrorCode, fmt.Sprintf("AgentSH DB proxy: upstream send StartupMessage (replication): %v", err))
+		return pc.synthesizeError(
+			upstreamDialFailErrorCode,
+			fmt.Sprintf("AgentSH DB proxy: upstream send StartupMessage (replication): %v", err),
+		)
 	}
 
 	pc.emitDegradedVisibility(ctx, "replication_passthrough", "replication_opt_in")
@@ -215,7 +226,13 @@ func (pc *proxyConn) handleCancelRequest(ctx context.Context, m *pgproto3.Cancel
 		pc.emitCancelLifecycle(ctx, "db_cancel_unmatched", "unmatched_cancel_request", "")
 		return nil
 	case cancelLookupExpired:
-		pc.emitCancelLifecycleForEntry(ctx, entry, "db_cancel_after_disconnect", "cancel_after_disconnect", "")
+		pc.emitCancelLifecycleForEntry(
+			ctx,
+			entry,
+			"db_cancel_after_disconnect",
+			"cancel_after_disconnect",
+			"",
+		)
 		return nil
 	case cancelLookupFound:
 		// Continue below.
@@ -239,7 +256,13 @@ func (pc *proxyConn) handleCancelRequest(ctx context.Context, m *pgproto3.Cancel
 			"syn_pid", entry.SyntheticPID,
 			"err", err)
 		resultErr = "CANCEL_FORWARD_FAILED"
-		pc.emitCancelLifecycleForEntry(ctx, entry, "db_cancel_forward_failed", "forward_failed", resultErr)
+		pc.emitCancelLifecycleForEntry(
+			ctx,
+			entry,
+			"db_cancel_forward_failed",
+			"forward_failed",
+			resultErr,
+		)
 	}
 	pc.emitCancelEvent(ctx, entry, d, resultErr)
 	return nil
@@ -256,7 +279,12 @@ func (pc *proxyConn) evaluateMappedCancel(_ context.Context, entry cancelEntry) 
 	}, pc.srv.cfg.Policy)
 }
 
-func (pc *proxyConn) emitCancelEvent(ctx context.Context, entry cancelEntry, d policy.Decision, resultErr string) {
+func (pc *proxyConn) emitCancelEvent(
+	ctx context.Context,
+	entry cancelEntry,
+	d policy.Decision,
+	resultErr string,
+) {
 	if pc.srv.cfg.Sink == nil {
 		return
 	}
@@ -281,7 +309,11 @@ func (pc *proxyConn) emitCancelLifecycle(ctx context.Context, kind, reason, code
 	})
 }
 
-func (pc *proxyConn) emitCancelLifecycleForEntry(ctx context.Context, entry cancelEntry, kind, reason, code string) {
+func (pc *proxyConn) emitCancelLifecycleForEntry(
+	ctx context.Context,
+	entry cancelEntry,
+	kind, reason, code string,
+) {
 	if pc.srv.cfg.Sink == nil {
 		return
 	}
@@ -336,7 +368,9 @@ func (pc *proxyConn) synthesizeError(sqlstate, message string) error {
 const (
 	// SCRAM-SHA-256-PLUS fail-closed under terminate_* modes. Spec §13.1.
 	scramPlusErrorCode = "28000"
-	scramPlusMessage   = "AgentSH DB proxy cannot terminate channel-bound SCRAM (SCRAM-SHA-256-PLUS). Disable channel binding upstream or use TLS passthrough; see docs/agentsh-db-access-spec.md §13."
+	scramPlusMessage   = "AgentSH DB proxy cannot terminate channel-bound SCRAM " +
+		"(SCRAM-SHA-256-PLUS). Disable channel binding upstream or use TLS passthrough; see " +
+		"docs/agentsh-db-access-spec.md §13."
 	scramPlusEventCode = "SCRAM_PLUS_FAIL_CLOSED"
 
 	// Connection denied by policy; also used for replication denied in Plan 04b₂.

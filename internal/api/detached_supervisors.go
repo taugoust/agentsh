@@ -29,7 +29,9 @@ func (a *App) detachedSupervisorTimeout() time.Duration {
 	if a == nil || a.cfg == nil {
 		return 500 * time.Millisecond
 	}
-	d, err := time.ParseDuration(strings.TrimSpace(a.cfg.Sessions.DetachedSupervisors.RequestTimeout))
+	d, err := time.ParseDuration(
+		strings.TrimSpace(a.cfg.Sessions.DetachedSupervisors.RequestTimeout),
+	)
 	if err != nil || d <= 0 {
 		return 500 * time.Millisecond
 	}
@@ -94,25 +96,44 @@ func (a *App) detachedMetadataMatchesLiveRuntime(meta detached.Metadata) bool {
 	defer cancel()
 	var status detached.RuntimeStatus
 	c := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", a.detachedSupervisorTimeout())
-	if err := c.DoRawJSON(ctx, http.MethodGet, "/api/v1/detached/status", nil, &status); err != nil {
+	if err := c.DoRawJSON(
+		ctx,
+		http.MethodGet,
+		"/api/v1/detached/status",
+		nil,
+		&status,
+	); err != nil {
 		return false
 	}
 	return status.ProtocolVersion == meta.ProtocolVersion && status.SessionID == meta.SessionID &&
 		status.Generation == meta.Generation && status.IncarnationID == meta.IncarnationID &&
-		status.OwnerPID == meta.OwnerPID && status.OwnerStartIdentity == meta.OwnerStartIdentity && status.BootID == meta.BootID
+		status.OwnerPID == meta.OwnerPID &&
+		status.OwnerStartIdentity == meta.OwnerStartIdentity &&
+		status.BootID == meta.BootID
 }
 
 func (a *App) detachedSupervisorClient(s detachedSupervisor) *client.Client {
-	return client.NewWithTimeout("unix://"+s.Socket, "", a.detachedSupervisorTimeout()).WithDetachedControlToken(s.Meta.EventToken)
+	return client.NewWithTimeout("unix://"+s.Socket, "", a.detachedSupervisorTimeout()).
+		WithDetachedControlToken(s.Meta.EventToken)
 }
 
-func (a *App) queryDetachedJSON(ctx context.Context, s detachedSupervisor, path string, out any) error {
+func (a *App) queryDetachedJSON(
+	ctx context.Context,
+	s detachedSupervisor,
+	path string,
+	out any,
+) error {
 	ctx, cancel := context.WithTimeout(ctx, a.detachedSupervisorTimeout())
 	defer cancel()
 	return a.detachedSupervisorClient(s).DoRawJSON(ctx, http.MethodGet, path, nil, out)
 }
 
-func (a *App) postDetachedRaw(ctx context.Context, s detachedSupervisor, path string, raw []byte) error {
+func (a *App) postDetachedRaw(
+	ctx context.Context,
+	s detachedSupervisor,
+	path string,
+	raw []byte,
+) error {
 	ctx, cancel := context.WithTimeout(ctx, a.detachedSupervisorTimeout())
 	defer cancel()
 	return a.detachedSupervisorClient(s).DoRawJSON(ctx, http.MethodPost, path, raw, nil)
@@ -142,7 +163,11 @@ type detachedRelay struct {
 }
 
 func (a *App) detachedRelayFor(sup detachedSupervisor) *detachedRelay {
-	identity := detachedtransport.Identity{SessionID: sup.Meta.SessionID, Generation: sup.Meta.Generation, IncarnationID: sup.Meta.IncarnationID}
+	identity := detachedtransport.Identity{
+		SessionID:     sup.Meta.SessionID,
+		Generation:    sup.Meta.Generation,
+		IncarnationID: sup.Meta.IncarnationID,
+	}
 	a.detachedRouteMu.Lock()
 	defer a.detachedRouteMu.Unlock()
 	if a.detachedRelays == nil {
@@ -155,7 +180,13 @@ func (a *App) detachedRelayFor(sup detachedSupervisor) *detachedRelay {
 	}
 	relay := a.detachedRelays[identity]
 	if relay == nil {
-		relay = &detachedRelay{identity: identity, supervisor: sup, pending: make(map[string]approvals.Request), outbox: make(map[uint64]detachedtransport.Record), decisions: make(map[string]detachedtransport.Record)}
+		relay = &detachedRelay{
+			identity:   identity,
+			supervisor: sup,
+			pending:    make(map[string]approvals.Request),
+			outbox:     make(map[uint64]detachedtransport.Record),
+			decisions:  make(map[string]detachedtransport.Record),
+		}
 		a.detachedRelays[identity] = relay
 	} else {
 		relay.mu.Lock()
@@ -177,13 +208,37 @@ func (a *App) exchangeDetachedRelay(ctx context.Context, relay *detachedRelay) e
 			records = append(records, record)
 		}
 	}
-	request := detachedtransport.ExchangeRequest{Version: detachedtransport.Version, Identity: relay.identity, Credential: relay.supervisor.Meta.EventToken, Cursor: relay.cursor, AckFloor: relay.ack, Limit: 256, Records: records}
-	response, err := client.ExchangeDetachedControl(ctx, relay.supervisor.Socket, relay.supervisor.Meta.EventToken, relay.ack, request, a.detachedSupervisorTimeout())
+	request := detachedtransport.ExchangeRequest{
+		Version:    detachedtransport.Version,
+		Identity:   relay.identity,
+		Credential: relay.supervisor.Meta.EventToken,
+		Cursor:     relay.cursor,
+		AckFloor:   relay.ack,
+		Limit:      256,
+		Records:    records,
+	}
+	response, err := client.ExchangeDetachedControl(
+		ctx,
+		relay.supervisor.Socket,
+		relay.supervisor.Meta.EventToken,
+		relay.ack,
+		request,
+		a.detachedSupervisorTimeout(),
+	)
 	if err != nil {
 		var httpErr *client.HTTPError
-		if errors.As(err, &httpErr) && (httpErr.StatusCode == http.StatusBadRequest || httpErr.StatusCode == http.StatusNotFound) && relay.ack == 0 && len(relay.outbox) == 0 {
+		if errors.As(err, &httpErr) &&
+			(httpErr.StatusCode == http.StatusBadRequest ||
+				httpErr.StatusCode == http.StatusNotFound) &&
+			relay.ack == 0 &&
+			len(relay.outbox) == 0 {
 			var pending []approvals.Request
-			if legacyErr := a.queryDetachedJSON(ctx, relay.supervisor, "/api/v1/approvals", &pending); legacyErr != nil {
+			if legacyErr := a.queryDetachedJSON(
+				ctx,
+				relay.supervisor,
+				"/api/v1/approvals",
+				&pending,
+			); legacyErr != nil {
 				return errors.Join(err, legacyErr)
 			}
 			relay.pending = make(map[string]approvals.Request, len(pending))
@@ -217,7 +272,13 @@ func (a *App) listDetachedApprovals(ctx context.Context) []any {
 	for _, sup := range supervisors {
 		relay := a.detachedRelayFor(sup)
 		if err := a.exchangeDetachedRelay(ctx, relay); err != nil {
-			slog.Debug("detached control exchange failed", "session_id", sup.Meta.SessionID, "error", err)
+			slog.Debug(
+				"detached control exchange failed",
+				"session_id",
+				sup.Meta.SessionID,
+				"error",
+				err,
+			)
 			continue
 		}
 		relay.mu.Lock()
@@ -231,7 +292,11 @@ func (a *App) listDetachedApprovals(ctx context.Context) []any {
 	return out
 }
 
-func (a *App) resolveDetachedControlApproval(ctx context.Context, id string, raw []byte) (int, map[string]any, bool) {
+func (a *App) resolveDetachedControlApproval(
+	ctx context.Context,
+	id string,
+	raw []byte,
+) (int, map[string]any, bool) {
 	resolution, err := decodeApprovalResolution(raw)
 	if err != nil {
 		return http.StatusBadRequest, map[string]any{"error": err.Error()}, true
@@ -265,14 +330,21 @@ func (a *App) resolveDetachedControlApproval(ctx context.Context, id string, raw
 		return 0, nil, false
 	}
 	if len(candidates) != 1 {
-		return http.StatusConflict, map[string]any{"error": "approval id is ambiguous across detached incarnations"}, true
+		return http.StatusConflict, map[string]any{
+			"error": "approval id is ambiguous across detached incarnations",
+		}, true
 	}
 	relay := candidates[0]
 	relay.mu.Lock()
 	if relay.legacy {
 		supervisor := relay.supervisor
 		relay.mu.Unlock()
-		if err := a.postDetachedRaw(ctx, supervisor, escapedAPIPath("approvals", id), raw); err != nil {
+		if err := a.postDetachedRaw(
+			ctx,
+			supervisor,
+			escapedAPIPath("approvals", id),
+			raw,
+		); err != nil {
 			return http.StatusServiceUnavailable, map[string]any{"error": err.Error()}, true
 		}
 		return http.StatusOK, map[string]any{"ok": true}, true
@@ -280,7 +352,9 @@ func (a *App) resolveDetachedControlApproval(ctx context.Context, id string, raw
 	if existing, ok := relay.decisions[id]; ok {
 		if existing.Resolution == nil || !sameResolutionDecision(*existing.Resolution, resolution) {
 			relay.mu.Unlock()
-			return http.StatusConflict, map[string]any{"error": "conflicting detached approval resolution replay"}, true
+			return http.StatusConflict, map[string]any{
+				"error": "conflicting detached approval resolution replay",
+			}, true
 		}
 	} else {
 		relay.next++
@@ -295,7 +369,9 @@ func (a *App) resolveDetachedControlApproval(ctx context.Context, id string, raw
 	}
 	relay.mu.Unlock()
 	if err := a.exchangeDetachedRelay(ctx, relay); err != nil {
-		return http.StatusServiceUnavailable, map[string]any{"error": "detached approval resolution is retained for replay: " + err.Error()}, true
+		return http.StatusServiceUnavailable, map[string]any{
+			"error": "detached approval resolution is retained for replay: " + err.Error(),
+		}, true
 	}
 	return http.StatusOK, map[string]any{"ok": true}, true
 }
@@ -322,7 +398,15 @@ func (a *App) listDetachedArray(ctx context.Context, path string) []any {
 			defer wg.Done()
 			var items []any
 			if err := a.queryDetachedJSON(ctx, sup, path, &items); err != nil {
-				slog.Debug("detached supervisor query failed", "session_id", sup.Meta.SessionID, "path", path, "error", err)
+				slog.Debug(
+					"detached supervisor query failed",
+					"session_id",
+					sup.Meta.SessionID,
+					"path",
+					path,
+					"error",
+					err,
+				)
 				return
 			}
 			ch <- result{sup: sup, items: items}
@@ -391,11 +475,24 @@ func detachedForwardID(path string) string {
 	return ""
 }
 
-func (a *App) postDetachedRawLogged(ctx context.Context, sup detachedSupervisor, path string, raw []byte) bool {
+func (a *App) postDetachedRawLogged(
+	ctx context.Context,
+	sup detachedSupervisor,
+	path string,
+	raw []byte,
+) bool {
 	if err := a.postDetachedRaw(ctx, sup, path, raw); err == nil {
 		return true
 	} else if !isHTTPNotFound(err) && !isHTTPBadRequest(err) {
-		slog.Debug("detached supervisor post failed", "session_id", sup.Meta.SessionID, "path", path, "error", err)
+		slog.Debug(
+			"detached supervisor post failed",
+			"session_id",
+			sup.Meta.SessionID,
+			"path",
+			path,
+			"error",
+			err,
+		)
 	}
 	return false
 }
@@ -419,7 +516,9 @@ func (a *App) forwardDetachedRaw(ctx context.Context, path string, raw []byte) b
 	return false
 }
 
-func staleDetachedNetworkSnapshot(report *detached.NetworkEnforcement) *detached.NetworkEnforcement {
+func staleDetachedNetworkSnapshot(
+	report *detached.NetworkEnforcement,
+) *detached.NetworkEnforcement {
 	return detached.StaleNetworkEnforcementSnapshot(report)
 }
 
@@ -438,7 +537,12 @@ func (a *App) listDetachedSupervisors(w http.ResponseWriter, r *http.Request) {
 			"created_at":      sup.Meta.CreatedAt,
 		}
 		var live detached.NetworkEnforcement
-		if err := a.queryDetachedJSON(r.Context(), sup, escapedAPIPath("sessions", sup.Meta.SessionID, "network-enforcement"), &live); err == nil {
+		if err := a.queryDetachedJSON(
+			r.Context(),
+			sup,
+			escapedAPIPath("sessions", sup.Meta.SessionID, "network-enforcement"),
+			&live,
+		); err == nil {
 			live.Normalize()
 			item["network_enforcement"] = &live
 			item["network_enforcement_source"] = "supervisor-runtime"

@@ -114,7 +114,10 @@ type socketScore struct {
 	License       float64 `json:"license"`
 }
 
-func (p *socketProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequest) (*pkgcheck.CheckResponse, error) {
+func (p *socketProvider) CheckBatch(
+	ctx context.Context,
+	req pkgcheck.CheckRequest,
+) (*pkgcheck.CheckResponse, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("socket: API key is required")
 	}
@@ -146,7 +149,12 @@ func (p *socketProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckReque
 
 	var socketResp socketResponse
 	err = callWithBreaker(p.breaker, ctx, isSocketAuthError, func() error {
-		httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, p.baseURL+"/v0/scan/batch", bytes.NewReader(body))
+		httpReq, err := http.NewRequestWithContext(
+			reqCtx,
+			http.MethodPost,
+			p.baseURL+"/v0/scan/batch",
+			bytes.NewReader(body),
+		)
 		if err != nil {
 			return fmt.Errorf("socket: create request: %w", err)
 		}
@@ -161,7 +169,8 @@ func (p *socketProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckReque
 
 		if resp.StatusCode != http.StatusOK {
 			rb, _ := io.ReadAll(resp.Body)
-			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			if resp.StatusCode == http.StatusUnauthorized ||
+				resp.StatusCode == http.StatusForbidden {
 				return &socketAuthError{status: resp.StatusCode, body: string(rb)}
 			}
 			return fmt.Errorf("socket: unexpected status %d: %s", resp.StatusCode, string(rb))
@@ -210,7 +219,10 @@ func (p *socketProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckReque
 	}, nil
 }
 
-func (p *socketProvider) mapFindings(packages []pkgcheck.PackageRef, resp *socketResponse) []pkgcheck.Finding {
+func (p *socketProvider) mapFindings(
+	packages []pkgcheck.PackageRef,
+	resp *socketResponse,
+) []pkgcheck.Finding {
 	var findings []pkgcheck.Finding
 
 	// Build lookup from name@version -> PackageRef.

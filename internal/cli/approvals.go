@@ -66,7 +66,11 @@ func newApprovalsWatchCmd() *cobra.Command {
 	return cmd
 }
 
-func listApprovalsForWatch(cmd *cobra.Command, sessionID string, all bool) ([]map[string]any, error) {
+func listApprovalsForWatch(
+	cmd *cobra.Command,
+	sessionID string,
+	all bool,
+) ([]map[string]any, error) {
 	if sessionID != "" {
 		c, _, err := detachedClientForSession(sessionID)
 		if err != nil {
@@ -97,16 +101,34 @@ func listApprovalsForWatch(cmd *cobra.Command, sessionID string, all bool) ([]ma
 		return out, nil
 	}
 	cfg := getClientConfig(cmd)
-	c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
+	c, err := client.NewForCLI(
+		client.CLIOptions{
+			HTTPBaseURL:   cfg.serverAddr,
+			GRPCAddr:      cfg.grpcAddr,
+			APIKey:        cfg.apiKey,
+			Transport:     cfg.transport,
+			ClientTimeout: cfg.getClientTimeout(),
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
 	return c.ListApprovals(cmd.Context())
 }
 
-func resolveApprovalWithClient(cmd *cobra.Command, c client.CLIClient, id, decision, reason, scope string) error {
+func resolveApprovalWithClient(
+	cmd *cobra.Command,
+	c client.CLIClient,
+	id, decision, reason, scope string,
+) error {
 	if scoped, ok := c.(interface {
-		ResolveApprovalWithScope(ctx context.Context, id string, decision string, reason string, scope string) error
+		ResolveApprovalWithScope(
+			ctx context.Context,
+			id string,
+			decision string,
+			reason string,
+			scope string,
+		) error
 	}); ok {
 		return scoped.ResolveApprovalWithScope(cmd.Context(), id, decision, reason, scope)
 	}
@@ -124,7 +146,13 @@ func resolveApprovalAcrossDetached(cmd *cobra.Command, id, decision, reason, sco
 			continue
 		}
 		c := client.New("unix://"+meta.SupervisorSock, "")
-		if err := c.ResolveApprovalWithScope(cmd.Context(), id, decision, reason, scope); err == nil {
+		if err := c.ResolveApprovalWithScope(
+			cmd.Context(),
+			id,
+			decision,
+			reason,
+			scope,
+		); err == nil {
 			return nil
 		} else {
 			lastErr = err
@@ -154,16 +182,37 @@ func newApprovalsResolveCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if err := c.ResolveApprovalWithScope(cmd.Context(), args[0], decision, reason, scope); err != nil {
+				if err := c.ResolveApprovalWithScope(
+					cmd.Context(),
+					args[0],
+					decision,
+					reason,
+					scope,
+				); err != nil {
 					return err
 				}
 			} else {
 				cfg := getClientConfig(cmd)
-				c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
+				c, err := client.NewForCLI(
+					client.CLIOptions{
+						HTTPBaseURL:   cfg.serverAddr,
+						GRPCAddr:      cfg.grpcAddr,
+						APIKey:        cfg.apiKey,
+						Transport:     cfg.transport,
+						ClientTimeout: cfg.getClientTimeout(),
+					},
+				)
 				if err != nil {
 					return err
 				}
-				if err := resolveApprovalWithClient(cmd, c, args[0], decision, reason, scope); err != nil {
+				if err := resolveApprovalWithClient(
+					cmd,
+					c,
+					args[0],
+					decision,
+					reason,
+					scope,
+				); err != nil {
 					if isConnectionError(err) {
 						return resolveApprovalAcrossDetached(cmd, args[0], decision, reason, scope)
 					}

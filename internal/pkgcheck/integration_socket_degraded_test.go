@@ -40,7 +40,12 @@ func TestIntegration_SocketDownDegradesToOSV(t *testing.T) {
 	// OSV: returns one critical vuln for lodash.
 	osvSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		captureBody(&osvBodies, r)
-		_, _ = w.Write([]byte(`{"results":[{"vulns":[{"id":"GHSA-xxxx","summary":"sample","severity":[{"type":"CVSS_V3","score":"9.8"}]}]}]}`))
+		_, _ = w.Write(
+			[]byte(
+				`{"results":[{"vulns":[{"id":"GHSA-xxxx","summary":"sample",` +
+					`"severity":[{"type":"CVSS_V3","score":"9.8"}]}]}]}`,
+			),
+		)
 	}))
 	defer osvSrv.Close()
 
@@ -53,12 +58,20 @@ func TestIntegration_SocketDownDegradesToOSV(t *testing.T) {
 		PrivacyFilter: pf,
 		Providers: map[string]pkgcheck.ProviderEntry{
 			"socket": {
-				Provider:  provider.NewSocketProvider(provider.SocketConfig{BaseURL: socketSrv.URL, APIKey: "tk", Timeout: time.Second}),
+				Provider: provider.NewSocketProvider(
+					provider.SocketConfig{
+						BaseURL: socketSrv.URL,
+						APIKey:  "tk",
+						Timeout: time.Second,
+					},
+				),
 				Timeout:   time.Second,
 				OnFailure: "warn", // fail_mode: degraded
 			},
 			"osv": {
-				Provider:  provider.NewOSVProvider(provider.OSVConfig{BaseURL: osvSrv.URL, Timeout: time.Second}),
+				Provider: provider.NewOSVProvider(
+					provider.OSVConfig{BaseURL: osvSrv.URL, Timeout: time.Second},
+				),
 				Timeout:   time.Second,
 				OnFailure: "warn",
 			},
@@ -83,7 +96,10 @@ func TestIntegration_SocketDownDegradesToOSV(t *testing.T) {
 	}
 
 	ev := pkgcheck.NewEvaluator([]policy.PackageRule{
-		{Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "critical"}, Action: "deny"},
+		{
+			Match:  policy.PackageMatch{FindingType: "vulnerability", Severity: "critical"},
+			Action: "deny",
+		},
 		{Match: policy.PackageMatch{}, Action: "allow"},
 	})
 	verdict := ev.EvaluateWithContext(pkgcheck.EvalContext{
@@ -93,7 +109,8 @@ func TestIntegration_SocketDownDegradesToOSV(t *testing.T) {
 		Skipped:        skipped,
 	})
 
-	if !strings.Contains(verdict.Summary, "degraded:") || !strings.Contains(verdict.Summary, "socket") {
+	if !strings.Contains(verdict.Summary, "degraded:") ||
+		!strings.Contains(verdict.Summary, "socket") {
 		t.Errorf("verdict summary should be annotated degraded for socket, got %q", verdict.Summary)
 	}
 	if verdict.Action != pkgcheck.VerdictBlock {

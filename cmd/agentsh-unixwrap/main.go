@@ -5,7 +5,8 @@
 // to the server over an inherited socketpair (SCM_RIGHTS), then execs the target command.
 // Usage: agentsh-unixwrap -- <command> [args...]
 // Requires env AGENTSH_NOTIFY_SOCK_FD set to the fd number of the socketpair to the server.
-// If seccomp user-notify is unsupported, exits 0 with a message (server should treat as monitor-only).
+// If seccomp user-notify is unsupported, exits 0 with a message (server should treat as
+// monitor-only).
 
 package main
 
@@ -185,7 +186,8 @@ func legacyMain() {
 	// early and fail with a clear error instead of silently breaking.
 	if notifFD >= 0 {
 		if err := unixmon.ProbeNotifReceive(notifFD); err != nil {
-			if cfg.FileMonitorEnabled || cfg.ExecveEnabled || (cfg.CommandJail != nil && cfg.CommandJail.Required) {
+			if cfg.FileMonitorEnabled || cfg.ExecveEnabled ||
+				(cfg.CommandJail != nil && cfg.CommandJail.Required) {
 				// These features trap critical syscalls (openat, execve).
 				// Without a working notification handler, the command cannot
 				// function at all — fail fast with a clear error.
@@ -195,13 +197,17 @@ func legacyMain() {
 					"blocked (likely by AppArmor or container security policy). Without a\n"+
 					"working notification handler, all intercepted syscalls will fail.\n"+
 					"Fix: set 'sandbox.seccomp.file_monitor.enabled: false' in your config,\n"+
-					"or adjust the container's security profile to allow seccomp notify ioctls.", err)
+					"or adjust the container's security profile to allow seccomp notify ioctls.",
+					err)
 			}
 			// Only unix_sockets / metadata monitoring is enabled. The intercepted
 			// syscalls (socket, connect, bind, etc.) are not critical for most
 			// commands. Warn and proceed — socket monitoring will be degraded but
 			// the command can still run.
-			log.Printf("WARNING: seccomp notify probe failed (%v); unix socket monitoring degraded", err)
+			log.Printf(
+				"WARNING: seccomp notify probe failed (%v); unix socket monitoring degraded",
+				err,
+			)
 		}
 	}
 
@@ -225,8 +231,16 @@ func legacyMain() {
 		// Wait for ACK from the server confirming it has received the notify fd,
 		// installed the command cgroup/network gate, and started the handler.
 		// A bounded raw-socket timeout keeps a crashed parent fail-closed.
-		_ = unix.SetsockoptTimeval(sockFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: 30})
-		if err := waitForControlByte(func(b []byte) (int, error) { return unix.Read(sockFD, b) }, 0x01); err != nil {
+		_ = unix.SetsockoptTimeval(
+			sockFD,
+			unix.SOL_SOCKET,
+			unix.SO_RCVTIMEO,
+			&unix.Timeval{Sec: 30},
+		)
+		if err := waitForControlByte(
+			func(b []byte) (int, error) { return unix.Read(sockFD, b) },
+			0x01,
+		); err != nil {
 			fatalf("ACK handshake failed: %v", err)
 		}
 		_ = unix.SetsockoptTimeval(sockFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
@@ -265,9 +279,17 @@ func legacyMain() {
 			fatalf("send READY byte: %v", err)
 		}
 		// Set 30s receive timeout to prevent hanging if server crashes.
-		_ = unix.SetsockoptTimeval(sockFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: 30})
+		_ = unix.SetsockoptTimeval(
+			sockFD,
+			unix.SOL_SOCKET,
+			unix.SO_RCVTIMEO,
+			&unix.Timeval{Sec: 30},
+		)
 		// Wait for GO byte, retrying on EINTR. Validate the byte value.
-		if err := waitForControlByte(func(b []byte) (int, error) { return unix.Read(sockFD, b) }, 'G'); err != nil {
+		if err := waitForControlByte(
+			func(b []byte) (int, error) { return unix.Read(sockFD, b) },
+			'G',
+		); err != nil {
 			fatalf("wait for GO byte (30s timeout): %v", err)
 		}
 	}
@@ -399,7 +421,10 @@ func readControlByte(readFn func([]byte) (int, error)) (byte, error) {
 			return 0, fmt.Errorf("read: %w", err)
 		}
 		if n != 1 {
-			return 0, fmt.Errorf("expected 1 ACK byte, got %d (server may have closed connection)", n)
+			return 0, fmt.Errorf(
+				"expected 1 ACK byte, got %d (server may have closed connection)",
+				n,
+			)
 		}
 		return buf[0], nil
 	}
@@ -504,5 +529,9 @@ func enforcePreparedLandlock(prepared *preparedLandlockRuleset) {
 		log.Printf("landlock: enforce: %v (continuing without)", err)
 		return
 	}
-	log.Printf("landlock: restrictions applied (abi=%d, workspace=%s)", prepared.abi, prepared.workspace)
+	log.Printf(
+		"landlock: restrictions applied (abi=%d, workspace=%s)",
+		prepared.abi,
+		prepared.workspace,
+	)
 }

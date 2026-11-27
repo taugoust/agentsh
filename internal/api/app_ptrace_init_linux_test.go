@@ -133,7 +133,9 @@ func TestInitPtraceTracer_AttachModePidFromTargetPID(t *testing.T) {
 	})
 
 	if !waitForTraceeCount(t, app, 3*time.Second) {
-		t.Fatalf("tracer did not register a tracee within 3s — initPtraceTracer is not wiring TargetPID")
+		t.Fatalf(
+			"tracer did not register a tracee within 3s — initPtraceTracer is not wiring TargetPID",
+		)
 	}
 }
 

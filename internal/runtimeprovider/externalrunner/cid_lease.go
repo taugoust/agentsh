@@ -23,12 +23,18 @@ type CIDLease struct {
 
 func (l CIDLease) Validate(cidMin, cidMax uint32) error {
 	if l.SchemaVersion != cidLeaseSchemaVersion {
-		return fmt.Errorf("external runner CID lease schema version %d is unsupported", l.SchemaVersion)
+		return fmt.Errorf(
+			"external runner CID lease schema version %d is unsupported",
+			l.SchemaVersion,
+		)
 	}
 	if l.CID < cidMin || l.CID > cidMax || l.CID < 3 || l.CID == ^uint32(0) {
 		return fmt.Errorf("external runner CID lease is outside its operator range")
 	}
-	if err := runtimeprovider.ValidateName(l.SessionID); err != nil || !strings.HasPrefix(l.SessionID, "session-") {
+	if err := runtimeprovider.ValidateName(
+		l.SessionID,
+	); err != nil ||
+		!strings.HasPrefix(l.SessionID, "session-") {
 		return fmt.Errorf("external runner CID lease session identity is invalid")
 	}
 	if !validHexSecret(l.LeaseID) {
@@ -40,7 +46,11 @@ func (l CIDLease) Validate(cidMin, cidMax uint32) error {
 	return nil
 }
 
-func AllocateCID(ctx context.Context, root, sessionID string, cidMin, cidMax uint32) (CIDLease, error) {
+func AllocateCID(
+	ctx context.Context,
+	root, sessionID string,
+	cidMin, cidMax uint32,
+) (CIDLease, error) {
 	if err := validateCIDLeaseRequest(root, sessionID, cidMin, cidMax); err != nil {
 		return CIDLease{}, err
 	}
@@ -71,7 +81,10 @@ func validateCIDLeaseRequest(root, sessionID string, cidMin, cidMax uint32) erro
 	if err := validateCIDLeaseRoot(root); err != nil {
 		return err
 	}
-	if err := runtimeprovider.ValidateName(sessionID); err != nil || !strings.HasPrefix(sessionID, "session-") {
+	if err := runtimeprovider.ValidateName(
+		sessionID,
+	); err != nil ||
+		!strings.HasPrefix(sessionID, "session-") {
 		return fmt.Errorf("external runner CID session identity is invalid")
 	}
 	if cidMin < 3 || cidMax == ^uint32(0) || cidMin > cidMax || cidMax-cidMin > 65535 {
@@ -89,7 +102,8 @@ func validHexSecret(value string) bool {
 }
 
 func validateCIDLeaseRoot(root string) error {
-	if !filepath.IsAbs(root) || filepath.Clean(root) != root || filepath.Base(root) == string(filepath.Separator) {
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root ||
+		filepath.Base(root) == string(filepath.Separator) {
 		return fmt.Errorf("external runner CID lease root must be clean and absolute")
 	}
 	return nil

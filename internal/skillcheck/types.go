@@ -32,7 +32,8 @@ type SkillManifest struct {
 	Name        string   `json:"name" yaml:"name"`
 	Description string   `json:"description,omitempty" yaml:"description,omitempty"`
 	Allowed     []string `json:"allowed,omitempty" yaml:"allowed,omitempty"`
-	Source      string   `json:"source,omitempty" yaml:"source,omitempty"` // optional fallback for Origin
+	// optional fallback for Origin
+	Source string `json:"source,omitempty" yaml:"source,omitempty"`
 }
 
 // ScanRequest describes one skill to scan.

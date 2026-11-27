@@ -81,9 +81,13 @@ func TestCommandOutputArtifactCapture_DirenvAtomicFiltering(t *testing.T) {
 	s.ReplaceDirenvEnvironment(map[string]string{"OLD": "keep", "REMOVE": "old"})
 	old, generation := s.DirenvEnvironment()
 	result := evaluateDirenvResult(cfg, s, old, generation, internalSensitiveExecResult{
-		Stdout: []byte(`{"DEV_SHELL":"ready","REMOVE":null,"HOME":"stolen","project_token":"secret","database_url":"stolen"}`),
+		Stdout: []byte(
+			`{"DEV_SHELL":"ready","REMOVE":null,"HOME":"stolen","project_token":"secret",` +
+				`"database_url":"stolen"}`,
+		),
 	})
-	if result.State != "loaded" || result.SetCount != 1 || result.UnsetCount != 1 || result.RejectedCount != 3 {
+	if result.State != "loaded" || result.SetCount != 1 || result.UnsetCount != 1 ||
+		result.RejectedCount != 3 {
 		t.Fatalf("result = %#v", result)
 	}
 	got, _ := s.DirenvEnvironment()
@@ -104,7 +108,12 @@ func TestCommandOutputArtifactCapture_DirenvAtomicFiltering(t *testing.T) {
 			failed := evaluateDirenvResult(cfg, s, before, beforeGeneration, run)
 			after, afterGeneration := s.DirenvEnvironment()
 			if !reflect.DeepEqual(before, after) || beforeGeneration != afterGeneration {
-				t.Fatalf("failed refresh committed: result=%#v before=%#v after=%#v", failed, before, after)
+				t.Fatalf(
+					"failed refresh committed: result=%#v before=%#v after=%#v",
+					failed,
+					before,
+					after,
+				)
 			}
 		})
 	}
@@ -123,14 +132,25 @@ func TestCommandOutputArtifactCapture_DirenvRevokesStalePolicyAndServiceValues(t
 	s.SetServiceEnvVars(map[string]string{"service_stale": "supervisor-owned"})
 	old, _ := s.DirenvEnvironment()
 	next, generation, removed := pruneDirenvEnvironment(cfg, s, old)
-	if removed != 2 || generation != 2 || !reflect.DeepEqual(next, map[string]string{"KEEP": "current"}) {
-		t.Fatalf("policy/service transition = next=%#v generation=%d removed=%d", next, generation, removed)
+	if removed != 2 || generation != 2 ||
+		!reflect.DeepEqual(next, map[string]string{"KEEP": "current"}) {
+		t.Fatalf(
+			"policy/service transition = next=%#v generation=%d removed=%d",
+			next,
+			generation,
+			removed,
+		)
 	}
 
 	cfg.Enabled = false
 	next, generation, removed = pruneDirenvEnvironment(cfg, s, next)
 	if removed != 1 || generation != 3 || len(next) != 0 {
-		t.Fatalf("disabled transition = next=%#v generation=%d removed=%d", next, generation, removed)
+		t.Fatalf(
+			"disabled transition = next=%#v generation=%d removed=%d",
+			next,
+			generation,
+			removed,
+		)
 	}
 }
 
@@ -141,14 +161,22 @@ func TestDirenvFileWithinWorkspaceDoesNotSearchParents(t *testing.T) {
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(parent, ".envrc"), []byte("outside\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(parent, ".envrc"),
+		[]byte("outside\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	found, err := direnvFileWithinWorkspace(nested, workspace)
 	if err != nil || found {
 		t.Fatalf("outside parent .envrc: found=%t err=%v", found, err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, ".envrc"), []byte("inside\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace, ".envrc"),
+		[]byte("inside\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	found, err = direnvFileWithinWorkspace(nested, workspace)
@@ -168,7 +196,11 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	if err := os.MkdirAll(ws, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(ws, ".envrc"), []byte("# test fixture\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(ws, ".envrc"),
+		[]byte("# test fixture\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	sess, err := sessions.Create(ws, "default")
@@ -187,7 +219,10 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	if err := os.WriteFile(nested, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "#!/bin/sh\n" + nested + " '" + nestedSecret + "'\nif [ \"${DEV_SHELL:-}\" = ready ]; then\n  exit 0\nfi\nprintf '%s' '{\"DEV_SHELL\":\"ready\",\"HOME\":\"" + secret + "\",\"PROJECT_TOKEN\":\"" + secret + "\"}'\n"
+	body := "#!/bin/sh\n" + nested + " '" + nestedSecret +
+		"'\nif [ \"${DEV_SHELL:-}\" = ready ]; then\n  exit 0\nfi\n" +
+		"printf '%s' '{\"DEV_SHELL\":\"ready\",\"HOME\":\"" +
+		secret + "\",\"PROJECT_TOKEN\":\"" + secret + "\"}'\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -196,17 +231,31 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	app := newTestApp(t, sessions, store)
 
 	generic := httptest.NewRecorder()
-	app.Router().ServeHTTP(generic, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(`{"command":"direnv","args":["export","json"],"working_dir":"/workspace","actor":{"kind":"extension","label":"Pi direnv refresh"}}`)))
+	app.Router().
+		ServeHTTP(generic,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec",
+				strings.NewReader(`{"command":"direnv","args":["export","json"],"working_dir":"/`+
+					`workspace","actor":{"kind":"extension","label":"Pi direnv refresh"}}`)))
 	if generic.Code != http.StatusForbidden {
-		t.Fatalf("generic exec spoofed refresh provenance: status=%d body=%s", generic.Code, generic.Body.String())
+		t.Fatalf(
+			"generic exec spoofed refresh provenance: status=%d body=%s",
+			generic.Code,
+			generic.Body.String(),
+		)
 	}
 
 	rr := httptest.NewRecorder()
-	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv", strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension","label":"test"}}`)))
+	app.Router().
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost,
+				"/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv",
+				strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension",`+
+					`"label":"test"}}`)))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
 	}
-	if strings.Contains(rr.Body.String(), secret) || strings.Contains(rr.Body.String(), "DEV_SHELL") {
+	if strings.Contains(rr.Body.String(), secret) ||
+		strings.Contains(rr.Body.String(), "DEV_SHELL") {
 		t.Fatalf("refresh response leaked environment: %s", rr.Body.String())
 	}
 	var response toolResponse
@@ -214,7 +263,8 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 		t.Fatal(err)
 	}
 	result := response.Result.(map[string]any)
-	if result["state"] != "loaded" || result["set_count"] != float64(1) || result["rejected_count"] != float64(2) {
+	if result["state"] != "loaded" || result["set_count"] != float64(1) ||
+		result["rejected_count"] != float64(2) {
 		t.Fatalf("response = %#v", result)
 	}
 	got, _ := sess.DirenvEnvironment()
@@ -223,11 +273,17 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	}
 
 	unchanged := httptest.NewRecorder()
-	app.Router().ServeHTTP(unchanged, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv", strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension","label":"test"}}`)))
+	app.Router().
+		ServeHTTP(unchanged,
+			httptest.NewRequest(http.MethodPost,
+				"/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv",
+				strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension",`+
+					`"label":"test"}}`)))
 	if unchanged.Code != http.StatusOK {
 		t.Fatalf("unchanged status = %d body=%s", unchanged.Code, unchanged.Body.String())
 	}
-	if strings.Contains(unchanged.Body.String(), secret) || strings.Contains(unchanged.Body.String(), "DEV_SHELL") {
+	if strings.Contains(unchanged.Body.String(), secret) ||
+		strings.Contains(unchanged.Body.String(), "DEV_SHELL") {
 		t.Fatalf("unchanged response leaked environment: %s", unchanged.Body.String())
 	}
 	var unchangedResponse toolResponse
@@ -235,25 +291,41 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 		t.Fatal(err)
 	}
 	unchangedResult := unchangedResponse.Result.(map[string]any)
-	if unchangedResult["state"] != "unchanged" || unchangedResult["set_count"] != float64(0) || unchangedResult["rejected_count"] != float64(0) {
+	if unchangedResult["state"] != "unchanged" || unchangedResult["set_count"] != float64(0) ||
+		unchangedResult["rejected_count"] != float64(0) {
 		t.Fatalf("unchanged response = %#v", unchangedResult)
 	}
 	gotAfterUnchanged, _ := sess.DirenvEnvironment()
 	if !reflect.DeepEqual(gotAfterUnchanged, got) {
-		t.Fatalf("unchanged refresh modified snapshot: before=%#v after=%#v", got, gotAfterUnchanged)
+		t.Fatalf(
+			"unchanged refresh modified snapshot: before=%#v after=%#v",
+			got,
+			gotAfterUnchanged,
+		)
 	}
 
-	events, err := store.QueryEvents(context.Background(), types.EventQuery{SessionID: sess.ID, Limit: 100, Asc: true})
+	events, err := store.QueryEvents(
+		context.Background(),
+		types.EventQuery{SessionID: sess.ID, Limit: 100, Asc: true},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, event := range events {
 		encoded, _ := json.Marshal(event)
-		if strings.Contains(string(encoded), secret) || strings.Contains(string(encoded), nestedSecret) {
+		if strings.Contains(string(encoded), secret) ||
+			strings.Contains(string(encoded), nestedSecret) {
 			t.Fatalf("event leaked sensitive refresh data: %s", encoded)
 		}
 		if event.Type == "command_started" {
-			if chunk, _, _, readErr := store.ReadOutputChunk(context.Background(), event.CommandID, "stdout", 0, 1024); readErr == nil || len(chunk) != 0 {
+			if chunk, _, _, readErr := store.ReadOutputChunk(
+				context.Background(),
+				event.CommandID,
+				"stdout",
+				0,
+				1024,
+			); readErr == nil ||
+				len(chunk) != 0 {
 				t.Fatalf("sensitive output was persisted: %q err=%v", chunk, readErr)
 			}
 		}

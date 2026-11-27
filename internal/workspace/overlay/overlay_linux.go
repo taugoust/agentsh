@@ -174,7 +174,16 @@ func Create(ctx context.Context, id string, real string, opts Options) (*Workspa
 		"upperdir=" + upper,
 		"workdir=" + work,
 	}, ",")
-	cmd := exec.CommandContext(ctx, mountExecutable, "-t", "overlay", "overlay", "-o", mountOpts, merged)
+	cmd := exec.CommandContext(
+		ctx,
+		mountExecutable,
+		"-t",
+		"overlay",
+		"overlay",
+		"-o",
+		mountOpts,
+		merged,
+	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = cleanup.RemoveAllWritable(sessionDir)
 		return nil, fmt.Errorf("mount overlay: %w: %s", err, strings.TrimSpace(string(out)))

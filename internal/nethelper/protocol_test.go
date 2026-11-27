@@ -187,19 +187,36 @@ func TestValidateRejectsDangerousOrInvalidRequests(t *testing.T) {
 	}{
 		{
 			name: "invalid built in mode",
-			err:  RegisterSessionCgroupRequest{SessionID: "session-1", CgroupPath: cgroupPath, Mode: BuiltinMode("load-bpf-object")}.Validate(),
+			err: RegisterSessionCgroupRequest{
+				SessionID:  "session-1",
+				CgroupPath: cgroupPath,
+				Mode:       BuiltinMode("load-bpf-object"),
+			}.Validate(),
 		},
 		{
 			name: "helper proxy tier requires proxy metadata",
-			err:  RegisterSessionCgroupRequest{SessionID: "session-1", CgroupPath: cgroupPath, Tier: EnforcementTierHelperEBPFProxy}.Validate(),
+			err: RegisterSessionCgroupRequest{
+				SessionID:  "session-1",
+				CgroupPath: cgroupPath,
+				Tier:       EnforcementTierHelperEBPFProxy,
+			}.Validate(),
 		},
 		{
 			name: "proxy redirect requires loopback proxy",
-			err:  RegisterSessionCgroupRequest{SessionID: "session-1", CgroupPath: cgroupPath, Mode: BuiltinModeCgroupProxyRedirect, Proxy: &ProxyEndpoint{Host: "example.com", Port: 8080}}.Validate(),
+			err: RegisterSessionCgroupRequest{
+				SessionID:  "session-1",
+				CgroupPath: cgroupPath,
+				Mode:       BuiltinModeCgroupProxyRedirect,
+				Proxy:      &ProxyEndpoint{Host: "example.com", Port: 8080},
+			}.Validate(),
 		},
 		{
 			name: "negative supervisor pid",
-			err:  RegisterSessionCgroupRequest{SessionID: "session-1", CgroupPath: cgroupPath, SupervisorPID: -1}.Validate(),
+			err: RegisterSessionCgroupRequest{
+				SessionID:     "session-1",
+				CgroupPath:    cgroupPath,
+				SupervisorPID: -1,
+			}.Validate(),
 		},
 		{
 			name: "update requires cgroup target",
@@ -207,23 +224,41 @@ func TestValidateRejectsDangerousOrInvalidRequests(t *testing.T) {
 		},
 		{
 			name: "invalid protocol",
-			err:  UpdatePolicyMapRequest{SessionID: "session-1", CgroupID: 42, Allow: []PolicyMapEntry{{IP: "127.0.0.1", Protocol: TransportProtocol("icmp")}}}.Validate(),
+			err: UpdatePolicyMapRequest{
+				SessionID: "session-1",
+				CgroupID:  42,
+				Allow:     []PolicyMapEntry{{IP: "127.0.0.1", Protocol: TransportProtocol("icmp")}},
+			}.Validate(),
 		},
 		{
 			name: "family mismatch",
-			err:  UpdatePolicyMapRequest{SessionID: "session-1", CgroupID: 42, Allow: []PolicyMapEntry{{IP: "127.0.0.1", Family: IPFamilyIPv6}}}.Validate(),
+			err: UpdatePolicyMapRequest{
+				SessionID: "session-1",
+				CgroupID:  42,
+				Allow:     []PolicyMapEntry{{IP: "127.0.0.1", Family: IPFamilyIPv6}},
+			}.Validate(),
 		},
 		{
 			name: "unspecified ip",
-			err:  UpdatePolicyMapRequest{SessionID: "session-1", CgroupID: 42, Allow: []PolicyMapEntry{{IP: "0.0.0.0"}}}.Validate(),
+			err: UpdatePolicyMapRequest{
+				SessionID: "session-1",
+				CgroupID:  42,
+				Allow:     []PolicyMapEntry{{IP: "0.0.0.0"}},
+			}.Validate(),
 		},
 		{
 			name: "cleanup path traversal",
-			err:  CleanupSessionRequest{SessionID: "session-1", CgroupPath: traversalPath}.Validate(),
+			err: CleanupSessionRequest{
+				SessionID:  "session-1",
+				CgroupPath: traversalPath,
+			}.Validate(),
 		},
 		{
 			name: "future protocol version",
-			err:  CleanupSessionRequest{ProtocolVersion: CurrentProtocolVersion + 1, SessionID: "session-1"}.Validate(),
+			err: CleanupSessionRequest{
+				ProtocolVersion: CurrentProtocolVersion + 1,
+				SessionID:       "session-1",
+			}.Validate(),
 		},
 	}
 	for _, tc := range cases {
@@ -283,8 +318,13 @@ func TestAttestCompositionRuntimeRequestHasNoCallerSelectedPath(t *testing.T) {
 		t.Fatalf("round trip mismatch: got %+v want %+v", got, req)
 	}
 	for _, field := range []string{"path", "runtime_dir", "device", "inode"} {
-		invalid := fmt.Sprintf(`{"protocol_version":1,"request_id":"attest-2","lease_id":%q,"helper_instance_credential":%q,%q:"/tmp"}`,
-			req.LeaseID, req.HelperInstanceCredential, field)
+		invalid := fmt.Sprintf(
+			`{"protocol_version":1,"request_id":"attest-2","lease_id":%q,`+
+				`"helper_instance_credential":%q,%q:"/tmp"}`,
+			req.LeaseID,
+			req.HelperInstanceCredential,
+			field,
+		)
 		if _, err := DecodeAttestCompositionRuntimeRequestJSON([]byte(invalid)); err == nil {
 			t.Fatalf("accepted caller-selected %s: %s", field, invalid)
 		}

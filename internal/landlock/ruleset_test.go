@@ -111,10 +111,15 @@ func TestRulesetBuilder_WriteAccessMask_IncludesCreationRights(t *testing.T) {
 	mask := b.buildWriteAccessMask()
 
 	if mask&LANDLOCK_ACCESS_FS_MAKE_SOCK == 0 {
-		t.Error("writeAccessMask missing MAKE_SOCK — Unix socket creation blocked in write-allowed paths")
+		t.Error(
+			"writeAccessMask missing MAKE_SOCK — Unix socket creation blocked in " +
+				"write-allowed paths",
+		)
 	}
 	if mask&LANDLOCK_ACCESS_FS_MAKE_SYM == 0 {
-		t.Error("writeAccessMask missing MAKE_SYM — symlink creation blocked in write-allowed paths")
+		t.Error(
+			"writeAccessMask missing MAKE_SYM — symlink creation blocked in write-allowed paths",
+		)
 	}
 	// Sanity: verify other expected bits are present
 	if mask&LANDLOCK_ACCESS_FS_WRITE_FILE == 0 {

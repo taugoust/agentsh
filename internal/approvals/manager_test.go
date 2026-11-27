@@ -63,7 +63,10 @@ func TestRequestApproval_TimesOut(t *testing.T) {
 
 func TestRequestApproval_PromptResultWins(t *testing.T) {
 	m := New("local_tty", 5*time.Second, nil)
-	fp := fakePrompt{delay: 10 * time.Millisecond, res: Resolution{Approved: true, Reason: "ok", At: time.Now()}}
+	fp := fakePrompt{
+		delay: 10 * time.Millisecond,
+		res:   Resolution{Approved: true, Reason: "ok", At: time.Now()},
+	}
 	m.prompt = fp.call
 
 	ctx := context.Background()
@@ -139,7 +142,10 @@ func TestRequestApproval_ExtendsCommandTimeout(t *testing.T) {
 		}
 	}()
 
-	if _, err := m.RequestApproval(ctx, Request{SessionID: "s4", Kind: "command", Target: "echo"}); err != nil {
+	if _, err := m.RequestApproval(
+		ctx,
+		Request{SessionID: "s4", Kind: "command", Target: "echo"},
+	); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got != 250*time.Millisecond {
@@ -153,7 +159,15 @@ func TestRequestApprovalScoped_CacheHitDoesNotRegisterPending(t *testing.T) {
 	if !ok {
 		t.Fatal("failed to construct file scope")
 	}
-	if !m.SetScoped(context.Background(), "session", "old-command", scope, true, "cached", "approve-env") {
+	if !m.SetScoped(
+		context.Background(),
+		"session",
+		"old-command",
+		scope,
+		true,
+		"cached",
+		"approve-env",
+	) {
 		t.Fatal("failed to seed scoped decision")
 	}
 
@@ -232,7 +246,11 @@ func TestRequestApprovalScoped_PreCanceledContextNeverRegisters(t *testing.T) {
 			}
 			appended, published := emitter.events()
 			if len(appended) != 0 || len(published) != 0 {
-				t.Fatalf("pre-canceled request emitted events: appended=%+v published=%+v", appended, published)
+				t.Fatalf(
+					"pre-canceled request emitted events: appended=%+v published=%+v",
+					appended,
+					published,
+				)
 			}
 		})
 	}
@@ -262,7 +280,13 @@ func TestRequestApprovalScoped_CancellationAndResolutionPublicationOrder(t *test
 
 		receiveResolutionRace(t, emitter.requested)
 		cancel()
-		if m.ResolveForSessionWithScope(request.SessionID, request.ID, true, "stale approval", ScopeSession) {
+		if m.ResolveForSessionWithScope(
+			request.SessionID,
+			request.ID,
+			true,
+			"stale approval",
+			ScopeSession,
+		) {
 			t.Fatal("resolution won after its request context was canceled")
 		}
 		releaseResolutionRaceGate(gate)
@@ -296,7 +320,13 @@ func TestRequestApprovalScoped_CancellationAndResolutionPublicationOrder(t *test
 		}()
 
 		receiveResolutionRace(t, emitter.requested)
-		if !m.ResolveForSessionWithScope(request.SessionID, request.ID, true, "live approval", ScopeSession) {
+		if !m.ResolveForSessionWithScope(
+			request.SessionID,
+			request.ID,
+			true,
+			"live approval",
+			ScopeSession,
+		) {
 			t.Fatal("live resolution did not win")
 		}
 		decisions := m.SessionScopedDecisions(request.SessionID)

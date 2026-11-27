@@ -10,14 +10,20 @@ import (
 
 func TestLoadConfigWithSignalFilter(t *testing.T) {
 	t.Run("parses signal_filter_enabled true", func(t *testing.T) {
-		t.Setenv("AGENTSH_SECCOMP_CONFIG", `{"unix_socket_enabled":true,"signal_filter_enabled":true}`)
+		t.Setenv(
+			"AGENTSH_SECCOMP_CONFIG",
+			`{"unix_socket_enabled":true,"signal_filter_enabled":true}`,
+		)
 		cfg, err := loadConfig()
 		require.NoError(t, err)
 		require.True(t, cfg.SignalFilterEnabled)
 	})
 
 	t.Run("parses signal_filter_enabled false", func(t *testing.T) {
-		t.Setenv("AGENTSH_SECCOMP_CONFIG", `{"unix_socket_enabled":true,"signal_filter_enabled":false}`)
+		t.Setenv(
+			"AGENTSH_SECCOMP_CONFIG",
+			`{"unix_socket_enabled":true,"signal_filter_enabled":false}`,
+		)
 		cfg, err := loadConfig()
 		require.NoError(t, err)
 		require.False(t, cfg.SignalFilterEnabled)

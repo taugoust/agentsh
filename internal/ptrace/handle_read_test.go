@@ -14,9 +14,11 @@ func TestMaskTracerPid(t *testing.T) {
 		expect string
 	}{
 		{
-			name:   "typical /proc/self/status",
-			input:  "Name:\tsleep\nUmask:\t0022\nState:\tS (sleeping)\nTgid:\t12345\nNgid:\t0\nPid:\t12345\nPPid:\t1\nTracerPid:\t67890\nUid:\t1000\t1000\t1000\t1000\n",
-			expect: "Name:\tsleep\nUmask:\t0022\nState:\tS (sleeping)\nTgid:\t12345\nNgid:\t0\nPid:\t12345\nPPid:\t1\nTracerPid:\t0    \nUid:\t1000\t1000\t1000\t1000\n",
+			name: "typical /proc/self/status",
+			input: "Name:\tsleep\nUmask:\t0022\nState:\tS (sleeping)\nTgid:\t12345\nNgid:\t0\n" +
+				"Pid:\t12345\nPPid:\t1\nTracerPid:\t67890\nUid:\t1000\t1000\t1000\t1000\n",
+			expect: "Name:\tsleep\nUmask:\t0022\nState:\tS (sleeping)\nTgid:\t12345\nNgid:\t0\n" +
+				"Pid:\t12345\nPPid:\t1\nTracerPid:\t0    \nUid:\t1000\t1000\t1000\t1000\n",
 		},
 		{
 			name:   "TracerPid is zero (not traced)",

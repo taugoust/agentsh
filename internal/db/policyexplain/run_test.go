@@ -12,6 +12,7 @@ import (
 )
 
 func TestRun_WithCatalogFixtureAllowsCanonicalRelation(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -52,6 +53,7 @@ relations:
 }
 
 func TestRun_WithSearchPathAndCatalogFixtureAllowsCanonicalRelation(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -84,6 +86,7 @@ database_rules:
 }
 
 func TestRun_SearchPathInitializesDefaultSearchPath(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -103,7 +106,8 @@ database_rules:
 	if len(report.Statements) != 1 || len(report.Statements[0].Effects) != 1 {
 		t.Fatalf("report statements = %+v", report.Statements)
 	}
-	if got := report.Statements[0].Effects[0].Resolution; got != effects.ResolutionUnqualified.String() {
+	if got :=
+		report.Statements[0].Effects[0].Resolution; got != effects.ResolutionUnqualified.String() {
 		t.Fatalf("resolution = %q, want %q", got, effects.ResolutionUnqualified)
 	}
 	dec := report.Statements[0].Decision
@@ -113,6 +117,7 @@ database_rules:
 }
 
 func TestRun_WithoutCatalogFixtureWarnsForCanonicalSelectors(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -159,6 +164,7 @@ func TestResolveEffect_MixedRelationSkipsUnsupportedSlotsAndPolicyStillDenies(t 
 		t.Fatalf("resolved objects = %+v, want only public.users", eff.ResolvedObjects)
 	}
 
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -191,10 +197,12 @@ func TestResolveEffect_DuplicateRelationNamesPreserveSlotOrder(t *testing.T) {
 	if len(eff.ResolvedObjects) != 2 {
 		t.Fatalf("resolved objects = %+v, want two resolved relations", eff.ResolvedObjects)
 	}
-	if eff.ResolvedObjects[0].CanonicalName() != "public.users" || eff.ResolvedObjects[1].CanonicalName() != "audit.users" {
+	if eff.ResolvedObjects[0].CanonicalName() != "public.users" ||
+		eff.ResolvedObjects[1].CanonicalName() != "audit.users" {
 		t.Fatalf("resolved objects = %+v, want public.users then audit.users", eff.ResolvedObjects)
 	}
 
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -204,7 +212,10 @@ database_rules:
 `)
 	ex := dbpolicy.ExplainStatement(got, rs, "appdb")
 	if ex.Decision.Verb != dbpolicy.VerbDeny || ex.Decision.RuleName != "" {
-		t.Fatalf("decision = %+v, want implicit deny because second users slot resolved to audit.users", ex.Decision)
+		t.Fatalf(
+			"decision = %+v, want implicit deny because second users slot resolved to audit.users",
+			ex.Decision,
+		)
 	}
 }
 
@@ -230,10 +241,12 @@ func TestResolveStatements_InvalidatesFixtureAfterRoleChange(t *testing.T) {
 	if eff.Resolution != effects.ResolutionCatalogUnavailable {
 		t.Fatalf("second statement resolution = %v, want catalog_unavailable", eff.Resolution)
 	}
-	if len(eff.ResolvedObjects) != 1 || eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
+	if len(eff.ResolvedObjects) != 1 ||
+		eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
 		t.Fatalf("second statement resolved objects = %+v", eff.ResolvedObjects)
 	}
 
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -243,7 +256,10 @@ database_rules:
 `)
 	ex := dbpolicy.ExplainStatement(got[1], rs, "appdb")
 	if ex.Decision.Verb != dbpolicy.VerbDeny || ex.Decision.RuleName != "" {
-		t.Fatalf("decision = %+v, want canonical rule not to allow stale fixture resolution", ex.Decision)
+		t.Fatalf(
+			"decision = %+v, want canonical rule not to allow stale fixture resolution",
+			ex.Decision,
+		)
 	}
 }
 
@@ -321,7 +337,8 @@ func TestResolveStatements_InvalidatesFixtureAfterSchemaAlterWithoutSubtype(t *t
 	if eff.Resolution != effects.ResolutionCatalogUnavailable {
 		t.Fatalf("second statement resolution = %v, want catalog_unavailable", eff.Resolution)
 	}
-	if len(eff.ResolvedObjects) != 1 || eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
+	if len(eff.ResolvedObjects) != 1 ||
+		eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
 		t.Fatalf("second statement resolved objects = %+v", eff.ResolvedObjects)
 	}
 }

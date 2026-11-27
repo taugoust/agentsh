@@ -114,17 +114,49 @@ func secureNotifyDir(dir string, callerUID int) bool {
 	if callerUID > 0 {
 		if err := wrapChown(dir, callerUID, -1); err == nil {
 			if err := wrapChmod(dir, 0700); err != nil {
-				slog.Debug("wrap: failed to chmod notify dir", "dir", dir, "mode", "0700", "error", err)
+				slog.Debug(
+					"wrap: failed to chmod notify dir",
+					"dir",
+					dir,
+					"mode",
+					"0700",
+					"error",
+					err,
+				)
 				if err := wrapChmod(dir, 0711); err != nil {
-					slog.Debug("wrap: failed to chmod notify dir", "dir", dir, "mode", "0711", "error", err)
+					slog.Debug(
+						"wrap: failed to chmod notify dir",
+						"dir",
+						dir,
+						"mode",
+						"0711",
+						"error",
+						err,
+					)
 				}
 				return false
 			}
 			return true
 		} else {
-			slog.Debug("wrap: failed to chown notify dir", "dir", dir, "caller_uid", callerUID, "error", err)
+			slog.Debug(
+				"wrap: failed to chown notify dir",
+				"dir",
+				dir,
+				"caller_uid",
+				callerUID,
+				"error",
+				err,
+			)
 			if err := wrapChmod(dir, 0711); err != nil {
-				slog.Debug("wrap: failed to chmod notify dir", "dir", dir, "mode", "0711", "error", err)
+				slog.Debug(
+					"wrap: failed to chmod notify dir",
+					"dir",
+					dir,
+					"mode",
+					"0711",
+					"error",
+					err,
+				)
 			}
 			return false
 		}
@@ -139,15 +171,39 @@ func secureSocket(socketPath string, callerUID int, chownOK bool) {
 	if chownOK && callerUID > 0 {
 		if err := wrapChown(socketPath, callerUID, -1); err == nil {
 			if err := wrapChmod(socketPath, 0600); err != nil {
-				slog.Debug("wrap: failed to chmod socket", "socket_path", socketPath, "mode", "0600", "error", err)
+				slog.Debug(
+					"wrap: failed to chmod socket",
+					"socket_path",
+					socketPath,
+					"mode",
+					"0600",
+					"error",
+					err,
+				)
 			}
 			return
 		} else {
-			slog.Debug("wrap: failed to chown socket", "socket_path", socketPath, "caller_uid", callerUID, "error", err)
+			slog.Debug(
+				"wrap: failed to chown socket",
+				"socket_path",
+				socketPath,
+				"caller_uid",
+				callerUID,
+				"error",
+				err,
+			)
 		}
 	}
 	if err := wrapChmod(socketPath, 0666); err != nil {
-		slog.Debug("wrap: failed to chmod socket", "socket_path", socketPath, "mode", "0666", "error", err)
+		slog.Debug(
+			"wrap: failed to chmod socket",
+			"socket_path",
+			socketPath,
+			"mode",
+			"0666",
+			"error",
+			err,
+		)
 	}
 }
 
@@ -158,7 +214,13 @@ func validatePermissionMode(path string, want os.FileMode, kind string) error {
 	}
 	got := info.Mode().Perm()
 	if got != want {
-		return fmt.Errorf("wrap: %s permissions not established for %s: got %04o want %04o", kind, path, got, want)
+		return fmt.Errorf(
+			"wrap: %s permissions not established for %s: got %04o want %04o",
+			kind,
+			path,
+			got,
+			want,
+		)
 	}
 	return nil
 }
@@ -166,7 +228,11 @@ func validatePermissionMode(path string, want os.FileMode, kind string) error {
 // wrapInitCore contains the core logic for wrap initialization.
 // Uses context.Background() (not the HTTP request context) so that
 // the notify handler stays active after the HTTP response is sent.
-func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapInitRequest) (types.WrapInitResponse, int, error) {
+func (a *App) wrapInitCore(
+	s *session.Session,
+	sessionID string,
+	req types.WrapInitRequest,
+) (types.WrapInitResponse, int, error) {
 	// Use a background context so the notify handler outlives the HTTP request.
 	// The handler will be cleaned up when the session ends or the connection closes.
 	ctx := context.Background()
@@ -176,7 +242,10 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		mode = "agent"
 	}
 	if mode != "agent" && mode != "shim" {
-		return types.WrapInitResponse{}, http.StatusBadRequest, fmt.Errorf("unsupported wrap mode %q", req.Mode)
+		return types.WrapInitResponse{}, http.StatusBadRequest, fmt.Errorf(
+			"unsupported wrap mode %q",
+			req.Mode,
+		)
 	}
 	// Normalize the mode before policy and launch-contract decisions so an old
 	// empty client request is exactly equivalent to the explicit agent mode.
@@ -217,7 +286,12 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 			return types.WrapInitResponse{}, http.StatusServiceUnavailable,
 				fmt.Errorf("shim wrap-init: no policy engine available for session")
 		}
-		dec := engine.CheckCommandWithExecve(req.AgentCommand, req.AgentArgs, a.execveEnforcementActive(), a.shellCOpaqueMode())
+		dec := engine.CheckCommandWithExecve(
+			req.AgentCommand,
+			req.AgentArgs,
+			a.execveEnforcementActive(),
+			a.shellCOpaqueMode(),
+		)
 		// We must check BOTH the underlying PolicyDecision and the
 		// EffectiveDecision. Some decisions resolve to effective-allow
 		// even though they carry semantics the shim path does not
@@ -238,7 +312,11 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		pol := dec.PolicyDecision
 		if pol != types.DecisionAllow && pol != types.DecisionAudit {
 			return types.WrapInitResponse{}, http.StatusForbidden,
-				fmt.Errorf("command requires non-shim handling by policy (rule=%s, decision=%s)", dec.Rule, pol)
+				fmt.Errorf(
+					"command requires non-shim handling by policy (rule=%s, decision=%s)",
+					dec.Rule,
+					pol,
+				)
 		}
 	}
 
@@ -247,11 +325,20 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	// requests overwrite—or borrow—one another's composition authority.
 	selectedComposition := ""
 	if engine := a.policyEngineFor(s); engine != nil {
-		compositionDecision := engine.CheckCommandWithExecve(req.AgentCommand, req.AgentArgs, a.execveEnforcementActive(), a.shellCOpaqueMode())
+		compositionDecision := engine.CheckCommandWithExecve(
+			req.AgentCommand,
+			req.AgentArgs,
+			a.execveEnforcementActive(),
+			a.shellCOpaqueMode(),
+		)
 		var code string
 		selectedComposition, code = a.selectSandboxComposition(&compositionDecision)
 		if code != "" {
-			return types.WrapInitResponse{}, http.StatusForbidden, fmt.Errorf("%s: %s", code, compositionDecision.Message)
+			return types.WrapInitResponse{}, http.StatusForbidden, fmt.Errorf(
+				"%s: %s",
+				code,
+				compositionDecision.Message,
+			)
 		}
 	}
 
@@ -270,7 +357,10 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	}
 
 	if req.CallerUID < 0 {
-		return types.WrapInitResponse{}, http.StatusBadRequest, fmt.Errorf("invalid caller uid: %d", req.CallerUID)
+		return types.WrapInitResponse{}, http.StatusBadRequest, fmt.Errorf(
+			"invalid caller uid: %d",
+			req.CallerUID,
+		)
 	}
 
 	// Both `agentsh wrap` (agent mode) and shell-shim wrapping are
@@ -319,7 +409,10 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		if budget < 1 {
 			os.RemoveAll(notifyDir)
 			return types.WrapInitResponse{}, http.StatusInternalServerError,
-				fmt.Errorf("temp directory path too long for Unix socket (%d bytes remaining)", budget)
+				fmt.Errorf(
+					"temp directory path too long for Unix socket (%d bytes remaining)",
+					budget,
+				)
 		}
 		if len(safeID) > budget {
 			h := sha256.Sum256([]byte(safeID))
@@ -505,8 +598,13 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	// signalFilterEnabled routes through a helper so the gate can be
 	// exercised in tests end-to-end without standing up seccomp (see
 	// TestWrap_SignalFilterUsesSessionPolicy).
-	signalUnixSocketEnabled := a.cfg.Sandbox.Seccomp.UnixSocket.Enabled || forceNotifyForPreAckCgroup
-	signalFilterEnabled := a.signalFilterEnabledForMainFilter(s, execveEnabled, signalUnixSocketEnabled)
+	signalUnixSocketEnabled := a.cfg.Sandbox.Seccomp.UnixSocket.Enabled ||
+		forceNotifyForPreAckCgroup
+	signalFilterEnabled := a.signalFilterEnabledForMainFilter(
+		s,
+		execveEnabled,
+		signalUnixSocketEnabled,
+	)
 	if signalFilterEnabled {
 		signalSocketPath = filepath.Join(notifyDir, "signal-"+safeID+".sock")
 		signalListener, err := net.Listen("unix", signalSocketPath)
@@ -542,7 +640,16 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	})
 	if toolJailRequired {
 		binding := a.nethelperBindingSnapshot()
-		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, s, a.detachedCommandJailStateDir(), binding.SocketPath, binding.CredentialFile, binding.BootstrapResultPath, a.nethelperRecoveryTokenFile, seccompCfg.CompositionScratchRoot)
+		seccompCfg.CommandJail = buildCommandJailConfig(
+			a.cfg,
+			s,
+			a.detachedCommandJailStateDir(),
+			binding.SocketPath,
+			binding.CredentialFile,
+			binding.BootstrapResultPath,
+			a.nethelperRecoveryTokenFile,
+			seccompCfg.CompositionScratchRoot,
+		)
 	}
 
 	// Ensure the parent directory of the about-to-be-execed command is
@@ -563,7 +670,8 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		dir := filepath.Dir(req.AgentCommand)
 		if dir != "" && dir != "." && dir != "/" && !containsString(seccompCfg.AllowExecute, dir) {
 			seccompCfg.AllowExecute = append(seccompCfg.AllowExecute, dir)
-			if seccompCfg.SandboxComposition != "" && !containsString(seccompCfg.CompositionAllowExecute, dir) {
+			if seccompCfg.SandboxComposition != "" &&
+				!containsString(seccompCfg.CompositionAllowExecute, dir) {
 				seccompCfg.CompositionAllowExecute = append(seccompCfg.CompositionAllowExecute, dir)
 			}
 		}
@@ -579,12 +687,16 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	// A same-UID command jail must not expose another supervisor control socket.
 	// Strict wrapped agents use the trusted detached/API approval bridge instead
 	// of receiving the local approval-UI socket path.
-	if req.Mode != "shim" && !toolJailRequired && !a.cfg.Development.DetachedControlOnly && a.approvals != nil {
+	if req.Mode != "shim" && !toolJailRequired && !a.cfg.Development.DetachedControlOnly &&
+		a.approvals != nil {
 		approvalUI, err = a.startApprovalUIEndpoint(sessionID, req.CallerUID)
 		if err != nil {
 			_ = listener.Close()
 			os.RemoveAll(notifyDir)
-			return types.WrapInitResponse{}, http.StatusInternalServerError, fmt.Errorf("approval ui socket: %w", err)
+			return types.WrapInitResponse{}, http.StatusInternalServerError, fmt.Errorf(
+				"approval ui socket: %w",
+				err,
+			)
 		}
 		if approvalUI != nil {
 			approvalUISocketPath = approvalUI.path
@@ -599,7 +711,17 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 	shimMode := req.Mode == "shim"
 	startListener := func() {
 		handoffContext := context.WithValue(ctx, wrapSeccompConfigContextKey{}, seccompCfg)
-		a.acceptNotifyFD(handoffContext, listener, notifySocketPath, sessionID, s, execveEnabled, req.CallerUID, shimMode, approvalUI)
+		a.acceptNotifyFD(
+			handoffContext,
+			listener,
+			notifySocketPath,
+			sessionID,
+			s,
+			execveEnabled,
+			req.CallerUID,
+			shimMode,
+			approvalUI,
+		)
 	}
 	if a.acceptNotifyFDForTest != nil {
 		a.acceptNotifyFDForTest(startListener)
@@ -657,7 +779,10 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 // non-nil wire so the client still applies the default-secret-deny baseline.
 // Only allow/deny are carried; max_*/block_iteration are not enforced on the
 // wrap path. Issue #379.
-func (a *App) wrapEnvPolicyWire(s *session.Session, req types.WrapInitRequest) *types.EnvPolicyWire {
+func (a *App) wrapEnvPolicyWire(
+	s *session.Session,
+	req types.WrapInitRequest,
+) *types.EnvPolicyWire {
 	if !a.cfg.Sandbox.WrapEnvPolicy.Enabled {
 		return nil
 	}
@@ -665,7 +790,12 @@ func (a *App) wrapEnvPolicyWire(s *session.Session, req types.WrapInitRequest) *
 	if engine == nil {
 		return nil
 	}
-	pol := engine.CheckCommandWithExecve(req.AgentCommand, req.AgentArgs, a.execveEnforcementActive(), a.shellCOpaqueMode()).EnvPolicy
+	pol := engine.CheckCommandWithExecve(
+		req.AgentCommand,
+		req.AgentArgs,
+		a.execveEnforcementActive(),
+		a.shellCOpaqueMode(),
+	).EnvPolicy
 	return &types.EnvPolicyWire{
 		Allow: pol.Allow,
 		Deny:  pol.Deny,
@@ -715,9 +845,24 @@ func (a *App) deriveLandlockAllowPaths(s *session.Session) (execute, read, write
 	}
 	pol := engine.Policy()
 	if a.dynamicFileApprovalsActive() {
-		execute = append(execute, filterLandlockApprovePaths(landlock.DeriveApproveExecutePathsFromPolicy(pol), a.cfg.Landlock.DenyPaths)...)
-		read = append(read, filterLandlockApprovePaths(landlock.DeriveApproveReadPathsFromPolicy(pol), a.cfg.Landlock.DenyPaths)...)
-		write = append(write, filterLandlockApprovePaths(landlock.DeriveApproveWritePathsFromPolicy(pol), a.cfg.Landlock.DenyPaths)...)
+		execute = append(
+			execute,
+			filterLandlockApprovePaths(
+				landlock.DeriveApproveExecutePathsFromPolicy(pol),
+				a.cfg.Landlock.DenyPaths,
+			)...)
+		read = append(
+			read,
+			filterLandlockApprovePaths(
+				landlock.DeriveApproveReadPathsFromPolicy(pol),
+				a.cfg.Landlock.DenyPaths,
+			)...)
+		write = append(
+			write,
+			filterLandlockApprovePaths(
+				landlock.DeriveApproveWritePathsFromPolicy(pol),
+				a.cfg.Landlock.DenyPaths,
+			)...)
 	}
 	return execute, read, write
 }
@@ -804,7 +949,11 @@ func (a *App) signalFilterEnabled(s *session.Session, execveEnabled bool) bool {
 	return a.signalFilterEnabledForMainFilter(s, execveEnabled, unixSocketEnabled)
 }
 
-func (a *App) signalFilterEnabledForMainFilter(s *session.Session, execveEnabled bool, unixSocketEnabled bool) bool {
+func (a *App) signalFilterEnabledForMainFilter(
+	s *session.Session,
+	execveEnabled bool,
+	unixSocketEnabled bool,
+) bool {
 	if a.mainFilterUsesUserNotifyForWrap(execveEnabled, unixSocketEnabled) {
 		return false
 	}
@@ -851,7 +1000,10 @@ func (a *App) mainFilterUsesUserNotifyForWrap(execveEnabled bool, unixSocketEnab
 	if config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.Enabled, false) {
 		return true
 	}
-	if config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.InterceptMetadata, false) {
+	if config.FileMonitorBoolWithDefault(
+		a.cfg.Sandbox.Seccomp.FileMonitor.InterceptMetadata,
+		false,
+	) {
 		return true
 	}
 	block, onBlock, err := config.EffectiveSyscallBlock(a.cfg.Sandbox.Seccomp)
@@ -898,7 +1050,12 @@ func containsString(xs []string, s string) bool {
 func blockedFamiliesUseNotifyForSeccomp(seccompCfg config.SandboxSeccompConfig) bool {
 	families, err := config.ResolveEffectiveBlockedFamilies(seccompCfg)
 	if err != nil {
-		slog.Warn("seccomp: failed to resolve blocked_socket_families; socket family rules will not use user notify", "error", err)
+		slog.Warn(
+			"seccomp: failed to resolve blocked_socket_families; socket family rules will not "+
+				"use user notify",
+			"error",
+			err,
+		)
 		return false
 	}
 	for _, f := range families {
@@ -916,7 +1073,11 @@ func socketRulesUsesNotify(rules []config.SandboxSeccompSocketRuleConfig) bool {
 func seccompSocketRulesUseNotify(seccompCfg config.SandboxSeccompConfig) bool {
 	rules, err := config.ResolveSocketRules(seccompCfg)
 	if err != nil {
-		slog.Warn("seccomp: failed to resolve socket_rules; socket rules will not use user notify", "error", err)
+		slog.Warn(
+			"seccomp: failed to resolve socket_rules; socket rules will not use user notify",
+			"error",
+			err,
+		)
 		return false
 	}
 	return resolvedSocketRulesUseNotify(rules)
@@ -939,8 +1100,28 @@ func resolvedSocketRulesUseNotify(rules []seccomppkg.SocketRule) bool {
 // timeout/error), so shimMode currently changes no runtime behavior — it is
 // plumbed for clarity and to make the per-invocation contract explicit in the
 // call site.
-func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketPath string, sessionID string, s *session.Session, execveEnabled bool, expectedUID int, shimMode bool, approvalUI *approvalUIEndpoint) {
-	if a.acceptNotifyFDLineage(ctx, listener, socketPath, sessionID, s, execveEnabled, expectedUID, shimMode, approvalUI) {
+func (a *App) acceptNotifyFD(
+	ctx context.Context,
+	listener net.Listener,
+	socketPath string,
+	sessionID string,
+	s *session.Session,
+	execveEnabled bool,
+	expectedUID int,
+	shimMode bool,
+	approvalUI *approvalUIEndpoint,
+) {
+	if a.acceptNotifyFDLineage(
+		ctx,
+		listener,
+		socketPath,
+		sessionID,
+		s,
+		execveEnabled,
+		expectedUID,
+		shimMode,
+		approvalUI,
+	) {
 		return
 	}
 	// Retained on the internal signature for lifecycle diagnostics/tests; strict
@@ -961,7 +1142,13 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 	for {
 		nextConn, err := listener.Accept()
 		if err != nil {
-			slog.Debug("wrap: failed to accept notify connection", "session_id", sessionID, "error", err)
+			slog.Debug(
+				"wrap: failed to accept notify connection",
+				"session_id",
+				sessionID,
+				"error",
+				err,
+			)
 			return
 		}
 
@@ -1004,7 +1191,13 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 	if err != nil {
 		slog.Debug("wrap: failed to receive notify fd", "session_id", sessionID, "error", err)
 		if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-			slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
+			slog.Debug(
+				"wrap: failed to write notify setup rejection",
+				"session_id",
+				sessionID,
+				"error",
+				statusErr,
+			)
 		}
 		return
 	}
@@ -1014,7 +1207,13 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 		}
 		slog.Debug("wrap: received nil notify fd", "session_id", sessionID)
 		if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-			slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
+			slog.Debug(
+				"wrap: failed to write notify setup rejection",
+				"session_id",
+				sessionID,
+				"error",
+				statusErr,
+			)
 		}
 		return
 	}
@@ -1038,22 +1237,43 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 	// successfully takes them over.
 	handoff.NotifyFD = nil
 	handoff.CompositionSetup = nil
-	expectedWrapperConfig, configBound := ctx.Value(wrapSeccompConfigContextKey{}).(seccompWrapperConfig)
+	expectedWrapperConfig, configBound :=
+		ctx.Value(wrapSeccompConfigContextKey{}).(seccompWrapperConfig)
 	compositionSelected := configBound && expectedWrapperConfig.SandboxComposition != ""
 	if !configBound {
 		// Internal tests and older in-process callers have no captured config.
 		// Production wrap-init always binds the exact serialized configuration.
 		compositionSelected = s != nil && s.CurrentSandboxComposition() != ""
 	}
-	if compositionSelected != (compositionSetup != nil) || compositionSelected && (!hasMeta || !meta.CompositionSetup) || !compositionSelected && meta.CompositionSetup {
+	if compositionSelected != (compositionSetup != nil) ||
+		compositionSelected && (!hasMeta || !meta.CompositionSetup) ||
+		!compositionSelected && meta.CompositionSetup {
 		_ = notifyFD.Close()
 		if compositionSetup != nil {
 			_ = compositionSetup.Close()
 		}
 		if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-			slog.Debug("wrap: failed to write composition setup rejection", "session_id", sessionID, "error", statusErr)
+			slog.Debug(
+				"wrap: failed to write composition setup rejection",
+				"session_id",
+				sessionID,
+				"error",
+				statusErr,
+			)
 		}
-		slog.Warn("wrap: rejecting mismatched composition setup handoff", "session_id", sessionID, "selected", compositionSelected, "has_setup_fd", compositionSetup != nil, "has_metadata", hasMeta, "metadata_setup", meta.CompositionSetup)
+		slog.Warn(
+			"wrap: rejecting mismatched composition setup handoff",
+			"session_id",
+			sessionID,
+			"selected",
+			compositionSelected,
+			"has_setup_fd",
+			compositionSetup != nil,
+			"has_metadata",
+			hasMeta,
+			"metadata_setup",
+			meta.CompositionSetup,
+		)
 		return
 	}
 
@@ -1067,18 +1287,45 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 		if !commandBoundary.Complete() || !hasMeta || !meta.CommandJail {
 			_ = notifyFD.Close()
 			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-				slog.Debug("wrap: failed to write command-jail setup rejection", "session_id", sessionID, "error", statusErr)
+				slog.Debug(
+					"wrap: failed to write command-jail setup rejection",
+					"session_id",
+					sessionID,
+					"error",
+					statusErr,
+				)
 			}
-			slog.Warn("wrap: rejecting notify fd without the required command-jail capability",
-				"session_id", sessionID, "wrapper_pid", wrapperPID, "has_metadata", hasMeta, "command_jail", meta.CommandJail)
+			slog.Warn(
+				"wrap: rejecting notify fd without the required command-jail capability",
+				"session_id",
+				sessionID,
+				"wrapper_pid",
+				wrapperPID,
+				"has_metadata",
+				hasMeta,
+				"command_jail",
+				meta.CommandJail,
+			)
 			return
 		}
 		if !wrapNeedsCgroupBeforeAck(a, s) {
 			_ = notifyFD.Close()
 			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-				slog.Debug("wrap: failed to write command-jail barrier rejection", "session_id", sessionID, "error", statusErr)
+				slog.Debug(
+					"wrap: failed to write command-jail barrier rejection",
+					"session_id",
+					sessionID,
+					"error",
+					statusErr,
+				)
 			}
-			slog.Warn("wrap: strict command jail has no centralized pre-exec enforcement hook", "session_id", sessionID, "wrapper_pid", wrapperPID)
+			slog.Warn(
+				"wrap: strict command jail has no centralized pre-exec enforcement hook",
+				"session_id",
+				sessionID,
+				"wrapper_pid",
+				wrapperPID,
+			)
 			return
 		}
 	}
@@ -1096,20 +1343,51 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 		if !hasMeta || meta.WrapperPID <= 0 {
 			_ = notifyFD.Close()
 			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-				slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
+				slog.Debug(
+					"wrap: failed to write notify setup rejection",
+					"session_id",
+					sessionID,
+					"error",
+					statusErr,
+				)
 			}
-			slog.Warn("wrap: rejecting notify fd without wrapper pid metadata", "session_id", sessionID)
+			slog.Warn(
+				"wrap: rejecting notify fd without wrapper pid metadata",
+				"session_id",
+				sessionID,
+			)
 			return
 		}
 		var pinErr error
-		wrapperPIDPin, pinErr = validateWrapperPIDForNotifyHook(meta.WrapperPID, notifyPeerPID, notifyPeerUID)
+		wrapperPIDPin, pinErr = validateWrapperPIDForNotifyHook(
+			meta.WrapperPID,
+			notifyPeerPID,
+			notifyPeerUID,
+		)
 		if pinErr != nil {
 			_ = notifyFD.Close()
 			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-				slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
+				slog.Debug(
+					"wrap: failed to write notify setup rejection",
+					"session_id",
+					sessionID,
+					"error",
+					statusErr,
+				)
 			}
-			slog.Warn("wrap: rejecting notify fd with untrusted wrapper pid metadata",
-				"session_id", sessionID, "wrapper_pid", meta.WrapperPID, "peer_pid", notifyPeerPID, "peer_uid", notifyPeerUID, "error", pinErr)
+			slog.Warn(
+				"wrap: rejecting notify fd with untrusted wrapper pid metadata",
+				"session_id",
+				sessionID,
+				"wrapper_pid",
+				meta.WrapperPID,
+				"peer_pid",
+				notifyPeerPID,
+				"peer_uid",
+				notifyPeerUID,
+				"error",
+				pinErr,
+			)
 			return
 		}
 		if wrapperPIDPin != nil {
@@ -1124,9 +1402,21 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 			if admissionErr != nil {
 				_ = notifyFD.Close()
 				if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-					slog.Debug("wrap: failed to write cancelled admission rejection", "session_id", sessionID, "error", statusErr)
+					slog.Debug(
+						"wrap: failed to write cancelled admission rejection",
+						"session_id",
+						sessionID,
+						"error",
+						statusErr,
+					)
 				}
-				slog.Warn("wrap: command-jail admission cancelled before setup", "session_id", sessionID, "error", admissionErr)
+				slog.Warn(
+					"wrap: command-jail admission cancelled before setup",
+					"session_id",
+					sessionID,
+					"error",
+					admissionErr,
+				)
 				return
 			}
 			ctx = context.WithValue(ctx, wrapExecLockContextKey{}, true)
@@ -1137,12 +1427,26 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 		if err := barrier.Enforce(wrapperPID); err != nil {
 			_ = notifyFD.Close()
 			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-				slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
+				slog.Debug(
+					"wrap: failed to write notify setup rejection",
+					"session_id",
+					sessionID,
+					"error",
+					statusErr,
+				)
 			}
 			if cleanupErr := barrier.Cleanup(); cleanupErr != nil {
 				err = errors.Join(err, cleanupErr)
 			}
-			slog.Warn("wrap: centralized pre-exec setup before ack failed", "session_id", sessionID, "wrapper_pid", wrapperPID, "error", err)
+			slog.Warn(
+				"wrap: centralized pre-exec setup before ack failed",
+				"session_id",
+				sessionID,
+				"wrapper_pid",
+				wrapperPID,
+				"error",
+				err,
+			)
 			return
 		}
 		cleanup = barrier.CleanupFunc()
@@ -1158,12 +1462,36 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 		}
 	}
 
-	slog.Info("wrap: received notify fd", "session_id", sessionID, "fd", notifyFD.Fd(), "wrapper_pid", wrapperPID)
+	slog.Info(
+		"wrap: received notify fd",
+		"session_id",
+		sessionID,
+		"fd",
+		notifyFD.Fd(),
+		"wrapper_pid",
+		wrapperPID,
+	)
 
 	// Start the notify handler using existing infrastructure
-	if err := startNotifyHandlerForWrapHook(ctx, notifyFD, compositionSetup, sessionID, a, execveEnabled, wrapperPID, s, cleanup); err != nil {
+	if err := startNotifyHandlerForWrapHook(
+		ctx,
+		notifyFD,
+		compositionSetup,
+		sessionID,
+		a,
+		execveEnabled,
+		wrapperPID,
+		s,
+		cleanup,
+	); err != nil {
 		if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-			slog.Debug("wrap: failed to write notify setup rejection", "session_id", sessionID, "error", statusErr)
+			slog.Debug(
+				"wrap: failed to write notify setup rejection",
+				"session_id",
+				sessionID,
+				"error",
+				statusErr,
+			)
 		}
 		// Reject first: the relay then closes its socketpair without ACK, the
 		// wrapper exits, and cgroup cleanup can observe an unpopulated command.
@@ -1172,26 +1500,62 @@ func (a *App) acceptNotifyFD(ctx context.Context, listener net.Listener, socketP
 				err = errors.Join(err, cleanupErr)
 			}
 		}
-		slog.Warn("wrap: notify handler failed before ack", "session_id", sessionID, "wrapper_pid", wrapperPID, "error", err)
+		slog.Warn(
+			"wrap: notify handler failed before ack",
+			"session_id",
+			sessionID,
+			"wrapper_pid",
+			wrapperPID,
+			"error",
+			err,
+		)
 		return
 	}
 	if wrapperPIDPin != nil {
 		if err := validateWrapperPIDPinForNotify(wrapperPIDPin); err != nil {
 			_ = notifyFD.Close()
 			if statusErr := writeNotifyStatusForWrap(unixConn, false); statusErr != nil {
-				slog.Debug("wrap: failed to write exited-wrapper rejection", "session_id", sessionID, "error", statusErr)
+				slog.Debug(
+					"wrap: failed to write exited-wrapper rejection",
+					"session_id",
+					sessionID,
+					"error",
+					statusErr,
+				)
 			}
-			slog.Warn("wrap: trusted wrapper exited before setup acknowledgement", "session_id", sessionID, "wrapper_pid", wrapperPID, "error", err)
+			slog.Warn(
+				"wrap: trusted wrapper exited before setup acknowledgement",
+				"session_id",
+				sessionID,
+				"wrapper_pid",
+				wrapperPID,
+				"error",
+				err,
+			)
 			return
 		}
 	}
 	descriptorsTransferred = true
 	if approvalUI != nil && wrapperPID > 0 {
 		approvalUI.SetAuthorizedPID(wrapperPID)
-		slog.Debug("approval-ui: authorized wrapped process", "session_id", sessionID, "pid", wrapperPID, "socket", approvalUI.path)
+		slog.Debug(
+			"approval-ui: authorized wrapped process",
+			"session_id",
+			sessionID,
+			"pid",
+			wrapperPID,
+			"socket",
+			approvalUI.path,
+		)
 	}
 	if err := writeNotifyStatusForWrap(unixConn, true); err != nil {
-		slog.Debug("wrap: failed to write notify setup status", "session_id", sessionID, "error", err)
+		slog.Debug(
+			"wrap: failed to write notify setup status",
+			"session_id",
+			sessionID,
+			"error",
+			err,
+		)
 	}
 }
 
@@ -1243,7 +1607,13 @@ func wrapNeedsCgroupBeforeAck(a *App, s *session.Session) bool {
 	return false
 }
 
-func defaultWrapCgroupSetupForNotify(ctx context.Context, a *App, s *session.Session, sessionID string, wrapperPID int) (func() error, error) {
+func defaultWrapCgroupSetupForNotify(
+	ctx context.Context,
+	a *App,
+	s *session.Session,
+	sessionID string,
+	wrapperPID int,
+) (func() error, error) {
 	if !wrapNeedsCgroupBeforeAck(a, s) {
 		return nil, nil
 	}
@@ -1298,7 +1668,14 @@ func defaultWrapCgroupSetupForNotify(ctx context.Context, a *App, s *session.Ses
 
 // acceptSignalFD listens on the Unix socket for a single connection from the CLI,
 // receives the signal filter notify fd, and starts the signal handler.
-func (a *App) acceptSignalFD(ctx context.Context, listener net.Listener, socketPath string, sessionID string, s *session.Session, expectedUID int) {
+func (a *App) acceptSignalFD(
+	ctx context.Context,
+	listener net.Listener,
+	socketPath string,
+	sessionID string,
+	s *session.Session,
+	expectedUID int,
+) {
 	defer listener.Close()
 	// Note: do NOT remove the parent directory here — acceptNotifyFD owns that cleanup.
 
@@ -1310,7 +1687,13 @@ func (a *App) acceptSignalFD(ctx context.Context, listener net.Listener, socketP
 	for {
 		nextConn, err := listener.Accept()
 		if err != nil {
-			slog.Debug("wrap: failed to accept signal connection", "session_id", sessionID, "error", err)
+			slog.Debug(
+				"wrap: failed to accept signal connection",
+				"session_id",
+				sessionID,
+				"error",
+				err,
+			)
 			return
 		}
 

@@ -272,11 +272,21 @@ func TestBlockListConfig_SocketRuleBlockListed(t *testing.T) {
 	}
 
 	var nilCfg *BlockListConfig
-	_, ok := nilCfg.SocketRuleBlockListed(uint32(gounix.SYS_SOCKET), uint64(gounix.AF_NETLINK), uint64(gounix.SOCK_RAW), uint64(gounix.NETLINK_XFRM))
+	_, ok := nilCfg.SocketRuleBlockListed(
+		uint32(gounix.SYS_SOCKET),
+		uint64(gounix.AF_NETLINK),
+		uint64(gounix.SOCK_RAW),
+		uint64(gounix.NETLINK_XFRM),
+	)
 	require.False(t, ok)
 
 	empty := &BlockListConfig{}
-	_, ok = empty.SocketRuleBlockListed(uint32(gounix.SYS_SOCKET), uint64(gounix.AF_NETLINK), uint64(gounix.SOCK_RAW), uint64(gounix.NETLINK_XFRM))
+	_, ok = empty.SocketRuleBlockListed(
+		uint32(gounix.SYS_SOCKET),
+		uint64(gounix.AF_NETLINK),
+		uint64(gounix.SOCK_RAW),
+		uint64(gounix.NETLINK_XFRM),
+	)
 	require.False(t, ok)
 
 	cfg := &BlockListConfig{SocketRules: []seccompkg.SocketRule{rule}}
@@ -351,7 +361,12 @@ func TestResolveTGIDFromProc_NonMainThread(t *testing.T) {
 		<-done // Keep the thread alive until the test has read /proc.
 	}()
 	<-ready
-	require.NotEqual(t, syscall.Gettid(), childTID, "test goroutine must be on a different OS thread")
+	require.NotEqual(
+		t,
+		syscall.Gettid(),
+		childTID,
+		"test goroutine must be on a different OS thread",
+	)
 
 	tgid, err := resolveTGIDFromProc(childTID)
 	require.NoError(t, err)

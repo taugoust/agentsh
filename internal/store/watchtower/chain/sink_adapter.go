@@ -23,7 +23,12 @@ func NewWatchtowerSink(inner *audit.SinkChain) *WatchtowerSink {
 }
 
 // Compute delegates to audit.SinkChain.Compute. Pure — no chain mutation.
-func (s *WatchtowerSink) Compute(formatVersion int, sequence int64, generation uint32, payload []byte) (*audit.ComputeResult, error) {
+func (s *WatchtowerSink) Compute(
+	formatVersion int,
+	sequence int64,
+	generation uint32,
+	payload []byte,
+) (*audit.ComputeResult, error) {
 	return s.inner.Compute(formatVersion, sequence, generation, payload)
 }
 

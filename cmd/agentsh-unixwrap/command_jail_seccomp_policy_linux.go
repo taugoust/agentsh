@@ -8,7 +8,15 @@ package main
 // this filter and the already-masked view.
 func commandJailSetupSyscallExempt(name string) bool {
 	switch name {
-	case "mount", "umount", "umount2", "prctl", "capset", "clone", "clone3", "seccomp", "close_range":
+	case "mount",
+		"umount",
+		"umount2",
+		"prctl",
+		"capset",
+		"clone",
+		"clone3",
+		"seccomp",
+		"close_range":
 		return true
 	default:
 		return false

@@ -139,7 +139,12 @@ func RecoveryManifestPath(stateDir string) string {
 	return filepath.Join(stateDir, "recovery.json")
 }
 
-func NewRecoveryManifest(sessionID string, req types.CreateSessionRequest, launch LaunchSpec, now time.Time) RecoveryManifest {
+func NewRecoveryManifest(
+	sessionID string,
+	req types.CreateSessionRequest,
+	launch LaunchSpec,
+	now time.Time,
+) RecoveryManifest {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
@@ -157,7 +162,11 @@ func NewRecoveryManifest(sessionID string, req types.CreateSessionRequest, launc
 
 func validateRecoveryManifest(manifest RecoveryManifest) error {
 	if manifest.SchemaVersion != RecoverySchemaVersion {
-		return fmt.Errorf("%w: unsupported schema_version %d", ErrRecoveryManifestInvalid, manifest.SchemaVersion)
+		return fmt.Errorf(
+			"%w: unsupported schema_version %d",
+			ErrRecoveryManifestInvalid,
+			manifest.SchemaVersion,
+		)
 	}
 	if strings.TrimSpace(manifest.SessionID) == "" || manifest.Request.ID != manifest.SessionID {
 		return fmt.Errorf("%w: session identity mismatch", ErrRecoveryManifestInvalid)
@@ -167,50 +176,102 @@ func validateRecoveryManifest(manifest RecoveryManifest) error {
 	}
 	switch manifest.State {
 	case LifecycleProvisioning, LifecycleRecovering, LifecycleReady, LifecycleDegraded,
-		LifecycleFinalizing, LifecycleStopping, LifecycleStopped, LifecycleFinalized, LifecycleFailed:
+		LifecycleFinalizing, LifecycleStopping, LifecycleStopped, LifecycleFinalized,
+		LifecycleFailed:
 	default:
-		return fmt.Errorf("%w: unsupported lifecycle state %q", ErrRecoveryManifestInvalid, manifest.State)
+		return fmt.Errorf(
+			"%w: unsupported lifecycle state %q",
+			ErrRecoveryManifestInvalid,
+			manifest.State,
+		)
 	}
-	if strings.TrimSpace(manifest.Launch.Executable) == "" || !filepath.IsAbs(manifest.Launch.Executable) {
+	if strings.TrimSpace(manifest.Launch.Executable) == "" ||
+		!filepath.IsAbs(manifest.Launch.Executable) {
 		return fmt.Errorf("%w: launch executable must be absolute", ErrRecoveryManifestInvalid)
 	}
-	if strings.TrimSpace(manifest.Launch.WorkingDir) == "" || !filepath.IsAbs(manifest.Launch.WorkingDir) {
-		return fmt.Errorf("%w: launch working directory must be absolute", ErrRecoveryManifestInvalid)
+	if strings.TrimSpace(manifest.Launch.WorkingDir) == "" ||
+		!filepath.IsAbs(manifest.Launch.WorkingDir) {
+		return fmt.Errorf(
+			"%w: launch working directory must be absolute",
+			ErrRecoveryManifestInvalid,
+		)
 	}
-	if strings.TrimSpace(manifest.Launch.EnvironmentFile) == "" || !filepath.IsAbs(manifest.Launch.EnvironmentFile) {
-		return fmt.Errorf("%w: launch environment file must be absolute", ErrRecoveryManifestInvalid)
+	if strings.TrimSpace(manifest.Launch.EnvironmentFile) == "" ||
+		!filepath.IsAbs(manifest.Launch.EnvironmentFile) {
+		return fmt.Errorf(
+			"%w: launch environment file must be absolute",
+			ErrRecoveryManifestInvalid,
+		)
 	}
 	if manifest.Nethelper != nil {
 		binding := manifest.Nethelper
 		if manifest.NethelperGeneration > 0 && manifest.NethelperGeneration != binding.Generation {
-			return fmt.Errorf("%w: nethelper recovery generations differ", ErrRecoveryManifestInvalid)
+			return fmt.Errorf(
+				"%w: nethelper recovery generations differ",
+				ErrRecoveryManifestInvalid,
+			)
 		}
-		if binding.Generation == 0 || !filepath.IsAbs(binding.SocketPath) || !filepath.IsAbs(binding.CredentialFile) || !filepath.IsAbs(binding.BootstrapResultPath) ||
-			filepath.Clean(binding.SocketPath) != binding.SocketPath || filepath.Clean(binding.CredentialFile) != binding.CredentialFile || filepath.Clean(binding.BootstrapResultPath) != binding.BootstrapResultPath ||
-			strings.ContainsAny(binding.SocketPath+binding.CredentialFile+binding.BootstrapResultPath, "\x00\r\n") {
-			return fmt.Errorf("%w: nethelper recovery identity is invalid", ErrRecoveryManifestInvalid)
+		if binding.Generation == 0 || !filepath.IsAbs(binding.SocketPath) ||
+			!filepath.IsAbs(binding.CredentialFile) ||
+			!filepath.IsAbs(binding.BootstrapResultPath) ||
+			filepath.Clean(binding.SocketPath) != binding.SocketPath ||
+			filepath.Clean(binding.CredentialFile) != binding.CredentialFile ||
+			filepath.Clean(binding.BootstrapResultPath) != binding.BootstrapResultPath ||
+			strings.ContainsAny(
+				binding.SocketPath+binding.CredentialFile+binding.BootstrapResultPath,
+				"\x00\r\n",
+			) {
+			return fmt.Errorf(
+				"%w: nethelper recovery identity is invalid",
+				ErrRecoveryManifestInvalid,
+			)
 		}
 	}
 	if manifest.Finalization != nil {
 		finalization := manifest.Finalization
-		if strings.TrimSpace(finalization.ID) == "" || (finalization.Action != "accept" && finalization.Action != "reject") || finalization.CreatedAt.IsZero() ||
-			(finalization.Action == "accept" && (finalization.ReviewGeneration == 0 || strings.TrimSpace(finalization.ReviewHash) == "")) ||
-			(finalization.AuditCommitted && !finalization.Applied) || (finalization.CleanupComplete && !finalization.AuditCommitted) {
-			return fmt.Errorf("%w: shadow finalization identity is invalid", ErrRecoveryManifestInvalid)
+		if strings.TrimSpace(finalization.ID) == "" ||
+			(finalization.Action != "accept" && finalization.Action != "reject") ||
+			finalization.CreatedAt.IsZero() ||
+			(finalization.Action == "accept" &&
+				(finalization.ReviewGeneration == 0 ||
+					strings.TrimSpace(finalization.ReviewHash) == "")) ||
+			(finalization.AuditCommitted && !finalization.Applied) ||
+			(finalization.CleanupComplete && !finalization.AuditCommitted) {
+			return fmt.Errorf(
+				"%w: shadow finalization identity is invalid",
+				ErrRecoveryManifestInvalid,
+			)
 		}
 	}
-	for _, command := range append(append([]InflightCommand(nil), manifest.Inflight...), manifest.Interrupted...) {
-		if strings.TrimSpace(command.CommandID) == "" || len(command.CommandID) > 128 || strings.ContainsAny(command.CommandID, "\x00\r\n") {
-			return fmt.Errorf("%w: command journal contains an invalid identity", ErrRecoveryManifestInvalid)
+	for _, command := range append(append([]InflightCommand(nil), manifest.Inflight...),
+		manifest.Interrupted...) {
+		if strings.TrimSpace(command.CommandID) == "" || len(command.CommandID) > 128 ||
+			strings.ContainsAny(command.CommandID, "\x00\r\n") {
+			return fmt.Errorf(
+				"%w: command journal contains an invalid identity",
+				ErrRecoveryManifestInvalid,
+			)
 		}
 		if len(command.ParentID) > 128 || strings.ContainsAny(command.ParentID, "\x00\r\n") {
-			return fmt.Errorf("%w: command %s has an invalid parent identity", ErrRecoveryManifestInvalid, command.CommandID)
+			return fmt.Errorf(
+				"%w: command %s has an invalid parent identity",
+				ErrRecoveryManifestInvalid,
+				command.CommandID,
+			)
 		}
 		if command.ExternalProcess && (command.PID <= 0 || command.ProcessGroupID != command.PID) {
-			return fmt.Errorf("%w: command %s has invalid process-group identity", ErrRecoveryManifestInvalid, command.CommandID)
+			return fmt.Errorf(
+				"%w: command %s has invalid process-group identity",
+				ErrRecoveryManifestInvalid,
+				command.CommandID,
+			)
 		}
 		if (command.ProcessStartIdentity == "") != (command.BootID == "") {
-			return fmt.Errorf("%w: command %s has incomplete process identity", ErrRecoveryManifestInvalid, command.CommandID)
+			return fmt.Errorf(
+				"%w: command %s has incomplete process identity",
+				ErrRecoveryManifestInvalid,
+				command.CommandID,
+			)
 		}
 	}
 	return nil
@@ -225,7 +286,10 @@ func WriteRecoveryManifest(stateDir string, manifest RecoveryManifest) error {
 	if err != nil {
 		return fmt.Errorf("encode detached recovery manifest: %w", err)
 	}
-	if err := atomicWritePrivateFile(RecoveryManifestPath(stateDir), append(data, '\n')); err != nil {
+	if err := atomicWritePrivateFile(
+		RecoveryManifestPath(stateDir),
+		append(data, '\n'),
+	); err != nil {
 		return fmt.Errorf("write detached recovery manifest: %w", err)
 	}
 	return nil
@@ -235,7 +299,11 @@ func ReadRecoveryManifest(stateDir string) (RecoveryManifest, error) {
 	path := RecoveryManifestPath(stateDir)
 	data, err := readProtectedRegularFile(path, 16<<20)
 	if err != nil {
-		return RecoveryManifest{}, fmt.Errorf("read detached recovery manifest at %s: %w", path, err)
+		return RecoveryManifest{}, fmt.Errorf(
+			"read detached recovery manifest at %s: %w",
+			path,
+			err,
+		)
 	}
 	var manifest RecoveryManifest
 	dec := json.NewDecoder(strings.NewReader(string(data)))
@@ -265,7 +333,12 @@ type Runtime struct {
 	pendingDirenv      bool
 }
 
-func BeginRuntime(stateDir string, pid int, startIdentity, bootID string, now time.Time) (*Runtime, error) {
+func BeginRuntime(
+	stateDir string,
+	pid int,
+	startIdentity, bootID string,
+	now time.Time,
+) (*Runtime, error) {
 	manifest, err := ReadRecoveryManifest(stateDir)
 	if err != nil {
 		return nil, err
@@ -275,7 +348,10 @@ func BeginRuntime(stateDir string, pid int, startIdentity, bootID string, now ti
 		return nil, err
 	}
 	if meta.SessionID != manifest.SessionID {
-		return nil, fmt.Errorf("%w: metadata and recovery identities differ", ErrRecoveryManifestInvalid)
+		return nil, fmt.Errorf(
+			"%w: metadata and recovery identities differ",
+			ErrRecoveryManifestInvalid,
+		)
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -288,21 +364,37 @@ func BeginRuntime(stateDir string, pid int, startIdentity, bootID string, now ti
 	// treating it as recovery would require a shadow identity that could not yet
 	// have been committed. Once either identity field exists, require both and
 	// recover fail-closed rather than silently recopying a served workspace.
-	if recovery && manifest.SessionCreatedAt.IsZero() && strings.TrimSpace(manifest.PolicyDigest) == "" {
+	if recovery && manifest.SessionCreatedAt.IsZero() &&
+		strings.TrimSpace(manifest.PolicyDigest) == "" {
 		if manifest.State != LifecycleFailed {
-			return nil, fmt.Errorf("%w: non-failed lifecycle lacks durable session readiness identity", ErrRecoveryManifestInvalid)
+			return nil, fmt.Errorf(
+				"%w: non-failed lifecycle lacks durable session readiness identity",
+				ErrRecoveryManifestInvalid,
+			)
 		}
 		recovery = false
 	}
 	if manifest.SessionCreatedAt.IsZero() != (strings.TrimSpace(manifest.PolicyDigest) == "") {
-		return nil, fmt.Errorf("%w: incomplete durable session readiness identity", ErrRecoveryManifestInvalid)
+		return nil, fmt.Errorf(
+			"%w: incomplete durable session readiness identity",
+			ErrRecoveryManifestInvalid,
+		)
 	}
 	if manifest.State == LifecycleFinalizing {
 		if manifest.Finalization == nil || manifest.Shadow == nil {
-			return nil, fmt.Errorf("detached session %s has incomplete finalization recovery state", manifest.SessionID)
+			return nil, fmt.Errorf(
+				"detached session %s has incomplete finalization recovery state",
+				manifest.SessionID,
+			)
 		}
-	} else if manifest.State == LifecycleStopping || manifest.State == LifecycleStopped || manifest.State == LifecycleFinalized {
-		return nil, fmt.Errorf("detached session %s is %s and cannot be restarted", manifest.SessionID, manifest.State)
+	} else if manifest.State == LifecycleStopping ||
+		manifest.State == LifecycleStopped ||
+		manifest.State == LifecycleFinalized {
+		return nil, fmt.Errorf(
+			"detached session %s is %s and cannot be restarted",
+			manifest.SessionID,
+			manifest.State,
+		)
 	}
 	resumeFinalization := manifest.State == LifecycleFinalizing
 	manifest.Generation++
@@ -327,9 +419,18 @@ func BeginRuntime(stateDir string, pid int, startIdentity, bootID string, now ti
 	meta.HeartbeatAt = now
 	meta.LastError = ""
 
-	runtime := &Runtime{stateDir: stateDir, manifest: manifest, metadata: meta, recovery: recovery, started: now}
+	runtime := &Runtime{
+		stateDir: stateDir,
+		manifest: manifest,
+		metadata: meta,
+		recovery: recovery,
+		started:  now,
+	}
 	if recovery {
-		runtime.pendingEnvironment = make(map[string]struct{}, len(manifest.Mutable.VolatileEnvironment))
+		runtime.pendingEnvironment = make(
+			map[string]struct{},
+			len(manifest.Mutable.VolatileEnvironment),
+		)
 		for _, name := range manifest.Mutable.VolatileEnvironment {
 			runtime.pendingEnvironment[name] = struct{}{}
 		}
@@ -369,7 +470,10 @@ func (r *Runtime) SetControlCredential(credential string) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if existing := strings.TrimSpace(r.metadata.EventToken); existing != "" && existing != credential {
+	if existing := strings.TrimSpace(
+		r.metadata.EventToken,
+	); existing != "" &&
+		existing != credential {
 		return fmt.Errorf("detached control credential does not match protected metadata")
 	}
 	r.metadata.EventToken = credential
@@ -386,7 +490,11 @@ func (r *Runtime) persistLocked() error {
 	return nil
 }
 
-func (r *Runtime) MarkReady(session types.Session, policyDigest string, network *NetworkEnforcement) error {
+func (r *Runtime) MarkReady(
+	session types.Session,
+	policyDigest string,
+	network *NetworkEnforcement,
+) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := time.Now().UTC()
@@ -400,7 +508,10 @@ func (r *Runtime) MarkReady(session types.Session, policyDigest string, network 
 			Tmp: session.Shadow.Tmp, CreatedAt: session.Shadow.CreatedAt,
 		}
 		for _, root := range session.Shadow.Roots {
-			shadow.Roots = append(shadow.Roots, ShadowRootRecovery{Name: root.Name, Real: root.Real, Work: root.Work})
+			shadow.Roots = append(
+				shadow.Roots,
+				ShadowRootRecovery{Name: root.Name, Real: root.Real, Work: root.Work},
+			)
 		}
 		r.manifest.Shadow = shadow
 	}
@@ -427,7 +538,10 @@ func (r *Runtime) MarkReady(session types.Session, policyDigest string, network 
 	if session.Shadow != nil {
 		r.metadata.WorkspaceRoots = nil
 		for _, root := range session.Shadow.Roots {
-			r.metadata.WorkspaceRoots = append(r.metadata.WorkspaceRoots, WorkspaceRoot{Name: root.Name, Real: root.Real, Work: root.Work})
+			r.metadata.WorkspaceRoots = append(
+				r.metadata.WorkspaceRoots,
+				WorkspaceRoot{Name: root.Name, Real: root.Real, Work: root.Work},
+			)
 		}
 	}
 	return r.persistLocked()
@@ -450,11 +564,19 @@ func (r *Runtime) markState(state, reason string, network *NetworkEnforcement) e
 	switch r.manifest.State {
 	case LifecycleStopping:
 		if state != LifecycleStopping && state != LifecycleStopped {
-			return fmt.Errorf("refusing detached lifecycle transition from %s to %s", r.manifest.State, state)
+			return fmt.Errorf(
+				"refusing detached lifecycle transition from %s to %s",
+				r.manifest.State,
+				state,
+			)
 		}
 	case LifecycleStopped, LifecycleFinalized:
 		if state != r.manifest.State {
-			return fmt.Errorf("refusing detached lifecycle transition from terminal %s to %s", r.manifest.State, state)
+			return fmt.Errorf(
+				"refusing detached lifecycle transition from terminal %s to %s",
+				r.manifest.State,
+				state,
+			)
 		}
 	}
 	now := time.Now().UTC()
@@ -490,22 +612,34 @@ func (r *Runtime) markState(state, reason string, network *NetworkEnforcement) e
 }
 
 func (r *Runtime) MarkFinalizing(finalization ShadowFinalizationRecovery) error {
-	if strings.TrimSpace(finalization.ID) == "" || (finalization.Action != "accept" && finalization.Action != "reject") || finalization.CreatedAt.IsZero() ||
-		(finalization.Action == "accept" && (finalization.ReviewGeneration == 0 || strings.TrimSpace(finalization.ReviewHash) == "")) {
+	if strings.TrimSpace(finalization.ID) == "" ||
+		(finalization.Action != "accept" && finalization.Action != "reject") ||
+		finalization.CreatedAt.IsZero() ||
+		(finalization.Action == "accept" &&
+			(finalization.ReviewGeneration == 0 ||
+				strings.TrimSpace(finalization.ReviewHash) == "")) {
 		return fmt.Errorf("detached shadow finalization identity is invalid")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.manifest.Finalization != nil {
 		existing := r.manifest.Finalization
-		if existing.ID == finalization.ID && existing.Action == finalization.Action && existing.ReviewGeneration == finalization.ReviewGeneration &&
-			existing.ReviewHash == finalization.ReviewHash && existing.CreatedAt.Equal(finalization.CreatedAt) && r.manifest.State == LifecycleFinalizing {
+		if existing.ID == finalization.ID && existing.Action == finalization.Action &&
+			existing.ReviewGeneration == finalization.ReviewGeneration &&
+			existing.ReviewHash == finalization.ReviewHash &&
+			existing.CreatedAt.Equal(finalization.CreatedAt) &&
+			r.manifest.State == LifecycleFinalizing {
 			return nil
 		}
 		return fmt.Errorf("a different detached shadow finalization is already committed")
 	}
-	if r.manifest.State != LifecycleReady && r.manifest.State != LifecycleDegraded && r.manifest.State != LifecycleRecovering {
-		return fmt.Errorf("refusing detached lifecycle transition from %s to %s", r.manifest.State, LifecycleFinalizing)
+	if r.manifest.State != LifecycleReady && r.manifest.State != LifecycleDegraded &&
+		r.manifest.State != LifecycleRecovering {
+		return fmt.Errorf(
+			"refusing detached lifecycle transition from %s to %s",
+			r.manifest.State,
+			LifecycleFinalizing,
+		)
 	}
 	previousManifest := cloneRecoveryManifest(r.manifest)
 	previousMetadata := cloneMetadata(r.metadata)
@@ -524,10 +658,15 @@ func (r *Runtime) MarkFinalizing(finalization ShadowFinalizationRecovery) error 
 	}
 	return nil
 }
-func (r *Runtime) updateFinalization(finalizationID string, update func(*ShadowFinalizationRecovery)) error {
+
+func (r *Runtime) updateFinalization(
+	finalizationID string,
+	update func(*ShadowFinalizationRecovery),
+) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.manifest.State != LifecycleFinalizing || r.manifest.Finalization == nil || r.manifest.Finalization.ID != finalizationID {
+	if r.manifest.State != LifecycleFinalizing || r.manifest.Finalization == nil ||
+		r.manifest.Finalization.ID != finalizationID {
 		return fmt.Errorf("detached shadow finalization identity mismatch")
 	}
 	previousManifest := cloneRecoveryManifest(r.manifest)
@@ -543,7 +682,10 @@ func (r *Runtime) updateFinalization(finalizationID string, update func(*ShadowF
 }
 
 func (r *Runtime) MarkFinalizationApplied(finalizationID string) error {
-	return r.updateFinalization(finalizationID, func(finalization *ShadowFinalizationRecovery) { finalization.Applied = true })
+	return r.updateFinalization(
+		finalizationID,
+		func(finalization *ShadowFinalizationRecovery) { finalization.Applied = true },
+	)
 }
 
 func (r *Runtime) MarkFinalizationAudited(finalizationID string) error {
@@ -568,10 +710,16 @@ func (r *Runtime) MarkFinalized(finalizationID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.manifest.State != LifecycleFinalizing {
-		return fmt.Errorf("refusing detached lifecycle transition from %s to %s", r.manifest.State, LifecycleFinalized)
+		return fmt.Errorf(
+			"refusing detached lifecycle transition from %s to %s",
+			r.manifest.State,
+			LifecycleFinalized,
+		)
 	}
-	if r.manifest.Finalization == nil || r.manifest.Finalization.ID != finalizationID || !r.manifest.Finalization.Applied ||
-		!r.manifest.Finalization.AuditCommitted || !r.manifest.Finalization.CleanupComplete {
+	if r.manifest.Finalization == nil || r.manifest.Finalization.ID != finalizationID ||
+		!r.manifest.Finalization.Applied ||
+		!r.manifest.Finalization.AuditCommitted ||
+		!r.manifest.Finalization.CleanupComplete {
 		return fmt.Errorf("detached shadow finalization is incomplete")
 	}
 	previousManifest := cloneRecoveryManifest(r.manifest)
@@ -751,7 +899,10 @@ func (r *Runtime) UpdateNethelperGeneration(generation uint64) error {
 // one manifest write before rotating the service EnvironmentFile. A crash
 // between those writes is safe because the next supervisor applies this
 // manifest authority before loading the helper credential.
-func (r *Runtime) UpdateNethelperBinding(socketPath, credentialFile, bootstrapResultPath string, generation uint64) error {
+func (r *Runtime) UpdateNethelperBinding(
+	socketPath, credentialFile, bootstrapResultPath string,
+	generation uint64,
+) error {
 	binding := &NethelperRecovery{
 		SocketPath: socketPath, CredentialFile: credentialFile,
 		BootstrapResultPath: bootstrapResultPath, Generation: generation,
@@ -793,10 +944,13 @@ func (r *Runtime) NethelperRecoveryEnvironment() map[string]string {
 func RestartSafeEnvironmentName(name string) bool {
 	switch strings.ToUpper(strings.TrimSpace(name)) {
 	case "PATH", "SSH_AUTH_SOCK", "SSH_CONFIG_FILE", "GIT_SSH_COMMAND", "RSYNC_RSH",
-		"HOME", "TMPDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR",
-		"PI_CODING_AGENT_DIR", "AGENTSH_SUBAGENT_COMMAND", "AGENTSH_SUBAGENT_ARGS", "AGENTSH_SUBAGENT_TASK_MODE",
+		"HOME", "TMPDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME",
+		"XDG_RUNTIME_DIR",
+		"PI_CODING_AGENT_DIR", "AGENTSH_SUBAGENT_COMMAND", "AGENTSH_SUBAGENT_ARGS",
+		"AGENTSH_SUBAGENT_TASK_MODE",
 		"AGENTSH_SUBAGENT_PROTOCOL", "AGENTSH_SUBAGENT_MAX_DEPTH", "AGENTSH_SUBAGENT_RUNTIME",
-		"AGENTSH_DRAFT_SUBAGENT_COMMAND", "AGENTSH_DRAFT_SUBAGENT_ARGS", "AGENTSH_DRAFT_SUBAGENT_HOME", "AGENTSH_DRAFT_SUBAGENT_STATE_DIR",
+		"AGENTSH_DRAFT_SUBAGENT_COMMAND", "AGENTSH_DRAFT_SUBAGENT_ARGS",
+		"AGENTSH_DRAFT_SUBAGENT_HOME", "AGENTSH_DRAFT_SUBAGENT_STATE_DIR",
 		EnvGuestEgressProxyURL:
 		return true
 	default:
@@ -886,7 +1040,10 @@ func updateServiceEnvironmentFile(path string, updates map[string]string) error 
 func ReadServiceEnvironment(path string) ([]string, error) {
 	data, err := readProtectedRegularFile(path, 4<<20)
 	if err != nil {
-		return nil, fmt.Errorf("detached supervisor environment is not a protected regular file: %w", err)
+		return nil, fmt.Errorf(
+			"detached supervisor environment is not a protected regular file: %w",
+			err,
+		)
 	}
 	assignments, order, err := parsePrivateEnvironmentFile(string(data))
 	if err != nil {
@@ -907,8 +1064,15 @@ func parsePrivateEnvironmentFile(content string) (map[string]string, []string, e
 			continue
 		}
 		name, encoded, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(name) != name || name == "" || strings.ContainsAny(name, " \t\r\n") || len(encoded) < 2 || encoded[0] != '"' || encoded[len(encoded)-1] != '"' {
-			return nil, nil, fmt.Errorf("invalid detached supervisor environment line %d", lineNumber+1)
+		if !ok || strings.TrimSpace(name) != name || name == "" ||
+			strings.ContainsAny(name, " \t\r\n") ||
+			len(encoded) < 2 ||
+			encoded[0] != '"' ||
+			encoded[len(encoded)-1] != '"' {
+			return nil, nil, fmt.Errorf(
+				"invalid detached supervisor environment line %d",
+				lineNumber+1,
+			)
 		}
 		encoded = encoded[1 : len(encoded)-1]
 		var value strings.Builder
@@ -916,7 +1080,10 @@ func parsePrivateEnvironmentFile(content string) (map[string]string, []string, e
 		for _, char := range encoded {
 			if escaped {
 				if char != '\\' && char != '"' {
-					return nil, nil, fmt.Errorf("invalid environment escape on line %d", lineNumber+1)
+					return nil, nil, fmt.Errorf(
+						"invalid environment escape on line %d",
+						lineNumber+1,
+					)
 				}
 				value.WriteRune(char)
 				escaped = false
@@ -949,7 +1116,9 @@ func (r *Runtime) UpdateNetwork(network *NetworkEnforcement) error {
 	copy := *network
 	copy.Normalize()
 	r.metadata.NetworkEnforcement = &copy
-	if (copy.Requested != NetworkEnforcementRequestStrict || copy.Ready()) && len(r.pendingEnvironment) == 0 && !r.pendingDirenv {
+	if (copy.Requested != NetworkEnforcementRequestStrict || copy.Ready()) &&
+		len(r.pendingEnvironment) == 0 &&
+		!r.pendingDirenv {
 		r.manifest.State = LifecycleReady
 		r.manifest.LastError = ""
 		r.metadata.State = LifecycleReady
@@ -971,24 +1140,28 @@ func (r *Runtime) CanRunRecoveryAction(action string) bool {
 		return false
 	}
 	network := r.metadata.NetworkEnforcement
-	return network != nil && (network.Requested != NetworkEnforcementRequestStrict || network.Ready())
+	return network != nil &&
+		(network.Requested != NetworkEnforcementRequestStrict || network.Ready())
 }
 
 func (r *Runtime) RuntimeStatus() RuntimeStatus {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return RuntimeStatus{
-		ProtocolVersion:       ProtocolVersion,
-		SessionID:             r.manifest.SessionID,
-		LifecycleState:        r.metadata.State,
-		Generation:            r.metadata.Generation,
-		IncarnationID:         r.metadata.IncarnationID,
-		OwnerPID:              r.metadata.OwnerPID,
-		OwnerStartIdentity:    r.metadata.OwnerStartIdentity,
-		BootID:                r.metadata.BootID,
-		IncarnationStartedAt:  r.metadata.IncarnationStartedAt,
-		HeartbeatAt:           r.metadata.HeartbeatAt,
-		Recoverable:           r.manifest.State != LifecycleFinalizing && r.manifest.State != LifecycleStopping && r.manifest.State != LifecycleStopped && r.manifest.State != LifecycleFinalized,
+		ProtocolVersion:      ProtocolVersion,
+		SessionID:            r.manifest.SessionID,
+		LifecycleState:       r.metadata.State,
+		Generation:           r.metadata.Generation,
+		IncarnationID:        r.metadata.IncarnationID,
+		OwnerPID:             r.metadata.OwnerPID,
+		OwnerStartIdentity:   r.metadata.OwnerStartIdentity,
+		BootID:               r.metadata.BootID,
+		IncarnationStartedAt: r.metadata.IncarnationStartedAt,
+		HeartbeatAt:          r.metadata.HeartbeatAt,
+		Recoverable: r.manifest.State != LifecycleFinalizing &&
+			r.manifest.State != LifecycleStopping &&
+			r.manifest.State != LifecycleStopped &&
+			r.manifest.State != LifecycleFinalized,
 		LastError:             r.metadata.LastError,
 		RequiredEnvironment:   pendingEnvironmentNames(r.pendingEnvironment),
 		DirenvRefreshRequired: r.pendingDirenv,
@@ -1030,11 +1203,19 @@ func ReadTerminalRuntimeStatusFromRoot(root, sessionID string) (RuntimeStatus, e
 	}
 	if meta.ProtocolVersion < ProtocolVersion || manifest.SessionID != sessionID ||
 		meta.Generation == 0 || meta.Generation != manifest.Generation ||
-		strings.TrimSpace(meta.IncarnationID) == "" || meta.IncarnationID != manifest.IncarnationID {
-		return RuntimeStatus{}, fmt.Errorf("%w: terminal metadata and recovery identities differ", ErrRecoveryManifestInvalid)
+		strings.TrimSpace(
+			meta.IncarnationID,
+		) == "" || meta.IncarnationID != manifest.IncarnationID {
+		return RuntimeStatus{}, fmt.Errorf(
+			"%w: terminal metadata and recovery identities differ",
+			ErrRecoveryManifestInvalid,
+		)
 	}
 	if manifest.State != LifecycleStopped && manifest.State != LifecycleFinalized {
-		return RuntimeStatus{}, fmt.Errorf("%w: detached session is not durably terminal", ErrRecoveryManifestInvalid)
+		return RuntimeStatus{}, fmt.Errorf(
+			"%w: detached session is not durably terminal",
+			ErrRecoveryManifestInvalid,
+		)
 	}
 	return RuntimeStatus{
 		ProtocolVersion: ProtocolVersion, SessionID: sessionID,

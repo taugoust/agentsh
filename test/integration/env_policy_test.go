@@ -89,8 +89,11 @@ func TestEnvPolicyDefaultSecrets(t *testing.T) {
 		t.Run(secret, func(t *testing.T) {
 			dec := engine.CheckEnv(secret)
 			if dec.Allowed {
-				t.Errorf("CheckEnv(%q) should be denied by default, got Allowed=true (MatchedBy:%s)",
-					secret, dec.MatchedBy)
+				t.Errorf(
+					"CheckEnv(%q) should be denied by default, got Allowed=true (MatchedBy:%s)",
+					secret,
+					dec.MatchedBy,
+				)
 			}
 		})
 	}

@@ -35,14 +35,25 @@ func connStateForTest(svc, dialect, tlsMode string) connState {
 func TestBuildStatementEvent_FullTier_VerbatimSlice(t *testing.T) {
 	sql := "SELECT 1; SELECT 2"
 	stmt := effects.ClassifiedStatement{
-		Effects:     []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}},
-		SourceStart: 0, SourceEnd: 8, RawVerb: "SELECT",
+		Effects: []effects.Effect{
+			{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+		},
+		SourceStart: 0,
+		SourceEnd:   8,
+		RawVerb:     "SELECT",
 	}
 	parser := classify_pg.New(classify_pg.DialectPostgres)
 	ev := buildStatementEvent(buildArgs{
-		Stmt: stmt, StmtIndex: 0, BatchTotal: 2,
-		Decision: policy.Decision{Verb: policy.VerbAllow, RuleKind: policy.RuleKindStatement, RuleName: "app-allow-read"},
-		SQL:      sql, Tier: policy.RedactFull,
+		Stmt:       stmt,
+		StmtIndex:  0,
+		BatchTotal: 2,
+		Decision: policy.Decision{
+			Verb:     policy.VerbAllow,
+			RuleKind: policy.RuleKindStatement,
+			RuleName: "app-allow-read",
+		},
+		SQL:        sql,
+		Tier:       policy.RedactFull,
 		Conn:       connStateForTest("appdb", "postgres", "terminate_reissue"),
 		DenyAction: "none",
 		BatchSHA:   sha256Hex(sql),
@@ -95,7 +106,12 @@ func TestBuildStatementEvent_UsesAgentSessionAndPrimaryOperation(t *testing.T) {
 		t.Fatalf("ClientIdentity = %q, want peer identity", ev.ClientIdentity)
 	}
 	if ev.OperationGroup != "bulk_export" || ev.OperationGroupID != effects.GroupBulkExport.ID() {
-		t.Fatalf("operation = %q/%d, want bulk_export/%d", ev.OperationGroup, ev.OperationGroupID, effects.GroupBulkExport.ID())
+		t.Fatalf(
+			"operation = %q/%d, want bulk_export/%d",
+			ev.OperationGroup,
+			ev.OperationGroupID,
+			effects.GroupBulkExport.ID(),
+		)
 	}
 	if ev.OperationSubtype != "copy_to_stdout" {
 		t.Fatalf("OperationSubtype = %q, want copy_to_stdout", ev.OperationSubtype)
@@ -118,19 +134,31 @@ func TestBuildCancelEvent_UsesAgentSessionID(t *testing.T) {
 		t.Fatalf("ClientIdentity = %q, want peer identity", ev.ClientIdentity)
 	}
 	if ev.OperationGroup != "session" || ev.OperationGroupID != effects.GroupSession.ID() {
-		t.Fatalf("operation = %q/%d, want session/%d", ev.OperationGroup, ev.OperationGroupID, effects.GroupSession.ID())
+		t.Fatalf(
+			"operation = %q/%d, want session/%d",
+			ev.OperationGroup,
+			ev.OperationGroupID,
+			effects.GroupSession.ID(),
+		)
 	}
 }
 
 func TestBuildStatementEvent_DigestStableAcrossTiers(t *testing.T) {
 	sql := "SELECT 'hello'"
 	stmt := effects.ClassifiedStatement{
-		Effects:     []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}},
-		SourceStart: 0, SourceEnd: int32(len(sql)),
+		Effects: []effects.Effect{
+			{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+		},
+		SourceStart: 0,
+		SourceEnd:   int32(len(sql)),
 	}
 	parser := classify_pg.New(classify_pg.DialectPostgres)
 	digests := map[policy.RedactionTier]string{}
-	for _, tier := range []policy.RedactionTier{policy.RedactFull, policy.RedactParametersRedacted, policy.RedactNone} {
+	for _, tier := range []policy.RedactionTier{
+		policy.RedactFull,
+		policy.RedactParametersRedacted,
+		policy.RedactNone,
+	} {
 		ev := buildStatementEvent(buildArgs{
 			Stmt: stmt, SQL: sql, Tier: tier,
 			Conn:       connStateForTest("appdb", "postgres", "terminate_reissue"),
@@ -151,13 +179,24 @@ func TestBuildStatementEvent_DeniedBySibling(t *testing.T) {
 	sql := "SELECT 1; DELETE FROM t"
 	parser := classify_pg.New(classify_pg.DialectPostgres)
 	stmt0 := effects.ClassifiedStatement{
-		Effects:     []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}},
-		SourceStart: 0, SourceEnd: 8, RawVerb: "SELECT",
+		Effects: []effects.Effect{
+			{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+		},
+		SourceStart: 0,
+		SourceEnd:   8,
+		RawVerb:     "SELECT",
 	}
 	ev := buildStatementEvent(buildArgs{
-		Stmt: stmt0, StmtIndex: 0, BatchTotal: 2,
-		Decision: policy.Decision{Verb: policy.VerbDeny, RuleKind: policy.RuleKindStatement, Reason: "denied by sibling statement"},
-		SQL:      sql, Tier: policy.RedactParametersRedacted,
+		Stmt:       stmt0,
+		StmtIndex:  0,
+		BatchTotal: 2,
+		Decision: policy.Decision{
+			Verb:     policy.VerbDeny,
+			RuleKind: policy.RuleKindStatement,
+			Reason:   "denied by sibling statement",
+		},
+		SQL:               sql,
+		Tier:              policy.RedactParametersRedacted,
 		Conn:              connStateForTest("appdb", "postgres", "terminate_reissue"),
 		DenyAction:        "none",
 		IsDeniedBySibling: true,
@@ -178,8 +217,11 @@ func TestBuildStatementEvent_DeniedBySibling(t *testing.T) {
 func TestBuildStatementEvent_NoneTierStripsText(t *testing.T) {
 	sql := "SELECT 1"
 	stmt := effects.ClassifiedStatement{
-		Effects:     []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}},
-		SourceStart: 0, SourceEnd: int32(len(sql)),
+		Effects: []effects.Effect{
+			{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+		},
+		SourceStart: 0,
+		SourceEnd:   int32(len(sql)),
 	}
 	parser := classify_pg.New(classify_pg.DialectPostgres)
 	ev := buildStatementEvent(buildArgs{
@@ -329,11 +371,15 @@ func TestBuildStatementEvent_RedirectMetadataPreservesOriginalDigest(t *testing.
 	parser := classify_pg.New(classify_pg.DialectPostgres)
 	stmt := effects.ClassifiedStatement{
 		RawVerb: "SELECT",
-		Effects: []effects.Effect{{
-			Group:      effects.GroupRead,
-			Resolution: effects.ResolutionCatalogResolved,
-			Objects:    []effects.ObjectRef{{Kind: effects.ObjectTable, Schema: "public", Name: "users"}},
-		}},
+		Effects: []effects.Effect{
+			{
+				Group:      effects.GroupRead,
+				Resolution: effects.ResolutionCatalogResolved,
+				Objects: []effects.ObjectRef{
+					{Kind: effects.ObjectTable, Schema: "public", Name: "users"},
+				},
+			},
+		},
 	}
 
 	ev := buildStatementEvent(buildArgs{
@@ -347,9 +393,12 @@ func TestBuildStatementEvent_RedirectMetadataPreservesOriginalDigest(t *testing.
 			MatchingEffectIndex: 0,
 			MatchingEffectGroup: effects.GroupRead,
 		},
-		SQL:      "select id from public.users",
-		Tier:     policy.RedactParametersRedacted,
-		Conn:     connState{dbService: "appdb", smState: &statemachine.ConnState{LastUpstreamRFQ: 'I'}},
+		SQL:  "select id from public.users",
+		Tier: policy.RedactParametersRedacted,
+		Conn: connState{
+			dbService: "appdb",
+			smState:   &statemachine.ConnState{LastUpstreamRFQ: 'I'},
+		},
 		BatchSHA: sha256HexBatch("select id from public.users"),
 		Parser:   parser,
 		Redirect: redirectEventArgs{
@@ -368,14 +417,23 @@ func TestBuildStatementEvent_RedirectMetadataPreservesOriginalDigest(t *testing.
 	if ev.RedirectRule != "redirect-users" {
 		t.Fatalf("RedirectRule = %q", ev.RedirectRule)
 	}
-	if ev.RedirectSourceRelation != "public.users" || ev.RedirectTargetRelation != "public.safe_users" {
-		t.Fatalf("redirect relations = %q -> %q", ev.RedirectSourceRelation, ev.RedirectTargetRelation)
+	if ev.RedirectSourceRelation != "public.users" ||
+		ev.RedirectTargetRelation != "public.safe_users" {
+		t.Fatalf(
+			"redirect relations = %q -> %q",
+			ev.RedirectSourceRelation,
+			ev.RedirectTargetRelation,
+		)
 	}
 	if ev.RedirectRuntimeStatus != "executed" {
 		t.Fatalf("RedirectRuntimeStatus = %q", ev.RedirectRuntimeStatus)
 	}
 	if ev.StatementDigest == "" || ev.RewrittenStatementDigest == "" {
-		t.Fatalf("digests missing: original=%q rewritten=%q", ev.StatementDigest, ev.RewrittenStatementDigest)
+		t.Fatalf(
+			"digests missing: original=%q rewritten=%q",
+			ev.StatementDigest,
+			ev.RewrittenStatementDigest,
+		)
 	}
 	if ev.StatementDigest == ev.RewrittenStatementDigest {
 		t.Fatalf("original and rewritten digests must differ: %q", ev.StatementDigest)

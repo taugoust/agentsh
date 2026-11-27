@@ -67,8 +67,16 @@ func TestEffect_OrderUnknownIsHighestCritical(t *testing.T) {
 
 func TestEffect_OrderStableForEqualPriority(t *testing.T) {
 	// Two effects with the exact same group keep input order (AST traversal stability).
-	a := Effect{Group: GroupRead, Subtype: SubtypeNone, Objects: []ObjectRef{{Kind: ObjectTable, Name: "a"}}}
-	b := Effect{Group: GroupRead, Subtype: SubtypeNone, Objects: []ObjectRef{{Kind: ObjectTable, Name: "b"}}}
+	a := Effect{
+		Group:   GroupRead,
+		Subtype: SubtypeNone,
+		Objects: []ObjectRef{{Kind: ObjectTable, Name: "a"}},
+	}
+	b := Effect{
+		Group:   GroupRead,
+		Subtype: SubtypeNone,
+		Objects: []ObjectRef{{Kind: ObjectTable, Name: "b"}},
+	}
 	in := []Effect{a, b}
 	Order(in)
 	if in[0].Objects[0].Name != "a" || in[1].Objects[0].Name != "b" {

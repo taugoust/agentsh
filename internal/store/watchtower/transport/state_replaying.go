@@ -116,7 +116,12 @@ func (t *Transport) runReplaying(ctx context.Context, r *Replayer) (State, error
 			return StateConnecting, fmt.Errorf("replay batch: %w", err)
 		}
 		if len(batch.Records) > 0 {
-			msgs, err := buildEventBatchFn(batch.Records, t.emitExtendedLossReasons, t.compressor, t.compressMetrics)
+			msgs, err := buildEventBatchFn(
+				batch.Records,
+				t.emitExtendedLossReasons,
+				t.compressor,
+				t.compressMetrics,
+			)
 			if err != nil {
 				t.opts.Logger.LogAttrs(context.Background(), slog.LevelWarn,
 					"wtp: runReplaying exit (buildEventBatch)",
@@ -162,6 +167,11 @@ func (t *Transport) runReplaying(ctx context.Context, r *Replayer) (State, error
 // Tests that need to assert against a custom wire shape can override
 // via setBuildEventBatchFnForTest (see state_replaying_internal_test.go).
 // Production code MUST NOT mutate this variable.
-var buildEventBatchFn = func(records []wal.Record, emitExtended bool, compressor compress.Encoder, m CompressMetrics) ([]*wtpv1.ClientMessage, error) {
+var buildEventBatchFn = func(
+	records []wal.Record,
+	emitExtended bool,
+	compressor compress.Encoder,
+	m CompressMetrics,
+) ([]*wtpv1.ClientMessage, error) {
 	return encodeBatchMessageWithCompressor(records, emitExtended, compressor, m)
 }

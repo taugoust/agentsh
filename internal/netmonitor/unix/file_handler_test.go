@@ -40,11 +40,18 @@ type mockApprovalFilePolicy struct {
 	resolveCalls []string
 }
 
-func (m *mockApprovalFilePolicy) CheckFile(ctx context.Context, path, operation string) FilePolicyDecision {
+func (m *mockApprovalFilePolicy) CheckFile(
+	ctx context.Context,
+	path, operation string,
+) FilePolicyDecision {
 	return m.policy.CheckFile(ctx, path, operation)
 }
 
-func (m *mockApprovalFilePolicy) ResolveFileApproval(_ context.Context, target, _ string, prepared FilePolicyDecision) (FilePolicyDecision, error) {
+func (m *mockApprovalFilePolicy) ResolveFileApproval(
+	_ context.Context,
+	target, _ string,
+	prepared FilePolicyDecision,
+) (FilePolicyDecision, error) {
 	m.resolveCalls = append(m.resolveCalls, target)
 	if resolved, ok := m.resolutions[target]; ok {
 		return resolved, nil
@@ -59,11 +66,18 @@ type cancelBlockingApprovalFilePolicy struct {
 	entered      chan string
 }
 
-func (m *cancelBlockingApprovalFilePolicy) CheckFile(ctx context.Context, path, operation string) FilePolicyDecision {
+func (m *cancelBlockingApprovalFilePolicy) CheckFile(
+	ctx context.Context,
+	path, operation string,
+) FilePolicyDecision {
 	return m.policy.CheckFile(ctx, path, operation)
 }
 
-func (m *cancelBlockingApprovalFilePolicy) ResolveFileApproval(ctx context.Context, target, _ string, prepared FilePolicyDecision) (FilePolicyDecision, error) {
+func (m *cancelBlockingApprovalFilePolicy) ResolveFileApproval(
+	ctx context.Context,
+	target, _ string,
+	prepared FilePolicyDecision,
+) (FilePolicyDecision, error) {
 	m.resolveCalls = append(m.resolveCalls, target)
 	m.entered <- target
 	<-ctx.Done()
@@ -83,14 +97,21 @@ func (m *mockFileEmitter) AppendEvent(_ context.Context, ev types.Event) error {
 
 func (m *mockFileEmitter) Publish(ev types.Event) {}
 
-func requirePolicyObligationAuditFields(t *testing.T, event *types.Event, count int) []map[string]any {
+func requirePolicyObligationAuditFields(
+	t *testing.T,
+	event *types.Event,
+	count int,
+) []map[string]any {
 	t.Helper()
 	if event == nil || event.Fields == nil {
 		t.Fatalf("event has no audit fields: %+v", event)
 	}
 	obligations, ok := event.Fields["policy_obligations"].([]map[string]any)
 	if !ok {
-		t.Fatalf("policy_obligations has type %T, want []map[string]any", event.Fields["policy_obligations"])
+		t.Fatalf(
+			"policy_obligations has type %T, want []map[string]any",
+			event.Fields["policy_obligations"],
+		)
 	}
 	if len(obligations) != count {
 		t.Fatalf("policy obligation count = %d, want %d: %+v", len(obligations), count, obligations)
@@ -105,13 +126,19 @@ func TestFileHandler_PreparePreservesAllObligationsAndDenyDominates(t *testing.T
 				Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible",
 			},
 			"/visible/two": {
-				Decision: "approve", EffectiveDecision: "approve", Rule: "approve-secondary", CacheOutcome: FileApprovalCacheMiss,
+				Decision:          "approve",
+				EffectiveDecision: "approve",
+				Rule:              "approve-secondary",
+				CacheOutcome:      FileApprovalCacheMiss,
 			},
 			"/source/one": {
 				Decision: "deny", EffectiveDecision: "deny", Rule: "deny-source",
 			},
 			"/source/two": {
-				Decision: "approve", EffectiveDecision: "allow", Rule: "approve-source-two", CacheOutcome: FileApprovalCacheAllow,
+				Decision:          "approve",
+				EffectiveDecision: "allow",
+				Rule:              "approve-source-two",
+				CacheOutcome:      FileApprovalCacheAllow,
 			},
 		}},
 		resolutions: map[string]FilePolicyDecision{
@@ -144,8 +171,16 @@ func TestFileHandler_PreparePreservesAllObligationsAndDenyDominates(t *testing.T
 	}
 	for i, expected := range want {
 		got := prepared.Obligations[i]
-		if got.Target != expected.target || got.Attribution != expected.attribution || got.CacheOutcome != expected.cache {
-			t.Fatalf("obligation[%d] = %+v, want target=%q attribution=%q cache=%q", i, got, expected.target, expected.attribution, expected.cache)
+		if got.Target != expected.target || got.Attribution != expected.attribution ||
+			got.CacheOutcome != expected.cache {
+			t.Fatalf(
+				"obligation[%d] = %+v, want target=%q attribution=%q cache=%q",
+				i,
+				got,
+				expected.target,
+				expected.attribution,
+				expected.cache,
+			)
 		}
 	}
 	if prepared.HasUnresolvedApprovals() {
@@ -167,28 +202,48 @@ func TestFileHandler_PreparePreservesAllObligationsAndDenyDominates(t *testing.T
 		if auditObligations[i]["target"] != expected.target ||
 			auditObligations[i]["attribution"] != string(expected.attribution) ||
 			auditObligations[i]["cache_outcome"] != string(expected.cache) {
-			t.Fatalf("audit obligation[%d] = %+v, want target=%q attribution=%q cache=%q", i, auditObligations[i], expected.target, expected.attribution, expected.cache)
+			t.Fatalf(
+				"audit obligation[%d] = %+v, want target=%q attribution=%q cache=%q",
+				i,
+				auditObligations[i],
+				expected.target,
+				expected.attribution,
+				expected.cache,
+			)
 		}
 	}
-	if auditObligations[1]["decision"] != "approve" || auditObligations[1]["rule"] != "approve-secondary" {
+	if auditObligations[1]["decision"] != "approve" ||
+		auditObligations[1]["rule"] != "approve-secondary" {
 		t.Fatalf("secondary approval attribution was hidden: %+v", auditObligations[1])
 	}
-	if auditObligations[3]["decision"] != "approve" || auditObligations[3]["effective_decision"] != "allow" {
-		t.Fatalf("composition-source cached approval attribution was hidden: %+v", auditObligations[3])
+	if auditObligations[3]["decision"] != "approve" ||
+		auditObligations[3]["effective_decision"] != "allow" {
+		t.Fatalf(
+			"composition-source cached approval attribution was hidden: %+v",
+			auditObligations[3],
+		)
 	}
 }
 
-func TestFileHandler_AuditEventIncludesApprovedSecondaryAndCompositionSourceObligations(t *testing.T) {
+func TestFileHandler_AuditEventIncludesApprovedSecondaryAndCompositionSourceObligations(
+	t *testing.T,
+) {
 	policy := &mockApprovalFilePolicy{
 		policy: &mockFilePolicy{decisions: map[string]FilePolicyDecision{
 			"/visible/one": {
 				Decision: "allow", EffectiveDecision: "allow", Rule: "allow-primary",
 			},
 			"/visible/two": {
-				Decision: "approve", EffectiveDecision: "approve", Rule: "approve-secondary", CacheOutcome: FileApprovalCacheMiss,
+				Decision:          "approve",
+				EffectiveDecision: "approve",
+				Rule:              "approve-secondary",
+				CacheOutcome:      FileApprovalCacheMiss,
 			},
 			"/source/one": {
-				Decision: "approve", EffectiveDecision: "approve", Rule: "approve-source", CacheOutcome: FileApprovalCacheMiss,
+				Decision:          "approve",
+				EffectiveDecision: "approve",
+				Rule:              "approve-source",
+				CacheOutcome:      FileApprovalCacheMiss,
 			},
 		}},
 		resolutions: map[string]FilePolicyDecision{},
@@ -218,10 +273,16 @@ func TestFileHandler_ResolveCancellationInterleavings(t *testing.T) {
 		policy := &cancelBlockingApprovalFilePolicy{
 			policy: &mockFilePolicy{decisions: map[string]FilePolicyDecision{
 				"/visible/one": {
-					Decision: "approve", EffectiveDecision: "approve", Rule: "approve-one", CacheOutcome: FileApprovalCacheMiss,
+					Decision:          "approve",
+					EffectiveDecision: "approve",
+					Rule:              "approve-one",
+					CacheOutcome:      FileApprovalCacheMiss,
 				},
 				"/visible/two": {
-					Decision: "approve", EffectiveDecision: "approve", Rule: "approve-two", CacheOutcome: FileApprovalCacheMiss,
+					Decision:          "approve",
+					EffectiveDecision: "approve",
+					Rule:              "approve-two",
+					CacheOutcome:      FileApprovalCacheMiss,
 				},
 			}},
 			entered: make(chan string, 2),
@@ -300,16 +361,25 @@ func TestFileHandler_PrepareCachedDenyDominatesUnresolvedApprovals(t *testing.T)
 	policy := &mockApprovalFilePolicy{
 		policy: &mockFilePolicy{decisions: map[string]FilePolicyDecision{
 			"/visible/one": {
-				Decision: "approve", EffectiveDecision: "approve", Rule: "approve-primary", CacheOutcome: FileApprovalCacheMiss,
+				Decision:          "approve",
+				EffectiveDecision: "approve",
+				Rule:              "approve-primary",
+				CacheOutcome:      FileApprovalCacheMiss,
 			},
 			"/visible/two": {
-				Decision: "approve", EffectiveDecision: "deny", Rule: "approve-secondary", CacheOutcome: FileApprovalCacheDeny,
+				Decision:          "approve",
+				EffectiveDecision: "deny",
+				Rule:              "approve-secondary",
+				CacheOutcome:      FileApprovalCacheDeny,
 			},
 			"/source/one": {
 				Decision: "allow", EffectiveDecision: "allow", Rule: "allow-source",
 			},
 			"/source/two": {
-				Decision: "approve", EffectiveDecision: "approve", Rule: "approve-source", CacheOutcome: FileApprovalCacheMiss,
+				Decision:          "approve",
+				EffectiveDecision: "approve",
+				Rule:              "approve-source",
+				CacheOutcome:      FileApprovalCacheMiss,
 			},
 		}},
 		resolutions: map[string]FilePolicyDecision{
@@ -334,7 +404,8 @@ func TestFileHandler_PrepareCachedDenyDominatesUnresolvedApprovals(t *testing.T)
 	if result.Action != ActionDeny || len(policy.resolveCalls) != 0 {
 		t.Fatalf("cached-deny result=%+v resolver calls=%v", result, policy.resolveCalls)
 	}
-	if event == nil || event.Policy == nil || event.Policy.Rule != "approve-secondary" || event.Policy.EffectiveDecision != "deny" {
+	if event == nil || event.Policy == nil || event.Policy.Rule != "approve-secondary" ||
+		event.Policy.EffectiveDecision != "deny" {
 		t.Fatalf("cached-deny event = %+v", event)
 	}
 }
@@ -343,16 +414,25 @@ func TestFileHandler_ResolveProcessesEveryUnresolvedObligation(t *testing.T) {
 	policy := &mockApprovalFilePolicy{
 		policy: &mockFilePolicy{decisions: map[string]FilePolicyDecision{
 			"/visible/one": {
-				Decision: "approve", EffectiveDecision: "approve", Rule: "approve-one", CacheOutcome: FileApprovalCacheMiss,
+				Decision:          "approve",
+				EffectiveDecision: "approve",
+				Rule:              "approve-one",
+				CacheOutcome:      FileApprovalCacheMiss,
 			},
 			"/visible/two": {
-				Decision: "approve", EffectiveDecision: "allow", Rule: "approve-two", CacheOutcome: FileApprovalCacheAllow,
+				Decision:          "approve",
+				EffectiveDecision: "allow",
+				Rule:              "approve-two",
+				CacheOutcome:      FileApprovalCacheAllow,
 			},
 			"/source/one": {
 				Decision: "allow", EffectiveDecision: "allow", Rule: "allow-source-one",
 			},
 			"/source/two": {
-				Decision: "approve", EffectiveDecision: "approve", Rule: "approve-source-two", CacheOutcome: FileApprovalCacheMiss,
+				Decision:          "approve",
+				EffectiveDecision: "approve",
+				Rule:              "approve-source-two",
+				CacheOutcome:      FileApprovalCacheMiss,
 			},
 		}},
 		resolutions: map[string]FilePolicyDecision{
@@ -382,7 +462,13 @@ func TestFileHandler_ResolveProcessesEveryUnresolvedObligation(t *testing.T) {
 	if result.Action != ActionDeny {
 		t.Fatalf("one failed approval must deny, got %+v", result)
 	}
-	if got, want := policy.resolveCalls, []string{"/visible/one", "/source/two"}; !assert.ObjectsAreEqual(got, want) {
+	if got, want := policy.resolveCalls, []string{
+		"/visible/one",
+		"/source/two",
+	}; !assert.ObjectsAreEqual(
+		got,
+		want,
+	) {
 		t.Fatalf("resolved obligations = %v, want %v", got, want)
 	}
 
@@ -393,7 +479,13 @@ func TestFileHandler_ResolveProcessesEveryUnresolvedObligation(t *testing.T) {
 	if result.Action != ActionDeny {
 		t.Fatalf("Handle result = %+v, want deny", result)
 	}
-	if got, want := policy.resolveCalls, []string{"/visible/one", "/source/two"}; !assert.ObjectsAreEqual(got, want) {
+	if got, want := policy.resolveCalls, []string{
+		"/visible/one",
+		"/source/two",
+	}; !assert.ObjectsAreEqual(
+		got,
+		want,
+	) {
 		t.Fatalf("Handle resolved obligations = %v, want %v", got, want)
 	}
 }
@@ -411,7 +503,8 @@ func TestFileHandler_InternalCompositionControlAccessIsWrapperOnly(t *testing.T)
 		PID: os.Getpid(), Syscall: int32(unix.SYS_MKDIRAT), Path: path,
 		Operation: "mkdir", SessionID: "composition-test",
 	})
-	if result.Action != ActionContinue || event == nil || event.Policy == nil || event.Policy.Rule != "allow-agentsh-composition-control" {
+	if result.Action != ActionContinue || event == nil || event.Policy == nil ||
+		event.Policy.Rule != "allow-agentsh-composition-control" {
 		t.Fatalf("trusted wrapper result=%+v event=%+v", result, event)
 	}
 
@@ -424,7 +517,11 @@ func TestFileHandler_InternalCompositionControlAccessIsWrapperOnly(t *testing.T)
 	}
 
 	outside := filepath.Join(t.TempDir(), "outside")
-	policy.decisions[outside] = FilePolicyDecision{Decision: "deny", EffectiveDecision: "deny", Rule: "deny-outside"}
+	policy.decisions[outside] = FilePolicyDecision{
+		Decision:          "deny",
+		EffectiveDecision: "deny",
+		Rule:              "deny-outside",
+	}
 	result, _ = handler.Handle(context.Background(), FileRequest{
 		PID: os.Getpid(), Syscall: int32(unix.SYS_RENAMEAT), Path: path, Path2: outside,
 		Operation: "rename", SessionID: "composition-test",
@@ -450,7 +547,8 @@ func TestFileHandler_ComposedAliasUsesMostRestrictiveSourceDecision(t *testing.T
 		Path: "/visible/allowed", SourcePath: "/source/secret",
 		Operation: "open", SessionID: "composition-test",
 	})
-	if result.Action != ActionDeny || event == nil || event.Policy == nil || event.Policy.Rule != "deny-source" {
+	if result.Action != ActionDeny || event == nil || event.Policy == nil ||
+		event.Policy.Rule != "deny-source" {
 		t.Fatalf("result=%+v event=%+v", result, event)
 	}
 	if got := event.Fields["composition_source_path"]; got != "/source/secret" {
@@ -518,8 +616,16 @@ func TestFileHandler_ComposedSourceDenyIsNotLoaderSafeOverridden(t *testing.T) {
 	for _, visible := range []string{"/usr/lib/allowed-looking", "/etc"} {
 		t.Run(visible, func(t *testing.T) {
 			policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
-				visible:          {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible"},
-				"/source/secret": {Decision: "deny", EffectiveDecision: "deny", Rule: "default-deny-files"},
+				visible: {
+					Decision:          "allow",
+					EffectiveDecision: "allow",
+					Rule:              "allow-visible",
+				},
+				"/source/secret": {
+					Decision:          "deny",
+					EffectiveDecision: "deny",
+					Rule:              "default-deny-files",
+				},
 			}}
 			handler := NewFileHandler(policy, NewMountRegistry(), nil, true)
 			result, _ := handler.Handle(context.Background(), FileRequest{
@@ -1078,8 +1184,12 @@ func TestEmulationPath_ReadOnlyOpenat_CaughtByGuard(t *testing.T) {
 	// Step 2: It does NOT fall back to CONTINUE — enters emulation branch.
 	assert.False(t, shouldFallbackToContinue(unix.SYS_OPENAT, flags, 0),
 		"read-only openat must not trigger fallback (enters emulation branch)")
-	assert.False(t, shouldUseContinuePathForFileNotify(unix.SYS_OPENAT, flags, 0),
-		"read-only openat still takes the emulation branch so explicit policy denies can be enforced")
+	assert.False(
+		t,
+		shouldUseContinuePathForFileNotify(unix.SYS_OPENAT, flags, 0),
+		"read-only openat still takes the emulation branch so explicit policy denies can be "+
+			"enforced",
+	)
 
 	// Step 3: The read-only guard catches it before emulateOpenat.
 	assert.True(t, isReadOnlyOpen(flags),
@@ -1152,6 +1262,11 @@ func TestFileHandler_RestrictiveNonDenyDecisionDeniesWhenEnforced(t *testing.T) 
 		SessionID: "sess-1",
 	})
 	if result.Action != ActionDeny || result.Errno != int32(unix.EACCES) {
-		t.Fatalf("approve effective decision should fail closed without approval adapter, got action=%s errno=%d", result.Action, result.Errno)
+		t.Fatalf(
+			"approve effective decision should fail closed without approval adapter, got "+
+				"action=%s errno=%d",
+			result.Action,
+			result.Errno,
+		)
 	}
 }

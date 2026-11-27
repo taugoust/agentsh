@@ -177,7 +177,11 @@ func (r *Registry) ApplyPreHooks(serviceName string, req *http.Request, ctx *Req
 // even if an earlier one fails. The first error encountered is returned;
 // subsequent errors are silently dropped (hooks that need their own
 // error reporting should log internally).
-func (r *Registry) ApplyPostHooks(serviceName string, resp *http.Response, ctx *RequestContext) error {
+func (r *Registry) ApplyPostHooks(
+	serviceName string,
+	resp *http.Response,
+	ctx *RequestContext,
+) error {
 	globalHooks, scopedHooks := r.snapshot(serviceName)
 	var firstErr error
 	for _, h := range globalHooks {

@@ -47,8 +47,13 @@ func genSelfSignedServer(t *testing.T, host string) (*tls.Config, *x509.Certific
 		PrivateKey:  key,
 		Leaf:        leafCert,
 	}
-	_ = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}) // exercise PEM path for completeness
-	return &tls.Config{Certificates: []tls.Certificate{tlsCert}, MinVersion: tls.VersionTLS12}, leafCert
+	_ = pem.EncodeToMemory(
+		&pem.Block{Type: "CERTIFICATE", Bytes: der},
+	) // exercise PEM path for completeness
+	return &tls.Config{
+		Certificates: []tls.Certificate{tlsCert},
+		MinVersion:   tls.VersionTLS12,
+	}, leafCert
 }
 
 // startTLSFakeUpstream returns the listener address. Each connection accepts,

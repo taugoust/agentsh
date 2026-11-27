@@ -66,9 +66,9 @@ func StartLLMProxy(
 
 	if needsRegistry {
 		registry := mcpregistry.NewRegistry()
-		// Pre-register declared network servers so their addresses are available for network detection.
-		// Stdio servers are skipped — they have no network address and would falsely inflate
-		// the distinct-server count (triggering premature OnMultiServer callbacks).
+		// Pre-register declared network servers so their addresses are available for network
+		// detection. Stdio servers are skipped — they have no network address and would falsely
+		// inflate the distinct-server count (triggering premature OnMultiServer callbacks).
 		for _, srv := range mcpCfg.Servers {
 			if addr := extractAddr(srv); addr != "" {
 				registry.Register(srv.ID, srv.Type, addr, nil)
@@ -122,7 +122,11 @@ func StartLLMProxy(
 				return "", nil, fmt.Errorf("build secrets registry: %w", regErr)
 			}
 
-			table, secretsCleanup, bsErr := BootstrapCredentials(ctx, registry, resolved.ServiceConfigs)
+			table, secretsCleanup, bsErr := BootstrapCredentials(
+				ctx,
+				registry,
+				resolved.ServiceConfigs,
+			)
 			if bsErr != nil {
 				_ = registry.Close()
 				_ = p.Stop(ctx)
@@ -137,7 +141,12 @@ func StartLLMProxy(
 
 			// Register per-service header injection hooks.
 			for _, ih := range resolved.InjectHeaders {
-				hook := proxy.NewHeaderInjectionHook(ih.ServiceName, ih.HeaderName, ih.Template, table)
+				hook := proxy.NewHeaderInjectionHook(
+					ih.ServiceName,
+					ih.HeaderName,
+					ih.Template,
+					table,
+				)
 				p.HookRegistry().Register(ih.ServiceName, hook)
 			}
 

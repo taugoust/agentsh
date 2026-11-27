@@ -174,7 +174,11 @@ func TestMetadataNetworkEnforcementJSONFields(t *testing.T) {
 		t.Fatalf("ReadMetadataFromRoot: %v", err)
 	}
 	if !reflect.DeepEqual(got.NetworkEnforcement, meta.NetworkEnforcement) {
-		t.Fatalf("network enforcement mismatch\ngot:  %#v\nwant: %#v", got.NetworkEnforcement, meta.NetworkEnforcement)
+		t.Fatalf(
+			"network enforcement mismatch\ngot:  %#v\nwant: %#v",
+			got.NetworkEnforcement,
+			meta.NetworkEnforcement,
+		)
 	}
 
 	b, err := os.ReadFile(MetadataPath(stateDir))
@@ -236,13 +240,21 @@ func TestMetadataNeverSerializesUnprovenNetworkPolicyEnforced(t *testing.T) {
 		t.Fatalf("ReadMetadataFromRoot: %v", err)
 	}
 	if got.NetworkEnforcement == nil || got.NetworkEnforcement.NetworkPolicyEnforced {
-		t.Fatalf("network enforcement = %#v, want unproven claim forced false", got.NetworkEnforcement)
+		t.Fatalf(
+			"network enforcement = %#v, want unproven claim forced false",
+			got.NetworkEnforcement,
+		)
 	}
 }
 
 func TestReadMetadataBackwardsCompatibleWithoutNetworkEnforcement(t *testing.T) {
 	root := t.TempDir()
-	writeRawMetadata(t, root, "session-old", []byte(`{"session_id":"session-old","owner_pid":0,"protocol_version":1}`))
+	writeRawMetadata(
+		t,
+		root,
+		"session-old",
+		[]byte(`{"session_id":"session-old","owner_pid":0,"protocol_version":1}`),
+	)
 
 	got, _, err := ReadMetadataFromRoot(root, "session-old")
 	if err != nil {
@@ -299,7 +311,11 @@ func TestValidateUsableV2ChecksKernelProcessAndSocketIdentity(t *testing.T) {
 		t.Fatalf("ValidateUsable exact v2 identity: %v", err)
 	}
 	meta.OwnerStartIdentity = "reused-process-start"
-	if err := ValidateUsable(meta, func(int) bool { return true }); err == nil || !strings.Contains(err.Error(), "reused") {
+	if err := ValidateUsable(
+		meta,
+		func(int) bool { return true },
+	); err == nil ||
+		!strings.Contains(err.Error(), "reused") {
 		t.Fatalf("reused process identity error = %v", err)
 	}
 }
@@ -313,7 +329,11 @@ func TestReadMetadataRejectsPathIdentitySubstitutionAndUnsafeFile(t *testing.T) 
 	if err := WriteMetadata(stateDir, meta); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := ReadMetadataFromRoot(root, "session-expected"); err == nil || !strings.Contains(err.Error(), "identities differ") {
+	if _, _, err := ReadMetadataFromRoot(
+		root,
+		"session-expected",
+	); err == nil ||
+		!strings.Contains(err.Error(), "identities differ") {
 		t.Fatalf("metadata path substitution error = %v", err)
 	}
 	if _, _, err := ReadMetadataFromRoot(root, "../session-expected"); err == nil {
@@ -328,7 +348,11 @@ func TestReadMetadataRejectsPathIdentitySubstitutionAndUnsafeFile(t *testing.T) 
 	if err := os.Chmod(MetadataPath(stateDir), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := ReadMetadataFromRoot(root, "session-expected"); err == nil || !strings.Contains(err.Error(), "unsafe") {
+	if _, _, err := ReadMetadataFromRoot(
+		root,
+		"session-expected",
+	); err == nil ||
+		!strings.Contains(err.Error(), "unsafe") {
 		t.Fatalf("public metadata permissions error = %v", err)
 	}
 }

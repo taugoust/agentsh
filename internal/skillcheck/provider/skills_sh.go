@@ -52,7 +52,10 @@ func (p *skillsShProvider) Capabilities() []skillcheck.FindingType {
 	return []skillcheck.FindingType{skillcheck.FindingProvenance}
 }
 
-func (p *skillsShProvider) Scan(ctx context.Context, req skillcheck.ScanRequest) (*skillcheck.ScanResponse, error) {
+func (p *skillsShProvider) Scan(
+	ctx context.Context,
+	req skillcheck.ScanRequest,
+) (*skillcheck.ScanResponse, error) {
 	start := time.Now()
 
 	if err := ctx.Err(); err != nil {

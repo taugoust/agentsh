@@ -76,7 +76,10 @@ func dialHostVSock(ctx context.Context, cid, port uint32) (controlConn, error) {
 					timeout = max(millis, 1)
 				}
 			}
-			ready, pollErr := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}}, timeout)
+			ready, pollErr := unix.Poll(
+				[]unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}},
+				timeout,
+			)
 			if pollErr == unix.EINTR {
 				continue
 			}
@@ -132,7 +135,10 @@ func dialVSock(ctx context.Context, cid, port uint32) (controlConn, error) {
 					timeout = max(millis, 1)
 				}
 			}
-			ready, pollErr := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}}, timeout)
+			ready, pollErr := unix.Poll(
+				[]unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}},
+				timeout,
+			)
 			if pollErr == unix.EINTR {
 				continue
 			}

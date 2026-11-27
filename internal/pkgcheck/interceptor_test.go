@@ -68,7 +68,12 @@ func TestClassifyInstallCommand_NPM(t *testing.T) {
 				Packages:    []string{"express"},
 				BulkInstall: false,
 				OrigCommand: "npm",
-				OrigArgs:    []string{"install", "--registry", "https://registry.example.com", "express"},
+				OrigArgs: []string{
+					"install",
+					"--registry",
+					"https://registry.example.com",
+					"express",
+				},
 			},
 		},
 		{
@@ -407,15 +412,25 @@ func TestClassifyInstallCommand_Pip(t *testing.T) {
 		{
 			name:    "pip install with --index-url flag and value",
 			command: "pip",
-			args:    []string{"install", "--index-url", "https://pypi.example.com/simple", "requests"},
-			scope:   "new_packages_only",
+			args: []string{
+				"install",
+				"--index-url",
+				"https://pypi.example.com/simple",
+				"requests",
+			},
+			scope: "new_packages_only",
 			want: &InstallIntent{
 				Tool:        "pip",
 				Ecosystem:   EcosystemPyPI,
 				Packages:    []string{"requests"},
 				BulkInstall: false,
 				OrigCommand: "pip",
-				OrigArgs:    []string{"install", "--index-url", "https://pypi.example.com/simple", "requests"},
+				OrigArgs: []string{
+					"install",
+					"--index-url",
+					"https://pypi.example.com/simple",
+					"requests",
+				},
 			},
 		},
 		{

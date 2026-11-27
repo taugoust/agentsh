@@ -27,7 +27,8 @@ func TestExecPTYStartMarshalRoundTrip(t *testing.T) {
 	if err := proto.Unmarshal(b, &got); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if got.GetSessionId() != orig.SessionId || got.GetCommand() != orig.Command || got.GetWorkingDir() != orig.WorkingDir {
+	if got.GetSessionId() != orig.SessionId || got.GetCommand() != orig.Command ||
+		got.GetWorkingDir() != orig.WorkingDir {
 		t.Fatalf("round trip mismatch: %+v", &got)
 	}
 	if got.GetRows() != 24 || got.GetCols() != 80 || got.Env["KEY"] != "VALUE" {

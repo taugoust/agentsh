@@ -208,7 +208,11 @@ func (t *Tracer) injectSeccompFilter(tid int) error {
 		return fmt.Errorf("inject seccomp: %w", err)
 	}
 	if ret != 0 {
-		return fmt.Errorf("seccomp(SECCOMP_SET_MODE_FILTER) returned %d (%s)", ret, unix.Errno(-ret))
+		return fmt.Errorf(
+			"seccomp(SECCOMP_SET_MODE_FILTER) returned %d (%s)",
+			ret,
+			unix.Errno(-ret),
+		)
 	}
 
 	slog.Info("seccomp prefilter installed", "tid", tid, "filters", len(filters))
@@ -220,10 +224,28 @@ func (t *Tracer) injectSeccompFilter(tid int) error {
 	}
 	if t.cfg.ArgLevelFilter {
 		for _, af := range argFilters {
-			slog.Info("seccomp arg filter active", "tid", tid, "nr", af.Nr, "argIndex", af.ArgIndex, "mask", fmt.Sprintf("0x%x", af.Mask))
+			slog.Info(
+				"seccomp arg filter active",
+				"tid",
+				tid,
+				"nr",
+				af.Nr,
+				"argIndex",
+				af.ArgIndex,
+				"mask",
+				fmt.Sprintf("0x%x", af.Mask),
+			)
 		}
 		for _, nf := range nullFilters {
-			slog.Info("seccomp null filter active", "tid", tid, "nr", nf.Nr, "argIndex", nf.ArgIndex)
+			slog.Info(
+				"seccomp null filter active",
+				"tid",
+				tid,
+				"nr",
+				nf.Nr,
+				"argIndex",
+				nf.ArgIndex,
+			)
 		}
 	}
 	return nil

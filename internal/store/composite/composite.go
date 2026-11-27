@@ -216,14 +216,35 @@ func (s *Store) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Ev
 	return s.primary.QueryEvents(ctx, q)
 }
 
-func (s *Store) SaveOutput(ctx context.Context, sessionID, commandID string, stdout, stderr []byte, stdoutTotal, stderrTotal int64, stdoutTrunc, stderrTrunc bool) error {
+func (s *Store) SaveOutput(
+	ctx context.Context,
+	sessionID, commandID string,
+	stdout, stderr []byte,
+	stdoutTotal, stderrTotal int64,
+	stdoutTrunc, stderrTrunc bool,
+) error {
 	if s.output == nil {
 		return fmt.Errorf("output store not configured")
 	}
-	return s.output.SaveOutput(ctx, sessionID, commandID, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
+	return s.output.SaveOutput(
+		ctx,
+		sessionID,
+		commandID,
+		stdout,
+		stderr,
+		stdoutTotal,
+		stderrTotal,
+		stdoutTrunc,
+		stderrTrunc,
+	)
 }
 
-func (s *Store) ReadOutputChunk(ctx context.Context, commandID string, stream string, offset, limit int64) ([]byte, int64, bool, error) {
+func (s *Store) ReadOutputChunk(
+	ctx context.Context,
+	commandID string,
+	stream string,
+	offset, limit int64,
+) ([]byte, int64, bool, error) {
 	if s.output == nil {
 		return nil, 0, false, fmt.Errorf("output store not configured")
 	}
@@ -295,7 +316,10 @@ func stringField(m map[string]any, key string) string {
 }
 
 // ListMCPTools delegates to the primary SQLite store to query MCP tools.
-func (s *Store) ListMCPTools(ctx context.Context, filter sqlite.MCPToolFilter) ([]sqlite.MCPTool, error) {
+func (s *Store) ListMCPTools(
+	ctx context.Context,
+	filter sqlite.MCPToolFilter,
+) ([]sqlite.MCPTool, error) {
 	sqliteStore, ok := s.primary.(*sqlite.Store)
 	if !ok {
 		return nil, fmt.Errorf("MCP queries not supported by primary store")

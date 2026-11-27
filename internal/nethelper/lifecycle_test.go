@@ -10,14 +10,26 @@ func TestBootstrapResultRuntimeAndExpiryValidation(t *testing.T) {
 	started := time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)
 	runtimeLimit := MaximumBootstrapRuntime
 	result := BootstrapResult{
-		ProtocolVersion: CurrentProtocolVersion, BootstrapSchemaVersion: BootstrapSchemaVersion,
-		LeaseID: "lease-11111111-1111-4111-8111-111111111111", UID: 1000, GID: 100,
-		UnitName: "agentsh-nethelper.service", SocketPath: filepath.Join(string(filepath.Separator), "run", "helper.sock"),
+		ProtocolVersion:        CurrentProtocolVersion,
+		BootstrapSchemaVersion: BootstrapSchemaVersion,
+		LeaseID:                "lease-11111111-1111-4111-8111-111111111111",
+		UID:                    1000,
+		GID:                    100,
+		UnitName:               "agentsh-nethelper.service",
+		SocketPath:             filepath.Join(string(filepath.Separator), "run", "helper.sock"),
 		CredentialFile:         filepath.Join(string(filepath.Separator), "run", "credential"),
-		PinRoot:                filepath.Join(string(filepath.Separator), "sys", "fs", "bpf", "pins"),
+		PinRoot: filepath.Join(
+			string(filepath.Separator),
+			"sys",
+			"fs",
+			"bpf",
+			"pins",
+		),
 		ResultFile:             filepath.Join(string(filepath.Separator), "run", "bootstrap.json"),
 		CompositionScratchRoot: filepath.Join(string(filepath.Separator), "run", "composition"),
-		StartedAt:              started, ExpiresAt: started.Add(runtimeLimit), RuntimeSeconds: int64(runtimeLimit / time.Second),
+		StartedAt:              started,
+		ExpiresAt:              started.Add(runtimeLimit),
+		RuntimeSeconds:         int64(runtimeLimit / time.Second),
 	}
 	if err := result.Validate(started.Add(time.Hour)); err != nil {
 		t.Fatalf("valid result rejected: %v", err)
@@ -35,12 +47,30 @@ func TestBootstrapResultRuntimeAndExpiryValidation(t *testing.T) {
 
 func TestBootstrapResultSoftLeaseIsExplicitlyNegotiated(t *testing.T) {
 	started := time.Now().UTC().Truncate(time.Second)
-	base := BootstrapResult{ProtocolVersion: 1, BootstrapSchemaVersion: BootstrapSchemaVersion,
-		LeaseID: "lease-11111111-1111-4111-8111-111111111111", UnitName: "helper.service",
-		SocketPath: filepath.Join(string(filepath.Separator), "run", "helper.sock"), CredentialFile: filepath.Join(string(filepath.Separator), "run", "credential"),
-		PinRoot: filepath.Join(string(filepath.Separator), "sys", "fs", "bpf", "pins"), ResultFile: filepath.Join(string(filepath.Separator), "run", "bootstrap.json"),
+	base := BootstrapResult{
+		ProtocolVersion:        1,
+		BootstrapSchemaVersion: BootstrapSchemaVersion,
+		LeaseID:                "lease-11111111-1111-4111-8111-111111111111",
+		UnitName:               "helper.service",
+		SocketPath: filepath.Join(
+			string(filepath.Separator),
+			"run",
+			"helper.sock",
+		),
+		CredentialFile: filepath.Join(string(filepath.Separator), "run", "credential"),
+		PinRoot: filepath.Join(
+			string(filepath.Separator),
+			"sys",
+			"fs",
+			"bpf",
+			"pins",
+		),
+		ResultFile:             filepath.Join(string(filepath.Separator), "run", "bootstrap.json"),
 		CompositionScratchRoot: filepath.Join(string(filepath.Separator), "run", "composition"),
-		StartedAt:              started, ExpiresAt: started.Add(192 * time.Hour), RuntimeSeconds: int64((192 * time.Hour) / time.Second)}
+		StartedAt:              started,
+		ExpiresAt:              started.Add(192 * time.Hour),
+		RuntimeSeconds:         int64((192 * time.Hour) / time.Second),
+	}
 	if err := base.Validate(started); err != nil {
 		t.Fatalf("runtime-only metadata rejected: %v", err)
 	}

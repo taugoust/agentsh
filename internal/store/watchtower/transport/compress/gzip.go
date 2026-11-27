@@ -24,7 +24,12 @@ type gzipEncoder struct {
 
 func newGzipEncoder(level int) (Encoder, error) {
 	if level < minGzipLevel || level > maxGzipLevel {
-		return nil, fmt.Errorf("compress/gzip: level %d out of range [%d,%d]", level, minGzipLevel, maxGzipLevel)
+		return nil, fmt.Errorf(
+			"compress/gzip: level %d out of range [%d,%d]",
+			level,
+			minGzipLevel,
+			maxGzipLevel,
+		)
 	}
 	w, err := gzip.NewWriterLevel(nil, level)
 	if err != nil {

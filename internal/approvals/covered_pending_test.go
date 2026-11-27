@@ -26,7 +26,14 @@ func TestSessionCommandScopeResolutionCoversConcurrentPendingApprovals(t *testin
 			options = append(options, ScopeFields(invocation))
 		}
 		fields["scope_options"] = options
-		return Request{ID: id, SessionID: "s1", Kind: "command", Target: command, Rule: rule, Fields: fields}
+		return Request{
+			ID:        id,
+			SessionID: "s1",
+			Kind:      "command",
+			Target:    command,
+			Rule:      rule,
+			Fields:    fields,
+		}
 	}
 
 	done1 := make(chan Resolution, 1)
@@ -36,12 +43,22 @@ func TestSessionCommandScopeResolutionCoversConcurrentPendingApprovals(t *testin
 	}()
 	done2 := make(chan Resolution, 1)
 	go func() {
-		res, _ := m.RequestApproval(ctx, request("a2", []string{"-readonly", "events.db", "select 2"}))
+		res, _ := m.RequestApproval(
+			ctx,
+			request("a2", []string{"-readonly", "events.db", "select 2"}),
+		)
 		done2 <- res
 	}()
 	waitForPending(t, m, 2)
 
-	if ok := m.ResolveForSessionWithScopeTarget("s1", "a1", true, "operator", ScopeSession, executable); !ok {
+	if ok := m.ResolveForSessionWithScopeTarget(
+		"s1",
+		"a1",
+		true,
+		"operator",
+		ScopeSession,
+		executable,
+	); !ok {
 		t.Fatal("ResolveForSessionWithScopeTarget returned false")
 	}
 	if pending := m.ListPendingForSession("s1"); len(pending) != 0 {
@@ -85,7 +102,14 @@ func TestExactCommandScopeResolutionOnlyCoversMatchingConcurrentPendingApproval(
 			options = append(options, ScopeFields(invocation))
 		}
 		fields["scope_options"] = options
-		return Request{ID: id, SessionID: "s1", Kind: "command", Target: command, Rule: rule, Fields: fields}
+		return Request{
+			ID:        id,
+			SessionID: "s1",
+			Kind:      "command",
+			Target:    command,
+			Rule:      rule,
+			Fields:    fields,
+		}
 	}
 
 	doneSame := make(chan Resolution, 1)
@@ -100,7 +124,14 @@ func TestExactCommandScopeResolutionOnlyCoversMatchingConcurrentPendingApproval(
 	}()
 	waitForPending(t, m, 2)
 
-	if ok := m.ResolveForSessionWithScopeTarget("s1", "same", true, "operator", ScopeSession, exact); !ok {
+	if ok := m.ResolveForSessionWithScopeTarget(
+		"s1",
+		"same",
+		true,
+		"operator",
+		ScopeSession,
+		exact,
+	); !ok {
 		t.Fatal("ResolveForSessionWithScopeTarget returned false")
 	}
 	select {

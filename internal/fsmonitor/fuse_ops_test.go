@@ -152,7 +152,12 @@ func TestFUSE_FsyncFlushLseekPassthrough(t *testing.T) {
 		Version: 1,
 		Name:    "allow-all",
 		FileRules: []policy.FileRule{
-			{Name: "allow-workspace", Paths: []string{"/workspace", "/workspace/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-workspace",
+				Paths:      []string{"/workspace", "/workspace/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, false, true)

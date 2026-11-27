@@ -54,7 +54,12 @@ func TestOptions_LogGoawayMessage_WireThrough(t *testing.T) {
 			// Assertion 1 still passes.
 			gotTr := s.TransportLogGoawayMessageForTest()
 			if gotTr != tc.value {
-				t.Errorf("TransportLogGoawayMessageForTest() = %v, want %v (wire-through to transport.New regressed)", gotTr, tc.value)
+				t.Errorf(
+					"TransportLogGoawayMessageForTest() = %v, want %v (wire-through to "+
+						"transport.New regressed)",
+					gotTr,
+					tc.value,
+				)
 			}
 		})
 	}

@@ -16,10 +16,18 @@ func TestWorkspaceBaselineDetectsRealWorkspaceDrift(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(source, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte("baseline\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(source, "README.md"),
+		[]byte("baseline\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, ".git", "index"), []byte("ignored\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(source, ".git", "index"),
+		[]byte("ignored\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	baseline, err := stageWorkspace(context.Background(), source, destination)
@@ -30,7 +38,11 @@ func TestWorkspaceBaselineDetectsRealWorkspaceDrift(t *testing.T) {
 		t.Fatalf("baseline entries = %#v", baseline.Entries)
 	}
 
-	if err := os.WriteFile(filepath.Join(source, ".git", "index"), []byte("changed but excluded\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(source, ".git", "index"),
+		[]byte("changed but excluded\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	drift, err := VerifyWorkspaceBaseline(context.Background(), baseline)
@@ -38,7 +50,11 @@ func TestWorkspaceBaselineDetectsRealWorkspaceDrift(t *testing.T) {
 		t.Fatalf("excluded Git metadata drift = %#v, %v", drift, err)
 	}
 
-	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte("host changed\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(source, "README.md"),
+		[]byte("host changed\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	drift, err = VerifyWorkspaceBaseline(context.Background(), baseline)
@@ -52,7 +68,11 @@ func TestWorkspaceBaselineDetectsAddedAndRemovedPaths(t *testing.T) {
 	if err := os.Mkdir(source, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "removed.txt"), []byte("baseline\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(source, "removed.txt"),
+		[]byte("baseline\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	baseline, err := snapshotWorkspace(context.Background(), source)
@@ -69,7 +89,8 @@ func TestWorkspaceBaselineDetectsAddedAndRemovedPaths(t *testing.T) {
 	if err != nil || len(drift) != 2 {
 		t.Fatalf("path drift = %#v, %v", drift, err)
 	}
-	if drift[0].Reason != "added to real workspace" || drift[1].Reason != "removed from real workspace" {
+	if drift[0].Reason != "added to real workspace" ||
+		drift[1].Reason != "removed from real workspace" {
 		t.Fatalf("unexpected ordered drift = %#v", drift)
 	}
 }

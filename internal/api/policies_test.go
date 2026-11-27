@@ -114,7 +114,12 @@ func TestValidatePolicyRules(t *testing.T) {
 				t.Errorf("Valid = %v, want %v", result.Valid, tt.wantValid)
 			}
 			if len(result.Errors) != tt.wantErrs {
-				t.Errorf("len(Errors) = %d, want %d: %+v", len(result.Errors), tt.wantErrs, result.Errors)
+				t.Errorf(
+					"len(Errors) = %d, want %d: %+v",
+					len(result.Errors),
+					tt.wantErrs,
+					result.Errors,
+				)
 			}
 		})
 	}
@@ -165,7 +170,12 @@ func TestValidatePolicyRules_Warnings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := validatePolicyRules(tt.policyType, tt.rules)
 			if len(result.Warning) != tt.wantWarnings {
-				t.Errorf("len(Warnings) = %d, want %d: %v", len(result.Warning), tt.wantWarnings, result.Warning)
+				t.Errorf(
+					"len(Warnings) = %d, want %d: %v",
+					len(result.Warning),
+					tt.wantWarnings,
+					result.Warning,
+				)
 			}
 		})
 	}

@@ -31,7 +31,11 @@ func ValidateStrictMode(mode string, caps *SecurityCapabilities) error {
 			return fmt.Errorf("strict mode %q requires the ptrace capability", mode)
 		}
 		if !caps.PtraceInjectable {
-			return fmt.Errorf("strict mode %q requires reliable ptrace syscall injection (unavailable on this kernel)", mode)
+			return fmt.Errorf(
+				"strict mode %q requires reliable ptrace syscall injection (unavailable on "+
+					"this kernel)",
+				mode,
+			)
 		}
 
 	case ModeLandlock:
@@ -74,7 +78,11 @@ func ValidateMinimumMode(selected, minimum string) error {
 	}
 
 	if selectedRank < minimumRank {
-		return fmt.Errorf("selected mode %q does not meet minimum requirement %q", selected, minimum)
+		return fmt.Errorf(
+			"selected mode %q does not meet minimum requirement %q",
+			selected,
+			minimum,
+		)
 	}
 
 	return nil
@@ -87,27 +95,33 @@ type PolicyWarning struct {
 }
 
 // ValidatePolicyForMode checks if policy rules can be enforced in the current mode.
-func ValidatePolicyForMode(caps *SecurityCapabilities, hasUnixSocketRules, hasSignalRules, hasNetworkRules bool) []PolicyWarning {
+func ValidatePolicyForMode(
+	caps *SecurityCapabilities,
+	hasUnixSocketRules, hasSignalRules, hasNetworkRules bool,
+) []PolicyWarning {
 	var warnings []PolicyWarning
 
 	if !caps.Seccomp && hasUnixSocketRules {
 		warnings = append(warnings, PolicyWarning{
-			Level:   "warn",
-			Message: "Unix socket rules defined but seccomp unavailable - abstract sockets unprotected",
+			Level: "warn",
+			Message: "Unix socket rules defined but seccomp unavailable - abstract sockets " +
+				"unprotected",
 		})
 	}
 
 	if !caps.Seccomp && hasSignalRules {
 		warnings = append(warnings, PolicyWarning{
-			Level:   "warn",
-			Message: "Signal rules defined but seccomp unavailable - relying on PID namespace + CAP_KILL drop",
+			Level: "warn",
+			Message: "Signal rules defined but seccomp unavailable - relying on PID namespace + " +
+				"CAP_KILL drop",
 		})
 	}
 
 	if !caps.LandlockNetwork && !caps.EBPF && hasNetworkRules {
 		warnings = append(warnings, PolicyWarning{
-			Level:   "warn",
-			Message: "Network rules defined but no enforcement available (need eBPF or Landlock ABI v4+)",
+			Level: "warn",
+			Message: "Network rules defined but no enforcement available (need eBPF or Landlock " +
+				"ABI v4+)",
 		})
 	}
 
@@ -160,5 +174,6 @@ func ModeDescriptionWithCaps(mode string, caps *SecurityCapabilities) string {
 	if caps.CapabilitiesActive {
 		return "Minimal security: capability dropping only (~50% policy enforcement)"
 	}
-	return "Minimal security: fallback mode, no active enforcement primitives (privilege reduction inactive — process retains full Linux capabilities)"
+	return "Minimal security: fallback mode, no active enforcement primitives (privilege " +
+		"reduction inactive — process retains full Linux capabilities)"
 }

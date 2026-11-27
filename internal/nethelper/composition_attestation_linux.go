@@ -9,13 +9,18 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func attestCompositionRuntimeForLease(uid uint32, leaseID string) (CompositionRuntimeAttestation, error) {
+func attestCompositionRuntimeForLease(
+	uid uint32,
+	leaseID string,
+) (CompositionRuntimeAttestation, error) {
 	paths, err := EphemeralPathsForUID(uid, leaseID)
 	if err != nil {
 		return CompositionRuntimeAttestation{}, err
 	}
 	if filepath.Dir(paths.CompositionScratchRoot) != paths.RuntimeDir {
-		return CompositionRuntimeAttestation{}, fmt.Errorf("composition runtime is not the fixed lease child")
+		return CompositionRuntimeAttestation{}, fmt.Errorf(
+			"composition runtime is not the fixed lease child",
+		)
 	}
 	for _, object := range []struct {
 		label string
@@ -26,7 +31,10 @@ func attestCompositionRuntimeForLease(uid uint32, leaseID string) (CompositionRu
 	} {
 		resolved, err := filepath.EvalSymlinks(object.path)
 		if err != nil || filepath.Clean(resolved) != object.path {
-			return CompositionRuntimeAttestation{}, fmt.Errorf("%s contains a symlink component", object.label)
+			return CompositionRuntimeAttestation{}, fmt.Errorf(
+				"%s contains a symlink component",
+				object.label,
+			)
 		}
 	}
 
@@ -34,14 +42,25 @@ func attestCompositionRuntimeForLease(uid uint32, leaseID string) (CompositionRu
 	if err := unix.Lstat(paths.CompositionScratchRoot, &runtimeStat); err != nil {
 		return CompositionRuntimeAttestation{}, fmt.Errorf("stat composition runtime: %w", err)
 	}
-	if err := ValidateCompositionScratchMetadata(runtimeStat.Mode, runtimeStat.Uid, runtimeStat.Gid); err != nil {
+	if err := ValidateCompositionScratchMetadata(
+		runtimeStat.Mode,
+		runtimeStat.Uid,
+		runtimeStat.Gid,
+	); err != nil {
 		return CompositionRuntimeAttestation{}, err
 	}
 	var parentStat unix.Stat_t
 	if err := unix.Lstat(paths.RuntimeDir, &parentStat); err != nil {
-		return CompositionRuntimeAttestation{}, fmt.Errorf("stat composition lease directory: %w", err)
+		return CompositionRuntimeAttestation{}, fmt.Errorf(
+			"stat composition lease directory: %w",
+			err,
+		)
 	}
-	if err := ValidateCompositionLeaseDirectoryMetadata(parentStat.Mode, parentStat.Uid, parentStat.Gid); err != nil {
+	if err := ValidateCompositionLeaseDirectoryMetadata(
+		parentStat.Mode,
+		parentStat.Uid,
+		parentStat.Gid,
+	); err != nil {
 		return CompositionRuntimeAttestation{}, err
 	}
 	return CompositionRuntimeAttestation{

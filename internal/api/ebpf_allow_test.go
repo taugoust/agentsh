@@ -64,7 +64,10 @@ func TestBuildAllowedEndpoints_NonStrictOnWildcard(t *testing.T) {
 }
 
 func TestBuildProxyOnlyAllowedEndpoints_ExactTCPListeners(t *testing.T) {
-	entries, cidrs, err := buildProxyOnlyAllowedEndpoints("http://127.0.0.1:18081", "http://[::1]:19091")
+	entries, cidrs, err := buildProxyOnlyAllowedEndpoints(
+		"http://127.0.0.1:18081",
+		"http://[::1]:19091",
+	)
 	if err != nil {
 		t.Fatalf("build exact proxy endpoints: %v", err)
 	}
@@ -81,9 +84,13 @@ func TestBuildProxyOnlyAllowedEndpoints_ExactTCPListeners(t *testing.T) {
 			t.Fatalf("proxy endpoint protocol = %d, want TCP", entry.Protocol)
 		}
 		switch {
-		case entry.Family == 2 && entry.Dport == 18081 && net.IP(entry.Addr[:4]).Equal(net.ParseIP("127.0.0.1")):
+		case entry.Family == 2 &&
+			entry.Dport == 18081 &&
+			net.IP(entry.Addr[:4]).Equal(net.ParseIP("127.0.0.1")):
 			seen4 = true
-		case entry.Family == 10 && entry.Dport == 19091 && net.IP(entry.Addr[:]).Equal(net.ParseIP("::1")):
+		case entry.Family == 10 &&
+			entry.Dport == 19091 &&
+			net.IP(entry.Addr[:]).Equal(net.ParseIP("::1")):
 			seen6 = true
 		}
 		if entry.Family == 2 && net.IP(entry.Addr[:4]).Equal(net.ParseIP("1.0.0.127")) {

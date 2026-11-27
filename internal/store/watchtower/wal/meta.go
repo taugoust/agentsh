@@ -60,7 +60,11 @@ func ReadMeta(dir string) (Meta, error) {
 	case metaFormatVersion:
 		// v2: trust the field as-is.
 	default:
-		return Meta{}, fmt.Errorf("meta.json format_version %d unsupported (want 1 or %d)", m.FormatVersion, metaFormatVersion)
+		return Meta{}, fmt.Errorf(
+			"meta.json format_version %d unsupported (want 1 or %d)",
+			m.FormatVersion,
+			metaFormatVersion,
+		)
 	}
 	return m, nil
 }

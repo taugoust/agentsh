@@ -98,7 +98,8 @@ func sendFDsAsync(conn *net.UnixConn, payload []byte, fds ...int) <-chan error {
 			return
 		}
 		if n != len(payload) || oobn != len(rights) {
-			errCh <- fmt.Errorf("short unix write: n=%d/%d oobn=%d/%d", n, len(payload), oobn, len(rights))
+			errCh <- fmt.Errorf("short unix write: n=%d/%d oobn=%d/%d", n, len(payload), oobn,
+				len(rights))
 			return
 		}
 		errCh <- nil
@@ -190,10 +191,15 @@ func TestNotifyHandoffRoundTripWithCompositionSetup(t *testing.T) {
 	if handoff.NotifyFD == nil || handoff.CompositionSetup == nil {
 		t.Fatalf("incomplete handoff: %+v", handoff)
 	}
-	if !handoff.HasMetadata || !handoff.Metadata.CommandJail || !handoff.Metadata.CompositionSetup || handoff.Metadata.WrapperPID != 4321 {
+	if !handoff.HasMetadata || !handoff.Metadata.CommandJail ||
+		!handoff.Metadata.CompositionSetup ||
+		handoff.Metadata.WrapperPID != 4321 {
 		t.Fatalf("metadata = %+v, has=%v", handoff.Metadata, handoff.HasMetadata)
 	}
-	for name, file := range map[string]*os.File{"notify": handoff.NotifyFD, "setup": handoff.CompositionSetup} {
+	for name, file := range map[string]*os.File{
+		"notify": handoff.NotifyFD,
+		"setup":  handoff.CompositionSetup,
+	} {
 		flags, err := unix.FcntlInt(file.Fd(), unix.F_GETFD, 0)
 		if err != nil {
 			t.Fatalf("fcntl %s: %v", name, err)

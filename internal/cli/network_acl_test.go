@@ -349,7 +349,10 @@ processes:
 		t.Errorf("expected 1 rule after removal, got %d", len(config.NetworkACL.Processes[0].Rules))
 	}
 	if config.NetworkACL.Processes[0].Rules[0].Host != "second.example.com" {
-		t.Errorf("expected remaining rule to be 'second.example.com', got %s", config.NetworkACL.Processes[0].Rules[0].Host)
+		t.Errorf(
+			"expected remaining rule to be 'second.example.com', got %s",
+			config.NetworkACL.Processes[0].Rules[0].Host,
+		)
 	}
 }
 
@@ -555,7 +558,16 @@ func TestFormatTarget(t *testing.T) {
 
 func TestIsValidACLDecision(t *testing.T) {
 	// Case-insensitive validation
-	validDecisions := []string{"allow", "deny", "approve", "audit", "ALLOW", "Allow", "DENY", "Audit"}
+	validDecisions := []string{
+		"allow",
+		"deny",
+		"approve",
+		"audit",
+		"ALLOW",
+		"Allow",
+		"DENY",
+		"Audit",
+	}
 	invalidDecisions := []string{"block", "permit", "invalid", ""}
 
 	for _, d := range validDecisions {

@@ -193,7 +193,11 @@ type checkBlock struct {
 //	[nRet action return instructions]
 //	[check blocks: arg filter = 3 insns each, null filter = 5 insns each]
 //	[1 trailing RET TRACE]
-func buildBPFWithArgFilters(actions []bpfSyscallAction, argFilters []bpfArgFilter, nullFilters []bpfNullPtrFilter) ([]unix.SockFilter, error) {
+func buildBPFWithArgFilters(
+	actions []bpfSyscallAction,
+	argFilters []bpfArgFilter,
+	nullFilters []bpfNullPtrFilter,
+) ([]unix.SockFilter, error) {
 	// Fall back when no filters are provided.
 	if len(argFilters) == 0 && len(nullFilters) == 0 {
 		return buildBPFForActions(actions)

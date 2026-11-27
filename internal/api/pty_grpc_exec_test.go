@@ -85,7 +85,8 @@ func TestGRPC_PTY_ExecBasic(t *testing.T) {
 		msg, err := stream.Recv()
 		if err != nil {
 			low := strings.ToLower(err.Error())
-			if strings.Contains(low, "permission denied") || strings.Contains(low, "operation not permitted") {
+			if strings.Contains(low, "permission denied") ||
+				strings.Contains(low, "operation not permitted") {
 				t.Skipf("pty not permitted in this environment: %v", err)
 			}
 			t.Fatal(err)

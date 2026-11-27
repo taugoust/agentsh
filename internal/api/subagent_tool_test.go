@@ -30,8 +30,18 @@ func TestResolveSubagentCwdAllowsPolicyAuthorizedExternalDirectoryInDirectMode(t
 		Version: 1,
 		Name:    "external-subagent-cwd",
 		FileRules: []policy.FileRule{
-			{Name: "allow-external", Paths: []string{external}, Operations: []string{"read"}, Decision: string(types.DecisionAllow)},
-			{Name: "deny-other", Paths: []string{denied}, Operations: []string{"read"}, Decision: string(types.DecisionDeny)},
+			{
+				Name:       "allow-external",
+				Paths:      []string{external},
+				Operations: []string{"read"},
+				Decision:   string(types.DecisionAllow),
+			},
+			{
+				Name:       "deny-other",
+				Paths:      []string{denied},
+				Operations: []string{"read"},
+				Decision:   string(types.DecisionDeny),
+			},
 		},
 	}, false, true)
 	if err != nil {
@@ -44,11 +54,22 @@ func TestResolveSubagentCwdAllowsPolicyAuthorizedExternalDirectoryInDirectMode(t
 	sess.SetPolicyEngine(engine)
 	app := &App{}
 
-	real, virtual, err := app.resolveSubagentCwd(context.Background(), sess, external, piToolActor{"kind": "parent"})
+	real, virtual, err := app.resolveSubagentCwd(
+		context.Background(),
+		sess,
+		external,
+		piToolActor{"kind": "parent"},
+	)
 	if err != nil || real != external || virtual != filepath.ToSlash(external) {
 		t.Fatalf("authorized external cwd = (%q, %q, %v)", real, virtual, err)
 	}
-	if _, _, err := app.resolveSubagentCwd(context.Background(), sess, denied, nil); err == nil || !strings.Contains(err.Error(), "not authorized") {
+	if _, _, err := app.resolveSubagentCwd(
+		context.Background(),
+		sess,
+		denied,
+		nil,
+	); err == nil ||
+		!strings.Contains(err.Error(), "not authorized") {
 		t.Fatalf("denied external cwd error = %v", err)
 	}
 
@@ -71,7 +92,11 @@ func TestSubagentExecutionTimeoutDefaultsAndOverrides(t *testing.T) {
 		t.Fatalf("configured fallback timeout = %s, err=%v; want %s", got, err, 45*time.Minute)
 	}
 
-	policyDocument, err := policy.LoadFromBytes([]byte("version: 1\nname: subagent-timeout-test\nresource_limits:\n  subagent_timeout: 4h\n"))
+	policyDocument, err := policy.LoadFromBytes(
+		[]byte(
+			"version: 1\nname: subagent-timeout-test\nresource_limits:\n  subagent_timeout: 4h\n",
+		),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +162,10 @@ func TestDraftSubagentRuntimeIsFixedAndBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.Isolation != "draft" || runtime.Command != command || runtime.TaskMode != "json-stdin" || runtime.Protocol != "text" || runtime.MaxDepth != 1 {
+	if runtime.Isolation != "draft" || runtime.Command != command ||
+		runtime.TaskMode != "json-stdin" ||
+		runtime.Protocol != "text" ||
+		runtime.MaxDepth != 1 {
 		t.Fatalf("Draft runtime = %+v", runtime)
 	}
 	if !reflect.DeepEqual(runtime.Args, []string{"--fixed", "two words"}) {
@@ -154,14 +182,56 @@ func TestValidateSpawnSubagentRequestModes(t *testing.T) {
 	}{
 		{name: "none", req: spawnSubagentToolRequest{}, wantErr: true},
 		{name: "single", req: spawnSubagentToolRequest{Task: "summarize"}, mode: "single"},
-		{name: "parallel", req: spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: "a"}, {Task: "b"}}}, mode: "parallel"},
-		{name: "chain", req: spawnSubagentToolRequest{Chain: []subagentItemRequest{{Task: "a"}, {Task: "b"}}}, mode: "chain"},
-		{name: "disposition", req: spawnSubagentToolRequest{Action: "apply", DraftID: "session-11111111-1111-4111-8111-111111111111"}, mode: "disposition"},
-		{name: "disposition missing id", req: spawnSubagentToolRequest{Action: "apply"}, wantErr: true},
-		{name: "disposition invalid action", req: spawnSubagentToolRequest{Action: "publish", DraftID: "session-11111111-1111-4111-8111-111111111111"}, wantErr: true},
-		{name: "multiple", req: spawnSubagentToolRequest{Task: "x", Action: "apply", DraftID: "session-11111111-1111-4111-8111-111111111111"}, wantErr: true},
-		{name: "multiple task forms", req: spawnSubagentToolRequest{Task: "x", Tasks: []subagentItemRequest{{Task: "y"}}}, wantErr: true},
-		{name: "empty item", req: spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: ""}}}, wantErr: true},
+		{
+			name: "parallel",
+			req:  spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: "a"}, {Task: "b"}}},
+			mode: "parallel",
+		},
+		{
+			name: "chain",
+			req:  spawnSubagentToolRequest{Chain: []subagentItemRequest{{Task: "a"}, {Task: "b"}}},
+			mode: "chain",
+		},
+		{
+			name: "disposition",
+			req: spawnSubagentToolRequest{
+				Action:  "apply",
+				DraftID: "session-11111111-1111-4111-8111-111111111111",
+			},
+			mode: "disposition",
+		},
+		{
+			name:    "disposition missing id",
+			req:     spawnSubagentToolRequest{Action: "apply"},
+			wantErr: true,
+		},
+		{
+			name: "disposition invalid action",
+			req: spawnSubagentToolRequest{
+				Action:  "publish",
+				DraftID: "session-11111111-1111-4111-8111-111111111111",
+			},
+			wantErr: true,
+		},
+		{
+			name: "multiple",
+			req: spawnSubagentToolRequest{
+				Task:    "x",
+				Action:  "apply",
+				DraftID: "session-11111111-1111-4111-8111-111111111111",
+			},
+			wantErr: true,
+		},
+		{
+			name:    "multiple task forms",
+			req:     spawnSubagentToolRequest{Task: "x", Tasks: []subagentItemRequest{{Task: "y"}}},
+			wantErr: true,
+		},
+		{
+			name:    "empty item",
+			req:     spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: ""}}},
+			wantErr: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mode, _, err := validateSpawnSubagentRequest(tc.req)
@@ -232,6 +302,7 @@ func TestSplitCommandArgs(t *testing.T) {
 }
 
 func TestParsePiJSONFinal(t *testing.T) {
+	//nolint:lll // fixture script emits one JSON record per line
 	stdout := `{"type":"message_start","message":{"role":"assistant","content":[{"type":"text","text":"draft"}]}}
 {"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"final"}]}}
 {"type":"agent_settled"}
@@ -276,7 +347,18 @@ func TestAppendSubagentTaskArgsPiJSON(t *testing.T) {
 		Model: "test-model",
 		Tools: []string{"read", "grep"},
 	}, "pi-json", "/tmp/prompt.md")
-	want := []string{"--mode", "json", "-p", "--model", "test-model", "--tools", "read,grep", "--append-system-prompt", "/tmp/prompt.md", "inspect README"}
+	want := []string{
+		"--mode",
+		"json",
+		"-p",
+		"--model",
+		"test-model",
+		"--tools",
+		"read,grep",
+		"--append-system-prompt",
+		"/tmp/prompt.md",
+		"inspect README",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %#v, want %#v", got, want)
 	}
@@ -311,7 +393,12 @@ func TestPrepareSubagentPiDirsSharesAuthRootAndIsolatesSessions(t *testing.T) {
 		t.Fatalf("prepare second child dirs: %v", err)
 	}
 	if agentDir1 != base || agentDir2 != base {
-		t.Fatalf("children must share lifecycle auth/config root: %q, %q; want %q", agentDir1, agentDir2, base)
+		t.Fatalf(
+			"children must share lifecycle auth/config root: %q, %q; want %q",
+			agentDir1,
+			agentDir2,
+			base,
+		)
 	}
 	if sessionDir1 == sessionDir2 {
 		t.Fatalf("children unexpectedly share session state: %q", sessionDir1)
@@ -325,7 +412,11 @@ func TestPrepareSubagentPiDirsSharesAuthRootAndIsolatesSessions(t *testing.T) {
 			t.Fatalf("child session dir mode = %o, want 700", got)
 		}
 	}
-	if _, statErr := os.Stat(filepath.Join(base, "subagents", "subagent-one", "agent", "auth.json")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(
+		filepath.Join(base, "subagents", "subagent-one", "agent", "auth.json"),
+	); !os.IsNotExist(
+		statErr,
+	) {
 		t.Fatalf("auth credential was copied into a child-specific path: %v", statErr)
 	}
 }
@@ -338,7 +429,10 @@ func TestPrepareSubagentPiDirsRejectsRelativeAgentDir(t *testing.T) {
 }
 
 func TestWithEnvOverridesReplacesExisting(t *testing.T) {
-	got := withEnvOverrides([]string{"A=old", "B=keep", "AGENTSH_TOKEN=secret"}, map[string]string{"A": "new", "C": "add"})
+	got := withEnvOverrides(
+		[]string{"A=old", "B=keep", "AGENTSH_TOKEN=secret"},
+		map[string]string{"A": "new", "C": "add"},
+	)
 	m := map[string]string{}
 	for _, item := range got {
 		for i, ch := range item {
@@ -403,6 +497,7 @@ func TestSubagentStreamEndpointTerminalContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	scriptPath := filepath.Join(root, "child.sh")
+	//nolint:lll // fixture script emits one JSON record per line
 	script := `if [ -n "$AGENTSH_SUBAGENT_SYSTEM_PROMPT" ]; then
   printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"system prompt leaked through environment"}}'
   printf '%s\n' '{"type":"agent_settled"}'
@@ -462,6 +557,7 @@ esac
 	}
 
 	draftScriptPath := filepath.Join(root, "draft-worker.sh")
+	//nolint:lll // fixture script emits one JSON record per line
 	draftScript := `#!/bin/sh
 cat >/dev/null
 [ "$AGENTSH_NETHELPER_SOCKET" = /run/agentsh/nethelper/1000/nethelper.sock ]
@@ -516,19 +612,78 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 		wantTimeoutMS   int64
 		wantChildStates []string
 	}{
-		{name: "completed", body: `{"task":"complete","systemPrompt":"system-prompt-sentinel","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "Draft completed", body: `{"mode":"draft","task":"complete","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "child receives deadline", body: `{"task":"deadline","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "large progress retains final", body: `{"task":"large","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "long final gets remote artifact", body: `{"task":"artifact","stream":true,"result_artifact_threshold_bytes":4096}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "failed task is protocol success", body: `{"task":"fail","stream":true}`, wantState: "failed", wantTimeoutMS: 7_200_000},
-		{name: "timeout", body: `{"task":"timeout","stream":true,"timeout_ms":50}`, wantState: "timed_out", wantCause: "request_timeout", wantTimeoutMS: 50, wantChildStates: []string{"timed_out"}},
-		{name: "parallel preserves completed sibling on timeout", body: `{"tasks":[{"task":"quick"},{"task":"timeout"}],"stream":true,"timeout_ms":250}`, wantState: "timed_out", wantCause: "request_timeout", wantTimeoutMS: 250, wantChildStates: []string{"completed", "timed_out"}},
-		{name: "chain preserves completed step on timeout", body: `{"chain":[{"task":"quick"},{"task":"timeout"}],"stream":true,"timeout_ms":250}`, wantState: "timed_out", wantCause: "request_timeout", wantTimeoutMS: 250, wantChildStates: []string{"completed", "timed_out"}},
+		{
+			name: "completed",
+			body: `{"task":"complete","systemPrompt":"system-prompt-sentinel",` +
+				`"stream":true}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:          "Draft completed",
+			body:          `{"mode":"draft","task":"complete","stream":true}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:          "child receives deadline",
+			body:          `{"task":"deadline","stream":true}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:          "large progress retains final",
+			body:          `{"task":"large","stream":true}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name: "long final gets remote artifact",
+			body: `{"task":"artifact","stream":true,` +
+				`"result_artifact_threshold_bytes":4096}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:          "failed task is protocol success",
+			body:          `{"task":"fail","stream":true}`,
+			wantState:     "failed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:            "timeout",
+			body:            `{"task":"timeout","stream":true,"timeout_ms":50}`,
+			wantState:       "timed_out",
+			wantCause:       "request_timeout",
+			wantTimeoutMS:   50,
+			wantChildStates: []string{"timed_out"},
+		},
+		{
+			name: "parallel preserves completed sibling on timeout",
+			body: `{"tasks":[{"task":"quick"},{"task":"timeout"}],"stream":true,` +
+				`"timeout_ms":250}`,
+			wantState:       "timed_out",
+			wantCause:       "request_timeout",
+			wantTimeoutMS:   250,
+			wantChildStates: []string{"completed", "timed_out"},
+		},
+		{
+			name: "chain preserves completed step on timeout",
+			body: `{"chain":[{"task":"quick"},{"task":"timeout"}],"stream":true,` +
+				`"timeout_ms":250}`,
+			wantState:       "timed_out",
+			wantCause:       "request_timeout",
+			wantTimeoutMS:   250,
+			wantChildStates: []string{"completed", "timed_out"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent", strings.NewReader(tc.body))
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent",
+				strings.NewReader(tc.body),
+			)
 			handler.ServeHTTP(rr, req)
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
@@ -553,26 +708,47 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 				t.Fatalf("done count = %d, events=%#v", doneCount, events)
 			}
 			if got, _ := startEvent["timeout_ms"].(float64); int64(got) != tc.wantTimeoutMS {
-				t.Fatalf("subagent_start timeout_ms = %v, want %d", startEvent["timeout_ms"], tc.wantTimeoutMS)
+				t.Fatalf(
+					"subagent_start timeout_ms = %v, want %d",
+					startEvent["timeout_ms"],
+					tc.wantTimeoutMS,
+				)
 			}
 			if ok, _ := done["ok"].(bool); !ok {
 				t.Fatalf("executed child task must be a protocol success: %#v", done)
 			}
 			state, cause := terminalStateFromDone(t, done)
 			if state != tc.wantState || cause != tc.wantCause {
-				t.Fatalf("terminal state=%q cause=%q, want state=%q cause=%q", state, cause, tc.wantState, tc.wantCause)
+				t.Fatalf(
+					"terminal state=%q cause=%q, want state=%q cause=%q",
+					state,
+					cause,
+					tc.wantState,
+					tc.wantCause,
+				)
 			}
 			if len(tc.wantChildStates) > 0 {
 				result := done["result"].(map[string]any)
 				children := result["results"].([]any)
 				if len(children) != len(tc.wantChildStates) {
-					t.Fatalf("child count = %d, want %d: %#v", len(children), len(tc.wantChildStates), children)
+					t.Fatalf(
+						"child count = %d, want %d: %#v",
+						len(children),
+						len(tc.wantChildStates),
+						children,
+					)
 				}
 				for index, want := range tc.wantChildStates {
 					child := children[index].(map[string]any)
 					terminal := child["terminal"].(map[string]any)
 					if terminal["state"] != want {
-						t.Fatalf("child %d terminal state = %v, want %s: %#v", index, terminal["state"], want, child)
+						t.Fatalf(
+							"child %d terminal state = %v, want %s: %#v",
+							index,
+							terminal["state"],
+							want,
+							child,
+						)
 					}
 				}
 			}
@@ -581,7 +757,8 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 				children := result["results"].([]any)
 				child := children[0].(map[string]any)
 				path, _ := child["full_result_path"].(string)
-				if path == "" || child["final_truncated"] != true || child["artifact_complete"] != true {
+				if path == "" || child["final_truncated"] != true ||
+					child["artifact_complete"] != true {
 					t.Fatalf("long final artifact metadata = %#v", child)
 				}
 				artifact, err := os.ReadFile(path)
@@ -589,7 +766,11 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 					t.Fatal(err)
 				}
 				if !strings.HasSuffix(string(artifact), "ARTIFACT-TAIL") || len(artifact) <= 4096 {
-					t.Fatalf("long final artifact content length=%d suffix=%q", len(artifact), string(artifact[max(0, len(artifact)-32):]))
+					t.Fatalf(
+						"long final artifact content length=%d suffix=%q",
+						len(artifact),
+						string(artifact[max(0, len(artifact)-32):]),
+					)
 				}
 				if strings.Contains(string(artifact), "HIDDEN-ARTIFACT-THINKING") {
 					t.Fatal("subagent thinking leaked into remote artifact")
@@ -605,10 +786,12 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 				if !ok {
 					t.Fatalf("large child type = %T", children[0])
 				}
-				if child["final"] != "complete" || child["protocol_settled"] != true || child["model_stop_reason"] != "stop" {
+				if child["final"] != "complete" || child["protocol_settled"] != true ||
+					child["model_stop_reason"] != "stop" {
 					t.Fatalf("large child lost final protocol state: %#v", child)
 				}
-				if child["stdout_truncated"] != true || child["stdout_total_bytes"].(float64) <= float64(maxSubagentTextBytes) {
+				if child["stdout_truncated"] != true ||
+					child["stdout_total_bytes"].(float64) <= float64(maxSubagentTextBytes) {
 					t.Fatalf("large child did not report raw ring truncation: %#v", child)
 				}
 				if _, exists := child["stdout"]; exists {
@@ -621,7 +804,11 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 	t.Run("explicit user cancellation is durable", func(t *testing.T) {
 		const requestID = "subagent-request-user-cancel-test"
 		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent", strings.NewReader(`{"request_id":"`+requestID+`","task":"timeout","stream":true}`))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent",
+			strings.NewReader(`{"request_id":"`+requestID+`","task":"timeout","stream":true}`),
+		)
 		doneServing := make(chan struct{})
 		go func() {
 			defer close(doneServing)
@@ -630,7 +817,11 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 		time.Sleep(50 * time.Millisecond)
 
 		cancelRecorder := httptest.NewRecorder()
-		cancelRequest := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent/"+requestID+"/cancel", strings.NewReader(`{"cause":"user_cancelled"}`))
+		cancelRequest := httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent/"+requestID+"/cancel",
+			strings.NewReader(`{"cause":"user_cancelled"}`),
+		)
 		handler.ServeHTTP(cancelRecorder, cancelRequest)
 		if cancelRecorder.Code != http.StatusAccepted {
 			t.Fatalf("cancel status=%d body=%s", cancelRecorder.Code, cancelRecorder.Body.String())
@@ -654,11 +845,19 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 		if state != "cancelled" || cause != "user_cancelled" {
 			t.Fatalf("terminal state=%q cause=%q", state, cause)
 		}
-		persisted, err := store.QueryEvents(context.Background(), types.EventQuery{CommandID: requestID, Types: []string{"tool_spawn_subagent_end"}, Limit: 10})
+		persisted, err := store.QueryEvents(
+			context.Background(),
+			types.EventQuery{
+				CommandID: requestID,
+				Types:     []string{"tool_spawn_subagent_end"},
+				Limit:     10,
+			},
+		)
 		if err != nil || len(persisted) != 1 {
 			t.Fatalf("durable terminal events=%d err=%v", len(persisted), err)
 		}
-		if persisted[0].Fields["cancellation_cause"] != string(subagentCancelUser) || persisted[0].Fields["retryable"] != false {
+		if persisted[0].Fields["cancellation_cause"] != string(subagentCancelUser) ||
+			persisted[0].Fields["retryable"] != false {
 			t.Fatalf("persisted terminal fields=%#v", persisted[0].Fields)
 		}
 	})
@@ -666,7 +865,10 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 	t.Run("client cancellation", func(t *testing.T) {
 		rr := httptest.NewRecorder()
 		ctx, cancel := context.WithCancel(context.Background())
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent", strings.NewReader(`{"task":"timeout","stream":true}`)).WithContext(ctx)
+		req := httptest.NewRequest(http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent",
+			strings.NewReader(`{"task":"timeout","stream":true}`)).
+			WithContext(ctx)
 		doneServing := make(chan struct{})
 		go func() {
 			defer close(doneServing)

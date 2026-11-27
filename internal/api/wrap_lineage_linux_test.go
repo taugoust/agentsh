@@ -51,7 +51,16 @@ func TestAcceptNotifyFDLineageBindsExactWrapperAndPayload(t *testing.T) {
 	}
 	previous := startNotifyHandlerForWrapHook
 	captured := make(chan wrapLineageContext, 1)
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD, composition *os.File, _ string, _ *App, _ bool, gotWrapper int, _ *session.Session, _ func() error) error {
+	startNotifyHandlerForWrapHook = func(
+		ctx context.Context,
+		notifyFD, composition *os.File,
+		_ string,
+		_ *App,
+		_ bool,
+		gotWrapper int,
+		_ *session.Session,
+		_ func() error,
+	) error {
 		defer notifyFD.Close()
 		if gotWrapper != wrapper.Process.Pid {
 			t.Fatalf("wrapper pid = %d, want %d", gotWrapper, wrapper.Process.Pid)
@@ -63,10 +72,24 @@ func TestAcceptNotifyFDLineageBindsExactWrapperAndPayload(t *testing.T) {
 	t.Cleanup(func() { startNotifyHandlerForWrapHook = previous })
 
 	done := make(chan struct{})
-	ctx := context.WithValue(context.Background(), wrapSeccompConfigContextKey{}, seccompWrapperConfig{})
+	ctx := context.WithValue(
+		context.Background(),
+		wrapSeccompConfigContextKey{},
+		seccompWrapperConfig{},
+	)
 	go func() {
 		defer close(done)
-		app.acceptNotifyFD(ctx, listener, socketPath, sessionValue.ID, sessionValue, false, os.Geteuid(), false, nil)
+		app.acceptNotifyFD(
+			ctx,
+			listener,
+			socketPath,
+			sessionValue.ID,
+			sessionValue,
+			false,
+			os.Geteuid(),
+			false,
+			nil,
+		)
 	}()
 
 	connection, err := net.Dial("unix", socketPath)
@@ -75,7 +98,10 @@ func TestAcceptNotifyFDLineageBindsExactWrapperAndPayload(t *testing.T) {
 	}
 	unixConnection := connection.(*net.UnixConn)
 	defer unixConnection.Close()
-	if err := wraphandoff.SendPrelude(unixConnection, wraphandoff.Metadata{WrapperPID: wrapper.Process.Pid}); err != nil {
+	if err := wraphandoff.SendPrelude(
+		unixConnection,
+		wraphandoff.Metadata{WrapperPID: wrapper.Process.Pid},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := wraphandoff.ReadStatus(unixConnection); err != nil {
@@ -99,9 +125,15 @@ func TestAcceptNotifyFDLineageBindsExactWrapperAndPayload(t *testing.T) {
 	}
 	defer notifyR.Close()
 	defer notifyW.Close()
-	if err := wraphandoff.SendPayloadHandoff(unixConnection, int(notifyR.Fd()), -1, -1, wraphandoff.Metadata{
-		WrapperPID: wrapper.Process.Pid, PayloadPID: payloadPID,
-	}); err != nil {
+	if err := wraphandoff.SendPayloadHandoff(
+		unixConnection,
+		int(notifyR.Fd()),
+		-1,
+		-1,
+		wraphandoff.Metadata{
+			WrapperPID: wrapper.Process.Pid, PayloadPID: payloadPID,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := wraphandoff.ReadStatus(unixConnection); err != nil {

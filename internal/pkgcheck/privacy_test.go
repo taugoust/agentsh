@@ -180,7 +180,8 @@ func TestPrivacyFilter_PathDistinguishesRegistries(t *testing.T) {
 	if len(scan) != 1 || scan[0].Name != "x" {
 		t.Errorf("only team-a should be allowed; scan=%v skip=%v", scan, skip)
 	}
-	if len(skip) != 1 || skip[0].Package.Name != "y" || skip[0].Reason != SkipReasonPrivateRegistry {
+	if len(skip) != 1 || skip[0].Package.Name != "y" ||
+		skip[0].Reason != SkipReasonPrivateRegistry {
 		t.Errorf("team-b should be skipped with private_registry; skip=%v", skip)
 	}
 }

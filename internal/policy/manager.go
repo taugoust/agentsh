@@ -118,7 +118,11 @@ func (m *Manager) loadLocked() (*Policy, error) {
 			if m.signingMode == "enforce" {
 				return nil, fmt.Errorf("signing verification: trust_store not configured")
 			}
-			fmt.Fprintf(os.Stderr, "WARNING: signing mode is %q but trust_store not configured\n", m.signingMode)
+			fmt.Fprintf(
+				os.Stderr,
+				"WARNING: signing mode is %q but trust_store not configured\n",
+				m.signingMode,
+			)
 		} else if err := m.verifySigning(path, data); err != nil {
 			if m.signingMode == "enforce" {
 				return nil, fmt.Errorf("signing verification: %w", err)

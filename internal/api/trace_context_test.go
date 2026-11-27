@@ -15,7 +15,9 @@ import (
 )
 
 func TestParseTraceparent_Valid(t *testing.T) {
-	traceID, spanID, flags, ok := parseTraceparent("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01")
+	traceID, spanID, flags, ok := parseTraceparent(
+		"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+	)
 	if !ok {
 		t.Fatal("expected ok")
 	}
@@ -56,7 +58,10 @@ func TestParseTraceparent_Invalid(t *testing.T) {
 		{"all-zero span_id", "00-0af7651916cd43dd8448eb211c80319c-0000000000000000-01"},
 		{"empty", ""},
 		{"reserved version ff", "ff-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"},
-		{"reserved version FF uppercase", "FF-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"},
+		{
+			"reserved version FF uppercase",
+			"FF-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+		},
 		{"non-hex version", "zz-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"},
 	}
 	for _, tt := range tests {
@@ -118,8 +123,13 @@ func TestSetTraceContext_Valid(t *testing.T) {
 
 	sessID := createTestSession(t, h)
 
-	body := `{"trace_id":"0af7651916cd43dd8448eb211c80319c","span_id":"b7ad6b7169203331","trace_flags":"01"}`
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/sessions/"+sessID+"/trace-context", strings.NewReader(body))
+	body := `{"trace_id":"0af7651916cd43dd8448eb211c80319c","span_id":"b7ad6b7169203331",` +
+		`"trace_flags":"01"}`
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/sessions/"+sessID+"/trace-context",
+		strings.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
@@ -145,7 +155,11 @@ func TestSetTraceContext_ValidTraceIDOnly(t *testing.T) {
 	sessID := createTestSession(t, h)
 
 	body := `{"trace_id":"0af7651916cd43dd8448eb211c80319c"}`
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/sessions/"+sessID+"/trace-context", strings.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/sessions/"+sessID+"/trace-context",
+		strings.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
@@ -200,8 +214,9 @@ func TestSetTraceContext_InvalidInputs(t *testing.T) {
 			wantError:  "span_id must be 16 hex characters",
 		},
 		{
-			name:       "all-zero span_id",
-			body:       `{"trace_id":"0af7651916cd43dd8448eb211c80319c","span_id":"0000000000000000"}`,
+			name: "all-zero span_id",
+			body: `{"trace_id":"0af7651916cd43dd8448eb211c80319c",` +
+				`"span_id":"0000000000000000"}`,
 			wantStatus: http.StatusBadRequest,
 			wantError:  "span_id must not be all zeros",
 		},
@@ -221,7 +236,11 @@ func TestSetTraceContext_InvalidInputs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPut, "/api/v1/sessions/"+sessID+"/trace-context", strings.NewReader(tt.body))
+			req := httptest.NewRequest(
+				http.MethodPut,
+				"/api/v1/sessions/"+sessID+"/trace-context",
+				strings.NewReader(tt.body),
+			)
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, req)
 
@@ -247,7 +266,11 @@ func TestSetTraceContext_SessionNotFound(t *testing.T) {
 	h := app.Router()
 
 	body := `{"trace_id":"0af7651916cd43dd8448eb211c80319c"}`
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/sessions/nonexistent/trace-context", strings.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/sessions/nonexistent/trace-context",
+		strings.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 

@@ -12,7 +12,12 @@ import (
 // helperValidate runs validate against the decoded shapes; tests construct
 // these directly rather than going through Decode so each error code is
 // reachable in isolation.
-func helperValidate(t *testing.T, svcs map[ServiceID]*DBService, stmt []*StatementRule, conn []*ConnectionRule) ([]Warning, error) {
+func helperValidate(
+	t *testing.T,
+	svcs map[ServiceID]*DBService,
+	stmt []*StatementRule,
+	conn []*ConnectionRule,
+) ([]Warning, error) {
 	t.Helper()
 	return validate(svcs, stmt, conn)
 }
@@ -22,7 +27,9 @@ func TestValidate_NoErrors(t *testing.T) {
 		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres",
 			Upstream: "db.internal:5432", TLSMode: "terminate_reissue"},
 	}
-	stmt := []*StatementRule{{Name: "r1", DBService: "appdb", Operations: []string{"READ"}, Decision: "allow"}}
+	stmt := []*StatementRule{
+		{Name: "r1", DBService: "appdb", Operations: []string{"READ"}, Decision: "allow"},
+	}
 	conn := []*ConnectionRule{{Name: "c1", DBService: "appdb", Decision: "allow"}}
 	if _, err := helperValidate(t, svcs, stmt, conn); err != nil {
 		t.Fatalf("validate: %v", err)
@@ -30,7 +37,9 @@ func TestValidate_NoErrors(t *testing.T) {
 }
 
 func TestValidate_ServiceTLSModeRequired(t *testing.T) {
-	svcs := map[ServiceID]*DBService{"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1"}}
+	svcs := map[ServiceID]*DBService{
+		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1"},
+	}
 	_, err := helperValidate(t, svcs, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "service_tls_mode_required") {
 		t.Fatalf("want service_tls_mode_required, got %v", err)
@@ -38,7 +47,15 @@ func TestValidate_ServiceTLSModeRequired(t *testing.T) {
 }
 
 func TestValidate_ServiceUnknownTLSMode(t *testing.T) {
-	svcs := map[ServiceID]*DBService{"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "weird"}}
+	svcs := map[ServiceID]*DBService{
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "weird",
+		},
+	}
 	_, err := helperValidate(t, svcs, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "service_unknown_tls_mode") {
 		t.Fatalf("want service_unknown_tls_mode, got %v", err)
@@ -69,9 +86,17 @@ func TestValidate_ServicePlaintextAllowedOnLoopback(t *testing.T) {
 
 func TestValidate_RuleServicePassthrough(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"legacy": {Name: "legacy", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "passthrough"},
+		"legacy": {
+			Name:     "legacy",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "passthrough",
+		},
 	}
-	stmt := []*StatementRule{{Name: "r", DBService: "legacy", Operations: []string{"READ"}, Decision: "allow"}}
+	stmt := []*StatementRule{
+		{Name: "r", DBService: "legacy", Operations: []string{"READ"}, Decision: "allow"},
+	}
 	_, err := helperValidate(t, svcs, stmt, nil)
 	if err == nil || !strings.Contains(err.Error(), "rule_service_passthrough") {
 		t.Fatalf("want rule_service_passthrough, got %v", err)
@@ -79,7 +104,9 @@ func TestValidate_RuleServicePassthrough(t *testing.T) {
 }
 
 func TestValidate_RuleServiceUnknown(t *testing.T) {
-	stmt := []*StatementRule{{Name: "r", DBService: "ghost", Operations: []string{"READ"}, Decision: "allow"}}
+	stmt := []*StatementRule{
+		{Name: "r", DBService: "ghost", Operations: []string{"READ"}, Decision: "allow"},
+	}
 	_, err := helperValidate(t, nil, stmt, nil)
 	if err == nil || !strings.Contains(err.Error(), "rule_service_unknown") {
 		t.Fatalf("want rule_service_unknown, got %v", err)
@@ -88,9 +115,17 @@ func TestValidate_RuleServiceUnknown(t *testing.T) {
 
 func TestValidate_ConnPassthroughFieldUnavailable(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"legacy": {Name: "legacy", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "passthrough"},
+		"legacy": {
+			Name:     "legacy",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "passthrough",
+		},
 	}
-	conn := []*ConnectionRule{{Name: "c", DBService: "legacy", DBUser: []string{"foo"}, Decision: "allow"}}
+	conn := []*ConnectionRule{
+		{Name: "c", DBService: "legacy", DBUser: []string{"foo"}, Decision: "allow"},
+	}
 	_, err := helperValidate(t, svcs, nil, conn)
 	if err == nil || !strings.Contains(err.Error(), "conn_passthrough_field_unavailable") {
 		t.Fatalf("want conn_passthrough_field_unavailable, got %v", err)
@@ -99,7 +134,13 @@ func TestValidate_ConnPassthroughFieldUnavailable(t *testing.T) {
 
 func TestValidate_RuleDecisionRedirect(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	stmt := []*StatementRule{{
 		Name:                  "redirect-users",
@@ -117,7 +158,13 @@ func TestValidate_RuleDecisionRedirect(t *testing.T) {
 
 func TestValidate_RedirectRequiresAction(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	stmt := []*StatementRule{{
 		Name:                  "redirect-users",
@@ -135,7 +182,13 @@ func TestValidate_RedirectRequiresAction(t *testing.T) {
 
 func TestValidate_RedirectRequiresCanonicalTarget(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	stmt := []*StatementRule{{
 		Name:                  "redirect-users",
@@ -154,9 +207,17 @@ func TestValidate_RedirectRequiresCanonicalTarget(t *testing.T) {
 
 func TestValidate_RedirectRejectsNonPlainTargetRelation(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
-	for _, relation := range []string{"Public.Users", "public.user-name", " public.users", "public.123users"} {
+	for _, relation := range []string{
+		"Public.Users", "public.user-name", " public.users", "public.123users",
+	} {
 		t.Run(relation, func(t *testing.T) {
 			stmt := []*StatementRule{{
 				Name:                  "redirect-users",
@@ -177,7 +238,13 @@ func TestValidate_RedirectRejectsNonPlainTargetRelation(t *testing.T) {
 
 func TestValidate_RedirectRequiresCanonicalSourceRelation(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	stmt := []*StatementRule{{
 		Name:                  "redirect-users",
@@ -196,7 +263,13 @@ func TestValidate_RedirectRequiresCanonicalSourceRelation(t *testing.T) {
 
 func TestValidate_RedirectSourceRelationExclusive(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	cases := []struct {
 		name      string
@@ -229,9 +302,17 @@ func TestValidate_RedirectSourceRelationExclusive(t *testing.T) {
 
 func TestValidate_RedirectRejectsNonPlainSourceRelation(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
-	for _, relation := range []string{"Public.Users", "public.user-name", " public.users", "public.123users"} {
+	for _, relation := range []string{
+		"Public.Users", "public.user-name", " public.users", "public.123users",
+	} {
 		t.Run(relation, func(t *testing.T) {
 			stmt := []*StatementRule{{
 				Name:                  "redirect-users",
@@ -243,7 +324,8 @@ func TestValidate_RedirectRejectsNonPlainSourceRelation(t *testing.T) {
 				Redirect:              &RedirectAction{Relation: "public.safe_users"},
 			}}
 			_, err := helperValidate(t, svcs, stmt, nil)
-			if err == nil || !strings.Contains(err.Error(), "redirect_source_relation_not_canonical") {
+			if err == nil ||
+				!strings.Contains(err.Error(), "redirect_source_relation_not_canonical") {
 				t.Fatalf("want redirect_source_relation_not_canonical, got %v", err)
 			}
 		})
@@ -252,7 +334,13 @@ func TestValidate_RedirectRejectsNonPlainSourceRelation(t *testing.T) {
 
 func TestValidate_RedirectRequiresSourceRelation(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	stmt := []*StatementRule{{
 		Name:                  "redirect-users",
@@ -271,7 +359,13 @@ func TestValidate_RedirectRequiresSourceRelation(t *testing.T) {
 
 func TestValidate_RedirectRequiresCatalogResolved(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	stmt := []*StatementRule{{
 		Name:       "redirect-users",
@@ -289,7 +383,13 @@ func TestValidate_RedirectRequiresCatalogResolved(t *testing.T) {
 
 func TestValidate_RedirectOperationsMustBeRead(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	stmt := []*StatementRule{{
 		Name:                  "redirect-users",
@@ -308,7 +408,13 @@ func TestValidate_RedirectOperationsMustBeRead(t *testing.T) {
 
 func TestValidate_RedirectRequiresTerminatePostgresService(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"legacy": {Name: "legacy", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "passthrough"},
+		"legacy": {
+			Name:     "legacy",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "passthrough",
+		},
 	}
 	stmt := []*StatementRule{{
 		Name:                  "redirect-users",
@@ -319,7 +425,8 @@ func TestValidate_RedirectRequiresTerminatePostgresService(t *testing.T) {
 		Redirect:              &RedirectAction{Relation: "public.safe_users"},
 	}}
 	_, err := helperValidate(t, svcs, stmt, nil)
-	if err == nil || !strings.Contains(err.Error(), "redirect_requires_terminate_postgres_service") {
+	if err == nil ||
+		!strings.Contains(err.Error(), "redirect_requires_terminate_postgres_service") {
 		t.Fatalf("want redirect_requires_terminate_postgres_service, got %v", err)
 	}
 }
@@ -333,7 +440,14 @@ func TestValidate_ConnectionRuleRedirectInvalid(t *testing.T) {
 }
 
 func TestValidate_RuleUnknownSubtype(t *testing.T) {
-	stmt := []*StatementRule{{Name: "r", Operations: []string{"session"}, Subtypes: []string{"not_real"}, Decision: "allow"}}
+	stmt := []*StatementRule{
+		{
+			Name:       "r",
+			Operations: []string{"session"},
+			Subtypes:   []string{"not_real"},
+			Decision:   "allow",
+		},
+	}
 	_, err := helperValidate(t, nil, stmt, nil)
 	if err == nil || !strings.Contains(err.Error(), "rule_unknown_subtype") {
 		t.Fatalf("want rule_unknown_subtype, got %v", err)
@@ -365,7 +479,14 @@ func TestValidate_CancelRuleApprove(t *testing.T) {
 }
 
 func TestValidate_ApproveTimeoutExceedsMax(t *testing.T) {
-	stmt := []*StatementRule{{Name: "slow", Operations: []string{"READ"}, Decision: "approve", Timeout: 700 * time.Second}}
+	stmt := []*StatementRule{
+		{
+			Name:       "slow",
+			Operations: []string{"READ"},
+			Decision:   "approve",
+			Timeout:    700 * time.Second,
+		},
+	}
 	_, err := helperValidate(t, nil, stmt, nil)
 	if err == nil || !strings.Contains(err.Error(), "approve_timeout_exceeds_max") {
 		t.Fatalf("want approve_timeout_exceeds_max, got %v", err)
@@ -374,13 +495,18 @@ func TestValidate_ApproveTimeoutExceedsMax(t *testing.T) {
 
 func TestValidate_AllErrorsJoin(t *testing.T) {
 	// Two unrelated errors must both surface (errors.Join).
-	svcs := map[ServiceID]*DBService{"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1"}}
-	stmt := []*StatementRule{{Name: "r", DBService: "ghost", Operations: []string{"READ"}, Decision: "allow"}}
+	svcs := map[ServiceID]*DBService{
+		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1"},
+	}
+	stmt := []*StatementRule{
+		{Name: "r", DBService: "ghost", Operations: []string{"READ"}, Decision: "allow"},
+	}
 	_, err := helperValidate(t, svcs, stmt, nil)
 	if err == nil {
 		t.Fatal("want error")
 	}
-	if !strings.Contains(err.Error(), "service_tls_mode_required") || !strings.Contains(err.Error(), "rule_service_unknown") {
+	if !strings.Contains(err.Error(), "service_tls_mode_required") ||
+		!strings.Contains(err.Error(), "rule_service_unknown") {
 		t.Fatalf("expected both error codes joined, got: %v", err)
 	}
 	// Sanity: errors.Is over the joined error.
@@ -474,8 +600,20 @@ database_rules:
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	assertWarning(t, warns, "canonical_selector_without_catalog_service", "canonical-relation-wide", "relations")
-	assertWarning(t, warns, "canonical_selector_without_catalog_service", "canonical-function-wide", "functions")
+	assertWarning(
+		t,
+		warns,
+		"canonical_selector_without_catalog_service",
+		"canonical-relation-wide",
+		"relations",
+	)
+	assertWarning(
+		t,
+		warns,
+		"canonical_selector_without_catalog_service",
+		"canonical-function-wide",
+		"functions",
+	)
 }
 
 func assertWarningCode(t *testing.T, warns []Warning, code string) {
@@ -725,6 +863,7 @@ database_rules:
 }
 
 func TestValidate_DenyModeInTx_AcceptedOnDenyRule(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: test
 db_services:
@@ -750,6 +889,7 @@ database_rules:
 }
 
 func TestValidate_DenyModeInTx_AcceptedTerminate(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: test
 db_services:
@@ -771,6 +911,7 @@ database_rules:
 }
 
 func TestValidate_DenyModeInTx_RejectedOnAllowRule(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: test
 db_services:
@@ -796,6 +937,7 @@ database_rules:
 }
 
 func TestValidate_DenyModeInTx_RejectedUnknownValue(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: test
 db_services:
@@ -822,7 +964,13 @@ database_rules:
 
 func TestValidate_RequireWhereAllowsModifyAndDeleteOnly(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	cases := []struct {
 		name string
@@ -852,7 +1000,13 @@ func TestValidate_RequireWhereAllowsModifyAndDeleteOnly(t *testing.T) {
 
 func TestValidate_RequireWhereRejectsUnsupportedOperations(t *testing.T) {
 	svcs := map[ServiceID]*DBService{
-		"appdb": {Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "x:1", TLSMode: "terminate_reissue"},
+		"appdb": {
+			Name:     "appdb",
+			Family:   "postgres",
+			Dialect:  "postgres",
+			Upstream: "x:1",
+			TLSMode:  "terminate_reissue",
+		},
 	}
 	cases := []struct {
 		name string
@@ -875,7 +1029,8 @@ func TestValidate_RequireWhereRejectsUnsupportedOperations(t *testing.T) {
 				RequireWhere: true,
 			}}
 			_, err := helperValidate(t, svcs, stmt, nil)
-			if err == nil || !strings.Contains(err.Error(), "rule_require_where_invalid_operation") {
+			if err == nil ||
+				!strings.Contains(err.Error(), "rule_require_where_invalid_operation") {
 				t.Fatalf("want rule_require_where_invalid_operation, got %v", err)
 			}
 		})

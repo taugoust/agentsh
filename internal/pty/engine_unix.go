@@ -40,8 +40,11 @@ type StartRequest struct {
 	// FinalizePreExecFailure runs after the failed child is killed/reaped,
 	// cleanup has completed, and all PTY descriptors/channels are closed. It can
 	// attach process and cleanup evidence to the returned typed error.
-	FinalizePreExecFailure func(processState *os.ProcessState, waitErr, cleanupErr, preExecErr error) error
-	PreExecFailureGrace    time.Duration
+	FinalizePreExecFailure func(
+		processState *os.ProcessState,
+		waitErr, cleanupErr, preExecErr error,
+	) error
+	PreExecFailureGrace time.Duration
 }
 
 type Session struct {
@@ -165,7 +168,11 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*Session, error) 
 		_ = slave.Close()
 		return nil, ErrPreExecBarrierUnavailable
 	}
-	if err := configureStoppedStart(cmd.SysProcAttr, req.PreExec != nil, req.CommandBoundary); err != nil {
+	if err := configureStoppedStart(
+		cmd.SysProcAttr,
+		req.PreExec != nil,
+		req.CommandBoundary,
+	); err != nil {
 		_ = master.Close()
 		_ = slave.Close()
 		return nil, err
@@ -193,7 +200,10 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*Session, error) 
 		sess.pid = cmd.Process.Pid
 	}
 	if req.PreExec != nil {
-		cleanup, hookErr := req.PreExec(sess.pid, func() error { return resumeStoppedProcess(sess.pid) })
+		cleanup, hookErr := req.PreExec(
+			sess.pid,
+			func() error { return resumeStoppedProcess(sess.pid) },
+		)
 		if hookErr != nil {
 			// Keep the child stopped, kill and reap it, then remove partial
 			// cgroup/helper resources. Cgroup removal before reap would fail.
@@ -259,7 +269,11 @@ func openPTY(size Winsize) (master, slave *os.File, err error) {
 		return nil, nil, err
 	}
 	if size.Rows > 0 && size.Cols > 0 {
-		_ = unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: size.Rows, Col: size.Cols})
+		_ = unix.IoctlSetWinsize(
+			int(slave.Fd()),
+			unix.TIOCSWINSZ,
+			&unix.Winsize{Row: size.Rows, Col: size.Cols},
+		)
 	}
 	return master, slave, nil
 }

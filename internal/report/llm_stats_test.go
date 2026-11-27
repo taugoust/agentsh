@@ -44,6 +44,7 @@ func TestParseLLMRequestsFile(t *testing.T) {
 		logPath := filepath.Join(tmpDir, "llm-requests.jsonl")
 
 		// Write test data - request followed by response
+		//nolint:lll // JSONL fixture records must stay one per line
 		testData := `{"id":"req_001","session_id":"sess_123","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
 {"request_id":"req_001","session_id":"sess_123","duration_ms":1500,"response":{"status":200},"usage":{"input_tokens":150,"output_tokens":892}}
 {"id":"req_002","session_id":"sess_123","dialect":"openai","request":{"method":"POST","path":"/v1/chat/completions"}}
@@ -91,6 +92,7 @@ func TestParseLLMRequestsFile(t *testing.T) {
 		tmpDir := t.TempDir()
 		logPath := filepath.Join(tmpDir, "llm-requests.jsonl")
 
+		//nolint:lll // JSONL fixture records must stay one per line
 		testData := `{"id":"req_001","session_id":"sess_123","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
 {"request_id":"req_001","session_id":"sess_123","duration_ms":100,"response":{"status":429}}
 {"id":"req_002","session_id":"sess_123","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
@@ -131,6 +133,7 @@ func TestParseLLMRequestsFile(t *testing.T) {
 		tmpDir := t.TempDir()
 		logPath := filepath.Join(tmpDir, "llm-requests.jsonl")
 
+		//nolint:lll // JSONL fixture records must stay one per line
 		testData := `{"id":"req_001","session_id":"sess_123","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"},"dlp":{"redactions":[{"type":"email","count":5},{"type":"phone","count":2}]}}
 {"request_id":"req_001","session_id":"sess_123","duration_ms":1500,"response":{"status":200},"usage":{"input_tokens":150,"output_tokens":892}}
 {"id":"req_002","session_id":"sess_123","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"},"dlp":{"redactions":[{"type":"email","count":3}]}}
@@ -179,6 +182,7 @@ func TestParseLLMRequestsFile(t *testing.T) {
 		tmpDir := t.TempDir()
 		logPath := filepath.Join(tmpDir, "llm-requests.jsonl")
 
+		//nolint:lll // JSONL fixture records must stay one per line
 		testData := `{"id":"req_001","session_id":"sess_123","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
 {malformed json line}
 {"request_id":"req_001","session_id":"sess_123","duration_ms":1500,"response":{"status":200},"usage":{"input_tokens":150,"output_tokens":892}}
@@ -206,6 +210,7 @@ func TestParseLLMRequestsFile(t *testing.T) {
 		logPath := filepath.Join(tmpDir, "llm-requests.jsonl")
 
 		// Response without a corresponding request
+		//nolint:lll // JSONL fixture records must stay one per line
 		testData := `{"request_id":"orphan_req","session_id":"sess_123","duration_ms":1500,"response":{"status":200},"usage":{"input_tokens":150,"output_tokens":892}}
 `
 		if err := os.WriteFile(logPath, []byte(testData), 0600); err != nil {
@@ -241,6 +246,7 @@ func TestParseLLMRequestsFile_SkipsHTTPServiceEntries(t *testing.T) {
 	logPath := filepath.Join(tmpDir, "llm-requests.jsonl")
 
 	// One LLM pair (anthropic) and one http_service pair (github).
+	//nolint:lll // JSONL fixture records must stay one per line
 	testData := `{"id":"req_001","session_id":"sess_123","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
 {"request_id":"req_001","session_id":"sess_123","duration_ms":1500,"response":{"status":200},"usage":{"input_tokens":150,"output_tokens":892}}
 {"id":"req_http_1","session_id":"sess_123","service_kind":"http_service","service_name":"github","request":{"method":"GET","path":"/user"}}

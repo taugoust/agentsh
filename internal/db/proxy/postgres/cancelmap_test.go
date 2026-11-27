@@ -33,7 +33,11 @@ func TestCancelMap_RegisterLookupAndRelease(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 	if reg.SyntheticPID != 1001 || !bytes.Equal(reg.SyntheticSecret, []byte{0, 0, 0, 7}) {
-		t.Fatalf("synthetic key = (%d,%x), want (1001,00000007)", reg.SyntheticPID, reg.SyntheticSecret)
+		t.Fatalf(
+			"synthetic key = (%d,%x), want (1001,00000007)",
+			reg.SyntheticPID,
+			reg.SyntheticSecret,
+		)
 	}
 
 	entry, status := cm.Lookup(1001, []byte{0, 0, 0, 7})
@@ -43,7 +47,8 @@ func TestCancelMap_RegisterLookupAndRelease(t *testing.T) {
 	if entry.RealPID != 42 || !bytes.Equal(entry.RealSecret, []byte{0, 0, 0, 99}) {
 		t.Fatalf("real key = (%d,%x), want (42,00000063)", entry.RealPID, entry.RealSecret)
 	}
-	if entry.ServiceName != "appdb" || entry.DBUser != "alice" || entry.ClientIdentity != "uid:1000" {
+	if entry.ServiceName != "appdb" || entry.DBUser != "alice" ||
+		entry.ClientIdentity != "uid:1000" {
 		t.Fatalf("metadata not preserved: %+v", entry)
 	}
 
@@ -84,7 +89,11 @@ func TestCancelMap_CollisionRetryAndExhaustion(t *testing.T) {
 		t.Fatalf("second Register: %v", err)
 	}
 	if reg.SyntheticPID != 2 || !bytes.Equal(reg.SyntheticSecret, []byte{2}) {
-		t.Fatalf("second synthetic key = (%d,%x), want (2,02)", reg.SyntheticPID, reg.SyntheticSecret)
+		t.Fatalf(
+			"second synthetic key = (%d,%x), want (2,02)",
+			reg.SyntheticPID,
+			reg.SyntheticSecret,
+		)
 	}
 
 	exhaust := newCancelMap(cancelMapConfig{
@@ -106,7 +115,14 @@ func TestCancelMap_CollisionRetryAndExhaustion(t *testing.T) {
 	if _, err := exhaust.Register(cancelMeta{ServiceName: "appdb"}, 1, []byte{1}); err != nil {
 		t.Fatalf("seed Register: %v", err)
 	}
-	if _, err := exhaust.Register(cancelMeta{ServiceName: "appdb"}, 2, []byte{2}); !errors.Is(err, errBackendKeyGenerationFailed) {
+	if _, err := exhaust.Register(
+		cancelMeta{ServiceName: "appdb"},
+		2,
+		[]byte{2},
+	); !errors.Is(
+		err,
+		errBackendKeyGenerationFailed,
+	) {
 		t.Fatalf("collision exhaustion err = %v, want errBackendKeyGenerationFailed", err)
 	}
 }
@@ -133,7 +149,14 @@ func TestCancelMap_CapPrunesOnlyPastGrace(t *testing.T) {
 	}
 
 	reg1.Release()
-	if _, err := cm.Register(cancelMeta{ServiceName: "appdb"}, 33, []byte{33}); !errors.Is(err, errBackendKeyTableFull) {
+	if _, err := cm.Register(
+		cancelMeta{ServiceName: "appdb"},
+		33,
+		[]byte{33},
+	); !errors.Is(
+		err,
+		errBackendKeyTableFull,
+	) {
 		t.Fatalf("within-grace cap err = %v, want errBackendKeyTableFull", err)
 	}
 
@@ -211,7 +234,10 @@ func TestCancelMap_ClonesSecrets(t *testing.T) {
 		t.Fatalf("stored real secret after lookup mutation = %x, want 00000063", entry.RealSecret)
 	}
 	if !bytes.Equal(entry.SyntheticSecret, []byte{0, 0, 0, 7}) {
-		t.Fatalf("stored synthetic secret after lookup mutation = %x, want 00000007", entry.SyntheticSecret)
+		t.Fatalf(
+			"stored synthetic secret after lookup mutation = %x, want 00000007",
+			entry.SyntheticSecret,
+		)
 	}
 }
 

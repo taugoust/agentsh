@@ -35,7 +35,12 @@ func NewVSockClient(manifest Manifest) (*Client, error) {
 }
 
 func newClient(manifest Manifest, dial dialControlFunc, timeout time.Duration) (*Client, error) {
-	if err := manifest.Validate(manifest.Workspace, manifest.Profile, manifest.ProfileDigest, []string{manifest.Policy}); err != nil {
+	if err := manifest.Validate(
+		manifest.Workspace,
+		manifest.Profile,
+		manifest.ProfileDigest,
+		[]string{manifest.Policy},
+	); err != nil {
 		return nil, err
 	}
 	if dial == nil {
@@ -131,14 +136,19 @@ func (c *Client) exchange(ctx context.Context, operation string) (Response, erro
 	if err := decoder.Decode(&response); err != nil || requireJSONEOF(decoder) != nil {
 		return Response{}, fmt.Errorf("decode guest control response")
 	}
-	if response.ProtocolVersion != c.manifest.ProtocolVersion || response.Type != operation || response.RequestID != requestID {
+	if response.ProtocolVersion != c.manifest.ProtocolVersion || response.Type != operation ||
+		response.RequestID != requestID {
 		return Response{}, fmt.Errorf("guest control response identity mismatch")
 	}
 	if !response.OK {
 		if strings.TrimSpace(response.Error) == "" {
 			return Response{}, fmt.Errorf("guest control %s failed", operation)
 		}
-		return Response{}, fmt.Errorf("guest control %s failed: %s", operation, boundedError(errors.New(response.Error)))
+		return Response{}, fmt.Errorf(
+			"guest control %s failed: %s",
+			operation,
+			boundedError(errors.New(response.Error)),
+		)
 	}
 	if response.Error != "" {
 		return Response{}, fmt.Errorf("guest control successful response included an error")

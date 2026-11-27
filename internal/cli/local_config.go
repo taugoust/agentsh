@@ -28,7 +28,9 @@ func findDetachedSupervisorConfigPath() (string, config.ConfigSource) {
 //  2. ./config.yml or ./config.yaml, when includeWorkingDirectory is true
 //  3. User-local config (~/.config/agentsh/config.yaml)
 //  4. System-wide config (/etc/agentsh/config.yaml)
-func findConfigPathWithWorkingDirectory(includeWorkingDirectory bool) (string, config.ConfigSource) {
+func findConfigPathWithWorkingDirectory(
+	includeWorkingDirectory bool,
+) (string, config.ConfigSource) {
 	if v := os.Getenv("AGENTSH_CONFIG"); v != "" {
 		return v, config.ConfigSourceEnv
 	}

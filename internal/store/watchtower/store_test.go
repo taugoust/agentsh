@@ -98,8 +98,15 @@ func TestNew_QuarantinesOnSessionIDMismatch(t *testing.T) {
 	// in internal/metrics still passed.
 	rr := httptest.NewRecorder()
 	collector.Handler(metrics.HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
-	if got := rr.Body.String(); !strings.Contains(got, `wtp_wal_quarantine_total{reason="session_id_mismatch"} 1`) {
-		t.Fatalf("expected wtp_wal_quarantine_total{reason=\"session_id_mismatch\"}=1 after quarantine\nbody:\n%s", got)
+	if got := rr.Body.String(); !strings.Contains(
+		got,
+		`wtp_wal_quarantine_total{reason="session_id_mismatch"} 1`,
+	) {
+		t.Fatalf(
+			"expected wtp_wal_quarantine_total{reason=\"session_id_mismatch\"}=1 after "+
+				"quarantine\nbody:\n%s",
+			got,
+		)
 	}
 }
 
@@ -176,10 +183,17 @@ func TestNew_QuarantinesOnKeyFingerprintMismatch(t *testing.T) {
 	collector.Handler(metrics.HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	body := rr.Body.String()
 	if !strings.Contains(body, `wtp_wal_quarantine_total{reason="key_fingerprint_mismatch"} 1`) {
-		t.Fatalf("expected wtp_wal_quarantine_total{reason=\"key_fingerprint_mismatch\"}=1 after quarantine\nbody:\n%s", body)
+		t.Fatalf(
+			"expected wtp_wal_quarantine_total{reason=\"key_fingerprint_mismatch\"}=1 after "+
+				"quarantine\nbody:\n%s",
+			body,
+		)
 	}
 	if !strings.Contains(body, `wtp_wal_quarantine_total{reason="session_id_mismatch"} 0`) {
-		t.Fatalf("expected session_id_mismatch to remain 0 (classification swap regression)\nbody:\n%s", body)
+		t.Fatalf(
+			"expected session_id_mismatch to remain 0 (classification swap regression)\nbody:\n%s",
+			body,
+		)
 	}
 }
 
@@ -318,7 +332,11 @@ func TestStore_CloseAfterTerminalRunExit(t *testing.T) {
 	closeErr := s.Close()
 	elapsed := time.Since(start)
 	if elapsed > 500*time.Millisecond {
-		t.Fatalf("Close after terminal Run exit took %v; expected < 500ms (would indicate Stop-on-dead-loop deadlock)", elapsed)
+		t.Fatalf(
+			"Close after terminal Run exit took %v; expected < 500ms (would indicate "+
+				"Stop-on-dead-loop deadlock)",
+			elapsed,
+		)
 	}
 	if closeErr == nil {
 		t.Fatal("Close after terminal Run exit returned nil; want the captured terminal error")
@@ -448,7 +466,11 @@ func TestStore_CloseOnActiveRunReturnsCleanly(t *testing.T) {
 	elapsed := time.Since(start)
 	// Close should bound to DrainDeadline + small fallback margin.
 	if elapsed > 1*time.Second {
-		t.Fatalf("Close on active Run took %v; expected < 1s (DrainDeadline=%v + margin)", elapsed, opts.DrainDeadline)
+		t.Fatalf(
+			"Close on active Run took %v; expected < 1s (DrainDeadline=%v + margin)",
+			elapsed,
+			opts.DrainDeadline,
+		)
 	}
 	// Err after Close MUST equal Close's return value.
 	if got := s.Err(); got != closeErr {
@@ -522,8 +544,14 @@ func TestStore_CloseSafetyNetReturnsSentinel(t *testing.T) {
 		closeLowerBound         = closeRunCancelGraceTest - jitterBudget // 1.95s
 	)
 	if elapsed < closeLowerBound {
-		t.Fatalf("Close took %v; expected >= %v (closeRunCancelGrace=%v - jitter=%v). Possible regression: synthetic-timeout returned too early.",
-			elapsed, closeLowerBound, closeRunCancelGraceTest, jitterBudget)
+		t.Fatalf(
+			"Close took %v; expected >= %v (closeRunCancelGrace=%v - jitter=%v). Possible "+
+				"regression: synthetic-timeout returned too early.",
+			elapsed,
+			closeLowerBound,
+			closeRunCancelGraceTest,
+			jitterBudget,
+		)
 	}
 	// Upper bound: per the documented latency contract.
 	if elapsed > 2500*time.Millisecond {
@@ -532,7 +560,11 @@ func TestStore_CloseSafetyNetReturnsSentinel(t *testing.T) {
 
 	// The sentinel — the whole point of this test.
 	if !errors.Is(closeErr, watchtower.ErrCloseSafetyNet) {
-		t.Fatalf("Close error %v is not errors.Is(ErrCloseSafetyNet); higher layers cannot detect the leak/no-reopen path", closeErr)
+		t.Fatalf(
+			"Close error %v is not errors.Is(ErrCloseSafetyNet); higher layers cannot detect the "+
+				"leak/no-reopen path",
+			closeErr,
+		)
 	}
 
 	// Err() consistency.
@@ -608,8 +640,12 @@ func TestStore_CloseDeadlineFallback(t *testing.T) {
 	// at the test timeout (default 30s).
 	const closeUpperBound = 2500 * time.Millisecond
 	if elapsed > closeUpperBound {
-		t.Fatalf("Close took %v; expected < %v (DrainDeadline + closeRunCancelGrace + jitter). Possible regression: timer.C branch missed.",
-			elapsed, closeUpperBound)
+		t.Fatalf(
+			"Close took %v; expected < %v (DrainDeadline + closeRunCancelGrace + jitter). "+
+				"Possible regression: timer.C branch missed.",
+			elapsed,
+			closeUpperBound,
+		)
 	}
 
 	// Error-shape: three valid outcomes given Run's interaction

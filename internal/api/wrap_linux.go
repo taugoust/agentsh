@@ -27,7 +27,9 @@ import (
 
 var (
 	errWrapNotSupported = errors.New("wrap is only supported on Linux")
-	errWrapperNotFound  = errors.New("seccomp wrapper binary not found (agentsh-unixwrap not in PATH)")
+	errWrapperNotFound  = errors.New(
+		"seccomp wrapper binary not found (agentsh-unixwrap not in PATH)",
+	)
 )
 
 // recvFDFromConn receives a file descriptor from a Unix socket connection using SCM_RIGHTS.
@@ -54,7 +56,11 @@ func recvFDFromConn(sock *os.File) (*os.File, error) {
 	for _, message := range msgs {
 		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SCM_RIGHTS {
 			closeReceived()
-			return nil, fmt.Errorf("unexpected fd ancillary level=%d type=%d", message.Header.Level, message.Header.Type)
+			return nil, fmt.Errorf(
+				"unexpected fd ancillary level=%d type=%d",
+				message.Header.Level,
+				message.Header.Type,
+			)
 		}
 		fds, parseErr := unix.ParseUnixRights(&message)
 		if parseErr != nil {
@@ -106,7 +112,17 @@ func writeNotifyStatusForWrap(w io.Writer, ok bool) error {
 // startNotifyHandlerForWrap starts the seccomp notify handler for a wrap session.
 // Unlike the exec path where the notify fd comes from a socketpair, here it comes
 // from the CLI via a Unix socket connection.
-func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+func startNotifyHandlerForWrap(
+	ctx context.Context,
+	notifyFD *os.File,
+	compositionSetup *os.File,
+	sessionID string,
+	a *App,
+	execveEnabled bool,
+	wrapperPID int,
+	s *session.Session,
+	cleanup func() error,
+) error {
 	lineage, lineageBound := ctx.Value(wrapLineageContextKey{}).(wrapLineageContext)
 	payloadPID := wrapperPID // test/legacy fallback only
 	var lookupEndpoint *os.File
@@ -114,7 +130,12 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 		payloadPID = lineage.PayloadPID
 		lookupEndpoint = lineage.FileLookupBroker
 	}
-	emitter := &notifyEmitterAdapter{store: a.store, broker: a.broker, runtimeState: s, sensitive: s.CurrentExecutionSensitive}
+	emitter := &notifyEmitterAdapter{
+		store:        a.store,
+		broker:       a.broker,
+		runtimeState: s,
+		sensitive:    s.CurrentExecutionSensitive,
+	}
 
 	// Prefer session-specific policy engine (has expanded ${PROJECT_ROOT} etc.)
 	// over app-level engine, matching the exec path pattern in core.go.
@@ -132,7 +153,11 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 		}
 	}
 	if execveEnabled {
-		if h := createExecveHandler(a.cfg.Sandbox.Seccomp.Execve, sessionPolicy, a.approvals); h != nil {
+		if h := createExecveHandler(
+			a.cfg.Sandbox.Seccomp.Execve,
+			sessionPolicy,
+			a.approvals,
+		); h != nil {
 			execveHandler, _ = h.(*unixmon.ExecveHandler)
 			if execveHandler != nil {
 				execveHandler.SetEmitter(emitter)
@@ -177,10 +202,19 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 	if !configBound {
 		// Test-only fallback. Production wrap-init captures and binds the exact
 		// configuration sent to unixwrap before accepting any descriptor handoff.
-		wrapperCfg = a.buildSeccompWrapperConfig(s, seccompWrapperParams{ExecveEnabled: execveEnabled})
+		wrapperCfg = a.buildSeccompWrapperConfig(
+			s,
+			seccompWrapperParams{ExecveEnabled: execveEnabled},
+		)
 	}
 	if wrapperCfg.SandboxComposition != "" {
-		if err := a.configureExecveComposition(execveHandler, s, wrapperCfg, compositionSetup, wrapperPID); err != nil {
+		if err := a.configureExecveComposition(
+			execveHandler,
+			s,
+			wrapperCfg,
+			compositionSetup,
+			wrapperPID,
+		); err != nil {
 			if cleanupSymlink != nil {
 				cleanupSymlink()
 			}
@@ -214,7 +248,13 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 			ExpectedPayloadPID: payloadPID, Timeout: 250 * time.Millisecond,
 		})
 		if brokerErr != nil {
-			slog.Debug("wrap: file lookup broker unavailable", "error", brokerErr, "session_id", sessionID)
+			slog.Debug(
+				"wrap: file lookup broker unavailable",
+				"error",
+				brokerErr,
+				"session_id",
+				sessionID,
+			)
 			_ = lookupEndpoint.Close()
 			lookupEndpoint = nil
 		} else {
@@ -226,7 +266,14 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 	// Create file handler if configured. Composition requires source-aware
 	// attribution so bind aliases cannot be evaluated only at their visible
 	// destination spelling.
-	fileHandler := createFileHandler(a.cfg.Sandbox.Seccomp.FileMonitor, sessionPolicy, emitter, a.cfg.Landlock.Enabled, a.approvals, s)
+	fileHandler := createFileHandler(
+		a.cfg.Sandbox.Seccomp.FileMonitor,
+		sessionPolicy,
+		emitter,
+		a.cfg.Landlock.Enabled,
+		a.approvals,
+		s,
+	)
 	if fileHandler != nil && fileLookupBroker != nil {
 		fileHandler.SetFileLookupProbe(fileLookupBroker)
 	}
@@ -236,14 +283,20 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 	if fileHandler != nil && execveHandler != nil {
 		fileHandler.SetCompositionPathRegistry(execveHandler.CompositionPathRegistry())
 	}
-	if wrapperCfg.SandboxComposition != "" && (fileHandler == nil || execveHandler == nil || execveHandler.CompositionPathRegistry() == nil) {
+	if wrapperCfg.SandboxComposition != "" &&
+		(fileHandler == nil ||
+			execveHandler == nil ||
+			execveHandler.CompositionPathRegistry() == nil) {
 		_ = notifyFD.Close()
 		abortComposition()
 		runCleanup()
 		if cleanupSymlink != nil {
 			cleanupSymlink()
 		}
-		return fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: source-aware file interception handler is unavailable")
+		return fmt.Errorf(
+			"E_COMPOSITION_BACKEND_UNAVAILABLE: source-aware file interception handler is " +
+				"unavailable",
+		)
 	}
 
 	// Probe the exact payload child. Infrastructure failure retains the existing
@@ -265,14 +318,21 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 				if cleanupSymlink != nil {
 					cleanupSymlink()
 				}
-				return fmt.Errorf("wrap notify handler startup probe failed for payload pid %d: pvr_error=%v mem_error=%v", payloadPID, pvrErr, memErr)
+				return fmt.Errorf(
+					"wrap notify handler startup probe failed for payload pid %d: pvr_error=%v "+
+						"mem_error=%v",
+					payloadPID,
+					pvrErr,
+					memErr,
+				)
 			}
 			slog.Warn("wrap: ProcessVMReadv probe failed, monitoring may be degraded",
 				"payload_pid", payloadPID, "pvr_error", pvrErr, "mem_error", memErr)
 		} else if pvrErr != nil {
 			if sessionPolicy != nil {
 				slog.Warn("wrap: ProcessVMReadv failed — socket monitoring will be degraded "+
-					"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for file monitoring",
+					"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for file "+
+					"monitoring",
 					"payload_pid", payloadPID, "pvr_error", pvrErr)
 			} else {
 				slog.Debug("wrap: ProcessVMReadv failed but /proc/mem fallback works",
@@ -295,7 +355,13 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 			if admissionErr != nil {
 				_ = notifyFD.Close()
 				abortComposition()
-				slog.Warn("wrap: execution admission cancelled", "session_id", sessionID, "error", admissionErr)
+				slog.Warn(
+					"wrap: execution admission cancelled",
+					"session_id",
+					sessionID,
+					"error",
+					admissionErr,
+				)
 				return admissionErr
 			}
 		}
@@ -325,18 +391,45 @@ func startNotifyHandlerForWrap(ctx context.Context, notifyFD *os.File, compositi
 		// type on Linux is *unixmon.BlockListConfig.
 		bl, _ := a.buildBlockListConfigFor(sessionID).(*unixmon.BlockListConfig)
 		if bl != nil && len(bl.ActionByNr) > 0 && emitter == nil {
-			slog.Warn("seccomp: on_block=log/log_and_kill selected but no event emitter wired; events will be dropped",
-				"session_id", sessionID)
+			slog.Warn(
+				"seccomp: on_block=log/log_and_kill selected but no event emitter wired; events "+
+					"will be dropped",
+				"session_id",
+				sessionID,
+			)
 		}
-		slog.Info("wrap: starting notify handler", "session_id", sessionID, "has_execve", execveHandler != nil, "has_file_handler", fileHandler != nil)
-		unixmon.ServeNotifyWithExecve(ctx, notifyFD, sessionID, sessionPolicy, emitter, execveHandler, fileHandler, bl)
+		slog.Info(
+			"wrap: starting notify handler",
+			"session_id",
+			sessionID,
+			"has_execve",
+			execveHandler != nil,
+			"has_file_handler",
+			fileHandler != nil,
+		)
+		unixmon.ServeNotifyWithExecve(
+			ctx,
+			notifyFD,
+			sessionID,
+			sessionPolicy,
+			emitter,
+			execveHandler,
+			fileHandler,
+			bl,
+		)
 		slog.Info("wrap: notify handler returned", "session_id", sessionID)
 	}()
 	return nil
 }
 
 // startSignalHandlerForWrap starts the signal filter handler for a wrap session.
-func startSignalHandlerForWrap(ctx context.Context, signalFD *os.File, sessionID string, a *App, s *session.Session) {
+func startSignalHandlerForWrap(
+	ctx context.Context,
+	signalFD *os.File,
+	sessionID string,
+	a *App,
+	s *session.Session,
+) {
 	// Route through the session's effective policy engine so per-session
 	// signal rules are honored (canyonroad/agentsh#191). Previously this
 	// function read a.policy directly, which silently ignored rules
@@ -410,14 +503,28 @@ func validateWrapperPIDForNotify(wrapperPID, peerPID int, peerUID uint32) (*os.F
 		return fail(err)
 	}
 	if status.PPid != peerPID {
-		return fail(fmt.Errorf("wrapper pid %d parent pid %d does not match notify peer pid %d", wrapperPID, status.PPid, peerPID))
+		return fail(
+			fmt.Errorf(
+				"wrapper pid %d parent pid %d does not match notify peer pid %d",
+				wrapperPID,
+				status.PPid,
+				peerPID,
+			),
+		)
 	}
 	for _, uid := range status.UIDs {
 		if uid == peerUID {
 			return pin, nil
 		}
 	}
-	return fail(fmt.Errorf("wrapper pid %d uid set %v does not include notify peer uid %d", wrapperPID, status.UIDs, peerUID))
+	return fail(
+		fmt.Errorf(
+			"wrapper pid %d uid set %v does not include notify peer uid %d",
+			wrapperPID,
+			status.UIDs,
+			peerUID,
+		),
+	)
 }
 
 func validateWrapperPIDPinForNotify(pin *os.File) error {
@@ -504,7 +611,14 @@ func getConnPeerCreds(conn *net.UnixConn) peerCreds {
 // acceptPtracePID accepts a connection on the notify socket, extracts the peer
 // PID via SO_PEERCRED, and attaches the ptrace tracer. The connection is kept
 // open as a keepalive — when the shell exits, the connection closes.
-func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socketPath string, sessionID string, expectedUID int, activity *session.WorkspaceActivityLease) {
+func (a *App) acceptPtracePID(
+	ctx context.Context,
+	listener net.Listener,
+	socketPath string,
+	sessionID string,
+	expectedUID int,
+	activity *session.WorkspaceActivityLease,
+) {
 	releaseActivity := true
 	defer func() {
 		if releaseActivity {
@@ -577,7 +691,15 @@ func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socket
 	if _, err := os.Stat(fmt.Sprintf("/proc/%d", pid)); err != nil {
 		conn.Write([]byte{0}) // NACK
 		conn.Close()
-		slog.Error("ptrace wrap: PID does not exist", "pid", pid, "error", err, "session_id", sessionID)
+		slog.Error(
+			"ptrace wrap: PID does not exist",
+			"pid",
+			pid,
+			"error",
+			err,
+			"session_id",
+			sessionID,
+		)
 		return
 	}
 
@@ -594,7 +716,13 @@ func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socket
 		if bindErr := tr.BindSession(pid, sessionID); bindErr == nil {
 			// Already-traced PID: session bound. Send ACK and hold the keepalive.
 			conn.Write([]byte{1})
-			slog.Info("ptrace wrap: session bound to already-traced shell", "pid", pid, "session_id", sessionID)
+			slog.Info(
+				"ptrace wrap: session bound to already-traced shell",
+				"pid",
+				pid,
+				"session_id",
+				sessionID,
+			)
 			releaseActivity = false
 			go holdPtraceWorkspaceActivity(ctx, conn, tr, sessionID, activity)
 			return
@@ -611,7 +739,15 @@ func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socket
 	if attachErr != nil {
 		conn.Write([]byte{0}) // NACK
 		conn.Close()
-		slog.Error("ptrace wrap: attach failed", "pid", pid, "error", attachErr, "session_id", sessionID)
+		slog.Error(
+			"ptrace wrap: attach failed",
+			"pid",
+			pid,
+			"error",
+			attachErr,
+			"session_id",
+			sessionID,
+		)
 		return
 	}
 
@@ -624,7 +760,13 @@ func (a *App) acceptPtracePID(ctx context.Context, listener net.Listener, socket
 	go holdPtraceWorkspaceActivity(ctx, conn, tr, sessionID, activity)
 }
 
-func holdPtraceWorkspaceActivity(ctx context.Context, conn net.Conn, tracer *ptrace.Tracer, sessionID string, activity *session.WorkspaceActivityLease) {
+func holdPtraceWorkspaceActivity(
+	ctx context.Context,
+	conn net.Conn,
+	tracer *ptrace.Tracer,
+	sessionID string,
+	activity *session.WorkspaceActivityLease,
+) {
 	defer conn.Close()
 	defer activity.Release()
 	buf := make([]byte, 1)

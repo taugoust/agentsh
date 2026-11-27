@@ -65,7 +65,9 @@ func TestExecInSessionCore_PrecheckConsultsSessionPolicy(t *testing.T) {
 	// filepath.ToSlash normalizes backslashes to forward slashes on
 	// Windows so the policy engine compiles the rule as a full path
 	// (it only treats "/" as a path separator — see engine.go ~line 196).
-	cmdPath := strings.ToLower(filepath.ToSlash(filepath.Join(t.TempDir(), "agentsh191-nonexistent")))
+	cmdPath := strings.ToLower(
+		filepath.ToSlash(filepath.Join(t.TempDir(), "agentsh191-nonexistent")),
+	)
 
 	globalEngine := newEngineDenyingOnly(t, cmdPath)
 	sessionEngine := newEngineAllowingCommand(t, "session-allow-widget", cmdPath)
@@ -126,7 +128,10 @@ func (c *capturingEventStore) AppendEvent(_ context.Context, ev types.Event) err
 	return nil
 }
 
-func (c *capturingEventStore) QueryEvents(_ context.Context, _ types.EventQuery) ([]types.Event, error) {
+func (c *capturingEventStore) QueryEvents(
+	_ context.Context,
+	_ types.EventQuery,
+) ([]types.Event, error) {
 	return nil, nil
 }
 
@@ -161,7 +166,9 @@ func newSessionPolicyFixture(t *testing.T) *sessionPolicyFixture {
 	// lowercased forward-slash TempDir path so the policy engine normalises
 	// the rule as a full path on both Linux and Windows, and so the command
 	// is guaranteed-missing on any runner.
-	cmdPath := strings.ToLower(filepath.ToSlash(filepath.Join(t.TempDir(), "agentsh191-nonexistent")))
+	cmdPath := strings.ToLower(
+		filepath.ToSlash(filepath.Join(t.TempDir(), "agentsh191-nonexistent")),
+	)
 
 	globalEngine := newEngineDenyingOnly(t, cmdPath)
 	sessionEngine := newEngineAllowingCommand(t, "session-allow-widget", cmdPath)
@@ -228,7 +235,12 @@ func TestExecInSessionStream_PrecheckConsultsSessionPolicy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	req := httptest.NewRequestWithContext(ctx, "POST", "/api/v1/sessions/"+f.session.ID+"/exec/stream", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(
+		ctx,
+		"POST",
+		"/api/v1/sessions/"+f.session.ID+"/exec/stream",
+		bytes.NewReader(body),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", f.session.ID)

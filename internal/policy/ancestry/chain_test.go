@@ -503,9 +503,24 @@ func TestChainRuleEvaluator_PriorityOrder(t *testing.T) {
 	e := NewChainRuleEvaluator()
 
 	e.SetRules([]ChainRule{
-		{Name: "low", Priority: 10, Condition: &ChainCondition{IsTainted: boolPtr(true)}, Action: ActionDeny},
-		{Name: "high", Priority: 100, Condition: &ChainCondition{IsTainted: boolPtr(true)}, Action: ActionAllow},
-		{Name: "medium", Priority: 50, Condition: &ChainCondition{IsTainted: boolPtr(true)}, Action: ActionApprove},
+		{
+			Name:      "low",
+			Priority:  10,
+			Condition: &ChainCondition{IsTainted: boolPtr(true)},
+			Action:    ActionDeny,
+		},
+		{
+			Name:      "high",
+			Priority:  100,
+			Condition: &ChainCondition{IsTainted: boolPtr(true)},
+			Action:    ActionAllow,
+		},
+		{
+			Name:      "medium",
+			Priority:  50,
+			Condition: &ChainCondition{IsTainted: boolPtr(true)},
+			Action:    ActionApprove,
+		},
 	})
 
 	taint := &ProcessTaint{}
@@ -520,7 +535,11 @@ func TestChainRuleEvaluator_NoMatch(t *testing.T) {
 	e := NewChainRuleEvaluator()
 
 	e.SetRules([]ChainRule{
-		{Name: "only_agents", Condition: &ChainCondition{IsAgent: boolPtr(true)}, Action: ActionDeny},
+		{
+			Name:      "only_agents",
+			Condition: &ChainCondition{IsAgent: boolPtr(true)},
+			Action:    ActionDeny,
+		},
 	})
 
 	taint := &ProcessTaint{IsAgent: false}

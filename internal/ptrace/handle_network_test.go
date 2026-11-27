@@ -131,7 +131,11 @@ func TestParseSockaddr_UnixAbstractWithNulls(t *testing.T) {
 	_, addr2, _, _ := parseSockaddr(buf2)
 
 	if addr1 == addr2 {
-		t.Errorf("abstract sockets with different trailing NULs should differ: %q vs %q", addr1, addr2)
+		t.Errorf(
+			"abstract sockets with different trailing NULs should differ: %q vs %q",
+			addr1,
+			addr2,
+		)
 	}
 }
 

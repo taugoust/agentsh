@@ -68,7 +68,10 @@ func TestAgentSh_SoftDelete_PerPathPolicy(t *testing.T) {
 		}
 	}
 	if !softEventFound {
-		t.Skipf("soft-delete events not observed (likely fuse unavailable); guidance=%+v", delResp.Guidance)
+		t.Skipf(
+			"soft-delete events not observed (likely fuse unavailable); guidance=%+v",
+			delResp.Guidance,
+		)
 	}
 	if delResp.Guidance == nil || len(delResp.Guidance.Suggestions) == 0 {
 		t.Fatalf("expected soft-delete guidance suggestions, got %+v", delResp.Guidance)
@@ -102,7 +105,11 @@ func TestAgentSh_SoftDelete_PerPathPolicy(t *testing.T) {
 		t.Fatalf("restore exec: %v", err)
 	}
 	if restoreResp.Result.ExitCode != 0 {
-		t.Fatalf("restore exit=%d stderr=%s", restoreResp.Result.ExitCode, restoreResp.Result.Stderr)
+		t.Fatalf(
+			"restore exit=%d stderr=%s",
+			restoreResp.Result.ExitCode,
+			restoreResp.Result.Stderr,
+		)
 	}
 
 	// File should be back.

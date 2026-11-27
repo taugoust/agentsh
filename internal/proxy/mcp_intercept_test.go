@@ -108,7 +108,11 @@ func TestExtractToolCalls_AnthropicParallelTools(t *testing.T) {
 		t.Fatalf("failed to unmarshal second input: %v", err)
 	}
 	if input0["location"] != "San Francisco, CA" {
-		t.Errorf("first call: expected location %q, got %q", "San Francisco, CA", input0["location"])
+		t.Errorf(
+			"first call: expected location %q, got %q",
+			"San Francisco, CA",
+			input0["location"],
+		)
 	}
 	if input1["location"] != "New York, NY" {
 		t.Errorf("second call: expected location %q, got %q", "New York, NY", input1["location"])
@@ -337,6 +341,7 @@ func TestExtractToolCalls_MalformedJSONReturnsNil(t *testing.T) {
 func TestExtractToolCalls_OpenAIArgumentsConversion(t *testing.T) {
 	// OpenAI sends arguments as a JSON string. Verify it is correctly
 	// stored as json.RawMessage and can be parsed back.
+	//nolint:lll // JSON fixture body is kept verbatim
 	body := []byte(`{
 		"choices": [{
 			"finish_reason": "tool_calls",
@@ -603,7 +608,10 @@ func TestExtractToolCalls_AnthropicComplexInput(t *testing.T) {
 // --- interceptMCPToolCalls tests ---
 
 // newTestRegistry creates a registry with the given tools registered under serverID.
-func newTestRegistry(serverID, serverType string, tools []mcpregistry.ToolInfo) *mcpregistry.Registry {
+func newTestRegistry(
+	serverID, serverType string,
+	tools []mcpregistry.ToolInfo,
+) *mcpregistry.Registry {
 	reg := mcpregistry.NewRegistry()
 	reg.Register(serverID, serverType, "", tools)
 	return reg
@@ -631,6 +639,7 @@ func newAllowingPolicy() *mcpinspect.PolicyEvaluator {
 }
 
 func TestInterceptMCPToolCalls_NilRegistryReturnsEmpty(t *testing.T) {
+	//nolint:lll // JSON fixture body is kept verbatim
 	body := []byte(`{
 		"stop_reason": "tool_use",
 		"content": [
@@ -638,7 +647,17 @@ func TestInterceptMCPToolCalls_NilRegistryReturnsEmpty(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, nil, newAllowingPolicy(), "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		nil,
+		newAllowingPolicy(),
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -658,6 +677,7 @@ func TestInterceptMCPToolCalls_NilPolicyAllowsAll(t *testing.T) {
 		{Name: "get_weather", Hash: "abc123"},
 	})
 
+	//nolint:lll // JSON fixture body is kept verbatim
 	body := []byte(`{
 		"stop_reason": "tool_use",
 		"content": [
@@ -666,7 +686,17 @@ func TestInterceptMCPToolCalls_NilPolicyAllowsAll(t *testing.T) {
 	}`)
 
 	// Nil policy + nil rate limiter + nil version pin = allow all.
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, nil, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		nil,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -690,6 +720,7 @@ func TestInterceptMCPToolCalls_UnknownToolSkipped(t *testing.T) {
 	reg := mcpregistry.NewRegistry()
 	policy := newAllowingPolicy()
 
+	//nolint:lll // JSON fixture body is kept verbatim
 	body := []byte(`{
 		"stop_reason": "tool_use",
 		"content": [
@@ -697,7 +728,17 @@ func TestInterceptMCPToolCalls_UnknownToolSkipped(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -719,6 +760,7 @@ func TestInterceptMCPToolCalls_AllowedToolPassesThrough(t *testing.T) {
 	})
 	policy := newAllowingPolicy()
 
+	//nolint:lll // JSON fixture body is kept verbatim
 	body := []byte(`{
 		"stop_reason": "tool_use",
 		"content": [
@@ -727,7 +769,17 @@ func TestInterceptMCPToolCalls_AllowedToolPassesThrough(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -775,6 +827,7 @@ func TestInterceptMCPToolCalls_BlockedToolRewritten(t *testing.T) {
 	})
 	policy := newBlockingPolicy()
 
+	//nolint:lll // JSON fixture body is kept verbatim
 	body := []byte(`{
 		"id": "msg_01XFDUDYJgAACzvnptvVoYEL",
 		"type": "message",
@@ -786,7 +839,17 @@ func TestInterceptMCPToolCalls_BlockedToolRewritten(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -849,7 +912,11 @@ func TestInterceptMCPToolCalls_BlockedToolRewritten(t *testing.T) {
 	var secondType string
 	json.Unmarshal(content[1]["type"], &secondType)
 	if secondType != "text" {
-		t.Errorf("expected second block type %q, got %q (should be text, not tool_use)", "text", secondType)
+		t.Errorf(
+			"expected second block type %q, got %q (should be text, not tool_use)",
+			"text",
+			secondType,
+		)
 	}
 
 	var secondText string
@@ -879,6 +946,7 @@ func TestInterceptMCPToolCalls_FailClosedBlocksViaAllowlist(t *testing.T) {
 		},
 	})
 
+	//nolint:lll // JSON fixture body is kept verbatim
 	body := []byte(`{
 		"stop_reason": "tool_use",
 		"content": [
@@ -886,7 +954,17 @@ func TestInterceptMCPToolCalls_FailClosedBlocksViaAllowlist(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -922,6 +1000,7 @@ func TestInterceptMCPToolCalls_PartialBlockAnthropic(t *testing.T) {
 		},
 	})
 
+	//nolint:lll // JSON fixture body is kept verbatim
 	body := []byte(`{
 		"id": "msg_123",
 		"type": "message",
@@ -934,7 +1013,17 @@ func TestInterceptMCPToolCalls_PartialBlockAnthropic(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1036,7 +1125,17 @@ func TestInterceptMCPToolCalls_OpenAIBlockedToolRewritten(t *testing.T) {
 		}]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectOpenAI, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectOpenAI,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1085,7 +1184,8 @@ func TestInterceptMCPToolCalls_OpenAIBlockedToolRewritten(t *testing.T) {
 		t.Errorf("expected content to mention 'blocked', got %q", choice.Message.Content)
 	}
 	// tool_calls should be empty or null
-	if choice.Message.ToolCalls != nil && string(choice.Message.ToolCalls) != "[]" && string(choice.Message.ToolCalls) != "null" {
+	if choice.Message.ToolCalls != nil && string(choice.Message.ToolCalls) != "[]" &&
+		string(choice.Message.ToolCalls) != "null" {
 		t.Errorf("expected tool_calls to be empty/null, got %s", string(choice.Message.ToolCalls))
 	}
 }
@@ -1135,7 +1235,17 @@ func TestInterceptMCPToolCalls_OpenAIPartialBlock(t *testing.T) {
 		}]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectOpenAI, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectOpenAI,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1173,7 +1283,11 @@ func TestInterceptMCPToolCalls_OpenAIPartialBlock(t *testing.T) {
 	choice := rewritten.Choices[0]
 	// Partial block -> finish_reason should remain "tool_calls"
 	if choice.FinishReason != "tool_calls" {
-		t.Errorf("expected finish_reason %q for partial block, got %q", "tool_calls", choice.FinishReason)
+		t.Errorf(
+			"expected finish_reason %q for partial block, got %q",
+			"tool_calls",
+			choice.FinishReason,
+		)
 	}
 
 	// Only the allowed tool call should remain
@@ -1181,7 +1295,11 @@ func TestInterceptMCPToolCalls_OpenAIPartialBlock(t *testing.T) {
 		t.Fatalf("expected 1 remaining tool call, got %d", len(choice.Message.ToolCalls))
 	}
 	if choice.Message.ToolCalls[0].Function.Name != "get_weather" {
-		t.Errorf("expected remaining tool to be %q, got %q", "get_weather", choice.Message.ToolCalls[0].Function.Name)
+		t.Errorf(
+			"expected remaining tool to be %q, got %q",
+			"get_weather",
+			choice.Message.ToolCalls[0].Function.Name,
+		)
 	}
 }
 
@@ -1202,7 +1320,17 @@ func TestInterceptMCPToolCalls_MixedMCPAndNonMCP(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1297,7 +1425,8 @@ func TestProxy_MCPInterception_Integration(t *testing.T) {
 
 	// Send a request through the proxy.
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"What is the weather?"}]}`
+	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"What ` +
+		`is the weather?"}]}`
 	req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
@@ -1367,7 +1496,10 @@ func TestProxy_MCPInterception_Integration(t *testing.T) {
 // tool is allowed by policy, the response body passes through unchanged.
 func TestProxy_MCPInterception_AllowedPassesThrough(t *testing.T) {
 	// The exact upstream response we expect to pass through unmodified.
-	upstreamBody := `{"id":"msg_01XFDUDYJgAACzvnptvVoYEL","type":"message","role":"assistant","stop_reason":"tool_use","content":[{"type":"text","text":"Let me check."},{"type":"tool_use","id":"toolu_01A","name":"get_weather","input":{"location":"NYC"}}],"usage":{"input_tokens":10,"output_tokens":25}}`
+	upstreamBody := `{"id":"msg_01XFDUDYJgAACzvnptvVoYEL","type":"message","role":"assistant",` +
+		`"stop_reason":"tool_use","content":[{"type":"text","text":"Let me ` +
+		`check."},{"type":"tool_use","id":"toolu_01A","name":"get_weather",` +
+		`"input":{"location":"NYC"}}],"usage":{"input_tokens":10,"output_tokens":25}}`
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1424,7 +1556,8 @@ func TestProxy_MCPInterception_AllowedPassesThrough(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"What is the weather?"}]}`
+	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"What ` +
+		`is the weather?"}]}`
 	req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
@@ -1501,7 +1634,15 @@ func TestInterceptMCPToolCallsFromList_AllowedTool(t *testing.T) {
 		{ID: "toolu_01", Name: "get_weather"},
 	}
 
-	result := interceptMCPToolCallsFromList(calls, DialectAnthropic, reg, policy, "req_1", "sess_1", nil)
+	result := interceptMCPToolCallsFromList(
+		calls,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1529,7 +1670,15 @@ func TestInterceptMCPToolCallsFromList_BlockedTool(t *testing.T) {
 		{ID: "toolu_01", Name: "get_weather"},
 	}
 
-	result := interceptMCPToolCallsFromList(calls, DialectAnthropic, reg, policy, "req_1", "sess_1", nil)
+	result := interceptMCPToolCallsFromList(
+		calls,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1556,7 +1705,15 @@ func TestInterceptMCPToolCallsFromList_UnknownToolSkipped(t *testing.T) {
 		{ID: "toolu_01", Name: "unknown_tool"},
 	}
 
-	result := interceptMCPToolCallsFromList(calls, DialectAnthropic, reg, policy, "req_1", "sess_1", nil)
+	result := interceptMCPToolCallsFromList(
+		calls,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1574,21 +1731,28 @@ func TestInterceptMCPToolCallsFromList_UnknownToolSkipped(t *testing.T) {
 func TestProxy_MCPInterception_SSE_Integration(t *testing.T) {
 	// Build an Anthropic SSE stream with a tool_use content block.
 	sseBody := "event: message_start\n" +
-		`data: {"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}` + "\n\n" +
+		`data: {"type":"message_start","message":{"id":"msg_01","type":"message",` +
+		`"role":"assistant","content":[],"model":"claude-sonnet-4-20250514",` +
+		`"stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}` + "\n\n" +
 		"event: content_block_start\n" +
-		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}` + "\n\n" +
+		`data: {"type":"content_block_start","index":0,` +
+		`"content_block":{"type":"text","text":""}}` + "\n\n" +
 		"event: content_block_delta\n" +
-		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me check."}}` + "\n\n" +
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let ` +
+		`me check."}}` + "\n\n" +
 		"event: content_block_stop\n" +
 		`data: {"type":"content_block_stop","index":0}` + "\n\n" +
 		"event: content_block_start\n" +
-		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01A09q90qw90lq917835lq9","name":"get_weather"}}` + "\n\n" +
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use",` +
+		`"id":"toolu_01A09q90qw90lq917835lq9","name":"get_weather"}}` + "\n\n" +
 		"event: content_block_delta\n" +
-		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"San Francisco\"}"}}` + "\n\n" +
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta",` +
+		`"partial_json":"{\"location\": \"San Francisco\"}"}}` + "\n\n" +
 		"event: content_block_stop\n" +
 		`data: {"type":"content_block_stop","index":1}` + "\n\n" +
 		"event: message_delta\n" +
-		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":25}}` + "\n\n" +
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},` +
+		`"usage":{"output_tokens":25}}` + "\n\n" +
 		"event: message_stop\n" +
 		`data: {"type":"message_stop"}` + "\n\n"
 
@@ -1652,7 +1816,8 @@ func TestProxy_MCPInterception_SSE_Integration(t *testing.T) {
 
 	// Send a streaming request through the proxy.
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"What is the weather?"}],"stream":true}`
+	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"What ` +
+		`is the weather?"}],"stream":true}`
 	req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)

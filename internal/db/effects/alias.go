@@ -20,7 +20,14 @@ var aliasTable = map[string][]Group{
 	"MAINTENANCE":   {GroupMaintenance},
 	"LOCK_TABLES":   {GroupLock},
 	"LISTEN_NOTIFY": {GroupNotify},
-	"DANGEROUS":     {GroupSchemaDestroy, GroupPrivilege, GroupUnsafeIO, GroupProcedural, GroupBulkExport, GroupLock},
+	"DANGEROUS": {
+		GroupSchemaDestroy,
+		GroupPrivilege,
+		GroupUnsafeIO,
+		GroupProcedural,
+		GroupBulkExport,
+		GroupLock,
+	},
 }
 
 // ExpandAlias resolves an operator-written token to a list of canonical Groups.

@@ -74,7 +74,11 @@ func TestReadShimConf_ForceFalse(t *testing.T) {
 
 func TestReadShimConf_CommentsAndBlanks(t *testing.T) {
 	root := t.TempDir()
-	writeTestConf(t, root, "# comment\n\n  # indented comment\nforce = true\nextra=value\nmalformed line\n")
+	writeTestConf(
+		t,
+		root,
+		"# comment\n\n  # indented comment\nforce = true\nextra=value\nmalformed line\n",
+	)
 	conf, err := ReadShimConf(root)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

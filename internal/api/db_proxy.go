@@ -50,7 +50,11 @@ func buildDBProxyConfig(deps dbProxyDeps) (postgres.Config, error) {
 	for _, s := range deps.Services {
 		if s.ListenKind == "unix" && s.ListenPath != "" {
 			if err := os.MkdirAll(filepath.Dir(s.ListenPath), 0o700); err != nil {
-				return postgres.Config{}, fmt.Errorf("buildDBProxyConfig: mkdir for service %q listener: %w", s.Name, err)
+				return postgres.Config{}, fmt.Errorf(
+					"buildDBProxyConfig: mkdir for service %q listener: %w",
+					s.Name,
+					err,
+				)
 			}
 		}
 		cfg.Services = append(cfg.Services, postgres.Service{
@@ -84,7 +88,10 @@ func startDBProxy(ctx context.Context, deps dbProxyDeps) (*postgres.Server, erro
 	return srv, err
 }
 
-func startDBProxyWithStartError(ctx context.Context, deps dbProxyDeps) (*postgres.Server, <-chan error, error) {
+func startDBProxyWithStartError(
+	ctx context.Context,
+	deps dbProxyDeps,
+) (*postgres.Server, <-chan error, error) {
 	cfg, err := buildDBProxyConfig(deps)
 	if err != nil {
 		return nil, nil, fmt.Errorf("startDBProxy: %w", err)

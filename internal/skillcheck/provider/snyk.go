@@ -13,9 +13,10 @@ import (
 
 // SnykConfig configures the Snyk subprocess provider.
 type SnykConfig struct {
-	BinaryPath   string                            // optional override
-	PathLookup   func(name string) (string, error) // injected for tests; defaults to exec.LookPath
-	UvxAvailable func() bool                       // injected for tests; defaults to checking exec.LookPath("uvx")
+	BinaryPath string                            // optional override
+	PathLookup func(name string) (string, error) // injected for tests; defaults to exec.LookPath
+	// injected for tests; defaults to checking exec.LookPath("uvx")
+	UvxAvailable func() bool
 }
 
 type snykProvider struct {
@@ -61,10 +62,16 @@ func (p *snykProvider) resolveCommand(skillDir string) ([]string, error) {
 	if p.cfg.UvxAvailable() {
 		return []string{"uvx", "snyk-agent-scan@latest", "--skills", skillDir, "--json"}, nil
 	}
-	return nil, fmt.Errorf("snyk: no executable found (set providers.snyk.binary_path, install snyk-agent-scan on PATH, or install uvx)")
+	return nil, fmt.Errorf(
+		"snyk: no executable found (set providers.snyk.binary_path, install snyk-agent-scan on " +
+			"PATH, or install uvx)",
+	)
 }
 
-func (p *snykProvider) Scan(ctx context.Context, req skillcheck.ScanRequest) (*skillcheck.ScanResponse, error) {
+func (p *snykProvider) Scan(
+	ctx context.Context,
+	req skillcheck.ScanRequest,
+) (*skillcheck.ScanResponse, error) {
 	start := time.Now()
 	argv, err := p.resolveCommand(req.Skill.Path)
 	if err != nil {
@@ -126,7 +133,11 @@ type snykFinding struct {
 	Metadata   map[string]string `json:"metadata,omitempty"`
 }
 
-func parseSnykOutput(out []byte, skill skillcheck.SkillRef, providerName string) (findings []skillcheck.Finding, partial bool) {
+func parseSnykOutput(
+	out []byte,
+	skill skillcheck.SkillRef,
+	providerName string,
+) (findings []skillcheck.Finding, partial bool) {
 	var doc snykJSON
 	if err := json.Unmarshal(out, &doc); err != nil {
 		return nil, true

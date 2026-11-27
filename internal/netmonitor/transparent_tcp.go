@@ -37,7 +37,16 @@ type TransparentTCP struct {
 	done chan struct{}
 }
 
-func StartTransparentTCP(listenAddr string, sessionID string, sess *session.Session, dnsCache *DNSCache, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, dbBypass ...*dbevents.BypassEmitter) (*TransparentTCP, int, error) {
+func StartTransparentTCP(
+	listenAddr string,
+	sessionID string,
+	sess *session.Session,
+	dnsCache *DNSCache,
+	engine *policy.Engine,
+	approvalsMgr *approvals.Manager,
+	emit Emitter,
+	dbBypass ...*dbevents.BypassEmitter,
+) (*TransparentTCP, int, error) {
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return nil, 0, err
@@ -127,12 +136,29 @@ func (t *TransparentTCP) handle(conn net.Conn) error {
 		if result.Matched {
 			redirectResult = result
 			if result.Visibility != "silent" {
-				emitConnectRedirectEvent(context.Background(), t.emit, t.sessionID, commandID, domain, redirectHostPort, dstPort, result)
+				emitConnectRedirectEvent(
+					context.Background(),
+					t.emit,
+					t.sessionID,
+					commandID,
+					domain,
+					redirectHostPort,
+					dstPort,
+					result,
+				)
 			}
 		}
 	}
 
-	dec := t.checkConnectNetwork(context.Background(), commandID, domain, redirectHostPort, dstIP, dstPort, redirectResult)
+	dec := t.checkConnectNetwork(
+		context.Background(),
+		commandID,
+		domain,
+		redirectHostPort,
+		dstIP,
+		dstPort,
+		redirectResult,
+	)
 	eventFields := map[string]any{}
 	if redirectResult != nil {
 		if redirectResult.RedirectTo != "" {
@@ -155,7 +181,16 @@ func (t *TransparentTCP) handle(conn net.Conn) error {
 		return nil
 	}
 
-	emitMCPConnectionIfMatched(context.Background(), t.sess, t.emit, t.sessionID, commandID, domain, remote, dstPort)
+	emitMCPConnectionIfMatched(
+		context.Background(),
+		t.sess,
+		t.emit,
+		t.sessionID,
+		commandID,
+		domain,
+		remote,
+		dstPort,
+	)
 
 	dialTarget := connectDialTarget(connectDialTargetInput{
 		OriginalHostPort: remote,
@@ -183,7 +218,15 @@ func (t *TransparentTCP) handle(conn net.Conn) error {
 	<-errCh
 	<-errCh
 
-	closeEv := t.netEvent("net_close", commandID, domain, remote, dstPort, dec, map[string]any{"bytes_sent": upBytes, "bytes_received": downBytes})
+	closeEv := t.netEvent(
+		"net_close",
+		commandID,
+		domain,
+		remote,
+		dstPort,
+		dec,
+		map[string]any{"bytes_sent": upBytes, "bytes_received": downBytes},
+	)
 	_ = t.emit.AppendEvent(context.Background(), closeEv)
 	t.emit.Publish(closeEv)
 	return nil
@@ -192,12 +235,23 @@ func (t *TransparentTCP) handle(conn net.Conn) error {
 func (t *TransparentTCP) policyDecision(domain string, ip net.IP, port int) policy.Decision {
 	engine := t.policyEngine()
 	if engine == nil {
-		return policy.Decision{PolicyDecision: types.DecisionAllow, EffectiveDecision: types.DecisionAllow}
+		return policy.Decision{
+			PolicyDecision:    types.DecisionAllow,
+			EffectiveDecision: types.DecisionAllow,
+		}
 	}
 	return engine.CheckNetworkIP(domain, ip, port)
 }
 
-func (t *TransparentTCP) checkConnectNetwork(ctx context.Context, commandID string, domain string, hostPort string, ip net.IP, port int, redirect *policy.ConnectRedirectResult) policy.Decision {
+func (t *TransparentTCP) checkConnectNetwork(
+	ctx context.Context,
+	commandID string,
+	domain string,
+	hostPort string,
+	ip net.IP,
+	port int,
+	redirect *policy.ConnectRedirectResult,
+) policy.Decision {
 	dec := t.policyDecision(domain, ip, port)
 	if allowUnixRedirectForDBUnavoidability(t.policyEngine(), dec, redirect) {
 		return allowConnectRedirectDecision(redirect)
@@ -218,7 +272,13 @@ func (t *TransparentTCP) policyEngine() *policy.Engine {
 	return t.policy
 }
 
-func (t *TransparentTCP) emitDBBypassAttempt(ctx context.Context, commandID string, pid int, ruleName string, reason string) {
+func (t *TransparentTCP) emitDBBypassAttempt(
+	ctx context.Context,
+	commandID string,
+	pid int,
+	ruleName string,
+	reason string,
+) {
 	if t == nil {
 		return
 	}
@@ -237,8 +297,15 @@ func (t *TransparentTCP) emitDBBypassAttempt(ctx context.Context, commandID stri
 	})
 }
 
-func (t *TransparentTCP) maybeApprove(ctx context.Context, commandID string, dec policy.Decision, kind string, target string) policy.Decision {
-	if dec.PolicyDecision != types.DecisionApprove || dec.EffectiveDecision != types.DecisionApprove {
+func (t *TransparentTCP) maybeApprove(
+	ctx context.Context,
+	commandID string,
+	dec policy.Decision,
+	kind string,
+	target string,
+) policy.Decision {
+	if dec.PolicyDecision != types.DecisionApprove ||
+		dec.EffectiveDecision != types.DecisionApprove {
 		return dec
 	}
 	if t.approvals == nil {
@@ -281,7 +348,15 @@ func (t *TransparentTCP) maybeApprove(ctx context.Context, commandID string, dec
 	return dec
 }
 
-func (t *TransparentTCP) netEvent(evType string, commandID string, domain string, remote string, port int, dec policy.Decision, fields map[string]any) types.Event {
+func (t *TransparentTCP) netEvent(
+	evType string,
+	commandID string,
+	domain string,
+	remote string,
+	port int,
+	dec policy.Decision,
+	fields map[string]any,
+) types.Event {
 	ev := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now().UTC(),
@@ -315,7 +390,15 @@ func originalDst(c *net.TCPConn) (net.IP, int, error) {
 
 	var addr unix.RawSockaddrInet4
 	size := uint32(unsafe.Sizeof(addr))
-	_, _, errno := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), uintptr(unix.SOL_IP), uintptr(unix.SO_ORIGINAL_DST), uintptr(unsafe.Pointer(&addr)), uintptr(unsafe.Pointer(&size)), 0)
+	_, _, errno := unix.Syscall6(
+		unix.SYS_GETSOCKOPT,
+		uintptr(fd),
+		uintptr(unix.SOL_IP),
+		uintptr(unix.SO_ORIGINAL_DST),
+		uintptr(unsafe.Pointer(&addr)),
+		uintptr(unsafe.Pointer(&size)),
+		0,
+	)
 	if errno != 0 {
 		return nil, 0, errno
 	}

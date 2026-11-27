@@ -447,7 +447,8 @@ func prepareFilterProgramWithConfig(cfg FilterConfig) (*PreparedFilterProgram, e
 				familyRulesAdded++
 			}
 		}
-		if installed && (bf.Action == seccompkg.OnBlockLog || bf.Action == seccompkg.OnBlockLogAndKill) {
+		if installed &&
+			(bf.Action == seccompkg.OnBlockLog || bf.Action == seccompkg.OnBlockLogAndKill) {
 			blockedFamilyMap[uint64(unix.SYS_SOCKET)<<32|uint64(bf.Family)] = bf
 			blockedFamilyMap[uint64(unix.SYS_SOCKETPAIR)<<32|uint64(bf.Family)] = bf
 		}
@@ -492,8 +493,16 @@ func prepareFilterProgramWithConfig(cfg FilterConfig) (*PreparedFilterProgram, e
 			}
 		}
 		for _, option := range []uint64{unix.PR_SET_SECUREBITS, unix.PR_CAP_AMBIENT} {
-			condition := seccomp.ScmpCondition{Argument: 0, Op: seccomp.CompareEqual, Operand1: option}
-			if err := filt.AddRuleConditional(seccomp.ScmpSyscall(unix.SYS_PRCTL), freezeAction, []seccomp.ScmpCondition{condition}); err != nil {
+			condition := seccomp.ScmpCondition{
+				Argument: 0,
+				Op:       seccomp.CompareEqual,
+				Operand1: option,
+			}
+			if err := filt.AddRuleConditional(
+				seccomp.ScmpSyscall(unix.SYS_PRCTL),
+				freezeAction,
+				[]seccomp.ScmpCondition{condition},
+			); err != nil {
 				return nil, fmt.Errorf("freeze prctl option %d: %w", option, err)
 			}
 		}
@@ -520,9 +529,14 @@ func prepareFilterProgramWithConfig(cfg FilterConfig) (*PreparedFilterProgram, e
 	// Resolve every diagnostic that might cross into libc or lazy runtime state
 	// before a payload child installs a metadata-notify filter.
 	return &PreparedFilterProgram{
-		program:             prog,
-		wantWaitKillable:    wantWaitKill,
-		needsNotifyFD:       filterConfigNeedsNotifyFD(cfg, blockListMap, blockedFamilyMap, socketRules),
+		program:          prog,
+		wantWaitKillable: wantWaitKill,
+		needsNotifyFD: filterConfigNeedsNotifyFD(
+			cfg,
+			blockListMap,
+			blockedFamilyMap,
+			socketRules,
+		),
 		interceptMetadata:   cfg.InterceptMetadata,
 		waitKillableSource:  cfg.WaitKillableSource,
 		kernelProbeSupports: ProbeWaitKillable(),
@@ -639,7 +653,10 @@ type unixSocketNotifyRuleAdder interface {
 // connect/bind/listen/sendto act on an already-created fd — the address family
 // is not in arg0 — so they stay unconditional; they do not collide with
 // socket_rules, which only match socket(2)/socketpair(2).
-func installUnixSocketNotifyRules(adder unixSocketNotifyRuleAdder, action seccomp.ScmpAction) (int, error) {
+func installUnixSocketNotifyRules(
+	adder unixSocketNotifyRuleAdder,
+	action seccomp.ScmpAction,
+) (int, error) {
 	added := 0
 	for _, sc := range unixSocketNotifySyscalls() {
 		if sc == seccomp.ScmpSyscall(unix.SYS_SOCKET) {
@@ -648,7 +665,11 @@ func installUnixSocketNotifyRules(adder unixSocketNotifyRuleAdder, action seccom
 				Op:       seccomp.CompareEqual,
 				Operand1: uint64(unix.AF_UNIX),
 			}
-			if err := adder.AddRuleConditional(sc, action, []seccomp.ScmpCondition{cond}); err != nil {
+			if err := adder.AddRuleConditional(
+				sc,
+				action,
+				[]seccomp.ScmpCondition{cond},
+			); err != nil {
 				return added, fmt.Errorf("add notify rule %v (AF_UNIX): %w", sc, err)
 			}
 			added++
@@ -679,7 +700,11 @@ func metadataNotifySyscalls() []seccomp.ScmpSyscall {
 	return syscalls
 }
 
-func installFileMonitorRules(adder fileMonitorRuleAdder, action seccomp.ScmpAction, writeOnlyOpens bool) (int, error) {
+func installFileMonitorRules(
+	adder fileMonitorRuleAdder,
+	action seccomp.ScmpAction,
+	writeOnlyOpens bool,
+) (int, error) {
 	added := 0
 	addRule := func(sc seccomp.ScmpSyscall, label string) error {
 		if err := adder.AddRule(sc, action); err != nil {
@@ -690,7 +715,12 @@ func installFileMonitorRules(adder fileMonitorRuleAdder, action seccomp.ScmpActi
 	}
 
 	if writeOnlyOpens {
-		n, err := installFlaggedOpenNotifyRules(adder, seccomp.ScmpSyscall(unix.SYS_OPENAT), 2, action)
+		n, err := installFlaggedOpenNotifyRules(
+			adder,
+			seccomp.ScmpSyscall(unix.SYS_OPENAT),
+			2,
+			action,
+		)
 		added += n
 		if err != nil {
 			return added, fmt.Errorf("add openat write-only rules: %w", err)
@@ -752,10 +782,19 @@ func installFileMonitorRules(adder fileMonitorRuleAdder, action seccomp.ScmpActi
 	return added, nil
 }
 
-func installFlaggedOpenNotifyRules(adder fileMonitorRuleAdder, sc seccomp.ScmpSyscall, flagsArg uint, action seccomp.ScmpAction) (int, error) {
+func installFlaggedOpenNotifyRules(
+	adder fileMonitorRuleAdder,
+	sc seccomp.ScmpSyscall,
+	flagsArg uint,
+	action seccomp.ScmpAction,
+) (int, error) {
 	added := 0
 	for _, condition := range openWriteFlagConditions(flagsArg) {
-		if err := adder.AddRuleConditional(sc, action, []seccomp.ScmpCondition{condition}); err != nil {
+		if err := adder.AddRuleConditional(
+			sc,
+			action,
+			[]seccomp.ScmpCondition{condition},
+		); err != nil {
 			return added, fmt.Errorf("add conditional rule for syscall %d: %w", sc, err)
 		}
 		added++
@@ -787,7 +826,10 @@ type conditionalRuleAdder interface {
 	AddRuleConditional(seccomp.ScmpSyscall, seccomp.ScmpAction, []seccomp.ScmpCondition) error
 }
 
-func installSocketRulesConditional(adder conditionalRuleAdder, rules []seccompkg.SocketRule) ([]seccompkg.SocketRule, int, error) {
+func installSocketRulesConditional(
+	adder conditionalRuleAdder,
+	rules []seccompkg.SocketRule,
+) ([]seccompkg.SocketRule, int, error) {
 	retained := []seccompkg.SocketRule{}
 	rulesAdded := 0
 	for _, rule := range rules {
@@ -801,7 +843,11 @@ func installSocketRulesConditional(adder conditionalRuleAdder, rules []seccompkg
 		rulesAdded += added
 		if addErr != nil {
 			if added > 0 {
-				return nil, rulesAdded, fmt.Errorf("partial socket rule install for %q: %w", rule.Name, addErr)
+				return nil, rulesAdded, fmt.Errorf(
+					"partial socket rule install for %q: %w",
+					rule.Name,
+					addErr,
+				)
 			}
 			return nil, rulesAdded, fmt.Errorf("add socket rule %q: %w", rule.Name, addErr)
 		}
@@ -815,11 +861,19 @@ func installSocketRulesConditional(adder conditionalRuleAdder, rules []seccompkg
 	return retained, rulesAdded, nil
 }
 
-func installSocketRuleConditional(adder conditionalRuleAdder, rule seccompkg.SocketRule, action seccomp.ScmpAction) (int, error) {
+func installSocketRuleConditional(
+	adder conditionalRuleAdder,
+	rule seccompkg.SocketRule,
+	action seccomp.ScmpAction,
+) (int, error) {
 	conditions := socketRuleConditions(rule)
 	added := 0
 	for _, sc := range []int{unix.SYS_SOCKET, unix.SYS_SOCKETPAIR} {
-		if err := adder.AddRuleConditional(seccomp.ScmpSyscall(sc), action, conditions); err != nil {
+		if err := adder.AddRuleConditional(
+			seccomp.ScmpSyscall(sc),
+			action,
+			conditions,
+		); err != nil {
 			return added, fmt.Errorf("add conditional rule for syscall %d: %w", sc, err)
 		}
 		added++
@@ -880,7 +934,12 @@ func cloneSocketRule(rule seccompkg.SocketRule) seccompkg.SocketRule {
 	return rule
 }
 
-func filterConfigNeedsNotifyFD(cfg FilterConfig, blockListMap map[uint32]seccompkg.OnBlockAction, blockedFamilyMap map[uint64]seccompkg.BlockedFamily, socketRules []seccompkg.SocketRule) bool {
+func filterConfigNeedsNotifyFD(
+	cfg FilterConfig,
+	blockListMap map[uint32]seccompkg.OnBlockAction,
+	blockedFamilyMap map[uint64]seccompkg.BlockedFamily,
+	socketRules []seccompkg.SocketRule,
+) bool {
 	return cfg.UnixSocketEnabled ||
 		cfg.ExecveEnabled ||
 		cfg.FileMonitorEnabled ||
@@ -951,7 +1010,12 @@ func errnoString(err error) string {
 // avoids logging at INFO on the success path — which polluted stderr
 // captured by integration tests in v0.19.2-rc1 and broke their `tail
 // -n 1` assertions on the wrapped command's output.
-func filterDiagnosticFields(filt *seccomp.ScmpFilter, cfg FilterConfig, waitKillSet bool, ruleCounts map[string]int) []any {
+func filterDiagnosticFields(
+	filt *seccomp.ScmpFilter,
+	cfg FilterConfig,
+	waitKillSet bool,
+	ruleCounts map[string]int,
+) []any {
 	libMaj, libMin, libMicro := seccomp.GetLibraryVersion()
 	libVer := fmt.Sprintf("%d.%d.%d", libMaj, libMin, libMicro)
 

@@ -55,9 +55,17 @@ func TestWrapperLogCaptureRetainsBoundedSanitizedCommandJailFatal(t *testing.T) 
 		t.Fatalf("pipe: %v", err)
 	}
 	var buf syncBuffer
-	capture := startWrapperLogCaptureDrain(r, slog.New(slog.NewTextHandler(&buf, nil)), "sess-1", "bash")
+	capture := startWrapperLogCaptureDrain(
+		r,
+		slog.New(slog.NewTextHandler(&buf, nil)),
+		"sess-1",
+		"bash",
+	)
 	_, _ = w.WriteString("landlock: restrictions applied workspace=/private/workspace\n")
-	_, _ = w.WriteString("command jail: stage=mount_propagation_private path=/private/control token=top-secret: operation not permitted\n")
+	_, _ = w.WriteString(
+		"command jail: stage=mount_propagation_private path=/private/control token=top-secret: " +
+			"operation not permitted\n",
+	)
 	_ = w.Close()
 	select {
 	case <-capture.done:
@@ -70,7 +78,10 @@ func TestWrapperLogCaptureRetainsBoundedSanitizedCommandJailFatal(t *testing.T) 
 			t.Fatalf("diagnostic leaked %q: %s", forbidden, tail)
 		}
 	}
-	for _, want := range []string{"command jail", "stage=mount_propagation_private", "[REDACTED]", "[path]", "operation not permitted"} {
+	for _, want := range []string{
+		"command jail", "stage=mount_propagation_private", "[REDACTED]", "[path]",
+		"operation not permitted",
+	} {
 		if !strings.Contains(tail, want) {
 			t.Fatalf("diagnostic missing %q: %s", want, tail)
 		}
@@ -91,7 +102,9 @@ func TestStartWrapperLogDrain_ForwardsLinesToLogger(t *testing.T) {
 
 	done := startWrapperLogDrain(r, logger, "sess-1", testNoopExecutable(t))
 
-	if _, err := w.WriteString("seccomp: filter loaded fd=8 wait_killable=true\nlandlock: restrictions applied\n"); err != nil {
+	if _, err := w.WriteString(
+		"seccomp: filter loaded fd=8 wait_killable=true\nlandlock: restrictions applied\n",
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	w.Close() // EOF → drain goroutine exits

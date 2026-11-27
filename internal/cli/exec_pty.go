@@ -93,7 +93,12 @@ func ptyDeniedExitError(sessionID string, req execPTYRequest, msg string) error 
 	if msg == "" {
 		msg = "command denied by policy"
 	}
-	hint := fmt.Sprintf("Tip: re-run without --pty to see policy details:\nagentsh exec --output json --events=blocked %s -- %s ...", sessionID, strings.TrimSpace(req.Command))
+	hint := fmt.Sprintf(
+		"Tip: re-run without --pty to see policy details:\n"+
+			"agentsh exec --output json --events=blocked %s -- %s ...",
+		sessionID,
+		strings.TrimSpace(req.Command),
+	)
 	return &ExitError{code: 126, message: msg + "\n" + hint}
 }
 
@@ -101,7 +106,13 @@ func execPTY(ctx context.Context, cfg *clientConfig, sessionID string, req execP
 	return execPTYWithDeps(ctx, cfg, sessionID, req, defaultPTYDeps())
 }
 
-func execPTYWithDeps(ctx context.Context, cfg *clientConfig, sessionID string, req execPTYRequest, deps ptyDeps) error {
+func execPTYWithDeps(
+	ctx context.Context,
+	cfg *clientConfig,
+	sessionID string,
+	req execPTYRequest,
+	deps ptyDeps,
+) error {
 	if cfg == nil {
 		return errors.New("client config is required")
 	}
@@ -202,7 +213,13 @@ func maybeRawTerminal(deps ptyDeps) (restore func(), rows, cols uint16, isTTY bo
 	return restore, uint16(rowsI), uint16(colsI), true, nil
 }
 
-func execPTYGRPC(ctx context.Context, cfg *clientConfig, sessionID string, req execPTYRequest, deps ptyDeps) error {
+func execPTYGRPC(
+	ctx context.Context,
+	cfg *clientConfig,
+	sessionID string,
+	req execPTYRequest,
+	deps ptyDeps,
+) error {
 	restore, rows, cols, isTTY, err := maybeRawTerminal(deps)
 	if err != nil {
 		return err
@@ -213,7 +230,10 @@ func execPTYGRPC(ctx context.Context, cfg *clientConfig, sessionID string, req e
 		if err == nil {
 			return nil
 		}
-		if st, ok := status.FromError(err); ok && st.Code() == codes.PermissionDenied && isPolicyDenyMessage(st.Message()) {
+		if st, ok := status.FromError(
+			err,
+		); ok && st.Code() == codes.PermissionDenied &&
+			isPolicyDenyMessage(st.Message()) {
 			if ee := ptyDeniedExitError(sessionID, req, st.Message()); ee != nil {
 				return ee
 			}
@@ -234,7 +254,11 @@ func execPTYGRPC(ctx context.Context, cfg *clientConfig, sessionID string, req e
 
 	dctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	conn, err := grpc.DialContext(dctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.DialContext(
+		dctx,
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		return err
 	}
@@ -267,7 +291,9 @@ func execPTYGRPC(ctx context.Context, cfg *clientConfig, sessionID string, req e
 		Rows:       uint32(rows),
 		Cols:       uint32(cols),
 	}
-	if err := stream.Send(&ptygrpc.ExecPTYClientMsg{Msg: &ptygrpc.ExecPTYClientMsg_Start{Start: start}}); err != nil {
+	if err := stream.Send(
+		&ptygrpc.ExecPTYClientMsg{Msg: &ptygrpc.ExecPTYClientMsg_Start{Start: start}},
+	); err != nil {
 		// In bidi streams the "real" RPC status is often only surfaced on Recv.
 		// If the server rejects immediately (before reading Start), Send can return EOF.
 		if errors.Is(err, io.EOF) {
@@ -302,12 +328,27 @@ func execPTYGRPC(ctx context.Context, cfg *clientConfig, sessionID string, req e
 						continue
 					}
 					colsI, rowsI, _ := deps.getSize(int(os.Stdout.Fd()))
-					_ = send(&ptygrpc.ExecPTYClientMsg{Msg: &ptygrpc.ExecPTYClientMsg_Resize{Resize: &ptygrpc.ExecPTYResize{Rows: uint32(rowsI), Cols: uint32(colsI)}}})
+					_ = send(
+						&ptygrpc.ExecPTYClientMsg{
+							Msg: &ptygrpc.ExecPTYClientMsg_Resize{
+								Resize: &ptygrpc.ExecPTYResize{
+									Rows: uint32(rowsI),
+									Cols: uint32(colsI),
+								},
+							},
+						},
+					)
 					continue
 				}
 				name := signalName(sig)
 				if name != "" {
-					_ = send(&ptygrpc.ExecPTYClientMsg{Msg: &ptygrpc.ExecPTYClientMsg_Signal{Signal: &ptygrpc.ExecPTYSignal{Name: name}}})
+					_ = send(
+						&ptygrpc.ExecPTYClientMsg{
+							Msg: &ptygrpc.ExecPTYClientMsg_Signal{
+								Signal: &ptygrpc.ExecPTYSignal{Name: name},
+							},
+						},
+					)
 				}
 			}
 		}
@@ -316,7 +357,13 @@ func execPTYGRPC(ctx context.Context, cfg *clientConfig, sessionID string, req e
 	// Stdin -> server.
 	go func() {
 		if strings.TrimSpace(req.Stdin) != "" {
-			_ = send(&ptygrpc.ExecPTYClientMsg{Msg: &ptygrpc.ExecPTYClientMsg_Stdin{Stdin: &ptygrpc.ExecPTYStdin{Data: []byte(req.Stdin)}}})
+			_ = send(
+				&ptygrpc.ExecPTYClientMsg{
+					Msg: &ptygrpc.ExecPTYClientMsg_Stdin{
+						Stdin: &ptygrpc.ExecPTYStdin{Data: []byte(req.Stdin)},
+					},
+				},
+			)
 		}
 		buf := make([]byte, 32*1024)
 		for {
@@ -324,7 +371,11 @@ func execPTYGRPC(ctx context.Context, cfg *clientConfig, sessionID string, req e
 			if n > 0 {
 				b := make([]byte, n)
 				copy(b, buf[:n])
-				if sendErr := send(&ptygrpc.ExecPTYClientMsg{Msg: &ptygrpc.ExecPTYClientMsg_Stdin{Stdin: &ptygrpc.ExecPTYStdin{Data: b}}}); sendErr != nil {
+				if sendErr := send(
+					&ptygrpc.ExecPTYClientMsg{
+						Msg: &ptygrpc.ExecPTYClientMsg_Stdin{Stdin: &ptygrpc.ExecPTYStdin{Data: b}},
+					},
+				); sendErr != nil {
 					return
 				}
 			}
@@ -400,14 +451,23 @@ type ptyWSError struct {
 	Message string `json:"message"`
 }
 
-func execPTYWS(ctx context.Context, cfg *clientConfig, sessionID string, req execPTYRequest, deps ptyDeps) error {
+func execPTYWS(
+	ctx context.Context,
+	cfg *clientConfig,
+	sessionID string,
+	req execPTYRequest,
+	deps ptyDeps,
+) error {
 	restore, rows, cols, isTTY, err := maybeRawTerminal(deps)
 	if err != nil {
 		return err
 	}
 	defer restore()
 
-	wsURL, dialer, err := ptyWSURLAndDialer(cfg.serverAddr, "/api/v1/sessions/"+url.PathEscape(sessionID)+"/pty")
+	wsURL, dialer, err := ptyWSURLAndDialer(
+		cfg.serverAddr,
+		"/api/v1/sessions/"+url.PathEscape(sessionID)+"/pty",
+	)
 	if err != nil {
 		return err
 	}
@@ -450,7 +510,11 @@ func execPTYWS(ctx context.Context, cfg *clientConfig, sessionID string, req exe
 	go func() {
 		<-runCtx.Done()
 		writeMu.Lock()
-		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(250*time.Millisecond))
+		_ = conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+			time.Now().Add(250*time.Millisecond),
+		)
 		writeMu.Unlock()
 		_ = conn.Close()
 	}()
@@ -483,7 +547,9 @@ func execPTYWS(ctx context.Context, cfg *clientConfig, sessionID string, req exe
 			case sig := <-sigCh:
 				if isWinchSignal(sig) {
 					colsI, rowsI, _ := deps.getSize(int(os.Stdout.Fd()))
-					_ = writeText(ptyWSControl{Type: "resize", Rows: uint16(rowsI), Cols: uint16(colsI)})
+					_ = writeText(
+						ptyWSControl{Type: "resize", Rows: uint16(rowsI), Cols: uint16(colsI)},
+					)
 					continue
 				}
 				name := signalName(sig)
@@ -548,7 +614,8 @@ func execPTYWS(ctx context.Context, cfg *clientConfig, sessionID string, req exe
 				var ee ptyWSError
 				_ = json.Unmarshal(data, &ee)
 				cancelRun()
-				if ee.Code == http.StatusNotFound && strings.Contains(strings.ToLower(ee.Message), "session") {
+				if ee.Code == http.StatusNotFound &&
+					strings.Contains(strings.ToLower(ee.Message), "session") {
 					return errPTYSessionNotFound
 				}
 				if ee.Code == http.StatusForbidden && isPolicyDenyMessage(ee.Message) {

@@ -281,5 +281,6 @@ func waitForSocket(t *testing.T, path string) {
 }
 
 func isClosedConnError(err error) bool {
-	return err != nil && (errors.Is(err, net.ErrClosed) || strings.Contains(err.Error(), "use of closed"))
+	return err != nil &&
+		(errors.Is(err, net.ErrClosed) || strings.Contains(err.Error(), "use of closed"))
 }

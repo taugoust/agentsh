@@ -125,7 +125,12 @@ func (p *Proxy) declaredService(reqPath string) (name, rest string, ok bool) {
 // and RequestContext. This split exists because /svc matching is
 // case-insensitive but the byte-level prefix strip against
 // r.URL.EscapedPath() needs the exact request bytes.
-func (p *Proxy) serveDeclaredService(w http.ResponseWriter, r *http.Request, rawSegment, reqPath, requestID string, startTime time.Time) {
+func (p *Proxy) serveDeclaredService(
+	w http.ResponseWriter,
+	r *http.Request,
+	rawSegment, reqPath, requestID string,
+	startTime time.Time,
+) {
 	p.mu.Lock()
 	eng := p.policyEngine
 	p.mu.Unlock()
@@ -178,7 +183,8 @@ func (p *Proxy) serveDeclaredService(w http.ResponseWriter, r *http.Request, raw
 	// forwarding use. Fall back to re-escaping the decoded rest in that
 	// case so the approval Target stays aligned with what the rest of
 	// the pipeline sees.
-	if strings.HasPrefix(escaped, prefix) && (len(escaped) == len(prefix) || escaped[len(prefix)] == '/') {
+	if strings.HasPrefix(escaped, prefix) &&
+		(len(escaped) == len(prefix) || escaped[len(prefix)] == '/') {
 		escapedPath = strings.TrimPrefix(escaped, prefix)
 	} else {
 		// Name was encoded, case-differs, or bled into the next segment
@@ -204,7 +210,8 @@ func (p *Proxy) serveDeclaredService(w http.ResponseWriter, r *http.Request, raw
 	// decision is left untouched and falls through to the 501 branch in
 	// the switch below — so the existing "approval not yet implemented"
 	// contract still holds for un-wired tests and deployments.
-	if dec.PolicyDecision == types.DecisionApprove && dec.EffectiveDecision == types.DecisionApprove {
+	if dec.PolicyDecision == types.DecisionApprove &&
+		dec.EffectiveDecision == types.DecisionApprove {
 		p.mu.Lock()
 		appr := p.httpSvcApprovals
 		p.mu.Unlock()
@@ -437,7 +444,15 @@ func (p *Proxy) serveDeclaredService(w http.ResponseWriter, r *http.Request, raw
 	// reconciliation, so the logged path reflects any hook-driven
 	// rewrites. dec.Rule is the name of the matched rule (empty when
 	// the decision came from the service default).
-	p.logDeclaredServiceRequest(requestID, sessionID, canonicalName, dec.Rule, r, forwardedBody, storedBody)
+	p.logDeclaredServiceRequest(
+		requestID,
+		sessionID,
+		canonicalName,
+		dec.Rule,
+		r,
+		forwardedBody,
+		storedBody,
+	)
 
 	outReq, err := p.buildUpstreamRequest(r, svc.Upstream)
 	if err != nil {
@@ -470,7 +485,11 @@ func (p *Proxy) serveDeclaredService(w http.ResponseWriter, r *http.Request, raw
 	if p.hookRegistry != nil && reqCtx != nil {
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		resp.ContentLength = int64(len(respBody))
-		if hookErr := p.hookRegistry.ApplyPostHooks(reqCtx.ServiceName, resp, reqCtx); hookErr != nil {
+		if hookErr := p.hookRegistry.ApplyPostHooks(
+			reqCtx.ServiceName,
+			resp,
+			reqCtx,
+		); hookErr != nil {
 			p.logger.Warn("post-hook error", "error", hookErr, "request_id", requestID)
 		}
 		// Re-read body in case a hook replaced it.
@@ -712,7 +731,11 @@ func sanitizeHeadersForDeclaredService(h http.Header, injectedNames []string) ma
 // so the on-disk copy never captures post-substitution credentials.
 // When a hook drops the request body entirely, both are nil and
 // StoreRequestBody no-ops (it already handles len(body) == 0).
-func (p *Proxy) logDeclaredServiceRequest(requestID, sessionID, svcName, ruleName string, r *http.Request, forwardedBody, storedBody []byte) {
+func (p *Proxy) logDeclaredServiceRequest(
+	requestID, sessionID, svcName, ruleName string,
+	r *http.Request,
+	forwardedBody, storedBody []byte,
+) {
 	if p.storage == nil {
 		return
 	}
@@ -749,7 +772,12 @@ func (p *Proxy) logDeclaredServiceRequest(requestID, sessionID, svcName, ruleNam
 // to the client. svcName is the canonical service name so the response
 // sanitizer can redact any HeaderInjectionHook-registered header names
 // the upstream echoed back.
-func (p *Proxy) logDeclaredServiceResponse(requestID, sessionID, svcName string, resp *http.Response, respBody []byte, startTime time.Time) {
+func (p *Proxy) logDeclaredServiceResponse(
+	requestID, sessionID, svcName string,
+	resp *http.Response,
+	respBody []byte,
+	startTime time.Time,
+) {
 	if p.storage == nil {
 		return
 	}
@@ -773,6 +801,12 @@ func (p *Proxy) logDeclaredServiceResponse(requestID, sessionID, svcName string,
 		p.logger.Error("log declared-service response", "error", err, "request_id", requestID)
 	}
 	if err := p.storage.StoreResponseBody(requestID, respBody); err != nil {
-		p.logger.Error("store declared-service response body", "error", err, "request_id", requestID)
+		p.logger.Error(
+			"store declared-service response body",
+			"error",
+			err,
+			"request_id",
+			requestID,
+		)
 	}
 }

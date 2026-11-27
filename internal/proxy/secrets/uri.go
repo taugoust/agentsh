@@ -62,7 +62,10 @@ func ParseRef(uri string) (SecretRef, error) {
 	// distinguish a literal '/' in a segment name from a path separator,
 	// so we refuse it.
 	if u.RawPath != "" && strings.Contains(strings.ToLower(u.RawPath), "%2f") {
-		return SecretRef{}, fmt.Errorf("%w: literal '/' in path segment (%%2F) not supported", ErrInvalidURI)
+		return SecretRef{}, fmt.Errorf(
+			"%w: literal '/' in path segment (%%2F) not supported",
+			ErrInvalidURI,
+		)
 	}
 
 	trimmedPath := strings.TrimPrefix(u.Path, "/")

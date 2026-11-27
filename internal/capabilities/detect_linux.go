@@ -65,7 +65,8 @@ func ptraceBackendDetail(caps *SecurityCapabilities) string {
 	return "" // capability absent; the - speaks for itself
 }
 
-// buildLinuxDomains builds the five protection domains from cached probe results and capability flags.
+// buildLinuxDomains builds the five protection domains from cached probe results and capability
+// flags.
 func buildLinuxDomains(caps *SecurityCapabilities) []ProtectionDomain {
 	fuseMountMethod := "none"
 	if caps.FUSE {
@@ -123,44 +124,104 @@ func buildLinuxDomains(caps *SecurityCapabilities) []ProtectionDomain {
 		{
 			Name: "File Protection", Weight: WeightFileProtection,
 			Backends: []DetectedBackend{
-				{Name: "fuse", Available: caps.FUSE, Detail: fuseMountMethod, Description: "file interception, soft-delete, redirect", CheckMethod: "probe"},
-				{Name: "landlock", Available: caps.Landlock, Detail: landlockDetail, Description: "kernel path restrictions", CheckMethod: "syscall"},
-				{Name: "seccomp-notify", Available: caps.SeccompInstallable, Detail: seccompBackendDetail(caps), Description: "openat/stat enforcement", CheckMethod: "probe"},
+				{
+					Name:        "fuse",
+					Available:   caps.FUSE,
+					Detail:      fuseMountMethod,
+					Description: "file interception, soft-delete, redirect",
+					CheckMethod: "probe",
+				},
+				{
+					Name:        "landlock",
+					Available:   caps.Landlock,
+					Detail:      landlockDetail,
+					Description: "kernel path restrictions",
+					CheckMethod: "syscall",
+				},
+				{
+					Name:        "seccomp-notify",
+					Available:   caps.SeccompInstallable,
+					Detail:      seccompBackendDetail(caps),
+					Description: "openat/stat enforcement",
+					CheckMethod: "probe",
+				},
 			},
 			Active: caps.FileEnforcement,
 		},
 		{
 			Name: "Command Control", Weight: WeightCommandControl,
 			Backends: []DetectedBackend{
-				{Name: "seccomp-execve", Available: caps.SeccompInstallable, Detail: seccompBackendDetail(caps), Description: "execve interception", CheckMethod: "probe"},
-				{Name: "ptrace", Available: caps.Ptrace && caps.PtraceEnabled && caps.PtraceInjectable, Detail: ptraceBackendDetail(caps), Description: "syscall tracing", CheckMethod: "probe"},
+				{
+					Name:        "seccomp-execve",
+					Available:   caps.SeccompInstallable,
+					Detail:      seccompBackendDetail(caps),
+					Description: "execve interception",
+					CheckMethod: "probe",
+				},
+				{
+					Name:        "ptrace",
+					Available:   caps.Ptrace && caps.PtraceEnabled && caps.PtraceInjectable,
+					Detail:      ptraceBackendDetail(caps),
+					Description: "syscall tracing",
+					CheckMethod: "probe",
+				},
 			},
 			Active: commandActive,
 		},
 		{
 			Name: "Network", Weight: WeightNetwork,
 			Backends: []DetectedBackend{
-				{Name: "ebpf", Available: caps.EBPFProbe.Available, Detail: caps.EBPFProbe.Detail, Description: "network monitoring", CheckMethod: "probe"},
-				{Name: "landlock-network", Available: caps.LandlockNetwork, Detail: "", Description: "TCP bind/connect filtering", CheckMethod: "syscall"},
+				{
+					Name:        "ebpf",
+					Available:   caps.EBPFProbe.Available,
+					Detail:      caps.EBPFProbe.Detail,
+					Description: "network monitoring",
+					CheckMethod: "probe",
+				},
+				{
+					Name:        "landlock-network",
+					Available:   caps.LandlockNetwork,
+					Detail:      "",
+					Description: "TCP bind/connect filtering",
+					CheckMethod: "syscall",
+				},
 			},
 			Active: networkActive,
 		},
 		{
 			Name: "Resource Limits", Weight: WeightResourceLimits,
 			Backends: []DetectedBackend{
-				{Name: "cgroups-v2", Available: caps.CgroupProbe.Available, Detail: caps.CgroupProbe.Detail, Description: "CPU/memory/process limits", CheckMethod: "probe"},
+				{
+					Name:        "cgroups-v2",
+					Available:   caps.CgroupProbe.Available,
+					Detail:      caps.CgroupProbe.Detail,
+					Description: "CPU/memory/process limits",
+					CheckMethod: "probe",
+				},
 			},
 			Active: resourceActive,
 		},
 		{
 			Name: "Isolation", Weight: WeightIsolation,
 			Backends: []DetectedBackend{
-				{Name: "pid-namespace", Available: caps.PIDNSProbe.Available, Detail: caps.PIDNSProbe.Detail, Description: "process isolation", CheckMethod: "probe"},
+				{
+					Name:        "pid-namespace",
+					Available:   caps.PIDNSProbe.Available,
+					Detail:      caps.PIDNSProbe.Detail,
+					Description: "process isolation",
+					CheckMethod: "probe",
+				},
 				// Available reads CapabilitiesActive (the single
 				// behavioural source of truth); Detail still pulls
 				// the human-readable text from CapProbe for
 				// "0/42 caps dropped" etc.
-				{Name: "capability-drop", Available: caps.CapabilitiesActive, Detail: caps.CapProbe.Detail, Description: "privilege reduction", CheckMethod: "probe"},
+				{
+					Name:        "capability-drop",
+					Available:   caps.CapabilitiesActive,
+					Detail:      caps.CapProbe.Detail,
+					Description: "privilege reduction",
+					CheckMethod: "probe",
+				},
 			},
 			Active: isoActive,
 		},
@@ -259,9 +320,10 @@ func applyWrapperAvailability(domains []ProtectionDomain, secCaps *SecurityCapab
 // backwardCompatCaps builds the flat capabilities map for backward compatibility.
 func backwardCompatCaps(caps *SecurityCapabilities, domains []ProtectionDomain) map[string]any {
 	m := map[string]any{
-		"seccomp":                             caps.Seccomp,
-		"seccomp_user_notify":                 caps.SeccompInstallable, // installable here (issue #388)
-		"seccomp_user_notify_kernel":          caps.Seccomp,            // kernel-supported (read-only probe)
+		"seccomp": caps.Seccomp,
+		// installable here (issue #388)
+		"seccomp_user_notify":                 caps.SeccompInstallable,
+		"seccomp_user_notify_kernel":          caps.Seccomp, // kernel-supported (read-only probe)
 		"seccomp_basic":                       caps.SeccompBasic,
 		"landlock":                            caps.Landlock,
 		"landlock_abi":                        caps.LandlockABI,
@@ -373,8 +435,9 @@ func Detect() (*DetectResult, error) {
 		tips = append(tips, Tip{
 			Feature: "seccomp-wrapper",
 			Status:  "missing",
-			Impact:  "seccomp and Landlock enforcement disabled — processes run without kernel-level interception",
-			Action:  "install agentsh-unixwrap or rebuild the package with CGO_ENABLED=1",
+			Impact: "seccomp and Landlock enforcement disabled — processes run without " +
+				"kernel-level interception",
+			Action: "install agentsh-unixwrap or rebuild the package with CGO_ENABLED=1",
 		})
 	}
 

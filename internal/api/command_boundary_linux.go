@@ -20,7 +20,10 @@ func hardenSupervisorForCommandBoundary() error {
 	return nil
 }
 
-func configureCommandBoundaryProcess(attr *syscall.SysProcAttr, requirements *types.LinuxCommandJailRequirements) error {
+func configureCommandBoundaryProcess(
+	attr *syscall.SysProcAttr,
+	requirements *types.LinuxCommandJailRequirements,
+) error {
 	// Every server-owned command must die with its supervisor, including
 	// best-effort/direct sessions. Otherwise an orphan could keep mutating the
 	// retained workspace concurrently with a recovered exact incarnation.
@@ -40,12 +43,15 @@ func configureCommandBoundaryProcess(attr *syscall.SysProcAttr, requirements *ty
 		return fmt.Errorf("strict command boundary cannot compose with existing uid/gid mappings")
 	}
 	if attr.Credential != nil {
-		return fmt.Errorf("strict command boundary cannot compose with an alternate process credential")
+		return fmt.Errorf(
+			"strict command boundary cannot compose with an alternate process credential",
+		)
 	}
 	if attr.Pdeathsig != 0 && attr.Pdeathsig != syscall.SIGKILL {
 		return fmt.Errorf("strict command boundary requires SIGKILL parent-death behavior")
 	}
-	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
+	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID |
+		unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
 	attr.Pdeathsig = syscall.SIGKILL
 	namespaceID := 0
 	if requirements.MapCurrentUserToNonRoot {
@@ -55,8 +61,12 @@ func configureCommandBoundaryProcess(attr *syscall.SysProcAttr, requirements *ty
 		// and verifies all capability sets before READY.
 		attr.AmbientCaps = append(attr.AmbientCaps, unix.CAP_SYS_ADMIN, unix.CAP_SETPCAP)
 	}
-	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Geteuid(), Size: 1}}
-	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1}}
+	attr.UidMappings = []syscall.SysProcIDMap{
+		{ContainerID: namespaceID, HostID: os.Geteuid(), Size: 1},
+	}
+	attr.GidMappings = []syscall.SysProcIDMap{
+		{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1},
+	}
 	attr.GidMappingsEnableSetgroups = false
 	return nil
 }

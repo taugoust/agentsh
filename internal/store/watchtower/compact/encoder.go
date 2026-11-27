@@ -22,7 +22,9 @@ var ErrMissingChain = errors.New("compact.Encode: ev.Chain is nil; composite did
 // ErrInvalidTimestamp is returned when ev.Timestamp is the zero value or
 // represents an instant before the Unix epoch. Both cases would silently wrap
 // when cast to uint64 nanoseconds, masking caller bugs in the hot path.
-var ErrInvalidTimestamp = errors.New("compact.Encode: ev.Timestamp must be non-zero and ≥ Unix epoch")
+var ErrInvalidTimestamp = errors.New(
+	"compact.Encode: ev.Timestamp must be non-zero and ≥ Unix epoch",
+)
 
 // ErrMapperFailure is the OUTER sentinel that wraps every error
 // returned from a Mapper's Map method. It distinguishes "Encode's own

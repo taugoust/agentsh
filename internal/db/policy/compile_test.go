@@ -53,8 +53,13 @@ func TestCompileStatementRule_CanonicalOnlyDoesNotCoverSyntacticObject(t *testin
 	if c.coversAllObjects() {
 		t.Fatal("canonical selector-only rule should not cover all syntactic objects")
 	}
-	if c.objectMatches(effects.ObjectRef{Kind: effects.ObjectTable, Schema: "public", Name: "users"}) {
-		t.Fatal("canonical selector-only rule should not cover a syntactic object without resolved canonical matching")
+	if c.objectMatches(
+		effects.ObjectRef{Kind: effects.ObjectTable, Schema: "public", Name: "users"},
+	) {
+		t.Fatal(
+			"canonical selector-only rule should not cover a syntactic object without resolved " +
+				"canonical matching",
+		)
 	}
 }
 
@@ -129,7 +134,12 @@ func TestCompileStatementRule_MessageTemplate(t *testing.T) {
 }
 
 func TestCompileStatementRule_BadGlob(t *testing.T) {
-	r := &StatementRule{Name: "r", Objects: []string{"["}, Operations: []string{"READ"}, Decision: "allow"}
+	r := &StatementRule{
+		Name:       "r",
+		Objects:    []string{"["},
+		Operations: []string{"READ"},
+		Decision:   "allow",
+	}
 	_, err := compileStatementRule(r)
 	if err == nil || !strings.Contains(err.Error(), "glob_compile") {
 		t.Fatalf("want glob_compile error, got %v", err)
@@ -176,7 +186,8 @@ func TestCompileStatementRule_BadCanonicalGlob(t *testing.T) {
 		Relations:  []string{"["},
 		Decision:   "allow",
 	})
-	if err == nil || !strings.Contains(err.Error(), "glob_compile") || !strings.Contains(err.Error(), "relations") {
+	if err == nil || !strings.Contains(err.Error(), "glob_compile") ||
+		!strings.Contains(err.Error(), "relations") {
 		t.Fatalf("want relation glob_compile error, got %v", err)
 	}
 
@@ -186,7 +197,8 @@ func TestCompileStatementRule_BadCanonicalGlob(t *testing.T) {
 		Functions:  []string{"["},
 		Decision:   "allow",
 	})
-	if err == nil || !strings.Contains(err.Error(), "glob_compile") || !strings.Contains(err.Error(), "functions") {
+	if err == nil || !strings.Contains(err.Error(), "glob_compile") ||
+		!strings.Contains(err.Error(), "functions") {
 		t.Fatalf("want function glob_compile error, got %v", err)
 	}
 }

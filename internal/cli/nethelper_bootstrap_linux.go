@@ -45,19 +45,34 @@ func newNethelperBootstrapCmd() *cobra.Command {
 			if targetGID < 0 || uint64(targetGID) > uint64(^uint32(0)) {
 				return fmt.Errorf("--gid must be a non-negative 32-bit Unix gid")
 			}
-			result, err := bootstrapEphemeralNethelperWithSoftLease(uint32(targetUID), uint32(targetGID), strings.TrimSpace(leaseID), runtimeLimit, softLease)
+			result, err := bootstrapEphemeralNethelperWithSoftLease(
+				uint32(targetUID),
+				uint32(targetGID),
+				strings.TrimSpace(leaseID),
+				runtimeLimit,
+				softLease,
+			)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "agentsh temporary nethelper ready; result: %s\n", result.ResultFile)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"agentsh temporary nethelper ready; result: %s\n",
+				result.ResultFile,
+			)
 			return nil
 		},
 	}
 	cmd.Flags().IntVar(&targetUID, "uid", -1, "Unix UID authorized to use the temporary helper")
-	cmd.Flags().IntVar(&targetGID, "gid", -1, "Primary Unix GID authorized to use the temporary helper")
+	cmd.Flags().
+		IntVar(&targetGID, "gid", -1, "Primary Unix GID authorized to use the temporary helper")
 	cmd.Flags().StringVar(&leaseID, "lease", "", "Canonical lease UUID from nethelper lease-id")
-	cmd.Flags().DurationVar(&runtimeLimit, "runtime", nethelper.DefaultBootstrapRuntime, "Finite helper hard runtime (default 13h, maximum 192h)")
-	cmd.Flags().DurationVar(&softLease, "soft-lease", 0, "Opt into renewable soft expiry (zero keeps legacy hard-expiry-only behavior)")
+	cmd.Flags().
+		DurationVar(&runtimeLimit, "runtime", nethelper.DefaultBootstrapRuntime,
+			"Finite helper hard runtime (default 13h, maximum 192h)")
+	cmd.Flags().
+		DurationVar(&softLease, "soft-lease", 0,
+			"Opt into renewable soft expiry (zero keeps legacy hard-expiry-only behavior)")
 	_ = cmd.MarkFlagRequired("uid")
 	_ = cmd.MarkFlagRequired("gid")
 	_ = cmd.MarkFlagRequired("lease")
@@ -77,12 +92,18 @@ func validateEphemeralNethelperRuntime(runtimeLimit time.Duration) error {
 	return nil
 }
 
-func bootstrapEphemeralNethelperWithSoftLease(uid, gid uint32, leaseID string, runtimeLimit, softLease time.Duration) (result nethelperBootstrapResult, retErr error) {
+func bootstrapEphemeralNethelperWithSoftLease(
+	uid, gid uint32,
+	leaseID string,
+	runtimeLimit, softLease time.Duration,
+) (result nethelperBootstrapResult, retErr error) {
 	if err := validateEphemeralNethelperRuntime(runtimeLimit); err != nil {
 		return result, err
 	}
 	if softLease < 0 || softLease > runtimeLimit || softLease%time.Second != 0 {
-		return result, fmt.Errorf("soft lease must be zero or an exact number of seconds within runtime")
+		return result, fmt.Errorf(
+			"soft lease must be zero or an exact number of seconds within runtime",
+		)
 	}
 	if err := nethelper.ValidatePrivilegedServiceUser(); err != nil {
 		return result, err
@@ -126,21 +147,41 @@ func bootstrapEphemeralNethelperWithSoftLease(uid, gid uint32, leaseID string, r
 	if err := writePrivateFile(paths.RootCredential, []byte(credential+"\n"), 0, 0); err != nil {
 		return result, fmt.Errorf("write root helper credential: %w", err)
 	}
-	if err := writePrivateFile(paths.CredentialFile, []byte(credential+"\n"), uid, gid); err != nil {
+	if err := writePrivateFile(
+		paths.CredentialFile,
+		[]byte(credential+"\n"),
+		uid,
+		gid,
+	); err != nil {
 		return result, fmt.Errorf("write supervisor helper credential: %w", err)
 	}
 
 	systemdRun, err := trustedRootExecutable("systemd-run")
 	if err != nil {
-		return result, fmt.Errorf("systemd-run is required for temporary nethelper bootstrap: %w", err)
+		return result, fmt.Errorf(
+			"systemd-run is required for temporary nethelper bootstrap: %w",
+			err,
+		)
 	}
 	// Capture one conservative start instant before systemd-run. Every published
 	// and service-side deadline derives from this exact value.
 	startedAt := time.Now().UTC().Truncate(time.Second)
-	args := ephemeralSystemdRunArgsWithSoftLease(paths, launcher, uid, gid, runtimeLimit, softLease, startedAt)
+	args := ephemeralSystemdRunArgsWithSoftLease(
+		paths,
+		launcher,
+		uid,
+		gid,
+		runtimeLimit,
+		softLease,
+		startedAt,
+	)
 	output, err := exec.Command(systemdRun, args...).CombinedOutput()
 	if err != nil {
-		return result, fmt.Errorf("start transient nethelper service: %w: %s", err, strings.TrimSpace(string(output)))
+		return result, fmt.Errorf(
+			"start transient nethelper service: %w: %s",
+			err,
+			strings.TrimSpace(string(output)),
+		)
 	}
 	started = true
 
@@ -154,7 +195,11 @@ func bootstrapEphemeralNethelperWithSoftLease(uid, gid uint32, leaseID string, r
 		time.Sleep(50 * time.Millisecond)
 	}
 	if socketErr != nil {
-		return result, fmt.Errorf("temporary nethelper did not create its protected socket: %w%s", socketErr, transientUnitStatusSuffix(paths.UnitName))
+		return result, fmt.Errorf(
+			"temporary nethelper did not create its protected socket: %w%s",
+			socketErr,
+			transientUnitStatusSuffix(paths.UnitName),
+		)
 	}
 
 	result = nethelperBootstrapResult{
@@ -190,7 +235,10 @@ func bootstrapEphemeralNethelperWithSoftLease(uid, gid uint32, leaseID string, r
 func validateSudoBootstrapIdentity(uid, gid uint32) error {
 	sudoUID, err := strconv.ParseUint(strings.TrimSpace(os.Getenv("SUDO_UID")), 10, 32)
 	if err != nil || sudoUID == 0 {
-		return fmt.Errorf("temporary nethelper bootstrap must be invoked directly through sudo by a non-root user")
+		return fmt.Errorf(
+			"temporary nethelper bootstrap must be invoked directly through sudo by a " +
+				"non-root user",
+		)
 	}
 	sudoGID, err := strconv.ParseUint(strings.TrimSpace(os.Getenv("SUDO_GID")), 10, 32)
 	if err != nil {
@@ -234,18 +282,23 @@ func immutableAgentSHLauncher() (string, error) {
 		return "", fmt.Errorf("resolve agentsh executable symlinks: %w", err)
 	}
 	candidate := executable
-	if strings.HasPrefix(filepath.Base(executable), ".agentsh-") || filepath.Base(executable) == ".agentsh-wrapped" {
+	if strings.HasPrefix(filepath.Base(executable), ".agentsh-") ||
+		filepath.Base(executable) == ".agentsh-wrapped" {
 		candidate = filepath.Join(filepath.Dir(executable), "agentsh")
 	}
 	candidate = filepath.Clean(candidate)
 	if !strings.HasPrefix(candidate, "/nix/store/") || !strings.Contains(candidate, "/bin/") {
-		return "", fmt.Errorf("temporary root helper requires an immutable Nix store agentsh executable")
+		return "", fmt.Errorf(
+			"temporary root helper requires an immutable Nix store agentsh executable",
+		)
 	}
 	info, err := os.Lstat(candidate)
 	if err != nil {
 		return "", fmt.Errorf("stat immutable agentsh launcher: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 || info.Mode().Perm()&0o111 == 0 {
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() ||
+		info.Mode().Perm()&0o022 != 0 ||
+		info.Mode().Perm()&0o111 == 0 {
 		return "", fmt.Errorf("agentsh launcher is not an immutable executable regular file")
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
@@ -281,7 +334,12 @@ func trustedRootExecutable(name string) (string, error) {
 		return "", fmt.Errorf("stat %s executable: %w", name, err)
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 || info.Mode().Perm()&0o111 == 0 || !ok || stat == nil || stat.Uid != 0 {
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() ||
+		info.Mode().Perm()&0o022 != 0 ||
+		info.Mode().Perm()&0o111 == 0 ||
+		!ok ||
+		stat == nil ||
+		stat.Uid != 0 {
 		return "", fmt.Errorf("%s executable has unsafe type, mode, or ownership", name)
 	}
 	return path, nil
@@ -341,7 +399,9 @@ func ensureRootDirectory(path string, mode os.FileMode, mustCreate bool) error {
 		return fmt.Errorf("stat protected directory %s: %w", path, err)
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm()&0o022 != 0 || !ok || stat == nil || stat.Uid != 0 {
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm()&0o022 != 0 || !ok ||
+		stat == nil ||
+		stat.Uid != 0 {
 		return fmt.Errorf("protected directory %s has unsafe type, mode, or ownership", path)
 	}
 	resolved, err := filepath.EvalSymlinks(path)
@@ -357,12 +417,19 @@ func validateCompositionLeaseDirectory(path string) error {
 	if err := unix.Lstat(path, &stat); err != nil {
 		return fmt.Errorf("stat protected composition lease directory %s: %w", path, err)
 	}
-	if err := nethelper.ValidateCompositionLeaseDirectoryMetadata(stat.Mode, stat.Uid, stat.Gid); err != nil {
+	if err := nethelper.ValidateCompositionLeaseDirectoryMetadata(
+		stat.Mode,
+		stat.Uid,
+		stat.Gid,
+	); err != nil {
 		return fmt.Errorf("protected composition lease directory %s: %w", path, err)
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil || filepath.Clean(resolved) != path {
-		return fmt.Errorf("protected composition lease directory %s must not contain symlink components", path)
+		return fmt.Errorf(
+			"protected composition lease directory %s must not contain symlink components",
+			path,
+		)
 	}
 	return nil
 }
@@ -384,12 +451,19 @@ func validateCompositionScratchDirectory(path string) error {
 	if err := unix.Lstat(path, &stat); err != nil {
 		return fmt.Errorf("stat protected composition runtime %s: %w", path, err)
 	}
-	if err := nethelper.ValidateCompositionScratchMetadata(stat.Mode, stat.Uid, stat.Gid); err != nil {
+	if err := nethelper.ValidateCompositionScratchMetadata(
+		stat.Mode,
+		stat.Uid,
+		stat.Gid,
+	); err != nil {
 		return fmt.Errorf("protected composition runtime %s: %w", path, err)
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil || filepath.Clean(resolved) != path {
-		return fmt.Errorf("protected composition runtime %s must not contain symlink components", path)
+		return fmt.Errorf(
+			"protected composition runtime %s must not contain symlink components",
+			path,
+		)
 	}
 	return nil
 }
@@ -430,11 +504,31 @@ func newNethelperCredential() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-func ephemeralSystemdRunArgs(paths nethelper.EphemeralLeasePaths, launcher string, uid, gid uint32, runtimeLimit time.Duration, startedAt time.Time) []string {
-	return ephemeralSystemdRunArgsWithSoftLease(paths, launcher, uid, gid, runtimeLimit, 0, startedAt)
+func ephemeralSystemdRunArgs(
+	paths nethelper.EphemeralLeasePaths,
+	launcher string,
+	uid, gid uint32,
+	runtimeLimit time.Duration,
+	startedAt time.Time,
+) []string {
+	return ephemeralSystemdRunArgsWithSoftLease(
+		paths,
+		launcher,
+		uid,
+		gid,
+		runtimeLimit,
+		0,
+		startedAt,
+	)
 }
 
-func ephemeralSystemdRunArgsWithSoftLease(paths nethelper.EphemeralLeasePaths, launcher string, uid, gid uint32, runtimeLimit, softLease time.Duration, startedAt time.Time) []string {
+func ephemeralSystemdRunArgsWithSoftLease(
+	paths nethelper.EphemeralLeasePaths,
+	launcher string,
+	uid, gid uint32,
+	runtimeLimit, softLease time.Duration,
+	startedAt time.Time,
+) []string {
 	runtimeCapabilities := "CAP_BPF CAP_NET_ADMIN CAP_PERFMON"
 	startupCapabilities := runtimeCapabilities + " CAP_CHOWN"
 	runtimeDirectory := strings.TrimPrefix(paths.RuntimeDir, "/run/")
@@ -523,7 +617,8 @@ func transientUnitStatusSuffix(unit string) string {
 	if err != nil {
 		return ""
 	}
-	output, err := exec.Command(systemctl, "status", "--no-pager", "--lines=20", unit).CombinedOutput()
+	output, err := exec.Command(systemctl, "status", "--no-pager", "--lines=20", unit).
+		CombinedOutput()
 	if err != nil && len(output) == 0 {
 		return ""
 	}
@@ -549,7 +644,8 @@ func reapStaleEphemeralLeases(uid uint32, currentLease string) (int, error) {
 	}
 	for _, entry := range entries {
 		leaseID := entry.Name()
-		if !entry.IsDir() || leaseID == currentLease || nethelper.ValidateEphemeralLeaseID(leaseID) != nil {
+		if !entry.IsDir() || leaseID == currentLease ||
+			nethelper.ValidateEphemeralLeaseID(leaseID) != nil {
 			continue
 		}
 		paths, err := nethelper.EphemeralPathsForUID(uid, leaseID)
@@ -615,7 +711,10 @@ func reapStaleEphemeralLeases(uid uint32, currentLease string) (int, error) {
 }
 
 func reapStaleEphemeralPinLeases(uid uint32, currentLease string) (int, error) {
-	uidRoot := filepath.Join("/sys/fs/bpf/agentsh/nethelper-ephemeral", strconv.FormatUint(uint64(uid), 10))
+	uidRoot := filepath.Join(
+		"/sys/fs/bpf/agentsh/nethelper-ephemeral",
+		strconv.FormatUint(uint64(uid), 10),
+	)
 	entries, err := os.ReadDir(uidRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -626,7 +725,8 @@ func reapStaleEphemeralPinLeases(uid uint32, currentLease string) (int, error) {
 	reaped := 0
 	for _, entry := range entries {
 		leaseID := entry.Name()
-		if !entry.IsDir() || leaseID == currentLease || nethelper.ValidateEphemeralLeaseID(leaseID) != nil {
+		if !entry.IsDir() || leaseID == currentLease ||
+			nethelper.ValidateEphemeralLeaseID(leaseID) != nil {
 			continue
 		}
 		paths, err := nethelper.EphemeralPathsForUID(uid, leaseID)
@@ -683,7 +783,9 @@ func cleanupAbortedEphemeralLease(paths nethelper.EphemeralLeasePaths, uid uint3
 		EnforceTargetUID: true,
 		OwnerUID:         0,
 	})
-	for _, path := range []string{paths.ResultFile, paths.CredentialFile, paths.RootCredential, paths.SocketPath} {
+	for _, path := range []string{
+		paths.ResultFile, paths.CredentialFile, paths.RootCredential, paths.SocketPath,
+	} {
 		_ = os.Remove(path)
 	}
 	_ = removeEmptyCompositionScratchDirectory(paths.CompositionScratchRoot)
@@ -704,7 +806,11 @@ func cleanupReleasedEphemeralLease(paths nethelper.EphemeralLeasePaths, uid uint
 		return fmt.Errorf("clean released helper pins: %w", err)
 	}
 	if err := os.Remove(paths.PinRoot); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("released helper pin root is not empty; preserving lease state: %w (warnings: %s)", err, strings.Join(result.Warnings, "; "))
+		return fmt.Errorf(
+			"released helper pin root is not empty; preserving lease state: %w (warnings: %s)",
+			err,
+			strings.Join(result.Warnings, "; "),
+		)
 	}
 	for _, path := range []string{paths.ResultFile, paths.CredentialFile, paths.RootCredential} {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {

@@ -56,7 +56,10 @@ func ReadShimConf(root string) (ShimConf, error) {
 		case "true", "1", "false", "0":
 			// valid
 		default:
-			return conf, fmt.Errorf("shim.conf: invalid force value %q (expected true, 1, false, or 0)", v)
+			return conf, fmt.Errorf(
+				"shim.conf: invalid force value %q (expected true, 1, false, or 0)",
+				v,
+			)
 		}
 	}
 	if v, ok := conf.Raw["ready_gate"]; ok {
@@ -64,7 +67,10 @@ func ReadShimConf(root string) (ShimConf, error) {
 		case "true", "1", "false", "0":
 			// valid
 		default:
-			return conf, fmt.Errorf("shim.conf: invalid ready_gate value %q (expected true, 1, false, or 0)", v)
+			return conf, fmt.Errorf(
+				"shim.conf: invalid ready_gate value %q (expected true, 1, false, or 0)",
+				v,
+			)
 		}
 	}
 	if v, ok := conf.Raw["shim_install"]; ok {
@@ -72,7 +78,10 @@ func ReadShimConf(root string) (ShimConf, error) {
 		case "auto", "on", "off":
 			conf.ShimInstall = v
 		default:
-			return conf, fmt.Errorf("shim.conf: invalid shim_install value %q (expected auto, on, or off)", v)
+			return conf, fmt.Errorf(
+				"shim.conf: invalid shim_install value %q (expected auto, on, or off)",
+				v,
+			)
 		}
 	}
 	return conf, nil

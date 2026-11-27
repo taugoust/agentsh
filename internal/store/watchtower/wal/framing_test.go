@@ -185,14 +185,26 @@ func TestRecordFraming_HonorsLargeConfiguredMax(t *testing.T) {
 
 	var buf bytes.Buffer
 	if err := WriteRecord(&buf, payload, largeMax); err != nil {
-		t.Fatalf("WriteRecord with maxPayload=64MiB rejected a %d-byte payload: %v", payloadSize, err)
+		t.Fatalf(
+			"WriteRecord with maxPayload=64MiB rejected a %d-byte payload: %v",
+			payloadSize,
+			err,
+		)
 	}
 	got, err := ReadRecord(&buf, largeMax)
 	if err != nil {
-		t.Fatalf("ReadRecord with maxPayload=64MiB failed on a %d-byte payload: %v", payloadSize, err)
+		t.Fatalf(
+			"ReadRecord with maxPayload=64MiB failed on a %d-byte payload: %v",
+			payloadSize,
+			err,
+		)
 	}
 	if !bytes.Equal(got, payload) {
-		t.Fatalf("round-trip mismatch on large payload: len(got)=%d len(want)=%d", len(got), len(payload))
+		t.Fatalf(
+			"round-trip mismatch on large payload: len(got)=%d len(want)=%d",
+			len(got),
+			len(payload),
+		)
 	}
 }
 
@@ -203,7 +215,10 @@ func TestRecordFraming_RejectsNonPositiveMaxPayload(t *testing.T) {
 		if err := WriteRecord(&buf, []byte("x"), m); err == nil {
 			t.Errorf("WriteRecord(maxPayload=%d) expected error, got nil", m)
 		}
-		if _, err := ReadRecord(bytes.NewReader([]byte{0, 0, 0, 5, 0, 0, 0, 0, 'x'}), m); err == nil {
+		if _, err := ReadRecord(
+			bytes.NewReader([]byte{0, 0, 0, 5, 0, 0, 0, 0, 'x'}),
+			m,
+		); err == nil {
 			t.Errorf("ReadRecord(maxPayload=%d) expected error, got nil", m)
 		}
 	}
@@ -227,7 +242,10 @@ func TestRecordFraming_RejectsMaxPayloadAboveProtocolCap(t *testing.T) {
 	if err := WriteRecord(&buf, []byte("x"), above); err == nil {
 		t.Fatalf("WriteRecord(maxPayload=%d) expected error, got nil", above)
 	}
-	if _, err := ReadRecord(bytes.NewReader([]byte{0, 0, 0, 5, 0, 0, 0, 0, 'x'}), above); err == nil {
+	if _, err := ReadRecord(
+		bytes.NewReader([]byte{0, 0, 0, 5, 0, 0, 0, 0, 'x'}),
+		above,
+	); err == nil {
 		t.Fatalf("ReadRecord(maxPayload=%d) expected error, got nil", above)
 	}
 }
@@ -269,8 +287,11 @@ func TestRecordFraming_BoundsAllocationOnCorruptedLength(t *testing.T) {
 	cap := int(capValue)
 	header := make([]byte, 8)
 	binary.BigEndian.PutUint32(header[0:4], math.MaxUint32) // claims payloadLen == MaxFramedPayload
-	binary.BigEndian.PutUint32(header[4:8], 0)              // CRC: doesn't matter, we should fail before checking
-	body := []byte{'a', 'b', 'c'}                           // far short of the claimed ~4 GiB
+	binary.BigEndian.PutUint32(
+		header[4:8],
+		0,
+	) // CRC: doesn't matter, we should fail before checking
+	body := []byte{'a', 'b', 'c'} // far short of the claimed ~4 GiB
 	frame := append(header, body...)
 	_, err := ReadRecord(bytes.NewReader(frame), cap)
 	if err == nil {

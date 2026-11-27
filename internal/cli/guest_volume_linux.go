@@ -42,16 +42,26 @@ type guestMountInfoEntry struct {
 
 // verifyGuestControlWorkspaceVolume runs before any guest AgentSH process is
 // started. Protocol v2 deliberately retains its pre-volume behavior.
-func verifyGuestControlWorkspaceVolume(manifest guestcontrol.Manifest, workspace, volumeRoot string) error {
+func verifyGuestControlWorkspaceVolume(
+	manifest guestcontrol.Manifest,
+	workspace, volumeRoot string,
+) error {
 	if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV2 {
 		return nil
 	}
-	if manifest.ProtocolVersion != guestcontrol.ProtocolVersionV3 && manifest.ProtocolVersion != guestcontrol.ProtocolVersionV4 {
-		return fmt.Errorf("guest control protocol version %d is unsupported", manifest.ProtocolVersion)
+	if manifest.ProtocolVersion != guestcontrol.ProtocolVersionV3 &&
+		manifest.ProtocolVersion != guestcontrol.ProtocolVersionV4 {
+		return fmt.Errorf(
+			"guest control protocol version %d is unsupported",
+			manifest.ProtocolVersion,
+		)
 	}
 	volumeRoot = strings.TrimSpace(volumeRoot)
 	if volumeRoot == "" {
-		return fmt.Errorf("guest control protocol version %d requires --volume-root", manifest.ProtocolVersion)
+		return fmt.Errorf(
+			"guest control protocol version %d requires --volume-root",
+			manifest.ProtocolVersion,
+		)
 	}
 	if filepath.Clean(volumeRoot) != volumeRoot {
 		return fmt.Errorf("guest control volume root must be a dedicated clean absolute path")
@@ -63,7 +73,11 @@ func verifyGuestControlWorkspaceVolume(manifest guestcontrol.Manifest, workspace
 		return fmt.Errorf("guest control volume root must be a dedicated clean absolute path")
 	}
 	if workspace != expectedWorkspace {
-		return fmt.Errorf("guest control protocol version %d requires the exact %s workspace mount", manifest.ProtocolVersion, expectedWorkspace)
+		return fmt.Errorf(
+			"guest control protocol version %d requires the exact %s workspace mount",
+			manifest.ProtocolVersion,
+			expectedWorkspace,
+		)
 	}
 	if guestPathWithin(volumeRoot, workspace) {
 		return fmt.Errorf("guest control volume identity root must be outside the workspace mount")
@@ -74,7 +88,12 @@ func verifyGuestControlWorkspaceVolume(manifest guestcontrol.Manifest, workspace
 	if err != nil {
 		return err
 	}
-	if err := verifyGuestControlWorkspaceVolumeSnapshot(manifest, workspace, volumeRoot, mountInfo); err != nil {
+	if err := verifyGuestControlWorkspaceVolumeSnapshot(
+		manifest,
+		workspace,
+		volumeRoot,
+		mountInfo,
+	); err != nil {
 		return err
 	}
 	afterMountInfo, err := readBoundedGuestMountInfo(mountInfoPath)
@@ -87,7 +106,11 @@ func verifyGuestControlWorkspaceVolume(manifest guestcontrol.Manifest, workspace
 	return nil
 }
 
-func verifyGuestControlWorkspaceVolumeSnapshot(manifest guestcontrol.Manifest, workspace, volumeRoot string, mountInfo []byte) error {
+func verifyGuestControlWorkspaceVolumeSnapshot(
+	manifest guestcontrol.Manifest,
+	workspace, volumeRoot string,
+	mountInfo []byte,
+) error {
 	volumeInfo, err := inspectGuestDirectoryPath(volumeRoot)
 	if err != nil {
 		return fmt.Errorf("inspect guest control volume root: %w", err)
@@ -121,19 +144,24 @@ func verifyGuestControlWorkspaceVolumeSnapshot(manifest guestcontrol.Manifest, w
 		return fmt.Errorf("guest control volume root is not an exact whole-filesystem ext4 mount")
 	}
 	if workspaceMount.fsType != "ext4" || workspaceMount.root != expectedWorkspaceRoot {
-		return fmt.Errorf("guest control workspace is not rooted at the volume workspace subdirectory")
+		return fmt.Errorf(
+			"guest control workspace is not rooted at the volume workspace subdirectory",
+		)
 	}
 	if volumeMount.major != workspaceMount.major || volumeMount.minor != workspaceMount.minor {
 		return fmt.Errorf("guest control workspace and volume mounts use different devices")
 	}
 	if !os.SameFile(volumeWorkspaceInfo, workspaceInfo) {
-		return fmt.Errorf("guest control workspace mount is not the exact volume workspace subdirectory")
+		return fmt.Errorf(
+			"guest control workspace mount is not the exact volume workspace subdirectory",
+		)
 	}
 	if volumeWorkspace != workspace && countGuestMountInfoEntries(entries, volumeWorkspace) != 0 {
 		return fmt.Errorf("guest control volume workspace subdirectory is itself overmounted")
 	}
 	for name, info := range map[string]os.FileInfo{
-		"volume root": volumeInfo, "workspace mount": workspaceInfo, "volume workspace subdirectory": volumeWorkspaceInfo,
+		"volume root": volumeInfo, "workspace mount": workspaceInfo,
+		"volume workspace subdirectory": volumeWorkspaceInfo,
 	} {
 		major, minor, deviceErr := guestFileDevice(info)
 		if deviceErr != nil {
@@ -151,7 +179,12 @@ func verifyGuestControlWorkspaceVolumeSnapshot(manifest guestcontrol.Manifest, w
 	if countGuestMountInfoEntries(entries, identityPath) != 0 {
 		return fmt.Errorf("guest control volume identity file is overmounted")
 	}
-	if err := readAndValidateGuestVolumeIdentity(identityPath, manifest, volumeMount.major, volumeMount.minor); err != nil {
+	if err := readAndValidateGuestVolumeIdentity(
+		identityPath,
+		manifest,
+		volumeMount.major,
+		volumeMount.minor,
+	); err != nil {
 		return err
 	}
 	for path, before := range map[string]os.FileInfo{
@@ -159,7 +192,9 @@ func verifyGuestControlWorkspaceVolumeSnapshot(manifest guestcontrol.Manifest, w
 	} {
 		after, inspectErr := inspectGuestDirectoryPath(path)
 		if inspectErr != nil || !os.SameFile(before, after) {
-			return fmt.Errorf("guest control volume mount path identity changed during verification")
+			return fmt.Errorf(
+				"guest control volume mount path identity changed during verification",
+			)
 		}
 	}
 	return nil
@@ -194,13 +229,19 @@ func inspectGuestDirectoryPath(path string) (os.FileInfo, error) {
 	return info, nil
 }
 
-func readAndValidateGuestVolumeIdentity(path string, manifest guestcontrol.Manifest, expectedMajor, expectedMinor uint32) error {
+func readAndValidateGuestVolumeIdentity(
+	path string,
+	manifest guestcontrol.Manifest,
+	expectedMajor, expectedMinor uint32,
+) error {
 	before, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("inspect guest control volume identity: %w", err)
 	}
 	if !safePrivateGuestVolumeIdentityFile(before) || before.Size() > guestcontrol.MaxMessageBytes {
-		return fmt.Errorf("guest control volume identity has unsafe type, ownership, permissions, links, or size")
+		return fmt.Errorf(
+			"guest control volume identity has unsafe type, ownership, permissions, links, or size",
+		)
 	}
 	major, minor, err := guestFileDevice(before)
 	if err != nil || major != expectedMajor || minor != expectedMinor {
@@ -220,11 +261,15 @@ func readAndValidateGuestVolumeIdentity(path string, manifest guestcontrol.Manif
 	if err != nil || !safePrivateGuestVolumeIdentityFile(opened) || !os.SameFile(before, opened) {
 		return fmt.Errorf("guest control volume identity changed while opening")
 	}
-	identity, err := decodeStrictGuestVolumeIdentity(io.LimitReader(file, guestcontrol.MaxMessageBytes+1))
+	identity, err := decodeStrictGuestVolumeIdentity(
+		io.LimitReader(file, guestcontrol.MaxMessageBytes+1),
+	)
 	if err != nil {
 		return fmt.Errorf("decode guest control volume identity: %w", err)
 	}
-	if identity.SchemaVersion != guestVolumeIdentitySchemaVersion || identity.SessionID != manifest.SessionID || identity.VolumeID != manifest.VolumeID {
+	if identity.SchemaVersion != guestVolumeIdentitySchemaVersion ||
+		identity.SessionID != manifest.SessionID ||
+		identity.VolumeID != manifest.VolumeID {
 		return fmt.Errorf("guest control volume identity does not match the exact session volume")
 	}
 	return nil
@@ -283,7 +328,8 @@ func decodeStrictGuestVolumeIdentity(reader io.Reader) (guestVolumeIdentity, err
 }
 
 func safePrivateGuestVolumeIdentityFile(info os.FileInfo) bool {
-	if info == nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 {
+	if info == nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 ||
+		info.Mode().Perm() != 0o600 {
 		return false
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
@@ -337,10 +383,20 @@ func parseGuestMountInfo(data []byte) ([]guestMountInfoEntry, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !filepath.IsAbs(root) || filepath.Clean(root) != root || !filepath.IsAbs(mountPoint) || filepath.Clean(mountPoint) != mountPoint {
+		if !filepath.IsAbs(root) || filepath.Clean(root) != root || !filepath.IsAbs(mountPoint) ||
+			filepath.Clean(mountPoint) != mountPoint {
 			return nil, fmt.Errorf("mountinfo contains an unclean or non-absolute path")
 		}
-		entries = append(entries, guestMountInfoEntry{major: major, minor: minor, root: root, mountPoint: mountPoint, fsType: fields[separator+1]})
+		entries = append(
+			entries,
+			guestMountInfoEntry{
+				major:      major,
+				minor:      minor,
+				root:       root,
+				mountPoint: mountPoint,
+				fsType:     fields[separator+1],
+			},
+		)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
@@ -396,7 +452,10 @@ func decodeGuestMountInfoPath(value string) (string, error) {
 	return decoded.String(), nil
 }
 
-func exactGuestMountInfoEntry(entries []guestMountInfoEntry, path string) (guestMountInfoEntry, error) {
+func exactGuestMountInfoEntry(
+	entries []guestMountInfoEntry,
+	path string,
+) (guestMountInfoEntry, error) {
 	var exact guestMountInfoEntry
 	for _, entry := range entries {
 		if entry.mountPoint == path {
@@ -405,7 +464,11 @@ func exactGuestMountInfoEntry(entries []guestMountInfoEntry, path string) (guest
 	}
 	matches := countGuestMountInfoEntries(entries, path)
 	if matches != 1 {
-		return guestMountInfoEntry{}, fmt.Errorf("mountpoint %s has %d exact entries, want 1", path, matches)
+		return guestMountInfoEntry{}, fmt.Errorf(
+			"mountpoint %s has %d exact entries, want 1",
+			path,
+			matches,
+		)
 	}
 	return exact, nil
 }

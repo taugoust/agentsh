@@ -16,11 +16,23 @@ func TestAppendEventSaturationDropsBulkButPreservesLifecycle(t *testing.T) {
 	s.eventCh <- eventPayload{evType: "file_open"}
 
 	bulk := types.Event{
-		ID: "bulk", SessionID: "sess", Type: "file_open", Timestamp: time.Now(),
-		Policy: &types.PolicyInfo{Decision: types.DecisionAllow, EffectiveDecision: types.DecisionAllow},
+		ID:        "bulk",
+		SessionID: "sess",
+		Type:      "file_open",
+		Timestamp: time.Now(),
+		Policy: &types.PolicyInfo{
+			Decision:          types.DecisionAllow,
+			EffectiveDecision: types.DecisionAllow,
+		},
 	}
 	started := time.Now()
-	if err := s.AppendEvent(context.Background(), bulk); !errors.Is(err, storepkg.ErrEventBufferFull) {
+	if err := s.AppendEvent(
+		context.Background(),
+		bulk,
+	); !errors.Is(
+		err,
+		storepkg.ErrEventBufferFull,
+	) {
 		t.Fatalf("bulk saturation error = %v", err)
 	}
 	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
@@ -31,7 +43,12 @@ func TestAppendEventSaturationDropsBulkButPreservesLifecycle(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 		<-s.eventCh
 	}()
-	lifecycle := types.Event{ID: "finished", SessionID: "sess", Type: "command_finished", Timestamp: time.Now()}
+	lifecycle := types.Event{
+		ID:        "finished",
+		SessionID: "sess",
+		Type:      "command_finished",
+		Timestamp: time.Now(),
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if err := s.AppendEvent(ctx, lifecycle); err != nil {
@@ -85,7 +102,17 @@ func TestSaveAndReadOutputChunk(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	stdout := []byte("hello world")
-	if err := s.SaveOutput(context.Background(), "sess", "cmd", stdout, []byte(""), int64(len(stdout)), 0, false, false); err != nil {
+	if err := s.SaveOutput(
+		context.Background(),
+		"sess",
+		"cmd",
+		stdout,
+		[]byte(""),
+		int64(len(stdout)),
+		0,
+		false,
+		false,
+	); err != nil {
 		t.Fatalf("SaveOutput: %v", err)
 	}
 
@@ -164,8 +191,14 @@ func TestListMCPTools_FilterByServer(t *testing.T) {
 
 	// Insert tools for different servers
 	st.UpsertMCPTool(context.Background(), MCPTool{ServerID: "fs", ToolName: "read", ToolHash: "a"})
-	st.UpsertMCPTool(context.Background(), MCPTool{ServerID: "fs", ToolName: "write", ToolHash: "b"})
-	st.UpsertMCPTool(context.Background(), MCPTool{ServerID: "db", ToolName: "query", ToolHash: "c"})
+	st.UpsertMCPTool(
+		context.Background(),
+		MCPTool{ServerID: "fs", ToolName: "write", ToolHash: "b"},
+	)
+	st.UpsertMCPTool(
+		context.Background(),
+		MCPTool{ServerID: "db", ToolName: "query", ToolHash: "c"},
+	)
 
 	// Filter by server
 	tools, err := st.ListMCPTools(context.Background(), MCPToolFilter{ServerID: "fs"})
@@ -187,8 +220,20 @@ func TestListMCPServers(t *testing.T) {
 
 	// Insert tools
 	st.UpsertMCPTool(context.Background(), MCPTool{ServerID: "fs", ToolName: "read", ToolHash: "a"})
-	st.UpsertMCPTool(context.Background(), MCPTool{ServerID: "fs", ToolName: "write", ToolHash: "b"})
-	st.UpsertMCPTool(context.Background(), MCPTool{ServerID: "db", ToolName: "query", ToolHash: "c", DetectionCount: 2, MaxSeverity: "high"})
+	st.UpsertMCPTool(
+		context.Background(),
+		MCPTool{ServerID: "fs", ToolName: "write", ToolHash: "b"},
+	)
+	st.UpsertMCPTool(
+		context.Background(),
+		MCPTool{
+			ServerID:       "db",
+			ToolName:       "query",
+			ToolHash:       "c",
+			DetectionCount: 2,
+			MaxSeverity:    "high",
+		},
+	)
 
 	servers, err := st.ListMCPServers(context.Background())
 	if err != nil {

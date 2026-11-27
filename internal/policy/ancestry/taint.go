@@ -162,7 +162,9 @@ func NewTaintCache(cfg TaintCacheConfig) *TaintCache {
 }
 
 // SetMatchesTaintSource sets the function used to detect taint sources.
-func (c *TaintCache) SetMatchesTaintSource(fn func(info *ProcessInfo) (contextName string, ok bool)) {
+func (c *TaintCache) SetMatchesTaintSource(
+	fn func(info *ProcessInfo) (contextName string, ok bool),
+) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.matchesTaintSource = fn

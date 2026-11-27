@@ -60,7 +60,10 @@ func TestResolveOnceDoesNotStoreScopedDecision(t *testing.T) {
 
 	done := make(chan Resolution, 1)
 	go func() {
-		res, _ := m.RequestApproval(ctx, Request{ID: "a1", SessionID: "s1", Kind: "network", Fields: scopeFields(scope)})
+		res, _ := m.RequestApproval(
+			ctx,
+			Request{ID: "a1", SessionID: "s1", Kind: "network", Fields: scopeFields(scope)},
+		)
 		done <- res
 	}()
 	waitForPending(t, m, 1)

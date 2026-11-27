@@ -29,14 +29,24 @@ func newTestStore(t *testing.T, maxBytes int64) (*Store, string) {
 
 func TestStorePublishesAndReopensCompleteBundle(t *testing.T) {
 	store, _ := newTestStore(t, 1024)
-	descriptor, err := store.Put(context.Background(), KindGitInputBundle, strings.NewReader("bundle data"))
+	descriptor, err := store.Put(
+		context.Background(),
+		KindGitInputBundle,
+		strings.NewReader("bundle data"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.SessionID != testSessionID || descriptor.Kind != KindGitInputBundle || descriptor.Size != int64(len("bundle data")) || !descriptor.Complete {
+	if descriptor.SessionID != testSessionID || descriptor.Kind != KindGitInputBundle ||
+		descriptor.Size != int64(len("bundle data")) ||
+		!descriptor.Complete {
 		t.Fatalf("descriptor = %#v", descriptor)
 	}
-	file, reopened, err := store.Open(context.Background(), descriptor.ArtifactID, KindGitInputBundle)
+	file, reopened, err := store.Open(
+		context.Background(),
+		descriptor.ArtifactID,
+		KindGitInputBundle,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,14 +62,24 @@ func TestStorePublishesAndReopensCompleteBundle(t *testing.T) {
 	if err != nil || len(listed) != 1 || listed[0] != descriptor {
 		t.Fatalf("List = %#v, %v", listed, err)
 	}
-	if info, err := os.Stat(store.dataPath(descriptor.ArtifactID)); err != nil || info.Mode().Perm()&0o077 != 0 {
+	if info, err := os.Stat(
+		store.dataPath(descriptor.ArtifactID),
+	); err != nil ||
+		info.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("content permissions = %v, %v", info, err)
 	}
 }
 
 func TestStoreOverflowPublishesNothing(t *testing.T) {
 	store, _ := newTestStore(t, 4)
-	if _, err := store.Put(context.Background(), KindGitResultBundle, strings.NewReader("12345")); !errors.Is(err, ErrTooLarge) {
+	if _, err := store.Put(
+		context.Background(),
+		KindGitResultBundle,
+		strings.NewReader("12345"),
+	); !errors.Is(
+		err,
+		ErrTooLarge,
+	) {
 		t.Fatalf("Put error = %v, want ErrTooLarge", err)
 	}
 	assertNoPublishedArtifacts(t, store)
@@ -69,7 +89,14 @@ func TestStoreCancellationPublishesNothing(t *testing.T) {
 	store, _ := newTestStore(t, 1024)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := store.Put(ctx, KindGitInputBundle, strings.NewReader("data")); !errors.Is(err, context.Canceled) {
+	if _, err := store.Put(
+		ctx,
+		KindGitInputBundle,
+		strings.NewReader("data"),
+	); !errors.Is(
+		err,
+		context.Canceled,
+	) {
 		t.Fatalf("Put error = %v, want context cancellation", err)
 	}
 	assertNoPublishedArtifacts(t, store)
@@ -78,14 +105,29 @@ func TestStoreCancellationPublishesNothing(t *testing.T) {
 func TestStoreRejectsTamperedContentAndDescriptor(t *testing.T) {
 	t.Run("content", func(t *testing.T) {
 		store, _ := newTestStore(t, 1024)
-		descriptor, err := store.Put(context.Background(), KindGitResultBundle, strings.NewReader("original"))
+		descriptor, err := store.Put(
+			context.Background(),
+			KindGitResultBundle,
+			strings.NewReader("original"),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(store.dataPath(descriptor.ArtifactID), []byte("tampered"), 0o600); err != nil {
+		if err := os.WriteFile(
+			store.dataPath(descriptor.ArtifactID),
+			[]byte("tampered"),
+			0o600,
+		); err != nil {
 			t.Fatal(err)
 		}
-		if file, _, err := store.Open(context.Background(), descriptor.ArtifactID, KindGitResultBundle); !errors.Is(err, ErrCorrupt) {
+		if file, _, err := store.Open(
+			context.Background(),
+			descriptor.ArtifactID,
+			KindGitResultBundle,
+		); !errors.Is(
+			err,
+			ErrCorrupt,
+		) {
 			if file != nil {
 				file.Close()
 			}
@@ -95,7 +137,11 @@ func TestStoreRejectsTamperedContentAndDescriptor(t *testing.T) {
 
 	t.Run("descriptor", func(t *testing.T) {
 		store, _ := newTestStore(t, 1024)
-		descriptor, err := store.Put(context.Background(), KindGitResultBundle, strings.NewReader("original"))
+		descriptor, err := store.Put(
+			context.Background(),
+			KindGitResultBundle,
+			strings.NewReader("original"),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -108,7 +154,14 @@ func TestStoreRejectsTamperedContentAndDescriptor(t *testing.T) {
 		if err := os.WriteFile(path, data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if file, _, err := store.Open(context.Background(), descriptor.ArtifactID, KindGitResultBundle); !errors.Is(err, ErrInvalid) {
+		if file, _, err := store.Open(
+			context.Background(),
+			descriptor.ArtifactID,
+			KindGitResultBundle,
+		); !errors.Is(
+			err,
+			ErrInvalid,
+		) {
 			if file != nil {
 				file.Close()
 			}
@@ -119,11 +172,22 @@ func TestStoreRejectsTamperedContentAndDescriptor(t *testing.T) {
 
 func TestStoreRejectsReplacementAndCrossKindAccess(t *testing.T) {
 	store, _ := newTestStore(t, 1024)
-	descriptor, err := store.Put(context.Background(), KindGitInputBundle, strings.NewReader("input"))
+	descriptor, err := store.Put(
+		context.Background(),
+		KindGitInputBundle,
+		strings.NewReader("input"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if file, _, err := store.Open(context.Background(), descriptor.ArtifactID, KindGitResultBundle); !errors.Is(err, ErrInvalid) {
+	if file, _, err := store.Open(
+		context.Background(),
+		descriptor.ArtifactID,
+		KindGitResultBundle,
+	); !errors.Is(
+		err,
+		ErrInvalid,
+	) {
 		if file != nil {
 			file.Close()
 		}
@@ -133,10 +197,20 @@ func TestStoreRejectsReplacementAndCrossKindAccess(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Base(store.descriptorPath(descriptor.ArtifactID)), path); err != nil {
+	if err := os.Symlink(
+		filepath.Base(store.descriptorPath(descriptor.ArtifactID)),
+		path,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if file, _, err := store.Open(context.Background(), descriptor.ArtifactID, KindGitInputBundle); !errors.Is(err, ErrCorrupt) {
+	if file, _, err := store.Open(
+		context.Background(),
+		descriptor.ArtifactID,
+		KindGitInputBundle,
+	); !errors.Is(
+		err,
+		ErrCorrupt,
+	) {
 		if file != nil {
 			file.Close()
 		}
@@ -146,7 +220,11 @@ func TestStoreRejectsReplacementAndCrossKindAccess(t *testing.T) {
 
 func TestStoreDeleteIsIdempotentAndIdentityBound(t *testing.T) {
 	store, _ := newTestStore(t, 1024)
-	descriptor, err := store.Put(context.Background(), KindGitResultBundle, strings.NewReader("result"))
+	descriptor, err := store.Put(
+		context.Background(),
+		KindGitResultBundle,
+		strings.NewReader("result"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,17 +248,28 @@ func TestStoreReconcilesOrphanAndInterruptedDelete(t *testing.T) {
 	if err := os.WriteFile(store.dataPath(orphanID), []byte("orphan"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	descriptor, err := store.Put(context.Background(), KindGitResultBundle, strings.NewReader("result"))
+	descriptor, err := store.Put(
+		context.Background(),
+		KindGitResultBundle,
+		strings.NewReader("result"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Rename(store.descriptorPath(descriptor.ArtifactID), store.tombstonePath(descriptor.ArtifactID)); err != nil {
+	if err := os.Rename(
+		store.descriptorPath(descriptor.ArtifactID),
+		store.tombstonePath(descriptor.ArtifactID),
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := NewStore(stateDir, testSessionID, 1024); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{store.dataPath(orphanID), store.dataPath(descriptor.ArtifactID), store.tombstonePath(descriptor.ArtifactID)} {
+	for _, path := range []string{
+		store.dataPath(orphanID),
+		store.dataPath(descriptor.ArtifactID),
+		store.tombstonePath(descriptor.ArtifactID),
+	} {
 		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("reconciliation retained %s: %v", path, err)
 		}

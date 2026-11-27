@@ -24,7 +24,10 @@ type approvalResult struct {
 	err      error
 }
 
-func (pc *proxyConn) waitForApproval(ctx context.Context, a statemachine.ActionApproverWait) approvalOutcome {
+func (pc *proxyConn) waitForApproval(
+	ctx context.Context,
+	a statemachine.ActionApproverWait,
+) approvalOutcome {
 	approver := pc.srv.cfg.Approver
 	if approver == nil {
 		approver = policy.NopApprover{}
@@ -64,10 +67,20 @@ func (pc *proxyConn) waitForApproval(ctx context.Context, a statemachine.ActionA
 	}
 }
 
-func (pc *proxyConn) runApprovalWait(ctx context.Context, origFrame pgproto3.FrontendMessage, a statemachine.ActionApproverWait) error {
+func (pc *proxyConn) runApprovalWait(
+	ctx context.Context,
+	origFrame pgproto3.FrontendMessage,
+	a statemachine.ActionApproverWait,
+) error {
 	out := pc.waitForApproval(ctx, a)
 	if out.err != nil {
-		pc.emitApprovalFrameEvent(ctx, origFrame, a, approvalDenyDecision(a.Rule, "cancelled during approval"), out.denyAction)
+		pc.emitApprovalFrameEvent(
+			ctx,
+			origFrame,
+			a,
+			approvalDenyDecision(a.Rule, "cancelled during approval"),
+			out.denyAction,
+		)
 		return out.err
 	}
 	if out.approved {
@@ -78,8 +91,19 @@ func (pc *proxyConn) runApprovalWait(ctx context.Context, origFrame pgproto3.Fro
 		pc.state.upstreamFE.Send(origFrame)
 		return pc.state.upstreamFE.Flush()
 	}
-	pc.emitApprovalFrameEvent(ctx, origFrame, a, approvalDenyDecision(a.Rule, approvalReason(out.denyAction)), out.denyAction)
-	actions := statemachine.DenyRoute(*pc.state.smState, a.Rule, "denied by AgentSH policy: "+approvalReason(out.denyAction), sqlstateInsufficientPrivilege)
+	pc.emitApprovalFrameEvent(
+		ctx,
+		origFrame,
+		a,
+		approvalDenyDecision(a.Rule, approvalReason(out.denyAction)),
+		out.denyAction,
+	)
+	actions := statemachine.DenyRoute(
+		*pc.state.smState,
+		a.Rule,
+		"denied by AgentSH policy: "+approvalReason(out.denyAction),
+		sqlstateInsufficientPrivilege,
+	)
 	return pc.executeActions(ctx, origFrame, actions)
 }
 
@@ -99,7 +123,11 @@ func (pc *proxyConn) runSimpleQueryApproval(
 	}
 	out := pc.waitForApproval(ctx, action)
 	if out.err != nil {
-		denyDecisions := decisionsWithApprovalDeny(decisions, approveIndex, "cancelled during approval")
+		denyDecisions := decisionsWithApprovalDeny(
+			decisions,
+			approveIndex,
+			"cancelled during approval",
+		)
 		pc.emitDenyEvents(ctx, stmts, denyDecisions, q.String, batchSHA, out.denyAction)
 		return out.err
 	}
@@ -115,9 +143,18 @@ func (pc *proxyConn) runSimpleQueryApproval(
 		return ferr
 	}
 
-	denyDecisions := decisionsWithApprovalDeny(decisions, approveIndex, approvalReason(out.denyAction))
+	denyDecisions := decisionsWithApprovalDeny(
+		decisions,
+		approveIndex,
+		approvalReason(out.denyAction),
+	)
 	pc.emitDenyEvents(ctx, stmts, denyDecisions, q.String, batchSHA, out.denyAction)
-	actions := statemachine.DenyRoute(*pc.state.smState, rule, "denied by AgentSH policy: "+approvalReason(out.denyAction), sqlstateInsufficientPrivilege)
+	actions := statemachine.DenyRoute(
+		*pc.state.smState,
+		rule,
+		"denied by AgentSH policy: "+approvalReason(out.denyAction),
+		sqlstateInsufficientPrivilege,
+	)
 	return pc.executeActions(ctx, q, actions)
 }
 
@@ -152,7 +189,11 @@ func approvalDenyDecision(rule policy.StatementRule, reason string) policy.Decis
 	}
 }
 
-func decisionsWithApprovalDeny(in []policy.Decision, approveIndex int, reason string) []policy.Decision {
+func decisionsWithApprovalDeny(
+	in []policy.Decision,
+	approveIndex int,
+	reason string,
+) []policy.Decision {
 	out := append([]policy.Decision(nil), in...)
 	if approveIndex >= 0 && approveIndex < len(out) {
 		out[approveIndex].Verb = policy.VerbDeny

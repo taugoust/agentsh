@@ -57,7 +57,8 @@ func TestGRPC_PTYRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected stream, got error: %v", err)
 	}
-	// Without a start message (first frame must be start), the server should reject with InvalidArgument.
+	// Without a start message (first frame must be start), the server should reject with
+	// InvalidArgument.
 	_ = stream.Send(&ptygrpc.ExecPTYClientMsg{})
 	_, err = stream.Recv()
 	if err == nil {

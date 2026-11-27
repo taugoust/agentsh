@@ -9,7 +9,9 @@ import (
 
 func TestReader_AppendNotifyNext(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +40,9 @@ func TestReader_AppendNotifyNext(t *testing.T) {
 
 func TestReader_StreamsSequentially(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +90,9 @@ func TestReader_AdvancesPastLiveSegmentAfterSizeRoll(t *testing.T) {
 		t.Skip("Windows: rename-while-reader-open races the seal path; tracked as follow-up")
 	}
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +177,9 @@ func TestReader_AdvancesPastLiveSegmentAfterGenerationRoll(t *testing.T) {
 		t.Skip("Windows: rename-while-reader-open races the seal path; tracked as follow-up")
 	}
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +219,11 @@ func TestReader_AdvancesPastLiveSegmentAfterGenerationRoll(t *testing.T) {
 			t.Fatalf("gen=7 Reader Next: %v", err)
 		}
 		if rec.Kind == RecordData && rec.Generation == 8 {
-			t.Fatalf("gen=7 Reader surfaced gen=8 record (seq=%d) — segment-iteration filter must skip other-generation segments", rec.Sequence)
+			t.Fatalf(
+				"gen=7 Reader surfaced gen=8 record (seq=%d) — segment-iteration filter must "+
+					"skip other-generation segments",
+				rec.Sequence,
+			)
 		}
 	}
 	// A gen=8 Reader opened AFTER the roll must surface the gen=8 record —
@@ -258,7 +270,9 @@ func TestReader_AdvancesPastLiveSegmentAfterGenerationRoll(t *testing.T) {
 // to the gen=0 Reader (the segment-iteration filter skips it).
 func TestReader_SkipsGCdSegmentsContinuingPastLossMarker(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +316,12 @@ func TestReader_SkipsGCdSegmentsContinuingPastLossMarker(t *testing.T) {
 		}
 		if rec.Kind == RecordData {
 			if rec.Generation != 0 {
-				t.Fatalf("gen=0 reader surfaced rec.Generation=%d (seq=%d) — segment-iteration filter must skip other-generation segments", rec.Generation, rec.Sequence)
+				t.Fatalf(
+					"gen=0 reader surfaced rec.Generation=%d (seq=%d) — segment-iteration filter "+
+						"must skip other-generation segments",
+					rec.Generation,
+					rec.Sequence,
+				)
 			}
 			seenSeqs = append(seenSeqs, rec.Sequence)
 		}
@@ -332,7 +351,9 @@ func TestReader_FollowsLiveSegmentRenamedBetweenSnapshotAndOpen(t *testing.T) {
 	dir := t.TempDir()
 	// SegmentSize=64 fits two records; the third forces a size roll that
 	// seals (.INPROGRESS → .seg) the existing live segment.
-	w, err := Open(Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 64, MaxTotalBytes: 1 << 20, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,8 +402,14 @@ func TestReader_FollowsLiveSegmentRenamedBetweenSnapshotAndOpen(t *testing.T) {
 		}
 	}
 	want := []uint64{0, 1, 2}
-	if len(seenSeqs) != 3 || seenSeqs[0] != want[0] || seenSeqs[1] != want[1] || seenSeqs[2] != want[2] {
-		t.Errorf("seen seqs = %v, want %v (records from the renamed segment must not be silently dropped)", seenSeqs, want)
+	if len(seenSeqs) != 3 || seenSeqs[0] != want[0] || seenSeqs[1] != want[1] ||
+		seenSeqs[2] != want[2] {
+		t.Errorf(
+			"seen seqs = %v, want %v (records from the renamed segment must not be silently "+
+				"dropped)",
+			seenSeqs,
+			want,
+		)
 	}
 }
 
@@ -398,7 +425,9 @@ func TestReader_FollowsLiveSegmentRenamedBetweenSnapshotAndOpen(t *testing.T) {
 // segments.
 func TestReader_GenerationScoped_SkipsOtherGenerationsOnDisk(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +469,12 @@ func TestReader_GenerationScoped_SkipsOtherGenerationsOnDisk(t *testing.T) {
 			continue
 		}
 		if rec.Generation != 1 {
-			t.Fatalf("gen=1 reader surfaced rec.Generation=%d (seq=%d) — must skip other-generation segments", rec.Generation, rec.Sequence)
+			t.Fatalf(
+				"gen=1 reader surfaced rec.Generation=%d (seq=%d) — must skip other-generation "+
+					"segments",
+				rec.Generation,
+				rec.Sequence,
+			)
 		}
 		gotGen1 = append(gotGen1, rec.Sequence)
 	}
@@ -476,7 +510,12 @@ func TestReader_GenerationScoped_SkipsOtherGenerationsOnDisk(t *testing.T) {
 			continue
 		}
 		if rec.Generation != 2 {
-			t.Fatalf("gen=2 reader surfaced rec.Generation=%d (seq=%d) — must skip other-generation segments", rec.Generation, rec.Sequence)
+			t.Fatalf(
+				"gen=2 reader surfaced rec.Generation=%d (seq=%d) — must skip other-generation "+
+					"segments",
+				rec.Generation,
+				rec.Sequence,
+			)
 		}
 		gotGen2 = append(gotGen2, rec.Sequence)
 	}
@@ -510,7 +549,9 @@ func TestReader_GenerationScoped_SkipsOtherGenerationsOnDisk(t *testing.T) {
 // seq=11..20.
 func TestReader_GenerationScoped_DoesNotReturnLowerSeqFromOtherGen(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,7 +591,12 @@ func TestReader_GenerationScoped_DoesNotReturnLowerSeqFromOtherGen(t *testing.T)
 			continue
 		}
 		if rec.Generation != 1 {
-			t.Fatalf("surfaced rec.Generation=%d seq=%d — must NOT cross generations (segment-iteration filter must skip gen=2 segments)", rec.Generation, rec.Sequence)
+			t.Fatalf(
+				"surfaced rec.Generation=%d seq=%d — must NOT cross generations "+
+					"(segment-iteration filter must skip gen=2 segments)",
+				rec.Generation,
+				rec.Sequence,
+			)
 		}
 		gotSeqs = append(gotSeqs, rec.Sequence)
 	}
@@ -571,7 +617,9 @@ func TestReader_GenerationScoped_DoesNotReturnLowerSeqFromOtherGen(t *testing.T)
 // must return the new record.
 func TestReader_BlocksUntilNotifyAfterEOF(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{Dir: dir, SegmentSize: 4 * 1024, MaxTotalBytes: 64 * 1024, SyncMode: SyncImmediate},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

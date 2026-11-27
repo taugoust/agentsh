@@ -15,7 +15,9 @@ import (
 // disappeared from /proc mid-injection — its exit was reaped out from under us
 // (the steal #406 also recovers). Without this, the wpid==0 poll spins to the
 // timeout on every inject step, degrading every exec by seconds (#369 #2).
-var errInjectTraceeVanished = errors.New("inject: tracee vanished from /proc mid-injection (#369 #2)")
+var errInjectTraceeVanished = errors.New(
+	"inject: tracee vanished from /proc mid-injection (#369 #2)",
+)
 
 // injectWaitTimeout bounds a single inject wait sequence. An injected syscall
 // completes in microseconds; this is generous headroom. waitForSyscallExitStop
@@ -99,7 +101,12 @@ func (t *Tracer) injectFromEntry(tid int, savedRegs Regs, nr int, args ...uint64
 		return 0, injectErr
 	}
 	if got := retRegs.SyscallNr(); got != nr {
-		injectErr = fmt.Errorf("injected syscall %d did not execute (syscall_nr=%d at exit); stop misclassified (#369)", nr, got)
+		injectErr = fmt.Errorf(
+			"injected syscall %d did not execute (syscall_nr=%d at exit); stop "+
+				"misclassified (#369)",
+			nr,
+			got,
+		)
 		return 0, injectErr
 	}
 	ret := retRegs.ReturnValue()
@@ -131,7 +138,11 @@ func (t *Tracer) injectFromExit(tid int, savedRegs Regs, nr int, args ...uint64)
 		return 0, fmt.Errorf("inject gadget read @0x%x: %w", gadget, err)
 	}
 	if !isSyscallInsn(insn) {
-		return 0, fmt.Errorf("inject gadget @0x%x not a syscall instruction (% x); stop misclassified (#369)", gadget, insn)
+		return 0, fmt.Errorf(
+			"inject gadget @0x%x not a syscall instruction (% x); stop misclassified (#369)",
+			gadget,
+			insn,
+		)
 	}
 
 	injRegs := savedRegs.Clone()
@@ -185,7 +196,12 @@ func (t *Tracer) injectFromExit(tid int, savedRegs Regs, nr int, args ...uint64)
 		return 0, injectErr
 	}
 	if got := retRegs.SyscallNr(); got != nr {
-		injectErr = fmt.Errorf("injected syscall %d did not execute (syscall_nr=%d at exit); stop misclassified (#369)", nr, got)
+		injectErr = fmt.Errorf(
+			"injected syscall %d did not execute (syscall_nr=%d at exit); stop "+
+				"misclassified (#369)",
+			nr,
+			got,
+		)
 		return 0, injectErr
 	}
 	ret := retRegs.ReturnValue()
@@ -239,7 +255,11 @@ func (t *Tracer) waitForSyscallStopUntil(tid int, deadline time.Time) error {
 			// Report the actual elapsed wait, not the constant — with a shared
 			// deadline (waitForSyscallExitStop) later iterations start mid-budget,
 			// so the constant would overstate the wait during #369 #2 triage.
-			return fmt.Errorf("waitForSyscallStop tid %d: timed out after %v", tid, time.Since(start).Round(time.Millisecond))
+			return fmt.Errorf(
+				"waitForSyscallStop tid %d: timed out after %v",
+				tid,
+				time.Since(start).Round(time.Millisecond),
+			)
 		}
 		var status unix.WaitStatus
 		traceWaitCall("inject", tid)
@@ -290,7 +310,11 @@ func (t *Tracer) waitForSyscallStopUntil(tid int, deadline time.Time) error {
 		if sig == unix.SIGTRAP && status.TrapCause() != 0 {
 			stopEvents++
 			if stopEvents >= injectMaxStopEvents {
-				return fmt.Errorf("waitForSyscallStop tid %d: exceeded %d non-progress stop events", tid, injectMaxStopEvents)
+				return fmt.Errorf(
+					"waitForSyscallStop tid %d: exceeded %d non-progress stop events",
+					tid,
+					injectMaxStopEvents,
+				)
 			}
 			if err := unix.PtraceSyscall(tid, 0); err != nil {
 				return fmt.Errorf("inject re-resume tid %d: %w", tid, err)
@@ -301,7 +325,11 @@ func (t *Tracer) waitForSyscallStopUntil(tid int, deadline time.Time) error {
 		// Real signal delivery: reinject the signal.
 		stopEvents++
 		if stopEvents >= injectMaxStopEvents {
-			return fmt.Errorf("waitForSyscallStop tid %d: exceeded %d non-progress stop events", tid, injectMaxStopEvents)
+			return fmt.Errorf(
+				"waitForSyscallStop tid %d: exceeded %d non-progress stop events",
+				tid,
+				injectMaxStopEvents,
+			)
 		}
 		if err := unix.PtraceSyscall(tid, int(sig)); err != nil {
 			return fmt.Errorf("inject re-resume tid %d: %w", tid, err)
@@ -349,7 +377,11 @@ func (t *Tracer) waitForSyscallExitStop(tid int) error {
 			return err // includes "tracee N exited during injection"
 		}
 	}
-	return fmt.Errorf("waitForSyscallExitStop tid %d: no exit stop within %d events", tid, injectMaxStopEvents)
+	return fmt.Errorf(
+		"waitForSyscallExitStop tid %d: no exit stop within %d events",
+		tid,
+		injectMaxStopEvents,
+	)
 }
 
 // injectSyscallRet is a convenience that returns an error if the injected

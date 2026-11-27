@@ -45,7 +45,11 @@ func TestNewRegistry_NoDependencies(t *testing.T) {
 		"kr": testProviderConfig{typeName: "keyring"},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, cfg ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			cfg ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &testProvider{name: cfg.TypeName()}, nil
 		},
 	}
@@ -79,14 +83,22 @@ func TestNewRegistry_LinearChain(t *testing.T) {
 	var resolvedToken []byte
 
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, cfg ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			cfg ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			constructionOrder = append(constructionOrder, cfg.TypeName())
 			return &testProvider{
 				name:     "keyring",
 				fetchVal: SecretValue{Value: []byte("real-vault-token")},
 			}, nil
 		},
-		"vault": func(ctx context.Context, cfg ProviderConfig, resolver RefResolver) (SecretProvider, error) {
+		"vault": func(
+			ctx context.Context,
+			cfg ProviderConfig,
+			resolver RefResolver,
+		) (SecretProvider, error) {
 			constructionOrder = append(constructionOrder, cfg.TypeName())
 			// Resolve the chained ref
 			sv, err := resolver(ctx, tokenRef)
@@ -186,7 +198,11 @@ func TestNewRegistry_ConstructorFailure_CleansUp(t *testing.T) {
 		"v":  testProviderConfig{typeName: "vault", deps: []SecretRef{{Scheme: "keyring"}}},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			krProvider.name = "keyring"
 			return &krProvider, nil
 		},
@@ -227,7 +243,11 @@ func TestRegistry_Fetch_Dispatches(t *testing.T) {
 		"kr": testProviderConfig{typeName: "keyring"},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &testProvider{
 				name:     "keyring",
 				fetchVal: SecretValue{Value: []byte("secret-val")},
@@ -255,7 +275,11 @@ func TestRegistry_Fetch_UnknownScheme(t *testing.T) {
 		"kr": testProviderConfig{typeName: "keyring"},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &testProvider{name: "keyring"}, nil
 		},
 	}
@@ -309,7 +333,11 @@ func TestRegistry_Close_Idempotent(t *testing.T) {
 		"kr": testProviderConfig{typeName: "keyring"},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &testProvider{name: "keyring"}, nil
 		},
 	}
@@ -333,7 +361,11 @@ func TestNewRegistry_NilProvider_ReturnsError(t *testing.T) {
 		"v":  testProviderConfig{typeName: "vault", deps: []SecretRef{{Scheme: "keyring"}}},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			krProvider.name = "keyring"
 			return &krProvider, nil
 		},
@@ -349,7 +381,10 @@ func TestNewRegistry_NilProvider_ReturnsError(t *testing.T) {
 	}
 	// The already-constructed keyring provider must have been cleaned up.
 	if krProvider.closeCt.Load() != 1 {
-		t.Errorf("keyring Close count = %d, want 1 (cleanup on nil provider)", krProvider.closeCt.Load())
+		t.Errorf(
+			"keyring Close count = %d, want 1 (cleanup on nil provider)",
+			krProvider.closeCt.Load(),
+		)
 	}
 }
 
@@ -360,7 +395,11 @@ func TestNewRegistry_DuplicateTypeName(t *testing.T) {
 		"kr2": testProviderConfig{typeName: "keyring"},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &testProvider{name: "keyring"}, nil
 		},
 	}
@@ -392,7 +431,11 @@ func TestNewRegistry_TypedNilProvider_ReturnsError(t *testing.T) {
 		"kr": testProviderConfig{typeName: "keyring"},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return (*testProvider)(nil), nil // typed-nil
 		},
 	}
@@ -412,7 +455,11 @@ func TestRegistry_Close_ReverseOrder(t *testing.T) {
 		"v":  testProviderConfig{typeName: "vault", deps: []SecretRef{{Scheme: "keyring"}}},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &orderTrackingProvider{name: "keyring", closeOrder: &closeOrder}, nil
 		},
 		"vault": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
@@ -435,7 +482,11 @@ func TestRegistry_Provider_AfterClose(t *testing.T) {
 		"kr": testProviderConfig{typeName: "keyring"},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &testProvider{name: "keyring"}, nil
 		},
 	}
@@ -466,7 +517,11 @@ func TestNewRegistry_NonPointerTypedNilProvider_ReturnsError(t *testing.T) {
 		"m": testProviderConfig{typeName: "maptype"},
 	}
 	constructors := map[string]ConstructorFunc{
-		"maptype": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"maptype": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return (mapProvider)(nil), nil // non-pointer typed-nil
 		},
 	}
@@ -481,7 +536,11 @@ func TestNewRegistry_NilConfig(t *testing.T) {
 		"kr": nil,
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &testProvider{name: "keyring"}, nil
 		},
 	}
@@ -526,13 +585,21 @@ func TestNewRegistry_ResolverRejectsUndeclaredDependency(t *testing.T) {
 		"v":  testProviderConfig{typeName: "vault"}, // no deps declared
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &testProvider{
 				name:     "keyring",
 				fetchVal: SecretValue{Value: []byte("token")},
 			}, nil
 		},
-		"vault": func(ctx context.Context, _ ProviderConfig, resolver RefResolver) (SecretProvider, error) {
+		"vault": func(
+			ctx context.Context,
+			_ ProviderConfig,
+			resolver RefResolver,
+		) (SecretProvider, error) {
 			// Try to resolve an undeclared dependency — should fail.
 			_, err := resolver(ctx, SecretRef{Scheme: "keyring", Host: "a", Path: "b"})
 			if err == nil {
@@ -559,13 +626,21 @@ func TestNewRegistry_ResolverRejectsSameSchemeWrongRef(t *testing.T) {
 		"v":  testProviderConfig{typeName: "vault", deps: []SecretRef{declaredRef}},
 	}
 	constructors := map[string]ConstructorFunc{
-		"keyring": func(_ context.Context, _ ProviderConfig, _ RefResolver) (SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			_ ProviderConfig,
+			_ RefResolver,
+		) (SecretProvider, error) {
 			return &testProvider{
 				name:     "keyring",
 				fetchVal: SecretValue{Value: []byte("token")},
 			}, nil
 		},
-		"vault": func(ctx context.Context, _ ProviderConfig, resolver RefResolver) (SecretProvider, error) {
+		"vault": func(
+			ctx context.Context,
+			_ ProviderConfig,
+			resolver RefResolver,
+		) (SecretProvider, error) {
 			// Resolving the declared ref should work.
 			_, err := resolver(ctx, declaredRef)
 			if err != nil {

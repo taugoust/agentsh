@@ -57,14 +57,22 @@ func TestAllowlistThreadSafety(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				al.Add("https://registry.npmjs.org", fmt.Sprintf("pkg-%d", id), fmt.Sprintf("%d.0.0", j))
+				al.Add(
+					"https://registry.npmjs.org",
+					fmt.Sprintf("pkg-%d", id),
+					fmt.Sprintf("%d.0.0", j),
+				)
 			}
 		}(i)
 
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				al.IsAllowed("https://registry.npmjs.org", fmt.Sprintf("pkg-%d", id), fmt.Sprintf("%d.0.0", j))
+				al.IsAllowed(
+					"https://registry.npmjs.org",
+					fmt.Sprintf("pkg-%d", id),
+					fmt.Sprintf("%d.0.0", j),
+				)
 			}
 		}(i)
 	}

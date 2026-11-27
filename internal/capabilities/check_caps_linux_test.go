@@ -351,7 +351,12 @@ func TestCapDropReport_Detail(t *testing.T) {
 		},
 		{
 			name: "permitted dropped bounding unknown",
-			rep:  capDropReport{prmMissing: 4, total: 42, bndUnknown: true, bndErr: errors.New("blocked")},
+			rep: capDropReport{
+				prmMissing: 4,
+				total:      42,
+				bndUnknown: true,
+				bndErr:     errors.New("blocked"),
+			},
 			want: "4/42 caps dropped from permitted; bounding unknown (blocked)",
 		},
 	}
@@ -410,7 +415,10 @@ func TestProbeCapabilityDrop_BoundingReadBlocked(t *testing.T) {
 	}
 	fullLow, fullHigh := capFullMask(lastCap)
 	if data[0].Permitted == fullLow && data[1].Permitted == fullHigh {
-		t.Skip("test process has full CapPrm; degraded path would report not-dropped regardless of bounding")
+		t.Skip(
+			"test process has full CapPrm; degraded path would report not-dropped regardless of " +
+				"bounding",
+		)
 	}
 
 	origRead := readCapBoundingSet
@@ -422,7 +430,10 @@ func TestProbeCapabilityDrop_BoundingReadBlocked(t *testing.T) {
 
 	r := probeCapabilityDrop()
 	if !r.Available {
-		t.Errorf("expected Available=true via permitted-only fallback, got Available=false (detail: %q)", r.Detail)
+		t.Errorf(
+			"expected Available=true via permitted-only fallback, got Available=false (detail: %q)",
+			r.Detail,
+		)
 	}
 	if !strings.Contains(r.Detail, "bounding unknown") {
 		t.Errorf("expected detail to mention bounding unknown, got %q", r.Detail)
@@ -455,7 +466,11 @@ func TestProbeCapabilityDrop_BoundingReadBlockedFullPermitted(t *testing.T) {
 
 	r := probeCapabilityDropFrom(data, 0, 0, simulatedErr, 41)
 	if r.Available {
-		t.Errorf("expected Available=false when CapPrm full and bounding unknown, got Available=true (detail: %q)", r.Detail)
+		t.Errorf(
+			"expected Available=false when CapPrm full and bounding unknown, got Available=true "+
+				"(detail: %q)",
+			r.Detail,
+		)
 	}
 	want := "process retains full CapPrm (42/42 caps); bounding unknown (simulated blocked)"
 	if r.Detail != want {
@@ -477,7 +492,10 @@ func TestProbeCapabilityDropFrom_PermittedDroppedBoundingUnknown(t *testing.T) {
 
 	r := probeCapabilityDropFrom(data, 0, 0, simulatedErr, 41)
 	if !r.Available {
-		t.Errorf("expected Available=true via permitted-only fallback, got Available=false (detail: %q)", r.Detail)
+		t.Errorf(
+			"expected Available=true via permitted-only fallback, got Available=false (detail: %q)",
+			r.Detail,
+		)
 	}
 	want := "1/42 caps dropped from permitted; bounding unknown (simulated blocked)"
 	if r.Detail != want {

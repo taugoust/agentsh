@@ -20,7 +20,9 @@ import (
 // supervisor cannot write it. It never treats the overflow uid as root while
 // host uid 0 is mapped in the current namespace.
 func protectedUnmappedRootOwner(path string, ownerUID uint32) bool {
-	overflowData, err := os.ReadFile(filepath.Join(string(filepath.Separator), "proc", "sys", "kernel", "overflowuid"))
+	overflowData, err := os.ReadFile(
+		filepath.Join(string(filepath.Separator), "proc", "sys", "kernel", "overflowuid"),
+	)
 	if err != nil {
 		return false
 	}

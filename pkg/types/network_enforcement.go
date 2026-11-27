@@ -34,11 +34,12 @@ const (
 type NetworkEnforcementTier string
 
 const (
-	NetworkEnforcementTierNone                    NetworkEnforcementTier = "none"
-	NetworkEnforcementTierCgroupDelegated         NetworkEnforcementTier = "cgroup-delegated"
-	NetworkEnforcementTierHelperEBPFGate          NetworkEnforcementTier = "helper-ebpf-gate"
-	NetworkEnforcementTierHelperEBPFProxy         NetworkEnforcementTier = "helper-ebpf-proxy" // legacy degraded label
-	NetworkEnforcementTierHelperEBPFProxyRequired NetworkEnforcementTier = "helper-ebpf-proxy-required"
+	NetworkEnforcementTierNone            NetworkEnforcementTier = "none"
+	NetworkEnforcementTierCgroupDelegated NetworkEnforcementTier = "cgroup-delegated"
+	NetworkEnforcementTierHelperEBPFGate  NetworkEnforcementTier = "helper-ebpf-gate"
+	// legacy degraded label
+	NetworkEnforcementTierHelperEBPFProxy         NetworkEnforcementTier = "helper-ebpf-proxy"
+	NetworkEnforcementTierHelperEBPFProxyRequired NetworkEnforcementTier = "helper-ebpf-proxy-required" //nolint:lll // gofmt cannot wrap const specs
 )
 
 // NetworkPreflightEvidence records session-start checks. A ready preflight must
@@ -167,7 +168,8 @@ type NetworkAttachmentEvidence struct {
 
 func exactLoopbackEndpointID(endpoint string) bool {
 	addrPort, err := netip.ParseAddrPort(strings.TrimSpace(endpoint))
-	return err == nil && addrPort.Port() != 0 && addrPort.Addr().Zone() == "" && addrPort.Addr().Unmap().IsLoopback()
+	return err == nil && addrPort.Port() != 0 && addrPort.Addr().Zone() == "" &&
+		addrPort.Addr().Unmap().IsLoopback()
 }
 
 func (a NetworkAttachmentEvidence) hasExactPrimaryProxyEndpoint() bool {
@@ -258,48 +260,51 @@ type NethelperLifecycleEvidence struct {
 // recomputed while marshaling and can only be true when Proven reports that
 // every required prerequisite is present.
 type NetworkEnforcement struct {
-	Requested                 NetworkEnforcementRequest    `json:"requested"`
-	Readiness                 NetworkEnforcementStatus     `json:"readiness"`
-	Status                    NetworkEnforcementStatus     `json:"status"`
-	Tier                      NetworkEnforcementTier       `json:"tier"`
-	NetworkPolicyEnforced     bool                         `json:"network_policy_enforced"`
-	CgroupDelegated           bool                         `json:"cgroup_delegated"`
-	CgroupMode                string                       `json:"cgroup_mode,omitempty"`
-	CgroupRoot                string                       `json:"cgroup_root,omitempty"`
-	HelperConfigured          bool                         `json:"helper_configured"`
-	HelperAuthenticated       bool                         `json:"helper_authenticated"`
-	ToolBoundaryActive        bool                         `json:"tool_boundary_active"`
-	ProxyReady                bool                         `json:"proxy_ready"`
-	ProxyRequired             bool                         `json:"proxy_required"`
-	ExactProxyOnly            bool                         `json:"exact_proxy_endpoint_only"`
-	AllowedTransport          string                       `json:"allowed_transport,omitempty"`
-	ProxyEndpointID           string                       `json:"proxy_endpoint_id,omitempty"`
-	DirectBypassBlocked       bool                         `json:"direct_bypass_blocked"`
-	DirectTCPBlocked          bool                         `json:"direct_tcp_blocked"`
-	LocalNonProxyTCPBlocked   bool                         `json:"local_non_proxy_tcp_blocked"`
-	UDPBlocked                bool                         `json:"udp_blocked"`
-	QUICBlocked               bool                         `json:"quic_blocked"`
-	CommandDNSRequired        bool                         `json:"command_dns_required"`
-	RawSocketBlockConfigured  bool                         `json:"raw_socket_blocking_configured"`
-	RawSocketsBlocked         bool                         `json:"raw_sockets_blocked"`
-	UnsupportedTrafficAction  string                       `json:"unsupported_traffic_action,omitempty"`
-	BlockedTrafficClasses     []string                     `json:"blocked_traffic_classes,omitempty"`
-	UnsupportedTrafficBlocked bool                         `json:"unsupported_traffic_blocked"`
-	FailClosedSetup           bool                         `json:"fail_closed_setup"`
-	TransparentRedirect       bool                         `json:"transparent_redirect"`
-	CheckedAt                 time.Time                    `json:"checked_at"`
-	Detail                    string                       `json:"detail,omitempty"`
-	Warning                   string                       `json:"warning,omitempty"`
-	Preflight                 *NetworkPreflightEvidence    `json:"preflight,omitempty"`
-	Attachment                *NetworkAttachmentEvidence   `json:"attachment,omitempty"`
-	Attachments               []*NetworkAttachmentEvidence `json:"attachments,omitempty"`
-	HelperLifecycle           *NethelperLifecycleEvidence  `json:"helper_lifecycle,omitempty"`
+	Requested                NetworkEnforcementRequest `json:"requested"`
+	Readiness                NetworkEnforcementStatus  `json:"readiness"`
+	Status                   NetworkEnforcementStatus  `json:"status"`
+	Tier                     NetworkEnforcementTier    `json:"tier"`
+	NetworkPolicyEnforced    bool                      `json:"network_policy_enforced"`
+	CgroupDelegated          bool                      `json:"cgroup_delegated"`
+	CgroupMode               string                    `json:"cgroup_mode,omitempty"`
+	CgroupRoot               string                    `json:"cgroup_root,omitempty"`
+	HelperConfigured         bool                      `json:"helper_configured"`
+	HelperAuthenticated      bool                      `json:"helper_authenticated"`
+	ToolBoundaryActive       bool                      `json:"tool_boundary_active"`
+	ProxyReady               bool                      `json:"proxy_ready"`
+	ProxyRequired            bool                      `json:"proxy_required"`
+	ExactProxyOnly           bool                      `json:"exact_proxy_endpoint_only"`
+	AllowedTransport         string                    `json:"allowed_transport,omitempty"`
+	ProxyEndpointID          string                    `json:"proxy_endpoint_id,omitempty"`
+	DirectBypassBlocked      bool                      `json:"direct_bypass_blocked"`
+	DirectTCPBlocked         bool                      `json:"direct_tcp_blocked"`
+	LocalNonProxyTCPBlocked  bool                      `json:"local_non_proxy_tcp_blocked"`
+	UDPBlocked               bool                      `json:"udp_blocked"`
+	QUICBlocked              bool                      `json:"quic_blocked"`
+	CommandDNSRequired       bool                      `json:"command_dns_required"`
+	RawSocketBlockConfigured bool                      `json:"raw_socket_blocking_configured"`
+	RawSocketsBlocked        bool                      `json:"raw_sockets_blocked"`
+
+	UnsupportedTrafficAction  string    `json:"unsupported_traffic_action,omitempty"`
+	BlockedTrafficClasses     []string  `json:"blocked_traffic_classes,omitempty"`
+	UnsupportedTrafficBlocked bool      `json:"unsupported_traffic_blocked"`
+	FailClosedSetup           bool      `json:"fail_closed_setup"`
+	TransparentRedirect       bool      `json:"transparent_redirect"`
+	CheckedAt                 time.Time `json:"checked_at"`
+	Detail                    string    `json:"detail,omitempty"`
+	Warning                   string    `json:"warning,omitempty"`
+
+	Preflight       *NetworkPreflightEvidence    `json:"preflight,omitempty"`
+	Attachment      *NetworkAttachmentEvidence   `json:"attachment,omitempty"`
+	Attachments     []*NetworkAttachmentEvidence `json:"attachments,omitempty"`
+	HelperLifecycle *NethelperLifecycleEvidence  `json:"helper_lifecycle,omitempty"`
 }
 
 // Proven is the sole condition under which AgentSH may emit
 // network_policy_enforced=true.
 func (n NetworkEnforcement) Proven() bool {
-	if n.CheckedAt.IsZero() || n.Readiness != NetworkEnforcementStatusReady || n.Preflight == nil || !n.Preflight.Proven() {
+	if n.CheckedAt.IsZero() || n.Readiness != NetworkEnforcementStatusReady || n.Preflight == nil ||
+		!n.Preflight.Proven() {
 		return false
 	}
 	activeEndpoint := ""
@@ -327,8 +332,10 @@ func (n NetworkEnforcement) Proven() bool {
 				return false
 			}
 			seenCommands[attachment.CommandID] = struct{}{}
-			if attachment.CommandID == n.Attachment.CommandID && attachment.CgroupID == n.Attachment.CgroupID &&
-				attachment.RegistrationID == n.Attachment.RegistrationID && attachment.ProxyEndpointID == n.Attachment.ProxyEndpointID {
+			if attachment.CommandID == n.Attachment.CommandID &&
+				attachment.CgroupID == n.Attachment.CgroupID &&
+				attachment.RegistrationID == n.Attachment.RegistrationID &&
+				attachment.ProxyEndpointID == n.Attachment.ProxyEndpointID {
 				selectedPresent = true
 			}
 		}
@@ -410,8 +417,10 @@ func (n *NetworkEnforcement) Normalize() {
 		}
 	}
 	n.NetworkPolicyEnforced = n.Proven()
-	if !n.NetworkPolicyEnforced && strings.TrimSpace(n.Warning) == "" && n.Requested != NetworkEnforcementRequestNone {
-		n.Warning = "runtime network enforcement is not proven; policy decisions do not imply that traffic was blocked"
+	if !n.NetworkPolicyEnforced && strings.TrimSpace(n.Warning) == "" &&
+		n.Requested != NetworkEnforcementRequestNone {
+		n.Warning = "runtime network enforcement is not proven; policy decisions do not imply " +
+			"that traffic was blocked"
 	}
 }
 

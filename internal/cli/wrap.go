@@ -45,7 +45,9 @@ Examples:
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return fmt.Errorf("command required after --\n\nUsage: agentsh wrap [flags] -- COMMAND [ARGS...]")
+				return fmt.Errorf(
+					"command required after --\n\nUsage: agentsh wrap [flags] -- COMMAND [ARGS...]",
+				)
 			}
 
 			cfg := getClientConfig(cmd)
@@ -63,11 +65,14 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&sessionID, "session", "", "Reuse existing session ID (creates new if empty)")
+	cmd.Flags().
+		StringVar(&sessionID, "session", "", "Reuse existing session ID (creates new if empty)")
 	cmd.Flags().StringVar(&policy, "policy", "agent-default", "Policy name")
 	cmd.Flags().StringVar(&root, "root", "", "Workspace root (default: current directory)")
 	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct or overlay")
-	cmd.Flags().StringVar(&home, "home", "", "Home directory for policy variable expansion (default: current user home)")
+	cmd.Flags().
+		StringVar(&home, "home", "",
+			"Home directory for policy variable expansion (default: current user home)")
 	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
 	cmd.Flags().BoolVar(&report, "report", true, "Generate session report on exit")
 
@@ -136,7 +141,10 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 	// 3. Set up exec interception (seccomp)
 	wrapCfg, err := setupWrapInterception(ctx, c, sessID, agentPath, opts.agentArgs, cfg)
 	if err != nil {
-		return fmt.Errorf("interception setup failed; refusing an unguarded client-spawned command: %w", err)
+		return fmt.Errorf(
+			"interception setup failed; refusing an unguarded client-spawned command: %w",
+			err,
+		)
 	}
 	if wrapCfg != nil && wrapCfg.cleanup != nil {
 		defer wrapCfg.cleanup()
@@ -257,10 +265,21 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 			mechanism = "ptrace"
 		}
 		if !wrapCfg.foregroundTTY {
-			fmt.Fprintf(os.Stderr, "agentsh: agent %s started with %s interception (pid: %d)\n", opts.agentCmd, mechanism, agentProc.Process.Pid)
+			fmt.Fprintf(
+				os.Stderr,
+				"agentsh: agent %s started with %s interception (pid: %d)\n",
+				opts.agentCmd,
+				mechanism,
+				agentProc.Process.Pid,
+			)
 		}
 	} else {
-		fmt.Fprintf(os.Stderr, "agentsh: agent %s started (pid: %d)\n", opts.agentCmd, agentProc.Process.Pid)
+		fmt.Fprintf(
+			os.Stderr,
+			"agentsh: agent %s started (pid: %d)\n",
+			opts.agentCmd,
+			agentProc.Process.Pid,
+		)
 	}
 
 	// 5. Wait for agent to exit
@@ -289,9 +308,15 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 
 	// 6. Generate report
 	if opts.report {
-		fmt.Fprintf(os.Stderr, "\nagentsh: session %s complete (agent exit code: %d)\n", sessID, exitCode)
+		fmt.Fprintf(
+			os.Stderr,
+			"\nagentsh: session %s complete (agent exit code: %d)\n",
+			sessID,
+			exitCode,
+		)
 	}
-	if opts.report && (sess.WorkspaceMode == string(types.WorkspaceModeOverlay) || sess.Overlay != nil) {
+	if opts.report &&
+		(sess.WorkspaceMode == string(types.WorkspaceModeOverlay) || sess.Overlay != nil) {
 		fmt.Fprintf(os.Stderr, "agentsh: overlay workspace kept for review\n")
 		fmt.Fprintf(os.Stderr, "  agentsh session diff %s\n", sessID)
 		fmt.Fprintf(os.Stderr, "  agentsh session accept %s\n", sessID)
@@ -309,16 +334,17 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 
 // wrapLaunchConfig holds the configuration for launching the agent through a wrapper.
 type wrapLaunchConfig struct {
-	command       string
-	args          []string
-	env           []string
-	extraFiles    []*os.File
-	sysProcAttr   *syscall.SysProcAttr
-	postStart     func(childPID int) error // Completes notify handoff while the wrapper is ACK-blocked
-	postWait      func()                   // Called after the process exits (e.g., to reclaim terminal)
-	cleanup       func()                   // Closes parent-side launch/control resources once
-	keepAlive     io.Closer                // Held open during shell lifetime (e.g., ptrace handshake conn)
-	foregroundTTY bool                     // Child owns the terminal foreground process group after Start.
+	command     string
+	args        []string
+	env         []string
+	extraFiles  []*os.File
+	sysProcAttr *syscall.SysProcAttr
+	// Completes notify handoff while the wrapper is ACK-blocked
+	postStart     func(childPID int) error
+	postWait      func()    // Called after the process exits (e.g., to reclaim terminal)
+	cleanup       func()    // Closes parent-side launch/control resources once
+	keepAlive     io.Closer // Held open during shell lifetime (e.g., ptrace handshake conn)
+	foregroundTTY bool      // Child owns the terminal foreground process group after Start.
 	// ptracePostStart is called after the child is started with the child PID.
 	// It performs the ptrace handshake (send PID, wait for ACK).
 	ptracePostStart func(childPID int) error
@@ -327,7 +353,14 @@ type wrapLaunchConfig struct {
 // setupWrapInterception initializes seccomp interception via the server and returns
 // the launch configuration for the agent process. This is the platform-independent
 // part that calls into platform-specific code.
-func setupWrapInterception(ctx context.Context, c client.CLIClient, sessID string, agentPath string, agentArgs []string, cfg *clientConfig) (*wrapLaunchConfig, error) {
+func setupWrapInterception(
+	ctx context.Context,
+	c client.CLIClient,
+	sessID string,
+	agentPath string,
+	agentArgs []string,
+	cfg *clientConfig,
+) (*wrapLaunchConfig, error) {
 	// Call the server to get wrapper configuration
 	wrapResp, err := c.WrapInit(ctx, sessID, types.WrapInitRequest{
 		AgentCommand: agentPath,
@@ -354,7 +387,12 @@ func setupWrapInterception(ctx context.Context, c client.CLIClient, sessID strin
 	return platformSetupWrap(ctx, wrapResp, sessID, agentPath, agentArgs, cfg)
 }
 
-func buildWrapEnv(base []string, sessionID string, serverAddr string, bypassShellShim bool) []string {
+func buildWrapEnv(
+	base []string,
+	sessionID string,
+	serverAddr string,
+	bypassShellShim bool,
+) []string {
 	env := make([]string, 0, len(base)+3)
 	for _, e := range base {
 		key, _, found := strings.Cut(e, "=")
@@ -507,7 +545,11 @@ func fetchSessionForWrap(
 		if startErr := ensureServerRunningFn(ctx, cfg.serverAddr, os.Stderr); startErr == nil {
 			sess, err = fetch()
 		} else {
-			return types.Session{}, fmt.Errorf("server unreachable (%v); auto-start failed: %w", err, startErr)
+			return types.Session{}, fmt.Errorf(
+				"server unreachable (%v); auto-start failed: %w",
+				err,
+				startErr,
+			)
 		}
 	}
 	if err != nil {

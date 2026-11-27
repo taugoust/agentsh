@@ -21,7 +21,11 @@ func assertSyscallStop(t *testing.T, ws unix.WaitStatus, where string) {
 		t.Fatalf("%s: expected a stop, status=%v", where, ws)
 	}
 	if ws.StopSignal() != unix.SIGTRAP|0x80 {
-		t.Fatalf("%s: expected syscall-trap stop (SIGTRAP|0x80), got signal %v", where, ws.StopSignal())
+		t.Fatalf(
+			"%s: expected syscall-trap stop (SIGTRAP|0x80), got signal %v",
+			where,
+			ws.StopSignal(),
+		)
 	}
 }
 
@@ -47,7 +51,10 @@ func driveToEntryStop(t *testing.T) (pid int, cleanup func()) {
 		cleanup()
 		t.Fatalf("initial wait4: %v", err)
 	}
-	if err := unix.PtraceSetOptions(pid, unix.PTRACE_O_TRACESYSGOOD|unix.PTRACE_O_EXITKILL); err != nil {
+	if err := unix.PtraceSetOptions(
+		pid,
+		unix.PTRACE_O_TRACESYSGOOD|unix.PTRACE_O_EXITKILL,
+	); err != nil {
 		cleanup()
 		t.Fatalf("PTRACE_SETOPTIONS: %v", err)
 	}

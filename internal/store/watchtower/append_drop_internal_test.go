@@ -53,7 +53,10 @@ var _ chain.SinkChainAPI = (*fakeSink)(nil)
 // *WTPMetrics, a buffered JSON slog handler, and a lossSpy that records
 // AppendLoss calls. The flag arg controls Options.EmitExtendedLossReasons.
 // Returns the Store, the metrics handle, the log buffer, and the spy.
-func newDropTestStore(t *testing.T, emitExtended bool) (*Store, *metrics.WTPMetrics, *bytes.Buffer, *lossSpy) {
+func newDropTestStore(
+	t *testing.T,
+	emitExtended bool,
+) (*Store, *metrics.WTPMetrics, *bytes.Buffer, *lossSpy) {
 	t.Helper()
 	col := metrics.New()
 	var buf bytes.Buffer
@@ -196,7 +199,11 @@ func TestRecordCompactEncodeFailure_ClassifiesMapperFailureCatchAll(t *testing.T
 	// A mapper-side error wrapped exactly the way compact.Encode wraps
 	// every Mapper.Map error post-#6177 fix — via the ErrMapperFailure
 	// sentinel.
-	wrapped := fmt.Errorf("%w: %w", compact.ErrMapperFailure, errors.New("synthetic mapper failure"))
+	wrapped := fmt.Errorf(
+		"%w: %w",
+		compact.ErrMapperFailure,
+		errors.New("synthetic mapper failure"),
+	)
 	s.recordCompactEncodeFailure(wrapped, ev)
 
 	if got := m.DroppedMapperFailure(); got != 1 {
@@ -248,10 +255,18 @@ func TestRecordCompactEncodeFailure_MapperReturningSentinelStaysMapperFailure(t 
 				t.Fatalf("DroppedMapperFailure() = %d, want 1", got)
 			}
 			if got := m.DroppedInvalidMapper(); got != 0 {
-				t.Fatalf("DroppedInvalidMapper() = %d, want 0 (mapper-originated sentinel must NOT leak)", got)
+				t.Fatalf(
+					"DroppedInvalidMapper() = %d, want 0 (mapper-originated sentinel must "+
+						"NOT leak)",
+					got,
+				)
 			}
 			if got := m.DroppedInvalidTimestamp(); got != 0 {
-				t.Fatalf("DroppedInvalidTimestamp() = %d, want 0 (mapper-originated sentinel must NOT leak)", got)
+				t.Fatalf(
+					"DroppedInvalidTimestamp() = %d, want 0 (mapper-originated sentinel must "+
+						"NOT leak)",
+					got,
+				)
 			}
 
 			entry := findWarnEntry(t, buf)
@@ -316,7 +331,11 @@ func TestEmitInFlightLoss_FlagOn_CallsAppendLoss(t *testing.T) {
 		t.Fatalf("AppendLoss = %d; want 1", spy.calls)
 	}
 	if spy.lastLoss.FromSequence != 100 || spy.lastLoss.ToSequence != 100 {
-		t.Fatalf("from/to = %d/%d; want 100/100", spy.lastLoss.FromSequence, spy.lastLoss.ToSequence)
+		t.Fatalf(
+			"from/to = %d/%d; want 100/100",
+			spy.lastLoss.FromSequence,
+			spy.lastLoss.ToSequence,
+		)
 	}
 	if spy.lastLoss.Generation != 1 {
 		t.Fatalf("generation = %d; want 1", spy.lastLoss.Generation)
@@ -328,7 +347,11 @@ func TestEmitInFlightLoss_FlagOn_CallsAppendLoss(t *testing.T) {
 
 func TestEmitInFlightLoss_AmbiguousFailure_LatchesFatal(t *testing.T) {
 	s, _, _, spy := newDropTestStore(t, true)
-	spy.err = &wal.AppendError{Class: wal.FailureAmbiguous, Op: "test", Err: errors.New("simulated I/O failure")}
+	spy.err = &wal.AppendError{
+		Class: wal.FailureAmbiguous,
+		Op:    "test",
+		Err:   errors.New("simulated I/O failure"),
+	}
 	ev := types.Event{Chain: &types.ChainState{Sequence: 100, Generation: 1}}
 	s.emitInFlightLoss(ev, wal.LossReasonInvalidUTF8)
 	if !s.fatalLatched.Load() {
@@ -411,6 +434,10 @@ func TestRecordCompactEncodeFailure_FallthroughClassifiedAsMapperFailure(t *test
 	err := errors.New("some unrelated error")
 	s.recordCompactEncodeFailure(err, ev)
 	if spy.lastLoss.Reason != wal.LossReasonMapperFailure {
-		t.Fatalf("reason = %q; want %q (fallthrough)", spy.lastLoss.Reason, wal.LossReasonMapperFailure)
+		t.Fatalf(
+			"reason = %q; want %q (fallthrough)",
+			spy.lastLoss.Reason,
+			wal.LossReasonMapperFailure,
+		)
 	}
 }

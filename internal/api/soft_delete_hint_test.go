@@ -46,7 +46,11 @@ func TestAddExecveApprovalHints_AppendsStderrAndSuggestions(t *testing.T) {
 
 func TestAddSoftDeleteHints_AppendsStderrAndSuggestions(t *testing.T) {
 	fileOps := []types.Event{
-		{Type: "file_soft_deleted", Path: "/workspace/a.txt", Fields: map[string]any{"trash_token": "tok123"}},
+		{
+			Type:   "file_soft_deleted",
+			Path:   "/workspace/a.txt",
+			Fields: map[string]any{"trash_token": "tok123"},
+		},
 	}
 	stderr := []byte("orig\n")
 	stderrTotal := int64(len(stderr))

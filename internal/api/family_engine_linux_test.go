@@ -179,7 +179,10 @@ func TestSelectFamilyEngine_WrapperMissing_NeitherFallback(t *testing.T) {
 
 	got := selectFamilyBlockingEngine(families, cfg, caps)
 	if got != familyEngineNone {
-		t.Errorf("expected familyEngineNone when wrapper missing and ptrace unavailable; got %v", got)
+		t.Errorf(
+			"expected familyEngineNone when wrapper missing and ptrace unavailable; got %v",
+			got,
+		)
 	}
 }
 
@@ -207,7 +210,10 @@ func TestResolveFamilyCheckerForPtrace_AlwaysWiresWhenFamiliesConfigured(t *test
 		t.Fatalf("resolveFamilyCheckerForPtrace returned unexpected error: %v", err)
 	}
 	if checker == nil {
-		t.Error("expected non-nil FamilyChecker when BlockedSocketFamilies is configured; got nil (families would fail open)")
+		t.Error(
+			"expected non-nil FamilyChecker when BlockedSocketFamilies is configured; got nil " +
+				"(families would fail open)",
+		)
 	}
 }
 

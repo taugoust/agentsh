@@ -25,11 +25,15 @@ const (
 )
 
 var (
-	ErrWorkspaceVolumeUnsupported = errors.New("external runner workspace volumes are supported only on Linux")
-	ErrWorkspaceVolumeInvalid     = errors.New("invalid external runner workspace volume")
-	ErrWorkspaceVolumeNotFound    = errors.New("external runner workspace volume not found")
-	ErrWorkspaceVolumeExists      = errors.New("external runner workspace volume already exists")
-	ErrWorkspaceVolumeCorrupt     = errors.New("external runner workspace volume integrity check failed")
+	ErrWorkspaceVolumeUnsupported = errors.New(
+		"external runner workspace volumes are supported only on Linux",
+	)
+	ErrWorkspaceVolumeInvalid  = errors.New("invalid external runner workspace volume")
+	ErrWorkspaceVolumeNotFound = errors.New("external runner workspace volume not found")
+	ErrWorkspaceVolumeExists   = errors.New("external runner workspace volume already exists")
+	ErrWorkspaceVolumeCorrupt  = errors.New(
+		"external runner workspace volume integrity check failed",
+	)
 )
 
 // WorkspaceVolumeRequest carries the immutable operator and session binding
@@ -112,17 +116,28 @@ func (v *WorkspaceVolume) Close() error {
 }
 
 func (r WorkspaceVolumeRequest) validate() error {
-	if err := runtimeprovider.ValidateName(r.SessionID); err != nil || !strings.HasPrefix(r.SessionID, "session-") {
+	if err := runtimeprovider.ValidateName(
+		r.SessionID,
+	); err != nil ||
+		!strings.HasPrefix(r.SessionID, "session-") {
 		return fmt.Errorf("%w: session identity is invalid", ErrWorkspaceVolumeInvalid)
 	}
-	if !filepath.IsAbs(r.StateDir) || filepath.Clean(r.StateDir) != r.StateDir || filepath.Base(r.StateDir) != r.SessionID {
-		return fmt.Errorf("%w: state directory is not bound to the exact session", ErrWorkspaceVolumeInvalid)
+	if !filepath.IsAbs(r.StateDir) || filepath.Clean(r.StateDir) != r.StateDir ||
+		filepath.Base(r.StateDir) != r.SessionID {
+		return fmt.Errorf(
+			"%w: state directory is not bound to the exact session",
+			ErrWorkspaceVolumeInvalid,
+		)
 	}
 	if err := r.Profile.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrWorkspaceVolumeInvalid, err)
 	}
-	if (r.Profile.Schema != ProfileSchemaV2 && r.Profile.Schema != ProfileSchemaV3) || r.Profile.WorkspaceVolume == nil {
-		return fmt.Errorf("%w: workspace volumes require an external runner v2 profile", ErrWorkspaceVolumeInvalid)
+	if (r.Profile.Schema != ProfileSchemaV2 && r.Profile.Schema != ProfileSchemaV3) ||
+		r.Profile.WorkspaceVolume == nil {
+		return fmt.Errorf(
+			"%w: workspace volumes require an external runner v2 profile",
+			ErrWorkspaceVolumeInvalid,
+		)
 	}
 	if !validSHA256(r.ProfileFileSHA256) {
 		return fmt.Errorf("%w: operator profile hash is invalid", ErrWorkspaceVolumeInvalid)
@@ -132,15 +147,26 @@ func (r WorkspaceVolumeRequest) validate() error {
 
 func (m WorkspaceVolumeManifest) Validate() error {
 	if m.SchemaVersion != WorkspaceVolumeManifestSchemaVersion || !m.Complete {
-		return fmt.Errorf("%w: manifest is incomplete or uses an unsupported schema", ErrWorkspaceVolumeInvalid)
+		return fmt.Errorf(
+			"%w: manifest is incomplete or uses an unsupported schema",
+			ErrWorkspaceVolumeInvalid,
+		)
 	}
-	if err := runtimeprovider.ValidateName(m.SessionID); err != nil || !strings.HasPrefix(m.SessionID, "session-") {
+	if err := runtimeprovider.ValidateName(
+		m.SessionID,
+	); err != nil ||
+		!strings.HasPrefix(m.SessionID, "session-") {
 		return fmt.Errorf("%w: manifest session identity is invalid", ErrWorkspaceVolumeInvalid)
 	}
 	if m.Provider != ProviderName {
 		return fmt.Errorf("%w: manifest provider is invalid", ErrWorkspaceVolumeInvalid)
 	}
-	if err := runtimeprovider.ValidateName(m.Profile); err != nil || (m.ProfileSchema != ProfileSchemaV2 && m.ProfileSchema != ProfileSchemaV3) || !validSHA256(m.ProfileDigest) || !validSHA256(m.ProfileFileSHA256) {
+	if err := runtimeprovider.ValidateName(
+		m.Profile,
+	); err != nil ||
+		(m.ProfileSchema != ProfileSchemaV2 && m.ProfileSchema != ProfileSchemaV3) ||
+		!validSHA256(m.ProfileDigest) ||
+		!validSHA256(m.ProfileFileSHA256) {
 		return fmt.Errorf("%w: manifest profile binding is invalid", ErrWorkspaceVolumeInvalid)
 	}
 	if !canonicalWorkspaceVolumeUUID(m.VolumeID) {
@@ -149,7 +175,8 @@ func (m WorkspaceVolumeManifest) Validate() error {
 	if err := m.WorkspaceVolume.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrWorkspaceVolumeInvalid, err)
 	}
-	if m.Image.FileName != WorkspaceVolumeImageName || m.Image.Inode == 0 || !validSHA256(m.Image.HeaderSHA256) {
+	if m.Image.FileName != WorkspaceVolumeImageName || m.Image.Inode == 0 ||
+		!validSHA256(m.Image.HeaderSHA256) {
 		return fmt.Errorf("%w: manifest image identity is invalid", ErrWorkspaceVolumeInvalid)
 	}
 	if m.CreatedAt.IsZero() || m.CreatedAt.After(time.Now().UTC().Add(5*time.Minute)) {
@@ -162,11 +189,17 @@ func (m WorkspaceVolumeManifest) matches(request WorkspaceVolumeRequest, volumeI
 	if err := m.Validate(); err != nil {
 		return err
 	}
-	if m.SessionID != request.SessionID || m.Provider != request.Profile.Provider || m.Profile != request.Profile.Name ||
-		m.ProfileSchema != request.Profile.Schema || m.ProfileDigest != request.Profile.ProfileDigest ||
-		m.ProfileFileSHA256 != request.ProfileFileSHA256 || request.Profile.WorkspaceVolume == nil ||
+	if m.SessionID != request.SessionID || m.Provider != request.Profile.Provider ||
+		m.Profile != request.Profile.Name ||
+		m.ProfileSchema != request.Profile.Schema ||
+		m.ProfileDigest != request.Profile.ProfileDigest ||
+		m.ProfileFileSHA256 != request.ProfileFileSHA256 ||
+		request.Profile.WorkspaceVolume == nil ||
 		m.WorkspaceVolume != *request.Profile.WorkspaceVolume {
-		return fmt.Errorf("%w: manifest does not match its session and operator profile", ErrWorkspaceVolumeInvalid)
+		return fmt.Errorf(
+			"%w: manifest does not match its session and operator profile",
+			ErrWorkspaceVolumeInvalid,
+		)
 	}
 	if volumeID != "" && m.VolumeID != volumeID {
 		return fmt.Errorf("%w: volume identity mismatch", ErrWorkspaceVolumeInvalid)
@@ -176,20 +209,30 @@ func (m WorkspaceVolumeManifest) matches(request WorkspaceVolumeRequest, volumeI
 
 func canonicalWorkspaceVolumeUUID(value string) bool {
 	parsed, err := uuid.Parse(value)
-	return err == nil && parsed != uuid.Nil && parsed.Version() == 4 && parsed.Variant() == uuid.RFC4122 && parsed.String() == value
+	return err == nil && parsed != uuid.Nil && parsed.Version() == 4 &&
+		parsed.Variant() == uuid.RFC4122 &&
+		parsed.String() == value
 }
 
 // CreateWorkspaceVolume atomically publishes or reopens the exact blank
 // session qcow2 named by the caller-provided volume ID. Retrying the same exact
 // create transaction is idempotent. It does not mount, attach, format, stage,
 // or materialize host workspace content.
-func CreateWorkspaceVolume(ctx context.Context, request WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
+func CreateWorkspaceVolume(
+	ctx context.Context,
+	request WorkspaceVolumeRequest,
+	volumeID string,
+) (*WorkspaceVolume, error) {
 	return createWorkspaceVolume(ctx, request, volumeID)
 }
 
 // OpenWorkspaceVolume reopens only the exact volume ID under the same immutable
 // session and operator-profile binding used at creation.
-func OpenWorkspaceVolume(ctx context.Context, request WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
+func OpenWorkspaceVolume(
+	ctx context.Context,
+	request WorkspaceVolumeRequest,
+	volumeID string,
+) (*WorkspaceVolume, error) {
 	return openWorkspaceVolume(ctx, request, volumeID)
 }
 
@@ -198,6 +241,10 @@ func OpenWorkspaceVolume(ctx context.Context, request WorkspaceVolumeRequest, vo
 // The lease check prevents deletion while a monitor owns the volume, but this
 // primitive cannot establish session lifecycle: callers must additionally gate
 // deletion on higher-level exact terminal monitor and session evidence.
-func DeleteWorkspaceVolume(ctx context.Context, request WorkspaceVolumeRequest, volumeID string) error {
+func DeleteWorkspaceVolume(
+	ctx context.Context,
+	request WorkspaceVolumeRequest,
+	volumeID string,
+) error {
 	return deleteWorkspaceVolume(ctx, request, volumeID)
 }

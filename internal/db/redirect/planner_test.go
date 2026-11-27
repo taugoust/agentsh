@@ -12,7 +12,11 @@ import (
 
 func TestReasonAmbiguousSourceAlias(t *testing.T) {
 	if ReasonAmbiguousSource != ReasonAmbiguousRedirectSource {
-		t.Fatalf("ReasonAmbiguousSource = %q, want %q", ReasonAmbiguousSource, ReasonAmbiguousRedirectSource)
+		t.Fatalf(
+			"ReasonAmbiguousSource = %q, want %q",
+			ReasonAmbiguousSource,
+			ReasonAmbiguousRedirectSource,
+		)
 	}
 }
 
@@ -350,7 +354,8 @@ func TestPlannerRewritesCTEShadowingSourceName(t *testing.T) {
 
 func TestPlannerRewritesCTESiblingReferenceNotSource(t *testing.T) {
 	plan, err := testPlanner().Plan(Input{
-		SQL:       "WITH users AS (SELECT id FROM public.users), x AS (SELECT * FROM users) SELECT * FROM x",
+		SQL: "WITH users AS (SELECT id FROM public.users), x AS (SELECT * FROM users) " +
+			"SELECT * FROM x",
 		Statement: readStatement("public", "users"),
 		Action: Action{
 			RuleName:       "redirect-users",
@@ -392,7 +397,8 @@ func TestPlannerRewritesSetOperation(t *testing.T) {
 
 func TestPlannerRewritesWhereExistsSubquery(t *testing.T) {
 	plan, err := testPlanner().Plan(Input{
-		SQL: "SELECT * FROM public.orders WHERE EXISTS (SELECT 1 FROM public.users WHERE users.id = orders.user_id)",
+		SQL: "SELECT * FROM public.orders WHERE EXISTS (SELECT 1 FROM public.users WHERE " +
+			"users.id = orders.user_id)",
 		Statement: readStatementWithResolved(
 			resolvedRelation("public", "orders"),
 			resolvedRelation("public", "users"),
@@ -460,7 +466,8 @@ func TestPlannerRejectsAmbiguousUnqualifiedExpressionSubqueryRelationMetadata(t 
 
 func TestPlannerRejectsWhereExistsMultipleSourceOccurrences(t *testing.T) {
 	_, err := testPlanner().Plan(Input{
-		SQL:       "SELECT * FROM public.users WHERE EXISTS (SELECT 1 FROM public.users u2 WHERE u2.id = users.id)",
+		SQL: "SELECT * FROM public.users WHERE EXISTS (SELECT 1 FROM public.users u2 WHERE " +
+			"u2.id = users.id)",
 		Statement: readStatement("public", "users"),
 		Action:    testAction(),
 	})
@@ -574,7 +581,8 @@ func TestPlannerRejectsRangeFunction(t *testing.T) {
 
 func TestPlannerRejectsSampledSourceWithExpressionSubquery(t *testing.T) {
 	_, err := testPlanner().Plan(Input{
-		SQL:       "SELECT * FROM public.users TABLESAMPLE SYSTEM (1) WHERE EXISTS (SELECT 1 FROM public.users)",
+		SQL: "SELECT * FROM public.users TABLESAMPLE SYSTEM (1) WHERE EXISTS (SELECT 1 " +
+			"FROM public.users)",
 		Statement: readStatement("public", "users"),
 		Action:    testAction(),
 	})

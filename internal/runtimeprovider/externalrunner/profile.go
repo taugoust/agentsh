@@ -95,7 +95,8 @@ type HostEgressSpec struct {
 }
 
 func (s HostEgressSpec) Validate() error {
-	if !filepath.IsAbs(s.PolicyFile) || filepath.Clean(s.PolicyFile) != s.PolicyFile || strings.ContainsAny(s.PolicyFile, "\x00\r\n") {
+	if !filepath.IsAbs(s.PolicyFile) || filepath.Clean(s.PolicyFile) != s.PolicyFile ||
+		strings.ContainsAny(s.PolicyFile, "\x00\r\n") {
 		return fmt.Errorf("external runner host egress policy path is invalid")
 	}
 	if !validSHA256(s.PolicySHA256) {
@@ -115,11 +116,16 @@ type WorkspaceVolumeSpec struct {
 }
 
 func (s WorkspaceVolumeSpec) Validate() error {
-	if s.Model != WorkspaceVolumeModel || s.Format != WorkspaceVolumeFormat || s.Filesystem != WorkspaceVolumeFilesystem || s.RunnerFD != WorkspaceVolumeRunnerFD {
+	if s.Model != WorkspaceVolumeModel || s.Format != WorkspaceVolumeFormat ||
+		s.Filesystem != WorkspaceVolumeFilesystem ||
+		s.RunnerFD != WorkspaceVolumeRunnerFD {
 		return fmt.Errorf("external runner workspace volume contract is unsupported")
 	}
-	if s.VirtualSizeBytes < WorkspaceVolumeMinVirtualSizeBytes || s.VirtualSizeBytes > WorkspaceVolumeMaxVirtualSizeBytes {
-		return fmt.Errorf("external runner workspace volume virtual size is outside the supported range")
+	if s.VirtualSizeBytes < WorkspaceVolumeMinVirtualSizeBytes ||
+		s.VirtualSizeBytes > WorkspaceVolumeMaxVirtualSizeBytes {
+		return fmt.Errorf(
+			"external runner workspace volume virtual size is outside the supported range",
+		)
 	}
 	return nil
 }
@@ -139,8 +145,12 @@ func ReadProfileSnapshot(path string) (Profile, string, error) {
 	if err != nil {
 		return Profile{}, "", fmt.Errorf("inspect external runner profile: %w", err)
 	}
-	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() > maxProfileBytes {
-		return Profile{}, "", fmt.Errorf("external runner profile has unsafe type, permissions, or size")
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 ||
+		before.Mode().Perm()&0o022 != 0 ||
+		before.Size() > maxProfileBytes {
+		return Profile{}, "", fmt.Errorf(
+			"external runner profile has unsafe type, permissions, or size",
+		)
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -184,7 +194,10 @@ func ReadProfileSnapshot(path string) (Profile, string, error) {
 		for name := range fields {
 			for _, candidate := range forbidden {
 				if strings.EqualFold(name, candidate) {
-					return Profile{}, "", fmt.Errorf("decode external runner profile: json: unknown field %q", name)
+					return Profile{}, "", fmt.Errorf(
+						"decode external runner profile: json: unknown field %q",
+						name,
+					)
 				}
 			}
 		}
@@ -215,7 +228,10 @@ func (p Profile) Validate() error {
 			return fmt.Errorf("external runner v1 profile cannot define host egress")
 		}
 		if p.Guest.Protocol != guestcontrol.ProtocolVersionV2 {
-			return fmt.Errorf("external runner v1 profile requires guest protocol version %d", guestcontrol.ProtocolVersionV2)
+			return fmt.Errorf(
+				"external runner v1 profile requires guest protocol version %d",
+				guestcontrol.ProtocolVersionV2,
+			)
 		}
 	case ProfileSchemaV2:
 		if p.WorkspaceVolume == nil {
@@ -228,7 +244,10 @@ func (p Profile) Validate() error {
 			return fmt.Errorf("external runner v2 profile cannot define host egress")
 		}
 		if p.Guest.Protocol != guestcontrol.ProtocolVersionV3 {
-			return fmt.Errorf("external runner v2 profile requires guest protocol version %d", guestcontrol.ProtocolVersionV3)
+			return fmt.Errorf(
+				"external runner v2 profile requires guest protocol version %d",
+				guestcontrol.ProtocolVersionV3,
+			)
 		}
 	case ProfileSchemaV3:
 		if p.WorkspaceVolume == nil {
@@ -244,10 +263,16 @@ func (p Profile) Validate() error {
 			return err
 		}
 		if p.Guest.Protocol != guestcontrol.ProtocolVersionV4 {
-			return fmt.Errorf("external runner v3 profile requires guest protocol version %d", guestcontrol.ProtocolVersionV4)
+			return fmt.Errorf(
+				"external runner v3 profile requires guest protocol version %d",
+				guestcontrol.ProtocolVersionV4,
+			)
 		}
-		if p.Status != "strict" || p.Network.Enforcement != "host-broker-strict" || !p.Network.RequireReadyBeforePublish {
-			return fmt.Errorf("external runner v3 profile must explicitly select host-broker strict egress")
+		if p.Status != "strict" || p.Network.Enforcement != "host-broker-strict" ||
+			!p.Network.RequireReadyBeforePublish {
+			return fmt.Errorf(
+				"external runner v3 profile must explicitly select host-broker strict egress",
+			)
 		}
 	default:
 		return fmt.Errorf("external runner profile schema %q is unsupported", p.Schema)
@@ -258,25 +283,32 @@ func (p Profile) Validate() error {
 	if p.Provider != ProviderName {
 		return fmt.Errorf("external runner profile provider %q is unsupported", p.Provider)
 	}
-	if !validSHA256(p.ProfileDigest) || !validSHA256(p.Runner.SHA256) || !validSHA256(p.Guest.ProfileDigest) {
+	if !validSHA256(p.ProfileDigest) || !validSHA256(p.Runner.SHA256) ||
+		!validSHA256(p.Guest.ProfileDigest) {
 		return fmt.Errorf("external runner profile digest is invalid")
 	}
 	if p.System != "x86_64-linux" {
 		return fmt.Errorf("external runner profile system %q is unsupported", p.System)
 	}
-	if !filepath.IsAbs(p.Runner.Path) || filepath.Clean(p.Runner.Path) != p.Runner.Path || strings.ContainsAny(p.Runner.Path, "\x00\r\n") || p.Runner.ProcessModel != "direct-exec" {
+	if !filepath.IsAbs(p.Runner.Path) || filepath.Clean(p.Runner.Path) != p.Runner.Path ||
+		strings.ContainsAny(p.Runner.Path, "\x00\r\n") ||
+		p.Runner.ProcessModel != "direct-exec" {
 		return fmt.Errorf("external runner executable path is invalid")
 	}
 	if err := runtimeprovider.ValidateName(p.Guest.Policy); err != nil {
 		return fmt.Errorf("external runner guest policy: %w", err)
 	}
-	if !filepath.IsAbs(p.Guest.Workspace) || filepath.Clean(p.Guest.Workspace) != p.Guest.Workspace || p.Guest.Workspace == string(filepath.Separator) {
+	if !filepath.IsAbs(p.Guest.Workspace) ||
+		filepath.Clean(p.Guest.Workspace) != p.Guest.Workspace ||
+		p.Guest.Workspace == string(filepath.Separator) {
 		return fmt.Errorf("external runner guest workspace is invalid")
 	}
-	if !validPort(p.Guest.ControlPort) || !validPort(p.Guest.SupervisorPort) || p.Guest.ControlPort == p.Guest.SupervisorPort {
+	if !validPort(p.Guest.ControlPort) || !validPort(p.Guest.SupervisorPort) ||
+		p.Guest.ControlPort == p.Guest.SupervisorPort {
 		return fmt.Errorf("external runner guest VSOCK ports are invalid or reused")
 	}
-	if p.VSock.CIDMin < 3 || p.VSock.CIDMax == ^uint32(0) || p.VSock.CIDMin > p.VSock.CIDMax || p.VSock.CIDMax-p.VSock.CIDMin > 65535 {
+	if p.VSock.CIDMin < 3 || p.VSock.CIDMax == ^uint32(0) || p.VSock.CIDMin > p.VSock.CIDMax ||
+		p.VSock.CIDMax-p.VSock.CIDMin > 65535 {
 		return fmt.Errorf("external runner VSOCK CID range is invalid")
 	}
 	if p.Schema == ProfileSchemaV3 {
@@ -284,18 +316,25 @@ func (p Profile) Validate() error {
 		// reserved by the guest control contract. Keeping the lease range within
 		// that capacity lets the deterministic fallback mapping remain injective.
 		if uint64(p.VSock.CIDMax)-uint64(p.VSock.CIDMin)+1 > uint64(65535-1024+1-2) {
-			return fmt.Errorf("external runner v3 CID range exceeds per-session egress port capacity")
+			return fmt.Errorf(
+				"external runner v3 CID range exceeds per-session egress port capacity",
+			)
 		}
 		if p.Network.Transport != "vsock-explicit-proxy" {
 			return fmt.Errorf("external runner v3 network transport must be vsock-explicit-proxy")
 		}
 	} else if p.Network.Transport != "qemu-user" {
-		return fmt.Errorf("external runner network transport %q is unsupported", p.Network.Transport)
+		return fmt.Errorf(
+			"external runner network transport %q is unsupported",
+			p.Network.Transport,
+		)
 	}
 	switch p.Status {
 	case "diagnostic":
 		if p.Network.Enforcement != "disabled-bringup" || p.Network.RequireReadyBeforePublish {
-			return fmt.Errorf("diagnostic external runner profile has inconsistent network admission")
+			return fmt.Errorf(
+				"diagnostic external runner profile has inconsistent network admission",
+			)
 		}
 	case "strict":
 		expectedEnforcement := "strict"
@@ -308,7 +347,8 @@ func (p Profile) Validate() error {
 	default:
 		return fmt.Errorf("external runner profile status %q is unsupported", p.Status)
 	}
-	if !validTimeout(p.Timeouts.ReadinessSeconds) || !validTimeout(p.Timeouts.GracefulShutdownSeconds) {
+	if !validTimeout(p.Timeouts.ReadinessSeconds) ||
+		!validTimeout(p.Timeouts.GracefulShutdownSeconds) {
 		return fmt.Errorf("external runner profile timeout is invalid")
 	}
 	return nil
@@ -330,7 +370,9 @@ func (p Profile) VerifyRunner() error {
 	if err != nil {
 		return fmt.Errorf("inspect external runner executable: %w", err)
 	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 ||
+		info.Mode().Perm()&0o111 == 0 ||
+		info.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("external runner executable has unsafe type or permissions")
 	}
 	file, err := os.Open(p.Runner.Path)
@@ -338,7 +380,8 @@ func (p Profile) VerifyRunner() error {
 		return fmt.Errorf("open external runner executable: %w", err)
 	}
 	opened, err := file.Stat()
-	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) || opened.Mode().Perm()&0o022 != 0 {
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) ||
+		opened.Mode().Perm()&0o022 != 0 {
 		_ = file.Close()
 		return fmt.Errorf("external runner executable identity changed while opening")
 	}

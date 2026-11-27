@@ -66,8 +66,12 @@ func (r Request) Validate() error {
 	if !validName(r.Profile) {
 		return fmt.Errorf("runtime request has invalid profile %q", r.Profile)
 	}
-	if !filepath.IsAbs(r.StateDir) || filepath.Clean(r.StateDir) != r.StateDir || filepath.Base(r.StateDir) != r.SessionID {
-		return fmt.Errorf("runtime request state directory must be clean, absolute, and bound to the exact session")
+	if !filepath.IsAbs(r.StateDir) || filepath.Clean(r.StateDir) != r.StateDir ||
+		filepath.Base(r.StateDir) != r.SessionID {
+		return fmt.Errorf(
+			"runtime request state directory must be clean, absolute, and bound to the " +
+				"exact session",
+		)
 	}
 	if r.Session.ID != r.SessionID {
 		return fmt.Errorf("runtime request session identities differ")
@@ -76,8 +80,12 @@ func (r Request) Validate() error {
 		return fmt.Errorf("runtime request workspace must be absolute")
 	}
 	if r.InputArtifact != nil {
-		if err := r.InputArtifact.Validate(); err != nil || r.InputArtifact.SessionID != r.SessionID || r.InputArtifact.Kind != artifact.KindGitInputBundle {
-			return fmt.Errorf("runtime request input artifact is invalid or belongs to another session")
+		if err := r.InputArtifact.Validate(); err != nil ||
+			r.InputArtifact.SessionID != r.SessionID ||
+			r.InputArtifact.Kind != artifact.KindGitInputBundle {
+			return fmt.Errorf(
+				"runtime request input artifact is invalid or belongs to another session",
+			)
 		}
 	}
 	return nil
@@ -96,10 +104,12 @@ type Endpoint struct {
 }
 
 func (e Endpoint) Validate() error {
-	if !validName(e.Transport) || strings.TrimSpace(e.Address) == "" || strings.ContainsAny(e.Address, "\x00\r\n") {
+	if !validName(e.Transport) || strings.TrimSpace(e.Address) == "" ||
+		strings.ContainsAny(e.Address, "\x00\r\n") {
 		return fmt.Errorf("runtime endpoint is invalid")
 	}
-	if e.Transport == "unix" && (!filepath.IsAbs(e.Address) || filepath.Clean(e.Address) != e.Address) {
+	if e.Transport == "unix" &&
+		(!filepath.IsAbs(e.Address) || filepath.Clean(e.Address) != e.Address) {
 		return fmt.Errorf("runtime Unix endpoint must be clean and absolute")
 	}
 	return nil
@@ -121,10 +131,12 @@ func (i Identity) ValidateComplete() error {
 	if i.ContractVersion != ContractVersion {
 		return fmt.Errorf("runtime identity contract version %d is unsupported", i.ContractVersion)
 	}
-	if !validName(i.Provider) || !validName(i.Profile) || !validName(i.SessionID) || filepath.Base(i.SessionID) != i.SessionID {
+	if !validName(i.Provider) || !validName(i.Profile) || !validName(i.SessionID) ||
+		filepath.Base(i.SessionID) != i.SessionID {
 		return fmt.Errorf("runtime identity names are invalid")
 	}
-	if i.Generation == 0 || strings.TrimSpace(i.IncarnationID) == "" || strings.ContainsAny(i.IncarnationID, "\x00\r\n") {
+	if i.Generation == 0 || strings.TrimSpace(i.IncarnationID) == "" ||
+		strings.ContainsAny(i.IncarnationID, "\x00\r\n") {
 		return fmt.Errorf("runtime identity incarnation is incomplete")
 	}
 	if (i.OwnerStartIdentity == "") != (i.BootID == "") {
@@ -183,17 +195,20 @@ type ControlPlaneSnapshot struct {
 
 func (s ControlPlaneSnapshot) Validate(identity Identity, endpoint Endpoint) error {
 	if s.Metadata.SessionID != identity.SessionID || s.Metadata.Generation != identity.Generation ||
-		s.Metadata.IncarnationID != identity.IncarnationID || s.Metadata.SupervisorSock != endpoint.Address {
+		s.Metadata.IncarnationID != identity.IncarnationID ||
+		s.Metadata.SupervisorSock != endpoint.Address {
 		return fmt.Errorf("runtime control-plane metadata identity mismatch")
 	}
-	if !filepath.IsAbs(s.StateDir) || filepath.Clean(s.StateDir) != s.StateDir || filepath.Base(s.StateDir) != identity.SessionID {
+	if !filepath.IsAbs(s.StateDir) || filepath.Clean(s.StateDir) != s.StateDir ||
+		filepath.Base(s.StateDir) != identity.SessionID {
 		return fmt.Errorf("runtime control-plane state directory identity mismatch")
 	}
 	if s.Session.ID != "" && s.Session.ID != identity.SessionID {
 		return fmt.Errorf("runtime control-plane session identity mismatch")
 	}
 	if s.Status.SessionID != "" && (s.Status.SessionID != identity.SessionID ||
-		s.Status.Generation != identity.Generation || s.Status.IncarnationID != identity.IncarnationID) {
+		s.Status.Generation != identity.Generation ||
+		s.Status.IncarnationID != identity.IncarnationID) {
 		return fmt.Errorf("runtime control-plane status identity mismatch")
 	}
 	return nil

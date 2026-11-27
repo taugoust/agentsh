@@ -74,7 +74,13 @@ func TestBuildPolicyEnv_UsesSessionRuntimeHome(t *testing.T) {
 		t.Fatalf("XDG_DATA_HOME = %q", gotMap["XDG_DATA_HOME"])
 	}
 	if gotMap["TMPDIR"] != tmp || gotMap["TEMP"] != tmp || gotMap["TMP"] != tmp {
-		t.Fatalf("tmp env = TMPDIR:%q TEMP:%q TMP:%q, want %q", gotMap["TMPDIR"], gotMap["TEMP"], gotMap["TMP"], tmp)
+		t.Fatalf(
+			"tmp env = TMPDIR:%q TEMP:%q TMP:%q, want %q",
+			gotMap["TMPDIR"],
+			gotMap["TEMP"],
+			gotMap["TMP"],
+			tmp,
+		)
 	}
 }
 
@@ -94,12 +100,29 @@ func TestBuildPolicyEnv_RuntimeHomeModeRealAndEnvInherit(t *testing.T) {
 	sess.SetRuntimePathsWithProcessHome(runtimeHome, tmp, realHome, "real", nil)
 	sess.SetEnvRuntimeConfig("minimal", []string{"SSH_AUTH_SOCK"})
 
-	gotMap := envSliceToMapMust(buildPolicyEnv(policy.ResolvedEnvPolicy{Allow: []string{"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "SSH_AUTH_SOCK", "XDG_CONFIG_HOME"}}, []string{
-		"HOME=/Users/theo",
-		"PATH=/usr/bin",
-		"SSH_AUTH_SOCK=/tmp/agent.sock",
-		"XDG_CONFIG_HOME=/Users/theo/.config",
-	}, sess, nil))
+	gotMap := envSliceToMapMust(
+		buildPolicyEnv(
+			policy.ResolvedEnvPolicy{
+				Allow: []string{
+					"PATH",
+					"HOME",
+					"TMPDIR",
+					"TEMP",
+					"TMP",
+					"SSH_AUTH_SOCK",
+					"XDG_CONFIG_HOME",
+				},
+			},
+			[]string{
+				"HOME=/Users/theo",
+				"PATH=/usr/bin",
+				"SSH_AUTH_SOCK=/tmp/agent.sock",
+				"XDG_CONFIG_HOME=/Users/theo/.config",
+			},
+			sess,
+			nil,
+		),
+	)
 
 	if gotMap["HOME"] != realHome {
 		t.Fatalf("HOME = %q, want real home %q", gotMap["HOME"], realHome)
@@ -108,7 +131,10 @@ func TestBuildPolicyEnv_RuntimeHomeModeRealAndEnvInherit(t *testing.T) {
 		t.Fatalf("SSH_AUTH_SOCK = %q", gotMap["SSH_AUTH_SOCK"])
 	}
 	if gotMap["XDG_CONFIG_HOME"] != "" {
-		t.Fatalf("XDG_CONFIG_HOME should not be synthesized in runtime_home_mode=real, got %q", gotMap["XDG_CONFIG_HOME"])
+		t.Fatalf(
+			"XDG_CONFIG_HOME should not be synthesized in runtime_home_mode=real, got %q",
+			gotMap["XDG_CONFIG_HOME"],
+		)
 	}
 	if gotMap["TMPDIR"] != tmp {
 		t.Fatalf("TMPDIR = %q, want %q", gotMap["TMPDIR"], tmp)
@@ -127,12 +153,19 @@ func TestBuildPolicyEnv_InheritAllowedStillUsesPolicyFilter(t *testing.T) {
 	}
 	sess.SetEnvRuntimeConfig("inherit_allowed", nil)
 
-	gotMap := envSliceToMapMust(buildPolicyEnv(policy.ResolvedEnvPolicy{Allow: []string{"PATH", "HOME", "CUSTOM_ALLOWED"}}, []string{
-		"PATH=/usr/bin",
-		"HOME=/host-home",
-		"CUSTOM_ALLOWED=yes",
-		"CUSTOM_DENIED=no",
-	}, sess, nil))
+	gotMap := envSliceToMapMust(
+		buildPolicyEnv(
+			policy.ResolvedEnvPolicy{Allow: []string{"PATH", "HOME", "CUSTOM_ALLOWED"}},
+			[]string{
+				"PATH=/usr/bin",
+				"HOME=/host-home",
+				"CUSTOM_ALLOWED=yes",
+				"CUSTOM_DENIED=no",
+			},
+			sess,
+			nil,
+		),
+	)
 
 	if gotMap["CUSTOM_ALLOWED"] != "yes" {
 		t.Fatalf("CUSTOM_ALLOWED = %q", gotMap["CUSTOM_ALLOWED"])
@@ -185,7 +218,10 @@ func TestMergeEnv_StripsHostSecrets(t *testing.T) {
 		"TERM=xterm-256color",
 	}
 
-	pol := policy.ResolvedEnvPolicy{Deny: []string{"AWS_SECRET_ACCESS_KEY", "DOCKER_HOST"}, Allow: []string{"PATH", "TERM"}}
+	pol := policy.ResolvedEnvPolicy{
+		Deny:  []string{"AWS_SECRET_ACCESS_KEY", "DOCKER_HOST"},
+		Allow: []string{"PATH", "TERM"},
+	}
 	gotMap := envSliceToMapMust(buildPolicyEnv(pol, base, sess, nil))
 
 	if _, ok := gotMap["AWS_SECRET_ACCESS_KEY"]; ok {
@@ -244,7 +280,10 @@ func TestMaybeAddShimEnv_AddsShimAndFlag(t *testing.T) {
 
 	// AGENTSH_ENV_BLOCK_ITERATION should NOT be set (environ replacement breaks shells)
 	if _, ok := m["AGENTSH_ENV_BLOCK_ITERATION"]; ok {
-		t.Fatalf("AGENTSH_ENV_BLOCK_ITERATION should not be set, got %q", m["AGENTSH_ENV_BLOCK_ITERATION"])
+		t.Fatalf(
+			"AGENTSH_ENV_BLOCK_ITERATION should not be set, got %q",
+			m["AGENTSH_ENV_BLOCK_ITERATION"],
+		)
 	}
 	if got := m["LD_PRELOAD"]; got != shimPath {
 		t.Fatalf("expected LD_PRELOAD to be shim path, got %q", got)
@@ -343,26 +382,45 @@ func TestBuildCommandEnvironment_TrustedGuestEgressProxyFinalOverride(t *testing
 		t.Fatal(err)
 	}
 	sess.SetEnvRuntimeConfig("inherit_allowed", []string{"*"})
-	sess.SetServiceEnvVars(map[string]string{"HTTP_PROXY": "http://service.invalid", "all_proxy": "http://service.invalid"})
-	sess.ReplaceDirenvEnvironment(map[string]string{"HTTPS_PROXY": "http://direnv.invalid", "http_proxy": "http://direnv.invalid"})
+	sess.SetServiceEnvVars(
+		map[string]string{
+			"HTTP_PROXY": "http://service.invalid",
+			"all_proxy":  "http://service.invalid",
+		},
+	)
+	sess.ReplaceDirenvEnvironment(
+		map[string]string{
+			"HTTPS_PROXY": "http://direnv.invalid",
+			"http_proxy":  "http://direnv.invalid",
+		},
+	)
 	extra := &extraProcConfig{
 		envInject: map[string]string{"OPERATOR_OTHER": "kept"},
 		env:       map[string]string{"AGENTSH_NOTIFY_SOCK_FD": "7"},
 	}
-	env, err := buildCommandEnvironment(&config.Config{}, policy.ResolvedEnvPolicy{Allow: []string{"*"}}, []string{
-		"HTTP_PROXY=http://inherited.invalid",
-		detached.EnvGuestEgressProxyURL + "=" + trusted,
-		"https_proxy=http://inherited.invalid",
-		"ALL_PROXY=http://inherited.invalid",
-	}, sess, map[string]string{
-		"HTTPS_PROXY": "http://request.invalid",
-		"all_proxy":   "http://request.invalid",
-	}, extra)
+	env, err := buildCommandEnvironment(
+		&config.Config{},
+		policy.ResolvedEnvPolicy{Allow: []string{"*"}},
+		[]string{
+			"HTTP_PROXY=http://inherited.invalid",
+			detached.EnvGuestEgressProxyURL + "=" + trusted,
+			"https_proxy=http://inherited.invalid",
+			"ALL_PROXY=http://inherited.invalid",
+		},
+		sess,
+		map[string]string{
+			"HTTPS_PROXY": "http://request.invalid",
+			"all_proxy":   "http://request.invalid",
+		},
+		extra,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := envSliceToMap(env)
-	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, name := range []string{
+		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy",
+	} {
 		if got[name] != trusted {
 			t.Fatalf("%s = %q, want trusted final proxy %q; env=%#v", name, got[name], trusted, got)
 		}
@@ -373,14 +431,29 @@ func TestBuildCommandEnvironment_TrustedGuestEgressProxyFinalOverride(t *testing
 
 	commandLocal := "http://127.0.0.1:19084"
 	extra.envInject = explicitProxyEnvironment(commandLocal)
-	env, err = buildCommandEnvironment(&config.Config{}, policy.ResolvedEnvPolicy{Allow: []string{"*"}}, nil, sess, nil, extra)
+	env, err = buildCommandEnvironment(
+		&config.Config{},
+		policy.ResolvedEnvPolicy{Allow: []string{"*"}},
+		nil,
+		sess,
+		nil,
+		extra,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got = envSliceToMap(env)
-	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, name := range []string{
+		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy",
+	} {
 		if got[name] != trusted {
-			t.Fatalf("immutable external %s = %q, want %q despite command-local override %q", name, got[name], trusted, commandLocal)
+			t.Fatalf(
+				"immutable external %s = %q, want %q despite command-local override %q",
+				name,
+				got[name],
+				trusted,
+				commandLocal,
+			)
 		}
 	}
 }
@@ -403,18 +476,30 @@ func TestBuildPolicyEnv_LLMProxyDoesNotSetHTTPProxy(t *testing.T) {
 
 	// HTTP_PROXY should NOT be set
 	if _, ok := gotMap["HTTP_PROXY"]; ok {
-		t.Errorf("expected HTTP_PROXY to NOT be set when only LLM proxy is configured, got %q", gotMap["HTTP_PROXY"])
+		t.Errorf(
+			"expected HTTP_PROXY to NOT be set when only LLM proxy is configured, got %q",
+			gotMap["HTTP_PROXY"],
+		)
 	}
 	if _, ok := gotMap["HTTPS_PROXY"]; ok {
-		t.Errorf("expected HTTPS_PROXY to NOT be set when only LLM proxy is configured, got %q", gotMap["HTTPS_PROXY"])
+		t.Errorf(
+			"expected HTTPS_PROXY to NOT be set when only LLM proxy is configured, got %q",
+			gotMap["HTTPS_PROXY"],
+		)
 	}
 
 	// LLM env vars SHOULD be set
 	if gotMap["ANTHROPIC_BASE_URL"] != "http://127.0.0.1:9999" {
-		t.Errorf("expected ANTHROPIC_BASE_URL=http://127.0.0.1:9999, got %q", gotMap["ANTHROPIC_BASE_URL"])
+		t.Errorf(
+			"expected ANTHROPIC_BASE_URL=http://127.0.0.1:9999, got %q",
+			gotMap["ANTHROPIC_BASE_URL"],
+		)
 	}
 	if gotMap["OPENAI_BASE_URL"] != "http://127.0.0.1:9999" {
-		t.Errorf("expected OPENAI_BASE_URL=http://127.0.0.1:9999, got %q", gotMap["OPENAI_BASE_URL"])
+		t.Errorf(
+			"expected OPENAI_BASE_URL=http://127.0.0.1:9999, got %q",
+			gotMap["OPENAI_BASE_URL"],
+		)
 	}
 }
 
@@ -445,10 +530,16 @@ func TestBuildPolicyEnv_BothProxiesSetIndependently(t *testing.T) {
 
 	// LLM env vars should be set to LLM proxy (different URL)
 	if gotMap["ANTHROPIC_BASE_URL"] != "http://127.0.0.1:9090" {
-		t.Errorf("expected ANTHROPIC_BASE_URL=http://127.0.0.1:9090, got %q", gotMap["ANTHROPIC_BASE_URL"])
+		t.Errorf(
+			"expected ANTHROPIC_BASE_URL=http://127.0.0.1:9090, got %q",
+			gotMap["ANTHROPIC_BASE_URL"],
+		)
 	}
 	if gotMap["OPENAI_BASE_URL"] != "http://127.0.0.1:9090" {
-		t.Errorf("expected OPENAI_BASE_URL=http://127.0.0.1:9090, got %q", gotMap["OPENAI_BASE_URL"])
+		t.Errorf(
+			"expected OPENAI_BASE_URL=http://127.0.0.1:9090, got %q",
+			gotMap["OPENAI_BASE_URL"],
+		)
 	}
 }
 
@@ -540,7 +631,11 @@ func TestMergeEnvInject_NilConfig(t *testing.T) {
 		t.Errorf("mergeEnvInject(nil, pol) returned %d keys, want 1", len(got))
 	}
 	if got["BASH_ENV"] != "/policy/path" {
-		t.Errorf("mergeEnvInject(nil, pol)[BASH_ENV] = %q, want %q", got["BASH_ENV"], "/policy/path")
+		t.Errorf(
+			"mergeEnvInject(nil, pol)[BASH_ENV] = %q, want %q",
+			got["BASH_ENV"],
+			"/policy/path",
+		)
 	}
 
 	// Test with both nil
@@ -637,6 +732,10 @@ func TestEnvInject_PolicyOverridesConfig(t *testing.T) {
 
 	// Verify only 2 keys (no duplicates)
 	if len(merged) != 2 {
-		t.Errorf("expected 2 keys in merged result (no duplicates), got %d: %v", len(merged), merged)
+		t.Errorf(
+			"expected 2 keys in merged result (no duplicates), got %d: %v",
+			len(merged),
+			merged,
+		)
 	}
 }

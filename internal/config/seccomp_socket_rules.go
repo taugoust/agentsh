@@ -17,7 +17,9 @@ func ResolveSocketRules(in SandboxSeccompConfig) ([]seccomp.SocketRule, error) {
 	return resolveSocketRuleConfigs(effective.SocketRules)
 }
 
-func resolveSocketRuleConfigs(configs []SandboxSeccompSocketRuleConfig) ([]seccomp.SocketRule, error) {
+func resolveSocketRuleConfigs(
+	configs []SandboxSeccompSocketRuleConfig,
+) ([]seccomp.SocketRule, error) {
 	out := make([]seccomp.SocketRule, 0, len(configs))
 	seen := map[string]struct{}{}
 	for i, e := range configs {
@@ -40,9 +42,19 @@ func resolveSocketRuleConfigs(configs []SandboxSeccompSocketRuleConfig) ([]secco
 		}
 		action, ok := seccomp.ParseOnBlock(actionStr)
 		if !ok {
-			return nil, fmt.Errorf("socket_rules[%d].action: %q is not valid (allowed: errno, kill, log, log_and_kill)", i, e.Action)
+			return nil, fmt.Errorf(
+				"socket_rules[%d].action: %q is not valid (allowed: errno, kill, log, "+
+					"log_and_kill)",
+				i,
+				e.Action,
+			)
 		}
-		rule := seccomp.SocketRule{Name: name, Family: family, FamilyName: familyName, Action: action}
+		rule := seccomp.SocketRule{
+			Name:       name,
+			Family:     family,
+			FamilyName: familyName,
+			Action:     action,
+		}
 		if e.Type != "" {
 			typ, typName, ok := seccomp.ParseSocketType(e.Type)
 			if !ok {
@@ -57,7 +69,11 @@ func resolveSocketRuleConfigs(configs []SandboxSeccompSocketRuleConfig) ([]secco
 				return nil, fmt.Errorf("socket_rules[%d].protocol: %q is not valid", i, e.Protocol)
 			}
 			if strings.HasPrefix(protoName, "NETLINK_") && family != afNetlinkFamily {
-				return nil, fmt.Errorf("socket_rules[%d].protocol: %q requires family AF_NETLINK", i, e.Protocol)
+				return nil, fmt.Errorf(
+					"socket_rules[%d].protocol: %q requires family AF_NETLINK",
+					i,
+					e.Protocol,
+				)
 			}
 			rule.Protocol = &proto
 			rule.ProtocolName = protoName

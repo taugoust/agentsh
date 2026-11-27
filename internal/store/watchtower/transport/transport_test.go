@@ -177,7 +177,8 @@ func TestConnectingState_SendsSessionInitAndAdvancesOnAck(t *testing.T) {
 		if got, want := init.FormatVersion, wantFormatVersion; got != want {
 			t.Fatalf("format_version default: got %d, want %d", got, want)
 		}
-		if got, want := init.Algorithm, wtpv1.HashAlgorithm_HASH_ALGORITHM_HMAC_SHA256; got != want {
+		if got, want :=
+			init.Algorithm, wtpv1.HashAlgorithm_HASH_ALGORITHM_HMAC_SHA256; got != want {
 			t.Fatalf("algorithm default: got %s, want %s", got, want)
 		}
 		if got, want := init.WalHighWatermarkSeq, uint64(0); got != want {
@@ -378,7 +379,11 @@ func TestConnectingState_FailureBranches(t *testing.T) {
 				t.Fatalf("Close calls: got %d, want %d", got, want)
 			}
 			if got, want := s.conn.closeSendCalls, 0; got != want {
-				t.Fatalf("CloseSend calls: got %d, want %d (CloseSend is half-close, not teardown)", got, want)
+				t.Fatalf(
+					"CloseSend calls: got %d, want %d (CloseSend is half-close, not teardown)",
+					got,
+					want,
+				)
 			}
 		})
 	}

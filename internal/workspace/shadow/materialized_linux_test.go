@@ -31,7 +31,14 @@ func TestMaterializedWorkspaceUsesJournaledConflictRefusingAccept(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	workspace, err := OpenMaterialized(context.Background(), "session-materialized", real, work, Options{}, time.Now().UTC())
+	workspace, err := OpenMaterialized(
+		context.Background(),
+		"session-materialized",
+		real,
+		work,
+		Options{},
+		time.Now().UTC(),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,10 +46,22 @@ func TestMaterializedWorkspaceUsesJournaledConflictRefusingAccept(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(real, "base.txt"), []byte("host changed\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(real, "base.txt"),
+		[]byte("host changed\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workspace.PrepareAccept(context.Background(), "finalization-conflict", review.Generation, review.Hash); !errors.Is(err, ErrStaleReview) {
+	if _, err := workspace.PrepareAccept(
+		context.Background(),
+		"finalization-conflict",
+		review.Generation,
+		review.Hash,
+	); !errors.Is(
+		err,
+		ErrStaleReview,
+	) {
 		t.Fatalf("PrepareAccept after host drift error = %v", err)
 	}
 	if _, err := os.Lstat(filepath.Join(real, "guest.txt")); !os.IsNotExist(err) {
@@ -63,12 +82,23 @@ func TestMaterializedWorkspacePersistsAndResumesAccept(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(real, "base.txt"), []byte("base\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(work, "base.txt"), []byte("guest replacement\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(work, "base.txt"),
+		[]byte("guest replacement\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
 	createdAt := time.Now().UTC()
-	workspace, err := OpenMaterialized(context.Background(), "session-materialized", real, work, Options{}, createdAt)
+	workspace, err := OpenMaterialized(
+		context.Background(),
+		"session-materialized",
+		real,
+		work,
+		Options{},
+		createdAt,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +106,12 @@ func TestMaterializedWorkspacePersistsAndResumesAccept(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	intent, err := workspace.PrepareAccept(context.Background(), "finalization-one", review.Generation, review.Hash)
+	intent, err := workspace.PrepareAccept(
+		context.Background(),
+		"finalization-one",
+		review.Generation,
+		review.Hash,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +119,14 @@ func TestMaterializedWorkspacePersistsAndResumesAccept(t *testing.T) {
 		t.Fatalf("prepared phase = %q", intent.Phase)
 	}
 
-	reopened, err := OpenMaterialized(context.Background(), "session-materialized", real, work, Options{}, createdAt)
+	reopened, err := OpenMaterialized(
+		context.Background(),
+		"session-materialized",
+		real,
+		work,
+		Options{},
+		createdAt,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +142,14 @@ func TestMaterializedWorkspacePersistsAndResumesAccept(t *testing.T) {
 		t.Fatalf("accepted content = %q, %v", content, err)
 	}
 
-	completed, err := OpenMaterialized(context.Background(), "session-materialized", real, work, Options{}, createdAt)
+	completed, err := OpenMaterialized(
+		context.Background(),
+		"session-materialized",
+		real,
+		work,
+		Options{},
+		createdAt,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

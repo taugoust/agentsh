@@ -169,7 +169,10 @@ func TestNew_RejectsSinkChainOverrideInProduction(t *testing.T) {
 	// AllowSinkChainOverrideForTests deliberately omitted.
 	_, err = watchtower.New(context.Background(), opts)
 	if err == nil {
-		t.Fatal("expected New to reject SinkChainOverrideForTests without AllowSinkChainOverrideForTests")
+		t.Fatal(
+			"expected New to reject SinkChainOverrideForTests without " +
+				"AllowSinkChainOverrideForTests",
+		)
 	}
 	if !strings.Contains(err.Error(), "SinkChainOverrideForTests") {
 		t.Fatalf("unexpected error: %v", err)
@@ -190,7 +193,11 @@ func TestNew_AcceptsSinkChainOverrideWhenAllowed(t *testing.T) {
 	opts.AllowSinkChainOverrideForTests = true
 	s, err := watchtower.New(context.Background(), opts)
 	if err != nil {
-		t.Fatalf("expected New to accept SinkChainOverrideForTests when AllowSinkChainOverrideForTests is true, got %v", err)
+		t.Fatalf(
+			"expected New to accept SinkChainOverrideForTests when "+
+				"AllowSinkChainOverrideForTests is true, got %v",
+			err,
+		)
 	}
 	closeStore(t, s)
 }
@@ -207,7 +214,10 @@ func TestNew_NilDialerUsesProductionDialer(t *testing.T) {
 	opts.Dialer = nil
 	s, err := watchtower.New(context.Background(), opts)
 	if err != nil {
-		t.Fatalf("expected New to succeed with nil Dialer (production dialer should be wired): %v", err)
+		t.Fatalf(
+			"expected New to succeed with nil Dialer (production dialer should be wired): %v",
+			err,
+		)
 	}
 	closeStore(t, s)
 }
@@ -311,7 +321,11 @@ func TestStore_CloseIsIdempotent(t *testing.T) {
 	}
 	if err1 != nil && err2 != err1 {
 		// Both should be the same captured error.
-		t.Fatalf("Close returned different errors on idempotent calls: first=%v, second=%v", err1, err2)
+		t.Fatalf(
+			"Close returned different errors on idempotent calls: first=%v, second=%v",
+			err1,
+			err2,
+		)
 	}
 }
 

@@ -123,7 +123,26 @@ func TestStartNotifyHandler_GracefulErrorExit(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	done := startNotifyHandler(ctx, parentSock, "test-graceful", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
+	done := startNotifyHandler(
+		ctx,
+		parentSock,
+		"test-graceful",
+		nil,
+		store,
+		broker,
+		nil,
+		config.SandboxSeccompFileMonitorConfig{},
+		false,
+		nil,
+		nil,
+		false,
+		nil,
+		nil,
+		0,
+		"",
+		nil,
+		nil,
+	)
 
 	select {
 	case <-done:
@@ -203,7 +222,11 @@ func TestNotifyHandlerRecover_PublishesPanicEvent(t *testing.T) {
 	storeEvs := store.events
 	store.mu.Unlock()
 	if storeEvs[0].Type != string(events.EventNotifyHandlerPanic) {
-		t.Errorf("store event type = %q, want %q", storeEvs[0].Type, string(events.EventNotifyHandlerPanic))
+		t.Errorf(
+			"store event type = %q, want %q",
+			storeEvs[0].Type,
+			string(events.EventNotifyHandlerPanic),
+		)
 	}
 }
 
@@ -459,7 +482,26 @@ func TestNotifyHandler_CancellationGoroutineExitsOnEarlyReturn(t *testing.T) {
 
 	goroutinesBefore := runtime.NumGoroutine()
 
-	done := startNotifyHandler(ctx, parentSock, "test-cancel-goroutine", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
+	done := startNotifyHandler(
+		ctx,
+		parentSock,
+		"test-cancel-goroutine",
+		nil,
+		store,
+		broker,
+		nil,
+		config.SandboxSeccompFileMonitorConfig{},
+		false,
+		nil,
+		nil,
+		false,
+		nil,
+		nil,
+		0,
+		"",
+		nil,
+		nil,
+	)
 
 	select {
 	case <-done:
@@ -518,7 +560,26 @@ func TestNotifyHandler_ContextCancelCleansUpFDs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	done := startNotifyHandler(ctx, parentSock, "test-fd-cleanup", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
+	done := startNotifyHandler(
+		ctx,
+		parentSock,
+		"test-fd-cleanup",
+		nil,
+		store,
+		broker,
+		nil,
+		config.SandboxSeccompFileMonitorConfig{},
+		false,
+		nil,
+		nil,
+		false,
+		nil,
+		nil,
+		0,
+		"",
+		nil,
+		nil,
+	)
 
 	select {
 	case <-done:

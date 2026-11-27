@@ -44,7 +44,10 @@ func (kernelCgroupResolver) CgroupPathForPID(pid int) (string, error) {
 		if rel == "" || rel == string(filepath.Separator) {
 			return cgroupV2Root(), nil
 		}
-		return filepath.Join(cgroupV2Root(), strings.TrimPrefix(rel, string(filepath.Separator))), nil
+		return filepath.Join(
+			cgroupV2Root(),
+			strings.TrimPrefix(rel, string(filepath.Separator)),
+		), nil
 	}
 	return "", fmt.Errorf("unified cgroup v2 entry not found in %s", path)
 }

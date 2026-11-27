@@ -154,7 +154,13 @@ func mountFUSEViaNewAPI(mountPoint string, allowOther bool, maxRead int) (fuseFD
 	}
 	defer unix.Close(mntFD)
 
-	if err := unix.MoveMount(mntFD, "", unix.AT_FDCWD, mountPoint, unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
+	if err := unix.MoveMount(
+		mntFD,
+		"",
+		unix.AT_FDCWD,
+		mountPoint,
+		unix.MOVE_MOUNT_F_EMPTY_PATH,
+	); err != nil {
 		return -1, fmt.Errorf("move_mount to %s: %w", mountPoint, err)
 	}
 

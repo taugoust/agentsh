@@ -113,7 +113,13 @@ func (t *Tracer) handleNetwork(ctx context.Context, tid int, sc *SyscallContext)
 							state := t.tracees[tid]
 							if state != nil {
 								fd := int(int32(args[0]))
-								t.fds.recordDNSRedirect(state.TGID, fd, state.TGID, state.SessionID, fmt.Sprintf("%s:%d", destAddr, destPort))
+								t.fds.recordDNSRedirect(
+									state.TGID,
+									fd,
+									state.TGID,
+									state.SessionID,
+									fmt.Sprintf("%s:%d", destAddr, destPort),
+								)
 							}
 							t.mu.Unlock()
 							t.allowSyscall(tid)
@@ -194,7 +200,13 @@ func (t *Tracer) handleNetwork(ctx context.Context, tid int, sc *SyscallContext)
 			if err == nil {
 				regs.SetArg(2, 28)
 				if err := t.setRegs(tid, regs); err != nil {
-					slog.Warn("handleNetwork: DNS redirect setRegs failed", "tid", tid, "error", err)
+					slog.Warn(
+						"handleNetwork: DNS redirect setRegs failed",
+						"tid",
+						tid,
+						"error",
+						err,
+					)
 				}
 			}
 		} else {
@@ -281,7 +293,13 @@ func (t *Tracer) handleNetwork(ctx context.Context, tid int, sc *SyscallContext)
 		if nr == unix.SYS_CONNECT {
 			regs, err := sc.Regs()
 			if err != nil {
-				slog.Warn("handleNetwork: cannot load regs for redirect, denying", "tid", tid, "error", err)
+				slog.Warn(
+					"handleNetwork: cannot load regs for redirect, denying",
+					"tid",
+					tid,
+					"error",
+					err,
+				)
 				t.denySyscall(tid, int(unix.EACCES))
 				return
 			}

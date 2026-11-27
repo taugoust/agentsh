@@ -132,7 +132,13 @@ func TestReplayer_TailIsTuple_HardStopsOnSeqExceedingTail(t *testing.T) {
 	// the gen=2 segment entirely.
 	for _, s := range seen {
 		if s.gen == 2 {
-			t.Fatalf("gen=2 record surfaced: (%d, %d) — segment-iteration filter must skip gen=2 segments; full=%v", s.gen, s.seq, seen)
+			t.Fatalf(
+				"gen=2 record surfaced: (%d, %d) — segment-iteration filter must skip gen=2 "+
+					"segments; full=%v",
+				s.gen,
+				s.seq,
+				seen,
+			)
 		}
 	}
 	// At most one over-tail RecordData (gen=1 seq=4).
@@ -141,7 +147,12 @@ func TestReplayer_TailIsTuple_HardStopsOnSeqExceedingTail(t *testing.T) {
 		if s.gen == 1 && s.seq > 3 {
 			overTail++
 			if s.seq != 4 {
-				t.Fatalf("over-tail seq: got %d, want 4 (only seq=4 may surface as the boundary record); seen=%v", s.seq, seen)
+				t.Fatalf(
+					"over-tail seq: got %d, want 4 (only seq=4 may surface as the boundary "+
+						"record); seen=%v",
+					s.seq,
+					seen,
+				)
 			}
 		}
 	}
@@ -160,7 +171,12 @@ func TestReplayer_TailIsTuple_HardStopsOnSeqExceedingTail(t *testing.T) {
 	// Tail must NOT have advanced from post-entry appends.
 	tg, ts := r.Tail()
 	if tg != 1 || ts != 3 {
-		t.Fatalf("Tail post-replay: got (%d, %d), want (1, 3) — post-entry appends must NOT advance the snapshot", tg, ts)
+		t.Fatalf(
+			"Tail post-replay: got (%d, %d), want (1, 3) — post-entry appends must NOT advance "+
+				"the snapshot",
+			tg,
+			ts,
+		)
 	}
 }
 
@@ -202,7 +218,9 @@ func TestReplayer_StopsAtTailWatermark(t *testing.T) {
 		t.Fatalf("append 3: %v", err)
 	}
 
-	rdr, err := w.NewReader(wal.ReaderOptions{Generation: 0, Start: 3}) // start = ack+1; first emit must be seq>=3
+	rdr, err := w.NewReader(
+		wal.ReaderOptions{Generation: 0, Start: 3},
+	) // start = ack+1; first emit must be seq>=3
 	if err != nil {
 		t.Fatalf("new reader: %v", err)
 	}
@@ -253,7 +271,11 @@ func TestReplayer_StopsAtTailWatermark(t *testing.T) {
 
 	// Hard-stop contract: seq=3 (within-window) MUST be emitted.
 	if emitted < 1 {
-		t.Fatalf("emitted: got %d (seqs=%v), want at least 1 (seq=3 must surface)", emitted, seenSeqs)
+		t.Fatalf(
+			"emitted: got %d (seqs=%v), want at least 1 (seq=3 must surface)",
+			emitted,
+			seenSeqs,
+		)
 	}
 	if seenSeqs[0] != 3 {
 		t.Fatalf("first emitted seq: got %d, want 3", seenSeqs[0])
@@ -269,12 +291,21 @@ func TestReplayer_StopsAtTailWatermark(t *testing.T) {
 		if s > 3 {
 			overTailCount++
 			if s != 4 {
-				t.Fatalf("over-tail seq: got %d, want at most 4 (seq>4 must not surface under hard-stop contract); seqs=%v", s, seenSeqs)
+				t.Fatalf(
+					"over-tail seq: got %d, want at most 4 (seq>4 must not surface under "+
+						"hard-stop contract); seqs=%v",
+					s,
+					seenSeqs,
+				)
 			}
 		}
 	}
 	if overTailCount > 1 {
-		t.Fatalf("over-tail count: got %d, want <=1 (boundary record only); seqs=%v", overTailCount, seenSeqs)
+		t.Fatalf(
+			"over-tail count: got %d, want <=1 (boundary record only); seqs=%v",
+			overTailCount,
+			seenSeqs,
+		)
 	}
 	for _, rec := range lastBatch.Records {
 		if rec.Kind == wal.RecordData {
@@ -284,7 +315,13 @@ func TestReplayer_StopsAtTailWatermark(t *testing.T) {
 	}
 	if overTailCount == 1 {
 		if !haveData || lastDataSeq != 4 {
-			t.Fatalf("boundary record placement: last RecordData in final batch was seq=%d (haveData=%v), want seq=4 (the boundary record must be the LAST RecordData in the final batch)", lastDataSeq, haveData)
+			t.Fatalf(
+				"boundary record placement: last RecordData in final batch was seq=%d "+
+					"(haveData=%v), want seq=4 (the boundary record must be the LAST RecordData "+
+					"in the final batch)",
+				lastDataSeq,
+				haveData,
+			)
 		}
 		if _, got := r.LastReplayedSequence(); got != 4 {
 			t.Fatalf("LastReplayedSequence: got %d, want 4 (boundary record was seq=4)", got)
@@ -301,7 +338,11 @@ func TestReplayer_StopsAtTailWatermark(t *testing.T) {
 	// Tail is sampled once at NewReplayer time and MUST NOT
 	// advance with post-entry appends.
 	if _, got := r.Tail(); got != uint64(3) {
-		t.Fatalf("tail seq: got %d, want %d (the post-entry append must NOT advance tailSeq)", got, 3)
+		t.Fatalf(
+			"tail seq: got %d, want %d (the post-entry append must NOT advance tailSeq)",
+			got,
+			3,
+		)
 	}
 }
 
@@ -384,7 +425,10 @@ func TestReplayer_TerminatesUnderConcurrentAppends(t *testing.T) {
 	maxSeqSeen := uint64(0)
 	for {
 		if time.Now().After(deadline) {
-			t.Fatalf("replay did not terminate within 5s under concurrent appends; saw %d data records", seenData)
+			t.Fatalf(
+				"replay did not terminate within 5s under concurrent appends; saw %d data records",
+				seenData,
+			)
 		}
 		batch, done, err := rep.NextBatch(context.Background())
 		if err != nil {
@@ -419,7 +463,11 @@ func TestReplayer_TerminatesUnderConcurrentAppends(t *testing.T) {
 	// up to tailSeq+1 but reject anything further.
 	tailSeq := func() uint64 { _, s := rep.Tail(); return s }()
 	if maxSeqSeen > tailSeq+1 {
-		t.Fatalf("hard-stop violated: maxSeqSeen=%d, tailSeq=%d (must be <= tailSeq+1)", maxSeqSeen, tailSeq)
+		t.Fatalf(
+			"hard-stop violated: maxSeqSeen=%d, tailSeq=%d (must be <= tailSeq+1)",
+			maxSeqSeen,
+			tailSeq,
+		)
 	}
 }
 
@@ -436,7 +484,9 @@ func TestReplayer_FiltersBeforeStartSequence(t *testing.T) {
 		}
 	}
 
-	rdr, err := w.NewReader(wal.ReaderOptions{Generation: 0, Start: 3}) // emit seqs >= 3 only; 1, 2 must be filtered
+	rdr, err := w.NewReader(
+		wal.ReaderOptions{Generation: 0, Start: 3},
+	) // emit seqs >= 3 only; 1, 2 must be filtered
 	if err != nil {
 		t.Fatalf("new reader: %v", err)
 	}
@@ -573,7 +623,10 @@ func TestReplayer_DeliversLossMarkerBeforeStart(t *testing.T) {
 		}
 	}
 	if losses == 0 {
-		t.Fatalf("expected at least one RecordLoss to surface despite start=20; got none (records=%d)", len(got))
+		t.Fatalf(
+			"expected at least one RecordLoss to surface despite start=20; got none (records=%d)",
+			len(got),
+		)
 	}
 }
 
@@ -643,7 +696,10 @@ func TestReplayer_DeliversWithinWindowLossMarker(t *testing.T) {
 		}
 	}
 	if losses == 0 {
-		t.Fatalf("expected the within-window TransportLoss marker to surface; got 0 (records=%d)", len(got))
+		t.Fatalf(
+			"expected the within-window TransportLoss marker to surface; got 0 (records=%d)",
+			len(got),
+		)
 	}
 }
 
@@ -705,6 +761,9 @@ func TestReplayer_LossOnlyScenario(t *testing.T) {
 		t.Fatalf("RecordLoss count: got %d, want %d (records=%v)", gotLoss, len(losses), got)
 	}
 	if gotData != 0 {
-		t.Fatalf("RecordData count: got %d, want 0 (loss-only WAL must produce no RecordData)", gotData)
+		t.Fatalf(
+			"RecordData count: got %d, want 0 (loss-only WAL must produce no RecordData)",
+			gotData,
+		)
 	}
 }

@@ -63,7 +63,11 @@ func (r *pnpmResolver) CanResolve(command string, args []string) bool {
 	}
 }
 
-func (r *pnpmResolver) Resolve(ctx context.Context, workDir string, command []string) (*pkgcheck.InstallPlan, error) {
+func (r *pnpmResolver) Resolve(
+	ctx context.Context,
+	workDir string,
+	command []string,
+) (*pkgcheck.InstallPlan, error) {
 	var packages []string
 	var args []string
 	if len(command) > 1 {

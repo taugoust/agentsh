@@ -27,7 +27,10 @@ func TestTransparentTCPPolicyDecisionNilPolicyAllows(t *testing.T) {
 
 func TestTransparentTCPMaybeApproveWithoutManager(t *testing.T) {
 	tcp := &TransparentTCP{}
-	in := policy.Decision{PolicyDecision: types.DecisionApprove, EffectiveDecision: types.DecisionApprove}
+	in := policy.Decision{
+		PolicyDecision:    types.DecisionApprove,
+		EffectiveDecision: types.DecisionApprove,
+	}
 	out := tcp.maybeApprove(context.Background(), "", in, "network", "t")
 	if out.EffectiveDecision != types.DecisionApprove {
 		t.Fatalf("expected unchanged decision without approvals manager")
@@ -42,7 +45,15 @@ func TestTransparentTCPCheckConnectNetwork_DBUnixRedirectBypassesGeneratedDeny(t
 	}
 
 	tcp := &TransparentTCP{policy: engine}
-	dec := tcp.checkConnectNetwork(context.Background(), "", "db.internal", "db.internal:5432", net.ParseIP("10.0.0.15"), 5432, redirect)
+	dec := tcp.checkConnectNetwork(
+		context.Background(),
+		"",
+		"db.internal",
+		"db.internal:5432",
+		net.ParseIP("10.0.0.15"),
+		5432,
+		redirect,
+	)
 	if dec.EffectiveDecision != types.DecisionAllow {
 		t.Fatalf("EffectiveDecision = %v, want allow", dec.EffectiveDecision)
 	}
@@ -59,7 +70,15 @@ func TestTransparentTCPCheckConnectNetwork_RequiresDBRedirectMetadata(t *testing
 	}
 
 	tcp := &TransparentTCP{policy: engine}
-	dec := tcp.checkConnectNetwork(context.Background(), "", "db.internal", "db.internal:5432", net.ParseIP("10.0.0.15"), 5432, redirect)
+	dec := tcp.checkConnectNetwork(
+		context.Background(),
+		"",
+		"db.internal",
+		"db.internal:5432",
+		net.ParseIP("10.0.0.15"),
+		5432,
+		redirect,
+	)
 	if dec.EffectiveDecision != types.DecisionDeny {
 		t.Fatalf("EffectiveDecision = %v, want deny", dec.EffectiveDecision)
 	}
@@ -120,7 +139,13 @@ func TestTransparentTCPEmitDBBypassAttempt(t *testing.T) {
 	}
 	tcp.SetDBBypassEmitter(dbevents.NewBypassEmitter(capture))
 
-	tcp.emitDBBypassAttempt(context.Background(), "", 0, "db-appdb-deny-direct", "blocked by transparent policy")
+	tcp.emitDBBypassAttempt(
+		context.Background(),
+		"",
+		0,
+		"db-appdb-deny-direct",
+		"blocked by transparent policy",
+	)
 
 	if len(capture.events) != 1 {
 		t.Fatalf("db bypass events = %d, want 1", len(capture.events))
@@ -132,7 +157,8 @@ func TestTransparentTCPEmitDBBypassAttempt(t *testing.T) {
 	if ev.Fields["process_identity"] != "session:session-db" {
 		t.Fatalf("process_identity = %v, want session:session-db", ev.Fields["process_identity"])
 	}
-	if ev.Fields["rule_name"] != "db-appdb-deny-direct" || ev.Fields["bypass_mode"] != dbservice.BypassModeTCPDirect {
+	if ev.Fields["rule_name"] != "db-appdb-deny-direct" ||
+		ev.Fields["bypass_mode"] != dbservice.BypassModeTCPDirect {
 		t.Fatalf("db metadata fields = %+v", ev.Fields)
 	}
 	if ev.Fields["reason"] != "blocked by transparent policy" {
@@ -142,13 +168,28 @@ func TestTransparentTCPEmitDBBypassAttempt(t *testing.T) {
 
 func TestStartTransparentTCPInstallsInitialDBBypassEmitter(t *testing.T) {
 	capture := &captureDBBypassEmitter{}
-	tcp, _, err := StartTransparentTCP("127.0.0.1:0", "session-db", nil, nil, newNetmonitorDBUnavoidabilityEngine(t), nil, &stubEmitter{}, dbevents.NewBypassEmitter(capture))
+	tcp, _, err := StartTransparentTCP(
+		"127.0.0.1:0",
+		"session-db",
+		nil,
+		nil,
+		newNetmonitorDBUnavoidabilityEngine(t),
+		nil,
+		&stubEmitter{},
+		dbevents.NewBypassEmitter(capture),
+	)
 	if err != nil {
 		t.Fatalf("StartTransparentTCP: %v", err)
 	}
 	defer tcp.Close()
 
-	tcp.emitDBBypassAttempt(context.Background(), "", 0, "db-appdb-deny-direct", "blocked before publish")
+	tcp.emitDBBypassAttempt(
+		context.Background(),
+		"",
+		0,
+		"db-appdb-deny-direct",
+		"blocked before publish",
+	)
 
 	if len(capture.events) != 1 {
 		t.Fatalf("db bypass events = %d, want 1", len(capture.events))
@@ -208,7 +249,12 @@ func newTransparentDBRedirectEngine(t *testing.T, includeRedirectMetadata bool) 
 		Version:  1,
 		Metadata: metadata,
 		NetworkRules: []policy.NetworkRule{
-			{Name: "deny-db-direct", Decision: "deny", Domains: []string{"db.internal"}, Ports: []int{5432}},
+			{
+				Name:     "deny-db-direct",
+				Decision: "deny",
+				Domains:  []string{"db.internal"},
+				Ports:    []int{5432},
+			},
 		},
 		ConnectRedirectRules: []policy.ConnectRedirectRule{
 			{

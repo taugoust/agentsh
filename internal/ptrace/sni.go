@@ -146,7 +146,8 @@ func parseSNI(buf []byte) (serverName string, offset int, length int, err error)
 
 // rewriteSNI replaces the SNI server name in a TLS ClientHello with newName.
 // Returns a new buffer with the rewritten ClientHello.
-// Updates all length fields (TLS record, handshake, extensions total, SNI extension, server name list, host name).
+// Updates all length fields (TLS record, handshake, extensions total, SNI extension, server name
+// list, host name).
 func rewriteSNI(buf []byte, newName string) ([]byte, error) {
 	_, nameOffset, nameLen, err := parseSNI(buf)
 	if err != nil {

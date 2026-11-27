@@ -18,7 +18,14 @@ func TestUnavoidability_StringAndParse(t *testing.T) {
 	for _, tc := range tests {
 		got, ok := ParseUnavoidability(tc.s)
 		if ok != tc.ok || got != tc.want {
-			t.Errorf("ParseUnavoidability(%q) = (%v,%v), want (%v,%v)", tc.s, got, ok, tc.want, tc.ok)
+			t.Errorf(
+				"ParseUnavoidability(%q) = (%v,%v), want (%v,%v)",
+				tc.s,
+				got,
+				ok,
+				tc.want,
+				tc.ok,
+			)
 		}
 		if ok && got.String() != tc.s {
 			t.Errorf("Unavoidability(%v).String() = %q, want %q", got, got.String(), tc.s)

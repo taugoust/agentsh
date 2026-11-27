@@ -103,7 +103,9 @@ func EncodeHello(h Hello) []byte {
 }
 
 func DecodeHello(buf []byte) (Hello, error) {
-	if len(buf) != helloSize || binary.LittleEndian.Uint32(buf[0:4]) != helloMagic || binary.LittleEndian.Uint16(buf[4:6]) != ProtocolVersion || binary.LittleEndian.Uint16(buf[6:8]) != helloSize {
+	if len(buf) != helloSize || binary.LittleEndian.Uint32(buf[0:4]) != helloMagic ||
+		binary.LittleEndian.Uint16(buf[4:6]) != ProtocolVersion ||
+		binary.LittleEndian.Uint16(buf[6:8]) != helloSize {
 		return Hello{}, errors.New("invalid file lookup broker hello")
 	}
 	h := Hello{
@@ -112,7 +114,10 @@ func DecodeHello(buf []byte) (Hello, error) {
 		MaxPacketBytes:  binary.LittleEndian.Uint32(buf[16:20]),
 		WorkerTimeoutMS: binary.LittleEndian.Uint32(buf[20:24]),
 	}
-	if h.WrapperPID == 0 || h.PayloadPID == 0 || h.MaxPacketBytes < requestHeaderSize || h.MaxPacketBytes > MaxPacketBytes || h.WorkerTimeoutMS == 0 || h.WorkerTimeoutMS > 5000 {
+	if h.WrapperPID == 0 || h.PayloadPID == 0 || h.MaxPacketBytes < requestHeaderSize ||
+		h.MaxPacketBytes > MaxPacketBytes ||
+		h.WorkerTimeoutMS == 0 ||
+		h.WorkerTimeoutMS > 5000 {
 		return Hello{}, errors.New("invalid file lookup broker capability limits")
 	}
 	return h, nil
@@ -139,7 +144,9 @@ type Request struct {
 }
 
 func EncodeRequest(r Request) ([]byte, error) {
-	if r.ID == 0 || r.HostTID == 0 || r.NamespaceTID == 0 || r.StartTime == 0 || r.Operation <= OperationInvalid || r.Operation > OperationReadlinkMetadata {
+	if r.ID == 0 || r.HostTID == 0 || r.NamespaceTID == 0 || r.StartTime == 0 ||
+		r.Operation <= OperationInvalid ||
+		r.Operation > OperationReadlinkMetadata {
 		return nil, errors.New("invalid file lookup request identity")
 	}
 	if len(r.Path) == 0 || len(r.Path) > MaxPathBytes || len(r.ExpectedLabel) > MaxLabelBytes {
@@ -171,12 +178,16 @@ func EncodeRequest(r Request) ([]byte, error) {
 }
 
 func DecodeRequest(buf []byte) (Request, error) {
-	if len(buf) < requestHeaderSize || len(buf) > MaxPacketBytes || binary.LittleEndian.Uint32(buf[0:4]) != requestMagic || binary.LittleEndian.Uint16(buf[4:6]) != ProtocolVersion || binary.LittleEndian.Uint16(buf[6:8]) != requestHeaderSize {
+	if len(buf) < requestHeaderSize || len(buf) > MaxPacketBytes ||
+		binary.LittleEndian.Uint32(buf[0:4]) != requestMagic ||
+		binary.LittleEndian.Uint16(buf[4:6]) != ProtocolVersion ||
+		binary.LittleEndian.Uint16(buf[6:8]) != requestHeaderSize {
 		return Request{}, errors.New("invalid file lookup request header")
 	}
 	pathLen := int(binary.LittleEndian.Uint32(buf[88:92]))
 	labelLen := int(binary.LittleEndian.Uint32(buf[92:96]))
-	if pathLen <= 0 || pathLen > MaxPathBytes || labelLen < 0 || labelLen > MaxLabelBytes || requestHeaderSize+pathLen+labelLen != len(buf) {
+	if pathLen <= 0 || pathLen > MaxPathBytes || labelLen < 0 || labelLen > MaxLabelBytes ||
+		requestHeaderSize+pathLen+labelLen != len(buf) {
 		return Request{}, errors.New("invalid file lookup request lengths")
 	}
 	r := Request{
@@ -197,7 +208,9 @@ func DecodeRequest(buf []byte) (Request, error) {
 		Path:          string(buf[requestHeaderSize : requestHeaderSize+pathLen]),
 		ExpectedLabel: string(buf[requestHeaderSize+pathLen:]),
 	}
-	if r.ID == 0 || r.HostTID == 0 || r.NamespaceTID == 0 || r.StartTime == 0 || r.Operation <= OperationInvalid || r.Operation > OperationReadlinkMetadata {
+	if r.ID == 0 || r.HostTID == 0 || r.NamespaceTID == 0 || r.StartTime == 0 ||
+		r.Operation <= OperationInvalid ||
+		r.Operation > OperationReadlinkMetadata {
 		return Request{}, errors.New("invalid file lookup request fields")
 	}
 	return r, nil
@@ -226,7 +239,9 @@ func EncodeResult(r Result) ([]byte, error) {
 }
 
 func DecodeResult(buf []byte) (Result, error) {
-	if len(buf) != resultSize || binary.LittleEndian.Uint32(buf[0:4]) != resultMagic || binary.LittleEndian.Uint16(buf[4:6]) != ProtocolVersion || binary.LittleEndian.Uint16(buf[6:8]) != resultSize {
+	if len(buf) != resultSize || binary.LittleEndian.Uint32(buf[0:4]) != resultMagic ||
+		binary.LittleEndian.Uint16(buf[4:6]) != ProtocolVersion ||
+		binary.LittleEndian.Uint16(buf[6:8]) != resultSize {
 		return Result{}, errors.New("invalid file lookup result header")
 	}
 	r := Result{

@@ -34,7 +34,8 @@ func (a *App) buildBlockListConfigFor(sessionID string) any {
 	if err != nil {
 		slog.Warn("blocklist: failed to resolve effective syscall block list",
 			"session_id", sessionID, "error", err)
-	} else if action, ok := seccompkg.ParseOnBlock(onBlock); ok && (action == seccompkg.OnBlockLog || action == seccompkg.OnBlockLogAndKill) {
+	} else if action, ok := seccompkg.ParseOnBlock(onBlock); ok &&
+		(action == seccompkg.OnBlockLog || action == seccompkg.OnBlockLogAndKill) {
 		nrs, skipped := seccompkg.ResolveSyscalls(block)
 		if len(skipped) > 0 {
 			slog.Warn("blocklist: some syscalls could not be resolved on this arch",

@@ -31,7 +31,12 @@ func TestPopulateAllowlistCIDR(t *testing.T) {
 		t.Fatalf("lpm4_allow missing")
 	}
 
-	key := lpm4Key{Prefixlen: lpmPrefixLen(24, true), CgroupID: cgid, Addr: [4]byte{10, 1, 2, 3}, Dport: 443}
+	key := lpm4Key{
+		Prefixlen: lpmPrefixLen(24, true),
+		CgroupID:  cgid,
+		Addr:      [4]byte{10, 1, 2, 3},
+		Dport:     443,
+	}
 	var val uint8
 	if err := lpm4.Lookup(key, &val); err != nil {
 		t.Fatalf("lookup lpm: %v", err)

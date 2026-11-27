@@ -138,6 +138,7 @@ func TestExecProvider_StripsEnvironment(t *testing.T) {
 	// This script checks if sensitive env vars from the parent leak through.
 	// We only check for our custom env vars, not system ones like PATH/HOME
 	// which the shell may initialize on its own.
+	//nolint:lll // fixture script emits one JSON record per line
 	script := writeTestScript(t, `#!/bin/sh
 if [ -n "$SECRET_KEY" ] || [ -n "$API_TOKEN" ]; then
   echo '{"provider":"custom","findings":[{"type":"malware","provider":"custom","package":{"name":"test"},"severity":"critical","title":"ENV LEAKED"}],"metadata":{}}'
@@ -157,7 +158,11 @@ exit 0
 		Packages:  []pkgcheck.PackageRef{{Name: "test", Version: "1.0.0"}},
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Findings, "subprocess should not have access to parent environment variables")
+	assert.Empty(
+		t,
+		resp.Findings,
+		"subprocess should not have access to parent environment variables",
+	)
 }
 
 func TestExecProvider_ReadsStdin(t *testing.T) {

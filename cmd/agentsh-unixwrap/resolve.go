@@ -57,13 +57,23 @@ func resolveCommandPath(cmd string) (string, error) {
 		return path, nil
 	}
 	if strings.ContainsRune(cmd, os.PathSeparator) {
-		return "", fmt.Errorf("%w (PATH=%q, env_count=%d)", err, os.Getenv("PATH"), len(os.Environ()))
+		return "", fmt.Errorf(
+			"%w (PATH=%q, env_count=%d)",
+			err,
+			os.Getenv("PATH"),
+			len(os.Environ()),
+		)
 	}
 	// Non-not-found errors (ErrDot, fs.ErrPermission, etc.) must not be
 	// papered over by the fallback. They tell us something specific about
 	// the user's invocation — surface them with diagnostics.
 	if !errors.Is(err, exec.ErrNotFound) {
-		return "", fmt.Errorf("%w (PATH=%q, env_count=%d)", err, os.Getenv("PATH"), len(os.Environ()))
+		return "", fmt.Errorf(
+			"%w (PATH=%q, env_count=%d)",
+			err,
+			os.Getenv("PATH"),
+			len(os.Environ()),
+		)
 	}
 	for _, dir := range fallbackPATH {
 		candidate := filepath.Join(dir, cmd)

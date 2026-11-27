@@ -20,13 +20,24 @@ type mockCLIClient struct {
 	proxyStatus map[string]any
 }
 
-func (m *mockCLIClient) CreateSession(ctx context.Context, workspace, policy string) (types.Session, error) {
+func (m *mockCLIClient) CreateSession(
+	ctx context.Context,
+	workspace, policy string,
+) (types.Session, error) {
 	return m.session, nil
 }
-func (m *mockCLIClient) CreateSessionWithID(ctx context.Context, id, workspace, policy string) (types.Session, error) {
+
+func (m *mockCLIClient) CreateSessionWithID(
+	ctx context.Context,
+	id, workspace, policy string,
+) (types.Session, error) {
 	return m.session, nil
 }
-func (m *mockCLIClient) CreateSessionWithRequest(ctx context.Context, req types.CreateSessionRequest) (types.Session, error) {
+
+func (m *mockCLIClient) CreateSessionWithRequest(
+	ctx context.Context,
+	req types.CreateSessionRequest,
+) (types.Session, error) {
 	return m.session, nil
 }
 func (m *mockCLIClient) ListSessions(ctx context.Context) ([]types.Session, error) {
@@ -36,56 +47,127 @@ func (m *mockCLIClient) GetSession(ctx context.Context, id string) (types.Sessio
 	return m.session, nil
 }
 func (m *mockCLIClient) DestroySession(ctx context.Context, id string) error { return nil }
-func (m *mockCLIClient) PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error) {
+
+func (m *mockCLIClient) PatchSession(
+	ctx context.Context,
+	id string,
+	req types.SessionPatchRequest,
+) (types.Session, error) {
 	return m.session, nil
 }
 func (m *mockCLIClient) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil
 }
-func (m *mockCLIClient) DiffSessionOverlayReview(ctx context.Context, id string) (client.OverlayReview, error) {
+
+func (m *mockCLIClient) DiffSessionOverlayReview(
+	ctx context.Context,
+	id string,
+) (client.OverlayReview, error) {
 	return client.OverlayReview{Body: io.NopCloser(strings.NewReader(""))}, nil
 }
-func (m *mockCLIClient) AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+
+func (m *mockCLIClient) AcceptSessionOverlay(
+	ctx context.Context,
+	id string,
+) (types.Session, error) {
 	return m.session, nil
 }
-func (m *mockCLIClient) AcceptSessionOverlayReviewed(ctx context.Context, id string, generation uint64, hash string) (types.Session, error) {
+
+func (m *mockCLIClient) AcceptSessionOverlayReviewed(
+	ctx context.Context,
+	id string,
+	generation uint64,
+	hash string,
+) (types.Session, error) {
 	return m.session, nil
 }
-func (m *mockCLIClient) RejectSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+
+func (m *mockCLIClient) RejectSessionOverlay(
+	ctx context.Context,
+	id string,
+) (types.Session, error) {
 	return m.session, nil
 }
-func (m *mockCLIClient) Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error) {
+
+func (m *mockCLIClient) Exec(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (types.ExecResponse, error) {
 	return types.ExecResponse{}, nil
 }
-func (m *mockCLIClient) ExecStream(ctx context.Context, sessionID string, req types.ExecRequest) (io.ReadCloser, error) {
+
+func (m *mockCLIClient) ExecStream(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (io.ReadCloser, error) {
 	return nil, nil
 }
 func (m *mockCLIClient) KillCommand(ctx context.Context, sessionID string, commandID string) error {
 	return nil
 }
-func (m *mockCLIClient) QuerySessionEvents(ctx context.Context, sessionID string, q url.Values) ([]types.Event, error) {
+
+func (m *mockCLIClient) QuerySessionEvents(
+	ctx context.Context,
+	sessionID string,
+	q url.Values,
+) ([]types.Event, error) {
 	return nil, nil
 }
 func (m *mockCLIClient) SearchEvents(ctx context.Context, q url.Values) ([]types.Event, error) {
 	return nil, nil
 }
-func (m *mockCLIClient) StreamSessionEvents(ctx context.Context, sessionID string) (io.ReadCloser, error) {
+
+func (m *mockCLIClient) StreamSessionEvents(
+	ctx context.Context,
+	sessionID string,
+) (io.ReadCloser, error) {
 	return nil, nil
 }
-func (m *mockCLIClient) OutputChunk(ctx context.Context, sessionID, commandID string, stream string, offset, limit int64) (map[string]any, error) {
+
+func (m *mockCLIClient) OutputChunk(
+	ctx context.Context,
+	sessionID, commandID string,
+	stream string,
+	offset, limit int64,
+) (map[string]any, error) {
 	return nil, nil
 }
-func (m *mockCLIClient) ListApprovals(ctx context.Context) ([]map[string]any, error) { return nil, nil }
-func (m *mockCLIClient) ResolveApproval(ctx context.Context, id string, decision string, reason string) error {
+
+func (m *mockCLIClient) ListApprovals(
+	ctx context.Context,
+) ([]map[string]any, error) {
+	return nil, nil
+}
+
+func (m *mockCLIClient) ResolveApproval(
+	ctx context.Context,
+	id string,
+	decision string,
+	reason string,
+) error {
 	return nil
 }
-func (m *mockCLIClient) PolicyTest(ctx context.Context, sessionID, operation, path string) (map[string]any, error) {
+
+func (m *mockCLIClient) PolicyTest(
+	ctx context.Context,
+	sessionID, operation, path string,
+) (map[string]any, error) {
 	return nil, nil
 }
-func (m *mockCLIClient) GetProxyStatus(ctx context.Context, sessionID string) (map[string]any, error) {
+
+func (m *mockCLIClient) GetProxyStatus(
+	ctx context.Context,
+	sessionID string,
+) (map[string]any, error) {
 	return m.proxyStatus, nil
 }
-func (m *mockCLIClient) ListTaints(ctx context.Context, sessionID string) ([]types.TaintInfo, error) {
+
+func (m *mockCLIClient) ListTaints(
+	ctx context.Context,
+	sessionID string,
+) ([]types.TaintInfo, error) {
 	return nil, nil
 }
 func (m *mockCLIClient) GetTaint(ctx context.Context, pid int) (*types.TaintInfo, error) {
@@ -94,10 +176,20 @@ func (m *mockCLIClient) GetTaint(ctx context.Context, pid int) (*types.TaintInfo
 func (m *mockCLIClient) GetTaintTrace(ctx context.Context, pid int) (*types.TaintTrace, error) {
 	return nil, nil
 }
-func (m *mockCLIClient) WatchTaints(ctx context.Context, agentOnly bool, handler func(types.TaintEvent)) error {
+
+func (m *mockCLIClient) WatchTaints(
+	ctx context.Context,
+	agentOnly bool,
+	handler func(types.TaintEvent),
+) error {
 	return nil
 }
-func (m *mockCLIClient) WrapInit(ctx context.Context, sessionID string, req types.WrapInitRequest) (types.WrapInitResponse, error) {
+
+func (m *mockCLIClient) WrapInit(
+	ctx context.Context,
+	sessionID string,
+	req types.WrapInitRequest,
+) (types.WrapInitResponse, error) {
 	return types.WrapInitResponse{}, nil
 }
 func (m *mockCLIClient) ListMCPTools(ctx context.Context, q url.Values) ([]map[string]any, error) {

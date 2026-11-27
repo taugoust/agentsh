@@ -37,7 +37,10 @@ type filePolicyEngineWrapper struct {
 	runtimeState session.CommandRuntimeState
 }
 
-func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation string) unixmon.FilePolicyDecision {
+func (w *filePolicyEngineWrapper) CheckFile(
+	ctx context.Context,
+	path, operation string,
+) unixmon.FilePolicyDecision {
 	dec := w.engine.CheckFile(path, operation)
 	out := unixmon.FilePolicyDecision{
 		Decision:          string(dec.PolicyDecision),
@@ -46,7 +49,8 @@ func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation
 		Message:           dec.Message,
 		CacheOutcome:      unixmon.FileApprovalCacheNotApplicable,
 	}
-	if dec.PolicyDecision != types.DecisionApprove || dec.EffectiveDecision != types.DecisionApprove {
+	if dec.PolicyDecision != types.DecisionApprove ||
+		dec.EffectiveDecision != types.DecisionApprove {
 		return out
 	}
 	if ctx == nil {
@@ -83,9 +87,14 @@ func (w *filePolicyEngineWrapper) CheckFile(ctx context.Context, path, operation
 // ResolveFileApproval performs the blocking half of file approval handling.
 // RequestApprovalScoped repeats the exact prepared cache lookup and registers a
 // pending request atomically if it still misses.
-func (w *filePolicyEngineWrapper) ResolveFileApproval(ctx context.Context, path, operation string, prepared unixmon.FilePolicyDecision) (unixmon.FilePolicyDecision, error) {
+func (w *filePolicyEngineWrapper) ResolveFileApproval(
+	ctx context.Context,
+	path, operation string,
+	prepared unixmon.FilePolicyDecision,
+) (unixmon.FilePolicyDecision, error) {
 	out := prepared
-	if prepared.Decision != string(types.DecisionApprove) || prepared.EffectiveDecision != string(types.DecisionApprove) {
+	if prepared.Decision != string(types.DecisionApprove) ||
+		prepared.EffectiveDecision != string(types.DecisionApprove) {
 		return out, nil
 	}
 	if ctx == nil {
@@ -149,11 +158,26 @@ func (w *filePolicyEngineWrapper) currentCommandID() string {
 
 // createFileHandler creates a FileHandler from configuration.
 // landlockEnabled indicates whether Landlock enforcement is configured (not just kernel-available).
-func createFileHandler(cfg config.SandboxSeccompFileMonitorConfig, pol *policy.Engine, emitter unixmon.Emitter, landlockEnabled bool, approvalsMgr *approvals.Manager, sess *session.Session) *unixmon.FileHandler {
+func createFileHandler(
+	cfg config.SandboxSeccompFileMonitorConfig,
+	pol *policy.Engine,
+	emitter unixmon.Emitter,
+	landlockEnabled bool,
+	approvalsMgr *approvals.Manager,
+	sess *session.Session,
+) *unixmon.FileHandler {
 	return createFileHandlerForState(cfg, pol, emitter, landlockEnabled, approvalsMgr, sess, sess)
 }
 
-func createFileHandlerForState(cfg config.SandboxSeccompFileMonitorConfig, pol *policy.Engine, emitter unixmon.Emitter, landlockEnabled bool, approvalsMgr *approvals.Manager, sess *session.Session, runtimeState session.CommandRuntimeState) *unixmon.FileHandler {
+func createFileHandlerForState(
+	cfg config.SandboxSeccompFileMonitorConfig,
+	pol *policy.Engine,
+	emitter unixmon.Emitter,
+	landlockEnabled bool,
+	approvalsMgr *approvals.Manager,
+	sess *session.Session,
+	runtimeState session.CommandRuntimeState,
+) *unixmon.FileHandler {
 	if !config.FileMonitorBoolWithDefault(cfg.Enabled, false) {
 		return nil
 	}
@@ -164,7 +188,12 @@ func createFileHandlerForState(cfg config.SandboxSeccompFileMonitorConfig, pol *
 		if sess != nil {
 			sessionID = sess.ID
 		}
-		policyChecker = &filePolicyEngineWrapper{engine: pol, approvals: approvalsMgr, sessionID: sessionID, runtimeState: runtimeState}
+		policyChecker = &filePolicyEngineWrapper{
+			engine:       pol,
+			approvals:    approvalsMgr,
+			sessionID:    sessionID,
+			runtimeState: runtimeState,
+		}
 	}
 
 	registry := getMountRegistry()

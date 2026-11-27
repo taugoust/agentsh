@@ -20,7 +20,11 @@ import (
 
 const cidLeaseLockName = "leases.lock"
 
-func allocateCID(ctx context.Context, root, sessionID string, cidMin, cidMax uint32) (CIDLease, error) {
+func allocateCID(
+	ctx context.Context,
+	root, sessionID string,
+	cidMin, cidMax uint32,
+) (CIDLease, error) {
 	lock, dir, err := acquireCIDLock(ctx, root, true)
 	if err != nil {
 		return CIDLease{}, err
@@ -33,7 +37,11 @@ func allocateCID(ctx context.Context, root, sessionID string, cidMin, cidMax uin
 			return CIDLease{}, err
 		}
 		path := cidLeasePath(root, cid)
-		fd, openErr := unix.Open(path, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0o600)
+		fd, openErr := unix.Open(
+			path,
+			unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW,
+			0o600,
+		)
 		if openErr == unix.EEXIST {
 			if cid == cidMax {
 				break
@@ -74,11 +82,18 @@ func allocateCID(ctx context.Context, root, sessionID string, cidMin, cidMax uin
 		}
 		if err := dir.Sync(); err != nil {
 			removeErr := removeCIDLeaseIfSame(path, identity)
-			return CIDLease{}, errors.Join(fmt.Errorf("sync external runner CID lease directory: %w", err), removeErr)
+			return CIDLease{}, errors.Join(
+				fmt.Errorf("sync external runner CID lease directory: %w", err),
+				removeErr,
+			)
 		}
 		return lease, nil
 	}
-	return CIDLease{}, fmt.Errorf("external runner VSOCK CID range %d-%d is exhausted", cidMin, cidMax)
+	return CIDLease{}, fmt.Errorf(
+		"external runner VSOCK CID range %d-%d is exhausted",
+		cidMin,
+		cidMax,
+	)
 }
 
 func verifyCID(ctx context.Context, root string, lease CIDLease, cidMin, cidMax uint32) error {
@@ -144,8 +159,15 @@ func acquireCIDLock(ctx context.Context, root string, create bool) (io.Closer, *
 	if ok {
 		ownerUID = stat.Uid
 	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 || !ok || !trustedCIDOwner(ownerUID) {
-		return nil, nil, fmt.Errorf("external runner CID lease root has unsafe identity or permissions: mode=%s uid=%d euid=%d", info.Mode(), ownerUID, os.Geteuid())
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 || !ok ||
+		!trustedCIDOwner(ownerUID) {
+		return nil, nil, fmt.Errorf(
+			"external runner CID lease root has unsafe identity or permissions: mode=%s "+
+				"uid=%d euid=%d",
+			info.Mode(),
+			ownerUID,
+			os.Geteuid(),
+		)
 	}
 	dir, err := os.Open(root)
 	if err != nil {
@@ -170,10 +192,13 @@ func acquireCIDLock(ctx context.Context, root string, create bool) (io.Closer, *
 		return nil, nil, fmt.Errorf("inspect external runner CID lease lock: %w", err)
 	}
 	lockStat, statOK := lockInfo.Sys().(*syscall.Stat_t)
-	if !lockInfo.Mode().IsRegular() || lockInfo.Mode().Perm() != 0o600 || !statOK || !trustedCIDOwner(lockStat.Uid) {
+	if !lockInfo.Mode().IsRegular() || lockInfo.Mode().Perm() != 0o600 || !statOK ||
+		!trustedCIDOwner(lockStat.Uid) {
 		_ = lock.Close()
 		_ = dir.Close()
-		return nil, nil, fmt.Errorf("external runner CID lease lock has unsafe identity or permissions")
+		return nil, nil, fmt.Errorf(
+			"external runner CID lease lock has unsafe identity or permissions",
+		)
 	}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -208,7 +233,11 @@ func readCIDLease(root string, cid, cidMin, cidMax uint32) (os.FileInfo, CIDLeas
 		return nil, CIDLease{}, fmt.Errorf("inspect external runner CID lease: %w", err)
 	}
 	leaseStat, statOK := before.Sys().(*syscall.Stat_t)
-	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm() != 0o600 || before.Size() > 4096 || !statOK || !trustedCIDOwner(leaseStat.Uid) {
+	if !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 ||
+		before.Mode().Perm() != 0o600 ||
+		before.Size() > 4096 ||
+		!statOK ||
+		!trustedCIDOwner(leaseStat.Uid) {
 		return nil, CIDLease{}, fmt.Errorf("external runner CID lease file is unsafe")
 	}
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
@@ -219,7 +248,9 @@ func readCIDLease(root string, cid, cidMin, cidMax uint32) (os.FileInfo, CIDLeas
 	defer file.Close()
 	opened, err := file.Stat()
 	if err != nil || !os.SameFile(before, opened) {
-		return nil, CIDLease{}, fmt.Errorf("external runner CID lease identity changed while opening")
+		return nil, CIDLease{}, fmt.Errorf(
+			"external runner CID lease identity changed while opening",
+		)
 	}
 	decoder := json.NewDecoder(io.LimitReader(file, 4097))
 	decoder.DisallowUnknownFields()
@@ -258,8 +289,10 @@ func removeCIDLeaseIfSame(path string, identity os.FileInfo) error {
 }
 
 func sameCIDLease(left, right CIDLease) bool {
-	return left.SchemaVersion == right.SchemaVersion && left.CID == right.CID && left.SessionID == right.SessionID &&
-		left.LeaseID == right.LeaseID && left.CreatedAt.Equal(right.CreatedAt)
+	return left.SchemaVersion == right.SchemaVersion && left.CID == right.CID &&
+		left.SessionID == right.SessionID &&
+		left.LeaseID == right.LeaseID &&
+		left.CreatedAt.Equal(right.CreatedAt)
 }
 
 func randomLeaseID() (string, error) {

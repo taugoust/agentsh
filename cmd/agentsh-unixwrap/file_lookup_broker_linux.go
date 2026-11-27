@@ -94,7 +94,11 @@ func prepareLookupBroker(cfg *WrapperConfig) *lookupBrokerState {
 		state.unsupportedReason = lookupproto.ReasonWorkerUnavailable
 		return state
 	}
-	devNullFD, err := unix.Open(filepath.Join(string(filepath.Separator), "dev", "null"), unix.O_RDWR|unix.O_CLOEXEC, 0)
+	devNullFD, err := unix.Open(
+		filepath.Join(string(filepath.Separator), "dev", "null"),
+		unix.O_RDWR|unix.O_CLOEXEC,
+		0,
+	)
 	if err != nil {
 		state.close()
 		state.unsupportedReason = lookupproto.ReasonWorkerUnavailable
@@ -143,7 +147,9 @@ func verifyStaticLookupWorker(worker *os.File) bool {
 }
 
 func lookupSecurityLabelRequired() bool {
-	data, err := os.ReadFile(filepath.Join(string(filepath.Separator), "sys", "kernel", "security", "lsm"))
+	data, err := os.ReadFile(
+		filepath.Join(string(filepath.Separator), "sys", "kernel", "security", "lsm"),
+	)
 	if err != nil {
 		return true
 	}
@@ -157,7 +163,9 @@ func lookupSecurityLabelRequired() bool {
 }
 
 func unsupportedLookupLSM() lookupproto.Reason {
-	data, err := os.ReadFile(filepath.Join(string(filepath.Separator), "sys", "kernel", "security", "lsm"))
+	data, err := os.ReadFile(
+		filepath.Join(string(filepath.Separator), "sys", "kernel", "security", "lsm"),
+	)
 	if err != nil {
 		return lookupproto.ReasonContextUnavailable
 	}
@@ -186,7 +194,9 @@ func (b *lookupBrokerState) close() {
 		b.baseline.close()
 		b.baseline = nil
 	}
-	for _, file := range []*os.File{b.brokerEndpoint, b.transferEndpoint, b.procRoot, b.worker, b.devNull} {
+	for _, file := range []*os.File{
+		b.brokerEndpoint, b.transferEndpoint, b.procRoot, b.worker, b.devNull,
+	} {
 		if file != nil {
 			_ = file.Close()
 		}
@@ -205,8 +215,14 @@ func (b *lookupBrokerState) pinProcRoot() error {
 	if b == nil {
 		return errors.New("lookup broker state is unavailable")
 	}
-	if b.worker == nil || b.devNull == nil || b.unsupportedReason != lookupproto.ReasonContextUnavailable {
-		return fmt.Errorf("lookup broker prerequisites are unavailable (reason=%d worker=%t devnull=%t)", b.unsupportedReason, b.worker != nil, b.devNull != nil)
+	if b.worker == nil || b.devNull == nil ||
+		b.unsupportedReason != lookupproto.ReasonContextUnavailable {
+		return fmt.Errorf(
+			"lookup broker prerequisites are unavailable (reason=%d worker=%t devnull=%t)",
+			b.unsupportedReason,
+			b.worker != nil,
+			b.devNull != nil,
+		)
 	}
 	if b.procRoot != nil {
 		return nil
@@ -241,7 +257,8 @@ func (b *lookupBrokerState) finalizeContext() error {
 	// Effective/permitted/inheritable/ambient capabilities would make dropping
 	// the worker's attack surface diverge from lookup authority. Such sessions
 	// remain fully enforced but do not advertise absence probing.
-	if baseline.caps[0] != 0 || baseline.caps[1] != 0 || baseline.caps[2] != 0 || baseline.caps[4] != 0 {
+	if baseline.caps[0] != 0 || baseline.caps[1] != 0 || baseline.caps[2] != 0 ||
+		baseline.caps[4] != 0 {
 		baseline.close()
 		b.unsupportedReason = lookupproto.ReasonCapabilityMismatch
 		return errors.New("lookup broker baseline has active capabilities")
@@ -265,7 +282,10 @@ func (b *lookupBrokerState) finalizeContext() error {
 	return nil
 }
 
-func (b *lookupBrokerState) attestPayload(child *payloadChild, attestation payloadAttestation) error {
+func (b *lookupBrokerState) attestPayload(
+	child *payloadChild,
+	attestation payloadAttestation,
+) error {
 	if b == nil || b.baseline == nil || child == nil || child.pid <= 0 {
 		return errors.New("lookup broker baseline is unavailable")
 	}
@@ -293,7 +313,14 @@ func (b *lookupBrokerState) attestPayload(child *payloadChild, attestation paylo
 		MaxPacketBytes:  lookupproto.MaxPacketBytes,
 		WorkerTimeoutMS: uint32(lookupWorkerTimeout / time.Millisecond),
 	})
-	if n, err := unix.SendmsgN(int(b.brokerEndpoint.Fd()), hello, nil, nil, unix.MSG_NOSIGNAL); err != nil || n != len(hello) {
+	if n, err := unix.SendmsgN(
+		int(b.brokerEndpoint.Fd()),
+		hello,
+		nil,
+		nil,
+		unix.MSG_NOSIGNAL,
+	); err != nil ||
+		n != len(hello) {
 		b.unsupportedReason = lookupproto.ReasonProtocol
 		return errors.New("queue lookup broker capability hello")
 	}
@@ -312,7 +339,9 @@ func compareLookupContexts(baseline, target *lookupTaskContext) lookupproto.Reas
 	if baseline.root != target.root {
 		return lookupproto.ReasonRootMismatch
 	}
-	if baseline.uids != target.uids || baseline.gids != target.gids || !equalUint32s(baseline.groups, target.groups) || baseline.nnp != target.nnp {
+	if baseline.uids != target.uids || baseline.gids != target.gids ||
+		!equalUint32s(baseline.groups, target.groups) ||
+		baseline.nnp != target.nnp {
 		return lookupproto.ReasonCredentialMismatch
 	}
 	if baseline.caps != target.caps {
@@ -343,16 +372,28 @@ func (b *lookupBrokerState) inspectTask(pid int) (*lookupTaskContext, lookupprot
 	if b == nil || b.procRoot == nil || pid <= 0 {
 		return nil, lookupproto.ReasonContextUnavailable, errors.New("invalid task context request")
 	}
-	taskFD, err := unix.Openat(int(b.procRoot.Fd()), strconv.Itoa(pid), unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	taskFD, err := unix.Openat(
+		int(b.procRoot.Fd()),
+		strconv.Itoa(pid),
+		unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW,
+		0,
+	)
 	if err != nil {
 		return nil, lookupproto.ReasonTaskStale, err
 	}
-	context := &lookupTaskContext{pid: pid, namespaces: make(map[string]lookupObjectIdentity), task: os.NewFile(uintptr(taskFD), "lookup-task-proc")}
+	context := &lookupTaskContext{
+		pid:        pid,
+		namespaces: make(map[string]lookupObjectIdentity),
+		task:       os.NewFile(uintptr(taskFD), "lookup-task-proc"),
+	}
 	if context.task == nil {
 		_ = unix.Close(taskFD)
 		return nil, lookupproto.ReasonContextUnavailable, errors.New("retain task proc directory")
 	}
-	fail := func(reason lookupproto.Reason, err error) (*lookupTaskContext, lookupproto.Reason, error) {
+	fail := func(
+		reason lookupproto.Reason,
+		err error,
+	) (*lookupTaskContext, lookupproto.Reason, error) {
 		context.close()
 		return nil, reason, err
 	}
@@ -368,7 +409,12 @@ func (b *lookupBrokerState) inspectTask(pid int) (*lookupTaskContext, lookupprot
 		return fail(lookupproto.ReasonTaskStale, err)
 	}
 	for _, namespace := range []string{"user", "mnt", "pid", "cgroup"} {
-		fd, openErr := unix.Openat(taskFD, filepath.Join("ns", namespace), unix.O_RDONLY|unix.O_CLOEXEC, 0)
+		fd, openErr := unix.Openat(
+			taskFD,
+			filepath.Join("ns", namespace),
+			unix.O_RDONLY|unix.O_CLOEXEC,
+			0,
+		)
 		if openErr != nil {
 			return fail(lookupproto.ReasonNamespaceMismatch, openErr)
 		}
@@ -392,7 +438,11 @@ func (b *lookupBrokerState) inspectTask(pid int) (*lookupTaskContext, lookupprot
 	if err != nil {
 		return fail(lookupproto.ReasonCgroupMismatch, err)
 	}
-	label, err := readLookupProcFile(taskFD, filepath.Join("attr", "current"), lookupproto.MaxLabelBytes)
+	label, err := readLookupProcFile(
+		taskFD,
+		filepath.Join("attr", "current"),
+		lookupproto.MaxLabelBytes,
+	)
 	if err != nil {
 		if lookupSecurityLabelRequired() {
 			return fail(lookupproto.ReasonContextUnavailable, err)
@@ -401,12 +451,18 @@ func (b *lookupBrokerState) inspectTask(pid int) (*lookupTaskContext, lookupprot
 		context.label = strings.TrimRight(string(label), "\n\x00")
 	}
 	if context.label == "" && lookupSecurityLabelRequired() {
-		return fail(lookupproto.ReasonContextUnavailable, errors.New("empty required task security label"))
+		return fail(
+			lookupproto.ReasonContextUnavailable,
+			errors.New("empty required task security label"),
+		)
 	}
 	// Re-read start time through the pinned directory after every other field.
 	startAfter, err := readLookupStartTime(taskFD)
 	if err != nil || startAfter != context.startTime {
-		return fail(lookupproto.ReasonTaskStale, errors.New("task identity changed while pinning context"))
+		return fail(
+			lookupproto.ReasonTaskStale,
+			errors.New("task identity changed while pinning context"),
+		)
 	}
 	return context, lookupproto.ReasonNone, nil
 }
@@ -418,7 +474,13 @@ func lookupFDIdentity(fd int) (lookupObjectIdentity, error) {
 	}
 	identity := lookupObjectIdentity{Device: uint64(status.Dev), Inode: status.Ino}
 	var statx unix.Statx_t
-	if err := unix.Statx(fd, "", unix.AT_EMPTY_PATH|unix.AT_SYMLINK_NOFOLLOW, unix.STATX_MNT_ID, &statx); err != nil {
+	if err := unix.Statx(
+		fd,
+		"",
+		unix.AT_EMPTY_PATH|unix.AT_SYMLINK_NOFOLLOW,
+		unix.STATX_MNT_ID,
+		&statx,
+	); err != nil {
 		return lookupObjectIdentity{}, err
 	}
 	identity.Mount = statx.Mnt_id
@@ -507,7 +569,10 @@ func parseLookupStatus(data []byte, context *lookupTaskContext) error {
 				}
 				context.groups = append(context.groups, uint32(parsed))
 			}
-			sort.Slice(context.groups, func(i, j int) bool { return context.groups[i] < context.groups[j] })
+			sort.Slice(
+				context.groups,
+				func(i, j int) bool { return context.groups[i] < context.groups[j] },
+			)
 			seen[name] = true
 		case "CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb":
 			if len(fields) != 1 {
@@ -517,12 +582,21 @@ func parseLookupStatus(data []byte, context *lookupTaskContext) error {
 			if err != nil {
 				return err
 			}
-			index := map[string]int{"CapInh": 0, "CapPrm": 1, "CapEff": 2, "CapBnd": 3, "CapAmb": 4}[name]
+			index := map[string]int{
+				"CapInh": 0,
+				"CapPrm": 1,
+				"CapEff": 2,
+				"CapBnd": 3,
+				"CapAmb": 4,
+			}[name]
 			context.caps[index] = parsed
 			seen[name] = true
 		}
 	}
-	for _, field := range []string{"Tgid", "Pid", "PPid", "NoNewPrivs", "Uid", "Gid", "Groups", "CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"} {
+	for _, field := range []string{
+		"Tgid", "Pid", "PPid", "NoNewPrivs", "Uid", "Gid", "Groups", "CapInh", "CapPrm", "CapEff",
+		"CapBnd", "CapAmb",
+	} {
 		if !seen[field] {
 			return fmt.Errorf("task status omitted %s", field)
 		}
@@ -621,7 +695,11 @@ func (b *lookupBrokerState) classify(request lookupproto.Request) lookupproto.Re
 	}
 	defer target.close()
 	if target.pidValue != int(request.NamespaceTID) || target.startTime != request.StartTime {
-		return lookupproto.Result{ID: request.ID, Class: lookupproto.ClassStale, Reason: lookupproto.ReasonTaskStale}
+		return lookupproto.Result{
+			ID:     request.ID,
+			Class:  lookupproto.ClassStale,
+			Reason: lookupproto.ReasonTaskStale,
+		}
 	}
 	if !b.targetInPayloadLineage(target) {
 		return unknown(lookupproto.ReasonLineageMismatch)
@@ -648,7 +726,8 @@ func (b *lookupBrokerState) classify(request lookupproto.Request) lookupproto.Re
 			return unknown(afterReason)
 		}
 		defer after.close()
-		if after.startTime != target.startTime || compareLookupContexts(b.baseline, after) != lookupproto.ReasonNone {
+		if after.startTime != target.startTime ||
+			compareLookupContexts(b.baseline, after) != lookupproto.ReasonNone {
 			return unknown(lookupproto.ReasonTaskStale)
 		}
 	}
@@ -712,7 +791,11 @@ func (b *lookupBrokerState) targetInPayloadLineage(target *lookupTaskContext) bo
 	return false
 }
 
-func (b *lookupBrokerState) pinLookupBase(target *lookupTaskContext, dirfd int32, path string) (*os.File, error) {
+func (b *lookupBrokerState) pinLookupBase(
+	target *lookupTaskContext,
+	dirfd int32,
+	path string,
+) (*os.File, error) {
 	if target == nil || target.task == nil {
 		return nil, errors.New("target task is unavailable")
 	}
@@ -738,7 +821,11 @@ func (b *lookupBrokerState) pinLookupBase(target *lookupTaskContext, dirfd int32
 	return file, nil
 }
 
-func (b *lookupBrokerState) runWorker(base *os.File, request []byte, requestID uint64) lookupproto.Result {
+func (b *lookupBrokerState) runWorker(
+	base *os.File,
+	request []byte,
+	requestID uint64,
+) lookupproto.Result {
 	unknown := func(reason lookupproto.Reason) lookupproto.Result {
 		return lookupproto.Result{ID: requestID, Class: lookupproto.ClassUnknown, Reason: reason}
 	}
@@ -764,7 +851,13 @@ func (b *lookupBrokerState) runWorker(base *os.File, request []byte, requestID u
 	defer parent.Close()
 
 	workerChildFD := 5
-	path := filepath.Join(string(filepath.Separator), "proc", "self", "fd", strconv.Itoa(workerChildFD))
+	path := filepath.Join(
+		string(filepath.Separator),
+		"proc",
+		"self",
+		"fd",
+		strconv.Itoa(workerChildFD),
+	)
 	process, err := os.StartProcess(path, []string{"agentsh-file-lookup-broker"}, &os.ProcAttr{
 		Env:   []string{},
 		Files: []*os.File{b.devNull, b.devNull, b.devNull, child, base, b.worker},
@@ -775,7 +868,14 @@ func (b *lookupBrokerState) runWorker(base *os.File, request []byte, requestID u
 		return unknown(lookupproto.ReasonWorkerUnavailable)
 	}
 	pid := process.Pid
-	if n, sendErr := unix.SendmsgN(int(parent.Fd()), request, nil, nil, unix.MSG_NOSIGNAL); sendErr != nil || n != len(request) {
+	if n, sendErr := unix.SendmsgN(
+		int(parent.Fd()),
+		request,
+		nil,
+		nil,
+		unix.MSG_NOSIGNAL,
+	); sendErr != nil ||
+		n != len(request) {
 		_ = process.Kill()
 		_ = waitExactChild(pid, lookupWorkerTimeout)
 		_ = process.Release()
@@ -801,7 +901,9 @@ func (b *lookupBrokerState) runWorker(base *os.File, request []byte, requestID u
 			received, _, flags, _, recvErr := unix.Recvmsg(int(parent.Fd()), packet, nil, 0)
 			waited := waitExactChild(pid, lookupWorkerTimeout)
 			_ = process.Release()
-			if recvErr != nil || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || received != len(packet) || !waited {
+			if recvErr != nil || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 ||
+				received != len(packet) ||
+				!waited {
 				return unknown(lookupproto.ReasonWorkerCrash)
 			}
 			result, decodeErr := lookupproto.DecodeResult(packet)

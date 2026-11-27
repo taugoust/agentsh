@@ -29,7 +29,9 @@ func tableRead(names ...string) effects.ClassifiedStatement {
 		objs[i] = effects.ObjectRef{Kind: effects.ObjectTable, Name: n}
 	}
 	return effects.ClassifiedStatement{
-		Effects: []effects.Effect{{Group: effects.GroupRead, Objects: objs, Resolution: effects.ResolutionQualified}},
+		Effects: []effects.Effect{
+			{Group: effects.GroupRead, Objects: objs, Resolution: effects.ResolutionQualified},
+		},
 	}
 }
 
@@ -51,6 +53,7 @@ database_rules:
 }
 
 func TestEvaluate_AllowSpecificObjectsCovers(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -65,6 +68,7 @@ database_rules:
 }
 
 func TestEvaluate_AuditCoversObject(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:

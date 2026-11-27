@@ -17,7 +17,11 @@ func draftLandingPathsDigest(paths ...string) string {
 
 func TestValidateDraftLandingPaths(t *testing.T) {
 	paths := []string{"flake.nix", ".github/workflows/test.yml", "dir/AGENTS.md"}
-	if err := validateDraftLandingPaths(paths, len(paths), draftLandingPathsDigest(paths...)); err != nil {
+	if err := validateDraftLandingPaths(
+		paths,
+		len(paths),
+		draftLandingPathsDigest(paths...),
+	); err != nil {
 		t.Fatalf("valid paths rejected: %v", err)
 	}
 
@@ -28,11 +32,36 @@ func TestValidateDraftLandingPaths(t *testing.T) {
 		digest string
 	}{
 		{name: "count mismatch", paths: paths, count: 2, digest: draftLandingPathsDigest(paths...)},
-		{name: "digest mismatch", paths: paths, count: len(paths), digest: draftLandingPathsDigest("flake.nix")},
-		{name: "absolute", paths: []string{"/flake.nix"}, count: 1, digest: draftLandingPathsDigest("/flake.nix")},
-		{name: "parent traversal", paths: []string{"a/../flake.nix"}, count: 1, digest: draftLandingPathsDigest("a/../flake.nix")},
-		{name: "non canonical", paths: []string{"a//flake.nix"}, count: 1, digest: draftLandingPathsDigest("a//flake.nix")},
-		{name: "nul", paths: []string{"flake.nix\x00ignored"}, count: 1, digest: draftLandingPathsDigest("flake.nix\x00ignored")},
+		{
+			name:   "digest mismatch",
+			paths:  paths,
+			count:  len(paths),
+			digest: draftLandingPathsDigest("flake.nix"),
+		},
+		{
+			name:   "absolute",
+			paths:  []string{"/flake.nix"},
+			count:  1,
+			digest: draftLandingPathsDigest("/flake.nix"),
+		},
+		{
+			name:   "parent traversal",
+			paths:  []string{"a/../flake.nix"},
+			count:  1,
+			digest: draftLandingPathsDigest("a/../flake.nix"),
+		},
+		{
+			name:   "non canonical",
+			paths:  []string{"a//flake.nix"},
+			count:  1,
+			digest: draftLandingPathsDigest("a//flake.nix"),
+		},
+		{
+			name:   "nul",
+			paths:  []string{"flake.nix\x00ignored"},
+			count:  1,
+			digest: draftLandingPathsDigest("flake.nix\x00ignored"),
+		},
 		{name: "empty", paths: []string{""}, count: 1, digest: draftLandingPathsDigest("")},
 	}
 	for _, test := range tests {

@@ -134,7 +134,9 @@ func TestServeNotifyWithExecve_DoesNotHangOnNonSeccompFD(t *testing.T) {
 func TestServeNotifyWithExecve_NilEmitterAllowed(t *testing.T) {
 	var logBuf bytes.Buffer
 	origLogger := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	slog.SetDefault(
+		slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	)
 	defer slog.SetDefault(origLogger)
 
 	r, w, err := os.Pipe()
@@ -168,7 +170,11 @@ func TestServeNotifyWithExecve_NilEmitterAllowed(t *testing.T) {
 	// never logs it. A timing-only check cannot distinguish the two.
 	logs := logBuf.String()
 	if !strings.Contains(logs, "NotifReceive error") {
-		t.Fatalf("expected NotifReceive error log (proves loop was entered despite nil emitter), got logs: %s", logs)
+		t.Fatalf(
+			"expected NotifReceive error log (proves loop was entered despite nil emitter), got "+
+				"logs: %s",
+			logs,
+		)
 	}
 }
 

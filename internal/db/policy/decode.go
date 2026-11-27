@@ -157,7 +157,10 @@ func decodeRedaction(p *rootpolicy.Policy) (RedactionConfig, error) {
 	if rb.ApprovalStatementPreview != "" {
 		t, ok := parseApprovalPreviewTier(rb.ApprovalStatementPreview)
 		if !ok {
-			return out, fmt.Errorf("redaction_unknown_approval_preview: %q", rb.ApprovalStatementPreview)
+			return out, fmt.Errorf(
+				"redaction_unknown_approval_preview: %q",
+				rb.ApprovalStatementPreview,
+			)
 		}
 		out.ApprovalStatementPreview = t
 	}
@@ -200,7 +203,10 @@ func decodeUnavoidability(p *rootpolicy.Policy) (service.Unavoidability, error) 
 	}
 	u, ok := service.ParseUnavoidability(w.DB.Unavoidability)
 	if !ok {
-		return service.UnavoidabilityOff, fmt.Errorf("unknown policies.db.unavoidability: %q", w.DB.Unavoidability)
+		return service.UnavoidabilityOff, fmt.Errorf(
+			"unknown policies.db.unavoidability: %q",
+			w.DB.Unavoidability,
+		)
 	}
 	return u, nil
 }

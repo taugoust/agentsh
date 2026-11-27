@@ -27,7 +27,12 @@ func TestResolveSocketRuleCheckerForPtrace_RawSocketRules(t *testing.T) {
 	if checker == nil {
 		t.Fatal("expected non-nil SocketRuleChecker")
 	}
-	rule, ok := checker.Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW), uint64(unix.NETLINK_XFRM))
+	rule, ok := checker.Check(
+		uint64(unix.SYS_SOCKET),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_RAW),
+		uint64(unix.NETLINK_XFRM),
+	)
 	if !ok {
 		t.Fatal("expected checker to match configured NETLINK_XFRM socket rule")
 	}
@@ -47,10 +52,22 @@ func TestResolveSocketRuleCheckerForPtrace_MitigationSet(t *testing.T) {
 	if checker == nil {
 		t.Fatal("expected non-nil SocketRuleChecker")
 	}
-	if rule, ok := checker.Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_RXRPC), uint64(unix.SOCK_DGRAM), 0); !ok || rule.Name != "dirtyfrag-conservative-rxrpc" {
+	if rule, ok := checker.Check(
+		uint64(unix.SYS_SOCKET),
+		uint64(unix.AF_RXRPC),
+		uint64(unix.SOCK_DGRAM),
+		0,
+	); !ok ||
+		rule.Name != "dirtyfrag-conservative-rxrpc" {
 		t.Fatalf("expected RXRPC mitigation-set rule, got rule=%+v ok=%v", rule, ok)
 	}
-	if rule, ok := checker.Check(uint64(unix.SYS_SOCKETPAIR), uint64(unix.AF_NETLINK), uint64(unix.SOCK_DGRAM), uint64(unix.NETLINK_XFRM)); !ok || rule.Name != "dirtyfrag-conservative-xfrm" {
+	if rule, ok := checker.Check(
+		uint64(unix.SYS_SOCKETPAIR),
+		uint64(unix.AF_NETLINK),
+		uint64(unix.SOCK_DGRAM),
+		uint64(unix.NETLINK_XFRM),
+	); !ok ||
+		rule.Name != "dirtyfrag-conservative-xfrm" {
 		t.Fatalf("expected XFRM mitigation-set rule, got rule=%+v ok=%v", rule, ok)
 	}
 }
@@ -130,7 +147,10 @@ func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_RawRules(t *t
 		Ptrace:  false,
 	})
 	if !warned {
-		t.Fatal("expected orphan warning for socket_rules when ptrace is disabled and wrapper is missing")
+		t.Fatal(
+			"expected orphan warning for socket_rules when ptrace is disabled and wrapper " +
+				"is missing",
+		)
 	}
 }
 
@@ -147,11 +167,16 @@ func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_MitigationSet
 		Ptrace:  false,
 	})
 	if !warned {
-		t.Fatal("expected orphan warning for dirtyfrag-conservative socket rules when ptrace is disabled and wrapper is missing")
+		t.Fatal(
+			"expected orphan warning for dirtyfrag-conservative socket rules when ptrace is " +
+				"disabled and wrapper is missing",
+		)
 	}
 }
 
-func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenWrapperWillRun(t *testing.T) {
+func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenWrapperWillRun(
+	t *testing.T,
+) {
 	withPresentWrapper(t)
 	cfg := &config.Config{}
 	cfg.Sandbox.Seccomp.Enabled = true
@@ -168,7 +193,9 @@ func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenWra
 	}
 }
 
-func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenWrapperRunsWithSeccompDisabled(t *testing.T) {
+func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWrapperWithoutSeccomp(
+	t *testing.T,
+) {
 	withPresentWrapper(t)
 	cfg := &config.Config{}
 	cfg.Sandbox.Seccomp.Enabled = false
@@ -183,11 +210,16 @@ func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenWra
 		Ptrace:  false,
 	})
 	if warned {
-		t.Fatal("must not warn when unix_sockets wrapper can enforce socket rules even with sandbox.seccomp.enabled=false")
+		t.Fatal(
+			"must not warn when unix_sockets wrapper can enforce socket rules even with " +
+				"sandbox.seccomp.enabled=false",
+		)
 	}
 }
 
-func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenPtraceEnabled(t *testing.T) {
+func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenPtraceEnabled(
+	t *testing.T,
+) {
 	withMissingWrapper(t)
 	cfg := &config.Config{}
 	cfg.Sandbox.Seccomp.Enabled = true

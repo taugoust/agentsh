@@ -123,7 +123,12 @@ func RegisterLinux(constructor func() (Platform, error)) {
 
 // platformNotImplemented returns an error for unimplemented platforms.
 func platformNotImplemented(name string) (Platform, error) {
-	return nil, fmt.Errorf("platform %q not implemented on %s/%s", name, runtime.GOOS, runtime.GOARCH)
+	return nil, fmt.Errorf(
+		"platform %q not implemented on %s/%s",
+		name,
+		runtime.GOOS,
+		runtime.GOARCH,
+	)
 }
 
 // init sets up fallback implementations for platforms that aren't compiled in.

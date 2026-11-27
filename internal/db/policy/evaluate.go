@@ -40,8 +40,9 @@ func (rs *RuleSet) statementRulesFor(svc ServiceID) []*compiledStatementRule {
 // effectDecision is the per-effect verdict. internalVerb includes
 // verbImplicitDeny as a distinct value; foldEffects normalizes to DecisionVerb.
 type effectDecision struct {
-	verb                internalVerb
-	rule                *compiledStatementRule   // primary contributing rule (nil for implicit deny)
+	verb internalVerb
+	// primary contributing rule (nil for implicit deny)
+	rule                *compiledStatementRule
 	contributingApprove []*compiledStatementRule // contributing approve rules, deduped by name
 	contributingAudit   []*compiledStatementRule // contributing audit rules, deduped by name
 	uncoveredObject     effects.ObjectRef        // populated when verb == verbImplicitDeny
@@ -194,7 +195,10 @@ func functionObjectSlotOrdinal(objects []effects.ObjectRef, idx int) int {
 	return -1
 }
 
-func resolvedRelationObjectAtOrdinal(resolvedObjects []effects.ResolvedObjectRef, ordinal int) (effects.ResolvedObjectRef, bool) {
+func resolvedRelationObjectAtOrdinal(
+	resolvedObjects []effects.ResolvedObjectRef,
+	ordinal int,
+) (effects.ResolvedObjectRef, bool) {
 	if ordinal < 0 {
 		return effects.ResolvedObjectRef{}, false
 	}
@@ -211,7 +215,10 @@ func resolvedRelationObjectAtOrdinal(resolvedObjects []effects.ResolvedObjectRef
 	return effects.ResolvedObjectRef{}, false
 }
 
-func resolvedFunctionObjectAtOrdinal(resolvedObjects []effects.ResolvedObjectRef, ordinal int) (effects.ResolvedObjectRef, bool) {
+func resolvedFunctionObjectAtOrdinal(
+	resolvedObjects []effects.ResolvedObjectRef,
+	ordinal int,
+) (effects.ResolvedObjectRef, bool) {
 	if ordinal < 0 {
 		return effects.ResolvedObjectRef{}, false
 	}
@@ -228,7 +235,10 @@ func resolvedFunctionObjectAtOrdinal(resolvedObjects []effects.ResolvedObjectRef
 	return effects.ResolvedObjectRef{}, false
 }
 
-func resolvedObjectCompatibleWithSlot(o effects.ObjectRef, resolved effects.ResolvedObjectRef) bool {
+func resolvedObjectCompatibleWithSlot(
+	o effects.ObjectRef,
+	resolved effects.ResolvedObjectRef,
+) bool {
 	if o.Name == "" || resolved.Name == "" || o.Name != resolved.Name {
 		return false
 	}
@@ -278,7 +288,11 @@ func ruleMatchesObjectSlot(r *compiledStatementRule, e effects.Effect, idx int) 
 	return false, ""
 }
 
-func coverageRulesInPolicyOrder(applicable []*compiledStatementRule, coverage map[int][]*compiledStatementRule, objectCount int) []*compiledStatementRule {
+func coverageRulesInPolicyOrder(
+	applicable []*compiledStatementRule,
+	coverage map[int][]*compiledStatementRule,
+	objectCount int,
+) []*compiledStatementRule {
 	covered := map[*compiledStatementRule]bool{}
 	for i := 0; i < objectCount; i++ {
 		for _, r := range coverage[i] {
@@ -295,7 +309,11 @@ func coverageRulesInPolicyOrder(applicable []*compiledStatementRule, coverage ma
 	return out
 }
 
-func foldObjectCoverageRules(applicable []*compiledStatementRule, coverage map[int][]*compiledStatementRule, objectCount int) effectDecision {
+func foldObjectCoverageRules(
+	applicable []*compiledStatementRule,
+	coverage map[int][]*compiledStatementRule,
+	objectCount int,
+) effectDecision {
 	rules := coverageRulesInPolicyOrder(applicable, coverage, objectCount)
 	d := foldCoverageRules(rules)
 	if d.verb != verbRedirect {
@@ -361,7 +379,10 @@ func isResolvedOnlyFunctionEffect(e effects.Effect) bool {
 	return false
 }
 
-func evaluateEffectResolvedOnly(e effects.Effect, applicable []*compiledStatementRule) effectDecision {
+func evaluateEffectResolvedOnly(
+	e effects.Effect,
+	applicable []*compiledStatementRule,
+) effectDecision {
 	for _, r := range applicable {
 		if r.verb != VerbDeny || !ruleMatchesEffectMeta(r, e) {
 			continue
@@ -397,8 +418,12 @@ func evaluateEffectResolvedOnly(e effects.Effect, applicable []*compiledStatemen
 	return foldCoverageRules(coverage)
 }
 
-func resolvedOnlyFunctionRuleMatches(r *compiledStatementRule, resolved effects.ResolvedObjectRef) bool {
-	return resolved.Kind == effects.ResolvedObjectFunction && r.schemaMatchesResolvedObject(resolved)
+func resolvedOnlyFunctionRuleMatches(
+	r *compiledStatementRule,
+	resolved effects.ResolvedObjectRef,
+) bool {
+	return resolved.Kind == effects.ResolvedObjectFunction &&
+		r.schemaMatchesResolvedObject(resolved)
 }
 
 // evaluateEffectObjectless handles effects with no Objects (e.g. transaction
@@ -414,7 +439,10 @@ func resolvedOnlyFunctionRuleMatches(r *compiledStatementRule, resolved effects.
 //
 // A rule that constrains any object selector family cannot match an object-less
 // effect.
-func evaluateEffectObjectless(e effects.Effect, applicable []*compiledStatementRule) effectDecision {
+func evaluateEffectObjectless(
+	e effects.Effect,
+	applicable []*compiledStatementRule,
+) effectDecision {
 	// Pass 1 — deny.
 	for _, r := range applicable {
 		if r.verb != VerbDeny {
@@ -608,8 +636,15 @@ func foldEffects(stmt effects.ClassifiedStatement, perEffect []effectDecision) D
 		}
 
 	case verbImplicitDeny:
-		return implicitDeny(stmt, bestIdx,
-			fmt.Sprintf("no rule covers %q in %q effect", objectMatchField(d.uncoveredObject), e.Group))
+		return implicitDeny(
+			stmt,
+			bestIdx,
+			fmt.Sprintf(
+				"no rule covers %q in %q effect",
+				objectMatchField(d.uncoveredObject),
+				e.Group,
+			),
+		)
 
 	case verbDeny:
 		return Decision{

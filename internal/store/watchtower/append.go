@@ -165,7 +165,12 @@ func (s *Store) AppendEvent(ctx context.Context, ev types.Event) error {
 	//    is pure — it reads the chain's prev_hash but does not
 	//    advance. The returned *audit.ComputeResult is the commit
 	//    token.
-	cr, err := s.sink.Compute(audit.IntegrityFormatVersion, int64(ev.Chain.Sequence), ev.Chain.Generation, canonicalIntegrity)
+	cr, err := s.sink.Compute(
+		audit.IntegrityFormatVersion,
+		int64(ev.Chain.Sequence),
+		ev.Chain.Generation,
+		canonicalIntegrity,
+	)
 	if err != nil {
 		return fmt.Errorf("chain compute: %w", err)
 	}

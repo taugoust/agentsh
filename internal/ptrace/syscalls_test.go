@@ -224,7 +224,11 @@ func TestNarrowTracedSyscallNumbers_FamilyCheckerIncludesSocketCalls(t *testing.
 func TestNarrowTracedSyscallNumbers_SocketRuleCheckerIncludesSocketCalls(t *testing.T) {
 	cfg := &TracerConfig{
 		SocketRuleChecker: NewSocketRuleChecker([]seccomp.SocketRule{
-			{Family: unix.AF_NETLINK, Action: seccomp.OnBlockLogAndKill, Protocol: intPtr(unix.NETLINK_XFRM)},
+			{
+				Family:   unix.AF_NETLINK,
+				Action:   seccomp.OnBlockLogAndKill,
+				Protocol: intPtr(unix.NETLINK_XFRM),
+			},
 		}),
 	}
 	nums := narrowTracedSyscallNumbers(cfg)

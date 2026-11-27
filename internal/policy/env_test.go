@@ -35,7 +35,12 @@ func TestEngine_CheckEnv_DenyPatterns(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dec := e.CheckEnv(tc.name)
 			if dec.Allowed != tc.allowed {
-				t.Errorf("expected Allowed=%v, got %v (MatchedBy=%s)", tc.allowed, dec.Allowed, dec.MatchedBy)
+				t.Errorf(
+					"expected Allowed=%v, got %v (MatchedBy=%s)",
+					tc.allowed,
+					dec.Allowed,
+					dec.MatchedBy,
+				)
 			}
 			if dec.MatchedBy != tc.matchBy {
 				t.Errorf("expected MatchedBy=%q, got %q", tc.matchBy, dec.MatchedBy)
@@ -77,7 +82,12 @@ func TestEngine_CheckEnv_AllowPatterns(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dec := e.CheckEnv(tc.name)
 			if dec.Allowed != tc.allowed {
-				t.Errorf("expected Allowed=%v, got %v (MatchedBy=%s)", tc.allowed, dec.Allowed, dec.MatchedBy)
+				t.Errorf(
+					"expected Allowed=%v, got %v (MatchedBy=%s)",
+					tc.allowed,
+					dec.Allowed,
+					dec.MatchedBy,
+				)
 			}
 			if dec.MatchedBy != tc.matchBy {
 				t.Errorf("expected MatchedBy=%q, got %q", tc.matchBy, dec.MatchedBy)
@@ -117,7 +127,12 @@ func TestEngine_CheckEnv_DefaultSecrets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dec := e.CheckEnv(tc.name)
 			if dec.Allowed != tc.allowed {
-				t.Errorf("expected Allowed=%v, got %v (MatchedBy=%s)", tc.allowed, dec.Allowed, dec.MatchedBy)
+				t.Errorf(
+					"expected Allowed=%v, got %v (MatchedBy=%s)",
+					tc.allowed,
+					dec.Allowed,
+					dec.MatchedBy,
+				)
 			}
 			if dec.MatchedBy != tc.matchBy {
 				t.Errorf("expected MatchedBy=%q, got %q", tc.matchBy, dec.MatchedBy)
@@ -275,7 +290,11 @@ func TestEngine_CheckEnv_DangerousLinkerVars(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dec := e.CheckEnv(name)
 			if dec.Allowed {
-				t.Errorf("%s should be denied by default, got Allowed=true (MatchedBy=%s)", name, dec.MatchedBy)
+				t.Errorf(
+					"%s should be denied by default, got Allowed=true (MatchedBy=%s)",
+					name,
+					dec.MatchedBy,
+				)
 			}
 			if dec.MatchedBy != "default-secret-deny" {
 				t.Errorf("%s: expected MatchedBy=default-secret-deny, got %q", name, dec.MatchedBy)

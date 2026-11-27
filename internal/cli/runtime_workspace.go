@@ -55,7 +55,12 @@ func newRuntimeWorkspaceFinalizeGitDraftCmd() *cobra.Command {
 		Short: "Delete stopped MicroVM Draft storage under an absorbing terminal intent",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			record, err := externalrunner.FinalizeGitDraftStorage(cmd.Context(), args[0], stateDir, intent)
+			record, err := externalrunner.FinalizeGitDraftStorage(
+				cmd.Context(),
+				args[0],
+				stateDir,
+				intent,
+			)
 			if err != nil {
 				return err
 			}
@@ -64,7 +69,8 @@ func newRuntimeWorkspaceFinalizeGitDraftCmd() *cobra.Command {
 			return encoder.Encode(record)
 		},
 	}
-	cmd.Flags().StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
+	cmd.Flags().
+		StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
 	cmd.Flags().StringVar(&intent, "intent", "", "absorbing terminal intent: applied or discarded")
 	_ = cmd.MarkFlagRequired("state-dir")
 	_ = cmd.MarkFlagRequired("intent")
@@ -79,7 +85,12 @@ func newRuntimeWorkspaceExportGitResultCmd() *cobra.Command {
 		Short: "Export an exact verified MicroVM Git Draft result bundle",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			record, err := externalrunner.ExportGitDraftResult(cmd.Context(), args[0], stateDir, output)
+			record, err := externalrunner.ExportGitDraftResult(
+				cmd.Context(),
+				args[0],
+				stateDir,
+				output,
+			)
 			if err != nil {
 				return err
 			}
@@ -88,7 +99,8 @@ func newRuntimeWorkspaceExportGitResultCmd() *cobra.Command {
 			return encoder.Encode(record)
 		},
 	}
-	cmd.Flags().StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
+	cmd.Flags().
+		StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
 	cmd.Flags().StringVar(&output, "output", "", "new private result bundle output path")
 	_ = cmd.MarkFlagRequired("state-dir")
 	_ = cmd.MarkFlagRequired("output")
@@ -139,7 +151,8 @@ func newRuntimeWorkspaceSealGitDraftCmd() *cobra.Command {
 			return encoder.Encode(record)
 		},
 	}
-	cmd.Flags().StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
+	cmd.Flags().
+		StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
 	_ = cmd.MarkFlagRequired("state-dir")
 	return cmd
 }
@@ -161,7 +174,8 @@ func newRuntimeWorkspaceVerifyBaselineCmd() *cobra.Command {
 			return encoder.Encode(report)
 		},
 	}
-	cmd.Flags().StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
+	cmd.Flags().
+		StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
 	cmd.Flags().StringVar(&source, "source", "", "expected real workspace root")
 	_ = cmd.MarkFlagRequired("state-dir")
 	_ = cmd.MarkFlagRequired("source")
@@ -185,30 +199,46 @@ func newRuntimeWorkspaceApplyReviewedCmd() *cobra.Command {
 			return encoder.Encode(report)
 		},
 	}
-	cmd.Flags().StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
+	cmd.Flags().
+		StringVar(&stateDir, "state-dir", "", "exact protected AgentSH session state directory")
 	cmd.Flags().StringVar(&source, "source", "", "expected real workspace root")
 	_ = cmd.MarkFlagRequired("state-dir")
 	_ = cmd.MarkFlagRequired("source")
 	return cmd
 }
 
-func applyReviewedRuntimeWorkspace(ctx context.Context, sessionID, stateDir, source string) (runtimeWorkspaceApplyReport, error) {
-	if err := runtimeprovider.ValidateName(sessionID); err != nil || filepath.Base(stateDir) != sessionID || !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir {
+func applyReviewedRuntimeWorkspace(
+	ctx context.Context,
+	sessionID, stateDir, source string,
+) (runtimeWorkspaceApplyReport, error) {
+	if err := runtimeprovider.ValidateName(
+		sessionID,
+	); err != nil || filepath.Base(stateDir) != sessionID || !filepath.IsAbs(stateDir) ||
+		filepath.Clean(stateDir) != stateDir {
 		return runtimeWorkspaceApplyReport{}, fmt.Errorf("runtime workspace identity is invalid")
 	}
 	manifest, err := runtimeprovider.ReadManifest(stateDir)
 	if err != nil {
 		return runtimeWorkspaceApplyReport{}, err
 	}
-	if manifest.SessionID != sessionID || manifest.StateDir != stateDir || manifest.Provider != externalrunner.ProviderName {
-		return runtimeWorkspaceApplyReport{}, fmt.Errorf("runtime workspace is not bound to the expected external session")
+	if manifest.SessionID != sessionID || manifest.StateDir != stateDir ||
+		manifest.Provider != externalrunner.ProviderName {
+		return runtimeWorkspaceApplyReport{}, fmt.Errorf(
+			"runtime workspace is not bound to the expected external session",
+		)
 	}
-	if manifest.State != runtimeprovider.StateStopped || !manifest.CleanupComplete || manifest.CleanupPending {
-		return runtimeWorkspaceApplyReport{}, fmt.Errorf("external runtime must have exact terminal cleanup evidence before Apply")
+	if manifest.State != runtimeprovider.StateStopped || !manifest.CleanupComplete ||
+		manifest.CleanupPending {
+		return runtimeWorkspaceApplyReport{}, fmt.Errorf(
+			"external runtime must have exact terminal cleanup evidence before Apply",
+		)
 	}
 	resolvedSource, err := filepath.EvalSymlinks(source)
 	if err != nil {
-		return runtimeWorkspaceApplyReport{}, fmt.Errorf("resolve expected runtime workspace source: %w", err)
+		return runtimeWorkspaceApplyReport{}, fmt.Errorf(
+			"resolve expected runtime workspace source: %w",
+			err,
+		)
 	}
 	resolvedSource, err = filepath.Abs(resolvedSource)
 	if err != nil {
@@ -223,31 +253,52 @@ func applyReviewedRuntimeWorkspace(ctx context.Context, sessionID, stateDir, sou
 		return runtimeWorkspaceApplyReport{}, err
 	}
 	if baseline.Source != resolvedSource {
-		return runtimeWorkspaceApplyReport{}, fmt.Errorf("runtime workspace baseline source identity mismatch")
+		return runtimeWorkspaceApplyReport{}, fmt.Errorf(
+			"runtime workspace baseline source identity mismatch",
+		)
 	}
-	workspace, err := shadow.OpenMaterialized(ctx, sessionID, resolvedSource, layout.WorkspaceDir, shadow.Options{
-		DiffExcludes:   []string{".git", ".direnv"},
-		AcceptExcludes: []string{".git", ".direnv"},
-	}, manifest.CreatedAt)
+	workspace, err := shadow.OpenMaterialized(
+		ctx,
+		sessionID,
+		resolvedSource,
+		layout.WorkspaceDir,
+		shadow.Options{
+			DiffExcludes:   []string{".git", ".direnv"},
+			AcceptExcludes: []string{".git", ".direnv"},
+		},
+		manifest.CreatedAt,
+	)
 	if err != nil {
 		return runtimeWorkspaceApplyReport{}, err
 	}
 	if pending, ok := workspace.PendingFinalization(); ok {
 		if pending.Action != shadow.FinalizationAccept {
-			return runtimeWorkspaceApplyReport{}, fmt.Errorf("a different runtime workspace finalization is pending")
+			return runtimeWorkspaceApplyReport{}, fmt.Errorf(
+				"a different runtime workspace finalization is pending",
+			)
 		}
 		if err := workspace.ResumeFinalization(ctx, pending.ID); err != nil {
 			return runtimeWorkspaceApplyReport{}, err
 		}
 		completed, _ := workspace.PendingFinalization()
-		return runtimeWorkspaceApplyReport{SchemaVersion: 1, SessionID: sessionID, Source: resolvedSource, FinalizationID: completed.ID, Phase: completed.Phase, Applied: completed.Phase == shadow.FinalizationApplied}, nil
+		return runtimeWorkspaceApplyReport{
+			SchemaVersion:  1,
+			SessionID:      sessionID,
+			Source:         resolvedSource,
+			FinalizationID: completed.ID,
+			Phase:          completed.Phase,
+			Applied:        completed.Phase == shadow.FinalizationApplied,
+		}, nil
 	}
 	baselineReport, err := verifyRuntimeWorkspaceBaseline(ctx, sessionID, stateDir, resolvedSource)
 	if err != nil {
 		return runtimeWorkspaceApplyReport{}, err
 	}
 	if !baselineReport.Clean {
-		return runtimeWorkspaceApplyReport{}, fmt.Errorf("real workspace changed after staging at %s", baselineReport.Drift[0].Path)
+		return runtimeWorkspaceApplyReport{}, fmt.Errorf(
+			"real workspace changed after staging at %s",
+			baselineReport.Drift[0].Path,
+		)
 	}
 	review, err := workspace.Review(ctx)
 	if err != nil {
@@ -260,7 +311,10 @@ func applyReviewedRuntimeWorkspace(ctx context.Context, sessionID, stateDir, sou
 		return runtimeWorkspaceApplyReport{}, err
 	}
 	if !baselineReport.Clean {
-		return runtimeWorkspaceApplyReport{}, fmt.Errorf("real workspace changed while preparing Apply at %s", baselineReport.Drift[0].Path)
+		return runtimeWorkspaceApplyReport{}, fmt.Errorf(
+			"real workspace changed while preparing Apply at %s",
+			baselineReport.Drift[0].Path,
+		)
 	}
 	intent, err := workspace.PrepareAccept(ctx, uuid.NewString(), review.Generation, review.Hash)
 	if err != nil {
@@ -270,23 +324,42 @@ func applyReviewedRuntimeWorkspace(ctx context.Context, sessionID, stateDir, sou
 		return runtimeWorkspaceApplyReport{}, err
 	}
 	completed, _ := workspace.PendingFinalization()
-	return runtimeWorkspaceApplyReport{SchemaVersion: 1, SessionID: sessionID, Source: baselineReport.Source, FinalizationID: completed.ID, Phase: completed.Phase, Applied: completed.Phase == shadow.FinalizationApplied}, nil
+	return runtimeWorkspaceApplyReport{
+		SchemaVersion:  1,
+		SessionID:      sessionID,
+		Source:         baselineReport.Source,
+		FinalizationID: completed.ID,
+		Phase:          completed.Phase,
+		Applied:        completed.Phase == shadow.FinalizationApplied,
+	}, nil
 }
 
-func verifyRuntimeWorkspaceBaseline(ctx context.Context, sessionID, stateDir, source string) (workspaceBaselineReport, error) {
-	if err := runtimeprovider.ValidateName(sessionID); err != nil || filepath.Base(stateDir) != sessionID || !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir {
+func verifyRuntimeWorkspaceBaseline(
+	ctx context.Context,
+	sessionID, stateDir, source string,
+) (workspaceBaselineReport, error) {
+	if err := runtimeprovider.ValidateName(
+		sessionID,
+	); err != nil || filepath.Base(stateDir) != sessionID || !filepath.IsAbs(stateDir) ||
+		filepath.Clean(stateDir) != stateDir {
 		return workspaceBaselineReport{}, fmt.Errorf("runtime workspace identity is invalid")
 	}
 	manifest, err := runtimeprovider.ReadManifest(stateDir)
 	if err != nil {
 		return workspaceBaselineReport{}, err
 	}
-	if manifest.SessionID != sessionID || manifest.StateDir != stateDir || manifest.Provider != externalrunner.ProviderName {
-		return workspaceBaselineReport{}, fmt.Errorf("runtime workspace is not bound to the expected external session")
+	if manifest.SessionID != sessionID || manifest.StateDir != stateDir ||
+		manifest.Provider != externalrunner.ProviderName {
+		return workspaceBaselineReport{}, fmt.Errorf(
+			"runtime workspace is not bound to the expected external session",
+		)
 	}
 	resolvedSource, err := filepath.EvalSymlinks(source)
 	if err != nil {
-		return workspaceBaselineReport{}, fmt.Errorf("resolve expected runtime workspace source: %w", err)
+		return workspaceBaselineReport{}, fmt.Errorf(
+			"resolve expected runtime workspace source: %w",
+			err,
+		)
 	}
 	resolvedSource, err = filepath.Abs(resolvedSource)
 	if err != nil {
@@ -301,7 +374,9 @@ func verifyRuntimeWorkspaceBaseline(ctx context.Context, sessionID, stateDir, so
 		return workspaceBaselineReport{}, err
 	}
 	if baseline.Source != resolvedSource {
-		return workspaceBaselineReport{}, fmt.Errorf("runtime workspace baseline source identity mismatch")
+		return workspaceBaselineReport{}, fmt.Errorf(
+			"runtime workspace baseline source identity mismatch",
+		)
 	}
 	drift, err := externalrunner.VerifyWorkspaceBaseline(ctx, baseline)
 	if err != nil {

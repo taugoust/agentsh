@@ -31,7 +31,10 @@ func TestExecveInterception_HandlerLogic(t *testing.T) {
 				Name:     "block-curl-nested",
 				Commands: []string{"curl"},
 				Decision: "deny",
-				Context:  policy.ContextConfig{MinDepth: 1, MaxDepth: -1}, // depth >= 1 means nested
+				Context: policy.ContextConfig{
+					MinDepth: 1,
+					MaxDepth: -1,
+				}, // depth >= 1 means nested
 			},
 			{
 				Name:     "allow-all",
@@ -389,7 +392,13 @@ func TestExecveInterception_TruncationPolicies(t *testing.T) {
 			}
 
 			result, _ := h.Handle(context.Background(), ctx)
-			assert.Equal(t, tt.expectAllow, result.Allow, "truncation policy %s failed", tt.onTruncated)
+			assert.Equal(
+				t,
+				tt.expectAllow,
+				result.Allow,
+				"truncation policy %s failed",
+				tt.onTruncated,
+			)
 			if tt.expectRule != "" {
 				assert.Equal(t, tt.expectRule, result.Rule)
 			}
@@ -402,7 +411,11 @@ type policyEngineWrapper struct {
 	engine *policy.Engine
 }
 
-func (w *policyEngineWrapper) CheckExecve(filename string, argv []string, depth int) unixmon.PolicyDecision {
+func (w *policyEngineWrapper) CheckExecve(
+	filename string,
+	argv []string,
+	depth int,
+) unixmon.PolicyDecision {
 	dec := w.engine.CheckExecve(filename, argv, depth)
 	return unixmon.PolicyDecision{
 		Decision:          string(dec.PolicyDecision),

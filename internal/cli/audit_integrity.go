@@ -18,7 +18,10 @@ var allowedResetReasonCodes = []string{
 	"post_tamper_recovery",
 }
 
-func loadAuditIntegrityKey(ctx context.Context, cfg config.AuditIntegrityConfig) ([]byte, func() error, error) {
+func loadAuditIntegrityKey(
+	ctx context.Context,
+	cfg config.AuditIntegrityConfig,
+) ([]byte, func() error, error) {
 	provider, err := audit.NewKMSProvider(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create KMS provider: %w", err)
@@ -49,5 +52,9 @@ func resolveResetReasonCode(reasonCode string, legacyArchive bool) (string, erro
 		}
 	}
 
-	return "", fmt.Errorf("invalid --reason-code %q (expected one of: %s)", code, strings.Join(allowedResetReasonCodes, ", "))
+	return "", fmt.Errorf(
+		"invalid --reason-code %q (expected one of: %s)",
+		code,
+		strings.Join(allowedResetReasonCodes, ", "),
+	)
 }

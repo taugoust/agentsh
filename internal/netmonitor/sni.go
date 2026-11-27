@@ -226,7 +226,10 @@ func readBoundedTLSClientHello(r io.Reader, maxBytes int) ([]byte, tlsClientHell
 			wire = append(wire, header[:n]...)
 		}
 		if err != nil {
-			return wire, tlsClientHelloInfo{}, fmt.Errorf("read TLS ClientHello record header: %w", err)
+			return wire, tlsClientHelloInfo{}, fmt.Errorf(
+				"read TLS ClientHello record header: %w",
+				err,
+			)
 		}
 		if header[0] != tlsHandshakeType || header[1] != 0x03 {
 			return wire, tlsClientHelloInfo{}, ErrNotTLSRecord
@@ -247,7 +250,10 @@ func readBoundedTLSClientHello(r io.Reader, maxBytes int) ([]byte, tlsClientHell
 		n, err = io.ReadFull(r, payload)
 		wire = append(wire, payload[:n]...)
 		if err != nil {
-			return wire, tlsClientHelloInfo{}, fmt.Errorf("read TLS ClientHello record payload: %w", err)
+			return wire, tlsClientHelloInfo{}, fmt.Errorf(
+				"read TLS ClientHello record payload: %w",
+				err,
+			)
 		}
 		handshake = append(handshake, payload...)
 
@@ -434,16 +440,25 @@ func RewriteClientHelloSNI(record []byte, newSNI string) ([]byte, error) {
 	// 2. SNI list length
 	binary.BigEndian.PutUint16(newRecord[loc.sniListLenOffset:], uint16(loc.origListLen+delta))
 	// 3. SNI extension data length
-	binary.BigEndian.PutUint16(newRecord[loc.sniExtDataLenOffset:], uint16(loc.origExtDataLen+delta))
+	binary.BigEndian.PutUint16(
+		newRecord[loc.sniExtDataLenOffset:],
+		uint16(loc.origExtDataLen+delta),
+	)
 	// 4. Extensions total length
-	binary.BigEndian.PutUint16(newRecord[loc.extensionsLenOffset:], uint16(loc.origExtensionsLen+delta))
+	binary.BigEndian.PutUint16(
+		newRecord[loc.extensionsLenOffset:],
+		uint16(loc.origExtensionsLen+delta),
+	)
 	// 5. Handshake length (uint24 at bytes 6, 7, 8)
 	newHandshakeLen := loc.origHandshakeLen + delta
 	newRecord[loc.handshakeLenOffset] = byte(newHandshakeLen >> 16)
 	newRecord[loc.handshakeLenOffset+1] = byte(newHandshakeLen >> 8)
 	newRecord[loc.handshakeLenOffset+2] = byte(newHandshakeLen)
 	// 6. Record payload length
-	binary.BigEndian.PutUint16(newRecord[loc.recordPayloadLenOffset:], uint16(loc.origRecordPayloadLen+delta))
+	binary.BigEndian.PutUint16(
+		newRecord[loc.recordPayloadLenOffset:],
+		uint16(loc.origRecordPayloadLen+delta),
+	)
 
 	return newRecord, nil
 }

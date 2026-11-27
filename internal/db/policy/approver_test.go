@@ -11,7 +11,11 @@ import (
 
 func TestNopApprover_Timeout_ReturnsFalseNoError(t *testing.T) {
 	a := NopApprover{}
-	approved, err := a.Decide(context.Background(), effects.ClassifiedStatement{}, 10*time.Millisecond)
+	approved, err := a.Decide(
+		context.Background(),
+		effects.ClassifiedStatement{},
+		10*time.Millisecond,
+	)
 	if err != nil {
 		t.Fatalf("Decide err: %v", err)
 	}

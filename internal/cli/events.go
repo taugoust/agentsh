@@ -31,7 +31,14 @@ func newEventsTailCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -86,7 +93,19 @@ func newEventsQueryCmd() *cobra.Command {
 				}
 				defer st.Close()
 
-				q, err := buildEventQuery(sessionID, typesCSV, decision, since, until, pathLike, domainLike, textLike, limit, offset, order)
+				q, err := buildEventQuery(
+					sessionID,
+					typesCSV,
+					decision,
+					since,
+					until,
+					pathLike,
+					domainLike,
+					textLike,
+					limit,
+					offset,
+					order,
+				)
 				if err != nil {
 					return err
 				}
@@ -98,7 +117,14 @@ func newEventsQueryCmd() *cobra.Command {
 			}
 
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -147,12 +173,15 @@ func newEventsQueryCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&sessionID, "session", "", "Filter by session ID (or query global events when empty)")
+	cmd.Flags().
+		StringVar(&sessionID, "session", "",
+			"Filter by session ID (or query global events when empty)")
 	cmd.Flags().StringVar(&typesCSV, "type", "", "Comma-separated event types")
 	cmd.Flags().StringVar(&decision, "decision", "", "Policy decision filter (allow|deny|approve)")
 	cmd.Flags().StringVar(&since, "since", "", "Start time (RFC3339) or duration (e.g. 1h)")
 	cmd.Flags().StringVar(&until, "until", "", "End time (RFC3339) or duration (e.g. 5m)")
-	cmd.Flags().StringVar(&pathLike, "path-like", "", "SQL LIKE pattern for path (e.g. %/secrets/%)")
+	cmd.Flags().
+		StringVar(&pathLike, "path-like", "", "SQL LIKE pattern for path (e.g. %/secrets/%)")
 	cmd.Flags().StringVar(&domainLike, "domain-like", "", "SQL LIKE pattern for domain")
 	cmd.Flags().StringVar(&textLike, "text-like", "", "SQL LIKE pattern for raw JSON payload")
 	cmd.Flags().IntVar(&limit, "limit", 200, "Result limit")
@@ -165,7 +194,11 @@ func newEventsQueryCmd() *cobra.Command {
 	return cmd
 }
 
-func buildEventQuery(sessionID, typesCSV, decision, since, until, pathLike, domainLike, textLike string, limit, offset int, order string) (types.EventQuery, error) {
+func buildEventQuery(
+	sessionID, typesCSV, decision, since, until, pathLike, domainLike, textLike string,
+	limit, offset int,
+	order string,
+) (types.EventQuery, error) {
 	var q types.EventQuery
 	q.SessionID = sessionID
 	if typesCSV != "" {

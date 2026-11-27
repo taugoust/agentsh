@@ -86,7 +86,11 @@ func TestPIDRegistryDescendantDetection(t *testing.T) {
 	// Supervisor's view of deep descendant
 	ctx = r.ClassifyTarget(1000, 1004)
 	assert.False(t, ctx.IsChild, "deep descendant from supervisor should have IsChild=false")
-	assert.True(t, ctx.IsDescendant, "deep descendant from supervisor should have IsDescendant=true")
+	assert.True(
+		t,
+		ctx.IsDescendant,
+		"deep descendant from supervisor should have IsDescendant=true",
+	)
 
 	// Non-descendant (sibling's child is not a descendant)
 	r.Register(1010, 1000, "other")

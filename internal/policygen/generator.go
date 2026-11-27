@@ -31,7 +31,11 @@ func NewGenerator(s store.EventStore) *Generator {
 }
 
 // Generate creates a policy from session events.
-func (g *Generator) Generate(ctx context.Context, sess types.Session, opts Options) (*GeneratedPolicy, error) {
+func (g *Generator) Generate(
+	ctx context.Context,
+	sess types.Session,
+	opts Options,
+) (*GeneratedPolicy, error) {
 	events, err := g.store.QueryEvents(ctx, types.EventQuery{
 		SessionID: sess.ID,
 		Asc:       true,
@@ -41,7 +45,10 @@ func (g *Generator) Generate(ctx context.Context, sess types.Session, opts Optio
 	}
 
 	if len(events) == 0 {
-		return nil, fmt.Errorf("session %s has no event data; run with audit logging enabled", sess.ID)
+		return nil, fmt.Errorf(
+			"session %s has no event data; run with audit logging enabled",
+			sess.ID,
+		)
 	}
 
 	policy := &GeneratedPolicy{
@@ -152,7 +159,11 @@ func (g *Generator) Generate(ctx context.Context, sess types.Session, opts Optio
 }
 
 // generateFileRules creates file rules from events.
-func (g *Generator) generateFileRules(events []types.Event, opts Options, blocked bool) []FileRuleGen {
+func (g *Generator) generateFileRules(
+	events []types.Event,
+	opts Options,
+	blocked bool,
+) []FileRuleGen {
 	if len(events) == 0 {
 		return nil
 	}
@@ -268,7 +279,12 @@ func (g *Generator) generateNetworkRules(events []types.Event, blocked bool) []N
 }
 
 // generateCommandRules creates command rules from events.
-func (g *Generator) generateCommandRules(events []types.Event, detector *RiskyDetector, opts Options, blocked bool) []CommandRuleGen {
+func (g *Generator) generateCommandRules(
+	events []types.Event,
+	detector *RiskyDetector,
+	opts Options,
+	blocked bool,
+) []CommandRuleGen {
 	if len(events) == 0 {
 		return nil
 	}
@@ -584,7 +600,12 @@ func generateArgPattern(argsLists [][]string) string {
 }
 
 // buildProvenance creates provenance from events.
-func buildProvenance(events []types.Event, samples []string, blocked bool, reason string) Provenance {
+func buildProvenance(
+	events []types.Event,
+	samples []string,
+	blocked bool,
+	reason string,
+) Provenance {
 	prov := Provenance{
 		EventCount:  len(events),
 		Blocked:     blocked,
@@ -690,7 +711,11 @@ func (g *Generator) generateMCPRules(events []types.Event, opts Options) (
 					info := blockedToolMap[key]
 					info.events = append(info.events, ev)
 					// Capture first block reason
-					if reason := stringFromFields(ev.Fields, "reason"); reason != "" && info.blockReason == "" {
+					if reason := stringFromFields(
+						ev.Fields,
+						"reason",
+					); reason != "" &&
+						info.blockReason == "" {
 						info.blockReason = reason
 					}
 				}
@@ -727,7 +752,12 @@ func (g *Generator) generateMCPRules(events []types.Event, opts Options) (
 
 	// Build tool rules from seen tools
 	for _, info := range seenTools {
-		prov := buildProvenance(info.events, []string{info.serverID + "/" + info.toolName}, false, "")
+		prov := buildProvenance(
+			info.events,
+			[]string{info.serverID + "/" + info.toolName},
+			false,
+			"",
+		)
 		toolRules = append(toolRules, MCPToolRuleGen{
 			GeneratedRule: GeneratedRule{
 				Name:        sanitizeName(info.serverID + "-" + info.toolName),
@@ -744,12 +774,21 @@ func (g *Generator) generateMCPRules(events []types.Event, opts Options) (
 	if opts.IncludeBlocked {
 		for _, info := range blockedToolMap {
 			reason := info.blockReason
-			prov := buildProvenance(info.events, []string{info.serverID + "/" + info.toolName}, true, reason)
+			prov := buildProvenance(
+				info.events,
+				[]string{info.serverID + "/" + info.toolName},
+				true,
+				reason,
+			)
 			blockedTools = append(blockedTools, MCPToolRuleGen{
 				GeneratedRule: GeneratedRule{
-					Name:        sanitizeName(info.serverID + "-" + info.toolName),
-					Description: fmt.Sprintf("MCP tool %s/%s (blocked)", info.serverID, info.toolName),
-					Provenance:  prov,
+					Name: sanitizeName(info.serverID + "-" + info.toolName),
+					Description: fmt.Sprintf(
+						"MCP tool %s/%s (blocked)",
+						info.serverID,
+						info.toolName,
+					),
+					Provenance: prov,
 				},
 				ServerID:    info.serverID,
 				ToolName:    info.toolName,
@@ -769,7 +808,10 @@ func (g *Generator) generateMCPRules(events []types.Event, opts Options) (
 
 	// Sort for deterministic output
 	sort.Slice(toolRules, func(i, j int) bool { return toolRules[i].Name < toolRules[j].Name })
-	sort.Slice(blockedTools, func(i, j int) bool { return blockedTools[i].Name < blockedTools[j].Name })
+	sort.Slice(
+		blockedTools,
+		func(i, j int) bool { return blockedTools[i].Name < blockedTools[j].Name },
+	)
 	sort.Slice(servers, func(i, j int) bool { return servers[i].ServerID < servers[j].ServerID })
 
 	// Build MCP config

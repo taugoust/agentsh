@@ -30,7 +30,11 @@ func TestExecPathMissing(t *testing.T) {
 	if !execPathMissing(os.Getpid(), filepath.Join(dir, "missing"), ExecveArgs{}) {
 		t.Fatalf("missing file not reported missing")
 	}
-	if execPathMissing(os.Getpid(), filepath.Join(dir, "missing"), ExecveArgs{IsExecveat: true, Flags: 0x1000}) {
+	if execPathMissing(
+		os.Getpid(),
+		filepath.Join(dir, "missing"),
+		ExecveArgs{IsExecveat: true, Flags: 0x1000},
+	) {
 		t.Fatalf("execveat AT_EMPTY_PATH should not use path existence")
 	}
 }
@@ -76,7 +80,12 @@ func (m *mockAliasPolicy) CheckExecve(filename string, argv []string, depth int)
 	return m.decision
 }
 
-func (m *mockAliasPolicy) CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) PolicyDecision {
+func (m *mockAliasPolicy) CheckExecveWithAliases(
+	filename string,
+	aliases []string,
+	argv []string,
+	depth int,
+) PolicyDecision {
 	m.filename = filename
 	m.aliases = aliases
 	m.argv = argv
@@ -86,7 +95,9 @@ func (m *mockAliasPolicy) CheckExecveWithAliases(filename string, aliases []stri
 
 func TestExecveHandler_TrustedAliases(t *testing.T) {
 	cfg := ExecveHandlerConfig{MaxArgc: 1000, MaxArgvBytes: 65536}
-	pol := &mockAliasPolicy{decision: PolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "allow-rm"}}
+	pol := &mockAliasPolicy{
+		decision: PolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "allow-rm"},
+	}
 	h := NewExecveHandler(cfg, pol, NewDepthTracker(), nil)
 
 	ctx := ExecveContext{
@@ -137,14 +148,21 @@ func TestExecveHandler_ComposedApprovalScopesOriginalSource(t *testing.T) {
 	registry := NewCompositionPathRegistry()
 	t.Cleanup(func() { _ = registry.Close() })
 	pid := os.Getpid()
-	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
-		{Target: "/", Source: ""},
-		{Target: "/visible", Source: "/source"},
-	}}))
+	require.NoError(
+		t,
+		registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+			{Target: "/", Source: ""},
+			{Target: "/visible", Source: "/source"},
+		}}),
+	)
 
 	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
 		"/visible/tool": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible"},
-		"/source/tool":  {Decision: "approve", EffectiveDecision: "approve", Rule: "approve-source"},
+		"/source/tool": {
+			Decision:          "approve",
+			EffectiveDecision: "approve",
+			Rule:              "approve-source",
+		},
 	}}
 	approver := &mockApprover{approved: true}
 	h := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, nil)
@@ -163,10 +181,13 @@ func TestExecveHandler_ComposedSourceCannotOverrideVisibleDeny(t *testing.T) {
 	registry := NewCompositionPathRegistry()
 	t.Cleanup(func() { _ = registry.Close() })
 	pid := os.Getpid()
-	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
-		{Target: "/", Source: ""},
-		{Target: "/visible", Source: "/source"},
-	}}))
+	require.NoError(
+		t,
+		registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+			{Target: "/", Source: ""},
+			{Target: "/visible", Source: "/source"},
+		}}),
+	)
 
 	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
 		"/visible/tool": {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-visible"},
@@ -185,19 +206,38 @@ func TestExecveHandler_ComposedSourceDisablesInternalPathBypass(t *testing.T) {
 	registry := NewCompositionPathRegistry()
 	t.Cleanup(func() { _ = registry.Close() })
 	pid := os.Getpid()
-	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
-		{Target: "/", Source: ""},
-		{Target: "/usr/local/bin/agentsh", Source: "/source/malware"},
-	}}))
+	require.NoError(
+		t,
+		registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+			{Target: "/", Source: ""},
+			{Target: "/usr/local/bin/agentsh", Source: "/source/malware"},
+		}}),
+	)
 
 	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
-		"/usr/local/bin/agentsh": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-visible"},
-		"/source/malware":        {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-source"},
+		"/usr/local/bin/agentsh": {
+			Decision:          "allow",
+			EffectiveDecision: "allow",
+			Rule:              "allow-visible",
+		},
+		"/source/malware": {
+			Decision:          "deny",
+			EffectiveDecision: "deny",
+			Rule:              "deny-source",
+		},
 	}}
-	h := NewExecveHandler(ExecveHandlerConfig{InternalBypass: []string{"/usr/local/bin/agentsh"}}, pol, nil, nil)
+	h := NewExecveHandler(
+		ExecveHandlerConfig{InternalBypass: []string{"/usr/local/bin/agentsh"}},
+		pol,
+		nil,
+		nil,
+	)
 	h.SetCompositionPathRegistry(registry)
 	result, _ := h.Handle(context.Background(), ExecveContext{
-		PID: pid, Filename: "/usr/local/bin/agentsh", RawFilename: "/usr/local/bin/agentsh", Argv: []string{"agentsh"},
+		PID:         pid,
+		Filename:    "/usr/local/bin/agentsh",
+		RawFilename: "/usr/local/bin/agentsh",
+		Argv:        []string{"agentsh"},
 	})
 	require.False(t, result.Allow)
 	require.Equal(t, "deny-source", result.Rule)
@@ -207,10 +247,13 @@ func TestExecveHandler_ComposedTransparentPayloadUsesSourceDecision(t *testing.T
 	registry := NewCompositionPathRegistry()
 	t.Cleanup(func() { _ = registry.Close() })
 	pid := os.Getpid()
-	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
-		{Target: "/", Source: ""},
-		{Target: "/alias", Source: "/source"},
-	}}))
+	require.NoError(
+		t,
+		registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+			{Target: "/", Source: ""},
+			{Target: "/alias", Source: "/source"},
+		}}),
+	)
 
 	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
 		"/usr/bin/env": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-env"},
@@ -231,22 +274,40 @@ func TestExecveHandler_ComposedTransparentPayloadUsesSourceDecision(t *testing.T
 
 type testCompositionRedirector struct{}
 
-func (testCompositionRedirector) Redirect(int, uint64, ExecveContext, uint64, int) error { return nil }
-func (testCompositionRedirector) Close() error                                           { return nil }
+func (testCompositionRedirector) Redirect(
+	int,
+	uint64,
+	ExecveContext,
+	uint64,
+	int,
+) error {
+	return nil
+}
+
+func (testCompositionRedirector) Close() error { return nil }
 
 func TestExecveHandler_DoesNotComposeSourceSubstitutedBubblewrap(t *testing.T) {
 	const bwrap = "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-bubblewrap-0.11.2/bin/bwrap"
 	registry := NewCompositionPathRegistry()
 	t.Cleanup(func() { _ = registry.Close() })
 	pid := os.Getpid()
-	require.NoError(t, registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
-		{Target: "/", Source: ""},
-		{Target: bwrap, Source: "/source/not-bwrap"},
-	}}))
+	require.NoError(
+		t,
+		registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
+			{Target: "/", Source: ""},
+			{Target: bwrap, Source: "/source/not-bwrap"},
+		}}),
+	)
 
-	pol := &mockPolicy{decision: PolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "allow-test"}}
+	pol := &mockPolicy{
+		decision: PolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "allow-test"},
+	}
 	h := NewExecveHandler(ExecveHandlerConfig{}, pol, nil, nil)
-	h.SetComposition("bubblewrap-0.11.2", "/nix/store/adapter/bin/agentsh-bwrap-adapter", testCompositionRedirector{})
+	h.SetComposition(
+		"bubblewrap-0.11.2",
+		"/nix/store/adapter/bin/agentsh-bwrap-adapter",
+		testCompositionRedirector{},
+	)
 	h.SetCompositionPathRegistry(registry)
 	ctx := ExecveContext{PID: pid, Filename: bwrap, RawFilename: bwrap, Argv: []string{"bwrap"}}
 	result, _ := h.Handle(context.Background(), ctx)
@@ -261,7 +322,10 @@ func TestExecveHandler_CompositionAttributionFailureDenies(t *testing.T) {
 	h.SetCompositionPathRegistry(NewCompositionPathRegistry())
 	t.Cleanup(func() { _ = h.CompositionPathRegistry().Close() })
 	result, _ := h.Handle(context.Background(), ExecveContext{
-		PID: 1 << 30, Filename: "/visible/tool", RawFilename: "/visible/tool", Argv: []string{"tool"},
+		PID:         1 << 30,
+		Filename:    "/visible/tool",
+		RawFilename: "/visible/tool",
+		Argv:        []string{"tool"},
 	})
 	require.False(t, result.Allow)
 	require.Equal(t, "composition-source-attribution", result.Rule)
@@ -481,47 +545,51 @@ func TestExecveHandler_Action(t *testing.T) {
 		assert.Equal(t, "approve", result.Decision)
 	})
 
-	t.Run("approve preserves notify session for nested exec when parent was first seen without ancestry", func(t *testing.T) {
-		cfg := ExecveHandlerConfig{}
-		pol := &mockPolicy{decision: PolicyDecision{
-			Decision:          "approve",
-			EffectiveDecision: "approve",
-			Rule:              "needs-approval",
-			Message:           "requires human approval",
-		}}
-		dt := NewDepthTracker()
-		approver := &mockApprover{approved: true}
-		h := NewExecveHandler(cfg, pol, dt, nil)
-		h.SetApprover(approver)
+	t.Run(
+		"approve preserves notify session for nested exec when parent was first seen without "+
+			"ancestry",
+		func(t *testing.T) {
+			cfg := ExecveHandlerConfig{}
+			pol := &mockPolicy{decision: PolicyDecision{
+				Decision:          "approve",
+				EffectiveDecision: "approve",
+				Rule:              "needs-approval",
+				Message:           "requires human approval",
+			}}
+			dt := NewDepthTracker()
+			approver := &mockApprover{approved: true}
+			h := NewExecveHandler(cfg, pol, dt, nil)
+			h.SetApprover(approver)
 
-		result, _ := h.Handle(context.Background(), ExecveContext{
-			PID:       2000,
-			ParentPID: 9999,
-			Filename:  "/nix/store/bash/bin/bash",
-			Argv:      []string{"bash", "-c", "sqlite3 -batch :memory: 'select 1'"},
-			SessionID: "sess-loop",
-		})
-		require.True(t, result.Allow)
-		require.True(t, approver.called)
-		assert.Equal(t, "sess-loop", approver.gotReq.SessionID)
+			result, _ := h.Handle(context.Background(), ExecveContext{
+				PID:       2000,
+				ParentPID: 9999,
+				Filename:  "/nix/store/bash/bin/bash",
+				Argv:      []string{"bash", "-c", "sqlite3 -batch :memory: 'select 1'"},
+				SessionID: "sess-loop",
+			})
+			require.True(t, result.Allow)
+			require.True(t, approver.called)
+			assert.Equal(t, "sess-loop", approver.gotReq.SessionID)
 
-		approver.called = false
-		approver.gotReq = ApprovalRequest{}
-		result, _ = h.Handle(context.Background(), ExecveContext{
-			PID:       2001,
-			ParentPID: 2000,
-			Filename:  "/nix/store/sqlite/bin/sqlite3",
-			Argv:      []string{"sqlite3", "-batch", ":memory:", "select 'run-2', 2 * 2;"},
-			SessionID: "sess-loop",
-		})
-		require.True(t, result.Allow)
-		require.True(t, approver.called)
-		assert.Equal(t, "sess-loop", approver.gotReq.SessionID)
+			approver.called = false
+			approver.gotReq = ApprovalRequest{}
+			result, _ = h.Handle(context.Background(), ExecveContext{
+				PID:       2001,
+				ParentPID: 2000,
+				Filename:  "/nix/store/sqlite/bin/sqlite3",
+				Argv:      []string{"sqlite3", "-batch", ":memory:", "select 'run-2', 2 * 2;"},
+				SessionID: "sess-loop",
+			})
+			require.True(t, result.Allow)
+			require.True(t, approver.called)
+			assert.Equal(t, "sess-loop", approver.gotReq.SessionID)
 
-		state, ok := dt.Get(2001)
-		require.True(t, ok)
-		assert.Equal(t, "sess-loop", state.SessionID)
-	})
+			state, ok := dt.Get(2001)
+			require.True(t, ok)
+			assert.Equal(t, "sess-loop", state.SessionID)
+		},
+	)
 
 	t.Run("approve denies when user denies", func(t *testing.T) {
 		cfg := ExecveHandlerConfig{}
@@ -853,7 +921,9 @@ func TestExecveHandler_TruncatedApproval_Timeout(t *testing.T) {
 func TestExecveContext_RawFilename(t *testing.T) {
 	// Verify RawFilename is preserved through Handle
 	cfg := ExecveHandlerConfig{}
-	pol := &mockPolicy{decision: PolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "allow-all"}}
+	pol := &mockPolicy{
+		decision: PolicyDecision{Decision: "allow", EffectiveDecision: "allow", Rule: "allow-all"},
+	}
 	dt := NewDepthTracker()
 	dt.RegisterSession(1000, "sess-1")
 	h := NewExecveHandler(cfg, pol, dt, nil)
@@ -896,7 +966,11 @@ type mockPolicyWithUnwrap struct {
 	decisions map[string]PolicyDecision
 }
 
-func (m *mockPolicyWithUnwrap) CheckExecve(filename string, argv []string, depth int) PolicyDecision {
+func (m *mockPolicyWithUnwrap) CheckExecve(
+	filename string,
+	argv []string,
+	depth int,
+) PolicyDecision {
 	if dec, ok := m.decisions[filename]; ok {
 		return dec
 	}
@@ -922,7 +996,12 @@ func (m *mockEmitter) Publish(ev types.Event) {}
 func TestExecveHandler_TransparentUnwrap_DenyPayload(t *testing.T) {
 	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
 		"/usr/bin/env": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-env"},
-		"wget":         {Decision: "deny", EffectiveDecision: "deny", Rule: "block-wget", Message: "wget not allowed"},
+		"wget": {
+			Decision:          "deny",
+			EffectiveDecision: "deny",
+			Rule:              "block-wget",
+			Message:           "wget not allowed",
+		},
 	}}
 	dt := NewDepthTracker()
 	dt.RegisterSession(1000, "sess-1")
@@ -963,8 +1042,13 @@ func TestExecveHandler_TransparentUnwrap_AllowPayload(t *testing.T) {
 
 func TestExecveHandler_TransparentUnwrap_DenyWrapper(t *testing.T) {
 	pol := &mockPolicyWithUnwrap{decisions: map[string]PolicyDecision{
-		"/usr/bin/sudo": {Decision: "deny", EffectiveDecision: "deny", Rule: "block-sudo", Message: "sudo not allowed"},
-		"git":           {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-git"},
+		"/usr/bin/sudo": {
+			Decision:          "deny",
+			EffectiveDecision: "deny",
+			Rule:              "block-sudo",
+			Message:           "sudo not allowed",
+		},
+		"git": {Decision: "allow", EffectiveDecision: "allow", Rule: "allow-git"},
 	}}
 	dt := NewDepthTracker()
 	dt.RegisterSession(1000, "sess-1")

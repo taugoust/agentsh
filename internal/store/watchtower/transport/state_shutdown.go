@@ -38,7 +38,12 @@ import (
 // runShutdown is only called from runLive — runReplaying and
 // runConnecting each have their own exit paths and no buffered batcher
 // to drain.
-func (t *Transport) runShutdown(parent context.Context, b *Batcher, rdr *wal.Reader, drainDeadline time.Duration) error {
+func (t *Transport) runShutdown(
+	parent context.Context,
+	b *Batcher,
+	rdr *wal.Reader,
+	drainDeadline time.Duration,
+) error {
 	if drainDeadline > 0 {
 		ctx, cancel := context.WithTimeout(parent, drainDeadline)
 		defer cancel()
@@ -55,7 +60,8 @@ func (t *Transport) runShutdown(parent context.Context, b *Batcher, rdr *wal.Rea
 				break
 			}
 			if outBatch := b.Add(rec); outBatch != nil {
-				msgs, err := encodeBatchMessageFn(outBatch.Records, t.emitExtendedLossReasons, t.compressor, t.compressMetrics)
+				msgs, err := encodeBatchMessageFn(outBatch.Records, t.emitExtendedLossReasons,
+					t.compressor, t.compressMetrics)
 				if err != nil {
 					break drainLoop
 				}
@@ -69,7 +75,12 @@ func (t *Transport) runShutdown(parent context.Context, b *Batcher, rdr *wal.Rea
 		}
 	}
 	if final := b.Drain(); final != nil {
-		msgs, err := encodeBatchMessageFn(final.Records, t.emitExtendedLossReasons, t.compressor, t.compressMetrics)
+		msgs, err := encodeBatchMessageFn(
+			final.Records,
+			t.emitExtendedLossReasons,
+			t.compressor,
+			t.compressMetrics,
+		)
 		if err == nil {
 			for _, msg := range msgs {
 				_ = t.conn.Send(msg)

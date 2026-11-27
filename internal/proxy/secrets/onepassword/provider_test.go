@@ -275,7 +275,10 @@ func TestMapOPError_AuthCodes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mock := &mockOPClient{
 				GetVaultsByTitleFunc: func(_ string) ([]mockVault, error) {
-					return nil, &mockHTTPError{statusCode: tc.statusCode, message: "auth error: " + tc.name}
+					return nil, &mockHTTPError{
+						statusCode: tc.statusCode,
+						message:    "auth error: " + tc.name,
+					}
 				},
 			}
 			p := newFromClient(mock)

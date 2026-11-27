@@ -92,14 +92,22 @@ func ApplyServerAckTupleForTest(t *Transport, gen uint32, seq uint64) AckOutcome
 // ComputeReplayStartForTest invokes the unexported computeReplayStart
 // helper directly so unit tests can exercise it without driving the
 // Run loop.
-func ComputeReplayStartForTest(t *Transport, replay AckCursor, persisted AckCursor) (*wal.LossRecord, uint64, error) {
+func ComputeReplayStartForTest(
+	t *Transport,
+	replay AckCursor,
+	persisted AckCursor,
+) (*wal.LossRecord, uint64, error) {
 	return t.computeReplayStart(replay, persisted)
 }
 
 // ComputeReplayPlanForTest invokes the unexported computeReplayPlan
 // helper directly so unit tests can exercise the multi-generation
 // orchestration without driving the Run loop or opening real Readers.
-func ComputeReplayPlanForTest(t *Transport, replay AckCursor, persisted AckCursor) ([]ReplayStage, error) {
+func ComputeReplayPlanForTest(
+	t *Transport,
+	replay AckCursor,
+	persisted AckCursor,
+) ([]ReplayStage, error) {
 	return t.computeReplayPlan(replay, persisted)
 }
 
@@ -273,7 +281,12 @@ func TeardownRecvForTest(t *Transport) { t.teardownRecv() }
 //
 // Caller MUST attach a Conn via SetConnForTest first; runShutdown
 // dereferences t.conn for Send/CloseSend.
-func RunShutdownForTest(t *Transport, b *Batcher, rdr *wal.Reader, drainDeadline time.Duration) error {
+func RunShutdownForTest(
+	t *Transport,
+	b *Batcher,
+	rdr *wal.Reader,
+	drainDeadline time.Duration,
+) error {
 	return t.runShutdown(context.Background(), b, rdr, drainDeadline)
 }
 
@@ -316,6 +329,10 @@ func RunShutdownForTest(t *Transport, b *Batcher, rdr *wal.Reader, drainDeadline
 // Production code MUST NOT call this — Stop (transport.go) is the
 // supported API. The seam exists ONLY so the replay-stop test can
 // synchronize the latch arming with the stopCh-enqueue moment.
-func EnqueueStopAndWaitForTest(t *Transport, drainDeadline time.Duration, preEnqueue, postEnqueue func()) {
+func EnqueueStopAndWaitForTest(
+	t *Transport,
+	drainDeadline time.Duration,
+	preEnqueue, postEnqueue func(),
+) {
 	t.stopWithHooks(drainDeadline, preEnqueue, postEnqueue)
 }

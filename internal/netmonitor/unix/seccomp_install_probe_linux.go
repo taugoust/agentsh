@@ -60,13 +60,20 @@ func ProbeSeccompInstall() InstallProbeResult {
 
 func classifyInstallProbe(exitCode int, stderr string, spawnErr error) InstallProbeResult {
 	if spawnErr != nil {
-		return InstallProbeResult{Installable: false, Detail: fmt.Sprintf("install probe could not run: %v", spawnErr)}
+		return InstallProbeResult{
+			Installable: false,
+			Detail:      fmt.Sprintf("install probe could not run: %v", spawnErr),
+		}
 	}
 	if exitCode == 0 {
 		return InstallProbeResult{Installable: true}
 	}
 	if errno := parseInstallErrno(stderr); errno != 0 {
-		return InstallProbeResult{Installable: false, Errno: errno, Detail: fmt.Sprintf("%s (errno %d)", errno, int(errno))}
+		return InstallProbeResult{
+			Installable: false,
+			Errno:       errno,
+			Detail:      fmt.Sprintf("%s (errno %d)", errno, int(errno)),
+		}
 	}
 	detail := strings.TrimSpace(stderr)
 	if detail == "" {
@@ -142,7 +149,13 @@ func runInstallProbeChild() {
 	if err != nil {
 		var errno syscall.Errno
 		if errors.As(err, &errno) {
-			fmt.Fprintf(os.Stderr, "seccomp install probe: install filter: %v %s%d\n", err, installErrnoPrefix, int(errno))
+			fmt.Fprintf(
+				os.Stderr,
+				"seccomp install probe: install filter: %v %s%d\n",
+				err,
+				installErrnoPrefix,
+				int(errno),
+			)
 		} else {
 			fmt.Fprintf(os.Stderr, "seccomp install probe: install filter: %v\n", err)
 		}
@@ -156,8 +169,14 @@ func runInstallProbeChild() {
 // check (SECCOMP_GET_NOTIF_SIZES), used only as a test skip guard. Returns nil
 // when supported.
 func probeSeccompUserNotifyKernel() error {
-	var sizes [3]uint16 // struct seccomp_notif_sizes { __u16 seccomp_notif, seccomp_notif_resp, seccomp_data; }
-	_, _, errno := unix.Syscall(unix.SYS_SECCOMP, unix.SECCOMP_GET_NOTIF_SIZES, 0, uintptr(unsafe.Pointer(&sizes)))
+	// struct seccomp_notif_sizes { __u16 seccomp_notif, seccomp_notif_resp, seccomp_data; }
+	var sizes [3]uint16
+	_, _, errno := unix.Syscall(
+		unix.SYS_SECCOMP,
+		unix.SECCOMP_GET_NOTIF_SIZES,
+		0,
+		uintptr(unsafe.Pointer(&sizes)),
+	)
 	if errno != 0 {
 		return errno
 	}

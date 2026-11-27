@@ -497,7 +497,9 @@ func TestEvaluator_EvaluateWithContext_NoErrorsNoDegradedPrefix(t *testing.T) {
 	v := ev.EvaluateWithContext(EvalContext{
 		Findings:  nil,
 		Ecosystem: EcosystemNPM,
-		Skipped:   []SkippedPackage{{Package: PackageRef{Name: "x"}, Reason: SkipReasonPrivateRegistry}},
+		Skipped: []SkippedPackage{
+			{Package: PackageRef{Name: "x"}, Reason: SkipReasonPrivateRegistry},
+		},
 	})
 	if strings.HasPrefix(v.Summary, "degraded:") {
 		t.Errorf("no errors should not produce degraded prefix; got %q", v.Summary)

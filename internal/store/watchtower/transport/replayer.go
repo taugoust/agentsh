@@ -221,7 +221,8 @@ func (r *Replayer) NextBatch(ctx context.Context) (ReplayBatch, bool, error) {
 			// surfaced as a loss marker).
 			return batch, true, nil
 		}
-		if rec.Kind == wal.RecordData && watermarkLess(r.tail, Watermark{Generation: rec.Generation, Sequence: rec.Sequence}) {
+		if rec.Kind == wal.RecordData &&
+			watermarkLess(r.tail, Watermark{Generation: rec.Generation, Sequence: rec.Sequence}) {
 			batch.Records = append(batch.Records, rec)
 			r.lastReplayed = Watermark{Generation: rec.Generation, Sequence: rec.Sequence}
 			return batch, true, nil

@@ -31,7 +31,10 @@ func (p *localProvider) Capabilities() []pkgcheck.FindingType {
 	return []pkgcheck.FindingType{pkgcheck.FindingLicense}
 }
 
-func (p *localProvider) CheckBatch(_ context.Context, req pkgcheck.CheckRequest) (*pkgcheck.CheckResponse, error) {
+func (p *localProvider) CheckBatch(
+	_ context.Context,
+	req pkgcheck.CheckRequest,
+) (*pkgcheck.CheckResponse, error) {
 	start := time.Now()
 	var findings []pkgcheck.Finding
 
@@ -51,7 +54,10 @@ func (p *localProvider) CheckBatch(_ context.Context, req pkgcheck.CheckRequest)
 			Title:    "License unknown",
 			Detail:   "No license metadata available for " + pkg.String(),
 			Reasons: []pkgcheck.Reason{
-				{Code: "license_unknown", Message: "Could not determine license from local metadata"},
+				{
+					Code:    "license_unknown",
+					Message: "Could not determine license from local metadata",
+				},
 			},
 		})
 	}

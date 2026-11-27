@@ -77,8 +77,14 @@ func TestCompositionSetupTransfersExactObjects(t *testing.T) {
 	if len(setup.Objects) != 2 {
 		t.Fatalf("objects = %d", len(setup.Objects))
 	}
-	if setup.SenderPID != os.Getpid() || setup.SenderUID != uint32(os.Geteuid()) || setup.SenderGID != uint32(os.Getegid()) {
-		t.Fatalf("sender credentials = pid:%d uid:%d gid:%d", setup.SenderPID, setup.SenderUID, setup.SenderGID)
+	if setup.SenderPID != os.Getpid() || setup.SenderUID != uint32(os.Geteuid()) ||
+		setup.SenderGID != uint32(os.Getegid()) {
+		t.Fatalf(
+			"sender credentials = pid:%d uid:%d gid:%d",
+			setup.SenderPID,
+			setup.SenderUID,
+			setup.SenderGID,
+		)
 	}
 	got := setup.Objects[0]
 	if got.Kind != SetupObjectPolicy || got.Path != directory || got.Rights != 7 {
@@ -92,7 +98,13 @@ func TestCompositionSetupTransfersExactObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sent.Dev != received.Dev || sent.Ino != received.Ino {
-		t.Fatalf("received object identity (%d,%d), want (%d,%d)", received.Dev, received.Ino, sent.Dev, sent.Ino)
+		t.Fatalf(
+			"received object identity (%d,%d), want (%d,%d)",
+			received.Dev,
+			received.Ino,
+			sent.Dev,
+			sent.Ino,
+		)
 	}
 	flags, err := unix.FcntlInt(got.File.Fd(), unix.F_GETFD, 0)
 	if err != nil || flags&unix.FD_CLOEXEC == 0 {
@@ -114,11 +126,18 @@ func setupSocketpair(t *testing.T) (*os.File, *os.File) {
 
 func rawSetupPayload(t *testing.T, object *os.File) []byte {
 	t.Helper()
-	metadata, err := objectMetadata(SetupObjectSyntheticRoot, filepath.Clean(object.Name()), 1, object)
+	metadata, err := objectMetadata(
+		SetupObjectSyntheticRoot,
+		filepath.Clean(object.Name()),
+		1,
+		object,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := json.Marshal(SetupMessage{Version: SetupProtocolVersion, Mode: Mode, Objects: []SetupObject{metadata}})
+	payload, err := json.Marshal(
+		SetupMessage{Version: SetupProtocolVersion, Mode: Mode, Objects: []SetupObject{metadata}},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,8 +146,23 @@ func rawSetupPayload(t *testing.T, object *os.File) []byte {
 
 func sendRawSetup(t *testing.T, sender *os.File, payload []byte, fds []int, seal bool) {
 	t.Helper()
-	oob := append(unix.UnixRights(fds...), unix.UnixCredentials(&unix.Ucred{Pid: int32(os.Getpid()), Uid: uint32(os.Geteuid()), Gid: uint32(os.Getegid())})...)
-	if n, err := unix.SendmsgN(int(sender.Fd()), payload, oob, nil, unix.MSG_NOSIGNAL); err != nil || n != len(payload) {
+	oob := append(
+		unix.UnixRights(fds...),
+		unix.UnixCredentials(
+			&unix.Ucred{
+				Pid: int32(os.Getpid()),
+				Uid: uint32(os.Geteuid()),
+				Gid: uint32(os.Getegid()),
+			},
+		)...)
+	if n, err := unix.SendmsgN(
+		int(sender.Fd()),
+		payload,
+		oob,
+		nil,
+		unix.MSG_NOSIGNAL,
+	); err != nil ||
+		n != len(payload) {
 		t.Fatalf("raw setup send = %d/%d, err=%v", n, len(payload), err)
 	}
 	if seal {
@@ -155,9 +189,19 @@ func TestCompositionSetupRejectsDuplicateJSONField(t *testing.T) {
 	defer object.Close()
 	sender, receiver := setupSocketpair(t)
 	payload := rawSetupPayload(t, object)
-	payload = []byte(strings.Replace(string(payload), `"mode":"`+Mode+`"`, `"mode":"`+Mode+`","mode":"`+Mode+`"`, 1))
+	payload = []byte(
+		strings.Replace(
+			string(payload),
+			`"mode":"`+Mode+`"`,
+			`"mode":"`+Mode+`","mode":"`+Mode+`"`,
+			1,
+		),
+	)
 	sendRawSetup(t, sender, payload, []int{int(object.Fd())}, true)
-	if setup, err := ReceiveSetup(receiver); err == nil || !strings.Contains(err.Error(), "duplicate JSON field") {
+	if setup, err := ReceiveSetup(
+		receiver,
+	); err == nil ||
+		!strings.Contains(err.Error(), "duplicate JSON field") {
 		if setup != nil {
 			setup.Close()
 		}
@@ -176,7 +220,10 @@ func TestCompositionSetupRejectsDuplicatePacket(t *testing.T) {
 	payload := rawSetupPayload(t, object)
 	sendRawSetup(t, sender, payload, []int{int(object.Fd())}, false)
 	sendRawSetup(t, sender, payload, []int{int(object.Fd())}, true)
-	if setup, err := ReceiveSetup(receiver); err == nil || !strings.Contains(err.Error(), "duplicate message") {
+	if setup, err := ReceiveSetup(
+		receiver,
+	); err == nil ||
+		!strings.Contains(err.Error(), "duplicate message") {
 		if setup != nil {
 			setup.Close()
 		}
@@ -198,7 +245,10 @@ func TestCompositionSetupRejectsDescriptorIdentityMismatch(t *testing.T) {
 	sender, receiver := setupSocketpair(t)
 	payload := rawSetupPayload(t, first)
 	sendRawSetup(t, sender, payload, []int{int(second.Fd())}, true)
-	if setup, err := ReceiveSetup(receiver); err == nil || !strings.Contains(err.Error(), "identity changed") {
+	if setup, err := ReceiveSetup(
+		receiver,
+	); err == nil ||
+		!strings.Contains(err.Error(), "identity changed") {
 		if setup != nil {
 			setup.Close()
 		}
@@ -220,7 +270,10 @@ func TestCompositionSetupRejectsTruncatedAncillaryDataWithoutFDLeak(t *testing.T
 	}
 	before := setupOpenFDCount(t)
 	sendRawSetup(t, sender, payload, fds, true)
-	if setup, err := ReceiveSetup(receiver); err == nil || !strings.Contains(err.Error(), "truncated") {
+	if setup, err := ReceiveSetup(
+		receiver,
+	); err == nil ||
+		!strings.Contains(err.Error(), "truncated") {
 		if setup != nil {
 			setup.Close()
 		}
@@ -236,7 +289,10 @@ func TestCompositionSetupRejectsClosedUnpublishedEndpoint(t *testing.T) {
 	if err := sender.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if setup, err := ReceiveSetup(receiver); err == nil || !strings.Contains(err.Error(), "closed before publication") {
+	if setup, err := ReceiveSetup(
+		receiver,
+	); err == nil ||
+		!strings.Contains(err.Error(), "closed before publication") {
 		if setup != nil {
 			setup.Close()
 		}

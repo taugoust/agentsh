@@ -10,7 +10,9 @@ import (
 // slice consumed by FilterConfigFromYAML / FamilyChecker. Empty Action
 // defaults to errno. Returns an error if any entry has an unknown family or
 // an invalid action string.
-func ResolveBlockedFamilies(in []SandboxSeccompSocketFamilyConfig) ([]seccomp.BlockedFamily, error) {
+func ResolveBlockedFamilies(
+	in []SandboxSeccompSocketFamilyConfig,
+) ([]seccomp.BlockedFamily, error) {
 	out := make([]seccomp.BlockedFamily, 0, len(in))
 	for i, e := range in {
 		nr, name, ok := seccomp.ParseFamily(e.Family)

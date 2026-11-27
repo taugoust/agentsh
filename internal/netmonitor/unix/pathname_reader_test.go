@@ -19,7 +19,11 @@ func TestReadPathname_RequiresConfirmedNULTermination(t *testing.T) {
 	t.Run("ordinary pathname", func(t *testing.T) {
 		path := filepath.Join("relative", "path")
 		buf := []byte(path + "\x00ignored")
-		got, err := readPathname(os.Getpid(), uint64(uintptr(unsafe.Pointer(&buf[0]))), maxTraceePathnameLen)
+		got, err := readPathname(
+			os.Getpid(),
+			uint64(uintptr(unsafe.Pointer(&buf[0]))),
+			maxTraceePathnameLen,
+		)
 		runtime.KeepAlive(buf)
 		require.NoError(t, err)
 		assert.Equal(t, path, got)
@@ -50,7 +54,13 @@ func TestReadPathname_RequiresConfirmedNULTermination(t *testing.T) {
 }
 
 func TestReadPathname_AcceptsNULAtPATHMAXBoundary(t *testing.T) {
-	buf, err := unix.Mmap(-1, 0, maxTraceePathnameLen, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	buf, err := unix.Mmap(
+		-1,
+		0,
+		maxTraceePathnameLen,
+		unix.PROT_READ|unix.PROT_WRITE,
+		unix.MAP_ANON|unix.MAP_PRIVATE,
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, unix.Munmap(buf)) })
 	for i := 0; i < len(buf)-1; i++ {
@@ -58,27 +68,47 @@ func TestReadPathname_AcceptsNULAtPATHMAXBoundary(t *testing.T) {
 	}
 	buf[len(buf)-1] = 0
 
-	got, err := readPathname(os.Getpid(), uint64(uintptr(unsafe.Pointer(&buf[0]))), maxTraceePathnameLen)
+	got, err := readPathname(
+		os.Getpid(),
+		uint64(uintptr(unsafe.Pointer(&buf[0]))),
+		maxTraceePathnameLen,
+	)
 	require.NoError(t, err)
 	assert.Len(t, got, maxTraceePathnameLen-1)
 }
 
 func TestReadPathname_RejectsPATHMAXBytesWithoutNUL(t *testing.T) {
-	buf, err := unix.Mmap(-1, 0, maxTraceePathnameLen, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	buf, err := unix.Mmap(
+		-1,
+		0,
+		maxTraceePathnameLen,
+		unix.PROT_READ|unix.PROT_WRITE,
+		unix.MAP_ANON|unix.MAP_PRIVATE,
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, unix.Munmap(buf)) })
 	for i := range buf {
 		buf[i] = 'x'
 	}
 
-	got, err := readPathname(os.Getpid(), uint64(uintptr(unsafe.Pointer(&buf[0]))), maxTraceePathnameLen)
+	got, err := readPathname(
+		os.Getpid(),
+		uint64(uintptr(unsafe.Pointer(&buf[0]))),
+		maxTraceePathnameLen,
+	)
 	assert.Empty(t, got)
 	assert.ErrorIs(t, err, ErrPathnameNotTerminated)
 }
 
 func TestReadPathname_RejectsShortPageBoundaryReadWithoutNUL(t *testing.T) {
 	pageSize := os.Getpagesize()
-	mapping, err := unix.Mmap(-1, 0, pageSize*2, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	mapping, err := unix.Mmap(
+		-1,
+		0,
+		pageSize*2,
+		unix.PROT_READ|unix.PROT_WRITE,
+		unix.MAP_ANON|unix.MAP_PRIVATE,
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = unix.Mprotect(mapping[pageSize:], unix.PROT_READ|unix.PROT_WRITE)
@@ -100,14 +130,24 @@ func TestReadPathname_RejectsShortPageBoundaryReadWithoutNUL(t *testing.T) {
 }
 
 func TestResolvePathAtRejectsUnterminatedPathname(t *testing.T) {
-	buf, err := unix.Mmap(-1, 0, maxTraceePathnameLen, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	buf, err := unix.Mmap(
+		-1,
+		0,
+		maxTraceePathnameLen,
+		unix.PROT_READ|unix.PROT_WRITE,
+		unix.MAP_ANON|unix.MAP_PRIVATE,
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, unix.Munmap(buf)) })
 	for i := range buf {
 		buf[i] = 'z'
 	}
 
-	_, err = resolvePathAt(os.Getpid(), int32(unix.AT_FDCWD), uint64(uintptr(unsafe.Pointer(&buf[0]))))
+	_, err = resolvePathAt(
+		os.Getpid(),
+		int32(unix.AT_FDCWD),
+		uint64(uintptr(unsafe.Pointer(&buf[0]))),
+	)
 	assert.ErrorIs(t, err, ErrPathnameNotTerminated)
 }
 

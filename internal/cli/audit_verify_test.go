@@ -221,7 +221,10 @@ func TestAuditVerifyCmd_DoesNotRequireKeyForUnsignedLogWhenConfigDisabled(t *tes
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if got := out.String(); !strings.Contains(got, "integrity not enabled in this log; nothing to verify") {
+	if got := out.String(); !strings.Contains(
+		got,
+		"integrity not enabled in this log; nothing to verify",
+	) {
 		t.Fatalf("output = %q, want unsigned disabled-config no-op message", got)
 	}
 }
@@ -246,17 +249,26 @@ func TestAuditVerifyCmd_DoesNotRequireKeyForMalformedUnsignedLogWhenConfigDisabl
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if got := out.String(); !strings.Contains(got, "integrity not enabled in this log; nothing to verify") {
+	if got := out.String(); !strings.Contains(
+		got,
+		"integrity not enabled in this log; nothing to verify",
+	) {
 		t.Fatalf("output = %q, want unsigned disabled-config no-op message", got)
 	}
 }
 
-func TestAuditVerifyCmd_RejectsMalformedJSONObjectContainingIntegrityValueWhenConfigDisabled(t *testing.T) {
+func TestAuditVerifyCmd_RejectsMalformedJSONObjectContainingIntegrityValueWhenConfigDisabled(
+	t *testing.T,
+) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "audit.jsonl")
 	cfgPath := filepath.Join(dir, "config.yaml")
 
-	if err := os.WriteFile(logPath, []byte(`{"type":"unsigned","message":"integrity"`+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		logPath,
+		[]byte(`{"type":"unsigned","message":"integrity"`+"\n"),
+		0o600,
+	); err != nil {
 		t.Fatalf("os.WriteFile(%q) error = %v", logPath, err)
 	}
 	writeAuditVerifyConfigDisabledWithoutKey(t, cfgPath, logPath)
@@ -282,7 +294,11 @@ func TestAuditVerifyCmd_FromSequenceRejectsMalformedJSONObjectWhenConfigDisabled
 	logPath := filepath.Join(dir, "audit.jsonl")
 	cfgPath := filepath.Join(dir, "config.yaml")
 
-	if err := os.WriteFile(logPath, []byte(`{"type":"unsigned","message":"broken"`+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		logPath,
+		[]byte(`{"type":"unsigned","message":"broken"`+"\n"),
+		0o600,
+	); err != nil {
 		t.Fatalf("os.WriteFile(%q) error = %v", logPath, err)
 	}
 	writeAuditVerifyConfigDisabledWithoutKey(t, cfgPath, logPath)
@@ -472,7 +488,13 @@ func mustWrapFutureFormatVerifyEntry(t *testing.T, key []byte, payload string) [
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 	integrity["format_version"] = float64(audit.IntegrityFormatVersion + 1)
-	integrity["entry_hash"] = computeVerifyFutureFormatHash(key, audit.IntegrityFormatVersion+1, sequence, prevHash, canonicalPayload)
+	integrity["entry_hash"] = computeVerifyFutureFormatHash(
+		key,
+		audit.IntegrityFormatVersion+1,
+		sequence,
+		prevHash,
+		canonicalPayload,
+	)
 	entry["integrity"] = integrity
 	line, err = json.Marshal(entry)
 	if err != nil {
@@ -481,7 +503,13 @@ func mustWrapFutureFormatVerifyEntry(t *testing.T, key []byte, payload string) [
 	return line
 }
 
-func computeVerifyFutureFormatHash(key []byte, formatVersion int, sequence int64, prevHash string, payload []byte) string {
+func computeVerifyFutureFormatHash(
+	key []byte,
+	formatVersion int,
+	sequence int64,
+	prevHash string,
+	payload []byte,
+) string {
 	h := hmac.New(sha256.New, key)
 	h.Write([]byte(strconv.Itoa(formatVersion)))
 	h.Write([]byte("|"))
@@ -505,7 +533,9 @@ func TestAuditVerifyCmd_AllowsBackupOnlyRetainedWindow(t *testing.T) {
 	}
 
 	lines := make([][]byte, 0, 4)
-	for _, payload := range []string{`{"type":"a"}`, `{"type":"b"}`, `{"type":"c"}`, `{"type":"d"}`} {
+	for _, payload := range []string{
+		`{"type":"a"}`, `{"type":"b"}`, `{"type":"c"}`, `{"type":"d"}`,
+	} {
 		line, err := chain.Wrap([]byte(payload))
 		if err != nil {
 			t.Fatalf("chain.Wrap() error = %v", err)
@@ -547,7 +577,9 @@ func TestAuditVerifyCmd_AllowsBackupOnlyHighSuffixWindow(t *testing.T) {
 	}
 
 	lines := make([][]byte, 0, 4)
-	for _, payload := range []string{`{"type":"a"}`, `{"type":"b"}`, `{"type":"c"}`, `{"type":"d"}`} {
+	for _, payload := range []string{
+		`{"type":"a"}`, `{"type":"b"}`, `{"type":"c"}`, `{"type":"d"}`,
+	} {
 		line, err := chain.Wrap([]byte(payload))
 		if err != nil {
 			t.Fatalf("chain.Wrap() error = %v", err)
@@ -599,7 +631,11 @@ func TestDiscoverRotationSetForVerify_IgnoresNonPositiveSuffixes(t *testing.T) {
 		t.Fatalf("discoverRotationSetForVerify() returned %d files, want 1", len(files))
 	}
 	if files[0].Path != base {
-		t.Fatalf("discoverRotationSetForVerify() returned base path %q, want %q", files[0].Path, base)
+		t.Fatalf(
+			"discoverRotationSetForVerify() returned base path %q, want %q",
+			files[0].Path,
+			base,
+		)
 	}
 	if files[0].IsBackup {
 		t.Fatal("discoverRotationSetForVerify() marked base log as backup")
@@ -632,7 +668,8 @@ func TestAuditVerifyCmd_RejectsLegacyFormatEntry(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	t.Setenv("AGENTSH_AUDIT_TEST_KEY", string(testAuditKey))
 
-	legacy := `{"type":"legacy","integrity":{"format_version":1,"sequence":0,"prev_hash":"","entry_hash":"deadbeef"}}`
+	legacy := `{"type":"legacy","integrity":{"format_version":1,"sequence":0,"prev_hash":"",` +
+		`"entry_hash":"deadbeef"}}`
 	if err := os.WriteFile(logPath, []byte(legacy+"\n"), 0o600); err != nil {
 		t.Fatalf("os.WriteFile(%q) error = %v", logPath, err)
 	}
@@ -665,7 +702,13 @@ func TestAuditVerifyCmd_RejectsMidHistoryRotationWithoutMatchingPriorSummary(t *
 	if err != nil {
 		t.Fatalf("audit.NewIntegrityChain() error = %v", err)
 	}
-	reset, err := chainB.Wrap([]byte(`{"type":"integrity_chain_rotated","fields":{"reason":"manual reset","reason_code":"manual_reset","new_chain":{"format_version":2,"sequence":0}}}`))
+	reset, err := chainB.Wrap(
+		[]byte(
+			`{"type":"integrity_chain_rotated","fields":{"reason":"manual ` +
+				`reset","reason_code":"manual_reset","new_chain":{"format_version":2,` +
+				`"sequence":0}}}`,
+		),
+	)
 	if err != nil {
 		t.Fatalf("chainB.Wrap() error = %v", err)
 	}
@@ -708,7 +751,14 @@ func TestAuditVerifyCmd_AcceptsMidHistoryRotationWithMatchingPriorSummary(t *tes
 	}
 
 	previousState := chainA.State()
-	resetPayload := fmt.Sprintf(`{"type":"integrity_chain_rotated","fields":{"reason":"manual reset","reason_code":"manual_reset","prior_chain_summary":{"last_sequence_seen_in_log":%d,"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`, previousState.Sequence, previousState.PrevHash)
+	resetPayload := fmt.Sprintf(
+		`{"type":"integrity_chain_rotated","fields":{"reason":"manual `+
+			`reset","reason_code":"manual_reset",`+
+			`"prior_chain_summary":{"last_sequence_seen_in_log":%d,`+
+			`"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`,
+		previousState.Sequence,
+		previousState.PrevHash,
+	)
 	chainB, err := audit.NewIntegrityChain(testAuditKey)
 	if err != nil {
 		t.Fatalf("audit.NewIntegrityChain() error = %v", err)
@@ -750,7 +800,13 @@ func TestAuditVerifyCmd_AcceptsRotationAsFirstVisibleEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit.NewIntegrityChain() error = %v", err)
 	}
-	reset, err := chain.Wrap([]byte(`{"type":"integrity_chain_rotated","fields":{"reason":"fresh start","reason_code":"manual_reset","new_chain":{"format_version":2,"sequence":0}}}`))
+	reset, err := chain.Wrap(
+		[]byte(
+			`{"type":"integrity_chain_rotated","fields":{"reason":"fresh ` +
+				`start","reason_code":"manual_reset","new_chain":{"format_version":2,` +
+				`"sequence":0}}}`,
+		),
+	)
 	if err != nil {
 		t.Fatalf("chain.Wrap() error = %v", err)
 	}
@@ -791,7 +847,14 @@ func TestAuditVerifyCmd_RejectsBaseVisibleRotationBoundaryWithPriorHistory(t *te
 	}
 
 	previousState := previousChain.State()
-	resetPayload := fmt.Sprintf(`{"type":"integrity_chain_rotated","fields":{"reason":"manual reset","reason_code":"manual_reset","prior_chain_summary":{"last_sequence_seen_in_log":%d,"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`, previousState.Sequence, previousState.PrevHash)
+	resetPayload := fmt.Sprintf(
+		`{"type":"integrity_chain_rotated","fields":{"reason":"manual `+
+			`reset","reason_code":"manual_reset",`+
+			`"prior_chain_summary":{"last_sequence_seen_in_log":%d,`+
+			`"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`,
+		previousState.Sequence,
+		previousState.PrevHash,
+	)
 	currentChain, err := audit.NewIntegrityChain(testAuditKey)
 	if err != nil {
 		t.Fatalf("audit.NewIntegrityChain() error = %v", err)
@@ -914,7 +977,9 @@ func TestAuditVerifyCmd_TolerateTruncationRejectsMalformedFinalLineWithoutNewlin
 	}
 }
 
-func TestAuditVerifyCmd_TolerateTruncationRejectsMalformedFinalLineWithTrailingNewline(t *testing.T) {
+func TestAuditVerifyCmd_TolerateTruncationRejectsMalformedFinalLineWithTrailingNewline(
+	t *testing.T,
+) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "audit.jsonl")
 	cfgPath := filepath.Join(dir, "config.yaml")
@@ -1072,7 +1137,10 @@ func TestAuditVerifyCmd_FromSequenceMissingStartIgnoresMalformedPrefix(t *testin
 	if err == nil {
 		t.Fatal("Execute() error = nil, want missing start failure")
 	}
-	if !strings.Contains(err.Error(), "sequence mismatch: expected starting sequence 5, got end of log") {
+	if !strings.Contains(
+		err.Error(),
+		"sequence mismatch: expected starting sequence 5, got end of log",
+	) {
 		t.Fatalf("Execute() error = %v, want missing start sequence mismatch", err)
 	}
 }
@@ -1234,13 +1302,18 @@ func TestAuditVerifyCmd_FromSequenceMissingStartToleratesUnsignedSuffix(t *testi
 	}
 
 	cmd := newAuditVerifyCmd()
-	cmd.SetArgs([]string{"--config", cfgPath, "--from-sequence", "5", "--tolerate-unsigned", logPath})
+	cmd.SetArgs(
+		[]string{"--config", cfgPath, "--from-sequence", "5", "--tolerate-unsigned", logPath},
+	)
 
 	err = cmd.Execute()
 	if err == nil {
 		t.Fatal("Execute() error = nil, want missing-start sequence mismatch")
 	}
-	if !strings.Contains(err.Error(), "sequence mismatch: expected starting sequence 5, got end of log") {
+	if !strings.Contains(
+		err.Error(),
+		"sequence mismatch: expected starting sequence 5, got end of log",
+	) {
 		t.Fatalf("Execute() error = %v, want missing-start sequence mismatch", err)
 	}
 }

@@ -15,8 +15,14 @@ database_rules:
   - {name: read-allow, db_service: appdb, operations: [READ], decision: allow}
 `)
 	stmt := effects.ClassifiedStatement{Effects: []effects.Effect{
-		{Group: effects.GroupWrite, Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "log"}}},
-		{Group: effects.GroupRead, Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "x"}}},
+		{
+			Group:   effects.GroupWrite,
+			Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "log"}},
+		},
+		{
+			Group:   effects.GroupRead,
+			Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "x"}},
+		},
 	}}
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbDeny {

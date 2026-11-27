@@ -38,7 +38,8 @@ func TestSubagentProcessCancellationUsesGracefulTermination(t *testing.T) {
 	dir := t.TempDir()
 	readyFile := filepath.Join(dir, "ready")
 	termFile := filepath.Join(dir, "terminated")
-	script := `term_file=$1; ready_file=$2; trap 'printf terminated > "$term_file"; exit 0' TERM; printf ready > "$ready_file"; while :; do :; done`
+	script := `term_file=$1; ready_file=$2; trap 'printf terminated > "$term_file"; exit 0' ` +
+		`TERM; printf ready > "$ready_file"; while :; do :; done`
 	cmd := exec.Command(sh, "-c", script, "subagent-test", termFile, readyFile)
 	ctx, cancel := context.WithCancel(context.Background())
 	outcomeCh := make(chan subagentProcessOutcome, 1)
@@ -55,7 +56,12 @@ func TestSubagentProcessCancellationUsesGracefulTermination(t *testing.T) {
 		t.Fatal("timed out waiting for cancelled subagent process")
 	}
 	if outcome.Termination != subagentTerminationGraceful {
-		t.Fatalf("termination = %q, want graceful (error=%v signal=%q)", outcome.Termination, outcome.RunError, outcome.Signal)
+		t.Fatalf(
+			"termination = %q, want graceful (error=%v signal=%q)",
+			outcome.Termination,
+			outcome.RunError,
+			outcome.Signal,
+		)
 	}
 	if got := waitForSubagentTestFile(t, termFile); got != "terminated" {
 		t.Fatalf("termination marker = %q", got)
@@ -69,7 +75,8 @@ func TestSubagentProcessCancellationEscalatesToForcedTermination(t *testing.T) {
 	}
 	dir := t.TempDir()
 	pidFile := filepath.Join(dir, "descendant.pid")
-	script := `pid_file=$1; trap '' TERM; sleep 30 & child=$!; printf '%s' "$child" > "$pid_file"; wait`
+	script := `pid_file=$1; trap '' TERM; sleep 30 & child=$!; printf '%s' "$child" > ` +
+		`"$pid_file"; wait`
 	cmd := exec.Command(sh, "-c", script, "subagent-test", pidFile)
 	ctx, cancel := context.WithCancel(context.Background())
 	outcomeCh := make(chan subagentProcessOutcome, 1)
@@ -81,7 +88,12 @@ func TestSubagentProcessCancellationEscalatesToForcedTermination(t *testing.T) {
 	select {
 	case outcome := <-outcomeCh:
 		if outcome.Termination != subagentTerminationForced {
-			t.Fatalf("termination = %q, want forced (error=%v signal=%q)", outcome.Termination, outcome.RunError, outcome.Signal)
+			t.Fatalf(
+				"termination = %q, want forced (error=%v signal=%q)",
+				outcome.Termination,
+				outcome.RunError,
+				outcome.Signal,
+			)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for forced subagent termination")

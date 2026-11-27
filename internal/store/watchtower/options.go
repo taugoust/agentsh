@@ -262,7 +262,10 @@ func (o *Options) validate() error {
 		return errors.New("watchtower: mapper is required (got typed-nil pointer)")
 	}
 	if !o.AllowStubMapper && compact.IsStubMapper(o.Mapper) {
-		return errors.New("watchtower: test-only StubMapper not permitted in production (set AllowStubMapper for tests)")
+		return errors.New(
+			"watchtower: test-only StubMapper not permitted in production (set AllowStubMapper " +
+				"for tests)",
+		)
 	}
 	if o.Allocator == nil {
 		return errors.New("watchtower: Allocator is required")
@@ -285,13 +288,21 @@ func (o *Options) validate() error {
 	// remains the canonical source of truth — if it tightens this
 	// branch must be updated to match.
 	if len(o.HMACSecret) < audit.MinKeyLength {
-		return fmt.Errorf("watchtower: HMAC secret too short: got %d bytes, need at least %d (mirrors audit.MinKeyLength)", len(o.HMACSecret), audit.MinKeyLength)
+		return fmt.Errorf(
+			"watchtower: HMAC secret too short: got %d bytes, need at least %d (mirrors "+
+				"audit.MinKeyLength)",
+			len(o.HMACSecret),
+			audit.MinKeyLength,
+		)
 	}
 	switch o.HMACAlgorithm {
 	case "", "hmac-sha256", "hmac-sha512":
 		// "" defaults inside audit.NewSinkChain to hmac-sha256.
 	default:
-		return fmt.Errorf("watchtower: unsupported HMACAlgorithm %q (use hmac-sha256 or hmac-sha512)", o.HMACAlgorithm)
+		return fmt.Errorf(
+			"watchtower: unsupported HMACAlgorithm %q (use hmac-sha256 or hmac-sha512)",
+			o.HMACAlgorithm,
+		)
 	}
 	if o.BatchMaxBytes < 4096 {
 		return errors.New("watchtower: BatchMaxBytes must be >= 4 KiB")
@@ -327,7 +338,10 @@ func (o *Options) validate() error {
 		return errors.New("watchtower: TLSCertFile and TLSKeyFile must be set together")
 	}
 	if o.SinkChainOverrideForTests != nil && !o.AllowSinkChainOverrideForTests {
-		return errors.New("watchtower: SinkChainOverrideForTests must be nil in production (set AllowSinkChainOverrideForTests in tests that need the seam)")
+		return errors.New(
+			"watchtower: SinkChainOverrideForTests must be nil in production (set " +
+				"AllowSinkChainOverrideForTests in tests that need the seam)",
+		)
 	}
 	// Compression configuration: defense-in-depth. The upstream
 	// internal/config validator should reject bad values, but
@@ -341,14 +355,23 @@ func (o *Options) validate() error {
 		// ok; "" normalized to "none" at construction time.
 	case "zstd":
 		if o.ZstdLevel < 1 || o.ZstdLevel > 22 {
-			return fmt.Errorf("watchtower.Options: ZstdLevel %d: must be in [1,22] when CompressionAlgo=zstd", o.ZstdLevel)
+			return fmt.Errorf(
+				"watchtower.Options: ZstdLevel %d: must be in [1,22] when CompressionAlgo=zstd",
+				o.ZstdLevel,
+			)
 		}
 	case "gzip":
 		if o.GzipLevel < 1 || o.GzipLevel > 9 {
-			return fmt.Errorf("watchtower.Options: GzipLevel %d: must be in [1,9] when CompressionAlgo=gzip", o.GzipLevel)
+			return fmt.Errorf(
+				"watchtower.Options: GzipLevel %d: must be in [1,9] when CompressionAlgo=gzip",
+				o.GzipLevel,
+			)
 		}
 	default:
-		return fmt.Errorf("watchtower.Options: CompressionAlgo %q: must be \"\", \"none\", \"zstd\", or \"gzip\"", o.CompressionAlgo)
+		return fmt.Errorf(
+			"watchtower.Options: CompressionAlgo %q: must be \"\", \"none\", \"zstd\", or \"gzip\"",
+			o.CompressionAlgo,
+		)
 	}
 	return nil
 }

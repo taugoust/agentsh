@@ -82,7 +82,10 @@ sandbox:
 		t.Fatalf("unix_socket.enabled: expected true")
 	}
 	if cfg.Server.UnixSocket.Permissions != "0660" {
-		t.Fatalf("unix_socket.permissions: expected 0660, got %q", cfg.Server.UnixSocket.Permissions)
+		t.Fatalf(
+			"unix_socket.permissions: expected 0660, got %q",
+			cfg.Server.UnixSocket.Permissions,
+		)
 	}
 	if !cfg.Server.TLS.Enabled {
 		t.Fatalf("tls.enabled: expected true")
@@ -95,7 +98,11 @@ sandbox:
 	}
 	// Compare against the forward-slash path that was written to YAML
 	if cfg.Sandbox.Cgroups.BasePath != cgroupsPath {
-		t.Fatalf("sandbox.cgroups.base_path: got %q, want %q", cfg.Sandbox.Cgroups.BasePath, cgroupsPath)
+		t.Fatalf(
+			"sandbox.cgroups.base_path: got %q, want %q",
+			cfg.Sandbox.Cgroups.BasePath,
+			cgroupsPath,
+		)
 	}
 	if !cfg.Sandbox.Network.EBPF.Enabled {
 		t.Fatalf("sandbox.network.ebpf.enabled: expected true")
@@ -233,13 +240,19 @@ sandbox:
 		t.Fatalf("audit.max_event_queue default: got %d", cfg.Sandbox.FUSE.Audit.MaxEventQueue)
 	}
 	if cfg.Sandbox.FUSE.Audit.HashSmallFilesUnder != "1MB" {
-		t.Fatalf("audit.hash_small_files_under default: got %q", cfg.Sandbox.FUSE.Audit.HashSmallFilesUnder)
+		t.Fatalf(
+			"audit.hash_small_files_under default: got %q",
+			cfg.Sandbox.FUSE.Audit.HashSmallFilesUnder,
+		)
 	}
 	if cfg.Sandbox.FUSE.Audit.Enabled == nil || !*cfg.Sandbox.FUSE.Audit.Enabled {
 		t.Fatalf("audit.enabled default: expected true")
 	}
 	if cfg.Sandbox.FUSE.Audit.StrictOnAuditFailure != false {
-		t.Fatalf("audit.strict_on_audit_failure default: expected false, got %v", cfg.Sandbox.FUSE.Audit.StrictOnAuditFailure)
+		t.Fatalf(
+			"audit.strict_on_audit_failure default: expected false, got %v",
+			cfg.Sandbox.FUSE.Audit.StrictOnAuditFailure,
+		)
 	}
 }
 
@@ -334,7 +347,11 @@ sandbox:
 	assert.True(t, cfg.Sandbox.FUSE.Enabled)
 	assert.True(t, cfg.Sandbox.FUSE.Deferred)
 	assert.Equal(t, "/tmp/.fuse-ready", cfg.Sandbox.FUSE.DeferredMarkerFile)
-	assert.Equal(t, []string{"sudo", "/bin/chmod", "666", "/dev/fuse"}, cfg.Sandbox.FUSE.DeferredEnableCommand)
+	assert.Equal(
+		t,
+		[]string{"sudo", "/bin/chmod", "666", "/dev/fuse"},
+		cfg.Sandbox.FUSE.DeferredEnableCommand,
+	)
 }
 
 func TestLoad_FUSEDeferredDefaults(t *testing.T) {
@@ -468,7 +485,11 @@ func TestApplyDefaultsWithSource_UserSource(t *testing.T) {
 	// Audit.Storage.SQLitePath should use user data dir
 	wantSQLitePath := filepath.Join(userDataDir, "events.db")
 	if cfg.Audit.Storage.SQLitePath != wantSQLitePath {
-		t.Errorf("Audit.Storage.SQLitePath = %q, want %q", cfg.Audit.Storage.SQLitePath, wantSQLitePath)
+		t.Errorf(
+			"Audit.Storage.SQLitePath = %q, want %q",
+			cfg.Audit.Storage.SQLitePath,
+			wantSQLitePath,
+		)
 	}
 }
 
@@ -486,7 +507,11 @@ func TestApplyDefaultsWithSource_SystemSource(t *testing.T) {
 	// Audit.Storage.SQLitePath should use system data dir
 	wantSQLitePath := filepath.Join(systemDataDir, "events.db")
 	if cfg.Audit.Storage.SQLitePath != wantSQLitePath {
-		t.Errorf("Audit.Storage.SQLitePath = %q, want %q", cfg.Audit.Storage.SQLitePath, wantSQLitePath)
+		t.Errorf(
+			"Audit.Storage.SQLitePath = %q, want %q",
+			cfg.Audit.Storage.SQLitePath,
+			wantSQLitePath,
+		)
 	}
 }
 
@@ -533,7 +558,11 @@ func TestLoadWithSource_InvalidYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 	// Write invalid YAML
-	if err := os.WriteFile(configPath, []byte("invalid: yaml: content: [unclosed"), 0644); err != nil {
+	if err := os.WriteFile(
+		configPath,
+		[]byte("invalid: yaml: content: [unclosed"),
+		0644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -565,7 +594,11 @@ func TestApplyDefaultsWithSource_EnvSource_AllPaths(t *testing.T) {
 	// Verify Audit.Storage.SQLitePath
 	wantSQLitePath := filepath.Join(configDir, "events.db")
 	if cfg.Audit.Storage.SQLitePath != wantSQLitePath {
-		t.Errorf("Audit.Storage.SQLitePath = %q, want %q", cfg.Audit.Storage.SQLitePath, wantSQLitePath)
+		t.Errorf(
+			"Audit.Storage.SQLitePath = %q, want %q",
+			cfg.Audit.Storage.SQLitePath,
+			wantSQLitePath,
+		)
 	}
 
 	// Verify Policies.Dir
@@ -762,7 +795,11 @@ sandbox:
 		t.Errorf("AllowedTools[0].Tool = %q, want %q", mcp.AllowedTools[0].Tool, "read_file")
 	}
 	if mcp.AllowedTools[0].ContentHash != "sha256:abc123" {
-		t.Errorf("AllowedTools[0].ContentHash = %q, want %q", mcp.AllowedTools[0].ContentHash, "sha256:abc123")
+		t.Errorf(
+			"AllowedTools[0].ContentHash = %q, want %q",
+			mcp.AllowedTools[0].ContentHash,
+			"sha256:abc123",
+		)
 	}
 	if mcp.AllowedTools[1].Server != "*" {
 		t.Errorf("AllowedTools[1].Server = %q, want %q", mcp.AllowedTools[1].Server, "*")
@@ -773,7 +810,11 @@ sandbox:
 		t.Fatalf("MCP.DeniedTools len = %d, want 1", len(mcp.DeniedTools))
 	}
 	if mcp.DeniedTools[0].Server != "dangerous-server" {
-		t.Errorf("DeniedTools[0].Server = %q, want %q", mcp.DeniedTools[0].Server, "dangerous-server")
+		t.Errorf(
+			"DeniedTools[0].Server = %q, want %q",
+			mcp.DeniedTools[0].Server,
+			"dangerous-server",
+		)
 	}
 	if mcp.DeniedTools[0].Tool != "*" {
 		t.Errorf("DeniedTools[0].Tool = %q, want %q", mcp.DeniedTools[0].Tool, "*")
@@ -929,10 +970,16 @@ sandbox:
 		t.Fatalf("sandbox.env_inject: expected 2 entries, got %d", len(cfg.Sandbox.EnvInject))
 	}
 	if cfg.Sandbox.EnvInject["BASH_ENV"] != "/usr/lib/agentsh/bash_startup.sh" {
-		t.Fatalf("sandbox.env_inject[BASH_ENV]: expected '/usr/lib/agentsh/bash_startup.sh', got %q", cfg.Sandbox.EnvInject["BASH_ENV"])
+		t.Fatalf(
+			"sandbox.env_inject[BASH_ENV]: expected '/usr/lib/agentsh/bash_startup.sh', got %q",
+			cfg.Sandbox.EnvInject["BASH_ENV"],
+		)
 	}
 	if cfg.Sandbox.EnvInject["MY_CUSTOM_VAR"] != "custom_value" {
-		t.Fatalf("sandbox.env_inject[MY_CUSTOM_VAR]: expected 'custom_value', got %q", cfg.Sandbox.EnvInject["MY_CUSTOM_VAR"])
+		t.Fatalf(
+			"sandbox.env_inject[MY_CUSTOM_VAR]: expected 'custom_value', got %q",
+			cfg.Sandbox.EnvInject["MY_CUSTOM_VAR"],
+		)
 	}
 }
 
@@ -1199,7 +1246,11 @@ sandbox:
 	assert.Equal(t, "filesystem", mcp.Servers[0].ID)
 	assert.Equal(t, "stdio", mcp.Servers[0].Type)
 	assert.Equal(t, "npx", mcp.Servers[0].Command)
-	assert.Equal(t, []string{"@modelcontextprotocol/server-filesystem", "/home/user"}, mcp.Servers[0].Args)
+	assert.Equal(
+		t,
+		[]string{"@modelcontextprotocol/server-filesystem", "/home/user"},
+		mcp.Servers[0].Args,
+	)
 	assert.Empty(t, mcp.Servers[0].URL)
 
 	assert.Equal(t, "weather-api", mcp.Servers[1].ID)
@@ -1208,7 +1259,11 @@ sandbox:
 	assert.Empty(t, mcp.Servers[1].Command)
 
 	assert.Equal(t, "internal-tools", mcp.Servers[2].ID)
-	assert.Equal(t, "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", mcp.Servers[2].TLSFingerprint)
+	assert.Equal(
+		t,
+		"sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+		mcp.Servers[2].TLSFingerprint,
+	)
 
 	// Verify server-level policy
 	assert.Equal(t, "allowlist", mcp.ServerPolicy)
@@ -1268,10 +1323,11 @@ func TestMCPServerDeclaration_YAMLRoundTrip(t *testing.T) {
 				Args:    []string{"@mcp/fs", "/data"},
 			},
 			{
-				ID:             "api",
-				Type:           "http",
-				URL:            "https://mcp.example.com",
-				TLSFingerprint: "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+				ID:   "api",
+				Type: "http",
+				URL:  "https://mcp.example.com",
+				TLSFingerprint: "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4" +
+					"e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
 			},
 		},
 		ServerPolicy: "allowlist",
@@ -1327,7 +1383,11 @@ func TestMCPServerDeclaration_YAMLRoundTrip(t *testing.T) {
 	assert.Equal(t, "api", roundTripped.Servers[1].ID)
 	assert.Equal(t, "http", roundTripped.Servers[1].Type)
 	assert.Equal(t, "https://mcp.example.com", roundTripped.Servers[1].URL)
-	assert.Equal(t, "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", roundTripped.Servers[1].TLSFingerprint)
+	assert.Equal(
+		t,
+		"sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+		roundTripped.Servers[1].TLSFingerprint,
+	)
 
 	// Server rules
 	assert.Equal(t, len(original.AllowedServers), len(roundTripped.AllowedServers))
@@ -1958,7 +2018,8 @@ func TestAuditWatchtowerConfig_PartialTLSClientAuthRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for partial TLS client-auth pair, got nil")
 	}
-	if !strings.Contains(err.Error(), "client_cert_file") && !strings.Contains(err.Error(), "client_key_file") {
+	if !strings.Contains(err.Error(), "client_cert_file") &&
+		!strings.Contains(err.Error(), "client_key_file") {
 		t.Errorf("err = %v, want mention of client_cert_file/client_key_file", err)
 	}
 
@@ -1969,7 +2030,8 @@ func TestAuditWatchtowerConfig_PartialTLSClientAuthRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for partial TLS client-auth pair (key only), got nil")
 	}
-	if !strings.Contains(err.Error(), "client_cert_file") && !strings.Contains(err.Error(), "client_key_file") {
+	if !strings.Contains(err.Error(), "client_cert_file") &&
+		!strings.Contains(err.Error(), "client_key_file") {
 		t.Errorf("err = %v, want mention of client_cert_file/client_key_file", err)
 	}
 }
@@ -1996,7 +2058,11 @@ func TestAuditWatchtowerConfig_FilterMinRiskLevelEnum(t *testing.T) {
 			// must now load cleanly. Verify the filter value is accepted and
 			// that no schema error mentions min_risk_level.
 			if err != nil {
-				t.Fatalf("valid min_risk_level %q should load cleanly after Task 27, got: %v", v, err)
+				t.Fatalf(
+					"valid min_risk_level %q should load cleanly after Task 27, got: %v",
+					v,
+					err,
+				)
 			}
 		})
 	}
@@ -2062,14 +2128,28 @@ func TestAuditWatchtowerConfig_KMSSourcesMutualExclusion(t *testing.T) {
 		{"file", "      key_file: \"" + chainKey + "\"\n"},
 		{"env", "      key_env: \"WTP_KEY\"\n"},
 		{"aws_kms", "      aws_kms:\n        key_id: \"alias/aws-key\"\n"},
-		{"azure_keyvault", "      azure_keyvault:\n        vault_url: \"https://v.vault.azure.net\"\n        key_name: \"k\"\n"},
-		{"hashicorp_vault", "      hashicorp_vault:\n        address: \"https://vault.example.com\"\n        secret_path: \"secret/data/agentsh/wtp\"\n"},
-		{"gcp_kms", "      gcp_kms:\n        key_name: \"projects/p/locations/l/keyRings/r/cryptoKeys/k\"\n"},
+		{
+			"azure_keyvault",
+			"      azure_keyvault:\n        vault_url: \"https://v.vault.azure.net\"\n" +
+				"        key_name: \"k\"\n",
+		},
+		{
+			"hashicorp_vault",
+			"      hashicorp_vault:\n        address: \"https://vault.example.com\"\n" +
+				"        secret_path: \"secret/data/agentsh/wtp\"\n",
+		},
+		{
+			"gcp_kms",
+			"      gcp_kms:\n        key_name: \"projects/p/locations/l/keyRings/r/" +
+				"cryptoKeys/k\"\n",
+		},
 	} {
 		t.Run("only_"+c.name, func(t *testing.T) {
 			yaml := "audit:\n  watchtower:\n    enabled: true\n" +
 				"    endpoint: \"wtp.example.com:9443\"\n" +
-				"    state_dir: \"" + filepath.ToSlash(filepath.Join(t.TempDir(), "wtp-state")) + "\"\n" +
+				"    state_dir: \"" + filepath.ToSlash(
+				filepath.Join(t.TempDir(), "wtp-state"),
+			) + "\"\n" +
 				"    auth:\n      token_file: \"/t\"\n" +
 				"    chain:\n" + c.chain
 			_, err := loadFromString(t, yaml)
@@ -2152,7 +2232,9 @@ func TestAuditWatchtowerConfig_ProviderRequiredFields(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			yaml := "audit:\n  watchtower:\n    enabled: true\n" +
 				"    endpoint: \"wtp.example.com:9443\"\n" +
-				"    state_dir: \"" + filepath.ToSlash(filepath.Join(t.TempDir(), "wtp-state")) + "\"\n" +
+				"    state_dir: \"" + filepath.ToSlash(
+				filepath.Join(t.TempDir(), "wtp-state"),
+			) + "\"\n" +
 				"    auth:\n      token_file: \"/t\"\n" +
 				"    chain:\n" + tc.chain
 			_, err := loadFromString(t, yaml)
@@ -2291,7 +2373,10 @@ func TestAuditWatchtowerConfig_BatchCompression_ZstdLevelBounds(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("level=%d", tc.level), func(t *testing.T) {
-			overrides := fmt.Sprintf("    batch:\n      compression: \"zstd\"\n      zstd_level: %d\n", tc.level)
+			overrides := fmt.Sprintf(
+				"    batch:\n      compression: \"zstd\"\n      zstd_level: %d\n",
+				tc.level,
+			)
 			yaml := validWatchtowerYAML(t, true, overrides)
 			_, err := loadFromString(t, yaml)
 			if (err != nil) != tc.wantErr {
@@ -2310,7 +2395,10 @@ func TestAuditWatchtowerConfig_BatchCompression_GzipLevelBounds(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("level=%d", tc.level), func(t *testing.T) {
-			overrides := fmt.Sprintf("    batch:\n      compression: \"gzip\"\n      gzip_level: %d\n", tc.level)
+			overrides := fmt.Sprintf(
+				"    batch:\n      compression: \"gzip\"\n      gzip_level: %d\n",
+				tc.level,
+			)
 			yaml := validWatchtowerYAML(t, true, overrides)
 			_, err := loadFromString(t, yaml)
 			if (err != nil) != tc.wantErr {

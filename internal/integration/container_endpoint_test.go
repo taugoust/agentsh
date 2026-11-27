@@ -17,7 +17,11 @@ type containerEndpointSource interface {
 	MappedPort(context.Context, nat.Port) (nat.Port, error)
 }
 
-func containerHTTPEndpointWithRetry(ctx context.Context, ctr containerEndpointSource, port string) (string, error) {
+func containerHTTPEndpointWithRetry(
+	ctx context.Context,
+	ctr containerEndpointSource,
+	port string,
+) (string, error) {
 	const (
 		maxAttempts    = 3
 		attemptTimeout = 5 * time.Second

@@ -28,10 +28,19 @@ func NewResolutionInbox(max int) *ResolutionInbox {
 	if max <= 0 {
 		max = 4096
 	}
-	return &ResolutionInbox{max: max, ack: make(map[Identity]uint64), receipts: make(map[Identity]map[uint64]Record)}
+	return &ResolutionInbox{
+		max:      max,
+		ack:      make(map[Identity]uint64),
+		receipts: make(map[Identity]map[uint64]Record),
+	}
 }
 
-func (i *ResolutionInbox) Apply(identity Identity, confirmed uint64, records []Record, resolve ResolveRecord) (uint64, error) {
+func (i *ResolutionInbox) Apply(
+	identity Identity,
+	confirmed uint64,
+	records []Record,
+	resolve ResolveRecord,
+) (uint64, error) {
 	if i == nil || resolve == nil {
 		return 0, fmt.Errorf("detached resolution inbox is unavailable")
 	}
@@ -59,19 +68,29 @@ func (i *ResolutionInbox) Apply(identity Identity, confirmed uint64, records []R
 		if record.Sequence <= ack {
 			existing, ok := i.receipts[identity][record.Sequence]
 			if !ok || existing.ID != record.ID || existing.Digest != record.Digest {
-				return ack, fmt.Errorf("conflicting detached resolution replay at sequence %d", record.Sequence)
+				return ack, fmt.Errorf(
+					"conflicting detached resolution replay at sequence %d",
+					record.Sequence,
+				)
 			}
 			continue
 		}
 		if record.Sequence != ack+1 {
-			return ack, fmt.Errorf("detached resolution sequence gap: got %d after %d", record.Sequence, ack)
+			return ack, fmt.Errorf(
+				"detached resolution sequence gap: got %d after %d",
+				record.Sequence,
+				ack,
+			)
 		}
 		if i.receiptCountLocked() >= i.max {
 			return ack, fmt.Errorf("detached resolution inbox is full awaiting peer confirmation")
 		}
 		result := resolve(record)
 		if result == ResolveRejected {
-			return ack, fmt.Errorf("approval %s resolution was rejected by exact detached incarnation", record.ID)
+			return ack, fmt.Errorf(
+				"approval %s resolution was rejected by exact detached incarnation",
+				record.ID,
+			)
 		}
 		cloned, err := cloneRecord(record)
 		if err != nil {

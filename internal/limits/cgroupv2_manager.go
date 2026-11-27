@@ -30,12 +30,21 @@ type CgroupManager struct {
 // NewCgroupManager never fails for expected reasons — environment gaps are reflected
 // in the probed mode, not in the return error. An error is only returned if the
 // process cannot even determine its own cgroup path.
-func NewCgroupManager(ctx context.Context, ownHint string, permitAttachOnly bool) (*CgroupManager, error) {
+func NewCgroupManager(
+	ctx context.Context,
+	ownHint string,
+	permitAttachOnly bool,
+) (*CgroupManager, error) {
 	return newCgroupManagerFS(ctx, osCgroupFS{}, ownHint, permitAttachOnly)
 }
 
 // newCgroupManagerFS is the FS-injectable form used by unit tests.
-func newCgroupManagerFS(ctx context.Context, fs cgroupFS, ownHint string, permitAttachOnly bool) (*CgroupManager, error) {
+func newCgroupManagerFS(
+	ctx context.Context,
+	fs cgroupFS,
+	ownHint string,
+	permitAttachOnly bool,
+) (*CgroupManager, error) {
 	probe, err := ProbeCgroupsV2(ctx, fs, ownHint, permitAttachOnly)
 	if err != nil {
 		return nil, fmt.Errorf("probe cgroups v2: %w", err)
@@ -92,13 +101,28 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 		if createdDir {
 			if err := m.fs.Chmod(dir, 0o755); err != nil {
 				_ = m.fs.Remove(dir)
-				return nil, fmt.Errorf("chmod cgroup for helper access (mode=%s, dir=%s): %w", m.probe.Mode, dir, err)
+				return nil, fmt.Errorf(
+					"chmod cgroup for helper access (mode=%s, dir=%s): %w",
+					m.probe.Mode,
+					dir,
+					err,
+				)
 			}
 		}
-		if err := m.fs.WriteFile(filepath.Join(dir, "cgroup.procs"), []byte(strconv.Itoa(pid)), 0o644); err != nil {
+		if err := m.fs.WriteFile(
+			filepath.Join(dir, "cgroup.procs"),
+			[]byte(strconv.Itoa(pid)),
+			0o644,
+		); err != nil {
 			detail := m.attachFailureDetail(parent, dir, pid)
 			_ = m.fs.Remove(dir)
-			return nil, fmt.Errorf("attach pid (mode=%s, dir=%s, %s): %w", m.probe.Mode, dir, detail, err)
+			return nil, fmt.Errorf(
+				"attach pid (mode=%s, dir=%s, %s): %w",
+				m.probe.Mode,
+				dir,
+				detail,
+				err,
+			)
 		}
 		return &CgroupV2{Path: dir}, nil
 	}
@@ -119,7 +143,12 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 	if createdDir {
 		if err := m.fs.Chmod(dir, 0o755); err != nil {
 			_ = m.fs.Remove(dir)
-			return nil, fmt.Errorf("chmod cgroup for helper access (mode=%s, dir=%s): %w", m.probe.Mode, dir, err)
+			return nil, fmt.Errorf(
+				"chmod cgroup for helper access (mode=%s, dir=%s): %w",
+				m.probe.Mode,
+				dir,
+				err,
+			)
 		}
 	}
 
@@ -132,11 +161,18 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 				// don't accumulate orphans, and surface the deliberate typed error
 				// so callers can apply best-effort policy instead of a generic abort.
 				if createdDir {
-					// Remove fails silently: EBUSY if the dir is populated (safe), ENOENT if already gone.
+					// Remove fails silently: EBUSY if the dir is populated (safe), ENOENT if
+					// already gone.
 					_ = m.fs.Remove(dir)
 				}
 				return &CgroupResourceLimitsUnavailableError{
-					Reason: fmt.Sprintf("write %s (mode=%s, dir=%s): %v", file, m.probe.Mode, dir, err),
+					Reason: fmt.Sprintf(
+						"write %s (mode=%s, dir=%s): %v",
+						file,
+						m.probe.Mode,
+						dir,
+						err,
+					),
 					Limits: lim,
 				}
 			}
@@ -146,7 +182,10 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 	}
 
 	if lim.MaxMemoryBytes > 0 {
-		if err := writeLimit("memory.max", []byte(strconv.FormatInt(lim.MaxMemoryBytes, 10))); err != nil {
+		if err := writeLimit(
+			"memory.max",
+			[]byte(strconv.FormatInt(lim.MaxMemoryBytes, 10)),
+		); err != nil {
 			return nil, err
 		}
 	}
@@ -162,7 +201,11 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 		}
 	}
 
-	if err := m.fs.WriteFile(filepath.Join(dir, "cgroup.procs"), []byte(strconv.Itoa(pid)), 0o644); err != nil {
+	if err := m.fs.WriteFile(
+		filepath.Join(dir, "cgroup.procs"),
+		[]byte(strconv.Itoa(pid)),
+		0o644,
+	); err != nil {
 		return nil, fmt.Errorf("attach pid (mode=%s, dir=%s): %w", m.probe.Mode, dir, err)
 	}
 
@@ -185,7 +228,8 @@ func (m *CgroupManager) attachFailureDetail(parent, target string, pid int) stri
 	} else {
 		procCgroup = strings.Join(strings.Fields(string(data)), ",")
 	}
-	return fmt.Sprintf("pid_cgroup=%q parent_type=%q parent_subtree=%q target_type=%q target_subtree=%q",
+	return fmt.Sprintf(
+		"pid_cgroup=%q parent_type=%q parent_subtree=%q target_type=%q target_subtree=%q",
 		procCgroup,
 		readCgroupFile(parent, "cgroup.type"),
 		readCgroupFile(parent, "cgroup.subtree_control"),

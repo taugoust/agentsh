@@ -9,8 +9,18 @@ import (
 func TestDetectBlockedFindings(t *testing.T) {
 	deny := types.DecisionDeny
 	events := []types.Event{
-		{ID: "1", Type: "file_write", Path: "/etc/hosts", Policy: &types.PolicyInfo{Decision: deny, Rule: "no-system"}},
-		{ID: "2", Type: "file_write", Path: "/etc/passwd", Policy: &types.PolicyInfo{Decision: deny, Rule: "no-system"}},
+		{
+			ID:     "1",
+			Type:   "file_write",
+			Path:   "/etc/hosts",
+			Policy: &types.PolicyInfo{Decision: deny, Rule: "no-system"},
+		},
+		{
+			ID:     "2",
+			Type:   "file_write",
+			Path:   "/etc/passwd",
+			Policy: &types.PolicyInfo{Decision: deny, Rule: "no-system"},
+		},
 	}
 
 	findings := detectFindings(events)
@@ -61,7 +71,12 @@ func TestDetectRedirectFindings(t *testing.T) {
 func TestDetectSensitivePathAnomaly(t *testing.T) {
 	allow := types.DecisionAllow
 	events := []types.Event{
-		{ID: "1", Type: "file_read", Path: "/home/user/.ssh/id_rsa", Policy: &types.PolicyInfo{Decision: allow}},
+		{
+			ID:     "1",
+			Type:   "file_read",
+			Path:   "/home/user/.ssh/id_rsa",
+			Policy: &types.PolicyInfo{Decision: allow},
+		},
 	}
 
 	findings := detectFindings(events)

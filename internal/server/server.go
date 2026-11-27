@@ -100,9 +100,13 @@ func New(cfg *config.Config) (*Server, error) {
 	// opt into an exception where approval endpoints are served only over the private,
 	// session-local Unix socket; TCP approval routes remain forbidden by api.requireRoles.
 	if cfg.Approvals.Enabled && strings.EqualFold(strings.TrimSpace(cfg.Approvals.Mode), "api") {
-		if cfg.Development.DisableAuth || strings.EqualFold(strings.TrimSpace(cfg.Auth.Type), "none") {
-			if !cfg.Development.AllowUnauthenticatedUnixApprovals && !cfg.Development.DetachedControlOnly {
-				return nil, fmt.Errorf("approvals.mode=api requires auth.type=api_key (auth is disabled)")
+		if cfg.Development.DisableAuth ||
+			strings.EqualFold(strings.TrimSpace(cfg.Auth.Type), "none") {
+			if !cfg.Development.AllowUnauthenticatedUnixApprovals &&
+				!cfg.Development.DetachedControlOnly {
+				return nil, fmt.Errorf(
+					"approvals.mode=api requires auth.type=api_key (auth is disabled)",
+				)
 			}
 		}
 	}
@@ -110,11 +114,17 @@ func New(cfg *config.Config) (*Server, error) {
 	// Check that required kernel capabilities are available for enabled features.
 	// This catches issues like running in a VM/container that doesn't support
 	// ptrace, seccomp user-notify, or eBPF.
-	helperCredentialConfigured := strings.TrimSpace(os.Getenv(nethelper.EnvHelperInstanceCredential)) != "" ||
+	helperCredentialConfigured := strings.TrimSpace(
+		os.Getenv(nethelper.EnvHelperInstanceCredential),
+	) != "" ||
 		strings.TrimSpace(os.Getenv(nethelper.EnvSessionNonce)) != "" ||
 		strings.TrimSpace(os.Getenv(nethelper.EnvCredentialFile)) != ""
-	externalEBPFHelper := strings.TrimSpace(os.Getenv(nethelper.EnvSocket)) != "" && helperCredentialConfigured
-	if err := capabilities.CheckAllWithOptions(cfg, capabilities.CheckOptions{ExternalEBPFHelper: externalEBPFHelper}); err != nil {
+	externalEBPFHelper := strings.TrimSpace(os.Getenv(nethelper.EnvSocket)) != "" &&
+		helperCredentialConfigured
+	if err := capabilities.CheckAllWithOptions(
+		cfg,
+		capabilities.CheckOptions{ExternalEBPFHelper: externalEBPFHelper},
+	); err != nil {
 		return nil, err
 	}
 
@@ -209,12 +219,19 @@ func New(cfg *config.Config) (*Server, error) {
 			return nil, err
 		}
 	} else {
-		slog.Warn("SQLite audit storage disabled; event queries, output storage, and MCP tool tracking are unavailable")
+		slog.Warn(
+			"SQLite audit storage disabled; event queries, output storage, and MCP tool tracking " +
+				"are unavailable",
+		)
 	}
 
 	var jsonlStore *jsonl.Store
 	if cfg.Audit.Output != "" {
-		jsonlStore, err = jsonl.New(cfg.Audit.Output, cfg.Audit.Rotation.MaxSizeMB, cfg.Audit.Rotation.MaxBackups)
+		jsonlStore, err = jsonl.New(
+			cfg.Audit.Output,
+			cfg.Audit.Rotation.MaxSizeMB,
+			cfg.Audit.Rotation.MaxBackups,
+		)
 		if err != nil {
 			if db != nil {
 				_ = db.Close()
@@ -246,11 +263,15 @@ func New(cfg *config.Config) (*Server, error) {
 				kmsCloser()
 			}
 		}()
-		jsonlEventStore, err = storepkg.NewIntegrityStore(jsonlStore, chain, storepkg.IntegrityOptions{
-			LogPath:        cfg.Audit.Output,
-			Algorithm:      cfg.Audit.Integrity.Algorithm,
-			KeyFingerprint: chain.KeyFingerprint(),
-		})
+		jsonlEventStore, err = storepkg.NewIntegrityStore(
+			jsonlStore,
+			chain,
+			storepkg.IntegrityOptions{
+				LogPath:        cfg.Audit.Output,
+				Algorithm:      cfg.Audit.Integrity.Algorithm,
+				KeyFingerprint: chain.KeyFingerprint(),
+			},
+		)
 		if err != nil {
 			if jsonlStore != nil {
 				_ = jsonlStore.Close()
@@ -284,7 +305,13 @@ func New(cfg *config.Config) (*Server, error) {
 			}
 			return nil, fmt.Errorf("parse audit.webhook.timeout: %w", err)
 		}
-		webhookStore, err = webhook.New(cfg.Audit.Webhook.URL, cfg.Audit.Webhook.BatchSize, flushEvery, timeout, cfg.Audit.Webhook.Headers)
+		webhookStore, err = webhook.New(
+			cfg.Audit.Webhook.URL,
+			cfg.Audit.Webhook.BatchSize,
+			flushEvery,
+			timeout,
+			cfg.Audit.Webhook.Headers,
+		)
 		if err != nil {
 			if jsonlStore != nil {
 				_ = jsonlStore.Close()
@@ -366,7 +393,15 @@ func New(cfg *config.Config) (*Server, error) {
 		eventStores = append(eventStores, otelStore)
 	}
 	if cfg.Audit.Watchtower.Enabled {
-		wtpStore, err := buildWatchtowerStore(context.Background(), cfg.Audit.Watchtower, cfg.Policies, pm, appHolder, enforceApprovals, ocsf.New())
+		wtpStore, err := buildWatchtowerStore(
+			context.Background(),
+			cfg.Audit.Watchtower,
+			cfg.Policies,
+			pm,
+			appHolder,
+			enforceApprovals,
+			ocsf.New(),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("build watchtower store: %w", err)
 		}
@@ -484,13 +519,21 @@ func New(cfg *config.Config) (*Server, error) {
 			// strict assertion that cgroup controllers work, so the probe must not
 			// fall back to attach-only on that path.
 			permitAttachOnly := !cfg.Sandbox.Cgroups.Enabled
-			mgr, err := limitspkg.NewCgroupManager(context.Background(), cfg.Sandbox.Cgroups.BasePath, permitAttachOnly)
+			mgr, err := limitspkg.NewCgroupManager(
+				context.Background(),
+				cfg.Sandbox.Cgroups.BasePath,
+				permitAttachOnly,
+			)
 			if err != nil {
 				slog.Warn("cgroup v2 probe failed; per-command limits unavailable", "error", err)
 			} else {
 				probe := mgr.Probe()
-				if (cfg.Sandbox.Network.EBPF.Required || cfg.Sandbox.Network.EBPF.Enforce) && probe.Mode == limitspkg.ModeUnavailable {
-					return nil, fmt.Errorf("ebpf required/enforced but cgroup probe is unavailable: %s", probe.Reason)
+				if (cfg.Sandbox.Network.EBPF.Required || cfg.Sandbox.Network.EBPF.Enforce) &&
+					probe.Mode == limitspkg.ModeUnavailable {
+					return nil, fmt.Errorf(
+						"ebpf required/enforced but cgroup probe is unavailable: %s",
+						probe.Reason,
+					)
 				}
 				cgroupMgr = mgr
 				modeEvent := types.Event{
@@ -525,7 +568,19 @@ func New(cfg *config.Config) (*Server, error) {
 		}
 	}
 
-	app := api.NewApp(cfg, sessions, store, engine, broker, apiKeyAuth, oidcAuth, approvalsMgr, metricsCollector, policyLoader, cgroupMgr)
+	app := api.NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		broker,
+		apiKeyAuth,
+		oidcAuth,
+		approvalsMgr,
+		metricsCollector,
+		policyLoader,
+		cgroupMgr,
+	)
 	if cfg.Sandbox.Composition.Bubblewrap.Enabled {
 		runtimeEvidence, preflightErr := app.CompositionRuntimePreflight()
 		if preflightErr != nil {
@@ -545,7 +600,10 @@ func New(cfg *config.Config) (*Server, error) {
 			app.Close()
 			_ = store.Close()
 			if auditErr != nil {
-				return nil, errors.Join(fmt.Errorf("composition runtime preflight: %w", preflightErr), fmt.Errorf("persist composition runtime failure: %w", auditErr))
+				return nil, errors.Join(
+					fmt.Errorf("composition runtime preflight: %w", preflightErr),
+					fmt.Errorf("persist composition runtime failure: %w", auditErr),
+				)
 			}
 			return nil, fmt.Errorf("composition runtime preflight: %w", preflightErr)
 		}
@@ -585,7 +643,13 @@ func New(cfg *config.Config) (*Server, error) {
 			return nil, fmt.Errorf("persist composition runtime readiness: %w", err)
 		}
 		broker.Publish(runtimeEvent)
-		slog.Info("composition runtime ready", "mode", runtimeEvidence.Mode, "scratch_root", runtimeEvidence.ScratchRoot)
+		slog.Info(
+			"composition runtime ready",
+			"mode",
+			runtimeEvidence.Mode,
+			"scratch_root",
+			runtimeEvidence.ScratchRoot,
+		)
 	}
 	// Publish to the WTP install hook so subsequent pushed-policy
 	// receipts can SwapPolicy in-process (next CheckCommand sees the
@@ -615,7 +679,11 @@ func New(cfg *config.Config) (*Server, error) {
 		switch mode {
 		case "open", "closed", "degraded":
 		default:
-			return nil, fmt.Errorf("pkgcheck: invalid fail_mode %q (env PKGCHECK_FAIL_MODE or package_checks.fail_mode); must be one of open, closed, degraded", mode)
+			return nil, fmt.Errorf(
+				"pkgcheck: invalid fail_mode %q (env PKGCHECK_FAIL_MODE or "+
+					"package_checks.fail_mode); must be one of open, closed, degraded",
+				mode,
+			)
 		}
 		config.ApplyFailMode(&cfg.PackageChecks, mode)
 
@@ -633,9 +701,20 @@ func New(cfg *config.Config) (*Server, error) {
 				// provider would undermine that intent, so we treat it as fatal.
 				if errors.Is(err, errMissingAPIKeyValue) {
 					if mode == "closed" {
-						return nil, fmt.Errorf("pkgcheck: provider %q enabled with missing API key under fail_mode=closed: configured to fail closed, but provider cannot operate", name)
+						return nil, fmt.Errorf(
+							"pkgcheck: provider %q enabled with missing API key under "+
+								"fail_mode=closed: configured to fail closed, but provider "+
+								"cannot operate",
+							name,
+						)
 					}
-					slog.Warn("pkgcheck: skipping provider (API key env var unset)", "name", name, "error", err)
+					slog.Warn(
+						"pkgcheck: skipping provider (API key env var unset)",
+						"name",
+						name,
+						"error",
+						err,
+					)
 					continue
 				}
 				return nil, fmt.Errorf("pkgcheck: provider %q misconfigured: %w", name, err)
@@ -649,7 +728,10 @@ func New(cfg *config.Config) (*Server, error) {
 		}
 
 		if len(providerEntries) == 0 {
-			return nil, fmt.Errorf("package_checks.enabled=true but no providers were initialized — at least one provider must be configured and have its API key (if required) set")
+			return nil, fmt.Errorf(
+				"package_checks.enabled=true but no providers were initialized — at least one " +
+					"provider must be configured and have its API key (if required) set",
+			)
 		}
 
 		// Compose rules: engine.PackageRules() takes precedence, then block_on
@@ -677,17 +759,25 @@ func New(cfg *config.Config) (*Server, error) {
 	var skillcheckDaemon *skillcheck.Daemon
 	if cfg.Skillcheck.Enabled {
 		if len(cfg.Skillcheck.WatchRoots) == 0 {
-			return nil, fmt.Errorf("skillcheck.watch_roots: at least one root required when skillcheck is enabled")
+			return nil, fmt.Errorf(
+				"skillcheck.watch_roots: at least one root required when skillcheck is enabled",
+			)
 		}
 		if cfg.Skillcheck.TrashDir == "" {
-			return nil, fmt.Errorf("skillcheck.trash_dir: required when skillcheck is enabled (block verdicts cannot quarantine without it)")
+			return nil, fmt.Errorf(
+				"skillcheck.trash_dir: required when skillcheck is enabled (block verdicts " +
+					"cannot quarantine without it)",
+			)
 		}
 		skillcheckProviders, err := buildSkillcheckProviders(cfg.Skillcheck.Providers)
 		if err != nil {
 			return nil, err
 		}
 		if len(skillcheckProviders) == 0 {
-			return nil, fmt.Errorf("skillcheck.providers: at least one provider must be enabled when skillcheck is enabled")
+			return nil, fmt.Errorf(
+				"skillcheck.providers: at least one provider must be enabled when skillcheck " +
+					"is enabled",
+			)
 		}
 		cacheDir := cfg.Skillcheck.CacheDir
 		if cacheDir == "" {
@@ -721,7 +811,10 @@ func New(cfg *config.Config) (*Server, error) {
 		if approvalsMgr == nil {
 			for _, action := range cfg.Skillcheck.Thresholds {
 				if strings.EqualFold(action, "approve") {
-					slog.Warn("skillcheck has approve thresholds but approvals manager is not configured; approve verdicts will be denied (block)")
+					slog.Warn(
+						"skillcheck has approve thresholds but approvals manager is not " +
+							"configured; approve verdicts will be denied (block)",
+					)
 					break
 				}
 			}
@@ -843,7 +936,10 @@ func New(cfg *config.Config) (*Server, error) {
 				_ = store.Close()
 				return nil, fmt.Errorf("server.tls enabled but cert_file/key_file missing")
 			}
-			creds, err := credentials.NewServerTLSFromFile(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+			creds, err := credentials.NewServerTLSFromFile(
+				cfg.Server.TLS.CertFile,
+				cfg.Server.TLS.KeyFile,
+			)
 			if err != nil {
 				_ = grpcLn.Close()
 				_ = store.Close()
@@ -965,7 +1061,11 @@ func listenHTTP(cfg *config.Config) (net.Listener, error) {
 	addr := cfg.Server.HTTP.Addr
 	if cfg.Development.DisableAuth || strings.EqualFold(strings.TrimSpace(cfg.Auth.Type), "none") {
 		if !isLoopbackListenAddr(addr) {
-			return nil, fmt.Errorf("refusing to listen on %q with auth.type=none (use 127.0.0.1/localhost or enable auth)", addr)
+			return nil, fmt.Errorf(
+				"refusing to listen on %q with auth.type=none (use 127.0.0.1/localhost or "+
+					"enable auth)",
+				addr,
+			)
 		}
 	}
 	if !cfg.Server.TLS.Enabled {
@@ -988,7 +1088,11 @@ func listenGRPC(cfg *config.Config) (net.Listener, error) {
 	}
 	if cfg.Development.DisableAuth || strings.EqualFold(strings.TrimSpace(cfg.Auth.Type), "none") {
 		if !isLoopbackListenAddr(addr) {
-			return nil, fmt.Errorf("refusing to listen on %q with auth.type=none (use 127.0.0.1/localhost or enable auth)", addr)
+			return nil, fmt.Errorf(
+				"refusing to listen on %q with auth.type=none (use 127.0.0.1/localhost or "+
+					"enable auth)",
+				addr,
+			)
 		}
 	}
 	return net.Listen("tcp", addr)
@@ -1060,7 +1164,10 @@ func (e serverEmitter) Publish(ev types.Event) { e.broker.Publish(ev) }
 
 // BootstrapDetachedSession installs the lifecycle coordinator and rehydrates
 // the exact session before any listener starts serving requests.
-func (s *Server) BootstrapDetachedSession(ctx context.Context, runtime *detached.Runtime) (types.Session, *types.NetworkEnforcement, error) {
+func (s *Server) BootstrapDetachedSession(
+	ctx context.Context,
+	runtime *detached.Runtime,
+) (types.Session, *types.NetworkEnforcement, error) {
 	if s == nil || s.app == nil {
 		return types.Session{}, nil, fmt.Errorf("server app is unavailable")
 	}
@@ -1155,7 +1262,10 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 	if unixServer != nil && unixLn != nil {
 		go func() {
-			if err := unixServer.Serve(unixLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := unixServer.Serve(
+				unixLn,
+			); err != nil &&
+				!errors.Is(err, http.ErrServerClosed) {
 				errCh <- err
 			}
 		}()
@@ -1329,7 +1439,11 @@ func (s *Server) reapOnce(now time.Time) bool {
 		}
 	}
 	if result.Err != nil {
-		slog.Error("remaining session expiry deferred because lifecycle cleanup failed", "error", result.Err)
+		slog.Error(
+			"remaining session expiry deferred because lifecycle cleanup failed",
+			"error",
+			result.Err,
+		)
 		return result.DetachedSupervisorExpired
 	}
 	return result.DetachedSupervisorExpired

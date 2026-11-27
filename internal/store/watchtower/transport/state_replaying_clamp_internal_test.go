@@ -64,10 +64,16 @@ func TestComputeReplayStart_PartialGCdGapEmitsLoss(t *testing.T) {
 		t.Fatalf("INFO to_seq: got %v, want 50", infoEntry.Attrs["to_seq"])
 	}
 	if v, ok := infoEntry.Attrs["earliest_on_disk_present"].(bool); !ok || !v {
-		t.Fatalf("INFO earliest_on_disk_present: got %v, want true", infoEntry.Attrs["earliest_on_disk_present"])
+		t.Fatalf(
+			"INFO earliest_on_disk_present: got %v, want true",
+			infoEntry.Attrs["earliest_on_disk_present"],
+		)
 	}
 	if v, ok := infoEntry.Attrs["earliest_on_disk_seq"].(float64); !ok || uint64(v) != 51 {
-		t.Fatalf("INFO earliest_on_disk_seq: got %v, want 51", infoEntry.Attrs["earliest_on_disk_seq"])
+		t.Fatalf(
+			"INFO earliest_on_disk_seq: got %v, want 51",
+			infoEntry.Attrs["earliest_on_disk_seq"],
+		)
 	}
 	// Counter is NOT incremented at compute-time (Round-13 Finding 5: emit-time only).
 	if env.metrics.ackRegressionLoss != 0 {
@@ -110,7 +116,10 @@ func TestComputeReplayStart_NoGapWhenSteadyState(t *testing.T) {
 		t.Fatalf("unexpected log entries on Case B (no gap): %+v", entries)
 	}
 	if env.metrics.ackRegressionLoss != 0 {
-		t.Fatalf("ackRegressionLoss counter: got %d, want 0 on no-gap path", env.metrics.ackRegressionLoss)
+		t.Fatalf(
+			"ackRegressionLoss counter: got %d, want 0 on no-gap path",
+			env.metrics.ackRegressionLoss,
+		)
 	}
 }
 
@@ -157,14 +166,20 @@ func TestComputeReplayStart_FullyGCdServerBehindPersistedAck_EmitsLoss(t *testin
 	}
 	infoEntry := firstLevel(entries, "INFO")
 	if v, ok := infoEntry.Attrs["earliest_on_disk_present"].(bool); !ok || v {
-		t.Fatalf("INFO earliest_on_disk_present: got %v, want false", infoEntry.Attrs["earliest_on_disk_present"])
+		t.Fatalf(
+			"INFO earliest_on_disk_present: got %v, want false",
+			infoEntry.Attrs["earliest_on_disk_present"],
+		)
 	}
 	if v, ok := infoEntry.Attrs["to_seq"].(float64); !ok || uint64(v) != 100 {
 		t.Fatalf("INFO to_seq: got %v, want 100", infoEntry.Attrs["to_seq"])
 	}
 	// Counter NOT incremented at compute-time.
 	if env.metrics.ackRegressionLoss != 0 {
-		t.Fatalf("ackRegressionLoss counter: got %d at compute-time, want 0", env.metrics.ackRegressionLoss)
+		t.Fatalf(
+			"ackRegressionLoss counter: got %d at compute-time, want 0",
+			env.metrics.ackRegressionLoss,
+		)
 	}
 }
 
@@ -328,7 +343,11 @@ func TestComputeReplayStart_MixedGenerationsOnDisk_DetectsLossInOlderGeneration(
 				t.Fatal("EarliestDataSequence was NOT called")
 			}
 			if got := calls[0].gen; got != tc.wantCalledWithGen {
-				t.Fatalf("EarliestDataSequence called with gen=%d, want %d", got, tc.wantCalledWithGen)
+				t.Fatalf(
+					"EarliestDataSequence called with gen=%d, want %d",
+					got,
+					tc.wantCalledWithGen,
+				)
 			}
 
 			if tc.wantPrefixLoss == nil {
@@ -350,7 +369,12 @@ func TestComputeReplayStart_MixedGenerationsOnDisk_DetectsLossInOlderGeneration(
 
 			entries := parseLogBuffer(t, env.logBuf)
 			if got := countLevel(entries, "INFO"); got != tc.wantInfoCount {
-				t.Fatalf("INFO entries: got %d, want %d (entries=%+v)", got, tc.wantInfoCount, entries)
+				t.Fatalf(
+					"INFO entries: got %d, want %d (entries=%+v)",
+					got,
+					tc.wantInfoCount,
+					entries,
+				)
 			}
 		})
 	}
@@ -422,7 +446,11 @@ func TestComputeReplayPlan_MultiGenerationCoversLaterGens(t *testing.T) {
 			t.Fatalf("computeReplayPlan: %v", err)
 		}
 		if len(stages) != 4 {
-			t.Fatalf("stages: got %d, want 4 (gen=1, 2, 4, 5; gen=3 skipped): %+v", len(stages), stages)
+			t.Fatalf(
+				"stages: got %d, want 4 (gen=1, 2, 4, 5; gen=3 skipped): %+v",
+				len(stages),
+				stages,
+			)
 		}
 
 		want := []ReplayStage{
@@ -433,7 +461,12 @@ func TestComputeReplayPlan_MultiGenerationCoversLaterGens(t *testing.T) {
 		}
 		for i, w := range want {
 			if stages[i].Generation != w.Generation {
-				t.Errorf("stage[%d].Generation: got %d, want %d", i, stages[i].Generation, w.Generation)
+				t.Errorf(
+					"stage[%d].Generation: got %d, want %d",
+					i,
+					stages[i].Generation,
+					w.Generation,
+				)
 			}
 			if stages[i].StartSeq != w.StartSeq {
 				t.Errorf("stage[%d].StartSeq: got %d, want %d", i, stages[i].StartSeq, w.StartSeq)
@@ -466,7 +499,11 @@ func TestComputeReplayPlan_MultiGenerationCoversLaterGens(t *testing.T) {
 		})
 		// HighGeneration == persistedAck.Generation: no later-gen probe should fire.
 		SetWALHasReplayableRecordsFnForTest(env.tr, func(gen uint32) (bool, error) {
-			t.Errorf("HasReplayableRecords MUST NOT be called when HighGeneration == persistedAck.Generation; got gen=%d", gen)
+			t.Errorf(
+				"HasReplayableRecords MUST NOT be called when HighGeneration == "+
+					"persistedAck.Generation; got gen=%d",
+				gen,
+			)
 			return false, nil
 		})
 		SetWALHighGenerationFnForTest(env.tr, func() uint32 { return 7 })
@@ -570,7 +607,11 @@ func TestComputeReplayPlan_LossOnlyGenerationProducesStage(t *testing.T) {
 	// — e.g., the WARN-context emitter on Anomaly outcomes — but those
 	// paths don't fire in this test.)
 	SetWALWrittenDataHighWaterFnForTest(env.tr, func(gen uint32) (uint64, bool, error) {
-		t.Errorf("WrittenDataHighWater MUST NOT be called by multi-gen probe loop after round-16 Finding 2 fix; got gen=%d", gen)
+		t.Errorf(
+			"WrittenDataHighWater MUST NOT be called by multi-gen probe loop after round-16 "+
+				"Finding 2 fix; got gen=%d",
+			gen,
+		)
 		return 0, false, nil
 	})
 	SetWALHighGenerationFnForTest(env.tr, func() uint32 { return 3 })
@@ -582,7 +623,12 @@ func TestComputeReplayPlan_LossOnlyGenerationProducesStage(t *testing.T) {
 		t.Fatalf("computeReplayPlan: %v", err)
 	}
 	if len(stages) != 3 {
-		t.Fatalf("stages: got %d, want 3 (gen=1 with start=41, gen=2 loss-only with start=0, gen=3 with start=0): %+v", len(stages), stages)
+		t.Fatalf(
+			"stages: got %d, want 3 (gen=1 with start=41, gen=2 loss-only with start=0, gen=3 "+
+				"with start=0): %+v",
+			len(stages),
+			stages,
+		)
 	}
 	want := []ReplayStage{
 		{Generation: 1, StartSeq: 41, PrefixLoss: nil},

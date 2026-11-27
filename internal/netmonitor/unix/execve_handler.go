@@ -71,17 +71,33 @@ type PolicyChecker interface {
 // execve command rules against additional trusted names for the same syscall,
 // such as the raw filename before symlink canonicalization.
 type PolicyCheckerWithAliases interface {
-	CheckExecveWithAliases(filename string, aliases []string, argv []string, depth int) PolicyDecision
+	CheckExecveWithAliases(
+		filename string,
+		aliases []string,
+		argv []string,
+		depth int,
+	) PolicyDecision
 }
 
 // PolicyCheckerWithProvenance accepts server-owned execution provenance. The
 // value is configured directly on the handler and never read from the tracee.
 type PolicyCheckerWithProvenance interface {
-	CheckExecveWithProvenance(filename string, argv []string, depth int, provenance string) PolicyDecision
+	CheckExecveWithProvenance(
+		filename string,
+		argv []string,
+		depth int,
+		provenance string,
+	) PolicyDecision
 }
 
 type PolicyCheckerWithAliasesAndProvenance interface {
-	CheckExecveWithAliasesAndProvenance(filename string, aliases []string, argv []string, depth int, provenance string) PolicyDecision
+	CheckExecveWithAliasesAndProvenance(
+		filename string,
+		aliases []string,
+		argv []string,
+		depth int,
+		provenance string,
+	) PolicyDecision
 }
 
 // PolicyDecision represents a policy check result
@@ -133,7 +149,12 @@ type ExecveHandler struct {
 }
 
 // NewExecveHandler creates a new execve handler.
-func NewExecveHandler(cfg ExecveHandlerConfig, policy PolicyChecker, dt *DepthTracker, emitter ExecveEmitter) *ExecveHandler {
+func NewExecveHandler(
+	cfg ExecveHandlerConfig,
+	policy PolicyChecker,
+	dt *DepthTracker,
+	emitter ExecveEmitter,
+) *ExecveHandler {
 	return &ExecveHandler{
 		cfg:          cfg,
 		policy:       policy,
@@ -251,8 +272,12 @@ func (h *ExecveHandler) CloseComposition() {
 
 func isNixBubblewrap0112Executable(path string) bool {
 	path = filepath.Clean(path)
-	parts := strings.Split(strings.TrimPrefix(path, string(filepath.Separator)), string(filepath.Separator))
-	if len(parts) != 5 || parts[0] != "nix" || parts[1] != "store" || parts[3] != "bin" || parts[4] != "bwrap" {
+	parts := strings.Split(
+		strings.TrimPrefix(path, string(filepath.Separator)),
+		string(filepath.Separator),
+	)
+	if len(parts) != 5 || parts[0] != "nix" || parts[1] != "store" || parts[3] != "bin" ||
+		parts[4] != "bwrap" {
 		return false
 	}
 	storeName := parts[2]
@@ -270,7 +295,9 @@ func isNixBubblewrap0112Executable(path string) bool {
 }
 
 func (h *ExecveHandler) shouldCompose(ctx ExecveContext, result ExecveResult) bool {
-	if h == nil || h.compositionMode != "bubblewrap-0.11.2" || h.compositionRedirector == nil || result.Action != ActionContinue || !result.Allow {
+	if h == nil || h.compositionMode != "bubblewrap-0.11.2" || h.compositionRedirector == nil ||
+		result.Action != ActionContinue ||
+		!result.Allow {
 		return false
 	}
 	if err := h.attributeCompositionPaths(&ctx); err != nil || hasCompositionSourceAlias(ctx) {
@@ -294,7 +321,10 @@ func (h *ExecveHandler) RegisterSession(pid int, sessionID string) {
 
 // Handle processes an execve notification and returns the decision plus an
 // optional audit event. The caller is responsible for emitting the event.
-func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (ExecveResult, *types.Event) {
+func (h *ExecveHandler) Handle(
+	goCtx context.Context,
+	ctx ExecveContext,
+) (ExecveResult, *types.Event) {
 	if goCtx == nil {
 		goCtx = context.Background()
 	}
@@ -344,7 +374,12 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		if h.depthTracker != nil {
 			h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 		}
-		result := ExecveResult{Allow: true, Action: ActionContinue, Rule: "internal_bypass", Decision: "allow"}
+		result := ExecveResult{
+			Allow:    true,
+			Action:   ActionContinue,
+			Rule:     "internal_bypass",
+			Decision: "allow",
+		}
 		// Log every execve per design doc, including internal bypass
 		return result, h.buildEvent(ctx, result, "internal_bypass")
 	}
@@ -443,7 +478,11 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		// original composition source. This matters for transparent wrappers such
 		// as `env /alias/tool`, where the preflight decision occurs before the
 		// payload's own execve notification.
-		payloadDecision, sourcePayload, err := h.checkPayloadExecveWithComposition(ctx, payloadPolicyCommand, payloadArgs)
+		payloadDecision, sourcePayload, err := h.checkPayloadExecveWithComposition(
+			ctx,
+			payloadPolicyCommand,
+			payloadArgs,
+		)
 		if err != nil {
 			result := ExecveResult{
 				Allow:    false,
@@ -469,10 +508,14 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		// Most restrictive wins: if either denies, deny
 		if payloadEffective == "deny" {
 			result := ExecveResult{
-				Allow:    false,
-				Action:   ActionDeny,
-				Rule:     payloadDecision.Rule,
-				Reason:   fmt.Sprintf("denied: %s (unwrapped from: %s)", payloadCmd, filepath.Base(ctx.Filename)),
+				Allow:  false,
+				Action: ActionDeny,
+				Rule:   payloadDecision.Rule,
+				Reason: fmt.Sprintf(
+					"denied: %s (unwrapped from: %s)",
+					payloadCmd,
+					filepath.Base(ctx.Filename),
+				),
 				Errno:    int32(unix.EACCES),
 				Decision: payloadDecision.Decision,
 			}
@@ -508,7 +551,12 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 			if h.depthTracker != nil {
 				h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 			}
-			result := ExecveResult{Allow: true, Action: ActionContinue, Rule: chosenDecision.Rule, Decision: chosenDecision.Decision}
+			result := ExecveResult{
+				Allow:    true,
+				Action:   ActionContinue,
+				Rule:     chosenDecision.Rule,
+				Decision: chosenDecision.Decision,
+			}
 			return result, h.buildEvent(ctx, result, chosenDecision.Rule)
 		case "approve":
 			if payloadChosen {
@@ -516,7 +564,14 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 				if sourcePayload != "" {
 					approvalCommand = sourcePayload
 				}
-				return h.handlePolicyApprovalForCommand(goCtx, ctx, chosenDecision, approvalCommand, payloadPolicyCommand, sourcePayload)
+				return h.handlePolicyApprovalForCommand(
+					goCtx,
+					ctx,
+					chosenDecision,
+					approvalCommand,
+					payloadPolicyCommand,
+					sourcePayload,
+				)
 			}
 			return h.handlePolicyApproval(goCtx, ctx, chosenDecision)
 		case "redirect":
@@ -539,7 +594,12 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 
 	// Skip policy check if no policy configured
 	if h.policy == nil {
-		result := ExecveResult{Allow: true, Action: ActionContinue, Rule: "no_policy", Decision: "allow"}
+		result := ExecveResult{
+			Allow:    true,
+			Action:   ActionContinue,
+			Rule:     "no_policy",
+			Decision: "allow",
+		}
 		// Record for depth tracking even without policy
 		if h.depthTracker != nil {
 			h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
@@ -568,7 +628,12 @@ func (h *ExecveHandler) Handle(goCtx context.Context, ctx ExecveContext) (Execve
 		if h.depthTracker != nil {
 			h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 		}
-		result := ExecveResult{Allow: true, Action: ActionContinue, Rule: decision.Rule, Decision: decision.Decision}
+		result := ExecveResult{
+			Allow:    true,
+			Action:   ActionContinue,
+			Rule:     decision.Rule,
+			Decision: decision.Decision,
+		}
 		return result, h.buildEvent(ctx, result, decision.Rule)
 
 	case "deny":
@@ -621,12 +686,28 @@ func execveApprovalIdentity(ctx ExecveContext) (command, source string) {
 	return ctx.Filename, ""
 }
 
-func (h *ExecveHandler) handlePolicyApproval(goCtx context.Context, ctx ExecveContext, decision PolicyDecision) (ExecveResult, *types.Event) {
+func (h *ExecveHandler) handlePolicyApproval(
+	goCtx context.Context,
+	ctx ExecveContext,
+	decision PolicyDecision,
+) (ExecveResult, *types.Event) {
 	approvalCommand, sourceCommand := execveApprovalIdentity(ctx)
-	return h.handlePolicyApprovalForCommand(goCtx, ctx, decision, approvalCommand, ctx.Filename, sourceCommand)
+	return h.handlePolicyApprovalForCommand(
+		goCtx,
+		ctx,
+		decision,
+		approvalCommand,
+		ctx.Filename,
+		sourceCommand,
+	)
 }
 
-func (h *ExecveHandler) handlePolicyApprovalForCommand(goCtx context.Context, ctx ExecveContext, decision PolicyDecision, approvalCommand, visibleCommand, sourceCommand string) (ExecveResult, *types.Event) {
+func (h *ExecveHandler) handlePolicyApprovalForCommand(
+	goCtx context.Context,
+	ctx ExecveContext,
+	decision PolicyDecision,
+	approvalCommand, visibleCommand, sourceCommand string,
+) (ExecveResult, *types.Event) {
 	if goCtx == nil {
 		goCtx = context.Background()
 	}
@@ -663,7 +744,13 @@ func (h *ExecveHandler) handlePolicyApprovalForCommand(goCtx context.Context, ct
 			if h.depthTracker != nil {
 				h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 			}
-			result := ExecveResult{Allow: true, Action: ActionContinue, Rule: decision.Rule, Reason: decision.Message, Decision: decision.Decision}
+			result := ExecveResult{
+				Allow:    true,
+				Action:   ActionContinue,
+				Rule:     decision.Rule,
+				Reason:   decision.Message,
+				Decision: decision.Decision,
+			}
 			return result, h.buildEvent(ctx, result, decision.Rule)
 		}
 		reason := "approval error"
@@ -695,7 +782,13 @@ func (h *ExecveHandler) handlePolicyApprovalForCommand(goCtx context.Context, ct
 	if h.depthTracker != nil {
 		h.depthTracker.RecordExecveWithSession(ctx.PID, ctx.ParentPID, ctx.SessionID)
 	}
-	result := ExecveResult{Allow: true, Action: ActionContinue, Rule: decision.Rule, Reason: decision.Message, Decision: decision.Decision}
+	result := ExecveResult{
+		Allow:    true,
+		Action:   ActionContinue,
+		Rule:     decision.Rule,
+		Reason:   decision.Message,
+		Decision: decision.Decision,
+	}
 	return result, h.buildEvent(ctx, result, decision.Rule)
 }
 
@@ -706,10 +799,20 @@ func (h *ExecveHandler) checkExecve(depth int, filename string, argv []string) P
 	return h.policy.CheckExecve(filename, argv, depth)
 }
 
-func (h *ExecveHandler) checkExecveIdentity(depth int, filename, rawFilename string, argv []string) PolicyDecision {
+func (h *ExecveHandler) checkExecveIdentity(
+	depth int,
+	filename, rawFilename string,
+	argv []string,
+) PolicyDecision {
 	aliases := trustedExecveAliases(filename, rawFilename, argv)
 	if checker, ok := h.policy.(PolicyCheckerWithAliasesAndProvenance); ok {
-		return checker.CheckExecveWithAliasesAndProvenance(filename, aliases, argv, depth, h.provenance)
+		return checker.CheckExecveWithAliasesAndProvenance(
+			filename,
+			aliases,
+			argv,
+			depth,
+			h.provenance,
+		)
 	}
 	if checker, ok := h.policy.(PolicyCheckerWithAliases); ok {
 		return checker.CheckExecveWithAliases(filename, aliases, argv, depth)
@@ -717,7 +820,11 @@ func (h *ExecveHandler) checkExecveIdentity(depth int, filename, rawFilename str
 	return h.checkExecve(depth, filename, argv)
 }
 
-func (h *ExecveHandler) checkExecveWithAliases(ctx ExecveContext, filename string, argv []string) PolicyDecision {
+func (h *ExecveHandler) checkExecveWithAliases(
+	ctx ExecveContext,
+	filename string,
+	argv []string,
+) PolicyDecision {
 	if filename != ctx.Filename {
 		return h.checkExecve(ctx.Depth, filename, argv)
 	}
@@ -743,7 +850,11 @@ func (h *ExecveHandler) checkExecveWithAliases(ctx ExecveContext, filename strin
 	return moreRestrictiveExecveDecision(visible, source)
 }
 
-func (h *ExecveHandler) checkPayloadExecveWithComposition(ctx ExecveContext, filename string, argv []string) (PolicyDecision, string, error) {
+func (h *ExecveHandler) checkPayloadExecveWithComposition(
+	ctx ExecveContext,
+	filename string,
+	argv []string,
+) (PolicyDecision, string, error) {
 	visible := h.checkExecve(ctx.Depth, filename, argv)
 	if h.compositionPaths == nil || !filepath.IsAbs(filename) {
 		return visible, "", nil
@@ -788,7 +899,9 @@ func execveDecisionRank(decision string) int {
 func moreRestrictiveExecveDecision(current, candidate PolicyDecision) PolicyDecision {
 	currentRank := execveDecisionRank(effectiveExecveDecision(current))
 	candidateRank := execveDecisionRank(effectiveExecveDecision(candidate))
-	if candidateRank > currentRank || (candidateRank == currentRank && execveDecisionRank(candidate.Decision) > execveDecisionRank(current.Decision)) {
+	if candidateRank > currentRank ||
+		(candidateRank == currentRank &&
+			execveDecisionRank(candidate.Decision) > execveDecisionRank(current.Decision)) {
 		return candidate
 	}
 	return current
@@ -836,7 +949,8 @@ func trustedExecveAliases(filename, rawFilename string, argv []string) []string 
 	if rawTrusted && rawFilename != "" && argv0Base == filepath.Base(rawFilename) {
 		add(argv0)
 		add(argv0Base)
-	} else if isTrustedNixCoreutilsMulticall(filename) || isTrustedNixCoreutilsMulticall(rawFilename) {
+	} else if isTrustedNixCoreutilsMulticall(filename) ||
+		isTrustedNixCoreutilsMulticall(rawFilename) {
 		add(argv0)
 		add(argv0Base)
 	}
@@ -873,11 +987,16 @@ func isTrustedSystemExecPath(path string) bool {
 }
 
 func isTrustedNixCoreutilsMulticall(path string) bool {
-	return filepath.Base(path) == "coreutils" && strings.Contains(path, "/nix/store/") && strings.Contains(path, "-coreutils-")
+	return filepath.Base(path) == "coreutils" && strings.Contains(path, "/nix/store/") &&
+		strings.Contains(path, "-coreutils-")
 }
 
 // buildEvent builds an execve audit event without emitting it.
-func (h *ExecveHandler) buildEvent(ctx ExecveContext, result ExecveResult, rule string) *types.Event {
+func (h *ExecveHandler) buildEvent(
+	ctx ExecveContext,
+	result ExecveResult,
+	rule string,
+) *types.Event {
 	if h.emitter == nil {
 		return nil
 	}

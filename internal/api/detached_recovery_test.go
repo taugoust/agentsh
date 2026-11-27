@@ -14,10 +14,17 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
-func newDetachedRuntimeFixture(t *testing.T, stateDir, sessionID, workspace string) *detached.Runtime {
+func newDetachedRuntimeFixture(
+	t *testing.T,
+	stateDir, sessionID, workspace string,
+) *detached.Runtime {
 	t.Helper()
 	envFile := filepath.Join(stateDir, "supervisor.env")
-	if err := os.WriteFile(envFile, []byte("AGENTSH_DETACHED_EVENT_TOKEN=\"test-token\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		envFile,
+		[]byte("AGENTSH_DETACHED_EVENT_TOKEN=\"test-token\"\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	realPaths := true
@@ -33,8 +40,14 @@ func newDetachedRuntimeFixture(t *testing.T, stateDir, sessionID, workspace stri
 		t.Fatal(err)
 	}
 	if err := detached.WriteMetadata(stateDir, detached.Metadata{
-		SessionID: sessionID, ID: sessionID, State: detached.LifecycleProvisioning,
-		SupervisorSock: filepath.Join(stateDir, "supervisor.sock"), ProtocolVersion: detached.ProtocolVersion,
+		SessionID: sessionID,
+		ID:        sessionID,
+		State:     detached.LifecycleProvisioning,
+		SupervisorSock: filepath.Join(
+			stateDir,
+			"supervisor.sock",
+		),
+		ProtocolVersion: detached.ProtocolVersion,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +58,13 @@ func newDetachedRuntimeFixture(t *testing.T, stateDir, sessionID, workspace stri
 	return runtime
 }
 
-func TestNethelperRebind_DetachedBootstrapRehydratesExactSessionAndInterruptedEvidence(t *testing.T) {
-	t.Setenv(detached.EnvNetworkEnforcementRequested, string(detached.NetworkEnforcementRequestNone))
+func TestNethelperRebind_DetachedBootstrapRehydratesExactSessionAndInterruptedEvidence(
+	t *testing.T,
+) {
+	t.Setenv(
+		detached.EnvNetworkEnforcementRequested,
+		string(detached.NetworkEnforcementRequestNone),
+	)
 	root := t.TempDir()
 	sessionID := "session-exact-recovery"
 	stateDir := filepath.Join(root, sessionID)
@@ -71,27 +89,56 @@ func TestNethelperRebind_DetachedBootstrapRehydratesExactSessionAndInterruptedEv
 	if first.ID != sessionID || first.Workspace != workspace {
 		t.Fatalf("first bootstrap = %+v", first)
 	}
-	if err := runtimeOne.UpdateMutable(detached.MutableSessionState{Cwd: workspace, Environment: map[string]string{"PATH": "/nix/store/test/bin"}}); err != nil {
+	if err := runtimeOne.UpdateMutable(
+		detached.MutableSessionState{
+			Cwd:         workspace,
+			Environment: map[string]string{"PATH": "/nix/store/test/bin"},
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	firstSession, ok := appOne.sessions.Get(sessionID)
 	if !ok {
 		t.Fatal("first session missing")
 	}
-	artifact, err := firstSession.WriteOutputArtifact("completed", strings.NewReader("durable output"))
+	artifact, err := firstSession.WriteOutputArtifact(
+		"completed",
+		strings.NewReader("durable output"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := runtimeOne.RecordCommand(detached.InflightCommand{CommandID: "cmd-interrupted", Operation: "exec", AdmittedAt: time.Now().UTC()}); err != nil {
+	if err := runtimeOne.RecordCommand(
+		detached.InflightCommand{
+			CommandID:  "cmd-interrupted",
+			Operation:  "exec",
+			AdmittedAt: time.Now().UTC(),
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtimeOne.MarkCommandStarted("cmd-interrupted", time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtimeOne.RecordCommand(detached.InflightCommand{CommandID: "subagent-request-interrupted", Operation: detachedOperationSpawnSubagent, AdmittedAt: time.Now().UTC(), StartedAt: time.Now().UTC()}); err != nil {
+	if err := runtimeOne.RecordCommand(
+		detached.InflightCommand{
+			CommandID:  "subagent-request-interrupted",
+			Operation:  detachedOperationSpawnSubagent,
+			AdmittedAt: time.Now().UTC(),
+			StartedAt:  time.Now().UTC(),
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := runtimeOne.RecordCommand(detached.InflightCommand{CommandID: "subagent-child-interrupted", Operation: detachedOperationSpawnSubagentChild, ParentID: "subagent-request-interrupted", AdmittedAt: time.Now().UTC(), StartedAt: time.Now().UTC()}); err != nil {
+	if err := runtimeOne.RecordCommand(
+		detached.InflightCommand{
+			CommandID:  "subagent-child-interrupted",
+			Operation:  detachedOperationSpawnSubagentChild,
+			ParentID:   "subagent-request-interrupted",
+			AdmittedAt: time.Now().UTC(),
+			StartedAt:  time.Now().UTC(),
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -106,7 +153,8 @@ func TestNethelperRebind_DetachedBootstrapRehydratesExactSessionAndInterruptedEv
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.ID != first.ID || !second.CreatedAt.Equal(first.CreatedAt) || second.Workspace != first.Workspace {
+	if second.ID != first.ID || !second.CreatedAt.Equal(first.CreatedAt) ||
+		second.Workspace != first.Workspace {
 		t.Fatalf("recovered session changed identity\nfirst:  %+v\nsecond: %+v", first, second)
 	}
 	recoveredSession, ok := appTwo.sessions.Get(sessionID)
@@ -122,13 +170,17 @@ func TestNethelperRebind_DetachedBootstrapRehydratesExactSessionAndInterruptedEv
 		t.Fatalf("open restored output artifact: %v", err)
 	}
 	_ = artifactFile.Close()
-	events, err := store.QueryEvents(context.Background(), types.EventQuery{SessionID: sessionID, CommandID: "cmd-interrupted", Limit: 20, Asc: true})
+	events, err := store.QueryEvents(
+		context.Background(),
+		types.EventQuery{SessionID: sessionID, CommandID: "cmd-interrupted", Limit: 20, Asc: true},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	found := false
 	for _, event := range events {
-		if event.Type == "command_interrupted" && event.TerminationReason == "supervisor_restart" && event.Fields["retryable"] == false {
+		if event.Type == "command_interrupted" && event.TerminationReason == "supervisor_restart" &&
+			event.Fields["retryable"] == false {
 			found = true
 		}
 	}
@@ -139,12 +191,30 @@ func TestNethelperRebind_DetachedBootstrapRehydratesExactSessionAndInterruptedEv
 		"subagent-request-interrupted": "tool_spawn_subagent_end",
 		"subagent-child-interrupted":   "subagent_terminal",
 	} {
-		terminalEvents, queryErr := store.QueryEvents(context.Background(), types.EventQuery{SessionID: sessionID, CommandID: operationID, Types: []string{eventType}, Limit: 20, Asc: true})
+		terminalEvents, queryErr := store.QueryEvents(
+			context.Background(),
+			types.EventQuery{
+				SessionID: sessionID,
+				CommandID: operationID,
+				Types:     []string{eventType},
+				Limit:     20,
+				Asc:       true,
+			},
+		)
 		if queryErr != nil {
 			t.Fatal(queryErr)
 		}
-		if len(terminalEvents) != 1 || terminalEvents[0].Fields["cancellation_cause"] != string(subagentCancelSupervisorRestart) || terminalEvents[0].Fields["retryable"] != false || terminalEvents[0].Fields["side_effects_may_have_occurred"] != true {
-			t.Fatalf("durable interrupted subagent evidence for %s: %+v", operationID, terminalEvents)
+		if len(terminalEvents) != 1 ||
+			terminalEvents[0].Fields["cancellation_cause"] != string(
+				subagentCancelSupervisorRestart,
+			) ||
+			terminalEvents[0].Fields["retryable"] != false ||
+			terminalEvents[0].Fields["side_effects_may_have_occurred"] != true {
+			t.Fatalf(
+				"durable interrupted subagent evidence for %s: %+v",
+				operationID,
+				terminalEvents,
+			)
 		}
 	}
 
@@ -165,9 +235,24 @@ func TestNethelperRebind_DetachedBootstrapRehydratesExactSessionAndInterruptedEv
 		"subagent-request-interrupted": "tool_spawn_subagent_end",
 		"subagent-child-interrupted":   "subagent_terminal",
 	} {
-		terminalEvents, queryErr := store.QueryEvents(context.Background(), types.EventQuery{SessionID: sessionID, CommandID: operationID, Types: []string{eventType}, Limit: 20, Asc: true})
+		terminalEvents, queryErr := store.QueryEvents(
+			context.Background(),
+			types.EventQuery{
+				SessionID: sessionID,
+				CommandID: operationID,
+				Types:     []string{eventType},
+				Limit:     20,
+				Asc:       true,
+			},
+		)
 		if queryErr != nil || len(terminalEvents) != 1 {
-			t.Fatalf("terminal evidence duplicated for %s: count=%d err=%v events=%+v", operationID, len(terminalEvents), queryErr, terminalEvents)
+			t.Fatalf(
+				"terminal evidence duplicated for %s: count=%d err=%v events=%+v",
+				operationID,
+				len(terminalEvents),
+				queryErr,
+				terminalEvents,
+			)
 		}
 	}
 }

@@ -41,7 +41,9 @@ func newNoneEncoder() Encoder { return noneEncoder{} }
 func (noneEncoder) Algo() wtpv1.Compression { return wtpv1.Compression_COMPRESSION_NONE }
 
 func (noneEncoder) Encode([]byte) ([]byte, error) {
-	return nil, errors.New("compress: noneEncoder.Encode invoked; callers must branch on Algo() == COMPRESSION_NONE")
+	return nil, errors.New(
+		"compress: noneEncoder.Encode invoked; callers must branch on Algo() == COMPRESSION_NONE",
+	)
 }
 
 // errUnsupportedAlgo is returned by NewEncoder for an algo string that

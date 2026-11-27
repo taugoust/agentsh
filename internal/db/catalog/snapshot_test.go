@@ -22,7 +22,11 @@ func TestSnapshotRelationLookup(t *testing.T) {
 func TestSnapshotFunctionLookup(t *testing.T) {
 	snap := NewSnapshot(nil, []Function{
 		{OID: 20, Name: Name{Schema: "public", Name: "calculate_total"}, IdentityArgs: "integer"},
-		{OID: 21, Name: Name{Schema: "public", Name: "calculate_total"}, IdentityArgs: "integer, integer"},
+		{
+			OID:          21,
+			Name:         Name{Schema: "public", Name: "calculate_total"},
+			IdentityArgs: "integer, integer",
+		},
 	})
 
 	if fn, ok := snap.FunctionByOID(20); !ok || fn.IdentityArgs != "integer" {

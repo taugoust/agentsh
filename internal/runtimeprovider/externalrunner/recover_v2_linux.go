@@ -29,7 +29,10 @@ type v2RecoveryRecord struct {
 	CreatedAt      time.Time             `json:"created_at"`
 }
 
-func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, profileName string) (*providerInstance, error) {
+func (p *Provider) recoverV2(
+	ctx context.Context,
+	manifestSessionID, stateDir, profileName string,
+) (*providerInstance, error) {
 	profile, profileFileDigest, err := p.profile(profileName)
 	if err != nil {
 		return nil, err
@@ -55,8 +58,15 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 		if err != nil {
 			return nil, err
 		}
-		if oldRequest.SessionID != manifestSessionID || !hostMonitorStatusTerminal(oldStatus) || detached.ProcessIdentityMatches(oldStatus.Monitor.PID, oldStatus.Monitor.StartIdentity, oldStatus.Monitor.BootID) {
-			return nil, fmt.Errorf("external v2 runtime lacks dead terminal generation evidence for recovery")
+		if oldRequest.SessionID != manifestSessionID || !hostMonitorStatusTerminal(oldStatus) ||
+			detached.ProcessIdentityMatches(
+				oldStatus.Monitor.PID,
+				oldStatus.Monitor.StartIdentity,
+				oldStatus.Monitor.BootID,
+			) {
+			return nil, fmt.Errorf(
+				"external v2 runtime lacks dead terminal generation evidence for recovery",
+			)
 		}
 		launchNonce, err := newProviderSecret()
 		if err != nil {
@@ -83,13 +93,34 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 		}
 		nextGeneration := oldRequest.ExpectedGuestGeneration + 1
 		nextLease := oldRequest.CIDLease
-		if verifyErr := VerifyCIDLease(ctx, oldRequest.CIDLeaseRoot, oldRequest.CIDLease, profile.VSock.CIDMin, profile.VSock.CIDMax); verifyErr != nil {
-			nextLease, err = AllocateCID(ctx, oldRequest.CIDLeaseRoot, oldRequest.SessionID, profile.VSock.CIDMin, profile.VSock.CIDMax)
+		if verifyErr := VerifyCIDLease(
+			ctx,
+			oldRequest.CIDLeaseRoot,
+			oldRequest.CIDLease,
+			profile.VSock.CIDMin,
+			profile.VSock.CIDMax,
+		); verifyErr != nil {
+			nextLease, err = AllocateCID(
+				ctx,
+				oldRequest.CIDLeaseRoot,
+				oldRequest.SessionID,
+				profile.VSock.CIDMin,
+				profile.VSock.CIDMax,
+			)
 			if err != nil {
 				return nil, fmt.Errorf("allocate resumed external runner CID: %w", err)
 			}
 		}
-		guestManifest, err := newProviderGuestManifest(oldRequest.SessionID, profile, nextLease.CID, launchNonce, controlToken, supervisorToken, egressToken, oldRequest.VolumeID)
+		guestManifest, err := newProviderGuestManifest(
+			oldRequest.SessionID,
+			profile,
+			nextLease.CID,
+			launchNonce,
+			controlToken,
+			supervisorToken,
+			egressToken,
+			oldRequest.VolumeID,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +144,14 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 		nextRequest.LaunchNonce = launchNonce
 		nextRequest.GuestManifestSHA256 = "sha256:" + hex.EncodeToString(guestSum[:])
 		nextRequest.CreatedAt = time.Now().UTC()
-		recovery = v2RecoveryRecord{SchemaVersion: 1, SessionID: oldRequest.SessionID, FromGeneration: oldRequest.ExpectedGuestGeneration, Request: nextRequest, GuestManifest: guestManifest, CreatedAt: time.Now().UTC()}
+		recovery = v2RecoveryRecord{
+			SchemaVersion:  1,
+			SessionID:      oldRequest.SessionID,
+			FromGeneration: oldRequest.ExpectedGuestGeneration,
+			Request:        nextRequest,
+			GuestManifest:  guestManifest,
+			CreatedAt:      time.Now().UTC(),
+		}
 		data, err := json.MarshalIndent(recovery, "", "  ")
 		if err != nil {
 			return nil, err
@@ -122,11 +160,19 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 			return nil, err
 		}
 	}
-	if recovery.SchemaVersion != 1 || recovery.SessionID != manifestSessionID || recovery.Request.SessionID != manifestSessionID || recovery.Request.ExpectedGuestGeneration != recovery.FromGeneration+1 ||
-		recovery.Request.ProfileName != profile.Name || recovery.Request.ProfileFileSHA256 != profileFileDigest || recovery.GuestManifest.ExpectedGeneration != recovery.Request.ExpectedGuestGeneration {
+	if recovery.SchemaVersion != 1 || recovery.SessionID != manifestSessionID ||
+		recovery.Request.SessionID != manifestSessionID ||
+		recovery.Request.ExpectedGuestGeneration != recovery.FromGeneration+1 ||
+		recovery.Request.ProfileName != profile.Name ||
+		recovery.Request.ProfileFileSHA256 != profileFileDigest ||
+		recovery.GuestManifest.ExpectedGeneration != recovery.Request.ExpectedGuestGeneration {
 		return nil, fmt.Errorf("external generation recovery record is invalid")
 	}
-	archive := filepath.Join(layout.RuntimeDir, "generations", fmt.Sprintf("generation-%020d", recovery.FromGeneration))
+	archive := filepath.Join(
+		layout.RuntimeDir,
+		"generations",
+		fmt.Sprintf("generation-%020d", recovery.FromGeneration),
+	)
 	if err := os.MkdirAll(archive, 0o700); err != nil {
 		return nil, err
 	}
@@ -194,7 +240,10 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 	} else if err != nil {
 		return nil, err
 	}
-	if status, err := ReadHostMonitorStatus(stateDir); err == nil && status.State == HostMonitorControlReady {
+	if status, err := ReadHostMonitorStatus(
+		stateDir,
+	); err == nil &&
+		status.State == HostMonitorControlReady {
 		instance, err := p.instanceFromStatus(stateDir, profile, profileFileDigest, status)
 		if err == nil {
 			_ = os.Remove(recoveryPath)
@@ -232,11 +281,19 @@ func (p *Provider) recoverV2(ctx context.Context, manifestSessionID, stateDir, p
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-deadline.C:
-			return nil, fmt.Errorf("wait for already-launched recovered monitor generation %s", strconv.FormatUint(recovery.Request.ExpectedGuestGeneration, 10))
+			return nil, fmt.Errorf(
+				"wait for already-launched recovered monitor generation %s",
+				strconv.FormatUint(recovery.Request.ExpectedGuestGeneration, 10),
+			)
 		case <-ticker.C:
 			status, readErr := ReadHostMonitorStatus(stateDir)
 			if readErr == nil && status.State == HostMonitorControlReady {
-				instance, openErr := p.instanceFromStatus(stateDir, profile, profileFileDigest, status)
+				instance, openErr := p.instanceFromStatus(
+					stateDir,
+					profile,
+					profileFileDigest,
+					status,
+				)
 				if openErr == nil {
 					_ = os.Remove(recoveryPath)
 					_ = syncDirectory(layout.RuntimeDir)

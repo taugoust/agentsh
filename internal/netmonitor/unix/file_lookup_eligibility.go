@@ -26,7 +26,11 @@ const (
 
 // fileLookupRequest constructs lookup context only after a strict pathname
 // read has succeeded.
-func (a FileArgs) fileLookupRequest(tid int, nr int32, rawPath, resolvedPath string) FileLookupRequest {
+func (a FileArgs) fileLookupRequest(
+	tid int,
+	nr int32,
+	rawPath, resolvedPath string,
+) FileLookupRequest {
 	return FileLookupRequest{
 		TID:                      tid,
 		Syscall:                  nr,
@@ -84,7 +88,8 @@ func EligibleFileLookup(req FileLookupRequest) bool {
 }
 
 func eligibleLookupPathContext(req FileLookupRequest) bool {
-	if req.TID <= 0 || !req.PathnameNULTerminated || strings.IndexByte(req.RawPath, 0) >= 0 || len(req.RawPath) >= maxTraceePathnameLen {
+	if req.TID <= 0 || !req.PathnameNULTerminated || strings.IndexByte(req.RawPath, 0) >= 0 ||
+		len(req.RawPath) >= maxTraceePathnameLen {
 		return false
 	}
 	if !filepath.IsAbs(req.RawPath) && req.DirFD < 0 && req.DirFD != int32(unix.AT_FDCWD) {
@@ -94,7 +99,8 @@ func eligibleLookupPathContext(req FileLookupRequest) bool {
 }
 
 func eligibleOpenLookup(req FileLookupRequest, openat2 bool) bool {
-	if req.LookupFlags != 0 || req.StatMask != 0 || req.AccessMode != 0 || req.AccessFlags != 0 || req.ReadlinkBufferLen != 0 {
+	if req.LookupFlags != 0 || req.StatMask != 0 || req.AccessMode != 0 || req.AccessFlags != 0 ||
+		req.ReadlinkBufferLen != 0 {
 		return false
 	}
 
@@ -122,14 +128,17 @@ func eligibleOpenLookup(req FileLookupRequest, openat2 bool) bool {
 		return req.ResolveFlags == 0 && req.OpenHowSize == 0 && req.OpenHowVersion == 0 &&
 			!req.OpenHowParsed && !req.OpenHowTrailingBytesZero
 	}
-	if !req.OpenHowParsed || !req.OpenHowTrailingBytesZero || req.OpenHowVersion != 0 || req.OpenHowSize < openHowSizeVersion0 || req.OpenHowSize > maxOpenHowSize {
+	if !req.OpenHowParsed || !req.OpenHowTrailingBytesZero || req.OpenHowVersion != 0 ||
+		req.OpenHowSize < openHowSizeVersion0 ||
+		req.OpenHowSize > maxOpenHowSize {
 		return false
 	}
 	// Without O_CREAT/O_TMPFILE, openat2 requires a zero mode.
 	if req.OpenMode != 0 {
 		return false
 	}
-	if req.ResolveFlags&^knownResolveFlagMask() != 0 || req.ResolveFlags&uint64(unix.RESOLVE_IN_ROOT) != 0 {
+	if req.ResolveFlags&^knownResolveFlagMask() != 0 ||
+		req.ResolveFlags&uint64(unix.RESOLVE_IN_ROOT) != 0 {
 		return false
 	}
 	return true
@@ -167,7 +176,8 @@ func knownResolveFlagMask() uint64 {
 }
 
 func eligibleStatxLookup(req FileLookupRequest) bool {
-	if !noOpenContext(req) || req.AccessMode != 0 || req.AccessFlags != 0 || req.ReadlinkBufferLen != 0 {
+	if !noOpenContext(req) || req.AccessMode != 0 || req.AccessFlags != 0 ||
+		req.ReadlinkBufferLen != 0 {
 		return false
 	}
 	if !validStatxLookupFlags(req.LookupFlags) {
@@ -209,7 +219,8 @@ func knownStatxMask() uint32 {
 }
 
 func eligibleNewfstatatLookup(req FileLookupRequest) bool {
-	if !noOpenContext(req) || req.StatMask != 0 || req.AccessMode != 0 || req.AccessFlags != 0 || req.ReadlinkBufferLen != 0 {
+	if !noOpenContext(req) || req.StatMask != 0 || req.AccessMode != 0 || req.AccessFlags != 0 ||
+		req.ReadlinkBufferLen != 0 {
 		return false
 	}
 	known := uint32(unix.AT_SYMLINK_NOFOLLOW | unix.AT_NO_AUTOMOUNT)
@@ -217,7 +228,8 @@ func eligibleNewfstatatLookup(req FileLookupRequest) bool {
 }
 
 func eligibleFaccessatLookup(req FileLookupRequest) bool {
-	return eligibleAccessLookupContext(req) && req.AccessFlags == 0 && validAccessMode(req.AccessMode)
+	return eligibleAccessLookupContext(req) && req.AccessFlags == 0 &&
+		validAccessMode(req.AccessMode)
 }
 
 func eligibleFaccessat2Lookup(req FileLookupRequest) bool {
@@ -231,7 +243,8 @@ func eligibleFaccessat2Lookup(req FileLookupRequest) bool {
 }
 
 func eligibleAccessLookupContext(req FileLookupRequest) bool {
-	return noOpenContext(req) && req.LookupFlags == 0 && req.StatMask == 0 && req.ReadlinkBufferLen == 0
+	return noOpenContext(req) && req.LookupFlags == 0 && req.StatMask == 0 &&
+		req.ReadlinkBufferLen == 0
 }
 
 func validAccessMode(mode uint32) bool {
@@ -268,7 +281,10 @@ func isProcDevMagicLinkPath(path string) bool {
 }
 
 func pathComponents(path string) []string {
-	raw := strings.Split(strings.TrimLeft(path, string(filepath.Separator)), string(filepath.Separator))
+	raw := strings.Split(
+		strings.TrimLeft(path, string(filepath.Separator)),
+		string(filepath.Separator),
+	)
 	parts := raw[:0]
 	for _, component := range raw {
 		if component != "" && component != "." {
@@ -303,7 +319,8 @@ func hasProcDevMagicLinkComponents(parts []string) bool {
 	if isProcTaskMagicComponent(parts[2]) {
 		return true
 	}
-	return len(parts) >= 5 && parts[2] == "task" && isDecimalComponent(parts[3]) && isProcTaskMagicComponent(parts[4])
+	return len(parts) >= 5 && parts[2] == "task" && isDecimalComponent(parts[3]) &&
+		isProcTaskMagicComponent(parts[4])
 }
 
 func isProcTaskMagicComponent(component string) bool {

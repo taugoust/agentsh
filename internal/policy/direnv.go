@@ -64,10 +64,16 @@ func (e *Engine) DirenvImportPolicy() ResolvedDirenvImportPolicy {
 	}
 	p := e.policy.Direnv
 	return ResolvedDirenvImportPolicy{
-		Enabled: p.Enabled, Allow: append([]string(nil), p.Allow...), Deny: append([]string(nil), p.Deny...),
-		MaxKeys: p.MaxKeys, MaxValueBytes: p.MaxValueBytes, MaxBytes: p.MaxBytes,
-		MaxStdoutBytes: p.MaxStdoutBytes, MaxStderrBytes: p.MaxStderrBytes,
-		QueueTimeout: p.QueueTimeout.Duration, EvaluationTimeout: p.EvaluationTimeout.Duration,
+		Enabled:           p.Enabled,
+		Allow:             append([]string(nil), p.Allow...),
+		Deny:              append([]string(nil), p.Deny...),
+		MaxKeys:           p.MaxKeys,
+		MaxValueBytes:     p.MaxValueBytes,
+		MaxBytes:          p.MaxBytes,
+		MaxStdoutBytes:    p.MaxStdoutBytes,
+		MaxStderrBytes:    p.MaxStderrBytes,
+		QueueTimeout:      p.QueueTimeout.Duration,
+		EvaluationTimeout: p.EvaluationTimeout.Duration,
 	}
 }
 
@@ -103,15 +109,19 @@ func DirenvImportImmutableDenied(name string) bool {
 		}
 	}
 	for _, exact := range []string{
-		"HOME", "USER", "LOGNAME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME",
-		"TMPDIR", "TEMP", "TMP", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GIT_SSH_COMMAND", "GIT_ASKPASS", "SSH_ASKPASS",
+		"HOME", "USER", "LOGNAME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME",
+		"XDG_DATA_HOME",
+		"TMPDIR", "TEMP", "TMP", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GIT_SSH_COMMAND",
+		"GIT_ASKPASS", "SSH_ASKPASS",
 		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 		"ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "AZURE_OPENAI_BASE_URL",
-		"BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "CDPATH", "GLOBIGNORE", "MAILPATH", "PROMPT_COMMAND",
+		"BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "CDPATH", "GLOBIGNORE", "MAILPATH",
+		"PROMPT_COMMAND",
 		"NODE_OPTIONS", "NODE_PATH", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONHOME", "PYTHONUSERBASE",
 		"RUBYLIB", "RUBYOPT", "PERL5LIB", "PERL5OPT", "PERLLIB",
 		"AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SESSION_TOKEN", "AWS_PROFILE",
-		"GOOGLE_APPLICATION_CREDENTIALS", "GCP_SERVICE_ACCOUNT", "AZURE_CLIENT_SECRET", "AZURE_CLIENT_ID",
+		"GOOGLE_APPLICATION_CREDENTIALS", "GCP_SERVICE_ACCOUNT", "AZURE_CLIENT_SECRET",
+		"AZURE_CLIENT_ID",
 		"AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID", "KUBECONFIG", "GITHUB_TOKEN", "GH_TOKEN",
 		"DOCKER_HOST", "DOCKER_TLS_VERIFY", "NPM_TOKEN", "NPM_CONFIG_USERCONFIG", "NETRC",
 	} {
@@ -119,7 +129,10 @@ func DirenvImportImmutableDenied(name string) bool {
 			return true
 		}
 	}
-	for _, pattern := range []string{"*_SECRET*", "*_PASSWORD*", "*_PRIVATE_KEY*", "*_API_KEY*", "*_ACCESS_KEY*", "*_TOKEN", "*_PROXY"} {
+	for _, pattern := range []string{
+		"*_SECRET*", "*_PASSWORD*", "*_PRIVATE_KEY*", "*_API_KEY*", "*_ACCESS_KEY*", "*_TOKEN",
+		"*_PROXY",
+	} {
 		g, _ := glob.Compile(pattern)
 		if g.Match(n) {
 			return true

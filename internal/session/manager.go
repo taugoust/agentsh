@@ -169,8 +169,10 @@ func (s *Session) SetNetworkEnforcement(report *types.NetworkEnforcement) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cloned := cloneNetworkEnforcement(report)
-	if cloned != nil && cloned.Attachment != nil && strings.TrimSpace(cloned.Attachment.CommandID) != "" &&
-		(cloned.Status == types.NetworkEnforcementStatusActive || cloned.Status == types.NetworkEnforcementStatusFailed) {
+	if cloned != nil && cloned.Attachment != nil &&
+		strings.TrimSpace(cloned.Attachment.CommandID) != "" &&
+		(cloned.Status == types.NetworkEnforcementStatusActive ||
+			cloned.Status == types.NetworkEnforcementStatusFailed) {
 		if s.networkCommandEnforcement == nil {
 			s.networkCommandEnforcement = make(map[string]*types.NetworkEnforcement)
 		}
@@ -179,7 +181,8 @@ func (s *Session) SetNetworkEnforcement(report *types.NetworkEnforcement) {
 		s.networkCommandEnforcement[commandID] = cloned
 		return
 	}
-	if s.networkEnforcement != nil && s.networkEnforcement.Status == types.NetworkEnforcementStatusFailed &&
+	if s.networkEnforcement != nil &&
+		s.networkEnforcement.Status == types.NetworkEnforcementStatusFailed &&
 		(cloned == nil || cloned.Status != types.NetworkEnforcementStatusFailed) {
 		return
 	}
@@ -235,7 +238,8 @@ func (s *Session) RemoveNetworkAttachment(commandID string) (removed bool, stick
 	if report == nil || report.Attachment == nil {
 		return false, false
 	}
-	if report.Status == types.NetworkEnforcementStatusFailed || report.Attachment.Status == types.NetworkEnforcementStatusFailed {
+	if report.Status == types.NetworkEnforcementStatusFailed ||
+		report.Attachment.Status == types.NetworkEnforcementStatusFailed {
 		return false, true
 	}
 	s.removeNetworkAttachmentLocked(commandID)
@@ -254,7 +258,8 @@ func (s *Session) ResolveNetworkSetupRefusal(commandID string) bool {
 	defer s.mu.Unlock()
 	report := s.networkCommandEnforcement[commandID]
 	if report == nil || report.Attachment == nil ||
-		(report.Status != types.NetworkEnforcementStatusFailed && report.Attachment.Status != types.NetworkEnforcementStatusFailed) {
+		(report.Status != types.NetworkEnforcementStatusFailed &&
+			report.Attachment.Status != types.NetworkEnforcementStatusFailed) {
 		return false
 	}
 	s.removeNetworkAttachmentLocked(commandID)
@@ -297,8 +302,11 @@ func (s *Session) networkEnforcementLocked() *types.NetworkEnforcement {
 		}
 		attachment := cloneNetworkAttachment(report.Attachment)
 		attachments = append(attachments, attachment)
-		failed := report.Status == types.NetworkEnforcementStatusFailed || attachment.Status == types.NetworkEnforcementStatusFailed
-		if selected == nil || (failed && !selectedFailed) || (failed == selectedFailed && attachment.CheckedAt.After(selected.Attachment.CheckedAt)) {
+		failed := report.Status == types.NetworkEnforcementStatusFailed ||
+			attachment.Status == types.NetworkEnforcementStatusFailed
+		if selected == nil || (failed && !selectedFailed) ||
+			(failed == selectedFailed &&
+				attachment.CheckedAt.After(selected.Attachment.CheckedAt)) {
 			selected = report
 			selectedFailed = failed
 		}
@@ -306,7 +314,8 @@ func (s *Session) networkEnforcementLocked() *types.NetworkEnforcement {
 	if selected == nil {
 		return cloneNetworkEnforcement(s.networkEnforcement)
 	}
-	if s.networkEnforcement != nil && s.networkEnforcement.Status == types.NetworkEnforcementStatusFailed {
+	if s.networkEnforcement != nil &&
+		s.networkEnforcement.Status == types.NetworkEnforcementStatusFailed {
 		out := cloneNetworkEnforcement(s.networkEnforcement)
 		out.Attachments = attachments
 		out.Normalize()
@@ -324,7 +333,9 @@ func (s *Session) networkEnforcementLocked() *types.NetworkEnforcement {
 	return out
 }
 
-func cloneNetworkAttachment(attachment *types.NetworkAttachmentEvidence) *types.NetworkAttachmentEvidence {
+func cloneNetworkAttachment(
+	attachment *types.NetworkAttachmentEvidence,
+) *types.NetworkAttachmentEvidence {
 	if attachment == nil {
 		return nil
 	}
@@ -435,7 +446,10 @@ func (m *Manager) Create(workspace, policy string) (*Session, error) {
 }
 
 // CreateWithProfile creates a session with multiple mounts from a profile.
-func (m *Manager) CreateWithProfile(id, profile, basePolicy string, mounts []ResolvedMount) (*Session, error) {
+func (m *Manager) CreateWithProfile(
+	id, profile, basePolicy string,
+	mounts []ResolvedMount,
+) (*Session, error) {
 	if len(mounts) == 0 {
 		return nil, fmt.Errorf("at least one mount is required")
 	}
@@ -618,9 +632,13 @@ func (s *Session) Snapshot() types.Session {
 		}
 		if finalization, ok := s.Shadow.PendingFinalization(); ok {
 			shadowInfo.Finalization = &types.ShadowFinalizationInfo{
-				ID: finalization.ID, Action: finalization.Action, Phase: finalization.Phase,
-				ReviewGeneration: finalization.ReviewGeneration, ReviewHash: finalization.ReviewHash,
-				CreatedAt: finalization.CreatedAt, AppliedAt: finalization.AppliedAt,
+				ID:               finalization.ID,
+				Action:           finalization.Action,
+				Phase:            finalization.Phase,
+				ReviewGeneration: finalization.ReviewGeneration,
+				ReviewHash:       finalization.ReviewHash,
+				CreatedAt:        finalization.CreatedAt,
+				AppliedAt:        finalization.AppliedAt,
 			}
 		}
 	}
@@ -763,7 +781,8 @@ func (s *Session) CurrentTraceContext() (traceID, spanID, traceFlags string) {
 	return s.currentTraceID, s.currentSpanID, s.currentTraceFlags
 }
 
-// InjectTraceContext adds trace_id, span_id, and trace_flags to the event fields if trace context is set.
+// InjectTraceContext adds trace_id, span_id, and trace_flags to the event fields if trace context
+// is set.
 func (s *Session) InjectTraceContext(fields map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -903,7 +922,9 @@ func (s *Session) SetRealPaths(enabled bool) bool {
 	defer s.mu.Unlock()
 	if enabled {
 		workspace := s.Workspace
-		if (s.WorkspaceMode == string(types.WorkspaceModeOverlay) || s.WorkspaceMode == string(types.WorkspaceModeShadow)) && s.WorkspaceMount != "" {
+		if (s.WorkspaceMode == string(types.WorkspaceModeOverlay) ||
+			s.WorkspaceMode == string(types.WorkspaceModeShadow)) &&
+			s.WorkspaceMount != "" {
 			workspace = s.WorkspaceMount
 		}
 		if workspace == "" {
@@ -929,7 +950,10 @@ func (s *Session) SetRuntimePaths(home, tmp string, cleanup func() error) {
 	s.SetRuntimePathsWithProcessHome(home, tmp, home, "isolated", cleanup)
 }
 
-func (s *Session) SetRuntimePathsWithProcessHome(runtimeHome, tmp, processHome, homeMode string, cleanup func() error) {
+func (s *Session) SetRuntimePathsWithProcessHome(
+	runtimeHome, tmp, processHome, homeMode string,
+	cleanup func() error,
+) {
 	// Runtime paths are normally assigned once. If they are replaced, discard
 	// any artifacts owned by the previous runtime before forgetting its root.
 	_ = s.closeOutputArtifacts()
@@ -1219,7 +1243,9 @@ func TrimRootPrefix(path, root string) string {
 	return pathutil.TrimRootPrefix(path, root)
 }
 
-func (s *Session) Builtin(req types.ExecRequest) (handled bool, exitCode int, stdout, stderr []byte) {
+func (s *Session) Builtin(
+	req types.ExecRequest,
+) (handled bool, exitCode int, stdout, stderr []byte) {
 	switch req.Command {
 	case "cd":
 		s.Touch()
@@ -1568,7 +1594,9 @@ func (s *Session) DirenvNames() []string {
 }
 
 // ReplaceDirenvEnvironment atomically installs one complete generation.
-func (s *Session) ReplaceDirenvEnvironment(next map[string]string) (generation uint64, changed bool) {
+func (s *Session) ReplaceDirenvEnvironment(
+	next map[string]string,
+) (generation uint64, changed bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(next) == len(s.direnvEnv) {
@@ -1625,7 +1653,11 @@ func (m *Manager) ReapExpired(now time.Time, sessionTimeout, idleTimeout time.Du
 // session before removing any of them. A guard failure leaves all candidate
 // sessions installed. This lets callers durably commit an owning supervisor's
 // terminal lifecycle before deleting its only in-memory session identity.
-func (m *Manager) ReapExpiredGuarded(now time.Time, sessionTimeout, idleTimeout time.Duration, beforeRemove func(*Session) error) ([]*Session, error) {
+func (m *Manager) ReapExpiredGuarded(
+	now time.Time,
+	sessionTimeout, idleTimeout time.Duration,
+	beforeRemove func(*Session) error,
+) ([]*Session, error) {
 	if sessionTimeout <= 0 && idleTimeout <= 0 {
 		return nil, nil
 	}

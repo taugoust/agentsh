@@ -200,7 +200,12 @@ func TestDepsDevProvider_PyPIEcosystem(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"versionKey":{"system":"pypi","name":"requests","version":"2.28.0"},"licenses":["Apache-2.0"]}`))
+		w.Write(
+			[]byte(
+				`{"versionKey":{"system":"pypi","name":"requests","version":"2.28.0"},` +
+					`"licenses":["Apache-2.0"]}`,
+			),
+		)
 	}))
 	defer server.Close()
 
@@ -220,7 +225,12 @@ func TestDepsDevProvider_MultiplePackages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"versionKey":{"system":"npm","name":"test","version":"1.0.0"},"licenses":["MIT"]}`))
+		w.Write(
+			[]byte(
+				`{"versionKey":{"system":"npm","name":"test","version":"1.0.0"},` +
+					`"licenses":["MIT"]}`,
+			),
+		)
 	}))
 	defer server.Close()
 

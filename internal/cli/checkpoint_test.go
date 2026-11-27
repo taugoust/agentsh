@@ -17,7 +17,11 @@ func TestCheckpointCmd_Create(t *testing.T) {
 	if err := os.MkdirAll(workspace, 0755); err != nil {
 		t.Fatalf("create workspace: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "test.txt"), []byte("content"), 0644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace, "test.txt"),
+		[]byte("content"),
+		0644,
+	); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
 
@@ -55,7 +59,11 @@ func TestCheckpointCmd_List(t *testing.T) {
 	if err := os.MkdirAll(workspace, 0755); err != nil {
 		t.Fatalf("create workspace: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "test.txt"), []byte("content"), 0644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace, "test.txt"),
+		[]byte("content"),
+		0644,
+	); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
 
@@ -125,7 +133,11 @@ func TestCheckpointCmd_Show(t *testing.T) {
 	if err := os.MkdirAll(workspace, 0755); err != nil {
 		t.Fatalf("create workspace: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "test.txt"), []byte("content"), 0644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace, "test.txt"),
+		[]byte("content"),
+		0644,
+	); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
 
@@ -328,7 +340,11 @@ func TestCheckpointCmd_Purge(t *testing.T) {
 	if err := os.MkdirAll(workspace, 0755); err != nil {
 		t.Fatalf("create workspace: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "test.txt"), []byte("content"), 0644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace, "test.txt"),
+		[]byte("content"),
+		0644,
+	); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
 

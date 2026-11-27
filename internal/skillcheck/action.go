@@ -49,7 +49,10 @@ func NewActioner(q Quarantiner, a Approver, s AuditSink) *Actioner {
 // Apply executes the verdict's action. allow → no-op + audit; warn → audit;
 // approve → prompt; on deny escalate to block; block → quarantine + audit.
 func (a *Actioner) Apply(ctx context.Context, skill SkillRef, v *Verdict) error {
-	a.audit.Emit(ctx, AuditEvent{Kind: "skillcheck.scan_completed", At: time.Now(), Skill: skill, Verdict: v})
+	a.audit.Emit(
+		ctx,
+		AuditEvent{Kind: "skillcheck.scan_completed", At: time.Now(), Skill: skill, Verdict: v},
+	)
 
 	switch v.Action {
 	case VerdictAllow, VerdictWarn:
@@ -63,7 +66,10 @@ func (a *Actioner) Apply(ctx context.Context, skill SkillRef, v *Verdict) error 
 			return fmt.Errorf("approval: %w", err)
 		}
 		if approved {
-			a.audit.Emit(ctx, AuditEvent{Kind: "skillcheck.user_approved", At: time.Now(), Skill: skill})
+			a.audit.Emit(
+				ctx,
+				AuditEvent{Kind: "skillcheck.user_approved", At: time.Now(), Skill: skill},
+			)
 			return nil
 		}
 		// Denied → escalate to block.
@@ -75,7 +81,12 @@ func (a *Actioner) Apply(ctx context.Context, skill SkillRef, v *Verdict) error 
 	}
 }
 
-func (a *Actioner) quarantineAndEmit(ctx context.Context, skill SkillRef, v *Verdict, reason string) error {
+func (a *Actioner) quarantineAndEmit(
+	ctx context.Context,
+	skill SkillRef,
+	v *Verdict,
+	reason string,
+) error {
 	token, err := a.quarantine.Quarantine(skill, reason)
 	if err != nil {
 		return fmt.Errorf("quarantine: %w", err)

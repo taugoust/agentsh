@@ -12,7 +12,8 @@ func newConfigCmd() *cobra.Command {
 		Use:   "config",
 		Short: "Manage configuration",
 	}
-	cmd.PersistentFlags().StringVar(&path, "path", "", "Config file path (defaults to AGENTSH_CONFIG or config.yml)")
+	cmd.PersistentFlags().
+		StringVar(&path, "path", "", "Config file path (defaults to AGENTSH_CONFIG or config.yml)")
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show",

@@ -43,7 +43,12 @@ type ContextEngineConfig struct {
 }
 
 // NewContextEngine creates a context-aware policy engine.
-func NewContextEngine(p *Policy, enforceApprovals bool, enforceRedirects bool, cfg ContextEngineConfig) (*ContextEngine, error) {
+func NewContextEngine(
+	p *Policy,
+	enforceApprovals bool,
+	enforceRedirects bool,
+	cfg ContextEngineConfig,
+) (*ContextEngine, error) {
 	base, err := NewEngine(p, enforceApprovals, enforceRedirects)
 	if err != nil {
 		return nil, err
@@ -210,7 +215,12 @@ func convertConditionConfig(cfg *ChainConditionConfig) *ancestry.ChainCondition 
 }
 
 // CheckCommandWithContext evaluates a command with taint awareness.
-func (ce *ContextEngine) CheckCommandWithContext(ctx context.Context, pid int, command string, args []string) Decision {
+func (ce *ContextEngine) CheckCommandWithContext(
+	ctx context.Context,
+	pid int,
+	command string,
+	args []string,
+) Decision {
 	// 1. Check if process is tainted
 	taint := ce.taintCache.IsTainted(pid)
 	if taint == nil {
@@ -303,7 +313,12 @@ func (ce *ContextEngine) validateTaint(taint *ancestry.ProcessTaint) ancestry.Va
 }
 
 // handleRaceCondition handles the case where taint validation fails.
-func (ce *ContextEngine) handleRaceCondition(validationResult ancestry.ValidationResult, taint *ancestry.ProcessTaint, command string, args []string) Decision {
+func (ce *ContextEngine) handleRaceCondition(
+	validationResult ancestry.ValidationResult,
+	taint *ancestry.ProcessTaint,
+	command string,
+	args []string,
+) Decision {
 	pctx := ce.findContext(taint.ContextName)
 	if pctx == nil {
 		return ce.Engine.CheckCommand(command, args)
@@ -351,7 +366,10 @@ func (ce *ContextEngine) handleRaceCondition(validationResult ancestry.Validatio
 			EffectiveDecision: types.DecisionApprove,
 			Rule:              "race-condition",
 			Message:           message,
-			Approval:          &types.ApprovalInfo{Required: true, Mode: types.ApprovalModeEnforced},
+			Approval: &types.ApprovalInfo{
+				Required: true,
+				Mode:     types.ApprovalModeEnforced,
+			},
 		}
 	default: // deny
 		return Decision{
@@ -372,7 +390,11 @@ func (ce *ContextEngine) findContext(name string) *compiledContext {
 }
 
 // evaluateContextPolicy evaluates the context-specific policy rules.
-func (ce *ContextEngine) evaluateContextPolicy(pctx *compiledContext, command string, args []string) Decision {
+func (ce *ContextEngine) evaluateContextPolicy(
+	pctx *compiledContext,
+	command string,
+	args []string,
+) Decision {
 	cmdBase := strings.ToLower(filepath.Base(command))
 	// Build full command string for matching patterns like "git status"
 	fullCmd := cmdBase
@@ -463,7 +485,11 @@ func (ce *ContextEngine) evaluateContextPolicy(pctx *compiledContext, command st
 }
 
 // evaluateOverride checks command-specific argument patterns.
-func (ce *ContextEngine) evaluateOverride(override *compiledOverride, command string, args []string) *Decision {
+func (ce *ContextEngine) evaluateOverride(
+	override *compiledOverride,
+	command string,
+	args []string,
+) *Decision {
 	argsJoined := strings.Join(args, " ")
 
 	// Check deny patterns first
@@ -473,7 +499,10 @@ func (ce *ContextEngine) evaluateOverride(override *compiledOverride, command st
 				PolicyDecision:    types.DecisionDeny,
 				EffectiveDecision: types.DecisionDeny,
 				Rule:              "context:override:args_deny",
-				Message:           fmt.Sprintf("argument pattern denied for %s", filepath.Base(command)),
+				Message: fmt.Sprintf(
+					"argument pattern denied for %s",
+					filepath.Base(command),
+				),
 			}
 		}
 		// Also check individual args
@@ -483,7 +512,11 @@ func (ce *ContextEngine) evaluateOverride(override *compiledOverride, command st
 					PolicyDecision:    types.DecisionDeny,
 					EffectiveDecision: types.DecisionDeny,
 					Rule:              "context:override:args_deny",
-					Message:           fmt.Sprintf("argument %q denied for %s", arg, filepath.Base(command)),
+					Message: fmt.Sprintf(
+						"argument %q denied for %s",
+						arg,
+						filepath.Base(command),
+					),
 				}
 			}
 		}

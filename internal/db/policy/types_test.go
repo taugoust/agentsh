@@ -71,7 +71,14 @@ func TestParseRedactionTier(t *testing.T) {
 	for _, c := range cases {
 		got, ok := ParseRedactionTier(c.in)
 		if got != c.want || ok != c.ok {
-			t.Errorf("ParseRedactionTier(%q) = (%v, %v), want (%v, %v)", c.in, got, ok, c.want, c.ok)
+			t.Errorf(
+				"ParseRedactionTier(%q) = (%v, %v), want (%v, %v)",
+				c.in,
+				got,
+				ok,
+				c.want,
+				c.ok,
+			)
 		}
 	}
 }

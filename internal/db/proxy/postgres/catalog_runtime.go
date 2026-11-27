@@ -38,14 +38,23 @@ type catalogRuntimeLoader interface {
 	LoadCurrentSearchPath(ctx context.Context, pc *proxyConn) ([]string, string, error)
 }
 
-type catalogRuntimeLoaderFunc func(context.Context, *proxyConn) (catalog.Snapshot, []string, string, error)
+type catalogRuntimeLoaderFunc func(
+	context.Context,
+	*proxyConn,
+) (catalog.Snapshot, []string, string, error)
 
-func (f catalogRuntimeLoaderFunc) LoadCatalogSnapshot(ctx context.Context, pc *proxyConn) (catalog.Snapshot, string, error) {
+func (f catalogRuntimeLoaderFunc) LoadCatalogSnapshot(
+	ctx context.Context,
+	pc *proxyConn,
+) (catalog.Snapshot, string, error) {
 	snap, _, reason, err := f(ctx, pc)
 	return snap, reason, err
 }
 
-func (f catalogRuntimeLoaderFunc) LoadCurrentSearchPath(ctx context.Context, pc *proxyConn) ([]string, string, error) {
+func (f catalogRuntimeLoaderFunc) LoadCurrentSearchPath(
+	ctx context.Context,
+	pc *proxyConn,
+) ([]string, string, error) {
 	_, searchPath, reason, err := f(ctx, pc)
 	return searchPath, reason, err
 }
@@ -85,7 +94,10 @@ func (s *catalogSnapshotStore) loadOrGet(ctx context.Context, pc *proxyConn) cat
 	return runtimeContextFromSnapshot(entry, searchPath, searchPathReason)
 }
 
-func (s *catalogSnapshotStore) loadOrGetSnapshot(ctx context.Context, pc *proxyConn) catalogSnapshotEntry {
+func (s *catalogSnapshotStore) loadOrGetSnapshot(
+	ctx context.Context,
+	pc *proxyConn,
+) catalogSnapshotEntry {
 	key := catalogKeyFor(pc)
 	s.mu.Lock()
 	if entry, ok := s.entries[key]; ok {
@@ -124,13 +136,19 @@ func (s *catalogSnapshotStore) refresh(ctx context.Context, pc *proxyConn) catal
 	return runtimeContextFromSnapshot(entry, searchPath, searchPathReason)
 }
 
-func (s *catalogSnapshotStore) refreshSearchPath(ctx context.Context, pc *proxyConn) catalogRuntimeContext {
+func (s *catalogSnapshotStore) refreshSearchPath(
+	ctx context.Context,
+	pc *proxyConn,
+) catalogRuntimeContext {
 	searchPath, searchPathReason := s.loadSearchPath(ctx, pc)
 	entry := s.loadOrGetSnapshot(ctx, pc)
 	return runtimeContextFromSnapshot(entry, searchPath, searchPathReason)
 }
 
-func (s *catalogSnapshotStore) loadSearchPath(ctx context.Context, pc *proxyConn) ([]string, string) {
+func (s *catalogSnapshotStore) loadSearchPath(
+	ctx context.Context,
+	pc *proxyConn,
+) ([]string, string) {
 	searchPath, reason, err := s.loader.LoadCurrentSearchPath(ctx, pc)
 	if err != nil {
 		if reason == "" {
@@ -141,7 +159,10 @@ func (s *catalogSnapshotStore) loadSearchPath(ctx context.Context, pc *proxyConn
 	return append([]string(nil), searchPath...), ""
 }
 
-func (s *catalogSnapshotStore) loadSnapshot(ctx context.Context, pc *proxyConn) catalogSnapshotEntry {
+func (s *catalogSnapshotStore) loadSnapshot(
+	ctx context.Context,
+	pc *proxyConn,
+) catalogSnapshotEntry {
 	snap, reason, err := s.loader.LoadCatalogSnapshot(ctx, pc)
 	entry := catalogSnapshotEntry{Snapshot: snap}
 	if err != nil {
@@ -153,7 +174,11 @@ func (s *catalogSnapshotStore) loadSnapshot(ctx context.Context, pc *proxyConn) 
 	return entry
 }
 
-func runtimeContextFromSnapshot(entry catalogSnapshotEntry, searchPath []string, searchPathReason string) catalogRuntimeContext {
+func runtimeContextFromSnapshot(
+	entry catalogSnapshotEntry,
+	searchPath []string,
+	searchPathReason string,
+) catalogRuntimeContext {
 	reason := entry.UnavailableReason
 	if searchPathReason != "" {
 		reason = searchPathReason
@@ -219,7 +244,10 @@ func (r *pgCatalogRows) Err() error   { return r.err }
 
 type pgprotoCatalogLoader struct{}
 
-func (pgprotoCatalogLoader) LoadCurrentSearchPath(ctx context.Context, pc *proxyConn) ([]string, string, error) {
+func (pgprotoCatalogLoader) LoadCurrentSearchPath(
+	ctx context.Context,
+	pc *proxyConn,
+) ([]string, string, error) {
 	searchPath, err := loadCurrentSchemas(ctx, pgprotoCatalogQueryer{pc: pc})
 	if err != nil {
 		return nil, "search_path_unavailable", err
@@ -227,7 +255,10 @@ func (pgprotoCatalogLoader) LoadCurrentSearchPath(ctx context.Context, pc *proxy
 	return searchPath, "", nil
 }
 
-func (pgprotoCatalogLoader) LoadCatalogSnapshot(ctx context.Context, pc *proxyConn) (catalog.Snapshot, string, error) {
+func (pgprotoCatalogLoader) LoadCatalogSnapshot(
+	ctx context.Context,
+	pc *proxyConn,
+) (catalog.Snapshot, string, error) {
 	snap, err := catalog.LoadPostgresSnapshot(ctx, pgprotoCatalogQueryer{pc: pc})
 	if err != nil {
 		return catalog.Snapshot{}, "snapshot_load_failed", err
@@ -237,7 +268,11 @@ func (pgprotoCatalogLoader) LoadCatalogSnapshot(ctx context.Context, pc *proxyCo
 
 type pgprotoCatalogQueryer struct{ pc *proxyConn }
 
-func (q pgprotoCatalogQueryer) Query(ctx context.Context, sql string, args ...any) (catalog.Rows, error) {
+func (q pgprotoCatalogQueryer) Query(
+	ctx context.Context,
+	sql string,
+	args ...any,
+) (catalog.Rows, error) {
 	if len(args) != 0 {
 		return nil, fmt.Errorf("pgprotoCatalogQueryer.Query: args are not supported")
 	}
@@ -310,7 +345,11 @@ func (pc *proxyConn) initializeCatalogContext(ctx context.Context) {
 	}
 }
 
-func (pc *proxyConn) refreshCatalogAfterSuccessfulStatements(ctx context.Context, stmts []effects.ClassifiedStatement, result upstreamResult) {
+func (pc *proxyConn) refreshCatalogAfterSuccessfulStatements(
+	ctx context.Context,
+	stmts []effects.ClassifiedStatement,
+	result upstreamResult,
+) {
 	completed := len(result.RowsByStmt)
 	if completed > len(stmts) {
 		completed = len(stmts)
@@ -321,7 +360,10 @@ func (pc *proxyConn) refreshCatalogAfterSuccessfulStatements(ctx context.Context
 	pc.refreshCatalogForStatements(ctx, stmts[:completed])
 }
 
-func (pc *proxyConn) refreshCatalogForStatements(ctx context.Context, stmts []effects.ClassifiedStatement) {
+func (pc *proxyConn) refreshCatalogForStatements(
+	ctx context.Context,
+	stmts []effects.ClassifiedStatement,
+) {
 	searchPath, snapshot := statementsNeedCatalogRefresh(stmts)
 	snapshot = snapshot || pc.state.catalogSnapshotRefreshPending
 	if !searchPath && !snapshot {

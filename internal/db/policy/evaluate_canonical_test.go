@@ -7,6 +7,7 @@ import (
 )
 
 func TestEvaluate_RelationSelectorCoversResolvedRelation(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -34,6 +35,7 @@ database_rules:
 }
 
 func TestEvaluate_RelationSelectorUsesResolvedRelationSlotOrder(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -65,11 +67,15 @@ database_rules:
 
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbDeny || d.RuleName != "" {
-		t.Fatalf("decision = %+v, want implicit deny because second users slot resolved to audit.users", d)
+		t.Fatalf(
+			"decision = %+v, want implicit deny because second users slot resolved to audit.users",
+			d,
+		)
 	}
 }
 
 func TestEvaluate_RelationSelectorDoesNotCoverUnresolvedRelation(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -97,6 +103,7 @@ database_rules:
 }
 
 func TestEvaluate_RelationSelectorDoesNotCoverCompressedNonRelationSlot(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -127,6 +134,7 @@ database_rules:
 }
 
 func TestEvaluate_FunctionSelectorCoversMixedResolvedFunctionSlot(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -164,6 +172,7 @@ database_rules:
 }
 
 func TestEvaluate_FunctionSelectorCoversResolvedFunction(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -193,6 +202,7 @@ database_rules:
 }
 
 func TestEvaluate_ResolvedOnlyBroadDenyPrecedesFunctionAllow(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -249,6 +259,7 @@ database_rules:
 }
 
 func TestEvaluate_FunctionSelectorRequiresResolvedSchemaMatch(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -278,6 +289,7 @@ database_rules:
 }
 
 func TestEvaluate_AuditTiePrimaryUsesPolicyOrderAcrossObjects(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -301,6 +313,7 @@ database_rules:
 }
 
 func TestEvaluate_SchemasMatchesResolvedSchema(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -327,6 +340,7 @@ database_rules:
 }
 
 func TestEvaluate_MixedSelectorsCoverByEitherFamily(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:

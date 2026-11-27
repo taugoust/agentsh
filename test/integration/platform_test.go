@@ -21,7 +21,11 @@ func TestPlatformCapabilities(t *testing.T) {
 	caps := p.Capabilities()
 	t.Logf("Platform: %s", p.Name())
 	t.Logf("FUSE: available=%v implementation=%s", caps.HasFUSE, caps.FUSEImplementation)
-	t.Logf("Network: available=%v implementation=%s", caps.HasNetworkIntercept, caps.NetworkImplementation)
+	t.Logf(
+		"Network: available=%v implementation=%s",
+		caps.HasNetworkIntercept,
+		caps.NetworkImplementation,
+	)
 	t.Logf("Isolation: level=%v", caps.IsolationLevel)
 	t.Logf("Seccomp: %v", caps.HasSeccomp)
 	t.Logf("Cgroups: %v", caps.HasCgroups)

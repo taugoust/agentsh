@@ -31,7 +31,14 @@ func TestEffectiveSeccompRules_BuiltInDirtyFrag(t *testing.T) {
 
 func TestEffectiveSeccompRules_RejectsBuiltInExternalDuplicateBeforeParsing(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "dirtyfrag-conservative.yaml"), []byte("not: active\n"), 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(
+			filepath.Join(dir, "dirtyfrag-conservative.yaml"),
+			[]byte("not: active\n"),
+			0o600,
+		),
+	)
 
 	_, err := EffectiveSeccompRulesForConfig(SandboxSeccompConfig{
 		MitigationSets: []string{"dirtyfrag-conservative"},

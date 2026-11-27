@@ -123,7 +123,11 @@ func TestCommandOutputArtifactCapture_WriteFailureDoesNotPanic(t *testing.T) {
 	if err := s.ConfigureOutputArtifacts(16); err != nil {
 		t.Fatal(err)
 	}
-	capture := newCommandOutputArtifactCapture(s, "missing-runtime", &types.OutputArtifactRequest{PersistOverBytes: 1})
+	capture := newCommandOutputArtifactCapture(
+		s,
+		"missing-runtime",
+		&types.OutputArtifactRequest{PersistOverBytes: 1},
+	)
 	_ = capture.Append([]byte("overflow"))
 	result := capture.Finish()
 	if result == nil || result.ErrorMessage == "" || result.Complete || result.Path != "" {
@@ -141,10 +145,22 @@ func TestValidateOutputArtifactRequest(t *testing.T) {
 		ok   bool
 	}{
 		{name: "disabled", req: nil, ok: true},
-		{name: "valid", req: &types.OutputArtifactRequest{PersistOverBytes: 50 * 1024, PersistOverLines: 200}, ok: true},
+		{
+			name: "valid",
+			req:  &types.OutputArtifactRequest{PersistOverBytes: 50 * 1024, PersistOverLines: 200},
+			ok:   true,
+		},
 		{name: "missing byte threshold", req: &types.OutputArtifactRequest{PersistOverLines: 200}},
-		{name: "negative lines", req: &types.OutputArtifactRequest{PersistOverBytes: 1, PersistOverLines: -1}},
-		{name: "oversized threshold", req: &types.OutputArtifactRequest{PersistOverBytes: maxOutputArtifactPresentationThreshold + 1}},
+		{
+			name: "negative lines",
+			req:  &types.OutputArtifactRequest{PersistOverBytes: 1, PersistOverLines: -1},
+		},
+		{
+			name: "oversized threshold",
+			req: &types.OutputArtifactRequest{
+				PersistOverBytes: maxOutputArtifactPresentationThreshold + 1,
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateOutputArtifactRequest(tc.req)
@@ -169,7 +185,8 @@ func TestPersistSubagentFinalArtifact_TrustAndSanitization(t *testing.T) {
 		Terminal:        completedSubagentTerminal(0, subagentTerminationNatural),
 	}
 	app.persistSubagentFinalArtifact(s, &result, "pi-json", 16)
-	if result.FullResultPath == "" || !result.FinalTruncated || result.ArtifactComplete == nil || !*result.ArtifactComplete {
+	if result.FullResultPath == "" || !result.FinalTruncated || result.ArtifactComplete == nil ||
+		!*result.ArtifactComplete {
 		t.Fatalf("subagent artifact metadata = %+v", result)
 	}
 	data, err := os.ReadFile(result.FullResultPath)
@@ -180,14 +197,31 @@ func TestPersistSubagentFinalArtifact_TrustAndSanitization(t *testing.T) {
 	if strings.Contains(text, "abc.def") || strings.Contains(text, "secret-value") {
 		t.Fatalf("artifact retained credential material: %q", text)
 	}
-	if !strings.Contains(text, "Bearer [redacted]") || !strings.Contains(text, "api_key=[redacted]") {
+	if !strings.Contains(text, "Bearer [redacted]") ||
+		!strings.Contains(text, "api_key=[redacted]") {
 		t.Fatalf("artifact redaction missing: %q", text)
 	}
 
 	for _, untrusted := range []subagentResult{
-		{Final: strings.Repeat("x", 100), ModelStopReason: "toolUse", ProtocolSettled: true, Terminal: completedSubagentTerminal(0, subagentTerminationNatural)},
-		{Final: strings.Repeat("x", 100), ModelStopReason: "stop", ProtocolSettled: false, Terminal: completedSubagentTerminal(0, subagentTerminationNatural)},
-		{Final: strings.Repeat("x", 100), ModelStopReason: "stop", ProtocolSettled: true, Terminal: failedSubagentTerminal(subagentFailureModel, 1, "", subagentTerminationNatural, false, "failed")},
+		{
+			Final:           strings.Repeat("x", 100),
+			ModelStopReason: "toolUse",
+			ProtocolSettled: true,
+			Terminal:        completedSubagentTerminal(0, subagentTerminationNatural),
+		},
+		{
+			Final:           strings.Repeat("x", 100),
+			ModelStopReason: "stop",
+			ProtocolSettled: false,
+			Terminal:        completedSubagentTerminal(0, subagentTerminationNatural),
+		},
+		{
+			Final:           strings.Repeat("x", 100),
+			ModelStopReason: "stop",
+			ProtocolSettled: true,
+			Terminal: failedSubagentTerminal(subagentFailureModel, 1, "",
+				subagentTerminationNatural, false, "failed"),
+		},
 	} {
 		app.persistSubagentFinalArtifact(s, &untrusted, "pi-json", 16)
 		if untrusted.FullResultPath != "" || untrusted.FinalTruncated {

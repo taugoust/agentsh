@@ -26,7 +26,11 @@ func installShadowRuntimeFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"rsync", "diff"} {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!"+shell+"\nexit 0\n"), 0o755); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(bin, name),
+			[]byte("#!"+shell+"\nexit 0\n"),
+			0o755,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -36,7 +40,11 @@ func installShadowRuntimeFixtures(t *testing.T) {
 func materializeRetainedShadow(t *testing.T, base, id, real string) (Root, time.Time) {
 	t.Helper()
 	work := filepath.Join(base, id, "work")
-	for _, dir := range []string{work, filepath.Join(base, id, "home"), filepath.Join(base, id, "tmp")} {
+	for _, dir := range []string{
+		work,
+		filepath.Join(base, id, "home"),
+		filepath.Join(base, id, "tmp"),
+	} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -57,7 +65,14 @@ func TestOpenMultiPreservesRetainedShadowChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reopened, err := OpenMulti(context.Background(), "session-reopen", []RootSpec{{Path: real}}, Options{BaseDir: base, AcceptChown: true}, []Root{expected}, createdAt)
+	reopened, err := OpenMulti(
+		context.Background(),
+		"session-reopen",
+		[]RootSpec{{Path: real}},
+		Options{BaseDir: base, AcceptChown: true},
+		[]Root{expected},
+		createdAt,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +101,14 @@ func TestOpenMultiRejectsDurableRootMismatchWithoutDeletingData(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected.Real = filepath.Join(t.TempDir(), "other")
-	if _, err := OpenMulti(context.Background(), "session-mismatch", []RootSpec{{Path: real}}, Options{BaseDir: base}, []Root{expected}, createdAt); err == nil {
+	if _, err := OpenMulti(
+		context.Background(),
+		"session-mismatch",
+		[]RootSpec{{Path: real}},
+		Options{BaseDir: base},
+		[]Root{expected},
+		createdAt,
+	); err == nil {
 		t.Fatal("mismatched retained identity reopened")
 	}
 	if data, err := os.ReadFile(sentinel); err != nil || string(data) != "keep" {

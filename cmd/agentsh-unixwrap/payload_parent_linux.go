@@ -15,7 +15,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func runTrustedPayloadParent(controlFD int, launch *lineageLaunch, environment []string) (int, error) {
+func runTrustedPayloadParent(
+	controlFD int,
+	launch *lineageLaunch,
+	environment []string,
+) (int, error) {
 	if launch == nil || launch.cfg == nil || launch.baseFilter == nil || launch.lookup == nil {
 		return 127, errors.New("trusted payload launch is incomplete")
 	}
@@ -45,7 +49,12 @@ func runTrustedPayloadParent(controlFD int, launch *lineageLaunch, environment [
 	}
 	defer child.Close()
 	if child.sync != nil {
-		_ = unix.SetsockoptTimeval(int(child.sync.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: 30})
+		_ = unix.SetsockoptTimeval(
+			int(child.sync.Fd()),
+			unix.SOL_SOCKET,
+			unix.SO_RCVTIMEO,
+			&unix.Timeval{Sec: 30},
+		)
 	}
 	abort := func(cause error) (int, error) {
 		_ = unix.Kill(child.pid, unix.SIGKILL)
@@ -102,18 +111,40 @@ func runTrustedPayloadParent(controlFD int, launch *lineageLaunch, environment [
 	if err := child.release(); err != nil {
 		return abort(fmt.Errorf("release payload exec barrier: %w", err))
 	}
-	_ = unix.SetsockoptTimeval(int(child.sync.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
-	log.Printf("seccomp: payload filter loaded (child_pid=%d, lookup_broker=%t)", child.pid, lookupReady)
+	_ = unix.SetsockoptTimeval(
+		int(child.sync.Fd()),
+		unix.SOL_SOCKET,
+		unix.SO_RCVTIMEO,
+		&unix.Timeval{},
+	)
+	log.Printf(
+		"seccomp: payload filter loaded (child_pid=%d, lookup_broker=%t)",
+		child.pid,
+		lookupReady,
+	)
 
 	return waitPayloadAndServeBroker(child.pid, launch.lookup, lookupReady)
 }
 
-func waitPayloadAndServeBroker(payloadPID int, broker *lookupBrokerState, lookupReady bool) (int, error) {
+func waitPayloadAndServeBroker(
+	payloadPID int,
+	broker *lookupBrokerState,
+	lookupReady bool,
+) (int, error) {
 	if payloadPID <= 0 {
 		return 127, errors.New("invalid payload pid")
 	}
 	signals := make(chan os.Signal, 16)
-	signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2, syscall.SIGWINCH)
+	signal.Notify(
+		signals,
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGQUIT,
+		syscall.SIGTERM,
+		syscall.SIGUSR1,
+		syscall.SIGUSR2,
+		syscall.SIGWINCH,
+	)
 	defer signal.Stop(signals)
 
 	for {

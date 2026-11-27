@@ -121,7 +121,9 @@ func (p *GCPKMSProvider) decryptDEK(ctx context.Context, encryptedDEK []byte) ([
 
 // generateDEK generates a new 256-bit key locally and encrypts it with KMS.
 // Returns the plaintext key and the encrypted (wrapped) key.
-func (p *GCPKMSProvider) generateDEK(ctx context.Context) (plaintext, ciphertext []byte, err error) {
+func (p *GCPKMSProvider) generateDEK(
+	ctx context.Context,
+) (plaintext, ciphertext []byte, err error) {
 	// Generate 256-bit key locally
 	plaintext = make([]byte, 32)
 	if _, err := rand.Read(plaintext); err != nil {

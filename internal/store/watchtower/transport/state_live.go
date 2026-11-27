@@ -140,7 +140,12 @@ func (t *Transport) runLive(ctx context.Context, rdr *wal.Reader, opts LiveOptio
 		if outBatch == nil {
 			return nil
 		}
-		msgs, err := encodeBatchMessageFn(outBatch.Records, t.emitExtendedLossReasons, t.compressor, t.compressMetrics)
+		msgs, err := encodeBatchMessageFn(
+			outBatch.Records,
+			t.emitExtendedLossReasons,
+			t.compressor,
+			t.compressMetrics,
+		)
 		if err != nil {
 			return err
 		}
@@ -315,7 +320,12 @@ func (t *Transport) runLive(ctx context.Context, rdr *wal.Reader, opts LiveOptio
 // TransportLoss frames are emitted or silently dropped; callers pass
 // their per-Transport flag captured at run-state entry so a global flag
 // mutation in another test goroutine cannot affect an in-progress encode.
-var encodeBatchMessageFn = func(records []wal.Record, emitExtended bool, compressor compress.Encoder, m CompressMetrics) ([]*wtpv1.ClientMessage, error) {
+var encodeBatchMessageFn = func(
+	records []wal.Record,
+	emitExtended bool,
+	compressor compress.Encoder,
+	m CompressMetrics,
+) ([]*wtpv1.ClientMessage, error) {
 	return encodeBatchMessageWithCompressor(records, emitExtended, compressor, m)
 }
 
@@ -368,7 +378,12 @@ func extractWireHighWatermark(msg *wtpv1.ClientMessage) (uint32, uint64) {
 // exists for defense in depth.
 //
 // m is the metrics recorder; nil is allowed and disables recording.
-func encodeBatchMessageWithCompressor(records []wal.Record, emitExtended bool, compressor compress.Encoder, m CompressMetrics) ([]*wtpv1.ClientMessage, error) {
+func encodeBatchMessageWithCompressor(
+	records []wal.Record,
+	emitExtended bool,
+	compressor compress.Encoder,
+	m CompressMetrics,
+) ([]*wtpv1.ClientMessage, error) {
 	var msgs []*wtpv1.ClientMessage
 
 	var (
@@ -411,7 +426,13 @@ func encodeBatchMessageWithCompressor(records []wal.Record, emitExtended bool, c
 
 		raw, err := proto.Marshal(inner)
 		if err != nil {
-			flushErr = fmt.Errorf("encodeBatchMessage: marshal UncompressedEvents (gen=%d from=%d to=%d): %w", curGen, curFromSeq, curToSeq, err)
+			flushErr = fmt.Errorf(
+				"encodeBatchMessage: marshal UncompressedEvents (gen=%d from=%d to=%d): %w",
+				curGen,
+				curFromSeq,
+				curToSeq,
+				err,
+			)
 			return
 		}
 
@@ -431,7 +452,10 @@ func encodeBatchMessageWithCompressor(records []wal.Record, emitExtended bool, c
 			m.AddBatchUncompressedBytes(algoLabel, len(raw))
 			m.AddBatchCompressedBytes(algoLabel, len(compressed))
 			if len(raw) > 0 {
-				m.ObserveBatchCompressionRatio(algoLabel, float64(len(compressed))/float64(len(raw)))
+				m.ObserveBatchCompressionRatio(
+					algoLabel,
+					float64(len(compressed))/float64(len(raw)),
+				)
 			}
 		}
 
@@ -481,7 +505,11 @@ func encodeBatchMessageWithCompressor(records []wal.Record, emitExtended bool, c
 		case wal.RecordData:
 			ce := &wtpv1.CompactEvent{}
 			if err := proto.Unmarshal(rec.Payload, ce); err != nil {
-				return nil, fmt.Errorf("encodeBatchMessage: unmarshal record seq=%d: %w", rec.Sequence, err)
+				return nil, fmt.Errorf(
+					"encodeBatchMessage: unmarshal record seq=%d: %w",
+					rec.Sequence,
+					err,
+				)
 			}
 			curEvents = append(curEvents, ce)
 			if !curSeen {

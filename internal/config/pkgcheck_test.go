@@ -328,7 +328,10 @@ func TestApplyExternalProviderDefaults_DisabledExternalNoPromote(t *testing.T) {
 	}
 	warnings := ApplyExternalProviderDefaults(&cfg)
 	if cfg.Scope != "" {
-		t.Errorf("disabled external providers should not trigger promotion; got scope=%q", cfg.Scope)
+		t.Errorf(
+			"disabled external providers should not trigger promotion; got scope=%q",
+			cfg.Scope,
+		)
 	}
 	if len(warnings) != 0 {
 		t.Errorf("no warnings expected; got %v", warnings)
@@ -406,7 +409,10 @@ func TestApplyDefaults_PromotesScopeWhenExternalProviderEnabled(t *testing.T) {
 	}
 	applyDefaults(cfg)
 	if cfg.PackageChecks.Scope != "all_installs" {
-		t.Errorf("expected scope to be promoted to all_installs by applyDefaults; got %q", cfg.PackageChecks.Scope)
+		t.Errorf(
+			"expected scope to be promoted to all_installs by applyDefaults; got %q",
+			cfg.PackageChecks.Scope,
+		)
 	}
 }
 
@@ -423,7 +429,10 @@ func TestServerStartup_AppliesFailMode(t *testing.T) {
 	}
 	ApplyFailMode(&cfg, mode)
 	if cfg.Providers["socket"].OnFailure != "deny" {
-		t.Errorf("ApplyFailMode should map closed→deny on external providers; got %q", cfg.Providers["socket"].OnFailure)
+		t.Errorf(
+			"ApplyFailMode should map closed→deny on external providers; got %q",
+			cfg.Providers["socket"].OnFailure,
+		)
 	}
 }
 
@@ -474,7 +483,10 @@ func TestApplyFailMode_UnknownModeIsNoOp(t *testing.T) {
 	ApplyFailMode(&cfg, "unknown-mode")
 	// OnFailure should be unchanged — not silently mapped to warn.
 	if cfg.Providers["socket"].OnFailure != "allow" {
-		t.Errorf("unknown mode must leave OnFailure untouched; got %q", cfg.Providers["socket"].OnFailure)
+		t.Errorf(
+			"unknown mode must leave OnFailure untouched; got %q",
+			cfg.Providers["socket"].OnFailure,
+		)
 	}
 }
 
@@ -491,10 +503,16 @@ func TestApplyFailMode_PreservesExplicitProviderOnFailure(t *testing.T) {
 	}
 	ApplyFailMode(&cfg, "degraded")
 	if cfg.Providers["socket"].OnFailure != "deny" {
-		t.Errorf("explicit deny must survive default-degraded fail mode; got %q", cfg.Providers["socket"].OnFailure)
+		t.Errorf(
+			"explicit deny must survive default-degraded fail mode; got %q",
+			cfg.Providers["socket"].OnFailure,
+		)
 	}
 	if cfg.Providers["snyk"].OnFailure != "warn" {
-		t.Errorf("empty OnFailure should be filled with degraded→warn; got %q", cfg.Providers["snyk"].OnFailure)
+		t.Errorf(
+			"empty OnFailure should be filled with degraded→warn; got %q",
+			cfg.Providers["snyk"].OnFailure,
+		)
 	}
 }
 

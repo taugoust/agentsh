@@ -37,7 +37,10 @@ func TestFindConfigPath_UserConfig(t *testing.T) {
 	// If user config exists, should return user source
 	// If not, should fall back to system
 	if source != config.ConfigSourceUser && source != config.ConfigSourceSystem {
-		t.Errorf("findConfigPath() source = %v, want ConfigSourceUser or ConfigSourceSystem", source)
+		t.Errorf(
+			"findConfigPath() source = %v, want ConfigSourceUser or ConfigSourceSystem",
+			source,
+		)
 	}
 	if path == "" {
 		t.Error("findConfigPath() returned empty path")
@@ -80,7 +83,11 @@ func TestFindConfigPath_EnvVarTakesPriority(t *testing.T) {
 
 	// Env var should always win, regardless of what user/system configs exist
 	if path != tmpFile {
-		t.Errorf("findConfigPath() path = %q, want %q (env var should take priority)", path, tmpFile)
+		t.Errorf(
+			"findConfigPath() path = %q, want %q (env var should take priority)",
+			path,
+			tmpFile,
+		)
 	}
 	if source != config.ConfigSourceEnv {
 		t.Errorf("findConfigPath() source = %v, want ConfigSourceEnv", source)
@@ -110,7 +117,11 @@ func TestFindDetachedSupervisorConfigPath_IgnoresWorkingDirectory(t *testing.T) 
 		t.Fatal(err)
 	}
 	projectConfig := filepath.Join(projectDir, "config.yml")
-	if err := os.WriteFile(projectConfig, []byte("policies:\n  dir: ./project-policies\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		projectConfig,
+		[]byte("policies:\n  dir: ./project-policies\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -126,7 +137,10 @@ func TestFindDetachedSupervisorConfigPath_IgnoresWorkingDirectory(t *testing.T) 
 		t.Fatalf("findDetachedSupervisorConfigPath() selected workspace config %q", path)
 	}
 	if source == config.ConfigSourceEnv {
-		t.Fatalf("findDetachedSupervisorConfigPath() source = %v, want installed config source", source)
+		t.Fatalf(
+			"findDetachedSupervisorConfigPath() source = %v, want installed config source",
+			source,
+		)
 	}
 }
 

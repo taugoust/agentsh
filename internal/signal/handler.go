@@ -60,7 +60,11 @@ func (h *Handler) Handle(ctx context.Context, sigCtx SignalContext) Decision {
 }
 
 // emitEvent emits the appropriate audit event based on the decision.
-func (h *Handler) emitEvent(ctx context.Context, sigCtx SignalContext, originalDec, finalDec Decision) {
+func (h *Handler) emitEvent(
+	ctx context.Context,
+	sigCtx SignalContext,
+	originalDec, finalDec Decision,
+) {
 	if h.emitter == nil {
 		return
 	}

@@ -39,10 +39,18 @@ func TestApplyReviewedRuntimeWorkspaceJournalsAndResumes(t *testing.T) {
 	if err := externalrunner.WriteWorkspaceBaseline(layout.BaselinePath, baseline); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.WorkspaceDir, "base.txt"), []byte("base\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(layout.WorkspaceDir, "base.txt"),
+		[]byte("base\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.WorkspaceDir, "guest.txt"), []byte("guest\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(layout.WorkspaceDir, "guest.txt"),
+		[]byte("guest\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	writeStoppedExternalManifest(t, sessionID, stateDir)
@@ -51,13 +59,21 @@ func TestApplyReviewedRuntimeWorkspaceJournalsAndResumes(t *testing.T) {
 	if err != nil || !report.Applied || report.Phase != "applied" || report.FinalizationID == "" {
 		t.Fatalf("Apply report = %#v, %v", report, err)
 	}
-	if content, err := os.ReadFile(filepath.Join(source, "guest.txt")); err != nil || string(content) != "guest\n" {
+	if content, err := os.ReadFile(
+		filepath.Join(source, "guest.txt"),
+	); err != nil ||
+		string(content) != "guest\n" {
 		t.Fatalf("applied content = %q, %v", content, err)
 	}
 	if _, err := os.Lstat(filepath.Join(layout.RuntimeDir, "finalization.json")); err != nil {
 		t.Fatalf("durable finalization journal: %v", err)
 	}
-	repeated, err := applyReviewedRuntimeWorkspace(context.Background(), sessionID, stateDir, source)
+	repeated, err := applyReviewedRuntimeWorkspace(
+		context.Background(),
+		sessionID,
+		stateDir,
+		source,
+	)
 	if err != nil || !repeated.Applied || repeated.FinalizationID != report.FinalizationID {
 		t.Fatalf("idempotent Apply report = %#v, %v", repeated, err)
 	}
@@ -91,21 +107,41 @@ func TestApplyReviewedRuntimeWorkspaceRefusesHostDrift(t *testing.T) {
 	if err := externalrunner.WriteWorkspaceBaseline(layout.BaselinePath, baseline); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.WorkspaceDir, "base.txt"), []byte("guest\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(layout.WorkspaceDir, "base.txt"),
+		[]byte("guest\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "base.txt"), []byte("host changed\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(source, "base.txt"),
+		[]byte("host changed\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	writeStoppedExternalManifest(t, sessionID, stateDir)
 
-	if _, err := applyReviewedRuntimeWorkspace(context.Background(), sessionID, stateDir, source); err == nil {
+	if _, err := applyReviewedRuntimeWorkspace(
+		context.Background(),
+		sessionID,
+		stateDir,
+		source,
+	); err == nil {
 		t.Fatal("Apply accepted host drift")
 	}
-	if content, err := os.ReadFile(filepath.Join(source, "base.txt")); err != nil || string(content) != "host changed\n" {
+	if content, err := os.ReadFile(
+		filepath.Join(source, "base.txt"),
+	); err != nil ||
+		string(content) != "host changed\n" {
 		t.Fatalf("host drift was overwritten: %q, %v", content, err)
 	}
-	if _, err := os.Lstat(filepath.Join(layout.RuntimeDir, "finalization.json")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(
+		filepath.Join(layout.RuntimeDir, "finalization.json"),
+	); !os.IsNotExist(
+		err,
+	) {
 		t.Fatalf("finalization was prepared after drift: %v", err)
 	}
 }
@@ -130,7 +166,10 @@ func writeStoppedExternalManifest(t *testing.T, sessionID, stateDir string) {
 		OwnerStartIdentity: "start",
 		BootID:             "boot",
 	}
-	manifest.Endpoint = runtimeprovider.Endpoint{Transport: "unix", Address: filepath.Join(stateDir, "supervisor.sock")}
+	manifest.Endpoint = runtimeprovider.Endpoint{
+		Transport: "unix",
+		Address:   filepath.Join(stateDir, "supervisor.sock"),
+	}
 	manifest.CleanupComplete = true
 	if err := runtimeprovider.WriteManifest(stateDir, manifest); err != nil {
 		t.Fatal(err)
@@ -145,7 +184,11 @@ func TestVerifyRuntimeWorkspaceBaselineReportsHostDrift(t *testing.T) {
 	if err := os.MkdirAll(source, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "file.txt"), []byte("baseline\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(source, "file.txt"),
+		[]byte("baseline\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	layout, err := externalrunner.HostMonitorPaths(stateDir)
@@ -178,14 +221,23 @@ func TestVerifyRuntimeWorkspaceBaselineReportsHostDrift(t *testing.T) {
 	if err != nil || !report.Clean || len(report.Drift) != 0 {
 		t.Fatalf("clean report = %#v, %v", report, err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "file.txt"), []byte("host changed\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(source, "file.txt"),
+		[]byte("host changed\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	report, err = verifyRuntimeWorkspaceBaseline(context.Background(), sessionID, stateDir, source)
 	if err != nil || report.Clean || len(report.Drift) != 1 {
 		t.Fatalf("drift report = %#v, %v", report, err)
 	}
-	if _, err := verifyRuntimeWorkspaceBaseline(context.Background(), sessionID, stateDir, filepath.Join(root, "other")); err == nil {
+	if _, err := verifyRuntimeWorkspaceBaseline(
+		context.Background(),
+		sessionID,
+		stateDir,
+		filepath.Join(root, "other"),
+	); err == nil {
 		t.Fatal("wrong source identity was accepted")
 	}
 }

@@ -42,7 +42,11 @@ func TestResolveProviderConfigs_Keyring(t *testing.T) {
 
 func TestResolveProviderConfigs_Vault(t *testing.T) {
 	providers := map[string]yaml.Node{
-		"v": mustYAMLNode(t, "type: vault\naddress: https://vault.example.com\nauth:\n  method: token\n  token_ref: keyring://agentsh/vt"),
+		"v": mustYAMLNode(
+			t,
+			"type: vault\naddress: https://vault.example.com\nauth:\n  method: token\n"+
+				"  token_ref: keyring://agentsh/vt",
+		),
 	}
 	configs, err := ResolveProviderConfigs(providers)
 	if err != nil {
@@ -77,17 +81,27 @@ func TestResolveServiceConfigs_FromHTTPService(t *testing.T) {
 	scrubTrue := true
 	svcs := []policy.HTTPService{
 		{
-			Name:          "github",
-			Upstream:      "https://api.github.com",
-			Secret:        &policy.HTTPServiceSecret{Ref: "keyring://agentsh/github_token", Format: "ghp_{rand:36}"},
-			Inject:        &policy.HTTPServiceInject{Header: &policy.HTTPServiceInjectHeader{Name: "Authorization", Template: "Bearer {{secret}}"}},
+			Name:     "github",
+			Upstream: "https://api.github.com",
+			Secret: &policy.HTTPServiceSecret{
+				Ref:    "keyring://agentsh/github_token",
+				Format: "ghp_{rand:36}",
+			},
+			Inject: &policy.HTTPServiceInject{
+				Header: &policy.HTTPServiceInjectHeader{
+					Name:     "Authorization",
+					Template: "Bearer {{secret}}",
+				},
+			},
 			ScrubResponse: &scrubTrue,
 		},
 		{
 			Name:     "stripe",
 			Upstream: "https://api.stripe.com",
 			Default:  "deny",
-			Rules:    []policy.HTTPServiceRule{{Name: "r", Paths: []string{"/**"}, Decision: "allow"}},
+			Rules: []policy.HTTPServiceRule{
+				{Name: "r", Paths: []string{"/**"}, Decision: "allow"},
+			},
 			// No secret — filtering-only.
 		},
 	}
@@ -141,12 +155,17 @@ func TestResolveServiceConfigs_ScrubResponseDefault(t *testing.T) {
 
 func TestResolveServiceConfigs_ScrubResponseExplicitFalse(t *testing.T) {
 	scrubFalse := false
-	svcs := []policy.HTTPService{{
-		Name:          "svc",
-		Upstream:      "https://api.example.com",
-		Secret:        &policy.HTTPServiceSecret{Ref: "keyring://agentsh/key", Format: "ghp_{rand:36}"},
-		ScrubResponse: &scrubFalse,
-	}}
+	svcs := []policy.HTTPService{
+		{
+			Name:     "svc",
+			Upstream: "https://api.example.com",
+			Secret: &policy.HTTPServiceSecret{
+				Ref:    "keyring://agentsh/key",
+				Format: "ghp_{rand:36}",
+			},
+			ScrubResponse: &scrubFalse,
+		},
+	}
 	resolved, err := ResolveServiceConfigs(svcs)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -273,7 +292,10 @@ func TestResolveProviderConfigs_OP_LiteralKey(t *testing.T) {
 
 func TestResolveProviderConfigs_OP_RefKey(t *testing.T) {
 	providers := map[string]yaml.Node{
-		"op": mustYAMLNode(t, "type: op\nserver_url: https://op.internal\napi_key_ref: keyring://agentsh/op_key"),
+		"op": mustYAMLNode(
+			t,
+			"type: op\nserver_url: https://op.internal\napi_key_ref: keyring://agentsh/op_key",
+		),
 	}
 	configs, err := ResolveProviderConfigs(providers)
 	if err != nil {

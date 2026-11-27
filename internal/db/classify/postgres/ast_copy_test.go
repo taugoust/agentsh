@@ -80,7 +80,10 @@ func TestClassifyCopy_ToPath(t *testing.T) {
 	}
 	if cs.Effects[0].Objects[1].Kind != effects.ObjectFilesystemPath ||
 		cs.Effects[0].Objects[1].Path != "/tmp/x.csv" {
-		t.Fatalf("primary obj[1]: got %+v want filesystem_path /tmp/x.csv", cs.Effects[0].Objects[1])
+		t.Fatalf(
+			"primary obj[1]: got %+v want filesystem_path /tmp/x.csv",
+			cs.Effects[0].Objects[1],
+		)
 	}
 	if cs.Effects[1].Group != effects.GroupBulkExport {
 		t.Fatalf("secondary[0]: got %v want bulk_export", cs.Effects[1].Group)

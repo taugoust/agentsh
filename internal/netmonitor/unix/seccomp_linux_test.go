@@ -255,12 +255,33 @@ func TestInstallFileMonitorRules_WriteOnlyOpenatUsesFlagConditions(t *testing.T)
 
 	openatConditions := recorder.conditionsFor(unix.SYS_OPENAT)
 	require.NotEmpty(t, openatConditions, "write-only mode should install conditional openat rules")
-	require.True(t, hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_ACCMODE, unix.O_WRONLY)))
-	require.True(t, hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_ACCMODE, unix.O_RDWR)))
-	require.True(t, hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_CREAT, unix.O_CREAT)))
-	require.True(t, hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_TRUNC, unix.O_TRUNC)))
-	require.True(t, hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_APPEND, unix.O_APPEND)))
-	require.True(t, hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_TMPFILE, unix.O_TMPFILE)))
+	require.True(
+		t,
+		hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_ACCMODE, unix.O_WRONLY)),
+	)
+	require.True(
+		t,
+		hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_ACCMODE, unix.O_RDWR)),
+	)
+	require.True(
+		t,
+		hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_CREAT, unix.O_CREAT)),
+	)
+	require.True(
+		t,
+		hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_TRUNC, unix.O_TRUNC)),
+	)
+	require.True(
+		t,
+		hasSingleCondition(openatConditions, maskedFlagCondition(2, unix.O_APPEND, unix.O_APPEND)),
+	)
+	require.True(
+		t,
+		hasSingleCondition(
+			openatConditions,
+			maskedFlagCondition(2, unix.O_TMPFILE, unix.O_TMPFILE),
+		),
+	)
 }
 
 func TestInstallFileMonitorRules_AllOpenModeTrapsOpenatUnconditionally(t *testing.T) {
@@ -290,12 +311,19 @@ type recordedFileConditionalRule struct {
 	conditions []seccomp.ScmpCondition
 }
 
-func (r *recordingFileRuleAdder) AddRule(call seccomp.ScmpSyscall, action seccomp.ScmpAction) error {
+func (r *recordingFileRuleAdder) AddRule(
+	call seccomp.ScmpSyscall,
+	action seccomp.ScmpAction,
+) error {
 	r.unconditional = append(r.unconditional, recordedFileRule{call: call, action: action})
 	return nil
 }
 
-func (r *recordingFileRuleAdder) AddRuleConditional(call seccomp.ScmpSyscall, action seccomp.ScmpAction, conditions []seccomp.ScmpCondition) error {
+func (r *recordingFileRuleAdder) AddRuleConditional(
+	call seccomp.ScmpSyscall,
+	action seccomp.ScmpAction,
+	conditions []seccomp.ScmpCondition,
+) error {
 	copied := append([]seccomp.ScmpCondition(nil), conditions...)
 	r.conditional = append(r.conditional, recordedFileConditionalRule{
 		call:       call,

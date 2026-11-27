@@ -71,7 +71,10 @@ func rejectionForNonReadEffect(group effects.Group) (Reason, bool) {
 	switch group {
 	case effects.GroupWrite, effects.GroupModify, effects.GroupDelete:
 		return ReasonWriteStatement, true
-	case effects.GroupSchemaCreate, effects.GroupSchemaAlter, effects.GroupSchemaDestroy, effects.GroupPrivilege:
+	case effects.GroupSchemaCreate,
+		effects.GroupSchemaAlter,
+		effects.GroupSchemaDestroy,
+		effects.GroupPrivilege:
 		return ReasonDDLStatement, true
 	case effects.GroupBulkLoad, effects.GroupBulkExport:
 		return ReasonCopyStatement, true
@@ -96,8 +99,15 @@ type relationMetadata struct {
 	byName    map[string]map[string]struct{}
 }
 
-func validateSelectRelationMetadata(stmt *pg_query.SelectStmt, classified effects.ClassifiedStatement) error {
-	return validateSelectRelationsCovered(stmt, collectRelationMetadata(classified), relationRewrite{})
+func validateSelectRelationMetadata(
+	stmt *pg_query.SelectStmt,
+	classified effects.ClassifiedStatement,
+) error {
+	return validateSelectRelationsCovered(
+		stmt,
+		collectRelationMetadata(classified),
+		relationRewrite{},
+	)
 }
 
 func collectRelationMetadata(stmt effects.ClassifiedStatement) relationMetadata {
@@ -123,7 +133,11 @@ func collectRelationMetadata(stmt effects.ClassifiedStatement) relationMetadata 
 	return metadata
 }
 
-func validateSelectRelationsCovered(stmt *pg_query.SelectStmt, metadata relationMetadata, scope relationRewrite) error {
+func validateSelectRelationsCovered(
+	stmt *pg_query.SelectStmt,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
 	if stmt == nil {
 		return nil
 	}
@@ -144,7 +158,11 @@ func validateSelectRelationsCovered(stmt *pg_query.SelectStmt, metadata relation
 	return validateSelectRelationsCovered(stmt.Rarg, metadata, scoped)
 }
 
-func validateCTERelationMetadata(withClause *pg_query.WithClause, metadata relationMetadata, scope relationRewrite) error {
+func validateCTERelationMetadata(
+	withClause *pg_query.WithClause,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
 	if withClause == nil {
 		return nil
 	}
@@ -162,7 +180,11 @@ func validateCTERelationMetadata(withClause *pg_query.WithClause, metadata relat
 		if !ok || query.SelectStmt == nil {
 			return reject(ReasonWriteStatement, nil)
 		}
-		if err := validateSelectRelationsCovered(query.SelectStmt, metadata, bodyScope); err != nil {
+		if err := validateSelectRelationsCovered(
+			query.SelectStmt,
+			metadata,
+			bodyScope,
+		); err != nil {
 			return err
 		}
 		bodyScope = bodyScope.withCTEName(cteNode.CommonTableExpr.Ctename)
@@ -170,7 +192,11 @@ func validateCTERelationMetadata(withClause *pg_query.WithClause, metadata relat
 	return nil
 }
 
-func validateRangeNodesCovered(nodes []*pg_query.Node, metadata relationMetadata, scope relationRewrite) error {
+func validateRangeNodesCovered(
+	nodes []*pg_query.Node,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
 	for _, node := range nodes {
 		if err := validateRangeNodeCovered(node, metadata, scope); err != nil {
 			return err
@@ -179,7 +205,11 @@ func validateRangeNodesCovered(nodes []*pg_query.Node, metadata relationMetadata
 	return nil
 }
 
-func validateRangeNodeCovered(node *pg_query.Node, metadata relationMetadata, scope relationRewrite) error {
+func validateRangeNodeCovered(
+	node *pg_query.Node,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
 	if node == nil {
 		return nil
 	}
@@ -246,8 +276,16 @@ func rangeVarIsInScopeCTE(rv *pg_query.RangeVar, scope relationRewrite) bool {
 	return ok
 }
 
-func validateSelectExpressionSubqueryRelationMetadata(stmt *pg_query.SelectStmt, metadata relationMetadata, scope relationRewrite) error {
-	if err := validateExpressionSubqueryRelationMetadataInNodes(stmt.DistinctClause, metadata, scope); err != nil {
+func validateSelectExpressionSubqueryRelationMetadata(
+	stmt *pg_query.SelectStmt,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
+	if err := validateExpressionSubqueryRelationMetadataInNodes(
+		stmt.DistinctClause,
+		metadata,
+		scope,
+	); err != nil {
 		return err
 	}
 	for _, nodes := range [][]*pg_query.Node{
@@ -257,7 +295,11 @@ func validateSelectExpressionSubqueryRelationMetadata(stmt *pg_query.SelectStmt,
 		stmt.ValuesLists,
 		stmt.SortClause,
 	} {
-		if err := validateExpressionSubqueryRelationMetadataInNodes(nodes, metadata, scope); err != nil {
+		if err := validateExpressionSubqueryRelationMetadataInNodes(
+			nodes,
+			metadata,
+			scope,
+		); err != nil {
 			return err
 		}
 	}
@@ -267,30 +309,50 @@ func validateSelectExpressionSubqueryRelationMetadata(stmt *pg_query.SelectStmt,
 		stmt.LimitOffset,
 		stmt.LimitCount,
 	} {
-		if err := validateExpressionSubqueryRelationMetadataInNode(node, metadata, scope); err != nil {
+		if err := validateExpressionSubqueryRelationMetadataInNode(
+			node,
+			metadata,
+			scope,
+		); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateExpressionSubqueryRelationMetadataInNodes(nodes []*pg_query.Node, metadata relationMetadata, scope relationRewrite) error {
+func validateExpressionSubqueryRelationMetadataInNodes(
+	nodes []*pg_query.Node,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
 	for _, node := range nodes {
-		if err := validateExpressionSubqueryRelationMetadataInNode(node, metadata, scope); err != nil {
+		if err := validateExpressionSubqueryRelationMetadataInNode(
+			node,
+			metadata,
+			scope,
+		); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateExpressionSubqueryRelationMetadataInNode(node *pg_query.Node, metadata relationMetadata, scope relationRewrite) error {
+func validateExpressionSubqueryRelationMetadataInNode(
+	node *pg_query.Node,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
 	if node == nil {
 		return nil
 	}
 	return validateExpressionSubqueryRelationMetadataInMessage(node.ProtoReflect(), metadata, scope)
 }
 
-func validateExpressionSubqueryRelationMetadataInMessage(msg protoreflect.Message, metadata relationMetadata, scope relationRewrite) error {
+func validateExpressionSubqueryRelationMetadataInMessage(
+	msg protoreflect.Message,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
 	if !msg.IsValid() {
 		return nil
 	}
@@ -303,7 +365,12 @@ func validateExpressionSubqueryRelationMetadataInMessage(msg protoreflect.Messag
 		if fd.IsList() {
 			list := value.List()
 			for i := 0; i < list.Len(); i++ {
-				if err = validateExpressionSubqueryRelationMetadataInValue(fd, list.Get(i), metadata, scope); err != nil {
+				if err = validateExpressionSubqueryRelationMetadataInValue(
+					fd,
+					list.Get(i),
+					metadata,
+					scope,
+				); err != nil {
 					return false
 				}
 			}
@@ -315,24 +382,45 @@ func validateExpressionSubqueryRelationMetadataInMessage(msg protoreflect.Messag
 	return err
 }
 
-func validateExpressionSubqueryRelationMetadataInValue(fd protoreflect.FieldDescriptor, value protoreflect.Value, metadata relationMetadata, scope relationRewrite) error {
+func validateExpressionSubqueryRelationMetadataInValue(
+	fd protoreflect.FieldDescriptor,
+	value protoreflect.Value,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
 	if fd.Kind() != protoreflect.MessageKind && fd.Kind() != protoreflect.GroupKind {
 		return nil
 	}
 	return validateExpressionSubqueryRelationMetadataInMessage(value.Message(), metadata, scope)
 }
 
-func validateSubLinkRelationMetadata(subLink *pg_query.SubLink, metadata relationMetadata, scope relationRewrite) error {
+func validateSubLinkRelationMetadata(
+	subLink *pg_query.SubLink,
+	metadata relationMetadata,
+	scope relationRewrite,
+) error {
 	if subLink == nil {
 		return nil
 	}
-	if err := validateExpressionSubqueryRelationMetadataInNode(subLink.Xpr, metadata, scope); err != nil {
+	if err := validateExpressionSubqueryRelationMetadataInNode(
+		subLink.Xpr,
+		metadata,
+		scope,
+	); err != nil {
 		return err
 	}
-	if err := validateExpressionSubqueryRelationMetadataInNode(subLink.Testexpr, metadata, scope); err != nil {
+	if err := validateExpressionSubqueryRelationMetadataInNode(
+		subLink.Testexpr,
+		metadata,
+		scope,
+	); err != nil {
 		return err
 	}
-	if err := validateExpressionSubqueryRelationMetadataInNodes(subLink.OperName, metadata, scope); err != nil {
+	if err := validateExpressionSubqueryRelationMetadataInNodes(
+		subLink.OperName,
+		metadata,
+		scope,
+	); err != nil {
 		return err
 	}
 	if subLink.Subselect == nil {

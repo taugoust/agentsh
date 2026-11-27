@@ -197,7 +197,11 @@ func TestFakeForService_ReturnsCopy(t *testing.T) {
 	}
 	again, _ := tb.FakeForService("github")
 	if !bytes.Equal(again, []byte("ghp_fake00000000")) {
-		t.Errorf("second lookup = %q, want %q (Table leaked internal slice)", again, "ghp_fake00000000")
+		t.Errorf(
+			"second lookup = %q, want %q (Table leaked internal slice)",
+			again,
+			"ghp_fake00000000",
+		)
 	}
 }
 
@@ -273,10 +277,18 @@ func TestContains_ReturnsCopy(t *testing.T) {
 	}
 	again, _ := tb.Contains([]byte("ghp_fake00000000"))
 	if !bytes.Equal(again.Fake, []byte("ghp_fake00000000")) {
-		t.Errorf("second lookup Fake = %q, want %q (Contains leaked internal slice)", again.Fake, "ghp_fake00000000")
+		t.Errorf(
+			"second lookup Fake = %q, want %q (Contains leaked internal slice)",
+			again.Fake,
+			"ghp_fake00000000",
+		)
 	}
 	if !bytes.Equal(again.Real, []byte("ghp_real00000000")) {
-		t.Errorf("second lookup Real = %q, want %q (Contains leaked internal slice)", again.Real, "ghp_real00000000")
+		t.Errorf(
+			"second lookup Real = %q, want %q (Contains leaked internal slice)",
+			again.Real,
+			"ghp_real00000000",
+		)
 	}
 }
 
@@ -613,13 +625,22 @@ func TestZero_AllowsReuse(t *testing.T) {
 	}
 	got, ok := tb.FakeForService("stripe")
 	if !ok || !bytes.Equal(got, []byte("sk_fake000000000")) {
-		t.Errorf("FakeForService after reuse = (%q, %v), want (%q, true)", got, ok, "sk_fake000000000")
+		t.Errorf(
+			"FakeForService after reuse = (%q, %v), want (%q, true)",
+			got,
+			ok,
+			"sk_fake000000000",
+		)
 	}
 }
 
 func TestContainsFake_FoundInBody(t *testing.T) {
 	tb := New()
-	if err := tb.Add("github", []byte("ghp_fake1234567890abcdef"), []byte("ghp_real1234567890abcdef")); err != nil {
+	if err := tb.Add(
+		"github",
+		[]byte("ghp_fake1234567890abcdef"),
+		[]byte("ghp_real1234567890abcdef"),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -635,7 +656,11 @@ func TestContainsFake_FoundInBody(t *testing.T) {
 
 func TestContainsFake_NotFound(t *testing.T) {
 	tb := New()
-	if err := tb.Add("github", []byte("ghp_fake1234567890abcdef"), []byte("ghp_real1234567890abcdef")); err != nil {
+	if err := tb.Add(
+		"github",
+		[]byte("ghp_fake1234567890abcdef"),
+		[]byte("ghp_real1234567890abcdef"),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -648,7 +673,11 @@ func TestContainsFake_NotFound(t *testing.T) {
 
 func TestContainsFake_EmptyBody(t *testing.T) {
 	tb := New()
-	if err := tb.Add("github", []byte("ghp_fake1234567890abcdef"), []byte("ghp_real1234567890abcdef")); err != nil {
+	if err := tb.Add(
+		"github",
+		[]byte("ghp_fake1234567890abcdef"),
+		[]byte("ghp_real1234567890abcdef"),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -674,10 +703,18 @@ func TestContainsFake_EmptyTable(t *testing.T) {
 
 func TestContainsFake_MultipleEntries_FindsFirst(t *testing.T) {
 	tb := New()
-	if err := tb.Add("github", []byte("ghp_fake1234567890abcdef"), []byte("ghp_real1234567890abcdef")); err != nil {
+	if err := tb.Add(
+		"github",
+		[]byte("ghp_fake1234567890abcdef"),
+		[]byte("ghp_real1234567890abcdef"),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := tb.Add("openai", []byte("sk-fake567890abcdef123456"), []byte("sk-real567890abcdef123456")); err != nil {
+	if err := tb.Add(
+		"openai",
+		[]byte("sk-fake567890abcdef123456"),
+		[]byte("sk-real567890abcdef123456"),
+	); err != nil {
 		t.Fatal(err)
 	}
 

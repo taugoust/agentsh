@@ -21,16 +21,23 @@ func stageWorkspace(ctx context.Context, source, destination string) (WorkspaceB
 		return WorkspaceBaseline{}, err
 	}
 	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination {
-		return WorkspaceBaseline{}, fmt.Errorf("staged workspace destination must be clean and absolute")
+		return WorkspaceBaseline{}, fmt.Errorf(
+			"staged workspace destination must be clean and absolute",
+		)
 	}
 	if pathsOverlap(source, destination) {
 		return WorkspaceBaseline{}, fmt.Errorf("staged workspace source and destination overlap")
 	}
-	if info, err := os.Lstat(source); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+	if info, err := os.Lstat(
+		source,
+	); err != nil || !info.IsDir() ||
+		info.Mode()&os.ModeSymlink != 0 {
 		return WorkspaceBaseline{}, fmt.Errorf("staged workspace source is not a direct directory")
 	}
 	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
-		return WorkspaceBaseline{}, fmt.Errorf("staged workspace destination already exists or is ambiguous")
+		return WorkspaceBaseline{}, fmt.Errorf(
+			"staged workspace destination already exists or is ambiguous",
+		)
 	}
 	parent := filepath.Dir(destination)
 	temporary, err := os.MkdirTemp(parent, ".workspace-stage-")
@@ -55,7 +62,8 @@ func stageWorkspace(ctx context.Context, source, destination string) (WorkspaceB
 			return err
 		}
 		relative, err := filepath.Rel(source, path)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		if err != nil || relative == ".." ||
+			strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			return fmt.Errorf("staged workspace traversal escaped its source")
 		}
 		if relative == "." {
@@ -93,7 +101,9 @@ func stageWorkspace(ctx context.Context, source, destination string) (WorkspaceB
 				return fmt.Errorf("staged workspace refuses dangling symlink %s: %w", relative, err)
 			}
 			resolved, err = filepath.Abs(resolved)
-			if err != nil || (resolved != source && !strings.HasPrefix(resolved, source+string(filepath.Separator))) {
+			if err != nil ||
+				(resolved != source &&
+					!strings.HasPrefix(resolved, source+string(filepath.Separator))) {
 				return fmt.Errorf("staged workspace symlink %s escapes its source", relative)
 			}
 			return os.Symlink(link, target)
@@ -120,12 +130,19 @@ func stageWorkspace(ctx context.Context, source, destination string) (WorkspaceB
 		return WorkspaceBaseline{}, fmt.Errorf("snapshot workspace source baseline: %w", err)
 	}
 	if drift := compareStagedWorkspaceContent(staged, baseline); len(drift) != 0 {
-		return WorkspaceBaseline{}, fmt.Errorf("workspace source changed during staging at %s", drift[0].Path)
+		return WorkspaceBaseline{}, fmt.Errorf(
+			"workspace source changed during staging at %s",
+			drift[0].Path,
+		)
 	}
 	return baseline, nil
 }
 
-func copyStagedRegularFile(ctx context.Context, source, destination string, scanned os.FileInfo) error {
+func copyStagedRegularFile(
+	ctx context.Context,
+	source, destination string,
+	scanned os.FileInfo,
+) error {
 	input, err := os.Open(source)
 	if err != nil {
 		return err
@@ -173,5 +190,6 @@ func pathsOverlap(left, right string) bool {
 	left = filepath.Clean(left)
 	right = filepath.Clean(right)
 	separator := string(filepath.Separator)
-	return left == right || strings.HasPrefix(left, right+separator) || strings.HasPrefix(right, left+separator)
+	return left == right || strings.HasPrefix(left, right+separator) ||
+		strings.HasPrefix(right, left+separator)
 }

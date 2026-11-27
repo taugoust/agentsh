@@ -93,7 +93,10 @@ func (rewrite relationRewrite) withCTEName(name string) relationRewrite {
 	return scoped
 }
 
-func rewriteSelectExpressionSubqueries(stmt *pg_query.SelectStmt, rewrite relationRewrite) (int, error) {
+func rewriteSelectExpressionSubqueries(
+	stmt *pg_query.SelectStmt,
+	rewrite relationRewrite,
+) (int, error) {
 	count, err := rewriteExpressionSubqueriesInNodes(stmt.DistinctClause, rewrite)
 	if err != nil {
 		return 0, err
@@ -223,7 +226,10 @@ func rewriteRangeNode(node *pg_query.Node, rewrite relationRewrite) (int, error)
 	}
 }
 
-func rewriteExpressionSubqueriesInNodes(nodes []*pg_query.Node, rewrite relationRewrite) (int, error) {
+func rewriteExpressionSubqueriesInNodes(
+	nodes []*pg_query.Node,
+	rewrite relationRewrite,
+) (int, error) {
 	count := 0
 	for _, node := range nodes {
 		more, err := rewriteExpressionSubqueriesInNode(node, rewrite)
@@ -242,7 +248,10 @@ func rewriteExpressionSubqueriesInNode(node *pg_query.Node, rewrite relationRewr
 	return rewriteExpressionSubqueriesInMessage(node.ProtoReflect(), rewrite)
 }
 
-func rewriteExpressionSubqueriesInMessage(msg protoreflect.Message, rewrite relationRewrite) (int, error) {
+func rewriteExpressionSubqueriesInMessage(
+	msg protoreflect.Message,
+	rewrite relationRewrite,
+) (int, error) {
 	if !msg.IsValid() {
 		return 0, nil
 	}
@@ -279,7 +288,11 @@ func rewriteExpressionSubqueriesInMessage(msg protoreflect.Message, rewrite rela
 	return count, nil
 }
 
-func rewriteExpressionSubqueriesInValue(fd protoreflect.FieldDescriptor, value protoreflect.Value, rewrite relationRewrite) (int, error) {
+func rewriteExpressionSubqueriesInValue(
+	fd protoreflect.FieldDescriptor,
+	value protoreflect.Value,
+	rewrite relationRewrite,
+) (int, error) {
 	if fd.Kind() != protoreflect.MessageKind && fd.Kind() != protoreflect.GroupKind {
 		return 0, nil
 	}
@@ -331,14 +344,20 @@ func rangeVarMatches(rv *pg_query.RangeVar, rewrite relationRewrite) bool {
 	return rv.Relname == rewrite.sourceName
 }
 
-func hasSchemaQualifiedSourceColumnRef(stmt *pg_query.SelectStmt, sourceSchema, sourceName string) bool {
+func hasSchemaQualifiedSourceColumnRef(
+	stmt *pg_query.SelectStmt,
+	sourceSchema, sourceName string,
+) bool {
 	if stmt == nil || sourceSchema == "" || sourceName == "" {
 		return false
 	}
 	return hasSchemaQualifiedSourceColumnRefMessage(stmt.ProtoReflect(), sourceSchema, sourceName)
 }
 
-func hasSchemaQualifiedSourceColumnRefMessage(msg protoreflect.Message, sourceSchema, sourceName string) bool {
+func hasSchemaQualifiedSourceColumnRefMessage(
+	msg protoreflect.Message,
+	sourceSchema, sourceName string,
+) bool {
 	if !msg.IsValid() {
 		return false
 	}
@@ -351,7 +370,12 @@ func hasSchemaQualifiedSourceColumnRefMessage(msg protoreflect.Message, sourceSc
 		if fd.IsList() {
 			list := value.List()
 			for i := 0; i < list.Len(); i++ {
-				if hasSchemaQualifiedSourceColumnRefValue(fd, list.Get(i), sourceSchema, sourceName) {
+				if hasSchemaQualifiedSourceColumnRefValue(
+					fd,
+					list.Get(i),
+					sourceSchema,
+					sourceName,
+				) {
 					found = true
 					return false
 				}
@@ -364,14 +388,21 @@ func hasSchemaQualifiedSourceColumnRefMessage(msg protoreflect.Message, sourceSc
 	return found
 }
 
-func hasSchemaQualifiedSourceColumnRefValue(fd protoreflect.FieldDescriptor, value protoreflect.Value, sourceSchema, sourceName string) bool {
+func hasSchemaQualifiedSourceColumnRefValue(
+	fd protoreflect.FieldDescriptor,
+	value protoreflect.Value,
+	sourceSchema, sourceName string,
+) bool {
 	if fd.Kind() != protoreflect.MessageKind && fd.Kind() != protoreflect.GroupKind {
 		return false
 	}
 	return hasSchemaQualifiedSourceColumnRefMessage(value.Message(), sourceSchema, sourceName)
 }
 
-func columnRefMatchesSourceRelation(columnRef *pg_query.ColumnRef, sourceSchema, sourceName string) bool {
+func columnRefMatchesSourceRelation(
+	columnRef *pg_query.ColumnRef,
+	sourceSchema, sourceName string,
+) bool {
 	if columnRef == nil || len(columnRef.Fields) < 3 {
 		return false
 	}

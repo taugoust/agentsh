@@ -27,7 +27,9 @@ func (a *App) validateShadowRecoveryTopology(manifest detached.RecoveryManifest)
 	}
 	sessionDir := filepath.Join(base, manifest.SessionID)
 	shadow := manifest.Shadow
-	if filepath.Clean(shadow.Work) != filepath.Join(sessionDir, "work") || filepath.Clean(shadow.Home) != filepath.Join(sessionDir, "home") || filepath.Clean(shadow.Tmp) != filepath.Join(sessionDir, "tmp") {
+	if filepath.Clean(shadow.Work) != filepath.Join(sessionDir, "work") ||
+		filepath.Clean(shadow.Home) != filepath.Join(sessionDir, "home") ||
+		filepath.Clean(shadow.Tmp) != filepath.Join(sessionDir, "tmp") {
 		return "", fmt.Errorf("shadow recovery paths escape the exact session topology")
 	}
 	for _, root := range shadow.Roots {
@@ -41,7 +43,9 @@ func (a *App) validateShadowRecoveryTopology(manifest detached.RecoveryManifest)
 
 // BootstrapDetachedSession creates or rehydrates the exact session described by
 // the protected recovery manifest. It runs before listeners serve requests.
-func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *types.NetworkEnforcement, error) {
+func (a *App) BootstrapDetachedSession(
+	ctx context.Context,
+) (types.Session, *types.NetworkEnforcement, error) {
 	if a == nil || a.detachedRuntime == nil {
 		return types.Session{}, nil, fmt.Errorf("detached runtime is not configured")
 	}
@@ -56,12 +60,18 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 		// process groups additionally cover descendants (which do not inherit
 		// Linux Pdeathsig) before the retained workspace is reopened.
 		if err := terminateDetachedInterruptedProcesses(manifest.Inflight); err != nil {
-			return types.Session{}, nil, fmt.Errorf("terminate interrupted detached commands: %w", err)
+			return types.Session{}, nil, fmt.Errorf(
+				"terminate interrupted detached commands: %w",
+				err,
+			)
 		}
 		var err error
 		newlyInterrupted, err := a.detachedRuntime.TakeInterrupted()
 		if err != nil {
-			return types.Session{}, nil, fmt.Errorf("persist interrupted detached commands: %w", err)
+			return types.Session{}, nil, fmt.Errorf(
+				"persist interrupted detached commands: %w",
+				err,
+			)
 		}
 		interrupted = append(interrupted, newlyInterrupted...)
 	}
@@ -75,7 +85,10 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 		a.nethelperBinding.replace(binding)
 	}
 
-	if a.detachedRuntime.IsRecovery() && manifest.Finalization != nil && manifest.Finalization.Applied && manifest.Finalization.AuditCommitted && manifest.Shadow != nil {
+	if a.detachedRuntime.IsRecovery() && manifest.Finalization != nil &&
+		manifest.Finalization.Applied &&
+		manifest.Finalization.AuditCommitted &&
+		manifest.Shadow != nil {
 		sessionDir, topologyErr := a.validateShadowRecoveryTopology(manifest)
 		if topologyErr != nil {
 			return types.Session{}, nil, topologyErr
@@ -84,7 +97,9 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 			if err := cleanup.RemoveAllWritable(sessionDir); err != nil {
 				return types.Session{}, nil, err
 			}
-			if err := a.detachedRuntime.MarkFinalizationCleanupComplete(manifest.Finalization.ID); err != nil {
+			if err := a.detachedRuntime.MarkFinalizationCleanupComplete(
+				manifest.Finalization.ID,
+			); err != nil {
 				return types.Session{}, nil, err
 			}
 		}
@@ -97,11 +112,18 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 
 	snapshot, _, err := a.createSessionCore(ctx, manifest.Request)
 	if err != nil {
-		return types.Session{}, nil, fmt.Errorf("bootstrap exact detached session %s: %w", manifest.SessionID, err)
+		return types.Session{}, nil, fmt.Errorf(
+			"bootstrap exact detached session %s: %w",
+			manifest.SessionID,
+			err,
+		)
 	}
 	sess, ok := a.sessions.Get(manifest.SessionID)
 	if !ok {
-		return types.Session{}, nil, fmt.Errorf("bootstrapped detached session %s is absent", manifest.SessionID)
+		return types.Session{}, nil, fmt.Errorf(
+			"bootstrapped detached session %s is absent",
+			manifest.SessionID,
+		)
 	}
 	cleanupOnError := func(cause error) (types.Session, *types.NetworkEnforcement, error) {
 		a.cleanupCreatedSession(sess)
@@ -116,8 +138,15 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 	if err != nil {
 		return cleanupOnError(fmt.Errorf("hash detached session policy: %w", err))
 	}
-	if a.detachedRuntime.IsRecovery() && strings.TrimSpace(manifest.PolicyDigest) != "" && policyDigest != manifest.PolicyDigest {
-		return cleanupOnError(fmt.Errorf("detached recovery refused: effective policy digest changed (expected %s, got %s)", manifest.PolicyDigest, policyDigest))
+	if a.detachedRuntime.IsRecovery() && strings.TrimSpace(manifest.PolicyDigest) != "" &&
+		policyDigest != manifest.PolicyDigest {
+		return cleanupOnError(
+			fmt.Errorf(
+				"detached recovery refused: effective policy digest changed (expected %s, got %s)",
+				manifest.PolicyDigest,
+				policyDigest,
+			),
+		)
 	}
 
 	if a.detachedRuntime.IsRecovery() {
@@ -126,38 +155,62 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 			intent, localPending := sw.PendingFinalization()
 			if localPending {
 				if manifest.Finalization == nil {
-					durable := detached.ShadowFinalizationRecovery{ID: intent.ID, Action: intent.Action, ReviewGeneration: intent.ReviewGeneration, ReviewHash: intent.ReviewHash, CreatedAt: intent.CreatedAt}
+					durable := detached.ShadowFinalizationRecovery{
+						ID:               intent.ID,
+						Action:           intent.Action,
+						ReviewGeneration: intent.ReviewGeneration,
+						ReviewHash:       intent.ReviewHash,
+						CreatedAt:        intent.CreatedAt,
+					}
 					if err := a.detachedRuntime.MarkFinalizing(durable); err != nil {
-						return types.Session{}, nil, fmt.Errorf("reconcile local shadow finalization: %w", err)
+						return types.Session{}, nil, fmt.Errorf(
+							"reconcile local shadow finalization: %w",
+							err,
+						)
 					}
 					manifest = a.detachedRuntime.Manifest()
 				}
-				if manifest.Finalization == nil || intent.ID != manifest.Finalization.ID || intent.Action != manifest.Finalization.Action ||
-					intent.ReviewGeneration != manifest.Finalization.ReviewGeneration || intent.ReviewHash != manifest.Finalization.ReviewHash {
-					return types.Session{}, nil, fmt.Errorf("detached finalization recovery identity mismatch")
+				if manifest.Finalization == nil || intent.ID != manifest.Finalization.ID ||
+					intent.Action != manifest.Finalization.Action ||
+					intent.ReviewGeneration != manifest.Finalization.ReviewGeneration ||
+					intent.ReviewHash != manifest.Finalization.ReviewHash {
+					return types.Session{}, nil, fmt.Errorf(
+						"detached finalization recovery identity mismatch",
+					)
 				}
 				lease, leaseErr := sess.TryBeginWorkspaceFinalization()
 				if leaseErr != nil {
-					return types.Session{}, nil, fmt.Errorf("reserve detached finalization recovery: %w", leaseErr)
+					return types.Session{}, nil, fmt.Errorf(
+						"reserve detached finalization recovery: %w",
+						leaseErr,
+					)
 				}
 				lease.MarkPending()
 				if applyErr := sw.ResumeFinalization(ctx, intent.ID); applyErr != nil {
 					lease.Release(false)
-					return types.Session{}, nil, fmt.Errorf("resume detached shadow finalization: %w", applyErr)
+					return types.Session{}, nil, fmt.Errorf(
+						"resume detached shadow finalization: %w",
+						applyErr,
+					)
 				}
 				terminalCtx, terminalCancel := terminalPersistenceContext(context.Background())
 				completeErr := a.completeShadowFinalization(terminalCtx, sess, sw, intent, true)
 				terminalCancel()
 				if completeErr != nil {
 					lease.Release(false)
-					return types.Session{}, nil, fmt.Errorf("complete resumed detached finalization: %w", completeErr)
+					return types.Session{}, nil, fmt.Errorf(
+						"complete resumed detached finalization: %w",
+						completeErr,
+					)
 				}
 				lease.Release(true)
 				return sess.Snapshot(), nil, nil
 			}
 		}
 		if manifest.Finalization != nil {
-			return types.Session{}, nil, fmt.Errorf("detached finalization manifest has no matching local transaction")
+			return types.Session{}, nil, fmt.Errorf(
+				"detached finalization manifest has no matching local transaction",
+			)
 		}
 		if err := sess.RestoreOutputArtifacts(manifest.OutputArtifacts); err != nil {
 			return cleanupOnError(fmt.Errorf("restore detached output artifacts: %w", err))
@@ -165,7 +218,10 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 		if !manifest.SessionCreatedAt.IsZero() {
 			sess.RestoreTimestamps(manifest.SessionCreatedAt, manifest.UpdatedAt)
 		}
-		patch := types.SessionPatchRequest{Cwd: manifest.Mutable.Cwd, Env: manifest.Mutable.Environment}
+		patch := types.SessionPatchRequest{
+			Cwd: manifest.Mutable.Cwd,
+			Env: manifest.Mutable.Environment,
+		}
 		if patch.Cwd != "" || len(patch.Env) > 0 {
 			if err := sess.ApplyPatch(patch); err != nil {
 				return cleanupOnError(fmt.Errorf("restore detached mutable session state: %w", err))
@@ -176,7 +232,10 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 			if err := json.Unmarshal(manifest.ScopedApprovals, &decisions); err != nil {
 				return cleanupOnError(fmt.Errorf("decode detached scoped approvals: %w", err))
 			}
-			if err := a.approvals.RestoreSessionScopedDecisions(manifest.SessionID, decisions); err != nil {
+			if err := a.approvals.RestoreSessionScopedDecisions(
+				manifest.SessionID,
+				decisions,
+			); err != nil {
 				return cleanupOnError(fmt.Errorf("restore detached scoped approvals: %w", err))
 			}
 		}
@@ -187,18 +246,35 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 			} else if command.Operation == detachedOperationSpawnSubagentChild {
 				terminalTypes = []string{"subagent_terminal"}
 			}
-			terminal, queryErr := a.store.QueryEvents(context.Background(), types.EventQuery{CommandID: command.CommandID, Types: terminalTypes, Limit: 1, Asc: false})
+			terminal, queryErr := a.store.QueryEvents(
+				context.Background(),
+				types.EventQuery{
+					CommandID: command.CommandID,
+					Types:     terminalTypes,
+					Limit:     1,
+					Asc:       false,
+				},
+			)
 			if queryErr != nil {
-				return cleanupOnError(fmt.Errorf("query interrupted operation %s terminal evidence: %w", command.CommandID, queryErr))
+				return cleanupOnError(
+					fmt.Errorf(
+						"query interrupted operation %s terminal evidence: %w",
+						command.CommandID,
+						queryErr,
+					),
+				)
 			}
 			if len(terminal) > 0 {
 				continue
 			}
-			if command.Operation == detachedOperationSpawnSubagent || command.Operation == detachedOperationSpawnSubagentChild {
+			if command.Operation == detachedOperationSpawnSubagent ||
+				command.Operation == detachedOperationSpawnSubagentChild {
 				if err := a.emitDetachedSubagentInterrupted(command); err != nil {
 					return cleanupOnError(err)
 				}
-			} else if err := a.emitDetachedCommandInterrupted(command); err != nil {
+			} else if err := a.emitDetachedCommandInterrupted(
+				command,
+			); err != nil {
 				return cleanupOnError(err)
 			}
 		}
@@ -219,14 +295,25 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 	}
 	strict := report != nil && report.Requested == types.NetworkEnforcementRequestStrict
 	if strict && !report.Ready() && !a.detachedRuntime.IsRecovery() {
-		return cleanupOnError(fmt.Errorf("strict detached network startup refused: status=%s tier=%s: %s", report.Status, report.Tier, report.Detail))
+		return cleanupOnError(
+			fmt.Errorf(
+				"strict detached network startup refused: status=%s tier=%s: %s",
+				report.Status,
+				report.Tier,
+				report.Detail,
+			),
+		)
 	}
 	if err := a.detachedRuntime.MarkReady(snapshot, policyDigest, report); err != nil {
 		return cleanupOnError(fmt.Errorf("commit detached recovery readiness: %w", err))
 	}
 	if !a.detachedRuntime.IsRecovery() && len(manifest.Mutable.VolatileEnvironment) > 0 {
-		if err := a.detachedRuntime.ScrubServiceEnvironment(manifest.Mutable.VolatileEnvironment); err != nil {
-			return cleanupOnError(fmt.Errorf("scrub volatile supervisor environment after capture: %w", err))
+		if err := a.detachedRuntime.ScrubServiceEnvironment(
+			manifest.Mutable.VolatileEnvironment,
+		); err != nil {
+			return cleanupOnError(
+				fmt.Errorf("scrub volatile supervisor environment after capture: %w", err),
+			)
 		}
 	}
 	if a.detachedRuntime.IsRecovery() {
@@ -240,7 +327,8 @@ func (a *App) BootstrapDetachedSession(ctx context.Context) (types.Session, *typ
 			}
 		}
 		if len(manifest.Mutable.VolatileEnvironment) > 0 || manifest.Mutable.DirenvRefreshRequired {
-			reason := "volatile environment must be explicitly reprovisioned after supervisor recovery"
+			reason := "volatile environment must be explicitly reprovisioned after supervisor " +
+				"recovery"
 			if err := a.detachedRuntime.MarkDegraded(reason, report); err != nil {
 				return cleanupOnError(err)
 			}
@@ -280,19 +368,31 @@ func (a *App) emitDetachedSubagentInterrupted(operation detached.InflightCommand
 		Termination:                subagentTerminationForced,
 		Retryable:                  false,
 		SideEffectsMayHaveOccurred: true,
-		Message:                    "subagent was interrupted by a supervisor restart; side effects are unknown",
+		Message: "subagent was interrupted by a supervisor restart; side " +
+			"effects are unknown",
 	}
 	eventType := "tool_spawn_subagent_end"
 	if operation.Operation == detachedOperationSpawnSubagentChild {
 		eventType = "subagent_terminal"
 	}
-	if err := a.persistSubagentTerminalEvent(status.SessionID, eventType, operation.CommandID, operation.ParentID, terminal, map[string]any{
-		"interrupted":        true,
-		"termination_reason": "supervisor_restart",
-		"generation":         status.Generation,
-		"incarnation_id":     status.IncarnationID,
-	}); err != nil {
-		return fmt.Errorf("persist interrupted subagent %s terminal evidence: %w", operation.CommandID, err)
+	if err := a.persistSubagentTerminalEvent(
+		status.SessionID,
+		eventType,
+		operation.CommandID,
+		operation.ParentID,
+		terminal,
+		map[string]any{
+			"interrupted":        true,
+			"termination_reason": "supervisor_restart",
+			"generation":         status.Generation,
+			"incarnation_id":     status.IncarnationID,
+		},
+	); err != nil {
+		return fmt.Errorf(
+			"persist interrupted subagent %s terminal evidence: %w",
+			operation.CommandID,
+			err,
+		)
 	}
 	return nil
 }
@@ -321,8 +421,14 @@ func (a *App) emitDetachedCommandInterrupted(command detached.InflightCommand) e
 	terminalCtx, cancel := terminalPersistenceContext(context.Background())
 	defer cancel()
 	if err := a.store.AppendEvent(terminalCtx, event); err != nil {
-		_ = a.detachedRuntime.MarkFailed("persist interrupted command terminal evidence: " + err.Error())
-		return fmt.Errorf("persist interrupted command %s terminal evidence: %w", command.CommandID, err)
+		_ = a.detachedRuntime.MarkFailed(
+			"persist interrupted command terminal evidence: " + err.Error(),
+		)
+		return fmt.Errorf(
+			"persist interrupted command %s terminal evidence: %w",
+			command.CommandID,
+			err,
+		)
 	}
 	a.broker.Publish(event)
 	return nil
@@ -354,7 +460,14 @@ func (a *App) beginDetachedMutation(operation string) (func(), error) {
 	}
 	id := "mutation-" + uuid.NewString()
 	now := time.Now().UTC()
-	if err := a.detachedRuntime.RecordCommand(detached.InflightCommand{CommandID: id, Operation: operation, AdmittedAt: now, StartedAt: now}); err != nil {
+	if err := a.detachedRuntime.RecordCommand(
+		detached.InflightCommand{
+			CommandID:  id,
+			Operation:  operation,
+			AdmittedAt: now,
+			StartedAt:  now,
+		},
+	); err != nil {
 		_ = a.detachedRuntime.MarkFailed("persist mutation admission: " + err.Error())
 		return nil, fmt.Errorf("durable mutation admission failed; operation was not executed")
 	}
@@ -370,7 +483,11 @@ func (a *App) detachedMutationReady() error {
 		return nil
 	}
 	if status.LastError != "" {
-		return fmt.Errorf("detached supervisor lifecycle is %s: %s", status.LifecycleState, status.LastError)
+		return fmt.Errorf(
+			"detached supervisor lifecycle is %s: %s",
+			status.LifecycleState,
+			status.LastError,
+		)
 	}
 	return fmt.Errorf("detached supervisor lifecycle is %s", status.LifecycleState)
 }

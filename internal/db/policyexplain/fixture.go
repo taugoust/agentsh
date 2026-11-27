@@ -50,7 +50,11 @@ func LoadCatalogFixture(path string) (CatalogFixture, error) {
 	for i, rel := range in.Relations {
 		kind, ok := parseRelationKind(rel.Kind)
 		if !ok {
-			return CatalogFixture{}, fmt.Errorf("relations[%d].kind: unknown relation kind %q", i, rel.Kind)
+			return CatalogFixture{}, fmt.Errorf(
+				"relations[%d].kind: unknown relation kind %q",
+				i,
+				rel.Kind,
+			)
 		}
 		relations = append(relations, catalog.Relation{
 			OID:   catalog.OID(rel.OID),
@@ -63,7 +67,11 @@ func LoadCatalogFixture(path string) (CatalogFixture, error) {
 	for i, fn := range in.Functions {
 		vol, ok := parseVolatility(fn.Volatility)
 		if !ok {
-			return CatalogFixture{}, fmt.Errorf("functions[%d].volatility: unknown volatility %q", i, fn.Volatility)
+			return CatalogFixture{}, fmt.Errorf(
+				"functions[%d].volatility: unknown volatility %q",
+				i,
+				fn.Volatility,
+			)
 		}
 		functions = append(functions, catalog.Function{
 			OID:           catalog.OID(fn.OID),

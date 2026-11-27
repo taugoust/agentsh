@@ -52,7 +52,12 @@ func TestSynthErrorOnly_NoTrailingRFQ(t *testing.T) {
 func TestPickDenySynth_FirstDenyWins(t *testing.T) {
 	decisions := []policy.Decision{
 		{Verb: policy.VerbAllow},
-		{Verb: policy.VerbDeny, RuleKind: policy.RuleKindStatement, RuleName: "no-deletes", Reason: "delete denied"},
+		{
+			Verb:     policy.VerbDeny,
+			RuleKind: policy.RuleKindStatement,
+			RuleName: "no-deletes",
+			Reason:   "delete denied",
+		},
 		{Verb: policy.VerbDeny, RuleKind: policy.RuleKindStatement, RuleName: "no-truncates"},
 	}
 	rendered, sqlstate := pickDenySynth(decisions)
@@ -76,7 +81,12 @@ func TestPickDenySynth_ConnectionRuleUses28000(t *testing.T) {
 
 func TestPickDenySynth_ImplicitDenyMessage(t *testing.T) {
 	decisions := []policy.Decision{
-		{Verb: policy.VerbDeny, RuleKind: policy.RuleKindStatement, RuleName: "", Reason: "no rule covers unsafe_io"},
+		{
+			Verb:     policy.VerbDeny,
+			RuleKind: policy.RuleKindStatement,
+			RuleName: "",
+			Reason:   "no rule covers unsafe_io",
+		},
 	}
 	rendered, _ := pickDenySynth(decisions)
 	if !strings.Contains(rendered, "no rule covers") {

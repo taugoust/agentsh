@@ -52,7 +52,15 @@ func (s *chainingFakeSink) AppendEvent(ctx context.Context, ev types.Event) erro
 	}
 	seq := ev.Chain.Sequence
 	gen := ev.Chain.Generation
-	canonical := []byte(`{"id":"` + ev.ID + `","seq":` + strconv.FormatUint(seq, 10) + `,"gen":` + strconv.FormatUint(uint64(gen), 10) + `}`)
+	canonical := []byte(
+		`{"id":"` + ev.ID + `","seq":` + strconv.FormatUint(
+			seq,
+			10,
+		) + `,"gen":` + strconv.FormatUint(
+			uint64(gen),
+			10,
+		) + `}`,
+	)
 
 	result, err := s.chain.Compute(audit.IntegrityFormatVersion, int64(seq), gen, canonical)
 	if err != nil {
@@ -99,7 +107,10 @@ func (s *chainingFakeSink) AppendEvent(ctx context.Context, ev types.Event) erro
 	}
 }
 
-func (s *chainingFakeSink) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (s *chainingFakeSink) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return nil, nil
 }
 func (s *chainingFakeSink) Close() error { return nil }
@@ -139,7 +150,10 @@ func TestPhase0_CrossSinkSequenceConvergence(t *testing.T) {
 
 	const N = 10000
 	for i := 0; i < N; i++ {
-		if err := s.AppendEvent(context.Background(), types.Event{ID: strconv.Itoa(i)}); err != nil {
+		if err := s.AppendEvent(
+			context.Background(),
+			types.Event{ID: strconv.Itoa(i)},
+		); err != nil {
 			t.Fatalf("AppendEvent #%d: %v", i, err)
 		}
 	}
@@ -151,7 +165,14 @@ func TestPhase0_CrossSinkSequenceConvergence(t *testing.T) {
 		ar := a.records[i]
 		br := b.records[i]
 		if ar.Sequence != br.Sequence || ar.Generation != br.Generation {
-			t.Fatalf("record %d: a=(seq=%d,gen=%d) b=(seq=%d,gen=%d)", i, ar.Sequence, ar.Generation, br.Sequence, br.Generation)
+			t.Fatalf(
+				"record %d: a=(seq=%d,gen=%d) b=(seq=%d,gen=%d)",
+				i,
+				ar.Sequence,
+				ar.Generation,
+				br.Sequence,
+				br.Generation,
+			)
 		}
 		if ar.Sequence != uint64(i) {
 			t.Fatalf("record %d: seq=%d want %d", i, ar.Sequence, i)
@@ -187,7 +208,10 @@ func TestPhase0_HeterogeneousSinks_SequenceConvergence_HashesDiverge(t *testing.
 
 	const N = 1000
 	for i := 0; i < N; i++ {
-		if err := s.AppendEvent(context.Background(), types.Event{ID: strconv.Itoa(i)}); err != nil {
+		if err := s.AppendEvent(
+			context.Background(),
+			types.Event{ID: strconv.Itoa(i)},
+		); err != nil {
 			t.Fatalf("AppendEvent #%d: %v", i, err)
 		}
 	}
@@ -242,7 +266,10 @@ func TestPhase0_GenerationRollConsistency(t *testing.T) {
 	s := New(a, nil, b)
 
 	for i := 0; i < 3; i++ {
-		if err := s.AppendEvent(context.Background(), types.Event{ID: strconv.Itoa(i)}); err != nil {
+		if err := s.AppendEvent(
+			context.Background(),
+			types.Event{ID: strconv.Itoa(i)},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -256,7 +283,10 @@ func TestPhase0_GenerationRollConsistency(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if err := s.AppendEvent(context.Background(), types.Event{ID: strconv.Itoa(i + 100)}); err != nil {
+		if err := s.AppendEvent(
+			context.Background(),
+			types.Event{ID: strconv.Itoa(i + 100)},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -277,7 +307,14 @@ func TestPhase0_GenerationRollConsistency(t *testing.T) {
 	for i, want := range expected {
 		got := a.records[i]
 		if got.Sequence != want.seq || got.Generation != want.gen {
-			t.Errorf("a.records[%d] = (seq=%d, gen=%d), want (seq=%d, gen=%d)", i, got.Sequence, got.Generation, want.seq, want.gen)
+			t.Errorf(
+				"a.records[%d] = (seq=%d, gen=%d), want (seq=%d, gen=%d)",
+				i,
+				got.Sequence,
+				got.Generation,
+				want.seq,
+				want.gen,
+			)
 		}
 		if a.records[i] != b.records[i] {
 			t.Errorf("a.records[%d] != b.records[%d]: %+v vs %+v", i, i, a.records[i], b.records[i])
@@ -305,7 +342,10 @@ func TestPhase0_TransactionalRollback_CleanFailure(t *testing.T) {
 
 	// Three successful events first.
 	for i := 0; i < 3; i++ {
-		if err := s.AppendEvent(context.Background(), types.Event{ID: strconv.Itoa(i)}); err != nil {
+		if err := s.AppendEvent(
+			context.Background(),
+			types.Event{ID: strconv.Itoa(i)},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -333,7 +373,11 @@ func TestPhase0_TransactionalRollback_CleanFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := a.records[3].PrevHash; got != preFailPrev {
-		t.Errorf("after clean failure: prev_hash advanced unexpectedly. got=%q want=%q", got, preFailPrev)
+		t.Errorf(
+			"after clean failure: prev_hash advanced unexpectedly. got=%q want=%q",
+			got,
+			preFailPrev,
+		)
 	}
 }
 
@@ -402,7 +446,10 @@ func TestPhase0_MixedSinkOutcome_PrimaryCommitsSecondaryFailsClean(t *testing.T)
 
 	// Two successful events through both sinks.
 	for i := 0; i < 2; i++ {
-		if err := s.AppendEvent(context.Background(), types.Event{ID: strconv.Itoa(i)}); err != nil {
+		if err := s.AppendEvent(
+			context.Background(),
+			types.Event{ID: strconv.Itoa(i)},
+		); err != nil {
 			t.Fatalf("AppendEvent #%d: %v", i, err)
 		}
 	}
@@ -452,10 +499,16 @@ func TestPhase0_MixedSinkOutcome_PrimaryCommitsSecondaryFailsClean(t *testing.T)
 
 	// Primary committed; secondary did NOT.
 	if len(a.records) != 3 {
-		t.Fatalf("len(a.records) after mixed failure = %d, want 3 (primary committed)", len(a.records))
+		t.Fatalf(
+			"len(a.records) after mixed failure = %d, want 3 (primary committed)",
+			len(a.records),
+		)
 	}
 	if len(b.records) != 2 {
-		t.Fatalf("len(b.records) after mixed failure = %d, want 2 (secondary rolled back)", len(b.records))
+		t.Fatalf(
+			"len(b.records) after mixed failure = %d, want 2 (secondary rolled back)",
+			len(b.records),
+		)
 	}
 
 	// Allocator advanced eagerly even though secondary failed.
@@ -488,14 +541,21 @@ func TestPhase0_MixedSinkOutcome_PrimaryCommitsSecondaryFailsClean(t *testing.T)
 		t.Fatalf("a.records[3].Sequence = %d, want 3", a.records[3].Sequence)
 	}
 	if b.records[2].Sequence != 3 {
-		t.Fatalf("b.records[2].Sequence = %d, want 3 (eager-advance leaves both observing the same fresh seq)",
-			b.records[2].Sequence)
+		t.Fatalf(
+			"b.records[2].Sequence = %d, want 3 (eager-advance leaves both observing the same "+
+				"fresh seq)",
+			b.records[2].Sequence,
+		)
 	}
 
 	// Secondary's chain continued from PRE-FAILURE prev_hash — rollback proof.
 	if got := b.records[2].PrevHash; got != bPreFailEntryHash {
-		t.Fatalf("b.records[2].PrevHash = %q, want %q (secondary chain must continue from pre-failure prev_hash)",
-			got, bPreFailEntryHash)
+		t.Fatalf(
+			"b.records[2].PrevHash = %q, want %q (secondary chain must continue from pre-failure "+
+				"prev_hash)",
+			got,
+			bPreFailEntryHash,
+		)
 	}
 
 	// Primary's chain continued normally; never failed.
@@ -580,10 +640,16 @@ func TestPhase0_MixedSinkOutcome_PrimaryCommitsSecondaryLatchesFatal(t *testing.
 
 	// Primary committed; secondary did NOT.
 	if len(a.records) != 2 {
-		t.Fatalf("len(a.records) after mixed-ambig = %d, want 2 (primary committed)", len(a.records))
+		t.Fatalf(
+			"len(a.records) after mixed-ambig = %d, want 2 (primary committed)",
+			len(a.records),
+		)
 	}
 	if len(b.records) != 1 {
-		t.Fatalf("len(b.records) after mixed-ambig = %d, want 1 (secondary latched, no commit)", len(b.records))
+		t.Fatalf(
+			"len(b.records) after mixed-ambig = %d, want 1 (secondary latched, no commit)",
+			len(b.records),
+		)
 	}
 	// Allocator advanced.
 	if got := s.State().Sequence; got != seqBeforeAmbig+1 {
@@ -599,11 +665,17 @@ func TestPhase0_MixedSinkOutcome_PrimaryCommitsSecondaryLatchesFatal(t *testing.
 		t.Fatalf("AppendEvent after mixed-ambig: err = %v, want ErrFatalIntegrity", err)
 	}
 	if len(a.records) != 3 {
-		t.Fatalf("len(a.records) after follow-up = %d, want 3 (primary continues despite latched secondary)",
-			len(a.records))
+		t.Fatalf(
+			"len(a.records) after follow-up = %d, want 3 (primary continues despite latched "+
+				"secondary)",
+			len(a.records),
+		)
 	}
 	if len(b.records) != 1 {
-		t.Fatalf("len(b.records) after follow-up = %d, want 1 (secondary remains latched)", len(b.records))
+		t.Fatalf(
+			"len(b.records) after follow-up = %d, want 1 (secondary remains latched)",
+			len(b.records),
+		)
 	}
 
 	// KEY ASSERTION (roborev finding): the audit hook MUST also surface
@@ -623,7 +695,10 @@ func TestPhase0_MixedSinkOutcome_PrimaryCommitsSecondaryLatchesFatal(t *testing.
 
 	// Primary's chain unaffected by secondary's Fatal.
 	if got, want := a.records[2].PrevHash, a.records[1].EntryHash; got != want {
-		t.Fatalf("a.records[2].PrevHash = %q, want %q (primary chain unaffected by secondary Fatal)",
-			got, want)
+		t.Fatalf(
+			"a.records[2].PrevHash = %q, want %q (primary chain unaffected by secondary Fatal)",
+			got,
+			want,
+		)
 	}
 }

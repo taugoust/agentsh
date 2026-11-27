@@ -44,7 +44,11 @@ func TestPlatform_Capabilities(t *testing.T) {
 	// On Linux, we expect certain capabilities
 	// FUSE should be detected (may or may not be available)
 	t.Logf("HasFUSE: %v (implementation: %s)", caps.HasFUSE, caps.FUSEImplementation)
-	t.Logf("HasNetworkIntercept: %v (implementation: %s)", caps.HasNetworkIntercept, caps.NetworkImplementation)
+	t.Logf(
+		"HasNetworkIntercept: %v (implementation: %s)",
+		caps.HasNetworkIntercept,
+		caps.NetworkImplementation,
+	)
 	t.Logf("HasSeccomp: %v", caps.HasSeccomp)
 	t.Logf("HasCgroups: %v", caps.HasCgroups)
 	t.Logf("IsolationLevel: %v", caps.IsolationLevel)

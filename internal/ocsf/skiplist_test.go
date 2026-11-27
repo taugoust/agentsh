@@ -22,7 +22,10 @@ func TestSkiplistDoesNotShadowRegistry(t *testing.T) {
 			t.Errorf("skiplist[%q] is also registered — production Type cannot be skiplisted", k)
 		}
 		if _, ok := pendingTypes[k]; ok {
-			t.Errorf("skiplist[%q] is also in pendingTypes — production Type cannot be skiplisted", k)
+			t.Errorf(
+				"skiplist[%q] is also in pendingTypes — production Type cannot be skiplisted",
+				k,
+			)
 		}
 	}
 }

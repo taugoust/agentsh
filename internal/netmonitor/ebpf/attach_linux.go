@@ -68,7 +68,10 @@ func AttachConnectToCgroup(cgroupPath string) (*ebpf.Collection, func() error, e
 // programs, initializes policy when requested, attaches exactly four fixed
 // roles, and optionally pins helper-owned maps/links. It never accepts an
 // untrusted object, program, map, link, byte slice, path to bytecode, or fd.
-func AttachConnectToCgroupWithOptions(cgroupPath string, opts CgroupAttachOptions) (*CgroupAttachment, error) {
+func AttachConnectToCgroupWithOptions(
+	cgroupPath string,
+	opts CgroupAttachOptions,
+) (*CgroupAttachment, error) {
 	coll, err := LoadConnectProgram()
 	if err != nil {
 		return nil, err
@@ -153,7 +156,11 @@ func validateFixedConnectCollection(coll *ebpf.Collection) error {
 		return fmt.Errorf("nil eBPF connect collection")
 	}
 	if len(coll.Programs) != len(fixedConnectProgramRoles) {
-		return fmt.Errorf("embedded connect object has %d programs, want exactly %d", len(coll.Programs), len(fixedConnectProgramRoles))
+		return fmt.Errorf(
+			"embedded connect object has %d programs, want exactly %d",
+			len(coll.Programs),
+			len(fixedConnectProgramRoles),
+		)
 	}
 	for name := range fixedConnectProgramRoles {
 		if coll.Programs[name] == nil {
@@ -161,7 +168,11 @@ func validateFixedConnectCollection(coll *ebpf.Collection) error {
 		}
 	}
 	if len(coll.Maps) != len(fixedConnectMapRoles) {
-		return fmt.Errorf("embedded connect object has %d maps, want exactly %d", len(coll.Maps), len(fixedConnectMapRoles))
+		return fmt.Errorf(
+			"embedded connect object has %d maps, want exactly %d",
+			len(coll.Maps),
+			len(fixedConnectMapRoles),
+		)
 	}
 	for name := range fixedConnectMapRoles {
 		if coll.Maps[name] == nil {

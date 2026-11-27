@@ -52,7 +52,13 @@ func filePathArgIndex(nr int) int {
 //
 // After injection, the caller sets the return value directly in the registers
 // and clears InSyscall so the tracer's enter/exit tracking stays synchronized.
-func (t *Tracer) redirectFileImpl(ctx context.Context, tid int, regs Regs, nr int, redirectPath string) (int64, error) {
+func (t *Tracer) redirectFileImpl(
+	ctx context.Context,
+	tid int,
+	regs Regs,
+	nr int,
+	redirectPath string,
+) (int64, error) {
 	argIdx := filePathArgIndex(nr)
 	if argIdx < 0 {
 		return 0, fmt.Errorf("unsupported syscall %d for file redirect", nr)
@@ -146,7 +152,13 @@ func (t *Tracer) redirectFile(ctx context.Context, tid int, regs Regs, nr int, r
 // softDeleteFile performs a soft-delete: denies the unlinkat but moves the file
 // to a trash directory instead of actually deleting it.
 // The absPath parameter is the already-resolved absolute path from handleFile.
-func (t *Tracer) softDeleteFile(ctx context.Context, tid int, regs Regs, absPath string, result FileResult) {
+func (t *Tracer) softDeleteFile(
+	ctx context.Context,
+	tid int,
+	regs Regs,
+	absPath string,
+	result FileResult,
+) {
 	if result.TrashDir == "" {
 		slog.Warn("softDeleteFile: no trash dir, denying", "tid", tid)
 		t.denySyscall(tid, int(unix.EACCES))

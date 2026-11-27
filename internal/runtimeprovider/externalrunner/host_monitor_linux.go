@@ -140,7 +140,10 @@ func newPartialLinuxHostRunner(cmd *exec.Cmd, pidfd, processGroup int) *partialL
 		waitErr := cmd.Wait()
 		state := cmd.ProcessState
 		if state == nil {
-			return nil, errors.Join(fmt.Errorf("partially-started external runner wait returned no exact exit state"), waitErr)
+			return nil, errors.Join(
+				fmt.Errorf("partially-started external runner wait returned no exact exit state"),
+				waitErr,
+			)
 		}
 		result := &hostRunnerResult{
 			Exit: HostRunnerExit{ExitCode: state.ExitCode()},
@@ -201,7 +204,9 @@ func (r *partialLinuxHostRunner) startWaitAfterGroupCleanup() error {
 	r.forceMu.Lock()
 	defer r.forceMu.Unlock()
 	if !r.processGroupCleaned {
-		return fmt.Errorf("exact partially-started external runner process-group cleanup has not succeeded")
+		return fmt.Errorf(
+			"exact partially-started external runner process-group cleanup has not succeeded",
+		)
 	}
 	r.waitOnce.Do(func() {
 		go func() {
@@ -232,7 +237,13 @@ func (r *partialLinuxHostRunner) EnsureStopped(ctx context.Context) (*hostRunner
 	}
 }
 
-func startHostRunner(profile Profile, layout HostMonitorLayout, cid uint32, volume *WorkspaceVolume, output io.Writer) (hostRunner, error) {
+func startHostRunner(
+	profile Profile,
+	layout HostMonitorLayout,
+	cid uint32,
+	volume *WorkspaceVolume,
+	output io.Writer,
+) (hostRunner, error) {
 	if err := validateHostRunnerWorkspaceVolume(profile, volume); err != nil {
 		return nil, err
 	}
@@ -242,7 +253,8 @@ func startHostRunner(profile Profile, layout HostMonitorLayout, cid uint32, volu
 	}
 	defer runnerFile.Close()
 	info, err := runnerFile.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o222 != 0 || info.Mode().Perm()&0o111 == 0 {
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o222 != 0 ||
+		info.Mode().Perm()&0o111 == 0 {
 		return nil, fmt.Errorf("verified external runner file is unsafe")
 	}
 	hash := sha256.New()
@@ -298,8 +310,17 @@ func startHostRunner(profile Profile, layout HostMonitorLayout, cid uint32, volu
 		return partial, errors.Join(startupErr, partial.ForceStop())
 	}
 	runner := &linuxHostRunner{
-		identity: HostProcessIdentity{PID: cmd.Process.Pid, ProcessGroup: processGroup, StartIdentity: startIdentity, BootID: bootID},
-		cmd:      cmd, pidfd: pidfd, done: make(chan hostRunnerResult, 1), exited: make(chan struct{}), waitDone: make(chan struct{}),
+		identity: HostProcessIdentity{
+			PID:           cmd.Process.Pid,
+			ProcessGroup:  processGroup,
+			StartIdentity: startIdentity,
+			BootID:        bootID,
+		},
+		cmd:      cmd,
+		pidfd:    pidfd,
+		done:     make(chan hostRunnerResult, 1),
+		exited:   make(chan struct{}),
+		waitDone: make(chan struct{}),
 	}
 	go func() {
 		poll := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}}
@@ -322,17 +343,24 @@ func validateHostRunnerWorkspaceVolume(profile Profile, volume *WorkspaceVolume)
 		}
 		return nil
 	case ProfileSchemaV2, ProfileSchemaV3:
-		if profile.WorkspaceVolume == nil || volume == nil || volume.Image == nil || volume.RunnerFD() != WorkspaceVolumeRunnerFD ||
+		if profile.WorkspaceVolume == nil || volume == nil || volume.Image == nil ||
+			volume.RunnerFD() != WorkspaceVolumeRunnerFD ||
 			volume.Manifest.WorkspaceVolume != *profile.WorkspaceVolume {
-			return fmt.Errorf("external runner v2 workspace volume is incomplete or differs from its profile")
+			return fmt.Errorf(
+				"external runner v2 workspace volume is incomplete or differs from its profile",
+			)
 		}
 		info, err := volume.Image.Stat()
 		if err != nil || !safePrivateWorkspaceVolumeFile(info) {
 			return fmt.Errorf("external runner v2 workspace volume image descriptor is unsafe")
 		}
 		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || uint64(stat.Dev) != volume.Manifest.Image.Device || stat.Ino != volume.Manifest.Image.Inode {
-			return fmt.Errorf("external runner v2 workspace volume image descriptor identity differs from its manifest")
+		if !ok || uint64(stat.Dev) != volume.Manifest.Image.Device ||
+			stat.Ino != volume.Manifest.Image.Inode {
+			return fmt.Errorf(
+				"external runner v2 workspace volume image descriptor identity differs from its " +
+					"manifest",
+			)
 		}
 		return nil
 	default:
@@ -350,7 +378,9 @@ func validateHostMonitorDirectory(path string) error {
 		return err
 	}
 	stat, ok := before.Sys().(*syscall.Stat_t)
-	if !before.IsDir() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm() != 0o700 || !ok || !trustedCIDOwner(stat.Uid) {
+	if !before.IsDir() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm() != 0o700 ||
+		!ok ||
+		!trustedCIDOwner(stat.Uid) {
 		return fmt.Errorf("unsafe directory identity or permissions")
 	}
 	dir, err := os.Open(path)
@@ -377,7 +407,8 @@ func acquireHostMonitorLock(ctx context.Context, path string) (io.Closer, error)
 		return nil, fmt.Errorf("inspect host monitor lock: %w", statErr)
 	}
 	stat, statOK := info.Sys().(*syscall.Stat_t)
-	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || !statOK || !trustedCIDOwner(stat.Uid) {
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || !statOK ||
+		!trustedCIDOwner(stat.Uid) {
 		_ = file.Close()
 		return nil, fmt.Errorf("host monitor lock has unsafe identity or permissions")
 	}

@@ -22,7 +22,16 @@ import (
 // Returning true prevents the legacy one-packet implementation in wrap.go from
 // running. The legacy body remains only as a source-compatibility fallback on
 // non-Linux builds and for removal in a later protocol cleanup.
-func (a *App) acceptNotifyFDLineage(ctx context.Context, listener net.Listener, socketPath, sessionID string, s *session.Session, execveEnabled bool, expectedUID int, shimMode bool, approvalUI *approvalUIEndpoint) bool {
+func (a *App) acceptNotifyFDLineage(
+	ctx context.Context,
+	listener net.Listener,
+	socketPath, sessionID string,
+	s *session.Session,
+	execveEnabled bool,
+	expectedUID int,
+	shimMode bool,
+	approvalUI *approvalUIEndpoint,
+) bool {
 	// Production wrap-init always binds the exact serialized wrapper config.
 	// Direct legacy unit callers intentionally omit it and continue through the
 	// one-packet compatibility body in wrap.go.
@@ -73,7 +82,17 @@ func (a *App) acceptNotifyFDLineage(ctx context.Context, listener net.Listener, 
 	wrapperPin, err := validateWrapperPIDForNotifyHook(wrapperPID, peer.PID, peer.UID)
 	if err != nil {
 		_ = wraphandoff.WriteStatus(connection, false)
-		slog.Warn("wrap: untrusted lineage wrapper prelude", "error", err, "wrapper_pid", wrapperPID, "peer_pid", peer.PID, "session_id", sessionID)
+		slog.Warn(
+			"wrap: untrusted lineage wrapper prelude",
+			"error",
+			err,
+			"wrapper_pid",
+			wrapperPID,
+			"peer_pid",
+			peer.PID,
+			"session_id",
+			sessionID,
+		)
 		return true
 	}
 	if wrapperPin != nil {
@@ -81,9 +100,16 @@ func (a *App) acceptNotifyFDLineage(ctx context.Context, listener net.Listener, 
 	}
 
 	commandBoundary := commandJailRequirements(commandJailRequired(a.cfg))
-	if (commandBoundary != nil) != prelude.CommandJail || commandBoundary != nil && !commandBoundary.Complete() {
+	if (commandBoundary != nil) != prelude.CommandJail ||
+		commandBoundary != nil && !commandBoundary.Complete() {
 		_ = wraphandoff.WriteStatus(connection, false)
-		slog.Warn("wrap: lineage command-jail capability mismatch", "wrapper_pid", wrapperPID, "session_id", sessionID)
+		slog.Warn(
+			"wrap: lineage command-jail capability mismatch",
+			"wrapper_pid",
+			wrapperPID,
+			"session_id",
+			sessionID,
+		)
 		return true
 	}
 	if commandBoundary != nil && !wrapNeedsCgroupBeforeAck(a, s) {
@@ -117,7 +143,15 @@ func (a *App) acceptNotifyFDLineage(ctx context.Context, listener net.Listener, 
 			if cleanupErr := barrier.Cleanup(); cleanupErr != nil {
 				err = errors.Join(err, cleanupErr)
 			}
-			slog.Warn("wrap: pre-fork cgroup setup failed", "error", err, "wrapper_pid", wrapperPID, "session_id", sessionID)
+			slog.Warn(
+				"wrap: pre-fork cgroup setup failed",
+				"error",
+				err,
+				"wrapper_pid",
+				wrapperPID,
+				"session_id",
+				sessionID,
+			)
 			return true
 		}
 	}
@@ -157,14 +191,32 @@ func (a *App) acceptNotifyFDLineage(ctx context.Context, listener net.Listener, 
 			handoff.Close()
 		}
 		_ = wraphandoff.WriteStatus(connection, false)
-		slog.Debug("wrap: lineage payload handoff failed", "error", err, "wrapper_pid", wrapperPID, "session_id", sessionID)
+		slog.Debug(
+			"wrap: lineage payload handoff failed",
+			"error",
+			err,
+			"wrapper_pid",
+			wrapperPID,
+			"session_id",
+			sessionID,
+		)
 		return true
 	}
 	defer handoff.Close()
 	meta := handoff.Metadata
-	if !handoff.HasMetadata || meta.WrapperPID != wrapperPID || meta.PayloadPID <= 0 || meta.CommandJail != prelude.CommandJail || !payloadLineageMatches(meta.PayloadPID, wrapperPID) {
+	if !handoff.HasMetadata || meta.WrapperPID != wrapperPID || meta.PayloadPID <= 0 ||
+		meta.CommandJail != prelude.CommandJail ||
+		!payloadLineageMatches(meta.PayloadPID, wrapperPID) {
 		_ = wraphandoff.WriteStatus(connection, false)
-		slog.Warn("wrap: lineage payload identity rejected", "wrapper_pid", wrapperPID, "payload_pid", meta.PayloadPID, "session_id", sessionID)
+		slog.Warn(
+			"wrap: lineage payload identity rejected",
+			"wrapper_pid",
+			wrapperPID,
+			"payload_pid",
+			meta.PayloadPID,
+			"session_id",
+			sessionID,
+		)
 		return true
 	}
 	if meta.FileLookupBroker != (handoff.FileLookupBroker != nil) {
@@ -177,7 +229,8 @@ func (a *App) acceptNotifyFDLineage(ctx context.Context, listener net.Listener, 
 	if !configBound {
 		compositionSelected = s != nil && s.CurrentSandboxComposition() != ""
 	}
-	if compositionSelected != (handoff.CompositionSetup != nil) || compositionSelected != meta.CompositionSetup {
+	if compositionSelected != (handoff.CompositionSetup != nil) ||
+		compositionSelected != meta.CompositionSetup {
 		_ = wraphandoff.WriteStatus(connection, false)
 		return true
 	}
@@ -188,9 +241,22 @@ func (a *App) acceptNotifyFDLineage(ctx context.Context, listener net.Listener, 
 	handoff.NotifyFD = nil
 	handoff.CompositionSetup = nil
 	handoff.FileLookupBroker = nil
-	lineageContext := wrapLineageContext{PayloadPID: meta.PayloadPID, FileLookupBroker: lookupEndpoint}
+	lineageContext := wrapLineageContext{
+		PayloadPID:       meta.PayloadPID,
+		FileLookupBroker: lookupEndpoint,
+	}
 	ctx = context.WithValue(ctx, wrapLineageContextKey{}, lineageContext)
-	if err := startNotifyHandlerForWrapHook(ctx, notifyFD, compositionSetup, sessionID, a, execveEnabled, wrapperPID, s, cleanup); err != nil {
+	if err := startNotifyHandlerForWrapHook(
+		ctx,
+		notifyFD,
+		compositionSetup,
+		sessionID,
+		a,
+		execveEnabled,
+		wrapperPID,
+		s,
+		cleanup,
+	); err != nil {
 		_ = wraphandoff.WriteStatus(connection, false)
 		_ = notifyFD.Close()
 		if lookupEndpoint != nil {
@@ -199,7 +265,17 @@ func (a *App) acceptNotifyFDLineage(ctx context.Context, listener net.Listener, 
 		if compositionSetup != nil {
 			_ = compositionSetup.Close()
 		}
-		slog.Warn("wrap: lineage notify handler failed", "error", err, "wrapper_pid", wrapperPID, "payload_pid", meta.PayloadPID, "session_id", sessionID)
+		slog.Warn(
+			"wrap: lineage notify handler failed",
+			"error",
+			err,
+			"wrapper_pid",
+			wrapperPID,
+			"payload_pid",
+			meta.PayloadPID,
+			"session_id",
+			sessionID,
+		)
 		return true
 	}
 	cleanupTransferred = true
@@ -207,7 +283,13 @@ func (a *App) acceptNotifyFDLineage(ctx context.Context, listener net.Listener, 
 		approvalUI.SetAuthorizedPID(meta.PayloadPID)
 	}
 	if err := wraphandoff.WriteStatus(connection, true); err != nil {
-		slog.Debug("wrap: write lineage payload status failed", "error", err, "session_id", sessionID)
+		slog.Debug(
+			"wrap: write lineage payload status failed",
+			"error",
+			err,
+			"session_id",
+			sessionID,
+		)
 	}
 	return true
 }
@@ -216,7 +298,13 @@ func terminatePinnedWrapper(pin *os.File) error {
 	if pin == nil {
 		return nil
 	}
-	if err := unix.PidfdSendSignal(int(pin.Fd()), unix.SIGKILL, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {
+	if err := unix.PidfdSendSignal(
+		int(pin.Fd()),
+		unix.SIGKILL,
+		nil,
+		0,
+	); err != nil &&
+		!errors.Is(err, unix.ESRCH) {
 		return fmt.Errorf("terminate trusted wrapper: %w", err)
 	}
 	return nil

@@ -137,7 +137,13 @@ func TestOutputArtifact_CloseRuntimeRemovesAndDeregisters(t *testing.T) {
 	if _, ok := s.RegisteredOutputArtifactPath(artifact.Path); ok {
 		t.Fatal("artifact remained registered after CloseRuntime")
 	}
-	if _, err := s.WriteOutputArtifact("late", strings.NewReader("data")); !errors.Is(err, ErrOutputArtifactsUnavailable) {
+	if _, err := s.WriteOutputArtifact(
+		"late",
+		strings.NewReader("data"),
+	); !errors.Is(
+		err,
+		ErrOutputArtifactsUnavailable,
+	) {
 		t.Fatalf("write after CloseRuntime error = %v, want ErrOutputArtifactsUnavailable", err)
 	}
 }

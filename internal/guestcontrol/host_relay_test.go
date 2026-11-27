@@ -47,7 +47,9 @@ func TestHostRelayPublishesAuthenticatedGuestSupervisor(t *testing.T) {
 			return nil, fmt.Errorf("unexpected endpoint %d:%d", cid, port)
 		}
 		server, client := net.Pipe()
-		go func() { _ = relaySupervisorConnection(context.Background(), server, manifest, guestSocket) }()
+		go func() {
+			_ = relaySupervisorConnection(context.Background(), server, manifest, guestSocket)
+		}()
 		return client, nil
 	}
 	client, err := newClient(manifest, dial, time.Second)

@@ -26,15 +26,20 @@ func TestProxyConn_StubReturnsClean(t *testing.T) {
 		AgentSessionID:  testAgentSessionID,
 		SessionResolver: staticResolver{sessionID: testAgentSessionID, ok: true},
 		Logger:          slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: "db.internal:5432",
-			TLSMode:  "terminate_reissue",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "_unused.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_reissue"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: "db.internal:5432",
+				TLSMode:  "terminate_reissue",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "_unused.sock"),
+				},
+				Service: policy.DBService{Name: "appdb", TLSMode: "terminate_reissue"},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

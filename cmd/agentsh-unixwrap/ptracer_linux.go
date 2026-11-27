@@ -36,7 +36,10 @@ func setupPtracerPreload(serverPID int, yamaActive bool) {
 
 	soPath := findPtracerLib()
 	if soPath == "" {
-		log.Printf("ptracer: %s not found, child ProcessVMReadv may fail under Yama", ptracerLibName)
+		log.Printf(
+			"ptracer: %s not found, child ProcessVMReadv may fail under Yama",
+			ptracerLibName,
+		)
 		return
 	}
 

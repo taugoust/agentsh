@@ -19,7 +19,8 @@ type MapOverrides struct {
 	Default uint32
 }
 
-// SetMapSizeOverrides sets runtime map size overrides for allowlist/LPM/default maps (0 = keep embedded default).
+// SetMapSizeOverrides sets runtime map size overrides for allowlist/LPM/default maps (0 = keep
+// embedded default).
 func SetMapSizeOverrides(allow, deny, lpm, lpmDeny, def uint32) {
 	mapOverrideOnce.Do(func() {
 		mapAllowOverride = allow

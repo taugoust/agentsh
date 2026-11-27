@@ -29,10 +29,21 @@ func TestApplyAuditPolicy_Monitor(t *testing.T) {
 	sink := &stubSink{}
 	cfg := config.FUSEAuditConfig{Mode: "monitor"}
 	called := false
-	errno := applyAuditPolicy(context.Background(), &FUSEAuditHooks{Sink: sink, Config: cfg}, "sess", cfg.Mode, "unlink", "/workspace/a", "", "", nil, func() syscall.Errno {
-		called = true
-		return 0
-	})
+	errno := applyAuditPolicy(
+		context.Background(),
+		&FUSEAuditHooks{Sink: sink, Config: cfg},
+		"sess",
+		cfg.Mode,
+		"unlink",
+		"/workspace/a",
+		"",
+		"",
+		nil,
+		func() syscall.Errno {
+			called = true
+			return 0
+		},
+	)
 	if errno != 0 {
 		t.Fatalf("expected success errno 0, got %d", errno)
 	}
@@ -48,10 +59,21 @@ func TestApplyAuditPolicy_SoftBlock(t *testing.T) {
 	sink := &stubSink{}
 	cfg := config.FUSEAuditConfig{Mode: "soft_block"}
 	called := false
-	errno := applyAuditPolicy(context.Background(), &FUSEAuditHooks{Sink: sink, Config: cfg}, "sess", cfg.Mode, "unlink", "/workspace/a", "", "", nil, func() syscall.Errno {
-		called = true
-		return 0
-	})
+	errno := applyAuditPolicy(
+		context.Background(),
+		&FUSEAuditHooks{Sink: sink, Config: cfg},
+		"sess",
+		cfg.Mode,
+		"unlink",
+		"/workspace/a",
+		"",
+		"",
+		nil,
+		func() syscall.Errno {
+			called = true
+			return 0
+		},
+	)
 	if errno != syscall.EACCES {
 		t.Fatalf("expected EACCES, got %d", errno)
 	}
@@ -66,9 +88,20 @@ func TestApplyAuditPolicy_SoftBlock(t *testing.T) {
 func TestApplyAuditPolicy_StrictLoggingFailure(t *testing.T) {
 	sink := &stubSink{err: errors.New("queue full")}
 	cfg := config.FUSEAuditConfig{Mode: "strict"}
-	errno := applyAuditPolicy(context.Background(), &FUSEAuditHooks{Sink: sink, Config: cfg}, "sess", cfg.Mode, "unlink", "/workspace/a", "", "", nil, func() syscall.Errno {
-		return 0
-	})
+	errno := applyAuditPolicy(
+		context.Background(),
+		&FUSEAuditHooks{Sink: sink, Config: cfg},
+		"sess",
+		cfg.Mode,
+		"unlink",
+		"/workspace/a",
+		"",
+		"",
+		nil,
+		func() syscall.Errno {
+			return 0
+		},
+	)
 	if errno != syscall.EIO {
 		t.Fatalf("expected EIO when logging fails in strict mode, got %d", errno)
 	}
@@ -78,10 +111,21 @@ func TestApplyAuditPolicy_Disabled(t *testing.T) {
 	enabled := false
 	cfg := config.FUSEAuditConfig{Enabled: &enabled, Mode: "soft_block"}
 	called := false
-	errno := applyAuditPolicy(context.Background(), &FUSEAuditHooks{Sink: &stubSink{}, Config: cfg}, "sess", cfg.Mode, "unlink", "/workspace/a", "", "", nil, func() syscall.Errno {
-		called = true
-		return 0
-	})
+	errno := applyAuditPolicy(
+		context.Background(),
+		&FUSEAuditHooks{Sink: &stubSink{}, Config: cfg},
+		"sess",
+		cfg.Mode,
+		"unlink",
+		"/workspace/a",
+		"",
+		"",
+		nil,
+		func() syscall.Errno {
+			called = true
+			return 0
+		},
+	)
 	if errno != 0 {
 		t.Fatalf("expected success, got %d", errno)
 	}
@@ -94,20 +138,32 @@ func TestApplyAuditPolicy_SoftDeleteUsesDivert(t *testing.T) {
 	sink := &stubSink{}
 	cfg := config.FUSEAuditConfig{Mode: "soft_delete"}
 	divertCalled := false
-	errno := applyAuditPolicy(context.Background(), &FUSEAuditHooks{Sink: sink, Config: cfg}, "sess", cfg.Mode, "unlink", "/workspace/a", "", "/real/a", func() (*trash.Entry, error) {
-		divertCalled = true
-		return &trash.Entry{Token: "tok1"}, nil
-	}, func() syscall.Errno {
-		t.Fatalf("run should not be called in soft_delete")
-		return 0
-	})
+	errno := applyAuditPolicy(
+		context.Background(),
+		&FUSEAuditHooks{Sink: sink, Config: cfg},
+		"sess",
+		cfg.Mode,
+		"unlink",
+		"/workspace/a",
+		"",
+		"/real/a",
+		func() (*trash.Entry, error) {
+			divertCalled = true
+			return &trash.Entry{Token: "tok1"}, nil
+		},
+		func() syscall.Errno {
+			t.Fatalf("run should not be called in soft_delete")
+			return 0
+		},
+	)
 	if errno != 0 {
 		t.Fatalf("expected success, got %d", errno)
 	}
 	if !divertCalled {
 		t.Fatalf("expected divert to be called")
 	}
-	if len(sink.events) != 1 || sink.events[0].TrashToken != "tok1" || sink.events[0].Result != "diverted" {
+	if len(sink.events) != 1 || sink.events[0].TrashToken != "tok1" ||
+		sink.events[0].Result != "diverted" {
 		t.Fatalf("expected diverted event with token, got %+v", sink.events)
 	}
 }
@@ -120,9 +176,20 @@ func TestApplyAuditPolicy_RecordsSizeAndNlink(t *testing.T) {
 	}
 	sink := &stubSink{}
 	cfg := config.FUSEAuditConfig{Mode: "monitor"}
-	errno := applyAuditPolicy(context.Background(), &FUSEAuditHooks{Sink: sink, Config: cfg}, "sess", cfg.Mode, "unlink", "/workspace/f.txt", "", fp, nil, func() syscall.Errno {
-		return 0
-	})
+	errno := applyAuditPolicy(
+		context.Background(),
+		&FUSEAuditHooks{Sink: sink, Config: cfg},
+		"sess",
+		cfg.Mode,
+		"unlink",
+		"/workspace/f.txt",
+		"",
+		fp,
+		nil,
+		func() syscall.Errno {
+			return 0
+		},
+	)
 	if errno != 0 {
 		t.Fatalf("expected success, got %d", errno)
 	}
@@ -145,9 +212,24 @@ func TestResolveOpMode(t *testing.T) {
 		global string
 		want   string
 	}{
-		{"per-path soft_delete upgrades under monitor", policy.Decision{PolicyDecision: types.DecisionSoftDelete}, "monitor", "soft_delete"},
-		{"allow under monitor stays monitor", policy.Decision{PolicyDecision: types.DecisionAllow}, "monitor", "monitor"},
-		{"allow under global soft_delete keeps soft_delete", policy.Decision{PolicyDecision: types.DecisionAllow}, "soft_delete", "soft_delete"},
+		{
+			"per-path soft_delete upgrades under monitor",
+			policy.Decision{PolicyDecision: types.DecisionSoftDelete},
+			"monitor",
+			"soft_delete",
+		},
+		{
+			"allow under monitor stays monitor",
+			policy.Decision{PolicyDecision: types.DecisionAllow},
+			"monitor",
+			"monitor",
+		},
+		{
+			"allow under global soft_delete keeps soft_delete",
+			policy.Decision{PolicyDecision: types.DecisionAllow},
+			"soft_delete",
+			"soft_delete",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

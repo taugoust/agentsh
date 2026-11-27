@@ -13,7 +13,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// fdcwdUint64 returns AT_FDCWD (-100) as it appears in syscall register args (sign-extended to uint64).
+// fdcwdUint64 returns AT_FDCWD (-100) as it appears in syscall register args (sign-extended to
+// uint64).
 func fdcwdUint64() uint64 {
 	v := int32(unix.AT_FDCWD)
 	return uint64(int64(v))
@@ -73,8 +74,18 @@ func TestSyscallToOperation(t *testing.T) {
 		{"openat O_APPEND", unix.SYS_OPENAT, unix.O_APPEND, "write"},
 		{"openat O_TRUNC", unix.SYS_OPENAT, unix.O_TRUNC, "write"},
 		{"openat O_WRONLY|O_CREAT", unix.SYS_OPENAT, unix.O_WRONLY | unix.O_CREAT, "write"},
-		{"openat O_WRONLY|O_CREAT|O_TRUNC", unix.SYS_OPENAT, unix.O_WRONLY | unix.O_CREAT | unix.O_TRUNC, "write"},
-		{"openat O_WRONLY|O_CREAT|O_EXCL", unix.SYS_OPENAT, unix.O_WRONLY | unix.O_CREAT | unix.O_EXCL, "create"},
+		{
+			"openat O_WRONLY|O_CREAT|O_TRUNC",
+			unix.SYS_OPENAT,
+			unix.O_WRONLY | unix.O_CREAT | unix.O_TRUNC,
+			"write",
+		},
+		{
+			"openat O_WRONLY|O_CREAT|O_EXCL",
+			unix.SYS_OPENAT,
+			unix.O_WRONLY | unix.O_CREAT | unix.O_EXCL,
+			"create",
+		},
 
 		// openat2 operations (same logic)
 		{"openat2 read-only", unix.SYS_OPENAT2, 0, "open"},
@@ -290,7 +301,12 @@ func TestExtractFileArgs_Statx(t *testing.T) {
 }
 
 func TestExtractFileArgs_Newfstatat(t *testing.T) {
-	args := SyscallArgs{Nr: unix.SYS_NEWFSTATAT, Arg0: fdcwdUint64(), Arg1: 0x7fff3000, Arg3: uint64(unix.AT_SYMLINK_NOFOLLOW)}
+	args := SyscallArgs{
+		Nr:   unix.SYS_NEWFSTATAT,
+		Arg0: fdcwdUint64(),
+		Arg1: 0x7fff3000,
+		Arg3: uint64(unix.AT_SYMLINK_NOFOLLOW),
+	}
 	fa := extractFileArgs(args)
 	assert.Equal(t, int32(unix.AT_FDCWD), fa.Dirfd)
 	assert.Equal(t, uint64(0x7fff3000), fa.PathPtr)
@@ -442,7 +458,13 @@ func TestFileSyscallName(t *testing.T) {
 func pathToPtr(t *testing.T, s string) uint64 {
 	t.Helper()
 
-	buf, err := unix.Mmap(-1, 0, len(s)+1, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	buf, err := unix.Mmap(
+		-1,
+		0,
+		len(s)+1,
+		unix.PROT_READ|unix.PROT_WRITE,
+		unix.MAP_ANON|unix.MAP_PRIVATE,
+	)
 	if err != nil {
 		t.Fatalf("unix.Mmap() error = %v", err)
 	}

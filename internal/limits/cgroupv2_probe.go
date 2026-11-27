@@ -37,9 +37,10 @@ type CgroupProbeResult struct {
 	// mode — child cgroups for sessions are created under this path. When
 	// LeafMoved is true, the process itself resides in OwnCgroup/agentsh.leaf, but the
 	// parent remains the correct place to create children.
-	OwnCgroup   string
-	SliceDir    string // absolute path to /sys/fs/cgroup/agentsh.slice (top-level mode only; empty otherwise)
-	IOAvailable bool   // true if the io controller is usable in the chosen mode
+	OwnCgroup string
+	// absolute path to /sys/fs/cgroup/agentsh.slice (top-level mode only; empty otherwise)
+	SliceDir    string
+	IOAvailable bool // true if the io controller is usable in the chosen mode
 	// OrphansReaped is populated in top-level mode when the probe removed
 	// leftover unpopulated child cgroups from a prior agentsh run.
 	OrphansReaped []string
@@ -69,7 +70,12 @@ const DefaultSliceDir = "/sys/fs/cgroup/agentsh.slice"
 // fs is the filesystem abstraction (osCgroupFS in production, fakeCgroupFS in tests).
 // ownHint is an optional override for the "own" cgroup path used in step 1
 // (intended to honor cfg.Sandbox.Cgroups.BasePath). Empty means "discover via /proc/self/cgroup".
-func ProbeCgroupsV2(ctx context.Context, fs cgroupFS, ownHint string, permitAttachOnly bool) (*CgroupProbeResult, error) {
+func ProbeCgroupsV2(
+	ctx context.Context,
+	fs cgroupFS,
+	ownHint string,
+	permitAttachOnly bool,
+) (*CgroupProbeResult, error) {
 	own := ownHint
 	leafResident := false // true if the process was already in a leaf from a prior probe
 
@@ -117,8 +123,9 @@ func ProbeCgroupsV2(ctx context.Context, fs cgroupFS, ownHint string, permitAtta
 		feasible, feasibleErr := probeAttachOnlyFeasibility(fs, own)
 		if feasible {
 			return &CgroupProbeResult{
-				Mode:      ModeAttachOnly,
-				Reason:    "attach-only cgroup placement available; skipped resource controller probing",
+				Mode: ModeAttachOnly,
+				Reason: "attach-only cgroup placement available; skipped resource " +
+					"controller probing",
 				OwnCgroup: own,
 				LeafMoved: leafResident,
 			}, nil
@@ -207,7 +214,10 @@ func ProbeCgroupsV2(ctx context.Context, fs cgroupFS, ownHint string, permitAtta
 		moved, enabled, retryErr := tryLeafMove(fs, own)
 		if enabled {
 			if probeErr := probeNestedWritability(fs, own); probeErr != nil {
-				reason := fmt.Sprintf("leaf-moved and controllers enabled but child cgroup mkdir denied: %v", probeErr)
+				reason := fmt.Sprintf(
+					"leaf-moved and controllers enabled but child cgroup mkdir denied: %v",
+					probeErr,
+				)
 				res, err := tryTopLevel(ctx, fs, own, reason)
 				if err == nil && res != nil {
 					res.LeafMoved = true
@@ -342,20 +352,32 @@ func tryLeafMove(fs cgroupFS, own string) (moved, enabled bool, retryErr error) 
 }
 
 // tryTopLevel runs steps 5b through 5f of the decision tree.
-func tryTopLevel(ctx context.Context, fs cgroupFS, own, nestedFailureReason string) (*CgroupProbeResult, error) {
+func tryTopLevel(
+	ctx context.Context,
+	fs cgroupFS,
+	own, nestedFailureReason string,
+) (*CgroupProbeResult, error) {
 	rootAvailable, err := readControllerSet(fs, "/sys/fs/cgroup/cgroup.controllers")
 	if err != nil {
 		return &CgroupProbeResult{
-			Mode:      ModeUnavailable,
-			Reason:    fmt.Sprintf("%s; read root cgroup.controllers: %v", nestedFailureReason, err),
+			Mode: ModeUnavailable,
+			Reason: fmt.Sprintf(
+				"%s; read root cgroup.controllers: %v",
+				nestedFailureReason,
+				err,
+			),
 			OwnCgroup: own,
 		}, nil
 	}
 	if !containsAll(rootAvailable, requiredControllers) {
 		missing := missingControllers(rootAvailable, requiredControllers)
 		return &CgroupProbeResult{
-			Mode:      ModeUnavailable,
-			Reason:    fmt.Sprintf("%s; root cgroup missing controllers %v", nestedFailureReason, missing),
+			Mode: ModeUnavailable,
+			Reason: fmt.Sprintf(
+				"%s; root cgroup missing controllers %v",
+				nestedFailureReason,
+				missing,
+			),
 			OwnCgroup: own,
 		}, nil
 	}
@@ -364,8 +386,12 @@ func tryTopLevel(ctx context.Context, fs cgroupFS, own, nestedFailureReason stri
 	if !containsAll(rootDelegated, requiredControllers) {
 		if err := enableControllersFS(fs, "/sys/fs/cgroup", requiredControllers); err != nil {
 			return &CgroupProbeResult{
-				Mode:      ModeUnavailable,
-				Reason:    fmt.Sprintf("%s; root subtree_control not writable: %v", nestedFailureReason, err),
+				Mode: ModeUnavailable,
+				Reason: fmt.Sprintf(
+					"%s; root subtree_control not writable: %v",
+					nestedFailureReason,
+					err,
+				),
 				OwnCgroup: own,
 			}, nil
 		}
@@ -384,8 +410,12 @@ func tryTopLevel(ctx context.Context, fs cgroupFS, own, nestedFailureReason stri
 		// memory.max is the canary: if it's missing, controller files weren't created
 		// even though mkdir succeeded — enforcement is not possible here.
 		return &CgroupProbeResult{
-			Mode:      ModeUnavailable,
-			Reason:    fmt.Sprintf("%s; %s missing controller files after mkdir", nestedFailureReason, DefaultSliceDir),
+			Mode: ModeUnavailable,
+			Reason: fmt.Sprintf(
+				"%s; %s missing controller files after mkdir",
+				nestedFailureReason,
+				DefaultSliceDir,
+			),
 			OwnCgroup: own,
 			SliceDir:  DefaultSliceDir,
 		}, nil
@@ -397,8 +427,13 @@ func tryTopLevel(ctx context.Context, fs cgroupFS, own, nestedFailureReason stri
 	// when pid-attach is still feasible. See #411.
 	if werr := probeTopLevelLimitWritability(fs, DefaultSliceDir); werr != nil {
 		return &CgroupProbeResult{
-			Mode:      ModeUnavailable,
-			Reason:    fmt.Sprintf("%s; %s child memory.max not writable: %v", nestedFailureReason, DefaultSliceDir, werr),
+			Mode: ModeUnavailable,
+			Reason: fmt.Sprintf(
+				"%s; %s child memory.max not writable: %v",
+				nestedFailureReason,
+				DefaultSliceDir,
+				werr,
+			),
 			OwnCgroup: own,
 			SliceDir:  DefaultSliceDir,
 		}, nil
@@ -537,7 +572,11 @@ func probeAttachOnlyFeasibility(fs cgroupFS, parentDir string) (bool, error) {
 		return false, fmt.Errorf("write cgroup.procs in test dir: %w", err)
 	}
 	// Move the probe process back into the parent so the test cgroup is empty.
-	if err := fs.WriteFile(filepath.Join(parentDir, "cgroup.procs"), []byte(pid), 0o644); err != nil {
+	if err := fs.WriteFile(
+		filepath.Join(parentDir, "cgroup.procs"),
+		[]byte(pid),
+		0o644,
+	); err != nil {
 		_ = fs.Remove(testDir)
 		return false, fmt.Errorf("release pid back to parent: %w", err)
 	}

@@ -193,7 +193,12 @@ func TestSetThreatStore_InvalidActionDefaultsToDeny(t *testing.T) {
 	e.SetThreatStore(store, "typo-dney")
 
 	dec := e.CheckNetworkCtx(context.Background(), "evil.com", 443)
-	assert.Equal(t, types.DecisionDeny, dec.EffectiveDecision, "invalid action should default to deny")
+	assert.Equal(
+		t,
+		types.DecisionDeny,
+		dec.EffectiveDecision,
+		"invalid action should default to deny",
+	)
 }
 
 func TestCheckNetworkCtx_ThreatFeedAuditRespectsExplicitDenyRule(t *testing.T) {

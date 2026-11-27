@@ -87,20 +87,31 @@ func newAuditVerifyCmd() *cobra.Command {
 				if start != nil {
 					hasIntegrityMetadata = true
 				} else {
-					hasIntegrityMetadata, err = verifyTargetContainsIntegrityMetadataFromSequence(files, cfg.Audit.Integrity.Enabled, opts)
+					hasIntegrityMetadata, err = verifyTargetContainsIntegrityMetadataFromSequence(
+						files,
+						cfg.Audit.Integrity.Enabled,
+						opts,
+					)
 					if err != nil {
 						return err
 					}
 				}
 			} else {
 				var err error
-				hasIntegrityMetadata, err = verifyTargetContainsIntegrityMetadata(files, cfg.Audit.Integrity.Enabled, opts)
+				hasIntegrityMetadata, err = verifyTargetContainsIntegrityMetadata(
+					files,
+					cfg.Audit.Integrity.Enabled,
+					opts,
+				)
 				if err != nil {
 					return err
 				}
 			}
 			if !cfg.Audit.Integrity.Enabled && !hasIntegrityMetadata {
-				fmt.Fprintln(cmd.OutOrStdout(), "integrity not enabled in this log; nothing to verify")
+				fmt.Fprintln(
+					cmd.OutOrStdout(),
+					"integrity not enabled in this log; nothing to verify",
+				)
 				return nil
 			}
 
@@ -119,24 +130,51 @@ func newAuditVerifyCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "verified %d entries across %d files\n", summary.verifiedEntries, summary.fileCount)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"verified %d entries across %d files\n",
+				summary.verifiedEntries,
+				summary.fileCount,
+			)
 			if summary.verifiedEntries > 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "first: seq=%d (%s)\n", summary.firstSequence, summary.firstLocation)
-				fmt.Fprintf(cmd.OutOrStdout(), "last:  seq=%d (%s)\n", summary.lastSequence, summary.lastLocation)
+				fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"first: seq=%d (%s)\n",
+					summary.firstSequence,
+					summary.firstLocation,
+				)
+				fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"last:  seq=%d (%s)\n",
+					summary.lastSequence,
+					summary.lastLocation,
+				)
 			}
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.configPath, "config", "", "Path to agentsh config YAML (default: auto-discover)")
-	cmd.Flags().BoolVar(&opts.tolerateUnsigned, "tolerate-unsigned", false, "Warn and skip unsigned lines instead of failing")
-	cmd.Flags().BoolVar(&opts.tolerateTruncation, "tolerate-truncation", false, "Accept a truncated final line as end-of-chain")
-	cmd.Flags().Int64Var(&opts.fromSequence, "from-sequence", -1, "Start verification from this sequence instead of the visible chain origin")
+	cmd.Flags().
+		StringVar(&opts.configPath, "config", "",
+			"Path to agentsh config YAML (default: auto-discover)")
+	cmd.Flags().
+		BoolVar(&opts.tolerateUnsigned, "tolerate-unsigned", false,
+			"Warn and skip unsigned lines instead of failing")
+	cmd.Flags().
+		BoolVar(&opts.tolerateTruncation, "tolerate-truncation", false,
+			"Accept a truncated final line as end-of-chain")
+	cmd.Flags().
+		Int64Var(&opts.fromSequence, "from-sequence", -1,
+			"Start verification from this sequence instead of the visible chain origin")
 
 	return cmd
 }
 
-func verifyTargetContainsIntegrityMetadata(files []audit.LogFile, integrityEnabled bool, opts verifyOptions) (bool, error) {
+func verifyTargetContainsIntegrityMetadata(
+	files []audit.LogFile,
+	integrityEnabled bool,
+	opts verifyOptions,
+) (bool, error) {
 	for _, file := range files {
 		f, err := os.Open(file.Path)
 		if err != nil {
@@ -175,7 +213,12 @@ func verifyTargetContainsIntegrityMetadata(files []audit.LogFile, integrityEnabl
 					trimmed := bytes.TrimSpace(line)
 					if len(trimmed) > 0 && trimmed[0] == '{' {
 						_ = f.Close()
-						return false, fmt.Errorf("malformed JSON at %s:%d: %w", file.Path, lineNo, err)
+						return false, fmt.Errorf(
+							"malformed JSON at %s:%d: %w",
+							file.Path,
+							lineNo,
+							err,
+						)
 					}
 					if opts.tolerateTruncation &&
 						file.Path == files[len(files)-1].Path &&
@@ -245,7 +288,12 @@ func hasTopLevelIntegrityField(line []byte) bool {
 	return false
 }
 
-func verifyIntegrityChain(files []audit.LogFile, key []byte, algorithm string, opts verifyOptions) (*verifySummary, error) {
+func verifyIntegrityChain(
+	files []audit.LogFile,
+	key []byte,
+	algorithm string,
+	opts verifyOptions,
+) (*verifySummary, error) {
 	summary := &verifySummary{fileCount: len(files)}
 	state := verifyState{}
 	var start *verifyStart
@@ -256,7 +304,10 @@ func verifyIntegrityChain(files []audit.LogFile, key []byte, algorithm string, o
 			return nil, err
 		}
 		if start == nil {
-			return nil, fmt.Errorf("sequence mismatch: expected starting sequence %d, got end of log", opts.fromSequence)
+			return nil, fmt.Errorf(
+				"sequence mismatch: expected starting sequence %d, got end of log",
+				opts.fromSequence,
+			)
 		}
 	}
 
@@ -301,7 +352,8 @@ func verifyIntegrityChain(files []audit.LogFile, key []byte, algorithm string, o
 				continue
 			}
 			if start != nil {
-				if fileIndex < start.fileIndex || (fileIndex == start.fileIndex && lineNo < start.lineNo) {
+				if fileIndex < start.fileIndex ||
+					(fileIndex == start.fileIndex && lineNo < start.lineNo) {
 					if errors.Is(readErr, io.EOF) {
 						break
 					}
@@ -334,13 +386,24 @@ func verifyIntegrityChain(files []audit.LogFile, key []byte, algorithm string, o
 			}
 			if entry.Integrity.FormatVersion > audit.IntegrityFormatVersion {
 				_ = f.Close()
-				return nil, fmt.Errorf("unsupported audit integrity format_version %d at %s:%d", entry.Integrity.FormatVersion, file.Path, lineNo)
+				return nil, fmt.Errorf(
+					"unsupported audit integrity format_version %d at %s:%d",
+					entry.Integrity.FormatVersion,
+					file.Path,
+					lineNo,
+				)
 			}
 
 			if opts.fromSequence >= 0 && summary.verifiedEntries == 0 {
 				if entry.Integrity.Sequence != opts.fromSequence {
 					_ = f.Close()
-					return nil, fmt.Errorf("sequence mismatch at %s:%d: expected starting sequence %d, got %d", file.Path, lineNo, opts.fromSequence, entry.Integrity.Sequence)
+					return nil, fmt.Errorf(
+						"sequence mismatch at %s:%d: expected starting sequence %d, got %d",
+						file.Path,
+						lineNo,
+						opts.fromSequence,
+						entry.Integrity.Sequence,
+					)
 				}
 				state.expectedSequence = entry.Integrity.Sequence
 				state.expectedPrevHash = entry.Integrity.PrevHash
@@ -356,7 +419,12 @@ func verifyIntegrityChain(files []audit.LogFile, key []byte, algorithm string, o
 				entry.Integrity.PrevHash == ""
 
 			if rotationBoundary {
-				if err := verifyRotationBoundary(entry.CanonicalPayload, summary, state, file.IsBackup); err != nil {
+				if err := verifyRotationBoundary(
+					entry.CanonicalPayload,
+					summary,
+					state,
+					file.IsBackup,
+				); err != nil {
 					_ = f.Close()
 					return nil, fmt.Errorf("rotation boundary at %s:%d: %w", file.Path, lineNo, err)
 				}
@@ -368,11 +436,23 @@ func verifyIntegrityChain(files []audit.LogFile, key []byte, algorithm string, o
 				}
 				if entry.Integrity.Sequence != state.expectedSequence {
 					_ = f.Close()
-					return nil, fmt.Errorf("sequence mismatch at %s:%d: expected %d, got %d", file.Path, lineNo, state.expectedSequence, entry.Integrity.Sequence)
+					return nil, fmt.Errorf(
+						"sequence mismatch at %s:%d: expected %d, got %d",
+						file.Path,
+						lineNo,
+						state.expectedSequence,
+						entry.Integrity.Sequence,
+					)
 				}
 				if entry.Integrity.PrevHash != state.expectedPrevHash {
 					_ = f.Close()
-					return nil, fmt.Errorf("chain broken at %s:%d: expected prev_hash %q, got %q", file.Path, lineNo, state.expectedPrevHash, entry.Integrity.PrevHash)
+					return nil, fmt.Errorf(
+						"chain broken at %s:%d: expected prev_hash %q, got %q",
+						file.Path,
+						lineNo,
+						state.expectedPrevHash,
+						entry.Integrity.PrevHash,
+					)
 				}
 			}
 
@@ -457,7 +537,11 @@ func locateVerifyStart(files []audit.LogFile, fromSequence int64) (*verifyStart,
 	return nil, nil
 }
 
-func verifyTargetContainsIntegrityMetadataFromSequence(files []audit.LogFile, integrityEnabled bool, opts verifyOptions) (bool, error) {
+func verifyTargetContainsIntegrityMetadataFromSequence(
+	files []audit.LogFile,
+	integrityEnabled bool,
+	opts verifyOptions,
+) (bool, error) {
 	seenIntegrity := false
 	var pendingCorruption error
 
@@ -499,7 +583,12 @@ func verifyTargetContainsIntegrityMetadataFromSequence(files []audit.LogFile, in
 					break
 				}
 				if seenIntegrity && pendingCorruption == nil {
-					pendingCorruption = fmt.Errorf("malformed JSON at %s:%d: %w", file.Path, lineNo, err)
+					pendingCorruption = fmt.Errorf(
+						"malformed JSON at %s:%d: %w",
+						file.Path,
+						lineNo,
+						err,
+					)
 				}
 				if errors.Is(readErr, io.EOF) {
 					break
@@ -535,7 +624,12 @@ func verifyTargetContainsIntegrityMetadataFromSequence(files []audit.LogFile, in
 	return verifyTargetContainsIntegrityMetadata(files, integrityEnabled, opts)
 }
 
-func verifyRotationBoundary(payload []byte, summary *verifySummary, state verifyState, visibleOriginIsBackup bool) error {
+func verifyRotationBoundary(
+	payload []byte,
+	summary *verifySummary,
+	state verifyState,
+	visibleOriginIsBackup bool,
+) error {
 	var event rotationVerifyPayload
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return fmt.Errorf("parse rotation payload: %w", err)
@@ -555,10 +649,18 @@ func verifyRotationBoundary(payload []byte, summary *verifySummary, state verify
 	}
 	wantSequence := state.expectedSequence - 1
 	if got := event.Fields.PriorChainSummary.LastSequence; got != wantSequence {
-		return fmt.Errorf("prior_chain_summary.last_sequence_seen_in_log = %d, want %d", got, wantSequence)
+		return fmt.Errorf(
+			"prior_chain_summary.last_sequence_seen_in_log = %d, want %d",
+			got,
+			wantSequence,
+		)
 	}
 	if got := event.Fields.PriorChainSummary.LastEntryHash; got != state.expectedPrevHash {
-		return fmt.Errorf("prior_chain_summary.last_entry_hash_seen_in_log = %q, want %q", got, state.expectedPrevHash)
+		return fmt.Errorf(
+			"prior_chain_summary.last_entry_hash_seen_in_log = %q, want %q",
+			got,
+			state.expectedPrevHash,
+		)
 	}
 	return nil
 }
@@ -572,5 +674,6 @@ func isTolerableTruncation(err error) bool {
 		return false
 	}
 	message := err.Error()
-	return strings.Contains(message, "unexpected EOF") || strings.Contains(message, "unexpected end of JSON input")
+	return strings.Contains(message, "unexpected EOF") ||
+		strings.Contains(message, "unexpected end of JSON input")
 }

@@ -73,7 +73,11 @@ func ensureInjectProbeChildToken() string {
 	injectProbeChildTokenOnce.Do(func() {
 		var b [16]byte
 		if _, err := rand.Read(b[:]); err != nil {
-			injectProbeChildToken = fmt.Sprintf("pid-%d-time-%d", os.Getpid(), time.Now().UnixNano())
+			injectProbeChildToken = fmt.Sprintf(
+				"pid-%d-time-%d",
+				os.Getpid(),
+				time.Now().UnixNano(),
+			)
 			return
 		}
 		injectProbeChildToken = hex.EncodeToString(b[:])
@@ -137,7 +141,10 @@ func runInjectProbe() InjectProbeResult {
 
 	self, err := os.Executable()
 	if err != nil {
-		return InjectProbeResult{Injectable: true, Detail: fmt.Sprintf("ptrace inject probe inconclusive: os.Executable: %v", err)}
+		return InjectProbeResult{
+			Injectable: true,
+			Detail:     fmt.Sprintf("ptrace inject probe inconclusive: os.Executable: %v", err),
+		}
 	}
 	token := ensureInjectProbeChildToken()
 
@@ -145,14 +152,24 @@ func runInjectProbe() InjectProbeResult {
 		mapped, detail, probeErr := runInjectProbeIteration(self, token)
 		if probeErr != nil {
 			// Fail-open on any inability to run the probe cleanly.
-			return InjectProbeResult{Injectable: true, Detail: fmt.Sprintf("ptrace inject probe inconclusive: %v", probeErr)}
+			return InjectProbeResult{
+				Injectable: true,
+				Detail:     fmt.Sprintf("ptrace inject probe inconclusive: %v", probeErr),
+			}
 		}
 		if !mapped {
 			// Clean, repeatable broken-kernel signal: disable injection.
 			return InjectProbeResult{Injectable: false, Detail: detail}
 		}
 	}
-	return InjectProbeResult{Injectable: true, Detail: fmt.Sprintf("ptrace inject probe: %d/%d mmap mapped", injectProbeIterations, injectProbeIterations)}
+	return InjectProbeResult{
+		Injectable: true,
+		Detail: fmt.Sprintf(
+			"ptrace inject probe: %d/%d mmap mapped",
+			injectProbeIterations,
+			injectProbeIterations,
+		),
+	}
 }
 
 // runInjectProbeIteration runs one inject attempt against a fresh child.
@@ -202,7 +219,11 @@ func runInjectProbeIteration(self, token string) (mapped bool, detail string, pr
 	_, _ = cmd.Process.Wait()
 
 	if timedOut {
-		return false, "", fmt.Errorf("probe iteration timed out after %v (pid %d)", injectProbeIterDeadline, pid)
+		return false, "", fmt.Errorf(
+			"probe iteration timed out after %v (pid %d)",
+			injectProbeIterDeadline,
+			pid,
+		)
 	}
 	return mapped, detail, probeErr
 }
@@ -224,7 +245,10 @@ func injectProbeBody(pid int) (mapped bool, detail string, probeErr error) {
 	// TRACESYSGOOD so syscall stops carry SIGTRAP|0x80 (matches the runtime and
 	// what the inject wait loop expects); EXITKILL so the child cannot outlive
 	// the probe.
-	if err := unix.PtraceSetOptions(pid, unix.PTRACE_O_TRACESYSGOOD|unix.PTRACE_O_EXITKILL); err != nil {
+	if err := unix.PtraceSetOptions(
+		pid,
+		unix.PTRACE_O_TRACESYSGOOD|unix.PTRACE_O_EXITKILL,
+	); err != nil {
 		return false, "", fmt.Errorf("PTRACE_SETOPTIONS: %w", err)
 	}
 

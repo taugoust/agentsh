@@ -48,12 +48,20 @@ func TestStartDBProxy_Observe_BindsListener(t *testing.T) {
 	sockPath := filepath.Join(dir, "db-services", "appdb.sock")
 	deps := dbProxyDeps{
 		Unavoidability: dbservice.UnavoidabilityObserve,
-		Services: []dbProxyService{{
-			Name:       "appdb",
-			DBService:  dbpolicy.DBService{Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "127.0.0.1:5432", TLSMode: "terminate_reissue"},
-			ListenKind: "unix",
-			ListenPath: sockPath,
-		}},
+		Services: []dbProxyService{
+			{
+				Name: "appdb",
+				DBService: dbpolicy.DBService{
+					Name:     "appdb",
+					Family:   "postgres",
+					Dialect:  "postgres",
+					Upstream: "127.0.0.1:5432",
+					TLSMode:  "terminate_reissue",
+				},
+				ListenKind: "unix",
+				ListenPath: sockPath,
+			},
+		},
 		StateDir:        dir,
 		Sink:            &events.SyncSink{},
 		AgentSessionID:  "agent-session",
@@ -85,12 +93,20 @@ func TestBuildDBProxyConfig_CarriesSessionAuth(t *testing.T) {
 		Sink:            &events.SyncSink{},
 		AgentSessionID:  "agent-session",
 		SessionResolver: resolver,
-		Services: []dbProxyService{{
-			Name:       "appdb",
-			DBService:  dbpolicy.DBService{Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "127.0.0.1:5432", TLSMode: "terminate_reissue"},
-			ListenKind: "unix",
-			ListenPath: filepath.Join(t.TempDir(), "appdb.sock"),
-		}},
+		Services: []dbProxyService{
+			{
+				Name: "appdb",
+				DBService: dbpolicy.DBService{
+					Name:     "appdb",
+					Family:   "postgres",
+					Dialect:  "postgres",
+					Upstream: "127.0.0.1:5432",
+					TLSMode:  "terminate_reissue",
+				},
+				ListenKind: "unix",
+				ListenPath: filepath.Join(t.TempDir(), "appdb.sock"),
+			},
+		},
 	}
 
 	cfg, err := buildDBProxyConfig(deps)
@@ -105,7 +121,11 @@ func TestBuildDBProxyConfig_CarriesSessionAuth(t *testing.T) {
 	}
 	got, ok := cfg.SessionResolver.ResolveSessionID(123)
 	if !ok || got != "agent-session" {
-		t.Fatalf("SessionResolver.ResolveSessionID(123) = %q, %v; want agent-session, true", got, ok)
+		t.Fatalf(
+			"SessionResolver.ResolveSessionID(123) = %q, %v; want agent-session, true",
+			got,
+			ok,
+		)
 	}
 }
 

@@ -40,7 +40,10 @@ func TestCompositionRedirectorTransitionLimit(t *testing.T) {
 	if _, err := redirector.reserveTransition(os.Getpid()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := redirector.reserveTransition(os.Getpid()); err == nil || !strings.Contains(err.Error(), "E_COMPOSITION_LIMIT_EXCEEDED") {
+	if _, err := redirector.reserveTransition(
+		os.Getpid(),
+	); err == nil ||
+		!strings.Contains(err.Error(), "E_COMPOSITION_LIMIT_EXCEEDED") {
 		t.Fatalf("third transition error = %v", err)
 	}
 }
@@ -48,10 +51,16 @@ func TestCompositionRedirectorTransitionLimit(t *testing.T) {
 func TestCompositionRedirectorCloseWaitsForActiveBrokerAndCleansOnce(t *testing.T) {
 	cleanupErr := errors.New("cleanup sentinel")
 	cleanupCalls := 0
-	redirectorInterface, err := NewManagedCompositionRedirector("/adapter", func(*os.File, int) {}, 4, 4, func() error {
-		cleanupCalls++
-		return cleanupErr
-	})
+	redirectorInterface, err := NewManagedCompositionRedirector(
+		"/adapter",
+		func(*os.File, int) {},
+		4,
+		4,
+		func() error {
+			cleanupCalls++
+			return cleanupErr
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +87,10 @@ func TestCompositionRedirectorCloseWaitsForActiveBrokerAndCleansOnce(t *testing.
 	if cleanupCalls != 1 {
 		t.Fatalf("cleanup calls = %d", cleanupCalls)
 	}
-	if _, err := redirector.reserveTransition(os.Getpid()); err == nil || !strings.Contains(err.Error(), "redirector is closed") {
+	if _, err := redirector.reserveTransition(
+		os.Getpid(),
+	); err == nil ||
+		!strings.Contains(err.Error(), "redirector is closed") {
 		t.Fatalf("post-close reservation error = %v", err)
 	}
 	if err := redirector.Close(); !errors.Is(err, cleanupErr) || cleanupCalls != 1 {
@@ -111,7 +123,10 @@ func TestCompositionRedirectorNestedDepthLimit(t *testing.T) {
 			parent: {depth: 2, token: 1},
 		},
 	}
-	if _, err := redirector.reserveTransition(os.Getpid()); err == nil || !strings.Contains(err.Error(), "namespace depth 3") {
+	if _, err := redirector.reserveTransition(
+		os.Getpid(),
+	); err == nil ||
+		!strings.Contains(err.Error(), "namespace depth 3") {
 		t.Fatalf("nested depth error = %v", err)
 	}
 }

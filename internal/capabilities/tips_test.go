@@ -16,7 +16,11 @@ func TestGenerateTipsFromDomains_ZeroScoreOnly(t *testing.T) {
 			{Name: "fuse", Available: true},
 		}},
 		{Name: "Network", Weight: 20, Score: 0, Backends: []DetectedBackend{
-			{Name: "ebpf", Available: false, Detail: ebpf.ReasonBTFNotPresent + " (missing /sys/kernel/btf/vmlinux)"},
+			{
+				Name:      "ebpf",
+				Available: false,
+				Detail:    ebpf.ReasonBTFNotPresent + " (missing /sys/kernel/btf/vmlinux)",
+			},
 		}},
 	}
 	tips := GenerateTipsFromDomains(domains)
@@ -29,7 +33,12 @@ func TestGenerateTipsFromDomains_ZeroScoreOnly(t *testing.T) {
 
 func TestGenerateTipsFromDomains_NoTipsWhenAllScored(t *testing.T) {
 	domains := []ProtectionDomain{
-		{Name: "File Protection", Weight: 25, Score: 25, Backends: []DetectedBackend{{Available: true}}},
+		{
+			Name:     "File Protection",
+			Weight:   25,
+			Score:    25,
+			Backends: []DetectedBackend{{Available: true}},
+		},
 		{Name: "Network", Weight: 20, Score: 20, Backends: []DetectedBackend{{Available: true}}},
 	}
 	tips := GenerateTipsFromDomains(domains)
@@ -85,7 +94,11 @@ func TestLookupTip_CapabilityDropSemanticsChanged(t *testing.T) {
 	const noteMarker = "Note:"
 	noteIdx := strings.Index(tip.Action, noteMarker)
 	if noteIdx < 0 {
-		t.Fatalf("capability-drop Action missing required 'Note:' marker separating recommendation from cautionary section: %q", tip.Action)
+		t.Fatalf(
+			"capability-drop Action missing required 'Note:' marker separating recommendation "+
+				"from cautionary section: %q",
+			tip.Action,
+		)
 	}
 	recommendation := strings.TrimSpace(tip.Action[:noteIdx])
 	// The body of the caution is everything AFTER the "Note:" marker,
@@ -108,7 +121,11 @@ func TestLookupTip_CapabilityDropSemanticsChanged(t *testing.T) {
 		}
 	}
 	if !matched {
-		t.Errorf("capability-drop Action recommendation sentence should reference a startup drop mechanism, got %q", recommendation)
+		t.Errorf(
+			"capability-drop Action recommendation sentence should reference a startup drop "+
+				"mechanism, got %q",
+			recommendation,
+		)
 	}
 
 	// DropCapabilities must NOT appear in the recommendation sentence
@@ -116,7 +133,11 @@ func TestLookupTip_CapabilityDropSemanticsChanged(t *testing.T) {
 	// or just "DropCapabilities" as a bullet). It may only appear in
 	// the cautionary note explaining why it is not a substitute.
 	if strings.Contains(recommendation, "DropCapabilities") {
-		t.Errorf("capability-drop Action recommendation sentence must not mention DropCapabilities as a remediation: %q", recommendation)
+		t.Errorf(
+			"capability-drop Action recommendation sentence must not mention DropCapabilities as "+
+				"a remediation: %q",
+			recommendation,
+		)
 	}
 	// The cautionary body (text AFTER the "Note:" marker) must be
 	// non-empty and explicitly explain why DropCapabilities is
@@ -125,10 +146,17 @@ func TestLookupTip_CapabilityDropSemanticsChanged(t *testing.T) {
 	// that removing the cautionary body fails the test instead of
 	// skipping it.
 	if cautionBody == "" {
-		t.Errorf("capability-drop Action cautionary body after 'Note:' must be non-empty: %q", tip.Action)
+		t.Errorf(
+			"capability-drop Action cautionary body after 'Note:' must be non-empty: %q",
+			tip.Action,
+		)
 	}
 	if !strings.Contains(cautionBody, "DropCapabilities") {
-		t.Errorf("capability-drop cautionary body must explain why DropCapabilities is not a substitute, got %q", cautionBody)
+		t.Errorf(
+			"capability-drop cautionary body must explain why DropCapabilities is not a "+
+				"substitute, got %q",
+			cautionBody,
+		)
 	}
 }
 

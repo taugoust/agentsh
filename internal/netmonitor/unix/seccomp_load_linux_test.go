@@ -22,7 +22,10 @@ func TestExportBPFViaPipe(t *testing.T) {
 	}
 	defer filt.Release()
 
-	if err := filt.AddRule(seccomp.ScmpSyscall(unix.SYS_GETPID), seccomp.ActErrno.SetReturnCode(int16(unix.EPERM))); err != nil {
+	if err := filt.AddRule(
+		seccomp.ScmpSyscall(unix.SYS_GETPID),
+		seccomp.ActErrno.SetReturnCode(int16(unix.EPERM)),
+	); err != nil {
 		t.Fatalf("AddRule: %v", err)
 	}
 
@@ -44,11 +47,18 @@ func TestExportBPFViaPipe(t *testing.T) {
 	k := binary.LittleEndian.Uint32(prog[4:8])
 	const bpfLdWAbs = 0x20
 	if code != bpfLdWAbs {
-		t.Fatalf("first BPF instruction code = 0x%x, want 0x%x (BPF_LD|BPF_W|BPF_ABS)", code, bpfLdWAbs)
+		t.Fatalf(
+			"first BPF instruction code = 0x%x, want 0x%x (BPF_LD|BPF_W|BPF_ABS)",
+			code,
+			bpfLdWAbs,
+		)
 	}
 	// k must be a valid seccomp_data field offset: 0 (nr), 4 (arch), 8 (ip), or 16+ (args).
 	if k != 0 && k != 4 {
-		t.Fatalf("first BPF instruction k = %d, want 0 (seccomp_data.nr) or 4 (seccomp_data.arch)", k)
+		t.Fatalf(
+			"first BPF instruction k = %d, want 0 (seccomp_data.nr) or 4 (seccomp_data.arch)",
+			k,
+		)
 	}
 }
 
@@ -119,7 +129,9 @@ func TestLoadRawFilter_SetsWaitKillFlagWhenRequested(t *testing.T) {
 	if fd != 42 {
 		t.Fatalf("fd = %d, want 42", fd)
 	}
-	wantFlags := uintptr(unix.SECCOMP_FILTER_FLAG_NEW_LISTENER | unix.SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV)
+	wantFlags := uintptr(
+		unix.SECCOMP_FILTER_FLAG_NEW_LISTENER | unix.SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV,
+	)
 	if gotFlags != wantFlags {
 		t.Fatalf("flags = 0x%x, want 0x%x", gotFlags, wantFlags)
 	}

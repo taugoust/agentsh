@@ -129,7 +129,12 @@ func ParseConfig(data []byte) (*NetworkACLConfig, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 
-	if err := dec.Decode(&wrapped); err == nil && (wrapped.NetworkACL.Default != "" || len(wrapped.NetworkACL.Processes) > 0 || wrapped.NetworkACL.ApprovalUI != nil) {
+	if err := dec.Decode(
+		&wrapped,
+	); err == nil &&
+		(wrapped.NetworkACL.Default != "" ||
+			len(wrapped.NetworkACL.Processes) > 0 ||
+			wrapped.NetworkACL.ApprovalUI != nil) {
 		config := wrapped.NetworkACL
 		if err := config.Validate(); err != nil {
 			return nil, fmt.Errorf("validate config: %w", err)
@@ -178,7 +183,11 @@ func ValidateConfig(config *NetworkACLConfig) error {
 	// Validate default decision if specified.
 	if c.Default != "" {
 		if !isValidDecision(c.Default) {
-			return fmt.Errorf("invalid default decision %q: must be one of allow, deny, approve, audit, allow_once_then_approve", c.Default)
+			return fmt.Errorf(
+				"invalid default decision %q: must be one of allow, deny, approve, audit, "+
+					"allow_once_then_approve",
+				c.Default,
+			)
 		}
 	}
 
@@ -200,13 +209,19 @@ func validateProcessConfig(pc ProcessConfig) error {
 
 	// Validate match criteria - must have at least one identifier.
 	if !hasCriteria(pc.Match) {
-		return fmt.Errorf("at least one match criterion is required (process_name, path, or bundle_id)")
+		return fmt.Errorf(
+			"at least one match criterion is required (process_name, path, or bundle_id)",
+		)
 	}
 
 	// Validate default decision if specified.
 	if pc.Default != "" {
 		if !isValidDecision(pc.Default) {
-			return fmt.Errorf("invalid default decision %q: must be one of allow, deny, approve, audit, allow_once_then_approve", pc.Default)
+			return fmt.Errorf(
+				"invalid default decision %q: must be one of allow, deny, approve, audit, "+
+					"allow_once_then_approve",
+				pc.Default,
+			)
 		}
 	}
 
@@ -234,7 +249,9 @@ func validateChildConfig(cc ChildConfig) error {
 	}
 
 	if !hasCriteria(cc.Match) {
-		return fmt.Errorf("at least one match criterion is required (process_name, path, or bundle_id)")
+		return fmt.Errorf(
+			"at least one match criterion is required (process_name, path, or bundle_id)",
+		)
 	}
 
 	for i, rule := range cc.Rules {
@@ -258,7 +275,11 @@ func validateNetworkTarget(t NetworkTarget) error {
 		return fmt.Errorf("decision is required")
 	}
 	if !isValidDecision(string(t.Decision)) {
-		return fmt.Errorf("invalid decision %q: must be one of allow, deny, approve, audit, allow_once_then_approve", t.Decision)
+		return fmt.Errorf(
+			"invalid decision %q: must be one of allow, deny, approve, audit, "+
+				"allow_once_then_approve",
+			t.Decision,
+		)
 	}
 
 	// Validate protocol if specified.
@@ -320,7 +341,11 @@ func validatePortSpec(spec string) error {
 
 		// Validate start <= end.
 		if start > end {
-			return fmt.Errorf("port range start (%d) must be less than or equal to end (%d)", start, end)
+			return fmt.Errorf(
+				"port range start (%d) must be less than or equal to end (%d)",
+				start,
+				end,
+			)
 		}
 
 		// Validate port bounds.

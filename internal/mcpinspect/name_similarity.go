@@ -53,7 +53,11 @@ func NormalizedSimilarity(a, b string) float64 {
 
 // CheckServerNameSimilarity checks a new server ID against existing IDs.
 // Returns (similarID, score) or ("", 0) if none exceed the threshold.
-func CheckServerNameSimilarity(newID string, existingIDs []string, threshold float64) (match string, score float64) {
+func CheckServerNameSimilarity(
+	newID string,
+	existingIDs []string,
+	threshold float64,
+) (match string, score float64) {
 	var bestMatch string
 	var bestScore float64
 	for _, existing := range existingIDs {

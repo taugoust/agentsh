@@ -21,7 +21,8 @@ type PartialWriteError struct {
 }
 
 func (e *PartialWriteError) Error() string {
-	return "partial write: " + e.WriteErr.Error() + " (truncate failed: " + e.TruncateErr.Error() + ")"
+	return "partial write: " + e.WriteErr.Error() + " (truncate failed: " + e.TruncateErr.Error() +
+		")"
 }
 
 func (e *PartialWriteError) Unwrap() error { return e.WriteErr }

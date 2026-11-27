@@ -34,7 +34,8 @@ type Identity struct {
 }
 
 func (i Identity) Validate() error {
-	if strings.TrimSpace(i.SessionID) == "" || i.Generation == 0 || strings.TrimSpace(i.IncarnationID) == "" ||
+	if strings.TrimSpace(i.SessionID) == "" || i.Generation == 0 ||
+		strings.TrimSpace(i.IncarnationID) == "" ||
 		strings.ContainsAny(i.SessionID+i.IncarnationID, "\x00\r\n") {
 		return fmt.Errorf("detached transport identity is incomplete")
 	}
@@ -54,7 +55,15 @@ type Record struct {
 }
 
 func NewApprovalRequest(sequence uint64, request approvals.Request) (Record, error) {
-	record := Record{Version: Version, ID: request.ID, Kind: KindApprovalRequested, Sequence: sequence, CreatedAt: request.CreatedAt, ExpiresAt: request.ExpiresAt, Approval: &request}
+	record := Record{
+		Version:   Version,
+		ID:        request.ID,
+		Kind:      KindApprovalRequested,
+		Sequence:  sequence,
+		CreatedAt: request.CreatedAt,
+		ExpiresAt: request.ExpiresAt,
+		Approval:  &request,
+	}
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = time.Now().UTC()
 	}
@@ -64,8 +73,19 @@ func NewApprovalRequest(sequence uint64, request approvals.Request) (Record, err
 	return record, nil
 }
 
-func NewApprovalResolution(sequence uint64, approvalID string, resolution approvals.Resolution) (Record, error) {
-	record := Record{Version: Version, ID: approvalID, Kind: KindApprovalResolved, Sequence: sequence, CreatedAt: resolution.At, Resolution: &resolution}
+func NewApprovalResolution(
+	sequence uint64,
+	approvalID string,
+	resolution approvals.Resolution,
+) (Record, error) {
+	record := Record{
+		Version:    Version,
+		ID:         approvalID,
+		Kind:       KindApprovalResolved,
+		Sequence:   sequence,
+		CreatedAt:  resolution.At,
+		Resolution: &resolution,
+	}
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = time.Now().UTC()
 	}
@@ -90,12 +110,15 @@ func (r *Record) seal() error {
 }
 
 func (r Record) ValidatePayload() error {
-	if r.Version != Version || strings.TrimSpace(r.ID) == "" || r.Sequence == 0 || r.CreatedAt.IsZero() || strings.ContainsAny(r.ID, "\x00\r\n") {
+	if r.Version != Version || strings.TrimSpace(r.ID) == "" || r.Sequence == 0 ||
+		r.CreatedAt.IsZero() ||
+		strings.ContainsAny(r.ID, "\x00\r\n") {
 		return fmt.Errorf("detached transport record header is invalid")
 	}
 	switch r.Kind {
 	case KindApprovalRequested:
-		if r.Approval == nil || r.Resolution != nil || r.Approval.ID != r.ID || strings.TrimSpace(r.Approval.SessionID) == "" {
+		if r.Approval == nil || r.Resolution != nil || r.Approval.ID != r.ID ||
+			strings.TrimSpace(r.Approval.SessionID) == "" {
 			return fmt.Errorf("detached approval request record is invalid")
 		}
 	case KindApprovalResolved:
@@ -160,7 +183,11 @@ type ExchangeResponse struct {
 }
 
 func (r ExchangeRequest) Validate() error {
-	if r.Version != Version || strings.TrimSpace(r.Credential) == "" || strings.ContainsAny(r.Credential, "\r\n") || r.Limit < 0 || r.Limit > 256 || len(r.Records) > 256 {
+	if r.Version != Version || strings.TrimSpace(r.Credential) == "" ||
+		strings.ContainsAny(r.Credential, "\r\n") ||
+		r.Limit < 0 ||
+		r.Limit > 256 ||
+		len(r.Records) > 256 {
 		return fmt.Errorf("detached transport exchange request is invalid")
 	}
 	if err := r.Identity.Validate(); err != nil {
@@ -182,8 +209,16 @@ func (r ExchangeRequest) Validate() error {
 	return nil
 }
 
-func (r ExchangeResponse) Validate(expected Identity, acknowledged, sentMax, requestedCursor uint64, sentRecords bool) error {
-	if r.Version != Version || r.Identity != expected || r.Ack < acknowledged || (sentRecords && r.Ack > sentMax) || r.Cursor < requestedCursor || len(r.Records) > 256 || len(r.Pending) > 256 {
+func (r ExchangeResponse) Validate(
+	expected Identity,
+	acknowledged, sentMax, requestedCursor uint64,
+	sentRecords bool,
+) error {
+	if r.Version != Version || r.Identity != expected || r.Ack < acknowledged ||
+		(sentRecords && r.Ack > sentMax) ||
+		r.Cursor < requestedCursor ||
+		len(r.Records) > 256 ||
+		len(r.Pending) > 256 {
 		return fmt.Errorf("detached transport exchange response is invalid")
 	}
 	prior := requestedCursor

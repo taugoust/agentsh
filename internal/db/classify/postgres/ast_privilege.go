@@ -27,7 +27,9 @@ import (
 // emit the per-relation form with ObjectKind chosen by Objtype.
 func classifyGrant(cs *effects.ClassifiedStatement, s *pg_query.GrantStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil GrantStmt"
 		return
 	}
@@ -76,7 +78,9 @@ func classifyGrant(cs *effects.ClassifiedStatement, s *pg_query.GrantStmt) {
 // privilege change, NOT a function call.
 func classifyGrantRole(cs *effects.ClassifiedStatement, s *pg_query.GrantRoleStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil GrantRoleStmt"
 		return
 	}
@@ -124,7 +128,9 @@ func classifyGrantRole(cs *effects.ClassifiedStatement, s *pg_query.GrantRoleStm
 // folds them all into privilege/create_role.
 func classifyCreateRole(cs *effects.ClassifiedStatement, s *pg_query.CreateRoleStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateRoleStmt"
 		return
 	}
@@ -143,7 +149,9 @@ func classifyCreateRole(cs *effects.ClassifiedStatement, s *pg_query.CreateRoleS
 // classifyAlterRole maps ALTER ROLE / ALTER USER / ALTER GROUP.
 func classifyAlterRole(cs *effects.ClassifiedStatement, s *pg_query.AlterRoleStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil AlterRoleStmt"
 		return
 	}
@@ -166,7 +174,9 @@ func classifyAlterRole(cs *effects.ClassifiedStatement, s *pg_query.AlterRoleStm
 // classifyDropRole maps DROP ROLE / DROP USER / DROP GROUP.
 func classifyDropRole(cs *effects.ClassifiedStatement, s *pg_query.DropRoleStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DropRoleStmt"
 		return
 	}
@@ -198,7 +208,9 @@ func classifyDropRole(cs *effects.ClassifiedStatement, s *pg_query.DropRoleStmt)
 // The GUC being set is exposed as ObjectGUC so policies can match on the name.
 func classifyAlterSystem(cs *effects.ClassifiedStatement, s *pg_query.AlterSystemStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil AlterSystemStmt"
 		return
 	}
@@ -221,7 +233,9 @@ func classifyAlterSystem(cs *effects.ClassifiedStatement, s *pg_query.AlterSyste
 // classifySecurityLabel maps SECURITY LABEL FOR provider ON OBJECT … IS '…'.
 func classifySecurityLabel(cs *effects.ClassifiedStatement, s *pg_query.SecLabelStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil SecLabelStmt"
 		return
 	}

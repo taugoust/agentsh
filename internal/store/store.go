@@ -45,6 +45,17 @@ type Syncer interface {
 }
 
 type OutputStore interface {
-	SaveOutput(ctx context.Context, sessionID, commandID string, stdout, stderr []byte, stdoutTotal, stderrTotal int64, stdoutTrunc, stderrTrunc bool) error
-	ReadOutputChunk(ctx context.Context, commandID string, stream string, offset, limit int64) (chunk []byte, total int64, truncated bool, err error)
+	SaveOutput(
+		ctx context.Context,
+		sessionID, commandID string,
+		stdout, stderr []byte,
+		stdoutTotal, stderrTotal int64,
+		stdoutTrunc, stderrTrunc bool,
+	) error
+	ReadOutputChunk(
+		ctx context.Context,
+		commandID string,
+		stream string,
+		offset, limit int64,
+	) (chunk []byte, total int64, truncated bool, err error)
 }

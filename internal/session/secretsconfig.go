@@ -38,7 +38,9 @@ type ResolvedServices struct {
 
 // ResolveProviderConfigs decodes policy YAML provider nodes into
 // typed ProviderConfig values suitable for secrets.NewRegistry.
-func ResolveProviderConfigs(providers map[string]yaml.Node) (map[string]secrets.ProviderConfig, error) {
+func ResolveProviderConfigs(
+	providers map[string]yaml.Node,
+) (map[string]secrets.ProviderConfig, error) {
 	if len(providers) == 0 {
 		return nil, nil
 	}
@@ -111,42 +113,66 @@ func ResolveServiceConfigs(svcs []policy.HTTPService) (*ResolvedServices, error)
 // provider types. Used by secrets.NewRegistry.
 func DefaultConstructors() map[string]secrets.ConstructorFunc {
 	return map[string]secrets.ConstructorFunc{
-		"keyring": func(_ context.Context, cfg secrets.ProviderConfig, _ secrets.RefResolver) (secrets.SecretProvider, error) {
+		"keyring": func(
+			_ context.Context,
+			cfg secrets.ProviderConfig,
+			_ secrets.RefResolver,
+		) (secrets.SecretProvider, error) {
 			kc, ok := cfg.(keyring.Config)
 			if !ok {
 				return nil, fmt.Errorf("expected keyring.Config, got %T", cfg)
 			}
 			return keyring.New(kc)
 		},
-		"vault": func(ctx context.Context, cfg secrets.ProviderConfig, resolver secrets.RefResolver) (secrets.SecretProvider, error) {
+		"vault": func(
+			ctx context.Context,
+			cfg secrets.ProviderConfig,
+			resolver secrets.RefResolver,
+		) (secrets.SecretProvider, error) {
 			vc, ok := cfg.(vault.Config)
 			if !ok {
 				return nil, fmt.Errorf("expected vault.Config, got %T", cfg)
 			}
 			return vault.New(ctx, vc, resolver)
 		},
-		"aws-sm": func(ctx context.Context, cfg secrets.ProviderConfig, _ secrets.RefResolver) (secrets.SecretProvider, error) {
+		"aws-sm": func(
+			ctx context.Context,
+			cfg secrets.ProviderConfig,
+			_ secrets.RefResolver,
+		) (secrets.SecretProvider, error) {
 			ac, ok := cfg.(awssm.Config)
 			if !ok {
 				return nil, fmt.Errorf("expected awssm.Config, got %T", cfg)
 			}
 			return awssm.New(ctx, ac, nil)
 		},
-		"gcp-sm": func(ctx context.Context, cfg secrets.ProviderConfig, _ secrets.RefResolver) (secrets.SecretProvider, error) {
+		"gcp-sm": func(
+			ctx context.Context,
+			cfg secrets.ProviderConfig,
+			_ secrets.RefResolver,
+		) (secrets.SecretProvider, error) {
 			gc, ok := cfg.(gcpsm.Config)
 			if !ok {
 				return nil, fmt.Errorf("expected gcpsm.Config, got %T", cfg)
 			}
 			return gcpsm.New(ctx, gc, nil)
 		},
-		"azure-kv": func(ctx context.Context, cfg secrets.ProviderConfig, _ secrets.RefResolver) (secrets.SecretProvider, error) {
+		"azure-kv": func(
+			ctx context.Context,
+			cfg secrets.ProviderConfig,
+			_ secrets.RefResolver,
+		) (secrets.SecretProvider, error) {
 			ac, ok := cfg.(azurekv.Config)
 			if !ok {
 				return nil, fmt.Errorf("expected azurekv.Config, got %T", cfg)
 			}
 			return azurekv.New(ctx, ac, nil)
 		},
-		"op": func(ctx context.Context, cfg secrets.ProviderConfig, resolver secrets.RefResolver) (secrets.SecretProvider, error) {
+		"op": func(
+			ctx context.Context,
+			cfg secrets.ProviderConfig,
+			resolver secrets.RefResolver,
+		) (secrets.SecretProvider, error) {
 			oc, ok := cfg.(onepassword.Config)
 			if !ok {
 				return nil, fmt.Errorf("expected onepassword.Config, got %T", cfg)
@@ -325,6 +351,9 @@ func decodeOPConfig(node yaml.Node) (secrets.ProviderConfig, error) {
 // BuildSecretsRegistry creates a provider registry from the resolved
 // config and returns a SecretFetcher. Convenience wrapper around
 // secrets.NewRegistry.
-func BuildSecretsRegistry(ctx context.Context, configs map[string]secrets.ProviderConfig) (*secrets.Registry, error) {
+func BuildSecretsRegistry(
+	ctx context.Context,
+	configs map[string]secrets.ProviderConfig,
+) (*secrets.Registry, error) {
 	return secrets.NewRegistry(ctx, configs, DefaultConstructors())
 }

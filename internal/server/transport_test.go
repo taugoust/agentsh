@@ -43,7 +43,11 @@ file_rules:
     operations: ["*"]
     decision: allow
 `
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policyContent), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policyContent),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,7 +128,11 @@ file_rules:
     operations: ["*"]
     decision: allow
 `
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policyContent), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policyContent),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -182,7 +190,12 @@ file_rules:
 	}
 }
 
-func waitForHTTP200WithClient(t *testing.T, c *http.Client, req *http.Request, timeout time.Duration) {
+func waitForHTTP200WithClient(
+	t *testing.T,
+	c *http.Client,
+	req *http.Request,
+	timeout time.Duration,
+) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {
@@ -227,7 +240,9 @@ func writeSelfSignedKeypair(certPath, keyPath string) error {
 		return err
 	}
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	keyPEM := pem.EncodeToMemory(
+		&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)},
+	)
 	if err := os.WriteFile(certPath, certPEM, 0o600); err != nil {
 		return err
 	}

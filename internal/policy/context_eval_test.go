@@ -275,7 +275,11 @@ func TestContextEngine_ChainRule_DepthLimit(t *testing.T) {
 	// Create a deep chain
 	taintCache.OnSpawn(1000, 1, &ancestry.ProcessInfo{PID: 1000, PPID: 1, Comm: "cursor"})
 	for i := 1; i <= 7; i++ {
-		taintCache.OnSpawn(1000+i, 1000+i-1, &ancestry.ProcessInfo{PID: 1000 + i, PPID: 1000 + i - 1, Comm: "bash"})
+		taintCache.OnSpawn(
+			1000+i,
+			1000+i-1,
+			&ancestry.ProcessInfo{PID: 1000 + i, PPID: 1000 + i - 1, Comm: "bash"},
+		)
 	}
 
 	ce, err := NewContextEngine(policy, true, true, ContextEngineConfig{
@@ -334,7 +338,12 @@ func TestContextEngine_CommandOverride(t *testing.T) {
 	assert.Equal(t, "context:override:args_deny", dec.Rule)
 
 	// git commit - needs approval (default for override)
-	dec = ce.CheckCommandWithContext(context.Background(), 1001, "git", []string{"commit", "-m", "test"})
+	dec = ce.CheckCommandWithContext(
+		context.Background(),
+		1001,
+		"git",
+		[]string{"commit", "-m", "test"},
+	)
 	assert.Equal(t, types.DecisionApprove, dec.PolicyDecision)
 	assert.Equal(t, "context:override:default", dec.Rule)
 }
@@ -468,7 +477,12 @@ func TestContextEngine_ContextSpecificRules(t *testing.T) {
 				Description: "AI tool context",
 				Identities:  []string{"cursor"},
 				CommandRules: []CommandRule{
-					{Name: "context-allow-curl", Commands: []string{"curl"}, ArgsPatterns: []string{`localhost`}, Decision: "allow"},
+					{
+						Name:         "context-allow-curl",
+						Commands:     []string{"curl"},
+						ArgsPatterns: []string{`localhost`},
+						Decision:     "allow",
+					},
 					{Name: "context-deny-curl", Commands: []string{"curl"}, Decision: "deny"},
 				},
 				DefaultDecision: "deny",

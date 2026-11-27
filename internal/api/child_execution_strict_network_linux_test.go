@@ -41,7 +41,12 @@ func openStrictProxyTunnel(proxyURL, target string) <-chan strictProxyTunnelResu
 			result <- strictProxyTunnelResult{err: err}
 			return
 		}
-		if _, err = fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", target, target); err != nil {
+		if _, err = fmt.Fprintf(
+			conn,
+			"CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n",
+			target,
+			target,
+		); err != nil {
 			_ = conn.Close()
 			result <- strictProxyTunnelResult{err: err}
 			return
@@ -71,7 +76,11 @@ func openStrictProxyTunnel(proxyURL, target string) <-chan strictProxyTunnelResu
 	return result
 }
 
-func waitForStrictProxyApprovals(t *testing.T, manager *approvals.Manager, want int) []approvals.Request {
+func waitForStrictProxyApprovals(
+	t *testing.T,
+	manager *approvals.Manager,
+	want int,
+) []approvals.Request {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
@@ -180,7 +189,10 @@ func TestChildExecutionLanes_StrictCommandProxiesKeepImmutableAttribution(t *tes
 	_ = upstream.Close()
 	<-upstreamDone
 
-	persisted, err := app.store.QueryEvents(context.Background(), types.EventQuery{SessionID: sess.ID, Limit: 200, Asc: true})
+	persisted, err := app.store.QueryEvents(
+		context.Background(),
+		types.EventQuery{SessionID: sess.ID, Limit: 200, Asc: true},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +210,11 @@ func TestChildExecutionLanes_StrictCommandProxiesKeepImmutableAttribution(t *tes
 		}
 		byType, ok := required[event.CommandID]
 		if !ok {
-			t.Fatalf("proxy event %s used mutable/wrong command attribution %q", event.Type, event.CommandID)
+			t.Fatalf(
+				"proxy event %s used mutable/wrong command attribution %q",
+				event.Type,
+				event.CommandID,
+			)
 		}
 		byType[event.Type] = true
 	}
@@ -215,14 +231,22 @@ type strictConcurrentCgroupManager struct {
 	root string
 }
 
-func (m *strictConcurrentCgroupManager) Apply(name string, _ int, _ limits.CgroupV2Limits) (*limits.CgroupV2, error) {
+func (m *strictConcurrentCgroupManager) Apply(
+	name string,
+	_ int,
+	_ limits.CgroupV2Limits,
+) (*limits.CgroupV2, error) {
 	// A symlink models cgroupfs virtual control files: Close can remove the
 	// cgroup entry even though cgroup.events is visible through it.
 	target := filepath.Join(m.root, "targets", name)
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(filepath.Join(target, "cgroup.events"), []byte("populated 0\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(target, "cgroup.events"),
+		[]byte("populated 0\n"),
+		0o600,
+	); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(m.root, name)
@@ -247,11 +271,17 @@ type strictConcurrentNethelperBackend struct {
 
 func newStrictConcurrentNethelperBackend() *strictConcurrentNethelperBackend {
 	return &strictConcurrentNethelperBackend{
-		nextID: 100, register: make(map[string]nethelper.RegisterSessionCgroupRequest), update: make(map[string]nethelper.UpdatePolicyMapRequest),
+		nextID:   100,
+		register: make(map[string]nethelper.RegisterSessionCgroupRequest),
+		update:   make(map[string]nethelper.UpdatePolicyMapRequest),
 	}
 }
 
-func (b *strictConcurrentNethelperBackend) RegisterSessionCgroup(_ context.Context, _ nethelper.PeerInfo, req nethelper.RegisterSessionCgroupRequest) (nethelper.RegisterSessionCgroupResponse, error) {
+func (b *strictConcurrentNethelperBackend) RegisterSessionCgroup(
+	_ context.Context,
+	_ nethelper.PeerInfo,
+	req nethelper.RegisterSessionCgroupRequest,
+) (nethelper.RegisterSessionCgroupResponse, error) {
 	b.mu.Lock()
 	b.nextID++
 	cgroupID := b.nextID
@@ -264,21 +294,36 @@ func (b *strictConcurrentNethelperBackend) RegisterSessionCgroup(_ context.Conte
 	}, nil
 }
 
-func (b *strictConcurrentNethelperBackend) UpdatePolicyMap(_ context.Context, _ nethelper.PeerInfo, req nethelper.UpdatePolicyMapRequest) (nethelper.UpdatePolicyMapResponse, error) {
+func (b *strictConcurrentNethelperBackend) UpdatePolicyMap(
+	_ context.Context,
+	_ nethelper.PeerInfo,
+	req nethelper.UpdatePolicyMapRequest,
+) (nethelper.UpdatePolicyMapResponse, error) {
 	b.mu.Lock()
 	b.update[req.RequestID] = req
 	b.mu.Unlock()
-	return nethelper.UpdatePolicyMapResponse{OK: true, DefaultDeny: req.DefaultDeny, AllowEntries: len(req.Allow), DenyEntries: len(req.Deny)}, nil
+	return nethelper.UpdatePolicyMapResponse{
+		OK:           true,
+		DefaultDeny:  req.DefaultDeny,
+		AllowEntries: len(req.Allow),
+		DenyEntries:  len(req.Deny),
+	}, nil
 }
 
-func (b *strictConcurrentNethelperBackend) CleanupSession(_ context.Context, _ nethelper.PeerInfo, req nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error) {
+func (b *strictConcurrentNethelperBackend) CleanupSession(
+	_ context.Context,
+	_ nethelper.PeerInfo,
+	req nethelper.CleanupSessionRequest,
+) (nethelper.CleanupSessionResponse, error) {
 	b.mu.Lock()
 	b.cleanupOrder = append(b.cleanupOrder, req.RequestID)
 	b.mu.Unlock()
 	return nethelper.CleanupSessionResponse{OK: true}, nil
 }
 
-func (b *strictConcurrentNethelperBackend) requests(commandID string) (nethelper.RegisterSessionCgroupRequest, nethelper.UpdatePolicyMapRequest) {
+func (b *strictConcurrentNethelperBackend) requests(
+	commandID string,
+) (nethelper.RegisterSessionCgroupRequest, nethelper.UpdatePolicyMapRequest) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.register[commandID], b.update[commandID]
@@ -290,7 +335,10 @@ func (b *strictConcurrentNethelperBackend) cleaned() []string {
 	return append([]string(nil), b.cleanupOrder...)
 }
 
-func startStrictConcurrentNethelper(t *testing.T, backend *strictConcurrentNethelperBackend) string {
+func startStrictConcurrentNethelper(
+	t *testing.T,
+	backend *strictConcurrentNethelperBackend,
+) string {
 	t.Helper()
 	socketPath := filepath.Join(t.TempDir(), "nethelper.sock")
 	listener, err := nethelper.ListenUnix(socketPath)
@@ -347,14 +395,36 @@ func TestChildExecutionLanes_StrictAttachmentsInterleaveAndReverseCleanup(t *tes
 
 	emitter := storeEmitter{store: app.store, broker: app.broker}
 	endpointsA := &networkProxyEndpoints{ProxyURL: proxyA.URL()}
-	cleanupA, err := applyCgroupV2WithProxyEndpoints(context.Background(), emitter, app, sess.ID, "cmd-strict-a", 1001, policy.Limits{}, nil, app.policyEngineFor(sess), endpointsA)
+	cleanupA, err := applyCgroupV2WithProxyEndpoints(
+		context.Background(),
+		emitter,
+		app,
+		sess.ID,
+		"cmd-strict-a",
+		1001,
+		policy.Limits{},
+		nil,
+		app.policyEngineFor(sess),
+		endpointsA,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Keep A attached while B traverses registration/update. This is the
 	// overlap that previously overwrote the singleton attachment.
 	endpointsB := &networkProxyEndpoints{ProxyURL: proxyB.URL()}
-	cleanupB, err := applyCgroupV2WithProxyEndpoints(context.Background(), emitter, app, sess.ID, "cmd-strict-b", 1002, policy.Limits{}, nil, app.policyEngineFor(sess), endpointsB)
+	cleanupB, err := applyCgroupV2WithProxyEndpoints(
+		context.Background(),
+		emitter,
+		app,
+		sess.ID,
+		"cmd-strict-b",
+		1002,
+		policy.Limits{},
+		nil,
+		app.policyEngineFor(sess),
+		endpointsB,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,17 +437,28 @@ func TestChildExecutionLanes_StrictAttachmentsInterleaveAndReverseCleanup(t *tes
 	for _, attachment := range report.Attachments {
 		attachmentEndpoints[attachment.CommandID] = attachment.ProxyEndpointID
 	}
-	for commandID, commandProxy := range map[string]*commandExplicitProxy{"cmd-strict-a": proxyA, "cmd-strict-b": proxyB} {
+	for commandID, commandProxy := range map[string]*commandExplicitProxy{
+		"cmd-strict-a": proxyA,
+		"cmd-strict-b": proxyB,
+	} {
 		registration, update := backend.requests(commandID)
 		wantPort := endpointPort(t, commandProxy.URL())
-		if registration.Proxy == nil || registration.Proxy.Host != "127.0.0.1" || registration.Proxy.Port != wantPort {
-			t.Fatalf("%s registration proxy = %+v, want exact command endpoint port %d", commandID, registration.Proxy, wantPort)
+		if registration.Proxy == nil || registration.Proxy.Host != "127.0.0.1" ||
+			registration.Proxy.Port != wantPort {
+			t.Fatalf(
+				"%s registration proxy = %+v, want exact command endpoint port %d",
+				commandID,
+				registration.Proxy,
+				wantPort,
+			)
 		}
-		if !update.DefaultDeny || update.Proxy == nil || update.Proxy.Port != wantPort || len(update.Allow) != 1 {
+		if !update.DefaultDeny || update.Proxy == nil || update.Proxy.Port != wantPort ||
+			len(update.Allow) != 1 {
 			t.Fatalf("%s strict update = %+v", commandID, update)
 		}
 		allow := update.Allow[0]
-		if allow.IP != "127.0.0.1" || allow.CIDR != "" || allow.Port != wantPort || allow.Protocol != nethelper.TransportProtocolTCP {
+		if allow.IP != "127.0.0.1" || allow.CIDR != "" || allow.Port != wantPort ||
+			allow.Protocol != nethelper.TransportProtocolTCP {
 			t.Fatalf("%s allow entry = %+v, want only exact command proxy", commandID, allow)
 		}
 		if attachmentEndpoints[commandID] != net.JoinHostPort("127.0.0.1", fmt.Sprint(wantPort)) {
@@ -394,7 +475,8 @@ func TestChildExecutionLanes_StrictAttachmentsInterleaveAndReverseCleanup(t *tes
 		t.Fatal(err)
 	}
 	report = sess.NetworkEnforcement()
-	if report == nil || len(report.Attachments) != 1 || report.Attachments[0].CommandID != "cmd-strict-a" {
+	if report == nil || len(report.Attachments) != 1 ||
+		report.Attachments[0].CommandID != "cmd-strict-a" {
 		t.Fatalf("report after B cleanup = %+v, want only A", report)
 	}
 	if err := cleanupA(); err != nil {
@@ -407,7 +489,8 @@ func TestChildExecutionLanes_StrictAttachmentsInterleaveAndReverseCleanup(t *tes
 	if report != nil && len(report.Attachments) != 0 {
 		t.Fatalf("attachments after reverse cleanup = %+v", report.Attachments)
 	}
-	if got := backend.cleaned(); len(got) != 2 || got[0] != "cmd-strict-b" || got[1] != "cmd-strict-a" {
+	if got := backend.cleaned(); len(got) != 2 || got[0] != "cmd-strict-b" ||
+		got[1] != "cmd-strict-a" {
 		t.Fatalf("helper cleanup order = %v, want [cmd-strict-b cmd-strict-a]", got)
 	}
 }

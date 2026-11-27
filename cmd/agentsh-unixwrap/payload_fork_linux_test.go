@@ -70,7 +70,8 @@ func TestPayloadForkInstallsNotifyOnlyInExactChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handoff.Close()
-	if handoff.Sender == nil || int(handoff.Sender.Pid) != child.pid || handoff.NotifyFD == nil || handoff.FileLookup != nil {
+	if handoff.Sender == nil || int(handoff.Sender.Pid) != child.pid || handoff.NotifyFD == nil ||
+		handoff.FileLookup != nil {
 		t.Fatalf("handoff = %+v", handoff)
 	}
 	if n, err := supervisor.Write([]byte{1}); err != nil || n != 1 {

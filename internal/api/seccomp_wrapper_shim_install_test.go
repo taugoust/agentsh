@@ -19,7 +19,8 @@ func requireUnfilteredSeccompForShimInstall(t *testing.T) {
 		t.Skipf("cannot inspect inherited seccomp state: %v", err)
 	}
 	for _, line := range strings.Split(string(status), "\n") {
-		if strings.HasPrefix(line, "Seccomp_filters:") && strings.TrimSpace(strings.TrimPrefix(line, "Seccomp_filters:")) != "0" {
+		if strings.HasPrefix(line, "Seccomp_filters:") &&
+			strings.TrimSpace(strings.TrimPrefix(line, "Seccomp_filters:")) != "0" {
 			t.Skip("requires an unfiltered process (covered by the native VM check)")
 		}
 	}
@@ -96,7 +97,11 @@ func TestShimInstall_SiblingProcessTree(t *testing.T) {
 	// shim_install=on (env AGENTSH_SHIM_INSTALL=on also works and takes
 	// precedence, but we set both for defence-in-depth).
 	shimConfContent := "shim_install=on\n"
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte(shimConfContent), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte(shimConfContent),
+		0o644,
+	); err != nil {
 		t.Fatalf("write shim.conf: %v", err)
 	}
 
@@ -130,7 +135,10 @@ func TestShimInstall_SiblingProcessTree(t *testing.T) {
 	t.Logf("shim output:\n%s", out)
 
 	if err == nil {
-		t.Fatalf("expected non-zero exit (deny target read should be blocked), got 0; output:\n%s", out)
+		t.Fatalf(
+			"expected non-zero exit (deny target read should be blocked), got 0; output:\n%s",
+			out,
+		)
 	}
 	if strings.Contains(string(out), sentinel) {
 		t.Fatalf("deny target contents leaked; Landlock filter not enforced:\n%s", out)
@@ -210,7 +218,11 @@ func TestShimInstall_NestedInstallsCompose(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatalf("mkdir shim conf dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("shim_install=on\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("shim_install=on\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write shim.conf: %v", err)
 	}
 
@@ -285,10 +297,17 @@ func TestShimInstall_NestedInstallsCompose(t *testing.T) {
 		t.Errorf("expected >= 1 wrap-init call (outer shim must always run), got %d", wrapCalls)
 	}
 	if wrapCalls > 1 {
-		t.Logf("note: inner shim also called wrap-init — current run did not exercise the #282 inherited-filter skip (probably no Landlock TCP block AND no inherited filter detected)")
+		t.Logf(
+			"note: inner shim also called wrap-init — current run did not exercise the #282 " +
+				"inherited-filter skip (probably no Landlock TCP block AND no inherited filter " +
+				"detected)",
+		)
 	}
 
-	t.Logf("PASS: nested shim exited non-zero, sentinel did not appear, wrap-init called %d time(s)", wrapCalls)
+	t.Logf(
+		"PASS: nested shim exited non-zero, sentinel did not appear, wrap-init called %d time(s)",
+		wrapCalls,
+	)
 }
 
 // filterEnv returns a copy of env with all entries that start with key= removed.

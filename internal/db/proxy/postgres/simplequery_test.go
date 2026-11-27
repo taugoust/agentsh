@@ -56,7 +56,9 @@ func newSimpleQueryFixture(t *testing.T) (*proxyConn, *pgproto3.Frontend, *event
 // newSimpleQueryFixtureWithUpstream additionally wires an upstream net.Pipe
 // for tests that need to forward (e.g., Terminate forwarding). Drains the
 // upstream side so writes don't block.
-func newSimpleQueryFixtureWithUpstream(t *testing.T) (*proxyConn, *pgproto3.Frontend, *events.SyncSink) {
+func newSimpleQueryFixtureWithUpstream(
+	t *testing.T,
+) (*proxyConn, *pgproto3.Frontend, *events.SyncSink) {
 	pc, clientFE, sink := newSimpleQueryFixture(t)
 	upClient, upServer := net.Pipe()
 	t.Cleanup(func() { _ = upClient.Close(); _ = upServer.Close() })
@@ -199,7 +201,14 @@ database_rules:
 // fake-server goroutine reads inbound from the proxy before scripting a
 // response. The returned `script` writes the supplied frames to the upstream
 // side after one inbound frame is received.
-func allowPathFixture(t *testing.T) (pc *proxyConn, clientFE *pgproto3.Frontend, sink *events.SyncSink, script func([]pgproto3.BackendMessage)) {
+func allowPathFixture(
+	t *testing.T,
+) (
+	pc *proxyConn,
+	clientFE *pgproto3.Frontend,
+	sink *events.SyncSink,
+	script func([]pgproto3.BackendMessage),
+) {
 	pc, clientFE, sink = newSimpleQueryFixture(t)
 	up1, up2 := net.Pipe()
 	t.Cleanup(func() { _ = up1.Close(); _ = up2.Close() })
@@ -294,7 +303,11 @@ func TestHandleQuery_AllowPath_MultiStmt(t *testing.T) {
 	loopErr := make(chan error, 1)
 	go func() { loopErr <- pc.simpleQueryLoop(context.Background()) }()
 
-	mustSendFromClient(t, clientFE, &pgproto3.Query{String: "INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)"})
+	mustSendFromClient(
+		t,
+		clientFE,
+		&pgproto3.Query{String: "INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)"},
+	)
 
 	_ = drainNFrames(t, clientFE, 3)
 
@@ -376,7 +389,9 @@ func TestHandleQuery_RedirectForwardsRewrittenSQL(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- pc.handleQuery(context.Background(), &pgproto3.Query{String: "select note from public.users"})
+		done <- pc.handleQuery(context.Background(), &pgproto3.Query{
+			String: "select note from public.users",
+		})
 	}()
 
 	msg, err := upBackend.Receive()
@@ -404,11 +419,17 @@ func TestHandleQuery_RedirectForwardsRewrittenSQL(t *testing.T) {
 		t.Fatalf("events = %d: %+v", len(evs), evs)
 	}
 	ev := evs[0]
-	if !ev.Redirected || ev.RedirectRule != "redirect-users" || ev.RedirectRuntimeStatus != "executed" {
+	if !ev.Redirected || ev.RedirectRule != "redirect-users" ||
+		ev.RedirectRuntimeStatus != "executed" {
 		t.Fatalf("redirect event fields = %+v", ev)
 	}
-	if ev.StatementDigest == "" || ev.RewrittenStatementDigest == "" || ev.StatementDigest == ev.RewrittenStatementDigest {
-		t.Fatalf("bad digests: original=%q rewritten=%q", ev.StatementDigest, ev.RewrittenStatementDigest)
+	if ev.StatementDigest == "" || ev.RewrittenStatementDigest == "" ||
+		ev.StatementDigest == ev.RewrittenStatementDigest {
+		t.Fatalf(
+			"bad digests: original=%q rewritten=%q",
+			ev.StatementDigest,
+			ev.RewrittenStatementDigest,
+		)
 	}
 }
 
@@ -435,7 +456,9 @@ func TestHandleQuery_RedirectPlannerFailureFailsClosed(t *testing.T) {
 	}()
 	done := make(chan error, 1)
 	go func() {
-		done <- pc.handleQuery(context.Background(), &pgproto3.Query{String: "select note from public.users"})
+		done <- pc.handleQuery(context.Background(), &pgproto3.Query{
+			String: "select note from public.users",
+		})
 	}()
 
 	select {
@@ -452,7 +475,8 @@ func TestHandleQuery_RedirectPlannerFailureFailsClosed(t *testing.T) {
 	if len(evs) != 1 {
 		t.Fatalf("events = %d: %+v", len(evs), evs)
 	}
-	if evs[0].RedirectRuntimeStatus != "rejected" || evs[0].RedirectRejectionReason != "missing_target_relation" {
+	if evs[0].RedirectRuntimeStatus != "rejected" ||
+		evs[0].RedirectRejectionReason != "missing_target_relation" {
 		t.Fatalf("redirect rejection event = %+v", evs[0])
 	}
 	if evs[0].Result.ErrorCode != sqlstateRedirectRejected {
@@ -562,7 +586,9 @@ func TestHandleQuery_RequireWhere_DeniesNoWhereBeforeForward(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- pc.handleQuery(context.Background(), &pgproto3.Query{String: "UPDATE users SET active = false"})
+		done <- pc.handleQuery(context.Background(), &pgproto3.Query{
+			String: "UPDATE users SET active = false",
+		})
 	}()
 
 	select {

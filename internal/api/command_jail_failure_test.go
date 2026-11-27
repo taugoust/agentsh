@@ -10,7 +10,14 @@ import (
 func TestCommandJailReadyEOFRetryRequiresCompleteCleanup(t *testing.T) {
 	exitCode := 1
 	failure := newCommandJailReadyFailure(0, io.EOF)
-	failure.finalize(&exitCode, "", "command jail: stage=mount_propagation_private: operation not permitted", true, true, nil)
+	failure.finalize(
+		&exitCode,
+		"",
+		"command jail: stage=mount_propagation_private: operation not permitted",
+		true,
+		true,
+		nil,
+	)
 
 	if !failure.retryableReadyEOF(context.Background()) {
 		t.Fatal("clean pre-GO READY EOF was not retryable")
@@ -23,7 +30,8 @@ func TestCommandJailReadyEOFRetryRequiresCompleteCleanup(t *testing.T) {
 	}
 
 	diagnostic := failure.diagnostic(1)
-	if diagnostic.GOAttempted || !diagnostic.ProcessReaped || !diagnostic.HandlersJoined || !diagnostic.CleanupComplete {
+	if diagnostic.GOAttempted || !diagnostic.ProcessReaped || !diagnostic.HandlersJoined ||
+		!diagnostic.CleanupComplete {
 		t.Fatalf("incomplete diagnostic: %+v", diagnostic)
 	}
 	if diagnostic.WrapperExitCode == nil || *diagnostic.WrapperExitCode != 1 {

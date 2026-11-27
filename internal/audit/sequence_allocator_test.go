@@ -157,7 +157,10 @@ func TestSequenceAllocator_NextGeneration_Overflow(t *testing.T) {
 	// Allocator must not be mutated by a rejected NextGeneration.
 	state := a.State()
 	if state.Generation != math.MaxUint32 {
-		t.Fatalf("Generation mutated after rejected NextGeneration: got %d, want MaxUint32", state.Generation)
+		t.Fatalf(
+			"Generation mutated after rejected NextGeneration: got %d, want MaxUint32",
+			state.Generation,
+		)
 	}
 	if state.Sequence != -1 {
 		t.Fatalf("Sequence mutated after rejected NextGeneration: got %d, want -1", state.Sequence)

@@ -59,7 +59,11 @@ func (r *poetryResolver) CanResolve(command string, args []string) bool {
 	return args[0] == "add"
 }
 
-func (r *poetryResolver) Resolve(ctx context.Context, workDir string, command []string) (*pkgcheck.InstallPlan, error) {
+func (r *poetryResolver) Resolve(
+	ctx context.Context,
+	workDir string,
+	command []string,
+) (*pkgcheck.InstallPlan, error) {
 	var packages []string
 	if len(command) > 1 {
 		packages = extractPkgArgs(command[1:])

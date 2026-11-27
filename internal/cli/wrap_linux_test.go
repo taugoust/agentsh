@@ -31,7 +31,10 @@ func TestConfigureWrapCommandBoundaryAppliesFixedLinuxLaunchAttributes(t *testin
 	if err := configureWrapCommandBoundary(attr, requirements); err != nil {
 		t.Fatalf("configure wrap command boundary: %v", err)
 	}
-	wantFlags := uintptr(unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC)
+	wantFlags := uintptr(
+		unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP |
+			unix.CLONE_NEWIPC,
+	)
 	if attr.Cloneflags&wantFlags != wantFlags {
 		t.Fatalf("clone flags = %#x, want all %#x", attr.Cloneflags, wantFlags)
 	}
@@ -39,7 +42,12 @@ func TestConfigureWrapCommandBoundaryAppliesFixedLinuxLaunchAttributes(t *testin
 		t.Fatalf("parent-death signal = %v, want SIGKILL", attr.Pdeathsig)
 	}
 	if len(attr.UidMappings) != 1 || len(attr.GidMappings) != 1 || attr.GidMappingsEnableSetgroups {
-		t.Fatalf("uid/gid mappings are incomplete: uid=%+v gid=%+v setgroups=%t", attr.UidMappings, attr.GidMappings, attr.GidMappingsEnableSetgroups)
+		t.Fatalf(
+			"uid/gid mappings are incomplete: uid=%+v gid=%+v setgroups=%t",
+			attr.UidMappings,
+			attr.GidMappings,
+			attr.GidMappingsEnableSetgroups,
+		)
 	}
 }
 
@@ -70,7 +78,8 @@ func TestConfigureWrapCommandBoundaryUsesNonRootCompositionIdentity(t *testing.T
 	if got := attr.GidMappings[0].ContainerID; got != 1 {
 		t.Fatalf("gid namespace identity = %d, want 1", got)
 	}
-	if len(attr.AmbientCaps) != 2 || attr.AmbientCaps[0] != unix.CAP_SYS_ADMIN || attr.AmbientCaps[1] != unix.CAP_SETPCAP {
+	if len(attr.AmbientCaps) != 2 || attr.AmbientCaps[0] != unix.CAP_SYS_ADMIN ||
+		attr.AmbientCaps[1] != unix.CAP_SETPCAP {
 		t.Fatalf("ambient setup capabilities = %v", attr.AmbientCaps)
 	}
 }

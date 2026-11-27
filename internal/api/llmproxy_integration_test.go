@@ -183,7 +183,19 @@ func TestIntegration_LLMProxyEnvVarsInSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app := NewApp(cfg, sessions, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 
 	ctx := context.Background()
 	req := types.CreateSessionRequest{Workspace: ws}
@@ -292,10 +304,20 @@ func TestIntegration_LLMProxyBothDialects(t *testing.T) {
 		// Detect dialect by path
 		if strings.Contains(r.URL.Path, "messages") {
 			anthropicCalled = true
-			w.Write([]byte(`{"content":[{"text":"Anthropic"}],"usage":{"input_tokens":5,"output_tokens":3}}`))
+			w.Write(
+				[]byte(
+					`{"content":[{"text":"Anthropic"}],"usage":{"input_tokens":5,` +
+						`"output_tokens":3}}`,
+				),
+			)
 		} else if strings.Contains(r.URL.Path, "chat/completions") {
 			openaiCalled = true
-			w.Write([]byte(`{"choices":[{"message":{"content":"OpenAI"}}],"usage":{"prompt_tokens":5,"completion_tokens":3}}`))
+			w.Write(
+				[]byte(
+					`{"choices":[{"message":{"content":"OpenAI"}}],"usage":{"prompt_tokens":5,` +
+						`"completion_tokens":3}}`,
+				),
+			)
 		}
 	}))
 	defer upstream.Close()
@@ -323,7 +345,19 @@ func TestIntegration_LLMProxyBothDialects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	app := NewApp(cfg, sessions, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 
 	ctx := context.Background()
 	snap, _, err := app.createSessionCore(ctx, types.CreateSessionRequest{Workspace: t.TempDir()})

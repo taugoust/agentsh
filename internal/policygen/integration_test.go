@@ -18,37 +18,119 @@ func TestIntegration_FullPolicyGeneration(t *testing.T) {
 	events := []types.Event{
 		// npm install - file reads
 		{Type: "file_read", Path: "/workspace/package.json", Timestamp: now, Policy: allow()},
-		{Type: "file_read", Path: "/workspace/package-lock.json", Timestamp: now.Add(time.Second), Policy: allow()},
+		{
+			Type:      "file_read",
+			Path:      "/workspace/package-lock.json",
+			Timestamp: now.Add(time.Second),
+			Policy:    allow(),
+		},
 
 		// npm install - network
-		{Type: "net_connect", Domain: "registry.npmjs.org", Timestamp: now.Add(2 * time.Second), Policy: allow(), Fields: map[string]any{"port": 443}},
+		{
+			Type:      "net_connect",
+			Domain:    "registry.npmjs.org",
+			Timestamp: now.Add(2 * time.Second),
+			Policy:    allow(),
+			Fields:    map[string]any{"port": 443},
+		},
 
 		// npm install - node_modules writes (many files)
-		{Type: "file_write", Path: "/workspace/node_modules/lodash/index.js", Timestamp: now.Add(3 * time.Second), Policy: allow()},
-		{Type: "file_write", Path: "/workspace/node_modules/lodash/fp.js", Timestamp: now.Add(3 * time.Second), Policy: allow()},
-		{Type: "file_write", Path: "/workspace/node_modules/express/index.js", Timestamp: now.Add(4 * time.Second), Policy: allow()},
-		{Type: "file_write", Path: "/workspace/node_modules/express/router.js", Timestamp: now.Add(4 * time.Second), Policy: allow()},
-		{Type: "file_write", Path: "/workspace/node_modules/axios/index.js", Timestamp: now.Add(5 * time.Second), Policy: allow()},
-		{Type: "file_write", Path: "/workspace/node_modules/axios/core.js", Timestamp: now.Add(5 * time.Second), Policy: allow()},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/node_modules/lodash/index.js",
+			Timestamp: now.Add(3 * time.Second),
+			Policy:    allow(),
+		},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/node_modules/lodash/fp.js",
+			Timestamp: now.Add(3 * time.Second),
+			Policy:    allow(),
+		},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/node_modules/express/index.js",
+			Timestamp: now.Add(4 * time.Second),
+			Policy:    allow(),
+		},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/node_modules/express/router.js",
+			Timestamp: now.Add(4 * time.Second),
+			Policy:    allow(),
+		},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/node_modules/axios/index.js",
+			Timestamp: now.Add(5 * time.Second),
+			Policy:    allow(),
+		},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/node_modules/axios/core.js",
+			Timestamp: now.Add(5 * time.Second),
+			Policy:    allow(),
+		},
 
 		// Build - source files
-		{Type: "file_read", Path: "/workspace/src/index.ts", Timestamp: now.Add(10 * time.Second), Policy: allow()},
-		{Type: "file_read", Path: "/workspace/src/utils.ts", Timestamp: now.Add(10 * time.Second), Policy: allow()},
-		{Type: "file_write", Path: "/workspace/dist/index.js", Timestamp: now.Add(11 * time.Second), Policy: allow()},
+		{
+			Type:      "file_read",
+			Path:      "/workspace/src/index.ts",
+			Timestamp: now.Add(10 * time.Second),
+			Policy:    allow(),
+		},
+		{
+			Type:      "file_read",
+			Path:      "/workspace/src/utils.ts",
+			Timestamp: now.Add(10 * time.Second),
+			Policy:    allow(),
+		},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/dist/index.js",
+			Timestamp: now.Add(11 * time.Second),
+			Policy:    allow(),
+		},
 
 		// Commands - use "exec" event type which is recognized by isCommandEvent
-		{Type: "exec", Timestamp: now.Add(time.Second), Policy: allow(), Fields: map[string]any{"command": "npm"}},
-		{Type: "exec", Timestamp: now.Add(10 * time.Second), Policy: allow(), Fields: map[string]any{"command": "npm"}},
+		{
+			Type:      "exec",
+			Timestamp: now.Add(time.Second),
+			Policy:    allow(),
+			Fields:    map[string]any{"command": "npm"},
+		},
+		{
+			Type:      "exec",
+			Timestamp: now.Add(10 * time.Second),
+			Policy:    allow(),
+			Fields:    map[string]any{"command": "npm"},
+		},
 
 		// Risky command with URL - curl is in builtinRisky
-		{Type: "exec", Timestamp: now.Add(15 * time.Second), Policy: allow(), Fields: map[string]any{
-			"command": "curl",
-			"argv":    []interface{}{"curl", "https://api.github.com/repos/test"},
-		}},
-		{Type: "net_connect", Domain: "api.github.com", Timestamp: now.Add(15 * time.Second), Policy: allow(), Fields: map[string]any{"port": 443, "command": "curl"}},
+		{
+			Type:      "exec",
+			Timestamp: now.Add(15 * time.Second),
+			Policy:    allow(),
+			Fields: map[string]any{
+				"command": "curl",
+				"argv":    []interface{}{"curl", "https://api.github.com/repos/test"},
+			},
+		},
+		{
+			Type:      "net_connect",
+			Domain:    "api.github.com",
+			Timestamp: now.Add(15 * time.Second),
+			Policy:    allow(),
+			Fields:    map[string]any{"port": 443, "command": "curl"},
+		},
 
 		// Blocked operation
-		{Type: "file_write", Path: "/etc/hosts", Timestamp: now.Add(20 * time.Second), Policy: deny("system file")},
+		{
+			Type:      "file_write",
+			Path:      "/etc/hosts",
+			Timestamp: now.Add(20 * time.Second),
+			Policy:    deny("system file"),
+		},
 	}
 
 	store := &mockEventStore{events: events}
@@ -98,7 +180,8 @@ func TestIntegration_FullPolicyGeneration(t *testing.T) {
 	// curl should be marked as risky with arg pattern
 	var curlRule *CommandRuleGen
 	for i := range policy.CommandRules {
-		if len(policy.CommandRules[i].Commands) > 0 && policy.CommandRules[i].Commands[0] == "curl" {
+		if len(policy.CommandRules[i].Commands) > 0 &&
+			policy.CommandRules[i].Commands[0] == "curl" {
 			curlRule = &policy.CommandRules[i]
 			break
 		}
@@ -147,9 +230,14 @@ func TestIntegration_MCPPolicyGeneration(t *testing.T) {
 			"server_id": "gh", "tool_name": "create_pr",
 			"tool_hash": "sha256:pr123", "server_type": "stdio",
 		}},
-		{ID: "m2", Type: "mcp_tool_called", Timestamp: now.Add(2 * time.Second), Fields: map[string]any{
-			"server_id": "gh", "tool_name": "create_pr",
-		}},
+		{
+			ID:        "m2",
+			Type:      "mcp_tool_called",
+			Timestamp: now.Add(2 * time.Second),
+			Fields: map[string]any{
+				"server_id": "gh", "tool_name": "create_pr",
+			},
+		},
 	}
 
 	store := &mockEventStore{events: events}
@@ -257,7 +345,10 @@ func TestIntegration_MCPYAMLRoundTrip(t *testing.T) {
 		t.Errorf("expected server 'gh', got %q", doc.MCPRules.AllowedTools[0].Server)
 	}
 	if doc.MCPRules.AllowedTools[0].ContentHash != "sha256:pr123" {
-		t.Errorf("expected content_hash 'sha256:pr123', got %q", doc.MCPRules.AllowedTools[0].ContentHash)
+		t.Errorf(
+			"expected content_hash 'sha256:pr123', got %q",
+			doc.MCPRules.AllowedTools[0].ContentHash,
+		)
 	}
 	if len(doc.MCPRules.AllowedServers) != 1 {
 		t.Fatalf("expected 1 allowed server, got %d", len(doc.MCPRules.AllowedServers))

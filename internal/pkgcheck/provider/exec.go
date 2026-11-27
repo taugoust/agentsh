@@ -94,7 +94,10 @@ type execRequest struct {
 	Config    map[string]any        `json:"config,omitempty"`
 }
 
-func (p *execProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequest) (*pkgcheck.CheckResponse, error) {
+func (p *execProvider) CheckBatch(
+	ctx context.Context,
+	req pkgcheck.CheckRequest,
+) (*pkgcheck.CheckResponse, error) {
 	start := time.Now()
 
 	// Apply timeout.
@@ -144,7 +147,12 @@ func (p *execProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequest
 
 	// Exit code 2+ is a total failure.
 	if exitCode >= 2 {
-		return nil, fmt.Errorf("exec(%s): command failed with exit code %d: %s", p.name, exitCode, stderr.String())
+		return nil, fmt.Errorf(
+			"exec(%s): command failed with exit code %d: %s",
+			p.name,
+			exitCode,
+			stderr.String(),
+		)
 	}
 
 	// For exit code 0, require non-empty stdout.

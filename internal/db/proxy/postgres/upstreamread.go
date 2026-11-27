@@ -37,7 +37,11 @@ type upstreamResult struct {
 // just pass it through for completeness — the value is currently unused inside
 // this function but the spine and event-builder consume it for the per-stmt
 // Result struct.
-func (pc *proxyConn) forwardUpstreamUntilRFQ(ctx context.Context, sentAt time.Time, bytesIn int) (upstreamResult, error) {
+func (pc *proxyConn) forwardUpstreamUntilRFQ(
+	ctx context.Context,
+	sentAt time.Time,
+	bytesIn int,
+) (upstreamResult, error) {
 	_ = bytesIn
 	var r upstreamResult
 	var curRows int64

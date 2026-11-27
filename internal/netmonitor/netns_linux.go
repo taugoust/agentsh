@@ -21,7 +21,17 @@ type NetNS struct {
 	DNSUDPPort   int
 }
 
-func SetupNetNS(ctx context.Context, nsName string, subnetCIDR string, hostIf string, nsIf string, hostIPCIDR string, nsIPCIDR string, proxyTCPPort int, dnsUDPPort int) (*NetNS, error) {
+func SetupNetNS(
+	ctx context.Context,
+	nsName string,
+	subnetCIDR string,
+	hostIf string,
+	nsIf string,
+	hostIPCIDR string,
+	nsIPCIDR string,
+	proxyTCPPort int,
+	dnsUDPPort int,
+) (*NetNS, error) {
 	if os.Geteuid() != 0 {
 		return nil, fmt.Errorf("transparent netns requires root (euid=%d)", os.Geteuid())
 	}
@@ -41,7 +51,18 @@ func SetupNetNS(ctx context.Context, nsName string, subnetCIDR string, hostIf st
 	}
 
 	// veth pair.
-	if err := run(ctx, "ip", "link", "add", hostIf, "type", "veth", "peer", "name", nsIf); err != nil {
+	if err := run(
+		ctx,
+		"ip",
+		"link",
+		"add",
+		hostIf,
+		"type",
+		"veth",
+		"peer",
+		"name",
+		nsIf,
+	); err != nil {
 		cleanupNS()
 		return nil, err
 	}
@@ -63,7 +84,19 @@ func SetupNetNS(ctx context.Context, nsName string, subnetCIDR string, hostIf st
 		cleanupNS()
 		return nil, err
 	}
-	if err := run(ctx, "ip", "netns", "exec", nsName, "ip", "addr", "add", nsIPCIDR, "dev", nsIf); err != nil {
+	if err := run(
+		ctx,
+		"ip",
+		"netns",
+		"exec",
+		nsName,
+		"ip",
+		"addr",
+		"add",
+		nsIPCIDR,
+		"dev",
+		nsIf,
+	); err != nil {
 		cleanupNS()
 		return nil, err
 	}
@@ -73,7 +106,19 @@ func SetupNetNS(ctx context.Context, nsName string, subnetCIDR string, hostIf st
 	}
 
 	hostIP := stripCIDR(hostIPCIDR)
-	if err := run(ctx, "ip", "netns", "exec", nsName, "ip", "route", "add", "default", "via", hostIP); err != nil {
+	if err := run(
+		ctx,
+		"ip",
+		"netns",
+		"exec",
+		nsName,
+		"ip",
+		"route",
+		"add",
+		"default",
+		"via",
+		hostIP,
+	); err != nil {
 		cleanupNS()
 		return nil, err
 	}
@@ -93,13 +138,35 @@ func SetupNetNS(ctx context.Context, nsName string, subnetCIDR string, hostIf st
 	}
 
 	// Host NAT for the session subnet (required).
-	if err := run(ctx, "iptables", "-t", "nat", "-A", "POSTROUTING", "-s", subnetCIDR, "-j", "MASQUERADE"); err != nil {
+	if err := run(
+		ctx,
+		"iptables",
+		"-t",
+		"nat",
+		"-A",
+		"POSTROUTING",
+		"-s",
+		subnetCIDR,
+		"-j",
+		"MASQUERADE",
+	); err != nil {
 		rollbackAll()
 		cleanupNS()
 		return nil, err
 	}
 	rollback = append(rollback, func() {
-		_ = run(context.Background(), "iptables", "-t", "nat", "-D", "POSTROUTING", "-s", subnetCIDR, "-j", "MASQUERADE")
+		_ = run(
+			context.Background(),
+			"iptables",
+			"-t",
+			"nat",
+			"-D",
+			"POSTROUTING",
+			"-s",
+			subnetCIDR,
+			"-j",
+			"MASQUERADE",
+		)
 	})
 	if err := run(ctx, "iptables", "-A", "FORWARD", "-s", subnetCIDR, "-j", "ACCEPT"); err != nil {
 		rollbackAll()
@@ -120,13 +187,36 @@ func SetupNetNS(ctx context.Context, nsName string, subnetCIDR string, hostIf st
 	// Host firewalls (for example NixOS's nixos-fw chain) can drop packets
 	// from the session veth before they reach the host-side interceptor.
 	// Insert this at the front so transparent proxy/DNS listeners remain reachable.
-	if err := run(ctx, "iptables", "-I", "INPUT", "1", "-i", hostIf, "-s", subnetCIDR, "-j", "ACCEPT"); err != nil {
+	if err := run(
+		ctx,
+		"iptables",
+		"-I",
+		"INPUT",
+		"1",
+		"-i",
+		hostIf,
+		"-s",
+		subnetCIDR,
+		"-j",
+		"ACCEPT",
+	); err != nil {
 		rollbackAll()
 		cleanupNS()
 		return nil, err
 	}
 	rollback = append(rollback, func() {
-		_ = run(context.Background(), "iptables", "-D", "INPUT", "-i", hostIf, "-s", subnetCIDR, "-j", "ACCEPT")
+		_ = run(
+			context.Background(),
+			"iptables",
+			"-D",
+			"INPUT",
+			"-i",
+			hostIf,
+			"-s",
+			subnetCIDR,
+			"-j",
+			"ACCEPT",
+		)
 	})
 
 	// DNAT outbound traffic to host-side interceptors. TCP DNAT must happen in
@@ -135,25 +225,104 @@ func SetupNetNS(ctx context.Context, nsName string, subnetCIDR string, hostIf st
 	hostTCP := fmt.Sprintf("%s:%d", hostIP, proxyTCPPort)
 	hostDNS := fmt.Sprintf("%s:%d", hostIP, dnsUDPPort)
 	// Avoid rewriting traffic destined to the host veth IP.
-	if err := run(ctx, "ip", "netns", "exec", nsName, "iptables", "-t", "nat", "-A", "OUTPUT", "-d", hostIP, "-j", "RETURN"); err != nil {
+	if err := run(
+		ctx,
+		"ip",
+		"netns",
+		"exec",
+		nsName,
+		"iptables",
+		"-t",
+		"nat",
+		"-A",
+		"OUTPUT",
+		"-d",
+		hostIP,
+		"-j",
+		"RETURN",
+	); err != nil {
 		rollbackAll()
 		cleanupNS()
 		return nil, err
 	}
-	if err := run(ctx, "ip", "netns", "exec", nsName, "iptables", "-t", "nat", "-A", "OUTPUT", "-d", "127.0.0.0/8", "-j", "RETURN"); err != nil {
+	if err := run(
+		ctx,
+		"ip",
+		"netns",
+		"exec",
+		nsName,
+		"iptables",
+		"-t",
+		"nat",
+		"-A",
+		"OUTPUT",
+		"-d",
+		"127.0.0.0/8",
+		"-j",
+		"RETURN",
+	); err != nil {
 		rollbackAll()
 		cleanupNS()
 		return nil, err
 	}
-	if err := run(ctx, "iptables", "-t", "nat", "-A", "PREROUTING", "-i", hostIf, "-p", "tcp", "-j", "DNAT", "--to-destination", hostTCP); err != nil {
+	if err := run(
+		ctx,
+		"iptables",
+		"-t",
+		"nat",
+		"-A",
+		"PREROUTING",
+		"-i",
+		hostIf,
+		"-p",
+		"tcp",
+		"-j",
+		"DNAT",
+		"--to-destination",
+		hostTCP,
+	); err != nil {
 		rollbackAll()
 		cleanupNS()
 		return nil, err
 	}
 	rollback = append(rollback, func() {
-		_ = run(context.Background(), "iptables", "-t", "nat", "-D", "PREROUTING", "-i", hostIf, "-p", "tcp", "-j", "DNAT", "--to-destination", hostTCP)
+		_ = run(
+			context.Background(),
+			"iptables",
+			"-t",
+			"nat",
+			"-D",
+			"PREROUTING",
+			"-i",
+			hostIf,
+			"-p",
+			"tcp",
+			"-j",
+			"DNAT",
+			"--to-destination",
+			hostTCP,
+		)
 	})
-	if err := run(ctx, "ip", "netns", "exec", nsName, "iptables", "-t", "nat", "-A", "OUTPUT", "-p", "udp", "--dport", "53", "-j", "DNAT", "--to-destination", hostDNS); err != nil {
+	if err := run(
+		ctx,
+		"ip",
+		"netns",
+		"exec",
+		nsName,
+		"iptables",
+		"-t",
+		"nat",
+		"-A",
+		"OUTPUT",
+		"-p",
+		"udp",
+		"--dport",
+		"53",
+		"-j",
+		"DNAT",
+		"--to-destination",
+		hostDNS,
+	); err != nil {
 		rollbackAll()
 		cleanupNS()
 		return nil, err
@@ -179,9 +348,35 @@ func (n *NetNS) Close(ctx context.Context) error {
 	_ = run(ctx, "ip", "link", "del", n.HostIfName)
 	// Best-effort cleanup NAT/FORWARD/INPUT rules.
 	hostTCP := fmt.Sprintf("%s:%d", n.HostIP, n.ProxyTCPPort)
-	_ = run(ctx, "iptables", "-t", "nat", "-D", "PREROUTING", "-i", n.HostIfName, "-p", "tcp", "-j", "DNAT", "--to-destination", hostTCP)
+	_ = run(
+		ctx,
+		"iptables",
+		"-t",
+		"nat",
+		"-D",
+		"PREROUTING",
+		"-i",
+		n.HostIfName,
+		"-p",
+		"tcp",
+		"-j",
+		"DNAT",
+		"--to-destination",
+		hostTCP,
+	)
 	_ = run(ctx, "iptables", "-D", "INPUT", "-i", n.HostIfName, "-s", n.SubnetCIDR, "-j", "ACCEPT")
-	_ = run(ctx, "iptables", "-t", "nat", "-D", "POSTROUTING", "-s", n.SubnetCIDR, "-j", "MASQUERADE")
+	_ = run(
+		ctx,
+		"iptables",
+		"-t",
+		"nat",
+		"-D",
+		"POSTROUTING",
+		"-s",
+		n.SubnetCIDR,
+		"-j",
+		"MASQUERADE",
+	)
 	_ = run(ctx, "iptables", "-D", "FORWARD", "-s", n.SubnetCIDR, "-j", "ACCEPT")
 	_ = run(ctx, "iptables", "-D", "FORWARD", "-d", n.SubnetCIDR, "-j", "ACCEPT")
 	return nil
@@ -191,7 +386,13 @@ func run(ctx context.Context, name string, args ...string) error {
 	c := exec.CommandContext(ctx, name, args...)
 	out, err := c.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		return fmt.Errorf(
+			"%s %s: %w: %s",
+			name,
+			strings.Join(args, " "),
+			err,
+			strings.TrimSpace(string(out)),
+		)
 	}
 	return nil
 }

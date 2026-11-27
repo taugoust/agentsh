@@ -200,7 +200,12 @@ func TestMountFUSEForSession_RegistersMountPointNotSourcePath(t *testing.T) {
 			{Name: "allow-all", Commands: []string{"*"}, Decision: "allow"},
 		},
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 		NetworkRules: []policy.NetworkRule{
 			{Name: "allow-all", Domains: []string{"**"}, Decision: "allow"},
@@ -208,7 +213,19 @@ func TestMountFUSEForSession_RegistersMountPointNotSourcePath(t *testing.T) {
 	}, false, true)
 	require.NoError(t, err)
 
-	app := NewApp(cfg, mgr, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		mgr,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 
 	mfs := &mockFilesystem{}
 	mfs.available.Store(true)
@@ -241,7 +258,12 @@ func TestMountFUSEForSession_RegistersMountPointNotSourcePath(t *testing.T) {
 
 func TestFilePolicyEngineWrapper_CheckFileIsNonblockingAndResolveCachesSessionScope(t *testing.T) {
 	pol := &policy.Policy{Version: 1, Name: "approve-file", FileRules: []policy.FileRule{
-		{Name: "approve-env", Paths: []string{"/workspace/.env"}, Operations: []string{"open", "stat"}, Decision: "approve"},
+		{
+			Name:       "approve-env",
+			Paths:      []string{"/workspace/.env"},
+			Operations: []string{"open", "stat"},
+			Decision:   "approve",
+		},
 	}}
 	engine, err := policy.NewEngine(pol, true, true)
 	require.NoError(t, err)
@@ -257,7 +279,11 @@ func TestFilePolicyEngineWrapper_CheckFileIsNonblockingAndResolveCachesSessionSc
 	assert.Equal(t, unixmon.FileApprovalCacheMiss, prepared.CacheOutcome)
 	assert.Equal(t, "command-at-prepare", prepared.ApprovalCommandID)
 	assert.Empty(t, mgr.ListPendingForSession(sess.ID), "CheckFile must never register an approval")
-	assert.Empty(t, mgr.SessionScopedDecisions(sess.ID), "CheckFile must never populate scoped decisions")
+	assert.Empty(
+		t,
+		mgr.SessionScopedDecisions(sess.ID),
+		"CheckFile must never populate scoped decisions",
+	)
 
 	// Resolution stays bound to the command observed by CheckFile even if the
 	// runtime state's current command changes before the blocking half begins.
@@ -271,11 +297,19 @@ func TestFilePolicyEngineWrapper_CheckFileIsNonblockingAndResolveCachesSessionSc
 	}()
 
 	req := waitPendingFileApproval(t, mgr, sess.ID)
-	if req.Kind != "file" || req.Target != "/workspace/.env" || req.CommandID != "command-at-prepare" ||
-		req.Fields["operation"] != "open" || req.Fields["path"] != "/workspace/.env" {
+	if req.Kind != "file" || req.Target != "/workspace/.env" ||
+		req.CommandID != "command-at-prepare" ||
+		req.Fields["operation"] != "open" ||
+		req.Fields["path"] != "/workspace/.env" {
 		t.Fatalf("unexpected approval request: %#v", req)
 	}
-	if ok := mgr.ResolveForSessionWithScope(sess.ID, req.ID, true, "ok", approvals.ScopeSession); !ok {
+	if ok := mgr.ResolveForSessionWithScope(
+		sess.ID,
+		req.ID,
+		true,
+		"ok",
+		approvals.ScopeSession,
+	); !ok {
 		t.Fatal("failed to resolve approval")
 	}
 	resolved := <-done
@@ -288,12 +322,21 @@ func TestFilePolicyEngineWrapper_CheckFileIsNonblockingAndResolveCachesSessionSc
 	assert.Equal(t, "approve", dec.Decision)
 	assert.Equal(t, "allow", dec.EffectiveDecision)
 	assert.Equal(t, unixmon.FileApprovalCacheAllow, dec.CacheOutcome)
-	assert.Empty(t, mgr.ListPendingForSession(sess.ID), "session-scoped file approval should be cached")
+	assert.Empty(
+		t,
+		mgr.ListPendingForSession(sess.ID),
+		"session-scoped file approval should be cached",
+	)
 }
 
 func TestFilePolicyEngineWrapper_ResolveAtomicallyRechecksPreparedCacheMiss(t *testing.T) {
 	pol := &policy.Policy{Version: 1, Name: "approve-file", FileRules: []policy.FileRule{
-		{Name: "approve-env", Paths: []string{"/workspace/.env"}, Operations: []string{"open"}, Decision: "approve"},
+		{
+			Name:       "approve-env",
+			Paths:      []string{"/workspace/.env"},
+			Operations: []string{"open"},
+			Decision:   "approve",
+		},
 	}}
 	engine, err := policy.NewEngine(pol, true, true)
 	require.NoError(t, err)
@@ -305,26 +348,56 @@ func TestFilePolicyEngineWrapper_ResolveAtomicallyRechecksPreparedCacheMiss(t *t
 			sess, err := session.NewManager(1).Create(t.TempDir(), "default")
 			require.NoError(t, err)
 			mgr := approvals.New("api", time.Second, nil)
-			wrapper := &filePolicyEngineWrapper{engine: engine, approvals: mgr, sessionID: sess.ID, session: sess}
+			wrapper := &filePolicyEngineWrapper{
+				engine:    engine,
+				approvals: mgr,
+				sessionID: sess.ID,
+				session:   sess,
+			}
 			prepared := wrapper.CheckFile(context.Background(), "/workspace/.env", "open")
 			require.Equal(t, unixmon.FileApprovalCacheMiss, prepared.CacheOutcome)
 
-			require.True(t, mgr.SetScoped(context.Background(), sess.ID, "other-command", scope, approved, "raced cache", "approve-env"))
-			resolved, err := wrapper.ResolveFileApproval(context.Background(), "/workspace/.env", "open", prepared)
+			require.True(
+				t,
+				mgr.SetScoped(
+					context.Background(),
+					sess.ID,
+					"other-command",
+					scope,
+					approved,
+					"raced cache",
+					"approve-env",
+				),
+			)
+			resolved, err := wrapper.ResolveFileApproval(
+				context.Background(),
+				"/workspace/.env",
+				"open",
+				prepared,
+			)
 			require.NoError(t, err)
 			want := "deny"
 			if approved {
 				want = "allow"
 			}
 			assert.Equal(t, want, resolved.EffectiveDecision)
-			assert.Empty(t, mgr.ListPendingForSession(sess.ID), "atomic cache recheck must not register a request")
+			assert.Empty(
+				t,
+				mgr.ListPendingForSession(sess.ID),
+				"atomic cache recheck must not register a request",
+			)
 		})
 	}
 }
 
 func TestFilePolicyEngineWrapper_ResolveDenialAndTimeoutDeny(t *testing.T) {
 	pol := &policy.Policy{Version: 1, Name: "approve-file", FileRules: []policy.FileRule{
-		{Name: "approve-env", Paths: []string{"/workspace/.env"}, Operations: []string{"open"}, Decision: "approve"},
+		{
+			Name:       "approve-env",
+			Paths:      []string{"/workspace/.env"},
+			Operations: []string{"open"},
+			Decision:   "approve",
+		},
 	}}
 	engine, err := policy.NewEngine(pol, true, true)
 	require.NoError(t, err)
@@ -353,10 +426,20 @@ func TestFilePolicyEngineWrapper_ResolveDenialAndTimeoutDeny(t *testing.T) {
 	assert.Equal(t, "deny", resolved.decision.EffectiveDecision)
 
 	shortMgr := approvals.New("api", 10*time.Millisecond, nil)
-	w = &filePolicyEngineWrapper{engine: engine, approvals: shortMgr, sessionID: sess.ID, session: sess}
+	w = &filePolicyEngineWrapper{
+		engine:    engine,
+		approvals: shortMgr,
+		sessionID: sess.ID,
+		session:   sess,
+	}
 	prepared = w.CheckFile(context.Background(), "/workspace/.env", "open")
 	assert.Equal(t, "approve", prepared.EffectiveDecision)
-	resolvedDecision, resolveErr := w.ResolveFileApproval(context.Background(), "/workspace/.env", "open", prepared)
+	resolvedDecision, resolveErr := w.ResolveFileApproval(
+		context.Background(),
+		"/workspace/.env",
+		"open",
+		prepared,
+	)
 	require.Error(t, resolveErr)
 	assert.Equal(t, "deny", resolvedDecision.EffectiveDecision)
 }
@@ -367,7 +450,12 @@ func TestFileHandler_PrepareFUSEDelegationDoesNotRequestApproval(t *testing.T) {
 		path      = "/fuse/workspace/.env"
 	)
 	pol := &policy.Policy{Version: 1, Name: "approve-fuse-file", FileRules: []policy.FileRule{
-		{Name: "approve-env", Paths: []string{path}, Operations: []string{"open"}, Decision: "approve"},
+		{
+			Name:       "approve-env",
+			Paths:      []string{path},
+			Operations: []string{"open"},
+			Decision:   "approve",
+		},
 	}}
 	engine, err := policy.NewEngine(pol, true, true)
 	require.NoError(t, err)
@@ -393,15 +481,30 @@ func TestFileHandler_PrepareFUSEDelegationDoesNotRequestApproval(t *testing.T) {
 
 func TestFileHandler_ResolveCancellationRemovesPendingAndSkipsLaterObligations(t *testing.T) {
 	pol := &policy.Policy{Version: 1, Name: "approve-two-paths", FileRules: []policy.FileRule{
-		{Name: "approve-one", Paths: []string{"/visible/one"}, Operations: []string{"rename"}, Decision: "approve"},
-		{Name: "approve-two", Paths: []string{"/visible/two"}, Operations: []string{"rename"}, Decision: "approve"},
+		{
+			Name:       "approve-one",
+			Paths:      []string{"/visible/one"},
+			Operations: []string{"rename"},
+			Decision:   "approve",
+		},
+		{
+			Name:       "approve-two",
+			Paths:      []string{"/visible/two"},
+			Operations: []string{"rename"},
+			Decision:   "approve",
+		},
 	}}
 	engine, err := policy.NewEngine(pol, true, true)
 	require.NoError(t, err)
 	sess, err := session.NewManager(1).Create(t.TempDir(), "default")
 	require.NoError(t, err)
 	mgr := approvals.New("api", time.Second, nil)
-	wrapper := &filePolicyEngineWrapper{engine: engine, approvals: mgr, sessionID: sess.ID, session: sess}
+	wrapper := &filePolicyEngineWrapper{
+		engine:    engine,
+		approvals: mgr,
+		sessionID: sess.ID,
+		session:   sess,
+	}
 	handler := unixmon.NewFileHandler(wrapper, nil, nil, true)
 	prepared := handler.Prepare(context.Background(), unixmon.FileRequest{
 		PID: os.Getpid(), Path: "/visible/one", Path2: "/visible/two",
@@ -426,20 +529,49 @@ func TestFileHandler_ResolveCancellationRemovesPendingAndSkipsLaterObligations(t
 	select {
 	case resolved := <-done:
 		assert.Equal(t, unixmon.ActionDeny, resolved.result.Action)
-		assert.True(t, errors.Is(resolved.err, context.Canceled), "Resolve error = %v", resolved.err)
+		assert.True(
+			t,
+			errors.Is(resolved.err, context.Canceled),
+			"Resolve error = %v",
+			resolved.err,
+		)
 	case <-time.After(time.Second):
 		t.Fatal("Resolve did not return after cancellation")
 	}
-	assert.Empty(t, mgr.ListPendingForSession(sess.ID), "canceled resolution left a pending request")
+	assert.Empty(
+		t,
+		mgr.ListPendingForSession(sess.ID),
+		"canceled resolution left a pending request",
+	)
 	assert.Empty(t, mgr.SessionScopedDecisions(sess.ID), "cancellation populated scoped decisions")
 }
 
 func TestFileHandler_PrepareDoesNotPopulateApprovalsAcrossAllPathObligations(t *testing.T) {
 	pol := &policy.Policy{Version: 1, Name: "approve-all-paths", FileRules: []policy.FileRule{
-		{Name: "approve-visible-one", Paths: []string{"/visible/one"}, Operations: []string{"rename"}, Decision: "approve"},
-		{Name: "approve-visible-two", Paths: []string{"/visible/two"}, Operations: []string{"rename"}, Decision: "approve"},
-		{Name: "approve-source-one", Paths: []string{"/source/one"}, Operations: []string{"rename"}, Decision: "approve"},
-		{Name: "approve-source-two", Paths: []string{"/source/two"}, Operations: []string{"rename"}, Decision: "approve"},
+		{
+			Name:       "approve-visible-one",
+			Paths:      []string{"/visible/one"},
+			Operations: []string{"rename"},
+			Decision:   "approve",
+		},
+		{
+			Name:       "approve-visible-two",
+			Paths:      []string{"/visible/two"},
+			Operations: []string{"rename"},
+			Decision:   "approve",
+		},
+		{
+			Name:       "approve-source-one",
+			Paths:      []string{"/source/one"},
+			Operations: []string{"rename"},
+			Decision:   "approve",
+		},
+		{
+			Name:       "approve-source-two",
+			Paths:      []string{"/source/two"},
+			Operations: []string{"rename"},
+			Decision:   "approve",
+		},
 	}}
 	engine, err := policy.NewEngine(pol, true, true)
 	require.NoError(t, err)
@@ -447,7 +579,12 @@ func TestFileHandler_PrepareDoesNotPopulateApprovalsAcrossAllPathObligations(t *
 	require.NoError(t, err)
 	sess.SetCurrentCommandID("prepare-command")
 	mgr := approvals.New("api", time.Second, nil)
-	wrapper := &filePolicyEngineWrapper{engine: engine, approvals: mgr, sessionID: sess.ID, session: sess}
+	wrapper := &filePolicyEngineWrapper{
+		engine:    engine,
+		approvals: mgr,
+		sessionID: sess.ID,
+		session:   sess,
+	}
 	handler := unixmon.NewFileHandler(wrapper, nil, nil, true)
 
 	prepared := handler.Prepare(context.Background(), unixmon.FileRequest{
@@ -460,18 +597,41 @@ func TestFileHandler_PrepareDoesNotPopulateApprovalsAcrossAllPathObligations(t *
 	require.Len(t, prepared.Obligations, 4)
 	for i, obligation := range prepared.Obligations {
 		assert.Equal(t, "approve", obligation.Decision, "obligation %d raw decision", i)
-		assert.Equal(t, unixmon.FileApprovalCacheMiss, obligation.CacheOutcome, "obligation %d cache", i)
+		assert.Equal(
+			t,
+			unixmon.FileApprovalCacheMiss,
+			obligation.CacheOutcome,
+			"obligation %d cache",
+			i,
+		)
 		scope, ok := fileApprovalScope(obligation.Operation, obligation.Target, obligation.Rule)
 		require.True(t, ok)
-		if cached, ok := mgr.CheckScoped(context.Background(), sess.ID, "prepare-command", scope); ok {
+		if cached, ok := mgr.CheckScoped(
+			context.Background(),
+			sess.ID,
+			"prepare-command",
+			scope,
+		); ok {
 			t.Fatalf("Prepare populated scoped cache for obligation %d: %+v", i, cached)
 		}
 	}
-	assert.Empty(t, mgr.ListPendingForSession(sess.ID), "Prepare must not register pending approvals")
-	assert.Empty(t, mgr.SessionScopedDecisions(sess.ID), "Prepare must not populate scoped approvals")
+	assert.Empty(
+		t,
+		mgr.ListPendingForSession(sess.ID),
+		"Prepare must not register pending approvals",
+	)
+	assert.Empty(
+		t,
+		mgr.SessionScopedDecisions(sess.ID),
+		"Prepare must not populate scoped approvals",
+	)
 }
 
-func waitPendingFileApproval(t *testing.T, mgr *approvals.Manager, sessionID string) approvals.Request {
+func waitPendingFileApproval(
+	t *testing.T,
+	mgr *approvals.Manager,
+	sessionID string,
+) approvals.Request {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {

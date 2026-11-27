@@ -66,12 +66,26 @@ file_rules:
 	}
 
 	// Without the bare dir, the loader's directory open of /lib is denied.
-	if dec := mustEngine(withoutBareDirs).CheckFile("/lib", "open"); dec.EffectiveDecision != "deny" || dec.Rule != "default-deny-files" {
-		t.Fatalf("control: /lib without bare dir should hit default-deny-files; got %s/%s", dec.EffectiveDecision, dec.Rule)
+	if dec := mustEngine(
+		withoutBareDirs,
+	).CheckFile("/lib", "open"); dec.EffectiveDecision != "deny" ||
+		dec.Rule != "default-deny-files" {
+		t.Fatalf(
+			"control: /lib without bare dir should hit default-deny-files; got %s/%s",
+			dec.EffectiveDecision,
+			dec.Rule,
+		)
 	}
 	// With the bare dir, it is allowed via the explicit allow-system-read rule.
-	if dec := mustEngine(withBareDirs).CheckFile("/lib", "open"); dec.EffectiveDecision != "allow" || dec.Rule != "allow-system-read" {
-		t.Fatalf("/lib with bare dir should be allowed via allow-system-read; got %s/%s", dec.EffectiveDecision, dec.Rule)
+	if dec := mustEngine(
+		withBareDirs,
+	).CheckFile("/lib", "open"); dec.EffectiveDecision != "allow" ||
+		dec.Rule != "allow-system-read" {
+		t.Fatalf(
+			"/lib with bare dir should be allowed via allow-system-read; got %s/%s",
+			dec.EffectiveDecision,
+			dec.Rule,
+		)
 	}
 }
 
@@ -114,9 +128,13 @@ func TestIssue369_ShippedPoliciesAllowLoaderReads(t *testing.T) {
 					continue
 				}
 				if !strings.HasPrefix(dec.Rule, "allow-") {
-					t.Errorf("CheckFile(%q, open) allowed via %q; expected an explicit allow- rule "+
-						"(default-allow-reads fallback means the loader path isn't intentionally allowed)",
-						path, dec.Rule)
+					t.Errorf(
+						"CheckFile(%q, open) allowed via %q; expected an explicit allow- rule "+
+							"(default-allow-reads fallback means the loader path isn't "+
+							"intentionally allowed)",
+						path,
+						dec.Rule,
+					)
 				}
 			}
 		})

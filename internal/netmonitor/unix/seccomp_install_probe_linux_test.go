@@ -28,10 +28,21 @@ func TestClassifyInstallProbe(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := classifyInstallProbe(tc.exitCode, tc.stderr, tc.spawnErr)
 			if got.Installable != tc.wantInst {
-				t.Fatalf("Installable=%v, want %v (detail=%q)", got.Installable, tc.wantInst, got.Detail)
+				t.Fatalf(
+					"Installable=%v, want %v (detail=%q)",
+					got.Installable,
+					tc.wantInst,
+					got.Detail,
+				)
 			}
 			if got.Errno != tc.wantErrno {
-				t.Errorf("Errno=%v (%d), want %v (%d)", got.Errno, got.Errno, tc.wantErrno, tc.wantErrno)
+				t.Errorf(
+					"Errno=%v (%d), want %v (%d)",
+					got.Errno,
+					got.Errno,
+					tc.wantErrno,
+					tc.wantErrno,
+				)
 			}
 			if !got.Installable && got.Detail == "" {
 				t.Error("not-installable result must carry a non-empty Detail")

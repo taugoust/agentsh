@@ -13,7 +13,10 @@ type memoryProvider struct {
 	secrets map[string][]byte
 }
 
-func (p *memoryProvider) Fetch(_ context.Context, ref secrets.SecretRef) (secrets.SecretValue, error) {
+func (p *memoryProvider) Fetch(
+	_ context.Context,
+	ref secrets.SecretRef,
+) (secrets.SecretValue, error) {
 	key := ref.Host + "/" + ref.Path
 	if ref.Field != "" {
 		key += "#" + ref.Field

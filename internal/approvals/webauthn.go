@@ -24,7 +24,11 @@ type WebAuthnApprover struct {
 }
 
 // CreateChallenge generates a WebAuthn challenge for an approval request.
-func (w *WebAuthnApprover) CreateChallenge(ctx context.Context, req Request, userID string) (*WebAuthnChallenge, error) {
+func (w *WebAuthnApprover) CreateChallenge(
+	ctx context.Context,
+	req Request,
+	userID string,
+) (*WebAuthnChallenge, error) {
 	assertion, err := w.service.BeginAuthentication(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("begin authentication: %w", err)
@@ -39,7 +43,11 @@ func (w *WebAuthnApprover) CreateChallenge(ctx context.Context, req Request, use
 }
 
 // VerifyResponse validates a WebAuthn assertion response.
-func (w *WebAuthnApprover) VerifyResponse(ctx context.Context, userID string, responseJSON []byte) error {
+func (w *WebAuthnApprover) VerifyResponse(
+	ctx context.Context,
+	userID string,
+	responseJSON []byte,
+) error {
 	var response protocol.CredentialAssertionResponse
 	if err := json.Unmarshal(responseJSON, &response); err != nil {
 		return fmt.Errorf("unmarshal response: %w", err)

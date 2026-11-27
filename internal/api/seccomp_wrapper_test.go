@@ -131,7 +131,10 @@ func TestSetupSeccompWrapper_WrapperNotFound(t *testing.T) {
 
 	// Should return original request unchanged when wrapper not found
 	if result.wrappedReq.Command != "/bin/echo" {
-		t.Errorf("expected command to be unchanged when wrapper not found, got %q", result.wrappedReq.Command)
+		t.Errorf(
+			"expected command to be unchanged when wrapper not found, got %q",
+			result.wrappedReq.Command,
+		)
 	}
 	if result.extraCfg != nil {
 		t.Error("expected extraCfg to be nil when wrapper not found")
@@ -166,7 +169,12 @@ func TestSetupSeccompWrapper_Enabled(t *testing.T) {
 	// Args should be: -- /bin/echo hello world
 	expectedArgs := []string{"--", "/bin/echo", "hello", "world"}
 	if len(result.wrappedReq.Args) != len(expectedArgs) {
-		t.Errorf("expected %d args, got %d: %v", len(expectedArgs), len(result.wrappedReq.Args), result.wrappedReq.Args)
+		t.Errorf(
+			"expected %d args, got %d: %v",
+			len(expectedArgs),
+			len(result.wrappedReq.Args),
+			result.wrappedReq.Args,
+		)
 	} else {
 		for i, arg := range expectedArgs {
 			if result.wrappedReq.Args[i] != arg {
@@ -187,7 +195,10 @@ func TestSetupSeccompWrapper_Enabled(t *testing.T) {
 
 	// Should have notify socket FD env var
 	if result.wrappedReq.Env["AGENTSH_NOTIFY_SOCK_FD"] != "3" {
-		t.Errorf("expected AGENTSH_NOTIFY_SOCK_FD=3, got %q", result.wrappedReq.Env["AGENTSH_NOTIFY_SOCK_FD"])
+		t.Errorf(
+			"expected AGENTSH_NOTIFY_SOCK_FD=3, got %q",
+			result.wrappedReq.Env["AGENTSH_NOTIFY_SOCK_FD"],
+		)
 	}
 
 	// Should have seccomp config env var
@@ -319,7 +330,10 @@ func TestBuildSeccompWrapperConfig_WriteOnlyOpensDefaultsFromInterceptMetadata(t
 	cfg.Sandbox.Seccomp.FileMonitor.WriteOnlyOpens = &falseVal
 	got = app.buildSeccompWrapperConfig(nil, seccompWrapperParams{})
 	if got.WriteOnlyOpens {
-		t.Fatal("explicit write_only_opens=false should override the intercept_metadata-derived default")
+		t.Fatal(
+			"explicit write_only_opens=false should override the " +
+				"intercept_metadata-derived default",
+		)
 	}
 
 	cfg.Sandbox.Seccomp.FileMonitor.WriteOnlyOpens = nil
@@ -364,7 +378,10 @@ func TestSetupSeccompWrapper_WriteOnlyOpensForwarded(t *testing.T) {
 	}()
 
 	var parsed map[string]any
-	if err := json.Unmarshal([]byte(result.wrappedReq.Env["AGENTSH_SECCOMP_CONFIG"]), &parsed); err != nil {
+	if err := json.Unmarshal(
+		[]byte(result.wrappedReq.Env["AGENTSH_SECCOMP_CONFIG"]),
+		&parsed,
+	); err != nil {
 		t.Fatalf("unmarshal seccomp config: %v", err)
 	}
 	if got, _ := parsed["write_only_opens"].(bool); !got {
@@ -473,7 +490,10 @@ func TestAppendShadowRuntimeLandlockPaths(t *testing.T) {
 	}
 	appendRuntimeLandlockPaths(&cfg, s)
 
-	for _, want := range []string{"/var/lib/agentsh/workspaces/session-test/home", "/var/lib/agentsh/workspaces/session-test/tmp"} {
+	for _, want := range []string{
+		"/var/lib/agentsh/workspaces/session-test/home",
+		"/var/lib/agentsh/workspaces/session-test/tmp",
+	} {
 		if !containsPath(cfg.AllowRead, want) {
 			t.Fatalf("AllowRead missing %q: %#v", want, cfg.AllowRead)
 		}
@@ -497,9 +517,17 @@ func TestSeccompWrapperConfig_WaitKillableSource_JSON(t *testing.T) {
 		wantAbsent bool
 	}{
 		{name: "absent", in: "", wantAbsent: true},
-		{name: "behavioral_probe", in: "behavioral_probe", wantSubstr: `"wait_killable_source":"behavioral_probe"`},
+		{
+			name:       "behavioral_probe",
+			in:         "behavioral_probe",
+			wantSubstr: `"wait_killable_source":"behavioral_probe"`,
+		},
 		{name: "config", in: "config", wantSubstr: `"wait_killable_source":"config"`},
-		{name: "kernel_unsupported", in: "kernel_unsupported", wantSubstr: `"wait_killable_source":"kernel_unsupported"`},
+		{
+			name:       "kernel_unsupported",
+			in:         "kernel_unsupported",
+			wantSubstr: `"wait_killable_source":"kernel_unsupported"`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

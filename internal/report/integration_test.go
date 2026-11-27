@@ -30,10 +30,43 @@ func TestReportIntegration(t *testing.T) {
 	now := time.Now()
 
 	events := []types.Event{
-		{ID: "1", SessionID: sessionID, Timestamp: now, Type: "file_read", Path: "/workspace/main.go", Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
-		{ID: "2", SessionID: sessionID, Timestamp: now.Add(time.Second), Type: "file_write", Path: "/workspace/main.go", Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
-		{ID: "3", SessionID: sessionID, Timestamp: now.Add(2 * time.Second), Type: "file_write", Path: "/etc/hosts", Policy: &types.PolicyInfo{Decision: types.DecisionDeny, Rule: "no-system", Message: "System file write blocked"}},
-		{ID: "4", SessionID: sessionID, Timestamp: now.Add(3 * time.Second), Type: "net_connect", Domain: "api.github.com", Remote: "api.github.com:443", Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
+		{
+			ID:        "1",
+			SessionID: sessionID,
+			Timestamp: now,
+			Type:      "file_read",
+			Path:      "/workspace/main.go",
+			Policy:    &types.PolicyInfo{Decision: types.DecisionAllow},
+		},
+		{
+			ID:        "2",
+			SessionID: sessionID,
+			Timestamp: now.Add(time.Second),
+			Type:      "file_write",
+			Path:      "/workspace/main.go",
+			Policy:    &types.PolicyInfo{Decision: types.DecisionAllow},
+		},
+		{
+			ID:        "3",
+			SessionID: sessionID,
+			Timestamp: now.Add(2 * time.Second),
+			Type:      "file_write",
+			Path:      "/etc/hosts",
+			Policy: &types.PolicyInfo{
+				Decision: types.DecisionDeny,
+				Rule:     "no-system",
+				Message:  "System file write blocked",
+			},
+		},
+		{
+			ID:        "4",
+			SessionID: sessionID,
+			Timestamp: now.Add(3 * time.Second),
+			Type:      "net_connect",
+			Domain:    "api.github.com",
+			Remote:    "api.github.com:443",
+			Policy:    &types.PolicyInfo{Decision: types.DecisionAllow},
+		},
 	}
 
 	for _, ev := range events {

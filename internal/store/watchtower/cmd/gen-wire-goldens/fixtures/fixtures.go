@@ -40,14 +40,44 @@ func All() []Fixture {
 		{Name: "event_batch_zstd.bin", Message: eventBatchZstd()},
 		{Name: "event_batch_gzip.bin", Message: eventBatchGzip()},
 		{Name: "session_init.bin", Message: sessionInit()},
-		{Name: "transport_loss_overflow.bin", Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_OVERFLOW)},
-		{Name: "transport_loss_crc_corruption.bin", Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_CRC_CORRUPTION)},
-		{Name: "transport_loss_mapper_failure.bin", Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_MAPPER_FAILURE)},
-		{Name: "transport_loss_invalid_mapper.bin", Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_MAPPER)},
-		{Name: "transport_loss_invalid_timestamp.bin", Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_TIMESTAMP)},
-		{Name: "transport_loss_invalid_utf8.bin", Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_UTF8)},
-		{Name: "transport_loss_sequence_overflow.bin", Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_SEQUENCE_OVERFLOW)},
-		{Name: "transport_loss_ack_regression_after_gc.bin", Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_ACK_REGRESSION_AFTER_GC)},
+		{
+			Name:    "transport_loss_overflow.bin",
+			Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_OVERFLOW),
+		},
+		{
+			Name:    "transport_loss_crc_corruption.bin",
+			Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_CRC_CORRUPTION),
+		},
+		{
+			Name:    "transport_loss_mapper_failure.bin",
+			Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_MAPPER_FAILURE),
+		},
+		{
+			Name:    "transport_loss_invalid_mapper.bin",
+			Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_MAPPER),
+		},
+		{
+			Name: "transport_loss_invalid_timestamp.bin",
+			Message: transportLoss(
+				wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_TIMESTAMP,
+			),
+		},
+		{
+			Name:    "transport_loss_invalid_utf8.bin",
+			Message: transportLoss(wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_UTF8),
+		},
+		{
+			Name: "transport_loss_sequence_overflow.bin",
+			Message: transportLoss(
+				wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_SEQUENCE_OVERFLOW,
+			),
+		},
+		{
+			Name: "transport_loss_ack_regression_after_gc.bin",
+			Message: transportLoss(
+				wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_ACK_REGRESSION_AFTER_GC,
+			),
+		},
 	}
 }
 

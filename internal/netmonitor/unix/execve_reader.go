@@ -192,7 +192,12 @@ func readPointerWithFallback(pid int, ptr uint64) (uint64, error) {
 	if err != nil || n != 8 {
 		n, ferr := readProcMemStrict(pid, ptr, buf)
 		if ferr != nil {
-			return 0, fmt.Errorf("%w: process_vm_readv: %v, /proc/mem: %v", ErrReadMemory, err, ferr)
+			return 0, fmt.Errorf(
+				"%w: process_vm_readv: %v, /proc/mem: %v",
+				ErrReadMemory,
+				err,
+				ferr,
+			)
 		}
 		if n != 8 {
 			return 0, fmt.Errorf("%w: short read from /proc/mem (%d/8 bytes)", ErrReadMemory, n)

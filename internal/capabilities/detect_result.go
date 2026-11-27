@@ -123,7 +123,9 @@ func (r *DetectResult) Table() string {
 				if detail == "" {
 					detail = " "
 				}
-				sb.WriteString(fmt.Sprintf("  %-20s %s  %-16s %s\n", b.Name, status, detail, b.Description))
+				sb.WriteString(
+					fmt.Sprintf("  %-20s %s  %-16s %s\n", b.Name, status, detail, b.Description),
+				)
 			}
 			if d.Active != "" && d.Active != "none" {
 				sb.WriteString(fmt.Sprintf("  active backend:    %s\n", d.Active))

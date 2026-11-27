@@ -13,14 +13,20 @@ import (
 	"github.com/agentsh/agentsh/internal/db/proxy/postgres/statemachine"
 )
 
-func (pc *proxyConn) runCopyLoop(ctx context.Context, direction effects.BulkOpKind) (upstreamResult, error) {
+func (pc *proxyConn) runCopyLoop(
+	ctx context.Context,
+	direction effects.BulkOpKind,
+) (upstreamResult, error) {
 	switch direction {
 	case effects.BulkOpIn:
 		return pc.runCopyInLoop(ctx)
 	case effects.BulkOpOut:
 		return pc.runCopyOutLoop(ctx)
 	default:
-		return upstreamResult{}, fmt.Errorf("postgres.runCopyLoop: unknown COPY direction %v", direction)
+		return upstreamResult{}, fmt.Errorf(
+			"postgres.runCopyLoop: unknown COPY direction %v",
+			direction,
+		)
 	}
 }
 
@@ -113,7 +119,11 @@ func (pc *proxyConn) runCopyOutLoop(ctx context.Context) (upstreamResult, error)
 	}
 }
 
-func (pc *proxyConn) mergeCopyDrain(ctx context.Context, r upstreamResult, sentAt time.Time) (upstreamResult, error) {
+func (pc *proxyConn) mergeCopyDrain(
+	ctx context.Context,
+	r upstreamResult,
+	sentAt time.Time,
+) (upstreamResult, error) {
 	drained, err := pc.forwardUpstreamUntilRFQ(ctx, sentAt, 0)
 	r.BytesIn += drained.BytesIn
 	r.BytesOut += drained.BytesOut

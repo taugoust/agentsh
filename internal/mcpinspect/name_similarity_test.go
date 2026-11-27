@@ -39,7 +39,14 @@ func TestNormalizedSimilarity(t *testing.T) {
 	for _, tt := range tests {
 		got := NormalizedSimilarity(tt.a, tt.b)
 		if got < tt.wantAbove || got > tt.wantBelow {
-			t.Errorf("NormalizedSimilarity(%q, %q) = %f, want [%f, %f]", tt.a, tt.b, got, tt.wantAbove, tt.wantBelow)
+			t.Errorf(
+				"NormalizedSimilarity(%q, %q) = %f, want [%f, %f]",
+				tt.a,
+				tt.b,
+				got,
+				tt.wantAbove,
+				tt.wantBelow,
+			)
 		}
 	}
 }

@@ -40,7 +40,11 @@ func TestZstdEncoder_RoundTripDefaultLevel(t *testing.T) {
 		t.Fatalf("Encode: %v", err)
 	}
 	if len(out) >= len(in) {
-		t.Fatalf("Encode produced %d bytes from %d-byte input; expected compression", len(out), len(in))
+		t.Fatalf(
+			"Encode produced %d bytes from %d-byte input; expected compression",
+			len(out),
+			len(in),
+		)
 	}
 	dec, err := zstdDecodeForTest(out)
 	if err != nil {
@@ -111,7 +115,11 @@ func TestGzipEncoder_RoundTripDefaultLevel(t *testing.T) {
 		t.Fatalf("Encode: %v", err)
 	}
 	if len(out) >= len(in) {
-		t.Fatalf("Encode produced %d bytes from %d-byte input; expected compression", len(out), len(in))
+		t.Fatalf(
+			"Encode produced %d bytes from %d-byte input; expected compression",
+			len(out),
+			len(in),
+		)
 	}
 	dec, err := gzipDecodeForTest(out)
 	if err != nil {

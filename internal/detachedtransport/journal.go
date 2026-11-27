@@ -82,7 +82,11 @@ func (j *Journal) putLocked(identity Identity, record Record) (bool, error) {
 	return true, nil
 }
 
-func (j *Journal) appendLocked(identity Identity, idKey string, makeRecord func(uint64) (Record, error)) (Record, error) {
+func (j *Journal) appendLocked(
+	identity Identity,
+	idKey string,
+	makeRecord func(uint64) (Record, error),
+) (Record, error) {
 	if sequence, ok := j.byID[identity][idKey]; ok {
 		return cloneRecord(j.records[identity][sequence])
 	}
@@ -108,12 +112,20 @@ func (j *Journal) AppendApproval(identity Identity, request approvals.Request) (
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return j.appendLocked(identity, string(KindApprovalRequested)+"\x00"+request.ID, func(sequence uint64) (Record, error) {
-		return NewApprovalRequest(sequence, request)
-	})
+	return j.appendLocked(
+		identity,
+		string(KindApprovalRequested)+"\x00"+request.ID,
+		func(sequence uint64) (Record, error) {
+			return NewApprovalRequest(sequence, request)
+		},
+	)
 }
 
-func (j *Journal) AppendResolution(identity Identity, approvalID string, resolution approvals.Resolution) (Record, error) {
+func (j *Journal) AppendResolution(
+	identity Identity,
+	approvalID string,
+	resolution approvals.Resolution,
+) (Record, error) {
 	if j == nil {
 		return Record{}, fmt.Errorf("detached transport journal is nil")
 	}
@@ -122,9 +134,13 @@ func (j *Journal) AppendResolution(identity Identity, approvalID string, resolut
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return j.appendLocked(identity, string(KindApprovalResolved)+"\x00"+approvalID, func(sequence uint64) (Record, error) {
-		return NewApprovalResolution(sequence, approvalID, resolution)
-	})
+	return j.appendLocked(
+		identity,
+		string(KindApprovalResolved)+"\x00"+approvalID,
+		func(sequence uint64) (Record, error) {
+			return NewApprovalResolution(sequence, approvalID, resolution)
+		},
+	)
 }
 
 func (j *Journal) HighWater(identity Identity) uint64 {

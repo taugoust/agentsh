@@ -70,7 +70,12 @@ func TestSeverity_Weight(t *testing.T) {
 
 func TestSeverity_Weight_Unknown(t *testing.T) {
 	unknown := Severity("unknown")
-	assert.Equal(t, 5, unknown.Weight(), "unknown severity should fail closed with weight > critical")
+	assert.Equal(
+		t,
+		5,
+		unknown.Weight(),
+		"unknown severity should fail closed with weight > critical",
+	)
 }
 
 func TestVerdictAction_Weight_Unknown(t *testing.T) {
@@ -191,8 +196,11 @@ func TestInstallPlan_AllPackages_Empty(t *testing.T) {
 
 func TestInstallPlan_AllPackagesWithRegistry(t *testing.T) {
 	plan := InstallPlan{
-		Registry:   "registry.npmjs.org",
-		Direct:     []PackageRef{{Name: "lodash", Version: "1"}, {Name: "weird", Version: "1", Registry: "explicit.example"}},
+		Registry: "registry.npmjs.org",
+		Direct: []PackageRef{
+			{Name: "lodash", Version: "1"},
+			{Name: "weird", Version: "1", Registry: "explicit.example"},
+		},
 		Transitive: []PackageRef{{Name: "underscore", Version: "1"}},
 	}
 	out := plan.AllPackagesWithRegistry()
@@ -268,9 +276,19 @@ func TestInstallPlan_AllPackagesWithRegistry_ScopedPackagePreservesEmpty(t *test
 	plan := InstallPlan{
 		Registry: "registry.npmjs.org",
 		Direct: []PackageRef{
-			{Name: "lodash", Version: "1"},                                       // unscoped → inherits
-			{Name: "@acme/private", Version: "1"},                                // scoped, empty Registry → kept empty
-			{Name: "@acme/public", Version: "1", Registry: "registry.npmjs.org"}, // scoped with explicit → kept
+			{
+				Name:    "lodash",
+				Version: "1",
+			}, // unscoped → inherits
+			{
+				Name:    "@acme/private",
+				Version: "1",
+			}, // scoped, empty Registry → kept empty
+			{
+				Name:     "@acme/public",
+				Version:  "1",
+				Registry: "registry.npmjs.org",
+			}, // scoped with explicit → kept
 		},
 	}
 	out := plan.AllPackagesWithRegistry()
@@ -278,7 +296,10 @@ func TestInstallPlan_AllPackagesWithRegistry_ScopedPackagePreservesEmpty(t *test
 		t.Errorf("unscoped should inherit; got %q", out[0].Registry)
 	}
 	if out[1].Registry != "" {
-		t.Errorf("scoped with empty must NOT inherit (privacy fail-closed); got %q", out[1].Registry)
+		t.Errorf(
+			"scoped with empty must NOT inherit (privacy fail-closed); got %q",
+			out[1].Registry,
+		)
 	}
 	if out[2].Registry != "registry.npmjs.org" {
 		t.Errorf("scoped with explicit must be preserved; got %q", out[2].Registry)

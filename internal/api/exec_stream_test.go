@@ -34,7 +34,11 @@ func TestExecStream_EmitsStdoutAndDone(t *testing.T) {
 	srv := newHTTPTestServerOrSkip(t, app.Router())
 
 	body, _ := json.Marshal(map[string]any{"command": "sh", "args": []string{"-c", "echo hello"}})
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/sessions/"+sess.ID+"/exec/stream", bytes.NewReader(body))
+	req, _ := http.NewRequest(
+		http.MethodPost,
+		srv.URL+"/api/v1/sessions/"+sess.ID+"/exec/stream",
+		bytes.NewReader(body),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 

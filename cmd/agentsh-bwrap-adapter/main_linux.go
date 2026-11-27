@@ -54,7 +54,10 @@ func runAdapter(args []string) error {
 		return fmt.Errorf("encode plan: %w", err)
 	}
 	if len(encoded) > 1024*1024 {
-		return &composition.Error{Code: "E_COMPOSITION_LIMIT_EXCEEDED", Message: "encoded plan exceeds 1 MiB"}
+		return &composition.Error{
+			Code:    "E_COMPOSITION_LIMIT_EXCEEDED",
+			Message: "encoded plan exceeds 1 MiB",
+		}
 	}
 
 	planReader, planWriter, err := os.Pipe()
@@ -89,13 +92,23 @@ func runAdapter(args []string) error {
 		_ = planReader.Close()
 		_ = planWriter.Close()
 		_ = brokerFile.Close()
-		return &composition.Error{Code: "E_COMPOSITION_NAMESPACE_INVALID", Message: "composition requires admitted namespace identity 1"}
+		return &composition.Error{
+			Code:    "E_COMPOSITION_NAMESPACE_INVALID",
+			Message: "composition requires admitted namespace identity 1",
+		}
 	}
 	newSession := "0"
 	if plan.NewSession {
 		newSession = "1"
 	}
-	command := exec.Command(launcher, self, fmt.Sprintf("%d", namespaceFlags), newSession, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid))
+	command := exec.Command(
+		launcher,
+		self,
+		fmt.Sprintf("%d", namespaceFlags),
+		newSession,
+		fmt.Sprintf("%d", uid),
+		fmt.Sprintf("%d", gid),
+	)
 	command.Stdin = os.Stdin
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
@@ -177,7 +190,10 @@ func propagateProcessStatus(waitErr error) error {
 func verifyPayloadPrivileges() error {
 	noNewPrivileges, err := unix.PrctlRetInt(unix.PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0)
 	if err != nil || noNewPrivileges != 1 {
-		return &composition.Error{Code: "E_COMPOSITION_NAMESPACE_INVALID", Message: "no_new_privs was not retained"}
+		return &composition.Error{
+			Code:    "E_COMPOSITION_NAMESPACE_INVALID",
+			Message: "no_new_privs was not retained",
+		}
 	}
 	header := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
 	data := [2]unix.CapUserData{}
@@ -185,8 +201,12 @@ func verifyPayloadPrivileges() error {
 		return fmt.Errorf("read payload capabilities: %w", err)
 	}
 	for _, capabilities := range data {
-		if capabilities.Effective != 0 || capabilities.Permitted != 0 || capabilities.Inheritable != 0 {
-			return &composition.Error{Code: "E_COMPOSITION_NAMESPACE_INVALID", Message: "nested payload retained capabilities"}
+		if capabilities.Effective != 0 || capabilities.Permitted != 0 ||
+			capabilities.Inheritable != 0 {
+			return &composition.Error{
+				Code:    "E_COMPOSITION_NAMESPACE_INVALID",
+				Message: "nested payload retained capabilities",
+			}
 		}
 	}
 	return nil
@@ -195,7 +215,10 @@ func verifyPayloadPrivileges() error {
 func runChild(nonce string) error {
 	decodedNonce, err := hex.DecodeString(nonce)
 	if err != nil || len(decodedNonce) != 16 {
-		return &composition.Error{Code: "E_COMPOSITION_REQUESTER_CHANGED", Message: "invalid one-shot broker nonce"}
+		return &composition.Error{
+			Code:    "E_COMPOSITION_REQUESTER_CHANGED",
+			Message: "invalid one-shot broker nonce",
+		}
 	}
 	if err := verifyPayloadPrivileges(); err != nil {
 		return err
@@ -212,7 +235,10 @@ func runChild(nonce string) error {
 		return fmt.Errorf("read plan: %w", err)
 	}
 	if len(encoded) > 1024*1024 {
-		return &composition.Error{Code: "E_COMPOSITION_LIMIT_EXCEEDED", Message: "plan exceeds 1 MiB"}
+		return &composition.Error{
+			Code:    "E_COMPOSITION_LIMIT_EXCEEDED",
+			Message: "plan exceeds 1 MiB",
+		}
 	}
 	var plan composition.Plan
 	if err := json.Unmarshal(encoded, &plan); err != nil {
@@ -244,10 +270,16 @@ func runChild(nonce string) error {
 	}
 
 	if plan.UID != nil && *plan.UID != os.Geteuid() {
-		return &composition.Error{Code: "E_COMPOSITION_OPTION_UNSUPPORTED", Message: "requested UID is not mapped in the descendant namespace"}
+		return &composition.Error{
+			Code:    "E_COMPOSITION_OPTION_UNSUPPORTED",
+			Message: "requested UID is not mapped in the descendant namespace",
+		}
 	}
 	if plan.GID != nil && *plan.GID != os.Getegid() {
-		return &composition.Error{Code: "E_COMPOSITION_OPTION_UNSUPPORTED", Message: "requested GID is not mapped in the descendant namespace"}
+		return &composition.Error{
+			Code:    "E_COMPOSITION_OPTION_UNSUPPORTED",
+			Message: "requested GID is not mapped in the descendant namespace",
+		}
 	}
 	if err := verifyPayloadPrivileges(); err != nil {
 		return err
@@ -305,19 +337,31 @@ func chdirComposedRoot(cwd string) error {
 		info, err := os.Stat(prefix)
 		if err != nil {
 			return &composition.Error{
-				Code:    "E_COMPOSITION_CWD_UNRESOLVED",
-				Message: fmt.Sprintf("post-pivot cwd %q first unresolved component %q: %v", cwd, prefix, err),
+				Code: "E_COMPOSITION_CWD_UNRESOLVED",
+				Message: fmt.Sprintf(
+					"post-pivot cwd %q first unresolved component %q: %v",
+					cwd,
+					prefix,
+					err,
+				),
 			}
 		}
 		if prefix != cwd && !info.IsDir() {
 			return &composition.Error{
-				Code:    "E_COMPOSITION_CWD_UNRESOLVED",
-				Message: fmt.Sprintf("post-pivot cwd %q component %q is not a directory", cwd, prefix),
+				Code: "E_COMPOSITION_CWD_UNRESOLVED",
+				Message: fmt.Sprintf(
+					"post-pivot cwd %q component %q is not a directory",
+					cwd,
+					prefix,
+				),
 			}
 		}
 	}
 	if err := os.Chdir(cwd); err != nil {
-		return &composition.Error{Code: "E_COMPOSITION_CWD_UNRESOLVED", Message: fmt.Sprintf("post-pivot chdir %q: %v", cwd, err)}
+		return &composition.Error{
+			Code:    "E_COMPOSITION_CWD_UNRESOLVED",
+			Message: fmt.Sprintf("post-pivot chdir %q: %v", cwd, err),
+		}
 	}
 	return nil
 }
@@ -362,7 +406,10 @@ func lookPath(command string, environment []string) (string, error) {
 	}
 	for _, directory := range filepath.SplitList(pathValue) {
 		candidate := filepath.Join(directory, command)
-		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+		if info, err := os.Stat(
+			candidate,
+		); err == nil && info.Mode().IsRegular() &&
+			info.Mode()&0o111 != 0 {
 			return candidate, nil
 		}
 	}

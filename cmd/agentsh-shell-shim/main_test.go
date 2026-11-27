@@ -117,7 +117,11 @@ func TestResolveRealShell(t *testing.T) {
 		}
 		// Must return the original sh.real path, not the resolved /dash path.
 		if p != shReal {
-			t.Fatalf("expected original path %q, got %q (should not resolve symlink target)", shReal, p)
+			t.Fatalf(
+				"expected original path %q, got %q (should not resolve symlink target)",
+				shReal,
+				p,
+			)
 		}
 	})
 
@@ -250,8 +254,14 @@ func TestShimPipedStdin_PassesBinaryDataThrough(t *testing.T) {
 	}
 
 	if !bytes.Equal(stdout.Bytes(), binaryData) {
-		t.Fatalf("binary data corrupted: wrote %d bytes, got %d bytes back\nfirst 16 in:  %x\nfirst 16 out: %x",
-			len(binaryData), stdout.Len(), binaryData[:16], stdout.Bytes()[:min(16, stdout.Len())])
+		t.Fatalf(
+			"binary data corrupted: wrote %d bytes, got %d bytes back\nfirst 16 in:  %x\n"+
+				"first 16 out: %x",
+			len(binaryData),
+			stdout.Len(),
+			binaryData[:16],
+			stdout.Bytes()[:min(16, stdout.Len())],
+		)
 	}
 }
 
@@ -339,7 +349,11 @@ func TestShimConfForce_EnforcesWithoutTTY(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("force=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("force=true\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -390,7 +404,11 @@ func TestShimConfForce_EnvZeroCannotOverrideConfig(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("force=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("force=true\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -440,7 +458,11 @@ func TestShimConfForce_UnreadableConfigFailsClosed(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("force=true\n"), 0o000); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("force=true\n"),
+		0o000,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -462,7 +484,9 @@ func TestShimConfForce_UnreadableConfigFailsClosed(t *testing.T) {
 	err := cmd.Run()
 	// Should fail because the shim tried to enforce (fail-closed), not bypass.
 	if err == nil {
-		t.Fatalf("expected error: unreadable config should fail-closed and try to enforce, not bypass")
+		t.Fatalf(
+			"expected error: unreadable config should fail-closed and try to enforce, not bypass",
+		)
 	}
 	if !strings.Contains(stderr.String(), "agentsh") {
 		t.Fatalf("expected agentsh-related error (enforce path), got stderr: %s", stderr.String())
@@ -487,7 +511,11 @@ func TestShimReadinessGate_ServerUnreachable_ForceFallsThrough(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("force=true\nready_gate=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("force=true\nready_gate=true\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -509,7 +537,11 @@ func TestShimReadinessGate_ServerUnreachable_ForceFallsThrough(t *testing.T) {
 	err := cmd.Run()
 	// Should succeed: fell through to sh.real which ran "echo readiness-fallthrough".
 	if err != nil {
-		t.Fatalf("expected success (fallthrough to sh.real), got error: %v\nstderr: %s", err, stderr.String())
+		t.Fatalf(
+			"expected success (fallthrough to sh.real), got error: %v\nstderr: %s",
+			err,
+			stderr.String(),
+		)
 	}
 	if got := strings.TrimSpace(stdout.String()); got != "readiness-fallthrough" {
 		t.Fatalf("stdout = %q, want %q", got, "readiness-fallthrough")
@@ -535,7 +567,11 @@ func TestShimReadinessGate_NoReadyGate_FailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// force=true but NO ready_gate — should fail-closed.
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("force=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("force=true\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -579,7 +615,11 @@ func TestShimReadinessGate_ServerReachable_ForceEnforces(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("force=true\nready_gate=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("force=true\nready_gate=true\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -663,7 +703,11 @@ func TestShimReadinessGate_EnvForce_SkipsGate(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("ready_gate=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("ready_gate=true\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -711,7 +755,11 @@ func TestShimReadinessGate_RemoteUnreachable_FailsClosed(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("force=true\nready_gate=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("force=true\nready_gate=true\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -758,7 +806,11 @@ func TestShimReadinessGate_GRPCTransport_ProbesGRPCAddr(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("force=true\nready_gate=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("force=true\nready_gate=true\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -802,7 +854,10 @@ func TestShimReadinessGate_GRPCTransport_ProbesGRPCAddr(t *testing.T) {
 	// Should FAIL: readiness gate passed (gRPC endpoint is reachable),
 	// shim tried to enforce but couldn't find agentsh.
 	if err == nil {
-		t.Fatalf("expected error: readiness gate should have passed and enforcement should fail (no agentsh)")
+		t.Fatalf(
+			"expected error: readiness gate should have passed and enforcement should fail (no " +
+				"agentsh)",
+		)
 	}
 	if !strings.Contains(stderr.String(), "agentsh") {
 		t.Fatalf("expected agentsh-related error (enforce path), got stderr: %s", stderr.String())
@@ -812,7 +867,9 @@ func TestShimReadinessGate_GRPCTransport_ProbesGRPCAddr(t *testing.T) {
 	case <-probed:
 		// ok — listener received at least one connection
 	case <-time.After(2 * time.Second):
-		t.Fatal("expected readiness gate to probe AGENTSH_GRPC_ADDR, but no connections were received")
+		t.Fatal(
+			"expected readiness gate to probe AGENTSH_GRPC_ADDR, but no connections were received",
+		)
 	}
 }
 
@@ -837,7 +894,11 @@ func TestShimReadinessGate_UnixSocketEACCES_FailsClosed(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("force=true\nready_gate=true\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("force=true\nready_gate=true\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -892,7 +953,13 @@ func TestServerAddrFromEnv(t *testing.T) {
 		{"http no port", "http://127.0.0.1", "tcp", "127.0.0.1:80", false},
 		{"garbage", "://bad", "", "", true},
 		{"unix socket", "unix:///var/run/agentsh.sock", "unix", "/var/run/agentsh.sock", false},
-		{"unix socket no triple slash", "unix:/var/run/agentsh.sock", "unix", "/var/run/agentsh.sock", false},
+		{
+			"unix socket no triple slash",
+			"unix:/var/run/agentsh.sock",
+			"unix",
+			"/var/run/agentsh.sock",
+			false,
+		},
 		{"unix socket host+path", "unix://host/path/to/sock", "unix", "host/path/to/sock", false},
 		// Schemeless values that url.Parse accepts as path-only — must be rejected.
 		{"schemeless hostname", "localhost", "", "", true},
@@ -912,7 +979,13 @@ func TestServerAddrFromEnv(t *testing.T) {
 				return
 			}
 			if gotNet != tt.wantNetwork || gotAddr != tt.wantAddr {
-				t.Errorf("serverAddrFromEnv() = (%q, %q), want (%q, %q)", gotNet, gotAddr, tt.wantNetwork, tt.wantAddr)
+				t.Errorf(
+					"serverAddrFromEnv() = (%q, %q), want (%q, %q)",
+					gotNet,
+					gotAddr,
+					tt.wantNetwork,
+					tt.wantAddr,
+				)
 			}
 		})
 	}
@@ -1231,7 +1304,11 @@ func TestShimConfValidationError_FailsWithMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Typo: "tru" instead of "true".
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("ready_gate=tru\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("ready_gate=tru\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1318,12 +1395,21 @@ exec "$@"
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("shim exited with error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+		t.Fatalf(
+			"shim exited with error: %v\nstdout: %s\nstderr: %s",
+			err,
+			stdout.String(),
+			stderr.String(),
+		)
 	}
 
 	gotOut := strings.TrimSpace(stdout.String())
 	if gotOut != "stdin-mode-works" {
-		t.Errorf("stdout = %q, want %q (stdin-mode: command from stdin not executed)", gotOut, "stdin-mode-works")
+		t.Errorf(
+			"stdout = %q, want %q (stdin-mode: command from stdin not executed)",
+			gotOut,
+			"stdin-mode-works",
+		)
 	}
 }
 
@@ -1467,13 +1553,22 @@ exec "$@"
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("shim exited with error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+		t.Fatalf(
+			"shim exited with error: %v\nstdout: %s\nstderr: %s",
+			err,
+			stdout.String(),
+			stderr.String(),
+		)
 	}
 
 	// Verify stdout was captured (this is what failed with syscall.Exec in Daytona).
 	gotOut := strings.TrimSpace(stdout.String())
 	if gotOut != "daytona-capture-test" {
-		t.Errorf("stdout = %q, want %q (Bug 3: output not captured in non-PTY forced mode)", gotOut, "daytona-capture-test")
+		t.Errorf(
+			"stdout = %q, want %q (Bug 3: output not captured in non-PTY forced mode)",
+			gotOut,
+			"daytona-capture-test",
+		)
 	}
 
 	// Verify stderr was also captured.

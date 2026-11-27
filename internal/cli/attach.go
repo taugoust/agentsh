@@ -18,7 +18,14 @@ func newSessionAttachCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessionID := args[0]
 			cfg := getClientConfig(cmd)
-			cl, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			cl, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}

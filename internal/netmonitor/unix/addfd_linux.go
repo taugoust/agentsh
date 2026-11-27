@@ -58,8 +58,8 @@ const (
 //   - notifFD: the seccomp notify file descriptor
 //   - notifID: the notification ID from the trapped syscall
 //   - srcFD: the file descriptor in the supervisor to inject
-//   - targetFD: the desired fd number in the tracee (only used when SECCOMP_ADDFD_FLAG_SETFD is set;
-//     otherwise set to 0 and the kernel will choose)
+//   - targetFD: the desired fd number in the tracee (only used when SECCOMP_ADDFD_FLAG_SETFD is
+//     set; otherwise set to 0 and the kernel will choose)
 //   - flags: SECCOMP_ADDFD_FLAG_* flags
 //
 // Returns the fd number allocated in the tracee, or an error.
@@ -69,7 +69,9 @@ func NotifAddFD(notifFD int, notifID uint64, srcFD int, targetFD int, flags uint
 	newfd := uint32(0)
 	if flags&SECCOMP_ADDFD_FLAG_SETFD != 0 {
 		if targetFD < 0 {
-			return -1, fmt.Errorf("SECCOMP_IOCTL_NOTIF_ADDFD: targetFD must be >= 0 when SETFD flag is set")
+			return -1, fmt.Errorf(
+				"SECCOMP_IOCTL_NOTIF_ADDFD: targetFD must be >= 0 when SETFD flag is set",
+			)
 		}
 		newfd = uint32(targetFD)
 	}
@@ -213,7 +215,10 @@ const seccompUserNotifFlagContinue = 0x1
 // construction separate makes the exact kernel-facing layout unit-testable.
 func notifErrnoResponse(id uint64, errno int32) (seccompNotifResp, error) {
 	if errno <= 0 {
-		return seccompNotifResp{}, fmt.Errorf("NotifRespondErrno: errno must be positive, got %d", errno)
+		return seccompNotifResp{}, fmt.Errorf(
+			"NotifRespondErrno: errno must be positive, got %d",
+			errno,
+		)
 	}
 	return seccompNotifResp{
 		id:  id,

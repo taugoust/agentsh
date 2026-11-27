@@ -73,7 +73,13 @@ func GenerateBundle(cfg Config, opts BundleOptions) (Bundle, error) {
 	serviceParts := serviceRuleParts(cfg.Services)
 	for i, svc := range cfg.Services {
 		addCoreServiceRules(&b, svc, serviceParts[i])
-		if err := addResolvedIPRules(context.Background(), &b, svc, serviceParts[i], opts); err != nil {
+		if err := addResolvedIPRules(
+			context.Background(),
+			&b,
+			svc,
+			serviceParts[i],
+			opts,
+		); err != nil {
 			return Bundle{}, err
 		}
 	}
@@ -90,14 +96,17 @@ func addCoreServiceRules(b *Bundle, svc Service, servicePart string) {
 	networkName := "db-" + servicePart + "-deny-direct"
 	unixName := "db-" + servicePart + "-deny-local-postgres-sockets"
 
-	b.Policy.ConnectRedirectRules = append(b.Policy.ConnectRedirectRules, policy.ConnectRedirectRule{
-		Name:           redirectName,
-		Match:          "^" + regexp.QuoteMeta(destination) + "$",
-		RedirectToUnix: svc.Listen.Path,
-		Visibility:     "audit_only",
-		OnFailure:      "fail_closed",
-		Message:        "Routed through AgentSH DB proxy",
-	})
+	b.Policy.ConnectRedirectRules = append(
+		b.Policy.ConnectRedirectRules,
+		policy.ConnectRedirectRule{
+			Name:           redirectName,
+			Match:          "^" + regexp.QuoteMeta(destination) + "$",
+			RedirectToUnix: svc.Listen.Path,
+			Visibility:     "audit_only",
+			OnFailure:      "fail_closed",
+			Message:        "Routed through AgentSH DB proxy",
+		},
+	)
 	addMetadata(b, redirectName, svc.Name, BypassModeTCPDirect, destination)
 
 	b.Policy.NetworkRules = append(b.Policy.NetworkRules, policy.NetworkRule{
@@ -124,12 +133,23 @@ func addCoreServiceRules(b *Bundle, svc Service, servicePart string) {
 	addMetadata(b, unixName, svc.Name, BypassModeUnixSocket, "postgres-local-sockets")
 }
 
-func addResolvedIPRules(ctx context.Context, b *Bundle, svc Service, servicePart string, opts BundleOptions) error {
+func addResolvedIPRules(
+	ctx context.Context,
+	b *Bundle,
+	svc Service,
+	servicePart string,
+	opts BundleOptions,
+) error {
 	if net.ParseIP(svc.Upstream.Host) != nil {
 		return nil
 	}
 	if opts.Resolver == nil {
-		return addDNSExpansionFailure(b, svc, opts, "could not resolve "+svc.Upstream.Host+": no resolver configured")
+		return addDNSExpansionFailure(
+			b,
+			svc,
+			opts,
+			"could not resolve "+svc.Upstream.Host+": no resolver configured",
+		)
 	}
 
 	resolveCtx, cancel := context.WithTimeout(ctx, dnsResolutionTimeout)
@@ -137,7 +157,12 @@ func addResolvedIPRules(ctx context.Context, b *Bundle, svc Service, servicePart
 
 	ips, err := opts.Resolver.LookupIP(resolveCtx, svc.Upstream.Host)
 	if err != nil {
-		return addDNSExpansionFailure(b, svc, opts, "could not resolve "+svc.Upstream.Host+": "+err.Error())
+		return addDNSExpansionFailure(
+			b,
+			svc,
+			opts,
+			"could not resolve "+svc.Upstream.Host+": "+err.Error(),
+		)
 	}
 
 	usableIPs := make([]net.IP, 0, len(ips))
@@ -154,7 +179,12 @@ func addResolvedIPRules(ctx context.Context, b *Bundle, svc Service, servicePart
 		usableIPs = append(usableIPs, ip)
 	}
 	if len(usableIPs) == 0 {
-		return addDNSExpansionFailure(b, svc, opts, "could not resolve "+svc.Upstream.Host+": no usable IPs returned")
+		return addDNSExpansionFailure(
+			b,
+			svc,
+			opts,
+			"could not resolve "+svc.Upstream.Host+": no usable IPs returned",
+		)
 	}
 
 	for _, ip := range usableIPs {
@@ -209,11 +239,14 @@ func addBypassToolRules(b *Bundle, services []Service) {
 			Message:      "DB socket forwarding is blocked by AgentSH DB unavoidability",
 		},
 		{
-			Name:         "db-bypass-kubectl-port-forward",
-			Commands:     []string{"kubectl"},
-			ArgsPatterns: []string{"(^|\\s)port-forward(\\s|$).*(:(" + portPattern + ")([^0-9]|$)|\\s(" + portPattern + "):)"},
-			Decision:     "deny",
-			Message:      "DB port forwarding is blocked by AgentSH DB unavoidability",
+			Name:     "db-bypass-kubectl-port-forward",
+			Commands: []string{"kubectl"},
+			ArgsPatterns: []string{
+				"(^|\\s)port-forward(\\s|$).*(:(" + portPattern + ")([^0-9]|$)|\\s(" + portPattern +
+					"):)",
+			},
+			Decision: "deny",
+			Message:  "DB port forwarding is blocked by AgentSH DB unavoidability",
 		},
 		{
 			Name:         "db-bypass-cloud-sql-proxy",
@@ -273,7 +306,8 @@ func addBypassToolRules(b *Bundle, services []Service) {
 		},
 	}
 	for _, r := range rules {
-		r.Description = "Convenience detection for DB proxy bypass attempts; destination egress deny is the security boundary"
+		r.Description = "Convenience detection for DB proxy bypass attempts; destination egress " +
+			"deny is the security boundary"
 		b.Policy.CommandRules = append(b.Policy.CommandRules, r)
 		addMetadata(b, r.Name, "*", BypassModePortForwardTool, "db-service-ports")
 	}
@@ -383,7 +417,12 @@ func validateBundleOptions(cfg Config, opts BundleOptions) error {
 	}
 	for i, svc := range cfg.Services {
 		if svc.Listen.Kind == "tcp" && opts.Mode == UnavoidabilityEnforce {
-			return fmt.Errorf("services[%d] %s: tcp listeners are not supported for DB enforce mode in spec section 12.5", i, svc.Name)
+			return fmt.Errorf(
+				"services[%d] %s: tcp listeners are not supported for DB enforce mode in spec "+
+					"section 12.5",
+				i,
+				svc.Name,
+			)
 		}
 	}
 	return nil

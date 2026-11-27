@@ -81,7 +81,13 @@ func TestRunCommand_EnvInjectStdoutCapture(t *testing.T) {
 			}
 			got := strings.TrimSpace(string(stdout))
 			if got != "hello-envinject" {
-				t.Errorf("stdout = %q (total=%d), want %q; stderr: %s", got, stdoutTotal, "hello-envinject", string(stderr))
+				t.Errorf(
+					"stdout = %q (total=%d), want %q; stderr: %s",
+					got,
+					stdoutTotal,
+					"hello-envinject",
+					string(stderr),
+				)
 			}
 		})
 	}
@@ -109,7 +115,10 @@ func TestRunCommand_EnvInjectPreservesEnv(t *testing.T) {
 	// Run a command that prints the injected var AND PATH (to verify env isn't corrupted)
 	req := types.ExecRequest{
 		Command: "sh",
-		Args:    []string{"-c", "echo inject=$MY_INJECT_VAR path_set=$( [ -n \"$PATH\" ] && echo yes || echo no )"},
+		Args: []string{
+			"-c",
+			"echo inject=$MY_INJECT_VAR path_set=$( [ -n \"$PATH\" ] && echo yes || echo no )",
+		},
 	}
 
 	exitCode, stdout, stderr, _, _, _, _, _, err := runCommandWithResources(
@@ -183,10 +192,20 @@ enable -n command
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	t.Logf("exit=%d stdout=%q (total=%d) stderr=%q", exitCode, string(stdout), stdoutTotal, string(stderr))
+	t.Logf(
+		"exit=%d stdout=%q (total=%d) stderr=%q",
+		exitCode,
+		string(stdout),
+		stdoutTotal,
+		string(stderr),
+	)
 
 	got := strings.TrimSpace(string(stdout))
 	if got != "bash-env-test" {
-		t.Errorf("stdout = %q, want %q (BASH_ENV may be interfering with stdout capture)", got, "bash-env-test")
+		t.Errorf(
+			"stdout = %q, want %q (BASH_ENV may be interfering with stdout capture)",
+			got,
+			"bash-env-test",
+		)
 	}
 }

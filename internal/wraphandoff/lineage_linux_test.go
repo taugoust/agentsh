@@ -41,9 +41,10 @@ func TestLineageHandoffTwoPhaseRoundTrip(t *testing.T) {
 
 	sendDone := make(chan error, 1)
 	go func() {
-		sendDone <- SendPayloadHandoff(client, int(notifyR.Fd()), int(setupR.Fd()), int(lookupR.Fd()), Metadata{
-			WrapperPID: 41, PayloadPID: 42, CommandJail: true,
-		})
+		sendDone <- SendPayloadHandoff(client, int(notifyR.Fd()), int(setupR.Fd()),
+			int(lookupR.Fd()), Metadata{
+				WrapperPID: 41, PayloadPID: 42, CommandJail: true,
+			})
 	}()
 	handoff, err := RecvHandoff(server)
 	if err != nil {
@@ -53,10 +54,14 @@ func TestLineageHandoffTwoPhaseRoundTrip(t *testing.T) {
 	if err := <-sendDone; err != nil {
 		t.Fatal(err)
 	}
-	if !handoff.HasMetadata || handoff.Metadata.WrapperPID != 41 || handoff.Metadata.PayloadPID != 42 || !handoff.Metadata.FileLookupBroker || !handoff.Metadata.CompositionSetup {
+	if !handoff.HasMetadata || handoff.Metadata.WrapperPID != 41 ||
+		handoff.Metadata.PayloadPID != 42 ||
+		!handoff.Metadata.FileLookupBroker ||
+		!handoff.Metadata.CompositionSetup {
 		t.Fatalf("metadata = %+v", handoff.Metadata)
 	}
-	if handoff.NotifyFD == nil || handoff.FileLookupBroker == nil || handoff.CompositionSetup == nil {
+	if handoff.NotifyFD == nil || handoff.FileLookupBroker == nil ||
+		handoff.CompositionSetup == nil {
 		t.Fatalf("incomplete handoff: %+v", handoff)
 	}
 }

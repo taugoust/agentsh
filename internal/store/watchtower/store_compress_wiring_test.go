@@ -39,7 +39,11 @@ func TestOptions_Compression_WireThrough(t *testing.T) {
 			}
 
 			if got := s.TransportCompressorAlgoForTest(); got != tc.wantAlgo {
-				t.Errorf("TransportCompressorAlgoForTest() = %v, want %v (wire-through regressed)", got, tc.wantAlgo)
+				t.Errorf(
+					"TransportCompressorAlgoForTest() = %v, want %v (wire-through regressed)",
+					got,
+					tc.wantAlgo,
+				)
 			}
 		})
 	}

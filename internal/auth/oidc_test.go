@@ -158,8 +158,12 @@ func TestOIDCAuth_RoleForClaims(t *testing.T) {
 			want: "agent",
 		},
 		{
-			name:         "admin takes precedence over other roles",
-			groupRoleMap: map[string]string{"admins": "admin", "approvers": "approver", "developers": "agent"},
+			name: "admin takes precedence over other roles",
+			groupRoleMap: map[string]string{
+				"admins":     "admin",
+				"approvers":  "approver",
+				"developers": "agent",
+			},
 			claims: &OIDCClaims{
 				Subject:   "user123",
 				Groups:    []string{"developers", "approvers", "admins"},

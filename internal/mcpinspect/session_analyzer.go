@@ -139,8 +139,11 @@ func (a *SessionAnalyzer) ClearShadow(toolName string) {
 //  1. Shadow tool (always, if enabled)
 //  2. Burst (if enabled)
 //  3. Read-then-send (if enabled, only when category is "send")
-//  4. Cross-server flow (if enabled, when category is write/send/compute/unknown from different server)
-func (a *SessionAnalyzer) CheckAndRecord(serverID, toolName, toolCallID, requestID string) (*CrossServerDecision, string) {
+//  4. Cross-server flow (if enabled, when category is write/send/compute/unknown from
+//     different server)
+func (a *SessionAnalyzer) CheckAndRecord(
+	serverID, toolName, toolCallID, requestID string,
+) (*CrossServerDecision, string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -267,7 +270,10 @@ func isSuspiciousCategory(category string) bool {
 
 // recordLocked appends a tool call to the sliding window and prunes.
 // Must be called with mu held.
-func (a *SessionAnalyzer) recordLocked(serverID, toolName, toolCallID, requestID, action, category string, now time.Time) {
+func (a *SessionAnalyzer) recordLocked(
+	serverID, toolName, toolCallID, requestID, action, category string,
+	now time.Time,
+) {
 	if !a.active {
 		return
 	}
@@ -364,7 +370,10 @@ func (a *SessionAnalyzer) checkReadThenSend(serverID string, now time.Time) *Cro
 	return nil
 }
 
-func (a *SessionAnalyzer) checkCrossServerFlow(serverID, requestID string, now time.Time) *CrossServerDecision {
+func (a *SessionAnalyzer) checkCrossServerFlow(
+	serverID, requestID string,
+	now time.Time,
+) *CrossServerDecision {
 	window := a.cfg.CrossServerFlow.Window
 	sameTurnOnly := a.cfg.CrossServerFlow.SameTurnOnly != nil && *a.cfg.CrossServerFlow.SameTurnOnly
 	cutoff := now.Add(-window)
@@ -403,7 +412,10 @@ func (a *SessionAnalyzer) Classify(toolName string) string {
 // CheckServerSimilarity compares a new server ID against known servers.
 // Known servers are collected from the sliding window and burst tracking.
 // Returns (similarID, score) or ("", 0) if none exceed the threshold.
-func (a *SessionAnalyzer) CheckServerSimilarity(newServerID string, threshold float64) (string, float64) {
+func (a *SessionAnalyzer) CheckServerSimilarity(
+	newServerID string,
+	threshold float64,
+) (string, float64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 

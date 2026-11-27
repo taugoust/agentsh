@@ -12,15 +12,30 @@ import (
 
 func TestAddFD_Constants(t *testing.T) {
 	// Verify flag constants match the kernel header values from <linux/seccomp.h>.
-	require.Equal(t, uint32(0x1), uint32(SECCOMP_ADDFD_FLAG_SETFD), "SECCOMP_ADDFD_FLAG_SETFD should be 0x1")
-	require.Equal(t, uint32(0x2), uint32(SECCOMP_ADDFD_FLAG_SEND), "SECCOMP_ADDFD_FLAG_SEND should be 0x2")
+	require.Equal(
+		t,
+		uint32(0x1),
+		uint32(SECCOMP_ADDFD_FLAG_SETFD),
+		"SECCOMP_ADDFD_FLAG_SETFD should be 0x1",
+	)
+	require.Equal(
+		t,
+		uint32(0x2),
+		uint32(SECCOMP_ADDFD_FLAG_SEND),
+		"SECCOMP_ADDFD_FLAG_SEND should be 0x2",
+	)
 }
 
 func TestAddFD_IoctlNumber(t *testing.T) {
 	// The ioctl number for SECCOMP_IOCTL_NOTIF_ADDFD is:
 	//   _IOW(SECCOMP_IOC_MAGIC='!', 3, struct seccomp_notif_addfd)
 	//   = 0x40182103
-	require.Equal(t, uintptr(0x40182103), uintptr(ioctlNotifAddFD), "ioctl number should be 0x40182103")
+	require.Equal(
+		t,
+		uintptr(0x40182103),
+		uintptr(ioctlNotifAddFD),
+		"ioctl number should be 0x40182103",
+	)
 }
 
 func TestAddFD_StructLayout(t *testing.T) {
@@ -34,7 +49,12 @@ func TestAddFD_StructLayout(t *testing.T) {
 	require.Equal(t, uintptr(8), unsafe.Offsetof(s.flags), "flags should be at offset 8")
 	require.Equal(t, uintptr(12), unsafe.Offsetof(s.srcfd), "srcfd should be at offset 12")
 	require.Equal(t, uintptr(16), unsafe.Offsetof(s.newfd), "newfd should be at offset 16")
-	require.Equal(t, uintptr(20), unsafe.Offsetof(s.newfdFlags), "newfdFlags should be at offset 20")
+	require.Equal(
+		t,
+		uintptr(20),
+		unsafe.Offsetof(s.newfdFlags),
+		"newfdFlags should be at offset 20",
+	)
 }
 
 func TestAddFD_InvalidFD(t *testing.T) {
@@ -49,7 +69,12 @@ func TestAddFD_FlagCombinations(t *testing.T) {
 	require.Equal(t, uint32(0x3), combined, "combined flags should be 0x3")
 
 	// Verify flags are distinct bits.
-	require.Equal(t, uint32(0), uint32(SECCOMP_ADDFD_FLAG_SETFD&SECCOMP_ADDFD_FLAG_SEND), "flags should use distinct bits")
+	require.Equal(
+		t,
+		uint32(0),
+		uint32(SECCOMP_ADDFD_FLAG_SETFD&SECCOMP_ADDFD_FLAG_SEND),
+		"flags should use distinct bits",
+	)
 }
 
 func TestNotifIDValid_Constants(t *testing.T) {
@@ -102,7 +127,11 @@ func TestNotifRespondErrno_InvalidFD(t *testing.T) {
 func TestNotifRespondErrno_InvalidErrno(t *testing.T) {
 	for _, errno := range []int32{0, -1, -13} {
 		err := NotifRespondErrno(3, 0, errno)
-		require.EqualError(t, err, "NotifRespondErrno: errno must be positive, got "+strconv.FormatInt(int64(errno), 10))
+		require.EqualError(
+			t,
+			err,
+			"NotifRespondErrno: errno must be positive, got "+strconv.FormatInt(int64(errno), 10),
+		)
 	}
 }
 

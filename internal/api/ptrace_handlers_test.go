@@ -150,10 +150,12 @@ func TestHandleNetwork_DBUnavoidabilityDenyEmitsBypassAttempt(t *testing.T) {
 	if ev.Fields["process_identity"] != "pid:4321" || ev.Fields["db_service"] != "appdb" {
 		t.Fatalf("unexpected bypass process/service fields: %+v", ev.Fields)
 	}
-	if ev.Fields["rule_name"] != "db-appdb-deny-direct" || ev.Fields["bypass_mode"] != dbservice.BypassModeTCPDirect {
+	if ev.Fields["rule_name"] != "db-appdb-deny-direct" ||
+		ev.Fields["bypass_mode"] != dbservice.BypassModeTCPDirect {
 		t.Fatalf("unexpected bypass rule fields: %+v", ev.Fields)
 	}
-	if ev.Fields["destination"] != "db.internal:5432" || ev.Fields["reason"] != "Direct database egress is blocked; use the AgentSH DB proxy" {
+	if ev.Fields["destination"] != "db.internal:5432" ||
+		ev.Fields["reason"] != "Direct database egress is blocked; use the AgentSH DB proxy" {
 		t.Fatalf("unexpected bypass detail fields: %+v", ev.Fields)
 	}
 }
@@ -189,10 +191,12 @@ func TestHandleExecve_DBUnavoidabilityDenyEmitsBypassAttempt(t *testing.T) {
 	if ev.Fields["process_identity"] != "pid:6789" || ev.Fields["db_service"] != "*" {
 		t.Fatalf("unexpected bypass process/service fields: %+v", ev.Fields)
 	}
-	if ev.Fields["rule_name"] != "db-bypass-ssh-forward" || ev.Fields["bypass_mode"] != dbservice.BypassModePortForwardTool {
+	if ev.Fields["rule_name"] != "db-bypass-ssh-forward" ||
+		ev.Fields["bypass_mode"] != dbservice.BypassModePortForwardTool {
 		t.Fatalf("unexpected bypass rule fields: %+v", ev.Fields)
 	}
-	if ev.Fields["destination"] != "db-service-ports" || ev.Fields["reason"] != "DB port forwarding is blocked by AgentSH DB unavoidability" {
+	if ev.Fields["destination"] != "db-service-ports" ||
+		ev.Fields["reason"] != "DB port forwarding is blocked by AgentSH DB unavoidability" {
 		t.Fatalf("unexpected bypass detail fields: %+v", ev.Fields)
 	}
 }

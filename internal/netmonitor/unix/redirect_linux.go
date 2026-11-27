@@ -52,9 +52,11 @@ func createStubSocketPair() (stubRawFD int, srvConn net.Conn, err error) {
 // handleRedirect implements the redirect path for an intercepted execve.
 //
 // Three-phase approach:
-//  1. Inject stub socket fd into tracee via SECCOMP_ADDFD (without SEND — notification stays pending)
+//  1. Inject stub socket fd into tracee via SECCOMP_ADDFD (without SEND — notification stays
+//     pending)
 //  2. Overwrite filename in tracee memory with stub symlink path via process_vm_writev
-//  3. Return nil to signal the caller should respond with CONTINUE (kernel re-executes modified execve)
+//  3. Return nil to signal the caller should respond with CONTINUE (kernel re-executes
+//     modified execve)
 //
 // If the stub symlink path is longer than the original filename, the overwrite
 // cannot safely fit and we return ErrRedirectPathTooLong. The caller should deny.
@@ -62,7 +64,15 @@ func createStubSocketPair() (stubRawFD int, srvConn net.Conn, err error) {
 // Parameters:
 //   - filenamePtr: the tracee memory address of the filename string (from execve arg0)
 //   - stubSymlinkPath: short path to a symlink that points to agentsh-stub
-func handleRedirect(notifFD int, reqID uint64, ctx ExecveContext, filenamePtr uint64, stubSymlinkPath string, originalFilenameLen int, redirect *types.RedirectInfo) error {
+func handleRedirect(
+	notifFD int,
+	reqID uint64,
+	ctx ExecveContext,
+	filenamePtr uint64,
+	stubSymlinkPath string,
+	originalFilenameLen int,
+	redirect *types.RedirectInfo,
+) error {
 	// Validate the stub path fits within the original filename's memory.
 	// The original string at filenamePtr has originalFilenameLen+1 bytes (including null).
 	// We need len(stubSymlinkPath)+1 bytes for the replacement.

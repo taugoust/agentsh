@@ -18,7 +18,10 @@ func TestBuildMountOptions_DefaultPermissionsAndCaching(t *testing.T) {
 	opts := buildMountOptions(nil)
 
 	if !slices.Contains(opts.MountOptions.Options, "default_permissions") {
-		t.Errorf("mount Options must contain default_permissions (#369 #2); got %v", opts.MountOptions.Options)
+		t.Errorf(
+			"mount Options must contain default_permissions (#369 #2); got %v",
+			opts.MountOptions.Options,
+		)
 	}
 	if opts.EntryTimeout == nil || *opts.EntryTimeout != time.Second {
 		t.Errorf("EntryTimeout must be 1s (#369 #2); got %v", opts.EntryTimeout)

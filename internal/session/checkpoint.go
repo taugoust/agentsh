@@ -93,7 +93,11 @@ func (m *CheckpointManager) ListCheckpoints(sessionID string) ([]*Checkpoint, er
 
 // CreateCheckpointWithSnapshot creates a checkpoint with file backup for rollback.
 // If files is nil, backs up the entire workspace.
-func (m *CheckpointManager) CreateCheckpointWithSnapshot(s *Session, reason string, files []string) (*Checkpoint, error) {
+func (m *CheckpointManager) CreateCheckpointWithSnapshot(
+	s *Session,
+	reason string,
+	files []string,
+) (*Checkpoint, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -142,7 +146,9 @@ func (m *CheckpointManager) CreateCheckpointWithSnapshot(s *Session, reason stri
 
 // Rollback restores files from a checkpoint to the workspace.
 // Returns list of restored file paths.
-func (m *CheckpointManager) Rollback(sessionID, checkpointID, workspacePath string) ([]string, error) {
+func (m *CheckpointManager) Rollback(
+	sessionID, checkpointID, workspacePath string,
+) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -159,7 +165,9 @@ func (m *CheckpointManager) Rollback(sessionID, checkpointID, workspacePath stri
 }
 
 // Diff returns files that changed between checkpoint and current workspace.
-func (m *CheckpointManager) Diff(sessionID, checkpointID, workspacePath string) ([]FileDiff, error) {
+func (m *CheckpointManager) Diff(
+	sessionID, checkpointID, workspacePath string,
+) ([]FileDiff, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -176,7 +184,11 @@ func (m *CheckpointManager) Diff(sessionID, checkpointID, workspacePath string) 
 }
 
 // PurgeCheckpoints removes old checkpoints based on age and count limits.
-func (m *CheckpointManager) PurgeCheckpoints(sessionID string, maxAge time.Duration, maxCount int) (int, error) {
+func (m *CheckpointManager) PurgeCheckpoints(
+	sessionID string,
+	maxAge time.Duration,
+	maxCount int,
+) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -193,7 +205,9 @@ func (m *CheckpointManager) PurgeCheckpoints(sessionID string, maxAge time.Durat
 }
 
 // GetCheckpointMetadata retrieves full checkpoint metadata including file list.
-func (m *CheckpointManager) GetCheckpointMetadata(sessionID, checkpointID string) (*CheckpointMetadata, error) {
+func (m *CheckpointManager) GetCheckpointMetadata(
+	sessionID, checkpointID string,
+) (*CheckpointMetadata, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

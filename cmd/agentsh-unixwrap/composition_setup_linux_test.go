@@ -24,7 +24,10 @@ func TestPublishCompositionSetupRejectsSurvivingPoolPaths(t *testing.T) {
 	if err := os.Mkdir(state.poolRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := publishCompositionSetup(state); err == nil || !strings.Contains(err.Error(), "survived pre-enforcement cleanup") {
+	if err := publishCompositionSetup(
+		state,
+	); err == nil ||
+		!strings.Contains(err.Error(), "survived pre-enforcement cleanup") {
 		t.Fatalf("publish survivor error = %v", err)
 	}
 }

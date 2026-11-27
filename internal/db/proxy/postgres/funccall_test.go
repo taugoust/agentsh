@@ -72,7 +72,9 @@ func TestFunctionCall_DefaultDenied(t *testing.T) {
 	// or the pipe closes.
 	result := make(chan error, 1)
 	go func() {
-		result <- pc.handleFunctionCall(context.Background(), &pgproto3.FunctionCall{Function: 12345})
+		result <- pc.handleFunctionCall(context.Background(), &pgproto3.FunctionCall{
+			Function: 12345,
+		})
 	}()
 
 	// Client must have received an ErrorResponse with SQLSTATE 42501.
@@ -158,7 +160,9 @@ func TestFunctionCall_OptIn_Allow(t *testing.T) {
 	// the client side is being drained.
 	result := make(chan error, 1)
 	go func() {
-		result <- pc.handleFunctionCall(context.Background(), &pgproto3.FunctionCall{Function: 12345})
+		result <- pc.handleFunctionCall(context.Background(), &pgproto3.FunctionCall{
+			Function: 12345,
+		})
 	}()
 
 	// Drain the forwarded upstream frames from the client side
@@ -220,7 +224,10 @@ func TestFunctionCall_OptIn_Allow(t *testing.T) {
 	// The scripted upstream sends FunctionCallResponse + ReadyForQuery so
 	// BytesOut must be > 0.
 	if ev.Result.BytesOut <= 0 {
-		t.Fatalf("Result.BytesOut = %d want > 0 (upstream result not wired into event)", ev.Result.BytesOut)
+		t.Fatalf(
+			"Result.BytesOut = %d want > 0 (upstream result not wired into event)",
+			ev.Result.BytesOut,
+		)
 	}
 }
 
@@ -257,7 +264,9 @@ func TestFunctionCall_OptIn_Deny(t *testing.T) {
 	// ErrorResponse + ReadyForQuery to the client pipe, blocking unless read.
 	result := make(chan error, 1)
 	go func() {
-		result <- pc.handleFunctionCall(context.Background(), &pgproto3.FunctionCall{Function: 12345})
+		result <- pc.handleFunctionCall(context.Background(), &pgproto3.FunctionCall{
+			Function: 12345,
+		})
 	}()
 
 	// Client must have received an ErrorResponse with SQLSTATE 42501.

@@ -187,7 +187,9 @@ var ErrBackwardsGeneration = errors.New("backwards-generation Commit: chain latc
 //
 // In either case the chain latches fatal: silently accepting the stale
 // result would fork the chain.
-var ErrStaleResult = errors.New("stale ComputeResult: caller committed against an obsolete chain head; chain latched fatal")
+var ErrStaleResult = errors.New(
+	"stale ComputeResult: caller committed against an obsolete chain head; chain latched fatal",
+)
 
 // ErrCrossChainResult is wrapped by Commit when the supplied ComputeResult
 // was produced by a different SinkChain instance. The misuse latches fatal
@@ -200,7 +202,11 @@ var ErrCrossChainResult = errors.New("ComputeResult bound to a different SinkCha
 // Supported algorithms: "hmac-sha256" (default), "hmac-sha512".
 func NewSinkChain(key []byte, algorithm string) (*SinkChain, error) {
 	if len(key) < MinKeyLength {
-		return nil, fmt.Errorf("key too short: got %d bytes, need at least %d", len(key), MinKeyLength)
+		return nil, fmt.Errorf(
+			"key too short: got %d bytes, need at least %d",
+			len(key),
+			MinKeyLength,
+		)
 	}
 	if algorithm == "" {
 		algorithm = "hmac-sha256"
@@ -209,7 +215,10 @@ func NewSinkChain(key []byte, algorithm string) (*SinkChain, error) {
 	case "hmac-sha256", "hmac-sha512":
 		// supported
 	default:
-		return nil, fmt.Errorf("unsupported algorithm %q: use hmac-sha256 or hmac-sha512", algorithm)
+		return nil, fmt.Errorf(
+			"unsupported algorithm %q: use hmac-sha256 or hmac-sha512",
+			algorithm,
+		)
 	}
 	return &SinkChain{key: key, algorithm: algorithm}, nil
 }
@@ -230,7 +239,12 @@ func NewSinkChain(key []byte, algorithm string) (*SinkChain, error) {
 // generation is the new generation.
 //
 // Returns ErrFatalIntegrity if Fatal was previously called.
-func (c *SinkChain) Compute(formatVersion int, sequence int64, generation uint32, payload []byte) (*ComputeResult, error) {
+func (c *SinkChain) Compute(
+	formatVersion int,
+	sequence int64,
+	generation uint32,
+	payload []byte,
+) (*ComputeResult, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.fatal {
@@ -401,7 +415,13 @@ func validatePrevHash(algorithm, prevHash string) error {
 	}
 	wantHex := wantBytes * 2
 	if len(prevHash) != wantHex {
-		return fmt.Errorf("%w: prevHash length %d, want %d hex chars for %s", ErrInvalidChainState, len(prevHash), wantHex, algorithm)
+		return fmt.Errorf(
+			"%w: prevHash length %d, want %d hex chars for %s",
+			ErrInvalidChainState,
+			len(prevHash),
+			wantHex,
+			algorithm,
+		)
 	}
 	if _, err := hex.DecodeString(prevHash); err != nil {
 		return fmt.Errorf("%w: prevHash is not valid hex: %v", ErrInvalidChainState, err)

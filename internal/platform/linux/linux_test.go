@@ -27,7 +27,11 @@ func TestFilesystem_Available(t *testing.T) {
 	expectAvailable := detectMountMethod() != ""
 
 	if fs.Available() != expectAvailable {
-		t.Errorf("Available() = %v, expected %v from detectMountMethod()", fs.Available(), expectAvailable)
+		t.Errorf(
+			"Available() = %v, expected %v from detectMountMethod()",
+			fs.Available(),
+			expectAvailable,
+		)
 	}
 }
 

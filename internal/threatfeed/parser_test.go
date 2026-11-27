@@ -9,7 +9,8 @@ import (
 )
 
 func TestHostfileParser_Standard(t *testing.T) {
-	input := "# comment line\n127.0.0.1 localhost\n0.0.0.0 malware.example.com\n127.0.0.1 phishing.bad.org  # trailing comment\n"
+	input := "# comment line\n127.0.0.1 localhost\n0.0.0.0 malware.example.com\n" +
+		"127.0.0.1 phishing.bad.org  # trailing comment\n"
 	p := &HostfileParser{}
 	domains, err := p.Parse(strings.NewReader(input))
 	require.NoError(t, err)
@@ -102,7 +103,9 @@ func TestHostfileParser_MultipleHostsPerLine(t *testing.T) {
 	assert.Equal(t, []string{"evil.com", "bad.org", "phishing.net"}, domains)
 }
 
-func TestHostfileParser_LongLine(t *testing.T) { // Line longer than default bufio.Scanner token size (64 KiB).
+func TestHostfileParser_LongLine(
+	t *testing.T,
+) { // Line longer than default bufio.Scanner token size (64 KiB).
 	longComment := strings.Repeat("x", 100*1024)
 	input := "0.0.0.0 evil.com # " + longComment + "\n0.0.0.0 bad.org\n"
 	p := &HostfileParser{}

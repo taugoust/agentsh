@@ -39,7 +39,12 @@ func newChildLaneTest(t *testing.T, concurrency int) (*App, *session.Session, ht
 	return app, sess, MarkUnixSocketRequests(app.Router())
 }
 
-func activeChildCapabilityForTest(t *testing.T, app *App, sess *session.Session, lane string) *childCapabilityHandle {
+func activeChildCapabilityForTest(
+	t *testing.T,
+	app *App,
+	sess *session.Session,
+	lane string,
+) *childCapabilityHandle {
 	t.Helper()
 	handle, err := app.mintChildCapability(sess.ID, lane)
 	if err != nil {
@@ -63,7 +68,9 @@ func childExecRequest(ctx context.Context, sessionID, token, command string) *ht
 	ctx = context.WithValue(ctx, ctxKeyUnixSocket, true)
 	ctx = context.WithValue(ctx, ctxKeyUnixPeer, unixHTTPPeer{PID: os.Getpid(), Supported: true})
 	body, _ := json.Marshal(execBashToolRequest{Command: command})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/tools/exec_bash", strings.NewReader(string(body))).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/tools/exec_bash",
+		strings.NewReader(string(body))).
+		WithContext(ctx)
 	req.Header.Set(childCapabilityHeader, token)
 	return req
 }
@@ -160,7 +167,10 @@ func TestChildExecutionLanes_DifferentAuthenticatedChildrenOverlap(t *testing.T)
 	app, sess, handler := newChildLaneTest(t, 2)
 	first := activeChildCapabilityForTest(t, app, sess, "subagent-a")
 	second := activeChildCapabilityForTest(t, app, sess, "subagent-b")
-	if !app.childSharedExecutionSupported(sess, &childCapabilityClaim{peerBound: true, stablePID: true}) {
+	if !app.childSharedExecutionSupported(
+		sess,
+		&childCapabilityClaim{peerBound: true, stablePID: true},
+	) {
 		t.Fatal("minimal Linux test configuration unexpectedly rejected shared execution")
 	}
 
@@ -170,8 +180,24 @@ func TestChildExecutionLanes_DifferentAuthenticatedChildrenOverlap(t *testing.T)
 	startedB := filepath.Join(dir, "started-b")
 	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
 
-	resultA := runChildExec(handler, childExecRequest(context.Background(), sess.ID, first.token, releaseMarkerCommand(startedA, release)))
-	resultB := runChildExec(handler, childExecRequest(context.Background(), sess.ID, second.token, releaseMarkerCommand(startedB, release)))
+	resultA := runChildExec(
+		handler,
+		childExecRequest(
+			context.Background(),
+			sess.ID,
+			first.token,
+			releaseMarkerCommand(startedA, release),
+		),
+	)
+	resultB := runChildExec(
+		handler,
+		childExecRequest(
+			context.Background(),
+			sess.ID,
+			second.token,
+			releaseMarkerCommand(startedB, release),
+		),
+	)
 	waitForChildLanePath(t, startedA)
 	waitForChildLanePath(t, startedB)
 	waitForActiveExecutions(t, sess, 2)
@@ -202,9 +228,25 @@ func TestChildExecutionLanes_SameCapabilitySerializes(t *testing.T) {
 	startedA := filepath.Join(dir, "started-a")
 	startedB := filepath.Join(dir, "started-b")
 	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
-	first := runChildExec(handler, childExecRequest(context.Background(), sess.ID, capability.token, releaseMarkerCommand(startedA, release)))
+	first := runChildExec(
+		handler,
+		childExecRequest(
+			context.Background(),
+			sess.ID,
+			capability.token,
+			releaseMarkerCommand(startedA, release),
+		),
+	)
 	waitForChildLanePath(t, startedA)
-	second := runChildExec(handler, childExecRequest(context.Background(), sess.ID, capability.token, "printf started > "+startedB))
+	second := runChildExec(
+		handler,
+		childExecRequest(
+			context.Background(),
+			sess.ID,
+			capability.token,
+			"printf started > "+startedB,
+		),
+	)
 
 	waitForExecutionQueueDepth(t, sess, 1)
 	waitForActiveExecutions(t, sess, 1)
@@ -232,7 +274,15 @@ func TestChildExecutionLanes_AggregateCap(t *testing.T) {
 	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
 	results := make([]<-chan *httptest.ResponseRecorder, 3)
 	for i := range capabilities {
-		results[i] = runChildExec(handler, childExecRequest(context.Background(), sess.ID, capabilities[i].token, releaseMarkerCommand(markers[i], release)))
+		results[i] = runChildExec(
+			handler,
+			childExecRequest(
+				context.Background(),
+				sess.ID,
+				capabilities[i].token,
+				releaseMarkerCommand(markers[i], release),
+			),
+		)
 	}
 	waitForActiveExecutions(t, sess, 2)
 	waitForExecutionQueueDepth(t, sess, 1)
@@ -254,11 +304,21 @@ func TestChildExecutionCapability_ForgedWrongProcessAndRevokedAreRejected(t *tes
 
 	assertCode := func(name, token string, peerPID int, want string) {
 		t.Helper()
-		ctx := context.WithValue(context.Background(), ctxKeyUnixPeer, unixHTTPPeer{PID: peerPID, Supported: true})
+		ctx := context.WithValue(
+			context.Background(),
+			ctxKeyUnixPeer,
+			unixHTTPPeer{PID: peerPID, Supported: true},
+		)
 		req := childExecRequest(ctx, sess.ID, token, "true")
 		// childExecRequest installs the normal test PID; replace it for the
 		// wrong-process case.
-		req = req.WithContext(context.WithValue(req.Context(), ctxKeyUnixPeer, unixHTTPPeer{PID: peerPID, Supported: true}))
+		req = req.WithContext(
+			context.WithValue(
+				req.Context(),
+				ctxKeyUnixPeer,
+				unixHTTPPeer{PID: peerPID, Supported: true},
+			),
+		)
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, req)
 		if recorder.Code != http.StatusForbidden {
@@ -293,7 +353,11 @@ func TestChildExecutionCapability_ProcessGroupControlClaimRevalidates(t *testing
 		_ = client.Wait()
 	})
 	if got := getProcessGroupID(client.Process.Pid); got != getProcessGroupID(os.Getpid()) {
-		t.Fatalf("control client process group = %d, want owner group %d", got, getProcessGroupID(os.Getpid()))
+		t.Fatalf(
+			"control client process group = %d, want owner group %d",
+			got,
+			getProcessGroupID(os.Getpid()),
+		)
 	}
 
 	req := childExecRequest(context.Background(), sess.ID, capability.token, "true")
@@ -310,8 +374,19 @@ func TestChildExecutionCapability_ProcessGroupControlClaimRevalidates(t *testing
 	if claim.sharedEligible() {
 		t.Fatal("process-group control claim must not authorize ordinary shared child execution")
 	}
-	if _, err := app.authenticateChildCapability(context.Background(), req, sess.ID); !errors.Is(err, errChildCapabilityInvalid) {
-		t.Fatalf("ordinary exact-PID authentication error = %v, want %v", err, errChildCapabilityInvalid)
+	if _, err := app.authenticateChildCapability(
+		context.Background(),
+		req,
+		sess.ID,
+	); !errors.Is(
+		err,
+		errChildCapabilityInvalid,
+	) {
+		t.Fatalf(
+			"ordinary exact-PID authentication error = %v, want %v",
+			err,
+			errChildCapabilityInvalid,
+		)
 	}
 }
 
@@ -324,16 +399,32 @@ func TestChildExecutionCapability_RevocationCancelsTypedQueuedRequest(t *testing
 	started := filepath.Join(dir, "started")
 	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
 
-	active := runChildExec(handler, childExecRequest(context.Background(), sess.ID, first.token, releaseMarkerCommand(started, release)))
+	active := runChildExec(
+		handler,
+		childExecRequest(
+			context.Background(),
+			sess.ID,
+			first.token,
+			releaseMarkerCommand(started, release),
+		),
+	)
 	waitForChildLanePath(t, started)
-	queued := runChildExec(handler, childExecRequest(context.Background(), sess.ID, second.token, "true"))
+	queued := runChildExec(
+		handler,
+		childExecRequest(context.Background(), sess.ID, second.token, "true"),
+	)
 	waitForExecutionQueueDepth(t, sess, 1)
 	app.revokeChildCapability(second, errChildCapabilityRevoked)
 
 	select {
 	case recorder := <-queued:
-		if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), "E_CHILD_CAPABILITY_REVOKED") {
-			t.Fatalf("queued revocation status = %d body = %s", recorder.Code, recorder.Body.String())
+		if recorder.Code != http.StatusForbidden ||
+			!strings.Contains(recorder.Body.String(), "E_CHILD_CAPABILITY_REVOKED") {
+			t.Fatalf(
+				"queued revocation status = %d body = %s",
+				recorder.Code,
+				recorder.Body.String(),
+			)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("revoked queued request did not leave admission")
@@ -363,7 +454,10 @@ func TestChildExecutionLanes_StrictExplicitProxyConfigurationUsesSharedLane(t *t
 
 	app.cfg.Sandbox.Network.Transparent.Enabled = true
 	if !app.childSharedExecutionSupported(sess, claim) {
-		t.Fatal("strict exact-proxy cgroup gate should remain shared when legacy transparent interception is configured")
+		t.Fatal(
+			"strict exact-proxy cgroup gate should remain shared when legacy transparent " +
+				"interception is configured",
+		)
 	}
 	app.cfg.Sandbox.Network.Transparent.Enabled = false
 	app.cfg.Sandbox.FUSE.Enabled = true
@@ -389,7 +483,9 @@ func TestChildExecutionCapability_IsScrubbedFromExecutedCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(string(body))).WithContext(ctx)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+		strings.NewReader(string(body))).
+		WithContext(ctx)
 	request.Header.Set(childCapabilityHeader, capability.token)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
