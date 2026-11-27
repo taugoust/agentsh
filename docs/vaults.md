@@ -18,7 +18,7 @@ smaller than the set of "designed."
 | Tag | Meaning |
 |---|---|
 | **Operational** | Code is in `main`, wired into the server, covered by tests, safe to use in production. |
-| **Planned** | Design-stage only. Referenced by a spec in `docs/superpowers/specs/` but no implementation has landed. |
+| **Planned** | Design-stage only. No implementation has landed. |
 
 ---
 
@@ -35,9 +35,7 @@ single most common source of confusion:
 2. **External-secrets fake-credential substitution** — **Planned.** The
    future direction: real credentials never enter the agent's address
    space; a substituting proxy swaps fake credentials for real ones at
-   egress. Designed in
-   [`docs/superpowers/specs/2026-04-07-external-secrets-design.md`][ext-spec].
-   Plan 1 (package rename + Hook interface) is the only piece that has
+   egress. Plan 1 (package rename + Hook interface) is the only piece that has
    landed. See [Part 3](#part-3--external-secrets-substitution-planned).
 
 ### Quick selection guide
@@ -70,9 +68,6 @@ The HMAC key is the one thing that must live outside the log. It is
 loaded once at startup from a KMS provider and cached in memory until
 shutdown. The KMS abstraction in `internal/audit/kms/` lets you choose
 where that key comes from.
-
-Design reference:
-[`docs/superpowers/specs/2026-03-30-wire-hmac-integrity-chain-design.md`](superpowers/specs/2026-03-30-wire-hmac-integrity-chain-design.md).
 
 ### 1.1.1 Sidecar-backed chain continuity
 
@@ -493,12 +488,9 @@ the same shape as the real thing. agentsh's embedded proxy intercepts
 the agent's outbound HTTP, rewrites the fake to the real credential
 at the last moment, and forwards the reconstructed request upstream.
 
-Full spec:
-[`docs/superpowers/specs/2026-04-07-external-secrets-design.md`][ext-spec].
-
 ### 3.2 Mechanism A — local substituting proxy (v1 target)
 
-Three mechanisms are considered in the spec; only Mechanism A ships
+Three mechanisms were considered; only Mechanism A ships
 in v1.
 
 - **A. Explicit local proxy (v1).** The spawned process's environment
@@ -521,7 +513,7 @@ Anthropic and OpenAI — external-secrets generalizes it.
 
 ### 3.3 Planned `SecretProvider` interface
 
-From the spec, Section 2:
+The planned interface:
 
 ```go
 // internal/proxy/secrets/provider.go  (not yet created)
@@ -705,7 +697,7 @@ audit:
 ```
 
 This is the full setup. No cloud, no Vault, no network dependencies.
-Good for `go test ./...` and `make dev`.
+Good for local development and `nix flake check`.
 
 ### 4.4 Kubernetes deployment (Vault + service account)
 
@@ -919,17 +911,9 @@ audit:
 - `internal/proxy/hooks.go` — Hook interface (Plan 1)
 - `internal/proxy/hooks_test.go` — Hook interface tests
 
-**Specs & plans:**
-
-- [`docs/superpowers/specs/2026-04-07-external-secrets-design.md`][ext-spec] — external-secrets master design
-- [`docs/superpowers/specs/2026-03-30-wire-hmac-integrity-chain-design.md`](superpowers/specs/2026-03-30-wire-hmac-integrity-chain-design.md) — audit integrity chain design
-- [`docs/superpowers/plans/2026-04-07-plan-01-proxy-rename-hooks.md`](superpowers/plans/2026-04-07-plan-01-proxy-rename-hooks.md) — Plan 1 (this branch)
-
 **Related docs:**
 
 - [`docs/approval-auth.md`](approval-auth.md) — approval service (referenced by runtime secret injection)
 - [`docs/llm-proxy.md`](llm-proxy.md) — existing LLM proxy (being generalized into `internal/proxy`)
 - [`docs/operations/disaster-recovery.md`](operations/disaster-recovery.md) — audit log restoration
 - [`docs/operations/backup-restore.md`](operations/backup-restore.md) — backup procedures
-
-[ext-spec]: superpowers/specs/2026-04-07-external-secrets-design.md

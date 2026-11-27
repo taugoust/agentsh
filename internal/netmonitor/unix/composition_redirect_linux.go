@@ -44,14 +44,6 @@ type compositionRedirector struct {
 	cleanup     func() error
 }
 
-func NewCompositionRedirector(adapterPath string, serve func(*os.File, int)) (CompositionRedirector, error) {
-	return NewLimitedCompositionRedirector(adapterPath, serve, int(^uint(0)>>1), int(^uint(0)>>1))
-}
-
-func NewLimitedCompositionRedirector(adapterPath string, serve func(*os.File, int), maxTransitions, maxDepth int) (CompositionRedirector, error) {
-	return NewManagedCompositionRedirector(adapterPath, serve, maxTransitions, maxDepth, nil)
-}
-
 func NewManagedCompositionRedirector(adapterPath string, serve func(*os.File, int), maxTransitions, maxDepth int, cleanup func() error) (CompositionRedirector, error) {
 	if !filepath.IsAbs(adapterPath) {
 		return nil, fmt.Errorf("composition adapter path must be absolute")

@@ -81,10 +81,6 @@ type kernelSession struct {
 	attachment *ebpftrace.CgroupAttachment
 }
 
-func NewKernelBackend() *KernelBackend {
-	return NewKernelBackendWithOptions(KernelBackendOptions{PinRoot: DefaultBPFFSPinRoot()})
-}
-
 func NewKernelBackendWithOptions(opts KernelBackendOptions) *KernelBackend {
 	if opts.PinOwnerUID == 0 && os.Geteuid() != 0 {
 		opts.PinOwnerUID = uint32(os.Geteuid())

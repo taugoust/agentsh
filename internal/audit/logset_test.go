@@ -1,7 +1,6 @@
 package audit
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -95,81 +94,6 @@ func TestReadLastNonEmptyLine_SearchesNewestFirst(t *testing.T) {
 	}
 	if string(gotLine) != "newest-entry" {
 		t.Fatalf("ReadLastNonEmptyLine() line = %q, want %q", gotLine, "newest-entry")
-	}
-}
-
-func TestReadFirstNonEmptyLine_SearchesOldestFirst(t *testing.T) {
-	t.Parallel()
-
-	base := filepath.Join(t.TempDir(), "audit.log")
-	backup := base + ".1"
-	if err := os.WriteFile(backup, []byte("\noldest-entry\n"), 0o600); err != nil {
-		t.Fatalf("os.WriteFile(%q) error = %v", backup, err)
-	}
-	if err := os.WriteFile(base, []byte("newer-entry\n"), 0o600); err != nil {
-		t.Fatalf("os.WriteFile(%q) error = %v", base, err)
-	}
-
-	files := []LogFile{
-		{Path: backup, Index: 1, IsBackup: true},
-		{Path: base, Index: 0, IsBackup: false},
-	}
-
-	gotFile, gotLine, err := ReadFirstNonEmptyLine(files)
-	if err != nil {
-		t.Fatalf("ReadFirstNonEmptyLine() error = %v", err)
-	}
-
-	if gotFile.Path != backup {
-		t.Fatalf("ReadFirstNonEmptyLine() file = %+v, want backup file", gotFile)
-	}
-	if string(gotLine) != "oldest-entry" {
-		t.Fatalf("ReadFirstNonEmptyLine() line = %q, want %q", gotLine, "oldest-entry")
-	}
-}
-
-func TestReadFirstNonEmptyLine_AllowsVeryLargeEntry(t *testing.T) {
-	t.Parallel()
-
-	base := filepath.Join(t.TempDir(), "audit.log")
-	line := bytes.Repeat([]byte("x"), 9*1024*1024)
-	if err := os.WriteFile(base, append(line, '\n'), 0o600); err != nil {
-		t.Fatalf("os.WriteFile(%q) error = %v", base, err)
-	}
-
-	gotFile, gotLine, err := ReadFirstNonEmptyLine([]LogFile{{Path: base}})
-	if err != nil {
-		t.Fatalf("ReadFirstNonEmptyLine() error = %v", err)
-	}
-	if gotFile.Path != base {
-		t.Fatalf("ReadFirstNonEmptyLine() file = %+v, want base file", gotFile)
-	}
-	if len(gotLine) != len(line) {
-		t.Fatalf("len(ReadFirstNonEmptyLine()) = %d, want %d", len(gotLine), len(line))
-	}
-}
-
-func TestNewScanner_AllowsLargeTokens(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "audit.log")
-	line := bytes.Repeat([]byte("x"), 128*1024)
-	if err := os.WriteFile(path, append(line, '\n'), 0o600); err != nil {
-		t.Fatalf("os.WriteFile() error = %v", err)
-	}
-
-	file, err := os.Open(path)
-	if err != nil {
-		t.Fatalf("os.Open() error = %v", err)
-	}
-	defer file.Close()
-
-	scanner := NewScanner(file)
-	if !scanner.Scan() {
-		t.Fatalf("scanner.Scan() = false, err = %v", scanner.Err())
-	}
-	if len(scanner.Bytes()) != len(line) {
-		t.Fatalf("len(scanner.Bytes()) = %d, want %d", len(scanner.Bytes()), len(line))
 	}
 }
 

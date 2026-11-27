@@ -421,7 +421,3 @@ func parseDNSDomain(msg []byte) string {
 	}
 	return out
 }
-
-func (d *DNSInterceptor) String() string {
-	return fmt.Sprintf("dns(%s)", d.pc.LocalAddr().String())
-}

@@ -533,13 +533,3 @@ func (ce *ContextEngine) evaluateOverride(override *compiledOverride, command st
 	// No decision from override - continue to other rules
 	return nil
 }
-
-// TaintCache returns the taint cache for external access.
-func (ce *ContextEngine) TaintCache() *ancestry.TaintCache {
-	return ce.taintCache
-}
-
-// Matcher returns the process matcher for external access.
-func (ce *ContextEngine) Matcher() *identity.ProcessMatcher {
-	return ce.matcher
-}

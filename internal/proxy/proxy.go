@@ -579,25 +579,6 @@ func (p *Proxy) logRequest(requestID, sessionID string, dialect Dialect, r *http
 	}
 }
 
-// logResponse logs the response to storage.
-func (p *Proxy) logResponse(requestID, sessionID string, dialect Dialect, resp *http.Response, startTime time.Time, dlpResult *DLPResult) {
-	// Read response body for usage extraction
-	// We must buffer it to put it back for the client
-	var respBody []byte
-	if resp.Body != nil {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			p.logger.Error("read response body", "error", err, "request_id", requestID)
-		} else {
-			respBody = body
-			// Put the body back for the client
-			resp.Body = io.NopCloser(bytes.NewReader(body))
-		}
-	}
-
-	p.logResponseDirect(requestID, sessionID, dialect, resp, respBody, startTime)
-}
-
 // logResponseDirect logs a response with a pre-read body (used for SSE streams).
 func (p *Proxy) logResponseDirect(requestID, sessionID string, dialect Dialect, resp *http.Response, respBody []byte, startTime time.Time) {
 	// Extract token usage from the response.

@@ -3,7 +3,6 @@ package ocsf
 import (
 	"errors"
 	"fmt"
-	"sort"
 
 	"google.golang.org/protobuf/proto"
 
@@ -123,17 +122,6 @@ func safeProject(p Projector, ev types.Event, allowed map[string]any) (msg proto
 		return nil, fmt.Errorf("%w: projector returned nil message", ErrProjectFailed)
 	}
 	return msg, nil
-}
-
-// allowlistKeys returns the sorted slice of keys an allowlist projects.
-// Used by the exhaustiveness Fields-key check.
-func allowlistKeys(rules []FieldRule) []string {
-	keys := make([]string, len(rules))
-	for i, r := range rules {
-		keys[i] = r.Key
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 // Common transforms reused across registry entries.

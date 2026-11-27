@@ -4,13 +4,11 @@
 package pattern
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"regexp/syntax"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/gobwas/glob"
 )
@@ -320,45 +318,6 @@ func (p *Pattern) MatchWithResolver(s string, resolver func(string) ([]string, e
 	}
 }
 
-// MatchWithTimeout checks if the input matches with a timeout.
-// This is useful for regex patterns that might take too long.
-func (p *Pattern) MatchWithTimeout(s string, timeout time.Duration) (bool, error) {
-	return p.MatchWithTimeoutAndResolver(s, timeout, nil)
-}
-
-// MatchWithTimeoutAndResolver matches with timeout and class resolver.
-func (p *Pattern) MatchWithTimeoutAndResolver(s string, timeout time.Duration, resolver func(string) ([]string, error)) (bool, error) {
-	if timeout <= 0 {
-		return p.MatchWithResolver(s, resolver)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	resultCh := make(chan struct {
-		match bool
-		err   error
-	}, 1)
-
-	go func() {
-		match, err := p.MatchWithResolver(s, resolver)
-		select {
-		case resultCh <- struct {
-			match bool
-			err   error
-		}{match, err}:
-		case <-ctx.Done():
-		}
-	}()
-
-	select {
-	case result := <-resultCh:
-		return result.match, result.err
-	case <-ctx.Done():
-		return false, fmt.Errorf("pattern match timed out after %v", timeout)
-	}
-}
-
 // String returns the original pattern string.
 func (p *Pattern) String() string {
 	return p.Raw
@@ -415,16 +374,6 @@ func (ps *PatternSet) MatchAnyWithResolver(s string, resolver func(string) ([]st
 		}
 	}
 	return false, nil
-}
-
-// Patterns returns the patterns in the set.
-func (ps *PatternSet) Patterns() []*Pattern {
-	ps.mu.RLock()
-	defer ps.mu.RUnlock()
-
-	result := make([]*Pattern, len(ps.patterns))
-	copy(result, ps.patterns)
-	return result
 }
 
 // Len returns the number of patterns in the set.

@@ -635,11 +635,6 @@ func (a *SupervisorAuthorizer) registrationForCompletionLocked(sessionID, cgroup
 	return reg, key
 }
 
-func (a *SupervisorAuthorizer) registeredRequest(sessionID, cgroupPath string, cgroupID uint64, registrationID string) (*supervisorRegistration, error) {
-	reg, _, err := a.registeredRequestWithKey(sessionID, cgroupPath, cgroupID, registrationID)
-	return reg, err
-}
-
 func (a *SupervisorAuthorizer) registeredRequestWithKey(sessionID, cgroupPath string, cgroupID uint64, registrationID string) (*supervisorRegistration, string, error) {
 	path, err := a.canonicalLookupPath(cgroupPath)
 	if err != nil {
@@ -811,13 +806,6 @@ func peerInSupervisorCgroup(resolver CgroupResolver, peerPath, supervisorPath st
 
 func registrationKey(sessionID, cgroupPath string) string {
 	return strings.TrimSpace(sessionID) + "\x00" + cleanCgroupPath(cgroupPath)
-}
-
-func sessionIDFromRegistrationKey(key string) string {
-	if index := strings.IndexByte(key, 0); index >= 0 {
-		return key[:index]
-	}
-	return ""
 }
 
 func newRegistrationID() (string, error) {

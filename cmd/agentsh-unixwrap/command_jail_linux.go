@@ -764,10 +764,8 @@ func installCommandJailSeccomp(cfg *WrapperConfig) error {
 		return fmt.Errorf("enable command-jail seccomp raw errors: %w", err)
 	}
 
-	// The production syscall contract is defined in a build-selected helper so
-	// the feasibility VM can compile an explicitly test-only wrapper which keeps
-	// the complete outer jail but permits descendant mount construction. Normal
-	// builds retain the immutable-mount contract.
+	// The immutable-mount syscall contract lives in
+	// command_jail_seccomp_policy_linux.go.
 	action := seccomp.ActErrno.SetReturnCode(int16(unix.EPERM))
 	for _, name := range commandJailBlockedSyscalls() {
 		syscallNumber, err := seccomp.GetSyscallFromName(name)

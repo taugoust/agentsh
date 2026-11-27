@@ -1,10 +1,7 @@
 package config
 
 import (
-	"fmt"
 	"os"
-
-	"github.com/agentsh/agentsh/internal/platform"
 )
 
 // ConfigSource indicates where the configuration was loaded from.
@@ -31,40 +28,6 @@ func (s ConfigSource) String() string {
 	default:
 		return "unknown"
 	}
-}
-
-// InitializePlatform creates and configures a platform based on the config.
-func InitializePlatform(cfg *Config) (platform.Platform, error) {
-	opts := platform.PlatformOptions{
-		Mode:            cfg.Platform.Mode,
-		FallbackEnabled: cfg.Platform.Fallback.Enabled,
-		FallbackOrder:   cfg.Platform.Fallback.Order,
-	}
-
-	p, err := platform.NewWithOptions(opts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize platform: %w", err)
-	}
-
-	// Validate platform capabilities meet requirements
-	caps := p.Capabilities()
-
-	if cfg.Sandbox.Enabled && !cfg.Sandbox.AllowDegraded {
-		if caps.IsolationLevel < platform.IsolationFull {
-			return nil, fmt.Errorf(
-				"platform %s has degraded isolation (level %s), "+
-					"set sandbox.allow_degraded=true to continue",
-				p.Name(), caps.IsolationLevel,
-			)
-		}
-	}
-
-	return p, nil
-}
-
-// GetMountPoint returns the workspace mount point.
-func GetMountPoint(cfg *Config) string {
-	return cfg.Platform.MountPoints.Linux
 }
 
 // GetDataDir returns the system data directory.

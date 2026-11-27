@@ -2,7 +2,6 @@ package pattern
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 )
@@ -255,47 +254,6 @@ func (r *ClassRegistry) Has(name string) bool {
 	return ok
 }
 
-// Set adds or replaces a class.
-func (r *ClassRegistry) Set(name string, patterns []string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.classes[name] = append([]string{}, patterns...)
-	delete(r.compiled, name) // Invalidate compiled cache
-}
-
-// Extend adds patterns to an existing class (or creates it if it doesn't exist).
-func (r *ClassRegistry) Extend(name string, patterns []string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	existing := r.classes[name]
-	r.classes[name] = append(existing, patterns...)
-	delete(r.compiled, name) // Invalidate compiled cache
-}
-
-// Delete removes a class.
-func (r *ClassRegistry) Delete(name string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	delete(r.classes, name)
-	delete(r.compiled, name)
-}
-
-// List returns all registered class names, sorted alphabetically.
-func (r *ClassRegistry) List() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	names := make([]string, 0, len(r.classes))
-	for name := range r.classes {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // Matches checks if a string matches any pattern in a class.
 func (r *ClassRegistry) Matches(name, input string) (bool, error) {
 	r.mu.Lock()
@@ -319,23 +277,6 @@ func (r *ClassRegistry) Matches(name, input string) (bool, error) {
 	}
 
 	return ps.MatchAny(input), nil
-}
-
-// ExpandClass is a convenience function that returns patterns for a class
-// using the default built-in classes.
-func ExpandClass(name string) ([]string, bool) {
-	// Remove @ prefix if present
-	name = strings.TrimPrefix(name, "@")
-
-	patterns, ok := BuiltinClasses[name]
-	if !ok {
-		return nil, false
-	}
-
-	// Return a copy
-	result := make([]string, len(patterns))
-	copy(result, patterns)
-	return result, true
 }
 
 // IsBuiltinClass checks if a class name (with or without @ prefix) is a built-in class.

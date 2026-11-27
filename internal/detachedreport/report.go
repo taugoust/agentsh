@@ -145,8 +145,3 @@ func HumanLines(meta *detached.NetworkEnforcement, prefix string) []string {
 	}
 	return prefixed
 }
-
-// OneLine returns the primary summary line without detail/warning text.
-func OneLine(meta *detached.NetworkEnforcement) string {
-	return NetworkEnforcement(meta).Summary
-}

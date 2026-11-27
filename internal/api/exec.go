@@ -1269,14 +1269,6 @@ func maybeAddShimEnv(env []string, pol policy.ResolvedEnvPolicy, cfg *config.Con
 	return out
 }
 
-func mergeEnv(base []string, s *session.Session, overrides map[string]string) []string {
-	env, err := buildPolicyEnv(policy.ResolvedEnvPolicy{}, base, s, overrides)
-	if err != nil {
-		return []string{}
-	}
-	return env
-}
-
 type wrapperHandlerLifecycle struct {
 	cancel     context.CancelFunc
 	notifyDone <-chan struct{}

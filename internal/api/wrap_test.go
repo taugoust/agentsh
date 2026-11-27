@@ -1707,59 +1707,6 @@ sandbox:
 	}
 }
 
-// TestBlockedFamiliesUsesNotify verifies that the helper function correctly
-// identifies families that require the userspace notify handler.
-func TestBlockedFamiliesUsesNotify(t *testing.T) {
-	cases := []struct {
-		name     string
-		families []config.SandboxSeccompSocketFamilyConfig
-		want     bool
-	}{
-		{
-			name:     "empty",
-			families: nil,
-			want:     false,
-		},
-		{
-			name:     "errno only",
-			families: []config.SandboxSeccompSocketFamilyConfig{{Family: "AF_ALG", Action: "errno"}},
-			want:     false,
-		},
-		{
-			name:     "kill only",
-			families: []config.SandboxSeccompSocketFamilyConfig{{Family: "AF_ALG", Action: "kill"}},
-			want:     false,
-		},
-		{
-			name:     "log",
-			families: []config.SandboxSeccompSocketFamilyConfig{{Family: "AF_ALG", Action: "log"}},
-			want:     true,
-		},
-		{
-			name:     "log_and_kill",
-			families: []config.SandboxSeccompSocketFamilyConfig{{Family: "AF_ALG", Action: "log_and_kill"}},
-			want:     true,
-		},
-		{
-			name: "mixed: log and errno — log wins",
-			families: []config.SandboxSeccompSocketFamilyConfig{
-				{Family: "AF_ALG", Action: "errno"},
-				{Family: "AF_INET", Action: "log"},
-			},
-			want: true,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := blockedFamiliesUsesNotify(tc.families)
-			if got != tc.want {
-				t.Errorf("blockedFamiliesUsesNotify(%v) = %v, want %v", tc.families, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestSocketRulesUsesNotify(t *testing.T) {
 	cases := []struct {
 		name  string

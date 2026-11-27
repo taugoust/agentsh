@@ -16,10 +16,6 @@ type supervisorMetadata = detached.Metadata
 
 type supervisorDiscoveryOptions = detached.DiscoveryOptions
 
-func supervisorMetadataPath(stateDir string) string {
-	return detached.MetadataPath(stateDir)
-}
-
 func writeSupervisorMetadata(stateDir string, meta supervisorMetadata) error {
 	return detached.WriteMetadata(stateDir, meta)
 }

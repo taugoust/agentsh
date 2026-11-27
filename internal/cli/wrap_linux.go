@@ -22,7 +22,6 @@ import (
 	"github.com/agentsh/agentsh/internal/composition"
 	"github.com/agentsh/agentsh/internal/envinject"
 	"github.com/agentsh/agentsh/internal/wrapenv"
-	"github.com/agentsh/agentsh/internal/wraphandoff"
 	"github.com/agentsh/agentsh/internal/wrapperlog"
 	"github.com/agentsh/agentsh/pkg/types"
 	"golang.org/x/sys/unix"
@@ -375,45 +374,6 @@ func recvNotifyFD(sock *os.File) (int, error) {
 	return received[0], nil
 }
 
-func forwardNotifyFDWithPID(socketPath string, notifyFD int, wrapperPID int, commandJail bool) error {
-	return forwardNotifyHandoffWithPID(socketPath, notifyFD, -1, wrapperPID, commandJail)
-}
-
-func forwardNotifyHandoffWithPID(socketPath string, notifyFD, setupFD, wrapperPID int, commandJail bool) error {
-	conn, err := net.Dial("unix", socketPath)
-	if err != nil {
-		return fmt.Errorf("dial %s: %w", socketPath, err)
-	}
-	defer conn.Close()
-
-	unixConn, ok := conn.(*net.UnixConn)
-	if !ok {
-		return fmt.Errorf("not a unix connection")
-	}
-
-	metadata := wraphandoff.Metadata{WrapperPID: wrapperPID, CommandJail: commandJail}
-	var sendErr error
-	if setupFD >= 0 {
-		sendErr = wraphandoff.SendNotifyFDWithSetup(unixConn, notifyFD, setupFD, metadata)
-	} else {
-		sendErr = wraphandoff.SendNotifyFD(unixConn, notifyFD, metadata)
-	}
-	if sendErr != nil {
-		return sendErr
-	}
-	if err := unixConn.SetReadDeadline(time.Now().Add(notifySetupStatusTimeout)); err != nil {
-		return fmt.Errorf("set notify setup status deadline: %w", err)
-	}
-	if err := wraphandoff.ReadStatus(unixConn); err != nil {
-		var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
-			return fmt.Errorf("timed out waiting for notify setup status after %s: %w", notifySetupStatusTimeout, err)
-		}
-		return fmt.Errorf("read notify setup status: %w", err)
-	}
-	return nil
-}
-
 func forwardNotifyFD(socketPath string, notifyFD int) error {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
@@ -536,29 +496,6 @@ func configureWrapCommandBoundary(attr *syscall.SysProcAttr, requirements *types
 	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1}}
 	attr.GidMappingsEnableSetgroups = false
 	return nil
-}
-
-func readWrapControlByte(file *os.File, expected byte) error {
-	if file == nil {
-		return fmt.Errorf("control socket is unavailable")
-	}
-	buf := []byte{0}
-	for {
-		n, err := file.Read(buf)
-		if err != nil && errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if n != 1 {
-			return fmt.Errorf("read %d control bytes, want 1", n)
-		}
-		if buf[0] != expected {
-			return fmt.Errorf("unexpected control byte 0x%02x, want 0x%02x", buf[0], expected)
-		}
-		return nil
-	}
 }
 
 func writeWrapControlByte(file *os.File, value byte) error {

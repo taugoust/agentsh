@@ -21,9 +21,4 @@
 //
 // Test doubles live in the sibling secretstest package. Production
 // code must not import secretstest.
-//
-// The design is documented in
-// docs/superpowers/specs/2026-04-09-plan-04-vault-provider-registry-design.md
-// and the parent migration spec
-// docs/superpowers/specs/2026-04-07-external-secrets-design.md.
 package secrets

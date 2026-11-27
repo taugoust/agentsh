@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/agentsh/agentsh/internal/audit"
 	"github.com/agentsh/agentsh/internal/store"
@@ -293,18 +292,6 @@ func stringField(m map[string]any, key string) string {
 		return v
 	}
 	return ""
-}
-
-// timeField extracts a time field from a map, returning zero time if not found.
-func timeField(m map[string]any, key string) time.Time {
-	switch v := m[key].(type) {
-	case time.Time:
-		return v
-	case string:
-		t, _ := time.Parse(time.RFC3339Nano, v)
-		return t
-	}
-	return time.Time{}
 }
 
 // ListMCPTools delegates to the primary SQLite store to query MCP tools.

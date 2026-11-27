@@ -9,105 +9,12 @@ import (
 	"github.com/agentsh/agentsh/internal/netmonitor/ebpf"
 )
 
-// tipDefinition defines a tip for a missing capability.
-type tipDefinition struct {
-	Feature  string
-	Impact   string
-	Action   string
-	CheckKey string // capability key to check
-}
-
 // reasonTip pairs a substring filter with a tip. When looking up a tip for
 // a backend, the first entry whose Contains is a non-empty substring of
 // DetectedBackend.Detail wins. An entry with Contains == "" is the fallback.
 type reasonTip struct {
 	Contains string
 	Tip      Tip
-}
-
-var linuxTips = []tipDefinition{
-	{
-		Feature:  "fuse",
-		CheckKey: "fuse",
-		Impact:   "Fine-grained filesystem control disabled",
-		Action:   "Install FUSE3: apt install fuse3 (Debian/Ubuntu), dnf install fuse3 (Fedora), or pacman -S fuse3 (Arch)",
-	},
-	{
-		Feature:  "seccomp",
-		CheckKey: "seccomp",
-		Impact:   "Syscall filtering disabled (likely nested container)",
-		Action:   "Run in privileged container or on host for full seccomp support",
-	},
-	{
-		Feature:  "landlock_network",
-		CheckKey: "landlock_network",
-		Impact:   "Kernel-level network restrictions disabled",
-		Action:   "Requires kernel 6.7+ (Landlock ABI v4). Upgrade kernel or use proxy-based network control.",
-	},
-	{
-		Feature:  "ebpf",
-		CheckKey: "ebpf",
-		Impact:   "Network monitoring disabled",
-		Action:   "Requires CAP_BPF and cgroups v2. Run as root or with elevated privileges.",
-	},
-	{
-		Feature:  "cgroups_v2_resource_limits",
-		CheckKey: "cgroups_v2_resource_limits",
-		Impact:   "Resource limits (memory/cpu/pids) cannot be enforced for sessions",
-		Action:   "Required only if you want resource limits. On stock Docker, add a docker.service drop-in:\n  # /etc/systemd/system/docker.service.d/cgroup-delegate.conf\n  [Service]\n  Delegate=memory pids cpu\nThen `systemctl daemon-reload && systemctl restart docker`. eBPF network enforcement does NOT require this.",
-	},
-	{
-		Feature:  "ebpf_cgroup_attach",
-		CheckKey: "ebpf_cgroup_attach",
-		Impact:   "Network rules (domain-based denies) won't enforce against subprocesses",
-		Action:   "eBPF cgroup_connect requires CAP_BPF (or CAP_SYS_ADMIN), /sys/fs/bpf mounted, and kernel CONFIG_CGROUP_BPF. Check `agentsh detect` output for the specific blocker.",
-	},
-	{
-		Feature:  "ptrace",
-		CheckKey: "ptrace",
-		Impact:   "Syscall-level enforcement via ptrace unavailable",
-		Action:   "Add SYS_PTRACE capability to enable ptrace-based enforcement for restricted runtimes",
-	},
-}
-
-// GenerateTips creates actionable tips based on missing capabilities.
-func GenerateTips(platform string, caps map[string]any) []Tip {
-	var definitions []tipDefinition
-
-	switch platform {
-	case "linux":
-		definitions = linuxTips
-	default:
-		return nil
-	}
-
-	var tips []Tip
-	for _, def := range definitions {
-		val, exists := caps[def.CheckKey]
-		if !exists {
-			continue
-		}
-
-		// Check if capability is missing/false
-		isMissing := false
-		switch v := val.(type) {
-		case bool:
-			isMissing = !v
-		case int:
-			isMissing = v == 0
-		}
-
-		if isMissing {
-			tips = append(tips, Tip{
-				Feature: def.Feature,
-				Status:  "unavailable",
-				Impact:  def.Impact,
-				Action:  def.Action,
-			})
-		}
-	}
-
-	return tips
 }
 
 // tipsByBackend maps backend names to an ordered slice of reason-sensitive

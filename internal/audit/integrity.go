@@ -14,9 +14,7 @@ import (
 	"hash"
 	"io"
 	"math"
-	"os"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/agentsh/agentsh/internal/audit/kms"
@@ -88,34 +86,6 @@ func NewIntegrityChainWithAlgorithm(key []byte, algorithm string) (*IntegrityCha
 		alloc: NewSequenceAllocator(),
 		chain: chain,
 	}, nil
-}
-
-// LoadKey loads an HMAC key from either a file path or an environment variable.
-// If keyFile is non-empty, it reads the key from that file.
-// Otherwise if keyEnv is non-empty, it reads the key from that environment variable.
-// Returns an error if neither source provides a key or if reading fails.
-func LoadKey(keyFile, keyEnv string) ([]byte, error) {
-	if keyFile != "" {
-		data, err := os.ReadFile(keyFile)
-		if err != nil {
-			return nil, fmt.Errorf("read key file %q: %w", keyFile, err)
-		}
-		key := strings.TrimSpace(string(data))
-		if key == "" {
-			return nil, fmt.Errorf("key file %q is empty", keyFile)
-		}
-		return []byte(key), nil
-	}
-
-	if keyEnv != "" {
-		key := os.Getenv(keyEnv)
-		if key == "" {
-			return nil, fmt.Errorf("environment variable %q is empty or not set", keyEnv)
-		}
-		return []byte(key), nil
-	}
-
-	return nil, errors.New("no key source specified: provide key_file or key_env")
 }
 
 // NewKMSProvider creates a KMS provider from configuration.

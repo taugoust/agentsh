@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/policy"
 )
 
@@ -429,71 +428,4 @@ func DeriveExecutePathsFromFileRules(p *policy.Policy) []string {
 		paths = append(paths, p)
 	}
 	return paths
-}
-
-// BuildFromConfig creates a RulesetBuilder from config and policy.
-func BuildFromConfig(cfg *config.LandlockConfig, pol *policy.Policy, workspace string, abi int) (*RulesetBuilder, error) {
-	b := NewRulesetBuilder(abi)
-
-	// Set workspace (full access)
-	if workspace != "" {
-		b.SetWorkspace(workspace)
-	}
-
-	// Add paths derived from policy
-	if pol != nil {
-		for _, p := range DeriveExecutePathsFromPolicy(pol) {
-			_ = b.AddExecutePath(p)
-		}
-		for _, p := range DeriveExecutePathsFromFileRules(pol) {
-			_ = b.AddExecutePath(p)
-		}
-		for _, p := range DeriveReadPathsFromPolicy(pol) {
-			_ = b.AddReadPath(p)
-		}
-		for _, p := range DeriveWritePathsFromPolicy(pol) {
-			_ = b.AddWritePath(p)
-		}
-	}
-
-	// Add explicit config paths
-	if cfg != nil {
-		for _, p := range cfg.AllowExecute {
-			_ = b.AddExecutePath(p)
-		}
-		for _, p := range cfg.AllowRead {
-			_ = b.AddReadPath(p)
-		}
-		for _, p := range cfg.AllowWrite {
-			_ = b.AddWritePath(p)
-		}
-		for _, p := range cfg.DenyPaths {
-			b.AddDenyPath(p)
-		}
-		allowConnect := false
-		if cfg.Network.AllowConnectTCP != nil {
-			allowConnect = *cfg.Network.AllowConnectTCP
-		}
-		allowBind := false
-		if cfg.Network.AllowBindTCP != nil {
-			allowBind = *cfg.Network.AllowBindTCP
-		}
-		b.SetNetworkAccess(allowConnect, allowBind)
-	}
-
-	// Add default deny paths (container escape vectors)
-	defaultDenyPaths := []string{
-		"/var/run/docker.sock",
-		"/run/docker.sock",
-		"/run/containerd/containerd.sock",
-		"/run/crio/crio.sock",
-		"/var/run/crio/crio.sock",
-		"/var/run/secrets/kubernetes.io",
-		"/run/systemd/private",
-	}
-	for _, p := range defaultDenyPaths {
-		b.AddDenyPath(p)
-	}
-
-	return b, nil
 }

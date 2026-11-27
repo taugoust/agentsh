@@ -193,7 +193,7 @@ func buildAlpineBinaries(t *testing.T) (agentsh, unixwrap, startupScript string)
 	startupOut := filepath.Join(outputDir, "bash_startup.sh")
 
 	// Copy the bash_startup.sh script
-	startupSrc := filepath.Join(repoRoot, "packaging", "bash_startup.sh")
+	startupSrc := filepath.Join(repoRoot, "nix", "package", "bash_startup.sh")
 	startupContent, err := os.ReadFile(startupSrc)
 	if err != nil {
 		t.Fatalf("read bash_startup.sh: %v", err)

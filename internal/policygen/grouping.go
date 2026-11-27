@@ -166,35 +166,3 @@ func isUnderCollapsedParent(dir string, collapsedParents map[string]bool) bool {
 	}
 	return false
 }
-
-// GroupCIDR groups IPs into CIDRs if they cluster in the same /24.
-func GroupCIDR(ips []string) []string {
-	if len(ips) == 0 {
-		return nil
-	}
-
-	// Group by /24 prefix
-	byPrefix := make(map[string][]string)
-	for _, ip := range ips {
-		parts := strings.Split(ip, ".")
-		if len(parts) != 4 {
-			continue // Skip non-IPv4
-		}
-		prefix := strings.Join(parts[:3], ".")
-		byPrefix[prefix] = append(byPrefix[prefix], ip)
-	}
-
-	var cidrs []string
-	for prefix, prefixIPs := range byPrefix {
-		if len(prefixIPs) >= 3 {
-			// Collapse to CIDR
-			cidrs = append(cidrs, prefix+".0/24")
-		} else {
-			// Keep individual IPs
-			cidrs = append(cidrs, prefixIPs...)
-		}
-	}
-
-	sort.Strings(cidrs)
-	return cidrs
-}

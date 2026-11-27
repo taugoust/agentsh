@@ -1760,31 +1760,3 @@ func (s *Session) EndedAt() *time.Time {
 	defer s.mu.Unlock()
 	return s.endedAt
 }
-
-// cleanup releases all resources associated with the session.
-func (s *Session) cleanup() {
-	// Close network namespace
-	s.CloseNetNS()
-
-	// Close DB proxy
-	s.CloseDBProxy()
-
-	// Close network proxy
-	s.CloseProxy()
-
-	// Close LLM proxy
-	s.CloseLLMProxy()
-
-	// Unmount all mounts (multi-mount)
-	for i := range s.Mounts {
-		if s.Mounts[i].Unmount != nil {
-			_ = s.Mounts[i].Unmount()
-		}
-	}
-
-	// Unmount workspace (legacy single-mount)
-	s.UnmountWorkspace()
-
-	// Remove the session-local home/tmp tree, including output artifacts.
-	s.CloseRuntime()
-}

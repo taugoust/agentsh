@@ -1,7 +1,6 @@
 package audit
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -101,22 +100,6 @@ func ReadLastNonEmptyLine(files []LogFile) (LogFile, []byte, error) {
 	return LogFile{}, nil, os.ErrNotExist
 }
 
-// ReadFirstNonEmptyLine returns the oldest visible non-empty line across a rotation set.
-func ReadFirstNonEmptyLine(files []LogFile) (LogFile, []byte, error) {
-	for _, file := range files {
-		line, err := readFirstNonEmptyLineFromFile(file.Path)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return LogFile{}, nil, fmt.Errorf("read %s: %w", file.Path, err)
-		}
-		return file, line, nil
-	}
-
-	return LogFile{}, nil, os.ErrNotExist
-}
-
 func readLastNonEmptyLineFromFile(path string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -175,42 +158,6 @@ func readLastNonEmptyLineFromFile(path string) ([]byte, error) {
 		return nil, os.ErrNotExist
 	}
 	return bytes.Clone(line), nil
-}
-
-func readFirstNonEmptyLineFromFile(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	reader := bufio.NewReader(file)
-	for {
-		rawLine, readErr := reader.ReadBytes('\n')
-		if errors.Is(readErr, io.EOF) && len(rawLine) == 0 {
-			break
-		}
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return nil, readErr
-		}
-
-		line := bytes.TrimSpace(rawLine)
-		if len(line) == 0 {
-			if errors.Is(readErr, io.EOF) {
-				break
-			}
-			continue
-		}
-		return bytes.Clone(line), nil
-	}
-	return nil, os.ErrNotExist
-}
-
-// NewScanner returns a scanner sized for large JSONL audit entries.
-func NewScanner(file *os.File) *bufio.Scanner {
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-	return scanner
 }
 
 // ParseIntegrityEntry parses a JSONL audit line into reusable structured pieces.

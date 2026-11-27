@@ -65,19 +65,3 @@ func (m *CorrelationMap) LookupHostname(ip net.IP) (string, bool) {
 
 	return hostname, true
 }
-
-// Cleanup removes expired entries
-func (m *CorrelationMap) Cleanup() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	now := time.Now()
-	for hostname, entry := range m.hostnameToIP {
-		if now.After(entry.ExpiresAt) {
-			for _, ip := range entry.IPs {
-				delete(m.ipToHostname, ip.String())
-			}
-			delete(m.hostnameToIP, hostname)
-		}
-	}
-}

@@ -800,10 +800,6 @@ func (e *nethelperSetupFailure) Unwrap() error {
 	return e.cause
 }
 
-func setupEBPFViaNethelper(ctx context.Context, emit storeEmitter, app *App, sessionID, cmdID, cgroupPath string, pol *policy.Engine) (func() error, error) {
-	return setupEBPFViaNethelperWithProxyEndpoints(ctx, emit, app, sessionID, cmdID, cgroupPath, pol, sessionNetworkProxyEndpoints(app, sessionID))
-}
-
 func setupEBPFViaNethelperWithProxyEndpoints(ctx context.Context, emit storeEmitter, app *App, sessionID, cmdID, cgroupPath string, pol *policy.Engine, endpoints networkProxyEndpoints) (func() error, error) {
 	if app == nil || app.cfg == nil {
 		return nil, fmt.Errorf("app config unavailable")
@@ -1090,10 +1086,6 @@ type nethelperProxyGateConfig struct {
 	primaryURL  string
 	allow       []nethelper.PolicyMapEntry
 	endpointIDs []string
-}
-
-func nethelperProxyGate(app *App, sessionID string) (*nethelperProxyGateConfig, error) {
-	return nethelperProxyGateForEndpoints(sessionNetworkProxyEndpoints(app, sessionID))
 }
 
 func nethelperProxyGateForEndpoints(endpoints networkProxyEndpoints) (*nethelperProxyGateConfig, error) {

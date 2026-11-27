@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -585,122 +583,6 @@ func TestIntegrityChain_Restore(t *testing.T) {
 	// prev_hash should match the state we restored
 	if prevHash := integrity["prev_hash"].(string); prevHash != state.PrevHash {
 		t.Errorf("prev_hash after restore = %q, want %q", prevHash, state.PrevHash)
-	}
-}
-
-func TestLoadKey_FromEnv(t *testing.T) {
-	envVar := "AGENTSH_TEST_AUDIT_KEY"
-	keyValue := "my-secret-key-from-env"
-
-	t.Setenv(envVar, keyValue)
-
-	key, err := LoadKey("", envVar)
-	if err != nil {
-		t.Fatalf("LoadKey() error = %v", err)
-	}
-
-	if string(key) != keyValue {
-		t.Errorf("LoadKey() = %q, want %q", string(key), keyValue)
-	}
-}
-
-func TestLoadKey_FromFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	keyFile := filepath.Join(tmpDir, "hmac.key")
-	keyValue := "my-secret-key-from-file"
-
-	if err := os.WriteFile(keyFile, []byte(keyValue), 0600); err != nil {
-		t.Fatalf("write key file: %v", err)
-	}
-
-	key, err := LoadKey(keyFile, "")
-	if err != nil {
-		t.Fatalf("LoadKey() error = %v", err)
-	}
-
-	if string(key) != keyValue {
-		t.Errorf("LoadKey() = %q, want %q", string(key), keyValue)
-	}
-}
-
-func TestLoadKey_FileTrimsWhitespace(t *testing.T) {
-	tmpDir := t.TempDir()
-	keyFile := filepath.Join(tmpDir, "hmac.key")
-	keyValue := "my-secret-key"
-
-	// Write key with trailing newline (common from echo)
-	if err := os.WriteFile(keyFile, []byte(keyValue+"\n"), 0600); err != nil {
-		t.Fatalf("write key file: %v", err)
-	}
-
-	key, err := LoadKey(keyFile, "")
-	if err != nil {
-		t.Fatalf("LoadKey() error = %v", err)
-	}
-
-	if string(key) != keyValue {
-		t.Errorf("LoadKey() = %q, want %q", string(key), keyValue)
-	}
-}
-
-func TestLoadKey_FilePriorityOverEnv(t *testing.T) {
-	tmpDir := t.TempDir()
-	keyFile := filepath.Join(tmpDir, "hmac.key")
-	fileKey := "key-from-file"
-	envKey := "key-from-env"
-	envVar := "AGENTSH_TEST_AUDIT_KEY_PRIORITY"
-
-	if err := os.WriteFile(keyFile, []byte(fileKey), 0600); err != nil {
-		t.Fatalf("write key file: %v", err)
-	}
-	t.Setenv(envVar, envKey)
-
-	key, err := LoadKey(keyFile, envVar)
-	if err != nil {
-		t.Fatalf("LoadKey() error = %v", err)
-	}
-
-	// File should take priority
-	if string(key) != fileKey {
-		t.Errorf("LoadKey() = %q, want %q (file should take priority)", string(key), fileKey)
-	}
-}
-
-func TestLoadKey_NoSource(t *testing.T) {
-	_, err := LoadKey("", "")
-	if err == nil {
-		t.Fatal("LoadKey() expected error when no source specified")
-	}
-}
-
-func TestLoadKey_EmptyEnvVar(t *testing.T) {
-	envVar := "AGENTSH_TEST_EMPTY_KEY"
-	t.Setenv(envVar, "")
-
-	_, err := LoadKey("", envVar)
-	if err == nil {
-		t.Fatal("LoadKey() expected error for empty env var")
-	}
-}
-
-func TestLoadKey_EmptyFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	keyFile := filepath.Join(tmpDir, "empty.key")
-
-	if err := os.WriteFile(keyFile, []byte(""), 0600); err != nil {
-		t.Fatalf("write key file: %v", err)
-	}
-
-	_, err := LoadKey(keyFile, "")
-	if err == nil {
-		t.Fatal("LoadKey() expected error for empty file")
-	}
-}
-
-func TestLoadKey_NonexistentFile(t *testing.T) {
-	_, err := LoadKey("/nonexistent/path/key.file", "")
-	if err == nil {
-		t.Fatal("LoadKey() expected error for nonexistent file")
 	}
 }
 
