@@ -28,3 +28,7 @@ This project targets Linux only. Follow these rules.
 
 - Track open work as GitHub Issues on `taugoust/agentsh`. Do not add issue files to the repository.
 - Keep implementation plans out of issues unless explicitly requested. Local/planning notes belong under ignored plan paths such as `plans/`.
+
+## Git
+
+- Run `git config blame.ignoreRevsFile .git-blame-ignore-revs` so `git blame` skips bulk reformat commits.
