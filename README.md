@@ -86,16 +86,7 @@ Containers isolate the host surface; agentsh adds **in-container runtime visibil
 
 ### Install
 
-**From a GitHub Release**
-
-Download the `.deb`, `.rpm`, or `.apk` for your platform from the [releases page](https://github.com/erans/agentsh/releases).
-
-```bash
-# Example for Debian/Ubuntu
-sudo dpkg -i agentsh_<VERSION>_linux_amd64.deb
-```
-
-**From source**
+**With Nix**
 
 ```bash
 nix build   # binaries are in ./result/bin
