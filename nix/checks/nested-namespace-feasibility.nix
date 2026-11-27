@@ -4,7 +4,7 @@
 }:
 let
   inherit (pkgs) lib;
-  vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
+  vendorHash = "sha256-qbCd9R5kJksLYQJLPVa28JS8Sr0ZYIAmuqtAdyT66pw=";
 
   mkGoFixture =
     {

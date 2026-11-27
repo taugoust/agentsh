@@ -2638,7 +2638,7 @@ func (t *Tracer) discoverTargetEKS() (int, error) {
 }
 ```
 
-3. **K8s sidecar integration:** Extend `pkg/k8s/sidecar.go` to support ptrace mode sidecars with the correct security context and shared PID namespace.
+3. **K8s sidecar integration:** Support ptrace mode sidecars with the correct security context and shared PID namespace.
 
 4. **Admission controller:** For EKS deployments using the Datadog-style admission controller pattern, provide a mutating webhook that automatically injects the agentsh sidecar with ptrace configuration into pods matching a label selector.
 
