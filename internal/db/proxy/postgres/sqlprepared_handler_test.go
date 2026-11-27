@@ -41,7 +41,10 @@ database_rules:
 // multiQueryUpstreamFixture builds a proxyConn with an upstream net.Pipe whose
 // server side responds to a series of scripted frames per Query received.
 // responses is a list of frame sequences, one slice per Q received in order.
-func multiQueryUpstreamFixture(t *testing.T, responses [][]pgproto3.BackendMessage) (*proxyConn, *pgproto3.Frontend, *events.SyncSink) {
+func multiQueryUpstreamFixture(
+	t *testing.T,
+	responses [][]pgproto3.BackendMessage,
+) (*proxyConn, *pgproto3.Frontend, *events.SyncSink) {
 	t.Helper()
 	pc, clientFE, sink := newSimpleQueryFixture(t)
 	upClient, upServer := net.Pipe()

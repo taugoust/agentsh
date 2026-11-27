@@ -27,7 +27,11 @@ func TestDB12RealPostgresDirectProxyPolicyReloadPreservesPreparedRedirect(t *tes
 	hostDSN, upstream := startDB12Postgres(t, ctx)
 	seedDB12Postgres(t, ctx, hostDSN)
 
-	srv, sock, sink := startDB12DirectProxy(t, upstream, db12RedirectPolicyYAML(upstream, "plan12.users_target_a", "redirect-plan12-a"))
+	srv, sock, sink := startDB12DirectProxy(
+		t,
+		upstream,
+		db12RedirectPolicyYAML(upstream, "plan12.users_target_a", "redirect-plan12-a"),
+	)
 	stop := runServer(t, srv)
 	defer stop()
 
@@ -38,7 +42,11 @@ func TestDB12RealPostgresDirectProxyPolicyReloadPreservesPreparedRedirect(t *tes
 	}
 	defer conn.Close(context.Background())
 
-	if _, err := conn.Prepare(ctx, "old_redirect", "select note from plan12.users_source where id=$1"); err != nil {
+	if _, err := conn.Prepare(
+		ctx,
+		"old_redirect",
+		"select note from plan12.users_source where id=$1",
+	); err != nil {
 		t.Fatalf("Prepare old_redirect: %v", err)
 	}
 
@@ -50,7 +58,12 @@ func TestDB12RealPostgresDirectProxyPolicyReloadPreservesPreparedRedirect(t *tes
 		t.Fatalf("old_redirect before reload = %q, want target-a", first)
 	}
 
-	srv.SetPolicy(loadRuleSet(t, db12RedirectPolicyYAML(upstream, "plan12.users_target_b", "redirect-plan12-b")))
+	srv.SetPolicy(
+		loadRuleSet(
+			t,
+			db12RedirectPolicyYAML(upstream, "plan12.users_target_b", "redirect-plan12-b"),
+		),
+	)
 
 	var second string
 	if err := conn.QueryRow(ctx, "old_redirect", 1).Scan(&second); err != nil {
@@ -61,7 +74,8 @@ func TestDB12RealPostgresDirectProxyPolicyReloadPreservesPreparedRedirect(t *tes
 	}
 
 	var third string
-	if err := conn.QueryRow(ctx, "select note from plan12.users_source where id = $1", 1).Scan(&third); err != nil {
+	if err := conn.QueryRow(ctx, "select note from plan12.users_source where id = $1", 1).
+		Scan(&third); err != nil {
 		t.Fatalf("query new statement after reload: %v", err)
 	}
 	if third != "target-b" {
@@ -69,8 +83,14 @@ func TestDB12RealPostgresDirectProxyPolicyReloadPreservesPreparedRedirect(t *tes
 	}
 
 	evs := collectDB12RedirectEvents(t, sink, 3, 3*time.Second)
-	targets := []string{evs[0].RedirectTargetRelation, evs[1].RedirectTargetRelation, evs[2].RedirectTargetRelation}
-	if fmt.Sprint(targets) != "[plan12.users_target_a plan12.users_target_a plan12.users_target_b]" {
+	targets := []string{
+		evs[0].RedirectTargetRelation,
+		evs[1].RedirectTargetRelation,
+		evs[2].RedirectTargetRelation,
+	}
+	if fmt.Sprint(
+		targets,
+	) != "[plan12.users_target_a plan12.users_target_a plan12.users_target_b]" {
 		t.Fatalf("redirect targets = %v", targets)
 	}
 }
@@ -94,7 +114,10 @@ func startDB12Postgres(t *testing.T, ctx context.Context) (hostDSN string, upstr
 			WithOccurrence(2).
 			WithStartupTimeout(60 * time.Second),
 	}
-	pg, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
+	pg, err := testcontainers.GenericContainer(
+		ctx,
+		testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true},
+	)
 	if err != nil {
 		t.Fatalf("start postgres container: %v", err)
 	}
@@ -108,7 +131,15 @@ func startDB12Postgres(t *testing.T, ctx context.Context) (hostDSN string, upstr
 	if err != nil {
 		t.Fatalf("postgres mapped port: %v", err)
 	}
-	return fmt.Sprintf("postgres://app:secret@%s:%s/app?sslmode=disable", host, port.Port()), fmt.Sprintf("%s:%s", host, port.Port())
+	return fmt.Sprintf(
+			"postgres://app:secret@%s:%s/app?sslmode=disable",
+			host,
+			port.Port(),
+		), fmt.Sprintf(
+			"%s:%s",
+			host,
+			port.Port(),
+		)
 }
 
 func seedDB12Postgres(t *testing.T, ctx context.Context, dsn string) {
@@ -133,7 +164,10 @@ insert into plan12.users_target_b(id, note) values (1, 'target-b');
 	}
 }
 
-func startDB12DirectProxy(t *testing.T, upstream, policyYAML string) (*Server, string, *events.SyncSink) {
+func startDB12DirectProxy(
+	t *testing.T,
+	upstream, policyYAML string,
+) (*Server, string, *events.SyncSink) {
 	t.Helper()
 	sockPath := filepath.Join(t.TempDir(), "appdb.sock")
 	sink := &events.SyncSink{}
@@ -209,10 +243,19 @@ database_rules:
 }
 
 func db12PGXConnString(sockDir string, port int) string {
-	return fmt.Sprintf("host=%s port=%d user=app password=secret dbname=app sslmode=disable", sockDir, port)
+	return fmt.Sprintf(
+		"host=%s port=%d user=app password=secret dbname=app sslmode=disable",
+		sockDir,
+		port,
+	)
 }
 
-func collectDB12RedirectEvents(t *testing.T, sink *events.SyncSink, want int, deadline time.Duration) []events.DBEvent {
+func collectDB12RedirectEvents(
+	t *testing.T,
+	sink *events.SyncSink,
+	want int,
+	deadline time.Duration,
+) []events.DBEvent {
 	t.Helper()
 	var out []events.DBEvent
 	end := time.Now().Add(deadline)

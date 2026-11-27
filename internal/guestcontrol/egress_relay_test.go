@@ -23,11 +23,16 @@ func TestEgressRelayUsesLoopbackAndHostCIDPerStream(t *testing.T) {
 		peer net.Conn
 	}
 	dials := make(chan dialResult, 1)
-	relay, err := newEgressRelay(listener, func(_ context.Context, cid, port uint32) (controlConn, error) {
-		guest, host := net.Pipe()
-		dials <- dialResult{cid: cid, port: port, peer: host}
-		return guest, nil
-	}, 19083, token)
+	relay, err := newEgressRelay(
+		listener,
+		func(_ context.Context, cid, port uint32) (controlConn, error) {
+			guest, host := net.Pipe()
+			dials <- dialResult{cid: cid, port: port, peer: host}
+			return guest, nil
+		},
+		19083,
+		token,
+	)
 	if err != nil {
 		_ = listener.Close()
 		t.Fatal(err)
@@ -82,7 +87,12 @@ func TestEgressRelayUsesLoopbackAndHostCIDPerStream(t *testing.T) {
 	}
 	defer dial.peer.Close()
 	if dial.cid != HostVSockCID || dial.port != 19083 {
-		t.Fatalf("VSOCK dial = cid %d port %d, want cid %d port 19083", dial.cid, dial.port, HostVSockCID)
+		t.Fatalf(
+			"VSOCK dial = cid %d port %d, want cid %d port 19083",
+			dial.cid,
+			dial.port,
+			HostVSockCID,
+		)
 	}
 	if err := ReadEgressAuthentication(dial.peer, token); err != nil {
 		t.Fatalf("stream authentication: %v", err)

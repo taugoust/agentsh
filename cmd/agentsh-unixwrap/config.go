@@ -105,10 +105,14 @@ func parseConfigJSON(data string) (*WrapperConfig, error) {
 		if cfg.SandboxComposition != "bubblewrap-0.11.2" {
 			return nil, fmt.Errorf("unsupported sandbox composition %q", cfg.SandboxComposition)
 		}
-		if !filepath.IsAbs(cfg.CompositionScratchRoot) || filepath.Clean(cfg.CompositionScratchRoot) != cfg.CompositionScratchRoot {
+		if !filepath.IsAbs(cfg.CompositionScratchRoot) ||
+			filepath.Clean(cfg.CompositionScratchRoot) != cfg.CompositionScratchRoot {
 			return nil, fmt.Errorf("composition scratch root must be a clean absolute path")
 		}
-		if cfg.CompositionSyntheticMounts <= 0 || cfg.CompositionSyntheticMounts > 200 || cfg.CompositionMaxTransitions <= 0 || cfg.CompositionMaxTransitions > 200 || cfg.CompositionMaxDataBytes <= 0 {
+		if cfg.CompositionSyntheticMounts <= 0 || cfg.CompositionSyntheticMounts > 200 ||
+			cfg.CompositionMaxTransitions <= 0 ||
+			cfg.CompositionMaxTransitions > 200 ||
+			cfg.CompositionMaxDataBytes <= 0 {
 			return nil, fmt.Errorf("composition synthetic mount limits are invalid")
 		}
 	}

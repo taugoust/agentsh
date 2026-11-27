@@ -136,7 +136,11 @@ func newIntegrationTransport(t *testing.T, fc *recvFakeConn) *transport.Transpor
 
 // drainEvent pops the next event off the recv eventCh within the given
 // timeout, failing the test if none arrives.
-func drainEvent(t *testing.T, h *transport.RecvSessionHandle, timeout time.Duration) (string, uint32, uint64) {
+func drainEvent(
+	t *testing.T,
+	h *transport.RecvSessionHandle,
+	timeout time.Duration,
+) (string, uint32, uint64) {
 	t.Helper()
 	select {
 	case ev := <-h.EventCh():
@@ -327,14 +331,26 @@ func TestRecvMultiplexer_ReconnectDoesNotLeakStateAcrossSessions(t *testing.T) {
 	// below would then pass vacuously, hiding any future regression
 	// in the per-connection eventCh allocation contract.
 	if !h1Old.TrySendStaleEventForTest(transport.MakeBatchAckEventForTest(staleEvt)) {
-		t.Fatal("stale event injection did not succeed; eventCh was full or recv goroutine still draining — test cannot prove isolation")
+		t.Fatal(
+			"stale event injection did not succeed; eventCh was full or recv goroutine still draining — test cannot prove isolation",
+		)
 	}
 
 	// Sanity check: session 2 demuxes its own frames cleanly AND the
 	// stale send into the OLD eventCh did NOT bleed into the NEW one.
 	fc2.Push(recvBatchAck(2, 50))
-	if frame, gen, seq := drainEvent(t, h2, time.Second); frame != "batch_ack" || gen != 2 || seq != 50 {
-		t.Fatalf("session 2 first event: got (%q, %d, %d), want (batch_ack, 2, 50) — stale (99, 9999) bleed?", frame, gen, seq)
+	if frame, gen, seq := drainEvent(
+		t,
+		h2,
+		time.Second,
+	); frame != "batch_ack" || gen != 2 ||
+		seq != 50 {
+		t.Fatalf(
+			"session 2 first event: got (%q, %d, %d), want (batch_ack, 2, 50) — stale (99, 9999) bleed?",
+			frame,
+			gen,
+			seq,
+		)
 	}
 
 	// Final assertion: drain one more time with a very short timeout
@@ -342,8 +358,12 @@ func TestRecvMultiplexer_ReconnectDoesNotLeakStateAcrossSessions(t *testing.T) {
 	// channel after the legitimate one.
 	select {
 	case ev := <-h2.EventCh():
-		t.Fatalf("session 2 eventCh saw unexpected event after legitimate one: frame=%q gen=%d seq=%d (stale leak)",
-			transport.FrameForTest(ev), transport.GenForTest(ev), transport.SeqForTest(ev))
+		t.Fatalf(
+			"session 2 eventCh saw unexpected event after legitimate one: frame=%q gen=%d seq=%d (stale leak)",
+			transport.FrameForTest(ev),
+			transport.GenForTest(ev),
+			transport.SeqForTest(ev),
+		)
 	case <-time.After(50 * time.Millisecond):
 		// Expected: no further events.
 	}
@@ -544,7 +564,9 @@ func TestRecvMultiplexer_SessionUpdateSurfacesFailClosedError(t *testing.T) {
 	select {
 	case <-h.Done():
 	case <-time.After(2 * time.Second):
-		t.Fatal("recv goroutine did not exit (Done channel still open) after ServerUpdate fail-closed")
+		t.Fatal(
+			"recv goroutine did not exit (Done channel still open) after ServerUpdate fail-closed",
+		)
 	}
 }
 
@@ -619,7 +641,8 @@ func TestRecvMultiplexer_PolicyPush_InvalidFailsClosed(t *testing.T) {
 		if err == nil {
 			t.Fatal("errCh delivered nil error")
 		}
-		if !strings.Contains(err.Error(), "PolicyPush") && !strings.Contains(err.Error(), "policy_push") {
+		if !strings.Contains(err.Error(), "PolicyPush") &&
+			!strings.Contains(err.Error(), "policy_push") {
 			t.Fatalf("error: got %q, want substring referring to PolicyPush", err.Error())
 		}
 	case <-time.After(time.Second):

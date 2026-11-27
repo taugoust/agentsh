@@ -16,7 +16,9 @@ func TestSnyk_BinaryPath_HappyPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake CLI is a sh script")
 	}
-	abs, err := filepath.Abs(filepath.Join("..", "testdata", "snyk-fake", "snyk-agent-scan-fake.sh"))
+	abs, err := filepath.Abs(
+		filepath.Join("..", "testdata", "snyk-fake", "snyk-agent-scan-fake.sh"),
+	)
 	if err != nil {
 		t.Fatalf("abs: %v", err)
 	}
@@ -66,7 +68,9 @@ func TestSnyk_SubprocessCrashReturnsError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake CLI is a sh script")
 	}
-	abs, err := filepath.Abs(filepath.Join("..", "testdata", "snyk-fake", "snyk-agent-scan-fake-crash.sh"))
+	abs, err := filepath.Abs(
+		filepath.Join("..", "testdata", "snyk-fake", "snyk-agent-scan-fake-crash.sh"),
+	)
 	if err != nil {
 		t.Fatalf("abs: %v", err)
 	}
@@ -89,7 +93,9 @@ func TestSnyk_NonzeroExitWithFindingsStillReturned(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake CLI is a sh script")
 	}
-	abs, err := filepath.Abs(filepath.Join("..", "testdata", "snyk-fake", "snyk-agent-scan-fake-nonzero.sh"))
+	abs, err := filepath.Abs(
+		filepath.Join("..", "testdata", "snyk-fake", "snyk-agent-scan-fake-nonzero.sh"),
+	)
 	if err != nil {
 		t.Fatalf("abs: %v", err)
 	}
@@ -112,7 +118,9 @@ func TestSnyk_RespectsContextCancellation(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake CLI is a sh script")
 	}
-	abs, err := filepath.Abs(filepath.Join("..", "testdata", "snyk-fake", "snyk-agent-scan-fake.sh"))
+	abs, err := filepath.Abs(
+		filepath.Join("..", "testdata", "snyk-fake", "snyk-agent-scan-fake.sh"),
+	)
 	if err != nil {
 		t.Fatalf("abs: %v", err)
 	}

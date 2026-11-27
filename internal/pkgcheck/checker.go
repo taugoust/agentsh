@@ -45,7 +45,12 @@ func NewChecker(cfg CheckerConfig) *Checker {
 
 // Check evaluates a command. Returns a nil verdict if the command is not a
 // recognised package-install operation.
-func (c *Checker) Check(ctx context.Context, command string, args []string, workDir string) (*Verdict, error) {
+func (c *Checker) Check(
+	ctx context.Context,
+	command string,
+	args []string,
+	workDir string,
+) (*Verdict, error) {
 	// 1. Classify the command.
 	intent := ClassifyInstallCommand(command, args, c.cfg.Scope)
 	if intent == nil {
@@ -91,13 +96,23 @@ func (c *Checker) Check(ctx context.Context, command string, args []string, work
 		case "deny":
 			if VerdictBlock.weight() > strictestFailAction.weight() {
 				strictestFailAction = VerdictBlock
-				strictestFailSummary = fmt.Sprintf("Provider %s unavailable (on_failure=%s): %v", pe.Provider, pe.OnFailure, pe.Err)
+				strictestFailSummary = fmt.Sprintf(
+					"Provider %s unavailable (on_failure=%s): %v",
+					pe.Provider,
+					pe.OnFailure,
+					pe.Err,
+				)
 				hasFailAction = true
 			}
 		case "approve":
 			if VerdictApprove.weight() > strictestFailAction.weight() {
 				strictestFailAction = VerdictApprove
-				strictestFailSummary = fmt.Sprintf("Provider %s unavailable (on_failure=%s): %v", pe.Provider, pe.OnFailure, pe.Err)
+				strictestFailSummary = fmt.Sprintf(
+					"Provider %s unavailable (on_failure=%s): %v",
+					pe.Provider,
+					pe.OnFailure,
+					pe.Err,
+				)
 				hasFailAction = true
 			}
 		case "warn":
@@ -131,7 +146,8 @@ func (c *Checker) Check(ctx context.Context, command string, args []string, work
 	})
 
 	// If any provider needs approval and verdict is weaker, upgrade to approve.
-	if hasFailAction && strictestFailAction == VerdictApprove && verdict.Action.weight() < VerdictApprove.weight() {
+	if hasFailAction && strictestFailAction == VerdictApprove &&
+		verdict.Action.weight() < VerdictApprove.weight() {
 		verdict.Action = VerdictApprove
 	}
 

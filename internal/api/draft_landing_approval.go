@@ -15,9 +15,11 @@ import (
 )
 
 var (
-	draftLandingSessionPattern = regexp.MustCompile(`^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	draftLandingCommitPattern  = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
-	draftLandingDigestPattern  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	draftLandingSessionPattern = regexp.MustCompile(
+		`^session-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
+	)
+	draftLandingCommitPattern = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+	draftLandingDigestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 )
 
 type draftLandingApprovalRequest struct {
@@ -36,8 +38,11 @@ func validateDraftLandingPaths(paths []string, count int, digest string) error {
 	totalBytes := 0
 	for _, candidate := range paths {
 		totalBytes += len(candidate)
-		if candidate == "" || !utf8.ValidString(candidate) || strings.ContainsRune(candidate, '\x00') ||
-			strings.HasPrefix(candidate, "/") || path.Clean(candidate) != candidate || candidate == "." {
+		if candidate == "" || !utf8.ValidString(candidate) ||
+			strings.ContainsRune(candidate, '\x00') ||
+			strings.HasPrefix(candidate, "/") ||
+			path.Clean(candidate) != candidate ||
+			candidate == "." {
 			return fmt.Errorf("invalid restricted path")
 		}
 		_, _ = hash.Write([]byte(candidate))
@@ -58,7 +63,11 @@ func (a *App) requestDraftLandingApproval(w http.ResponseWriter, r *http.Request
 	}
 	claim, err := a.authenticateChildCapabilityProcessGroup(r, sessionID)
 	if err != nil {
-		writeToolError(w, http.StatusUnauthorized, "valid active child process-group capability required")
+		writeToolError(
+			w,
+			http.StatusUnauthorized,
+			"valid active child process-group capability required",
+		)
 		return
 	}
 	if err := a.validateChildCapabilityClaim(claim); err != nil {
@@ -69,8 +78,10 @@ func (a *App) requestDraftLandingApproval(w http.ResponseWriter, r *http.Request
 	if ok := decodeJSON(w, r, &req, "invalid Draft landing approval request"); !ok {
 		return
 	}
-	if !draftLandingSessionPattern.MatchString(req.DraftID) || !draftLandingCommitPattern.MatchString(req.ResultCommit) ||
-		!draftLandingDigestPattern.MatchString(req.PathsDigest) || validateDraftLandingPaths(req.Paths, req.PathCount, req.PathsDigest) != nil {
+	if !draftLandingSessionPattern.MatchString(req.DraftID) ||
+		!draftLandingCommitPattern.MatchString(req.ResultCommit) ||
+		!draftLandingDigestPattern.MatchString(req.PathsDigest) ||
+		validateDraftLandingPaths(req.Paths, req.PathCount, req.PathsDigest) != nil {
 		writeToolError(w, http.StatusBadRequest, "invalid Draft landing approval identity")
 		return
 	}
@@ -91,7 +102,10 @@ func (a *App) requestDraftLandingApproval(w http.ResponseWriter, r *http.Request
 		Kind:      "approval",
 		Target:    fmt.Sprintf("%s (%d restricted paths)", req.DraftID, req.PathCount),
 		Rule:      "approve-restricted-draft-landing",
-		Message:   "Pi wants to land a MicroVM Draft that modifies restricted project files:\n" + strings.Join(quotedPaths, "\n"),
+		Message: "Pi wants to land a MicroVM Draft that modifies restricted project files:\n" + strings.Join(
+			quotedPaths,
+			"\n",
+		),
 		Fields: map[string]any{
 			"draft_id":      req.DraftID,
 			"result_commit": strings.ToLower(req.ResultCommit),

@@ -66,7 +66,12 @@ func TestScanStuckTracees_RunningAndParkedNotFlagged(t *testing.T) {
 
 	// A LISTEN'd (group-stopped) tracee must be skipped — never SIGKILL'd.
 	const listening = (1 << 30) + 1
-	tr.tracees[listening] = &TraceeState{TID: listening, TGID: listening, MemFD: -1, listening: true}
+	tr.tracees[listening] = &TraceeState{
+		TID:       listening,
+		TGID:      listening,
+		MemFD:     -1,
+		listening: true,
+	}
 	listeningCh, _ := tr.RegisterExitNotify(listening)
 
 	stuckSince := map[int]time.Time{}
@@ -127,7 +132,11 @@ func TestScanStalledExecs(t *testing.T) {
 	dumped := map[int]bool{}
 	out := withTrace(t, false, func() { tr.scanStalledExecs(firstSeen, dumped) })
 	if out != "" || len(firstSeen) != 0 {
-		t.Errorf("scanStalledExecs must be a no-op when tracing is off; out=%q firstSeen=%v", out, firstSeen)
+		t.Errorf(
+			"scanStalledExecs must be a no-op when tracing is off; out=%q firstSeen=%v",
+			out,
+			firstSeen,
+		)
 	}
 
 	// Tracing on, freshly pending: recorded but NOT dumped yet.

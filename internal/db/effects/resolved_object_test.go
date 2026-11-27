@@ -23,7 +23,8 @@ func TestResolvedObjectRef_JSONRoundTripRelation(t *testing.T) {
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if out.Source != ResolvedObjectSourceCatalog || out.Kind != ResolvedObjectRelation || out.OID != 1259 {
+	if out.Source != ResolvedObjectSourceCatalog || out.Kind != ResolvedObjectRelation ||
+		out.OID != 1259 {
 		t.Fatalf("round trip = %+v", out)
 	}
 	if out.CanonicalName() != "public.users" {

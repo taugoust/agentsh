@@ -108,7 +108,11 @@ func TestExtractToolCalls_AnthropicParallelTools(t *testing.T) {
 		t.Fatalf("failed to unmarshal second input: %v", err)
 	}
 	if input0["location"] != "San Francisco, CA" {
-		t.Errorf("first call: expected location %q, got %q", "San Francisco, CA", input0["location"])
+		t.Errorf(
+			"first call: expected location %q, got %q",
+			"San Francisco, CA",
+			input0["location"],
+		)
 	}
 	if input1["location"] != "New York, NY" {
 		t.Errorf("second call: expected location %q, got %q", "New York, NY", input1["location"])
@@ -603,7 +607,10 @@ func TestExtractToolCalls_AnthropicComplexInput(t *testing.T) {
 // --- interceptMCPToolCalls tests ---
 
 // newTestRegistry creates a registry with the given tools registered under serverID.
-func newTestRegistry(serverID, serverType string, tools []mcpregistry.ToolInfo) *mcpregistry.Registry {
+func newTestRegistry(
+	serverID, serverType string,
+	tools []mcpregistry.ToolInfo,
+) *mcpregistry.Registry {
 	reg := mcpregistry.NewRegistry()
 	reg.Register(serverID, serverType, "", tools)
 	return reg
@@ -638,7 +645,17 @@ func TestInterceptMCPToolCalls_NilRegistryReturnsEmpty(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, nil, newAllowingPolicy(), "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		nil,
+		newAllowingPolicy(),
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -666,7 +683,17 @@ func TestInterceptMCPToolCalls_NilPolicyAllowsAll(t *testing.T) {
 	}`)
 
 	// Nil policy + nil rate limiter + nil version pin = allow all.
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, nil, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		nil,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -697,7 +724,17 @@ func TestInterceptMCPToolCalls_UnknownToolSkipped(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -727,7 +764,17 @@ func TestInterceptMCPToolCalls_AllowedToolPassesThrough(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -786,7 +833,17 @@ func TestInterceptMCPToolCalls_BlockedToolRewritten(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -849,7 +906,11 @@ func TestInterceptMCPToolCalls_BlockedToolRewritten(t *testing.T) {
 	var secondType string
 	json.Unmarshal(content[1]["type"], &secondType)
 	if secondType != "text" {
-		t.Errorf("expected second block type %q, got %q (should be text, not tool_use)", "text", secondType)
+		t.Errorf(
+			"expected second block type %q, got %q (should be text, not tool_use)",
+			"text",
+			secondType,
+		)
 	}
 
 	var secondText string
@@ -886,7 +947,17 @@ func TestInterceptMCPToolCalls_FailClosedBlocksViaAllowlist(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -934,7 +1005,17 @@ func TestInterceptMCPToolCalls_PartialBlockAnthropic(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1036,7 +1117,17 @@ func TestInterceptMCPToolCalls_OpenAIBlockedToolRewritten(t *testing.T) {
 		}]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectOpenAI, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectOpenAI,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1085,7 +1176,8 @@ func TestInterceptMCPToolCalls_OpenAIBlockedToolRewritten(t *testing.T) {
 		t.Errorf("expected content to mention 'blocked', got %q", choice.Message.Content)
 	}
 	// tool_calls should be empty or null
-	if choice.Message.ToolCalls != nil && string(choice.Message.ToolCalls) != "[]" && string(choice.Message.ToolCalls) != "null" {
+	if choice.Message.ToolCalls != nil && string(choice.Message.ToolCalls) != "[]" &&
+		string(choice.Message.ToolCalls) != "null" {
 		t.Errorf("expected tool_calls to be empty/null, got %s", string(choice.Message.ToolCalls))
 	}
 }
@@ -1135,7 +1227,17 @@ func TestInterceptMCPToolCalls_OpenAIPartialBlock(t *testing.T) {
 		}]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectOpenAI, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectOpenAI,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1173,7 +1275,11 @@ func TestInterceptMCPToolCalls_OpenAIPartialBlock(t *testing.T) {
 	choice := rewritten.Choices[0]
 	// Partial block -> finish_reason should remain "tool_calls"
 	if choice.FinishReason != "tool_calls" {
-		t.Errorf("expected finish_reason %q for partial block, got %q", "tool_calls", choice.FinishReason)
+		t.Errorf(
+			"expected finish_reason %q for partial block, got %q",
+			"tool_calls",
+			choice.FinishReason,
+		)
 	}
 
 	// Only the allowed tool call should remain
@@ -1181,7 +1287,11 @@ func TestInterceptMCPToolCalls_OpenAIPartialBlock(t *testing.T) {
 		t.Fatalf("expected 1 remaining tool call, got %d", len(choice.Message.ToolCalls))
 	}
 	if choice.Message.ToolCalls[0].Function.Name != "get_weather" {
-		t.Errorf("expected remaining tool to be %q, got %q", "get_weather", choice.Message.ToolCalls[0].Function.Name)
+		t.Errorf(
+			"expected remaining tool to be %q, got %q",
+			"get_weather",
+			choice.Message.ToolCalls[0].Function.Name,
+		)
 	}
 }
 
@@ -1202,7 +1312,17 @@ func TestInterceptMCPToolCalls_MixedMCPAndNonMCP(t *testing.T) {
 		]
 	}`)
 
-	result := interceptMCPToolCalls(body, DialectAnthropic, reg, policy, "req_1", "sess_1", nil, nil, nil)
+	result := interceptMCPToolCalls(
+		body,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+		nil,
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1501,7 +1621,15 @@ func TestInterceptMCPToolCallsFromList_AllowedTool(t *testing.T) {
 		{ID: "toolu_01", Name: "get_weather"},
 	}
 
-	result := interceptMCPToolCallsFromList(calls, DialectAnthropic, reg, policy, "req_1", "sess_1", nil)
+	result := interceptMCPToolCallsFromList(
+		calls,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1529,7 +1657,15 @@ func TestInterceptMCPToolCallsFromList_BlockedTool(t *testing.T) {
 		{ID: "toolu_01", Name: "get_weather"},
 	}
 
-	result := interceptMCPToolCallsFromList(calls, DialectAnthropic, reg, policy, "req_1", "sess_1", nil)
+	result := interceptMCPToolCallsFromList(
+		calls,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -1556,7 +1692,15 @@ func TestInterceptMCPToolCallsFromList_UnknownToolSkipped(t *testing.T) {
 		{ID: "toolu_01", Name: "unknown_tool"},
 	}
 
-	result := interceptMCPToolCallsFromList(calls, DialectAnthropic, reg, policy, "req_1", "sess_1", nil)
+	result := interceptMCPToolCallsFromList(
+		calls,
+		DialectAnthropic,
+		reg,
+		policy,
+		"req_1",
+		"sess_1",
+		nil,
+	)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}

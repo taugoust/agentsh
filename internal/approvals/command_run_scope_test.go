@@ -29,7 +29,10 @@ func TestCommandRunScopeAdvertisedAsCommandLifetime(t *testing.T) {
 	defer cancel()
 	done := make(chan Resolution, 1)
 	go func() {
-		res, _ := m.RequestApproval(ctx, commandRunTestRequest("advertised", "command-1", "file", scope.Path, scope))
+		res, _ := m.RequestApproval(
+			ctx,
+			commandRunTestRequest("advertised", "command-1", "file", scope.Path, scope),
+		)
 		done <- res
 	}()
 	waitForPending(t, m, 1)
@@ -43,7 +46,8 @@ func TestCommandRunScopeAdvertisedAsCommandLifetime(t *testing.T) {
 	}
 	found := false
 	for _, option := range options {
-		if option["scope_kind"] == CommandRunScopeKind && option["scope_key"] == CommandRunScopeKey {
+		if option["scope_kind"] == CommandRunScopeKind &&
+			option["scope_key"] == CommandRunScopeKey {
 			found = option["scope_lifetime"] == "command"
 		}
 	}
@@ -70,7 +74,13 @@ func TestCommandRunScopeCoversPendingAndFutureRequestsOnlyForSameCommand(t *test
 
 	requests := []Request{
 		commandRunTestRequest("file-request", commandID, "file", fileScope.Path, fileScope),
-		commandRunTestRequest("network-request", commandID, "network", networkScope.Label, networkScope),
+		commandRunTestRequest(
+			"network-request",
+			commandID,
+			"network",
+			networkScope.Label,
+			networkScope,
+		),
 	}
 	results := make(chan Resolution, len(requests))
 	for _, request := range requests {
@@ -81,7 +91,14 @@ func TestCommandRunScopeCoversPendingAndFutureRequestsOnlyForSameCommand(t *test
 	}
 	waitForPending(t, m, len(requests))
 	commandRun := NewCommandRunScope()
-	if !m.ResolveForSessionWithScopeTarget("session-command-run", "file-request", true, "operator approved invocation", ScopeOnce, commandRun) {
+	if !m.ResolveForSessionWithScopeTarget(
+		"session-command-run",
+		"file-request",
+		true,
+		"operator approved invocation",
+		ScopeOnce,
+		commandRun,
+	) {
 		t.Fatal("command-run resolution failed")
 	}
 	if pending := m.ListPendingForSession("session-command-run"); len(pending) != 0 {
@@ -90,7 +107,8 @@ func TestCommandRunScopeCoversPendingAndFutureRequestsOnlyForSameCommand(t *test
 	for range requests {
 		select {
 		case res := <-results:
-			if !res.Approved || res.Scope != ScopeOnce || res.ScopeKind != CommandRunScopeKind || res.ScopeKey != CommandRunScopeKey {
+			if !res.Approved || res.Scope != ScopeOnce || res.ScopeKind != CommandRunScopeKind ||
+				res.ScopeKey != CommandRunScopeKey {
 				t.Fatalf("covered resolution = %+v", res)
 			}
 		case <-time.After(time.Second):
@@ -117,7 +135,13 @@ func TestCommandRunScopeCoversPendingAndFutureRequestsOnlyForSameCommand(t *test
 
 	otherCtx, cancelOther := context.WithCancel(context.Background())
 	otherDone := make(chan Resolution, 1)
-	other := commandRunTestRequest("other-command-request", "command-other", "command", "command2", futureScope)
+	other := commandRunTestRequest(
+		"other-command-request",
+		"command-other",
+		"command",
+		"command2",
+		futureScope,
+	)
 	go func() {
 		res, _ := m.RequestApproval(otherCtx, other)
 		otherDone <- res
@@ -139,7 +163,15 @@ func TestCommandRunScopeCannotBecomeSessionGrant(t *testing.T) {
 	m := New("api", time.Minute, nil)
 	ctx := context.Background()
 	commandRun := NewCommandRunScope()
-	if m.SetScoped(ctx, "session-command-run", "command-1", commandRun, true, "bad session grant", "") {
+	if m.SetScoped(
+		ctx,
+		"session-command-run",
+		"command-1",
+		commandRun,
+		true,
+		"bad session grant",
+		"",
+	) {
 		t.Fatal("command-run scope was accepted as a session grant")
 	}
 	if _, ok := m.CheckScoped(ctx, "session-command-run", "command-2", commandRun); ok {

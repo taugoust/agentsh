@@ -53,7 +53,9 @@ func (r *cgroupResourceLimiter) ensureManager() (*limits.CgroupManager, error) {
 	return r.mgr, r.initErr
 }
 
-func (r *cgroupResourceLimiter) Apply(config platform.ResourceConfig) (platform.ResourceHandle, error) {
+func (r *cgroupResourceLimiter) Apply(
+	config platform.ResourceConfig,
+) (platform.ResourceHandle, error) {
 	if config.MaxDiskReadMBps > 0 || config.MaxDiskWriteMBps > 0 {
 		return nil, fmt.Errorf("disk IO limiting not implemented (io.max not written)")
 	}
@@ -177,12 +179,20 @@ func (h *cgroupResourceHandle) Stats() platform.ResourceStats {
 		for _, line := range strings.Split(string(b), "\n") {
 			for _, field := range strings.Fields(line) {
 				if strings.HasPrefix(field, "rbytes=") {
-					if v, err := strconv.ParseInt(strings.TrimPrefix(field, "rbytes="), 10, 64); err == nil {
+					if v, err := strconv.ParseInt(
+						strings.TrimPrefix(field, "rbytes="),
+						10,
+						64,
+					); err == nil {
 						stats.DiskReadMB += v / (1024 * 1024)
 					}
 				}
 				if strings.HasPrefix(field, "wbytes=") {
-					if v, err := strconv.ParseInt(strings.TrimPrefix(field, "wbytes="), 10, 64); err == nil {
+					if v, err := strconv.ParseInt(
+						strings.TrimPrefix(field, "wbytes="),
+						10,
+						64,
+					); err == nil {
 						stats.DiskWriteMB += v / (1024 * 1024)
 					}
 				}

@@ -99,7 +99,11 @@ func (p *VaultProvider) GetKey(ctx context.Context) ([]byte, error) {
 	// Extract the key field
 	value, ok := secret.Data[p.config.KeyField]
 	if !ok {
-		return nil, fmt.Errorf("%w: field %q not found in secret", ErrKeyNotFound, p.config.KeyField)
+		return nil, fmt.Errorf(
+			"%w: field %q not found in secret",
+			ErrKeyNotFound,
+			p.config.KeyField,
+		)
 	}
 
 	keyStr, ok := value.(string)

@@ -33,7 +33,11 @@ func TestProxy_PreHookAbortError_Returns403(t *testing.T) {
 	}
 	p.HookRegistry().Register("", abortHook)
 
-	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/messages", bytes.NewReader([]byte(`{"test":"data"}`)))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://localhost/v1/messages",
+		bytes.NewReader([]byte(`{"test":"data"}`)),
+	)
 	req.Header.Set("x-api-key", "sk-ant-test")
 	req.Header.Set("anthropic-version", "2023-06-01")
 	w := httptest.NewRecorder()
@@ -58,7 +62,11 @@ func TestProxy_PreHookPlainError_Returns502(t *testing.T) {
 	}
 	p.HookRegistry().Register("", errHook)
 
-	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/messages", bytes.NewReader([]byte(`{"test":"data"}`)))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://localhost/v1/messages",
+		bytes.NewReader([]byte(`{"test":"data"}`)),
+	)
 	req.Header.Set("x-api-key", "sk-ant-test")
 	req.Header.Set("anthropic-version", "2023-06-01")
 	w := httptest.NewRecorder()
@@ -120,7 +128,11 @@ func TestProxy_PreHookAbortError_NonErrorStatus_Falls502(t *testing.T) {
 			}
 			p.HookRegistry().Register("", abortHook)
 
-			req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/messages", bytes.NewReader([]byte(`{"test":"data"}`)))
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"http://localhost/v1/messages",
+				bytes.NewReader([]byte(`{"test":"data"}`)),
+			)
 			req.Header.Set("x-api-key", "sk-ant-test")
 			req.Header.Set("anthropic-version", "2023-06-01")
 			w := httptest.NewRecorder()

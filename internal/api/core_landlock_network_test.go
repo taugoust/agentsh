@@ -38,7 +38,8 @@ func TestSelectSandboxCompositionRequiresMetadataInterception(t *testing.T) {
 		SandboxComposition: bubblewrapCompositionMode,
 	}
 	mode, code := app.selectSandboxComposition(decision)
-	if mode != "" || code != "E_COMPOSITION_BACKEND_UNAVAILABLE" || decision.EffectiveDecision != types.DecisionDeny {
+	if mode != "" || code != "E_COMPOSITION_BACKEND_UNAVAILABLE" ||
+		decision.EffectiveDecision != types.DecisionDeny {
 		t.Fatalf("metadata-disabled selection mode=%q code=%q decision=%+v", mode, code, decision)
 	}
 	if !strings.Contains(decision.Message, "metadata file interception") {
@@ -107,11 +108,16 @@ func TestSetupSeccompWrapperDefersCompositionUntilStartedWrapperPID(t *testing.T
 	sess := &session.Session{Workspace: t.TempDir()}
 	sess.SetCurrentSandboxComposition(bubblewrapCompositionMode)
 
-	result := app.setupSeccompWrapper(types.ExecRequest{Command: testNoopExecutable(t)}, "composition-deferred", sess)
+	result := app.setupSeccompWrapper(
+		types.ExecRequest{Command: testNoopExecutable(t)},
+		"composition-deferred",
+		sess,
+	)
 	if result == nil || result.setupErr != nil {
 		t.Fatalf("composition wrapper setup failed before process start: %#v", result)
 	}
-	if result.extraCfg == nil || result.extraCfg.compositionParentSock == nil || result.extraCfg.configureComposition == nil {
+	if result.extraCfg == nil || result.extraCfg.compositionParentSock == nil ||
+		result.extraCfg.configureComposition == nil {
 		t.Fatalf("composition setup was not deferred with retained state: %#v", result.extraCfg)
 	}
 	closePreStartProcessFiles(result.extraCfg)
@@ -141,22 +147,30 @@ func TestBuildSeccompWrapperConfig_DeviceIOCTLOnlyForComposition(t *testing.T) {
 	if len(composition.AllowDeviceIOCTL) != 1 || composition.AllowDeviceIOCTL[0] != "/dev/null" {
 		t.Fatalf("composition device ioctl paths = %#v", composition.AllowDeviceIOCTL)
 	}
-	if len(composition.DenyPaths) == 0 || composition.DenyPaths[0] != "/agentsh-composition-scratch" {
+	if len(composition.DenyPaths) == 0 ||
+		composition.DenyPaths[0] != "/agentsh-composition-scratch" {
 		t.Fatalf("composition internal deny paths = %#v", composition.DenyPaths)
 	}
 
 	// A wrap-init snapshot must override stale session-global state in both
 	// directions; concurrent requests cannot borrow one another's selection.
-	boundOrdinary := app.buildSeccompWrapperConfig(sess, seccompWrapperParams{CompositionSelectionBound: true})
+	boundOrdinary := app.buildSeccompWrapperConfig(
+		sess,
+		seccompWrapperParams{CompositionSelectionBound: true},
+	)
 	if boundOrdinary.SandboxComposition != "" || boundOrdinary.HandleDeviceIOCTL {
-		t.Fatalf("explicit empty composition snapshot inherited stale session state: %+v", boundOrdinary)
+		t.Fatalf(
+			"explicit empty composition snapshot inherited stale session state: %+v",
+			boundOrdinary,
+		)
 	}
 	sess.SetCurrentSandboxComposition("")
 	boundComposition := app.buildSeccompWrapperConfig(sess, seccompWrapperParams{
 		CompositionSelectionBound: true,
 		SandboxComposition:        bubblewrapCompositionMode,
 	})
-	if boundComposition.SandboxComposition != bubblewrapCompositionMode || !boundComposition.HandleDeviceIOCTL {
+	if boundComposition.SandboxComposition != bubblewrapCompositionMode ||
+		!boundComposition.HandleDeviceIOCTL {
 		t.Fatalf("explicit composition snapshot was lost: %+v", boundComposition)
 	}
 }

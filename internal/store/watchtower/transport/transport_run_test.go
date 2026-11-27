@@ -245,10 +245,16 @@ func TestRun_RetriesTransientDialFailureUntilSuccess(t *testing.T) {
 	select {
 	case <-conn3.sendCh:
 	case <-time.After(3 * time.Second):
-		t.Fatalf("no SessionInit on third attempt; replay-failure did not regress to Connecting (dial attempts=%d)", attempts.Load())
+		t.Fatalf(
+			"no SessionInit on third attempt; replay-failure did not regress to Connecting (dial attempts=%d)",
+			attempts.Load(),
+		)
 	}
 	if got := attempts.Load(); got < 3 {
-		t.Fatalf("dial attempts: got %d, want >= 3 (transient + success + post-replay-failure re-dial)", got)
+		t.Fatalf(
+			"dial attempts: got %d, want >= 3 (transient + success + post-replay-failure re-dial)",
+			got,
+		)
 	}
 
 	cancel()
@@ -345,7 +351,9 @@ func TestRun_StartsRecvGoroutineAfterAcceptedSessionAck(t *testing.T) {
 	}
 
 	if rsh := transport.RecvSessionForTest(tr); rsh == nil {
-		t.Fatal("recv goroutine never started after accepted SessionAck (SCAFFOLDING ONLY item #1 still open)")
+		t.Fatal(
+			"recv goroutine never started after accepted SessionAck (SCAFFOLDING ONLY item #1 still open)",
+		)
 	}
 
 	close(rdrFactoryRelease)
@@ -451,7 +459,9 @@ func TestRun_NoRecvLeakOnReaderFactoryFailure(t *testing.T) {
 	select {
 	case <-rsh.Done():
 	case <-time.After(1 * time.Second):
-		t.Fatal("recv goroutine still running after rdrFactory failure; teardown leaked the recvSession")
+		t.Fatal(
+			"recv goroutine still running after rdrFactory failure; teardown leaked the recvSession",
+		)
 	}
 
 	close(gateSecondDial)
@@ -568,7 +578,9 @@ func TestRun_NoRecvLeakOnOuterCtxCancel(t *testing.T) {
 	select {
 	case <-conn.closed:
 	default:
-		t.Fatal("conn still open after Run returned; outer ctx.Done branch leaked the accepted stream")
+		t.Fatal(
+			"conn still open after Run returned; outer ctx.Done branch leaked the accepted stream",
+		)
 	}
 }
 
@@ -637,7 +649,9 @@ func TestRunOnce_DoesNotStartRecvGoroutine(t *testing.T) {
 	// Run owns that lifecycle so a single-transition seam does not
 	// leak a recvSession with no teardown owner.
 	if rsh := transport.RecvSessionForTest(tr); rsh != nil {
-		t.Fatal("RunOnce(StateConnecting) leaked a recvSession; Run should own startRecv, not runConnecting")
+		t.Fatal(
+			"RunOnce(StateConnecting) leaked a recvSession; Run should own startRecv, not runConnecting",
+		)
 	}
 
 	// CRITICAL #2: RunOnce must close the accepted conn before
@@ -646,6 +660,8 @@ func TestRunOnce_DoesNotStartRecvGoroutine(t *testing.T) {
 	select {
 	case <-conn.closed:
 	default:
-		t.Fatal("RunOnce(StateConnecting) did not close the accepted conn; caller would inherit a live stream")
+		t.Fatal(
+			"RunOnce(StateConnecting) did not close the accepted conn; caller would inherit a live stream",
+		)
 	}
 }

@@ -81,7 +81,10 @@ func (m *mockFailingRawWriter) AppendEvent(_ context.Context, _ types.Event) err
 	return nil
 }
 
-func (m *mockFailingRawWriter) QueryEvents(_ context.Context, _ types.EventQuery) ([]types.Event, error) {
+func (m *mockFailingRawWriter) QueryEvents(
+	_ context.Context,
+	_ types.EventQuery,
+) ([]types.Event, error) {
 	return nil, nil
 }
 
@@ -102,13 +105,19 @@ func (m *mockPartialFailRawWriter) AppendEvent(_ context.Context, _ types.Event)
 	return nil
 }
 
-func (m *mockPartialFailRawWriter) QueryEvents(_ context.Context, _ types.EventQuery) ([]types.Event, error) {
+func (m *mockPartialFailRawWriter) QueryEvents(
+	_ context.Context,
+	_ types.EventQuery,
+) ([]types.Event, error) {
 	return nil, nil
 }
 
 func (m *mockPartialFailRawWriter) Close() error { return nil }
 
-func newBootstrappedRawIntegrityStore(t *testing.T, inner EventStore) (*IntegrityStore, *audit.IntegrityChain, string, audit.ChainState) {
+func newBootstrappedRawIntegrityStore(
+	t *testing.T,
+	inner EventStore,
+) (*IntegrityStore, *audit.IntegrityChain, string, audit.ChainState) {
 	t.Helper()
 
 	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
@@ -267,7 +276,10 @@ func TestIntegrityStore_FatalSidecarFailureRecoversOnRestart(t *testing.T) {
 		t.Fatalf("NewIntegrityStore() error = %v", err)
 	}
 
-	if err := store.AppendEvent(context.Background(), types.Event{ID: "1", Type: "ok"}); err != nil {
+	if err := store.AppendEvent(
+		context.Background(),
+		types.Event{ID: "1", Type: "ok"},
+	); err != nil {
 		t.Fatalf("AppendEvent(first) error = %v", err)
 	}
 	if err := store.FlushSync(); err != nil {
@@ -280,7 +292,10 @@ func TestIntegrityStore_FatalSidecarFailureRecoversOnRestart(t *testing.T) {
 		t.Fatalf("audit.ReadSidecar() before failure error = %v", err)
 	}
 
-	if err := store.AppendEvent(context.Background(), types.Event{ID: "2", Type: "fatal_sidecar"}); err != nil {
+	if err := store.AppendEvent(
+		context.Background(),
+		types.Event{ID: "2", Type: "fatal_sidecar"},
+	); err != nil {
 		t.Fatalf("AppendEvent(second) error = %v", err)
 	}
 
@@ -305,8 +320,13 @@ func TestIntegrityStore_FatalSidecarFailureRecoversOnRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit.ReadSidecar() after failure error = %v", err)
 	}
-	if afterFailure.Sequence != beforeFailure.Sequence || afterFailure.PrevHash != beforeFailure.PrevHash {
-		t.Fatalf("sidecar advanced after fatal failure: before=%+v after=%+v", beforeFailure, afterFailure)
+	if afterFailure.Sequence != beforeFailure.Sequence ||
+		afterFailure.PrevHash != beforeFailure.PrevHash {
+		t.Fatalf(
+			"sidecar advanced after fatal failure: before=%+v after=%+v",
+			beforeFailure,
+			afterFailure,
+		)
 	}
 
 	if err := store.Close(); err != nil {
@@ -341,7 +361,10 @@ func TestIntegrityStore_FatalSidecarFailureRecoversOnRestart(t *testing.T) {
 }
 
 func TestIntegrityStore_PartialWriteReturnsFatalErrorAndDoesNotRollBack(t *testing.T) {
-	store, chain, _, initialState := newBootstrappedRawIntegrityStore(t, &mockPartialFailRawWriter{})
+	store, chain, _, initialState := newBootstrappedRawIntegrityStore(
+		t,
+		&mockPartialFailRawWriter{},
+	)
 	t.Cleanup(func() { _ = store.Close() })
 
 	err := store.AppendEvent(context.Background(), types.Event{ID: "ev-1", Type: "test"})
@@ -396,8 +419,20 @@ func TestIntegrityStore_EndToEnd_VerifyWithAuditHelpers(t *testing.T) {
 
 	events := []types.Event{
 		{ID: "1", Type: "session_start", SessionID: "s1", Timestamp: time.Now().UTC()},
-		{ID: "2", Type: "command_executed", SessionID: "s1", Timestamp: time.Now().UTC(), Fields: map[string]any{"command": "ls"}},
-		{ID: "3", Type: "file_read", SessionID: "s1", Timestamp: time.Now().UTC(), Fields: map[string]any{"path": "/etc/hosts"}},
+		{
+			ID:        "2",
+			Type:      "command_executed",
+			SessionID: "s1",
+			Timestamp: time.Now().UTC(),
+			Fields:    map[string]any{"command": "ls"},
+		},
+		{
+			ID:        "3",
+			Type:      "file_read",
+			SessionID: "s1",
+			Timestamp: time.Now().UTC(),
+			Fields:    map[string]any{"path": "/etc/hosts"},
+		},
 	}
 	for _, ev := range events {
 		if err := store.AppendEvent(context.Background(), ev); err != nil {
@@ -440,7 +475,13 @@ func TestIntegrityStore_EndToEnd_VerifyWithAuditHelpers(t *testing.T) {
 		if err != nil {
 			t.Fatalf("json.Marshal(line %d payload) error = %v", i, err)
 		}
-		if got := computeHMAC(testKey, formatVersion, sequence, prevHash, canonicalPayload); got != entryHash {
+		if got := computeHMAC(
+			testKey,
+			formatVersion,
+			sequence,
+			prevHash,
+			canonicalPayload,
+		); got != entryHash {
 			t.Fatalf("line %d entry_hash = %q, want %q", i, entryHash, got)
 		}
 
@@ -448,7 +489,13 @@ func TestIntegrityStore_EndToEnd_VerifyWithAuditHelpers(t *testing.T) {
 	}
 }
 
-func computeHMAC(key []byte, formatVersion int, sequence int64, prevHash string, payload []byte) string {
+func computeHMAC(
+	key []byte,
+	formatVersion int,
+	sequence int64,
+	prevHash string,
+	payload []byte,
+) string {
 	h := hmac.New(sha256.New, key)
 	h.Write([]byte(strconv.Itoa(formatVersion)))
 	h.Write([]byte("|"))
@@ -482,7 +529,11 @@ func TestFlushSync_WritesSidecar(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sidecar.Sequence != expectedState.Sequence {
-		t.Fatalf("pre-flush sidecar.Sequence = %d, want %d", sidecar.Sequence, expectedState.Sequence)
+		t.Fatalf(
+			"pre-flush sidecar.Sequence = %d, want %d",
+			sidecar.Sequence,
+			expectedState.Sequence,
+		)
 	}
 
 	if err := store.FlushSync(); err != nil {
@@ -494,7 +545,11 @@ func TestFlushSync_WritesSidecar(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sidecar.Sequence != expectedState.Sequence+1 {
-		t.Fatalf("post-flush sidecar.Sequence = %d, want %d", sidecar.Sequence, expectedState.Sequence+1)
+		t.Fatalf(
+			"post-flush sidecar.Sequence = %d, want %d",
+			sidecar.Sequence,
+			expectedState.Sequence+1,
+		)
 	}
 }
 
@@ -524,7 +579,11 @@ func TestFlushSync_Noop_WhenNoPending(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sidecarAfter.Sequence != sidecarBefore.Sequence {
-		t.Fatalf("sidecar changed without pending events: %d -> %d", sidecarBefore.Sequence, sidecarAfter.Sequence)
+		t.Fatalf(
+			"sidecar changed without pending events: %d -> %d",
+			sidecarBefore.Sequence,
+			sidecarAfter.Sequence,
+		)
 	}
 }
 
@@ -547,14 +606,23 @@ func TestAppendEvent_NoSidecarWrite(t *testing.T) {
 
 	sidecarPath := audit.SidecarPath(logPath)
 
-	ev := types.Event{ID: "ev-no-sidecar", Timestamp: time.Now().UTC(), Type: "test", SessionID: "s1"}
+	ev := types.Event{
+		ID:        "ev-no-sidecar",
+		Timestamp: time.Now().UTC(),
+		Type:      "test",
+		SessionID: "s1",
+	}
 	if err := store.AppendEvent(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
 
 	sidecar, _ := audit.ReadSidecar(sidecarPath)
 	if sidecar.Sequence != initialState.Sequence {
-		t.Fatalf("sidecar.Sequence = %d, want %d (AppendEvent should not write sidecar)", sidecar.Sequence, initialState.Sequence)
+		t.Fatalf(
+			"sidecar.Sequence = %d, want %d (AppendEvent should not write sidecar)",
+			sidecar.Sequence,
+			initialState.Sequence,
+		)
 	}
 }
 
@@ -593,7 +661,12 @@ func TestFlushSync_SetsFatal_OnSyncError(t *testing.T) {
 		t.Fatalf("expected FatalIntegrityError, got %T: %v", err, err)
 	}
 
-	ev2 := types.Event{ID: "ev-after-fatal", Timestamp: time.Now().UTC(), Type: "test", SessionID: "s1"}
+	ev2 := types.Event{
+		ID:        "ev-after-fatal",
+		Timestamp: time.Now().UTC(),
+		Type:      "test",
+		SessionID: "s1",
+	}
 	if err := store.AppendEvent(context.Background(), ev2); !errors.Is(err, ErrIntegrityFatal) {
 		t.Fatalf("AppendEvent after fatal = %v, want ErrIntegrityFatal", err)
 	}
@@ -613,7 +686,12 @@ func TestFlushSync_SetsFatal_OnSidecarError(t *testing.T) {
 
 	store.sidecarPath = "/proc/nonexistent/sidecar.json"
 
-	ev := types.Event{ID: "ev-sidecar-fail", Timestamp: time.Now().UTC(), Type: "test", SessionID: "s1"}
+	ev := types.Event{
+		ID:        "ev-sidecar-fail",
+		Timestamp: time.Now().UTC(),
+		Type:      "test",
+		SessionID: "s1",
+	}
 	if err := store.AppendEvent(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +705,12 @@ func TestFlushSync_SetsFatal_OnSidecarError(t *testing.T) {
 		t.Fatalf("expected FatalIntegrityError, got %T: %v", err, err)
 	}
 
-	ev2 := types.Event{ID: "ev-after-sidecar-fatal", Timestamp: time.Now().UTC(), Type: "test", SessionID: "s1"}
+	ev2 := types.Event{
+		ID:        "ev-after-sidecar-fatal",
+		Timestamp: time.Now().UTC(),
+		Type:      "test",
+		SessionID: "s1",
+	}
 	if err := store.AppendEvent(context.Background(), ev2); !errors.Is(err, ErrIntegrityFatal) {
 		t.Fatalf("AppendEvent after sidecar fatal = %v, want ErrIntegrityFatal", err)
 	}
@@ -688,7 +771,12 @@ func TestAppendEvent_Then_FlushSync_ChainContinuity(t *testing.T) {
 			continue
 		}
 		if entry.Integrity.PrevHash != prevHash {
-			t.Fatalf("line %d: chain broken: prev_hash=%q, want %q", i, entry.Integrity.PrevHash, prevHash)
+			t.Fatalf(
+				"line %d: chain broken: prev_hash=%q, want %q",
+				i,
+				entry.Integrity.PrevHash,
+				prevHash,
+			)
 		}
 		ok, err := chain.VerifyHash(
 			entry.Integrity.FormatVersion, entry.Integrity.Sequence,
@@ -837,12 +925,20 @@ func TestFlushLoop_PeriodicSync(t *testing.T) {
 
 	chainState := chain.State()
 
-	sidecar, err := waitForSidecarSequence(audit.SidecarPath(logPath), chainState.Sequence, 2*time.Second)
+	sidecar, err := waitForSidecarSequence(
+		audit.SidecarPath(logPath),
+		chainState.Sequence,
+		2*time.Second,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sidecar.Sequence != chainState.Sequence {
-		t.Fatalf("sidecar.Sequence = %d, want %d (timer should have flushed)", sidecar.Sequence, chainState.Sequence)
+		t.Fatalf(
+			"sidecar.Sequence = %d, want %d (timer should have flushed)",
+			sidecar.Sequence,
+			chainState.Sequence,
+		)
 	}
 }
 
@@ -854,7 +950,11 @@ func TestWaitForSidecarSequence_Timeout(t *testing.T) {
 		PrevHash: "prev-hash",
 	})
 
-	if _, err := waitForSidecarSequence(audit.SidecarPath(logPath), 1, 50*time.Millisecond); err == nil {
+	if _, err := waitForSidecarSequence(
+		audit.SidecarPath(logPath),
+		1,
+		50*time.Millisecond,
+	); err == nil {
 		t.Fatal("waitForSidecarSequence() error = nil, want timeout")
 	}
 }
@@ -863,17 +963,24 @@ func TestWaitForSidecarSequence_RetriesTransientReadErrors(t *testing.T) {
 	t.Parallel()
 
 	var calls int
-	got, err := waitForSidecarSequenceWithReader("audit.jsonl.chain", 3, 100*time.Millisecond, func(string) (audit.SidecarState, error) {
-		calls++
-		if calls == 1 {
-			return audit.SidecarState{}, &os.PathError{
-				Op:   "open",
-				Path: "audit.jsonl.chain",
-				Err:  errors.New("The process cannot access the file because it is being used by another process."),
+	got, err := waitForSidecarSequenceWithReader(
+		"audit.jsonl.chain",
+		3,
+		100*time.Millisecond,
+		func(string) (audit.SidecarState, error) {
+			calls++
+			if calls == 1 {
+				return audit.SidecarState{}, &os.PathError{
+					Op:   "open",
+					Path: "audit.jsonl.chain",
+					Err: errors.New(
+						"The process cannot access the file because it is being used by another process.",
+					),
+				}
 			}
-		}
-		return audit.SidecarState{Sequence: 3}, nil
-	})
+			return audit.SidecarState{Sequence: 3}, nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("waitForSidecarSequenceWithReader() error = %v", err)
 	}
@@ -889,19 +996,33 @@ func TestWaitForSidecarSequence_FailsFastOnNonRetryableReadError(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("boom")
-	_, err := waitForSidecarSequenceWithReader("audit.jsonl.chain", 1, 100*time.Millisecond, func(string) (audit.SidecarState, error) {
-		return audit.SidecarState{}, wantErr
-	})
+	_, err := waitForSidecarSequenceWithReader(
+		"audit.jsonl.chain",
+		1,
+		100*time.Millisecond,
+		func(string) (audit.SidecarState, error) {
+			return audit.SidecarState{}, wantErr
+		},
+	)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("waitForSidecarSequenceWithReader() error = %v, want %v", err, wantErr)
 	}
 }
 
-func waitForSidecarSequence(sidecarPath string, want int64, timeout time.Duration) (audit.SidecarState, error) {
+func waitForSidecarSequence(
+	sidecarPath string,
+	want int64,
+	timeout time.Duration,
+) (audit.SidecarState, error) {
 	return waitForSidecarSequenceWithReader(sidecarPath, want, timeout, audit.ReadSidecar)
 }
 
-func waitForSidecarSequenceWithReader(sidecarPath string, want int64, timeout time.Duration, readSidecar func(string) (audit.SidecarState, error)) (audit.SidecarState, error) {
+func waitForSidecarSequenceWithReader(
+	sidecarPath string,
+	want int64,
+	timeout time.Duration,
+	readSidecar func(string) (audit.SidecarState, error),
+) (audit.SidecarState, error) {
 	deadline := time.Now().Add(timeout)
 	var lastSidecar audit.SidecarState
 	var lastErr error
@@ -921,9 +1042,17 @@ func waitForSidecarSequenceWithReader(sidecarPath string, want int64, timeout ti
 		}
 		if time.Now().After(deadline) {
 			if lastErr != nil {
-				return audit.SidecarState{}, fmt.Errorf("timed out waiting for sidecar sequence %d after read error: %w", want, lastErr)
+				return audit.SidecarState{}, fmt.Errorf(
+					"timed out waiting for sidecar sequence %d after read error: %w",
+					want,
+					lastErr,
+				)
 			}
-			return lastSidecar, fmt.Errorf("timed out waiting for sidecar sequence %d; got %d", want, lastSidecar.Sequence)
+			return lastSidecar, fmt.Errorf(
+				"timed out waiting for sidecar sequence %d; got %d",
+				want,
+				lastSidecar.Sequence,
+			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -975,7 +1104,11 @@ func TestClose_FinalFlush(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sidecar.Sequence != initialState.Sequence+1 {
-		t.Fatalf("sidecar.Sequence = %d, want %d (Close should have flushed)", sidecar.Sequence, initialState.Sequence+1)
+		t.Fatalf(
+			"sidecar.Sequence = %d, want %d (Close should have flushed)",
+			sidecar.Sequence,
+			initialState.Sequence+1,
+		)
 	}
 }
 
@@ -1108,7 +1241,8 @@ func TestStartup_SidecarBehindByN_InvalidChain(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for tampered chain, got nil")
 	}
-	if !strings.Contains(err.Error(), "chain mismatch") && !strings.Contains(err.Error(), "invalid") {
+	if !strings.Contains(err.Error(), "chain mismatch") &&
+		!strings.Contains(err.Error(), "invalid") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -1144,7 +1278,10 @@ func TestStartup_TruncatedLastLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sidecar.Sequence != 5 {
-		t.Fatalf("sidecar.Sequence = %d, want 5 (should recover up to last valid)", sidecar.Sequence)
+		t.Fatalf(
+			"sidecar.Sequence = %d, want 5 (should recover up to last valid)",
+			sidecar.Sequence,
+		)
 	}
 }
 
@@ -1163,7 +1300,12 @@ func benchmarkIntegritySetup(tb testing.TB) (*IntegrityStore, func()) {
 	if err != nil {
 		tb.Fatal(err)
 	}
-	rotEv := types.Event{ID: "init", Timestamp: time.Now().UTC(), Type: "integrity_chain_rotated", SessionID: "bench"}
+	rotEv := types.Event{
+		ID:        "init",
+		Timestamp: time.Now().UTC(),
+		Type:      "integrity_chain_rotated",
+		SessionID: "bench",
+	}
 	payload, _ := json.Marshal(rotEv)
 	wrapped, _ := chain.Wrap(payload)
 	f.Write(append(wrapped, '\n'))

@@ -20,8 +20,12 @@ import (
 
 var (
 	errInTxTerminate      = errors.New("postgres.simpleQueryLoop: in-tx deny terminated connection")
-	errFrameTooLargeClose = errors.New("postgres.simpleQueryLoop: frame budget exceeded; conn closed")
-	errUnsupportedFrame   = errors.New("postgres.simpleQueryLoop: unsupported frame type; conn closed")
+	errFrameTooLargeClose = errors.New(
+		"postgres.simpleQueryLoop: frame budget exceeded; conn closed",
+	)
+	errUnsupportedFrame = errors.New(
+		"postgres.simpleQueryLoop: unsupported frame type; conn closed",
+	)
 )
 
 // classifierOptionsFromPolicy materializes a classify_pg.Options from the
@@ -85,13 +89,19 @@ func (pc *proxyConn) simpleQueryLoop(ctx context.Context) error {
 // post-handshake frame and closes the connection. Delegates FunctionCall
 // frames to handleFunctionCall (which implements the 04c default-deny stub
 // and the Plan-05b opt-in path). Other frames get a generic 0A000 response.
-func (pc *proxyConn) handleUnsupportedFrame(ctx context.Context, msg pgproto3.FrontendMessage) error {
+func (pc *proxyConn) handleUnsupportedFrame(
+	ctx context.Context,
+	msg pgproto3.FrontendMessage,
+) error {
 	if fc, isFunc := msg.(*pgproto3.FunctionCall); isFunc {
 		return pc.handleFunctionCall(ctx, fc)
 	}
 	frameType := fmt.Sprintf("%T", msg)
 	pc.emitUnsupportedFrame(ctx, "EXTENDED_QUERY_NOT_SUPPORTED", frameType)
-	_ = pc.synthesizeError(sqlstateFeatureNotSupported, "Extended Query / COPY / FunctionCall not supported in AgentSH proxy phase 1")
+	_ = pc.synthesizeError(
+		sqlstateFeatureNotSupported,
+		"Extended Query / COPY / FunctionCall not supported in AgentSH proxy phase 1",
+	)
 	return errUnsupportedFrame
 }
 
@@ -156,7 +166,14 @@ func (pc *proxyConn) handleQuery(ctx context.Context, q *pgproto3.Query) error {
 					break
 				}
 			}
-			pc.emitDenyEvents(ctx, stmts, decisions, q.String, batchSHA, denyActionForState(pc.state.smState, postDenyRule))
+			pc.emitDenyEvents(
+				ctx,
+				stmts,
+				decisions,
+				q.String,
+				batchSHA,
+				denyActionForState(pc.state.smState, postDenyRule),
+			)
 			return pc.executeActions(ctx, q, postActions)
 		}
 	}
@@ -211,7 +228,8 @@ func (pc *proxyConn) handleQuery(ctx context.Context, q *pgproto3.Query) error {
 	}
 	denyRule := lookupStatementRuleByName(rs, denyDecision.RuleName)
 	denyAction := "none"
-	if pc.state.smState != nil && (pc.state.smState.LastUpstreamRFQ == 'T' || pc.state.smState.LastUpstreamRFQ == 'E') {
+	if pc.state.smState != nil &&
+		(pc.state.smState.LastUpstreamRFQ == 'T' || pc.state.smState.LastUpstreamRFQ == 'E') {
 		if denyRule.DenyModeInTx == "rollback_then_continue" {
 			denyAction = "rollback_injected"
 		} else {
@@ -242,14 +260,39 @@ func (pc *proxyConn) runSimpleQueryRedirect(
 			plan.SourceRelation = decisions[redirectIndex].Redirect.SourceRelation
 			plan.TargetRelation = decisions[redirectIndex].Redirect.TargetRelation
 		}
-		pc.emitRedirectRejectedEvent(ctx, stmts[redirectIndex], decisions[redirectIndex], q.String, batchSHA, plan)
-		return pc.synthErrorAndRFQ(sqlstateRedirectRejected, "redirect rejected by AgentSH policy: multi-statement redirect unsupported")
+		pc.emitRedirectRejectedEvent(
+			ctx,
+			stmts[redirectIndex],
+			decisions[redirectIndex],
+			q.String,
+			batchSHA,
+			plan,
+		)
+		return pc.synthErrorAndRFQ(
+			sqlstateRedirectRejected,
+			"redirect rejected by AgentSH policy: multi-statement redirect unsupported",
+		)
 	}
 
-	plan, ok := pc.planRuntimeRedirect(ctx, q.String, stmts[redirectIndex], decisions[redirectIndex])
+	plan, ok := pc.planRuntimeRedirect(
+		ctx,
+		q.String,
+		stmts[redirectIndex],
+		decisions[redirectIndex],
+	)
 	if !ok {
-		pc.emitRedirectRejectedEvent(ctx, stmts[redirectIndex], decisions[redirectIndex], q.String, batchSHA, plan)
-		return pc.synthErrorAndRFQ(sqlstateRedirectRejected, "redirect rejected by AgentSH policy: "+plan.RejectionReason)
+		pc.emitRedirectRejectedEvent(
+			ctx,
+			stmts[redirectIndex],
+			decisions[redirectIndex],
+			q.String,
+			batchSHA,
+			plan,
+		)
+		return pc.synthErrorAndRFQ(
+			sqlstateRedirectRejected,
+			"redirect rejected by AgentSH policy: "+plan.RejectionReason,
+		)
 	}
 
 	sentAt := timeNow()
@@ -258,12 +301,27 @@ func (pc *proxyConn) runSimpleQueryRedirect(
 		return err
 	}
 	result, ferr := pc.forwardUpstreamUntilRFQ(ctx, sentAt, len(q.String))
-	pc.emitRedirectAllowEvent(ctx, stmts[redirectIndex], decisions[redirectIndex], q.String, batchSHA, plan, result)
+	pc.emitRedirectAllowEvent(
+		ctx,
+		stmts[redirectIndex],
+		decisions[redirectIndex],
+		q.String,
+		batchSHA,
+		plan,
+		result,
+	)
 	pc.refreshCatalogAfterSuccessfulStatements(ctx, plan.RewrittenStatements, result)
 	return ferr
 }
 
-func (pc *proxyConn) emitRedirectAllowEvent(ctx context.Context, stmt effects.ClassifiedStatement, decision policy.Decision, sql, batchSHA string, plan redirectRuntimePlan, result upstreamResult) {
+func (pc *proxyConn) emitRedirectAllowEvent(
+	ctx context.Context,
+	stmt effects.ClassifiedStatement,
+	decision policy.Decision,
+	sql, batchSHA string,
+	plan redirectRuntimePlan,
+	result upstreamResult,
+) {
 	parser := pc.srv.classifierFor(pc.svc.Dialect)
 	var rowsReturned, rowsAffected *int64
 	if len(result.RowsByStmt) > 0 {
@@ -294,7 +352,13 @@ func (pc *proxyConn) emitRedirectAllowEvent(ctx context.Context, stmt effects.Cl
 	_ = pc.srv.cfg.Sink.EmitStatement(ctx, ev)
 }
 
-func (pc *proxyConn) emitRedirectRejectedEvent(ctx context.Context, stmt effects.ClassifiedStatement, decision policy.Decision, sql, batchSHA string, plan redirectRuntimePlan) {
+func (pc *proxyConn) emitRedirectRejectedEvent(
+	ctx context.Context,
+	stmt effects.ClassifiedStatement,
+	decision policy.Decision,
+	sql, batchSHA string,
+	plan redirectRuntimePlan,
+) {
 	parser := pc.srv.classifierFor(pc.svc.Dialect)
 	ev := buildStatementEvent(buildArgs{
 		Stmt:            stmt,

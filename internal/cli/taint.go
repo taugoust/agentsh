@@ -363,7 +363,14 @@ Example:
 			}
 
 			// Build simulation result
-			result, err := simulateTaintEvaluation(cmd.Context(), viaChain, command, cmdArgs, contextName, policyFile)
+			result, err := simulateTaintEvaluation(
+				cmd.Context(),
+				viaChain,
+				command,
+				cmdArgs,
+				contextName,
+				policyFile,
+			)
 			if err != nil {
 				return err
 			}
@@ -376,11 +383,14 @@ Example:
 		},
 	}
 
-	cmd.Flags().StringVar(&ancestry, "ancestry", "", "Comma-separated process chain (e.g., 'cursor,bash,npm')")
+	cmd.Flags().
+		StringVar(&ancestry, "ancestry", "", "Comma-separated process chain (e.g., 'cursor,bash,npm')")
 	cmd.Flags().StringVar(&command, "command", "", "Command to evaluate")
 	cmd.Flags().StringVar(&commandArgs, "args", "", "Command arguments (space-separated)")
-	cmd.Flags().StringVar(&contextName, "context", "", "Process context name (auto-detected from first ancestor if not specified)")
-	cmd.Flags().StringVar(&policyFile, "policy", "", "Policy file to use (uses built-in test policy if not specified)")
+	cmd.Flags().
+		StringVar(&contextName, "context", "", "Process context name (auto-detected from first ancestor if not specified)")
+	cmd.Flags().
+		StringVar(&policyFile, "policy", "", "Policy file to use (uses built-in test policy if not specified)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 
 	return cmd
@@ -408,7 +418,13 @@ type SimulationMatchedRule struct {
 	Message string `json:"message,omitempty"`
 }
 
-func simulateTaintEvaluation(ctx context.Context, viaChain []string, command string, args []string, contextName, policyFile string) (*SimulationResult, error) {
+func simulateTaintEvaluation(
+	ctx context.Context,
+	viaChain []string,
+	command string,
+	args []string,
+	contextName, policyFile string,
+) (*SimulationResult, error) {
 	// Classify via chain
 	viaClasses := make([]string, len(viaChain))
 	viaClassEnums := make([]ancestry.ProcessClass, len(viaChain))

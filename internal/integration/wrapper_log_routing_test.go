@@ -40,7 +40,16 @@ func TestExecPath_WrapperLogRoutedOffCommandStderr(t *testing.T) {
 	workspace := filepath.Join(temp, "workspace")
 	mustMkdir(t, workspace)
 
-	ctr, endpoint, cleanup := startWrapSeccompServerContainer(t, ctx, agentshBin, unixwrapBin, configPath, keysPath, policiesDir, workspace)
+	ctr, endpoint, cleanup := startWrapSeccompServerContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		keysPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -66,7 +75,8 @@ func TestExecPath_WrapperLogRoutedOffCommandStderr(t *testing.T) {
 	probeCancel()
 
 	if probeErr != nil {
-		if errors.Is(probeErr, context.DeadlineExceeded) || strings.Contains(probeErr.Error(), "deadline exceeded") {
+		if errors.Is(probeErr, context.DeadlineExceeded) ||
+			strings.Contains(probeErr.Error(), "deadline exceeded") {
 			t.Skip("seccomp-user-notify appears unreliable in this environment (probe timeout)")
 		}
 		t.Fatalf("Exec probe: %v", probeErr)
@@ -94,13 +104,18 @@ func TestExecPath_WrapperLogRoutedOffCommandStderr(t *testing.T) {
 	})
 	execCancel()
 	if execErr != nil {
-		if errors.Is(execErr, context.DeadlineExceeded) || strings.Contains(execErr.Error(), "deadline exceeded") {
+		if errors.Is(execErr, context.DeadlineExceeded) ||
+			strings.Contains(execErr.Error(), "deadline exceeded") {
 			t.Skip("seccomp-user-notify appears unreliable in this environment (exec timeout)")
 		}
 		t.Fatalf("Exec: %v", execErr)
 	}
 	if res.Result.ExitCode != 0 {
-		t.Skipf("seccomp-user-notify may not be active in this environment (exit=%d, stderr=%q)", res.Result.ExitCode, res.Result.Stderr)
+		t.Skipf(
+			"seccomp-user-notify may not be active in this environment (exit=%d, stderr=%q)",
+			res.Result.ExitCode,
+			res.Result.Stderr,
+		)
 	}
 
 	// (a) The command's own stderr arrives intact and uncontaminated.
@@ -108,7 +123,10 @@ func TestExecPath_WrapperLogRoutedOffCommandStderr(t *testing.T) {
 		t.Fatalf("command stderr lost: %q", res.Result.Stderr)
 	}
 	if strings.Contains(res.Result.Stderr, "seccomp: filter loaded") {
-		t.Fatalf("wrapper diagnostic leaked onto command stderr (issue #415 regression):\n%s", res.Result.Stderr)
+		t.Fatalf(
+			"wrapper diagnostic leaked onto command stderr (issue #415 regression):\n%s",
+			res.Result.Stderr,
+		)
 	}
 
 	// (b) The diagnostic lands in the server log at default level
@@ -121,7 +139,8 @@ func TestExecPath_WrapperLogRoutedOffCommandStderr(t *testing.T) {
 	var serverLog string
 	for {
 		serverLog = readContainerLogs(t, logsCtx, ctr)
-		if strings.Contains(serverLog, "seccomp: filter loaded") && strings.Contains(serverLog, "wait_killable") {
+		if strings.Contains(serverLog, "seccomp: filter loaded") &&
+			strings.Contains(serverLog, "wait_killable") {
 			break
 		}
 		select {
@@ -134,7 +153,10 @@ func TestExecPath_WrapperLogRoutedOffCommandStderr(t *testing.T) {
 		break
 	}
 	if !strings.Contains(serverLog, "seccomp: filter loaded") {
-		t.Fatalf("wrapper diagnostic missing from server log (acceptance criterion #2)\nserver log:\n%s", serverLog)
+		t.Fatalf(
+			"wrapper diagnostic missing from server log (acceptance criterion #2)\nserver log:\n%s",
+			serverLog,
+		)
 	}
 	if !strings.Contains(serverLog, "wait_killable") {
 		t.Fatalf("wait_killable field missing from drained diagnostic\nserver log:\n%s", serverLog)

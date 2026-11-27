@@ -33,7 +33,19 @@ func TestListProfiles_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/profiles", nil)
@@ -94,7 +106,19 @@ func TestListProfiles_MultipleProfiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/profiles", nil)
@@ -139,17 +163,27 @@ func TestListProfiles_MultipleProfiles(t *testing.T) {
 		t.Error("expected prod-profile to be present")
 	} else {
 		if prodProfile.BasePolicy != "production" {
-			t.Errorf("prod-profile: expected base_policy=production, got %s", prodProfile.BasePolicy)
+			t.Errorf(
+				"prod-profile: expected base_policy=production, got %s",
+				prodProfile.BasePolicy,
+			)
 		}
 		if len(prodProfile.Mounts) != 1 {
 			t.Errorf("prod-profile: expected 1 mount, got %d", len(prodProfile.Mounts))
 		}
 		if len(prodProfile.Mounts) > 0 {
 			if prodProfile.Mounts[0].Path != workspace {
-				t.Errorf("prod-profile: expected mount path=%s, got %s", workspace, prodProfile.Mounts[0].Path)
+				t.Errorf(
+					"prod-profile: expected mount path=%s, got %s",
+					workspace,
+					prodProfile.Mounts[0].Path,
+				)
 			}
 			if prodProfile.Mounts[0].Policy != "workspace-readonly" {
-				t.Errorf("prod-profile: expected mount policy=workspace-readonly, got %s", prodProfile.Mounts[0].Policy)
+				t.Errorf(
+					"prod-profile: expected mount policy=workspace-readonly, got %s",
+					prodProfile.Mounts[0].Policy,
+				)
 			}
 		}
 	}
@@ -172,7 +206,19 @@ func TestListProfiles_ContentType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/profiles", nil)

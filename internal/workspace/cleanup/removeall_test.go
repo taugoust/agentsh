@@ -12,7 +12,17 @@ func TestRemoveAllWritableRemovesReadOnlyTree(t *testing.T) {
 		t.Skip("POSIX mode bits are not enforced on Windows")
 	}
 	root := filepath.Join(t.TempDir(), "session")
-	modDir := filepath.Join(root, "home", "go", "pkg", "mod", "example.com", "mod@v1.0.0", ".github", "workflows")
+	modDir := filepath.Join(
+		root,
+		"home",
+		"go",
+		"pkg",
+		"mod",
+		"example.com",
+		"mod@v1.0.0",
+		".github",
+		"workflows",
+	)
 	if err := os.MkdirAll(modDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}

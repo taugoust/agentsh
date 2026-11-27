@@ -92,13 +92,22 @@ func (c Config) validate() error {
 			return fmt.Errorf("services[%d] %s: upstream host and port required", i, s.Name)
 		}
 		if !validListenKinds[s.Listen.Kind] {
-			return fmt.Errorf("services[%d] %s: listen.kind %q not supported", i, s.Name, s.Listen.Kind)
+			return fmt.Errorf(
+				"services[%d] %s: listen.kind %q not supported",
+				i,
+				s.Name,
+				s.Listen.Kind,
+			)
 		}
 		if s.Listen.Kind == "unix" && s.Listen.Path == "" {
 			return fmt.Errorf("services[%d] %s: listen.path required for kind=unix", i, s.Name)
 		}
 		if s.Listen.Kind == "tcp" && (s.Listen.Host == "" || s.Listen.Port <= 0) {
-			return fmt.Errorf("services[%d] %s: listen.host and port required for kind=tcp", i, s.Name)
+			return fmt.Errorf(
+				"services[%d] %s: listen.host and port required for kind=tcp",
+				i,
+				s.Name,
+			)
 		}
 	}
 	return nil

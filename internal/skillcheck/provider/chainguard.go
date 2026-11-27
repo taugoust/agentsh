@@ -16,7 +16,10 @@ func NewChainguardProvider() skillcheck.CheckProvider { return &chainguardStub{}
 func (chainguardStub) Name() string                           { return "chainguard" }
 func (chainguardStub) Capabilities() []skillcheck.FindingType { return nil }
 
-func (chainguardStub) Scan(ctx context.Context, req skillcheck.ScanRequest) (*skillcheck.ScanResponse, error) {
+func (chainguardStub) Scan(
+	ctx context.Context,
+	req skillcheck.ScanRequest,
+) (*skillcheck.ScanResponse, error) {
 	return &skillcheck.ScanResponse{
 		Provider: "chainguard",
 		Metadata: skillcheck.ResponseMetadata{

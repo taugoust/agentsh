@@ -22,7 +22,9 @@ import (
 func skipLossCarrierOnWindows(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip("integration test skipped on Windows: active WAL readers can race segment seal/rename with ERROR_SHARING_VIOLATION")
+		t.Skip(
+			"integration test skipped on Windows: active WAL readers can race segment seal/rename with ERROR_SHARING_VIOLATION",
+		)
 	}
 }
 
@@ -70,7 +72,9 @@ func TestStore_OverflowEmitsTransportLossOnWire(t *testing.T) {
 		Dialer:          router,
 		BackoffInitial:  10 * time.Millisecond,
 		BackoffMax:      50 * time.Millisecond,
-		Logger:          slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New: %v", err)
@@ -171,7 +175,9 @@ func TestStore_CRCCorruptionEmitsTransportLossOnWire(t *testing.T) {
 		Dialer:          router,
 		BackoffInitial:  10 * time.Millisecond,
 		BackoffMax:      50 * time.Millisecond,
-		Logger:          slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New(s1): %v", err)
@@ -218,7 +224,9 @@ func TestStore_CRCCorruptionEmitsTransportLossOnWire(t *testing.T) {
 		Dialer:          router,
 		BackoffInitial:  10 * time.Millisecond,
 		BackoffMax:      50 * time.Millisecond,
-		Logger:          slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New(s2): %v", err)
@@ -279,7 +287,12 @@ func corruptOneSegment(t *testing.T, walDir string) {
 	// payload region. Any payload-region flip invalidates the CRC.
 	const corruptOff = 16 + 30
 	if len(data) <= corruptOff {
-		t.Fatalf("corruptOneSegment: %s too short (%d bytes) to corrupt at off=%d", sealed, len(data), corruptOff)
+		t.Fatalf(
+			"corruptOneSegment: %s too short (%d bytes) to corrupt at off=%d",
+			sealed,
+			len(data),
+			corruptOff,
+		)
 	}
 	data[corruptOff] ^= 0xFF
 	if err := os.WriteFile(path, data, 0o600); err != nil {

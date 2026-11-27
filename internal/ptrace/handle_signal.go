@@ -88,19 +88,37 @@ func (t *Tracer) handleSignal(ctx context.Context, tid int, sc *SyscallContext) 
 		case unix.SYS_KILL, unix.SYS_TKILL, unix.SYS_TGKILL:
 			regs, err := sc.Regs()
 			if err != nil {
-				slog.Warn("handleSignal: cannot load regs for redirect, denying", "tid", tid, "error", err)
+				slog.Warn(
+					"handleSignal: cannot load regs for redirect, denying",
+					"tid",
+					tid,
+					"error",
+					err,
+				)
 				t.denySyscall(tid, int(unix.EPERM))
 				return
 			}
 			regs.SetArg(sigArgIndex, uint64(result.RedirectSignal))
 			if err := t.setRegs(tid, regs); err != nil {
-				slog.Warn("handleSignal: cannot rewrite signal register, denying", "tid", tid, "error", err)
+				slog.Warn(
+					"handleSignal: cannot rewrite signal register, denying",
+					"tid",
+					tid,
+					"error",
+					err,
+				)
 				t.denySyscall(tid, int(unix.EPERM))
 				return
 			}
 			t.allowSyscall(tid)
 		default:
-			slog.Warn("handleSignal: redirect not supported for this syscall, denying", "tid", tid, "nr", nr)
+			slog.Warn(
+				"handleSignal: redirect not supported for this syscall, denying",
+				"tid",
+				tid,
+				"nr",
+				nr,
+			)
 			t.denySyscall(tid, int(unix.EPERM))
 		}
 

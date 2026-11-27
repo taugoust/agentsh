@@ -69,7 +69,11 @@ type ChainState struct {
 // Returns an error if the key is shorter than MinKeyLength bytes.
 func NewIntegrityChain(key []byte) (*IntegrityChain, error) {
 	if len(key) < MinKeyLength {
-		return nil, fmt.Errorf("key too short: got %d bytes, need at least %d", len(key), MinKeyLength)
+		return nil, fmt.Errorf(
+			"key too short: got %d bytes, need at least %d",
+			len(key),
+			MinKeyLength,
+		)
 	}
 	return NewIntegrityChainWithAlgorithm(key, "hmac-sha256")
 }
@@ -140,7 +144,10 @@ func NewKMSProvider(cfg config.AuditIntegrityConfig) (kms.Provider, error) {
 
 // NewIntegrityChainFromConfig creates an integrity chain from configuration.
 // It uses the configured KMS provider to retrieve the HMAC key.
-func NewIntegrityChainFromConfig(ctx context.Context, cfg config.AuditIntegrityConfig) (*IntegrityChain, kms.Provider, error) {
+func NewIntegrityChainFromConfig(
+	ctx context.Context,
+	cfg config.AuditIntegrityConfig,
+) (*IntegrityChain, kms.Provider, error) {
 	provider, err := NewKMSProvider(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create KMS provider: %w", err)
@@ -270,7 +277,13 @@ func (c *IntegrityChain) KeyFingerprint() string {
 }
 
 // VerifyHash recomputes the canonical payload hash using the chain key and format version.
-func (c *IntegrityChain) VerifyHash(formatVersion int, sequence int64, prevHash string, payload []byte, expectedHash string) (bool, error) {
+func (c *IntegrityChain) VerifyHash(
+	formatVersion int,
+	sequence int64,
+	prevHash string,
+	payload []byte,
+	expectedHash string,
+) (bool, error) {
 	key, alg := c.chain.keyAndAlgorithm()
 	return VerifyHash(key, alg, formatVersion, sequence, prevHash, payload, expectedHash)
 }
@@ -282,7 +295,15 @@ func (c *IntegrityChain) VerifyWrapped(wrapped []byte) (bool, error) {
 }
 
 // VerifyHash recomputes an entry hash using canonical JSON payload encoding.
-func VerifyHash(key []byte, algorithm string, formatVersion int, sequence int64, prevHash string, payload []byte, expectedHash string) (bool, error) {
+func VerifyHash(
+	key []byte,
+	algorithm string,
+	formatVersion int,
+	sequence int64,
+	prevHash string,
+	payload []byte,
+	expectedHash string,
+) (bool, error) {
 	data, err := parseIntegrityPayloadUseNumber(payload)
 	if err != nil {
 		return false, err
@@ -292,7 +313,14 @@ func VerifyHash(key []byte, algorithm string, formatVersion int, sequence int64,
 	if err != nil {
 		return false, err
 	}
-	actualHash, err := computeIntegrityHash(key, algorithm, formatVersion, sequence, prevHash, canonicalPayload)
+	actualHash, err := computeIntegrityHash(
+		key,
+		algorithm,
+		formatVersion,
+		sequence,
+		prevHash,
+		canonicalPayload,
+	)
 	if err != nil {
 		return false, err
 	}
@@ -316,7 +344,14 @@ func VerifyWrapped(key []byte, algorithm string, wrapped []byte) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	actualHash, err := computeIntegrityHash(key, algorithm, meta.FormatVersion, meta.Sequence, meta.PrevHash, canonicalPayload)
+	actualHash, err := computeIntegrityHash(
+		key,
+		algorithm,
+		meta.FormatVersion,
+		meta.Sequence,
+		meta.PrevHash,
+		canonicalPayload,
+	)
 	if err != nil {
 		return false, err
 	}
@@ -348,7 +383,14 @@ func marshalCanonicalPayload(data map[string]any) ([]byte, error) {
 	return canonicalPayload, nil
 }
 
-func computeIntegrityHash(key []byte, algorithm string, formatVersion int, sequence int64, prevHash string, payload []byte) (string, error) {
+func computeIntegrityHash(
+	key []byte,
+	algorithm string,
+	formatVersion int,
+	sequence int64,
+	prevHash string,
+	payload []byte,
+) (string, error) {
 	var h hash.Hash
 	switch algorithm {
 	case "":
@@ -357,7 +399,10 @@ func computeIntegrityHash(key []byte, algorithm string, formatVersion int, seque
 		h = hmac.New(sha512.New, key)
 	default: // hmac-sha256
 		if algorithm != "hmac-sha256" {
-			return "", fmt.Errorf("unsupported algorithm %q: use hmac-sha256 or hmac-sha512", algorithm)
+			return "", fmt.Errorf(
+				"unsupported algorithm %q: use hmac-sha256 or hmac-sha512",
+				algorithm,
+			)
 		}
 		h = hmac.New(sha256.New, key)
 	}

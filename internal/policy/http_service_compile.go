@@ -32,7 +32,9 @@ type compiledHTTPService struct {
 // errors are caught there; this compiler is also hardened against
 // duplicate names/hosts and bad aliases so it remains safe if a caller
 // bypasses validation (e.g. constructing a Policy in-memory for tests).
-func compileHTTPServices(svcs []HTTPService) (byName, byHost map[string]*compiledHTTPService, err error) {
+func compileHTTPServices(
+	svcs []HTTPService,
+) (byName, byHost map[string]*compiledHTTPService, err error) {
 	byName = make(map[string]*compiledHTTPService, len(svcs))
 	byHost = make(map[string]*compiledHTTPService, len(svcs))
 	for i := range svcs {
@@ -61,7 +63,11 @@ func compileHTTPServices(svcs []HTTPService) (byName, byHost map[string]*compile
 		// u.Hostname()) so the canonicalizer sees IPv6 brackets.
 		host, ok := canonicalizeHost(u.Host)
 		if !ok {
-			return nil, nil, fmt.Errorf("http_services[%q]: canonicalize upstream host %q", s.Name, u.Host)
+			return nil, nil, fmt.Errorf(
+				"http_services[%q]: canonicalize upstream host %q",
+				s.Name,
+				u.Host,
+			)
 		}
 
 		cs := &compiledHTTPService{
@@ -82,7 +88,13 @@ func compileHTTPServices(svcs []HTTPService) (byName, byHost map[string]*compile
 			for _, pat := range r.Paths {
 				g, gerr := glob.Compile(pat, '/')
 				if gerr != nil {
-					return nil, nil, fmt.Errorf("http_services[%q] rule %q: compile path %q: %w", s.Name, r.Name, pat, gerr)
+					return nil, nil, fmt.Errorf(
+						"http_services[%q] rule %q: compile path %q: %w",
+						s.Name,
+						r.Name,
+						pat,
+						gerr,
+					)
 				}
 				cr.paths = append(cr.paths, g)
 			}
@@ -95,17 +107,32 @@ func compileHTTPServices(svcs []HTTPService) (byName, byHost map[string]*compile
 		}
 		byName[nameKey] = cs
 		if other, exists := byHost[host]; exists {
-			return nil, nil, fmt.Errorf("http_services[%q]: duplicate upstream host %q (also claimed by %q)", s.Name, host, other.cfg.Name)
+			return nil, nil, fmt.Errorf(
+				"http_services[%q]: duplicate upstream host %q (also claimed by %q)",
+				s.Name,
+				host,
+				other.cfg.Name,
+			)
 		}
 		byHost[host] = cs
 		for _, alias := range s.Aliases {
 			a, ok := canonicalizeHost(alias)
 			if !ok {
 				// Validation should have rejected this. Treat as invariant break.
-				return nil, nil, fmt.Errorf("http_services[%q]: canonicalize alias %q", s.Name, alias)
+				return nil, nil, fmt.Errorf(
+					"http_services[%q]: canonicalize alias %q",
+					s.Name,
+					alias,
+				)
 			}
 			if other, exists := byHost[a]; exists {
-				return nil, nil, fmt.Errorf("http_services[%q]: duplicate upstream host %q via alias %q (also claimed by %q)", s.Name, a, alias, other.cfg.Name)
+				return nil, nil, fmt.Errorf(
+					"http_services[%q]: duplicate upstream host %q via alias %q (also claimed by %q)",
+					s.Name,
+					a,
+					alias,
+					other.cfg.Name,
+				)
 			}
 			byHost[a] = cs
 		}

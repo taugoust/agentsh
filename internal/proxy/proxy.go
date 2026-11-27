@@ -107,7 +107,8 @@ func New(cfg Config, storagePath string, logger *slog.Logger) (*Proxy, error) {
 	// Run retention cleanup asynchronously if configured.
 	// storagePath is the base sessions directory used by NewStorage, for example
 	// ~/.agentsh/sessions.
-	if storagePath != "" && (cfg.Storage.Retention.MaxAgeDays > 0 || cfg.Storage.Retention.MaxSizeMB > 0) {
+	if storagePath != "" &&
+		(cfg.Storage.Retention.MaxAgeDays > 0 || cfg.Storage.Retention.MaxSizeMB > 0) {
 		retentionCfg := RetentionConfig{
 			MaxAgeDays: cfg.Storage.Retention.MaxAgeDays,
 			MaxSizeMB:  cfg.Storage.Retention.MaxSizeMB,
@@ -333,7 +334,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check RPM rate limit before processing the request
 	if !p.llmRateLimiter.AllowRequest() {
-		p.logger.Warn("LLM API rate limited (RPM)", "request_id", requestID, "session_id", sessionID)
+		p.logger.Warn(
+			"LLM API rate limited (RPM)",
+			"request_id",
+			requestID,
+			"session_id",
+			sessionID,
+		)
 		w.Header().Set("Retry-After", "5")
 		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return
@@ -341,7 +348,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check TPM budget — block if token budget is depleted from previous responses
 	if !p.llmRateLimiter.TokenBudgetAvailable() {
-		p.logger.Warn("LLM API rate limited (TPM)", "request_id", requestID, "session_id", sessionID)
+		p.logger.Warn(
+			"LLM API rate limited (TPM)",
+			"request_id",
+			requestID,
+			"session_id",
+			sessionID,
+		)
 		w.Header().Set("Retry-After", "10")
 		http.Error(w, "token budget exceeded", http.StatusTooManyRequests)
 		return
@@ -355,7 +368,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if acquired := l.AcquireInFlight(); acquired {
 			defer l.ReleaseInFlight()
 		} else {
-			p.logger.Warn("LLM API rate limited (concurrency)", "request_id", requestID, "session_id", sessionID)
+			p.logger.Warn(
+				"LLM API rate limited (concurrency)",
+				"request_id",
+				requestID,
+				"session_id",
+				sessionID,
+			)
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, "too many concurrent requests", http.StatusTooManyRequests)
 			return
@@ -492,7 +511,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// Put body back so hooks can read/modify it.
 				resp.Body = io.NopCloser(bytes.NewReader(respBody))
 				resp.ContentLength = int64(len(respBody))
-				if hookErr := p.hookRegistry.ApplyPostHooks(reqCtx.ServiceName, resp, reqCtx); hookErr != nil {
+				if hookErr := p.hookRegistry.ApplyPostHooks(
+					reqCtx.ServiceName,
+					resp,
+					reqCtx,
+				); hookErr != nil {
 					p.logger.Warn("post-hook error", "error", hookErr, "request_id", requestID)
 				}
 				// Re-read body in case a hook replaced it.
@@ -507,8 +530,19 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// MCP tool call interception (non-SSE only; SSE handled by SSEInterceptor).
-			if reg := p.getRegistry(); reg != nil && p.hasInterception() && resp.StatusCode == http.StatusOK {
-				result := interceptMCPToolCalls(respBody, dialect, reg, p.policy, requestID, sessionID, p.getSessionAnalyzer(), p.rateLimiter, p.versionPinCfg())
+			if reg := p.getRegistry(); reg != nil && p.hasInterception() &&
+				resp.StatusCode == http.StatusOK {
+				result := interceptMCPToolCalls(
+					respBody,
+					dialect,
+					reg,
+					p.policy,
+					requestID,
+					sessionID,
+					p.getSessionAnalyzer(),
+					p.rateLimiter,
+					p.versionPinCfg(),
+				)
 				for _, ev := range result.Events {
 					p.logger.Info("mcp tool call intercepted",
 						"tool", ev.ToolName, "action", ev.Action,
@@ -548,7 +582,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // logRequest logs the outgoing request to storage.
-func (p *Proxy) logRequest(requestID, sessionID string, dialect Dialect, r *http.Request, body []byte, dlpResult *DLPResult) {
+func (p *Proxy) logRequest(
+	requestID, sessionID string,
+	dialect Dialect,
+	r *http.Request,
+	body []byte,
+	dlpResult *DLPResult,
+) {
 	entry := &RequestLogEntry{
 		ID:        requestID,
 		SessionID: sessionID,
@@ -580,7 +620,13 @@ func (p *Proxy) logRequest(requestID, sessionID string, dialect Dialect, r *http
 }
 
 // logResponseDirect logs a response with a pre-read body (used for SSE streams).
-func (p *Proxy) logResponseDirect(requestID, sessionID string, dialect Dialect, resp *http.Response, respBody []byte, startTime time.Time) {
+func (p *Proxy) logResponseDirect(
+	requestID, sessionID string,
+	dialect Dialect,
+	resp *http.Response,
+	respBody []byte,
+	startTime time.Time,
+) {
 	// Extract token usage from the response.
 	// Use Content-Type to detect SSE streams rather than body prefix heuristics.
 	var usage Usage

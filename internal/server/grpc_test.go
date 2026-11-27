@@ -35,7 +35,11 @@ file_rules:
     operations: ["*"]
     decision: allow
 `
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policyContent), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policyContent),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -97,7 +101,12 @@ file_rules:
 	createResp := &structpb.Struct{}
 	cctx, ccancel := context.WithTimeout(ctx, 3*time.Second)
 	defer ccancel()
-	if err := conn.Invoke(cctx, "/agentsh.v1.Agentsh/CreateSession", createReq, createResp); err != nil {
+	if err := conn.Invoke(
+		cctx,
+		"/agentsh.v1.Agentsh/CreateSession",
+		createReq,
+		createResp,
+	); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := protojson.Marshal(createResp)

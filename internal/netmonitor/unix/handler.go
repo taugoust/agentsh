@@ -29,7 +29,13 @@ type Emitter interface {
 
 // ServeNotify runs the seccomp notify loop on the provided notify fd.
 // It stops when the fd is closed or ctx is done.
-func ServeNotify(ctx context.Context, fd *os.File, sessID string, pol *policy.Engine, emit Emitter) {
+func ServeNotify(
+	ctx context.Context,
+	fd *os.File,
+	sessID string,
+	pol *policy.Engine,
+	emit Emitter,
+) {
 	if fd == nil || pol == nil || emit == nil {
 		return
 	}
@@ -56,9 +62,15 @@ func ServeNotify(ctx context.Context, fd *os.File, sessID string, pol *policy.En
 					continue
 				}
 			}
-			slog.Warn("ServeNotify: NotifReceive error, exiting notify loop",
-				"session_id", sessID, "error", err,
-				"hint", "if EPERM, seccomp notify ioctl may be blocked by container security policy (e.g., AppArmor)")
+			slog.Warn(
+				"ServeNotify: NotifReceive error, exiting notify loop",
+				"session_id",
+				sessID,
+				"error",
+				err,
+				"hint",
+				"if EPERM, seccomp notify ioctl may be blocked by container security policy (e.g., AppArmor)",
+			)
 			return
 		}
 		ctxReq := ExtractContext(req)
@@ -105,7 +117,11 @@ func ServeNotify(ctx context.Context, fd *os.File, sessID string, pol *policy.En
 
 func isUnixSocketSyscall(sc seccomp.ScmpSyscall) bool {
 	switch sc {
-	case seccomp.ScmpSyscall(unix.SYS_SOCKET), seccomp.ScmpSyscall(unix.SYS_CONNECT), seccomp.ScmpSyscall(unix.SYS_BIND), seccomp.ScmpSyscall(unix.SYS_LISTEN), seccomp.ScmpSyscall(unix.SYS_SENDTO):
+	case seccomp.ScmpSyscall(unix.SYS_SOCKET),
+		seccomp.ScmpSyscall(unix.SYS_CONNECT),
+		seccomp.ScmpSyscall(unix.SYS_BIND),
+		seccomp.ScmpSyscall(unix.SYS_LISTEN),
+		seccomp.ScmpSyscall(unix.SYS_SENDTO):
 		return true
 	default:
 		return false
@@ -146,7 +162,14 @@ func isENOENT(err error) bool {
 	return false
 }
 
-func buildUnixSocketEvent(emit Emitter, session string, dec policy.Decision, path string, abstract bool, op string) *types.Event {
+func buildUnixSocketEvent(
+	emit Emitter,
+	session string,
+	dec policy.Decision,
+	path string,
+	abstract bool,
+	op string,
+) *types.Event {
 	if emit == nil {
 		return nil
 	}
@@ -180,7 +203,16 @@ func buildUnixSocketEvent(emit Emitter, session string, dec policy.Decision, pat
 // handlers manage their own emitters — but audit events for the paths that
 // route through this loop's emit directly (unix sockets, block-list) are
 // dropped. All downstream emit consumers must nil-check before use.
-func ServeNotifyWithExecve(ctx context.Context, fd *os.File, sessID string, pol *policy.Engine, emit Emitter, execveHandler *ExecveHandler, fileHandler *FileHandler, blockList *BlockListConfig) {
+func ServeNotifyWithExecve(
+	ctx context.Context,
+	fd *os.File,
+	sessID string,
+	pol *policy.Engine,
+	emit Emitter,
+	execveHandler *ExecveHandler,
+	fileHandler *FileHandler,
+	blockList *BlockListConfig,
+) {
 	if execveHandler != nil {
 		defer execveHandler.CloseComposition()
 	}
@@ -189,16 +221,31 @@ func ServeNotifyWithExecve(ctx context.Context, fd *os.File, sessID string, pol 
 		return
 	}
 	if emit == nil {
-		slog.Warn("ServeNotifyWithExecve: nil emitter — enforcement will run but audit events will be dropped",
-			"session_id", sessID)
+		slog.Warn(
+			"ServeNotifyWithExecve: nil emitter — enforcement will run but audit events will be dropped",
+			"session_id",
+			sessID,
+		)
 	}
 	scmpFD := seccomp.ScmpFd(fd.Fd())
-	slog.Debug("ServeNotifyWithExecve: starting notify loop", "session_id", sessID, "scmp_fd", scmpFD)
+	slog.Debug(
+		"ServeNotifyWithExecve: starting notify loop",
+		"session_id",
+		sessID,
+		"scmp_fd",
+		scmpFD,
+	)
 	notifCount := 0
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Debug("ServeNotifyWithExecve: context done", "session_id", sessID, "total_notifications", notifCount)
+			slog.Debug(
+				"ServeNotifyWithExecve: context done",
+				"session_id",
+				sessID,
+				"total_notifications",
+				notifCount,
+			)
 			return
 		default:
 		}
@@ -214,43 +261,89 @@ func ServeNotifyWithExecve(ctx context.Context, fd *os.File, sessID string, pol 
 				// Otherwise sleep briefly and retry (another process may still be alive).
 				select {
 				case <-ctx.Done():
-					slog.Debug("ServeNotifyWithExecve: ENOENT + context done, exiting", "session_id", sessID, "total_notifications", notifCount)
+					slog.Debug(
+						"ServeNotifyWithExecve: ENOENT + context done, exiting",
+						"session_id",
+						sessID,
+						"total_notifications",
+						notifCount,
+					)
 					return
 				default:
 					time.Sleep(1 * time.Millisecond)
 					continue
 				}
 			}
-			slog.Warn("ServeNotifyWithExecve: NotifReceive error, exiting notify loop",
-				"session_id", sessID, "error", err, "total_notifications", notifCount,
-				"hint", "if EPERM, seccomp notify ioctl may be blocked by container security policy (e.g., AppArmor)")
+			slog.Warn(
+				"ServeNotifyWithExecve: NotifReceive error, exiting notify loop",
+				"session_id",
+				sessID,
+				"error",
+				err,
+				"total_notifications",
+				notifCount,
+				"hint",
+				"if EPERM, seccomp notify ioctl may be blocked by container security policy (e.g., AppArmor)",
+			)
 			return
 		}
 		notifCount++
 
 		syscallNr := int32(req.Data.Syscall)
-		slog.Debug("ServeNotifyWithExecve: received notification", "session_id", sessID, "syscall_nr", syscallNr, "pid", req.Pid, "count", notifCount)
+		slog.Debug(
+			"ServeNotifyWithExecve: received notification",
+			"session_id",
+			sessID,
+			"syscall_nr",
+			syscallNr,
+			"pid",
+			req.Pid,
+			"count",
+			notifCount,
+		)
 
 		// Socket dispatch order for socket(2)/socketpair(2): tuple rules first,
 		// family rules second, generic syscall block-list third. This preserves
 		// the most-specific configured decision and avoids duplicate events for a
 		// tuple hit when broad AF_NETLINK or generic socket rules are also present.
 		// nil-safe: both lookup methods return (_, false) on nil receivers.
-		if uint32(syscallNr) == uint32(unix.SYS_SOCKET) || uint32(syscallNr) == uint32(unix.SYS_SOCKETPAIR) {
+		if uint32(syscallNr) == uint32(unix.SYS_SOCKET) ||
+			uint32(syscallNr) == uint32(unix.SYS_SOCKETPAIR) {
 			if rule, ok := blockList.SocketRuleBlockListed(
 				uint32(req.Data.Syscall),
 				req.Data.Args[0],
 				req.Data.Args[1],
 				req.Data.Args[2],
 			); ok {
-				slog.Debug("ServeNotifyWithExecve: routing to socket-rule handler (pre-family)",
-					"session_id", sessID, "pid", req.Pid, "syscall_nr", syscallNr, "rule", rule.Name)
+				slog.Debug(
+					"ServeNotifyWithExecve: routing to socket-rule handler (pre-family)",
+					"session_id",
+					sessID,
+					"pid",
+					req.Pid,
+					"syscall_nr",
+					syscallNr,
+					"rule",
+					rule.Name,
+				)
 				handleSocketRuleBlockNotify(ctx, int(scmpFD), req, rule, sessID, emit)
 				continue
 			}
-			if bf, ok := blockList.FamilyBlockListed(uint32(req.Data.Syscall), req.Data.Args[0]); ok {
-				slog.Debug("ServeNotifyWithExecve: routing to family-block handler (pre-blocklist)",
-					"session_id", sessID, "pid", req.Pid, "syscall_nr", syscallNr, "family", bf.Family)
+			if bf, ok := blockList.FamilyBlockListed(
+				uint32(req.Data.Syscall),
+				req.Data.Args[0],
+			); ok {
+				slog.Debug(
+					"ServeNotifyWithExecve: routing to family-block handler (pre-blocklist)",
+					"session_id",
+					sessID,
+					"pid",
+					req.Pid,
+					"syscall_nr",
+					syscallNr,
+					"family",
+					bf.Family,
+				)
 				handleFamilyBlockNotify(ctx, int(scmpFD), req, bf, sessID, emit)
 				continue
 			}
@@ -272,14 +365,28 @@ func ServeNotifyWithExecve(ctx context.Context, fd *os.File, sessID string, pol 
 
 		// Route to appropriate handler
 		if IsExecveSyscall(syscallNr) && execveHandler != nil {
-			slog.Debug("ServeNotifyWithExecve: routing to execve handler", "session_id", sessID, "pid", req.Pid)
+			slog.Debug(
+				"ServeNotifyWithExecve: routing to execve handler",
+				"session_id",
+				sessID,
+				"pid",
+				req.Pid,
+			)
 			handleExecveNotification(ctx, scmpFD, req, execveHandler, sessID)
 			continue
 		}
 
 		// Route file syscalls to file handler
 		if isFileSyscall(syscallNr) && fileHandler != nil {
-			slog.Debug("ServeNotifyWithExecve: routing to file handler", "session_id", sessID, "pid", req.Pid, "syscall", syscallNr)
+			slog.Debug(
+				"ServeNotifyWithExecve: routing to file handler",
+				"session_id",
+				sessID,
+				"pid",
+				req.Pid,
+				"syscall",
+				syscallNr,
+			)
 			if fileHandler.EmulateOpen() {
 				handleFileNotificationEmulated(ctx, scmpFD, req, fileHandler, sessID)
 			} else {
@@ -292,7 +399,13 @@ func ServeNotifyWithExecve(ctx context.Context, fd *os.File, sessID string, pol 
 		ctxReq := ExtractContext(req)
 
 		if !isUnixSocketSyscall(ctxReq.Syscall) {
-			slog.Debug("ServeNotifyWithExecve: non-unix syscall, allowing", "session_id", sessID, "syscall", ctxReq.Syscall)
+			slog.Debug(
+				"ServeNotifyWithExecve: non-unix syscall, allowing",
+				"session_id",
+				sessID,
+				"syscall",
+				ctxReq.Syscall,
+			)
 			if err := NotifRespondContinue(int(scmpFD), req.ID); err != nil {
 				slog.Debug("notify loop: continue response failed", "error", err)
 			}
@@ -345,7 +458,13 @@ func ServeNotifyWithExecve(ctx context.Context, fd *os.File, sessID string, pol 
 // handleExecveNotification processes an execve/execveat notification.
 // It reads the filename and argv from the tracee process, builds an ExecveContext,
 // and calls the handler to make a decision.
-func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *seccomp.ScmpNotifReq, h *ExecveHandler, sessID string) {
+func handleExecveNotification(
+	goCtx context.Context,
+	fd seccomp.ScmpFd,
+	req *seccomp.ScmpNotifReq,
+	h *ExecveHandler,
+	sessID string,
+) {
 	// Extract syscall args
 	args := SyscallArgs{
 		Nr:   int32(req.Data.Syscall),
@@ -418,7 +537,15 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 		// harmless commands fail with "Permission denied" and can prompt for bogus
 		// paths like /nix/store/...-util-linux/bin/gofmt.
 		if err := NotifRespondContinue(int(fd), req.ID); err != nil {
-			slog.Debug("execve handler: continue missing candidate failed", "pid", pid, "path", filename, "error", err)
+			slog.Debug(
+				"execve handler: continue missing candidate failed",
+				"pid",
+				pid,
+				"path",
+				filename,
+				"error",
+				err,
+			)
 		}
 		return
 	}
@@ -497,7 +624,13 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 			}
 			return
 		}
-		if err := h.compositionRedirector.Redirect(int(fd), req.ID, ectx, execveArgs.FilenamePtr, originalFilenameLen); err != nil {
+		if err := h.compositionRedirector.Redirect(
+			int(fd),
+			req.ID,
+			ectx,
+			execveArgs.FilenamePtr,
+			originalFilenameLen,
+		); err != nil {
 			if ev != nil {
 				ev.EffectiveAction = "blocked"
 				if ev.Fields == nil {
@@ -525,7 +658,15 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 			}
 			return
 		}
-		if err := handleRedirect(int(fd), req.ID, ectx, execveArgs.FilenamePtr, h.stubSymlinkPath, originalFilenameLen, result.Redirect); err != nil {
+		if err := handleRedirect(
+			int(fd),
+			req.ID,
+			ectx,
+			execveArgs.FilenamePtr,
+			h.stubSymlinkPath,
+			originalFilenameLen,
+			result.Redirect,
+		); err != nil {
 			slog.Error("redirect failed, denying", "pid", pid, "error", err)
 			if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EPERM)); err != nil {
 				slog.Error("execve handler: deny response failed", "pid", pid, "error", err)
@@ -541,7 +682,15 @@ func handleExecveNotification(goCtx context.Context, fd seccomp.ScmpFd, req *sec
 
 	case ActionDeny:
 		if err := NotifRespondDeny(int(fd), req.ID, result.Errno); err != nil {
-			slog.Error("execve handler: deny response failed", "pid", pid, "cmd", ectx.Filename, "error", err)
+			slog.Error(
+				"execve handler: deny response failed",
+				"pid",
+				pid,
+				"cmd",
+				ectx.Filename,
+				"error",
+				err,
+			)
 		}
 		return
 
@@ -573,16 +722,37 @@ var productionFileNotificationOps = fileNotificationOps{
 // evaluateFileNotification separates nonblocking policy preparation from the
 // approval wait. Only an exact unresolved approval is eligible for a broker
 // lookup, and only a securely confirmed absence is completed with ENOENT.
-func evaluateFileNotification(goCtx context.Context, notifFD int, notifID uint64, h *FileHandler, req FileRequest) fileNotificationEvaluation {
-	return evaluateFileNotificationWithOps(goCtx, notifFD, notifID, h, req, productionFileNotificationOps)
+func evaluateFileNotification(
+	goCtx context.Context,
+	notifFD int,
+	notifID uint64,
+	h *FileHandler,
+	req FileRequest,
+) fileNotificationEvaluation {
+	return evaluateFileNotificationWithOps(
+		goCtx,
+		notifFD,
+		notifID,
+		h,
+		req,
+		productionFileNotificationOps,
+	)
 }
 
-func evaluateFileNotificationWithOps(goCtx context.Context, notifFD int, notifID uint64, h *FileHandler, req FileRequest, ops fileNotificationOps) fileNotificationEvaluation {
+func evaluateFileNotificationWithOps(
+	goCtx context.Context,
+	notifFD int,
+	notifID uint64,
+	h *FileHandler,
+	req FileRequest,
+	ops fileNotificationOps,
+) fileNotificationEvaluation {
 	prepared := h.Prepare(goCtx, req)
 	lookupResult := FileLookupResult{}
 	probed := false
 
-	if prepared.HasUnresolvedApprovals() && req.Lookup != nil && eligibleMissingLookup(*req.Lookup) {
+	if prepared.HasUnresolvedApprovals() && req.Lookup != nil &&
+		eligibleMissingLookup(*req.Lookup) {
 		probe := h.FileLookupProbe()
 		if probe != nil {
 			if staleFileNotification(ops, notifFD, notifID) {
@@ -610,7 +780,15 @@ func evaluateFileNotificationWithOps(goCtx context.Context, notifFD int, notifID
 						if errors.Is(err, unix.ENOENT) {
 							return fileNotificationEvaluation{stale: true}
 						}
-						slog.Debug("file lookup: ENOENT completion failed", "pid", req.PID, "path", req.Path, "error", err)
+						slog.Debug(
+							"file lookup: ENOENT completion failed",
+							"pid",
+							req.PID,
+							"path",
+							req.Path,
+							"error",
+							err,
+						)
 						return fileNotificationEvaluation{completed: true}
 					}
 					return fileNotificationEvaluation{event: event, completed: true}
@@ -627,10 +805,16 @@ func evaluateFileNotificationWithOps(goCtx context.Context, notifFD int, notifID
 		return fileNotificationEvaluation{result: result, event: event}
 	}
 
-	approvalCtx, stopLiveness, stale := fileNotificationApprovalContext(goCtx, ops, notifFD, notifID)
+	approvalCtx, stopLiveness, stale := fileNotificationApprovalContext(
+		goCtx,
+		ops,
+		notifFD,
+		notifID,
+	)
 	result, event, resolveErr := h.Resolve(approvalCtx, prepared)
 	stopLiveness()
-	if stale.Load() || goCtx.Err() != nil || errors.Is(resolveErr, context.Canceled) || staleFileNotification(ops, notifFD, notifID) {
+	if stale.Load() || goCtx.Err() != nil || errors.Is(resolveErr, context.Canceled) ||
+		staleFileNotification(ops, notifFD, notifID) {
 		return fileNotificationEvaluation{stale: true}
 	}
 	if probed {
@@ -650,7 +834,12 @@ func staleFileNotification(ops fileNotificationOps, fd int, id uint64) bool {
 // fileNotificationApprovalContext cancels a pending approval when the kernel
 // notification becomes stale. Manager cancellation removes the pending request
 // and prevents later obligations from being enqueued.
-func fileNotificationApprovalContext(parent context.Context, ops fileNotificationOps, fd int, id uint64) (context.Context, func(), *atomic.Bool) {
+func fileNotificationApprovalContext(
+	parent context.Context,
+	ops fileNotificationOps,
+	fd int,
+	id uint64,
+) (context.Context, func(), *atomic.Bool) {
 	ctx, cancel := context.WithCancel(parent)
 	stale := &atomic.Bool{}
 	done := make(chan struct{})
@@ -697,7 +886,13 @@ func annotateFileLookupEvent(event *types.Event, result FileLookupResult, suppre
 // handleFileNotification processes a file syscall notification.
 // It reads the path from the tracee process, builds a FileRequest,
 // and calls the file handler to make a decision.
-func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *seccomp.ScmpNotifReq, h *FileHandler, sessID string) {
+func handleFileNotification(
+	goCtx context.Context,
+	fd seccomp.ScmpFd,
+	req *seccomp.ScmpNotifReq,
+	h *FileHandler,
+	sessID string,
+) {
 	args := SyscallArgs{
 		Nr:   int32(req.Data.Syscall),
 		Arg0: req.Data.Args[0],
@@ -716,10 +911,24 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 	if args.Nr == unix.SYS_OPENAT2 && fileArgs.HowPtr != 0 {
 		how, err := readOpenHowExactWithFallback(pid, fileArgs.HowPtr, fileArgs.HowSize)
 		if err != nil {
-			slog.Debug("file handler: failed to read open_how", "pid", pid, "error", err, "enforce", h.Enforce())
+			slog.Debug(
+				"file handler: failed to read open_how",
+				"pid",
+				pid,
+				"error",
+				err,
+				"enforce",
+				h.Enforce(),
+			)
 			if h.Enforce() {
 				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
-					slog.Error("file handler: deny response failed after open_how read error", "pid", pid, "error", err)
+					slog.Error(
+						"file handler: deny response failed after open_how read error",
+						"pid",
+						pid,
+						"error",
+						err,
+					)
 				}
 			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("file handler: continue response failed", "pid", pid, "error", err)
@@ -738,10 +947,24 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 			rawPath, path, err = resolvePathAtWithRawFallback(pid, fileArgs.Dirfd, fileArgs.PathPtr)
 		}
 		if err != nil {
-			slog.Debug("file handler: failed to resolve path", "pid", pid, "error", err, "enforce", h.Enforce())
+			slog.Debug(
+				"file handler: failed to resolve path",
+				"pid",
+				pid,
+				"error",
+				err,
+				"enforce",
+				h.Enforce(),
+			)
 			if h.Enforce() {
 				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
-					slog.Error("file handler: deny response failed after path resolution error", "pid", pid, "error", err)
+					slog.Error(
+						"file handler: deny response failed after path resolution error",
+						"pid",
+						pid,
+						"error",
+						err,
+					)
 				}
 			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("file handler: continue response failed", "pid", pid, "error", err)
@@ -758,10 +981,24 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 			_, p2, err = resolvePathAtWithRawFallback(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
 		}
 		if err != nil {
-			slog.Debug("file handler: failed to resolve second path", "pid", pid, "error", err, "enforce", h.Enforce())
+			slog.Debug(
+				"file handler: failed to resolve second path",
+				"pid",
+				pid,
+				"error",
+				err,
+				"enforce",
+				h.Enforce(),
+			)
 			if h.Enforce() {
 				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
-					slog.Error("file handler: deny response failed after second path resolution error", "pid", pid, "error", err)
+					slog.Error(
+						"file handler: deny response failed after second path resolution error",
+						"pid",
+						pid,
+						"error",
+						err,
+					)
 				}
 			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("file handler: continue response failed", "pid", pid, "error", err)
@@ -820,7 +1057,13 @@ func handleFileNotification(goCtx context.Context, fd seccomp.ScmpFd, req *secco
 // and injects the fd via SECCOMP_ADDFD_FLAG_SEND. For non-open syscalls and
 // fallback cases, it uses CONTINUE with two-check NotifIDValid bracketing
 // (spec section 4, steps 2 and 4).
-func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, req *seccomp.ScmpNotifReq, h *FileHandler, sessID string) {
+func handleFileNotificationEmulated(
+	goCtx context.Context,
+	fd seccomp.ScmpFd,
+	req *seccomp.ScmpNotifReq,
+	h *FileHandler,
+	sessID string,
+) {
 	args := SyscallArgs{
 		Nr:   int32(req.Data.Syscall),
 		Arg0: req.Data.Args[0], Arg1: req.Data.Args[1], Arg2: req.Data.Args[2],
@@ -836,15 +1079,33 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 	if args.Nr == unix.SYS_OPENAT2 {
 		if fileArgs.HowPtr == 0 || fileArgs.HowSize < openHowSizeVersion0 {
 			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
-				slog.Debug("emulated file handler: continue response failed", "pid", pid, "error", err)
+				slog.Debug(
+					"emulated file handler: continue response failed",
+					"pid",
+					pid,
+					"error",
+					err,
+				)
 			}
 			return
 		}
 		how, err := readOpenHowExactWithFallback(pid, fileArgs.HowPtr, fileArgs.HowSize)
 		if err != nil {
-			slog.Debug("emulated file handler: failed to read open_how, CONTINUE", "pid", pid, "error", err)
+			slog.Debug(
+				"emulated file handler: failed to read open_how, CONTINUE",
+				"pid",
+				pid,
+				"error",
+				err,
+			)
 			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
-				slog.Debug("emulated file handler: continue response failed", "pid", pid, "error", err)
+				slog.Debug(
+					"emulated file handler: continue response failed",
+					"pid",
+					pid,
+					"error",
+					err,
+				)
 			}
 			return
 		}
@@ -854,7 +1115,11 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 	// Determine early if this will be a CONTINUE-path syscall. Mutating opens
 	// must continue in the tracee after policy approval; emulating them from the
 	// privileged supervisor would create/modify files with root credentials.
-	forceContinue := shouldUseContinuePathForFileNotify(args.Nr, fileArgs.Flags, fileArgs.ResolveFlags)
+	forceContinue := shouldUseContinuePathForFileNotify(
+		args.Nr,
+		fileArgs.Flags,
+		fileArgs.ResolveFlags,
+	)
 
 	// Resolve primary path.
 	// Path resolution uses ProcessVMReadv which may fail under Yama
@@ -882,10 +1147,22 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 				slog.Warn("emulated file handler: path resolution failed, denying in enforced mode",
 					"pid", pid, "error", err, "session_id", sessID)
 				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
-					slog.Error("emulated file handler: deny response failed after path resolution error", "pid", pid, "error", err)
+					slog.Error(
+						"emulated file handler: deny response failed after path resolution error",
+						"pid",
+						pid,
+						"error",
+						err,
+					)
 				}
 			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
-				slog.Debug("emulated file handler: continue response failed", "pid", pid, "error", err)
+				slog.Debug(
+					"emulated file handler: continue response failed",
+					"pid",
+					pid,
+					"error",
+					err,
+				)
 			}
 			return
 		}
@@ -900,14 +1177,37 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 			_, p2, err = resolvePathAtWithRawFallback(pid, fileArgs.Dirfd2, fileArgs.PathPtr2)
 		}
 		if err != nil {
-			slog.Warn("emulated file handler: second path resolution failed for mutating op",
-				"pid", pid, "error", err, "syscall", args.Nr, "session_id", sessID, "enforce", h.Enforce())
+			slog.Warn(
+				"emulated file handler: second path resolution failed for mutating op",
+				"pid",
+				pid,
+				"error",
+				err,
+				"syscall",
+				args.Nr,
+				"session_id",
+				sessID,
+				"enforce",
+				h.Enforce(),
+			)
 			if h.Enforce() {
 				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
-					slog.Error("emulated file handler: deny response failed after second path resolution error", "pid", pid, "error", err)
+					slog.Error(
+						"emulated file handler: deny response failed after second path resolution error",
+						"pid",
+						pid,
+						"error",
+						err,
+					)
 				}
 			} else if err := NotifRespondContinue(int(fd), req.ID); err != nil {
-				slog.Debug("emulated file handler: continue response failed", "pid", pid, "error", err)
+				slog.Debug(
+					"emulated file handler: continue response failed",
+					"pid",
+					pid,
+					"error",
+					err,
+				)
 			}
 			return
 		}
@@ -958,7 +1258,15 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 	if !forceContinue {
 		if result.Action == ActionDeny {
 			if err := NotifRespondDeny(int(fd), req.ID, result.Errno); err != nil {
-				slog.Error("emulated file handler: deny response failed", "pid", pid, "path", path, "error", err)
+				slog.Error(
+					"emulated file handler: deny response failed",
+					"pid",
+					pid,
+					"path",
+					path,
+					"error",
+					err,
+				)
 			}
 			return
 		}
@@ -968,7 +1276,13 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 		// CONTINUE is always safe for reads — no TOCTOU risk.
 		if isReadOnlyOpen(fileArgs.Flags) {
 			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
-				slog.Debug("emulated file handler: read-only continue failed", "pid", pid, "error", err)
+				slog.Debug(
+					"emulated file handler: read-only continue failed",
+					"pid",
+					pid,
+					"error",
+					err,
+				)
 			}
 			return
 		}
@@ -981,7 +1295,13 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 				slog.Debug("emulated file handler: notification stale before emulation", "pid", pid)
 				return
 			}
-			slog.Debug("emulated file handler: NotifIDValid pre-emulation check failed, proceeding", "pid", pid, "error", err)
+			slog.Debug(
+				"emulated file handler: NotifIDValid pre-emulation check failed, proceeding",
+				"pid",
+				pid,
+				"error",
+				err,
+			)
 		}
 		emulateOpenat(fd, req, pid, path, fileArgs.Flags, fileArgs.Mode)
 		return
@@ -990,7 +1310,15 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 	// CONTINUE path with ID validation bracketing.
 	if result.Action == ActionDeny {
 		if err := NotifRespondDeny(int(fd), req.ID, result.Errno); err != nil {
-			slog.Error("emulated file handler: deny response failed", "pid", pid, "path", path, "error", err)
+			slog.Error(
+				"emulated file handler: deny response failed",
+				"pid",
+				pid,
+				"path",
+				path,
+				"error",
+				err,
+			)
 		}
 		return
 	}
@@ -1002,7 +1330,13 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 			slog.Debug("emulated file handler: notification stale after policy check", "pid", pid)
 			return // notification cancelled, no response needed
 		}
-		slog.Debug("emulated file handler: NotifIDValid post-check failed, proceeding", "pid", pid, "error", err)
+		slog.Debug(
+			"emulated file handler: NotifIDValid post-check failed, proceeding",
+			"pid",
+			pid,
+			"error",
+			err,
+		)
 	}
 	if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 		slog.Debug("emulated file handler: continue response failed", "pid", pid, "error", err)
@@ -1013,7 +1347,14 @@ func handleFileNotificationEmulated(goCtx context.Context, fd seccomp.ScmpFd, re
 // then injects the resulting fd into the tracee using SECCOMP_ADDFD_FLAG_SEND.
 // This atomically installs the fd and completes the notification, eliminating
 // TOCTOU races between the policy check and the actual open.
-func emulateOpenat(fd seccomp.ScmpFd, req *seccomp.ScmpNotifReq, pid int, path string, flags uint32, mode uint32) {
+func emulateOpenat(
+	fd seccomp.ScmpFd,
+	req *seccomp.ScmpNotifReq,
+	pid int,
+	path string,
+	flags uint32,
+	mode uint32,
+) {
 	procPath := fmt.Sprintf("/proc/%d/root%s", pid, path)
 
 	openFlags := int(flags) & int(emulableFlagMask)
@@ -1027,7 +1368,13 @@ func emulateOpenat(fd seccomp.ScmpFd, req *seccomp.ScmpNotifReq, pid int, path s
 		if err != nil {
 			// Can't read umask — fall back to CONTINUE to avoid creating
 			// files with potentially over-permissive modes.
-			slog.Debug("emulateOpenat: cannot read umask, falling back to CONTINUE", "pid", pid, "error", err)
+			slog.Debug(
+				"emulateOpenat: cannot read umask, falling back to CONTINUE",
+				"pid",
+				pid,
+				"error",
+				err,
+			)
 			if err := NotifRespondContinue(int(fd), req.ID); err != nil {
 				slog.Debug("emulateOpenat: continue response failed", "pid", pid, "error", err)
 			}

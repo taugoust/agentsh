@@ -91,7 +91,10 @@ func TestIntegration_PolicyYAML_FullFlow(t *testing.T) {
 		{
 			Name:     "github",
 			Upstream: "https://api.github.com",
-			Secret:   &policy.HTTPServiceSecret{Ref: "keyring://agentsh/github_token", Format: "ghp_{rand:34}"},
+			Secret: &policy.HTTPServiceSecret{
+				Ref:    "keyring://agentsh/github_token",
+				Format: "ghp_{rand:34}",
+			},
 			Inject: &policy.HTTPServiceInject{Header: &policy.HTTPServiceInjectHeader{
 				Name: "Authorization", Template: "Bearer {{secret}}",
 			}},
@@ -103,7 +106,11 @@ func TestIntegration_PolicyYAML_FullFlow(t *testing.T) {
 	}
 
 	// Bootstrap credentials.
-	table, cleanup, err := BootstrapCredentials(context.Background(), memProvider, resolved.ServiceConfigs)
+	table, cleanup, err := BootstrapCredentials(
+		context.Background(),
+		memProvider,
+		resolved.ServiceConfigs,
+	)
 	if err != nil {
 		t.Fatalf("BootstrapCredentials: %v", err)
 	}
@@ -173,9 +180,12 @@ func TestScrubResponse_CompositionFlow(t *testing.T) {
 	scrubFalse := false
 	svcs := []policy.HTTPService{
 		{
-			Name:          "github",
-			Upstream:      "https://api.github.com",
-			Secret:        &policy.HTTPServiceSecret{Ref: "keyring://agentsh/gh", Format: "ghp_{rand:36}"},
+			Name:     "github",
+			Upstream: "https://api.github.com",
+			Secret: &policy.HTTPServiceSecret{
+				Ref:    "keyring://agentsh/gh",
+				Format: "ghp_{rand:36}",
+			},
 			ScrubResponse: &scrubTrue,
 			Inject: &policy.HTTPServiceInject{
 				Header: &policy.HTTPServiceInjectHeader{
@@ -184,9 +194,12 @@ func TestScrubResponse_CompositionFlow(t *testing.T) {
 			},
 		},
 		{
-			Name:          "stripe",
-			Upstream:      "https://api.stripe.com",
-			Secret:        &policy.HTTPServiceSecret{Ref: "keyring://agentsh/stripe", Format: "xk_test_{rand:24}"},
+			Name:     "stripe",
+			Upstream: "https://api.stripe.com",
+			Secret: &policy.HTTPServiceSecret{
+				Ref:    "keyring://agentsh/stripe",
+				Format: "xk_test_{rand:24}",
+			},
 			ScrubResponse: &scrubFalse,
 		},
 	}
@@ -240,7 +253,10 @@ func TestScrubResponse_CompositionFlow(t *testing.T) {
 		Body:          io.NopCloser(bytes.NewReader(stripeRespBody)),
 		ContentLength: int64(len(stripeRespBody)),
 	}
-	if err := credsHook.PostHook(stripeResp, &proxy.RequestContext{ServiceName: "stripe"}); err != nil {
+	if err := credsHook.PostHook(
+		stripeResp,
+		&proxy.RequestContext{ServiceName: "stripe"},
+	); err != nil {
 		t.Fatalf("PostHook stripe: %v", err)
 	}
 	stripeGot, _ := io.ReadAll(stripeResp.Body)

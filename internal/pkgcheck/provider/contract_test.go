@@ -13,7 +13,12 @@ import (
 type providerFactory func(t *testing.T, baseURL string) pkgcheck.CheckProvider
 
 // runContractSuite runs the shared CheckProvider contract assertions.
-func runContractSuite(t *testing.T, name string, makeProvider providerFactory, fixture contractFixture) {
+func runContractSuite(
+	t *testing.T,
+	name string,
+	makeProvider providerFactory,
+	fixture contractFixture,
+) {
 	t.Run(name+"/EmptyInput", func(t *testing.T) {
 		p := makeProvider(t, fixture.cleanServerURL)
 		resp, err := p.CheckBatch(context.Background(), pkgcheck.CheckRequest{

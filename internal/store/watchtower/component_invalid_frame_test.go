@@ -30,7 +30,9 @@ import (
 // component_metrics_helpers_test.go file rather than cloning a third
 // time.
 func invalidFrameReasonCounterRE(reason string) *regexp.Regexp {
-	return regexp.MustCompile(`wtp_dropped_invalid_frame_total\{reason="` + regexp.QuoteMeta(reason) + `"\} (\d+)`)
+	return regexp.MustCompile(
+		`wtp_dropped_invalid_frame_total\{reason="` + regexp.QuoteMeta(reason) + `"\} (\d+)`,
+	)
 }
 
 // waitForInvalidFrameCounter polls the metrics handler until the
@@ -38,7 +40,13 @@ func invalidFrameReasonCounterRE(reason string) *regexp.Regexp {
 // the deadline elapses. Returns the observed count (-1 on timeout) and
 // the last scraped body for diagnostics. Counterpart to
 // waitForReasonCounter in component_session_init_failure_test.go.
-func waitForInvalidFrameCounter(t *testing.T, c *metrics.Collector, reason string, want int, deadline time.Duration) (int, string) {
+func waitForInvalidFrameCounter(
+	t *testing.T,
+	c *metrics.Collector,
+	reason string,
+	want int,
+	deadline time.Duration,
+) (int, string) {
 	t.Helper()
 	re := invalidFrameReasonCounterRE(reason)
 	end := time.Now().Add(deadline)
@@ -61,7 +69,11 @@ func waitForInvalidFrameCounter(t *testing.T, c *metrics.Collector, reason strin
 // inbound-validation tests: the testserver injects a malformed
 // ServerMessage immediately after SessionAck, so the watchtower must
 // reach Live (a real Dialer) and then exercise the recv classifier.
-func baseInvalidFrameOpts(t *testing.T, srv *testserver.Server, c *metrics.Collector) watchtower.Options {
+func baseInvalidFrameOpts(
+	t *testing.T,
+	srv *testserver.Server,
+	c *metrics.Collector,
+) watchtower.Options {
 	t.Helper()
 	return watchtower.Options{
 		WALDir:          t.TempDir(),
@@ -123,7 +135,11 @@ func TestStore_InboundGoaway_CodeUnspecified(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	got, body := waitForInvalidFrameCounter(t, c, "goaway_code_unspecified", 1, 1*time.Millisecond)
 	if got > 0 {
-		t.Fatalf("UNSPECIFIED Goaway must NOT increment wtp_dropped_invalid_frame_total{reason=goaway_code_unspecified}; got %d\nbody:\n%s", got, body)
+		t.Fatalf(
+			"UNSPECIFIED Goaway must NOT increment wtp_dropped_invalid_frame_total{reason=goaway_code_unspecified}; got %d\nbody:\n%s",
+			got,
+			body,
+		)
 	}
 }
 
@@ -157,8 +173,17 @@ func TestStore_InboundSessionUpdate_GenerationZero(t *testing.T) {
 	}
 	defer s.Close()
 
-	got, body := waitForInvalidFrameCounter(t, c, "session_update_generation_invalid", 1, 30*time.Second)
+	got, body := waitForInvalidFrameCounter(
+		t,
+		c,
+		"session_update_generation_invalid",
+		1,
+		30*time.Second,
+	)
 	if got < 1 {
-		t.Fatalf("expected reason=session_update_generation_invalid counter >= 1 within 30s\nbody:\n%s", body)
+		t.Fatalf(
+			"expected reason=session_update_generation_invalid counter >= 1 within 30s\nbody:\n%s",
+			body,
+		)
 	}
 }

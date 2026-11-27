@@ -99,7 +99,10 @@ func TestCombinedRedirectIntegration(t *testing.T) {
 				Name:       "openai-connect",
 				Match:      ".*\\.openai\\.com:443",
 				RedirectTo: "azure-proxy.internal:443",
-				TLS:        &policy.ConnectRedirectTLSConfig{Mode: "rewrite_sni", SNI: "azure-proxy.internal"},
+				TLS: &policy.ConnectRedirectTLSConfig{
+					Mode: "rewrite_sni",
+					SNI:  "azure-proxy.internal",
+				},
 				Visibility: "warn",
 				Message:    "Routed through Azure OpenAI",
 			},

@@ -45,14 +45,16 @@ func TestParseRedaction(t *testing.T) {
 
 func TestDBEvent_JSONRoundTrip(t *testing.T) {
 	in := DBEvent{
-		EventID:            "01HQ-fake",
-		SessionID:          "sess-1",
-		Timestamp:          time.Date(2026, 5, 8, 10, 0, 0, 0, time.UTC),
-		DBService:          "appdb",
-		DBFamily:           "postgres",
-		DBDialect:          "postgres",
-		Database:           "app",
-		Effects:            []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}},
+		EventID:   "01HQ-fake",
+		SessionID: "sess-1",
+		Timestamp: time.Date(2026, 5, 8, 10, 0, 0, 0, time.UTC),
+		DBService: "appdb",
+		DBFamily:  "postgres",
+		DBDialect: "postgres",
+		Database:  "app",
+		Effects: []effects.Effect{
+			{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+		},
 		StatementRedaction: RedactionParametersRedacted,
 		ParserBackend:      effects.ParserBackendLibPgQuery,
 	}
@@ -158,7 +160,8 @@ func TestDBEvent_RedirectMetadataRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if !out.Redirected || out.RedirectRule != in.RedirectRule || out.RewrittenStatementDigest != in.RewrittenStatementDigest {
+	if !out.Redirected || out.RedirectRule != in.RedirectRule ||
+		out.RewrittenStatementDigest != in.RewrittenStatementDigest {
 		t.Fatalf("redirect fields lost: %+v", out)
 	}
 	if out.StatementDigest != "sha256:original" {
@@ -194,7 +197,8 @@ func TestDBEvent_RedirectRejectionRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if out.RedirectRuntimeStatus != "rejected" || out.RedirectRejectionReason != "unsupported_statement" {
+	if out.RedirectRuntimeStatus != "rejected" ||
+		out.RedirectRejectionReason != "unsupported_statement" {
 		t.Fatalf("redirect rejection fields lost: %+v", out)
 	}
 }
@@ -208,7 +212,9 @@ func TestDBEvent_Extended_RoundTrip(t *testing.T) {
 		DBService: "appdb",
 		DBFamily:  "postgres",
 		DBDialect: "postgres",
-		Effects:   []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}},
+		Effects: []effects.Effect{
+			{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+		},
 
 		TLS: EventTLS{Mode: "terminate_reissue", ClientSNI: "db.example"},
 		Decision: EventDecision{

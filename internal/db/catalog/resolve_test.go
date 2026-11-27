@@ -3,7 +3,10 @@ package catalog
 import "testing"
 
 func TestResolveQualifiedRelation(t *testing.T) {
-	snap := NewSnapshot([]Relation{{OID: 10, Name: Name{Schema: "public", Name: "orders"}, Kind: RelationTable}}, nil)
+	snap := NewSnapshot(
+		[]Relation{{OID: 10, Name: Name{Schema: "public", Name: "orders"}, Kind: RelationTable}},
+		nil,
+	)
 	got := ResolveRelation(snap, Name{Schema: "public", Name: "orders"}, nil)
 	if !got.OK() || got.Relation.OID != 10 {
 		t.Fatalf("ResolveRelation qualified = %+v", got)

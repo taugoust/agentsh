@@ -31,9 +31,14 @@ import (
 
 func TestCompositionRuntimeControlRulePrecedesProjectAuthority(t *testing.T) {
 	root := filepath.Join(string(filepath.Separator), "agentsh-composition-scratch")
-	original := &policy.Policy{FileRules: []policy.FileRule{{
-		Name: "project-control-leak", Paths: []string{root, filepath.Join(root, "**")}, Operations: []string{"*"}, Decision: "allow",
-	}}}
+	original := &policy.Policy{FileRules: []policy.FileRule{
+		{
+			Name:       "project-control-leak",
+			Paths:      []string{root, filepath.Join(root, "**")},
+			Operations: []string{"*"},
+			Decision:   "allow",
+		},
+	}}
 	app := &App{cfg: &config.Config{}}
 	app.cfg.Sandbox.Composition.Bubblewrap.Enabled = true
 	app.cfg.Sandbox.Composition.Bubblewrap.ScratchRoot = root
@@ -41,7 +46,8 @@ func TestCompositionRuntimeControlRulePrecedesProjectAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.FileRules) != 2 || got.FileRules[0].Name != "deny-agentsh-composition-runtime" || got.FileRules[0].Decision != "deny" {
+	if len(got.FileRules) != 2 || got.FileRules[0].Name != "deny-agentsh-composition-runtime" ||
+		got.FileRules[0].Decision != "deny" {
 		t.Fatalf("runtime rules = %#v", got.FileRules)
 	}
 	if original.FileRules[0].Name != "project-control-leak" || len(original.FileRules) != 1 {
@@ -50,8 +56,24 @@ func TestCompositionRuntimeControlRulePrecedesProjectAuthority(t *testing.T) {
 }
 
 func TestAutomaticCompositionRuntimeControlRootSurvivesLeaseRebind(t *testing.T) {
-	first := filepath.Join(string(filepath.Separator), "run", "agentsh", "nethelper", "1000", "lease-11111111-1111-4111-8111-111111111111", "composition")
-	second := filepath.Join(string(filepath.Separator), "run", "agentsh", "nethelper", "1000", "lease-22222222-2222-4222-8222-222222222222", "composition")
+	first := filepath.Join(
+		string(filepath.Separator),
+		"run",
+		"agentsh",
+		"nethelper",
+		"1000",
+		"lease-11111111-1111-4111-8111-111111111111",
+		"composition",
+	)
+	second := filepath.Join(
+		string(filepath.Separator),
+		"run",
+		"agentsh",
+		"nethelper",
+		"1000",
+		"lease-22222222-2222-4222-8222-222222222222",
+		"composition",
+	)
 	firstControl, err := automaticCompositionRuntimeControlRoot(first)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +86,9 @@ func TestAutomaticCompositionRuntimeControlRootSurvivesLeaseRebind(t *testing.T)
 	if firstControl != want || secondControl != want {
 		t.Fatalf("control roots = %q and %q, want %q", firstControl, secondControl, want)
 	}
-	if _, err := automaticCompositionRuntimeControlRoot(filepath.Join(string(filepath.Separator), "tmp", "composition")); err == nil {
+	if _, err := automaticCompositionRuntimeControlRoot(
+		filepath.Join(string(filepath.Separator), "tmp", "composition"),
+	); err == nil {
 		t.Fatal("arbitrary automatic runtime topology accepted")
 	}
 }
@@ -93,10 +117,17 @@ func TestDBServiceConfigFromProxyServices(t *testing.T) {
 	if len(cfg.Services) != 2 {
 		t.Fatalf("len(Services) = %d, want 2", len(cfg.Services))
 	}
-	if got := cfg.Services[0]; got.Name != "appdb" || got.Upstream.Host != "db.example.com" || got.Upstream.Port != 5432 || got.Listen.Kind != "unix" || got.Listen.Path != services[0].ListenPath {
+	if got := cfg.Services[0]; got.Name != "appdb" || got.Upstream.Host != "db.example.com" ||
+		got.Upstream.Port != 5432 ||
+		got.Listen.Kind != "unix" ||
+		got.Listen.Path != services[0].ListenPath {
 		t.Fatalf("first service = %+v", got)
 	}
-	if got := cfg.Services[1]; got.Name != "analytics" || got.Upstream.Host != "127.0.0.1" || got.Upstream.Port != 15432 || got.Listen.Kind != "tcp" || got.Listen.Host != "127.0.0.1" || got.Listen.Port != 25432 {
+	if got := cfg.Services[1]; got.Name != "analytics" || got.Upstream.Host != "127.0.0.1" ||
+		got.Upstream.Port != 15432 ||
+		got.Listen.Kind != "tcp" ||
+		got.Listen.Host != "127.0.0.1" ||
+		got.Listen.Port != 25432 {
 		t.Fatalf("second service = %+v", got)
 	}
 }
@@ -136,7 +167,8 @@ func TestMergeDBUnavoidabilityBundle_SessionLocalCopy(t *testing.T) {
 	if merged == base {
 		t.Fatal("mergeDBUnavoidabilityBundle returned base pointer")
 	}
-	if len(base.NetworkRules) != 1 || len(base.ConnectRedirectRules) != 0 || len(base.Metadata) != 0 {
+	if len(base.NetworkRules) != 1 || len(base.ConnectRedirectRules) != 0 ||
+		len(base.Metadata) != 0 {
 		t.Fatalf("base policy was mutated: %+v", base)
 	}
 	if len(merged.NetworkRules) != 2 {
@@ -145,7 +177,9 @@ func TestMergeDBUnavoidabilityBundle_SessionLocalCopy(t *testing.T) {
 	if len(merged.ConnectRedirectRules) != 1 {
 		t.Fatalf("len(merged.ConnectRedirectRules) = %d, want 1", len(merged.ConnectRedirectRules))
 	}
-	if len(merged.Metadata) != 1 || merged.Metadata[0].Source != dbservice.RuleSourceDBUnavoidability || merged.Metadata[0].DBService != "appdb" {
+	if len(merged.Metadata) != 1 ||
+		merged.Metadata[0].Source != dbservice.RuleSourceDBUnavoidability ||
+		merged.Metadata[0].DBService != "appdb" {
 		t.Fatalf("merged metadata = %+v", merged.Metadata)
 	}
 }
@@ -211,23 +245,33 @@ func TestMergeDBUnavoidabilityBundle_GeneratedRulesTakePrecedenceOverBroadAllows
 	}
 
 	netDecision := engine.CheckNetworkIP("db.example.com", nil, 5432)
-	if netDecision.PolicyDecision != types.DecisionDeny || netDecision.Rule != "db-appdb-deny-direct" {
+	if netDecision.PolicyDecision != types.DecisionDeny ||
+		netDecision.Rule != "db-appdb-deny-direct" {
 		t.Fatalf("network decision = %+v, want generated deny before broad allow", netDecision)
 	}
 
-	cmdDecision := engine.CheckCommand("ssh", []string{"-L", "15432:db.example.com:5432", "bastion"})
-	if cmdDecision.PolicyDecision != types.DecisionDeny || cmdDecision.Rule != "db-bypass-ssh-forward" {
+	cmdDecision := engine.CheckCommand(
+		"ssh",
+		[]string{"-L", "15432:db.example.com:5432", "bastion"},
+	)
+	if cmdDecision.PolicyDecision != types.DecisionDeny ||
+		cmdDecision.Rule != "db-bypass-ssh-forward" {
 		t.Fatalf("command decision = %+v, want generated deny before broad allow", cmdDecision)
 	}
 
 	unixDecision := engine.CheckUnixSocket("/var/run/postgresql/.s.PGSQL.5432", "connect")
-	if unixDecision.PolicyDecision != types.DecisionDeny || unixDecision.Rule != "db-appdb-deny-local-postgres-sockets" {
+	if unixDecision.PolicyDecision != types.DecisionDeny ||
+		unixDecision.Rule != "db-appdb-deny-local-postgres-sockets" {
 		t.Fatalf("unix decision = %+v, want generated deny before broad allow", unixDecision)
 	}
 
 	redirectDecision := engine.EvaluateConnectRedirect("db.example.com:5432")
-	if !redirectDecision.Matched || redirectDecision.Rule != "db-appdb-redirect" || redirectDecision.RedirectToUnix != socketPath {
-		t.Fatalf("connect redirect decision = %+v, want generated Unix redirect before broad redirect", redirectDecision)
+	if !redirectDecision.Matched || redirectDecision.Rule != "db-appdb-redirect" ||
+		redirectDecision.RedirectToUnix != socketPath {
+		t.Fatalf(
+			"connect redirect decision = %+v, want generated Unix redirect before broad redirect",
+			redirectDecision,
+		)
 	}
 }
 
@@ -258,8 +302,12 @@ func TestMergeDBUnavoidabilityBundle_PrecedenceForDNSRedirectRules(t *testing.T)
 	}
 
 	decision := engine.EvaluateDnsRedirect("db.example.com")
-	if !decision.Matched || decision.Rule != "db-generated-dns-redirect" || decision.ResolveTo != "127.0.0.1" {
-		t.Fatalf("dns redirect decision = %+v, want bundle rule before broad base redirect", decision)
+	if !decision.Matched || decision.Rule != "db-generated-dns-redirect" ||
+		decision.ResolveTo != "127.0.0.1" {
+		t.Fatalf(
+			"dns redirect decision = %+v, want bundle rule before broad base redirect",
+			decision,
+		)
 	}
 }
 
@@ -301,7 +349,9 @@ func TestCreateSessionCore_DBUnavoidabilityAddsGeneratedMetadataAndStartsProxy(t
 	waitForPath(t, filepath.Join(s.DBProxySocketDir(), "appdb.sock"), 2*time.Second)
 }
 
-func TestCreateSessionWithProfile_DBUnavoidabilityAddsGeneratedMetadataAndStartsProxy(t *testing.T) {
+func TestCreateSessionWithProfile_DBUnavoidabilityAddsGeneratedMetadataAndStartsProxy(
+	t *testing.T,
+) {
 	app, mgr := newDBUnavoidabilityTestApp(t, dbObservePolicyYAML())
 	app.dbProxySessionResolverForTest = fixedDBSessionResolver{sessionID: "sess-profile-db"}
 	workspace := t.TempDir()
@@ -365,7 +415,13 @@ func TestCreateSessionCore_DBUnavoidabilityRegularFileListenerFailsClosed(t *tes
 	app, mgr := newDBUnavoidabilityTestApp(t, dbObservePolicyYAML())
 	app.dbProxySessionResolverForTest = fixedDBSessionResolver{sessionID: "sess-db-regular-file"}
 
-	listenPath := filepath.Join(app.cfg.Sessions.BaseDir, "sess-db-regular-file", "db-proxy", "db-services", "appdb.sock")
+	listenPath := filepath.Join(
+		app.cfg.Sessions.BaseDir,
+		"sess-db-regular-file",
+		"db-proxy",
+		"db-services",
+		"appdb.sock",
+	)
 	if err := os.MkdirAll(filepath.Dir(listenPath), 0o700); err != nil {
 		t.Fatalf("mkdir listener parent: %v", err)
 	}
@@ -447,7 +503,11 @@ func TestMonitorSessionDBProxyStartClosesProxyOnUnexpectedExit(t *testing.T) {
 func TestExecInSessionCore_DBCommandDenyEmitsBypassAttempt(t *testing.T) {
 	f := newDBCommandBypassFixture(t)
 
-	_, code, err := f.app.execInSessionCore(context.Background(), f.session.ID, dbCommandBypassExecRequest())
+	_, code, err := f.app.execInSessionCore(
+		context.Background(),
+		f.session.ID,
+		dbCommandBypassExecRequest(),
+	)
 	if err != nil {
 		t.Fatalf("execInSessionCore: %v", err)
 	}
@@ -464,7 +524,11 @@ func TestExecInSessionStream_DBCommandDenyEmitsBypassAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+f.session.ID+"/exec/stream", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+f.session.ID+"/exec/stream",
+		bytes.NewReader(body),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", f.session.ID)
@@ -550,7 +614,19 @@ func TestCreateSessionCore_NoPolicyDirUsesGlobalEngine(t *testing.T) {
 	cfg.Sessions.BaseDir = t.TempDir()
 	mgr := session.NewManager(10)
 	store := composite.New(mockEventStore{}, nil)
-	app := NewApp(cfg, mgr, store, globalEngine, appevents.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		mgr,
+		store,
+		globalEngine,
+		appevents.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 
 	snap, code, err := app.createSessionCore(context.Background(), types.CreateSessionRequest{
 		ID:        "sess-global-engine",
@@ -591,7 +667,11 @@ func (r staticDBResolver) LookupIP(context.Context, string) ([]net.IP, error) {
 func newDBUnavoidabilityTestApp(t *testing.T, policyYAML string) (*App, *session.Manager) {
 	t.Helper()
 	policyDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policyYAML), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policyYAML),
+		0o600,
+	); err != nil {
 		t.Fatalf("write policy: %v", err)
 	}
 	cfg := &config.Config{}
@@ -614,7 +694,19 @@ func newDBUnavoidabilityTestApp(t *testing.T, policyYAML string) (*App, *session
 	mgr := session.NewManager(10)
 	st := newSQLiteStore(t)
 	store := composite.New(st, st)
-	app := NewApp(cfg, mgr, store, nil, appevents.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		mgr,
+		store,
+		nil,
+		appevents.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	return app, mgr
 }
 
@@ -636,7 +728,19 @@ func newDBCommandBypassFixture(t *testing.T) *dbCommandBypassFixture {
 	mgr := session.NewManager(5)
 	captured := &capturingEventStore{}
 	store := composite.New(captured, nil)
-	app := NewApp(cfg, mgr, store, nil, appevents.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		mgr,
+		store,
+		nil,
+		appevents.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	s, err := mgr.Create(t.TempDir(), "default")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -661,16 +765,25 @@ func (f *dbCommandBypassFixture) assertDBCommandBypassAttempt(t *testing.T) {
 		}
 	}
 	if len(bypassEvents) != 1 {
-		t.Fatalf("db_bypass_attempt events = %d, want 1; all events = %+v", len(bypassEvents), f.captured.events)
+		t.Fatalf(
+			"db_bypass_attempt events = %d, want 1; all events = %+v",
+			len(bypassEvents),
+			f.captured.events,
+		)
 	}
 	ev := bypassEvents[0]
 	if ev.SessionID != f.session.ID || ev.CommandID == "" || ev.PID != 0 {
 		t.Fatalf("unexpected bypass event identity: %+v", ev)
 	}
 	if ev.Fields["process_identity"] != "command:"+ev.CommandID {
-		t.Fatalf("process_identity = %v, want command:%s", ev.Fields["process_identity"], ev.CommandID)
+		t.Fatalf(
+			"process_identity = %v, want command:%s",
+			ev.Fields["process_identity"],
+			ev.CommandID,
+		)
 	}
-	if ev.Fields["rule_name"] != "db-bypass-ssh-forward" || ev.Fields["bypass_mode"] != dbservice.BypassModePortForwardTool {
+	if ev.Fields["rule_name"] != "db-bypass-ssh-forward" ||
+		ev.Fields["bypass_mode"] != dbservice.BypassModePortForwardTool {
 		t.Fatalf("unexpected bypass rule fields: %+v", ev.Fields)
 	}
 	if ev.Fields["db_service"] != "*" || ev.Fields["destination"] != "db-service-ports" {

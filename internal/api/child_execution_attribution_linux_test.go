@@ -25,9 +25,16 @@ func TestChildExecutionLanes_NotifyEventsUseCommandLocalAttribution(t *testing.T
 	defer lease.Release()
 	runtimeState := lease.Runtime()
 	runtimeState.SetCurrentExecutionSensitive(true)
-	runtimeState.SetCurrentTraceContext("0123456789abcdef0123456789abcdef", "0123456789abcdef", "01")
+	runtimeState.SetCurrentTraceContext(
+		"0123456789abcdef0123456789abcdef",
+		"0123456789abcdef",
+		"01",
+	)
 
-	emitter := &notifyEmitterAdapter{runtimeState: runtimeState, sensitive: runtimeState.CurrentExecutionSensitive}
+	emitter := &notifyEmitterAdapter{
+		runtimeState: runtimeState,
+		sensitive:    runtimeState.CurrentExecutionSensitive,
+	}
 	event := emitter.redact(types.Event{Fields: map[string]any{"argv": []string{"secret"}}})
 	if event.CommandID != "cmd-child" {
 		t.Fatalf("command id = %q, want command-local id", event.CommandID)

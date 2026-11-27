@@ -53,7 +53,11 @@ func validateMaxRecordBytes(maxRecordBytes int) error {
 		return fmt.Errorf("wal: maxRecordBytes must be > 0, got %d", maxRecordBytes)
 	}
 	if uint64(maxRecordBytes) > MaxFramedPayload {
-		return fmt.Errorf("wal: maxRecordBytes %d exceeds protocol cap %d", maxRecordBytes, uint64(MaxFramedPayload))
+		return fmt.Errorf(
+			"wal: maxRecordBytes %d exceeds protocol cap %d",
+			maxRecordBytes,
+			uint64(MaxFramedPayload),
+		)
 	}
 	return nil
 }
@@ -64,7 +68,12 @@ func validateMaxRecordBytes(maxRecordBytes int) error {
 //
 // maxRecordBytes is forwarded to every WriteRecord call; it must be in
 // (0, MaxFramedPayload]. Callers typically derive this from WAL.SegmentSize.
-func OpenSegment(dir string, index uint64, hdr SegmentHeader, maxRecordBytes int) (*Segment, error) {
+func OpenSegment(
+	dir string,
+	index uint64,
+	hdr SegmentHeader,
+	maxRecordBytes int,
+) (*Segment, error) {
 	if err := validateMaxRecordBytes(maxRecordBytes); err != nil {
 		return nil, err
 	}

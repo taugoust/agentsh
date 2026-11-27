@@ -54,7 +54,9 @@ var (
 
 var (
 	subagentBearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
-	subagentSecretPattern = regexp.MustCompile(`(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|password|passwd|secret)\b\s*[:=]\s*[^\s,;]+`)
+	subagentSecretPattern = regexp.MustCompile(
+		`(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|password|passwd|secret)\b\s*[:=]\s*[^\s,;]+`,
+	)
 )
 
 type subagentTerminal struct {
@@ -88,7 +90,14 @@ func completedSubagentTerminal(exitCode int, termination subagentTermination) su
 	}
 }
 
-func failedSubagentTerminal(kind subagentFailureKind, exitCode int, signal string, termination subagentTermination, retryable bool, message string) subagentTerminal {
+func failedSubagentTerminal(
+	kind subagentFailureKind,
+	exitCode int,
+	signal string,
+	termination subagentTermination,
+	retryable bool,
+	message string,
+) subagentTerminal {
 	if kind == "" {
 		kind = subagentFailureUnknown
 	}
@@ -107,16 +116,22 @@ func failedSubagentTerminal(kind subagentFailureKind, exitCode int, signal strin
 }
 
 func subagentCancellationExitCode(ctx context.Context) int {
-	if errors.Is(context.Cause(ctx), errSubagentRequestTimeout) || errors.Is(context.Cause(ctx), context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if errors.Is(context.Cause(ctx), errSubagentRequestTimeout) ||
+		errors.Is(context.Cause(ctx), context.DeadlineExceeded) ||
+		errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return 124
 	}
 	return 130
 }
 
-func subagentCancellationFromContext(ctx context.Context) (subagentTerminalState, subagentFailureKind, subagentCancellationCause, string) {
+func subagentCancellationFromContext(
+	ctx context.Context,
+) (subagentTerminalState, subagentFailureKind, subagentCancellationCause, string) {
 	cause := context.Cause(ctx)
 	switch {
-	case errors.Is(cause, errSubagentRequestTimeout), errors.Is(cause, context.DeadlineExceeded), errors.Is(ctx.Err(), context.DeadlineExceeded):
+	case errors.Is(cause, errSubagentRequestTimeout),
+		errors.Is(cause, context.DeadlineExceeded),
+		errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return subagentStateTimedOut, subagentFailureProcess, subagentCancelRequestTimeout, "subagent request timed out"
 	case errors.Is(cause, errSubagentUserCancelled):
 		return subagentStateCancelled, "", subagentCancelUser, "subagent was cancelled by the user"
@@ -129,7 +144,13 @@ func subagentCancellationFromContext(ctx context.Context) (subagentTerminalState
 	}
 }
 
-func cancelledSubagentTerminal(ctx context.Context, exitCode int, signal string, termination subagentTermination, processStarted bool) subagentTerminal {
+func cancelledSubagentTerminal(
+	ctx context.Context,
+	exitCode int,
+	signal string,
+	termination subagentTermination,
+	processStarted bool,
+) subagentTerminal {
 	state, failureKind, cancellationCause, message := subagentCancellationFromContext(ctx)
 	return subagentTerminal{
 		State:                      state,
@@ -178,7 +199,14 @@ func aggregateSubagentTerminal(results []subagentResult, fallbackError error) su
 		if fallbackError == nil {
 			return completedSubagentTerminal(0, subagentTerminationNatural)
 		}
-		return failedSubagentTerminal(subagentFailureUnknown, 1, "", subagentTerminationNatural, true, fallbackError.Error())
+		return failedSubagentTerminal(
+			subagentFailureUnknown,
+			1,
+			"",
+			subagentTerminationNatural,
+			true,
+			fallbackError.Error(),
+		)
 	}
 	for _, state := range []subagentTerminalState{subagentStateTimedOut, subagentStateCancelled, subagentStateFailed} {
 		for _, result := range results {

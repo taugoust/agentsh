@@ -29,7 +29,13 @@ func validSubagentRequestID(value string) bool {
 	}
 	for _, char := range value {
 		switch {
-		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z', char >= '0' && char <= '9', char == '-', char == '_', char == '.', char == ':':
+		case char >= 'a' && char <= 'z',
+			char >= 'A' && char <= 'Z',
+			char >= '0' && char <= '9',
+			char == '-',
+			char == '_',
+			char == '.',
+			char == ':':
 		default:
 			return false
 		}
@@ -49,7 +55,10 @@ func (a *App) subagentLifecycleContext() context.Context {
 	return a.lifecycleCtx
 }
 
-func (a *App) registerSubagentCancellation(sessionID, requestID string, cancel context.CancelCauseFunc) error {
+func (a *App) registerSubagentCancellation(
+	sessionID, requestID string,
+	cancel context.CancelCauseFunc,
+) error {
 	if a == nil || cancel == nil {
 		return errors.New("subagent cancellation registry is unavailable")
 	}
@@ -93,7 +102,10 @@ func (a *App) cancelRegisteredSubagent(sessionID, requestID string, cause error)
 // disconnect, and supervisor shutdown separate causes. It intentionally does
 // not derive directly from the HTTP context because a cancel control request
 // must be able to win before the original response stream is closed.
-func (a *App) newSubagentRequestContext(requestCtx context.Context, timeout time.Duration) (context.Context, context.CancelCauseFunc, func()) {
+func (a *App) newSubagentRequestContext(
+	requestCtx context.Context,
+	timeout time.Duration,
+) (context.Context, context.CancelCauseFunc, func()) {
 	baseCtx, cancelCause := context.WithCancelCause(context.Background())
 	ctx := context.Context(baseCtx)
 	timeoutCancel := func() {}
@@ -103,8 +115,14 @@ func (a *App) newSubagentRequestContext(requestCtx context.Context, timeout time
 	if requestCtx == nil {
 		requestCtx = context.Background()
 	}
-	stopRequest := context.AfterFunc(requestCtx, func() { cancelCause(errSubagentClientDisconnected) })
-	stopLifecycle := context.AfterFunc(a.subagentLifecycleContext(), func() { cancelCause(errSubagentSupervisorShutdown) })
+	stopRequest := context.AfterFunc(
+		requestCtx,
+		func() { cancelCause(errSubagentClientDisconnected) },
+	)
+	stopLifecycle := context.AfterFunc(
+		a.subagentLifecycleContext(),
+		func() { cancelCause(errSubagentSupervisorShutdown) },
+	)
 	cleanup := func() {
 		stopRequest()
 		stopLifecycle()
@@ -142,7 +160,11 @@ func (a *App) cancelSubagentTool(w http.ResponseWriter, r *http.Request) {
 	}
 	cause, ok := explicitSubagentCancellationError(req.Cause)
 	if !ok {
-		writeToolError(w, http.StatusBadRequest, "cancellation cause must be user_cancelled or parent_cancelled")
+		writeToolError(
+			w,
+			http.StatusBadRequest,
+			"cancellation cause must be user_cancelled or parent_cancelled",
+		)
 		return
 	}
 	if !a.cancelRegisteredSubagent(sessionID, requestID, cause) {

@@ -23,14 +23,25 @@ type verifiedVSockPeerListener struct {
 	authentication time.Duration
 }
 
-func verifyVSockPeerListener(listener net.Listener, expectedCID uint32, expectedToken string, authenticationTimeout time.Duration) (net.Listener, error) {
-	if listener == nil || expectedCID < 3 || expectedCID == ^uint32(0) || authenticationTimeout <= 0 {
+func verifyVSockPeerListener(
+	listener net.Listener,
+	expectedCID uint32,
+	expectedToken string,
+	authenticationTimeout time.Duration,
+) (net.Listener, error) {
+	if listener == nil || expectedCID < 3 || expectedCID == ^uint32(0) ||
+		authenticationTimeout <= 0 {
 		return nil, fmt.Errorf("host egress VSOCK peer or authentication binding is invalid")
 	}
 	if !guestcontrol.ValidEgressAuthenticationToken(expectedToken) {
 		return nil, fmt.Errorf("host egress VSOCK peer or authentication binding is invalid")
 	}
-	return &verifiedVSockPeerListener{listener: listener, expectedCID: expectedCID, expectedToken: expectedToken, authentication: authenticationTimeout}, nil
+	return &verifiedVSockPeerListener{
+		listener:       listener,
+		expectedCID:    expectedCID,
+		expectedToken:  expectedToken,
+		authentication: authenticationTimeout,
+	}, nil
 }
 
 func (l *verifiedVSockPeerListener) Accept() (net.Conn, error) {

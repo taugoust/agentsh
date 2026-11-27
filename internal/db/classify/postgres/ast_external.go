@@ -22,9 +22,14 @@ import (
 
 // classifyCreateSubscription maps CREATE SUBSCRIPTION → unsafe_io(create_subscription)
 // + schema_create. Conninfo is parsed into host/port for ObjectExternalEndpoint.
-func classifyCreateSubscription(cs *effects.ClassifiedStatement, s *pg_query.CreateSubscriptionStmt) {
+func classifyCreateSubscription(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CreateSubscriptionStmt,
+) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateSubscriptionStmt"
 		return
 	}
@@ -68,7 +73,9 @@ func classifyCreateSubscription(cs *effects.ClassifiedStatement, s *pg_query.Cre
 // SET PUBLICATION etc.
 func classifyAlterSubscription(cs *effects.ClassifiedStatement, s *pg_query.AlterSubscriptionStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil AlterSubscriptionStmt"
 		return
 	}
@@ -108,7 +115,9 @@ func classifyAlterSubscription(cs *effects.ClassifiedStatement, s *pg_query.Alte
 // + schema_destroy.
 func classifyDropSubscription(cs *effects.ClassifiedStatement, s *pg_query.DropSubscriptionStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DropSubscriptionStmt"
 		return
 	}
@@ -136,7 +145,9 @@ func classifyDropSubscription(cs *effects.ClassifiedStatement, s *pg_query.DropS
 // OPTIONS DefElems (the wire destination for FDW traffic).
 func classifyCreateServer(cs *effects.ClassifiedStatement, s *pg_query.CreateForeignServerStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateForeignServerStmt"
 		return
 	}
@@ -175,7 +186,9 @@ func classifyCreateServer(cs *effects.ClassifiedStatement, s *pg_query.CreateFor
 // host or port, expose it as ObjectExternalEndpoint so policy can match.
 func classifyAlterServer(cs *effects.ClassifiedStatement, s *pg_query.AlterForeignServerStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil AlterForeignServerStmt"
 		return
 	}
@@ -219,7 +232,9 @@ func classifyAlterServer(cs *effects.ClassifiedStatement, s *pg_query.AlterForei
 // so policies that match on roles light up too.
 func classifyCreateUserMapping(cs *effects.ClassifiedStatement, s *pg_query.CreateUserMappingStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateUserMappingStmt"
 		return
 	}
@@ -249,7 +264,9 @@ func classifyCreateUserMapping(cs *effects.ClassifiedStatement, s *pg_query.Crea
 // + privilege.
 func classifyAlterUserMapping(cs *effects.ClassifiedStatement, s *pg_query.AlterUserMappingStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil AlterUserMappingStmt"
 		return
 	}
@@ -279,7 +296,9 @@ func classifyAlterUserMapping(cs *effects.ClassifiedStatement, s *pg_query.Alter
 // + privilege.
 func classifyDropUserMapping(cs *effects.ClassifiedStatement, s *pg_query.DropUserMappingStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DropUserMappingStmt"
 		return
 	}
@@ -312,7 +331,9 @@ func classifyDropUserMapping(cs *effects.ClassifiedStatement, s *pg_query.DropUs
 // ObjectFilesystemPath so policies can deny by path prefix.
 func classifyCreateTablespace(cs *effects.ClassifiedStatement, s *pg_query.CreateTableSpaceStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateTableSpaceStmt"
 		return
 	}
@@ -350,9 +371,14 @@ func classifyCreateTablespace(cs *effects.ClassifiedStatement, s *pg_query.Creat
 // Per spec §7.3 these are pure schema_alter (no unsafe_io) — they tweak
 // per-tablespace planner GUCs, not the underlying location. ALTER TABLESPACE
 // RENAME / OWNER TO parse to RenameStmt / AlterOwnerStmt, not this node.
-func classifyAlterTablespace(cs *effects.ClassifiedStatement, s *pg_query.AlterTableSpaceOptionsStmt) {
+func classifyAlterTablespace(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.AlterTableSpaceOptionsStmt,
+) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil AlterTableSpaceOptionsStmt"
 		return
 	}
@@ -375,12 +401,17 @@ func classifyAlterTablespace(cs *effects.ClassifiedStatement, s *pg_query.AlterT
 // family.
 func classifyDropTablespace(cs *effects.ClassifiedStatement, s *pg_query.DropTableSpaceStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DropTableSpaceStmt"
 		return
 	}
 	cs.RawVerb = "DROP_TABLESPACE"
-	target := effects.ObjectRef{Kind: effects.ObjectTablespace, Name: strings.ToLower(s.Tablespacename)}
+	target := effects.ObjectRef{
+		Kind: effects.ObjectTablespace,
+		Name: strings.ToLower(s.Tablespacename),
+	}
 	cs.Effects = []effects.Effect{
 		{
 			Group:      effects.GroupUnsafeIO,
@@ -404,7 +435,9 @@ func classifyDropTablespace(cs *effects.ClassifiedStatement, s *pg_query.DropTab
 // one file.
 func classifyDropServer(cs *effects.ClassifiedStatement, s *pg_query.DropStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DropStmt"
 		return
 	}

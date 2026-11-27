@@ -190,7 +190,9 @@ func TestNotifyHandoffRoundTripWithCompositionSetup(t *testing.T) {
 	if handoff.NotifyFD == nil || handoff.CompositionSetup == nil {
 		t.Fatalf("incomplete handoff: %+v", handoff)
 	}
-	if !handoff.HasMetadata || !handoff.Metadata.CommandJail || !handoff.Metadata.CompositionSetup || handoff.Metadata.WrapperPID != 4321 {
+	if !handoff.HasMetadata || !handoff.Metadata.CommandJail ||
+		!handoff.Metadata.CompositionSetup ||
+		handoff.Metadata.WrapperPID != 4321 {
 		t.Fatalf("metadata = %+v, has=%v", handoff.Metadata, handoff.HasMetadata)
 	}
 	for name, file := range map[string]*os.File{"notify": handoff.NotifyFD, "setup": handoff.CompositionSetup} {

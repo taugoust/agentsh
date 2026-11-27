@@ -81,7 +81,16 @@ func TestWrapStrongMode_SetsInSessionMarker(t *testing.T) {
 	workspace := filepath.Join(temp, "workspace")
 	mustMkdir(t, workspace)
 
-	ctr, endpoint, cleanup := startWrapSeccompServerContainer(t, ctx, agentshBin, unixwrapBin, configPath, keysPath, policiesDir, workspace)
+	ctr, endpoint, cleanup := startWrapSeccompServerContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		keysPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -104,7 +113,8 @@ func TestWrapStrongMode_SetsInSessionMarker(t *testing.T) {
 	probeCancel()
 
 	if probeErr != nil {
-		if errors.Is(probeErr, context.DeadlineExceeded) || strings.Contains(probeErr.Error(), "deadline exceeded") {
+		if errors.Is(probeErr, context.DeadlineExceeded) ||
+			strings.Contains(probeErr.Error(), "deadline exceeded") {
 			t.Skip("seccomp-user-notify appears unreliable in this environment (probe timeout)")
 		}
 		t.Fatalf("Exec probe: %v", probeErr)
@@ -114,11 +124,13 @@ func TestWrapStrongMode_SetsInSessionMarker(t *testing.T) {
 	}
 
 	exitCode, outputReader, err := ctr.Exec(ctx, []string{
-		"/bin/sh", "-lc",
+		"/bin/sh",
+		"-lc",
 		`timeout 20s env AGENTSH_NO_AUTO=1 AGENTSH_API_KEY=test-key /usr/local/bin/agentsh --server http://127.0.0.1:18080 wrap -- /bin/sh -c 'if [ -n "$AGENTSH_IN_SESSION" ]; then echo MARKER_SET; else echo MARKER_UNSET; fi' 2>&1`,
 	})
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "deadline exceeded") {
+		if errors.Is(err, context.DeadlineExceeded) ||
+			strings.Contains(err.Error(), "deadline exceeded") {
 			t.Skip("seccomp wrap execution appears unreliable in this environment (wrap timeout)")
 		}
 		t.Fatalf("wrap exec: %v", err)
@@ -130,7 +142,10 @@ func TestWrapStrongMode_SetsInSessionMarker(t *testing.T) {
 	logOutput := string(logBytes)
 
 	if exitCode == 124 {
-		t.Skipf("seccomp wrap execution appears unreliable in this environment (wrap timed out)\n%s", logOutput)
+		t.Skipf(
+			"seccomp wrap execution appears unreliable in this environment (wrap timed out)\n%s",
+			logOutput,
+		)
 	}
 	if exitCode != 0 {
 		t.Fatalf("wrap exec exit=%d output:\n%s", exitCode, logOutput)

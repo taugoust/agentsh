@@ -70,7 +70,11 @@ func isWindowsStyleFlag(arg string) bool {
 // identifying more potential payloads rather than fewer — if a flag's value is
 // mistakenly treated as a payload, it will simply not match any command rule
 // and hit default-deny, which is the safe outcome.
-func UnwrapTransparentCommand(filename string, argv []string, overrides *TransparentOverrides) (string, []string, int) {
+func UnwrapTransparentCommand(
+	filename string,
+	argv []string,
+	overrides *TransparentOverrides,
+) (string, []string, int) {
 	originalFilename := filename
 	originalArgv := argv
 	currentBase := filepath.Base(filename)

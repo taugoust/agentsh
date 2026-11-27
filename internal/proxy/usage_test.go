@@ -150,7 +150,9 @@ func TestExtractUsage_HasUsage_PresentButZero(t *testing.T) {
 
 func TestExtractUsage_HasUsage_Absent(t *testing.T) {
 	// No usage field at all — HasUsage should be false.
-	body := []byte(`{"id": "msg_123", "type": "message", "content": [{"type": "text", "text": "Hello!"}]}`)
+	body := []byte(
+		`{"id": "msg_123", "type": "message", "content": [{"type": "text", "text": "Hello!"}]}`,
+	)
 	usage := ExtractUsage(body, DialectAnthropic)
 	if usage.HasUsage {
 		t.Error("HasUsage should be false when usage field is absent")

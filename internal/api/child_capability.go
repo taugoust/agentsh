@@ -26,7 +26,9 @@ const (
 var (
 	errChildCapabilityInvalid           = errors.New("child execution capability is invalid")
 	errChildCapabilityRevoked           = errors.New("child execution capability is revoked")
-	errChildCapabilitySupervisorStopped = errors.New("child execution capability revoked because the supervisor stopped")
+	errChildCapabilitySupervisorStopped = errors.New(
+		"child execution capability revoked because the supervisor stopped",
+	)
 )
 
 type childCapabilityRecord struct {
@@ -109,7 +111,8 @@ func parseChildCapabilityToken(token string) ([32]byte, error) {
 }
 
 func (a *App) mintChildCapability(sessionID, subagentID string) (*childCapabilityHandle, error) {
-	if a == nil || a.sessions == nil || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(subagentID) == "" {
+	if a == nil || a.sessions == nil || strings.TrimSpace(sessionID) == "" ||
+		strings.TrimSpace(subagentID) == "" {
 		return nil, errChildCapabilityInvalid
 	}
 	sessionRef, ok := a.sessions.Get(sessionID)
@@ -267,7 +270,11 @@ func UnixSocketConnContext(ctx context.Context, conn net.Conn) context.Context {
 	if creds.PID <= 0 {
 		return ctx
 	}
-	return context.WithValue(ctx, ctxKeyUnixPeer, unixHTTPPeer{PID: creds.PID, UID: creds.UID, Supported: true})
+	return context.WithValue(
+		ctx,
+		ctxKeyUnixPeer,
+		unixHTTPPeer{PID: creds.PID, UID: creds.UID, Supported: true},
+	)
 }
 
 func unixHTTPPeerFromRequest(r *http.Request) unixHTTPPeer {
@@ -278,7 +285,11 @@ func unixHTTPPeerFromRequest(r *http.Request) unixHTTPPeer {
 	return peer
 }
 
-func (a *App) authenticateChildCapability(ctx context.Context, r *http.Request, sessionID string) (*childCapabilityClaim, error) {
+func (a *App) authenticateChildCapability(
+	ctx context.Context,
+	r *http.Request,
+	sessionID string,
+) (*childCapabilityClaim, error) {
 	if r == nil {
 		return nil, nil
 	}
@@ -344,9 +355,15 @@ func (a *App) authenticateChildCapability(ctx context.Context, r *http.Request, 
 			return nil, errChildCapabilityInvalid
 		}
 		return &childCapabilityClaim{
-			app: a, digest: digest, sessionID: sessionID, sessionRef: currentSession, laneID: laneID,
-			peerPID: peer.PID, peerBound: peer.Supported && peer.PID == pid,
-			stablePID: stableIdentity, lifecycle: lifecycle,
+			app:        a,
+			digest:     digest,
+			sessionID:  sessionID,
+			sessionRef: currentSession,
+			laneID:     laneID,
+			peerPID:    peer.PID,
+			peerBound:  peer.Supported && peer.PID == pid,
+			stablePID:  stableIdentity,
+			lifecycle:  lifecycle,
 		}, nil
 	}
 }
@@ -355,7 +372,10 @@ func (a *App) authenticateChildCapability(ctx context.Context, r *http.Request, 
 // requests whose HTTP client is a subprocess of the capability owner (for
 // example curl invoked by an operator-owned worker). Ordinary tool execution
 // retains exact peer-PID binding.
-func (a *App) authenticateChildCapabilityProcessGroup(r *http.Request, sessionID string) (*childCapabilityClaim, error) {
+func (a *App) authenticateChildCapabilityProcessGroup(
+	r *http.Request,
+	sessionID string,
+) (*childCapabilityClaim, error) {
 	if r == nil || !isUnixSocketRequest(r) {
 		return nil, errChildCapabilityInvalid
 	}
@@ -387,7 +407,8 @@ func (a *App) authenticateChildCapabilityProcessGroup(r *http.Request, sessionID
 	laneID := record.subagentID
 	lifecycle := record.lifecycle
 	a.childCapabilityMu.Unlock()
-	if !stableIdentity || !detached.ProcessIdentityMatches(pid, startIdentity, bootID) || !childPeerInProcessGroup(peer.PID, pgid) {
+	if !stableIdentity || !detached.ProcessIdentityMatches(pid, startIdentity, bootID) ||
+		!childPeerInProcessGroup(peer.PID, pgid) {
 		return nil, errChildCapabilityInvalid
 	}
 	return &childCapabilityClaim{
@@ -403,7 +424,9 @@ func (a *App) validateChildCapabilityClaim(claim *childCapabilityClaim) error {
 	}
 	a.childCapabilityMu.Lock()
 	record := a.childCapabilities[claim.digest]
-	if record == nil || record.sessionID != claim.sessionID || record.sessionRef != claim.sessionRef || record.subagentID != claim.laneID {
+	if record == nil || record.sessionID != claim.sessionID ||
+		record.sessionRef != claim.sessionRef ||
+		record.subagentID != claim.laneID {
 		a.childCapabilityMu.Unlock()
 		return errChildCapabilityInvalid
 	}
@@ -430,7 +453,8 @@ func (a *App) validateChildCapabilityClaim(claim *childCapabilityClaim) error {
 				return errChildCapabilityInvalid
 			}
 		case childCapabilityProcessGroup:
-			if !stableIdentity || claim.peerPGID != pgid || !childPeerInProcessGroup(claim.peerPID, pgid) {
+			if !stableIdentity || claim.peerPGID != pgid ||
+				!childPeerInProcessGroup(claim.peerPID, pgid) {
 				return errChildCapabilityInvalid
 			}
 		default:
@@ -454,7 +478,10 @@ func (a *App) validateChildCapabilityClaim(claim *childCapabilityClaim) error {
 // execution is safe because each shared command receives its own immutable-ID
 // proxy listener and only that exact endpoint is installed in its command
 // cgroup. Non-strict session proxies remain serialized.
-func (a *App) childSharedExecutionSupported(sess *session.Session, claim *childCapabilityClaim) bool {
+func (a *App) childSharedExecutionSupported(
+	sess *session.Session,
+	claim *childCapabilityClaim,
+) bool {
 	if a == nil || a.cfg == nil || sess == nil || claim == nil || !claim.sharedEligible() {
 		return false
 	}
@@ -479,7 +506,9 @@ func (a *App) childSharedExecutionSupported(sess *session.Session, claim *childC
 		return true
 	}
 
-	if a.cfg.Sandbox.Network.Transparent.Enabled || strings.TrimSpace(sess.ProxyURL()) != "" || a.cfg.Sandbox.Cgroups.Enabled || a.cfg.Sandbox.Network.Enabled {
+	if a.cfg.Sandbox.Network.Transparent.Enabled || strings.TrimSpace(sess.ProxyURL()) != "" ||
+		a.cfg.Sandbox.Cgroups.Enabled ||
+		a.cfg.Sandbox.Network.Enabled {
 		return false
 	}
 	ebpf := a.cfg.Sandbox.Network.EBPF
@@ -489,7 +518,10 @@ func (a *App) childSharedExecutionSupported(sess *session.Session, claim *childC
 // contextForChildCapability makes revocation an execution cancellation cause.
 // A queued request leaves admission immediately; an active command receives the
 // same cancellation through the ordinary process-group cleanup path.
-func contextForChildCapability(parent context.Context, claim *childCapabilityClaim) (context.Context, func()) {
+func contextForChildCapability(
+	parent context.Context,
+	claim *childCapabilityClaim,
+) (context.Context, func()) {
 	if claim == nil || claim.lifecycle == nil {
 		return parent, func() {}
 	}

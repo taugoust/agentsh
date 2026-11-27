@@ -111,7 +111,10 @@ func TestDLPProcessor_CustomPattern(t *testing.T) {
 
 	// Redaction type in result should use the internal Name (for logs)
 	if result.Redactions[0].Type != "internal_customer_id" {
-		t.Errorf("expected redaction type 'internal_customer_id' (internal name), got %q", result.Redactions[0].Type)
+		t.Errorf(
+			"expected redaction type 'internal_customer_id' (internal name), got %q",
+			result.Redactions[0].Type,
+		)
 	}
 }
 
@@ -201,7 +204,12 @@ func TestDLPProcessor_SSN(t *testing.T) {
 	for _, tc := range testCases {
 		result := processor.Process([]byte(tc.input), DialectAnthropic)
 		if string(result.ProcessedData) != tc.expected {
-			t.Errorf("input %q: expected %q, got %q", tc.input, tc.expected, string(result.ProcessedData))
+			t.Errorf(
+				"input %q: expected %q, got %q",
+				tc.input,
+				tc.expected,
+				string(result.ProcessedData),
+			)
 		}
 	}
 }
@@ -230,7 +238,11 @@ func TestDLPProcessor_CreditCard(t *testing.T) {
 			t.Errorf("input %q: expected Modified to be true", tc.input)
 		}
 		if !strings.Contains(string(result.ProcessedData), "[REDACTED:credit_card]") {
-			t.Errorf("input %q: expected credit card redaction, got %q", tc.input, string(result.ProcessedData))
+			t.Errorf(
+				"input %q: expected credit card redaction, got %q",
+				tc.input,
+				string(result.ProcessedData),
+			)
 		}
 	}
 }
@@ -264,7 +276,11 @@ func TestDLPProcessor_APIKeys(t *testing.T) {
 			t.Errorf("input %q: expected Modified to be true", tc.input)
 		}
 		if !strings.Contains(string(result.ProcessedData), "[REDACTED:api_key]") {
-			t.Errorf("input %q: expected API key redaction, got %q", tc.input, string(result.ProcessedData))
+			t.Errorf(
+				"input %q: expected API key redaction, got %q",
+				tc.input,
+				string(result.ProcessedData),
+			)
 		}
 	}
 }

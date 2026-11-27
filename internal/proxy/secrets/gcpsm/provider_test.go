@@ -21,8 +21,11 @@ type mockSMClient struct {
 		opts ...gax.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error)
 }
 
-func (m *mockSMClient) AccessSecretVersion(ctx context.Context, req *secretmanagerpb.AccessSecretVersionRequest,
-	opts ...gax.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error) {
+func (m *mockSMClient) AccessSecretVersion(
+	ctx context.Context,
+	req *secretmanagerpb.AccessSecretVersionRequest,
+	opts ...gax.CallOption,
+) (*secretmanagerpb.AccessSecretVersionResponse, error) {
 	return m.AccessSecretVersionFunc(ctx, req, opts...)
 }
 
@@ -126,8 +129,10 @@ func TestFetch_JSONFieldExtraction(t *testing.T) {
 		AccessSecretVersionFunc: func(_ context.Context, _ *secretmanagerpb.AccessSecretVersionRequest,
 			_ ...gax.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error) {
 			return &secretmanagerpb.AccessSecretVersionResponse{
-				Name:    "projects/test-project/secrets/my-secret/versions/1",
-				Payload: &secretmanagerpb.SecretPayload{Data: []byte(`{"token":"ghp_abc123","endpoint":"https://api.github.com"}`)},
+				Name: "projects/test-project/secrets/my-secret/versions/1",
+				Payload: &secretmanagerpb.SecretPayload{
+					Data: []byte(`{"token":"ghp_abc123","endpoint":"https://api.github.com"}`),
+				},
 			}, nil
 		},
 	}
@@ -230,8 +235,10 @@ func TestFetch_MultiKeyJSONNoField(t *testing.T) {
 		AccessSecretVersionFunc: func(_ context.Context, _ *secretmanagerpb.AccessSecretVersionRequest,
 			_ ...gax.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error) {
 			return &secretmanagerpb.AccessSecretVersionResponse{
-				Name:    "projects/test-project/secrets/my-secret/versions/1",
-				Payload: &secretmanagerpb.SecretPayload{Data: []byte(`{"user":"admin","pass":"secret"}`)},
+				Name: "projects/test-project/secrets/my-secret/versions/1",
+				Payload: &secretmanagerpb.SecretPayload{
+					Data: []byte(`{"user":"admin","pass":"secret"}`),
+				},
 			}, nil
 		},
 	}
@@ -310,7 +317,10 @@ func TestFetch_NotFound(t *testing.T) {
 	mock := &mockSMClient{
 		AccessSecretVersionFunc: func(_ context.Context, _ *secretmanagerpb.AccessSecretVersionRequest,
 			_ ...gax.CallOption) (*secretmanagerpb.AccessSecretVersionResponse, error) {
-			return nil, status.Error(codes.NotFound, "Secret [projects/test-project/secrets/missing/versions/latest] not found")
+			return nil, status.Error(
+				codes.NotFound,
+				"Secret [projects/test-project/secrets/missing/versions/latest] not found",
+			)
 		},
 	}
 	p := newFromClient(mock, "test-project")

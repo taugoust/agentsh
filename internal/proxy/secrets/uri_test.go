@@ -29,7 +29,11 @@ func TestParseRef_HappyPath_AllSchemes(t *testing.T) {
 		{
 			name: "gcp-sm",
 			uri:  "gcp-sm://projects/123/secrets/x/versions/latest",
-			want: SecretRef{Scheme: "gcp-sm", Host: "projects", Path: "123/secrets/x/versions/latest"},
+			want: SecretRef{
+				Scheme: "gcp-sm",
+				Host:   "projects",
+				Path:   "123/secrets/x/versions/latest",
+			},
 		},
 		{
 			name: "azure-kv",
@@ -141,7 +145,11 @@ func TestParseRef_PathWithEncodedChars(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if ref.Path != "data/team a" {
-		t.Errorf("Path = %q, want %q (net/url should have decoded %%20 to space)", ref.Path, "data/team a")
+		t.Errorf(
+			"Path = %q, want %q (net/url should have decoded %%20 to space)",
+			ref.Path,
+			"data/team a",
+		)
 	}
 	// Round-trip: String() must re-escape the space so ParseRef can
 	// consume its own output and produce the same Path.

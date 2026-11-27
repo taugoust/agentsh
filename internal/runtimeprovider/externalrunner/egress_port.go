@@ -12,7 +12,9 @@ const (
 // is itself a valid, non-reserved port. CIDs that cannot be used verbatim are
 // assigned, in CID order, to ports not claimed by any exact-CID mapping.
 func deriveHostEgressPort(profile Profile, cid uint32) (uint32, error) {
-	if profile.Schema != ProfileSchemaV3 || profile.HostEgress == nil || cid < profile.VSock.CIDMin || cid > profile.VSock.CIDMax {
+	if profile.Schema != ProfileSchemaV3 || profile.HostEgress == nil ||
+		cid < profile.VSock.CIDMin ||
+		cid > profile.VSock.CIDMax {
 		return 0, fmt.Errorf("external runner v3 egress CID binding is invalid")
 	}
 	reserved := func(port uint32) bool {
@@ -43,7 +45,8 @@ func deriveHostEgressPort(profile Profile, cid uint32) (uint32, error) {
 		}
 		// A valid port numerically inside the lease range belongs to that CID's
 		// preferred exact mapping and cannot be consumed by a fallback CID.
-		if candidate >= profile.VSock.CIDMin && candidate <= profile.VSock.CIDMax && exact(candidate) {
+		if candidate >= profile.VSock.CIDMin && candidate <= profile.VSock.CIDMax &&
+			exact(candidate) {
 			continue
 		}
 		if ordinal == 0 {

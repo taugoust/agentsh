@@ -63,7 +63,17 @@ func TestWrapCmd_ParsesFlags(t *testing.T) {
 	cmd.SetErr(buf)
 
 	// Parse flags only (don't execute) to verify flag parsing works
-	err := cmd.ParseFlags([]string{"--policy", "strict", "--session", "my-sess", "--root", "/tmp/work", "--report=false"})
+	err := cmd.ParseFlags(
+		[]string{
+			"--policy",
+			"strict",
+			"--session",
+			"my-sess",
+			"--root",
+			"/tmp/work",
+			"--report=false",
+		},
+	)
 	require.NoError(t, err)
 
 	policy, _ := cmd.Flags().GetString("policy")
@@ -143,21 +153,36 @@ type mockWrapClient struct {
 // Ensure mockWrapClient implements CLIClient at compile time.
 var _ client.CLIClient = (*mockWrapClient)(nil)
 
-func (m *mockWrapClient) WrapInit(ctx context.Context, sessionID string, req types.WrapInitRequest) (types.WrapInitResponse, error) {
+func (m *mockWrapClient) WrapInit(
+	ctx context.Context,
+	sessionID string,
+	req types.WrapInitRequest,
+) (types.WrapInitResponse, error) {
 	m.wrapInitCalled = true
 	m.wrapInitReq = req
 	return m.wrapInitResp, m.wrapInitErr
 }
 
 // Satisfy CLIClient interface (unused methods for this test)
-func (m *mockWrapClient) CreateSession(ctx context.Context, workspace, policy string) (types.Session, error) {
+func (m *mockWrapClient) CreateSession(
+	ctx context.Context,
+	workspace, policy string,
+) (types.Session, error) {
 	m.createSessCalled = true
 	return types.Session{ID: "test-session"}, nil
 }
-func (m *mockWrapClient) CreateSessionWithID(ctx context.Context, id, workspace, policy string) (types.Session, error) {
+
+func (m *mockWrapClient) CreateSessionWithID(
+	ctx context.Context,
+	id, workspace, policy string,
+) (types.Session, error) {
 	return types.Session{ID: id}, nil
 }
-func (m *mockWrapClient) CreateSessionWithRequest(ctx context.Context, req types.CreateSessionRequest) (types.Session, error) {
+
+func (m *mockWrapClient) CreateSessionWithRequest(
+	ctx context.Context,
+	req types.CreateSessionRequest,
+) (types.Session, error) {
 	m.createSessCalled = true
 	if m.createSessionFn != nil {
 		return m.createSessionFn(ctx, req)
@@ -175,58 +200,129 @@ func (m *mockWrapClient) GetSession(ctx context.Context, id string) (types.Sessi
 	return types.Session{ID: id}, nil
 }
 func (m *mockWrapClient) DestroySession(ctx context.Context, id string) error { return nil }
-func (m *mockWrapClient) PatchSession(ctx context.Context, id string, req types.SessionPatchRequest) (types.Session, error) {
+
+func (m *mockWrapClient) PatchSession(
+	ctx context.Context,
+	id string,
+	req types.SessionPatchRequest,
+) (types.Session, error) {
 	return types.Session{}, nil
 }
 func (m *mockWrapClient) DiffSessionOverlay(ctx context.Context, id string) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader("")), nil
 }
-func (m *mockWrapClient) DiffSessionOverlayReview(ctx context.Context, id string) (client.OverlayReview, error) {
+
+func (m *mockWrapClient) DiffSessionOverlayReview(
+	ctx context.Context,
+	id string,
+) (client.OverlayReview, error) {
 	return client.OverlayReview{Body: io.NopCloser(strings.NewReader(""))}, nil
 }
-func (m *mockWrapClient) AcceptSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+
+func (m *mockWrapClient) AcceptSessionOverlay(
+	ctx context.Context,
+	id string,
+) (types.Session, error) {
 	return types.Session{ID: id}, nil
 }
-func (m *mockWrapClient) AcceptSessionOverlayReviewed(ctx context.Context, id string, generation uint64, hash string) (types.Session, error) {
+
+func (m *mockWrapClient) AcceptSessionOverlayReviewed(
+	ctx context.Context,
+	id string,
+	generation uint64,
+	hash string,
+) (types.Session, error) {
 	return types.Session{ID: id}, nil
 }
-func (m *mockWrapClient) RejectSessionOverlay(ctx context.Context, id string) (types.Session, error) {
+
+func (m *mockWrapClient) RejectSessionOverlay(
+	ctx context.Context,
+	id string,
+) (types.Session, error) {
 	return types.Session{ID: id}, nil
 }
-func (m *mockWrapClient) Exec(ctx context.Context, sessionID string, req types.ExecRequest) (types.ExecResponse, error) {
+
+func (m *mockWrapClient) Exec(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (types.ExecResponse, error) {
 	return types.ExecResponse{}, nil
 }
-func (m *mockWrapClient) ExecStream(ctx context.Context, sessionID string, req types.ExecRequest) (io.ReadCloser, error) {
+
+func (m *mockWrapClient) ExecStream(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (io.ReadCloser, error) {
 	return nil, nil
 }
-func (m *mockWrapClient) KillCommand(ctx context.Context, sessionID string, commandID string) error {
+
+func (m *mockWrapClient) KillCommand(
+	ctx context.Context,
+	sessionID string,
+	commandID string,
+) error {
 	return nil
 }
-func (m *mockWrapClient) QuerySessionEvents(ctx context.Context, sessionID string, q url.Values) ([]types.Event, error) {
+
+func (m *mockWrapClient) QuerySessionEvents(
+	ctx context.Context,
+	sessionID string,
+	q url.Values,
+) ([]types.Event, error) {
 	return nil, nil
 }
 func (m *mockWrapClient) SearchEvents(ctx context.Context, q url.Values) ([]types.Event, error) {
 	return nil, nil
 }
-func (m *mockWrapClient) StreamSessionEvents(ctx context.Context, sessionID string) (io.ReadCloser, error) {
+
+func (m *mockWrapClient) StreamSessionEvents(
+	ctx context.Context,
+	sessionID string,
+) (io.ReadCloser, error) {
 	return nil, nil
 }
-func (m *mockWrapClient) OutputChunk(ctx context.Context, sessionID, commandID string, stream string, offset, limit int64) (map[string]any, error) {
+
+func (m *mockWrapClient) OutputChunk(
+	ctx context.Context,
+	sessionID, commandID string,
+	stream string,
+	offset, limit int64,
+) (map[string]any, error) {
 	return nil, nil
 }
 func (m *mockWrapClient) ListApprovals(ctx context.Context) ([]map[string]any, error) {
 	return nil, nil
 }
-func (m *mockWrapClient) ResolveApproval(ctx context.Context, id string, decision string, reason string) error {
+
+func (m *mockWrapClient) ResolveApproval(
+	ctx context.Context,
+	id string,
+	decision string,
+	reason string,
+) error {
 	return nil
 }
-func (m *mockWrapClient) PolicyTest(ctx context.Context, sessionID, operation, path string) (map[string]any, error) {
+
+func (m *mockWrapClient) PolicyTest(
+	ctx context.Context,
+	sessionID, operation, path string,
+) (map[string]any, error) {
 	return nil, nil
 }
-func (m *mockWrapClient) GetProxyStatus(ctx context.Context, sessionID string) (map[string]any, error) {
+
+func (m *mockWrapClient) GetProxyStatus(
+	ctx context.Context,
+	sessionID string,
+) (map[string]any, error) {
 	return nil, nil
 }
-func (m *mockWrapClient) ListTaints(ctx context.Context, sessionID string) ([]types.TaintInfo, error) {
+
+func (m *mockWrapClient) ListTaints(
+	ctx context.Context,
+	sessionID string,
+) ([]types.TaintInfo, error) {
 	return nil, nil
 }
 func (m *mockWrapClient) GetTaint(ctx context.Context, pid int) (*types.TaintInfo, error) {
@@ -235,7 +331,12 @@ func (m *mockWrapClient) GetTaint(ctx context.Context, pid int) (*types.TaintInf
 func (m *mockWrapClient) GetTaintTrace(ctx context.Context, pid int) (*types.TaintTrace, error) {
 	return nil, nil
 }
-func (m *mockWrapClient) WatchTaints(ctx context.Context, agentOnly bool, handler func(types.TaintEvent)) error {
+
+func (m *mockWrapClient) WatchTaints(
+	ctx context.Context,
+	agentOnly bool,
+	handler func(types.TaintEvent),
+) error {
 	return nil
 }
 func (m *mockWrapClient) ListMCPTools(ctx context.Context, q url.Values) ([]map[string]any, error) {
@@ -264,7 +365,14 @@ func TestSetupWrapInterception_CallsWrapInit(t *testing.T) {
 
 	cfg := &clientConfig{serverAddr: "http://127.0.0.1:18080"}
 
-	lcfg, err := setupWrapInterception(context.Background(), mc, "test-session", "/bin/echo", []string{"hello"}, cfg)
+	lcfg, err := setupWrapInterception(
+		context.Background(),
+		mc,
+		"test-session",
+		"/bin/echo",
+		[]string{"hello"},
+		cfg,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, lcfg)
 
@@ -277,7 +385,12 @@ func TestSetupWrapInterception_CallsWrapInit(t *testing.T) {
 
 	// Verify the launch config
 	assert.Equal(t, "/bin/true", lcfg.command, "command should be the wrapper binary")
-	assert.Equal(t, []string{"--", "/bin/echo", "hello"}, lcfg.args, "args should be -- agent-cmd agent-args")
+	assert.Equal(
+		t,
+		[]string{"--", "/bin/echo", "hello"},
+		lcfg.args,
+		"args should be -- agent-cmd agent-args",
+	)
 	assert.NotNil(t, lcfg.extraFiles, "extra files should be set (socket pair child)")
 	// notify child + wrapper log file (state dir redirected above).
 	assert.Len(t, lcfg.extraFiles, 2)
@@ -397,7 +510,9 @@ func TestBuildWrapEnv_StripsInheritedMixedCaseAgentshVarsWhenBypassDisabled(t *t
 
 	for _, e := range env {
 		if e == "agentsh_in_session=1" {
-			t.Fatal("did not expect mixed-case inherited AGENTSH_IN_SESSION when bypass is disabled")
+			t.Fatal(
+				"did not expect mixed-case inherited AGENTSH_IN_SESSION when bypass is disabled",
+			)
 		}
 		if e == "agentsh_session_id=stale-session" {
 			t.Fatal("did not expect mixed-case stale AGENTSH_SESSION_ID to remain in env")
@@ -569,7 +684,14 @@ func TestWrapLaunchConfig_EnvContainsSessionAndWrapper(t *testing.T) {
 
 	cfg := &clientConfig{serverAddr: "http://127.0.0.1:18080"}
 
-	lcfg, err := setupWrapInterception(context.Background(), mc, "test-session", "/bin/echo", nil, cfg)
+	lcfg, err := setupWrapInterception(
+		context.Background(),
+		mc,
+		"test-session",
+		"/bin/echo",
+		nil,
+		cfg,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, lcfg)
 
@@ -578,12 +700,24 @@ func TestWrapLaunchConfig_EnvContainsSessionAndWrapper(t *testing.T) {
 	for _, e := range lcfg.env {
 		envMap[e] = true
 	}
-	assert.True(t, envMap["AGENTSH_SESSION_ID=test-session"], "env should contain AGENTSH_SESSION_ID")
-	assert.True(t, envMap["AGENTSH_SERVER=http://127.0.0.1:18080"], "env should contain AGENTSH_SERVER")
+	assert.True(
+		t,
+		envMap["AGENTSH_SESSION_ID=test-session"],
+		"env should contain AGENTSH_SESSION_ID",
+	)
+	assert.True(
+		t,
+		envMap["AGENTSH_SERVER=http://127.0.0.1:18080"],
+		"env should contain AGENTSH_SERVER",
+	)
 
 	// AGENTSH_NOTIFY_SOCK_FD is Linux-only (seccomp notification socket)
 	if runtime.GOOS == "linux" {
-		assert.True(t, envMap["AGENTSH_NOTIFY_SOCK_FD=3"], "env should contain AGENTSH_NOTIFY_SOCK_FD=3")
+		assert.True(
+			t,
+			envMap["AGENTSH_NOTIFY_SOCK_FD=3"],
+			"env should contain AGENTSH_NOTIFY_SOCK_FD=3",
+		)
 	}
 
 	// Clean up
@@ -613,7 +747,14 @@ func TestWrapLaunchConfig_AppliesEnvInject(t *testing.T) {
 	}
 
 	cfg := &clientConfig{serverAddr: "http://127.0.0.1:18080"}
-	lcfg, err := setupWrapInterception(context.Background(), mc, "test-session", "/bin/echo", nil, cfg)
+	lcfg, err := setupWrapInterception(
+		context.Background(),
+		mc,
+		"test-session",
+		"/bin/echo",
+		nil,
+		cfg,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, lcfg)
 
@@ -647,7 +788,14 @@ func TestWrapLaunchConfig_AppliesEnvInject_PtraceMode(t *testing.T) {
 	}
 
 	cfg := &clientConfig{serverAddr: "http://127.0.0.1:18080"}
-	lcfg, err := setupWrapInterception(context.Background(), mc, "test-session", "/bin/echo", nil, cfg)
+	lcfg, err := setupWrapInterception(
+		context.Background(),
+		mc,
+		"test-session",
+		"/bin/echo",
+		nil,
+		cfg,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, lcfg)
 
@@ -679,7 +827,14 @@ func TestWrapLaunchConfig_EnvIncludesInSessionWhenSafe(t *testing.T) {
 	}
 
 	cfg := &clientConfig{serverAddr: "http://127.0.0.1:18080"}
-	lcfg, err := setupWrapInterception(context.Background(), mc, "test-session", "/bin/echo", nil, cfg)
+	lcfg, err := setupWrapInterception(
+		context.Background(),
+		mc,
+		"test-session",
+		"/bin/echo",
+		nil,
+		cfg,
+	)
 	require.NoError(t, err)
 
 	envMap := make(map[string]bool)
@@ -709,7 +864,14 @@ func TestWrapLaunchConfig_EnvOmitsInSessionWhenUnsafe(t *testing.T) {
 	}
 
 	cfg := &clientConfig{serverAddr: "http://127.0.0.1:18080"}
-	lcfg, err := setupWrapInterception(context.Background(), mc, "test-session", "/bin/echo", nil, cfg)
+	lcfg, err := setupWrapInterception(
+		context.Background(),
+		mc,
+		"test-session",
+		"/bin/echo",
+		nil,
+		cfg,
+	)
 	require.NoError(t, err)
 
 	for _, e := range lcfg.env {

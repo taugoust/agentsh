@@ -20,7 +20,11 @@ func launchDetachedHostMonitor(executable, stateDir string) (HostProcessIdentity
 	if err != nil {
 		return HostProcessIdentity{}, err
 	}
-	log, err := os.OpenFile(filepath.Join(layout.LogsDir, "host-monitor.log"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	log, err := os.OpenFile(
+		filepath.Join(layout.LogsDir, "host-monitor.log"),
+		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+		0o600,
+	)
 	if err != nil {
 		return HostProcessIdentity{}, err
 	}
@@ -42,7 +46,12 @@ func launchDetachedHostMonitor(executable, stateDir string) (HostProcessIdentity
 		_ = cmd.Wait()
 		return HostProcessIdentity{}, err
 	}
-	identity := HostProcessIdentity{PID: cmd.Process.Pid, ProcessGroup: cmd.Process.Pid, StartIdentity: start, BootID: boot}
+	identity := HostProcessIdentity{
+		PID:           cmd.Process.Pid,
+		ProcessGroup:  cmd.Process.Pid,
+		StartIdentity: start,
+		BootID:        boot,
+	}
 	if err := cmd.Process.Release(); err != nil {
 		_ = syscall.Kill(cmd.Process.Pid, syscall.SIGKILL)
 		return HostProcessIdentity{}, err
@@ -50,7 +59,11 @@ func launchDetachedHostMonitor(executable, stateDir string) (HostProcessIdentity
 	return identity, nil
 }
 
-func stopExactHostMonitor(ctx context.Context, stateDir string, identity HostProcessIdentity) error {
+func stopExactHostMonitor(
+	ctx context.Context,
+	stateDir string,
+	identity HostProcessIdentity,
+) error {
 	if identity.PID <= 0 {
 		return nil
 	}

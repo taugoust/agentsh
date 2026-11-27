@@ -29,7 +29,10 @@ type fakeApprovalsManager struct {
 	gotReq  approvals.Request
 }
 
-func (f *fakeApprovalsManager) RequestApproval(ctx context.Context, req approvals.Request) (approvals.Resolution, error) {
+func (f *fakeApprovalsManager) RequestApproval(
+	ctx context.Context,
+	req approvals.Request,
+) (approvals.Resolution, error) {
 	f.gotReq = req
 	return approvals.Resolution{Approved: f.approve}, nil
 }
@@ -38,7 +41,11 @@ func init() {
 	policy.SetAllowInsecureHTTPServiceUpstreamForTest(true)
 }
 
-func newTestProxyWithHTTPService(t *testing.T, upstream string, rules []policy.HTTPServiceRule) *Proxy {
+func newTestProxyWithHTTPService(
+	t *testing.T,
+	upstream string,
+	rules []policy.HTTPServiceRule,
+) *Proxy {
 	t.Helper()
 	return newTestProxyWithNamedHTTPService(t, "github", upstream, rules)
 }
@@ -46,7 +53,11 @@ func newTestProxyWithHTTPService(t *testing.T, upstream string, rules []policy.H
 // newTestProxyWithNamedHTTPService is like newTestProxyWithHTTPService but
 // lets the caller pin the declared service name (for tests that deliberately
 // exercise case-mismatched URLs).
-func newTestProxyWithNamedHTTPService(t *testing.T, name, upstream string, rules []policy.HTTPServiceRule) *Proxy {
+func newTestProxyWithNamedHTTPService(
+	t *testing.T,
+	name, upstream string,
+	rules []policy.HTTPServiceRule,
+) *Proxy {
 	t.Helper()
 	cfg := Config{SessionID: "test-session"}
 	p, err := New(cfg, "", nil)
@@ -87,7 +98,13 @@ func TestServeHTTP_PathPrefixDispatch_NoSuchService(t *testing.T) {
 
 func TestServeDeclaredService_Deny(t *testing.T) {
 	p := newTestProxyWithHTTPService(t, "https://api.github.com", []policy.HTTPServiceRule{
-		{Name: "block-delete", Methods: []string{"DELETE"}, Paths: []string{"/repos/**"}, Decision: "deny", Message: "no deletes"},
+		{
+			Name:     "block-delete",
+			Methods:  []string{"DELETE"},
+			Paths:    []string{"/repos/**"},
+			Decision: "deny",
+			Message:  "no deletes",
+		},
 	})
 
 	req := httptest.NewRequest(http.MethodDelete, "http://127.0.0.1/svc/github/repos/a/b", nil)
@@ -139,12 +156,21 @@ func TestServeDeclaredService_Approve_Approved(t *testing.T) {
 	defer upstream.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "require-approval", Methods: []string{"POST"}, Paths: []string{"/issues"}, Decision: "approve"},
+		{
+			Name:     "require-approval",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/issues"},
+			Decision: "approve",
+		},
 	})
 	appr := &fakeApprovalsManager{approve: true}
 	p.SetApprovalsForTest(appr)
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/issues", strings.NewReader("{}"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/issues",
+		strings.NewReader("{}"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -154,8 +180,12 @@ func TestServeDeclaredService_Approve_Approved(t *testing.T) {
 	if appr.gotReq.Kind != "http_service" {
 		t.Errorf("approval Kind = %q, want http_service", appr.gotReq.Kind)
 	}
-	if !strings.Contains(appr.gotReq.Target, "github") || !strings.Contains(appr.gotReq.Target, "POST") {
-		t.Errorf("approval Target = %q, want to contain service name and method", appr.gotReq.Target)
+	if !strings.Contains(appr.gotReq.Target, "github") ||
+		!strings.Contains(appr.gotReq.Target, "POST") {
+		t.Errorf(
+			"approval Target = %q, want to contain service name and method",
+			appr.gotReq.Target,
+		)
 	}
 	if appr.gotReq.SessionID != "test-session" {
 		t.Errorf("approval SessionID = %q, want test-session", appr.gotReq.SessionID)
@@ -177,12 +207,21 @@ func TestServeDeclaredService_Approve_DoesNotSetBogusCommandID(t *testing.T) {
 	defer upstream.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "require-approval", Methods: []string{"POST"}, Paths: []string{"/issues"}, Decision: "approve"},
+		{
+			Name:     "require-approval",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/issues"},
+			Decision: "approve",
+		},
 	})
 	appr := &fakeApprovalsManager{approve: true}
 	p.SetApprovalsForTest(appr)
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/issues", strings.NewReader("{}"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/issues",
+		strings.NewReader("{}"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -190,7 +229,10 @@ func TestServeDeclaredService_Approve_DoesNotSetBogusCommandID(t *testing.T) {
 		t.Fatalf("status = %d, want 200; body=%q", w.Code, w.Body.String())
 	}
 	if appr.gotReq.CommandID != "" {
-		t.Errorf("approval CommandID = %q, want empty (declared-service requests have no session command)", appr.gotReq.CommandID)
+		t.Errorf(
+			"approval CommandID = %q, want empty (declared-service requests have no session command)",
+			appr.gotReq.CommandID,
+		)
 	}
 }
 
@@ -206,12 +248,21 @@ func TestServeDeclaredService_Approve_TargetIncludesQueryString(t *testing.T) {
 	defer upstream.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "require-approval", Methods: []string{"POST"}, Paths: []string{"/issues"}, Decision: "approve"},
+		{
+			Name:     "require-approval",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/issues"},
+			Decision: "approve",
+		},
 	})
 	appr := &fakeApprovalsManager{approve: true}
 	p.SetApprovalsForTest(appr)
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/issues?force=true", strings.NewReader("{}"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/issues?force=true",
+		strings.NewReader("{}"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -239,12 +290,21 @@ func TestServeDeclaredService_Approve_TargetPreservesEncodedPath(t *testing.T) {
 	defer upstream.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "require-approval", Methods: []string{"POST"}, Paths: []string{"/items/a/b"}, Decision: "approve"},
+		{
+			Name:     "require-approval",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/items/a/b"},
+			Decision: "approve",
+		},
 	})
 	appr := &fakeApprovalsManager{approve: true}
 	p.SetApprovalsForTest(appr)
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/items/a%2Fb?force=true", strings.NewReader("{}"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/items/a%2Fb?force=true",
+		strings.NewReader("{}"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -273,7 +333,12 @@ func TestServeDeclaredService_Approve_TargetFallsBackWhenNextByteIsEncoded(t *te
 	defer upstream.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "require-approval", Methods: []string{"POST"}, Paths: []string{"/items"}, Decision: "approve"},
+		{
+			Name:     "require-approval",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/items"},
+			Decision: "approve",
+		},
 	})
 	appr := &fakeApprovalsManager{approve: true}
 	p.SetApprovalsForTest(appr)
@@ -281,7 +346,11 @@ func TestServeDeclaredService_Approve_TargetFallsBackWhenNextByteIsEncoded(t *te
 	// %2F immediately after the service name. Decoded form is
 	// /svc/github/items so the dispatcher routes to service "github"
 	// with rest "/items", and the POST /items rule evaluates as approve.
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github%2Fitems?force=true", strings.NewReader("{}"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github%2Fitems?force=true",
+		strings.NewReader("{}"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -306,11 +375,20 @@ func TestServeDeclaredService_Approve_Denied(t *testing.T) {
 	defer upstream.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "require-approval", Methods: []string{"POST"}, Paths: []string{"/issues"}, Decision: "approve"},
+		{
+			Name:     "require-approval",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/issues"},
+			Decision: "approve",
+		},
 	})
 	p.SetApprovalsForTest(&fakeApprovalsManager{approve: false})
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/issues", strings.NewReader("{}"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/issues",
+		strings.NewReader("{}"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -334,11 +412,20 @@ func TestServeDeclaredService_Allow_Forwards(t *testing.T) {
 	defer upstream.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "post-issues", Methods: []string{"POST"}, Paths: []string{"/repos/*/*/issues"}, Decision: "allow"},
+		{
+			Name:     "post-issues",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/repos/*/*/issues"},
+			Decision: "allow",
+		},
 	})
 
 	body := strings.NewReader(`{"title":"bug"}`)
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/repos/anthropics/claude-code/issues", body)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/repos/anthropics/claude-code/issues",
+		body,
+	)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
@@ -881,7 +968,11 @@ func TestServeDeclaredService_PreservesEscapedPath_WhenHookDoesNotTouchPath(t *t
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/svc/github/repos/a%2Fb/issues", nil)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"http://127.0.0.1/svc/github/repos/a%2Fb/issues",
+		nil,
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -933,7 +1024,11 @@ func TestServeDeclaredService_HookPathRewrite_DropsEncodedBytes(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/svc/github/repos/a%2Fb/issues", nil)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"http://127.0.0.1/svc/github/repos/a%2Fb/issues",
+		nil,
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -945,7 +1040,10 @@ func TestServeDeclaredService_HookPathRewrite_DropsEncodedBytes(t *testing.T) {
 	// literal '/' in the upstream path. This is INTENTIONAL — it
 	// documents the hook contract, not a regression.
 	if gotEscaped != "/repos/a/b/pulls" {
-		t.Errorf("upstream EscapedPath = %q, want /repos/a/b/pulls (hook owns encoding when mutating Path)", gotEscaped)
+		t.Errorf(
+			"upstream EscapedPath = %q, want /repos/a/b/pulls (hook owns encoding when mutating Path)",
+			gotEscaped,
+		)
 	}
 }
 
@@ -977,7 +1075,11 @@ func TestServeDeclaredService_HookRewritesBothPathAndRawPath(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/svc/github/repos/a%2Fb/issues", nil)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"http://127.0.0.1/svc/github/repos/a%2Fb/issues",
+		nil,
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -1097,7 +1199,10 @@ func TestServeDeclaredService_HookRewritesOnlyRawPath(t *testing.T) {
 		t.Fatalf("status = %d, want 200; body=%q", w.Code, w.Body.String())
 	}
 	if gotEscaped != "/items/%61b" {
-		t.Errorf("upstream EscapedPath = %q, want /items/%%61b (hook-written RawPath clobbered?)", gotEscaped)
+		t.Errorf(
+			"upstream EscapedPath = %q, want /items/%%61b (hook-written RawPath clobbered?)",
+			gotEscaped,
+		)
 	}
 }
 
@@ -1141,7 +1246,8 @@ func TestServeDeclaredService_LogRedactsInjectedAndCookieHeaders(t *testing.T) {
 	); err != nil {
 		t.Fatalf("credsub.Add: %v", err)
 	}
-	p.HookRegistry().Register("github", NewHeaderInjectionHook("github", "X-Hub-Token", "Bearer {{secret}}", tbl))
+	p.HookRegistry().
+		Register("github", NewHeaderInjectionHook("github", "X-Hub-Token", "Bearer {{secret}}", tbl))
 
 	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/svc/github/user", nil)
 	req.Header.Set("Cookie", "session=secret123")
@@ -1223,7 +1329,12 @@ func TestServeDeclaredService_LogReflectsPostHookBody(t *testing.T) {
 	defer storage.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "allow-upload", Methods: []string{"POST"}, Paths: []string{"/upload"}, Decision: "allow"},
+		{
+			Name:     "allow-upload",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/upload"},
+			Decision: "allow",
+		},
 	})
 	p.SetStorageForTest(storage)
 
@@ -1239,7 +1350,11 @@ func TestServeDeclaredService_LogReflectsPostHookBody(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/upload", strings.NewReader("PRE_HOOK_BODY"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/upload",
+		strings.NewReader("PRE_HOOK_BODY"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -1253,7 +1368,11 @@ func TestServeDeclaredService_LogReflectsPostHookBody(t *testing.T) {
 	}
 	e := entries[0]
 	if e.Request.BodySize != len(postHookBody) {
-		t.Errorf("BodySize = %d, want %d (post-hook body length)", e.Request.BodySize, len(postHookBody))
+		t.Errorf(
+			"BodySize = %d, want %d (post-hook body length)",
+			e.Request.BodySize,
+			len(postHookBody),
+		)
 	}
 	wantHash := HashBody([]byte(postHookBody))
 	if e.Request.BodyHash != wantHash {
@@ -1352,7 +1471,12 @@ func TestServeDeclaredService_StoresPreHookBodyDespitePostHookSubstitution(t *te
 	defer storage.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "allow-upload", Methods: []string{"POST"}, Paths: []string{"/upload"}, Decision: "allow"},
+		{
+			Name:     "allow-upload",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/upload"},
+			Decision: "allow",
+		},
 	})
 	p.SetStorageForTest(storage)
 
@@ -1367,7 +1491,11 @@ func TestServeDeclaredService_StoresPreHookBodyDespitePostHookSubstitution(t *te
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/upload", strings.NewReader(preHookBody))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/upload",
+		strings.NewReader(preHookBody),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -1376,7 +1504,11 @@ func TestServeDeclaredService_StoresPreHookBodyDespitePostHookSubstitution(t *te
 	}
 	// Sanity: upstream really did see the post-hook body.
 	if string(upstreamGot) != postHookBody {
-		t.Fatalf("upstream received %q, want %q (hook did not take effect)", upstreamGot, postHookBody)
+		t.Fatalf(
+			"upstream received %q, want %q (hook did not take effect)",
+			upstreamGot,
+			postHookBody,
+		)
 	}
 
 	// Audit record must describe the FORWARDED body (post-hook).
@@ -1386,7 +1518,11 @@ func TestServeDeclaredService_StoresPreHookBodyDespitePostHookSubstitution(t *te
 	}
 	e := entries[0]
 	if e.Request.BodySize != len(postHookBody) {
-		t.Errorf("BodySize = %d, want %d (post-hook body length)", e.Request.BodySize, len(postHookBody))
+		t.Errorf(
+			"BodySize = %d, want %d (post-hook body length)",
+			e.Request.BodySize,
+			len(postHookBody),
+		)
 	}
 	wantHash := HashBody([]byte(postHookBody))
 	if e.Request.BodyHash != wantHash {
@@ -1429,7 +1565,12 @@ func TestServeDeclaredService_HookNilsBody_LogsZeroAndStoresNothing(t *testing.T
 	defer storage.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "allow-upload", Methods: []string{"POST"}, Paths: []string{"/upload"}, Decision: "allow"},
+		{
+			Name:     "allow-upload",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/upload"},
+			Decision: "allow",
+		},
 	})
 	p.SetStorageForTest(storage)
 
@@ -1442,7 +1583,11 @@ func TestServeDeclaredService_HookNilsBody_LogsZeroAndStoresNothing(t *testing.T
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/upload", strings.NewReader("PAYLOAD"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/upload",
+		strings.NewReader("PAYLOAD"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -1494,7 +1639,12 @@ func TestServeDeclaredService_HookNilsBodyLeavesStaleContentLength_Normalized(t 
 	defer storage.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "allow-upload", Methods: []string{"POST"}, Paths: []string{"/upload"}, Decision: "allow"},
+		{
+			Name:     "allow-upload",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/upload"},
+			Decision: "allow",
+		},
 	})
 	p.SetStorageForTest(storage)
 
@@ -1510,7 +1660,11 @@ func TestServeDeclaredService_HookNilsBodyLeavesStaleContentLength_Normalized(t 
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/upload", strings.NewReader("PAYLOAD_WITH_LENGTH"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/upload",
+		strings.NewReader("PAYLOAD_WITH_LENGTH"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -1569,7 +1723,12 @@ func TestServeDeclaredService_HookSetsHttpNoBody_Normalized(t *testing.T) {
 	defer storage.Close()
 
 	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
-		{Name: "allow-upload", Methods: []string{"POST"}, Paths: []string{"/upload"}, Decision: "allow"},
+		{
+			Name:     "allow-upload",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/upload"},
+			Decision: "allow",
+		},
 	})
 	p.SetStorageForTest(storage)
 
@@ -1582,7 +1741,11 @@ func TestServeDeclaredService_HookSetsHttpNoBody_Normalized(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/svc/github/upload", strings.NewReader("PAYLOAD_WITH_LENGTH"))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1/svc/github/upload",
+		strings.NewReader("PAYLOAD_WITH_LENGTH"),
+	)
 	w := httptest.NewRecorder()
 	p.ServeHTTP(w, req)
 
@@ -1629,9 +1792,14 @@ func TestServeDeclaredService_CredentialSubstitution_EndToEnd(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{{
-		Name: "allow-repos", Methods: []string{"POST"}, Paths: []string{"/repos/**"}, Decision: "allow",
-	}})
+	p := newTestProxyWithHTTPService(t, upstream.URL, []policy.HTTPServiceRule{
+		{
+			Name:     "allow-repos",
+			Methods:  []string{"POST"},
+			Paths:    []string{"/repos/**"},
+			Decision: "allow",
+		},
+	})
 
 	tbl := credsub.New()
 	if err := tbl.Add("github",

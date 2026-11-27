@@ -7,8 +7,15 @@ func TestParseExecInput_CommandLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sid != "session-1" || req.Command != "ls" || len(req.Args) != 1 || req.Args[0] != "-la" || req.Timeout != "30s" {
-		t.Fatalf("unexpected parse result: sid=%q cmd=%q args=%v timeout=%q", sid, req.Command, req.Args, req.Timeout)
+	if sid != "session-1" || req.Command != "ls" || len(req.Args) != 1 || req.Args[0] != "-la" ||
+		req.Timeout != "30s" {
+		t.Fatalf(
+			"unexpected parse result: sid=%q cmd=%q args=%v timeout=%q",
+			sid,
+			req.Command,
+			req.Args,
+			req.Timeout,
+		)
 	}
 }
 
@@ -33,7 +40,16 @@ func TestParseExecInput_JSON(t *testing.T) {
 func TestParseExecInput_NestedDoubleDash(t *testing.T) {
 	// Simulate what Cobra passes after stripping the outer "--":
 	// agentsh exec SESSION -- opencode run --attach http://x --format json -- "prompt"
-	args := []string{"opencode", "run", "--attach", "http://x", "--format", "json", "--", "Reply with VM_OK"}
+	args := []string{
+		"opencode",
+		"run",
+		"--attach",
+		"http://x",
+		"--format",
+		"json",
+		"--",
+		"Reply with VM_OK",
+	}
 	sid, req, err := parseExecInputWithEnv(args, "", "", false, "session-1")
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +60,15 @@ func TestParseExecInput_NestedDoubleDash(t *testing.T) {
 	if req.Command != "opencode" {
 		t.Errorf("Command = %q, want opencode", req.Command)
 	}
-	wantArgs := []string{"run", "--attach", "http://x", "--format", "json", "--", "Reply with VM_OK"}
+	wantArgs := []string{
+		"run",
+		"--attach",
+		"http://x",
+		"--format",
+		"json",
+		"--",
+		"Reply with VM_OK",
+	}
 	if len(req.Args) != len(wantArgs) {
 		t.Fatalf("Args = %v, want %v", req.Args, wantArgs)
 	}

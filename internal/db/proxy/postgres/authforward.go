@@ -14,7 +14,9 @@ import (
 // errScramPlusFailClosed is returned by forwardAuth when the upstream advertises
 // SCRAM-SHA-256-PLUS. The caller treats this as a fatal handshake outcome and
 // emits a db_handshake_fail event.
-var errScramPlusFailClosed = errors.New("postgres.forwardAuth: SCRAM-SHA-256-PLUS detected; fail-closed")
+var errScramPlusFailClosed = errors.New(
+	"postgres.forwardAuth: SCRAM-SHA-256-PLUS detected; fail-closed",
+)
 
 // forwardAuth pumps frames between the client *Backend and the upstream
 // *Frontend until the upstream sends ReadyForQuery (or the loop dies).
@@ -98,7 +100,9 @@ func forwardAuth(ctx context.Context, pc *proxyConn) error {
 			// Copy SecretKey to decouple from pgproto3's internal buffer
 			// (Decode allocates fresh, but be defensive: subsequent frames
 			// could reuse the slice in some impls).
-			pc.state.upstreamBKD.SecretKey = append(pc.state.upstreamBKD.SecretKey[:0], m.SecretKey...)
+			pc.state.upstreamBKD.SecretKey = append(
+				pc.state.upstreamBKD.SecretKey[:0],
+				m.SecretKey...)
 			reg, err := pc.srv.cancelMap.Register(cancelMeta{
 				AgentSessionID:  pc.state.agentSessionID,
 				ServiceName:     pc.svc.Name,

@@ -129,7 +129,9 @@ func TestCheckAll_SeccompUserNotify_Unavailable(t *testing.T) {
 		return CheckResult{
 			Feature:   "seccomp-user-notify",
 			Available: false,
-			Error:     errors.New("kernel does not support SECCOMP_RET_USER_NOTIF (requires kernel 5.0+)"),
+			Error: errors.New(
+				"kernel does not support SECCOMP_RET_USER_NOTIF (requires kernel 5.0+)",
+			),
 		}
 	}
 	// Mock binary check to pass (so we can test seccomp failure in isolation)
@@ -246,7 +248,9 @@ func TestCheckAll_CgroupsV2_Unavailable(t *testing.T) {
 		return CheckResult{
 			Feature:   "cgroups_v2_resource_limits",
 			Available: false,
-			Error:     errors.New("cgroups v2 not available: /sys/fs/cgroup/cgroup.controllers not found"),
+			Error: errors.New(
+				"cgroups v2 not available: /sys/fs/cgroup/cgroup.controllers not found",
+			),
 		}
 	}
 
@@ -286,7 +290,9 @@ func TestCheckAll_EBPF_Unavailable(t *testing.T) {
 		return CheckResult{
 			Feature:   "ebpf",
 			Available: false,
-			Error:     errors.New("eBPF not available: permission denied (requires CAP_BPF or CAP_SYS_ADMIN)"),
+			Error: errors.New(
+				"eBPF not available: permission denied (requires CAP_BPF or CAP_SYS_ADMIN)",
+			),
 		}
 	}
 
@@ -779,8 +785,12 @@ func TestProbeEBPF(t *testing.T) {
 func TestProbeEBPFCanary(t *testing.T) {
 	// BPF_PROG_TYPE_CGROUP_SOCK_ADDR = 18 — matches the program family the
 	// real netmonitor attaches (cgroup/connect*, cgroup/sendmsg*).
-	assert.Equal(t, uint32(18), probeEBPFCanaryProgType,
-		"canary must use BPF_PROG_TYPE_CGROUP_SOCK_ADDR (18), not SOCK_OPS (13), CGROUP_SKB (8), or SOCKET_FILTER (1)")
+	assert.Equal(
+		t,
+		uint32(18),
+		probeEBPFCanaryProgType,
+		"canary must use BPF_PROG_TYPE_CGROUP_SOCK_ADDR (18), not SOCK_OPS (13), CGROUP_SKB (8), or SOCKET_FILTER (1)",
+	)
 
 	// expected_attach_type is required for CGROUP_SOCK_ADDR — without it
 	// the kernel rejects the load with EINVAL. BPF_CGROUP_INET4_CONNECT is
@@ -809,8 +819,12 @@ func TestProbeEBPFCanary(t *testing.T) {
 	// struct MUST extend through expected_attach_type (offset 68, total
 	// size 72). Truncating back to the 48-byte variant reintroduces the
 	// EINVAL failure mode described in the commit message.
-	assert.Equal(t, uintptr(72), unsafe.Sizeof(bpfProgLoadAttr{}),
-		"bpfProgLoadAttr must be 72 bytes — the kernel rejects CGROUP_SOCK_ADDR loads with attr_size < expected_attach_type offset+4")
+	assert.Equal(
+		t,
+		uintptr(72),
+		unsafe.Sizeof(bpfProgLoadAttr{}),
+		"bpfProgLoadAttr must be 72 bytes — the kernel rejects CGROUP_SOCK_ADDR loads with attr_size < expected_attach_type offset+4",
+	)
 	assert.Equal(t, uintptr(68), unsafe.Offsetof(bpfProgLoadAttr{}.expectedAttachType),
 		"expectedAttachType must be at offset 68 — do not reorder fields or add fields before it")
 

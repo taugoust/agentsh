@@ -167,7 +167,8 @@ type NetworkAttachmentEvidence struct {
 
 func exactLoopbackEndpointID(endpoint string) bool {
 	addrPort, err := netip.ParseAddrPort(strings.TrimSpace(endpoint))
-	return err == nil && addrPort.Port() != 0 && addrPort.Addr().Zone() == "" && addrPort.Addr().Unmap().IsLoopback()
+	return err == nil && addrPort.Port() != 0 && addrPort.Addr().Zone() == "" &&
+		addrPort.Addr().Unmap().IsLoopback()
 }
 
 func (a NetworkAttachmentEvidence) hasExactPrimaryProxyEndpoint() bool {
@@ -299,7 +300,8 @@ type NetworkEnforcement struct {
 // Proven is the sole condition under which AgentSH may emit
 // network_policy_enforced=true.
 func (n NetworkEnforcement) Proven() bool {
-	if n.CheckedAt.IsZero() || n.Readiness != NetworkEnforcementStatusReady || n.Preflight == nil || !n.Preflight.Proven() {
+	if n.CheckedAt.IsZero() || n.Readiness != NetworkEnforcementStatusReady || n.Preflight == nil ||
+		!n.Preflight.Proven() {
 		return false
 	}
 	activeEndpoint := ""
@@ -327,8 +329,10 @@ func (n NetworkEnforcement) Proven() bool {
 				return false
 			}
 			seenCommands[attachment.CommandID] = struct{}{}
-			if attachment.CommandID == n.Attachment.CommandID && attachment.CgroupID == n.Attachment.CgroupID &&
-				attachment.RegistrationID == n.Attachment.RegistrationID && attachment.ProxyEndpointID == n.Attachment.ProxyEndpointID {
+			if attachment.CommandID == n.Attachment.CommandID &&
+				attachment.CgroupID == n.Attachment.CgroupID &&
+				attachment.RegistrationID == n.Attachment.RegistrationID &&
+				attachment.ProxyEndpointID == n.Attachment.ProxyEndpointID {
 				selectedPresent = true
 			}
 		}
@@ -410,7 +414,8 @@ func (n *NetworkEnforcement) Normalize() {
 		}
 	}
 	n.NetworkPolicyEnforced = n.Proven()
-	if !n.NetworkPolicyEnforced && strings.TrimSpace(n.Warning) == "" && n.Requested != NetworkEnforcementRequestNone {
+	if !n.NetworkPolicyEnforced && strings.TrimSpace(n.Warning) == "" &&
+		n.Requested != NetworkEnforcementRequestNone {
 		n.Warning = "runtime network enforcement is not proven; policy decisions do not imply that traffic was blocked"
 	}
 }

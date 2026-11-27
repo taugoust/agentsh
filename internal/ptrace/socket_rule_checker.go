@@ -35,7 +35,10 @@ func NewSocketRuleChecker(rules []seccomp.SocketRule) *SocketRuleChecker {
 
 // NewSocketRuleCheckerWithEmitter wires socket tuple rules to the shared
 // audit sink. Pass nil emit to skip event-store emission in tests/local use.
-func NewSocketRuleCheckerWithEmitter(rules []seccomp.SocketRule, emit FamilyEmitter) *SocketRuleChecker {
+func NewSocketRuleCheckerWithEmitter(
+	rules []seccomp.SocketRule,
+	emit FamilyEmitter,
+) *SocketRuleChecker {
 	c := &SocketRuleChecker{
 		emit: emit,
 		tgkillFn: func(tgid, tid int, sig unix.Signal) error {
@@ -50,7 +53,9 @@ func NewSocketRuleCheckerWithEmitter(rules []seccomp.SocketRule, emit FamilyEmit
 
 // Check reports the first socket tuple rule matching syscall+args.
 // Only SYS_SOCKET and SYS_SOCKETPAIR are eligible.
-func (c *SocketRuleChecker) Check(syscall, family, typ, protocol uint64) (seccomp.SocketRule, bool) {
+func (c *SocketRuleChecker) Check(
+	syscall, family, typ, protocol uint64,
+) (seccomp.SocketRule, bool) {
 	if c == nil || len(c.rules) == 0 {
 		return seccomp.SocketRule{}, false
 	}

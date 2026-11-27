@@ -79,7 +79,17 @@ func (t *Tracer) handleWrite(ctx context.Context, tid int, sc *SyscallContext) {
 
 	rewritten, err := rewriteSNI(buf, domain)
 	if err != nil {
-		slog.Warn("handleWrite: SNI rewrite failed", "tid", tid, "oldSNI", sni, "newSNI", domain, "error", err)
+		slog.Warn(
+			"handleWrite: SNI rewrite failed",
+			"tid",
+			tid,
+			"oldSNI",
+			sni,
+			"newSNI",
+			domain,
+			"error",
+			err,
+		)
 		t.fds.unwatchTLS(tgid, fd)
 		t.allowSyscall(tid)
 		return
@@ -87,7 +97,13 @@ func (t *Tracer) handleWrite(ctx context.Context, tid int, sc *SyscallContext) {
 
 	if len(rewritten) <= int(bufLen) {
 		if err := t.writeBytes(tid, bufPtr, rewritten); err != nil {
-			slog.Warn("handleWrite: failed to write rewritten ClientHello", "tid", tid, "error", err)
+			slog.Warn(
+				"handleWrite: failed to write rewritten ClientHello",
+				"tid",
+				tid,
+				"error",
+				err,
+			)
 			t.fds.unwatchTLS(tgid, fd)
 			t.allowSyscall(tid)
 			return
@@ -102,14 +118,26 @@ func (t *Tracer) handleWrite(ctx context.Context, tid int, sc *SyscallContext) {
 		// Longer rewritten buffer — use scratch page from Phase 4a injection engine.
 		sp, err := t.ensureScratchPage(tid, tgid, regs)
 		if err != nil {
-			slog.Warn("handleWrite: scratch page alloc failed, allowing original", "tid", tid, "error", err)
+			slog.Warn(
+				"handleWrite: scratch page alloc failed, allowing original",
+				"tid",
+				tid,
+				"error",
+				err,
+			)
 			t.fds.unwatchTLS(tgid, fd)
 			t.allowSyscall(tid)
 			return
 		}
 		scratchAddr, err := sp.allocate(len(rewritten))
 		if err != nil {
-			slog.Warn("handleWrite: scratch allocate failed, allowing original", "tid", tid, "error", err)
+			slog.Warn(
+				"handleWrite: scratch allocate failed, allowing original",
+				"tid",
+				tid,
+				"error",
+				err,
+			)
 			t.fds.unwatchTLS(tgid, fd)
 			t.allowSyscall(tid)
 			return
@@ -123,7 +151,13 @@ func (t *Tracer) handleWrite(ctx context.Context, tid int, sc *SyscallContext) {
 		regs.SetArg(1, scratchAddr)
 		regs.SetArg(2, uint64(len(rewritten)))
 		if err := t.setRegs(tid, regs); err != nil {
-			slog.Warn("handleWrite: failed to update registers for scratch", "tid", tid, "error", err)
+			slog.Warn(
+				"handleWrite: failed to update registers for scratch",
+				"tid",
+				tid,
+				"error",
+				err,
+			)
 		}
 	}
 

@@ -20,7 +20,9 @@ func withTrace(t *testing.T, on bool, fn func()) string {
 	prevEnabled := ptraceTraceEnabled.Load()
 	prevDefault := slog.Default()
 	var buf bytes.Buffer
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	slog.SetDefault(
+		slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	)
 	ptraceTraceEnabled.Store(on)
 	t.Cleanup(func() {
 		ptraceTraceEnabled.Store(prevEnabled)
@@ -38,9 +40,21 @@ func TestDescribeWaitStatus(t *testing.T) {
 	}{
 		{"syscall-stop", unix.WaitStatus(uint32(unix.SIGTRAP|0x80)<<8 | 0x7f), "syscall-stop"},
 		{"plain-sigtrap", unix.WaitStatus(uint32(unix.SIGTRAP)<<8 | 0x7f), "sigtrap(plain)"},
-		{"event-exec", unix.WaitStatus(uint32(unix.PTRACE_EVENT_EXEC)<<16 | uint32(unix.SIGTRAP)<<8 | 0x7f), "event:EXEC"},
-		{"event-seccomp", unix.WaitStatus(uint32(unix.PTRACE_EVENT_SECCOMP)<<16 | uint32(unix.SIGTRAP)<<8 | 0x7f), "event:SECCOMP"},
-		{"event-clone", unix.WaitStatus(uint32(unix.PTRACE_EVENT_CLONE)<<16 | uint32(unix.SIGTRAP)<<8 | 0x7f), "event:CLONE"},
+		{
+			"event-exec",
+			unix.WaitStatus(uint32(unix.PTRACE_EVENT_EXEC)<<16 | uint32(unix.SIGTRAP)<<8 | 0x7f),
+			"event:EXEC",
+		},
+		{
+			"event-seccomp",
+			unix.WaitStatus(uint32(unix.PTRACE_EVENT_SECCOMP)<<16 | uint32(unix.SIGTRAP)<<8 | 0x7f),
+			"event:SECCOMP",
+		},
+		{
+			"event-clone",
+			unix.WaitStatus(uint32(unix.PTRACE_EVENT_CLONE)<<16 | uint32(unix.SIGTRAP)<<8 | 0x7f),
+			"event:CLONE",
+		},
 		{"exited", unix.WaitStatus(42 << 8), "exited(code=42)"},
 	}
 	for _, tc := range cases {
@@ -54,7 +68,12 @@ func TestDescribeWaitStatus(t *testing.T) {
 	if !strings.HasPrefix(group, "signal-stop(") && !strings.HasPrefix(group, "group-stop(") {
 		t.Errorf("SIGSTOP stop decoded as %q, want signal-stop/group-stop", group)
 	}
-	if killed := describeWaitStatus(unix.WaitStatus(uint32(unix.SIGKILL))); !strings.HasPrefix(killed, "signaled(") {
+	if killed := describeWaitStatus(
+		unix.WaitStatus(uint32(unix.SIGKILL)),
+	); !strings.HasPrefix(
+		killed,
+		"signaled(",
+	) {
 		t.Errorf("SIGKILL decoded as %q, want signaled(...)", killed)
 	}
 }
@@ -109,8 +128,16 @@ func TestRing_AppendsAndDumps(t *testing.T) {
 
 	out := withTrace(t, true, func() {
 		traceWaitCall("run", -1)
-		traceWaitRet("run", 7, unix.WaitStatus(uint32(unix.PTRACE_EVENT_SECCOMP)<<16|uint32(unix.SIGTRAP)<<8|0x7f), nil)
-		tr.traceStop(7, unix.WaitStatus(uint32(unix.PTRACE_EVENT_SECCOMP)<<16|uint32(unix.SIGTRAP)<<8|0x7f))
+		traceWaitRet(
+			"run",
+			7,
+			unix.WaitStatus(uint32(unix.PTRACE_EVENT_SECCOMP)<<16|uint32(unix.SIGTRAP)<<8|0x7f),
+			nil,
+		)
+		tr.traceStop(
+			7,
+			unix.WaitStatus(uint32(unix.PTRACE_EVENT_SECCOMP)<<16|uint32(unix.SIGTRAP)<<8|0x7f),
+		)
 		tr.traceResume(7, "denySyscall", 0)
 		tr.dumpTraceRing("unit-test")
 	})
@@ -127,7 +154,11 @@ func TestScanWedged_v1_FlagsConsumedButUnresumedStop(t *testing.T) {
 	tr.tracees[10] = &TraceeState{TID: 10, awaitingResume: true, lastStopDesc: "event:EXEC",
 		lastStopAt: time.Now().Add(-3 * wedgeThreshold)}
 	tr.tracees[11] = &TraceeState{TID: 11, awaitingResume: true, lastStopAt: time.Now()}
-	tr.tracees[12] = &TraceeState{TID: 12, awaitingResume: false, lastStopAt: time.Now().Add(-3 * wedgeThreshold)}
+	tr.tracees[12] = &TraceeState{
+		TID:            12,
+		awaitingResume: false,
+		lastStopAt:     time.Now().Add(-3 * wedgeThreshold),
+	}
 
 	out := withTrace(t, true, func() { tr.scanWedged() })
 

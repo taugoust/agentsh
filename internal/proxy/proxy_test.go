@@ -509,7 +509,11 @@ func TestProxy_EnvVars(t *testing.T) {
 	// Verify the base URLs point to the proxy
 	expectedPrefix := "http://127.0.0.1:"
 	if !strings.HasPrefix(vars["ANTHROPIC_BASE_URL"], expectedPrefix) {
-		t.Errorf("ANTHROPIC_BASE_URL should start with %s, got %s", expectedPrefix, vars["ANTHROPIC_BASE_URL"])
+		t.Errorf(
+			"ANTHROPIC_BASE_URL should start with %s, got %s",
+			expectedPrefix,
+			vars["ANTHROPIC_BASE_URL"],
+		)
 	}
 }
 
@@ -613,7 +617,8 @@ func TestProxy_StorageLogging(t *testing.T) {
 	}
 
 	// Check that API key was redacted in headers
-	if apiKey := reqEntry.Request.Headers["X-Api-Key"]; len(apiKey) > 0 && apiKey[0] != "[REDACTED]" {
+	if apiKey := reqEntry.Request.Headers["X-Api-Key"]; len(apiKey) > 0 &&
+		apiKey[0] != "[REDACTED]" {
 		t.Errorf("API key was not redacted: %v", apiKey)
 	}
 
@@ -624,7 +629,11 @@ func TestProxy_StorageLogging(t *testing.T) {
 	}
 
 	if respEntry.RequestID != reqEntry.ID {
-		t.Errorf("response request_id %s doesn't match request id %s", respEntry.RequestID, reqEntry.ID)
+		t.Errorf(
+			"response request_id %s doesn't match request id %s",
+			respEntry.RequestID,
+			reqEntry.ID,
+		)
 	}
 	if respEntry.Response.Status != http.StatusOK {
 		t.Errorf("expected status 200, got %d", respEntry.Response.Status)
@@ -646,23 +655,25 @@ func TestProxy_CustomOpenAIProvider(t *testing.T) {
 	var receivedAuth string
 
 	// Create a mock custom provider server
-	customProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedPath = r.URL.Path
-		receivedAuth = r.Header.Get("Authorization")
+	customProvider := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			receivedAuth = r.Header.Get("Authorization")
 
-		resp := map[string]interface{}{
-			"id":      "chatcmpl-test",
-			"object":  "chat.completion",
-			"choices": []map[string]interface{}{},
-			"usage": map[string]int{
-				"prompt_tokens":     10,
-				"completion_tokens": 20,
-				"total_tokens":      30,
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
+			resp := map[string]interface{}{
+				"id":      "chatcmpl-test",
+				"object":  "chat.completion",
+				"choices": []map[string]interface{}{},
+				"usage": map[string]int{
+					"prompt_tokens":     10,
+					"completion_tokens": 20,
+					"total_tokens":      30,
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+		}),
+	)
 	defer customProvider.Close()
 
 	storageDir := t.TempDir()
@@ -836,7 +847,11 @@ func TestProxy_SSEStreaming(t *testing.T) {
 
 	// Body size should match the total streamed content
 	if responseEntry.Response.BodySize != len(expectedBody) {
-		t.Errorf("expected body size %d, got %d", len(expectedBody), responseEntry.Response.BodySize)
+		t.Errorf(
+			"expected body size %d, got %d",
+			len(expectedBody),
+			responseEntry.Response.BodySize,
+		)
 	}
 }
 
@@ -1470,7 +1485,9 @@ func TestProxy_SSEBlocking_Integration(t *testing.T) {
 
 	// 3. The replacement text must be present.
 	if !strings.Contains(sseOutput, "[agentsh] Tool 'get_weather' blocked by policy") {
-		t.Error("expected replacement text '[agentsh] Tool 'get_weather' blocked by policy' in SSE output")
+		t.Error(
+			"expected replacement text '[agentsh] Tool 'get_weather' blocked by policy' in SSE output",
+		)
 	}
 
 	// 4. stop_reason must be rewritten from "tool_use" to "end_turn" (all tools blocked).
@@ -1603,13 +1620,16 @@ func TestProxy_CrossServerBlocking_Integration(t *testing.T) {
 	proxy.SetRegistry(reg)
 
 	// Create and activate a SessionAnalyzer with read-then-send detection.
-	analyzer := mcpinspect.NewSessionAnalyzer("test-cross-server-integration", config.CrossServerConfig{
-		Enabled: true,
-		ReadThenSend: config.ReadThenSendConfig{
+	analyzer := mcpinspect.NewSessionAnalyzer(
+		"test-cross-server-integration",
+		config.CrossServerConfig{
 			Enabled: true,
-			Window:  30 * time.Second,
+			ReadThenSend: config.ReadThenSendConfig{
+				Enabled: true,
+				Window:  30 * time.Second,
+			},
 		},
-	})
+	)
 	analyzer.Activate()
 	proxy.SetSessionAnalyzer(analyzer)
 
@@ -1730,12 +1750,16 @@ func TestProxy_CrossServerBlocking_Integration(t *testing.T) {
 
 		// 2. The tool_use block for send_email must NOT appear (blocked and replaced).
 		if strings.Contains(sseOutput, `"type":"tool_use"`) {
-			t.Error("request 2: expected tool_use block to be suppressed, but found 'type:tool_use' in SSE output")
+			t.Error(
+				"request 2: expected tool_use block to be suppressed, but found 'type:tool_use' in SSE output",
+			)
 		}
 
 		// 3. The replacement text must be present.
 		if !strings.Contains(sseOutput, "[agentsh] Tool 'send_email' blocked by policy") {
-			t.Error("request 2: expected replacement text '[agentsh] Tool 'send_email' blocked by policy' in SSE output")
+			t.Error(
+				"request 2: expected replacement text '[agentsh] Tool 'send_email' blocked by policy' in SSE output",
+			)
 		}
 
 		// 4. stop_reason must be rewritten from "tool_use" to "end_turn".
@@ -1743,7 +1767,9 @@ func TestProxy_CrossServerBlocking_Integration(t *testing.T) {
 			t.Error("request 2: expected stop_reason to be rewritten to 'end_turn'")
 		}
 		if strings.Contains(sseOutput, `"stop_reason":"tool_use"`) {
-			t.Error("request 2: expected stop_reason 'tool_use' to be rewritten, but it still appears")
+			t.Error(
+				"request 2: expected stop_reason 'tool_use' to be rewritten, but it still appears",
+			)
 		}
 	}
 
@@ -1789,7 +1815,10 @@ func TestProxy_CrossServerBlocking_Integration(t *testing.T) {
 	}
 	// The reason should mention the cross-server pattern.
 	if !strings.Contains(ev2.Reason, "read") || !strings.Contains(ev2.Reason, "send") {
-		t.Errorf("event 2 reason should mention cross-server read/send pattern, got: %q", ev2.Reason)
+		t.Errorf(
+			"event 2 reason should mention cross-server read/send pattern, got: %q",
+			ev2.Reason,
+		)
 	}
 }
 

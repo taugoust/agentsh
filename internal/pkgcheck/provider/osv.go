@@ -97,7 +97,10 @@ type osvReference struct {
 	URL  string `json:"url"`
 }
 
-func (p *osvProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequest) (*pkgcheck.CheckResponse, error) {
+func (p *osvProvider) CheckBatch(
+	ctx context.Context,
+	req pkgcheck.CheckRequest,
+) (*pkgcheck.CheckResponse, error) {
 	start := time.Now()
 
 	ecosystem := mapEcosystemOSV(req.Ecosystem)
@@ -117,7 +120,12 @@ func (p *osvProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequest)
 		return nil, fmt.Errorf("osv: marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/v1/querybatch", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		p.baseURL+"/v1/querybatch",
+		bytes.NewReader(body),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("osv: create request: %w", err)
 	}

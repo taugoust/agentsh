@@ -487,7 +487,9 @@ func TestWrapInit_UnixSocketsDisabledWithPolicyLimitsButNoCgroup(t *testing.T) {
 		AgentArgs:    []string{"hello"},
 	})
 	if wrapErr == nil {
-		t.Fatal("expected wrap-init to refuse engagement when unix_sockets is disabled and no cgroup/eBPF enforcement is configured")
+		t.Fatal(
+			"expected wrap-init to refuse engagement when unix_sockets is disabled and no cgroup/eBPF enforcement is configured",
+		)
 	}
 	if code != http.StatusServiceUnavailable {
 		t.Errorf("expected status 503, got %d", code)
@@ -528,7 +530,9 @@ func TestWrapNeedsCgroupBeforeAck_PolicyLimitsAloneInsufficient(t *testing.T) {
 	}
 
 	if wrapNeedsCgroupBeforeAck(app, s) {
-		t.Fatal("wrapNeedsCgroupBeforeAck must return false when policy has limits but no cgroup/eBPF enforcement is configured")
+		t.Fatal(
+			"wrapNeedsCgroupBeforeAck must return false when policy has limits but no cgroup/eBPF enforcement is configured",
+		)
 	}
 
 	// Sanity: enabling cgroups must flip the result so the original
@@ -584,8 +588,16 @@ func TestWrapInit_ShimMode_PolicyDeny(t *testing.T) {
 		Version: 1,
 		Name:    "test",
 		CommandRules: []policy.CommandRule{
-			{Name: "block-system-commands", Commands: []string{"shutdown", "reboot"}, Decision: "deny"},
-			{Name: "allow-shells", Commands: []string{"sh", "bash", "sh.real", "bash.real"}, Decision: "allow"},
+			{
+				Name:     "block-system-commands",
+				Commands: []string{"shutdown", "reboot"},
+				Decision: "deny",
+			},
+			{
+				Name:     "allow-shells",
+				Commands: []string{"sh", "bash", "sh.real", "bash.real"},
+				Decision: "allow",
+			},
 		},
 	}, false, true)
 	if err != nil {
@@ -629,7 +641,11 @@ func TestWrapInit_ShimMode_PolicyApprove(t *testing.T) {
 		Name:    "test",
 		CommandRules: []policy.CommandRule{
 			{Name: "approve-pip", Commands: []string{"pip"}, Decision: "approve"},
-			{Name: "allow-shells", Commands: []string{"sh", "bash", "sh.real", "bash.real"}, Decision: "allow"},
+			{
+				Name:     "allow-shells",
+				Commands: []string{"sh", "bash", "sh.real", "bash.real"},
+				Decision: "allow",
+			},
 		},
 	}, true /* enforceApprovals */, true)
 	if err != nil {
@@ -663,8 +679,17 @@ func TestWrapInit_ShimMode_PolicyRedirect(t *testing.T) {
 		Version: 1,
 		Name:    "test",
 		CommandRules: []policy.CommandRule{
-			{Name: "redirect-rm", Commands: []string{"rm"}, Decision: "redirect", RedirectTo: &policy.CommandRedirect{Command: "trash"}},
-			{Name: "allow-shells", Commands: []string{"sh", "bash", "sh.real", "bash.real"}, Decision: "allow"},
+			{
+				Name:       "redirect-rm",
+				Commands:   []string{"rm"},
+				Decision:   "redirect",
+				RedirectTo: &policy.CommandRedirect{Command: "trash"},
+			},
+			{
+				Name:     "allow-shells",
+				Commands: []string{"sh", "bash", "sh.real", "bash.real"},
+				Decision: "allow",
+			},
 		},
 	}, true, true /* enforceRedirects */)
 	if err != nil {
@@ -704,7 +729,11 @@ func TestWrapInit_ShimMode_PolicySoftDelete(t *testing.T) {
 		Name:    "test",
 		CommandRules: []policy.CommandRule{
 			{Name: "soft-delete-rm", Commands: []string{"rm"}, Decision: "soft_delete"},
-			{Name: "allow-shells", Commands: []string{"sh", "bash", "sh.real", "bash.real"}, Decision: "allow"},
+			{
+				Name:     "allow-shells",
+				Commands: []string{"sh", "bash", "sh.real", "bash.real"},
+				Decision: "allow",
+			},
 		},
 	}, true, true)
 	if err != nil {
@@ -744,7 +773,11 @@ func TestWrapInit_ShimMode_PolicyAuditAllowed(t *testing.T) {
 		Name:    "test",
 		CommandRules: []policy.CommandRule{
 			{Name: "audit-curl", Commands: []string{"curl"}, Decision: "audit"},
-			{Name: "allow-shells", Commands: []string{"sh", "bash", "sh.real", "bash.real"}, Decision: "allow"},
+			{
+				Name:     "allow-shells",
+				Commands: []string{"sh", "bash", "sh.real", "bash.real"},
+				Decision: "allow",
+			},
 		},
 	}, true, true)
 	if err != nil {
@@ -788,7 +821,11 @@ func TestWrapInit_ShimMode_PolicyAllow(t *testing.T) {
 		Version: 1,
 		Name:    "test",
 		CommandRules: []policy.CommandRule{
-			{Name: "allow-safe-commands", Commands: []string{"echo", "sh", "bash", "sh.real", "bash.real"}, Decision: "allow"},
+			{
+				Name:     "allow-safe-commands",
+				Commands: []string{"echo", "sh", "bash", "sh.real", "bash.real"},
+				Decision: "allow",
+			},
 			{Name: "block-system-commands", Commands: []string{"shutdown"}, Decision: "deny"},
 		},
 	}, false, true)
@@ -1002,7 +1039,11 @@ func TestWrapInit_HTTPResponseIncludesSafeToBypassShellShimFalse(t *testing.T) {
 	}
 
 	body := []byte(`{"agent_command":"/bin/echo","caller_uid":0}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+s.ID+"/wrap-init", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+s.ID+"/wrap-init",
+		bytes.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 
 	app.Router().ServeHTTP(rr, req)
@@ -1011,7 +1052,10 @@ func TestWrapInit_HTTPResponseIncludesSafeToBypassShellShimFalse(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 	if !strings.Contains(rr.Body.String(), `"safe_to_bypass_shell_shim":false`) {
-		t.Fatalf("expected serialized response to include safe_to_bypass_shell_shim=false, got %s", rr.Body.String())
+		t.Fatalf(
+			"expected serialized response to include safe_to_bypass_shell_shim=false, got %s",
+			rr.Body.String(),
+		)
 	}
 }
 
@@ -1174,10 +1218,22 @@ func TestWrapInit_ForcesNotifyHandoffWhenEBPFRequiresPreAckCgroup(t *testing.T) 
 
 	var parsed seccompWrapperConfig
 	require.NoError(t, json.Unmarshal([]byte(resp.SeccompConfig), &parsed))
-	require.True(t, parsed.UnixSocketEnabled, "pre-ACK cgroup/eBPF setup requires a user-notify handoff before wrapper exec")
-	require.NotNil(t, parsed.CommandJail, "client-spawned agent wrap must receive the strict in-wrapper jail config")
+	require.True(
+		t,
+		parsed.UnixSocketEnabled,
+		"pre-ACK cgroup/eBPF setup requires a user-notify handoff before wrapper exec",
+	)
+	require.NotNil(
+		t,
+		parsed.CommandJail,
+		"client-spawned agent wrap must receive the strict in-wrapper jail config",
+	)
 	require.True(t, parsed.CommandJail.Required)
-	require.NotNil(t, resp.CommandJail, "client-spawned agent wrap must receive Linux launch requirements")
+	require.NotNil(
+		t,
+		resp.CommandJail,
+		"client-spawned agent wrap must receive Linux launch requirements",
+	)
 	require.True(t, resp.CommandJail.Complete())
 }
 
@@ -1305,7 +1361,11 @@ func TestWrapInit_LongTMPDIR_LongSessionID(t *testing.T) {
 	}
 	// Verify socket path is under the limit
 	if len(resp.NotifySocket) > 104 {
-		t.Errorf("socket path %d bytes exceeds 104 byte limit: %s", len(resp.NotifySocket), resp.NotifySocket)
+		t.Errorf(
+			"socket path %d bytes exceeds 104 byte limit: %s",
+			len(resp.NotifySocket),
+			resp.NotifySocket,
+		)
 	}
 }
 
@@ -1517,7 +1577,11 @@ func TestWrapInit_SignalSocketPermissions_CallerUID(t *testing.T) {
 		t.Fatalf("expected caller-owned signal socket mode 0600, got %04o", got)
 	}
 	if filepath.Dir(resp.SignalSocket) != notifyDir {
-		t.Fatalf("expected signal socket to share notify dir, got %s vs %s", filepath.Dir(resp.SignalSocket), notifyDir)
+		t.Fatalf(
+			"expected signal socket to share notify dir, got %s vs %s",
+			filepath.Dir(resp.SignalSocket),
+			notifyDir,
+		)
 	}
 }
 
@@ -1628,10 +1692,20 @@ func TestWrapInit_LandlockNetwork_HonorsConfig(t *testing.T) {
 			gotNet, _ := parsed["allow_network"].(bool)
 			gotBind, _ := parsed["allow_bind"].(bool)
 			if gotNet != tc.wantNet {
-				t.Errorf("allow_network = %v; want %v (JSON: %s)", gotNet, tc.wantNet, resp.SeccompConfig)
+				t.Errorf(
+					"allow_network = %v; want %v (JSON: %s)",
+					gotNet,
+					tc.wantNet,
+					resp.SeccompConfig,
+				)
 			}
 			if gotBind != tc.wantBind {
-				t.Errorf("allow_bind = %v; want %v (JSON: %s)", gotBind, tc.wantBind, resp.SeccompConfig)
+				t.Errorf(
+					"allow_bind = %v; want %v (JSON: %s)",
+					gotBind,
+					tc.wantBind,
+					resp.SeccompConfig,
+				)
 			}
 		})
 	}
@@ -1703,7 +1777,9 @@ sandbox:
 		t.Error("back-compat: allow_network should default to true (proxy needs it)")
 	}
 	if gotBind {
-		t.Error("back-compat: allow_bind should default to false (security hardening vs prior accidental permissive)")
+		t.Error(
+			"back-compat: allow_bind should default to false (security hardening vs prior accidental permissive)",
+		)
 	}
 }
 
@@ -1714,10 +1790,34 @@ func TestSocketRulesUsesNotify(t *testing.T) {
 		want  bool
 	}{
 		{name: "empty", rules: nil, want: false},
-		{name: "errno", rules: []config.SandboxSeccompSocketRuleConfig{{Name: "x", Family: "AF_RXRPC", Action: "errno"}}, want: false},
-		{name: "kill", rules: []config.SandboxSeccompSocketRuleConfig{{Name: "x", Family: "AF_RXRPC", Action: "kill"}}, want: false},
-		{name: "log", rules: []config.SandboxSeccompSocketRuleConfig{{Name: "x", Family: "AF_RXRPC", Action: "log"}}, want: true},
-		{name: "log_and_kill", rules: []config.SandboxSeccompSocketRuleConfig{{Name: "x", Family: "AF_RXRPC", Action: "log_and_kill"}}, want: true},
+		{
+			name: "errno",
+			rules: []config.SandboxSeccompSocketRuleConfig{
+				{Name: "x", Family: "AF_RXRPC", Action: "errno"},
+			},
+			want: false,
+		},
+		{
+			name: "kill",
+			rules: []config.SandboxSeccompSocketRuleConfig{
+				{Name: "x", Family: "AF_RXRPC", Action: "kill"},
+			},
+			want: false,
+		},
+		{
+			name: "log",
+			rules: []config.SandboxSeccompSocketRuleConfig{
+				{Name: "x", Family: "AF_RXRPC", Action: "log"},
+			},
+			want: true,
+		},
+		{
+			name: "log_and_kill",
+			rules: []config.SandboxSeccompSocketRuleConfig{
+				{Name: "x", Family: "AF_RXRPC", Action: "log_and_kill"},
+			},
+			want: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1762,7 +1862,9 @@ func TestMainFilterUsesUserNotify_SocketRuleMitigationSet(t *testing.T) {
 	cfg.Sandbox.Seccomp.MitigationSets = []string{"dirtyfrag-conservative"}
 	app := &App{cfg: cfg}
 	if !app.mainFilterUsesUserNotify(false) {
-		t.Fatal("mainFilterUsesUserNotify should return true when a mitigation set expands to log socket rules")
+		t.Fatal(
+			"mainFilterUsesUserNotify should return true when a mitigation set expands to log socket rules",
+		)
 	}
 }
 
@@ -1786,7 +1888,9 @@ seccomp:
 `)
 	app := &App{cfg: cfg}
 	if !app.mainFilterUsesUserNotify(false) {
-		t.Fatal("mainFilterUsesUserNotify should return true when a mitigation set adds a log syscall block")
+		t.Fatal(
+			"mainFilterUsesUserNotify should return true when a mitigation set adds a log syscall block",
+		)
 	}
 }
 
@@ -1809,7 +1913,9 @@ seccomp:
 `)
 	app := &App{cfg: cfg}
 	if !app.mainFilterUsesUserNotify(false) {
-		t.Fatal("mainFilterUsesUserNotify should return true when a mitigation set adds a log socket family")
+		t.Fatal(
+			"mainFilterUsesUserNotify should return true when a mitigation set adds a log socket family",
+		)
 	}
 }
 
@@ -1879,7 +1985,9 @@ func TestMainFilterUsesUserNotify_FamilyErrnoAndKill_NoNotify(t *testing.T) {
 	app := &App{cfg: cfg}
 
 	if app.mainFilterUsesUserNotify(false) {
-		t.Error("mainFilterUsesUserNotify should return false when all families use errno/kill (kernel-side)")
+		t.Error(
+			"mainFilterUsesUserNotify should return false when all families use errno/kill (kernel-side)",
+		)
 	}
 }
 
@@ -1944,7 +2052,11 @@ func TestWrapInit_AllowExecuteIncludesAgentCommandDir(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("expected /bin in allow_execute, got %v\nfull config: %s", allow, resp.SeccompConfig)
+		t.Errorf(
+			"expected /bin in allow_execute, got %v\nfull config: %s",
+			allow,
+			resp.SeccompConfig,
+		)
 	}
 }
 
@@ -1997,7 +2109,11 @@ func TestWrapInit_AllowExecuteSkipsBareCommandName(t *testing.T) {
 			continue
 		}
 		if s == "" || s == "." {
-			t.Errorf("allow_execute should not contain bare-name-derived %q; got list %v", s, rawAllow)
+			t.Errorf(
+				"allow_execute should not contain bare-name-derived %q; got list %v",
+				s,
+				rawAllow,
+			)
 		}
 	}
 }

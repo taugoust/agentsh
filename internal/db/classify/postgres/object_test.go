@@ -43,20 +43,29 @@ func TestExtractRelation_QualifiedAndUnqualified(t *testing.T) {
 			res:  effects.ResolutionQualified,
 		},
 		{
-			sql:  "SELECT * FROM users",
-			sess: SessionState{SearchPath: []string{"public"}, DefaultSearchPath: []string{"public"}},
+			sql: "SELECT * FROM users",
+			sess: SessionState{
+				SearchPath:        []string{"public"},
+				DefaultSearchPath: []string{"public"},
+			},
 			want: effects.ObjectRef{Kind: effects.ObjectTable, Name: "users"},
 			res:  effects.ResolutionUnqualified,
 		},
 		{
-			sql:  "SELECT * FROM users",
-			sess: SessionState{SearchPath: []string{"app", "public"}, DefaultSearchPath: []string{"public"}},
+			sql: "SELECT * FROM users",
+			sess: SessionState{
+				SearchPath:        []string{"app", "public"},
+				DefaultSearchPath: []string{"public"},
+			},
 			want: effects.ObjectRef{Kind: effects.ObjectTable, Name: "users"},
 			res:  effects.ResolutionAmbiguousAfterSearchPath,
 		},
 		{
-			sql:  "SELECT * FROM users",
-			sess: SessionState{TempTables: map[string]struct{}{"users": {}}, DefaultSearchPath: []string{"public"}},
+			sql: "SELECT * FROM users",
+			sess: SessionState{
+				TempTables:        map[string]struct{}{"users": {}},
+				DefaultSearchPath: []string{"public"},
+			},
 			want: effects.ObjectRef{Kind: effects.ObjectTable, Name: "users"},
 			res:  effects.ResolutionMaybeTempShadowed,
 		},
@@ -81,7 +90,8 @@ func TestExtractRelation_QualifiedAndUnqualified(t *testing.T) {
 				t.Fatalf("no relation found in %q", tc.sql)
 			}
 			obj, resn := extractRelation(rel, tc.sess, effects.ObjectTable)
-			if obj.Kind != tc.want.Kind || obj.Schema != tc.want.Schema || obj.Name != tc.want.Name {
+			if obj.Kind != tc.want.Kind || obj.Schema != tc.want.Schema ||
+				obj.Name != tc.want.Name {
 				t.Fatalf("ObjectRef mismatch: got %+v want %+v", obj, tc.want)
 			}
 			if resn != tc.res {

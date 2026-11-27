@@ -57,7 +57,18 @@ func TestStartLLMProxy(t *testing.T) {
 
 	// Start the proxy
 	mcpCfg := config.SandboxMCPConfig{}
-	proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, mcpCfg, storagePath, logger, nil, nil, nil)
+	proxyURL, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		mcpCfg,
+		storagePath,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -80,7 +91,11 @@ func TestStartLLMProxy(t *testing.T) {
 	time.Sleep(10 * time.Millisecond) // Wait for server to be ready
 
 	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "Hello"}]}`
-	req, err := http.NewRequest(http.MethodPost, proxyURL+"/v1/messages", strings.NewReader(reqBody))
+	req, err := http.NewRequest(
+		http.MethodPost,
+		proxyURL+"/v1/messages",
+		strings.NewReader(reqBody),
+	)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
@@ -107,7 +122,18 @@ func TestStartLLMProxy_NilSession(t *testing.T) {
 	storageCfg := config.DefaultLLMStorageConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, _, err := StartLLMProxy(nil, proxyCfg, dlpCfg, storageCfg, config.SandboxMCPConfig{}, t.TempDir(), logger, nil, nil, nil)
+	_, _, err := StartLLMProxy(
+		nil,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		config.SandboxMCPConfig{},
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err == nil {
 		t.Error("expected error for nil session")
 	}
@@ -290,7 +316,18 @@ func TestSession_LLMProxyEnvVars_Integration(t *testing.T) {
 	storageCfg := config.DefaultLLMStorageConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, config.SandboxMCPConfig{}, t.TempDir(), logger, nil, nil, nil)
+	proxyURL, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		config.SandboxMCPConfig{},
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -310,14 +347,21 @@ func TestSession_LLMProxyEnvVars_Integration(t *testing.T) {
 		t.Errorf("OPENAI_BASE_URL: expected %s, got %s", proxyURL, envVars["OPENAI_BASE_URL"])
 	}
 	if envVars["AGENTSH_SESSION_ID"] != "integration-test-session" {
-		t.Errorf("AGENTSH_SESSION_ID: expected integration-test-session, got %s", envVars["AGENTSH_SESSION_ID"])
+		t.Errorf(
+			"AGENTSH_SESSION_ID: expected integration-test-session, got %s",
+			envVars["AGENTSH_SESSION_ID"],
+		)
 	}
 
 	// Verify we can use the env vars to make a request
 	time.Sleep(10 * time.Millisecond)
 
 	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "Test"}]}`
-	req, _ := http.NewRequest(http.MethodPost, envVars["ANTHROPIC_BASE_URL"]+"/v1/messages", strings.NewReader(reqBody))
+	req, _ := http.NewRequest(
+		http.MethodPost,
+		envVars["ANTHROPIC_BASE_URL"]+"/v1/messages",
+		strings.NewReader(reqBody),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", "test-key")
 	req.Header.Set("anthropic-version", "2023-06-01")
@@ -359,7 +403,18 @@ func TestSession_CloseProxy(t *testing.T) {
 	storageCfg := config.DefaultLLMStorageConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	proxyURL, _, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, config.SandboxMCPConfig{}, t.TempDir(), logger, nil, nil, nil)
+	proxyURL, _, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		config.SandboxMCPConfig{},
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -441,7 +496,18 @@ func TestStartLLMProxy_WithDLP(t *testing.T) {
 	storageCfg := config.DefaultLLMStorageConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, config.SandboxMCPConfig{}, t.TempDir(), logger, nil, nil, nil)
+	proxyURL, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		config.SandboxMCPConfig{},
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -503,7 +569,18 @@ func TestStartLLMProxy_SessionIDInEnvVars(t *testing.T) {
 	storageCfg := config.DefaultLLMStorageConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, config.SandboxMCPConfig{}, t.TempDir(), logger, nil, nil, nil)
+	_, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		config.SandboxMCPConfig{},
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -511,7 +588,10 @@ func TestStartLLMProxy_SessionIDInEnvVars(t *testing.T) {
 
 	envVars := sess.LLMProxyEnvVars()
 	if envVars["AGENTSH_SESSION_ID"] != "my-unique-session-id" {
-		t.Errorf("expected session ID 'my-unique-session-id', got '%s'", envVars["AGENTSH_SESSION_ID"])
+		t.Errorf(
+			"expected session ID 'my-unique-session-id', got '%s'",
+			envVars["AGENTSH_SESSION_ID"],
+		)
 	}
 }
 
@@ -598,7 +678,18 @@ func TestStartLLMProxy_MCPOnlyMode(t *testing.T) {
 	storagePath := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, mcpCfg, storagePath, logger, nil, nil, nil)
+	proxyURL, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		mcpCfg,
+		storagePath,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -621,7 +712,11 @@ func TestStartLLMProxy_MCPOnlyMode(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "Hello"}]}`
-	req, err := http.NewRequest(http.MethodPost, proxyURL+"/v1/messages", strings.NewReader(reqBody))
+	req, err := http.NewRequest(
+		http.MethodPost,
+		proxyURL+"/v1/messages",
+		strings.NewReader(reqBody),
+	)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
@@ -684,7 +779,18 @@ func TestStartLLMProxy_MCPConfigPassedThrough(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, mcpCfg, t.TempDir(), logger, nil, nil, nil)
+	proxyURL, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		mcpCfg,
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -749,7 +855,18 @@ func TestStartLLMProxy_CreatesRegistry(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, mcpCfg, t.TempDir(), logger, nil, nil, nil)
+	proxyURL, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		mcpCfg,
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -818,18 +935,20 @@ func TestStartLLMProxy_MCPOnlyWithoutPolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				resp := map[string]interface{}{
-					"id":   "msg_test",
-					"type": "message",
-					"usage": map[string]int{
-						"input_tokens":  5,
-						"output_tokens": 10,
-					},
-				}
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(resp)
-			}))
+			upstream := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					resp := map[string]interface{}{
+						"id":   "msg_test",
+						"type": "message",
+						"usage": map[string]int{
+							"input_tokens":  5,
+							"output_tokens": 10,
+						},
+					}
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(resp)
+				}),
+			)
 			defer upstream.Close()
 
 			mgr := NewManager(10)
@@ -849,7 +968,18 @@ func TestStartLLMProxy_MCPOnlyWithoutPolicy(t *testing.T) {
 			storageCfg := config.DefaultLLMStorageConfig()
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-			proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, tt.mcpCfg, t.TempDir(), logger, nil, nil, nil)
+			proxyURL, closeFn, err := StartLLMProxy(
+				sess,
+				proxyCfg,
+				dlpCfg,
+				storageCfg,
+				tt.mcpCfg,
+				t.TempDir(),
+				logger,
+				nil,
+				nil,
+				nil,
+			)
 			if err != nil {
 				t.Fatalf("StartLLMProxy failed: %v", err)
 			}
@@ -916,7 +1046,18 @@ func TestStartLLMProxy_NoRegistryWhenPolicyDisabled(t *testing.T) {
 	mcpCfg := config.SandboxMCPConfig{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, mcpCfg, t.TempDir(), logger, nil, nil, nil)
+	proxyURL, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		mcpCfg,
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -967,7 +1108,18 @@ func TestSession_MCPRegistryClearedOnClose(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, _, err = StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, mcpCfg, t.TempDir(), logger, nil, nil, nil)
+	_, _, err = StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		mcpCfg,
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -996,22 +1148,38 @@ func TestExtractAddr(t *testing.T) {
 	}{
 		{
 			name: "http URL with explicit port",
-			srv:  config.MCPServerDeclaration{ID: "s1", Type: "http", URL: "http://mcp.example.com:8080/path"},
+			srv: config.MCPServerDeclaration{
+				ID:   "s1",
+				Type: "http",
+				URL:  "http://mcp.example.com:8080/path",
+			},
 			want: "mcp.example.com:8080",
 		},
 		{
 			name: "https URL with explicit port",
-			srv:  config.MCPServerDeclaration{ID: "s2", Type: "sse", URL: "https://mcp.example.com:9090/sse"},
+			srv: config.MCPServerDeclaration{
+				ID:   "s2",
+				Type: "sse",
+				URL:  "https://mcp.example.com:9090/sse",
+			},
 			want: "mcp.example.com:9090",
 		},
 		{
 			name: "https URL without port defaults to 443",
-			srv:  config.MCPServerDeclaration{ID: "s3", Type: "http", URL: "https://secure.example.com/api"},
+			srv: config.MCPServerDeclaration{
+				ID:   "s3",
+				Type: "http",
+				URL:  "https://secure.example.com/api",
+			},
 			want: "secure.example.com:443",
 		},
 		{
 			name: "http URL without port defaults to 80",
-			srv:  config.MCPServerDeclaration{ID: "s4", Type: "http", URL: "http://plain.example.com/api"},
+			srv: config.MCPServerDeclaration{
+				ID:   "s4",
+				Type: "http",
+				URL:  "http://plain.example.com/api",
+			},
 			want: "plain.example.com:80",
 		},
 		{
@@ -1031,12 +1199,20 @@ func TestExtractAddr(t *testing.T) {
 		},
 		{
 			name: "IPv6 URL with explicit port",
-			srv:  config.MCPServerDeclaration{ID: "s8", Type: "http", URL: "http://[::1]:8080/path"},
+			srv: config.MCPServerDeclaration{
+				ID:   "s8",
+				Type: "http",
+				URL:  "http://[::1]:8080/path",
+			},
 			want: "[::1]:8080",
 		},
 		{
 			name: "IPv6 URL without port defaults to 80",
-			srv:  config.MCPServerDeclaration{ID: "s9", Type: "http", URL: "http://[2001:db8::1]/api"},
+			srv: config.MCPServerDeclaration{
+				ID:   "s9",
+				Type: "http",
+				URL:  "http://[2001:db8::1]/api",
+			},
 			want: "[2001:db8::1]:80",
 		},
 		{
@@ -1097,7 +1273,18 @@ func TestStartLLMProxy_NetworkServerDeclarations(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, mcpCfg, t.TempDir(), logger, nil, nil, nil)
+	proxyURL, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		mcpCfg,
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -1129,7 +1316,11 @@ func TestStartLLMProxy_NetworkServerDeclarations(t *testing.T) {
 	// Verify the stdio server does NOT appear in addrs (it has no network address)
 	for addr, serverID := range addrs {
 		if serverID == "mystdio" {
-			t.Errorf("stdio server should not appear in addrs, but found addr %q -> %q", addr, serverID)
+			t.Errorf(
+				"stdio server should not appear in addrs, but found addr %q -> %q",
+				addr,
+				serverID,
+			)
 		}
 	}
 }
@@ -1177,7 +1368,18 @@ func TestStartLLMProxy_StdioPreRegistrationNoMultiServerCallback(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	proxyURL, closeFn, err := StartLLMProxy(sess, proxyCfg, dlpCfg, storageCfg, mcpCfg, t.TempDir(), logger, nil, nil, nil)
+	proxyURL, closeFn, err := StartLLMProxy(
+		sess,
+		proxyCfg,
+		dlpCfg,
+		storageCfg,
+		mcpCfg,
+		t.TempDir(),
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("StartLLMProxy failed: %v", err)
 	}
@@ -1207,7 +1409,9 @@ func TestStartLLMProxy_StdioPreRegistrationNoMultiServerCallback(t *testing.T) {
 	})
 
 	if multiServerFired {
-		t.Error("OnMultiServer should not fire: only one server (network) was pre-registered; stdio was skipped")
+		t.Error(
+			"OnMultiServer should not fire: only one server (network) was pre-registered; stdio was skipped",
+		)
 	}
 }
 

@@ -118,7 +118,9 @@ func TestUnixSocketNotifyEnabled(t *testing.T) {
 		{name: "both off", cfg: SandboxConfig{}, want: false},
 		{
 			name: "seccomp.unix_socket on",
-			cfg:  SandboxConfig{Seccomp: SandboxSeccompConfig{UnixSocket: SandboxSeccompUnixConfig{Enabled: true}}},
+			cfg: SandboxConfig{
+				Seccomp: SandboxSeccompConfig{UnixSocket: SandboxSeccompUnixConfig{Enabled: true}},
+			},
 			want: true,
 		},
 		{
@@ -140,7 +142,9 @@ func TestUnixSocketNotifyEnabled(t *testing.T) {
 			name: "either field true wins",
 			cfg: SandboxConfig{
 				UnixSockets: SandboxUnixSocketsConfig{Enabled: ff},
-				Seccomp:     SandboxSeccompConfig{UnixSocket: SandboxSeccompUnixConfig{Enabled: true}},
+				Seccomp: SandboxSeccompConfig{
+					UnixSocket: SandboxSeccompUnixConfig{Enabled: true},
+				},
 			},
 			want: true,
 		},

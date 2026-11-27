@@ -64,7 +64,11 @@ func TestDaemon_QuarantinesMaliciousSkill(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: evil\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: evil\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
@@ -87,7 +91,10 @@ func TestDaemon_ProviderErrorWithDenyEscalatesToBlock(t *testing.T) {
 		TrashDir: trashDir,
 		Cache:    newMemCache(),
 		Providers: map[string]ProviderEntry{
-			"broken": {Provider: stubProvider{name: "broken", err: errors.New("boom")}, OnFailure: "deny"},
+			"broken": {
+				Provider:  stubProvider{name: "broken", err: errors.New("boom")},
+				OnFailure: "deny",
+			},
 		},
 		Approval: &fakeApproval{approved: false},
 		Audit:    &fakeAudit{},
@@ -105,7 +112,11 @@ func TestDaemon_ProviderErrorWithDenyEscalatesToBlock(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: x\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -131,9 +142,16 @@ func TestDaemon_DenyFloorBeatsPositiveProvenance(t *testing.T) {
 		TrashDir: trashDir,
 		Cache:    newMemCache(),
 		Providers: map[string]ProviderEntry{
-			"broken": {Provider: stubProvider{name: "broken", err: errors.New("boom")}, OnFailure: "deny"},
+			"broken": {
+				Provider:  stubProvider{name: "broken", err: errors.New("boom")},
+				OnFailure: "deny",
+			},
 			"skillssh": {Provider: stubProvider{name: "skillssh", findings: []Finding{
-				{Type: FindingProvenance, Severity: SeverityInfo, Reasons: []Reason{{Code: "skills_sh_registered"}}},
+				{
+					Type:     FindingProvenance,
+					Severity: SeverityInfo,
+					Reasons:  []Reason{{Code: "skills_sh_registered"}},
+				},
 			}}},
 		},
 		Approval: &fakeApproval{approved: false},
@@ -152,7 +170,11 @@ func TestDaemon_DenyFloorBeatsPositiveProvenance(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: victim\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: victim\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -163,7 +185,9 @@ func TestDaemon_DenyFloorBeatsPositiveProvenance(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("provider deny + positive provenance should still block (floor enforced); skill remained installed")
+	t.Fatalf(
+		"provider deny + positive provenance should still block (floor enforced); skill remained installed",
+	)
 }
 
 func TestDaemon_WarnFloorAllowsLowerActionsToWin(t *testing.T) {
@@ -177,7 +201,10 @@ func TestDaemon_WarnFloorAllowsLowerActionsToWin(t *testing.T) {
 		TrashDir: trashDir,
 		Cache:    newMemCache(),
 		Providers: map[string]ProviderEntry{
-			"broken": {Provider: stubProvider{name: "broken", err: errors.New("boom")}, OnFailure: "warn"},
+			"broken": {
+				Provider:  stubProvider{name: "broken", err: errors.New("boom")},
+				OnFailure: "warn",
+			},
 			"real": {Provider: stubProvider{name: "real", findings: []Finding{
 				{Type: FindingPromptInjection, Severity: SeverityCritical},
 			}}},
@@ -198,7 +225,11 @@ func TestDaemon_WarnFloorAllowsLowerActionsToWin(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: victim2\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: victim2\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -245,13 +276,20 @@ func TestDaemon_SnykNonzeroWithFindingsNoSyntheticDuplicate(t *testing.T) {
 	}
 	// No ProviderError should be recorded because the provider returned findings.
 	if len(errs) != 0 {
-		t.Errorf("expected 0 provider errors (soft error with findings), got %d: %+v", len(errs), errs)
+		t.Errorf(
+			"expected 0 provider errors (soft error with findings), got %d: %+v",
+			len(errs),
+			errs,
+		)
 	}
 
 	// Confirm that synthesizeProviderErrorFindings gets an empty errs slice and
 	// therefore adds nothing — total finding count stays at 1.
 	allFindings := append(findings, synthesizeProviderErrorFindings(errs, SkillRef{})...)
 	if len(allFindings) != 1 {
-		t.Errorf("expected exactly 1 finding after synthesis step, got %d (duplicate synthetic?)", len(allFindings))
+		t.Errorf(
+			"expected exactly 1 finding after synthesis step, got %d (duplicate synthetic?)",
+			len(allFindings),
+		)
 	}
 }

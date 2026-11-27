@@ -79,7 +79,10 @@ func New(ctx context.Context, cfg Config, resolver secrets.RefResolver) (*Provid
 		client.SetToken(token)
 
 	case "approle":
-		appRoleAuth, authErr := approleauth.NewAppRoleAuth(roleID, &approleauth.SecretID{FromString: secretID})
+		appRoleAuth, authErr := approleauth.NewAppRoleAuth(
+			roleID,
+			&approleauth.SecretID{FromString: secretID},
+		)
 		if authErr != nil {
 			return nil, fmt.Errorf("vault: creating approle auth: %w", authErr)
 		}
@@ -118,7 +121,10 @@ func New(ctx context.Context, cfg Config, resolver secrets.RefResolver) (*Provid
 			return nil, fmt.Errorf("kubernetes login: %w", mapAuthError(authErr))
 		}
 		if authSecret == nil || authSecret.Auth == nil {
-			return nil, fmt.Errorf("%w: kubernetes login returned nil auth", secrets.ErrUnauthorized)
+			return nil, fmt.Errorf(
+				"%w: kubernetes login returned nil auth",
+				secrets.ErrUnauthorized,
+			)
 		}
 		ownedToken = true
 
@@ -176,13 +182,23 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	// zero-value providers (nil client) still report validation
 	// errors correctly.
 	if ref.Scheme != "vault" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: wrong scheme %q", secrets.ErrInvalidURI, ref.Scheme)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: wrong scheme %q",
+			secrets.ErrInvalidURI,
+			ref.Scheme,
+		)
 	}
 	if ref.Host == "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: vault URI missing mount (host)", secrets.ErrInvalidURI)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: vault URI missing mount (host)",
+			secrets.ErrInvalidURI,
+		)
 	}
 	if ref.Path == "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: vault URI missing secret path", secrets.ErrInvalidURI)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: vault URI missing secret path",
+			secrets.ErrInvalidURI,
+		)
 	}
 
 	p.mu.RLock()
@@ -217,19 +233,30 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	if ref.Field != "" {
 		val, ok := data[ref.Field]
 		if !ok {
-			return secrets.SecretValue{}, fmt.Errorf("%w: field %q not found in vault secret", secrets.ErrNotFound, ref.Field)
+			return secrets.SecretValue{}, fmt.Errorf(
+				"%w: field %q not found in vault secret",
+				secrets.ErrNotFound,
+				ref.Field,
+			)
 		}
 		rawVal = val
 	} else {
 		switch len(data) {
 		case 0:
-			return secrets.SecretValue{}, fmt.Errorf("%w: vault secret has no fields and no field specified", secrets.ErrInvalidURI)
+			return secrets.SecretValue{}, fmt.Errorf(
+				"%w: vault secret has no fields and no field specified",
+				secrets.ErrInvalidURI,
+			)
 		case 1:
 			for _, v := range data {
 				rawVal = v
 			}
 		default:
-			return secrets.SecretValue{}, fmt.Errorf("%w: vault secret has %d fields; specify #field in the URI", secrets.ErrInvalidURI, len(data))
+			return secrets.SecretValue{}, fmt.Errorf(
+				"%w: vault secret has %d fields; specify #field in the URI",
+				secrets.ErrInvalidURI,
+				len(data),
+			)
 		}
 	}
 
@@ -326,13 +353,19 @@ func validateConfig(cfg Config) error {
 // resolveAuthRefs resolves any chained SecretRef fields in the auth
 // config via the provided resolver. Literal values are returned
 // as-is. Resolved values are zeroed after extraction.
-func resolveAuthRefs(ctx context.Context, auth AuthConfig, resolver secrets.RefResolver) (token, roleID, secretID string, err error) {
+func resolveAuthRefs(
+	ctx context.Context,
+	auth AuthConfig,
+	resolver secrets.RefResolver,
+) (token, roleID, secretID string, err error) {
 	// Check if auth chaining is needed but no resolver was provided.
 	needsResolver := (auth.TokenRef != nil && auth.Token == "") ||
 		(auth.RoleIDRef != nil && auth.RoleID == "") ||
 		(auth.SecretIDRef != nil && auth.SecretID == "")
 	if needsResolver && resolver == nil {
-		return "", "", "", fmt.Errorf("vault: auth config uses chained refs but no resolver was provided")
+		return "", "", "", fmt.Errorf(
+			"vault: auth config uses chained refs but no resolver was provided",
+		)
 	}
 
 	switch auth.Method {

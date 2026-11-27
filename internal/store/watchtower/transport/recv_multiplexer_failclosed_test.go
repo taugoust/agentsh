@@ -88,7 +88,11 @@ func findOneWarn(t *testing.T, h *recordingHandler, reason string) slog.Record {
 // a recordingHandler-backed logger and lets the caller set
 // LogGoawayMessage. Returns the Transport plus the handler so tests
 // can assert on captured records.
-func newFailClosedTransport(t *testing.T, fc *recvFakeConn, logGoaway bool) (*transport.Transport, *recordingHandler) {
+func newFailClosedTransport(
+	t *testing.T,
+	fc *recvFakeConn,
+	logGoaway bool,
+) (*transport.Transport, *recordingHandler) {
 	t.Helper()
 	h := &recordingHandler{}
 	logger := slog.New(h)
@@ -113,7 +117,12 @@ func newFailClosedTransport(t *testing.T, fc *recvFakeConn, logGoaway bool) (*tr
 // (fail-closed branches return after pushing the errCh sentinel),
 // and tears down. The errCh sentinel is read so the caller can
 // assert on the state-machine-signal contract too.
-func driveFailClosed(t *testing.T, tr *transport.Transport, fc *recvFakeConn, msg *wtpv1.ServerMessage) error {
+func driveFailClosed(
+	t *testing.T,
+	tr *transport.Transport,
+	fc *recvFakeConn,
+	msg *wtpv1.ServerMessage,
+) error {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -175,7 +184,10 @@ func TestRecvMultiplexer_FailClosedWarnLogGoawayDefault(t *testing.T) {
 	checkAttrBool(t, attrs, "goaway_retry_immediately", true)
 	checkAttrBool(t, attrs, "goaway_message_present", true)
 	if _, present := attrs["goaway_message"]; present {
-		t.Fatalf("goaway_message must be ABSENT under conservative default; got %v", attrs["goaway_message"])
+		t.Fatalf(
+			"goaway_message must be ABSENT under conservative default; got %v",
+			attrs["goaway_message"],
+		)
 	}
 }
 
@@ -345,7 +357,11 @@ func TestRecvMultiplexer_FailClosedWarnLogGoawaySanitization(t *testing.T) {
 			t.Fatalf("output exceeds 512-byte budget: len=%d", len(got))
 		}
 		if !strings.HasSuffix(got, "...[truncated]") {
-			t.Fatalf("missing truncation marker: %q (last bytes=%q)", got, got[max(0, len(got)-32):])
+			t.Fatalf(
+				"missing truncation marker: %q (last bytes=%q)",
+				got,
+				got[max(0, len(got)-32):],
+			)
 		}
 	})
 	t.Run("combined_overlength_invalid_control_multibyte_boundary", func(t *testing.T) {
@@ -386,7 +402,10 @@ func TestRecvMultiplexer_FailClosedWarnLogGoawaySanitization(t *testing.T) {
 			t.Fatalf("output exceeds 512-byte budget: len=%d", len(got))
 		}
 		if !strings.HasSuffix(got, "...[truncated]") {
-			t.Fatalf("missing truncation marker (sanitization+truncation broken): %q", got[max(0, len(got)-32):])
+			t.Fatalf(
+				"missing truncation marker (sanitization+truncation broken): %q",
+				got[max(0, len(got)-32):],
+			)
 		}
 		if !strings.HasPrefix(got, strings.Repeat("a", 100)) {
 			t.Fatalf("ASCII prefix not preserved verbatim")
@@ -546,7 +565,10 @@ func TestRecvMultiplexer_FailClosedWarnLogGoawayProtocolError(t *testing.T) {
 	checkAttrBool(t, attrs, "goaway_retry_immediately", false)
 	checkAttrBool(t, attrs, "goaway_message_present", true)
 	if _, present := attrs["goaway_message"]; present {
-		t.Fatalf("goaway_message must be ABSENT under conservative default; got %v", attrs["goaway_message"])
+		t.Fatalf(
+			"goaway_message must be ABSENT under conservative default; got %v",
+			attrs["goaway_message"],
+		)
 	}
 }
 

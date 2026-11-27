@@ -33,25 +33,91 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 		flags   uint32
 		want    string // ActionContinue or ActionDeny
 	}{
-		{"ld.so.cache read", "/etc/ld.so.cache", "open", int32(unix.SYS_OPENAT), unix.O_RDONLY, ActionContinue},
-		{"ld.so.preload read", "/etc/ld.so.preload", "open", int32(unix.SYS_OPENAT), unix.O_RDONLY, ActionContinue},
-		{"bare /lib dir open", "/lib", "open", int32(unix.SYS_OPENAT), unix.O_RDONLY | unix.O_DIRECTORY, ActionContinue},
-		{"bare /usr dir open", "/usr", "open", int32(unix.SYS_OPENAT), unix.O_RDONLY | unix.O_DIRECTORY, ActionContinue},
-		{"libc.so read", "/usr/lib/x86_64-linux-gnu/libc.so.6", "open", int32(unix.SYS_OPENAT), unix.O_RDONLY, ActionContinue},
+		{
+			"ld.so.cache read",
+			"/etc/ld.so.cache",
+			"open",
+			int32(unix.SYS_OPENAT),
+			unix.O_RDONLY,
+			ActionContinue,
+		},
+		{
+			"ld.so.preload read",
+			"/etc/ld.so.preload",
+			"open",
+			int32(unix.SYS_OPENAT),
+			unix.O_RDONLY,
+			ActionContinue,
+		},
+		{
+			"bare /lib dir open",
+			"/lib",
+			"open",
+			int32(unix.SYS_OPENAT),
+			unix.O_RDONLY | unix.O_DIRECTORY,
+			ActionContinue,
+		},
+		{
+			"bare /usr dir open",
+			"/usr",
+			"open",
+			int32(unix.SYS_OPENAT),
+			unix.O_RDONLY | unix.O_DIRECTORY,
+			ActionContinue,
+		},
+		{
+			"libc.so read",
+			"/usr/lib/x86_64-linux-gnu/libc.so.6",
+			"open",
+			int32(unix.SYS_OPENAT),
+			unix.O_RDONLY,
+			ActionContinue,
+		},
 		{"system stat", "/lib64", "stat", int32(unix.SYS_NEWFSTATAT), 0, ActionContinue},
 		// Mutating op on a system path is NOT overridden — still denied.
-		{"write to /lib", "/lib/evil.so", "write", int32(unix.SYS_OPENAT), unix.O_WRONLY | unix.O_CREAT, ActionDeny},
+		{
+			"write to /lib",
+			"/lib/evil.so",
+			"write",
+			int32(unix.SYS_OPENAT),
+			unix.O_WRONLY | unix.O_CREAT,
+			ActionDeny,
+		},
 		// Read of a non-system path is NOT overridden — still denied.
-		{"non-system read", "/home/user/secret", "open", int32(unix.SYS_OPENAT), unix.O_RDONLY, ActionDeny},
-		{"etc non-loader read", "/etc/shadow", "open", int32(unix.SYS_OPENAT), unix.O_RDONLY, ActionDeny},
+		{
+			"non-system read",
+			"/home/user/secret",
+			"open",
+			int32(unix.SYS_OPENAT),
+			unix.O_RDONLY,
+			ActionDeny,
+		},
+		{
+			"etc non-loader read",
+			"/etc/shadow",
+			"open",
+			int32(unix.SYS_OPENAT),
+			unix.O_RDONLY,
+			ActionDeny,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			policy := denyAll(tc.path)
-			handler := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true) // enforce=true
+			handler := NewFileHandler(
+				policy,
+				NewMountRegistry(),
+				&mockFileEmitter{},
+				true,
+			) // enforce=true
 			res, _ := handler.Handle(context.Background(), FileRequest{
-				PID: 1234, Syscall: tc.syscall, Path: tc.path, Operation: tc.op, Flags: tc.flags, SessionID: "sess-1",
+				PID:       1234,
+				Syscall:   tc.syscall,
+				Path:      tc.path,
+				Operation: tc.op,
+				Flags:     tc.flags,
+				SessionID: "sess-1",
 			})
 			if res.Action != tc.want {
 				t.Errorf("Handle(%s %s) action = %s, want %s", tc.op, tc.path, res.Action, tc.want)
@@ -63,7 +129,11 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 	// — only the catch-all default deny is overridden (matches ptrace).
 	t.Run("explicit deny on system subpath is honored", func(t *testing.T) {
 		policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
-			"/usr/lib/app/secret.key": {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-app-secrets"},
+			"/usr/lib/app/secret.key": {
+				Decision:          "deny",
+				EffectiveDecision: "deny",
+				Rule:              "deny-app-secrets",
+			},
 		}}
 		handler := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true)
 		res, _ := handler.Handle(context.Background(), FileRequest{
@@ -71,7 +141,10 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 			Operation: "open", Flags: unix.O_RDONLY, SessionID: "sess-1",
 		})
 		if res.Action != ActionDeny {
-			t.Errorf("explicit (non-catch-all) deny on a system subpath must be honored, got %s", res.Action)
+			t.Errorf(
+				"explicit (non-catch-all) deny on a system subpath must be honored, got %s",
+				res.Action,
+			)
 		}
 	})
 
@@ -84,12 +157,20 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 		policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
 			"/proc/self": {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-proc-sys"},
 		}}
-		res, _ := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(context.Background(), FileRequest{
+		res, _ := NewFileHandler(
+			policy,
+			NewMountRegistry(),
+			&mockFileEmitter{},
+			true,
+		).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/proc/self", Operation: "open",
 			Flags: unix.O_RDONLY | unix.O_DIRECTORY, SessionID: "sess-1",
 		})
 		if res.Action != ActionContinue {
-			t.Errorf("/proc/self bare dir-node must be overridden even on an explicit deny rule, got %s", res.Action)
+			t.Errorf(
+				"/proc/self bare dir-node must be overridden even on an explicit deny rule, got %s",
+				res.Action,
+			)
 		}
 	})
 
@@ -99,19 +180,32 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 		policy := &mockFilePolicy{decisions: map[string]FilePolicyDecision{
 			"/proc/self/maps": {Decision: "deny", EffectiveDecision: "deny", Rule: "deny-proc-sys"},
 		}}
-		res, _ := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(context.Background(), FileRequest{
+		res, _ := NewFileHandler(
+			policy,
+			NewMountRegistry(),
+			&mockFileEmitter{},
+			true,
+		).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/proc/self/maps", Operation: "open",
 			Flags: unix.O_RDONLY, SessionID: "sess-1",
 		})
 		if res.Action != ActionDeny {
-			t.Errorf("contents of a system dir-node must remain policy-controlled, got %s", res.Action)
+			t.Errorf(
+				"contents of a system dir-node must remain policy-controlled, got %s",
+				res.Action,
+			)
 		}
 	})
 
 	// Writes to a system dir node are still enforced.
 	t.Run("write to dir node is still denied", func(t *testing.T) {
 		policy := denyAll("/etc/new.conf")
-		res, _ := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(context.Background(), FileRequest{
+		res, _ := NewFileHandler(
+			policy,
+			NewMountRegistry(),
+			&mockFileEmitter{},
+			true,
+		).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/etc/new.conf", Operation: "write",
 			Flags: unix.O_WRONLY | unix.O_CREAT, SessionID: "sess-1",
 		})
@@ -124,7 +218,12 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 	// trace that policy denied but file_monitor allowed it.
 	t.Run("override emits shadow-deny event", func(t *testing.T) {
 		policy := denyAll("/lib")
-		res, ev := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true).Handle(context.Background(), FileRequest{
+		res, ev := NewFileHandler(
+			policy,
+			NewMountRegistry(),
+			&mockFileEmitter{},
+			true,
+		).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/lib", Operation: "open",
 			Flags: unix.O_RDONLY | unix.O_DIRECTORY, SessionID: "sess-1",
 		})
@@ -143,7 +242,12 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 	// the override runs, so it must NOT be marked as a loader-safe shadow-deny.
 	t.Run("enforce=false does not take the override path", func(t *testing.T) {
 		policy := denyAll("/lib")
-		res, ev := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, false).Handle(context.Background(), FileRequest{
+		res, ev := NewFileHandler(
+			policy,
+			NewMountRegistry(),
+			&mockFileEmitter{},
+			false,
+		).Handle(context.Background(), FileRequest{
 			PID: 1234, Syscall: int32(unix.SYS_OPENAT), Path: "/lib", Operation: "open",
 			Flags: unix.O_RDONLY | unix.O_DIRECTORY, SessionID: "sess-1",
 		})
@@ -160,7 +264,17 @@ func TestFileHandler_LoaderSafeReadOverride(t *testing.T) {
 
 func TestIsSystemDirNode(t *testing.T) {
 	// Kernel / process essentials — universally read-safe; override applies.
-	safe := []string{"/", "/dev", "/dev/pts", "/dev/fd", "/proc", "/proc/self", "/proc/thread-self", "/sys", "/etc"}
+	safe := []string{
+		"/",
+		"/dev",
+		"/dev/pts",
+		"/dev/fd",
+		"/proc",
+		"/proc/self",
+		"/proc/thread-self",
+		"/sys",
+		"/etc",
+	}
 	for _, p := range safe {
 		if !isSystemDirNode(p) {
 			t.Errorf("isSystemDirNode(%q) = false, want true", p)
@@ -175,19 +289,41 @@ func TestIsSystemDirNode(t *testing.T) {
 	}
 	for _, p := range unsafe {
 		if isSystemDirNode(p) {
-			t.Errorf("isSystemDirNode(%q) = true, want false (exact-match-only / outside narrowed set)", p)
+			t.Errorf(
+				"isSystemDirNode(%q) = true, want false (exact-match-only / outside narrowed set)",
+				p,
+			)
 		}
 	}
 }
 
 func TestIsLoaderSafeSystemPath(t *testing.T) {
-	safe := []string{"/lib", "/lib/x", "/usr", "/usr/lib/libc.so.6", "/etc/ld.so.cache", "/etc/ld.so.conf.d/x.conf", "/bin", "/sbin"}
+	safe := []string{
+		"/lib",
+		"/lib/x",
+		"/usr",
+		"/usr/lib/libc.so.6",
+		"/etc/ld.so.cache",
+		"/etc/ld.so.conf.d/x.conf",
+		"/bin",
+		"/sbin",
+	}
 	for _, p := range safe {
 		if !isLoaderSafeSystemPath(p) {
 			t.Errorf("isLoaderSafeSystemPath(%q) = false, want true", p)
 		}
 	}
-	unsafe := []string{"/home/user", "/etc/shadow", "/etc/ld.so.cache.evil", "/libfoo", "/", "/var/lib", "/tmp", "/opt", "/opt/foo"}
+	unsafe := []string{
+		"/home/user",
+		"/etc/shadow",
+		"/etc/ld.so.cache.evil",
+		"/libfoo",
+		"/",
+		"/var/lib",
+		"/tmp",
+		"/opt",
+		"/opt/foo",
+	}
 	for _, p := range unsafe {
 		if isLoaderSafeSystemPath(p) {
 			t.Errorf("isLoaderSafeSystemPath(%q) = true, want false", p)

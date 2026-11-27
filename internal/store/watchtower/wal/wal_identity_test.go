@@ -220,7 +220,9 @@ func TestWAL_OpenWithEmptyPersistedIdentityAdoptsCallerIdentity(t *testing.T) {
 	dir := t.TempDir()
 	// Hand-write a v2 meta.json with empty identity fields — exactly the
 	// shape a hypothetical post-v2 / pre-Task-14a binary would have left.
-	raw := []byte(`{"format_version":2,"ack_high_watermark_seq":42,"ack_high_watermark_gen":7,"ack_recorded":true,"session_id":"","key_fingerprint":""}`)
+	raw := []byte(
+		`{"format_version":2,"ack_high_watermark_seq":42,"ack_high_watermark_gen":7,"ack_recorded":true,"session_id":"","key_fingerprint":""}`,
+	)
 	if err := os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +313,10 @@ func TestWAL_OpenWithEmptyCallerIdentityDoesNotValidate(t *testing.T) {
 		SyncMode:      SyncImmediate,
 	})
 	if err != nil {
-		t.Fatalf("Open with empty caller identity must succeed against any persisted identity, got %v", err)
+		t.Fatalf(
+			"Open with empty caller identity must succeed against any persisted identity, got %v",
+			err,
+		)
 	}
 	defer w2.Close()
 }
@@ -451,7 +456,11 @@ func TestWAL_OpenEmptyPersistedContextDigestBackfills(t *testing.T) {
 		t.Fatalf("ReadMeta: %v", err)
 	}
 	if m.ContextDigest != "ctx-upgrade" {
-		t.Errorf("persisted ContextDigest = %q, want %q — backfill regressed", m.ContextDigest, "ctx-upgrade")
+		t.Errorf(
+			"persisted ContextDigest = %q, want %q — backfill regressed",
+			m.ContextDigest,
+			"ctx-upgrade",
+		)
 	}
 
 	// A later reopen under a DIFFERENT digest MUST now be caught
@@ -534,7 +543,8 @@ func TestWAL_HeaderOnlySegmentDoesNotBlockIdentityBackfill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadMeta after reopen: %v", err)
 	}
-	if m.SessionID != "s-upgrade" || m.KeyFingerprint != "k-upgrade" || m.ContextDigest != "ctx-upgrade" {
+	if m.SessionID != "s-upgrade" || m.KeyFingerprint != "k-upgrade" ||
+		m.ContextDigest != "ctx-upgrade" {
 		t.Errorf("identity backfill after loss-only segment failed: got (%q, %q, %q)",
 			m.SessionID, m.KeyFingerprint, m.ContextDigest)
 	}
@@ -579,7 +589,9 @@ func TestWAL_RecordBearingSegmentBlocksIdentityBackfill(t *testing.T) {
 		ContextDigest:  "ctx-new",
 	})
 	if err == nil {
-		t.Fatal("reopen with record-bearing WAL + new identity silently adopted; want ErrIdentityMismatch")
+		t.Fatal(
+			"reopen with record-bearing WAL + new identity silently adopted; want ErrIdentityMismatch",
+		)
 	}
 	var idErr *ErrIdentityMismatch
 	if !errors.As(err, &idErr) {

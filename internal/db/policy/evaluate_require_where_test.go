@@ -11,12 +11,16 @@ import (
 func mutationStmt(group effects.Group, hasWhere bool) effects.ClassifiedStatement {
 	return effects.ClassifiedStatement{
 		RawVerb: "UPDATE",
-		Effects: []effects.Effect{{
-			Group:      group,
-			Objects:    []effects.ObjectRef{{Kind: effects.ObjectTable, Schema: "public", Name: "users"}},
-			Resolution: effects.ResolutionQualified,
-			HasWhere:   hasWhere,
-		}},
+		Effects: []effects.Effect{
+			{
+				Group: group,
+				Objects: []effects.ObjectRef{
+					{Kind: effects.ObjectTable, Schema: "public", Name: "users"},
+				},
+				Resolution: effects.ResolutionQualified,
+				HasWhere:   hasWhere,
+			},
+		},
 	}
 }
 

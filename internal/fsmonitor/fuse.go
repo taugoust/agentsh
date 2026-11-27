@@ -75,7 +75,10 @@ func (n *node) vroot() string {
 	return "/workspace"
 }
 
-func (n *node) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+func (n *node) Open(
+	ctx context.Context,
+	flags uint32,
+) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	virt := n.virtualPath()
 	dec := n.check(ctx, virt, "open")
 	dec = n.maybeApprove(ctx, dec, "file", virt, "open")
@@ -116,7 +119,13 @@ func (n *node) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFl
 	return &fileHandle{inner: fh, n: n, virtPath: virt}, fuseFlags, errno
 }
 
-func (n *node) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (inode *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+func (n *node) Create(
+	ctx context.Context,
+	name string,
+	flags uint32,
+	mode uint32,
+	out *fuse.EntryOut,
+) (inode *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	virt := n.virtualChildPath(name)
 	dec := n.check(ctx, virt, "create")
 	dec = n.maybeApprove(ctx, dec, "file", virt, "create")
@@ -154,9 +163,20 @@ func (n *node) Unlink(ctx context.Context, name string) syscall.Errno {
 	}
 	n.emitFileEvent(ctx, "file_delete", virt, "delete", 0, dec, false, nil)
 	realPath, _ := n.realPath(virt, false)
-	return applyAuditPolicy(ctx, n.auditHooks(), n.hooksSessionID(), resolveOpMode(dec, n.globalAuditMode()), "unlink", virt, "", realPath, n.makeDivertFunc(realPath), func() syscall.Errno {
-		return n.LoopbackNode.Unlink(ctx, name)
-	})
+	return applyAuditPolicy(
+		ctx,
+		n.auditHooks(),
+		n.hooksSessionID(),
+		resolveOpMode(dec, n.globalAuditMode()),
+		"unlink",
+		virt,
+		"",
+		realPath,
+		n.makeDivertFunc(realPath),
+		func() syscall.Errno {
+			return n.LoopbackNode.Unlink(ctx, name)
+		},
+	)
 }
 
 func (n *node) Rmdir(ctx context.Context, name string) syscall.Errno {
@@ -169,12 +189,28 @@ func (n *node) Rmdir(ctx context.Context, name string) syscall.Errno {
 	}
 	n.emitFileEvent(ctx, "dir_delete", virt, "rmdir", 0, dec, false, nil)
 	realPath, _ := n.realPath(virt, false)
-	return applyAuditPolicy(ctx, n.auditHooks(), n.hooksSessionID(), resolveOpMode(dec, n.globalAuditMode()), "rmdir", virt, "", realPath, n.makeDivertFunc(realPath), func() syscall.Errno {
-		return n.LoopbackNode.Rmdir(ctx, name)
-	})
+	return applyAuditPolicy(
+		ctx,
+		n.auditHooks(),
+		n.hooksSessionID(),
+		resolveOpMode(dec, n.globalAuditMode()),
+		"rmdir",
+		virt,
+		"",
+		realPath,
+		n.makeDivertFunc(realPath),
+		func() syscall.Errno {
+			return n.LoopbackNode.Rmdir(ctx, name)
+		},
+	)
 }
 
-func (n *node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+func (n *node) Mkdir(
+	ctx context.Context,
+	name string,
+	mode uint32,
+	out *fuse.EntryOut,
+) (*fs.Inode, syscall.Errno) {
 	virt := n.virtualChildPath(name)
 	dec := n.check(ctx, virt, "mkdir")
 	dec = n.maybeApprove(ctx, dec, "file", virt, "mkdir")
@@ -186,7 +222,13 @@ func (n *node) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.En
 	return n.LoopbackNode.Mkdir(ctx, name, mode, out)
 }
 
-func (n *node) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
+func (n *node) Rename(
+	ctx context.Context,
+	name string,
+	newParent fs.InodeEmbedder,
+	newName string,
+	flags uint32,
+) syscall.Errno {
 	virtFrom := n.virtualChildPath(name)
 	virtTo := path.Clean(n.vroot() + "/" + sanitizeName(newName))
 	newParentNode, ok := newParent.(*node)
@@ -205,21 +247,61 @@ func (n *node) Rename(ctx context.Context, name string, newParent fs.InodeEmbedd
 	dec := combinePathDecisionsForRename(decFrom, decTo)
 	dec = n.maybeApprove(ctx, dec, "file", fmt.Sprintf("%s -> %s", virtFrom, virtTo), "rename")
 	if dec.EffectiveDecision == types.DecisionDeny {
-		n.emitFileEvent(ctx, "file_rename", virtFrom, "rename", 0, dec, true, map[string]any{"to_path": virtTo})
+		n.emitFileEvent(
+			ctx,
+			"file_rename",
+			virtFrom,
+			"rename",
+			0,
+			dec,
+			true,
+			map[string]any{"to_path": virtTo},
+		)
 		return syscall.EACCES
 	}
-	n.emitFileEvent(ctx, "file_rename", virtFrom, "rename", 0, dec, false, map[string]any{"to_path": virtTo, "cross_mount": crossMount})
+	n.emitFileEvent(
+		ctx,
+		"file_rename",
+		virtFrom,
+		"rename",
+		0,
+		dec,
+		false,
+		map[string]any{"to_path": virtTo, "cross_mount": crossMount},
+	)
 
 	// Cross-mount inside -> outside: treat as a delete.
 	if crossMount && !intoMount {
-		return applyAuditPolicy(ctx, n.auditHooks(), n.hooksSessionID(), resolveOpMode(decFrom, n.globalAuditMode()), "unlink", virtFrom, "", realPath, n.makeDivertFunc(realPath), func() syscall.Errno {
-			return n.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
-		})
+		return applyAuditPolicy(
+			ctx,
+			n.auditHooks(),
+			n.hooksSessionID(),
+			resolveOpMode(decFrom, n.globalAuditMode()),
+			"unlink",
+			virtFrom,
+			"",
+			realPath,
+			n.makeDivertFunc(realPath),
+			func() syscall.Errno {
+				return n.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
+			},
+		)
 	}
 
-	errno := applyAuditPolicy(ctx, n.auditHooks(), n.hooksSessionID(), n.globalAuditMode(), "rename", virtFrom, virtTo, realPath, n.makeDivertFunc(realPath), func() syscall.Errno {
-		return n.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
-	})
+	errno := applyAuditPolicy(
+		ctx,
+		n.auditHooks(),
+		n.hooksSessionID(),
+		n.globalAuditMode(),
+		"rename",
+		virtFrom,
+		virtTo,
+		realPath,
+		n.makeDivertFunc(realPath),
+		func() syscall.Errno {
+			return n.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
+		},
+	)
 	if errno != 0 {
 		return errno
 	}
@@ -241,7 +323,10 @@ func (n *node) Rename(ctx context.Context, name string, newParent fs.InodeEmbedd
 	return errno
 }
 
-func (n *node) OpendirHandle(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+func (n *node) OpendirHandle(
+	ctx context.Context,
+	flags uint32,
+) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	virt := n.virtualPath()
 	dec := n.check(ctx, virt, "list")
 	dec = n.maybeApprove(ctx, dec, "file", virt, "list")
@@ -290,7 +375,12 @@ func (n *node) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) 
 	return n.LoopbackNode.Getattr(ctx, f, out)
 }
 
-func (n *node) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+func (n *node) Setattr(
+	ctx context.Context,
+	f fs.FileHandle,
+	in *fuse.SetAttrIn,
+	out *fuse.AttrOut,
+) syscall.Errno {
 	virt := n.virtualPath()
 	// Most common for agents: chmod.
 	if in.Valid&fuse.FATTR_MODE != 0 {
@@ -321,14 +411,27 @@ func (n *node) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn,
 			return syscall.EACCES
 		}
 		errno := n.LoopbackNode.Setattr(ctx, f, in, out)
-		n.emitFileEvent(ctx, "file_truncate", virt, "truncate", int64(in.Size), dec, errno != 0, nil)
+		n.emitFileEvent(
+			ctx,
+			"file_truncate",
+			virt,
+			"truncate",
+			int64(in.Size),
+			dec,
+			errno != 0,
+			nil,
+		)
 		return errno
 	}
 
 	return n.LoopbackNode.Setattr(ctx, f, in, out)
 }
 
-func (n *node) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (node *fs.Inode, errno syscall.Errno) {
+func (n *node) Symlink(
+	ctx context.Context,
+	target, name string,
+	out *fuse.EntryOut,
+) (node *fs.Inode, errno syscall.Errno) {
 	virt := n.virtualChildPath(name)
 	dec := n.checkWithExist(ctx, virt, "create", false)
 	dec = n.maybeApprove(ctx, dec, "file", virt, "create")
@@ -359,7 +462,11 @@ type fileHandle struct {
 	virtPath string
 }
 
-func (f *fileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
+func (f *fileHandle) Read(
+	ctx context.Context,
+	dest []byte,
+	off int64,
+) (fuse.ReadResult, syscall.Errno) {
 	dec := f.n.check(ctx, f.virtPath, "read")
 	dec = f.n.maybeApprove(ctx, dec, "file", f.virtPath, "read")
 	if dec.EffectiveDecision == types.DecisionDeny {
@@ -395,7 +502,16 @@ func (f *fileHandle) Write(ctx context.Context, data []byte, off int64) (uint32,
 			}
 		}
 	}
-	f.n.emitFileEvent(ctx, "file_write", f.virtPath, "write", int64(nwritten), dec, errno != 0, extra)
+	f.n.emitFileEvent(
+		ctx,
+		"file_write",
+		f.virtPath,
+		"write",
+		int64(nwritten),
+		dec,
+		errno != 0,
+		extra,
+	)
 	return nwritten, errno
 }
 
@@ -468,7 +584,12 @@ func (n *node) checkTruncate(ctx context.Context, virtPath string) policy.Decisi
 	return n.maybeApprove(ctx, dec, "file", virtPath, "write")
 }
 
-func (n *node) checkWithExist(_ context.Context, virtPath string, op string, mustExist bool) policy.Decision {
+func (n *node) checkWithExist(
+	_ context.Context,
+	virtPath string,
+	op string,
+	mustExist bool,
+) policy.Decision {
 	realRoot := ""
 	if n.RootData != nil {
 		realRoot = n.RootData.Path
@@ -525,8 +646,13 @@ func (n *node) checkWithExist(_ context.Context, virtPath string, op string, mus
 				// ".."-escapes, which IsUnderRoot byte-matches as in-subtree but
 				// evalEscapedSymlink rejects (escaped == "").
 				if inCwdSubtree && n.hooks.Session.FirstCwdEscapeWarn() {
-					slog.Warn("symlink_escape=deny: process cwd is a symlink escaping the workspace mount; evaluating its subtree against file_rules instead of blanket-denying",
-						"session", n.hooks.SessionID, "cwd", cwd)
+					slog.Warn(
+						"symlink_escape=deny: process cwd is a symlink escaping the workspace mount; evaluating its subtree against file_rules instead of blanket-denying",
+						"session",
+						n.hooks.SessionID,
+						"cwd",
+						cwd,
+					)
 				}
 				policyPath = escaped
 			} else {
@@ -543,7 +669,10 @@ func (n *node) checkWithExist(_ context.Context, virtPath string, op string, mus
 	}
 
 	if n.hooks == nil || n.hooks.Policy == nil {
-		return policy.Decision{PolicyDecision: types.DecisionAllow, EffectiveDecision: types.DecisionAllow}
+		return policy.Decision{
+			PolicyDecision:    types.DecisionAllow,
+			EffectiveDecision: types.DecisionAllow,
+		}
 	}
 	return n.hooks.Policy.CheckFile(policyPath, op)
 }
@@ -563,7 +692,8 @@ func combinePathDecisionsForRename(a, b policy.Decision) policy.Decision {
 		}
 		out.PolicyDecision = types.DecisionApprove
 		out.EffectiveDecision = types.DecisionAllow
-		if a.EffectiveDecision == types.DecisionApprove || b.EffectiveDecision == types.DecisionApprove {
+		if a.EffectiveDecision == types.DecisionApprove ||
+			b.EffectiveDecision == types.DecisionApprove {
 			out.EffectiveDecision = types.DecisionApprove
 		}
 		if out.Approval == nil {
@@ -576,11 +706,19 @@ func combinePathDecisionsForRename(a, b policy.Decision) policy.Decision {
 		return out
 	}
 
-	return policy.Decision{PolicyDecision: types.DecisionAllow, EffectiveDecision: types.DecisionAllow}
+	return policy.Decision{
+		PolicyDecision:    types.DecisionAllow,
+		EffectiveDecision: types.DecisionAllow,
+	}
 }
 
-func (n *node) maybeApprove(ctx context.Context, dec policy.Decision, kind, target, op string) policy.Decision {
-	if dec.PolicyDecision != types.DecisionApprove || dec.EffectiveDecision != types.DecisionApprove {
+func (n *node) maybeApprove(
+	ctx context.Context,
+	dec policy.Decision,
+	kind, target, op string,
+) policy.Decision {
+	if dec.PolicyDecision != types.DecisionApprove ||
+		dec.EffectiveDecision != types.DecisionApprove {
 		return dec
 	}
 	if n.hooks == nil || n.hooks.Approvals == nil {
@@ -613,7 +751,16 @@ func (n *node) maybeApprove(ctx context.Context, dec policy.Decision, kind, targ
 	return dec
 }
 
-func (n *node) emitFileEvent(ctx context.Context, evType string, virtPath string, op string, bytes int64, dec policy.Decision, blocked bool, extra map[string]any) {
+func (n *node) emitFileEvent(
+	ctx context.Context,
+	evType string,
+	virtPath string,
+	op string,
+	bytes int64,
+	dec policy.Decision,
+	blocked bool,
+	extra map[string]any,
+) {
 	if n.hooks == nil || n.hooks.Emit == nil {
 		return
 	}
@@ -663,7 +810,13 @@ func (n *node) emitFileEvent(ctx context.Context, evType string, virtPath string
 		}
 	}
 	if err := n.hooks.Emit.AppendEvent(ctx, ev); err != nil {
-		fmt.Fprintf(os.Stderr, "fuse: failed to append event (type=%s path=%s): %v\n", evType, virtPath, err)
+		fmt.Fprintf(
+			os.Stderr,
+			"fuse: failed to append event (type=%s path=%s): %v\n",
+			evType,
+			virtPath,
+			err,
+		)
 	}
 	n.hooks.Emit.Publish(ev)
 }

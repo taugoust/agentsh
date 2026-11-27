@@ -16,7 +16,14 @@ import (
 // internal/audit/integrity.go: format_version | sequence | prev_hash | payload.
 // Generation is intentionally NOT in the HMAC input — see the format-version
 // note in the implementation plan.
-func computeExpectedHash(t *testing.T, key []byte, formatVersion int, sequence int64, prevHash string, payload []byte) string {
+func computeExpectedHash(
+	t *testing.T,
+	key []byte,
+	formatVersion int,
+	sequence int64,
+	prevHash string,
+	payload []byte,
+) string {
 	t.Helper()
 	h := hmac.New(sha256.New, key)
 	h.Write([]byte(strconv.Itoa(formatVersion)))
@@ -75,7 +82,11 @@ func TestSinkChain_Compute_IsPure_NoMutationWithoutCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if first.EntryHash() != second.EntryHash() {
-		t.Errorf("Compute mutated chain state: first=%q second=%q", first.EntryHash(), second.EntryHash())
+		t.Errorf(
+			"Compute mutated chain state: first=%q second=%q",
+			first.EntryHash(),
+			second.EntryHash(),
+		)
 	}
 }
 
@@ -97,7 +108,14 @@ func TestSinkChain_Commit_AdvancesPrevHash(t *testing.T) {
 	if second.PrevHash() != first.EntryHash() {
 		t.Errorf("after Commit: prev_hash = %q, want %q", second.PrevHash(), first.EntryHash())
 	}
-	want := computeExpectedHash(t, key, IntegrityFormatVersion, 1, first.EntryHash(), []byte(`{"b":2}`))
+	want := computeExpectedHash(
+		t,
+		key,
+		IntegrityFormatVersion,
+		1,
+		first.EntryHash(),
+		[]byte(`{"b":2}`),
+	)
 	if second.EntryHash() != want {
 		t.Errorf("second entryHash = %q, want %q", second.EntryHash(), want)
 	}
@@ -259,7 +277,15 @@ func TestSinkChain_SerialComputeCommit_NoChainBreakage(t *testing.T) {
 				return
 			}
 			mu.Lock()
-			records = append(records, record{seq: i, payload: payload, entryHash: result.EntryHash(), prevHash: result.PrevHash()})
+			records = append(
+				records,
+				record{
+					seq:       i,
+					payload:   payload,
+					entryHash: result.EntryHash(),
+					prevHash:  result.PrevHash(),
+				},
+			)
 			mu.Unlock()
 		}
 	}()
@@ -313,10 +339,20 @@ func TestSinkChain_Compute_IsPureUnderConcurrentCallers(t *testing.T) {
 	wantPrev := results[0].PrevHash()
 	for i, r := range results {
 		if r.EntryHash() != wantEntry {
-			t.Errorf("result %d: entry=%q, want %q (Compute is not pure under contention)", i, r.EntryHash(), wantEntry)
+			t.Errorf(
+				"result %d: entry=%q, want %q (Compute is not pure under contention)",
+				i,
+				r.EntryHash(),
+				wantEntry,
+			)
 		}
 		if r.PrevHash() != wantPrev {
-			t.Errorf("result %d: prev=%q, want %q (Compute is not pure under contention)", i, r.PrevHash(), wantPrev)
+			t.Errorf(
+				"result %d: prev=%q, want %q (Compute is not pure under contention)",
+				i,
+				r.PrevHash(),
+				wantPrev,
+			)
 		}
 	}
 }
@@ -339,7 +375,15 @@ func TestSinkChain_State_PersistsFatal(t *testing.T) {
 	if err := d.Restore(state.Generation, state.PrevHash, state.Fatal); err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
-	if _, err := d.Compute(IntegrityFormatVersion, 1, 0, []byte(`{"b":2}`)); !errors.Is(err, ErrFatalIntegrity) {
+	if _, err := d.Compute(
+		IntegrityFormatVersion,
+		1,
+		0,
+		[]byte(`{"b":2}`),
+	); !errors.Is(
+		err,
+		ErrFatalIntegrity,
+	) {
 		t.Fatalf("Compute after Restore-with-Fatal: err = %v, want ErrFatalIntegrity", err)
 	}
 }
@@ -356,12 +400,42 @@ func TestSinkChain_Restore_ValidatesPrevHash(t *testing.T) {
 	}{
 		{name: "empty is genesis", algorithm: "hmac-sha256", prevHash: "", wantErr: false},
 		{name: "valid sha256 hex", algorithm: "hmac-sha256", prevHash: validSha256, wantErr: false},
-		{name: "wrong length hex (sha512 under sha256)", algorithm: "hmac-sha256", prevHash: validSha512, wantErr: true},
-		{name: "non-hex characters", algorithm: "hmac-sha256", prevHash: strings.Repeat("z", 64), wantErr: true},
-		{name: "odd-length hex", algorithm: "hmac-sha256", prevHash: strings.Repeat("a", 63), wantErr: true},
-		{name: "valid sha512 hex under sha512", algorithm: "hmac-sha512", prevHash: validSha512, wantErr: false},
-		{name: "sha256 length under sha512", algorithm: "hmac-sha512", prevHash: validSha256, wantErr: true},
-		{name: "empty under sha512 is genesis", algorithm: "hmac-sha512", prevHash: "", wantErr: false},
+		{
+			name:      "wrong length hex (sha512 under sha256)",
+			algorithm: "hmac-sha256",
+			prevHash:  validSha512,
+			wantErr:   true,
+		},
+		{
+			name:      "non-hex characters",
+			algorithm: "hmac-sha256",
+			prevHash:  strings.Repeat("z", 64),
+			wantErr:   true,
+		},
+		{
+			name:      "odd-length hex",
+			algorithm: "hmac-sha256",
+			prevHash:  strings.Repeat("a", 63),
+			wantErr:   true,
+		},
+		{
+			name:      "valid sha512 hex under sha512",
+			algorithm: "hmac-sha512",
+			prevHash:  validSha512,
+			wantErr:   false,
+		},
+		{
+			name:      "sha256 length under sha512",
+			algorithm: "hmac-sha512",
+			prevHash:  validSha256,
+			wantErr:   true,
+		},
+		{
+			name:      "empty under sha512 is genesis",
+			algorithm: "hmac-sha512",
+			prevHash:  "",
+			wantErr:   false,
+		},
 	}
 
 	for _, tc := range cases {
@@ -381,7 +455,11 @@ func TestSinkChain_Restore_ValidatesPrevHash(t *testing.T) {
 					t.Fatalf("Restore(%q): err = nil, want error", tc.prevHash)
 				}
 				if !errors.Is(err, ErrInvalidChainState) {
-					t.Errorf("Restore(%q): err = %v, want errors.Is ErrInvalidChainState", tc.prevHash, err)
+					t.Errorf(
+						"Restore(%q): err = %v, want errors.Is ErrInvalidChainState",
+						tc.prevHash,
+						err,
+					)
 				}
 				after := c.State()
 				if after != before {
@@ -395,7 +473,11 @@ func TestSinkChain_Restore_ValidatesPrevHash(t *testing.T) {
 			}
 			after := c.State()
 			if after.Generation != 7 || after.PrevHash != tc.prevHash || after.Fatal {
-				t.Errorf("after Restore: state = %+v, want {Generation:7 PrevHash:%q Fatal:false}", after, tc.prevHash)
+				t.Errorf(
+					"after Restore: state = %+v, want {Generation:7 PrevHash:%q Fatal:false}",
+					after,
+					tc.prevHash,
+				)
 			}
 		})
 	}
@@ -452,7 +534,15 @@ func TestSinkChain_Commit_BackwardsGenerationLatchesFatal(t *testing.T) {
 	}
 
 	// Subsequent Compute must surface the fatal latch.
-	if _, err := c.Compute(IntegrityFormatVersion, 1, 2, []byte(`{"x":1}`)); !errors.Is(err, ErrFatalIntegrity) {
+	if _, err := c.Compute(
+		IntegrityFormatVersion,
+		1,
+		2,
+		[]byte(`{"x":1}`),
+	); !errors.Is(
+		err,
+		ErrFatalIntegrity,
+	) {
 		t.Errorf("Compute after backwards-gen Commit: err = %v, want ErrFatalIntegrity", err)
 	}
 }
@@ -494,7 +584,15 @@ func TestSinkChain_Commit_StaleResultLatchesFatal(t *testing.T) {
 	}
 
 	// Subsequent Compute must fail.
-	if _, err := c.Compute(IntegrityFormatVersion, 2, 0, []byte(`{"c":3}`)); !errors.Is(err, ErrFatalIntegrity) {
+	if _, err := c.Compute(
+		IntegrityFormatVersion,
+		2,
+		0,
+		[]byte(`{"c":3}`),
+	); !errors.Is(
+		err,
+		ErrFatalIntegrity,
+	) {
 		t.Fatalf("Compute after stale-result fatal: err = %v, want ErrFatalIntegrity", err)
 	}
 }
@@ -608,7 +706,11 @@ func TestComputeResult_HasNoExportedDataFields(t *testing.T) {
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
 		if f.IsExported() {
-			t.Errorf("ComputeResult has exported data field %q (type %s) — must remain unexported to preserve token opacity", f.Name, f.Type)
+			t.Errorf(
+				"ComputeResult has exported data field %q (type %s) — must remain unexported to preserve token opacity",
+				f.Name,
+				f.Type,
+			)
 		}
 	}
 }

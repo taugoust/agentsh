@@ -12,7 +12,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func configureStoppedStart(attr *syscall.SysProcAttr, required bool, boundary *types.LinuxCommandJailRequirements) error {
+func configureStoppedStart(
+	attr *syscall.SysProcAttr,
+	required bool,
+	boundary *types.LinuxCommandJailRequirements,
+) error {
 	if boundary != nil {
 		if !boundary.Complete() {
 			return fmt.Errorf("PTY command-boundary requirements are incomplete")
@@ -21,7 +25,9 @@ func configureStoppedStart(attr *syscall.SysProcAttr, required bool, boundary *t
 			return fmt.Errorf("PTY command boundary requires a stopped-child barrier")
 		}
 		if len(attr.UidMappings) != 0 || len(attr.GidMappings) != 0 || attr.Credential != nil {
-			return fmt.Errorf("PTY command boundary cannot compose with existing credentials or mappings")
+			return fmt.Errorf(
+				"PTY command boundary cannot compose with existing credentials or mappings",
+			)
 		}
 		if attr.Pdeathsig != 0 && attr.Pdeathsig != syscall.SIGKILL {
 			return fmt.Errorf("PTY command boundary requires SIGKILL parent-death behavior")

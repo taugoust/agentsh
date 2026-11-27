@@ -55,7 +55,9 @@ const closeRunCancelGrace = 2 * time.Second
 // unsupported" case WITHOUT string-matching the returned error
 // message. The wrapped error message also names the elapsed grace
 // duration for operator triage.
-var ErrCloseSafetyNet = errors.New("watchtower.Close: shutdown safety net hit; bg goroutine and WAL handle leaked, process restart required")
+var ErrCloseSafetyNet = errors.New(
+	"watchtower.Close: shutdown safety net hit; bg goroutine and WAL handle leaked, process restart required",
+)
 
 // Store is the watchtower store.EventStore implementation.
 //
@@ -622,20 +624,32 @@ func (s *Store) shutdown() error {
 			// reclaims everything. The WARN log below carries the
 			// stable instance identifiers (session_id, agent_id,
 			// wal_dir) so multi-instance failures are triageable.
-			s.opts.Logger.Warn("watchtower.Close: shutdown safety net hit; transport likely wedged in non-interruptible Conn.Send/Recv/Dial",
-				"drain_deadline", s.opts.DrainDeadline,
-				"close_run_cancel_grace", closeRunCancelGrace,
-				"session_id", s.opts.SessionID,
-				"agent_id", s.opts.AgentID,
-				"wal_dir", s.opts.WALDir,
-				"action", "returning synthetic timeout error; bg goroutine + WAL handle leaked, restart required for clean state")
+			s.opts.Logger.Warn(
+				"watchtower.Close: shutdown safety net hit; transport likely wedged in non-interruptible Conn.Send/Recv/Dial",
+				"drain_deadline",
+				s.opts.DrainDeadline,
+				"close_run_cancel_grace",
+				closeRunCancelGrace,
+				"session_id",
+				s.opts.SessionID,
+				"agent_id",
+				s.opts.AgentID,
+				"wal_dir",
+				s.opts.WALDir,
+				"action",
+				"returning synthetic timeout error; bg goroutine + WAL handle leaked, restart required for clean state",
+			)
 			// IMPORTANT: do NOT call s.combineWALCloseErr — that
 			// would invoke wal.Close while a Reader inside the bg
 			// loop may still be active. Return the sentinel
 			// (wrapped with the elapsed grace) directly; the leaked
 			// WAL handle is part of the safety-net contract.
 			// Higher layers detect via errors.Is(err, ErrCloseSafetyNet).
-			return fmt.Errorf("%w (closeRunCancelGrace=%v elapsed)", ErrCloseSafetyNet, closeRunCancelGrace)
+			return fmt.Errorf(
+				"%w (closeRunCancelGrace=%v elapsed)",
+				ErrCloseSafetyNet,
+				closeRunCancelGrace,
+			)
 		}
 	}
 	return s.combineWALCloseErr(runErr)
@@ -654,7 +668,9 @@ func (s *Store) combineWALCloseErr(runErr error) error {
 	// segment stays on disk; the next wal.Open will recover it.
 	// (roborev #5989 High)
 	if !s.appendDrained.Load() {
-		drainErr := fmt.Errorf("watchtower.Close: append drain timed out; skipped wal.Close to preserve bounded-latency shutdown")
+		drainErr := fmt.Errorf(
+			"watchtower.Close: append drain timed out; skipped wal.Close to preserve bounded-latency shutdown",
+		)
 		if runErr == nil {
 			return drainErr
 		}
@@ -747,7 +763,11 @@ func openWALWithIdentityRecovery(opts Options, contextDigest string) (*wal.WAL, 
 	// keeps the namespace effectively unique.
 	quarantineDir, qerr := quarantineWAL(opts.WALDir)
 	if qerr != nil {
-		return nil, fmt.Errorf("wtp: WAL identity mismatch and quarantine failed: %w (original: %v)", qerr, err)
+		return nil, fmt.Errorf(
+			"wtp: WAL identity mismatch and quarantine failed: %w (original: %v)",
+			qerr,
+			err,
+		)
 	}
 
 	reasonField := "unknown"
@@ -805,16 +825,26 @@ func readInitialAckTuple(opts Options, w *wal.WAL) (*transport.AckTuple, error) 
 		// Round-10 Finding 4: empty meta.SessionID is V1 legacy and
 		// treated as MATCH. Non-empty mismatch is defense-in-depth
 		// (the wal.Open path above usually catches it first).
-		opts.Logger.Warn("wtp: meta session_id mismatch; ignoring persisted ack",
-			"persisted_session_id", meta.SessionID,
-			"expected_session_id", opts.SessionID,
-			"action", "ignoring persisted ack tuple; first SessionAck will adopt server tuple wholesale")
+		opts.Logger.Warn(
+			"wtp: meta session_id mismatch; ignoring persisted ack",
+			"persisted_session_id",
+			meta.SessionID,
+			"expected_session_id",
+			opts.SessionID,
+			"action",
+			"ignoring persisted ack tuple; first SessionAck will adopt server tuple wholesale",
+		)
 		return nil, nil
 	case meta.KeyFingerprint != "" && meta.KeyFingerprint != opts.KeyFingerprint:
-		opts.Logger.Warn("wtp: meta key_fingerprint mismatch; ignoring persisted ack",
-			"persisted_key_fingerprint", meta.KeyFingerprint,
-			"expected_key_fingerprint", opts.KeyFingerprint,
-			"action", "ignoring persisted ack tuple; first SessionAck will adopt server tuple wholesale")
+		opts.Logger.Warn(
+			"wtp: meta key_fingerprint mismatch; ignoring persisted ack",
+			"persisted_key_fingerprint",
+			meta.KeyFingerprint,
+			"expected_key_fingerprint",
+			opts.KeyFingerprint,
+			"action",
+			"ignoring persisted ack tuple; first SessionAck will adopt server tuple wholesale",
+		)
 		return nil, nil
 	case !meta.AckRecorded:
 		// Identity matches but no ack ever recorded. Leave seed nil.

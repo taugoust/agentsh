@@ -89,7 +89,13 @@ func TestExecPTY_RawModeOnlyWhenTTY(t *testing.T) {
 		return errors.New("stop")
 	}
 
-	err := execPTYWithDeps(context.Background(), &clientConfig{transport: "grpc"}, "sess-1", execPTYRequest{Command: "echo"}, deps)
+	err := execPTYWithDeps(
+		context.Background(),
+		&clientConfig{transport: "grpc"},
+		"sess-1",
+		execPTYRequest{Command: "echo"},
+		deps,
+	)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -103,23 +109,26 @@ func TestExecPTY_RawModeOnlyWhenTTY(t *testing.T) {
 
 func TestExecPTYWS_ContextCancelCloses(t *testing.T) {
 	closed := make(chan struct{})
-	srv := newHTTPTestServerOrSkip(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
-		c, err := up.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		defer func() { _ = c.Close() }()
-
-		// Read start message, then wait for client to disconnect.
-		_, _, _ = c.ReadMessage()
-		for {
-			if _, _, err := c.ReadMessage(); err != nil {
-				close(closed)
+	srv := newHTTPTestServerOrSkip(
+		t,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+			c, err := up.Upgrade(w, r, nil)
+			if err != nil {
 				return
 			}
-		}
-	}))
+			defer func() { _ = c.Close() }()
+
+			// Read start message, then wait for client to disconnect.
+			_, _, _ = c.ReadMessage()
+			for {
+				if _, _, err := c.ReadMessage(); err != nil {
+					close(closed)
+					return
+				}
+			}
+		}),
+	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -154,18 +163,26 @@ func TestExecPTYWS_ContextCancelCloses(t *testing.T) {
 }
 
 func TestExecPTYWS_PolicyDenied_DefaultsToExit126(t *testing.T) {
-	srv := newHTTPTestServerOrSkip(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
-		c, err := up.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		defer func() { _ = c.Close() }()
+	srv := newHTTPTestServerOrSkip(
+		t,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+			c, err := up.Upgrade(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer func() { _ = c.Close() }()
 
-		// Start frame.
-		_, _, _ = c.ReadMessage()
-		_ = c.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","code":403,"message":"command denied (approval required)"}`))
-	}))
+			// Start frame.
+			_, _, _ = c.ReadMessage()
+			_ = c.WriteMessage(
+				websocket.TextMessage,
+				[]byte(
+					`{"type":"error","code":403,"message":"command denied (approval required)"}`,
+				),
+			)
+		}),
+	)
 
 	cfg := &clientConfig{serverAddr: srv.URL, transport: "http"}
 	deps := ptyDeps{
@@ -194,16 +211,22 @@ func TestExecPTYWS_PolicyDenied_DefaultsToExit126(t *testing.T) {
 func TestExecPTYWS_PolicyDenied_ModeErrorPreservesError(t *testing.T) {
 	t.Setenv("AGENTSH_PTY_DENY_MODE", "error")
 
-	srv := newHTTPTestServerOrSkip(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
-		c, err := up.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		defer func() { _ = c.Close() }()
-		_, _, _ = c.ReadMessage()
-		_ = c.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","code":403,"message":"command denied by policy"}`))
-	}))
+	srv := newHTTPTestServerOrSkip(
+		t,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+			c, err := up.Upgrade(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer func() { _ = c.Close() }()
+			_, _, _ = c.ReadMessage()
+			_ = c.WriteMessage(
+				websocket.TextMessage,
+				[]byte(`{"type":"error","code":403,"message":"command denied by policy"}`),
+			)
+		}),
+	)
 
 	cfg := &clientConfig{serverAddr: srv.URL, transport: "http"}
 	deps := ptyDeps{

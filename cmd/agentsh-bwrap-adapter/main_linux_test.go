@@ -17,7 +17,9 @@ func TestCompositionNamespaceFlagsAbsorbPIDIsolation(t *testing.T) {
 		UnshareCgroup: true,
 	})
 	if flags&unix.CLONE_NEWPID != 0 {
-		t.Fatal("nested composition created a PID namespace outside the outer Landlock procfs boundary")
+		t.Fatal(
+			"nested composition created a PID namespace outside the outer Landlock procfs boundary",
+		)
 	}
 	for name, flag := range map[string]uintptr{
 		"mount":  unix.CLONE_NEWNS,

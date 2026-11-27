@@ -28,7 +28,11 @@ func TestAppendProxyRequiredUnsupportedTrafficRulesOverridesWeakerRules(t *testi
 	appendProxyRequiredUnsupportedTrafficRules(cfg)
 
 	if !proxyRequiredRawSocketRulesConfigured(cfg) {
-		t.Fatalf("proxy-required raw/packet rules were not configured: families=%+v rules=%+v", cfg.BlockedFamilies, cfg.SocketRules)
+		t.Fatalf(
+			"proxy-required raw/packet rules were not configured: families=%+v rules=%+v",
+			cfg.BlockedFamilies,
+			cfg.SocketRules,
+		)
 	}
 	for _, family := range cfg.BlockedFamilies {
 		if family.Family == 17 && family.Action != seccompkg.OnBlockErrno {
@@ -36,14 +40,22 @@ func TestAppendProxyRequiredUnsupportedTrafficRulesOverridesWeakerRules(t *testi
 		}
 	}
 	for _, rule := range cfg.SocketRules {
-		if rule.Family == 2 && rule.Type != nil && *rule.Type == rawType && rule.Protocol == nil && rule.Action != seccompkg.OnBlockErrno {
+		if rule.Family == 2 && rule.Type != nil && *rule.Type == rawType && rule.Protocol == nil &&
+			rule.Action != seccompkg.OnBlockErrno {
 			t.Fatalf("IPv4 raw action = %q, want errno", rule.Action)
 		}
 	}
 }
 
 func TestSupportedDelegatedSupervisorCgroup(t *testing.T) {
-	root := filepath.Join(string(filepath.Separator), "sys", "fs", "cgroup", "user.slice", "agentsh-supervisor-session-123.service")
+	root := filepath.Join(
+		string(filepath.Separator),
+		"sys",
+		"fs",
+		"cgroup",
+		"user.slice",
+		"agentsh-supervisor-session-123.service",
+	)
 	if !supportedDelegatedSupervisorCgroup(root) {
 		t.Fatal("expected transient delegated supervisor unit to be accepted")
 	}

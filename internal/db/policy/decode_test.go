@@ -31,10 +31,16 @@ name: x
 		t.Fatal("nil RuleSet")
 	}
 	if rs.Redaction().LogStatements != RedactParametersRedacted {
-		t.Errorf("default LogStatements = %v, want parameters_redacted", rs.Redaction().LogStatements)
+		t.Errorf(
+			"default LogStatements = %v, want parameters_redacted",
+			rs.Redaction().LogStatements,
+		)
 	}
 	if rs.Redaction().ApprovalStatementChars != 200 {
-		t.Errorf("default ApprovalStatementChars = %d, want 200", rs.Redaction().ApprovalStatementChars)
+		t.Errorf(
+			"default ApprovalStatementChars = %d, want 200",
+			rs.Redaction().ApprovalStatementChars,
+		)
 	}
 }
 
@@ -102,7 +108,8 @@ database_rules:
 	if got := rules[0].Relations; len(got) != 2 || got[0] != "public.users" || got[1] != "sales.*" {
 		t.Fatalf("Relations = %#v", got)
 	}
-	if got := rules[0].Functions; len(got) != 2 || got[0] != "public.safe_fn(integer)" || got[1] != "pg_catalog.*" {
+	if got := rules[0].Functions; len(got) != 2 || got[0] != "public.safe_fn(integer)" ||
+		got[1] != "pg_catalog.*" {
 		t.Fatalf("Functions = %#v", got)
 	}
 }
@@ -177,7 +184,10 @@ database_rules:
 
 	rules = rs.AllStatementRules()
 	if rules[0].Redirect == nil || rules[0].Redirect.Relation != "public.safe_users" {
-		t.Fatalf("Redirect after external mutation = %+v, want public.safe_users", rules[0].Redirect)
+		t.Fatalf(
+			"Redirect after external mutation = %+v, want public.safe_users",
+			rules[0].Redirect,
+		)
 	}
 }
 
@@ -238,7 +248,10 @@ policies:
 	// "redacted" is the YAML name for parameters_redacted in the
 	// approval-preview field per §10.3.
 	if rs.Redaction().ApprovalStatementPreview != RedactParametersRedacted {
-		t.Errorf("ApprovalStatementPreview = %v, want parameters_redacted", rs.Redaction().ApprovalStatementPreview)
+		t.Errorf(
+			"ApprovalStatementPreview = %v, want parameters_redacted",
+			rs.Redaction().ApprovalStatementPreview,
+		)
 	}
 	if rs.Redaction().ApprovalStatementChars != 50 {
 		t.Errorf("ApprovalStatementChars = %d, want 50", rs.Redaction().ApprovalStatementChars)

@@ -40,17 +40,23 @@ func buildAnthropicSSE(toolName, toolID string) string {
 
 	// message_start
 	b.WriteString("event: message_start\n")
-	b.WriteString(`data: {"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`)
+	b.WriteString(
+		`data: {"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
+	)
 	b.WriteString("\n\n")
 
 	// text block: content_block_start (index 0)
 	b.WriteString("event: content_block_start\n")
-	b.WriteString(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	b.WriteString(
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+	)
 	b.WriteString("\n\n")
 
 	// text block: content_block_delta (index 0)
 	b.WriteString("event: content_block_delta\n")
-	b.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me check the weather."}}`)
+	b.WriteString(
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me check the weather."}}`,
+	)
 	b.WriteString("\n\n")
 
 	// text block: content_block_stop (index 0)
@@ -60,12 +66,16 @@ func buildAnthropicSSE(toolName, toolID string) string {
 
 	// tool_use block: content_block_start (index 1)
 	b.WriteString("event: content_block_start\n")
-	b.WriteString(`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` + toolID + `","name":"` + toolName + `"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` + toolID + `","name":"` + toolName + `"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block: content_block_delta (index 1)
 	b.WriteString("event: content_block_delta\n")
-	b.WriteString(`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"San Francisco\"}"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"San Francisco\"}"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block: content_block_stop (index 1)
@@ -75,7 +85,9 @@ func buildAnthropicSSE(toolName, toolID string) string {
 
 	// message_delta with stop_reason
 	b.WriteString("event: message_delta\n")
-	b.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":25}}`)
+	b.WriteString(
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":25}}`,
+	)
 	b.WriteString("\n\n")
 
 	// message_stop
@@ -110,7 +122,18 @@ func TestSSEInterceptor_Anthropic_SingleBlocked(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- Execute ---
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -133,7 +156,11 @@ func TestSSEInterceptor_Anthropic_SingleBlocked(t *testing.T) {
 	// 3. Replacement text block with the blocked message must be present.
 	expectedMsg := "[agentsh] Tool 'get_weather' blocked by policy"
 	if !strings.Contains(clientOutput, expectedMsg) {
-		t.Errorf("expected replacement text %q in client output, got:\n%s", expectedMsg, clientOutput)
+		t.Errorf(
+			"expected replacement text %q in client output, got:\n%s",
+			expectedMsg,
+			clientOutput,
+		)
 	}
 
 	// 4. stop_reason must be rewritten to "end_turn" (all tool_use blocked).
@@ -179,7 +206,11 @@ func TestSSEInterceptor_Anthropic_SingleBlocked(t *testing.T) {
 		t.Errorf("expected event tool name %q, got %q", "get_weather", evt.ToolName)
 	}
 	if evt.ToolCallID != "toolu_01A09q90qw90lq917835lq9" {
-		t.Errorf("expected event tool call ID %q, got %q", "toolu_01A09q90qw90lq917835lq9", evt.ToolCallID)
+		t.Errorf(
+			"expected event tool call ID %q, got %q",
+			"toolu_01A09q90qw90lq917835lq9",
+			evt.ToolCallID,
+		)
 	}
 	if evt.ServerID != "weather-server" {
 		t.Errorf("expected event server ID %q, got %q", "weather-server", evt.ServerID)
@@ -199,7 +230,11 @@ func TestSSEInterceptor_Anthropic_SingleBlocked(t *testing.T) {
 
 	// 7. Buffered output must match client output.
 	if string(buffered) != clientOutput {
-		t.Errorf("buffered output does not match client output.\nbuffered len=%d, client len=%d", len(buffered), len(clientOutput))
+		t.Errorf(
+			"buffered output does not match client output.\nbuffered len=%d, client len=%d",
+			len(buffered),
+			len(clientOutput),
+		)
 	}
 
 	// 8. Verify the replacement text block is a proper SSE sequence
@@ -227,7 +262,8 @@ func TestSSEInterceptor_Anthropic_SingleBlocked(t *testing.T) {
 			continue
 		}
 		// The replacement block should reuse the same index as the blocked tool.
-		if block.Type == "content_block_start" && block.ContentBlock.Type == "text" && block.Index == 1 {
+		if block.Type == "content_block_start" && block.ContentBlock.Type == "text" &&
+			block.Index == 1 {
 			replacementStartFound = true
 		}
 		if block.Type == "content_block_stop" && block.Index == 1 {
@@ -263,7 +299,11 @@ func TestSSEInterceptor_Anthropic_SingleBlocked(t *testing.T) {
 		}
 	}
 	if eventLines != dataLines {
-		t.Errorf("SSE output has %d event: lines but %d data: lines; they should match", eventLines, dataLines)
+		t.Errorf(
+			"SSE output has %d event: lines but %d data: lines; they should match",
+			eventLines,
+			dataLines,
+		)
 	}
 }
 
@@ -291,7 +331,18 @@ func TestSSEInterceptor_Anthropic_SingleAllowed(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- Execute ---
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -364,7 +415,11 @@ func TestSSEInterceptor_Anthropic_SingleAllowed(t *testing.T) {
 		t.Errorf("expected event tool name %q, got %q", "get_weather", evt.ToolName)
 	}
 	if evt.ToolCallID != "toolu_01A09q90qw90lq917835lq9" {
-		t.Errorf("expected event tool call ID %q, got %q", "toolu_01A09q90qw90lq917835lq9", evt.ToolCallID)
+		t.Errorf(
+			"expected event tool call ID %q, got %q",
+			"toolu_01A09q90qw90lq917835lq9",
+			evt.ToolCallID,
+		)
 	}
 	if evt.ServerID != "weather-server" {
 		t.Errorf("expected event server ID %q, got %q", "weather-server", evt.ServerID)
@@ -375,7 +430,11 @@ func TestSSEInterceptor_Anthropic_SingleAllowed(t *testing.T) {
 
 	// 7. Buffered output must match client output.
 	if string(buffered) != clientOutput {
-		t.Errorf("buffered output does not match client output.\nbuffered len=%d, client len=%d", len(buffered), len(clientOutput))
+		t.Errorf(
+			"buffered output does not match client output.\nbuffered len=%d, client len=%d",
+			len(buffered),
+			len(clientOutput),
+		)
 	}
 
 	// 8. message_stop must be present.
@@ -405,7 +464,18 @@ func TestSSEInterceptor_Anthropic_Unregistered(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- Execute ---
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -465,7 +535,11 @@ func TestSSEInterceptor_Anthropic_Unregistered(t *testing.T) {
 
 	// 6. Buffered output must match client output.
 	if string(buffered) != clientOutput {
-		t.Errorf("buffered output does not match client output.\nbuffered len=%d, client len=%d", len(buffered), len(clientOutput))
+		t.Errorf(
+			"buffered output does not match client output.\nbuffered len=%d, client len=%d",
+			len(buffered),
+			len(clientOutput),
+		)
 	}
 
 	// 7. message_stop must be present.
@@ -481,17 +555,23 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 
 	// message_start
 	b.WriteString("event: message_start\n")
-	b.WriteString(`data: {"type":"message_start","message":{"id":"msg_02","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`)
+	b.WriteString(
+		`data: {"type":"message_start","message":{"id":"msg_02","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
+	)
 	b.WriteString("\n\n")
 
 	// text block: content_block_start (index 0)
 	b.WriteString("event: content_block_start\n")
-	b.WriteString(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	b.WriteString(
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+	)
 	b.WriteString("\n\n")
 
 	// text block: content_block_delta (index 0)
 	b.WriteString("event: content_block_delta\n")
-	b.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll do both."}}`)
+	b.WriteString(
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll do both."}}`,
+	)
 	b.WriteString("\n\n")
 
 	// text block: content_block_stop (index 0)
@@ -501,12 +581,16 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 
 	// tool_use block 1: content_block_start (index 1)
 	b.WriteString("event: content_block_start\n")
-	b.WriteString(`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` + tool1ID + `","name":"` + tool1Name + `"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` + tool1ID + `","name":"` + tool1Name + `"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block 1: content_block_delta (index 1)
 	b.WriteString("event: content_block_delta\n")
-	b.WriteString(`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"NYC\"}"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"NYC\"}"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block 1: content_block_stop (index 1)
@@ -516,12 +600,16 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 
 	// tool_use block 2: content_block_start (index 2)
 	b.WriteString("event: content_block_start\n")
-	b.WriteString(`data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"` + tool2ID + `","name":"` + tool2Name + `"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"` + tool2ID + `","name":"` + tool2Name + `"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block 2: content_block_delta (index 2)
 	b.WriteString("event: content_block_delta\n")
-	b.WriteString(`data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"confirm\": true}"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"confirm\": true}"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block 2: content_block_stop (index 2)
@@ -531,7 +619,9 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 
 	// message_delta with stop_reason
 	b.WriteString("event: message_delta\n")
-	b.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":40}}`)
+	b.WriteString(
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":40}}`,
+	)
 	b.WriteString("\n\n")
 
 	// message_stop
@@ -572,7 +662,18 @@ func TestSSEInterceptor_Anthropic_PartialBlock(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- Execute ---
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -595,7 +696,11 @@ func TestSSEInterceptor_Anthropic_PartialBlock(t *testing.T) {
 	// 3. Replacement text block with blocked message for delete_all must be present.
 	expectedMsg := "[agentsh] Tool 'delete_all' blocked by policy"
 	if !strings.Contains(clientOutput, expectedMsg) {
-		t.Errorf("expected replacement text %q in client output, got:\n%s", expectedMsg, clientOutput)
+		t.Errorf(
+			"expected replacement text %q in client output, got:\n%s",
+			expectedMsg,
+			clientOutput,
+		)
 	}
 
 	// 4. No replacement message for get_weather.
@@ -637,10 +742,18 @@ func TestSSEInterceptor_Anthropic_PartialBlock(t *testing.T) {
 	}
 	// Events fire in order of content_block_start: index 1 (get_weather) then index 2 (delete_all).
 	if events[0].Action != "allow" || events[0].ToolName != "get_weather" {
-		t.Errorf("expected first event: allow/get_weather, got %s/%s", events[0].Action, events[0].ToolName)
+		t.Errorf(
+			"expected first event: allow/get_weather, got %s/%s",
+			events[0].Action,
+			events[0].ToolName,
+		)
 	}
 	if events[1].Action != "block" || events[1].ToolName != "delete_all" {
-		t.Errorf("expected second event: block/delete_all, got %s/%s", events[1].Action, events[1].ToolName)
+		t.Errorf(
+			"expected second event: block/delete_all, got %s/%s",
+			events[1].Action,
+			events[1].ToolName,
+		)
 	}
 	if events[1].Reason == "" {
 		t.Error("expected non-empty reason for blocked tool event")
@@ -662,7 +775,8 @@ func TestSSEInterceptor_Anthropic_PartialBlock(t *testing.T) {
 		if err := json.Unmarshal([]byte(data), &delta); err != nil {
 			continue
 		}
-		if delta.Type == "content_block_delta" && delta.Index == 2 && delta.Delta.Type == "input_json_delta" {
+		if delta.Type == "content_block_delta" && delta.Index == 2 &&
+			delta.Delta.Type == "input_json_delta" {
 			t.Error("input_json_delta for blocked tool at index 2 should be suppressed")
 		}
 	}
@@ -674,7 +788,11 @@ func TestSSEInterceptor_Anthropic_PartialBlock(t *testing.T) {
 
 	// 9. Buffered output must match client output.
 	if string(buffered) != clientOutput {
-		t.Errorf("buffered output does not match client output.\nbuffered len=%d, client len=%d", len(buffered), len(clientOutput))
+		t.Errorf(
+			"buffered output does not match client output.\nbuffered len=%d, client len=%d",
+			len(buffered),
+			len(clientOutput),
+		)
 	}
 
 	// 10. No orphan event: lines.
@@ -689,7 +807,11 @@ func TestSSEInterceptor_Anthropic_PartialBlock(t *testing.T) {
 		}
 	}
 	if eventLines != dataLines {
-		t.Errorf("SSE output has %d event: lines but %d data: lines; they should match", eventLines, dataLines)
+		t.Errorf(
+			"SSE output has %d event: lines but %d data: lines; they should match",
+			eventLines,
+			dataLines,
+		)
 	}
 }
 
@@ -700,17 +822,23 @@ func buildAnthropicSSETwoToolsOnly(tool1Name, tool1ID, tool2Name, tool2ID string
 
 	// message_start
 	b.WriteString("event: message_start\n")
-	b.WriteString(`data: {"type":"message_start","message":{"id":"msg_03","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`)
+	b.WriteString(
+		`data: {"type":"message_start","message":{"id":"msg_03","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block 1: content_block_start (index 0)
 	b.WriteString("event: content_block_start\n")
-	b.WriteString(`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"` + tool1ID + `","name":"` + tool1Name + `"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"` + tool1ID + `","name":"` + tool1Name + `"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block 1: content_block_delta (index 0)
 	b.WriteString("event: content_block_delta\n")
-	b.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"NYC\"}"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"NYC\"}"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block 1: content_block_stop (index 0)
@@ -720,12 +848,16 @@ func buildAnthropicSSETwoToolsOnly(tool1Name, tool1ID, tool2Name, tool2ID string
 
 	// tool_use block 2: content_block_start (index 1)
 	b.WriteString("event: content_block_start\n")
-	b.WriteString(`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` + tool2ID + `","name":"` + tool2Name + `"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` + tool2ID + `","name":"` + tool2Name + `"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block 2: content_block_delta (index 1)
 	b.WriteString("event: content_block_delta\n")
-	b.WriteString(`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"confirm\": true}"}}`)
+	b.WriteString(
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"confirm\": true}"}}`,
+	)
 	b.WriteString("\n\n")
 
 	// tool_use block 2: content_block_stop (index 1)
@@ -735,7 +867,9 @@ func buildAnthropicSSETwoToolsOnly(tool1Name, tool1ID, tool2Name, tool2ID string
 
 	// message_delta with stop_reason
 	b.WriteString("event: message_delta\n")
-	b.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":30}}`)
+	b.WriteString(
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":30}}`,
+	)
 	b.WriteString("\n\n")
 
 	// message_stop
@@ -779,7 +913,18 @@ func TestSSEInterceptor_Anthropic_AllBlocked(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- Execute ---
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -834,16 +979,32 @@ func TestSSEInterceptor_Anthropic_AllBlocked(t *testing.T) {
 		t.Fatalf("expected 2 event callbacks, got %d", len(events))
 	}
 	if events[0].Action != "block" || events[0].ToolName != "get_weather" {
-		t.Errorf("expected first event: block/get_weather, got %s/%s", events[0].Action, events[0].ToolName)
+		t.Errorf(
+			"expected first event: block/get_weather, got %s/%s",
+			events[0].Action,
+			events[0].ToolName,
+		)
 	}
 	if events[0].ToolCallID != "toolu_01CCC" {
-		t.Errorf("expected first event tool call ID %q, got %q", "toolu_01CCC", events[0].ToolCallID)
+		t.Errorf(
+			"expected first event tool call ID %q, got %q",
+			"toolu_01CCC",
+			events[0].ToolCallID,
+		)
 	}
 	if events[1].Action != "block" || events[1].ToolName != "delete_all" {
-		t.Errorf("expected second event: block/delete_all, got %s/%s", events[1].Action, events[1].ToolName)
+		t.Errorf(
+			"expected second event: block/delete_all, got %s/%s",
+			events[1].Action,
+			events[1].ToolName,
+		)
 	}
 	if events[1].ToolCallID != "toolu_01DDD" {
-		t.Errorf("expected second event tool call ID %q, got %q", "toolu_01DDD", events[1].ToolCallID)
+		t.Errorf(
+			"expected second event tool call ID %q, got %q",
+			"toolu_01DDD",
+			events[1].ToolCallID,
+		)
 	}
 	// Both events should have non-empty reasons.
 	if events[0].Reason == "" {
@@ -876,10 +1037,12 @@ func TestSSEInterceptor_Anthropic_AllBlocked(t *testing.T) {
 		if err := json.Unmarshal([]byte(data), &block); err != nil {
 			continue
 		}
-		if block.Type == "content_block_start" && block.ContentBlock.Type == "text" && block.Index == 0 {
+		if block.Type == "content_block_start" && block.ContentBlock.Type == "text" &&
+			block.Index == 0 {
 			replacementIdx0Start = true
 		}
-		if block.Type == "content_block_start" && block.ContentBlock.Type == "text" && block.Index == 1 {
+		if block.Type == "content_block_start" && block.ContentBlock.Type == "text" &&
+			block.Index == 1 {
 			replacementIdx1Start = true
 		}
 	}
@@ -897,7 +1060,11 @@ func TestSSEInterceptor_Anthropic_AllBlocked(t *testing.T) {
 
 	// 8. Buffered output must match client output.
 	if string(buffered) != clientOutput {
-		t.Errorf("buffered output does not match client output.\nbuffered len=%d, client len=%d", len(buffered), len(clientOutput))
+		t.Errorf(
+			"buffered output does not match client output.\nbuffered len=%d, client len=%d",
+			len(buffered),
+			len(clientOutput),
+		)
 	}
 
 	// 9. No orphan event: lines.
@@ -912,7 +1079,11 @@ func TestSSEInterceptor_Anthropic_AllBlocked(t *testing.T) {
 		}
 	}
 	if eventLines != dataLines {
-		t.Errorf("SSE output has %d event: lines but %d data: lines; they should match", eventLines, dataLines)
+		t.Errorf(
+			"SSE output has %d event: lines but %d data: lines; they should match",
+			eventLines,
+			dataLines,
+		)
 	}
 }
 
@@ -923,15 +1094,21 @@ func buildOpenAISingleToolSSE(toolName, callID string) string {
 	var b strings.Builder
 
 	// First chunk: tool call with id + function.name
-	b.WriteString(`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` + callID + `","type":"function","function":{"name":"` + toolName + `","arguments":""}}]},"finish_reason":null}]}`)
+	b.WriteString(
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` + callID + `","type":"function","function":{"name":"` + toolName + `","arguments":""}}]},"finish_reason":null}]}`,
+	)
 	b.WriteString("\n\n")
 
 	// Argument streaming chunk
-	b.WriteString(`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": \"NYC\"}"}}]},"finish_reason":null}]}`)
+	b.WriteString(
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": \"NYC\"}"}}]},"finish_reason":null}]}`,
+	)
 	b.WriteString("\n\n")
 
 	// Finish chunk
-	b.WriteString(`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`)
+	b.WriteString(
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+	)
 	b.WriteString("\n\n")
 
 	// DONE
@@ -946,19 +1123,27 @@ func buildOpenAITwoToolSSE(tool1Name, call1ID, tool2Name, call2ID string) string
 	var b strings.Builder
 
 	// First chunk: both tool calls with id + function.name
-	b.WriteString(`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` + call1ID + `","type":"function","function":{"name":"` + tool1Name + `","arguments":""}},{"index":1,"id":"` + call2ID + `","type":"function","function":{"name":"` + tool2Name + `","arguments":""}}]},"finish_reason":null}]}`)
+	b.WriteString(
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` + call1ID + `","type":"function","function":{"name":"` + tool1Name + `","arguments":""}},{"index":1,"id":"` + call2ID + `","type":"function","function":{"name":"` + tool2Name + `","arguments":""}}]},"finish_reason":null}]}`,
+	)
 	b.WriteString("\n\n")
 
 	// Argument streaming chunk for tool 0
-	b.WriteString(`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": \"NYC\"}"}}]},"finish_reason":null}]}`)
+	b.WriteString(
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": \"NYC\"}"}}]},"finish_reason":null}]}`,
+	)
 	b.WriteString("\n\n")
 
 	// Argument streaming chunk for tool 1
-	b.WriteString(`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{}"}}]},"finish_reason":null}]}`)
+	b.WriteString(
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{}"}}]},"finish_reason":null}]}`,
+	)
 	b.WriteString("\n\n")
 
 	// Finish chunk
-	b.WriteString(`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`)
+	b.WriteString(
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+	)
 	b.WriteString("\n\n")
 
 	// DONE
@@ -992,7 +1177,18 @@ func TestSSEInterceptor_OpenAI_SingleBlocked(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- Execute ---
-	interceptor := NewSSEInterceptor(reg, policy, DialectOpenAI, "sess_1", "req_1", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectOpenAI,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -1005,7 +1201,11 @@ func TestSSEInterceptor_OpenAI_SingleBlocked(t *testing.T) {
 	// 1. tool_calls should be removed from the first chunk; content should have the blocked message.
 	expectedMsg := "[agentsh] Tool 'get_weather' blocked by policy"
 	if !strings.Contains(clientOutput, expectedMsg) {
-		t.Errorf("expected blocked message %q in client output, got:\n%s", expectedMsg, clientOutput)
+		t.Errorf(
+			"expected blocked message %q in client output, got:\n%s",
+			expectedMsg,
+			clientOutput,
+		)
 	}
 
 	// 2. The original tool_calls with get_weather function name should NOT appear in output.
@@ -1015,7 +1215,9 @@ func TestSSEInterceptor_OpenAI_SingleBlocked(t *testing.T) {
 
 	// 3. finish_reason should be rewritten to "stop" (not "tool_calls").
 	if strings.Contains(clientOutput, `"finish_reason":"tool_calls"`) {
-		t.Error("finish_reason should be rewritten from 'tool_calls' to 'stop' when all tools are blocked")
+		t.Error(
+			"finish_reason should be rewritten from 'tool_calls' to 'stop' when all tools are blocked",
+		)
 	}
 	if !strings.Contains(clientOutput, `"finish_reason":"stop"`) {
 		t.Errorf("expected finish_reason 'stop' in output, got:\n%s", clientOutput)
@@ -1046,7 +1248,11 @@ func TestSSEInterceptor_OpenAI_SingleBlocked(t *testing.T) {
 		for _, choice := range chunk.Choices {
 			for _, tc := range choice.Delta.ToolCalls {
 				if tc.Function.Arguments != "" {
-					t.Errorf("argument-streaming chunk for blocked tool should be suppressed, found index %d with args %q", tc.Index, tc.Function.Arguments)
+					t.Errorf(
+						"argument-streaming chunk for blocked tool should be suppressed, found index %d with args %q",
+						tc.Index,
+						tc.Function.Arguments,
+					)
 				}
 			}
 		}
@@ -1083,7 +1289,11 @@ func TestSSEInterceptor_OpenAI_SingleBlocked(t *testing.T) {
 
 	// 7. Buffered output must match client output.
 	if string(buffered) != clientOutput {
-		t.Errorf("buffered output does not match client output.\nbuffered len=%d, client len=%d", len(buffered), len(clientOutput))
+		t.Errorf(
+			"buffered output does not match client output.\nbuffered len=%d, client len=%d",
+			len(buffered),
+			len(clientOutput),
+		)
 	}
 }
 
@@ -1097,12 +1307,16 @@ func TestSSEInterceptor_MalformedJSON(t *testing.T) {
 
 	// message_start (valid)
 	b.WriteString("event: message_start\n")
-	b.WriteString(`data: {"type":"message_start","message":{"id":"msg_99","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":5,"output_tokens":0}}}`)
+	b.WriteString(
+		`data: {"type":"message_start","message":{"id":"msg_99","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":5,"output_tokens":0}}}`,
+	)
 	b.WriteString("\n\n")
 
 	// content_block_start for a text block (valid)
 	b.WriteString("event: content_block_start\n")
-	b.WriteString(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	b.WriteString(
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+	)
 	b.WriteString("\n\n")
 
 	// malformed JSON data line
@@ -1111,7 +1325,9 @@ func TestSSEInterceptor_MalformedJSON(t *testing.T) {
 
 	// valid text delta
 	b.WriteString("event: content_block_delta\n")
-	b.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello world."}}`)
+	b.WriteString(
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello world."}}`,
+	)
 	b.WriteString("\n\n")
 
 	// content_block_stop (valid)
@@ -1121,7 +1337,9 @@ func TestSSEInterceptor_MalformedJSON(t *testing.T) {
 
 	// message_delta (valid)
 	b.WriteString("event: message_delta\n")
-	b.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`)
+	b.WriteString(
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`,
+	)
 	b.WriteString("\n\n")
 
 	// message_stop (valid)
@@ -1146,7 +1364,18 @@ func TestSSEInterceptor_MalformedJSON(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- Execute (must not panic) ---
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_mj", "req_mj", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_mj",
+		"req_mj",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -1200,17 +1429,23 @@ func TestSSEInterceptor_TextOnlyStream(t *testing.T) {
 
 	// message_start
 	b.WriteString("event: message_start\n")
-	b.WriteString(`data: {"type":"message_start","message":{"id":"msg_text1","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":8,"output_tokens":0}}}`)
+	b.WriteString(
+		`data: {"type":"message_start","message":{"id":"msg_text1","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":8,"output_tokens":0}}}`,
+	)
 	b.WriteString("\n\n")
 
 	// text content_block_start
 	b.WriteString("event: content_block_start\n")
-	b.WriteString(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	b.WriteString(
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+	)
 	b.WriteString("\n\n")
 
 	// text content_block_delta
 	b.WriteString("event: content_block_delta\n")
-	b.WriteString(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Here is a purely textual response."}}`)
+	b.WriteString(
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Here is a purely textual response."}}`,
+	)
 	b.WriteString("\n\n")
 
 	// text content_block_stop
@@ -1220,7 +1455,9 @@ func TestSSEInterceptor_TextOnlyStream(t *testing.T) {
 
 	// message_delta with stop_reason=end_turn
 	b.WriteString("event: message_delta\n")
-	b.WriteString(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":10}}`)
+	b.WriteString(
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":10}}`,
+	)
 	b.WriteString("\n\n")
 
 	// message_stop
@@ -1245,7 +1482,18 @@ func TestSSEInterceptor_TextOnlyStream(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- Execute ---
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_to", "req_to", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_to",
+		"req_to",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -1313,12 +1561,20 @@ func TestSSEInterceptor_TextOnlyStream(t *testing.T) {
 		}
 	}
 	if eventLines != dataLines {
-		t.Errorf("SSE output has %d event: lines but %d data: lines; they should match", eventLines, dataLines)
+		t.Errorf(
+			"SSE output has %d event: lines but %d data: lines; they should match",
+			eventLines,
+			dataLines,
+		)
 	}
 
 	// 6. Buffered output must match client output.
 	if string(buffered) != clientOutput {
-		t.Errorf("buffered output does not match client output.\nbuffered len=%d, client len=%d", len(buffered), len(clientOutput))
+		t.Errorf(
+			"buffered output does not match client output.\nbuffered len=%d, client len=%d",
+			len(buffered),
+			len(clientOutput),
+		)
 	}
 }
 
@@ -1350,7 +1606,18 @@ func TestSSEInterceptor_OpenAI_PartialBlock(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// --- Execute ---
-	interceptor := NewSSEInterceptor(reg, policy, DialectOpenAI, "sess_1", "req_1", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectOpenAI,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -1372,7 +1639,10 @@ func TestSSEInterceptor_OpenAI_PartialBlock(t *testing.T) {
 
 	// 3. finish_reason should remain "tool_calls" (not all tools blocked).
 	if !strings.Contains(clientOutput, `"finish_reason":"tool_calls"`) {
-		t.Errorf("finish_reason should remain 'tool_calls' when some tools are allowed, got:\n%s", clientOutput)
+		t.Errorf(
+			"finish_reason should remain 'tool_calls' when some tools are allowed, got:\n%s",
+			clientOutput,
+		)
 	}
 
 	// 4. Argument chunk for index 0 (get_weather) should pass through.
@@ -1434,7 +1704,9 @@ func TestSSEInterceptor_OpenAI_PartialBlock(t *testing.T) {
 		for _, choice := range chunk.Choices {
 			for _, tc := range choice.Delta.ToolCalls {
 				if tc.Index == 1 && tc.Function.Arguments != "" {
-					t.Error("argument streaming chunk for blocked tool at index 1 should be suppressed")
+					t.Error(
+						"argument streaming chunk for blocked tool at index 1 should be suppressed",
+					)
 				}
 			}
 		}
@@ -1450,13 +1722,21 @@ func TestSSEInterceptor_OpenAI_PartialBlock(t *testing.T) {
 		t.Fatalf("expected 2 event callbacks, got %d", len(events))
 	}
 	if events[0].Action != "allow" || events[0].ToolName != "get_weather" {
-		t.Errorf("expected first event: allow/get_weather, got %s/%s", events[0].Action, events[0].ToolName)
+		t.Errorf(
+			"expected first event: allow/get_weather, got %s/%s",
+			events[0].Action,
+			events[0].ToolName,
+		)
 	}
 	if events[0].ToolCallID != "call_AAA" {
 		t.Errorf("expected first event tool call ID %q, got %q", "call_AAA", events[0].ToolCallID)
 	}
 	if events[1].Action != "block" || events[1].ToolName != "delete_all" {
-		t.Errorf("expected second event: block/delete_all, got %s/%s", events[1].Action, events[1].ToolName)
+		t.Errorf(
+			"expected second event: block/delete_all, got %s/%s",
+			events[1].Action,
+			events[1].ToolName,
+		)
 	}
 	if events[1].ToolCallID != "call_BBB" {
 		t.Errorf("expected second event tool call ID %q, got %q", "call_BBB", events[1].ToolCallID)
@@ -1467,7 +1747,11 @@ func TestSSEInterceptor_OpenAI_PartialBlock(t *testing.T) {
 
 	// 8. Buffered output must match client output.
 	if string(buffered) != clientOutput {
-		t.Errorf("buffered output does not match client output.\nbuffered len=%d, client len=%d", len(buffered), len(clientOutput))
+		t.Errorf(
+			"buffered output does not match client output.\nbuffered len=%d, client len=%d",
+			len(buffered),
+			len(clientOutput),
+		)
 	}
 }
 
@@ -1484,11 +1768,15 @@ func buildOpenAIMultiChoiceSSE(tool1Name, call1ID, tool2Name, call2ID string) st
 	b.WriteString("\n\n")
 
 	// Argument streaming: choice 0, tool 0
-	b.WriteString(`data: {"id":"chatcmpl-mc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":1}"}}]},"finish_reason":null}]}`)
+	b.WriteString(
+		`data: {"id":"chatcmpl-mc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":1}"}}]},"finish_reason":null}]}`,
+	)
 	b.WriteString("\n\n")
 
 	// Argument streaming: choice 1, tool 0
-	b.WriteString(`data: {"id":"chatcmpl-mc","object":"chat.completion.chunk","choices":[{"index":1,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":2}"}}]},"finish_reason":null}]}`)
+	b.WriteString(
+		`data: {"id":"chatcmpl-mc","object":"chat.completion.chunk","choices":[{"index":1,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":2}"}}]},"finish_reason":null}]}`,
+	)
 	b.WriteString("\n\n")
 
 	// Finish: both choices
@@ -1526,7 +1814,18 @@ func TestSSEInterceptor_OpenAI_MultiChoice(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	interceptor := NewSSEInterceptor(reg, policy, DialectOpenAI, "sess_mc", "req_mc", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectOpenAI,
+		"sess_mc",
+		"req_mc",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -1571,10 +1870,16 @@ func TestSSEInterceptor_OpenAI_MultiChoice(t *testing.T) {
 				continue
 			}
 			if c.Index == 0 && *c.FinishReason != "tool_calls" {
-				t.Errorf("choice 0 finish_reason should remain 'tool_calls', got %q", *c.FinishReason)
+				t.Errorf(
+					"choice 0 finish_reason should remain 'tool_calls', got %q",
+					*c.FinishReason,
+				)
 			}
 			if c.Index == 1 && *c.FinishReason != "stop" {
-				t.Errorf("choice 1 finish_reason should be rewritten to 'stop', got %q", *c.FinishReason)
+				t.Errorf(
+					"choice 1 finish_reason should be rewritten to 'stop', got %q",
+					*c.FinishReason,
+				)
 			}
 		}
 	}
@@ -1648,7 +1953,18 @@ func TestSSEInterceptor_OpenAI_MixedMCPAndNonMCP(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	interceptor := NewSSEInterceptor(reg, policy, DialectOpenAI, "sess_mn", "req_mn", onEvent, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectOpenAI,
+		"sess_mn",
+		"req_mn",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 	var clientBuf bytes.Buffer
@@ -1669,7 +1985,10 @@ func TestSSEInterceptor_OpenAI_MixedMCPAndNonMCP(t *testing.T) {
 	// 3. finish_reason must remain "tool_calls" — NOT rewritten to "stop"
 	// because str_replace_editor still needs a tool result.
 	if !strings.Contains(clientOutput, `"finish_reason":"tool_calls"`) {
-		t.Errorf("finish_reason should remain 'tool_calls' when non-MCP tools pass through, got:\n%s", clientOutput)
+		t.Errorf(
+			"finish_reason should remain 'tool_calls' when non-MCP tools pass through, got:\n%s",
+			clientOutput,
+		)
 	}
 	if strings.Contains(clientOutput, `"finish_reason":"stop"`) {
 		t.Error("finish_reason should NOT be rewritten to 'stop' when non-MCP tools remain")
@@ -1719,7 +2038,18 @@ func TestSSEInterceptor_ClientWriteError(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_we", "req_we", nil, logger, nil, nil, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_we",
+		"req_we",
+		nil,
+		logger,
+		nil,
+		nil,
+		nil,
+	)
 
 	reader := strings.NewReader(sseInput)
 
@@ -1733,7 +2063,10 @@ func TestSSEInterceptor_ClientWriteError(t *testing.T) {
 
 	// 2. Client received limited output (≤ n bytes + partial write).
 	if client.buf.Len() > 200 {
-		t.Errorf("expected client to receive limited output after error, got %d bytes", client.buf.Len())
+		t.Errorf(
+			"expected client to receive limited output after error, got %d bytes",
+			client.buf.Len(),
+		)
 	}
 
 	// 3. Buffered output should still contain content (for logging).
@@ -1766,7 +2099,18 @@ func TestSSEInterceptor_RateLimitBlocks(t *testing.T) {
 	}
 	logger := slog.Default()
 
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, rateLimiter, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		rateLimiter,
+		nil,
+	)
 
 	stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\",\"input\":{}}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
 
@@ -1808,7 +2152,18 @@ func TestSSEInterceptor_VersionPinBlock(t *testing.T) {
 	}
 	logger := slog.Default()
 
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, nil, vpCfg)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		vpCfg,
+	)
 
 	stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\",\"input\":{}}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
 
@@ -1847,7 +2202,18 @@ func TestSSEInterceptor_RateLimitBlocks_NilPolicy(t *testing.T) {
 	logger := slog.Default()
 
 	// policy is nil — simulating EnforcePolicy=false with rate limiting enabled.
-	interceptor := NewSSEInterceptor(reg, nil, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, rateLimiter, nil)
+	interceptor := NewSSEInterceptor(
+		reg,
+		nil,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		rateLimiter,
+		nil,
+	)
 
 	stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null}}\n\n" +
 		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\"}}\n\n" +
@@ -1895,7 +2261,18 @@ func TestSSEInterceptor_VersionPinAlert(t *testing.T) {
 	}
 	logger := slog.Default()
 
-	interceptor := NewSSEInterceptor(reg, policy, DialectAnthropic, "sess_1", "req_1", onEvent, logger, nil, nil, vpCfg)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectAnthropic,
+		"sess_1",
+		"req_1",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		vpCfg,
+	)
 
 	stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null}}\n\n" +
 		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\"}}\n\n" +
@@ -1952,7 +2329,18 @@ func TestSSEInterceptor_OpenAI_VersionPinAlert(t *testing.T) {
 	}
 	logger := slog.Default()
 
-	interceptor := NewSSEInterceptor(reg, policy, DialectOpenAI, "sess_oai_vpa", "req_oai_vpa", onEvent, logger, nil, nil, vpCfg)
+	interceptor := NewSSEInterceptor(
+		reg,
+		policy,
+		DialectOpenAI,
+		"sess_oai_vpa",
+		"req_oai_vpa",
+		onEvent,
+		logger,
+		nil,
+		nil,
+		vpCfg,
+	)
 
 	sseInput := buildOpenAISingleToolSSE("get_weather", "call_vpa_01")
 

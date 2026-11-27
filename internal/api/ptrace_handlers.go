@@ -51,7 +51,13 @@ func (r *ptraceHandlerRouter) StaticAllowSyscalls() []int {
 	return syscalls
 }
 
-func (r *ptraceHandlerRouter) emitDBBypassAttempt(ctx context.Context, engine *policy.Engine, sessionID, commandID string, pid int, ruleName, reason string) {
+func (r *ptraceHandlerRouter) emitDBBypassAttempt(
+	ctx context.Context,
+	engine *policy.Engine,
+	sessionID, commandID string,
+	pid int,
+	ruleName, reason string,
+) {
 	if r.dbBypass == nil {
 		return
 	}
@@ -66,7 +72,10 @@ func (r *ptraceHandlerRouter) emitDBBypassAttempt(ctx context.Context, engine *p
 	})
 }
 
-func (r *ptraceHandlerRouter) HandleExecve(ctx context.Context, ec ptrace.ExecContext) ptrace.ExecResult {
+func (r *ptraceHandlerRouter) HandleExecve(
+	ctx context.Context,
+	ec ptrace.ExecContext,
+) ptrace.ExecResult {
 	s, ok := r.sessions.Get(ec.SessionID)
 	if !ok {
 		// Two cases that look the same (no session for this tracee)
@@ -98,20 +107,42 @@ func (r *ptraceHandlerRouter) HandleExecve(ctx context.Context, ec ptrace.ExecCo
 		}
 		slog.Warn("ptrace: unknown session for execve, denying",
 			"session_id", ec.SessionID, "pid", ec.PID, "filename", ec.Filename)
-		return ptrace.ExecResult{Allow: false, Action: "deny", Errno: int32(syscall.EACCES), Rule: "unknown_session"}
+		return ptrace.ExecResult{
+			Allow:  false,
+			Action: "deny",
+			Errno:  int32(syscall.EACCES),
+			Rule:   "unknown_session",
+		}
 	}
 
 	pe := s.PolicyEngine()
 	if pe == nil {
-		slog.Warn("ptrace: no policy engine for session, denying execve", "session_id", ec.SessionID, "pid", ec.PID)
-		return ptrace.ExecResult{Allow: false, Action: "deny", Errno: int32(syscall.EACCES), Rule: "no_policy_engine"}
+		slog.Warn(
+			"ptrace: no policy engine for session, denying execve",
+			"session_id",
+			ec.SessionID,
+			"pid",
+			ec.PID,
+		)
+		return ptrace.ExecResult{
+			Allow:  false,
+			Action: "deny",
+			Errno:  int32(syscall.EACCES),
+			Rule:   "no_policy_engine",
+		}
 	}
 
 	depth := ec.Depth
 	if depth < 0 {
 		depth = 0
 	}
-	decision := pe.CheckExecveWithAliasesProvenance(ec.Filename, nil, ec.Argv, depth, s.CurrentCommandProvenance())
+	decision := pe.CheckExecveWithAliasesProvenance(
+		ec.Filename,
+		nil,
+		ec.Argv,
+		depth,
+		s.CurrentCommandProvenance(),
+	)
 
 	// Emit audit event
 	ev := types.Event{
@@ -170,7 +201,10 @@ func (r *ptraceHandlerRouter) HandleExecve(ctx context.Context, ec ptrace.ExecCo
 	}
 }
 
-func (r *ptraceHandlerRouter) HandleFile(ctx context.Context, fc ptrace.FileContext) ptrace.FileResult {
+func (r *ptraceHandlerRouter) HandleFile(
+	ctx context.Context,
+	fc ptrace.FileContext,
+) ptrace.FileResult {
 	s, ok := r.sessions.Get(fc.SessionID)
 	if !ok {
 		slog.Warn("ptrace: unknown session for file", "session_id", fc.SessionID, "pid", fc.PID)
@@ -179,7 +213,13 @@ func (r *ptraceHandlerRouter) HandleFile(ctx context.Context, fc ptrace.FileCont
 
 	pe := s.PolicyEngine()
 	if pe == nil {
-		slog.Warn("ptrace: no policy engine for session, denying file op", "session_id", fc.SessionID, "pid", fc.PID)
+		slog.Warn(
+			"ptrace: no policy engine for session, denying file op",
+			"session_id",
+			fc.SessionID,
+			"pid",
+			fc.PID,
+		)
 		return ptrace.FileResult{Allow: false, Action: "deny", Errno: int32(syscall.EACCES)}
 	}
 
@@ -207,7 +247,8 @@ func (r *ptraceHandlerRouter) HandleFile(ctx context.Context, fc ptrace.FileCont
 	// Only intercept destructive operations — soft_delete on non-destructive ops
 	// (e.g. open, stat) should fall through to normal allow handling.
 	// Both "delete" (unlinkat) and "rmdir" (unlinkat+AT_REMOVEDIR) are destructive.
-	if decision.PolicyDecision == types.DecisionSoftDelete && (fc.Operation == "delete" || fc.Operation == "rmdir") {
+	if decision.PolicyDecision == types.DecisionSoftDelete &&
+		(fc.Operation == "delete" || fc.Operation == "rmdir") {
 		trashDir := r.resolveTrashDir(s)
 		if trashDir != "" {
 			return ptrace.FileResult{
@@ -249,7 +290,10 @@ func (r *ptraceHandlerRouter) resolveTrashDir(s *session.Session) string {
 	return resolveTrashPath(r.trashPath, s.Workspace)
 }
 
-func (r *ptraceHandlerRouter) HandleNetwork(ctx context.Context, nc ptrace.NetworkContext) ptrace.NetworkResult {
+func (r *ptraceHandlerRouter) HandleNetwork(
+	ctx context.Context,
+	nc ptrace.NetworkContext,
+) ptrace.NetworkResult {
 	s, ok := r.sessions.Get(nc.SessionID)
 	if !ok {
 		slog.Warn("ptrace: unknown session for network", "session_id", nc.SessionID, "pid", nc.PID)
@@ -258,7 +302,13 @@ func (r *ptraceHandlerRouter) HandleNetwork(ctx context.Context, nc ptrace.Netwo
 
 	pe := s.PolicyEngine()
 	if pe == nil {
-		slog.Warn("ptrace: no policy engine for session, denying network op", "session_id", nc.SessionID, "pid", nc.PID)
+		slog.Warn(
+			"ptrace: no policy engine for session, denying network op",
+			"session_id",
+			nc.SessionID,
+			"pid",
+			nc.PID,
+		)
 		return ptrace.NetworkResult{Allow: false, Action: "deny", Errno: int32(syscall.EACCES)}
 	}
 
@@ -335,7 +385,10 @@ func (r *ptraceHandlerRouter) HandleNetwork(ctx context.Context, nc ptrace.Netwo
 	}
 }
 
-func (r *ptraceHandlerRouter) HandleSignal(ctx context.Context, sc ptrace.SignalContext) ptrace.SignalResult {
+func (r *ptraceHandlerRouter) HandleSignal(
+	ctx context.Context,
+	sc ptrace.SignalContext,
+) ptrace.SignalResult {
 	_, ok := r.sessions.Get(sc.SessionID)
 	if !ok {
 		slog.Warn("ptrace: unknown session for signal", "session_id", sc.SessionID, "pid", sc.PID)

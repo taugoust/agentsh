@@ -53,10 +53,14 @@ func TestLineageHandoffTwoPhaseRoundTrip(t *testing.T) {
 	if err := <-sendDone; err != nil {
 		t.Fatal(err)
 	}
-	if !handoff.HasMetadata || handoff.Metadata.WrapperPID != 41 || handoff.Metadata.PayloadPID != 42 || !handoff.Metadata.FileLookupBroker || !handoff.Metadata.CompositionSetup {
+	if !handoff.HasMetadata || handoff.Metadata.WrapperPID != 41 ||
+		handoff.Metadata.PayloadPID != 42 ||
+		!handoff.Metadata.FileLookupBroker ||
+		!handoff.Metadata.CompositionSetup {
 		t.Fatalf("metadata = %+v", handoff.Metadata)
 	}
-	if handoff.NotifyFD == nil || handoff.FileLookupBroker == nil || handoff.CompositionSetup == nil {
+	if handoff.NotifyFD == nil || handoff.FileLookupBroker == nil ||
+		handoff.CompositionSetup == nil {
 		t.Fatalf("incomplete handoff: %+v", handoff)
 	}
 }

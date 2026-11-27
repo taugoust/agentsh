@@ -57,35 +57,37 @@ func TestShutdown_NoLeakAfterDrainSentinel(t *testing.T) {
 	// EventBatch per data run and one TransportLoss per loss marker,
 	// matching the production encoder's behavior without requiring
 	// valid CompactEvent proto bytes in the test WAL.
-	defer transport.SetEncodeBatchMessageFnForTest(func(records []wal.Record) ([]*wtpv1.ClientMessage, error) {
-		var msgs []*wtpv1.ClientMessage
-		var dataRun bool
-		for _, r := range records {
-			switch r.Kind {
-			case wal.RecordLoss:
-				if dataRun {
+	defer transport.SetEncodeBatchMessageFnForTest(
+		func(records []wal.Record) ([]*wtpv1.ClientMessage, error) {
+			var msgs []*wtpv1.ClientMessage
+			var dataRun bool
+			for _, r := range records {
+				switch r.Kind {
+				case wal.RecordLoss:
+					if dataRun {
+						msgs = append(msgs, &wtpv1.ClientMessage{
+							Msg: &wtpv1.ClientMessage_EventBatch{EventBatch: &wtpv1.EventBatch{}},
+						})
+						dataRun = false
+					}
 					msgs = append(msgs, &wtpv1.ClientMessage{
-						Msg: &wtpv1.ClientMessage_EventBatch{EventBatch: &wtpv1.EventBatch{}},
+						Msg: &wtpv1.ClientMessage_TransportLoss{TransportLoss: &wtpv1.TransportLoss{
+							FromSequence: r.Loss.FromSequence,
+							ToSequence:   r.Loss.ToSequence,
+						}},
 					})
-					dataRun = false
+				case wal.RecordData:
+					dataRun = true
 				}
-				msgs = append(msgs, &wtpv1.ClientMessage{
-					Msg: &wtpv1.ClientMessage_TransportLoss{TransportLoss: &wtpv1.TransportLoss{
-						FromSequence: r.Loss.FromSequence,
-						ToSequence:   r.Loss.ToSequence,
-					}},
-				})
-			case wal.RecordData:
-				dataRun = true
 			}
-		}
-		if dataRun {
-			msgs = append(msgs, &wtpv1.ClientMessage{
-				Msg: &wtpv1.ClientMessage_EventBatch{EventBatch: &wtpv1.EventBatch{}},
-			})
-		}
-		return msgs, nil
-	})()
+			if dataRun {
+				msgs = append(msgs, &wtpv1.ClientMessage{
+					Msg: &wtpv1.ClientMessage_EventBatch{EventBatch: &wtpv1.EventBatch{}},
+				})
+			}
+			return msgs, nil
+		},
+	)()
 
 	b := transport.NewBatcher(transport.BatcherOptions{
 		MaxRecords: 100,
@@ -127,7 +129,10 @@ drainSends:
 		}
 	}
 	if sendCount != 3 {
-		t.Fatalf("got %d post-shutdown sends; want exactly 3 (data1 EventBatch + TransportLoss + data2 EventBatch)", sendCount)
+		t.Fatalf(
+			"got %d post-shutdown sends; want exactly 3 (data1 EventBatch + TransportLoss + data2 EventBatch)",
+			sendCount,
+		)
 	}
 
 	// CloseSend must still happen.
@@ -396,7 +401,9 @@ func TestShutdown_StopDrainsThenCloseSends(t *testing.T) {
 	select {
 	case <-conn.sendCh:
 	case <-time.After(2 * time.Second):
-		t.Fatal("no Live-drain EventBatch on sendCh within 2s of Stop; runShutdown did not flush the batcher")
+		t.Fatal(
+			"no Live-drain EventBatch on sendCh within 2s of Stop; runShutdown did not flush the batcher",
+		)
 	}
 
 	select {
@@ -597,8 +604,13 @@ func TestShutdown_StopBetweenReplayBatches(t *testing.T) {
 	select {
 	case <-stopReturned:
 	case <-time.After(2 * time.Second):
-		t.Fatalf("Stop did not return within 2s; sends=%d, sendsAtEnqueue=%d, limit=%d, blocked=%v — regression: runReplaying did not observe stopCh promptly",
-			sendCalls.Load(), sendsAtEnqueue, sendsAtEnqueue+maxSendsAfterStop, blockedOnce.Load())
+		t.Fatalf(
+			"Stop did not return within 2s; sends=%d, sendsAtEnqueue=%d, limit=%d, blocked=%v — regression: runReplaying did not observe stopCh promptly",
+			sendCalls.Load(),
+			sendsAtEnqueue,
+			sendsAtEnqueue+maxSendsAfterStop,
+			blockedOnce.Load(),
+		)
 	}
 	<-drainDone
 
@@ -618,8 +630,13 @@ func TestShutdown_StopBetweenReplayBatches(t *testing.T) {
 	// maxSendsAfterStop.
 	totalSends := sendCalls.Load()
 	if delta := totalSends - sendsAtEnqueue; delta > maxSendsAfterStop {
-		t.Fatalf("Stop not observed promptly between replay batches: totalSends=%d, sendsAtEnqueue=%d, delta=%d, limit=%d",
-			totalSends, sendsAtEnqueue, delta, maxSendsAfterStop)
+		t.Fatalf(
+			"Stop not observed promptly between replay batches: totalSends=%d, sendsAtEnqueue=%d, delta=%d, limit=%d",
+			totalSends,
+			sendsAtEnqueue,
+			delta,
+			maxSendsAfterStop,
+		)
 	}
 }
 

@@ -289,7 +289,13 @@ func (t *Tracer) handleFile(ctx context.Context, tid int, sc *SyscallContext) {
 	case "redirect":
 		regs, err := sc.Regs()
 		if err != nil {
-			slog.Warn("handleFile: cannot load regs for redirect, denying", "tid", tid, "error", err)
+			slog.Warn(
+				"handleFile: cannot load regs for redirect, denying",
+				"tid",
+				tid,
+				"error",
+				err,
+			)
 			t.denySyscall(tid, int(unix.EACCES))
 			return
 		}
@@ -297,7 +303,13 @@ func (t *Tracer) handleFile(ctx context.Context, tid int, sc *SyscallContext) {
 	case "soft-delete":
 		regs, err := sc.Regs()
 		if err != nil {
-			slog.Warn("handleFile: cannot load regs for soft-delete, denying", "tid", tid, "error", err)
+			slog.Warn(
+				"handleFile: cannot load regs for soft-delete, denying",
+				"tid",
+				tid,
+				"error",
+				err,
+			)
 			t.denySyscall(tid, int(unix.EACCES))
 			return
 		}
@@ -309,7 +321,11 @@ func (t *Tracer) handleFile(ctx context.Context, tid int, sc *SyscallContext) {
 }
 
 // extractFileArgs reads file syscall arguments from registers and tracee memory.
-func (t *Tracer) extractFileArgs(tid int, nr int, args [6]uint64) (path, path2 string, flags int, err error) {
+func (t *Tracer) extractFileArgs(
+	tid int,
+	nr int,
+	args [6]uint64,
+) (path, path2 string, flags int, err error) {
 	switch nr {
 	case unix.SYS_OPENAT:
 		dirfd := int(int32(args[0]))
@@ -505,7 +521,11 @@ func (t *Tracer) extractFileArgs(tid int, nr int, args [6]uint64) (path, path2 s
 
 // extractLegacyFileArgs handles legacy (non-at) file syscalls.
 // On arm64 this is never called because isLegacyFileSyscall returns false.
-func (t *Tracer) extractLegacyFileArgs(tid int, nr int, args [6]uint64) (path, path2 string, flags int, err error) {
+func (t *Tracer) extractLegacyFileArgs(
+	tid int,
+	nr int,
+	args [6]uint64,
+) (path, path2 string, flags int, err error) {
 	// For symlink(target, linkpath), arg0 is the raw target string which
 	// should NOT be resolved — it can be an arbitrary string including
 	// nonexistent or unresolvable paths. Handle it before resolving arg0.

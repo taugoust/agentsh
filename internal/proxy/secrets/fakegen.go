@@ -17,7 +17,9 @@ var (
 	// ErrFakeLengthMismatch is returned by GenerateFake when the
 	// total length produced by the format (len(prefix) + randLen)
 	// does not equal the real secret's length.
-	ErrFakeLengthMismatch = errors.New("secrets: fake format length does not match real secret length")
+	ErrFakeLengthMismatch = errors.New(
+		"secrets: fake format length does not match real secret length",
+	)
 
 	// ErrFakeEntropyTooLow is returned by ParseFormat when the
 	// random portion of the format has fewer than 24 characters,

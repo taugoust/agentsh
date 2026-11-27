@@ -13,7 +13,9 @@ func fileApprovalScope(operation, filePath, rule string) (approvals.Scope, bool)
 	return approvals.NewFileScopeWithRule(operation, cleanPath, rule)
 }
 
-func fileApprovalScopeOptions(operation, filePath, rule string) (approvals.Scope, bool, []map[string]any) {
+func fileApprovalScopeOptions(
+	operation, filePath, rule string,
+) (approvals.Scope, bool, []map[string]any) {
 	cleanPath := filepath.ToSlash(filepath.Clean(filePath))
 	exact, ok := fileApprovalScope(operation, cleanPath, rule)
 	if !ok {

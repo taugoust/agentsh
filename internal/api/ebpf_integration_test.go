@@ -49,7 +49,19 @@ func TestEBPFConnectEventFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 
 	// Create command cgroup and attach ebpf via hook.
 	hook := app.cgroupHook(sess.ID, "cmd-test", policy.Limits{})
@@ -72,11 +84,16 @@ func TestEBPFConnectEventFlow(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	evs, err := store.QueryEvents(ctx, types.EventQuery{SessionID: sess.ID, Types: []string{"net_connect"}})
+	evs, err := store.QueryEvents(
+		ctx,
+		types.EventQuery{SessionID: sess.ID, Types: []string{"net_connect"}},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(evs) == 0 {
-		t.Skip("no net_connect events observed; likely missing ebpf object or blocked by kernel lockdown")
+		t.Skip(
+			"no net_connect events observed; likely missing ebpf object or blocked by kernel lockdown",
+		)
 	}
 }

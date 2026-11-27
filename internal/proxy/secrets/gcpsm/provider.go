@@ -77,7 +77,10 @@ func New(ctx context.Context, cfg Config, _ secrets.RefResolver) (*Provider, err
 		return nil, fmt.Errorf("gcp-sm: creating client: %w", err)
 	}
 
-	probeName := fmt.Sprintf("projects/%s/secrets/agentsh-probe-nonexistent/versions/latest", cfg.ProjectID)
+	probeName := fmt.Sprintf(
+		"projects/%s/secrets/agentsh-probe-nonexistent/versions/latest",
+		cfg.ProjectID,
+	)
 	_, probeErr := client.AccessSecretVersion(ctx, &secretmanagerpb.AccessSecretVersionRequest{
 		Name: probeName,
 	})
@@ -89,7 +92,11 @@ func New(ctx context.Context, cfg Config, _ secrets.RefResolver) (*Provider, err
 		code := status.Code(probeErr)
 		if code == codes.Unauthenticated {
 			_ = client.Close()
-			return nil, fmt.Errorf("%w: gcp-sm connectivity probe: %s", secrets.ErrUnauthorized, probeErr.Error())
+			return nil, fmt.Errorf(
+				"%w: gcp-sm connectivity probe: %s",
+				secrets.ErrUnauthorized,
+				probeErr.Error(),
+			)
 		}
 		// PermissionDenied is non-fatal: in a least-privilege setup the
 		// caller may lack access to the probe secret but still reach their
@@ -129,10 +136,17 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	}
 
 	if ref.Scheme != "gcp-sm" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: wrong scheme %q", secrets.ErrInvalidURI, ref.Scheme)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: wrong scheme %q",
+			secrets.ErrInvalidURI,
+			ref.Scheme,
+		)
 	}
 	if ref.Host == "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: gcp-sm URI missing secret name (host)", secrets.ErrInvalidURI)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: gcp-sm URI missing secret name (host)",
+			secrets.ErrInvalidURI,
+		)
 	}
 
 	if hook := testFetchPreLockHook; hook != nil {
@@ -170,7 +184,10 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	}
 
 	if resp.Payload == nil || len(resp.Payload.Data) == 0 {
-		return secrets.SecretValue{}, fmt.Errorf("%w: secret has no payload data", secrets.ErrNotFound)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: secret has no payload data",
+			secrets.ErrNotFound,
+		)
 	}
 	raw := resp.Payload.Data
 

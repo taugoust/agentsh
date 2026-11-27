@@ -19,7 +19,10 @@ func TestLoadConfig(t *testing.T) {
 	})
 
 	t.Run("parses config from env", func(t *testing.T) {
-		t.Setenv("AGENTSH_SECCOMP_CONFIG", `{"unix_socket_enabled":false,"blocked_syscalls":["ptrace","mount"]}`)
+		t.Setenv(
+			"AGENTSH_SECCOMP_CONFIG",
+			`{"unix_socket_enabled":false,"blocked_syscalls":["ptrace","mount"]}`,
+		)
 		cfg, err := loadConfig()
 		require.NoError(t, err)
 		require.False(t, cfg.UnixSocketEnabled)
@@ -52,7 +55,11 @@ func TestParseConfigJSON(t *testing.T) {
 		{
 			name:  "valid config",
 			input: `{"unix_socket_enabled":true,"blocked_syscalls":["ptrace","mount"],"write_only_opens":true}`,
-			want:  &WrapperConfig{UnixSocketEnabled: true, BlockedSyscalls: []string{"ptrace", "mount"}, WriteOnlyOpens: true},
+			want: &WrapperConfig{
+				UnixSocketEnabled: true,
+				BlockedSyscalls:   []string{"ptrace", "mount"},
+				WriteOnlyOpens:    true,
+			},
 		},
 		{
 			name:  "empty config",
@@ -96,8 +103,16 @@ func TestWrapperConfig_WaitKillable_JSON(t *testing.T) {
 		want *bool
 	}{
 		{name: "absent", json: `{"unix_socket_enabled":true}`, want: nil},
-		{name: "true", json: `{"unix_socket_enabled":true,"wait_killable":true}`, want: boolPtr(true)},
-		{name: "false", json: `{"unix_socket_enabled":true,"wait_killable":false}`, want: boolPtr(false)},
+		{
+			name: "true",
+			json: `{"unix_socket_enabled":true,"wait_killable":true}`,
+			want: boolPtr(true),
+		},
+		{
+			name: "false",
+			json: `{"unix_socket_enabled":true,"wait_killable":false}`,
+			want: boolPtr(false),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,9 +142,21 @@ func TestWrapperConfig_WaitKillableSource_JSON(t *testing.T) {
 		want string
 	}{
 		{name: "absent", json: `{"unix_socket_enabled":true}`, want: ""},
-		{name: "behavioral_probe", json: `{"unix_socket_enabled":true,"wait_killable_source":"behavioral_probe"}`, want: "behavioral_probe"},
-		{name: "config", json: `{"unix_socket_enabled":true,"wait_killable_source":"config"}`, want: "config"},
-		{name: "kernel_unsupported", json: `{"unix_socket_enabled":true,"wait_killable_source":"kernel_unsupported"}`, want: "kernel_unsupported"},
+		{
+			name: "behavioral_probe",
+			json: `{"unix_socket_enabled":true,"wait_killable_source":"behavioral_probe"}`,
+			want: "behavioral_probe",
+		},
+		{
+			name: "config",
+			json: `{"unix_socket_enabled":true,"wait_killable_source":"config"}`,
+			want: "config",
+		},
+		{
+			name: "kernel_unsupported",
+			json: `{"unix_socket_enabled":true,"wait_killable_source":"kernel_unsupported"}`,
+			want: "kernel_unsupported",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -86,7 +86,12 @@ func probeEBPF() ProbeResult {
 		license:            uint64(uintptr(unsafe.Pointer(&license[0]))),
 		expectedAttachType: probeEBPFCanaryExpectedAttachType,
 	}
-	fd, _, errno := unix.Syscall(unix.SYS_BPF, 5, uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr))
+	fd, _, errno := unix.Syscall(
+		unix.SYS_BPF,
+		5,
+		uintptr(unsafe.Pointer(&attr)),
+		unsafe.Sizeof(attr),
+	)
 	if errno == 0 {
 		unix.Close(int(fd))
 		return ProbeResult{Available: true, Detail: "cgroup_sock_addr"}

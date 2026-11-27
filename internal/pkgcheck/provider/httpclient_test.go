@@ -82,8 +82,19 @@ func TestRetryClient_GivesUpAfterMaxAttempts(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newRetryClient(retryConfig{MaxAttempts: 3, BaseBackoff: 1 * time.Millisecond, MaxBackoff: 5 * time.Millisecond})
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, strings.NewReader(""))
+	c := newRetryClient(
+		retryConfig{
+			MaxAttempts: 3,
+			BaseBackoff: 1 * time.Millisecond,
+			MaxBackoff:  5 * time.Millisecond,
+		},
+	)
+	req, _ := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		srv.URL,
+		strings.NewReader(""),
+	)
 	resp, err := c.Do(req)
 	if err == nil {
 		resp.Body.Close()
@@ -137,7 +148,13 @@ func TestRetryClient_GivesUp_WrapsErrMaxAttempts(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	c := newRetryClient(retryConfig{MaxAttempts: 2, BaseBackoff: 1 * time.Millisecond, MaxBackoff: 5 * time.Millisecond})
+	c := newRetryClient(
+		retryConfig{
+			MaxAttempts: 2,
+			BaseBackoff: 1 * time.Millisecond,
+			MaxBackoff:  5 * time.Millisecond,
+		},
+	)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
 	resp, err := c.Do(req)
 	if resp != nil {
@@ -363,10 +380,26 @@ func TestCallWithBreaker_ProviderOwnTimeoutRecordsFailure(t *testing.T) {
 		// Simulate a derived timeout context that fired.
 		return context.DeadlineExceeded
 	}
-	if err := callWithBreaker(cb, parentCtx, nil, deadline); !errors.Is(err, context.DeadlineExceeded) {
+	if err := callWithBreaker(
+		cb,
+		parentCtx,
+		nil,
+		deadline,
+	); !errors.Is(
+		err,
+		context.DeadlineExceeded,
+	) {
 		t.Fatalf("want DeadlineExceeded, got %v", err)
 	}
-	if err := callWithBreaker(cb, parentCtx, nil, deadline); !errors.Is(err, context.DeadlineExceeded) {
+	if err := callWithBreaker(
+		cb,
+		parentCtx,
+		nil,
+		deadline,
+	); !errors.Is(
+		err,
+		context.DeadlineExceeded,
+	) {
 		t.Fatalf("second call: want DeadlineExceeded, got %v", err)
 	}
 	// Two provider-own timeouts at threshold=2 must open the breaker.

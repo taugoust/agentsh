@@ -54,10 +54,18 @@ func scrapeMetricsFor(t *testing.T, c *metrics.Collector) string {
 // component_metrics_helpers_test.go file rather than cloning a third
 // time.
 func reasonCounterRE(reason string) *regexp.Regexp {
-	return regexp.MustCompile(`wtp_session_init_failures_total\{reason="` + regexp.QuoteMeta(reason) + `"\} (\d+)`)
+	return regexp.MustCompile(
+		`wtp_session_init_failures_total\{reason="` + regexp.QuoteMeta(reason) + `"\} (\d+)`,
+	)
 }
 
-func waitForReasonCounter(t *testing.T, c *metrics.Collector, reason string, want int, deadline time.Duration) (int, string) {
+func waitForReasonCounter(
+	t *testing.T,
+	c *metrics.Collector,
+	reason string,
+	want int,
+	deadline time.Duration,
+) (int, string) {
 	t.Helper()
 	re := reasonCounterRE(reason)
 	end := time.Now().Add(deadline)
@@ -76,7 +84,11 @@ func waitForReasonCounter(t *testing.T, c *metrics.Collector, reason string, wan
 	return -1, body
 }
 
-func baseSessionInitOpts(t *testing.T, dialer transport.Dialer, c *metrics.Collector) watchtower.Options {
+func baseSessionInitOpts(
+	t *testing.T,
+	dialer transport.Dialer,
+	c *metrics.Collector,
+) watchtower.Options {
 	t.Helper()
 	return watchtower.Options{
 		WALDir:          t.TempDir(),

@@ -31,7 +31,11 @@ type signalEmitterAdapter struct {
 	commandID func() string
 }
 
-func (a *signalEmitterAdapter) Emit(ctx context.Context, eventType events.EventType, data map[string]interface{}) {
+func (a *signalEmitterAdapter) Emit(
+	ctx context.Context,
+	eventType events.EventType,
+	data map[string]interface{},
+) {
 	ev := types.Event{
 		ID:        fmt.Sprintf("sig-%d", time.Now().UnixNano()),
 		Timestamp: time.Now().UTC(),
@@ -71,7 +75,12 @@ func startSignalHandler(ctx context.Context, parentSock *os.File, sessID string,
 		// apply. SO_RCVTIMEO is a kernel-level timeout that works with raw
 		// blocking recvmsg.
 		tv := unix.NsecToTimeval(recvFDTimeout.Nanoseconds())
-		if err := unix.SetsockoptTimeval(int(parentSock.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &tv); err != nil {
+		if err := unix.SetsockoptTimeval(
+			int(parentSock.Fd()),
+			unix.SOL_SOCKET,
+			unix.SO_RCVTIMEO,
+			&tv,
+		); err != nil {
 			slog.Debug("failed to set SO_RCVTIMEO on signal socket", "error", err)
 			// Don't return - RecvFD will still work, just without a timeout
 		}

@@ -107,7 +107,15 @@ func LockPolicy(coll *ebpf.Collection, cgroupID uint64) error {
 // program's perspective. It first locks the cgroup into deny-all state, replaces
 // every exact/LPM entry, and only then publishes default-allow or default-deny.
 // Any error leaves the cgroup locked and therefore fail closed.
-func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey, allowCIDRs []AllowCIDR, deny []AllowKey, denyCIDRs []AllowCIDR, defaultDeny bool) error {
+func PopulateAllowlist(
+	coll *ebpf.Collection,
+	cgroupID uint64,
+	allow []AllowKey,
+	allowCIDRs []AllowCIDR,
+	deny []AllowKey,
+	denyCIDRs []AllowCIDR,
+	defaultDeny bool,
+) error {
 	if coll == nil {
 		return fmt.Errorf("nil collection")
 	}
@@ -386,7 +394,12 @@ func PopulateAllowlist(coll *ebpf.Collection, cgroupID uint64, allow []AllowKey,
 	return nil
 }
 
-func validatePolicyEntries(cgroupID uint64, exact []AllowKey, cidrs []AllowCIDR, kind string) error {
+func validatePolicyEntries(
+	cgroupID uint64,
+	exact []AllowKey,
+	cidrs []AllowCIDR,
+	kind string,
+) error {
 	for i, entry := range exact {
 		if entry.CgroupID != 0 && entry.CgroupID != cgroupID {
 			return fmt.Errorf("%s exact entry %d carries a different cgroup id", kind, i)
@@ -395,7 +408,12 @@ func validatePolicyEntries(cgroupID uint64, exact []AllowKey, cidrs []AllowCIDR,
 			return fmt.Errorf("%s exact entry %d has unsupported family %d", kind, i, entry.Family)
 		}
 		if !validPolicyProtocol(entry.Protocol) {
-			return fmt.Errorf("%s exact entry %d has unsupported protocol %d", kind, i, entry.Protocol)
+			return fmt.Errorf(
+				"%s exact entry %d has unsupported protocol %d",
+				kind,
+				i,
+				entry.Protocol,
+			)
 		}
 		if entry.Family == 2 && !zeroBytes(entry.Addr[4:]) {
 			return fmt.Errorf("%s exact IPv4 entry %d has non-zero trailing address bytes", kind, i)
@@ -406,7 +424,12 @@ func validatePolicyEntries(cgroupID uint64, exact []AllowKey, cidrs []AllowCIDR,
 			return fmt.Errorf("%s CIDR entry %d carries a different cgroup id", kind, i)
 		}
 		if !validPolicyProtocol(entry.Protocol) {
-			return fmt.Errorf("%s CIDR entry %d has unsupported protocol %d", kind, i, entry.Protocol)
+			return fmt.Errorf(
+				"%s CIDR entry %d has unsupported protocol %d",
+				kind,
+				i,
+				entry.Protocol,
+			)
 		}
 		switch entry.Family {
 		case 2:
@@ -414,7 +437,11 @@ func validatePolicyEntries(cgroupID uint64, exact []AllowKey, cidrs []AllowCIDR,
 				return fmt.Errorf("%s IPv4 CIDR entry %d has prefix %d", kind, i, entry.PrefixLen)
 			}
 			if !zeroBytes(entry.Addr[4:]) {
-				return fmt.Errorf("%s IPv4 CIDR entry %d has non-zero trailing address bytes", kind, i)
+				return fmt.Errorf(
+					"%s IPv4 CIDR entry %d has non-zero trailing address bytes",
+					kind,
+					i,
+				)
 			}
 			var raw [4]byte
 			copy(raw[:], entry.Addr[:4])
@@ -685,5 +712,6 @@ func isNoEntry(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "no such file or directory") || strings.Contains(err.Error(), "not found")
+	return strings.Contains(err.Error(), "no such file or directory") ||
+		strings.Contains(err.Error(), "not found")
 }

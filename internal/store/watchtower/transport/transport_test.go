@@ -378,7 +378,11 @@ func TestConnectingState_FailureBranches(t *testing.T) {
 				t.Fatalf("Close calls: got %d, want %d", got, want)
 			}
 			if got, want := s.conn.closeSendCalls, 0; got != want {
-				t.Fatalf("CloseSend calls: got %d, want %d (CloseSend is half-close, not teardown)", got, want)
+				t.Fatalf(
+					"CloseSend calls: got %d, want %d (CloseSend is half-close, not teardown)",
+					got,
+					want,
+				)
 			}
 		})
 	}

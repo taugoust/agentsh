@@ -83,7 +83,13 @@ func TestFamilyChecker_MultipleEntries(t *testing.T) {
 				t.Errorf("Check(%d, %d): name=%q want=%q", tc.syscall, tc.family, bf.Name, tc.name)
 			}
 			if bf.Action != tc.action {
-				t.Errorf("Check(%d, %d): action=%v want=%v", tc.syscall, tc.family, bf.Action, tc.action)
+				t.Errorf(
+					"Check(%d, %d): action=%v want=%v",
+					tc.syscall,
+					tc.family,
+					bf.Action,
+					tc.action,
+				)
 			}
 		}
 	}
@@ -286,7 +292,10 @@ func TestApply_Log_DenySyscallFailure(t *testing.T) {
 	}
 	outcome, _ := evts[0].Fields["outcome"].(string)
 	if outcome == "denied" {
-		t.Errorf("outcome=%q; must NOT be \"denied\" when denySyscall failed — want \"deny_failed\"", outcome)
+		t.Errorf(
+			"outcome=%q; must NOT be \"denied\" when denySyscall failed — want \"deny_failed\"",
+			outcome,
+		)
 	}
 	if outcome != "deny_failed" {
 		t.Errorf("outcome=%q; want \"deny_failed\"", outcome)
@@ -317,7 +326,10 @@ func TestApply_Log_DenySyscallESRCH(t *testing.T) {
 	}
 	outcome, _ := evts[0].Fields["outcome"].(string)
 	if outcome == "denied" {
-		t.Errorf("outcome=%q; must NOT be \"denied\" when tracee vanished — want \"vanished\"", outcome)
+		t.Errorf(
+			"outcome=%q; must NOT be \"denied\" when tracee vanished — want \"vanished\"",
+			outcome,
+		)
 	}
 	if outcome != "vanished" {
 		t.Errorf("outcome=%q; want \"vanished\"", outcome)

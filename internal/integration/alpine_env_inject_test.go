@@ -47,7 +47,16 @@ func TestAlpineEnvInject_BashBuiltinDisabled(t *testing.T) {
 	workspace := filepath.Join(temp, "workspace")
 	mustMkdir(t, workspace)
 
-	endpoint, cleanup := startAlpineServerContainer(t, ctx, agentshBin, unixwrapBin, startupScript, configPath, policiesDir, workspace)
+	endpoint, cleanup := startAlpineServerContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		startupScript,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -74,7 +83,11 @@ func TestAlpineEnvInject_BashBuiltinDisabled(t *testing.T) {
 			t.Fatalf("Exec bash --version: %v", err)
 		}
 		if result.Result.ExitCode != 0 {
-			t.Errorf("bash --version failed: exit=%d stderr=%q", result.Result.ExitCode, result.Result.Stderr)
+			t.Errorf(
+				"bash --version failed: exit=%d stderr=%q",
+				result.Result.ExitCode,
+				result.Result.Stderr,
+			)
 		}
 		t.Logf("Bash available: %s", strings.Split(result.Result.Stdout, "\n")[0])
 	})
@@ -280,7 +293,11 @@ file /output/agentsh-unixwrap
 	return agentshOut, unixwrapOut, startupOut
 }
 
-func startAlpineServerContainer(t *testing.T, ctx context.Context, agentshBin, unixwrapBin, startupScript, configPath, policiesDir, workspace string) (string, func()) {
+func startAlpineServerContainer(
+	t *testing.T,
+	ctx context.Context,
+	agentshBin, unixwrapBin, startupScript, configPath, policiesDir, workspace string,
+) (string, func()) {
 	t.Helper()
 
 	binds := []testcontainers.ContainerMount{
@@ -288,7 +305,10 @@ func startAlpineServerContainer(t *testing.T, ctx context.Context, agentshBin, u
 		testcontainers.BindMount(unixwrapBin, "/usr/local/bin/agentsh-unixwrap"),
 		testcontainers.BindMount(startupScript, "/usr/lib/agentsh/bash_startup.sh"),
 		testcontainers.BindMount(configPath, "/config.yaml"),
-		testcontainers.BindMount(filepath.Join(filepath.Dir(configPath), "keys.yaml"), "/keys.yaml"),
+		testcontainers.BindMount(
+			filepath.Join(filepath.Dir(configPath), "keys.yaml"),
+			"/keys.yaml",
+		),
 		testcontainers.BindMount(policiesDir, "/policies"),
 		testcontainers.BindMount(workspace, "/workspace"),
 	}
@@ -297,7 +317,11 @@ func startAlpineServerContainer(t *testing.T, ctx context.Context, agentshBin, u
 		Image:        "alpine:3.21",
 		ExposedPorts: []string{"18080/tcp"},
 		// Install bash for testing (Alpine uses ash by default)
-		Cmd:        []string{"/bin/sh", "-c", "apk add --no-cache bash && /usr/local/bin/agentsh server --config /config.yaml"},
+		Cmd: []string{
+			"/bin/sh",
+			"-c",
+			"apk add --no-cache bash && /usr/local/bin/agentsh server --config /config.yaml",
+		},
 		Mounts:     binds,
 		Privileged: true,
 		CapAdd:     []string{"SYS_ADMIN"},

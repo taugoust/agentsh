@@ -25,7 +25,11 @@ func TestNewMemoryProvider_CopiesSeed(t *testing.T) {
 		t.Fatalf("Fetch: %v", err)
 	}
 	if string(sv.Value) != "original" {
-		t.Errorf("Fetch returned %q, want %q (seed was copied at construction)", sv.Value, "original")
+		t.Errorf(
+			"Fetch returned %q, want %q (seed was copied at construction)",
+			sv.Value,
+			"original",
+		)
 	}
 }
 
@@ -73,7 +77,11 @@ func TestFetch_ReturnsCopy(t *testing.T) {
 		t.Fatalf("second Fetch: %v", err)
 	}
 	if string(sv2.Value) != "immutable" {
-		t.Errorf("second Fetch = %q, want %q (first Fetch's mutation should not persist)", sv2.Value, "immutable")
+		t.Errorf(
+			"second Fetch = %q, want %q (first Fetch's mutation should not persist)",
+			sv2.Value,
+			"immutable",
+		)
 	}
 }
 

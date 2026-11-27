@@ -7,7 +7,13 @@ import (
 
 // signalsToNotify returns the signals to listen for in PTY mode.
 func signalsToNotify() []os.Signal {
-	return []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGWINCH}
+	return []os.Signal{
+		os.Interrupt,
+		syscall.SIGTERM,
+		syscall.SIGHUP,
+		syscall.SIGQUIT,
+		syscall.SIGWINCH,
+	}
 }
 
 // isWinchSignal returns true if the signal is SIGWINCH (window size change).

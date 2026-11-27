@@ -48,7 +48,11 @@ func TestFileApprovalScopeOptions_DoesNotIncludeGrandparentTree(t *testing.T) {
 		t.Fatal("NewFileTreeScope returned !ok")
 	}
 	if scopeOptionKeys(options)[grandparentTree.Key] {
-		t.Fatalf("grandparent tree option %q should not be offered by default: %#v", grandparentTree.Key, options)
+		t.Fatalf(
+			"grandparent tree option %q should not be offered by default: %#v",
+			grandparentTree.Key,
+			options,
+		)
 	}
 }
 

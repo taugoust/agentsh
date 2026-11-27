@@ -50,7 +50,10 @@ type approvalUIResponse struct {
 	Answer    any    `json:"answer,omitempty"`
 }
 
-func (a *App) startApprovalUIEndpoint(sessionID string, callerUID int) (*approvalUIEndpoint, error) {
+func (a *App) startApprovalUIEndpoint(
+	sessionID string,
+	callerUID int,
+) (*approvalUIEndpoint, error) {
 	if a.approvals == nil {
 		return nil, nil
 	}
@@ -174,7 +177,15 @@ func (ui *approvalUIEndpoint) serve() {
 		authorizedPID := ui.authorizedPID
 		ui.mu.RUnlock()
 		if authorizedPID <= 0 || creds.PID != authorizedPID {
-			slog.Warn("approval-ui: rejecting connection from unauthorized peer", "session_id", ui.sessionID, "peer_pid", creds.PID, "authorized_pid", authorizedPID)
+			slog.Warn(
+				"approval-ui: rejecting connection from unauthorized peer",
+				"session_id",
+				ui.sessionID,
+				"peer_pid",
+				creds.PID,
+				"authorized_pid",
+				authorizedPID,
+			)
 			_ = conn.Close()
 			continue
 		}
@@ -220,7 +231,10 @@ func (ui *approvalUIEndpoint) handleRequest(req approvalUIRequest) approvalUIRes
 	}
 	switch strings.ToLower(strings.TrimSpace(req.Op)) {
 	case "list":
-		return approvalUIResponse{OK: true, Approvals: ui.app.approvals.ListPendingForSession(ui.sessionID)}
+		return approvalUIResponse{
+			OK:        true,
+			Approvals: ui.app.approvals.ListPendingForSession(ui.sessionID),
+		}
 	case "get_question_answer":
 		qid := strings.TrimSpace(req.QuestionnaireID)
 		if qid == "" {
@@ -256,7 +270,10 @@ func (ui *approvalUIEndpoint) handleRequest(req approvalUIRequest) approvalUIRes
 		decision := strings.ToLower(strings.TrimSpace(req.Decision))
 		approved := decision == "approve" || decision == "allow"
 		if !approved && decision != "deny" && decision != "reject" {
-			return approvalUIResponse{OK: false, Error: fmt.Sprintf("invalid decision %q", req.Decision)}
+			return approvalUIResponse{
+				OK:    false,
+				Error: fmt.Sprintf("invalid decision %q", req.Decision),
+			}
 		}
 		scope, err := approvals.NormalizeResolutionScope(req.Scope)
 		if err != nil {
@@ -271,7 +288,14 @@ func (ui *approvalUIEndpoint) handleRequest(req approvalUIRequest) approvalUIRes
 			Rule:      strings.TrimSpace(req.ScopeRule),
 			Prefix:    req.ScopePrefix,
 		}
-		if ok := ui.app.approvals.ResolveForSessionWithScopeTarget(ui.sessionID, id, approved, req.Reason, scope, target); !ok {
+		if ok := ui.app.approvals.ResolveForSessionWithScopeTarget(
+			ui.sessionID,
+			id,
+			approved,
+			req.Reason,
+			scope,
+			target,
+		); !ok {
 			return approvalUIResponse{OK: false, Error: "approval not found for session"}
 		}
 		return approvalUIResponse{OK: true}

@@ -183,11 +183,26 @@ func TestTableFormat_Grouped(t *testing.T) {
 		ProtectionScore: 85,
 		Domains: []ProtectionDomain{
 			{Name: "File Protection", Weight: 25, Score: 25, Backends: []DetectedBackend{
-				{Name: "fuse", Available: true, Detail: "fusermount3", Description: "file interception"},
-				{Name: "landlock", Available: false, Detail: "not available", Description: "kernel path restrictions"},
+				{
+					Name:        "fuse",
+					Available:   true,
+					Detail:      "fusermount3",
+					Description: "file interception",
+				},
+				{
+					Name:        "landlock",
+					Available:   false,
+					Detail:      "not available",
+					Description: "kernel path restrictions",
+				},
 			}, Active: "fuse"},
 			{Name: "Network", Weight: 20, Score: 0, Backends: []DetectedBackend{
-				{Name: "ebpf", Available: false, Detail: "EPERM", Description: "network monitoring"},
+				{
+					Name:        "ebpf",
+					Available:   false,
+					Detail:      "EPERM",
+					Description: "network monitoring",
+				},
 			}},
 		},
 		Capabilities: map[string]any{"fuse": true},

@@ -29,7 +29,9 @@ func tableRead(names ...string) effects.ClassifiedStatement {
 		objs[i] = effects.ObjectRef{Kind: effects.ObjectTable, Name: n}
 	}
 	return effects.ClassifiedStatement{
-		Effects: []effects.Effect{{Group: effects.GroupRead, Objects: objs, Resolution: effects.ResolutionQualified}},
+		Effects: []effects.Effect{
+			{Group: effects.GroupRead, Objects: objs, Resolution: effects.ResolutionQualified},
+		},
 	}
 }
 

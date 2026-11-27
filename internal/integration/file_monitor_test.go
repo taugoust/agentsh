@@ -53,7 +53,15 @@ func TestFileMonitor_ReadAllowed(t *testing.T) {
 	mustMkdir(t, workspace)
 	writeFile(t, filepath.Join(workspace, "hello.txt"), "hello from workspace")
 
-	endpoint, cleanup := startFileMonitorContainer(t, ctx, agentshBin, unixwrapBin, configPath, policiesDir, workspace)
+	endpoint, cleanup := startFileMonitorContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -75,7 +83,8 @@ func TestFileMonitor_ReadAllowed(t *testing.T) {
 	probeCancel()
 
 	if probeErr != nil {
-		if errors.Is(probeErr, context.DeadlineExceeded) || strings.Contains(probeErr.Error(), "deadline exceeded") {
+		if errors.Is(probeErr, context.DeadlineExceeded) ||
+			strings.Contains(probeErr.Error(), "deadline exceeded") {
 			t.Skip("seccomp-user-notify not working in this environment (timeout)")
 		}
 		t.Fatalf("Exec probe: %v", probeErr)
@@ -103,7 +112,11 @@ func TestFileMonitor_ReadAllowed(t *testing.T) {
 			t.Fatalf("Exec cat: %v", err)
 		}
 		if result.Result.ExitCode != 0 {
-			t.Errorf("cat should succeed, got exit %d: stderr=%q", result.Result.ExitCode, result.Result.Stderr)
+			t.Errorf(
+				"cat should succeed, got exit %d: stderr=%q",
+				result.Result.ExitCode,
+				result.Result.Stderr,
+			)
 		}
 		if strings.TrimSpace(result.Result.Stdout) != "hello from workspace" {
 			t.Errorf("expected 'hello from workspace', got %q", result.Result.Stdout)
@@ -127,7 +140,11 @@ func TestFileMonitor_ReadAllowed(t *testing.T) {
 			t.Fatalf("Exec cat /etc/hostname: %v", err)
 		}
 		if result.Result.ExitCode != 0 {
-			t.Errorf("cat /etc/hostname should succeed, got exit %d: stderr=%q", result.Result.ExitCode, result.Result.Stderr)
+			t.Errorf(
+				"cat /etc/hostname should succeed, got exit %d: stderr=%q",
+				result.Result.ExitCode,
+				result.Result.Stderr,
+			)
 		}
 		t.Logf("Read system file succeeded: %q", strings.TrimSpace(result.Result.Stdout))
 	})
@@ -148,7 +165,11 @@ func TestFileMonitor_ReadAllowed(t *testing.T) {
 			t.Fatalf("Exec ls: %v", err)
 		}
 		if result.Result.ExitCode != 0 {
-			t.Errorf("ls /usr should succeed, got exit %d: stderr=%q", result.Result.ExitCode, result.Result.Stderr)
+			t.Errorf(
+				"ls /usr should succeed, got exit %d: stderr=%q",
+				result.Result.ExitCode,
+				result.Result.Stderr,
+			)
 		}
 		t.Logf("Read /usr listing succeeded (len=%d)", len(result.Result.Stdout))
 	})
@@ -187,8 +208,11 @@ func TestFileMonitor_ReadAllowed(t *testing.T) {
 		defer cancel()
 
 		result, err := cli.Exec(execCtx, sess.ID, types.ExecRequest{
-			Command:    "sh",
-			Args:       []string{"-c", "echo test_content > /workspace/write_test.txt && cat /workspace/write_test.txt"},
+			Command: "sh",
+			Args: []string{
+				"-c",
+				"echo test_content > /workspace/write_test.txt && cat /workspace/write_test.txt",
+			},
 			WorkingDir: "/workspace",
 		})
 		if err != nil {
@@ -214,8 +238,11 @@ func TestFileMonitor_ReadAllowed(t *testing.T) {
 		defer cancel()
 
 		result, err := cli.Exec(execCtx, sess.ID, types.ExecRequest{
-			Command:    "sh",
-			Args:       []string{"-c", "echo tmp_content > /tmp/write_test.txt && cat /tmp/write_test.txt"},
+			Command: "sh",
+			Args: []string{
+				"-c",
+				"echo tmp_content > /tmp/write_test.txt && cat /tmp/write_test.txt",
+			},
 			WorkingDir: "/workspace",
 		})
 		if err != nil {
@@ -263,7 +290,15 @@ func TestFileMonitor_NoEmulation(t *testing.T) {
 	mustMkdir(t, workspace)
 	writeFile(t, filepath.Join(workspace, "hello.txt"), "hello from workspace")
 
-	endpoint, cleanup := startFileMonitorContainer(t, ctx, agentshBin, unixwrapBin, configPath, policiesDir, workspace)
+	endpoint, cleanup := startFileMonitorContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -285,7 +320,8 @@ func TestFileMonitor_NoEmulation(t *testing.T) {
 	probeCancel()
 
 	if probeErr != nil {
-		if errors.Is(probeErr, context.DeadlineExceeded) || strings.Contains(probeErr.Error(), "deadline exceeded") {
+		if errors.Is(probeErr, context.DeadlineExceeded) ||
+			strings.Contains(probeErr.Error(), "deadline exceeded") {
 			t.Skip("seccomp-user-notify not working in this environment (timeout)")
 		}
 		t.Fatalf("Exec probe: %v", probeErr)
@@ -317,7 +353,10 @@ func TestFileMonitor_NoEmulation(t *testing.T) {
 		if strings.TrimSpace(result.Result.Stdout) != "hello from workspace" {
 			t.Errorf("expected 'hello from workspace', got %q", result.Result.Stdout)
 		}
-		t.Logf("Read succeeded with emulation disabled: %q", strings.TrimSpace(result.Result.Stdout))
+		t.Logf(
+			"Read succeeded with emulation disabled: %q",
+			strings.TrimSpace(result.Result.Stdout),
+		)
 	})
 
 	if err := cli.DestroySession(ctx, sess.ID); err != nil {
@@ -325,14 +364,21 @@ func TestFileMonitor_NoEmulation(t *testing.T) {
 	}
 }
 
-func startFileMonitorContainer(t *testing.T, ctx context.Context, agentshBin, unixwrapBin, configPath, policiesDir, workspace string) (string, func()) {
+func startFileMonitorContainer(
+	t *testing.T,
+	ctx context.Context,
+	agentshBin, unixwrapBin, configPath, policiesDir, workspace string,
+) (string, func()) {
 	t.Helper()
 
 	binds := []testcontainers.ContainerMount{
 		testcontainers.BindMount(agentshBin, "/usr/local/bin/agentsh"),
 		testcontainers.BindMount(unixwrapBin, "/usr/local/bin/agentsh-unixwrap"),
 		testcontainers.BindMount(configPath, "/config.yaml"),
-		testcontainers.BindMount(filepath.Join(filepath.Dir(configPath), "keys.yaml"), "/keys.yaml"),
+		testcontainers.BindMount(
+			filepath.Join(filepath.Dir(configPath), "keys.yaml"),
+			"/keys.yaml",
+		),
 		testcontainers.BindMount(policiesDir, "/policies"),
 		testcontainers.BindMount(workspace, "/workspace"),
 	}
@@ -394,14 +440,21 @@ func startFileMonitorContainer(t *testing.T, ctx context.Context, agentshBin, un
 // startFileMonitorContainerNoPtrace creates a container WITHOUT CAP_SYS_PTRACE.
 // This simulates environments where the server cannot use ProcessVMReadv on
 // non-descendant processes (the key condition for the file_monitor bug).
-func startFileMonitorContainerNoPtrace(t *testing.T, ctx context.Context, agentshBin, unixwrapBin, configPath, policiesDir, workspace string) (string, func()) {
+func startFileMonitorContainerNoPtrace(
+	t *testing.T,
+	ctx context.Context,
+	agentshBin, unixwrapBin, configPath, policiesDir, workspace string,
+) (string, func()) {
 	t.Helper()
 
 	binds := []testcontainers.ContainerMount{
 		testcontainers.BindMount(agentshBin, "/usr/local/bin/agentsh"),
 		testcontainers.BindMount(unixwrapBin, "/usr/local/bin/agentsh-unixwrap"),
 		testcontainers.BindMount(configPath, "/config.yaml"),
-		testcontainers.BindMount(filepath.Join(filepath.Dir(configPath), "keys.yaml"), "/keys.yaml"),
+		testcontainers.BindMount(
+			filepath.Join(filepath.Dir(configPath), "keys.yaml"),
+			"/keys.yaml",
+		),
 		testcontainers.BindMount(policiesDir, "/policies"),
 		testcontainers.BindMount(workspace, "/workspace"),
 	}
@@ -487,7 +540,15 @@ func TestFileMonitor_NoPtraceCap(t *testing.T) {
 	mustMkdir(t, workspace)
 	writeFile(t, filepath.Join(workspace, "hello.txt"), "hello from workspace")
 
-	endpoint, cleanup := startFileMonitorContainerNoPtrace(t, ctx, agentshBin, unixwrapBin, configPath, policiesDir, workspace)
+	endpoint, cleanup := startFileMonitorContainerNoPtrace(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -509,7 +570,8 @@ func TestFileMonitor_NoPtraceCap(t *testing.T) {
 	probeCancel()
 
 	if probeErr != nil {
-		if errors.Is(probeErr, context.DeadlineExceeded) || strings.Contains(probeErr.Error(), "deadline exceeded") {
+		if errors.Is(probeErr, context.DeadlineExceeded) ||
+			strings.Contains(probeErr.Error(), "deadline exceeded") {
 			t.Skip("seccomp-user-notify not working without CAP_SYS_PTRACE (timeout)")
 		}
 		t.Fatalf("Exec probe: %v", probeErr)
@@ -519,7 +581,9 @@ func TestFileMonitor_NoPtraceCap(t *testing.T) {
 
 	if probeResult.Result.ExitCode != 0 {
 		t.Logf("BUG REPRODUCED: basic 'echo' fails without CAP_SYS_PTRACE")
-		t.Logf("This confirms ProcessVMReadv failure → emulated path fail-secure → EACCES on all operations")
+		t.Logf(
+			"This confirms ProcessVMReadv failure → emulated path fail-secure → EACCES on all operations",
+		)
 	} else {
 		t.Logf("Probe succeeded — ProcessVMReadv works without CAP_SYS_PTRACE in this environment")
 	}

@@ -59,7 +59,11 @@ func (r *yarnResolver) CanResolve(command string, args []string) bool {
 	return args[0] == "add"
 }
 
-func (r *yarnResolver) Resolve(ctx context.Context, workDir string, command []string) (*pkgcheck.InstallPlan, error) {
+func (r *yarnResolver) Resolve(
+	ctx context.Context,
+	workDir string,
+	command []string,
+) (*pkgcheck.InstallPlan, error) {
 	var packages []string
 	var args []string
 	if len(command) > 1 {

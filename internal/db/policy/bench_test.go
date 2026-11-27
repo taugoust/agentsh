@@ -9,7 +9,11 @@ import (
 func BenchmarkEvaluate_AllowReadUsers(b *testing.B) {
 	rs := MustLoadSample()
 	stmt := effects.ClassifiedStatement{Effects: []effects.Effect{
-		{Group: effects.GroupRead, Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "users"}}, Resolution: effects.ResolutionQualified},
+		{
+			Group:      effects.GroupRead,
+			Objects:    []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "users"}},
+			Resolution: effects.ResolutionQualified,
+		},
 	}}
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -21,7 +25,11 @@ func BenchmarkEvaluate_AllowReadUsers(b *testing.B) {
 func BenchmarkEvaluate_DenyDangerous(b *testing.B) {
 	rs := MustLoadSample()
 	stmt := effects.ClassifiedStatement{Effects: []effects.Effect{
-		{Group: effects.GroupSchemaDestroy, Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "u"}}, Resolution: effects.ResolutionQualified},
+		{
+			Group:      effects.GroupSchemaDestroy,
+			Objects:    []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "u"}},
+			Resolution: effects.ResolutionQualified,
+		},
 	}}
 	b.ReportAllocs()
 	b.ResetTimer()

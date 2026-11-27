@@ -68,7 +68,11 @@ func TestLoadOrCreate_SecondCallLoads(t *testing.T) {
 
 func TestLoadOrCreate_CertOnlyOnDisk_ReturnsIncomplete(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "db-ca.crt"), []byte("not a cert"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(dir, "db-ca.crt"),
+		[]byte("not a cert"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write garbage cert: %v", err)
 	}
 	if _, err := LoadOrCreate(dir, time.Now); err == nil {
@@ -95,7 +99,9 @@ func TestLoadOrCreate_RejectsNonCAExistingCert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCertificate: %v", err)
 	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	keyPEM := pem.EncodeToMemory(
+		&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)},
+	)
 	crtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	if err := os.WriteFile(filepath.Join(dir, "db-ca.key"), keyPEM, 0o600); err != nil {
 		t.Fatalf("write key: %v", err)

@@ -176,10 +176,16 @@ func TestSeccompSocketRuleBlock_Notify_LogDispatched(t *testing.T) {
 		t.Errorf("expected seccomp_socket_rule_blocked audit event; helper output:\n%s", combined)
 	}
 	if strings.Contains(combined, "audit_event=seccomp_socket_family_blocked") {
-		t.Errorf("socket family event emitted — family dispatch shadowed socket tuple rule;\nhelper output:\n%s", combined)
+		t.Errorf(
+			"socket family event emitted — family dispatch shadowed socket tuple rule;\nhelper output:\n%s",
+			combined,
+		)
 	}
 	if strings.Contains(combined, "audit_event=seccomp_blocked") {
-		t.Errorf("generic blocklist event emitted — generic dispatch shadowed socket tuple rule;\nhelper output:\n%s", combined)
+		t.Errorf(
+			"generic blocklist event emitted — generic dispatch shadowed socket tuple rule;\nhelper output:\n%s",
+			combined,
+		)
 	}
 }
 
@@ -287,7 +293,8 @@ func runSocketRuleHelperErrnoTupleUnix(t *testing.T) {
 	filt, err := InstallFilterWithConfig(cfg)
 	if err != nil {
 		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "permission") || strings.Contains(lower, "operation not permitted") {
+		if strings.Contains(lower, "permission") ||
+			strings.Contains(lower, "operation not permitted") {
 			t.Skipf("cannot install seccomp filter (privilege): %v", err)
 		}
 		t.Fatalf("InstallFilterWithConfig: %v", err)
@@ -343,7 +350,10 @@ func runSocketRuleHelperSubprocess(t *testing.T, mode string) string {
 			strings.Contains(lower, "lacks user notify") ||
 			strings.Contains(lower, "notification ioctl blocked") ||
 			strings.Contains(lower, "skip") {
-			t.Skipf("host cannot run seccomp notify helper; skipping.\nhelper output:\n%s", combined)
+			t.Skipf(
+				"host cannot run seccomp notify helper; skipping.\nhelper output:\n%s",
+				combined,
+			)
 		}
 		t.Fatalf("helper subprocess failed: %v\noutput:\n%s", runErr, combined)
 	}
@@ -372,7 +382,8 @@ func runDirtyFragSocketRuleHelper(t *testing.T, mode string) {
 	filt, err := InstallFilterWithConfig(cfg)
 	if err != nil {
 		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "permission") || strings.Contains(lower, "operation not permitted") {
+		if strings.Contains(lower, "permission") ||
+			strings.Contains(lower, "operation not permitted") {
 			t.Skipf("cannot install seccomp filter (privilege): %v", err)
 		}
 		t.Fatalf("InstallFilterWithConfig: %v", err)
@@ -462,7 +473,12 @@ func dirtyFragMitigationSetSocketRules(t *testing.T) []seccompkg.SocketRule {
 	return rules
 }
 
-func startSocketRuleNotifyHelper(t *testing.T, filt *Filter, bl *BlockListConfig, emitter Emitter) func() {
+func startSocketRuleNotifyHelper(
+	t *testing.T,
+	filt *Filter,
+	bl *BlockListConfig,
+	emitter Emitter,
+) func() {
 	t.Helper()
 
 	notifFD := filt.NotifFD()
@@ -494,7 +510,16 @@ func startSocketRuleNotifyHelper(t *testing.T, filt *Filter, bl *BlockListConfig
 	handlerDone := make(chan struct{})
 	go func() {
 		defer close(handlerDone)
-		ServeNotifyWithExecve(ctx, notifyFile, "test-dirtyfrag-socket-rules", nil, emitter, nil, nil, bl)
+		ServeNotifyWithExecve(
+			ctx,
+			notifyFile,
+			"test-dirtyfrag-socket-rules",
+			nil,
+			emitter,
+			nil,
+			nil,
+			bl,
+		)
 	}()
 
 	var once sync.Once
@@ -641,7 +666,8 @@ func runSocketRuleHelperNotifyLog(t *testing.T) {
 	filt, err := InstallFilterWithConfig(cfg)
 	if err != nil {
 		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "permission") || strings.Contains(lower, "operation not permitted") {
+		if strings.Contains(lower, "permission") ||
+			strings.Contains(lower, "operation not permitted") {
 			t.Skipf("cannot install seccomp filter (privilege): %v", err)
 		}
 		t.Fatalf("InstallFilterWithConfig: %v", err)
@@ -678,7 +704,16 @@ func runSocketRuleHelperNotifyLog(t *testing.T) {
 	handlerDone := make(chan struct{})
 	go func() {
 		defer close(handlerDone)
-		ServeNotifyWithExecve(ctx, notifyFile, "test-socket-rule-notify", nil, emitter, nil, nil, bl)
+		ServeNotifyWithExecve(
+			ctx,
+			notifyFile,
+			"test-socket-rule-notify",
+			nil,
+			emitter,
+			nil,
+			nil,
+			bl,
+		)
 	}()
 
 	fd, _, errno := gounix.Syscall(
@@ -748,7 +783,10 @@ func TestSeccompSocketRuleBlock_ErrnoTuple(t *testing.T) {
 	if !strings.Contains(combined, "socket_result=EAFNOSUPPORT") &&
 		!strings.Contains(combined, "socket_result=address family not supported") &&
 		!strings.Contains(combined, "errno=97") {
-		t.Errorf("expected matching socket tuple to return EAFNOSUPPORT; helper output:\n%s", combined)
+		t.Errorf(
+			"expected matching socket tuple to return EAFNOSUPPORT; helper output:\n%s",
+			combined,
+		)
 	}
 }
 
@@ -778,7 +816,8 @@ func runSocketRuleHelperErrnoTuple(t *testing.T) {
 	filt, err := InstallFilterWithConfig(cfg)
 	if err != nil {
 		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "permission") || strings.Contains(lower, "operation not permitted") {
+		if strings.Contains(lower, "permission") ||
+			strings.Contains(lower, "operation not permitted") {
 			t.Skipf("cannot install seccomp filter (privilege): %v", err)
 		}
 		t.Fatalf("InstallFilterWithConfig: %v", err)
@@ -824,7 +863,11 @@ type recordedConditionalCall struct {
 	conditions []seccomp.ScmpCondition
 }
 
-func (r *recordingConditionalAdder) AddRuleConditional(call seccomp.ScmpSyscall, action seccomp.ScmpAction, conds []seccomp.ScmpCondition) error {
+func (r *recordingConditionalAdder) AddRuleConditional(
+	call seccomp.ScmpSyscall,
+	action seccomp.ScmpAction,
+	conds []seccomp.ScmpCondition,
+) error {
 	copied := append([]seccomp.ScmpCondition(nil), conds...)
 	r.calls = append(r.calls, recordedConditionalCall{
 		syscall:    call,
@@ -882,7 +925,10 @@ func TestInstallUnixSocketNotifyRules_SocketScopedToAFUnix(t *testing.T) {
 	}
 }
 
-func (r *recordingConditionalAdder) AddRule(call seccomp.ScmpSyscall, action seccomp.ScmpAction) error {
+func (r *recordingConditionalAdder) AddRule(
+	call seccomp.ScmpSyscall,
+	action seccomp.ScmpAction,
+) error {
 	r.calls = append(r.calls, recordedConditionalCall{
 		syscall: call,
 		action:  action,

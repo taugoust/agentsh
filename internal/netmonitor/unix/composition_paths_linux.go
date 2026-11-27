@@ -100,7 +100,8 @@ func pathAtOrBelow(path, root string) bool {
 		return true
 	}
 	relative, err := filepath.Rel(root, path)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	return err == nil && relative != ".." &&
+		!strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func replacePathPrefix(path, target, source string) (string, bool) {
@@ -131,7 +132,10 @@ type CompositionPathResolution struct {
 	FreshWritable bool
 }
 
-func normalizeCompositionPath(state *compositionPathState, path string) (CompositionPathResolution, error) {
+func normalizeCompositionPath(
+	state *compositionPathState,
+	path string,
+) (CompositionPathResolution, error) {
 	if path == "" || !filepath.IsAbs(path) {
 		return CompositionPathResolution{Path: path}, nil
 	}
@@ -161,7 +165,9 @@ func normalizeCompositionPath(state *compositionPathState, path string) (Composi
 			break
 		}
 		if depth == 39 {
-			return CompositionPathResolution{}, errors.New("composition symlink attribution depth exceeded")
+			return CompositionPathResolution{}, errors.New(
+				"composition symlink attribution depth exceeded",
+			)
 		}
 	}
 
@@ -199,7 +205,10 @@ func (r *CompositionPathRegistry) stateForPID(pid int) (*compositionPathState, e
 
 // ResolveDetails returns complete source-attribution information for a path in
 // a composed mount namespace.
-func (r *CompositionPathRegistry) ResolveDetails(pid int, path string) (CompositionPathResolution, error) {
+func (r *CompositionPathRegistry) ResolveDetails(
+	pid int,
+	path string,
+) (CompositionPathResolution, error) {
 	state, err := r.stateForPID(pid)
 	if err != nil {
 		return CompositionPathResolution{}, err
@@ -221,12 +230,20 @@ func (r *CompositionPathRegistry) Resolve(pid int, path string) (string, bool, e
 // Register publishes one post-pivot snapshot. Sources are first normalized
 // through the parent composition namespace, which preserves attribution across
 // recursively nested Bubblewrap invocations.
-func (r *CompositionPathRegistry) Register(parentPID, targetPID int, mappings composition.PathMappings) error {
+func (r *CompositionPathRegistry) Register(
+	parentPID, targetPID int,
+	mappings composition.PathMappings,
+) error {
 	if r == nil {
 		return errors.New("composition path registry is nil")
 	}
-	if len(mappings.Aliases) == 0 || len(mappings.Aliases)+len(mappings.Symlinks) > maxCompositionPathMappings {
-		return fmt.Errorf("invalid composition path mapping count aliases=%d symlinks=%d", len(mappings.Aliases), len(mappings.Symlinks))
+	if len(mappings.Aliases) == 0 ||
+		len(mappings.Aliases)+len(mappings.Symlinks) > maxCompositionPathMappings {
+		return fmt.Errorf(
+			"invalid composition path mapping count aliases=%d symlinks=%d",
+			len(mappings.Aliases),
+			len(mappings.Symlinks),
+		)
 	}
 
 	parentState, err := r.stateForPID(parentPID)
@@ -251,7 +268,10 @@ func (r *CompositionPathRegistry) Register(parentPID, targetPID int, mappings co
 		}
 		freshWritable := alias.FreshWritable
 		if source != "" && freshWritable {
-			return fmt.Errorf("composition alias %q cannot be both source-backed and fresh-writable", target)
+			return fmt.Errorf(
+				"composition alias %q cannot be both source-backed and fresh-writable",
+				target,
+			)
 		}
 		if source != "" {
 			parentResolution, err := normalizeCompositionPath(parentState, source)

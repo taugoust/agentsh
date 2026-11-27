@@ -34,10 +34,18 @@ func (a *App) detachedMetadataForSession(sessionID string) (detached.Metadata, b
 	return detached.Metadata{}, false
 }
 
-func (a *App) authorizeDetachedToken(w http.ResponseWriter, r *http.Request, sessionID string) bool {
+func (a *App) authorizeDetachedToken(
+	w http.ResponseWriter,
+	r *http.Request,
+	sessionID string,
+) bool {
 	meta, ok := a.detachedMetadataForSession(sessionID)
 	if !ok || strings.TrimSpace(meta.EventToken) == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unknown detached session or missing event token"})
+		writeJSON(
+			w,
+			http.StatusUnauthorized,
+			map[string]any{"error": "unknown detached session or missing event token"},
+		)
 		return false
 	}
 	token := strings.TrimSpace(r.Header.Get("X-AgentSH-Session-Event-Token"))
@@ -48,7 +56,11 @@ func (a *App) authorizeDetachedToken(w http.ResponseWriter, r *http.Request, ses
 		}
 	}
 	if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(meta.EventToken)) != 1 {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid detached session event token"})
+		writeJSON(
+			w,
+			http.StatusUnauthorized,
+			map[string]any{"error": "invalid detached session event token"},
+		)
 		return false
 	}
 	return true
@@ -57,7 +69,11 @@ func (a *App) authorizeDetachedToken(w http.ResponseWriter, r *http.Request, ses
 func (a *App) publishDetachedSessionEvent(w http.ResponseWriter, r *http.Request) {
 	sessionID := strings.TrimSpace(chi.URLParam(r, "id"))
 	if sessionID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing session id"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"ok": false, "error": "missing session id"},
+		)
 		return
 	}
 	if !a.authorizeDetachedToken(w, r, sessionID) {
@@ -70,7 +86,11 @@ func (a *App) publishDetachedSessionEvent(w http.ResponseWriter, r *http.Request
 	}
 	ev.SessionID = sessionID
 	if strings.TrimSpace(ev.Type) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing event type"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"ok": false, "error": "missing event type"},
+		)
 		return
 	}
 	if strings.TrimSpace(ev.Title) == "" {
@@ -84,7 +104,11 @@ func (a *App) getDetachedSessionQuestionAnswer(w http.ResponseWriter, r *http.Re
 	sessionID := strings.TrimSpace(chi.URLParam(r, "id"))
 	qid := strings.TrimSpace(chi.URLParam(r, "qid"))
 	if sessionID == "" || qid == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing session id or questionnaire id"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"ok": false, "error": "missing session id or questionnaire id"},
+		)
 		return
 	}
 	if !a.authorizeDetachedToken(w, r, sessionID) {

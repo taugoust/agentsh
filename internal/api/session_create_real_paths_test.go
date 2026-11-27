@@ -28,7 +28,10 @@ func TestCreateSession_RealPaths_RequestOverride(t *testing.T) {
 	app := newTestApp(t, sessions, store)
 	h := app.Router()
 
-	body := fmt.Sprintf(`{"id":"real-paths-test","workspace":%q,"policy":"default","real_paths":true}`, ws)
+	body := fmt.Sprintf(
+		`{"id":"real-paths-test","workspace":%q,"policy":"default","real_paths":true}`,
+		ws,
+	)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body))
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -102,7 +105,10 @@ func TestCreateSession_RealPaths_RequestOverrideFalse(t *testing.T) {
 
 	h := app.Router()
 
-	body := fmt.Sprintf(`{"id":"override-false-test","workspace":%q,"policy":"default","real_paths":false}`, ws)
+	body := fmt.Sprintf(
+		`{"id":"override-false-test","workspace":%q,"policy":"default","real_paths":false}`,
+		ws,
+	)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body))
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

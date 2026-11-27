@@ -60,12 +60,30 @@ func TestEphemeralInstanceControllerStatusRenewalAndHardCap(t *testing.T) {
 		Now: func() time.Time { return current }, Registrations: fixedRegistrationCount(0),
 	})
 	peer := PeerInfo{PID: 42, UID: 1000, GID: 100, Supported: true}
-	status, err := controller.InstanceStatus(context.Background(), peer, InstanceStatusRequest{ProtocolVersion: 1, RequestID: "status-1", LeaseID: lease, HelperInstanceCredential: credential})
+	status, err := controller.InstanceStatus(
+		context.Background(),
+		peer,
+		InstanceStatusRequest{
+			ProtocolVersion:          1,
+			RequestID:                "status-1",
+			LeaseID:                  lease,
+			HelperInstanceCredential: credential,
+		},
+	)
 	if err != nil || !status.OK || !status.SoftExpiresAt.Equal(now.Add(49*time.Hour)) {
 		t.Fatalf("initial status=%+v err=%v", status, err)
 	}
 	current = now.Add(20 * time.Hour)
-	renewed, err := controller.RenewInstance(context.Background(), peer, RenewInstanceRequest{ProtocolVersion: 1, RequestID: "renew-1", LeaseID: lease, HelperInstanceCredential: credential})
+	renewed, err := controller.RenewInstance(
+		context.Background(),
+		peer,
+		RenewInstanceRequest{
+			ProtocolVersion:          1,
+			RequestID:                "renew-1",
+			LeaseID:                  lease,
+			HelperInstanceCredential: credential,
+		},
+	)
 	if err != nil {
 		t.Fatalf("RenewInstance: %v", err)
 	}
@@ -73,11 +91,29 @@ func TestEphemeralInstanceControllerStatusRenewalAndHardCap(t *testing.T) {
 		t.Fatalf("renewed status=%+v", renewed)
 	}
 	current = now.Add(60 * time.Hour)
-	status, err = controller.InstanceStatus(context.Background(), peer, InstanceStatusRequest{ProtocolVersion: 1, RequestID: "status-2", LeaseID: lease, HelperInstanceCredential: credential})
+	status, err = controller.InstanceStatus(
+		context.Background(),
+		peer,
+		InstanceStatusRequest{
+			ProtocolVersion:          1,
+			RequestID:                "status-2",
+			LeaseID:                  lease,
+			HelperInstanceCredential: credential,
+		},
+	)
 	if err == nil || status.Status != "expired" || status.Reason != "hard-expiry" {
 		t.Fatalf("hard-expiry status=%+v err=%v", status, err)
 	}
-	if _, err := controller.RenewInstance(context.Background(), peer, RenewInstanceRequest{ProtocolVersion: 1, RequestID: "renew-2", LeaseID: lease, HelperInstanceCredential: credential}); err == nil {
+	if _, err := controller.RenewInstance(
+		context.Background(),
+		peer,
+		RenewInstanceRequest{
+			ProtocolVersion:          1,
+			RequestID:                "renew-2",
+			LeaseID:                  lease,
+			HelperInstanceCredential: credential,
+		},
+	); err == nil {
 		t.Fatal("renewal succeeded after hard expiry")
 	}
 }
@@ -91,9 +127,13 @@ func TestEphemeralInstanceControllerSoftExpiryStopsService(t *testing.T) {
 	controller := NewEphemeralInstanceController(EphemeralInstanceControllerOptions{
 		LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
 		HelperInstanceCredential: "0123456789abcdef0123456789abcdef",
-		ExpectedUID:              1000, CreatedAt: created, HardExpiresAt: created.Add(192 * time.Hour), SoftLease: 49 * time.Hour,
-		Now: func() time.Time { return time.Unix(0, current.Load()) }, NewTimer: func(time.Duration) InstanceTimer { return timer },
-		Stop: func() { stopped <- struct{}{} },
+		ExpectedUID:              1000,
+		CreatedAt:                created,
+		HardExpiresAt:            created.Add(192 * time.Hour),
+		SoftLease:                49 * time.Hour,
+		Now:                      func() time.Time { return time.Unix(0, current.Load()) },
+		NewTimer:                 func(time.Duration) InstanceTimer { return timer },
+		Stop:                     func() { stopped <- struct{}{} },
 	})
 	expires := created.Add(49 * time.Hour)
 	current.Store(expires.UnixNano())
@@ -103,9 +143,16 @@ func TestEphemeralInstanceControllerSoftExpiryStopsService(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("soft expiry did not invoke service stop")
 	}
-	status, err := controller.InstanceStatus(context.Background(), PeerInfo{PID: 1, UID: 1000, Supported: true}, InstanceStatusRequest{
-		ProtocolVersion: 1, RequestID: "status", LeaseID: controller.opts.LeaseID, HelperInstanceCredential: controller.opts.HelperInstanceCredential,
-	})
+	status, err := controller.InstanceStatus(
+		context.Background(),
+		PeerInfo{PID: 1, UID: 1000, Supported: true},
+		InstanceStatusRequest{
+			ProtocolVersion:          1,
+			RequestID:                "status",
+			LeaseID:                  controller.opts.LeaseID,
+			HelperInstanceCredential: controller.opts.HelperInstanceCredential,
+		},
+	)
 	if err == nil || status.Reason != "soft-lease-expired" {
 		t.Fatalf("status=%+v err=%v", status, err)
 	}
@@ -113,12 +160,22 @@ func TestEphemeralInstanceControllerSoftExpiryStopsService(t *testing.T) {
 
 func TestEphemeralInstanceControllerStatusAuthentication(t *testing.T) {
 	controller := NewEphemeralInstanceController(EphemeralInstanceControllerOptions{
-		LeaseID: "lease-11111111-1111-4111-8111-111111111111", HelperInstanceCredential: "0123456789abcdef0123456789abcdef",
-		ExpectedUID: 1000, ExpectedGID: 100, EnforceGID: true,
+		LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
+		HelperInstanceCredential: "0123456789abcdef0123456789abcdef",
+		ExpectedUID:              1000,
+		ExpectedGID:              100,
+		EnforceGID:               true,
 	})
-	resp, err := controller.InstanceStatus(context.Background(), PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true}, InstanceStatusRequest{
-		ProtocolVersion: 1, RequestID: "status-1", LeaseID: "lease-11111111-1111-4111-8111-111111111111", HelperInstanceCredential: strings.Repeat("a", 32),
-	})
+	resp, err := controller.InstanceStatus(
+		context.Background(),
+		PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true},
+		InstanceStatusRequest{
+			ProtocolVersion:          1,
+			RequestID:                "status-1",
+			LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
+			HelperInstanceCredential: strings.Repeat("a", 32),
+		},
+	)
 	if err == nil || resp.OK || strings.Contains(fmt.Sprintf("%+v", resp), "0123456789abcdef") {
 		t.Fatalf("unauthenticated status response=%+v err=%v", resp, err)
 	}
@@ -135,7 +192,11 @@ func TestEphemeralInstanceControllerAttestsOnlyFixedAuthenticatedLease(t *testin
 		LeaseDirectory: CompositionRuntimeInode{Device: 1, Inode: 1, Mode: 0o40711, UID: 0, GID: 0},
 	}
 	controller := NewEphemeralInstanceController(EphemeralInstanceControllerOptions{
-		LeaseID: lease, HelperInstanceCredential: credential, ExpectedUID: 1000, ExpectedGID: 100, EnforceGID: true,
+		LeaseID:                  lease,
+		HelperInstanceCredential: credential,
+		ExpectedUID:              1000,
+		ExpectedGID:              100,
+		EnforceGID:               true,
 		AttestCompositionRuntime: func(uid uint32, gotLease string) (CompositionRuntimeAttestation, error) {
 			called = true
 			if uid != 1000 || gotLease != lease {
@@ -145,16 +206,30 @@ func TestEphemeralInstanceControllerAttestsOnlyFixedAuthenticatedLease(t *testin
 		},
 	})
 	peer := PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true}
-	resp, err := controller.AttestCompositionRuntime(context.Background(), peer, AttestCompositionRuntimeRequest{
-		ProtocolVersion: CurrentProtocolVersion, RequestID: "attest-1", LeaseID: lease, HelperInstanceCredential: credential,
-	})
+	resp, err := controller.AttestCompositionRuntime(
+		context.Background(),
+		peer,
+		AttestCompositionRuntimeRequest{
+			ProtocolVersion:          CurrentProtocolVersion,
+			RequestID:                "attest-1",
+			LeaseID:                  lease,
+			HelperInstanceCredential: credential,
+		},
+	)
 	if err != nil || !resp.OK || resp.Attestation != want || !called {
 		t.Fatalf("attestation response=%+v called=%t err=%v", resp, called, err)
 	}
 	called = false
-	resp, err = controller.AttestCompositionRuntime(context.Background(), peer, AttestCompositionRuntimeRequest{
-		ProtocolVersion: CurrentProtocolVersion, RequestID: "attest-2", LeaseID: lease, HelperInstanceCredential: strings.Repeat("a", 32),
-	})
+	resp, err = controller.AttestCompositionRuntime(
+		context.Background(),
+		peer,
+		AttestCompositionRuntimeRequest{
+			ProtocolVersion:          CurrentProtocolVersion,
+			RequestID:                "attest-2",
+			LeaseID:                  lease,
+			HelperInstanceCredential: strings.Repeat("a", 32),
+		},
+	)
 	if err == nil || resp.OK || called {
 		t.Fatalf("unauthenticated attestation response=%+v called=%t err=%v", resp, called, err)
 	}
@@ -166,9 +241,18 @@ func (c *atomicRegistrationCount) ActiveRegistrationCount() int { return int(c.v
 
 func TestEphemeralInstanceControllerRuntimeOnlyUsesHardExpiry(t *testing.T) {
 	created := time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)
-	controller := NewEphemeralInstanceController(EphemeralInstanceControllerOptions{CreatedAt: created, HardExpiresAt: created.Add(192 * time.Hour)})
+	controller := NewEphemeralInstanceController(
+		EphemeralInstanceControllerOptions{
+			CreatedAt:     created,
+			HardExpiresAt: created.Add(192 * time.Hour),
+		},
+	)
 	if !controller.softExpiresAt.Equal(controller.opts.HardExpiresAt) {
-		t.Fatalf("runtime-only soft expiry=%s hard=%s", controller.softExpiresAt, controller.opts.HardExpiresAt)
+		t.Fatalf(
+			"runtime-only soft expiry=%s hard=%s",
+			controller.softExpiresAt,
+			controller.opts.HardExpiresAt,
+		)
 	}
 }
 
@@ -186,9 +270,16 @@ func TestReleaseWaitsForInFlightRegistrationAndClosesAdmission(t *testing.T) {
 	})
 	result := make(chan error, 1)
 	go func() {
-		_, releaseErr := controller.ReleaseInstance(context.Background(), PeerInfo{PID: 1, UID: 1000, Supported: true}, ReleaseInstanceRequest{
-			ProtocolVersion: 1, RequestID: "release", LeaseID: controller.opts.LeaseID, HelperInstanceCredential: credential,
-		})
+		_, releaseErr := controller.ReleaseInstance(
+			context.Background(),
+			PeerInfo{PID: 1, UID: 1000, Supported: true},
+			ReleaseInstanceRequest{
+				ProtocolVersion:          1,
+				RequestID:                "release",
+				LeaseID:                  controller.opts.LeaseID,
+				HelperInstanceCredential: credential,
+			},
+		)
 		result <- releaseErr
 	}()
 	// StopAndWait has closed admission before waiting for the held operation.
@@ -205,7 +296,8 @@ func TestReleaseWaitsForInFlightRegistrationAndClosesAdmission(t *testing.T) {
 	}
 	registrations.value.Store(1)
 	done()
-	if releaseErr := <-result; releaseErr == nil || !strings.Contains(releaseErr.Error(), "registrations remain") {
+	if releaseErr := <-result; releaseErr == nil ||
+		!strings.Contains(releaseErr.Error(), "registrations remain") {
 		t.Fatalf("release error=%v", releaseErr)
 	}
 	if controller.Released() {
@@ -231,9 +323,16 @@ func TestReleaseTimeoutReopensLifecycleAdmission(t *testing.T) {
 		ExpectedUID: 1000, Operations: gate, ReleaseDrainTimeout: 20 * time.Millisecond,
 	})
 	started := time.Now()
-	_, err = controller.ReleaseInstance(context.Background(), PeerInfo{PID: 1, UID: 1000, Supported: true}, ReleaseInstanceRequest{
-		ProtocolVersion: 1, RequestID: "release-timeout", LeaseID: controller.opts.LeaseID, HelperInstanceCredential: credential,
-	})
+	_, err = controller.ReleaseInstance(
+		context.Background(),
+		PeerInfo{PID: 1, UID: 1000, Supported: true},
+		ReleaseInstanceRequest{
+			ProtocolVersion:          1,
+			RequestID:                "release-timeout",
+			LeaseID:                  controller.opts.LeaseID,
+			HelperInstanceCredential: credential,
+		},
+	)
 	if err == nil || !strings.Contains(err.Error(), "deadline exceeded") {
 		t.Fatalf("release error=%v", err)
 	}
@@ -264,24 +363,65 @@ func TestEphemeralInstanceControllerReleaseFailsClosed(t *testing.T) {
 		registrations int
 		want          string
 	}{
-		{name: "missing peer credentials", peer: PeerInfo{}, credential: credential, lease: base.LeaseID, want: "peer credentials"},
-		{name: "wrong uid", peer: PeerInfo{PID: 1, UID: 1001, GID: 100, Supported: true}, credential: credential, lease: base.LeaseID, want: "peer uid"},
-		{name: "wrong gid", peer: PeerInfo{PID: 1, UID: 1000, GID: 101, Supported: true}, credential: credential, lease: base.LeaseID, want: "peer gid"},
-		{name: "wrong credential", peer: PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true}, credential: strings.Repeat("a", 32), lease: base.LeaseID, want: "credential"},
-		{name: "wrong lease", peer: PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true}, credential: credential, lease: "lease-22222222-2222-4222-8222-222222222222", want: "lease_id"},
-		{name: "active registration", peer: PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true}, credential: credential, lease: base.LeaseID, registrations: 1, want: "registrations remain"},
+		{
+			name:       "missing peer credentials",
+			peer:       PeerInfo{},
+			credential: credential,
+			lease:      base.LeaseID,
+			want:       "peer credentials",
+		},
+		{
+			name:       "wrong uid",
+			peer:       PeerInfo{PID: 1, UID: 1001, GID: 100, Supported: true},
+			credential: credential,
+			lease:      base.LeaseID,
+			want:       "peer uid",
+		},
+		{
+			name:       "wrong gid",
+			peer:       PeerInfo{PID: 1, UID: 1000, GID: 101, Supported: true},
+			credential: credential,
+			lease:      base.LeaseID,
+			want:       "peer gid",
+		},
+		{
+			name:       "wrong credential",
+			peer:       PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true},
+			credential: strings.Repeat("a", 32),
+			lease:      base.LeaseID,
+			want:       "credential",
+		},
+		{
+			name:       "wrong lease",
+			peer:       PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true},
+			credential: credential,
+			lease:      "lease-22222222-2222-4222-8222-222222222222",
+			want:       "lease_id",
+		},
+		{
+			name:          "active registration",
+			peer:          PeerInfo{PID: 1, UID: 1000, GID: 100, Supported: true},
+			credential:    credential,
+			lease:         base.LeaseID,
+			registrations: 1,
+			want:          "registrations remain",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			opts := base
 			opts.Registrations = fixedRegistrationCount(tc.registrations)
 			controller := NewEphemeralInstanceController(opts)
-			resp, err := controller.ReleaseInstance(context.Background(), tc.peer, ReleaseInstanceRequest{
-				ProtocolVersion:          CurrentProtocolVersion,
-				RequestID:                "release-1",
-				LeaseID:                  tc.lease,
-				HelperInstanceCredential: tc.credential,
-			})
+			resp, err := controller.ReleaseInstance(
+				context.Background(),
+				tc.peer,
+				ReleaseInstanceRequest{
+					ProtocolVersion:          CurrentProtocolVersion,
+					RequestID:                "release-1",
+					LeaseID:                  tc.lease,
+					HelperInstanceCredential: tc.credential,
+				},
+			)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err=%v, want substring %q", err, tc.want)
 			}

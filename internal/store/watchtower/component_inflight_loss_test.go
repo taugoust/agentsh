@@ -36,7 +36,13 @@ func (m *armedErrMapper) Map(ev types.Event) (compact.MappedEvent, error) {
 // with EmitExtendedLossReasons set to the supplied flag value. The mapper
 // argument is used as-is (caller passes either compact.StubMapper{} or an
 // errMapper{}). allowStub must be true when mapper is a StubMapper.
-func newInflightTestStore(t *testing.T, router transport.Dialer, mapper compact.Mapper, allowStub bool, emitExtended bool) *watchtower.Store {
+func newInflightTestStore(
+	t *testing.T,
+	router transport.Dialer,
+	mapper compact.Mapper,
+	allowStub bool,
+	emitExtended bool,
+) *watchtower.Store {
 	t.Helper()
 	s, err := watchtower.New(context.Background(), watchtower.Options{
 		WALDir:                  t.TempDir(),
@@ -56,7 +62,9 @@ func newInflightTestStore(t *testing.T, router transport.Dialer, mapper compact.
 		EmitExtendedLossReasons: emitExtended,
 		BackoffInitial:          10 * time.Millisecond,
 		BackoffMax:              50 * time.Millisecond,
-		Logger:                  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New: %v", err)
@@ -64,7 +72,13 @@ func newInflightTestStore(t *testing.T, router transport.Dialer, mapper compact.
 	return s
 }
 
-func waitForLiveWarmupBatch(ctx context.Context, t *testing.T, s *watchtower.Store, srv *testserver.Server, startSeq uint64) uint64 {
+func waitForLiveWarmupBatch(
+	ctx context.Context,
+	t *testing.T,
+	s *watchtower.Store,
+	srv *testserver.Server,
+	startSeq uint64,
+) uint64 {
 	t.Helper()
 	baseline := len(srv.Batches())
 	deadline := time.Now().Add(10 * time.Second)
@@ -263,7 +277,13 @@ func TestStore_InFlightDrop_NoTransportLoss_WhenFlagOff(t *testing.T) {
 	defer srv.Close()
 	router := testserver.NewRoutingDialer(srv)
 
-	s := newInflightTestStore(t, router, compact.StubMapper{}, true, false /* EmitExtendedLossReasons=false */)
+	s := newInflightTestStore(
+		t,
+		router,
+		compact.StubMapper{},
+		true,
+		false, /* EmitExtendedLossReasons=false */
+	)
 	defer s.Close()
 
 	if _, err := srv.WaitForFirstSessionInit(10 * time.Second); err != nil {
@@ -286,7 +306,9 @@ func TestStore_InFlightDrop_NoTransportLoss_WhenFlagOff(t *testing.T) {
 	const gracePeriod = 500 * time.Millisecond
 	_, err := srv.WaitForTransportLoss(gracePeriod)
 	if err == nil {
-		t.Fatal("TestStore_InFlightDrop_NoTransportLoss_WhenFlagOff: unexpected TransportLoss received; flag was off")
+		t.Fatal(
+			"TestStore_InFlightDrop_NoTransportLoss_WhenFlagOff: unexpected TransportLoss received; flag was off",
+		)
 	}
 	// err is a deadline error, which is the expected outcome.
 }
@@ -348,7 +370,9 @@ func TestStore_AckRegressionAfterGC_EmitsTransportLoss(t *testing.T) {
 		EmitExtendedLossReasons: true,
 		BackoffInitial:          10 * time.Millisecond,
 		BackoffMax:              50 * time.Millisecond,
-		Logger:                  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New: %v", err)
@@ -408,7 +432,9 @@ func TestStore_AckRegressionAfterGC_NoTransportLoss_WhenFlagOff(t *testing.T) {
 		EmitExtendedLossReasons: false,
 		BackoffInitial:          10 * time.Millisecond,
 		BackoffMax:              50 * time.Millisecond,
-		Logger:                  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New: %v", err)

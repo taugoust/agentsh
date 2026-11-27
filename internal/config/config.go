@@ -416,7 +416,9 @@ type RuntimeProfileConfig struct {
 	ProfileFile string `yaml:"profile_file"`
 }
 
-func (c SessionRuntimeConfig) ResolveProfile(requested string) (string, RuntimeProfileConfig, error) {
+func (c SessionRuntimeConfig) ResolveProfile(
+	requested string,
+) (string, RuntimeProfileConfig, error) {
 	name := strings.TrimSpace(requested)
 	if name == "" {
 		name = c.DefaultProfile
@@ -525,13 +527,17 @@ type SandboxBubblewrapCompositionConfig struct {
 // Validate checks cross-field constraints in the sandbox configuration.
 func (c *SandboxConfig) Validate() error {
 	if c.Ptrace.Enabled && c.Seccomp.Execve.Enabled {
-		return fmt.Errorf("sandbox.ptrace and sandbox.seccomp.execve are mutually exclusive (hybrid mode not yet implemented)")
+		return fmt.Errorf(
+			"sandbox.ptrace and sandbox.seccomp.execve are mutually exclusive (hybrid mode not yet implemented)",
+		)
 	}
 	if c.Ptrace.Enabled && c.UnixSockets.Enabled != nil && *c.UnixSockets.Enabled {
 		// Hybrid mode: ptrace for execve + seccomp wrapper for sockets/files is allowed
 		// only when ptrace traces exactly execve (file/network/signal disabled, execve enabled).
 		if !c.Ptrace.IsExecveOnly() {
-			return fmt.Errorf("sandbox.ptrace with unix_sockets requires execve-only tracing (execve=true, file/network/signal=false)")
+			return fmt.Errorf(
+				"sandbox.ptrace with unix_sockets requires execve-only tracing (execve=true, file/network/signal=false)",
+			)
 		}
 	}
 	return c.Ptrace.Validate()
@@ -808,7 +814,12 @@ func ValidateMCPTransports(cfg SandboxMCPConfig) error {
 			srvType = "stdio"
 		}
 		if !allowed[srvType] {
-			return fmt.Errorf("MCP server %q uses transport %q which is not in allowed_transports %v", srv.ID, srvType, cfg.AllowedTransports)
+			return fmt.Errorf(
+				"MCP server %q uses transport %q which is not in allowed_transports %v",
+				srv.ID,
+				srvType,
+				cfg.AllowedTransports,
+			)
 		}
 	}
 	return nil
@@ -948,7 +959,10 @@ func (c *SigningConfig) Validate() error {
 	case "", "off", "warn", "enforce":
 		// valid
 	default:
-		return fmt.Errorf("invalid signing mode %q: must be \"enforce\", \"warn\", or \"off\"", c.Mode)
+		return fmt.Errorf(
+			"invalid signing mode %q: must be \"enforce\", \"warn\", or \"off\"",
+			c.Mode,
+		)
 	}
 	if (c.Mode == "enforce" || c.Mode == "warn") && c.TrustStore == "" {
 		return fmt.Errorf("signing.trust_store is required when signing.mode is %q", c.Mode)
@@ -1358,18 +1372,25 @@ func (w *AuditWatchtowerConfig) validate() error {
 		authSources++
 	}
 	if authSources != 1 {
-		return fmt.Errorf("audit.watchtower.auth: exactly one of token_file, token_env, client_cert_auth must be set (got %d)", authSources)
+		return fmt.Errorf(
+			"audit.watchtower.auth: exactly one of token_file, token_env, client_cert_auth must be set (got %d)",
+			authSources,
+		)
 	}
 
 	// mTLS pairing: when client_cert_auth is true, both cert + key are required.
 	if w.Auth.ClientCertAuth {
 		if w.TLS.ClientCertFile == "" || w.TLS.ClientKeyFile == "" {
-			return fmt.Errorf("audit.watchtower.auth.client_cert_auth requires both tls.client_cert_file and tls.client_key_file")
+			return fmt.Errorf(
+				"audit.watchtower.auth.client_cert_auth requires both tls.client_cert_file and tls.client_key_file",
+			)
 		}
 	}
 	// Partial TLS client-auth pair is invalid even without client_cert_auth.
 	if (w.TLS.ClientCertFile != "") != (w.TLS.ClientKeyFile != "") {
-		return fmt.Errorf("audit.watchtower.tls: client_cert_file and client_key_file must be set together")
+		return fmt.Errorf(
+			"audit.watchtower.tls: client_cert_file and client_key_file must be set together",
+		)
 	}
 
 	// TLS file existence AND readability. We open + close instead of just
@@ -1423,10 +1444,17 @@ func (w *AuditWatchtowerConfig) validate() error {
 		// fine; inferred from populated block
 	case "file", "env", "aws_kms", "azure_keyvault", "hashicorp_vault", "gcp_kms":
 		if w.Chain.KeySource != inferred {
-			return fmt.Errorf("audit.watchtower.chain.key_source %q does not match populated source %q", w.Chain.KeySource, inferred)
+			return fmt.Errorf(
+				"audit.watchtower.chain.key_source %q does not match populated source %q",
+				w.Chain.KeySource,
+				inferred,
+			)
 		}
 	default:
-		return fmt.Errorf("audit.watchtower.chain.key_source %q: must be one of file, env, aws_kms, azure_keyvault, hashicorp_vault, gcp_kms", w.Chain.KeySource)
+		return fmt.Errorf(
+			"audit.watchtower.chain.key_source %q: must be one of file, env, aws_kms, azure_keyvault, hashicorp_vault, gcp_kms",
+			w.Chain.KeySource,
+		)
 	}
 
 	// Per-provider minimum required fields. Mirror the kms package
@@ -1461,27 +1489,43 @@ func (w *AuditWatchtowerConfig) validate() error {
 	switch w.Chain.Algorithm {
 	case "hmac-sha256", "hmac-sha512":
 	default:
-		return fmt.Errorf("audit.watchtower.chain.algorithm %q: must be hmac-sha256 or hmac-sha512", w.Chain.Algorithm)
+		return fmt.Errorf(
+			"audit.watchtower.chain.algorithm %q: must be hmac-sha256 or hmac-sha512",
+			w.Chain.Algorithm,
+		)
 	}
 	if w.Batch.MaxBytes < 4*1024 {
 		return fmt.Errorf("audit.watchtower.batch.max_bytes %d: must be >= 4096", w.Batch.MaxBytes)
 	}
 	if w.WAL.SegmentSize > w.WAL.MaxTotalBytes/2 {
-		return fmt.Errorf("audit.watchtower.wal.segment_size %d > max_total_bytes/2 (%d)", w.WAL.SegmentSize, w.WAL.MaxTotalBytes/2)
+		return fmt.Errorf(
+			"audit.watchtower.wal.segment_size %d > max_total_bytes/2 (%d)",
+			w.WAL.SegmentSize,
+			w.WAL.MaxTotalBytes/2,
+		)
 	}
 	switch w.Batch.Compression {
 	case "none":
 		// nothing to validate.
 	case "zstd":
 		if w.Batch.ZstdLevel < 1 || w.Batch.ZstdLevel > 22 {
-			return fmt.Errorf("audit.watchtower.batch.zstd_level %d: must be in [1,22]", w.Batch.ZstdLevel)
+			return fmt.Errorf(
+				"audit.watchtower.batch.zstd_level %d: must be in [1,22]",
+				w.Batch.ZstdLevel,
+			)
 		}
 	case "gzip":
 		if w.Batch.GzipLevel < 1 || w.Batch.GzipLevel > 9 {
-			return fmt.Errorf("audit.watchtower.batch.gzip_level %d: must be in [1,9]", w.Batch.GzipLevel)
+			return fmt.Errorf(
+				"audit.watchtower.batch.gzip_level %d: must be in [1,9]",
+				w.Batch.GzipLevel,
+			)
 		}
 	default:
-		return fmt.Errorf("audit.watchtower.batch.compression %q: must be zstd, gzip, or none", w.Batch.Compression)
+		return fmt.Errorf(
+			"audit.watchtower.batch.compression %q: must be zstd, gzip, or none",
+			w.Batch.Compression,
+		)
 	}
 	switch w.WAL.SyncMode {
 	case "immediate":
@@ -1493,7 +1537,10 @@ func (w *AuditWatchtowerConfig) validate() error {
 		// fails fast — otherwise the daemon would only fail when the
 		// audit pipeline tries to open the WAL, after the rest of the
 		// config has been accepted as valid.
-		return fmt.Errorf("audit.watchtower.wal.sync_mode %q: deferred mode requires the periodic-sync timer hook (not yet implemented); use \"immediate\"", w.WAL.SyncMode)
+		return fmt.Errorf(
+			"audit.watchtower.wal.sync_mode %q: deferred mode requires the periodic-sync timer hook (not yet implemented); use \"immediate\"",
+			w.WAL.SyncMode,
+		)
 	default:
 		return fmt.Errorf("audit.watchtower.wal.sync_mode %q: must be immediate", w.WAL.SyncMode)
 	}
@@ -1502,7 +1549,10 @@ func (w *AuditWatchtowerConfig) validate() error {
 	switch w.Filter.MinRiskLevel {
 	case "", "low", "medium", "high", "critical":
 	default:
-		return fmt.Errorf("audit.watchtower.filter.min_risk_level %q: must be one of low, medium, high, critical (or empty)", w.Filter.MinRiskLevel)
+		return fmt.Errorf(
+			"audit.watchtower.filter.min_risk_level %q: must be one of low, medium, high, critical (or empty)",
+			w.Filter.MinRiskLevel,
+		)
 	}
 
 	// state_dir: ensure parent is creatable and writable. We track whether
@@ -1556,8 +1606,13 @@ func Load(path string) (*Config, error) {
 
 	applyDefaults(&cfg)
 	for _, k := range unknownFUSEKeys([]byte(expanded)) {
-		slog.Warn("unknown key under sandbox.fuse ignored; check the config schema",
-			"key", k, "hint", "soft-delete uses sandbox.fuse.audit.mode and sandbox.fuse.audit.trash_path")
+		slog.Warn(
+			"unknown key under sandbox.fuse ignored; check the config schema",
+			"key",
+			k,
+			"hint",
+			"soft-delete uses sandbox.fuse.audit.mode and sandbox.fuse.audit.trash_path",
+		)
 	}
 	applyEnvOverrides(&cfg)
 	if err := validateConfig(&cfg); err != nil {
@@ -1572,7 +1627,9 @@ func rejectRemovedConfigKeys(data []byte) error {
 		return fmt.Errorf("parse config: %w", err)
 	}
 	if yamlMappingPathExists(&root, "sandbox", "seccomp", "hardening_profiles") {
-		return fmt.Errorf("sandbox.seccomp.hardening_profiles has been removed; use sandbox.seccomp.mitigation_sets")
+		return fmt.Errorf(
+			"sandbox.seccomp.hardening_profiles has been removed; use sandbox.seccomp.mitigation_sets",
+		)
 	}
 	if err := validateSessionRuntimeConfigKeys(&root); err != nil {
 		return err
@@ -1738,8 +1795,13 @@ func LoadWithSource(path string, source ConfigSource) (*Config, ConfigSource, er
 
 	applyDefaultsWithSource(&cfg, source, path)
 	for _, k := range unknownFUSEKeys([]byte(expanded)) {
-		slog.Warn("unknown key under sandbox.fuse ignored; check the config schema",
-			"key", k, "hint", "soft-delete uses sandbox.fuse.audit.mode and sandbox.fuse.audit.trash_path")
+		slog.Warn(
+			"unknown key under sandbox.fuse ignored; check the config schema",
+			"key",
+			k,
+			"hint",
+			"soft-delete uses sandbox.fuse.audit.mode and sandbox.fuse.audit.trash_path",
+		)
 	}
 	applyEnvOverrides(&cfg)
 	if err := validateConfig(&cfg); err != nil {
@@ -2453,13 +2515,21 @@ func isSafeFeedName(name string) bool {
 func validateConfig(cfg *Config) error {
 	bwComposition := cfg.Sandbox.Composition.Bubblewrap
 	if bwComposition.Dialect != "0.11.2" {
-		return fmt.Errorf("invalid sandbox.composition.bubblewrap.dialect %q: only 0.11.2 is supported", bwComposition.Dialect)
+		return fmt.Errorf(
+			"invalid sandbox.composition.bubblewrap.dialect %q: only 0.11.2 is supported",
+			bwComposition.Dialect,
+		)
 	}
-	if bwComposition.MaxNamespaceDepth <= 0 || bwComposition.MaxNamespaceTransitions <= 0 || bwComposition.MaxPlanOperations <= 0 || bwComposition.MaxSyntheticMounts <= 0 || bwComposition.MaxDataBytes <= 0 {
+	if bwComposition.MaxNamespaceDepth <= 0 || bwComposition.MaxNamespaceTransitions <= 0 ||
+		bwComposition.MaxPlanOperations <= 0 ||
+		bwComposition.MaxSyntheticMounts <= 0 ||
+		bwComposition.MaxDataBytes <= 0 {
 		return fmt.Errorf("sandbox.composition.bubblewrap limits must all be positive")
 	}
 	if bwComposition.MaxNamespaceTransitions+bwComposition.MaxSyntheticMounts > 200 {
-		return fmt.Errorf("sandbox.composition.bubblewrap synthetic and transition pools exceed the trusted setup descriptor budget")
+		return fmt.Errorf(
+			"sandbox.composition.bubblewrap synthetic and transition pools exceed the trusted setup descriptor budget",
+		)
 	}
 	for name, path := range map[string]string{"adapter_path": bwComposition.AdapterPath, "mount_helper_path": bwComposition.MountHelperPath} {
 		if path != "" && !filepath.IsAbs(path) {
@@ -2468,32 +2538,51 @@ func validateConfig(cfg *Config) error {
 	}
 	if bwComposition.ScratchRoot != "" && bwComposition.ScratchRoot != CompositionScratchRootAuto {
 		clean := filepath.Clean(bwComposition.ScratchRoot)
-		if !filepath.IsAbs(bwComposition.ScratchRoot) || clean != bwComposition.ScratchRoot || clean == string(filepath.Separator) || filepath.Dir(clean) != string(filepath.Separator) {
-			return fmt.Errorf("sandbox.composition.bubblewrap.scratch_root must be %q or a clean, dedicated top-level directory", CompositionScratchRootAuto)
+		if !filepath.IsAbs(bwComposition.ScratchRoot) || clean != bwComposition.ScratchRoot ||
+			clean == string(filepath.Separator) ||
+			filepath.Dir(clean) != string(filepath.Separator) {
+			return fmt.Errorf(
+				"sandbox.composition.bubblewrap.scratch_root must be %q or a clean, dedicated top-level directory",
+				CompositionScratchRootAuto,
+			)
 		}
 	}
 	seenDeviceIOCTLPaths := make(map[string]struct{}, len(bwComposition.DeviceIOCTLPaths))
 	for _, path := range bwComposition.DeviceIOCTLPaths {
-		if !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.IndexAny(path, "*?[") >= 0 {
-			return fmt.Errorf("sandbox.composition.bubblewrap.device_ioctl_paths entries must be clean, absolute, non-glob paths: %q", path)
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path ||
+			strings.IndexAny(path, "*?[") >= 0 {
+			return fmt.Errorf(
+				"sandbox.composition.bubblewrap.device_ioctl_paths entries must be clean, absolute, non-glob paths: %q",
+				path,
+			)
 		}
 		if _, exists := seenDeviceIOCTLPaths[path]; exists {
-			return fmt.Errorf("sandbox.composition.bubblewrap.device_ioctl_paths contains duplicate %q", path)
+			return fmt.Errorf(
+				"sandbox.composition.bubblewrap.device_ioctl_paths contains duplicate %q",
+				path,
+			)
 		}
 		seenDeviceIOCTLPaths[path] = struct{}{}
 	}
 	if bwComposition.Enabled {
 		if bwComposition.ScratchRoot == "" {
-			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires scratch_root=%q or a dedicated static root", CompositionScratchRootAuto)
+			return fmt.Errorf(
+				"sandbox.composition.bubblewrap.enabled requires scratch_root=%q or a dedicated static root",
+				CompositionScratchRootAuto,
+			)
 		}
 		if !cfg.Landlock.Enabled {
 			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires landlock.enabled")
 		}
 		if !cfg.Sandbox.Seccomp.Execve.Enabled {
-			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires sandbox.seccomp.execve.enabled")
+			return fmt.Errorf(
+				"sandbox.composition.bubblewrap.enabled requires sandbox.seccomp.execve.enabled",
+			)
 		}
 		if !cfg.Sandbox.Network.EBPF.Required && !cfg.Sandbox.Network.EBPF.Enforce {
-			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires the strict command jail (sandbox.network.ebpf.required or enforce)")
+			return fmt.Errorf(
+				"sandbox.composition.bubblewrap.enabled requires the strict command jail (sandbox.network.ebpf.required or enforce)",
+			)
 		}
 		fileMonitor := cfg.Sandbox.Seccomp.FileMonitor
 		metadata := FileMonitorBoolWithDefault(fileMonitor.InterceptMetadata, false)
@@ -2501,8 +2590,13 @@ func validateConfig(cfg *Config) error {
 			!FileMonitorBoolWithDefault(fileMonitor.EnforceWithoutFUSE, false) ||
 			!metadata ||
 			FileMonitorBoolWithDefault(fileMonitor.WriteOnlyOpens, !metadata) ||
-			!FileMonitorBoolWithDefault(fileMonitor.BlockIOUring, FileMonitorBoolWithDefault(fileMonitor.EnforceWithoutFUSE, false)) {
-			return fmt.Errorf("sandbox.composition.bubblewrap.enabled requires enforced read/write and metadata file interception plus io_uring denial")
+			!FileMonitorBoolWithDefault(
+				fileMonitor.BlockIOUring,
+				FileMonitorBoolWithDefault(fileMonitor.EnforceWithoutFUSE, false),
+			) {
+			return fmt.Errorf(
+				"sandbox.composition.bubblewrap.enabled requires enforced read/write and metadata file interception plus io_uring denial",
+			)
 		}
 	}
 
@@ -2515,13 +2609,19 @@ func validateConfig(cfg *Config) error {
 	case "", "evaluate", "deny":
 		// "" gets normalized to "evaluate" by SymlinkEscapeDeny().
 	default:
-		return fmt.Errorf("invalid policies.symlink_escape %q: must be one of \"evaluate\" or \"deny\"", cfg.Policies.SymlinkEscape)
+		return fmt.Errorf(
+			"invalid policies.symlink_escape %q: must be one of \"evaluate\" or \"deny\"",
+			cfg.Policies.SymlinkEscape,
+		)
 	}
 	if cfg.Policies.ProjectOverlays.Enabled {
 		switch cfg.Policies.ProjectOverlays.OnDenied {
 		case "fail", "ignore":
 		default:
-			return fmt.Errorf("invalid policies.project_overlays.on_denied %q: must be one of \"fail\" or \"ignore\"", cfg.Policies.ProjectOverlays.OnDenied)
+			return fmt.Errorf(
+				"invalid policies.project_overlays.on_denied %q: must be one of \"fail\" or \"ignore\"",
+				cfg.Policies.ProjectOverlays.OnDenied,
+			)
 		}
 		for _, p := range cfg.Policies.ProjectOverlays.Paths {
 			if p == "" {
@@ -2532,7 +2632,10 @@ func validateConfig(cfg *Config) error {
 			}
 			clean := filepath.Clean(p)
 			if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-				return fmt.Errorf("policies.project_overlays.paths entry %q must not traverse outside the project root", p)
+				return fmt.Errorf(
+					"policies.project_overlays.paths entry %q must not traverse outside the project root",
+					p,
+				)
 			}
 		}
 	}
@@ -2540,8 +2643,10 @@ func validateConfig(cfg *Config) error {
 	case "", "errno", "kill", "log", "log_and_kill":
 		// ok; "" will be filled by applyDefaults
 	default:
-		return fmt.Errorf("invalid sandbox.seccomp.syscalls.on_block %q: must be one of errno, kill, log, log_and_kill",
-			cfg.Sandbox.Seccomp.Syscalls.OnBlock)
+		return fmt.Errorf(
+			"invalid sandbox.seccomp.syscalls.on_block %q: must be one of errno, kill, log, log_and_kill",
+			cfg.Sandbox.Seccomp.Syscalls.OnBlock,
+		)
 	}
 	if cfg.Sandbox.FUSE.Audit.MaxEventQueue < 0 {
 		return fmt.Errorf("sandbox.fuse.audit.max_event_queue must be >= 0")
@@ -2555,20 +2660,30 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("sessions.subagents.default_timeout must be a positive duration")
 		}
 	}
-	if concurrency := cfg.Sessions.Subagents.MaxExecConcurrency; concurrency < 1 || concurrency > MaximumSubagentExecConcurrency {
-		return fmt.Errorf("sessions.subagents.max_exec_concurrency must be between 1 and %d", MaximumSubagentExecConcurrency)
+	if concurrency := cfg.Sessions.Subagents.MaxExecConcurrency; concurrency < 1 ||
+		concurrency > MaximumSubagentExecConcurrency {
+		return fmt.Errorf(
+			"sessions.subagents.max_exec_concurrency must be between 1 and %d",
+			MaximumSubagentExecConcurrency,
+		)
 	}
 	switch cfg.Sessions.WorkspaceOverlay.DestroyAction {
 	case "", "reject", "keep":
 		// ok; "" is normalized by applyDefaults.
 	default:
-		return fmt.Errorf("invalid sessions.workspace_overlay.destroy_action %q: must be one of reject or keep", cfg.Sessions.WorkspaceOverlay.DestroyAction)
+		return fmt.Errorf(
+			"invalid sessions.workspace_overlay.destroy_action %q: must be one of reject or keep",
+			cfg.Sessions.WorkspaceOverlay.DestroyAction,
+		)
 	}
 	switch cfg.Sessions.WorkspaceShadow.DestroyAction {
 	case "", "reject", "keep":
 		// ok; "" is normalized by applyDefaults.
 	default:
-		return fmt.Errorf("invalid sessions.workspace_shadow.destroy_action %q: must be one of reject or keep", cfg.Sessions.WorkspaceShadow.DestroyAction)
+		return fmt.Errorf(
+			"invalid sessions.workspace_shadow.destroy_action %q: must be one of reject or keep",
+			cfg.Sessions.WorkspaceShadow.DestroyAction,
+		)
 	}
 	if err := runtimeprovider.ValidateName(cfg.Sessions.Runtime.DefaultProfile); err != nil {
 		return fmt.Errorf("sessions.runtime.default_profile: %w", err)
@@ -2577,7 +2692,10 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("sessions.runtime.profiles must configure at least one profile")
 	}
 	if _, ok := cfg.Sessions.Runtime.Profiles[cfg.Sessions.Runtime.DefaultProfile]; !ok {
-		return fmt.Errorf("sessions.runtime.default_profile %q is not present in sessions.runtime.profiles", cfg.Sessions.Runtime.DefaultProfile)
+		return fmt.Errorf(
+			"sessions.runtime.default_profile %q is not present in sessions.runtime.profiles",
+			cfg.Sessions.Runtime.DefaultProfile,
+		)
 	}
 	for name, profile := range cfg.Sessions.Runtime.Profiles {
 		if err := runtimeprovider.ValidateName(name); err != nil {
@@ -2586,35 +2704,58 @@ func validateConfig(cfg *Config) error {
 		switch profile.Provider {
 		case runtimeprovider.NativeProvider:
 			if profile.ProfileFile != "" {
-				return fmt.Errorf("sessions.runtime.profiles.%s.profile_file is not valid for native", name)
+				return fmt.Errorf(
+					"sessions.runtime.profiles.%s.profile_file is not valid for native",
+					name,
+				)
 			}
 		case runtimeprovider.ExternalRunnerProvider:
 			if name == cfg.Sessions.Runtime.DefaultProfile {
-				return fmt.Errorf("sessions.runtime external runner profile %q cannot be the default while experimental", name)
+				return fmt.Errorf(
+					"sessions.runtime external runner profile %q cannot be the default while experimental",
+					name,
+				)
 			}
-			if !filepath.IsAbs(profile.ProfileFile) || filepath.Clean(profile.ProfileFile) != profile.ProfileFile {
-				return fmt.Errorf("sessions.runtime.profiles.%s.profile_file must be clean and absolute", name)
+			if !filepath.IsAbs(profile.ProfileFile) ||
+				filepath.Clean(profile.ProfileFile) != profile.ProfileFile {
+				return fmt.Errorf(
+					"sessions.runtime.profiles.%s.profile_file must be clean and absolute",
+					name,
+				)
 			}
 		default:
-			return fmt.Errorf("sessions.runtime.profiles.%s.provider %q is unsupported", name, profile.Provider)
+			return fmt.Errorf(
+				"sessions.runtime.profiles.%s.provider %q is unsupported",
+				name,
+				profile.Provider,
+			)
 		}
 	}
 	switch cfg.Sessions.RuntimeHomeMode {
 	case "", "isolated", "real":
 		// ok; "" is normalized at session creation.
 	default:
-		return fmt.Errorf("invalid sessions.runtime_home_mode %q: must be one of isolated or real", cfg.Sessions.RuntimeHomeMode)
+		return fmt.Errorf(
+			"invalid sessions.runtime_home_mode %q: must be one of isolated or real",
+			cfg.Sessions.RuntimeHomeMode,
+		)
 	}
 	switch cfg.Sessions.EnvBaseMode {
 	case "", "minimal", "inherit_allowed":
 		// ok; "" is normalized at session creation.
 	default:
-		return fmt.Errorf("invalid sessions.env_base_mode %q: must be one of minimal or inherit_allowed", cfg.Sessions.EnvBaseMode)
+		return fmt.Errorf(
+			"invalid sessions.env_base_mode %q: must be one of minimal or inherit_allowed",
+			cfg.Sessions.EnvBaseMode,
+		)
 	}
 	switch cfg.Sandbox.Network.InterceptMode {
 	case "", "all", "tcp_only", "monitor":
 	default:
-		return fmt.Errorf("invalid sandbox.network.intercept_mode %q", cfg.Sandbox.Network.InterceptMode)
+		return fmt.Errorf(
+			"invalid sandbox.network.intercept_mode %q",
+			cfg.Sandbox.Network.InterceptMode,
+		)
 	}
 	// Validate platform mode
 	switch cfg.Platform.Mode {
@@ -2641,7 +2782,10 @@ func validateConfig(cfg *Config) error {
 		switch cfg.Audit.OTEL.Protocol {
 		case "grpc", "http":
 		default:
-			return fmt.Errorf("invalid audit.otel.protocol %q (must be \"grpc\" or \"http\")", cfg.Audit.OTEL.Protocol)
+			return fmt.Errorf(
+				"invalid audit.otel.protocol %q (must be \"grpc\" or \"http\")",
+				cfg.Audit.OTEL.Protocol,
+			)
 		}
 		if cfg.Audit.OTEL.Endpoint == "" {
 			return fmt.Errorf("audit.otel.endpoint is required when otel is enabled")
@@ -2649,7 +2793,10 @@ func validateConfig(cfg *Config) error {
 		switch cfg.Audit.OTEL.Filter.MinRiskLevel {
 		case "", "low", "medium", "high", "critical":
 		default:
-			return fmt.Errorf("invalid audit.otel.filter.min_risk_level %q", cfg.Audit.OTEL.Filter.MinRiskLevel)
+			return fmt.Errorf(
+				"invalid audit.otel.filter.min_risk_level %q",
+				cfg.Audit.OTEL.Filter.MinRiskLevel,
+			)
 		}
 	}
 	// Validate threat_feeds config
@@ -2657,7 +2804,10 @@ func validateConfig(cfg *Config) error {
 		switch cfg.ThreatFeeds.Action {
 		case "deny", "audit":
 		default:
-			return fmt.Errorf("invalid threat_feeds.action %q (must be \"deny\" or \"audit\")", cfg.ThreatFeeds.Action)
+			return fmt.Errorf(
+				"invalid threat_feeds.action %q (must be \"deny\" or \"audit\")",
+				cfg.ThreatFeeds.Action,
+			)
 		}
 	}
 	for i, f := range cfg.ThreatFeeds.Feeds {
@@ -2665,21 +2815,36 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("threat_feeds.feeds[%d].name must not be empty", i)
 		}
 		if !isSafeFeedName(f.Name) {
-			return fmt.Errorf("invalid threat_feeds.feeds[%d].name %q (must match [A-Za-z0-9._-]+)", i, f.Name)
+			return fmt.Errorf(
+				"invalid threat_feeds.feeds[%d].name %q (must match [A-Za-z0-9._-]+)",
+				i,
+				f.Name,
+			)
 		}
 		if f.URL == "" {
 			return fmt.Errorf("threat_feeds.feeds[%d].url must not be empty", i)
 		}
 		u, err := url.Parse(f.URL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("invalid threat_feeds.feeds[%d].url %q (must be http or https with a valid host)", i, f.URL)
+			return fmt.Errorf(
+				"invalid threat_feeds.feeds[%d].url %q (must be http or https with a valid host)",
+				i,
+				f.URL,
+			)
 		}
 		switch f.Format {
 		case "hostfile", "domain-list":
 		case "":
-			return fmt.Errorf("threat_feeds.feeds[%d].format must not be empty (use \"hostfile\" or \"domain-list\")", i)
+			return fmt.Errorf(
+				"threat_feeds.feeds[%d].format must not be empty (use \"hostfile\" or \"domain-list\")",
+				i,
+			)
 		default:
-			return fmt.Errorf("invalid threat_feeds.feeds[%d].format %q (must be \"hostfile\" or \"domain-list\")", i, f.Format)
+			return fmt.Errorf(
+				"invalid threat_feeds.feeds[%d].format %q (must be \"hostfile\" or \"domain-list\")",
+				i,
+				f.Format,
+			)
 		}
 	}
 	feedNames := make(map[string]struct{}, len(cfg.ThreatFeeds.Feeds))
@@ -2690,13 +2855,19 @@ func validateConfig(cfg *Config) error {
 		feedNames[f.Name] = struct{}{}
 	}
 	if cfg.ThreatFeeds.Realtime.Provider != "" {
-		return fmt.Errorf("threat_feeds.realtime.provider %q is not supported in this version", cfg.ThreatFeeds.Realtime.Provider)
+		return fmt.Errorf(
+			"threat_feeds.realtime.provider %q is not supported in this version",
+			cfg.ThreatFeeds.Realtime.Provider,
+		)
 	}
 	if cfg.ThreatFeeds.Realtime.OnTimeout != "" {
 		switch cfg.ThreatFeeds.Realtime.OnTimeout {
 		case "local-only", "allow", "deny":
 		default:
-			return fmt.Errorf("invalid threat_feeds.realtime.on_timeout %q (must be \"local-only\", \"allow\", or \"deny\")", cfg.ThreatFeeds.Realtime.OnTimeout)
+			return fmt.Errorf(
+				"invalid threat_feeds.realtime.on_timeout %q (must be \"local-only\", \"allow\", or \"deny\")",
+				cfg.ThreatFeeds.Realtime.OnTimeout,
+			)
 		}
 	}
 	// Validate MCP transport policy
@@ -2708,15 +2879,26 @@ func validateConfig(cfg *Config) error {
 		if srv.TLSFingerprint != "" {
 			fp := srv.TLSFingerprint
 			if len(fp) < 7 || fp[:7] != "sha256:" {
-				return fmt.Errorf("MCP server %q: TLS fingerprint must start with 'sha256:'", srv.ID)
+				return fmt.Errorf(
+					"MCP server %q: TLS fingerprint must start with 'sha256:'",
+					srv.ID,
+				)
 			}
 			hexPart := fp[7:]
 			if len(hexPart) != 64 {
-				return fmt.Errorf("MCP server %q: TLS fingerprint hex must be 64 characters (SHA-256), got %d", srv.ID, len(hexPart))
+				return fmt.Errorf(
+					"MCP server %q: TLS fingerprint hex must be 64 characters (SHA-256), got %d",
+					srv.ID,
+					len(hexPart),
+				)
 			}
 			for _, c := range hexPart {
 				if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-					return fmt.Errorf("MCP server %q: TLS fingerprint contains invalid hex character %q", srv.ID, string(c))
+					return fmt.Errorf(
+						"MCP server %q: TLS fingerprint contains invalid hex character %q",
+						srv.ID,
+						string(c),
+					)
 				}
 			}
 		}
@@ -2726,7 +2908,10 @@ func validateConfig(cfg *Config) error {
 		switch cfg.Sandbox.MCP.OutputInspection.OnDetection {
 		case "allow", "alert", "block":
 		default:
-			return fmt.Errorf("invalid sandbox.mcp.output_inspection.on_detection %q (must be \"allow\", \"alert\", or \"block\")", cfg.Sandbox.MCP.OutputInspection.OnDetection)
+			return fmt.Errorf(
+				"invalid sandbox.mcp.output_inspection.on_detection %q (must be \"allow\", \"alert\", or \"block\")",
+				cfg.Sandbox.MCP.OutputInspection.OnDetection,
+			)
 		}
 	}
 	// Validate sampling.policy enum
@@ -2734,7 +2919,10 @@ func validateConfig(cfg *Config) error {
 		switch cfg.Sandbox.MCP.Sampling.Policy {
 		case "allow", "alert", "block":
 		default:
-			return fmt.Errorf("invalid sandbox.mcp.sampling.policy %q (must be \"allow\", \"alert\", or \"block\")", cfg.Sandbox.MCP.Sampling.Policy)
+			return fmt.Errorf(
+				"invalid sandbox.mcp.sampling.policy %q (must be \"allow\", \"alert\", or \"block\")",
+				cfg.Sandbox.MCP.Sampling.Policy,
+			)
 		}
 	}
 	// Validate sampling.per_server enum values
@@ -2742,7 +2930,11 @@ func validateConfig(cfg *Config) error {
 		switch policy {
 		case "allow", "alert", "block":
 		default:
-			return fmt.Errorf("invalid sandbox.mcp.sampling.per_server[%q] %q (must be \"allow\", \"alert\", or \"block\")", serverID, policy)
+			return fmt.Errorf(
+				"invalid sandbox.mcp.sampling.per_server[%q] %q (must be \"allow\", \"alert\", or \"block\")",
+				serverID,
+				policy,
+			)
 		}
 	}
 	// Validate version_pinning.on_change enum
@@ -2750,32 +2942,49 @@ func validateConfig(cfg *Config) error {
 		switch cfg.Sandbox.MCP.VersionPinning.OnChange {
 		case "block", "alert", "allow":
 		default:
-			return fmt.Errorf("invalid sandbox.mcp.version_pinning.on_change %q (must be \"block\", \"alert\", or \"allow\")", cfg.Sandbox.MCP.VersionPinning.OnChange)
+			return fmt.Errorf(
+				"invalid sandbox.mcp.version_pinning.on_change %q (must be \"block\", \"alert\", or \"allow\")",
+				cfg.Sandbox.MCP.VersionPinning.OnChange,
+			)
 		}
 	}
 	// Validate SimilarityThreshold bounds
 	if t := cfg.Sandbox.MCP.CrossServer.ShadowTool.SimilarityThreshold; t != nil {
 		if *t < 0 || *t > 1 {
-			return fmt.Errorf("sandbox.mcp.cross_server.shadow_tool.similarity_threshold must be in [0, 1], got %v", *t)
+			return fmt.Errorf(
+				"sandbox.mcp.cross_server.shadow_tool.similarity_threshold must be in [0, 1], got %v",
+				*t,
+			)
 		}
 	}
 	// Validate proxy rate limits
 	rl := cfg.Proxy.RateLimits
 	if rl.Enabled {
 		if rl.RequestsPerMinute < 0 {
-			return fmt.Errorf("proxy.rate_limits.requests_per_minute must be >= 0, got %d", rl.RequestsPerMinute)
+			return fmt.Errorf(
+				"proxy.rate_limits.requests_per_minute must be >= 0, got %d",
+				rl.RequestsPerMinute,
+			)
 		}
 		if rl.RequestBurst < 0 {
-			return fmt.Errorf("proxy.rate_limits.request_burst must be >= 0, got %d", rl.RequestBurst)
+			return fmt.Errorf(
+				"proxy.rate_limits.request_burst must be >= 0, got %d",
+				rl.RequestBurst,
+			)
 		}
 		if rl.TokensPerMinute < 0 {
-			return fmt.Errorf("proxy.rate_limits.tokens_per_minute must be >= 0, got %d", rl.TokensPerMinute)
+			return fmt.Errorf(
+				"proxy.rate_limits.tokens_per_minute must be >= 0, got %d",
+				rl.TokensPerMinute,
+			)
 		}
 		if rl.TokenBurst < 0 {
 			return fmt.Errorf("proxy.rate_limits.token_burst must be >= 0, got %d", rl.TokenBurst)
 		}
 		if rl.RequestsPerMinute == 0 && rl.TokensPerMinute == 0 {
-			return fmt.Errorf("proxy.rate_limits: enabled but neither requests_per_minute nor tokens_per_minute is set")
+			return fmt.Errorf(
+				"proxy.rate_limits: enabled but neither requests_per_minute nor tokens_per_minute is set",
+			)
 		}
 	}
 	// Validate package_checks config
@@ -2783,7 +2992,10 @@ func validateConfig(cfg *Config) error {
 		switch cfg.PackageChecks.Scope {
 		case "new_packages_only", "all_installs":
 		default:
-			return fmt.Errorf("invalid package_checks.scope %q (must be \"new_packages_only\" or \"all_installs\")", cfg.PackageChecks.Scope)
+			return fmt.Errorf(
+				"invalid package_checks.scope %q (must be \"new_packages_only\" or \"all_installs\")",
+				cfg.PackageChecks.Scope,
+			)
 		}
 	}
 	// Validate package_checks.fail_mode (also reachable via PKGCHECK_FAIL_MODE
@@ -2793,7 +3005,10 @@ func validateConfig(cfg *Config) error {
 		switch cfg.PackageChecks.FailMode {
 		case "open", "closed", "degraded":
 		default:
-			return fmt.Errorf("invalid package_checks.fail_mode %q (must be \"open\", \"closed\", or \"degraded\")", cfg.PackageChecks.FailMode)
+			return fmt.Errorf(
+				"invalid package_checks.fail_mode %q (must be \"open\", \"closed\", or \"degraded\")",
+				cfg.PackageChecks.FailMode,
+			)
 		}
 	}
 	for name, p := range cfg.PackageChecks.Providers {
@@ -2801,14 +3016,22 @@ func validateConfig(cfg *Config) error {
 			switch p.OnFailure {
 			case "warn", "deny", "allow", "approve":
 			default:
-				return fmt.Errorf("invalid package_checks.providers[%q].on_failure %q (must be \"warn\", \"deny\", \"allow\", or \"approve\")", name, p.OnFailure)
+				return fmt.Errorf(
+					"invalid package_checks.providers[%q].on_failure %q (must be \"warn\", \"deny\", \"allow\", or \"approve\")",
+					name,
+					p.OnFailure,
+				)
 			}
 		}
 		if p.Type != "" {
 			switch p.Type {
 			case "exec":
 			default:
-				return fmt.Errorf("invalid package_checks.providers[%q].type %q (must be \"exec\")", name, p.Type)
+				return fmt.Errorf(
+					"invalid package_checks.providers[%q].type %q (must be \"exec\")",
+					name,
+					p.Type,
+				)
 			}
 		}
 	}
@@ -2816,7 +3039,11 @@ func validateConfig(cfg *Config) error {
 		switch r.Trust {
 		case "check_full", "check_local_only", "trusted":
 		default:
-			return fmt.Errorf("invalid package_checks.registries[%q].trust %q (must be \"check_full\", \"check_local_only\", or \"trusted\")", name, r.Trust)
+			return fmt.Errorf(
+				"invalid package_checks.registries[%q].trust %q (must be \"check_full\", \"check_local_only\", or \"trusted\")",
+				name,
+				r.Trust,
+			)
 		}
 	}
 	// Validate denylist globs in package_checks.privacy so malformed
@@ -2850,11 +3077,19 @@ func validateConfig(cfg *Config) error {
 	// Validate blocked_socket_families entries.
 	for i, e := range cfg.Sandbox.Seccomp.BlockedSocketFamilies {
 		if _, _, ok := seccompPkg.ParseFamily(e.Family); !ok {
-			return fmt.Errorf("sandbox.seccomp.blocked_socket_families[%d].family: %q is not a valid AF_* name or number", i, e.Family)
+			return fmt.Errorf(
+				"sandbox.seccomp.blocked_socket_families[%d].family: %q is not a valid AF_* name or number",
+				i,
+				e.Family,
+			)
 		}
 		if e.Action != "" {
 			if _, ok := seccompPkg.ParseOnBlock(e.Action); !ok {
-				return fmt.Errorf("sandbox.seccomp.blocked_socket_families[%d].action: %q is not valid (allowed: errno, kill, log, log_and_kill)", i, e.Action)
+				return fmt.Errorf(
+					"sandbox.seccomp.blocked_socket_families[%d].action: %q is not valid (allowed: errno, kill, log, log_and_kill)",
+					i,
+					e.Action,
+				)
 			}
 		}
 	}
@@ -2888,7 +3123,10 @@ func validateConfig(cfg *Config) error {
 	switch cfg.Sandbox.Seccomp.Shellc.Opaque {
 	case "", "deny", "enforce", "allow":
 	default:
-		return fmt.Errorf("seccomp.shellc.opaque: invalid value %q (want deny, enforce, or allow)", cfg.Sandbox.Seccomp.Shellc.Opaque)
+		return fmt.Errorf(
+			"seccomp.shellc.opaque: invalid value %q (want deny, enforce, or allow)",
+			cfg.Sandbox.Seccomp.Shellc.Opaque,
+		)
 	}
 	if err := cfg.Sandbox.Validate(); err != nil {
 		return fmt.Errorf("sandbox config: %w", err)

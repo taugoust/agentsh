@@ -1028,14 +1028,26 @@ func TestAgentDefault_EnvDecisions(t *testing.T) {
 		{name: "NPM_TOKEN denied", envVar: "NPM_TOKEN", wantAllowed: false},
 		{name: "AWS_SECRET_ACCESS_KEY denied", envVar: "AWS_SECRET_ACCESS_KEY", wantAllowed: false},
 		{name: "AWS_SESSION_TOKEN denied", envVar: "AWS_SESSION_TOKEN", wantAllowed: false},
-		{name: "GOOGLE_APPLICATION_CREDENTIALS denied", envVar: "GOOGLE_APPLICATION_CREDENTIALS", wantAllowed: false},
+		{
+			name:        "GOOGLE_APPLICATION_CREDENTIALS denied",
+			envVar:      "GOOGLE_APPLICATION_CREDENTIALS",
+			wantAllowed: false,
+		},
 
 		// Wildcard deny patterns
 		{name: "MY_SECRET_KEY denied (*_SECRET*)", envVar: "MY_SECRET_KEY", wantAllowed: false},
 		{name: "DB_PASSWORD denied (*_PASSWORD*)", envVar: "DB_PASSWORD", wantAllowed: false},
-		{name: "SSH_PRIVATE_KEY denied (*_PRIVATE_KEY*)", envVar: "SSH_PRIVATE_KEY", wantAllowed: false},
+		{
+			name:        "SSH_PRIVATE_KEY denied (*_PRIVATE_KEY*)",
+			envVar:      "SSH_PRIVATE_KEY",
+			wantAllowed: false,
+		},
 		{name: "STRIPE_API_KEY denied (*_API_KEY*)", envVar: "STRIPE_API_KEY", wantAllowed: false},
-		{name: "AWS_ACCESS_KEY_ID denied (*_ACCESS_KEY*)", envVar: "AWS_ACCESS_KEY_ID", wantAllowed: false},
+		{
+			name:        "AWS_ACCESS_KEY_ID denied (*_ACCESS_KEY*)",
+			envVar:      "AWS_ACCESS_KEY_ID",
+			wantAllowed: false,
+		},
 		{name: "SESSION_TOKEN denied (*_TOKEN)", envVar: "SESSION_TOKEN", wantAllowed: false},
 	}
 

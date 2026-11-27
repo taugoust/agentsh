@@ -157,7 +157,11 @@ func TestClassifyAlterSystem_Reset(t *testing.T) {
 }
 
 func TestClassifySecurityLabel(t *testing.T) {
-	cs := classifyOne(t, "SECURITY LABEL FOR provider ON COLUMN tab.col IS 'classified'", SessionState{})
+	cs := classifyOne(
+		t,
+		"SECURITY LABEL FOR provider ON COLUMN tab.col IS 'classified'",
+		SessionState{},
+	)
 	if cs.RawVerb != "SECURITY_LABEL" {
 		t.Fatalf("RawVerb: got %q", cs.RawVerb)
 	}

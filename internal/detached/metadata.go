@@ -121,7 +121,10 @@ type heartbeatRecord struct {
 }
 
 func WriteHeartbeat(stateDir string, meta Metadata) error {
-	if meta.ProtocolVersion < ProtocolVersion || strings.TrimSpace(meta.SessionID) == "" || meta.Generation == 0 || strings.TrimSpace(meta.IncarnationID) == "" || meta.HeartbeatAt.IsZero() {
+	if meta.ProtocolVersion < ProtocolVersion || strings.TrimSpace(meta.SessionID) == "" ||
+		meta.Generation == 0 ||
+		strings.TrimSpace(meta.IncarnationID) == "" ||
+		meta.HeartbeatAt.IsZero() {
 		return fmt.Errorf("write heartbeat: incomplete detached incarnation identity")
 	}
 	record := heartbeatRecord{
@@ -138,7 +141,11 @@ func WriteHeartbeat(stateDir string, meta Metadata) error {
 	// Heartbeat freshness is advisory. Atomic replacement prevents readers from
 	// accepting partial content, while deliberately omitting fsync avoids turning
 	// every liveness tick into a durable metadata transaction.
-	if err := atomicWritePrivateFileWithDurability(HeartbeatPath(stateDir), append(data, '\n'), false); err != nil {
+	if err := atomicWritePrivateFileWithDurability(
+		HeartbeatPath(stateDir),
+		append(data, '\n'),
+		false,
+	); err != nil {
 		return fmt.Errorf("write heartbeat: %w", err)
 	}
 	return nil
@@ -214,24 +221,50 @@ func atomicWritePrivateFileWithDurability(path string, data []byte, durable bool
 }
 
 func ReadMetadataFromRoot(root string, sessionID string) (Metadata, string, error) {
-	if sessionID == "" || sessionID == "." || sessionID == ".." || strings.ContainsAny(sessionID, `/\\`) || filepath.Base(sessionID) != sessionID {
-		return Metadata{}, "", fmt.Errorf("%w: invalid detached session path identity", ErrMetadataInvalid)
+	if sessionID == "" || sessionID == "." || sessionID == ".." ||
+		strings.ContainsAny(sessionID, `/\\`) ||
+		filepath.Base(sessionID) != sessionID {
+		return Metadata{}, "", fmt.Errorf(
+			"%w: invalid detached session path identity",
+			ErrMetadataInvalid,
+		)
 	}
 	stateDir := filepath.Join(root, sessionID)
 	path := MetadataPath(stateDir)
 	b, err := readProtectedRegularFile(path, 4<<20)
 	if err != nil {
-		return Metadata{}, stateDir, fmt.Errorf("read detached supervisor metadata for %s at %s: %w", sessionID, path, err)
+		return Metadata{}, stateDir, fmt.Errorf(
+			"read detached supervisor metadata for %s at %s: %w",
+			sessionID,
+			path,
+			err,
+		)
 	}
 	var meta Metadata
 	if err := json.Unmarshal(b, &meta); err != nil {
-		return Metadata{}, stateDir, fmt.Errorf("%w for %s at %s: %v", ErrMetadataInvalid, sessionID, path, err)
+		return Metadata{}, stateDir, fmt.Errorf(
+			"%w for %s at %s: %v",
+			ErrMetadataInvalid,
+			sessionID,
+			path,
+			err,
+		)
 	}
 	if meta.SessionID == "" {
-		return Metadata{}, stateDir, fmt.Errorf("%w for %s at %s: missing session_id", ErrMetadataInvalid, sessionID, path)
+		return Metadata{}, stateDir, fmt.Errorf(
+			"%w for %s at %s: missing session_id",
+			ErrMetadataInvalid,
+			sessionID,
+			path,
+		)
 	}
 	if meta.SessionID != sessionID || (meta.ID != "" && meta.ID != sessionID) {
-		return Metadata{}, stateDir, fmt.Errorf("%w for %s at %s: path and metadata identities differ", ErrMetadataInvalid, sessionID, path)
+		return Metadata{}, stateDir, fmt.Errorf(
+			"%w for %s at %s: path and metadata identities differ",
+			ErrMetadataInvalid,
+			sessionID,
+			path,
+		)
 	}
 	if meta.NetworkEnforcement != nil {
 		meta.NetworkEnforcement.Normalize()
@@ -256,7 +289,11 @@ func readHeartbeat(stateDir string) (heartbeatRecord, error) {
 	if err := dec.Decode(&heartbeat); err != nil {
 		return heartbeatRecord{}, err
 	}
-	if heartbeat.ProtocolVersion < ProtocolVersion || strings.TrimSpace(heartbeat.SessionID) == "" || heartbeat.Generation == 0 || strings.TrimSpace(heartbeat.IncarnationID) == "" || heartbeat.HeartbeatAt.IsZero() {
+	if heartbeat.ProtocolVersion < ProtocolVersion ||
+		strings.TrimSpace(heartbeat.SessionID) == "" ||
+		heartbeat.Generation == 0 ||
+		strings.TrimSpace(heartbeat.IncarnationID) == "" ||
+		heartbeat.HeartbeatAt.IsZero() {
 		return heartbeatRecord{}, fmt.Errorf("invalid detached heartbeat")
 	}
 	heartbeat.HeartbeatAt = heartbeat.HeartbeatAt.UTC()
@@ -268,7 +305,8 @@ func readProtectedRegularFile(path string, maxBytes int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !pathInfo.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 || pathInfo.Mode().Perm()&0o077 != 0 {
+	if !pathInfo.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 ||
+		pathInfo.Mode().Perm()&0o077 != 0 {
 		return nil, fmt.Errorf("protected file has unsafe type or permissions")
 	}
 	if pathInfo.Size() < 0 || pathInfo.Size() > maxBytes {
@@ -321,7 +359,8 @@ func ListMetadataFromRoot(root string, opts DiscoveryOptions) ([]Metadata, error
 				continue
 			}
 		}
-		if opts.CheckPID && meta.OwnerPID > 0 && opts.PIDAlive != nil && !opts.PIDAlive(meta.OwnerPID) {
+		if opts.CheckPID && meta.OwnerPID > 0 && opts.PIDAlive != nil &&
+			!opts.PIDAlive(meta.OwnerPID) {
 			continue
 		}
 		out = append(out, meta)
@@ -342,7 +381,9 @@ func StaleNetworkEnforcementSnapshot(report *NetworkEnforcement) *NetworkEnforce
 	if report.Attachment != nil {
 		attachment := *report.Attachment
 		attachment.ProxyEndpointIDs = append([]string(nil), report.Attachment.ProxyEndpointIDs...)
-		attachment.BlockedTrafficClasses = append([]string(nil), report.Attachment.BlockedTrafficClasses...)
+		attachment.BlockedTrafficClasses = append(
+			[]string(nil),
+			report.Attachment.BlockedTrafficClasses...)
 		snapshot.Attachment = &attachment
 	}
 	if report.Preflight != nil {
@@ -373,32 +414,68 @@ func ValidateUsable(meta Metadata, pidAlive func(int) bool) error {
 		case LifecycleFinalizing, LifecycleStopping, LifecycleStopped, LifecycleFinalized:
 			return fmt.Errorf("detached session %s is %s", meta.SessionID, meta.State)
 		case LifecycleFailed:
-			return fmt.Errorf("detached session %s supervisor failed: %s", meta.SessionID, meta.LastError)
+			return fmt.Errorf(
+				"detached session %s supervisor failed: %s",
+				meta.SessionID,
+				meta.LastError,
+			)
 		default:
-			return fmt.Errorf("stale metadata for detached session %s: unknown lifecycle state %q", meta.SessionID, meta.State)
+			return fmt.Errorf(
+				"stale metadata for detached session %s: unknown lifecycle state %q",
+				meta.SessionID,
+				meta.State,
+			)
 		}
 		if meta.Generation == 0 || strings.TrimSpace(meta.IncarnationID) == "" {
-			return fmt.Errorf("stale metadata for detached session %s: incomplete incarnation identity", meta.SessionID)
+			return fmt.Errorf(
+				"stale metadata for detached session %s: incomplete incarnation identity",
+				meta.SessionID,
+			)
 		}
 	}
 	if strings.TrimSpace(meta.SupervisorSock) == "" {
-		return fmt.Errorf("stale metadata for detached session %s: metadata.json has no supervisor_sock", meta.SessionID)
+		return fmt.Errorf(
+			"stale metadata for detached session %s: metadata.json has no supervisor_sock",
+			meta.SessionID,
+		)
 	}
 	socketInfo, socketErr := os.Lstat(meta.SupervisorSock)
 	if socketErr != nil {
 		if errors.Is(socketErr, os.ErrNotExist) {
-			return fmt.Errorf("stale metadata for detached session %s: supervisor.sock is missing at %s; stop/remove the stale session or start a new detached session", meta.SessionID, meta.SupervisorSock)
+			return fmt.Errorf(
+				"stale metadata for detached session %s: supervisor.sock is missing at %s; stop/remove the stale session or start a new detached session",
+				meta.SessionID,
+				meta.SupervisorSock,
+			)
 		}
-		return fmt.Errorf("stale metadata for detached session %s: cannot stat supervisor.sock at %s: %w", meta.SessionID, meta.SupervisorSock, socketErr)
+		return fmt.Errorf(
+			"stale metadata for detached session %s: cannot stat supervisor.sock at %s: %w",
+			meta.SessionID,
+			meta.SupervisorSock,
+			socketErr,
+		)
 	}
-	if meta.ProtocolVersion >= 2 && (socketInfo.Mode()&os.ModeSocket == 0 || socketInfo.Mode()&os.ModeSymlink != 0) {
-		return fmt.Errorf("stale metadata for detached session %s: supervisor path is not a direct Unix socket", meta.SessionID)
+	if meta.ProtocolVersion >= 2 &&
+		(socketInfo.Mode()&os.ModeSocket == 0 || socketInfo.Mode()&os.ModeSymlink != 0) {
+		return fmt.Errorf(
+			"stale metadata for detached session %s: supervisor path is not a direct Unix socket",
+			meta.SessionID,
+		)
 	}
 	if meta.OwnerPID > 0 && pidAlive != nil && !pidAlive(meta.OwnerPID) {
-		return fmt.Errorf("dead supervisor for detached session %s: owner_pid %d is not running; recover or stop the exact stale session", meta.SessionID, meta.OwnerPID)
+		return fmt.Errorf(
+			"dead supervisor for detached session %s: owner_pid %d is not running; recover or stop the exact stale session",
+			meta.SessionID,
+			meta.OwnerPID,
+		)
 	}
-	if meta.OwnerPID > 0 && meta.OwnerStartIdentity != "" && meta.BootID != "" && !ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
-		return fmt.Errorf("stale supervisor identity for detached session %s: owner_pid %d was reused or belongs to another boot", meta.SessionID, meta.OwnerPID)
+	if meta.OwnerPID > 0 && meta.OwnerStartIdentity != "" && meta.BootID != "" &&
+		!ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
+		return fmt.Errorf(
+			"stale supervisor identity for detached session %s: owner_pid %d was reused or belongs to another boot",
+			meta.SessionID,
+			meta.OwnerPID,
+		)
 	}
 	return nil
 }

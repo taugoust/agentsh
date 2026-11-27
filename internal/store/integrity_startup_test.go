@@ -95,7 +95,13 @@ func TestNewIntegrityStore_FreshInstallWritesInitialRotationEvent(t *testing.T) 
 func TestNewIntegrityStore_RejectsLegacyLogWithoutSidecar(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "audit.jsonl")
-	if err := os.WriteFile(logPath, []byte(`{"type":"legacy","integrity":{"sequence":1,"prev_hash":"","entry_hash":"deadbeef"}}`+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		logPath,
+		[]byte(
+			`{"type":"legacy","integrity":{"sequence":1,"prev_hash":"","entry_hash":"deadbeef"}}`+"\n",
+		),
+		0o600,
+	); err != nil {
 		t.Fatalf("os.WriteFile() error = %v", err)
 	}
 
@@ -138,7 +144,9 @@ func TestNewIntegrityStore_RejectsTamperedLastEntryEvenWhenSidecarMatches(t *tes
 	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
 
 	chain := mustNewIntegrityChain(t)
-	line, err := chain.Wrap([]byte(`{"type":"existing","timestamp":"2026-04-11T12:00:00Z","fields":{"value":"ok"}}`))
+	line, err := chain.Wrap(
+		[]byte(`{"type":"existing","timestamp":"2026-04-11T12:00:00Z","fields":{"value":"ok"}}`),
+	)
 	if err != nil {
 		t.Fatalf("chain.Wrap() error = %v", err)
 	}
@@ -172,7 +180,11 @@ func TestNewIntegrityStore_RejectsTamperedLastEntryEvenWhenSidecarMatches(t *tes
 	}
 	t.Cleanup(func() { _ = inner.Close() })
 
-	if _, err := NewIntegrityStore(inner, mustNewIntegrityChain(t), testIntegrityOptions(logPath)); err == nil {
+	if _, err := NewIntegrityStore(
+		inner,
+		mustNewIntegrityChain(t),
+		testIntegrityOptions(logPath),
+	); err == nil {
 		t.Fatal("NewIntegrityStore() error = nil, want tampered exact-match resume rejection")
 	}
 }
@@ -219,7 +231,11 @@ func TestNewIntegrityStore_RejectsVisibleMidChainWithMatchingSidecar(t *testing.
 	}
 	t.Cleanup(func() { _ = inner.Close() })
 
-	if _, err := NewIntegrityStore(inner, mustNewIntegrityChain(t), testIntegrityOptions(logPath)); err == nil {
+	if _, err := NewIntegrityStore(
+		inner,
+		mustNewIntegrityChain(t),
+		testIntegrityOptions(logPath),
+	); err == nil {
 		t.Fatal("NewIntegrityStore() error = nil, want visible mid-chain rejection")
 	}
 }
@@ -291,7 +307,11 @@ func TestNewIntegrityStore_RejectsBaseVisibleRotationBoundaryWithPriorHistory(t 
 	}
 
 	previousState := previousChain.State()
-	resetPayload := fmt.Sprintf(`{"type":"integrity_chain_rotated","fields":{"reason":"manual reset","reason_code":"manual_reset","prior_chain_summary":{"last_sequence_seen_in_log":%d,"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`, previousState.Sequence, previousState.PrevHash)
+	resetPayload := fmt.Sprintf(
+		`{"type":"integrity_chain_rotated","fields":{"reason":"manual reset","reason_code":"manual_reset","prior_chain_summary":{"last_sequence_seen_in_log":%d,"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`,
+		previousState.Sequence,
+		previousState.PrevHash,
+	)
 	currentChain := mustNewIntegrityChain(t)
 	reset, err := currentChain.Wrap([]byte(resetPayload))
 	if err != nil {
@@ -323,7 +343,11 @@ func TestNewIntegrityStore_RejectsBaseVisibleRotationBoundaryWithPriorHistory(t 
 	}
 	t.Cleanup(func() { _ = inner.Close() })
 
-	if _, err := NewIntegrityStore(inner, mustNewIntegrityChain(t), testIntegrityOptions(logPath)); err == nil {
+	if _, err := NewIntegrityStore(
+		inner,
+		mustNewIntegrityChain(t),
+		testIntegrityOptions(logPath),
+	); err == nil {
 		t.Fatal("NewIntegrityStore() error = nil, want missing prior history rejection")
 	}
 }
@@ -378,7 +402,11 @@ func TestNewIntegrityStore_RejectsTamperedOldestVisibleBackupWithMatchingSidecar
 	}
 	t.Cleanup(func() { _ = inner.Close() })
 
-	if _, err := NewIntegrityStore(inner, mustNewIntegrityChain(t), testIntegrityOptions(logPath)); err == nil {
+	if _, err := NewIntegrityStore(
+		inner,
+		mustNewIntegrityChain(t),
+		testIntegrityOptions(logPath),
+	); err == nil {
 		t.Fatal("NewIntegrityStore() error = nil, want tampered oldest visible backup rejection")
 	}
 }
@@ -444,7 +472,11 @@ func TestNewIntegrityStore_RejectsMidWindowTamperedBackupWithMatchingSidecar(t *
 	}
 	t.Cleanup(func() { _ = inner.Close() })
 
-	if _, err := NewIntegrityStore(inner, mustNewIntegrityChain(t), testIntegrityOptions(logPath)); err == nil {
+	if _, err := NewIntegrityStore(
+		inner,
+		mustNewIntegrityChain(t),
+		testIntegrityOptions(logPath),
+	); err == nil {
 		t.Fatal("NewIntegrityStore() error = nil, want mid-window tampered backup rejection")
 	}
 }
@@ -462,7 +494,9 @@ func writeResumableIntegrityState(t *testing.T, logPath string) audit.ChainState
 	t.Helper()
 
 	chain := mustNewIntegrityChain(t)
-	line, err := chain.Wrap([]byte(`{"type":"integrity_chain_rotated","timestamp":"2026-04-11T12:00:00Z"}`))
+	line, err := chain.Wrap(
+		[]byte(`{"type":"integrity_chain_rotated","timestamp":"2026-04-11T12:00:00Z"}`),
+	)
 	if err != nil {
 		t.Fatalf("chain.Wrap() error = %v", err)
 	}
@@ -487,7 +521,9 @@ func TestNewIntegrityStore_SidecarMissingStartsFreshRotation(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
 
 	previousChain := mustNewIntegrityChain(t)
-	line, err := previousChain.Wrap([]byte(`{"type":"existing","timestamp":"2026-04-11T12:00:00Z"}`))
+	line, err := previousChain.Wrap(
+		[]byte(`{"type":"existing","timestamp":"2026-04-11T12:00:00Z"}`),
+	)
 	if err != nil {
 		t.Fatalf("chain.Wrap() error = %v", err)
 	}
@@ -538,14 +574,20 @@ func TestNewIntegrityStore_CorruptSidecarFallsThroughToMissingHandling(t *testin
 	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
 
 	previousChain := mustNewIntegrityChain(t)
-	line, err := previousChain.Wrap([]byte(`{"type":"existing","timestamp":"2026-04-11T12:00:00Z"}`))
+	line, err := previousChain.Wrap(
+		[]byte(`{"type":"existing","timestamp":"2026-04-11T12:00:00Z"}`),
+	)
 	if err != nil {
 		t.Fatalf("chain.Wrap() error = %v", err)
 	}
 	if err := os.WriteFile(logPath, append(line, '\n'), 0o600); err != nil {
 		t.Fatalf("os.WriteFile(%q) error = %v", logPath, err)
 	}
-	if err := os.WriteFile(audit.SidecarPath(logPath), []byte(`{"format_version":2,"sequence":0,"prev_hash":`), 0o600); err != nil {
+	if err := os.WriteFile(
+		audit.SidecarPath(logPath),
+		[]byte(`{"format_version":2,"sequence":0,"prev_hash":`),
+		0o600,
+	); err != nil {
 		t.Fatalf("os.WriteFile(sidecar) error = %v", err)
 	}
 
@@ -588,7 +630,11 @@ func TestNewIntegrityStore_CorruptSidecarFallsThroughToMissingHandling(t *testin
 func TestNewIntegrityStore_RejectsCorruptSidecarWhenVisibleLogMissing(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
 
-	if err := os.WriteFile(audit.SidecarPath(logPath), []byte(`{"format_version":2,"sequence":0,"prev_hash":`), 0o600); err != nil {
+	if err := os.WriteFile(
+		audit.SidecarPath(logPath),
+		[]byte(`{"format_version":2,"sequence":0,"prev_hash":`),
+		0o600,
+	); err != nil {
 		t.Fatalf("os.WriteFile(sidecar) error = %v", err)
 	}
 
@@ -626,7 +672,15 @@ func TestNewIntegrityStore_RejectsUnsupportedSidecarFormat(t *testing.T) {
 	if err := os.WriteFile(logPath, append(line, '\n'), 0o600); err != nil {
 		t.Fatalf("os.WriteFile(%q) error = %v", logPath, err)
 	}
-	if err := os.WriteFile(audit.SidecarPath(logPath), []byte(`{"format_version":3,"sequence":0,"prev_hash":"`+chain.State().PrevHash+`","key_fingerprint":"`+audit.KeyFingerprint(testKey)+`"}`), 0o600); err != nil {
+	if err := os.WriteFile(
+		audit.SidecarPath(logPath),
+		[]byte(
+			`{"format_version":3,"sequence":0,"prev_hash":"`+chain.State().PrevHash+`","key_fingerprint":"`+audit.KeyFingerprint(
+				testKey,
+			)+`"}`,
+		),
+		0o600,
+	); err != nil {
 		t.Fatalf("os.WriteFile(sidecar) error = %v", err)
 	}
 
@@ -664,7 +718,10 @@ func TestNewIntegrityStore_RejectsFutureFormatLogWithoutSidecar(t *testing.T) {
 		t.Fatal("NewIntegrityStore() error = nil, want unsupported future-format log rejection")
 	}
 	if !strings.Contains(err.Error(), "unsupported audit integrity format_version") {
-		t.Fatalf("NewIntegrityStore() error = %v, want unsupported audit integrity format_version", err)
+		t.Fatalf(
+			"NewIntegrityStore() error = %v, want unsupported audit integrity format_version",
+			err,
+		)
 	}
 }
 
@@ -750,7 +807,12 @@ func TestNewIntegrityStore_RecoversWhenLastEntryAheadOfSidecarByOne(t *testing.T
 		t.Fatalf("audit.ReadSidecar() error = %v", err)
 	}
 	if sidecar.Sequence != expected.Sequence || sidecar.PrevHash != expected.PrevHash {
-		t.Fatalf("sidecar = %+v, want sequence=%d prev_hash=%q", sidecar, expected.Sequence, expected.PrevHash)
+		t.Fatalf(
+			"sidecar = %+v, want sequence=%d prev_hash=%q",
+			sidecar,
+			expected.Sequence,
+			expected.PrevHash,
+		)
 	}
 }
 
@@ -758,7 +820,9 @@ func TestNewIntegrityStore_SidecarMissingRejectsTamperedV2Log(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "audit.jsonl")
 
 	previousChain := mustNewIntegrityChain(t)
-	line, err := previousChain.Wrap([]byte(`{"type":"existing","timestamp":"2026-04-11T12:00:00Z","fields":{"value":"ok"}}`))
+	line, err := previousChain.Wrap(
+		[]byte(`{"type":"existing","timestamp":"2026-04-11T12:00:00Z","fields":{"value":"ok"}}`),
+	)
 	if err != nil {
 		t.Fatalf("chain.Wrap() error = %v", err)
 	}
@@ -819,7 +883,11 @@ func TestNewIntegrityStore_SidecarMissingRejectsMidWindowTamperedV2RotationSet(t
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 
-	if err := os.WriteFile(logPath+".1", joinLines(first, second, tamperedThird), 0o600); err != nil {
+	if err := os.WriteFile(
+		logPath+".1",
+		joinLines(first, second, tamperedThird),
+		0o600,
+	); err != nil {
 		t.Fatalf("os.WriteFile(%q) error = %v", logPath+".1", err)
 	}
 	if err := os.WriteFile(logPath, joinLines(fourth), 0o600); err != nil {
@@ -832,8 +900,14 @@ func TestNewIntegrityStore_SidecarMissingRejectsMidWindowTamperedV2RotationSet(t
 	}
 	t.Cleanup(func() { _ = inner.Close() })
 
-	if _, err := NewIntegrityStore(inner, mustNewIntegrityChain(t), testIntegrityOptions(logPath)); err == nil {
-		t.Fatal("NewIntegrityStore() error = nil, want mid-window tampered v2 rotation-set rejection")
+	if _, err := NewIntegrityStore(
+		inner,
+		mustNewIntegrityChain(t),
+		testIntegrityOptions(logPath),
+	); err == nil {
+		t.Fatal(
+			"NewIntegrityStore() error = nil, want mid-window tampered v2 rotation-set rejection",
+		)
 	}
 }
 
@@ -901,7 +975,13 @@ func mustWrapFutureFormatEntry(t *testing.T, key []byte, payload string) []byte 
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 	integrity["format_version"] = float64(audit.IntegrityFormatVersion + 1)
-	integrity["entry_hash"] = computeFutureFormatHash(key, audit.IntegrityFormatVersion+1, sequence, prevHash, canonicalPayload)
+	integrity["entry_hash"] = computeFutureFormatHash(
+		key,
+		audit.IntegrityFormatVersion+1,
+		sequence,
+		prevHash,
+		canonicalPayload,
+	)
 	entry["integrity"] = integrity
 	line, err = json.Marshal(entry)
 	if err != nil {
@@ -910,7 +990,13 @@ func mustWrapFutureFormatEntry(t *testing.T, key []byte, payload string) []byte 
 	return line
 }
 
-func computeFutureFormatHash(key []byte, formatVersion int, sequence int64, prevHash string, payload []byte) string {
+func computeFutureFormatHash(
+	key []byte,
+	formatVersion int,
+	sequence int64,
+	prevHash string,
+	payload []byte,
+) string {
 	h := hmac.New(sha256.New, key)
 	h.Write([]byte(strconv.Itoa(formatVersion)))
 	h.Write([]byte("|"))

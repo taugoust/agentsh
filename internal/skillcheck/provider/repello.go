@@ -16,7 +16,10 @@ func NewRepelloProvider() skillcheck.CheckProvider { return &repelloStub{} }
 func (repelloStub) Name() string                           { return "repello" }
 func (repelloStub) Capabilities() []skillcheck.FindingType { return nil }
 
-func (repelloStub) Scan(ctx context.Context, req skillcheck.ScanRequest) (*skillcheck.ScanResponse, error) {
+func (repelloStub) Scan(
+	ctx context.Context,
+	req skillcheck.ScanRequest,
+) (*skillcheck.ScanResponse, error) {
 	return &skillcheck.ScanResponse{
 		Provider: "repello",
 		Metadata: skillcheck.ResponseMetadata{

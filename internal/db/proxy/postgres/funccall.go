@@ -26,7 +26,10 @@ func (pc *proxyConn) handleFunctionCall(ctx context.Context, msg *pgproto3.Funct
 	if !liveSvc.AllowFunctionCallProtocol {
 		// 04c default path: preserve the existing stub behavior from handleUnsupportedFrame.
 		pc.emitUnsupportedFrame(ctx, "FUNCTION_CALL_PROTOCOL_DENIED", "FunctionCall")
-		_ = pc.synthesizeError(sqlstateInsufficientPrivilege, "FunctionCall sub-protocol denied by AgentSH policy")
+		_ = pc.synthesizeError(
+			sqlstateInsufficientPrivilege,
+			"FunctionCall sub-protocol denied by AgentSH policy",
+		)
 		return errUnsupportedFrame
 	}
 
@@ -68,7 +71,12 @@ func (pc *proxyConn) handleFunctionCall(ctx context.Context, msg *pgproto3.Funct
 		d.Verb = policy.VerbDeny
 		d.Reason = approvalReason(out.denyAction)
 		pc.emitFunctionCallEvent(ctx, cs, d, out.denyAction, upstreamResult{})
-		actions := statemachine.DenyRoute(*pc.state.smState, rule, renderDenyMessage(d), sqlstateInsufficientPrivilege)
+		actions := statemachine.DenyRoute(
+			*pc.state.smState,
+			rule,
+			renderDenyMessage(d),
+			sqlstateInsufficientPrivilege,
+		)
 		return pc.executeActions(ctx, msg, actions)
 	}
 
@@ -78,7 +86,12 @@ func (pc *proxyConn) handleFunctionCall(ctx context.Context, msg *pgproto3.Funct
 		// Deny path has no upstream round-trip; pass zero-valued result.
 		pc.emitFunctionCallEvent(ctx, cs, d, da, upstreamResult{})
 		denyMsg := renderDenyMessage(d)
-		actions := statemachine.DenyRoute(*pc.state.smState, denyRule, denyMsg, sqlstateInsufficientPrivilege)
+		actions := statemachine.DenyRoute(
+			*pc.state.smState,
+			denyRule,
+			denyMsg,
+			sqlstateInsufficientPrivilege,
+		)
 		return pc.executeActions(ctx, msg, actions)
 	}
 

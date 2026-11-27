@@ -33,7 +33,10 @@ func TestApply_OverridesExistingKey(t *testing.T) {
 		t.Fatalf("BASH_ENV = %q, want injected value", vals["BASH_ENV"])
 	}
 	if counts["BASH_ENV"] != 1 {
-		t.Fatalf("BASH_ENV appears %d times, want exactly 1 (stale entry not removed)", counts["BASH_ENV"])
+		t.Fatalf(
+			"BASH_ENV appears %d times, want exactly 1 (stale entry not removed)",
+			counts["BASH_ENV"],
+		)
 	}
 	if vals["PATH"] != "/usr/bin" || vals["HOME"] != "/root" {
 		t.Fatalf("untouched keys altered: PATH=%q HOME=%q", vals["PATH"], vals["HOME"])

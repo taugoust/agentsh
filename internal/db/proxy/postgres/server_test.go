@@ -113,15 +113,26 @@ func TestServer_New_MissingSink(t *testing.T) {
 	cfg := Config{
 		Unavoidability: service.UnavoidabilityObserve,
 		StateDir:       t.TempDir(),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: "db.internal:5432",
-			TLSMode:  "terminate_reissue",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "test-appdb.sock")},
-			Service:  policy.DBService{Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "db.internal:5432", TLSMode: "terminate_reissue"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: "db.internal:5432",
+				TLSMode:  "terminate_reissue",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "test-appdb.sock"),
+				},
+				Service: policy.DBService{
+					Name:     "appdb",
+					Family:   "postgres",
+					Dialect:  "postgres",
+					Upstream: "db.internal:5432",
+					TLSMode:  "terminate_reissue",
+				},
+			},
+		},
 	}
 	_, err := New(cfg)
 	if err == nil {
@@ -142,15 +153,23 @@ func TestServer_StartShutdown_BindsAndUnlinksUnixSocket(t *testing.T) {
 		StateDir:       t.TempDir(),
 		Sink:           &events.SyncSink{},
 		Logger:         slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: "127.0.0.1:5432",
-			TLSMode:  "terminate_reissue",
-			Listen:   ServiceListener{Kind: "unix", Path: sockPath},
-			Service:  policy.DBService{Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "127.0.0.1:5432", TLSMode: "terminate_reissue"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: "127.0.0.1:5432",
+				TLSMode:  "terminate_reissue",
+				Listen:   ServiceListener{Kind: "unix", Path: sockPath},
+				Service: policy.DBService{
+					Name:     "appdb",
+					Family:   "postgres",
+					Dialect:  "postgres",
+					Upstream: "127.0.0.1:5432",
+					TLSMode:  "terminate_reissue",
+				},
+			},
+		},
 	}
 	cfg = withRequiredSessionAuth(cfg)
 	s, err := New(cfg)
@@ -185,7 +204,10 @@ func TestServer_StartShutdown_BindsAndUnlinksUnixSocket(t *testing.T) {
 	}
 	buf := make([]byte, 1)
 	conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-	if _, err := conn.Read(buf); err == nil || (err.Error() != "EOF" && !errors.Is(err, io.EOF) && !os.IsTimeout(err)) {
+	if _, err := conn.Read(
+		buf,
+	); err == nil ||
+		(err.Error() != "EOF" && !errors.Is(err, io.EOF) && !os.IsTimeout(err)) {
 		t.Fatalf("Read after dial: err=%v, want EOF or close", err)
 	}
 	conn.Close()
@@ -297,15 +319,26 @@ func TestServer_New_AppliesMaxQueryBytesDefault(t *testing.T) {
 		StateDir:       t.TempDir(),
 		Sink:           &events.SyncSink{},
 		Logger:         slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: "127.0.0.1:5432",
-			TLSMode:  "terminate_reissue",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "appdb.sock")},
-			Service:  policy.DBService{Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "127.0.0.1:5432", TLSMode: "terminate_reissue"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: "127.0.0.1:5432",
+				TLSMode:  "terminate_reissue",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "appdb.sock"),
+				},
+				Service: policy.DBService{
+					Name:     "appdb",
+					Family:   "postgres",
+					Dialect:  "postgres",
+					Upstream: "127.0.0.1:5432",
+					TLSMode:  "terminate_reissue",
+				},
+			},
+		},
 	}
 	cfg = withRequiredSessionAuth(cfg)
 	s, err := New(cfg)
@@ -324,15 +357,26 @@ func TestServer_New_HonorsMaxQueryBytesOverride(t *testing.T) {
 		Sink:           &events.SyncSink{},
 		Logger:         slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		MaxQueryBytes:  4096,
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: "127.0.0.1:5432",
-			TLSMode:  "terminate_reissue",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "appdb.sock")},
-			Service:  policy.DBService{Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "127.0.0.1:5432", TLSMode: "terminate_reissue"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: "127.0.0.1:5432",
+				TLSMode:  "terminate_reissue",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "appdb.sock"),
+				},
+				Service: policy.DBService{
+					Name:     "appdb",
+					Family:   "postgres",
+					Dialect:  "postgres",
+					Upstream: "127.0.0.1:5432",
+					TLSMode:  "terminate_reissue",
+				},
+			},
+		},
 	}
 	cfg = withRequiredSessionAuth(cfg)
 	s, err := New(cfg)
@@ -362,15 +406,24 @@ db_services:
 database_connection_rules:
   - {name: allow, db_service: appdb, decision: allow}
 `),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: "127.0.0.1:5432",
-			TLSMode:  "terminate_plaintext_upstream",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "db.sock")},
-			Service:  policy.DBService{Name: "appdb", TLSMode: "terminate_plaintext_upstream", TrustedNetwork: true},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: "127.0.0.1:5432",
+				TLSMode:  "terminate_plaintext_upstream",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "db.sock"),
+				},
+				Service: policy.DBService{
+					Name:           "appdb",
+					TLSMode:        "terminate_plaintext_upstream",
+					TrustedNetwork: true,
+				},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -379,10 +432,18 @@ database_connection_rules:
 		t.Fatal("cancelMap is nil")
 	}
 	if srv.cfg.CancelMappingMax != defaultCancelMappingMax {
-		t.Fatalf("CancelMappingMax = %d, want %d", srv.cfg.CancelMappingMax, defaultCancelMappingMax)
+		t.Fatalf(
+			"CancelMappingMax = %d, want %d",
+			srv.cfg.CancelMappingMax,
+			defaultCancelMappingMax,
+		)
 	}
 	if srv.cfg.CancelGraceWindow != defaultCancelGraceWindow {
-		t.Fatalf("CancelGraceWindow = %s, want %s", srv.cfg.CancelGraceWindow, defaultCancelGraceWindow)
+		t.Fatalf(
+			"CancelGraceWindow = %s, want %s",
+			srv.cfg.CancelGraceWindow,
+			defaultCancelGraceWindow,
+		)
 	}
 }
 
@@ -392,15 +453,26 @@ func TestServer_SetPolicy_AtomicSwap(t *testing.T) {
 		StateDir:       t.TempDir(),
 		Sink:           &events.SyncSink{},
 		Logger:         slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: "127.0.0.1:5432",
-			TLSMode:  "terminate_reissue",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "appdb.sock")},
-			Service:  policy.DBService{Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "127.0.0.1:5432", TLSMode: "terminate_reissue"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: "127.0.0.1:5432",
+				TLSMode:  "terminate_reissue",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "appdb.sock"),
+				},
+				Service: policy.DBService{
+					Name:     "appdb",
+					Family:   "postgres",
+					Dialect:  "postgres",
+					Upstream: "127.0.0.1:5432",
+					TLSMode:  "terminate_reissue",
+				},
+			},
+		},
 	}
 	cfg = withRequiredSessionAuth(cfg)
 	s, err := New(cfg)
@@ -423,15 +495,26 @@ func TestServer_New_RejectsUnknownDialect(t *testing.T) {
 		StateDir:       t.TempDir(),
 		Sink:           &events.SyncSink{},
 		Logger:         slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "rabbitql", // unknown
-			Upstream: "127.0.0.1:5432",
-			TLSMode:  "terminate_reissue",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "appdb.sock")},
-			Service:  policy.DBService{Name: "appdb", Family: "postgres", Dialect: "rabbitql", Upstream: "127.0.0.1:5432", TLSMode: "terminate_reissue"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "rabbitql", // unknown
+				Upstream: "127.0.0.1:5432",
+				TLSMode:  "terminate_reissue",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "appdb.sock"),
+				},
+				Service: policy.DBService{
+					Name:     "appdb",
+					Family:   "postgres",
+					Dialect:  "rabbitql",
+					Upstream: "127.0.0.1:5432",
+					TLSMode:  "terminate_reissue",
+				},
+			},
+		},
 	}
 	cfg = withRequiredSessionAuth(cfg)
 	_, err := New(cfg)
@@ -464,14 +547,25 @@ func validServerConfig(t *testing.T) Config {
 		StateDir:       t.TempDir(),
 		Sink:           &events.SyncSink{},
 		Logger:         slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		Services: []Service{{
-			Name:     "appdb",
-			Family:   "postgres",
-			Dialect:  "postgres",
-			Upstream: "127.0.0.1:5432",
-			TLSMode:  "terminate_reissue",
-			Listen:   ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "appdb.sock")},
-			Service:  policy.DBService{Name: "appdb", Family: "postgres", Dialect: "postgres", Upstream: "127.0.0.1:5432", TLSMode: "terminate_reissue"},
-		}},
+		Services: []Service{
+			{
+				Name:     "appdb",
+				Family:   "postgres",
+				Dialect:  "postgres",
+				Upstream: "127.0.0.1:5432",
+				TLSMode:  "terminate_reissue",
+				Listen: ServiceListener{
+					Kind: "unix",
+					Path: filepath.Join(t.TempDir(), "appdb.sock"),
+				},
+				Service: policy.DBService{
+					Name:     "appdb",
+					Family:   "postgres",
+					Dialect:  "postgres",
+					Upstream: "127.0.0.1:5432",
+					TLSMode:  "terminate_reissue",
+				},
+			},
+		},
 	}
 }

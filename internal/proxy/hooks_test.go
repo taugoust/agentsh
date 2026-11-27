@@ -43,7 +43,11 @@ func TestRegistry_RegisterAndApply(t *testing.T) {
 		t.Fatalf("ApplyPreHooks returned unexpected error: %v", err)
 	}
 	if h1.preCalls != 1 || h2.preCalls != 1 {
-		t.Errorf("expected both hooks called once on pre, got h1=%d h2=%d", h1.preCalls, h2.preCalls)
+		t.Errorf(
+			"expected both hooks called once on pre, got h1=%d h2=%d",
+			h1.preCalls,
+			h2.preCalls,
+		)
 	}
 
 	resp := &http.Response{StatusCode: http.StatusOK}
@@ -51,7 +55,11 @@ func TestRegistry_RegisterAndApply(t *testing.T) {
 		t.Fatalf("ApplyPostHooks returned unexpected error: %v", err)
 	}
 	if h1.postCalls != 1 || h2.postCalls != 1 {
-		t.Errorf("expected both hooks called once on post, got h1=%d h2=%d", h1.postCalls, h2.postCalls)
+		t.Errorf(
+			"expected both hooks called once on post, got h1=%d h2=%d",
+			h1.postCalls,
+			h2.postCalls,
+		)
 	}
 }
 
@@ -132,7 +140,11 @@ func TestRegistry_PostHookErrorsCollected(t *testing.T) {
 		t.Fatalf("expected first error returned, got %v", err)
 	}
 	if h1.postCalls != 1 || h2.postCalls != 1 {
-		t.Errorf("both post hooks should run even on error, got h1=%d h2=%d", h1.postCalls, h2.postCalls)
+		t.Errorf(
+			"both post hooks should run even on error, got h1=%d h2=%d",
+			h1.postCalls,
+			h2.postCalls,
+		)
 	}
 }
 
@@ -182,7 +194,10 @@ func TestRegistry_HookCanRegisterDuringApply(t *testing.T) {
 		t.Errorf("expected outer to run once on first call, got %d", called)
 	}
 	if inner.preCalls != 0 {
-		t.Errorf("inner should NOT run on first call (registered mid-apply), got %d", inner.preCalls)
+		t.Errorf(
+			"inner should NOT run on first call (registered mid-apply), got %d",
+			inner.preCalls,
+		)
 	}
 
 	// Second Apply: both outer and inner are now in the registry.

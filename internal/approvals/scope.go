@@ -203,7 +203,15 @@ func scopeFromFields(fields map[string]any) (Scope, bool) {
 	if kind == "" || key == "" {
 		return Scope{}, false
 	}
-	return Scope{Kind: kind, Key: key, Label: label, Operation: operation, Path: pathValue, Rule: rule, Prefix: prefix}, true
+	return Scope{
+		Kind:      kind,
+		Key:       key,
+		Label:     label,
+		Operation: operation,
+		Path:      pathValue,
+		Rule:      rule,
+		Prefix:    prefix,
+	}, true
 }
 
 // NewFileScope builds a canonical file approval scope from an already-resolved
@@ -224,7 +232,14 @@ func NewFileScopeWithRule(operation, filePath, rule string) (Scope, bool) {
 		return Scope{}, false
 	}
 	key := "file:" + operation + ":" + filePath
-	return Scope{Kind: "file", Key: key, Label: operation + " " + filePath, Operation: operation, Path: filePath, Rule: strings.TrimSpace(rule)}, true
+	return Scope{
+		Kind:      "file",
+		Key:       key,
+		Label:     operation + " " + filePath,
+		Operation: operation,
+		Path:      filePath,
+		Rule:      strings.TrimSpace(rule),
+	}, true
 }
 
 func NewFileDirScope(operation, dirPath, rule string) (Scope, bool) {
@@ -239,7 +254,14 @@ func NewFileDirScope(operation, dirPath, rule string) (Scope, bool) {
 	}
 	rule = strings.TrimSpace(rule)
 	key := "file-dir:" + operation + ":" + rule + ":" + dirPath
-	return Scope{Kind: "file-dir", Key: key, Label: operation + " directory first-level " + dirPath, Operation: operation, Path: dirPath, Rule: rule}, true
+	return Scope{
+		Kind:      "file-dir",
+		Key:       key,
+		Label:     operation + " directory first-level " + dirPath,
+		Operation: operation,
+		Path:      dirPath,
+		Rule:      rule,
+	}, true
 }
 
 func NewFileTreeScope(operation, dirPath, rule string) (Scope, bool) {
@@ -254,14 +276,32 @@ func NewFileTreeScope(operation, dirPath, rule string) (Scope, bool) {
 	}
 	rule = strings.TrimSpace(rule)
 	key := "file-tree:" + operation + ":" + rule + ":" + dirPath
-	return Scope{Kind: "file-tree", Key: key, Label: operation + " directory recursively " + dirPath, Operation: operation, Path: dirPath, Rule: rule, Prefix: true}, true
+	return Scope{
+		Kind:      "file-tree",
+		Key:       key,
+		Label:     operation + " directory recursively " + dirPath,
+		Operation: operation,
+		Path:      dirPath,
+		Rule:      rule,
+		Prefix:    true,
+	}, true
 }
 
 func normalizeFileScopeOperation(operation string) string {
 	switch strings.ToLower(strings.TrimSpace(operation)) {
 	case "open", "read", "stat", "list", "readlink", "access":
 		return "read"
-	case "write", "create", "mkdir", "delete", "rmdir", "rename", "link", "symlink", "chmod", "chown", "mknod":
+	case "write",
+		"create",
+		"mkdir",
+		"delete",
+		"rmdir",
+		"rename",
+		"link",
+		"symlink",
+		"chmod",
+		"chown",
+		"mknod":
 		return strings.ToLower(strings.TrimSpace(operation))
 	default:
 		return strings.ToLower(strings.TrimSpace(operation))

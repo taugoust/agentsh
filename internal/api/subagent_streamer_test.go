@@ -90,7 +90,13 @@ func TestSubagentStreamerEmitsExactlyOneDone(t *testing.T) {
 	if successes != 1 {
 		t.Fatalf("successful Done calls = %d, want 1", successes)
 	}
-	if err := stream.Emit("stdout", map[string]any{"data": "after"}); !errors.Is(err, errSubagentStreamTerminal) {
+	if err := stream.Emit(
+		"stdout",
+		map[string]any{"data": "after"},
+	); !errors.Is(
+		err,
+		errSubagentStreamTerminal,
+	) {
 		t.Fatalf("post-terminal Emit error = %v, want terminal error", err)
 	}
 

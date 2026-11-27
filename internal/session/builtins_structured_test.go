@@ -82,7 +82,9 @@ func TestBuiltin_AStat_ReturnsMetadata(t *testing.T) {
 	}
 	s.SetWorkspaceMount(ws)
 
-	handled, code, out, errOut := s.Builtin(types.ExecRequest{Command: "astat", Args: []string{"/workspace/b.bin"}})
+	handled, code, out, errOut := s.Builtin(
+		types.ExecRequest{Command: "astat", Args: []string{"/workspace/b.bin"}},
+	)
 	if !handled {
 		t.Fatalf("expected handled")
 	}
@@ -117,7 +119,9 @@ func TestBuiltin_ACat_ReturnsContent(t *testing.T) {
 	}
 	s.SetWorkspaceMount(ws)
 
-	handled, code, out, errOut := s.Builtin(types.ExecRequest{Command: "acat", Args: []string{"/workspace/c.txt"}})
+	handled, code, out, errOut := s.Builtin(
+		types.ExecRequest{Command: "acat", Args: []string{"/workspace/c.txt"}},
+	)
 	if !handled {
 		t.Fatalf("expected handled")
 	}

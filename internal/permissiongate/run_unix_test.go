@@ -94,7 +94,10 @@ func TestPermissionGateHelperProcess(t *testing.T) {
 	}
 
 	reader := newFrameReader(transport)
-	if err := writeFrame(transport, HelloRequest{V: ProtocolVersion, Type: messageHello, Client: "pi-permission-gate"}); err != nil {
+	if err := writeFrame(
+		transport,
+		HelloRequest{V: ProtocolVersion, Type: messageHello, Client: "pi-permission-gate"},
+	); err != nil {
 		os.Exit(98)
 	}
 	frame, err := reader.read()
@@ -187,8 +190,11 @@ func TestPermissionGateRunUsesOneShotPrivateUnixRendezvous(t *testing.T) {
 	t.Setenv(helperSocketRecordEnv, recordPath)
 
 	result, err := Run(t.Context(), RunOptions{
-		Command: permissionGateHelperCommand(), AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
-		Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+		Command:   permissionGateHelperCommand(),
+		AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
+		Stdin:     strings.NewReader(""),
+		Stdout:    &bytes.Buffer{},
+		Stderr:    &bytes.Buffer{},
 	})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -276,8 +282,11 @@ func TestPermissionGateRunPreservesSignaledExitCode(t *testing.T) {
 	t.Setenv(helperEnabledEnv, "1")
 	t.Setenv(helperModeEnv, "signal")
 	result, err := Run(t.Context(), RunOptions{
-		Command: permissionGateHelperCommand(), AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
-		Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+		Command:   permissionGateHelperCommand(),
+		AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
+		Stdin:     strings.NewReader(""),
+		Stdout:    &bytes.Buffer{},
+		Stderr:    &bytes.Buffer{},
 	})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -339,7 +348,8 @@ func TestPermissionGateRunHandshakeFailuresFailClosed(t *testing.T) {
 			t.Setenv(helperMarkerEnv, marker)
 			started := time.Now()
 			_, err := Run(t.Context(), RunOptions{
-				Command: permissionGateHelperCommand(), AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
+				Command:          permissionGateHelperCommand(),
+				AuditPath:        filepath.Join(t.TempDir(), "audit.jsonl"),
 				HandshakeTimeout: 50 * time.Millisecond,
 				Stdin:            strings.NewReader(""),
 				Stdout:           &bytes.Buffer{},
@@ -349,7 +359,10 @@ func TestPermissionGateRunHandshakeFailuresFailClosed(t *testing.T) {
 				t.Fatalf("Run() error = %v, want handshake timeout", err)
 			}
 			if elapsed := time.Since(started); elapsed > 2*time.Second {
-				t.Fatalf("handshake failure took %s; child was not promptly killed and reaped", elapsed)
+				t.Fatalf(
+					"handshake failure took %s; child was not promptly killed and reaped",
+					elapsed,
+				)
 			}
 			time.Sleep(100 * time.Millisecond)
 			if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
@@ -366,8 +379,11 @@ func TestPermissionGateRunUnexpectedEOFKillsAndReapsChild(t *testing.T) {
 	t.Setenv(helperMarkerEnv, marker)
 	started := time.Now()
 	_, err := Run(t.Context(), RunOptions{
-		Command: permissionGateHelperCommand(), AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
-		Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+		Command:   permissionGateHelperCommand(),
+		AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
+		Stdin:     strings.NewReader(""),
+		Stdout:    &bytes.Buffer{},
+		Stderr:    &bytes.Buffer{},
 	})
 	if err == nil || !errors.Is(err, ErrUnexpectedEOF) {
 		t.Fatalf("Run() error = %v, want unexpected EOF", err)
@@ -387,8 +403,11 @@ func TestPermissionGateRunBrokerFailureKillsChildProcessGroup(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "grandchild-survived")
 	t.Setenv(helperMarkerEnv, marker)
 	_, err := Run(t.Context(), RunOptions{
-		Command: permissionGateHelperCommand(), AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
-		Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{},
+		Command:   permissionGateHelperCommand(),
+		AuditPath: filepath.Join(t.TempDir(), "audit.jsonl"),
+		Stdin:     strings.NewReader(""),
+		Stdout:    &bytes.Buffer{},
+		Stderr:    &bytes.Buffer{},
 	})
 	if err == nil || !errors.Is(err, ErrProtocol) {
 		t.Fatalf("Run() error = %v, want protocol error", err)

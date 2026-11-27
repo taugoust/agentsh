@@ -23,6 +23,10 @@ func TestAllowKey_BinarySizeMatchesBPFMap(t *testing.T) {
 	const wantBytes = 32
 	got := binary.Size(AllowKey{})
 	if got != wantBytes {
-		t.Errorf("binary.Size(AllowKey{}) = %d, want %d (kernel BPF map declares key_size=32 due to __u64 alignment)", got, wantBytes)
+		t.Errorf(
+			"binary.Size(AllowKey{}) = %d, want %d (kernel BPF map declares key_size=32 due to __u64 alignment)",
+			got,
+			wantBytes,
+		)
 	}
 }

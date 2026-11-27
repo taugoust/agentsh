@@ -17,12 +17,47 @@ func TestDerivePolicyTarget(t *testing.T) {
 		wantOK  bool
 	}{
 		// --- happy path: basic shell-c forms ---
-		{"bare sh, simple cmd", "sh", []string{"-c", "shutdown now"}, "shutdown", []string{"now"}, true},
-		{"absolute sh, simple cmd", "/bin/sh", []string{"-c", "shutdown now"}, "shutdown", []string{"now"}, true},
+		{
+			"bare sh, simple cmd",
+			"sh",
+			[]string{"-c", "shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
+		{
+			"absolute sh, simple cmd",
+			"/bin/sh",
+			[]string{"-c", "shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
 		{"relative sh", "./sh", []string{"-c", "ls"}, "ls", []string{}, true},
-		{"backslash-separator windows-style sh path", `C:\bin\sh`, []string{"-c", "shutdown"}, "shutdown", []string{}, true},
-		{"mixed-separator bash path", `/usr/local\bash`, []string{"-c", "ls"}, "ls", []string{}, true},
-		{"uppercase shell basename (case-insensitive FS)", "/BIN/SH", []string{"-c", "ls"}, "ls", []string{}, true},
+		{
+			"backslash-separator windows-style sh path",
+			`C:\bin\sh`,
+			[]string{"-c", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"mixed-separator bash path",
+			`/usr/local\bash`,
+			[]string{"-c", "ls"},
+			"ls",
+			[]string{},
+			true,
+		},
+		{
+			"uppercase shell basename (case-insensitive FS)",
+			"/BIN/SH",
+			[]string{"-c", "ls"},
+			"ls",
+			[]string{},
+			true,
+		},
 		// --- shell-shim install layout: the agentsh shell shim installs
 		// the original shell under a `.real` suffix (/bin/sh.real) and
 		// takes over the original name. When the shim forwards to
@@ -30,11 +65,46 @@ func TestDerivePolicyTarget(t *testing.T) {
 		// command. Without normalization, `sh.real` / `bash.real` miss
 		// the known-shell set and the policy falls through to the
 		// outer allow-rule (which must exist for the shim to function).
-		{"shim .real sh suffix", "/bin/sh.real", []string{"-c", "shutdown now"}, "shutdown", []string{"now"}, true},
-		{"shim .real bash suffix", "/bin/bash.real", []string{"-c", "shutdown now"}, "shutdown", []string{"now"}, true},
-		{"shim .real usr/bin path", "/usr/bin/sh.real", []string{"-c", "rm foo"}, "rm", []string{"foo"}, true},
-		{"shim .real uppercase (case-insensitive FS)", "/BIN/SH.REAL", []string{"-c", "ls"}, "ls", []string{}, true},
-		{"shim .real bare name", "sh.real", []string{"-c", "shutdown"}, "shutdown", []string{}, true},
+		{
+			"shim .real sh suffix",
+			"/bin/sh.real",
+			[]string{"-c", "shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
+		{
+			"shim .real bash suffix",
+			"/bin/bash.real",
+			[]string{"-c", "shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
+		{
+			"shim .real usr/bin path",
+			"/usr/bin/sh.real",
+			[]string{"-c", "rm foo"},
+			"rm",
+			[]string{"foo"},
+			true,
+		},
+		{
+			"shim .real uppercase (case-insensitive FS)",
+			"/BIN/SH.REAL",
+			[]string{"-c", "ls"},
+			"ls",
+			[]string{},
+			true,
+		},
+		{
+			"shim .real bare name",
+			"sh.real",
+			[]string{"-c", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
 		{"bash, simple cmd", "bash", []string{"-c", "rm foo"}, "rm", []string{"foo"}, true},
 		{"dash", "/bin/dash", []string{"-c", "whoami"}, "whoami", []string{}, true},
 		{"ash (busybox shell on alpine)", "/bin/ash", []string{"-c", "id"}, "id", []string{}, true},
@@ -44,64 +114,274 @@ func TestDerivePolicyTarget(t *testing.T) {
 		// --- flag forms ---
 		{"-ec (errexit + command)", "sh", []string{"-ec", "ls"}, "ls", []string{}, true},
 		{"-ce (reversed cluster)", "sh", []string{"-ce", "ls"}, "ls", []string{}, true},
-		{"-euxc (all safe shorts clustered)", "bash", []string{"-euxc", "shutdown"}, "shutdown", []string{}, true},
-		{"-e -c (split safe + c)", "sh", []string{"-e", "-c", "shutdown"}, "shutdown", []string{}, true},
-		{"-e -u -c (three split)", "bash", []string{"-e", "-u", "-c", "rm foo"}, "rm", []string{"foo"}, true},
+		{
+			"-euxc (all safe shorts clustered)",
+			"bash",
+			[]string{"-euxc", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-e -c (split safe + c)",
+			"sh",
+			[]string{"-e", "-c", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-e -u -c (three split)",
+			"bash",
+			[]string{"-e", "-u", "-c", "rm foo"},
+			"rm",
+			[]string{"foo"},
+			true,
+		},
 		{"-ux -c (split with cluster)", "sh", []string{"-ux", "-c", "ls"}, "ls", []string{}, true},
-		{"-f -c (noglob + c)", "sh", []string{"-f", "-c", "shutdown"}, "shutdown", []string{}, true},
-		{"-x -c (xtrace + c)", "sh", []string{"-x", "-c", "shutdown"}, "shutdown", []string{}, true},
-		{"-e -c script argv0 (positional after script)", "sh", []string{"-e", "-c", "shutdown", "argv0"}, "shutdown", []string{}, true},
+		{
+			"-f -c (noglob + c)",
+			"sh",
+			[]string{"-f", "-c", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-x -c (xtrace + c)",
+			"sh",
+			[]string{"-x", "-c", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-e -c script argv0 (positional after script)",
+			"sh",
+			[]string{"-e", "-c", "shutdown", "argv0"},
+			"shutdown",
+			[]string{},
+			true,
+		},
 
 		// --- transparent wrappers ---
-		{"exec wrapper", "sh", []string{"-c", "exec shutdown now"}, "shutdown", []string{"now"}, true},
+		{
+			"exec wrapper",
+			"sh",
+			[]string{"-c", "exec shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
 		{"command wrapper", "sh", []string{"-c", "command ls"}, "ls", []string{}, true},
 		{"double exec", "sh", []string{"-c", "exec exec shutdown"}, "shutdown", []string{}, true},
 		{"exec then command", "sh", []string{"-c", "exec command ls"}, "ls", []string{}, true},
-		{"nohup wrapper stripped", "sh", []string{"-c", "nohup shutdown"}, "shutdown", []string{}, true},
+		{
+			"nohup wrapper stripped",
+			"sh",
+			[]string{"-c", "nohup shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
 		{"nice wrapper stripped", "sh", []string{"-c", "nice ls"}, "ls", []string{}, true},
-		{"nohup exec chained", "sh", []string{"-c", "nohup exec shutdown"}, "shutdown", []string{}, true},
-		{"exec nohup chained", "sh", []string{"-c", "exec nohup shutdown"}, "shutdown", []string{}, true},
-		{"nice shutdown with arg", "sh", []string{"-c", "nice shutdown now"}, "shutdown", []string{"now"}, true},
+		{
+			"nohup exec chained",
+			"sh",
+			[]string{"-c", "nohup exec shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"exec nohup chained",
+			"sh",
+			[]string{"-c", "exec nohup shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"nice shutdown with arg",
+			"sh",
+			[]string{"-c", "nice shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
 		// --- time wrapper: shell reserved word / binary that times the
 		// next command. Without this, `time shutdown` would classify as a
 		// shell builtin (reserved word) and fall through to outer allow.
-		{"time wrapper stripped", "sh", []string{"-c", "time shutdown"}, "shutdown", []string{}, true},
-		{"time with arg passes through", "sh", []string{"-c", "time shutdown now"}, "shutdown", []string{"now"}, true},
-		{"time then nohup chained", "sh", []string{"-c", "time nohup shutdown"}, "shutdown", []string{}, true},
-		{"nice then time chained", "sh", []string{"-c", "nice time shutdown"}, "shutdown", []string{}, true},
+		{
+			"time wrapper stripped",
+			"sh",
+			[]string{"-c", "time shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"time with arg passes through",
+			"sh",
+			[]string{"-c", "time shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
+		{
+			"time then nohup chained",
+			"sh",
+			[]string{"-c", "time nohup shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"nice then time chained",
+			"sh",
+			[]string{"-c", "nice time shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
 		// --- env wrapper: runs the next command with (optionally modified)
 		// environment. Without this, `env shutdown` would surface `env`
 		// (bare name with no rule) and default-deny fails closed to outer
 		// allow.
-		{"env wrapper stripped", "sh", []string{"-c", "env shutdown"}, "shutdown", []string{}, true},
-		{"env with arg", "sh", []string{"-c", "env shutdown now"}, "shutdown", []string{"now"}, true},
-		{"env then nohup chained", "sh", []string{"-c", "env nohup shutdown"}, "shutdown", []string{}, true},
-		{"exec env shutdown chained", "sh", []string{"-c", "exec env shutdown"}, "shutdown", []string{}, true},
+		{
+			"env wrapper stripped",
+			"sh",
+			[]string{"-c", "env shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"env with arg",
+			"sh",
+			[]string{"-c", "env shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
+		{
+			"env then nohup chained",
+			"sh",
+			[]string{"-c", "env nohup shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"exec env shutdown chained",
+			"sh",
+			[]string{"-c", "exec env shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
 
 		// --- rejected wrapper flag forms (deny rewrite via StatusBypass, NOT silent fallback) ---
 		{"command -v (flag form)", "sh", []string{"-c", "command -v ls"}, "", nil, false},
 		{"exec -a (flag form)", "sh", []string{"-c", "exec -a foo ls"}, "", nil, false},
 		{"nohup with flag rejects", "sh", []string{"-c", "nohup -h shutdown"}, "", nil, false},
-		{"nice -n N parsed (succeeds)", "sh", []string{"-c", "nice -n 19 shutdown"}, "shutdown", []string{}, true},
-		{"nice -n -5 parsed (succeeds)", "sh", []string{"-c", "nice -n -5 shutdown"}, "shutdown", []string{}, true},
-		{"nice -n +5 rejected (+ not in byte allowlist)", "sh", []string{"-c", "nice -n +5 shutdown"}, "", nil, false},
-		{"nice -n bogus (non-numeric increment)", "sh", []string{"-c", "nice -n bogus shutdown"}, "", nil, false},
-		{"nice --adjustment= rejects (= blocked by allowlist)", "sh", []string{"-c", "nice --adjustment=19 shutdown"}, "", nil, false},
-		{"time -p CMD rejected (unknown time flag)", "sh", []string{"-c", "time -p shutdown"}, "", nil, false},
+		{
+			"nice -n N parsed (succeeds)",
+			"sh",
+			[]string{"-c", "nice -n 19 shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"nice -n -5 parsed (succeeds)",
+			"sh",
+			[]string{"-c", "nice -n -5 shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"nice -n +5 rejected (+ not in byte allowlist)",
+			"sh",
+			[]string{"-c", "nice -n +5 shutdown"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"nice -n bogus (non-numeric increment)",
+			"sh",
+			[]string{"-c", "nice -n bogus shutdown"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"nice --adjustment= rejects (= blocked by allowlist)",
+			"sh",
+			[]string{"-c", "nice --adjustment=19 shutdown"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"time -p CMD rejected (unknown time flag)",
+			"sh",
+			[]string{"-c", "time -p shutdown"},
+			"",
+			nil,
+			false,
+		},
 		{"time --help rejected", "sh", []string{"-c", "time --help shutdown"}, "", nil, false},
-		{"env -i CMD rejected (unknown env flag)", "sh", []string{"-c", "env -i shutdown"}, "", nil, false},
+		{
+			"env -i CMD rejected (unknown env flag)",
+			"sh",
+			[]string{"-c", "env -i shutdown"},
+			"",
+			nil,
+			false,
+		},
 		{"env -u VAR CMD rejected", "sh", []string{"-c", "env -u PATH shutdown"}, "", nil, false},
-		{"env --chdir= rejected (= blocked by allowlist)", "sh", []string{"-c", "env --chdir=/tmp shutdown"}, "", nil, false},
-		{"env VAR=val CMD rejected (= blocked in env wrapper form)", "sh", []string{"-c", "env VAR=val shutdown"}, "", nil, false},
+		{
+			"env --chdir= rejected (= blocked by allowlist)",
+			"sh",
+			[]string{"-c", "env --chdir=/tmp shutdown"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"env VAR=val CMD rejected (= blocked in env wrapper form)",
+			"sh",
+			[]string{"-c", "env VAR=val shutdown"},
+			"",
+			nil,
+			false,
+		},
 
 		// --- zsh: treated as a known shell so allow bin=zsh + deny
 		// bin=shutdown can't be bypassed via `zsh -c "shutdown"`.
 		{"zsh simple cmd", "zsh", []string{"-c", "ls"}, "ls", []string{}, true},
-		{"zsh absolute path", "/usr/bin/zsh", []string{"-c", "shutdown now"}, "shutdown", []string{"now"}, true},
+		{
+			"zsh absolute path",
+			"/usr/bin/zsh",
+			[]string{"-c", "shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
 		// --- unknown shells ---
 		{"fish not supported", "/usr/bin/fish", []string{"-c", "ls"}, "", nil, false},
 		{"busybox multicall not supported", "busybox", []string{"sh", "-c", "ls"}, "", nil, false},
-		{"random binary with -c", "/usr/bin/python3", []string{"-c", "print('hi')"}, "", nil, false},
+		{
+			"random binary with -c",
+			"/usr/bin/python3",
+			[]string{"-c", "print('hi')"},
+			"",
+			nil,
+			false,
+		},
 		{"empty command", "", []string{"-c", "ls"}, "", nil, false},
 
 		// --- shell-mode flags that don't change -c parsing now derive ---
@@ -112,18 +392,95 @@ func TestDerivePolicyTarget(t *testing.T) {
 		// still uniquely determined.
 		{"-l -c split (login, derives)", "sh", []string{"-l", "-c", "ls"}, "ls", []string{}, true},
 		{"-lc cluster (derives)", "bash", []string{"-lc", "ls"}, "ls", []string{}, true},
-		{"-lc shutdown (derives, was bypass)", "bash", []string{"-lc", "shutdown"}, "shutdown", []string{}, true},
-		{"-l -c shutdown split (derives, was bypass)", "bash", []string{"-l", "-c", "shutdown"}, "shutdown", []string{}, true},
-		{"-i -c (interactive, derives)", "bash", []string{"-i", "-c", "ls"}, "ls", []string{}, true},
-		{"-ic cluster (derives)", "bash", []string{"-ic", "shutdown"}, "shutdown", []string{}, true},
-		{"-s -c (stdin flag harmless when -c wins)", "sh", []string{"-s", "-c", "ls"}, "ls", []string{}, true},
+		{
+			"-lc shutdown (derives, was bypass)",
+			"bash",
+			[]string{"-lc", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-l -c shutdown split (derives, was bypass)",
+			"bash",
+			[]string{"-l", "-c", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-i -c (interactive, derives)",
+			"bash",
+			[]string{"-i", "-c", "ls"},
+			"ls",
+			[]string{},
+			true,
+		},
+		{
+			"-ic cluster (derives)",
+			"bash",
+			[]string{"-ic", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-s -c (stdin flag harmless when -c wins)",
+			"sh",
+			[]string{"-s", "-c", "ls"},
+			"ls",
+			[]string{},
+			true,
+		},
 		{"-v -c (verbose, derives)", "sh", []string{"-v", "-c", "ls"}, "ls", []string{}, true},
-		{"-vc cluster (derives)", "bash", []string{"-vc", "shutdown"}, "shutdown", []string{}, true},
-		{"-Bc cluster (brace expansion, derives)", "bash", []string{"-Bc", "ls"}, "ls", []string{}, true},
-		{"-Hc cluster (history expansion, derives)", "bash", []string{"-Hc", "ls"}, "ls", []string{}, true},
-		{"-lec mixed cluster (issue + existing safe)", "bash", []string{"-lec", "shutdown"}, "shutdown", []string{}, true},
-		{"-ilxc all safe shorts clustered", "bash", []string{"-ilxc", "shutdown"}, "shutdown", []string{}, true},
-		{"-l -e -u -c chained safes", "bash", []string{"-l", "-e", "-u", "-c", "rm foo"}, "rm", []string{"foo"}, true},
+		{
+			"-vc cluster (derives)",
+			"bash",
+			[]string{"-vc", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-Bc cluster (brace expansion, derives)",
+			"bash",
+			[]string{"-Bc", "ls"},
+			"ls",
+			[]string{},
+			true,
+		},
+		{
+			"-Hc cluster (history expansion, derives)",
+			"bash",
+			[]string{"-Hc", "ls"},
+			"ls",
+			[]string{},
+			true,
+		},
+		{
+			"-lec mixed cluster (issue + existing safe)",
+			"bash",
+			[]string{"-lec", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-ilxc all safe shorts clustered",
+			"bash",
+			[]string{"-ilxc", "shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"-l -e -u -c chained safes",
+			"bash",
+			[]string{"-l", "-e", "-u", "-c", "rm foo"},
+			"rm",
+			[]string{"foo"},
+			true,
+		},
 
 		// --- wrong flag forms ---
 		{"no flag", "sh", []string{"ls"}, "", nil, false},
@@ -132,47 +489,180 @@ func TestDerivePolicyTarget(t *testing.T) {
 		{"-a (allexport) stays unsafe", "sh", []string{"-a", "-c", "ls"}, "", nil, false},
 		{"-r (restricted) stays unsafe", "bash", []string{"-r", "-c", "ls"}, "", nil, false},
 		{"-n (no-execute) stays unsafe", "bash", []string{"-n", "-c", "ls"}, "", nil, false},
-		{"-o errexit (operand option rejected)", "bash", []string{"-o", "errexit", "-c", "ls"}, "", nil, false},
-		{"+o (plus-form rejected)", "bash", []string{"+o", "noclobber", "-c", "ls"}, "", nil, false},
-		{"--rcfile=file (profile source)", "bash", []string{"--rcfile=/tmp/rc", "-c", "ls"}, "", nil, false},
+		{
+			"-o errexit (operand option rejected)",
+			"bash",
+			[]string{"-o", "errexit", "-c", "ls"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"+o (plus-form rejected)",
+			"bash",
+			[]string{"+o", "noclobber", "-c", "ls"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"--rcfile=file (profile source)",
+			"bash",
+			[]string{"--rcfile=/tmp/rc", "-c", "ls"},
+			"",
+			nil,
+			false,
+		},
 		{"--norc (long option)", "bash", []string{"--norc", "-c", "ls"}, "", nil, false},
 		{"-- (end-of-options marker)", "sh", []string{"--", "-c", "ls"}, "", nil, false},
 		{"empty args", "sh", nil, "", nil, false},
 		{"single arg no script", "sh", []string{"-c"}, "", nil, false},
 		// --- unsafe-option shapes with -c (treated as bypass, not fallback) ---
-		{"-rc cluster (restricted stays bypass)", "bash", []string{"-rc", "shutdown"}, "", nil, false},
-		{"-pc cluster (privileged stays bypass)", "bash", []string{"-pc", "shutdown"}, "", nil, false},
-		{"-o errexit -c (bypass)", "bash", []string{"-o", "errexit", "-c", "shutdown"}, "", nil, false},
-		{"--rcfile -c (bypass)", "bash", []string{"--rcfile=/tmp/rc", "-c", "shutdown"}, "", nil, false},
+		{
+			"-rc cluster (restricted stays bypass)",
+			"bash",
+			[]string{"-rc", "shutdown"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"-pc cluster (privileged stays bypass)",
+			"bash",
+			[]string{"-pc", "shutdown"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"-o errexit -c (bypass)",
+			"bash",
+			[]string{"-o", "errexit", "-c", "shutdown"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"--rcfile -c (bypass)",
+			"bash",
+			[]string{"--rcfile=/tmp/rc", "-c", "shutdown"},
+			"",
+			nil,
+			false,
+		},
 		{"--norc -c (bypass)", "bash", []string{"--norc", "-c", "shutdown"}, "", nil, false},
 		// --- env-assignment-prefix parse-through: strip leading NAME=VALUE
 		// tokens, derive the rest. Under `allow sh` + `deny shutdown` this
 		// lets the inner deny fire instead of masking it behind the shell.
-		{"assign + nohup (parse-through)", "sh", []string{"-c", "PATH=/tmp nohup shutdown"}, "shutdown", []string{}, true},
-		{"assign + exec (parse-through)", "sh", []string{"-c", "VAR=x exec shutdown"}, "shutdown", []string{}, true},
-		{"multiple assigns + nice -n N (parse-through)", "sh", []string{"-c", "FOO=1 BAR=2 nice -n 19 shutdown"}, "shutdown", []string{}, true},
-		{"empty-value assign + nohup (parse-through)", "sh", []string{"-c", "FOO= nohup shutdown"}, "shutdown", []string{}, true},
-		{"assign + plain binary (parse-through)", "sh", []string{"-c", "PATH=/tmp shutdown"}, "shutdown", []string{}, true},
-		{"assign + plain binary with arg (parse-through)", "sh", []string{"-c", "FOO=bar shutdown now"}, "shutdown", []string{"now"}, true},
+		{
+			"assign + nohup (parse-through)",
+			"sh",
+			[]string{"-c", "PATH=/tmp nohup shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"assign + exec (parse-through)",
+			"sh",
+			[]string{"-c", "VAR=x exec shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"multiple assigns + nice -n N (parse-through)",
+			"sh",
+			[]string{"-c", "FOO=1 BAR=2 nice -n 19 shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"empty-value assign + nohup (parse-through)",
+			"sh",
+			[]string{"-c", "FOO= nohup shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"assign + plain binary (parse-through)",
+			"sh",
+			[]string{"-c", "PATH=/tmp shutdown"},
+			"shutdown",
+			[]string{},
+			true,
+		},
+		{
+			"assign + plain binary with arg (parse-through)",
+			"sh",
+			[]string{"-c", "FOO=bar shutdown now"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
 		// assign + inner bypass form (exec -a …) — strip leaves inner
 		// still unparsable → bypass.
-		{"assign + exec -a (inner bypass)", "sh", []string{"-c", "VAR=x exec -a foo shutdown"}, "", nil, false},
+		{
+			"assign + exec -a (inner bypass)",
+			"sh",
+			[]string{"-c", "VAR=x exec -a foo shutdown"},
+			"",
+			nil,
+			false,
+		},
 		// dirty VALUE (byte outside the narrow allowlist) is a bypass.
-		{"assign with colon in VALUE", "sh", []string{"-c", "PATH=/tmp:/bin shutdown"}, "", nil, false},
-		{"assign with glob in VALUE", "sh", []string{"-c", "PATH=*/bad nohup shutdown"}, "", nil, false},
+		{
+			"assign with colon in VALUE",
+			"sh",
+			[]string{"-c", "PATH=/tmp:/bin shutdown"},
+			"",
+			nil,
+			false,
+		},
+		{
+			"assign with glob in VALUE",
+			"sh",
+			[]string{"-c", "PATH=*/bad nohup shutdown"},
+			"",
+			nil,
+			false,
+		},
 		{"assign with dollar in VALUE", "sh", []string{"-c", "FOO=$VAR shutdown"}, "", nil, false},
 		{"assign with equals in VALUE", "sh", []string{"-c", "FOO=a=b shutdown"}, "", nil, false},
 		// digit-leading tokens are NOT valid assignments — shell would
 		// try to exec them. Falls through to the byte-allowlist check
 		// which rejects the `=` → statusFallback (not bypass).
-		{"digit-leading token is not assign (fallback)", "sh", []string{"-c", "0FOO=bar nohup ls"}, "", nil, false},
+		{
+			"digit-leading token is not assign (fallback)",
+			"sh",
+			[]string{"-c", "0FOO=bar nohup ls"},
+			"",
+			nil,
+			false,
+		},
 		// All-assignment script: shell sets vars and exits, no command
 		// to derive. Falls back to outer shell rule.
 		{"only assignments (fallback)", "sh", []string{"-c", "FOO=1 BAR=2"}, "", nil, false},
 		// --- three args ---
 		{"three args", "sh", []string{"-c", "ls", "extra"}, "ls", []string{}, true},
-		{"four args (argv0 + positional)", "sh", []string{"-c", "shutdown now", "argv0_name", "param1"}, "shutdown", []string{"now"}, true},
-		{"many positional params", "bash", []string{"-c", "rm foo", "bash", "a", "b", "c"}, "rm", []string{"foo"}, true},
+		{
+			"four args (argv0 + positional)",
+			"sh",
+			[]string{"-c", "shutdown now", "argv0_name", "param1"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
+		{
+			"many positional params",
+			"bash",
+			[]string{"-c", "rm foo", "bash", "a", "b", "c"},
+			"rm",
+			[]string{"foo"},
+			true,
+		},
 		{"-ec with argv0", "sh", []string{"-ec", "whoami", "myscript"}, "whoami", []string{}, true},
 
 		// --- empty or whitespace scripts ---
@@ -210,12 +700,54 @@ func TestDerivePolicyTarget(t *testing.T) {
 		// policy, but wrong outcome under an allow-only policy where a
 		// benign invocation like `/bin/sh -c 'echo "hi there"'` would be
 		// denied as "opaque" instead of falling back to the shell allow.
-		{"double-quoted arg", "sh", []string{"-c", "shutdown \"now\""}, "shutdown", []string{"now"}, true},
-		{"single-quoted arg", "sh", []string{"-c", "shutdown 'now'"}, "shutdown", []string{"now"}, true},
-		{"double-quoted arg with space", "sh", []string{"-c", "grep \"pattern\" file"}, "grep", []string{"pattern", "file"}, true},
-		{"single-quoted arg with space", "sh", []string{"-c", "grep 'pat tern' file"}, "grep", []string{"pat tern", "file"}, true},
-		{"unquoted + quoted concat", "sh", []string{"-c", "shutdown foo\"bar\""}, "shutdown", []string{"foobar"}, true},
-		{"quoted + unquoted concat", "sh", []string{"-c", "shutdown 'foo'bar"}, "shutdown", []string{"foobar"}, true},
+		{
+			"double-quoted arg",
+			"sh",
+			[]string{"-c", "shutdown \"now\""},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
+		{
+			"single-quoted arg",
+			"sh",
+			[]string{"-c", "shutdown 'now'"},
+			"shutdown",
+			[]string{"now"},
+			true,
+		},
+		{
+			"double-quoted arg with space",
+			"sh",
+			[]string{"-c", "grep \"pattern\" file"},
+			"grep",
+			[]string{"pattern", "file"},
+			true,
+		},
+		{
+			"single-quoted arg with space",
+			"sh",
+			[]string{"-c", "grep 'pat tern' file"},
+			"grep",
+			[]string{"pat tern", "file"},
+			true,
+		},
+		{
+			"unquoted + quoted concat",
+			"sh",
+			[]string{"-c", "shutdown foo\"bar\""},
+			"shutdown",
+			[]string{"foobar"},
+			true,
+		},
+		{
+			"quoted + unquoted concat",
+			"sh",
+			[]string{"-c", "shutdown 'foo'bar"},
+			"shutdown",
+			[]string{"foobar"},
+			true,
+		},
 		{"quoted empty arg", "sh", []string{"-c", "shutdown \"\""}, "shutdown", []string{""}, true},
 
 		// --- expansion-bearing double quotes stay opaque: `$`, `` ` ``,
@@ -241,7 +773,14 @@ func TestDerivePolicyTarget(t *testing.T) {
 		{"cd", "sh", []string{"-c", "cd /tmp"}, "", nil, false},
 		{"kill (builtin on bash)", "sh", []string{"-c", "kill 1"}, "", nil, false},
 		{"ulimit (bash builtin)", "sh", []string{"-c", "ulimit -n 1024"}, "", nil, false},
-		{"enable (bash builtin, used to re-enable kill)", "sh", []string{"-c", "enable kill"}, "", nil, false},
+		{
+			"enable (bash builtin, used to re-enable kill)",
+			"sh",
+			[]string{"-c", "enable kill"},
+			"",
+			nil,
+			false,
+		},
 		{"hash", "sh", []string{"-c", "hash -r"}, "", nil, false},
 		{"type", "sh", []string{"-c", "type ls"}, "", nil, false},
 		{"let", "sh", []string{"-c", "let x=1"}, "", nil, false},
@@ -255,10 +794,24 @@ func TestDerivePolicyTarget(t *testing.T) {
 
 		// --- builtin after stripping wrapper is also blocked ---
 		{"exec echo (blocked via builtin)", "sh", []string{"-c", "exec echo hi"}, "", nil, false},
-		{"command cd (blocked via builtin)", "sh", []string{"-c", "command cd /tmp"}, "", nil, false},
+		{
+			"command cd (blocked via builtin)",
+			"sh",
+			[]string{"-c", "command cd /tmp"},
+			"",
+			nil,
+			false,
+		},
 
 		// --- absolute path binaries ---
-		{"absolute path binary", "sh", []string{"-c", "/usr/sbin/shutdown now"}, "/usr/sbin/shutdown", []string{"now"}, true},
+		{
+			"absolute path binary",
+			"sh",
+			[]string{"-c", "/usr/sbin/shutdown now"},
+			"/usr/sbin/shutdown",
+			[]string{"now"},
+			true,
+		},
 		{"relative dot-slash", "sh", []string{"-c", "./script"}, "./script", []string{}, true},
 		{"relative dotdot", "sh", []string{"-c", "../tool arg"}, "../tool", []string{"arg"}, true},
 
@@ -318,14 +871,29 @@ func TestIsShellCBypassAttempt(t *testing.T) {
 		{"nice -19 CMD (unsupported form)", "sh", []string{"-c", "nice -19 shutdown"}, true},
 		// Byte allowlist evasion via wrapper long-option `=`.
 		{"nice --adjustment=19 CMD", "sh", []string{"-c", "nice --adjustment=19 shutdown"}, true},
-		{"nohup --preserve-status=1 CMD", "sh", []string{"-c", "nohup --preserve-status=1 shutdown"}, true},
+		{
+			"nohup --preserve-status=1 CMD",
+			"sh",
+			[]string{"-c", "nohup --preserve-status=1 shutdown"},
+			true,
+		},
 		// time / env wrapper bypass (R15).
 		{"time -p CMD", "sh", []string{"-c", "time -p shutdown"}, true},
 		{"time --help CMD", "sh", []string{"-c", "time --help shutdown"}, true},
 		{"env -i CMD", "sh", []string{"-c", "env -i shutdown"}, true},
 		{"env -u VAR CMD", "sh", []string{"-c", "env -u PATH shutdown"}, true},
-		{"env VAR=val CMD (byte-allowlist evasion)", "sh", []string{"-c", "env VAR=val shutdown"}, true},
-		{"env --chdir=/tmp CMD (byte-allowlist evasion)", "sh", []string{"-c", "env --chdir=/tmp shutdown"}, true},
+		{
+			"env VAR=val CMD (byte-allowlist evasion)",
+			"sh",
+			[]string{"-c", "env VAR=val shutdown"},
+			true,
+		},
+		{
+			"env --chdir=/tmp CMD (byte-allowlist evasion)",
+			"sh",
+			[]string{"-c", "env --chdir=/tmp shutdown"},
+			true,
+		},
 
 		// Bypass — unsafe shell options hiding -c. Note: -lc/-l -c/-ic/-vc/
 		// -sc/-Bc/-Hc are now in the parseable safe set (they don't affect
@@ -333,7 +901,12 @@ func TestIsShellCBypassAttempt(t *testing.T) {
 		// --rcfile=, --init-file=) or whose semantics we haven't audited
 		// (-p, -a, -r, -n, ...) still trigger bypass.
 		{"bash -o errexit -c shutdown", "bash", []string{"-o", "errexit", "-c", "shutdown"}, true},
-		{"bash --rcfile=X -c shutdown", "bash", []string{"--rcfile=/tmp/rc", "-c", "shutdown"}, true},
+		{
+			"bash --rcfile=X -c shutdown",
+			"bash",
+			[]string{"--rcfile=/tmp/rc", "-c", "shutdown"},
+			true,
+		},
 		{"bash --norc -c shutdown", "bash", []string{"--norc", "-c", "shutdown"}, true},
 		{"sh -pc shutdown (privileged+c)", "sh", []string{"-pc", "shutdown"}, true},
 		{"sh -ac shutdown (allexport+c)", "sh", []string{"-ac", "shutdown"}, true},
@@ -355,8 +928,18 @@ func TestIsShellCBypassAttempt(t *testing.T) {
 		{"assign + exec -a", "sh", []string{"-c", "VAR=x exec -a foo shutdown"}, true},
 		// command -v is introspection (issue #377): not a bypass even with an
 		// env-assignment prefix, because command -v still doesn't execute NAME.
-		{"assign + command -v (introspection)", "sh", []string{"-c", "FOO=1 command -v shutdown"}, false},
-		{"assign + nohup --preserve-status", "sh", []string{"-c", "PATH=/tmp nohup --preserve-status=1 shutdown"}, true},
+		{
+			"assign + command -v (introspection)",
+			"sh",
+			[]string{"-c", "FOO=1 command -v shutdown"},
+			false,
+		},
+		{
+			"assign + nohup --preserve-status",
+			"sh",
+			[]string{"-c", "PATH=/tmp nohup --preserve-status=1 shutdown"},
+			true,
+		},
 
 		// Bypass — env-assignment with a VALUE byte outside the narrow
 		// allowlist. The shell would accept these, but our pure-string
@@ -369,13 +952,38 @@ func TestIsShellCBypassAttempt(t *testing.T) {
 		// Not a bypass — assignment parse-through to a parseable inner.
 		// DerivePolicyTarget succeeds (returns the inner binary) under
 		// these, so the caller uses the derived target directly.
-		{"assign + nohup (parses through)", "sh", []string{"-c", "PATH=/tmp nohup shutdown"}, false},
+		{
+			"assign + nohup (parses through)",
+			"sh",
+			[]string{"-c", "PATH=/tmp nohup shutdown"},
+			false,
+		},
 		{"assign + exec (parses through)", "sh", []string{"-c", "VAR=x exec shutdown"}, false},
 		{"assign + nice (parses through)", "sh", []string{"-c", "FOO=1 nice shutdown"}, false},
-		{"two assigns + nice -n N (parses through)", "sh", []string{"-c", "FOO=1 BAR=2 nice -n 19 shutdown"}, false},
-		{"empty-value assign + nohup (parses through)", "sh", []string{"-c", "FOO= nohup shutdown"}, false},
-		{"assign + plain binary (parses through)", "sh", []string{"-c", "PATH=/tmp shutdown"}, false},
-		{"assign + plain binary with arg (parses through)", "sh", []string{"-c", "FOO=bar shutdown now"}, false},
+		{
+			"two assigns + nice -n N (parses through)",
+			"sh",
+			[]string{"-c", "FOO=1 BAR=2 nice -n 19 shutdown"},
+			false,
+		},
+		{
+			"empty-value assign + nohup (parses through)",
+			"sh",
+			[]string{"-c", "FOO= nohup shutdown"},
+			false,
+		},
+		{
+			"assign + plain binary (parses through)",
+			"sh",
+			[]string{"-c", "PATH=/tmp shutdown"},
+			false,
+		},
+		{
+			"assign + plain binary with arg (parses through)",
+			"sh",
+			[]string{"-c", "FOO=bar shutdown now"},
+			false,
+		},
 
 		// Not a bypass — DerivePolicyTarget would succeed.
 		{"nohup CMD", "sh", []string{"-c", "nohup shutdown"}, false},
@@ -393,8 +1001,18 @@ func TestIsShellCBypassAttempt(t *testing.T) {
 		{"metachar (fallback)", "sh", []string{"-c", "ls | wc"}, false},
 
 		// Not a bypass — assignment without wrapper (separate issue, out of scope).
-		{"assign + plain binary (out of scope, fallback)", "sh", []string{"-c", "PATH=/tmp shutdown"}, false},
-		{"digit-leading token (not a valid assign)", "sh", []string{"-c", "0FOO=bar nohup shutdown"}, false},
+		{
+			"assign + plain binary (out of scope, fallback)",
+			"sh",
+			[]string{"-c", "PATH=/tmp shutdown"},
+			false,
+		},
+		{
+			"digit-leading token (not a valid assign)",
+			"sh",
+			[]string{"-c", "0FOO=bar nohup shutdown"},
+			false,
+		},
 
 		// Not a bypass — unsafe option without -c.
 		{"bash -l script.sh (no -c)", "bash", []string{"-l", "script.sh"}, false},
@@ -414,7 +1032,13 @@ func TestIsShellCBypassAttempt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := IsShellCBypassAttempt(tt.command, tt.args); got != tt.want {
-				t.Errorf("IsShellCBypassAttempt(%q, %v) = %v, want %v", tt.command, tt.args, got, tt.want)
+				t.Errorf(
+					"IsShellCBypassAttempt(%q, %v) = %v, want %v",
+					tt.command,
+					tt.args,
+					got,
+					tt.want,
+				)
 			}
 		})
 	}
@@ -453,7 +1077,12 @@ func TestIsOpaqueShellC(t *testing.T) {
 		// inside `echo "hi"`).
 		{"double quote no expansion (builtin)", "sh", []string{"-c", "echo \"hi\""}, false},
 		{"single quote (builtin)", "sh", []string{"-c", "echo 'hi'"}, false},
-		{"double-quoted arg (non-builtin derives)", "sh", []string{"-c", "shutdown \"now\""}, false},
+		{
+			"double-quoted arg (non-builtin derives)",
+			"sh",
+			[]string{"-c", "shutdown \"now\""},
+			false,
+		},
 		{"single-quoted arg (non-builtin derives)", "sh", []string{"-c", "shutdown 'now'"}, false},
 
 		// --- NOT opaque: bypass cases return statusBypass, not opaque ---
@@ -538,9 +1167,21 @@ func TestBypassReason(t *testing.T) {
 		{"operand -o", "bash", []string{"-o", "errexit", "-c", "shutdown"}, true, "-o"},
 		{"operand +o", "bash", []string{"+o", "noclobber", "-c", "shutdown"}, true, "+o"},
 		// Long options.
-		{"long --rcfile=", "bash", []string{"--rcfile=/tmp/rc", "-c", "shutdown"}, true, "--rcfile"},
+		{
+			"long --rcfile=",
+			"bash",
+			[]string{"--rcfile=/tmp/rc", "-c", "shutdown"},
+			true,
+			"--rcfile",
+		},
 		{"long --norc", "bash", []string{"--norc", "-c", "shutdown"}, true, "--norc"},
-		{"long --init-file=", "bash", []string{"--init-file=/tmp/rc", "-c", "shutdown"}, true, "--init-file"},
+		{
+			"long --init-file=",
+			"bash",
+			[]string{"--init-file=/tmp/rc", "-c", "shutdown"},
+			true,
+			"--init-file",
+		},
 		// Wrapper-flag bypass — surface the wrapper name.
 		{"exec -a NAME", "sh", []string{"-c", "exec -a foo shutdown"}, true, "exec"},
 		{"nohup --help", "sh", []string{"-c", "nohup --help shutdown"}, true, "nohup"},
@@ -568,7 +1209,13 @@ func TestBypassReason(t *testing.T) {
 				t.Fatalf("BypassReason(%q, %v) = %q, want empty", tt.command, tt.args, got)
 			}
 			if tt.wantSubstring != "" && !containsSubstring(got, tt.wantSubstring) {
-				t.Errorf("BypassReason(%q, %v) = %q, want substring %q", tt.command, tt.args, got, tt.wantSubstring)
+				t.Errorf(
+					"BypassReason(%q, %v) = %q, want substring %q",
+					tt.command,
+					tt.args,
+					got,
+					tt.wantSubstring,
+				)
 			}
 		})
 	}
@@ -614,7 +1261,13 @@ func TestOpaqueReason(t *testing.T) {
 				t.Fatalf("OpaqueReason(%q, %v) = %q, want empty", tt.command, tt.args, got)
 			}
 			if tt.wantSubstring != "" && !containsSubstring(got, tt.wantSubstring) {
-				t.Errorf("OpaqueReason(%q, %v) = %q, want substring %q", tt.command, tt.args, got, tt.wantSubstring)
+				t.Errorf(
+					"OpaqueReason(%q, %v) = %q, want substring %q",
+					tt.command,
+					tt.args,
+					got,
+					tt.wantSubstring,
+				)
 			}
 		})
 	}

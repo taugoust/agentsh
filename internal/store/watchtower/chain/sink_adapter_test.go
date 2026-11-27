@@ -38,6 +38,10 @@ func TestWatchtowerSink_ComputeCommitAdvancesPrevHash(t *testing.T) {
 		t.Error("PeekPrevHash should be non-empty after a successful Commit")
 	}
 	if got := s.PeekPrevHash(); got != res.EntryHash() {
-		t.Errorf("PeekPrevHash should equal the committed EntryHash; got %q want %q", got, res.EntryHash())
+		t.Errorf(
+			"PeekPrevHash should equal the committed EntryHash; got %q want %q",
+			got,
+			res.EntryHash(),
+		)
 	}
 }

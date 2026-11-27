@@ -9,7 +9,10 @@ import (
 )
 
 func TestLoadSkill_Minimal(t *testing.T) {
-	ref, files, err := LoadSkill(filepath.FromSlash("testdata/skills/minimal"), DefaultLoaderLimits())
+	ref, files, err := LoadSkill(
+		filepath.FromSlash("testdata/skills/minimal"),
+		DefaultLoaderLimits(),
+	)
 	if err != nil {
 		t.Fatalf("LoadSkill: %v", err)
 	}
@@ -42,7 +45,10 @@ func TestLoadSkill_DeterministicHash(t *testing.T) {
 }
 
 func TestLoadSkill_AllowedFrontmatter(t *testing.T) {
-	ref, _, err := LoadSkill(filepath.FromSlash("testdata/skills/with-allowed"), DefaultLoaderLimits())
+	ref, _, err := LoadSkill(
+		filepath.FromSlash("testdata/skills/with-allowed"),
+		DefaultLoaderLimits(),
+	)
 	if err != nil {
 		t.Fatalf("LoadSkill: %v", err)
 	}
@@ -66,7 +72,10 @@ func TestLoadSkill_PerFileLimit(t *testing.T) {
 }
 
 func TestLoadSkill_SourceFromManifest(t *testing.T) {
-	ref, _, err := LoadSkill(filepath.FromSlash("testdata/skills/git-origin"), DefaultLoaderLimits())
+	ref, _, err := LoadSkill(
+		filepath.FromSlash("testdata/skills/git-origin"),
+		DefaultLoaderLimits(),
+	)
 	if err != nil {
 		t.Fatalf("LoadSkill: %v", err)
 	}
@@ -93,7 +102,11 @@ func TestLoadSkill_RejectsSymlinks(t *testing.T) {
 		t.Skip("symlink permissions vary on Windows; covered on unix")
 	}
 	tmp := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tmp, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(tmp, "SKILL.md"),
+		[]byte("---\nname: x\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	// Plant a symlink that would otherwise pull in /etc/passwd content.

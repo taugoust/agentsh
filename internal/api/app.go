@@ -165,7 +165,19 @@ type App struct {
 	waitKillableSource string
 }
 
-func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Store, engine *policy.Engine, broker *events.Broker, apiKeyAuth *auth.APIKeyAuth, oidcAuth *auth.OIDCAuth, approvalsMgr *approvals.Manager, metricsCollector *metrics.Collector, policyLoader PolicyLoader, cgroupMgr *limits.CgroupManager) *App {
+func NewApp(
+	cfg *config.Config,
+	sessions *session.Manager,
+	store *composite.Store,
+	engine *policy.Engine,
+	broker *events.Broker,
+	apiKeyAuth *auth.APIKeyAuth,
+	oidcAuth *auth.OIDCAuth,
+	approvalsMgr *approvals.Manager,
+	metricsCollector *metrics.Collector,
+	policyLoader PolicyLoader,
+	cgroupMgr *limits.CgroupManager,
+) *App {
 	nethelperCredential := strings.TrimSpace(os.Getenv(nethelper.EnvHelperInstanceCredential))
 	if nethelperCredential == "" {
 		nethelperCredential = strings.TrimSpace(os.Getenv(nethelper.EnvSessionNonce))
@@ -174,7 +186,9 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 	nethelperSocket := strings.TrimSpace(os.Getenv(nethelper.EnvSocket))
 	nethelperBootstrapResult := strings.TrimSpace(os.Getenv(nethelper.EnvBootstrapResult))
 	nethelperRecoveryTokenFile := strings.TrimSpace(os.Getenv(nethelper.EnvRecoveryTokenFile))
-	nethelperRecoveryToken, nethelperRecoveryTokenFile := readRecoveryTokenFile(nethelperRecoveryTokenFile)
+	nethelperRecoveryToken, nethelperRecoveryTokenFile := readRecoveryTokenFile(
+		nethelperRecoveryTokenFile,
+	)
 	for _, key := range []string{nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile} {
 		_ = os.Unsetenv(key)
 	}
@@ -195,14 +209,21 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 		fmt.Fprintf(os.Stderr, "platform init: %v\n", err)
 	}
 
-	if cfg.Sessions.RealPaths && !config.FileMonitorBoolWithDefault(cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE, false) {
-		slog.Warn("real_paths enabled but enforce_without_fuse is false: outside-workspace file access will be audit-only (not blocked)")
+	if cfg.Sessions.RealPaths &&
+		!config.FileMonitorBoolWithDefault(
+			cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE,
+			false,
+		) {
+		slog.Warn(
+			"real_paths enabled but enforce_without_fuse is false: outside-workspace file access will be audit-only (not blocked)",
+		)
 	}
 
 	// Mode-aware startup log for EBPF config. When cgroupMgr is nil, no
 	// cgroup-related feature was requested so there is nothing to report.
 	// ModeNested / ModeTopLevel are silent success paths.
-	if cgroupMgr != nil && (cfg.Sandbox.Network.EBPF.Enabled || cfg.Sandbox.Network.EBPF.Enforce || cfg.Sandbox.Network.EBPF.Required) {
+	if cgroupMgr != nil &&
+		(cfg.Sandbox.Network.EBPF.Enabled || cfg.Sandbox.Network.EBPF.Enforce || cfg.Sandbox.Network.EBPF.Required) {
 		probe := cgroupMgr.Probe()
 		switch probe.Mode {
 		case limits.ModeAttachOnly:
@@ -212,11 +233,16 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 				"ebpf.enforce", cfg.Sandbox.Network.EBPF.Enforce,
 			)
 		case limits.ModeUnavailable:
-			slog.Warn("ebpf: enforcement configured but unavailable (check CAP_BPF and /sys/fs/bpf)",
-				"reason", probe.Reason,
-				"ebpf.enabled", cfg.Sandbox.Network.EBPF.Enabled,
-				"ebpf.enforce", cfg.Sandbox.Network.EBPF.Enforce,
-				"cgroups.enabled", cfg.Sandbox.Cgroups.Enabled,
+			slog.Warn(
+				"ebpf: enforcement configured but unavailable (check CAP_BPF and /sys/fs/bpf)",
+				"reason",
+				probe.Reason,
+				"ebpf.enabled",
+				cfg.Sandbox.Network.EBPF.Enabled,
+				"ebpf.enforce",
+				cfg.Sandbox.Network.EBPF.Enforce,
+				"cgroups.enabled",
+				cfg.Sandbox.Cgroups.Enabled,
 			)
 		}
 	}
@@ -228,14 +254,21 @@ func NewApp(cfg *config.Config, sessions *session.Manager, store *composite.Stor
 
 	lifecycleCtx, lifecycleCancel := context.WithCancelCause(context.Background())
 	app := &App{
-		cfg:                        cfg,
-		sessions:                   sessions,
-		store:                      store,
-		policy:                     engine,
-		broker:                     broker,
-		dbBypass:                   dbevents.NewBypassEmitter(storeEmitter{store: store, broker: broker}),
-		cgroupMgr:                  appCgroupMgr,
-		nethelperBinding:           newNethelperBindingState(nethelperSocket, nethelperCredentialFile, nethelperBootstrapResult, nethelperCredential),
+		cfg:      cfg,
+		sessions: sessions,
+		store:    store,
+		policy:   engine,
+		broker:   broker,
+		dbBypass: dbevents.NewBypassEmitter(
+			storeEmitter{store: store, broker: broker},
+		),
+		cgroupMgr: appCgroupMgr,
+		nethelperBinding: newNethelperBindingState(
+			nethelperSocket,
+			nethelperCredentialFile,
+			nethelperBootstrapResult,
+			nethelperCredential,
+		),
 		nethelperRecoveryToken:     nethelperRecoveryToken,
 		nethelperRecoveryTokenFile: nethelperRecoveryTokenFile,
 		apiKeyAuth:                 apiKeyAuth,
@@ -299,38 +332,50 @@ func (a *App) SetDetachedRuntime(runtime *detached.Runtime) {
 	}
 	a.detachedLifecycleMu.Unlock()
 	if a.approvals != nil && runtime != nil {
-		a.approvals.SetDetachedRequestObserver(func(_ context.Context, request approvals.Request) error {
-			status := runtime.RuntimeStatus()
-			identity := detachedtransport.Identity{
-				SessionID: status.SessionID, Generation: status.Generation, IncarnationID: status.IncarnationID,
-			}
-			_, err := a.detachedControl.AppendApproval(identity, request)
-			return err
-		})
-		a.approvals.SetDetachedTerminalObserver(func(_ context.Context, request approvals.Request, resolution approvals.Resolution) error {
-			status := runtime.RuntimeStatus()
-			identity := detachedtransport.Identity{
-				SessionID: status.SessionID, Generation: status.Generation, IncarnationID: status.IncarnationID,
-			}
-			_, err := a.detachedControl.AppendResolution(identity, request.ID, resolution)
-			if err != nil {
-				_ = runtime.MarkFailed("persist detached approval terminal record: " + err.Error())
-			}
-			return err
-		})
-		a.approvals.SetScopedPersistenceHook(func(sessionID string, decisions []approvals.ScopedDecision) {
-			if sessionID != runtime.Manifest().SessionID {
-				return
-			}
-			data, err := json.Marshal(decisions)
-			if err != nil {
-				_ = runtime.MarkFailed("encode scoped approval recovery state: " + err.Error())
-				return
-			}
-			if err := runtime.UpdateScopedApprovals(data); err != nil {
-				_ = runtime.MarkFailed("persist scoped approval recovery state: " + err.Error())
-			}
-		})
+		a.approvals.SetDetachedRequestObserver(
+			func(_ context.Context, request approvals.Request) error {
+				status := runtime.RuntimeStatus()
+				identity := detachedtransport.Identity{
+					SessionID:     status.SessionID,
+					Generation:    status.Generation,
+					IncarnationID: status.IncarnationID,
+				}
+				_, err := a.detachedControl.AppendApproval(identity, request)
+				return err
+			},
+		)
+		a.approvals.SetDetachedTerminalObserver(
+			func(_ context.Context, request approvals.Request, resolution approvals.Resolution) error {
+				status := runtime.RuntimeStatus()
+				identity := detachedtransport.Identity{
+					SessionID:     status.SessionID,
+					Generation:    status.Generation,
+					IncarnationID: status.IncarnationID,
+				}
+				_, err := a.detachedControl.AppendResolution(identity, request.ID, resolution)
+				if err != nil {
+					_ = runtime.MarkFailed(
+						"persist detached approval terminal record: " + err.Error(),
+					)
+				}
+				return err
+			},
+		)
+		a.approvals.SetScopedPersistenceHook(
+			func(sessionID string, decisions []approvals.ScopedDecision) {
+				if sessionID != runtime.Manifest().SessionID {
+					return
+				}
+				data, err := json.Marshal(decisions)
+				if err != nil {
+					_ = runtime.MarkFailed("encode scoped approval recovery state: " + err.Error())
+					return
+				}
+				if err := runtime.UpdateScopedApprovals(data); err != nil {
+					_ = runtime.MarkFailed("persist scoped approval recovery state: " + err.Error())
+				}
+			},
+		)
 	}
 }
 
@@ -361,7 +406,11 @@ func (a *App) signalDetachedStop() {
 
 // SetSessionAbsoluteTimeout supplies the exact hard timeout used by the server
 // reaper so helper replacement lifetime validation cannot drift from teardown.
-func (a *App) SetSessionAbsoluteTimeout(timeout time.Duration) { a.sessionAbsoluteTimeout = timeout }
+func (a *App) SetSessionAbsoluteTimeout(
+	timeout time.Duration,
+) {
+	a.sessionAbsoluteTimeout = timeout
+}
 
 // BeginShutdown cancels server-owned operations with an explicit lifecycle
 // cause before listeners begin waiting for graceful request completion.
@@ -420,7 +469,8 @@ func (a *App) Router() http.Handler {
 
 	if a.cfg.Metrics.Enabled && a.cfg.Metrics.Path != "" && a.metrics != nil {
 		r.Get(a.cfg.Metrics.Path, func(w http.ResponseWriter, r *http.Request) {
-			a.metrics.Handler(metrics.HandlerOptions{SessionCount: a.sessions.Count}).ServeHTTP(w, r)
+			a.metrics.Handler(metrics.HandlerOptions{SessionCount: a.sessions.Count}).
+				ServeHTTP(w, r)
 		})
 	}
 	// Lightweight EBPF debug endpoint (read-only) for map overrides and DNS cache size.
@@ -444,13 +494,23 @@ func (a *App) Router() http.Handler {
 			"dns_cache_metrics":     DNSMetrics(),
 		})
 	})
-	r.Get(a.cfg.Health.Path, func(w http.ResponseWriter, r *http.Request) { writeText(w, http.StatusOK, "ok\n") })
-	r.Get(a.cfg.Health.ReadinessPath, func(w http.ResponseWriter, r *http.Request) { writeText(w, http.StatusOK, "ready\n") })
+	r.Get(
+		a.cfg.Health.Path,
+		func(w http.ResponseWriter, r *http.Request) { writeText(w, http.StatusOK, "ok\n") },
+	)
+	r.Get(
+		a.cfg.Health.ReadinessPath,
+		func(w http.ResponseWriter, r *http.Request) { writeText(w, http.StatusOK, "ready\n") },
+	)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/detached/status", func(w http.ResponseWriter, r *http.Request) {
 			if a.detachedRuntime == nil {
-				writeJSON(w, http.StatusNotFound, map[string]any{"error": "detached runtime is not configured"})
+				writeJSON(
+					w,
+					http.StatusNotFound,
+					map[string]any{"error": "detached runtime is not configured"},
+				)
 				return
 			}
 			writeJSON(w, http.StatusOK, a.detachedRuntimeStatus())
@@ -472,7 +532,10 @@ func (a *App) Router() http.Handler {
 		r.Get("/sessions/{id}/pty", a.execInSessionPTYWS)
 		r.Get("/sessions/{id}/events", a.streamEvents)
 		r.Post("/sessions/{id}/session-events", a.publishSessionEventForSession)
-		r.Get("/sessions/{id}/session-events/question-answers/{qid}", a.getSessionQuestionAnswerForSession)
+		r.Get(
+			"/sessions/{id}/session-events/question-answers/{qid}",
+			a.getSessionQuestionAnswerForSession,
+		)
 		r.Get("/sessions/{id}/history", a.sessionHistory)
 		r.Get("/sessions/{id}/overlay/diff", a.diffOverlay)
 		r.Post("/sessions/{id}/workspace/seal-admission", a.sealWorkspaceAdmission)
@@ -499,7 +562,10 @@ func (a *App) Router() http.Handler {
 		r.Get("/events/search", a.searchEvents)
 
 		r.Post("/detached-sessions/{id}/session-events", a.publishDetachedSessionEvent)
-		r.Get("/detached-sessions/{id}/session-events/question-answers/{qid}", a.getDetachedSessionQuestionAnswer)
+		r.Get(
+			"/detached-sessions/{id}/session-events/question-answers/{qid}",
+			a.getDetachedSessionQuestionAnswer,
+		)
 
 		r.Group(func(r chi.Router) {
 			r.Use(a.requireRoles("approver", "admin"))
@@ -537,7 +603,14 @@ func (a *App) Router() http.Handler {
 	})
 
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-		writeToolDomainError(w, http.StatusNotFound, toolErrorUnsupported, "endpoint is not supported", "", nil)
+		writeToolDomainError(
+			w,
+			http.StatusNotFound,
+			toolErrorUnsupported,
+			"endpoint is not supported",
+			"",
+			nil,
+		)
 	})
 	return r
 }
@@ -725,8 +798,11 @@ type createSessionRequestWire struct {
 }
 
 func (r createSessionRequestWire) rejectRuntimeSelection() error {
-	if len(r.Runtime) > 0 || len(r.RuntimeProfile) > 0 || len(r.RuntimeProvider) > 0 || len(r.RuntimeOptions) > 0 {
-		return fmt.Errorf("runtime selection is operator-owned; use the trusted detached session start command with a configured profile")
+	if len(r.Runtime) > 0 || len(r.RuntimeProfile) > 0 || len(r.RuntimeProvider) > 0 ||
+		len(r.RuntimeOptions) > 0 {
+		return fmt.Errorf(
+			"runtime selection is operator-owned; use the trusted detached session start command with a configured profile",
+		)
 	}
 	return nil
 }
@@ -810,15 +886,34 @@ func (p *commandExplicitProxy) Close() error {
 // startCommandExplicitProxy creates one immutable-attribution listener before
 // the stopped command is attached. Only this exact endpoint is passed to that
 // command's cgroup/nethelper policy update.
-func (a *App) startCommandExplicitProxy(ctx context.Context, s *session.Session, commandID string) (*commandExplicitProxy, error) {
+func (a *App) startCommandExplicitProxy(
+	ctx context.Context,
+	s *session.Session,
+	commandID string,
+) (*commandExplicitProxy, error) {
 	if a == nil || a.cfg == nil || s == nil || strings.TrimSpace(commandID) == "" {
 		return nil, fmt.Errorf("command-local network proxy prerequisites are incomplete")
 	}
 	em := storeEmitter{store: a.store, broker: a.broker}
-	pr, proxyURL, err := netmonitor.StartCommandProxy(a.cfg.Sandbox.Network.ProxyListenAddr, s.ID, commandID, s, a.policyEngineFor(s), a.approvals, em, a.dbBypass)
+	pr, proxyURL, err := netmonitor.StartCommandProxy(
+		a.cfg.Sandbox.Network.ProxyListenAddr,
+		s.ID,
+		commandID,
+		s,
+		a.policyEngineFor(s),
+		a.approvals,
+		em,
+		a.dbBypass,
+	)
 	if err != nil {
-		fail := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "net_proxy_failed", SessionID: s.ID, CommandID: commandID,
-			Fields: map[string]any{"error": err.Error(), "command_local": true}}
+		fail := types.Event{
+			ID:        uuid.NewString(),
+			Timestamp: time.Now().UTC(),
+			Type:      "net_proxy_failed",
+			SessionID: s.ID,
+			CommandID: commandID,
+			Fields:    map[string]any{"error": err.Error(), "command_local": true},
+		}
 		if a.store != nil {
 			_ = a.store.AppendEvent(ctx, fail)
 		}
@@ -830,9 +925,18 @@ func (a *App) startCommandExplicitProxy(ctx context.Context, s *session.Session,
 	proxyAddrPort, endpointErr := exactLoopbackProxyAddrPort(proxyURL)
 	if endpointErr != nil {
 		_ = pr.Close()
-		endpointErr = fmt.Errorf("command-local proxy listener is not an exact loopback endpoint: %w", endpointErr)
-		fail := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "net_proxy_failed", SessionID: s.ID, CommandID: commandID,
-			Fields: map[string]any{"error": endpointErr.Error(), "command_local": true}}
+		endpointErr = fmt.Errorf(
+			"command-local proxy listener is not an exact loopback endpoint: %w",
+			endpointErr,
+		)
+		fail := types.Event{
+			ID:        uuid.NewString(),
+			Timestamp: time.Now().UTC(),
+			Type:      "net_proxy_failed",
+			SessionID: s.ID,
+			CommandID: commandID,
+			Fields:    map[string]any{"error": endpointErr.Error(), "command_local": true},
+		}
 		if a.store != nil {
 			_ = a.store.AppendEvent(ctx, fail)
 		}
@@ -870,7 +974,15 @@ func (a *App) startCommandExplicitProxy(ctx context.Context, s *session.Session,
 
 func (a *App) startExplicitProxy(ctx context.Context, s *session.Session) error {
 	em := storeEmitter{store: a.store, broker: a.broker}
-	pr, proxyURL, err := netmonitor.StartProxy(a.cfg.Sandbox.Network.ProxyListenAddr, s.ID, s, a.policy, a.approvals, em, a.dbBypass)
+	pr, proxyURL, err := netmonitor.StartProxy(
+		a.cfg.Sandbox.Network.ProxyListenAddr,
+		s.ID,
+		s,
+		a.policy,
+		a.approvals,
+		em,
+		a.dbBypass,
+	)
 	if err != nil {
 		fail := types.Event{
 			ID:        uuid.NewString(),
@@ -1005,7 +1117,15 @@ func (a *App) startLLMProxy(ctx context.Context, s *session.Session) {
 					persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer cancel()
 					if err := store.AppendEvent(persistCtx, typesEv); err != nil {
-						slog.Error("persist mcp intercept event", "error", err, "tool", ev.ToolName, "session_id", ev.SessionID)
+						slog.Error(
+							"persist mcp intercept event",
+							"error",
+							err,
+							"tool",
+							ev.ToolName,
+							"session_id",
+							ev.SessionID,
+						)
 					}
 					broker.Publish(typesEv)
 
@@ -1023,7 +1143,15 @@ func (a *App) startLLMProxy(ctx context.Context, s *session.Session) {
 							Reason:          ev.Reason,
 						})
 						if err := store.AppendEvent(persistCtx, csEv); err != nil {
-							slog.Error("persist mcp cross-server event", "error", err, "rule", ev.CrossServerRule, "session_id", ev.SessionID)
+							slog.Error(
+								"persist mcp cross-server event",
+								"error",
+								err,
+								"rule",
+								ev.CrossServerRule,
+								"session_id",
+								ev.SessionID,
+							)
 						}
 						broker.Publish(csEv)
 					}
@@ -1061,19 +1189,51 @@ func (a *App) tryStartTransparentNetwork(ctx context.Context, s *session.Session
 	dnsCache := netmonitor.NewDNSCache(5 * time.Minute)
 	// Create correlation map for DNS-to-IP mapping (used by connect redirect)
 	correlationMap := redirect.NewCorrelationMap(5 * time.Minute)
-	tcp, tcpPort, err := netmonitor.StartTransparentTCP("0.0.0.0:0", s.ID, s, dnsCache, a.policy, a.approvals, em, a.dbBypass)
+	tcp, tcpPort, err := netmonitor.StartTransparentTCP(
+		"0.0.0.0:0",
+		s.ID,
+		s,
+		dnsCache,
+		a.policy,
+		a.approvals,
+		em,
+		a.dbBypass,
+	)
 	if err != nil {
 		return err
 	}
-	dns, dnsPort, err := netmonitor.StartDNS("0.0.0.0:0", "8.8.8.8:53", s.ID, s, dnsCache, a.policy, a.approvals, em, correlationMap)
+	dns, dnsPort, err := netmonitor.StartDNS(
+		"0.0.0.0:0",
+		"8.8.8.8:53",
+		s.ID,
+		s,
+		dnsCache,
+		a.policy,
+		a.approvals,
+		em,
+		correlationMap,
+	)
 	if err != nil {
 		_ = tcp.Close()
 		return err
 	}
 
 	nsName := "agentsh-" + strings.TrimPrefix(s.ID, "session-")
-	subnetCIDR, hostIPCIDR, nsIPCIDR, hostIf, nsIf := netmonitor.AllocateSubnet(a.cfg.Sandbox.Network.Transparent.SubnetBase, nsName)
-	ns, err := netmonitor.SetupNetNS(ctx, nsName, subnetCIDR, hostIf, nsIf, hostIPCIDR, nsIPCIDR, tcpPort, dnsPort)
+	subnetCIDR, hostIPCIDR, nsIPCIDR, hostIf, nsIf := netmonitor.AllocateSubnet(
+		a.cfg.Sandbox.Network.Transparent.SubnetBase,
+		nsName,
+	)
+	ns, err := netmonitor.SetupNetNS(
+		ctx,
+		nsName,
+		subnetCIDR,
+		hostIf,
+		nsIf,
+		hostIPCIDR,
+		nsIPCIDR,
+		tcpPort,
+		dnsPort,
+	)
 	if err != nil {
 		_ = tcp.Close()
 		_ = dns.Close()
@@ -1147,8 +1307,16 @@ func (a *App) patchSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.detachedRuntime != nil {
 		if err := a.detachedRuntime.UpdateMutable(detachedEnvironmentRecoveryState(s)); err != nil {
-			_ = a.detachedRuntime.MarkFailed("persist mutable session recovery state: " + err.Error())
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "session update applied in memory but durable recovery persistence failed; command execution is disabled"})
+			_ = a.detachedRuntime.MarkFailed(
+				"persist mutable session recovery state: " + err.Error(),
+			)
+			writeJSON(
+				w,
+				http.StatusInternalServerError,
+				map[string]any{
+					"error": "session update applied in memory but durable recovery persistence failed; command execution is disabled",
+				},
+			)
 			return
 		}
 		acknowledged := append([]string(nil), req.Unset...)
@@ -1157,7 +1325,13 @@ func (a *App) patchSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := a.detachedRuntime.AcknowledgeEnvironment(acknowledged, false); err != nil {
 			_ = a.detachedRuntime.MarkFailed("persist environment reprovisioning: " + err.Error())
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "environment was reprovisioned but detached lifecycle persistence failed"})
+			writeJSON(
+				w,
+				http.StatusInternalServerError,
+				map[string]any{
+					"error": "environment was reprovisioned but detached lifecycle persistence failed",
+				},
+			)
 			return
 		}
 	}
@@ -1188,7 +1362,11 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 	defer a.sessionTopologyMu.Unlock()
 	id := chi.URLParam(r, "id")
 	if err := a.resolveCandidateCleanup(r.Context()); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "session teardown refused while helper cleanup is uncertain"})
+		writeJSON(
+			w,
+			http.StatusConflict,
+			map[string]any{"error": "session teardown refused while helper cleanup is uncertain"},
+		)
 		return
 	}
 	s, ok := a.sessions.Get(id)
@@ -1197,17 +1375,35 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.WorkspaceTeardownAllowed() {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "session teardown refused while workspace finalization is running or pending"})
+		writeJSON(
+			w,
+			http.StatusConflict,
+			map[string]any{
+				"error": "session teardown refused while workspace finalization is running or pending",
+			},
+		)
 		return
 	}
 	if a.detachedRuntime != nil {
 		if err := a.detachedRuntime.MarkStopping(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "refusing teardown because durable detached lifecycle update failed"})
+			writeJSON(
+				w,
+				http.StatusInternalServerError,
+				map[string]any{
+					"error": "refusing teardown because durable detached lifecycle update failed",
+				},
+			)
 			return
 		}
 	}
 	if err := s.UnmountWorkspace(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "workspace teardown failed and the session was retained: " + err.Error()})
+		writeJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]any{
+				"error": "workspace teardown failed and the session was retained: " + err.Error(),
+			},
+		)
 		return
 	}
 	a.closeApprovalUI(id)
@@ -1233,7 +1429,13 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 	if a.detachedRuntime != nil {
 		if err := a.detachedRuntime.MarkStopped(); err != nil {
 			a.signalDetachedStop()
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "session was destroyed but durable detached stopped persistence failed; supervisor shutdown was requested"})
+			writeJSON(
+				w,
+				http.StatusInternalServerError,
+				map[string]any{
+					"error": "session was destroyed but durable detached stopped persistence failed; supervisor shutdown was requested",
+				},
+			)
 			return
 		}
 		a.signalDetachedStop()
@@ -1377,7 +1579,12 @@ func (a *App) cgroupHook(sessionID string, cmdID string, limits policy.Limits) p
 	return a.cgroupHookWithProxyEndpoints(sessionID, cmdID, limits, nil)
 }
 
-func (a *App) cgroupHookWithProxyEndpoints(sessionID string, cmdID string, limits policy.Limits, proxyEndpoints *networkProxyEndpoints) postStartHook {
+func (a *App) cgroupHookWithProxyEndpoints(
+	sessionID string,
+	cmdID string,
+	limits policy.Limits,
+	proxyEndpoints *networkProxyEndpoints,
+) postStartHook {
 	if proxyEndpoints != nil {
 		snapshot := *proxyEndpoints
 		proxyEndpoints = &snapshot
@@ -1400,15 +1607,32 @@ func (a *App) cgroupHookWithProxyEndpoints(sessionID string, cmdID string, limit
 		if commandJailRequired(a.cfg) && !strings.HasPrefix(cmdID, "cmd-network-preflight-") {
 			sess, ok := a.sessions.Get(sessionID)
 			if !ok {
-				return nil, markPreExecEnforcementError("E_NETWORK_ENFORCEMENT_NOT_READY", fmt.Errorf("strict session is unavailable during pre-exec enforcement"))
+				return nil, markPreExecEnforcementError(
+					"E_NETWORK_ENFORCEMENT_NOT_READY",
+					fmt.Errorf("strict session is unavailable during pre-exec enforcement"),
+				)
 			}
 			report := sess.NetworkEnforcement()
 			if !networkEnforcementReadyForCommand(report) {
-				return nil, markPreExecEnforcementError("E_NETWORK_ENFORCEMENT_NOT_READY", fmt.Errorf("strict network enforcement is not ready"))
+				return nil, markPreExecEnforcementError(
+					"E_NETWORK_ENFORCEMENT_NOT_READY",
+					fmt.Errorf("strict network enforcement is not ready"),
+				)
 			}
 		}
 		em := storeEmitter{store: a.store, broker: a.broker}
-		cleanup, err := applyCgroupV2WithProxyEndpoints(context.Background(), em, a, sessionID, cmdID, pid, limits, a.metrics, a.policy, proxyEndpoints)
+		cleanup, err := applyCgroupV2WithProxyEndpoints(
+			context.Background(),
+			em,
+			a,
+			sessionID,
+			cmdID,
+			pid,
+			limits,
+			a.metrics,
+			a.policy,
+			proxyEndpoints,
+		)
 		if err != nil {
 			a.recordNetworkEnforcementFailure(sessionID, cmdID, err)
 			// applyCgroupV2 may return cleanup for a partially-created command
@@ -1466,7 +1690,11 @@ func isExecveApprovalTimeout(ev types.Event) bool {
 }
 
 // addExecveApprovalHints appends clear hints when a nested execve approval timed out.
-func addExecveApprovalHints(blockedOps []types.Event, stderrB []byte, stderrTotal int64) ([]byte, int64, []types.Suggestion) {
+func addExecveApprovalHints(
+	blockedOps []types.Event,
+	stderrB []byte,
+	stderrTotal int64,
+) ([]byte, int64, []types.Suggestion) {
 	var suggestions []types.Suggestion
 	for _, ev := range blockedOps {
 		if !isExecveApprovalTimeout(ev) {
@@ -1492,14 +1720,21 @@ func addExecveApprovalHints(blockedOps []types.Event, stderrB []byte, stderrTota
 		stderrTotal += int64(len(hint))
 		suggestions = append(suggestions, types.Suggestion{
 			Action: "retry_after_approval",
-			Reason: fmt.Sprintf("nested execve of %s required approval but timed out; retry and approve promptly, or increase sandbox.seccomp.execve.approval_timeout", target),
+			Reason: fmt.Sprintf(
+				"nested execve of %s required approval but timed out; retry and approve promptly, or increase sandbox.seccomp.execve.approval_timeout",
+				target,
+			),
 		})
 	}
 	return stderrB, stderrTotal, suggestions
 }
 
 // addSoftDeleteHints appends restore hints to stderr and returns suggestions for guidance.
-func addSoftDeleteHints(fileOps []types.Event, stderrB []byte, stderrTotal int64) ([]byte, int64, []types.Suggestion) {
+func addSoftDeleteHints(
+	fileOps []types.Event,
+	stderrB []byte,
+	stderrTotal int64,
+) ([]byte, int64, []types.Suggestion) {
 	var softSuggestions []types.Suggestion
 	for _, ev := range fileOps {
 		if ev.Type != "file_soft_deleted" {
@@ -1513,14 +1748,25 @@ func addSoftDeleteHints(fileOps []types.Event, stderrB []byte, stderrTotal int64
 			Command: cmd,
 			Reason:  fmt.Sprintf("soft-deleted: %s (token=%s)", path, token),
 		})
-		hint := fmt.Sprintf("soft-delete: %s -> trash token %s; restore with: %s\n", path, token, cmd)
+		hint := fmt.Sprintf(
+			"soft-delete: %s -> trash token %s; restore with: %s\n",
+			path,
+			token,
+			cmd,
+		)
 		stderrB = append(stderrB, []byte(hint)...)
 		stderrTotal += int64(len(hint))
 	}
 	return stderrB, stderrTotal, softSuggestions
 }
 
-func guidanceForPolicyDenied(req types.ExecRequest, pre policy.Decision, preEv types.Event, approvalErr error, pkgApprovalDenied bool) *types.ExecGuidance {
+func guidanceForPolicyDenied(
+	req types.ExecRequest,
+	pre policy.Decision,
+	preEv types.Event,
+	approvalErr error,
+	pkgApprovalDenied bool,
+) *types.ExecGuidance {
 	approvalRelated := pre.PolicyDecision == types.DecisionApprove || pkgApprovalDenied
 	g := &types.ExecGuidance{
 		Status:    "blocked",
@@ -1558,7 +1804,12 @@ func guidanceForPolicyDenied(req types.ExecRequest, pre policy.Decision, preEv t
 	return g
 }
 
-func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps []types.Event, virtualRoot string) *types.ExecGuidance {
+func guidanceForResponse(
+	req types.ExecRequest,
+	res types.ExecResult,
+	blockedOps []types.Event,
+	virtualRoot string,
+) *types.ExecGuidance {
 	g := &types.ExecGuidance{}
 
 	if len(blockedOps) > 0 {
@@ -1605,7 +1856,8 @@ func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps
 		}
 
 		// If the policy decision was "approve", this is usually retryable via approvals.
-		if strings.EqualFold(dec, string(types.DecisionApprove)) || strings.HasPrefix(strings.ToLower(rule), "approve-") {
+		if strings.EqualFold(dec, string(types.DecisionApprove)) ||
+			strings.HasPrefix(strings.ToLower(rule), "approve-") {
 			g.Retryable = true
 			g.Suggestions = append(g.Suggestions, types.Suggestion{
 				Action: "request_approval",
@@ -1614,7 +1866,10 @@ func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps
 			if approvalMode != "" {
 				g.Suggestions = append(g.Suggestions, types.Suggestion{
 					Action: "enable_approvals",
-					Reason: fmt.Sprintf("approvals are in %s mode; enable or respond to approvals to proceed", approvalMode),
+					Reason: fmt.Sprintf(
+						"approvals are in %s mode; enable or respond to approvals to proceed",
+						approvalMode,
+					),
 				})
 			}
 		}
@@ -1637,14 +1892,18 @@ func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps
 				})
 				if strings.HasPrefix(urlArg, "http://") {
 					g.Substitutions = append(g.Substitutions, types.Suggestion{
-						Action:  "substitute",
-						Command: fmt.Sprintf("curl -sS %s", strings.Replace(urlArg, "http://", "https://", 1)),
-						Reason:  "HTTPS may be allowed where HTTP is denied",
+						Action: "substitute",
+						Command: fmt.Sprintf(
+							"curl -sS %s",
+							strings.Replace(urlArg, "http://", "https://", 1),
+						),
+						Reason: "HTTPS may be allowed where HTTP is denied",
 					})
 				}
 			}
 		}
-		if strings.HasPrefix(target, "http://") && (strings.Contains(rule, "deny") || strings.Contains(rule, "default-deny")) {
+		if strings.HasPrefix(target, "http://") &&
+			(strings.Contains(rule, "deny") || strings.Contains(rule, "default-deny")) {
 			g.Substitutions = append(g.Substitutions, types.Suggestion{
 				Action:  "substitute",
 				Command: strings.Replace(target, "http://", "https://", 1),
@@ -1662,7 +1921,8 @@ func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps
 
 		// File policy recourse (only in default /workspace mode).
 		if virtualRoot == "/workspace" {
-			if strings.HasPrefix(ev.Type, "file_") || strings.HasPrefix(ev.Type, "dir_") || strings.HasPrefix(ev.Type, "symlink_") {
+			if strings.HasPrefix(ev.Type, "file_") || strings.HasPrefix(ev.Type, "dir_") ||
+				strings.HasPrefix(ev.Type, "symlink_") {
 				if ev.Path != "" && !session.IsUnderRoot(ev.Path, "/workspace") {
 					g.Suggestions = append(g.Suggestions, types.Suggestion{
 						Action: "move_to_workspace",
@@ -1682,7 +1942,9 @@ func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps
 			Reason: "allow the required operation (or enable approvals where appropriate)",
 		})
 		if !g.Retryable {
-			g.Retryable = len(g.Substitutions) > 0 || strings.HasPrefix(strings.ToLower(rule), "approve-") || strings.EqualFold(decEff, string(types.DecisionApprove))
+			g.Retryable = len(g.Substitutions) > 0 ||
+				strings.HasPrefix(strings.ToLower(rule), "approve-") ||
+				strings.EqualFold(decEff, string(types.DecisionApprove))
 		}
 		return g
 	}
@@ -1709,7 +1971,8 @@ func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps
 			Reason:  "increase --timeout for slow commands",
 		})
 	}
-	if strings.Contains(msg, "executable file not found") || strings.Contains(msg, "no such file or directory") {
+	if strings.Contains(msg, "executable file not found") ||
+		strings.Contains(msg, "no such file or directory") {
 		g.Suggestions = append(g.Suggestions, types.Suggestion{
 			Action: "use_absolute_exe",
 			Reason: "use an absolute executable path (or install the missing tool if allowed)",
@@ -1736,11 +1999,16 @@ func guidanceForResponse(req types.ExecRequest, res types.ExecResult, blockedOps
 
 // applyCommandRedirect mutates the command/args if the policy requested a redirect.
 // It returns whether a redirect was applied along with the original command/args.
-func applyCommandRedirect(command *string, args *[]string, pre policy.Decision) (redirected bool, originalCmd string, originalArgs []string) {
+func applyCommandRedirect(
+	command *string,
+	args *[]string,
+	pre policy.Decision,
+) (redirected bool, originalCmd string, originalArgs []string) {
 	originalCmd = *command
 	originalArgs = append([]string{}, (*args)...)
 
-	if pre.PolicyDecision == types.DecisionRedirect && pre.Redirect != nil && strings.TrimSpace(pre.Redirect.Command) != "" {
+	if pre.PolicyDecision == types.DecisionRedirect && pre.Redirect != nil &&
+		strings.TrimSpace(pre.Redirect.Command) != "" {
 		*command = pre.Redirect.Command
 		*args = append([]string{}, pre.Redirect.Args...)
 		return true, originalCmd, originalArgs
@@ -1749,7 +2017,12 @@ func applyCommandRedirect(command *string, args *[]string, pre policy.Decision) 
 }
 
 // addRedirectGuidance ensures the response carries a substitution hint when a redirect occurred.
-func addRedirectGuidance(resp *types.ExecResponse, pre policy.Decision, originalCmd string, originalArgs []string) {
+func addRedirectGuidance(
+	resp *types.ExecResponse,
+	pre policy.Decision,
+	originalCmd string,
+	originalArgs []string,
+) {
 	if resp == nil || pre.PolicyDecision != types.DecisionRedirect || pre.Redirect == nil {
 		return
 	}
@@ -1899,7 +2172,13 @@ func (a *App) getOutputChunk(w http.ResponseWriter, r *http.Request) {
 	offset, _ := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
 	limit, _ := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 64)
 
-	chunk, total, truncated, err := a.store.ReadOutputChunk(r.Context(), cmdID, stream, offset, limit)
+	chunk, total, truncated, err := a.store.ReadOutputChunk(
+		r.Context(),
+		cmdID,
+		stream,
+		offset,
+		limit,
+	)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		return
@@ -1964,8 +2243,10 @@ func (a *App) resolveApprovalLocal(id string, raw []byte) (int, map[string]any, 
 	if err := decodeRawJSON(raw, &req); err != nil {
 		return http.StatusBadRequest, map[string]any{"error": "invalid json"}, true
 	}
-	approved := strings.EqualFold(req.Decision, "approve") || strings.EqualFold(req.Decision, "allow")
-	if !approved && !strings.EqualFold(req.Decision, "deny") && !strings.EqualFold(req.Decision, "reject") {
+	approved := strings.EqualFold(req.Decision, "approve") ||
+		strings.EqualFold(req.Decision, "allow")
+	if !approved && !strings.EqualFold(req.Decision, "deny") &&
+		!strings.EqualFold(req.Decision, "reject") {
 		return http.StatusBadRequest, map[string]any{"error": "invalid decision"}, true
 	}
 	scope, err := approvals.NormalizeResolutionScope(req.Scope)
@@ -2078,7 +2359,11 @@ func (a *App) policyTest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if engine == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "policy engine not available"})
+		writeJSON(
+			w,
+			http.StatusServiceUnavailable,
+			map[string]any{"error": "policy engine not available"},
+		)
 		return
 	}
 
@@ -2146,7 +2431,11 @@ type DefaultPolicyLoader struct {
 }
 
 // NewDefaultPolicyLoader creates a policy loader that loads from the given directory.
-func NewDefaultPolicyLoader(policyDir string, enforceApprovals, enforceRedirects bool, signingMode, trustStorePath string) *DefaultPolicyLoader {
+func NewDefaultPolicyLoader(
+	policyDir string,
+	enforceApprovals, enforceRedirects bool,
+	signingMode, trustStorePath string,
+) *DefaultPolicyLoader {
 	return &DefaultPolicyLoader{
 		policyDir:        policyDir,
 		enforceApprovals: enforceApprovals,
@@ -2175,22 +2464,40 @@ func (l *DefaultPolicyLoader) Load(name string) (*policy.Engine, error) {
 	if l.signingMode != "" && l.signingMode != "off" {
 		if l.trustStorePath == "" {
 			if l.signingMode == "enforce" {
-				return nil, fmt.Errorf("signing verification for %q: trust_store not configured", name)
+				return nil, fmt.Errorf(
+					"signing verification for %q: trust_store not configured",
+					name,
+				)
 			}
-			fmt.Fprintf(os.Stderr, "WARNING: policy %q: signing mode is %q but trust_store not configured\n", name, l.signingMode)
+			fmt.Fprintf(
+				os.Stderr,
+				"WARNING: policy %q: signing mode is %q but trust_store not configured\n",
+				name,
+				l.signingMode,
+			)
 		} else {
 			ts, tsErr := signing.LoadTrustStore(l.trustStorePath, l.signingMode == "enforce")
 			if tsErr != nil {
 				if l.signingMode == "enforce" {
 					return nil, fmt.Errorf("load trust store for %q: %w", name, tsErr)
 				}
-				fmt.Fprintf(os.Stderr, "WARNING: policy %q: failed to load trust store: %v\n", name, tsErr)
+				fmt.Fprintf(
+					os.Stderr,
+					"WARNING: policy %q: failed to load trust store: %v\n",
+					name,
+					tsErr,
+				)
 			} else {
 				if _, vErr := signing.VerifyPolicyBytes(policyBytes, path+".sig", ts); vErr != nil {
 					if l.signingMode == "enforce" {
 						return nil, fmt.Errorf("signing verification for %q: %w", name, vErr)
 					}
-					fmt.Fprintf(os.Stderr, "WARNING: policy %q signing verification failed: %v\n", name, vErr)
+					fmt.Fprintf(
+						os.Stderr,
+						"WARNING: policy %q signing verification failed: %v\n",
+						name,
+						vErr,
+					)
 				}
 			}
 		}

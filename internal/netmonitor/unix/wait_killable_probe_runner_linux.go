@@ -315,7 +315,12 @@ func realRunProbeIteration(ctx context.Context) (IterationResult, error) {
 	// "parent hangs forever". SO_RCVTIMEO causes Recvmsg to return
 	// EAGAIN/EWOULDBLOCK when the timeout fires.
 	tv := unix.NsecToTimeval(probeRecvTimeout.Nanoseconds())
-	if err := unix.SetsockoptTimeval(parentSock, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &tv); err != nil {
+	if err := unix.SetsockoptTimeval(
+		parentSock,
+		unix.SOL_SOCKET,
+		unix.SO_RCVTIMEO,
+		&tv,
+	); err != nil {
 		// Non-fatal: log and continue. Worst case we lose the
 		// guard but keep the rest of the iteration.
 		slog.Debug("wait_killable probe: SO_RCVTIMEO failed", "error", err)
@@ -504,7 +509,11 @@ func classifyProbeExit(err error, childStderr string) (IterationResult, error) {
 			if ws.Exited() {
 				switch ws.ExitStatus() {
 				case probeExitSetupFailure, probeExitFallback:
-					return 0, fmt.Errorf("wait_killable probe: child setup failed (exit %d, stderr: %q)", ws.ExitStatus(), childStderr)
+					return 0, fmt.Errorf(
+						"wait_killable probe: child setup failed (exit %d, stderr: %q)",
+						ws.ExitStatus(),
+						childStderr,
+					)
 				}
 			}
 			// Non-signaled exit that did not match a known
@@ -528,7 +537,11 @@ func classifyProbeExit(err error, childStderr string) (IterationResult, error) {
 		}
 	}
 	if childStderr != "" {
-		return 0, fmt.Errorf("wait_killable probe: unclassified exit: %w (child stderr: %q)", err, childStderr)
+		return 0, fmt.Errorf(
+			"wait_killable probe: unclassified exit: %w (child stderr: %q)",
+			err,
+			childStderr,
+		)
 	}
 	return 0, fmt.Errorf("wait_killable probe: unclassified exit: %w", err)
 }

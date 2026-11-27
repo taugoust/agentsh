@@ -32,27 +32,55 @@ type recordingBackend struct {
 	cleanupFail bool
 }
 
-func (b *recordingBackend) RegisterSessionCgroup(_ context.Context, _ PeerInfo, req RegisterSessionCgroupRequest) (RegisterSessionCgroupResponse, error) {
+func (b *recordingBackend) RegisterSessionCgroup(
+	_ context.Context,
+	_ PeerInfo,
+	req RegisterSessionCgroupRequest,
+) (RegisterSessionCgroupResponse, error) {
 	b.mu.Lock()
 	b.registers = append(b.registers, req)
 	b.mu.Unlock()
-	return RegisterSessionCgroupResponse{OK: true, Tier: req.Tier.Normalized(), Mode: req.Mode.Normalized(), CgroupID: 42, NetworkPolicyEnforced: req.Tier.Normalized() == EnforcementTierHelperEBPFProxy}, nil
+	return RegisterSessionCgroupResponse{
+		OK:                    true,
+		Tier:                  req.Tier.Normalized(),
+		Mode:                  req.Mode.Normalized(),
+		CgroupID:              42,
+		NetworkPolicyEnforced: req.Tier.Normalized() == EnforcementTierHelperEBPFProxy,
+	}, nil
 }
 
-func (b *recordingBackend) UpdatePolicyMap(_ context.Context, _ PeerInfo, req UpdatePolicyMapRequest) (UpdatePolicyMapResponse, error) {
+func (b *recordingBackend) UpdatePolicyMap(
+	_ context.Context,
+	_ PeerInfo,
+	req UpdatePolicyMapRequest,
+) (UpdatePolicyMapResponse, error) {
 	b.mu.Lock()
 	b.updates = append(b.updates, req)
 	b.mu.Unlock()
-	return UpdatePolicyMapResponse{OK: true, DefaultDeny: req.DefaultDeny, AllowEntries: len(req.Allow), DenyEntries: len(req.Deny)}, nil
+	return UpdatePolicyMapResponse{
+		OK:           true,
+		DefaultDeny:  req.DefaultDeny,
+		AllowEntries: len(req.Allow),
+		DenyEntries:  len(req.Deny),
+	}, nil
 }
 
-func (b *recordingBackend) CleanupSession(_ context.Context, _ PeerInfo, req CleanupSessionRequest) (CleanupSessionResponse, error) {
+func (b *recordingBackend) CleanupSession(
+	_ context.Context,
+	_ PeerInfo,
+	req CleanupSessionRequest,
+) (CleanupSessionResponse, error) {
 	b.mu.Lock()
 	b.cleanups = append(b.cleanups, req)
 	fail := b.cleanupFail
 	b.mu.Unlock()
 	if fail {
-		return CleanupSessionResponse{OK: false, Error: "deterministic cleanup failure"}, fmt.Errorf("deterministic cleanup failure")
+		return CleanupSessionResponse{
+				OK:    false,
+				Error: "deterministic cleanup failure",
+			}, fmt.Errorf(
+				"deterministic cleanup failure",
+			)
 	}
 	return CleanupSessionResponse{OK: true, RemovedPins: []string{req.SessionID}}, nil
 }
@@ -105,7 +133,14 @@ func TestClientServerRoundTrip(t *testing.T) {
 		t.Fatalf("update response = %+v", upd)
 	}
 
-	clean, err := client.CleanupSession(context.Background(), CleanupSessionRequest{SessionID: "session-1", CgroupID: reg.CgroupID, Reason: CleanupReasonSessionEnded})
+	clean, err := client.CleanupSession(
+		context.Background(),
+		CleanupSessionRequest{
+			SessionID: "session-1",
+			CgroupID:  reg.CgroupID,
+			Reason:    CleanupReasonSessionEnded,
+		},
+	)
 	if err != nil {
 		t.Fatalf("CleanupSession: %v", err)
 	}
@@ -116,26 +151,47 @@ func TestClientServerRoundTrip(t *testing.T) {
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
 	if len(backend.registers) != 1 || len(backend.updates) != 1 || len(backend.cleanups) != 1 {
-		t.Fatalf("backend calls: registers=%d updates=%d cleanups=%d", len(backend.registers), len(backend.updates), len(backend.cleanups))
+		t.Fatalf(
+			"backend calls: registers=%d updates=%d cleanups=%d",
+			len(backend.registers),
+			len(backend.updates),
+			len(backend.cleanups),
+		)
 	}
 }
 
 func TestFailedRegistrationCompensationRetainsAuthenticatedTombstone(t *testing.T) {
 	const credential = "0123456789abcdef0123456789abcdef"
 	backend := &recordingBackend{cleanupFail: true}
-	authorizer := NewSupervisorAuthorizer(SupervisorAuthorizerOptions{HelperInstanceCredential: credential})
+	authorizer := NewSupervisorAuthorizer(
+		SupervisorAuthorizerOptions{HelperInstanceCredential: credential},
+	)
 	server := NewServer(backend, authorizer)
 	peer := PeerInfo{PID: 123, UID: 1000, GID: 100, Supported: true}
 	register := func(session, path, request string) RegisterSessionCgroupResponse {
-		req := RegisterSessionCgroupRequest{ProtocolVersion: 1, RequestID: request, SessionID: session,
-			SupervisorPID: peer.PID, SupervisorCgroupPath: filepath.Join(string(filepath.Separator), "supervisor"),
-			CgroupPath: path, HelperInstanceCredential: credential, Tier: EnforcementTierHelperEBPFProxy,
-			Mode: BuiltinModeCgroupConnectGate, Proxy: &ProxyEndpoint{Host: "127.0.0.1", Port: 18080}}
+		req := RegisterSessionCgroupRequest{
+			ProtocolVersion:          1,
+			RequestID:                request,
+			SessionID:                session,
+			SupervisorPID:            peer.PID,
+			SupervisorCgroupPath:     filepath.Join(string(filepath.Separator), "supervisor"),
+			CgroupPath:               path,
+			HelperInstanceCredential: credential,
+			Tier:                     EnforcementTierHelperEBPFProxy,
+			Mode:                     BuiltinModeCgroupConnectGate,
+			Proxy:                    &ProxyEndpoint{Host: "127.0.0.1", Port: 18080},
+		}
 		requestJSON, err := json.Marshal(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := json.Marshal(RequestEnvelope{ProtocolVersion: 1, Operation: OperationRegisterSessionCgroup, Request: requestJSON})
+		wire, err := json.Marshal(
+			RequestEnvelope{
+				ProtocolVersion: 1,
+				Operation:       OperationRegisterSessionCgroup,
+				Request:         requestJSON,
+			},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,13 +201,18 @@ func TestFailedRegistrationCompensationRetainsAuthenticatedTombstone(t *testing.
 		}
 		return resp
 	}
-	first := register("session-1", filepath.Join(string(filepath.Separator), "supervisor", "one"), "register-1")
+	first := register(
+		"session-1",
+		filepath.Join(string(filepath.Separator), "supervisor", "one"),
+		"register-1",
+	)
 	if !first.OK {
 		t.Fatalf("first registration: %+v", first)
 	}
 	secondPath := filepath.Join(string(filepath.Separator), "supervisor", "two")
 	second := register("session-2", secondPath, "register-2")
-	if second.OK || second.RegistrationID == "" || !strings.Contains(second.Error, "registration retained") {
+	if second.OK || second.RegistrationID == "" ||
+		!strings.Contains(second.Error, "registration retained") {
 		t.Fatalf("failed compensation response=%+v", second)
 	}
 	if got := authorizer.ActiveRegistrationCount(); got != 2 {
@@ -160,10 +221,23 @@ func TestFailedRegistrationCompensationRetainsAuthenticatedTombstone(t *testing.
 	backend.mu.Lock()
 	backend.cleanupFail = false
 	backend.mu.Unlock()
-	cleanupReq := CleanupSessionRequest{ProtocolVersion: 1, RequestID: "cleanup-2", SessionID: "session-2",
-		RegistrationID: second.RegistrationID, CgroupID: second.CgroupID, CgroupPath: secondPath, Reason: CleanupReasonRegistrationFailed}
+	cleanupReq := CleanupSessionRequest{
+		ProtocolVersion: 1,
+		RequestID:       "cleanup-2",
+		SessionID:       "session-2",
+		RegistrationID:  second.RegistrationID,
+		CgroupID:        second.CgroupID,
+		CgroupPath:      secondPath,
+		Reason:          CleanupReasonRegistrationFailed,
+	}
 	requestJSON, _ := json.Marshal(cleanupReq)
-	wire, _ := json.Marshal(RequestEnvelope{ProtocolVersion: 1, Operation: OperationCleanupSession, Request: requestJSON})
+	wire, _ := json.Marshal(
+		RequestEnvelope{
+			ProtocolVersion: 1,
+			Operation:       OperationCleanupSession,
+			Request:         requestJSON,
+		},
+	)
 	cleanup, ok := server.dispatch(context.Background(), peer, wire).(CleanupSessionResponse)
 	if !ok || !cleanup.OK {
 		t.Fatalf("retry cleanup=%+v", cleanup)
@@ -186,8 +260,13 @@ func TestClientServerReleaseCancellationRecoversAdmission(t *testing.T) {
 	defer held()
 	server := NewServer(&recordingBackend{}, AllowAuthorizer{})
 	server.InstanceController = NewEphemeralInstanceController(EphemeralInstanceControllerOptions{
-		LeaseID: "lease-11111111-1111-4111-8111-111111111111", HelperInstanceCredential: credential,
-		ExpectedUID: uint32(os.Getuid()), Operations: gate, ReleaseDrainTimeout: 40 * time.Millisecond,
+		LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
+		HelperInstanceCredential: credential,
+		ExpectedUID: uint32(
+			os.Getuid(),
+		),
+		Operations:          gate,
+		ReleaseDrainTimeout: 40 * time.Millisecond,
 	})
 	socket := shortSocketPath(t)
 	ln, err := ListenUnix(socket)
@@ -201,8 +280,15 @@ func TestClientServerReleaseCancellationRecoversAdmission(t *testing.T) {
 	client.Timeout = time.Second
 	requestCtx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(10 * time.Millisecond); cancel() }()
-	_, err = client.ReleaseInstance(requestCtx, ReleaseInstanceRequest{ProtocolVersion: 1, RequestID: "release-cancel",
-		LeaseID: "lease-11111111-1111-4111-8111-111111111111", HelperInstanceCredential: credential})
+	_, err = client.ReleaseInstance(
+		requestCtx,
+		ReleaseInstanceRequest{
+			ProtocolVersion:          1,
+			RequestID:                "release-cancel",
+			LeaseID:                  "lease-11111111-1111-4111-8111-111111111111",
+			HelperInstanceCredential: credential,
+		},
+	)
 	if err == nil {
 		t.Fatal("cancelled transport release unexpectedly succeeded")
 	}
@@ -272,9 +358,15 @@ func TestClientServerAuthenticatedStatusAndRenewal(t *testing.T) {
 		LeaseDirectory: CompositionRuntimeInode{Device: 1, Inode: 1, Mode: 0o40711, UID: 0, GID: 0},
 	}
 	server.InstanceController = NewEphemeralInstanceController(EphemeralInstanceControllerOptions{
-		LeaseID: lease, UnitName: "unit.service", HelperInstanceCredential: credential,
-		ExpectedUID: uint32(os.Getuid()), ExpectedGID: uint32(os.Getgid()), EnforceGID: true,
-		CreatedAt: created, HardExpiresAt: created.Add(60 * time.Hour), Registrations: fixedRegistrationCount(0),
+		LeaseID:                  lease,
+		UnitName:                 "unit.service",
+		HelperInstanceCredential: credential,
+		ExpectedUID:              uint32(os.Getuid()),
+		ExpectedGID:              uint32(os.Getgid()),
+		EnforceGID:               true,
+		CreatedAt:                created,
+		HardExpiresAt:            created.Add(60 * time.Hour),
+		Registrations:            fixedRegistrationCount(0),
 		AttestCompositionRuntime: func(uint32, string) (CompositionRuntimeAttestation, error) { return wantAttestation, nil },
 	})
 	socket := shortSocketPath(t)
@@ -286,17 +378,41 @@ func TestClientServerAuthenticatedStatusAndRenewal(t *testing.T) {
 	defer cancel()
 	go func() { _ = server.ServeListener(ctx, ln) }()
 	client := NewClient(socket)
-	status, err := client.InstanceStatus(context.Background(), InstanceStatusRequest{ProtocolVersion: 1, RequestID: "status-1", LeaseID: lease, HelperInstanceCredential: credential})
-	if err != nil || status.Status != "active" || !containsString(status.Capabilities, "renew_instance") || !containsString(status.Capabilities, "attest_composition_runtime") {
+	status, err := client.InstanceStatus(
+		context.Background(),
+		InstanceStatusRequest{
+			ProtocolVersion:          1,
+			RequestID:                "status-1",
+			LeaseID:                  lease,
+			HelperInstanceCredential: credential,
+		},
+	)
+	if err != nil || status.Status != "active" ||
+		!containsString(status.Capabilities, "renew_instance") ||
+		!containsString(status.Capabilities, "attest_composition_runtime") {
 		t.Fatalf("status=%+v err=%v", status, err)
 	}
-	attested, err := client.AttestCompositionRuntime(context.Background(), AttestCompositionRuntimeRequest{
-		ProtocolVersion: CurrentProtocolVersion, RequestID: "attest-1", LeaseID: lease, HelperInstanceCredential: credential,
-	})
+	attested, err := client.AttestCompositionRuntime(
+		context.Background(),
+		AttestCompositionRuntimeRequest{
+			ProtocolVersion:          CurrentProtocolVersion,
+			RequestID:                "attest-1",
+			LeaseID:                  lease,
+			HelperInstanceCredential: credential,
+		},
+	)
 	if err != nil || !attested.OK || attested.Attestation != wantAttestation {
 		t.Fatalf("attested=%+v err=%v", attested, err)
 	}
-	renewed, err := client.RenewInstance(context.Background(), RenewInstanceRequest{ProtocolVersion: 1, RequestID: "renew-1", LeaseID: lease, HelperInstanceCredential: credential})
+	renewed, err := client.RenewInstance(
+		context.Background(),
+		RenewInstanceRequest{
+			ProtocolVersion:          1,
+			RequestID:                "renew-1",
+			LeaseID:                  lease,
+			HelperInstanceCredential: credential,
+		},
+	)
 	if err != nil || renewed.RenewalGeneration != 1 {
 		t.Fatalf("renewed=%+v err=%v", renewed, err)
 	}
@@ -347,7 +463,13 @@ func TestServerRejectsUnknownTypedFieldBeforeBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env, err := json.Marshal(RequestEnvelope{ProtocolVersion: CurrentProtocolVersion, Operation: OperationRegisterSessionCgroup, Request: req})
+	env, err := json.Marshal(
+		RequestEnvelope{
+			ProtocolVersion: CurrentProtocolVersion,
+			Operation:       OperationRegisterSessionCgroup,
+			Request:         req,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,11 +491,22 @@ func TestServerRejectsUnknownTypedFieldBeforeBackend(t *testing.T) {
 func TestServerDefaultAuthorizerFailsClosed(t *testing.T) {
 	backend := &recordingBackend{}
 	server := NewServer(backend, nil)
-	payload, err := json.Marshal(RegisterSessionCgroupRequest{SessionID: "session-1", CgroupPath: filepath.Join("sys", "fs", "cgroup", "agentsh", "session-1")})
+	payload, err := json.Marshal(
+		RegisterSessionCgroupRequest{
+			SessionID:  "session-1",
+			CgroupPath: filepath.Join("sys", "fs", "cgroup", "agentsh", "session-1"),
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	env, err := json.Marshal(RequestEnvelope{ProtocolVersion: CurrentProtocolVersion, Operation: OperationRegisterSessionCgroup, Request: payload})
+	env, err := json.Marshal(
+		RequestEnvelope{
+			ProtocolVersion: CurrentProtocolVersion,
+			Operation:       OperationRegisterSessionCgroup,
+			Request:         payload,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +530,10 @@ func TestClientRejectsInvalidRequestWithoutDialing(t *testing.T) {
 	client.Dial = func(context.Context, string, string) (net.Conn, error) {
 		return nil, fmt.Errorf("dial should not be called")
 	}
-	_, err := client.RegisterSessionCgroup(context.Background(), RegisterSessionCgroupRequest{SessionID: "session-1"})
+	_, err := client.RegisterSessionCgroup(
+		context.Background(),
+		RegisterSessionCgroupRequest{SessionID: "session-1"},
+	)
 	if err == nil || !strings.Contains(err.Error(), "cgroup_path is required") {
 		t.Fatalf("err = %v", err)
 	}

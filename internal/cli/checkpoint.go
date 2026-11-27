@@ -25,7 +25,8 @@ func newCheckpointCmd() *cobra.Command {
 }
 
 func addCheckpointStorageFlag(cmd *cobra.Command) {
-	cmd.Flags().String("storage-dir", "", "checkpoint storage directory (default: config sessions.checkpoints.storage_dir)")
+	cmd.Flags().
+		String("storage-dir", "", "checkpoint storage directory (default: config sessions.checkpoints.storage_dir)")
 }
 
 func getCheckpointStorage(cmd *cobra.Command) (*session.FileCheckpointStorage, error) {
@@ -120,7 +121,14 @@ func newCheckpointListCmd() *cobra.Command {
 				return enc.Encode(checkpoints)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "%-36s  %-20s  %-10s  %s\n", "ID", "CREATED", "ROLLBACK", "REASON")
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"%-36s  %-20s  %-10s  %s\n",
+				"ID",
+				"CREATED",
+				"ROLLBACK",
+				"REASON",
+			)
 			for _, cp := range checkpoints {
 				rollback := "no"
 				if cp.CanRollback {
@@ -281,7 +289,11 @@ func newCheckpointRollbackCmd() *cobra.Command {
 				case "deleted":
 					fmt.Fprintf(cmd.OutOrStdout(), "  + %s (restore deleted)\n", d.Path)
 				case "added":
-					fmt.Fprintf(cmd.OutOrStdout(), "  - %s (file was added after checkpoint, will remain)\n", d.Path)
+					fmt.Fprintf(
+						cmd.OutOrStdout(),
+						"  - %s (file was added after checkpoint, will remain)\n",
+						d.Path,
+					)
 				}
 			}
 

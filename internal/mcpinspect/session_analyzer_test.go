@@ -474,7 +474,11 @@ func TestSessionAnalyzer_ConfigDisabled(t *testing.T) {
 	for i := 0; i < 15; i++ {
 		dec, _ = a.CheckAndRecord("server-a", "get_data", "", "req-1")
 		if dec != nil {
-			t.Fatalf("call %d: expected nil with all rules disabled (burst check), got %+v", i+1, dec)
+			t.Fatalf(
+				"call %d: expected nil with all rules disabled (burst check), got %+v",
+				i+1,
+				dec,
+			)
 		}
 	}
 }

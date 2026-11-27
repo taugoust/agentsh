@@ -41,7 +41,11 @@ func TestExec_Argv0_OverridesDollarZero(t *testing.T) {
 		"argv0":          "custom0",
 		"include_events": "none",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+sess.ID+"/exec",
+		bytes.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -53,7 +57,11 @@ func TestExec_Argv0_OverridesDollarZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resp.Result.ExitCode != 0 {
-		t.Fatalf("expected exit_code 0, got %d (stderr=%q)", resp.Result.ExitCode, resp.Result.Stderr)
+		t.Fatalf(
+			"expected exit_code 0, got %d (stderr=%q)",
+			resp.Result.ExitCode,
+			resp.Result.Stderr,
+		)
 	}
 	if resp.Result.Stdout != "custom0" {
 		t.Fatalf("expected stdout custom0, got %q", resp.Result.Stdout)

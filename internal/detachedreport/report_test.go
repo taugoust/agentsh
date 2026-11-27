@@ -97,7 +97,8 @@ func TestNetworkEnforcementHelperProxyDegradedDoesNotClaimFull(t *testing.T) {
 	if !report.RuntimeDivergent {
 		t.Fatal("RuntimeDivergent = false, want true")
 	}
-	if !strings.Contains(report.Warning, "not all proven active") && !strings.Contains(report.Warning, "not claimed") {
+	if !strings.Contains(report.Warning, "not all proven active") &&
+		!strings.Contains(report.Warning, "not claimed") {
 		t.Fatalf("Warning = %q, want helper caveat", report.Warning)
 	}
 }

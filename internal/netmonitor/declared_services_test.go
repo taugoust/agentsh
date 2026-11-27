@@ -30,7 +30,11 @@ func newEngineWithDeclaredGitHub(t *testing.T, allowDirect bool) *policy.Engine 
 			// Use an explicit glob matching api.github.com so we don't
 			// rely on '*' crossing dot separators. gobwas/glob compiled
 			// with a '.' separator treats '*' as one-segment only.
-			{Name: "allow-github", Decision: "allow", Domains: []string{"*.github.com", "api.github.com"}},
+			{
+				Name:     "allow-github",
+				Decision: "allow",
+				Domains:  []string{"*.github.com", "api.github.com"},
+			},
 		},
 		HTTPServices: []policy.HTTPService{{
 			Name:        "github",
@@ -68,7 +72,9 @@ func TestHandleConnect_DeniesDeclaredHost(t *testing.T) {
 		close(done)
 	}()
 
-	_, _ = client.Write([]byte("CONNECT api.github.com:443 HTTP/1.1\r\nHost: api.github.com:443\r\n\r\n"))
+	_, _ = client.Write(
+		[]byte("CONNECT api.github.com:443 HTTP/1.1\r\nHost: api.github.com:443\r\n\r\n"),
+	)
 	buf := make([]byte, 512)
 	n, _ := client.Read(buf)
 	resp := string(buf[:n])

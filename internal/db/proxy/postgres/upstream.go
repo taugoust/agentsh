@@ -28,7 +28,11 @@ const upstreamDialTimeout = 10 * time.Second
 // Returns both the conn and a *pgproto3.Frontend bound to it; the Frontend
 // is what auth-byte forwarding uses. Callers that do not need typed-frame
 // access (passthrough, cancel) ignore the Frontend.
-func dialUpstream(ctx context.Context, svc Service, cfg Config) (net.Conn, *pgproto3.Frontend, error) {
+func dialUpstream(
+	ctx context.Context,
+	svc Service,
+	cfg Config,
+) (net.Conn, *pgproto3.Frontend, error) {
 	dctx, cancel := context.WithTimeout(ctx, upstreamDialTimeout)
 	defer cancel()
 

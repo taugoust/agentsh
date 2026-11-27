@@ -220,7 +220,10 @@ func TestFunctionCall_OptIn_Allow(t *testing.T) {
 	// The scripted upstream sends FunctionCallResponse + ReadyForQuery so
 	// BytesOut must be > 0.
 	if ev.Result.BytesOut <= 0 {
-		t.Fatalf("Result.BytesOut = %d want > 0 (upstream result not wired into event)", ev.Result.BytesOut)
+		t.Fatalf(
+			"Result.BytesOut = %d want > 0 (upstream result not wired into event)",
+			ev.Result.BytesOut,
+		)
 	}
 }
 

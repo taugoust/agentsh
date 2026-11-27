@@ -17,7 +17,14 @@ func TestEphemeralSystemdRunArgsAreFixedAndSecretFree(t *testing.T) {
 	}
 	launcher := "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-agentsh/bin/agentsh"
 	startedAt := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
-	args := ephemeralSystemdRunArgs(paths, launcher, 1000, 100, nethelper.MaximumBootstrapRuntime, startedAt)
+	args := ephemeralSystemdRunArgs(
+		paths,
+		launcher,
+		1000,
+		100,
+		nethelper.MaximumBootstrapRuntime,
+		startedAt,
+	)
 	joined := strings.Join(args, "\n")
 	for _, required := range []string{
 		"--collect",
@@ -67,7 +74,15 @@ func TestEphemeralSystemdRunArgsNegotiatesSoftLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := ephemeralSystemdRunArgsWithSoftLease(paths, "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-agentsh/bin/agentsh", 1000, 100, 192*time.Hour, 49*time.Hour, time.Now().UTC().Truncate(time.Second))
+	args := ephemeralSystemdRunArgsWithSoftLease(
+		paths,
+		"/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-agentsh/bin/agentsh",
+		1000,
+		100,
+		192*time.Hour,
+		49*time.Hour,
+		time.Now().UTC().Truncate(time.Second),
+	)
 	joined := strings.Join(args, "\n")
 	if !strings.Contains(joined, "--ephemeral-soft-lease\n49h0m0s") {
 		t.Fatalf("soft lease not passed to serve:\n%s", joined)

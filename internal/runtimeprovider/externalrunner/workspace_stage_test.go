@@ -19,10 +19,17 @@ func TestStageWorkspaceSkipsHostDirenvState(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(source, ".direnv", "flake-inputs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte("kept\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(source, "README.md"),
+		[]byte("kept\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("/nix/store/00000000000000000000000000000000-source", filepath.Join(source, ".direnv", "flake-inputs", "source")); err != nil {
+	if err := os.Symlink(
+		"/nix/store/00000000000000000000000000000000-source",
+		filepath.Join(source, ".direnv", "flake-inputs", "source"),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -33,7 +40,10 @@ func TestStageWorkspaceSkipsHostDirenvState(t *testing.T) {
 	if baseline.Source != source {
 		t.Fatalf("baseline source = %q", baseline.Source)
 	}
-	if contents, err := os.ReadFile(filepath.Join(destination, "README.md")); err != nil || string(contents) != "kept\n" {
+	if contents, err := os.ReadFile(
+		filepath.Join(destination, "README.md"),
+	); err != nil ||
+		string(contents) != "kept\n" {
 		t.Fatalf("staged ordinary file = %q, %v", contents, err)
 	}
 	if _, err := os.Lstat(filepath.Join(destination, ".direnv")); !os.IsNotExist(err) {

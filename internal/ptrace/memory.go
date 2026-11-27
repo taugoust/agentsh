@@ -308,7 +308,12 @@ func (t *Tracer) writeString(tid int, addr uint64, s string) error {
 }
 
 // readArgv reads the argv array from tracee memory.
-func (t *Tracer) readArgv(tid int, argvPtr uint64, maxArgc int, maxBytes int) ([]string, bool, error) {
+func (t *Tracer) readArgv(
+	tid int,
+	argvPtr uint64,
+	maxArgc int,
+	maxBytes int,
+) ([]string, bool, error) {
 	r, err := t.getMemReader(tid)
 	if err != nil {
 		return nil, false, err

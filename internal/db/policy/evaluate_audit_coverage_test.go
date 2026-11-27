@@ -12,7 +12,11 @@ database_rules:
 `)
 	d := Evaluate(tableRead("customers", "orders"), rs, "appdb")
 	if d.Verb != VerbDeny || d.RuleName != "" {
-		t.Fatalf("verb = %v, RuleName = %q; want implicit deny (orders uncovered)", d.Verb, d.RuleName)
+		t.Fatalf(
+			"verb = %v, RuleName = %q; want implicit deny (orders uncovered)",
+			d.Verb,
+			d.RuleName,
+		)
 	}
 }
 

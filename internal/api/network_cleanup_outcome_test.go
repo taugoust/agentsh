@@ -31,13 +31,16 @@ func TestCleanedNetworkSetupRefusalRestoresPreflightReadiness(t *testing.T) {
 	app := &App{sessions: manager}
 	commandID := "cmd-setup-refused"
 	app.recordNetworkEnforcementFailure(sess.ID, commandID, errors.New("interrupted system call"))
-	if failed := sess.NetworkEnforcement(); failed == nil || failed.Status != types.NetworkEnforcementStatusFailed {
+	if failed := sess.NetworkEnforcement(); failed == nil ||
+		failed.Status != types.NetworkEnforcementStatusFailed {
 		t.Fatalf("setup refusal was not recorded: %+v", failed)
 	}
 
 	app.recordNetworkSetupRefusalCleaned(sess.ID, commandID)
 	got := sess.NetworkEnforcement()
-	if got == nil || got.Status != types.NetworkEnforcementStatusReady || got.Readiness != types.NetworkEnforcementStatusReady || got.Attachment != nil {
+	if got == nil || got.Status != types.NetworkEnforcementStatusReady ||
+		got.Readiness != types.NetworkEnforcementStatusReady ||
+		got.Attachment != nil {
 		t.Fatalf("cleaned refusal did not restore preflight readiness: %+v", got)
 	}
 }
@@ -50,10 +53,16 @@ func TestNetworkCleanupFailureCannotBeOverwrittenByInactiveSuccess(t *testing.T)
 	}
 	app := &App{sessions: manager}
 	commandID := "cmd-cleanup-failed"
-	app.recordNetworkCleanupFailure(sess.ID, commandID, errors.New("helper registration disappeared"))
+	app.recordNetworkCleanupFailure(
+		sess.ID,
+		commandID,
+		errors.New("helper registration disappeared"),
+	)
 
 	failed := sess.NetworkEnforcement()
-	if failed == nil || failed.Status != types.NetworkEnforcementStatusFailed || failed.Attachment == nil || failed.Attachment.Status != types.NetworkEnforcementStatusFailed {
+	if failed == nil || failed.Status != types.NetworkEnforcementStatusFailed ||
+		failed.Attachment == nil ||
+		failed.Attachment.Status != types.NetworkEnforcementStatusFailed {
 		t.Fatalf("cleanup failure was not sticky: %+v", failed)
 	}
 	failedAt := failed.Attachment.CheckedAt
@@ -64,7 +73,8 @@ func TestNetworkCleanupFailureCannotBeOverwrittenByInactiveSuccess(t *testing.T)
 	time.Sleep(time.Millisecond)
 	app.recordNetworkAttachmentEnded(sess.ID, commandID)
 	got := sess.NetworkEnforcement()
-	if got == nil || got.Status != types.NetworkEnforcementStatusFailed || got.Attachment == nil || got.Attachment.Status != types.NetworkEnforcementStatusFailed {
+	if got == nil || got.Status != types.NetworkEnforcementStatusFailed || got.Attachment == nil ||
+		got.Attachment.Status != types.NetworkEnforcementStatusFailed {
 		t.Fatalf("inactive callback overwrote cleanup failure: %+v", got)
 	}
 	if !got.Attachment.CheckedAt.Equal(failedAt) || got.Detail != failedDetail {

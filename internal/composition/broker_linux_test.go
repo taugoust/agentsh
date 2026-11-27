@@ -24,7 +24,9 @@ func TestEffectivePlanNamespaceSelectionAbsorbsPIDIsolation(t *testing.T) {
 		UnshareCgroup: true,
 	})
 	if selection["pid"] {
-		t.Fatal("nested composition selected a PID namespace outside the outer private procfs boundary")
+		t.Fatal(
+			"nested composition selected a PID namespace outside the outer private procfs boundary",
+		)
 	}
 	for _, namespace := range []string{"ipc", "uts", "cgroup"} {
 		if !selection[namespace] {
@@ -60,7 +62,12 @@ func TestPathMappingsPreserveOnlyExplicitWritableTmpfs(t *testing.T) {
 	}
 }
 
-func newSetupTestBroker(t *testing.T, expectedPID int, expectedExecutable string, readRoots []string) (*Broker, *os.File) {
+func newSetupTestBroker(
+	t *testing.T,
+	expectedPID int,
+	expectedExecutable string,
+	readRoots []string,
+) (*Broker, *os.File) {
 	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
@@ -101,7 +108,12 @@ func newSetupTestBroker(t *testing.T, expectedPID int, expectedExecutable string
 	return broker, sender
 }
 
-func sendSetupTestObjects(t *testing.T, sender *os.File, policyPath, scratch string, policyRights uint64) {
+func sendSetupTestObjects(
+	t *testing.T,
+	sender *os.File,
+	policyPath, scratch string,
+	policyRights uint64,
+) {
 	t.Helper()
 	policy, err := os.Open(policyPath)
 	if err != nil {
@@ -126,8 +138,12 @@ func sendSetupTestObjects(t *testing.T, sender *os.File, policyPath, scratch str
 		t.Fatal(err)
 	}
 	defer writable.Close()
-	rootRights := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE)
-	writableRights := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE)
+	rootRights := uint64(
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+	)
+	writableRights := uint64(
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE,
+	)
 	if err := SendSetup(
 		sender,
 		Mode,
@@ -152,13 +168,21 @@ func TestCompositionSetupSenderHelper(t *testing.T) {
 	defer policy.Close()
 	defer root.Close()
 	defer writable.Close()
-	rootRights := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE)
-	writableRights := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE)
+	rootRights := uint64(
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+	)
+	writableRights := uint64(
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE,
+	)
 	if err := SendSetup(
 		sender,
 		Mode,
 		[]SetupObjectKind{SetupObjectPolicy, SetupObjectSyntheticRoot, SetupObjectSyntheticRW},
-		[]string{os.Getenv("AGENTSH_TEST_POLICY_PATH"), os.Getenv("AGENTSH_TEST_ROOT_PATH"), os.Getenv("AGENTSH_TEST_WRITABLE_PATH")},
+		[]string{
+			os.Getenv("AGENTSH_TEST_POLICY_PATH"),
+			os.Getenv("AGENTSH_TEST_ROOT_PATH"),
+			os.Getenv("AGENTSH_TEST_WRITABLE_PATH"),
+		},
 		[]uint64{landlock.LANDLOCK_ACCESS_FS_READ_DIR, rootRights, writableRights},
 		[]*os.File{policy, root, writable},
 	); err != nil {
@@ -197,7 +221,11 @@ func TestBrokerPinsHelperAcrossPathReplacement(t *testing.T) {
 	}
 	defer broker.Close()
 	replacement := filepath.Join(directory, "replacement")
-	if err := os.WriteFile(replacement, []byte("#!/bin/sh\nprintf replacement"), 0o700); err != nil {
+	if err := os.WriteFile(
+		replacement,
+		[]byte("#!/bin/sh\nprintf replacement"),
+		0o700,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Rename(replacement, helper); err != nil {
@@ -288,7 +316,11 @@ func TestBrokerRequestTimeoutReturnsTypedFailureAndClosesConnection(t *testing.T
 		t.Fatal(err)
 	}
 	var challenge Challenge
-	if err := json.Unmarshal(packet[:n], &challenge); err != nil || challenge.Type != ChallengeType {
+	if err := json.Unmarshal(
+		packet[:n],
+		&challenge,
+	); err != nil ||
+		challenge.Type != ChallengeType {
 		t.Fatalf("challenge=%+v err=%v", challenge, err)
 	}
 	n, err = client.Read(packet)
@@ -299,7 +331,8 @@ func TestBrokerRequestTimeoutReturnsTypedFailureAndClosesConnection(t *testing.T
 	if err := json.Unmarshal(packet[:n], &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.OK || response.Code != "E_COMPOSITION_REQUESTER_CHANGED" || !strings.Contains(response.Message, "timeout") {
+	if response.OK || response.Code != "E_COMPOSITION_REQUESTER_CHANGED" ||
+		!strings.Contains(response.Message, "timeout") {
 		t.Fatalf("timeout response = %+v", response)
 	}
 	select {
@@ -384,7 +417,8 @@ func TestBrokerRejectsSetupAfterTrustedSenderExit(t *testing.T) {
 		defer broker.Close()
 		err = broker.awaitSetup()
 	}
-	if err == nil || (!strings.Contains(err.Error(), "pin composition setup sender") && !strings.Contains(err.Error(), "not live and trusted") && !strings.Contains(err.Error(), "E_COMPOSITION_REQUESTER_CHANGED")) {
+	if err == nil ||
+		(!strings.Contains(err.Error(), "pin composition setup sender") && !strings.Contains(err.Error(), "not live and trusted") && !strings.Contains(err.Error(), "E_COMPOSITION_REQUESTER_CHANGED")) {
 		t.Fatalf("exited setup sender error = %v", err)
 	}
 }
@@ -445,7 +479,8 @@ func TestBrokerRejectsSetupFromSubstitutedSenderPID(t *testing.T) {
 			_ = command.Wait()
 		}
 	}()
-	if err := broker.awaitSetup(); err == nil || !strings.Contains(err.Error(), "E_COMPOSITION_REQUESTER_CHANGED") {
+	if err := broker.awaitSetup(); err == nil ||
+		!strings.Contains(err.Error(), "E_COMPOSITION_REQUESTER_CHANGED") {
 		t.Fatalf("setup sender mismatch error = %v", err)
 	}
 	if err := barrierWrite.Close(); err != nil {
@@ -493,10 +528,23 @@ func TestDestinationRightsCannotBroadenWritableSyntheticAncestor(t *testing.T) {
 	}
 	read := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR)
 	destination := read | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE | landlock.LANDLOCK_ACCESS_FS_MAKE_REG
-	if err := validateDestinationRights(directory, read, destination, info, unix.MOUNT_ATTR_NOSUID); err == nil || !strings.Contains(err.Error(), "E_COMPOSITION_RIGHTS_ESCALATION") {
+	if err := validateDestinationRights(
+		directory,
+		read,
+		destination,
+		info,
+		unix.MOUNT_ATTR_NOSUID,
+	); err == nil ||
+		!strings.Contains(err.Error(), "E_COMPOSITION_RIGHTS_ESCALATION") {
 		t.Fatalf("writable destination escalation error = %v", err)
 	}
-	if err := validateDestinationRights(directory, read, destination, info, unix.MOUNT_ATTR_RDONLY); err != nil {
+	if err := validateDestinationRights(
+		directory,
+		read,
+		destination,
+		info,
+		unix.MOUNT_ATTR_RDONLY,
+	); err != nil {
 		t.Fatalf("read-only mount did not neutralize destination mutation rights: %v", err)
 	}
 }
@@ -511,7 +559,11 @@ func TestBrokerRequiresSyntheticConstructionPathsRemoved(t *testing.T) {
 		ScratchRoot:              scratch,
 		RequireSetupPathsRemoved: true,
 	}}
-	if err := broker.validateSyntheticConstructionPathRemoved(0, constructionPath); err == nil || !strings.Contains(err.Error(), "remained visible") {
+	if err := broker.validateSyntheticConstructionPathRemoved(
+		0,
+		constructionPath,
+	); err == nil ||
+		!strings.Contains(err.Error(), "remained visible") {
 		t.Fatalf("visible construction path error = %v", err)
 	}
 	if err := os.RemoveAll(filepath.Join(scratch, "pool")); err != nil {
@@ -536,7 +588,10 @@ func TestListOnlySetupObjectCannotCarryFileReadAuthority(t *testing.T) {
 		t.Fatalf("directory-list setup object was rejected: %v", err)
 	}
 	setup.Objects[0].Rights |= landlock.LANDLOCK_ACCESS_FS_READ_FILE
-	if err := broker.validateSetupContract(setup); err == nil || !strings.Contains(err.Error(), "file-read rights") {
+	if err := broker.validateSetupContract(
+		setup,
+	); err == nil ||
+		!strings.Contains(err.Error(), "file-read rights") {
 		t.Fatalf("list-only setup object carried file-read authority: %v", err)
 	}
 }
@@ -589,7 +644,9 @@ func TestListOnlyDirectoryBindFitsSyntheticRootAfterReadOnlyNoExecReduction(t *t
 		t.Fatal(err)
 	}
 	listOnly := uint64(landlock.LANDLOCK_ACCESS_FS_READ_DIR)
-	destination := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE)
+	destination := uint64(
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+	)
 	attributes := uint64(unix.MOUNT_ATTR_RDONLY | unix.MOUNT_ATTR_NOEXEC)
 	source, err := os.Open(directory)
 	if err != nil {
@@ -607,9 +664,18 @@ func TestListOnlyDirectoryBindFitsSyntheticRootAfterReadOnlyNoExecReduction(t *t
 		t.Fatal(err)
 	}
 	if validationRights&landlock.LANDLOCK_ACCESS_FS_READ_FILE == 0 {
-		t.Fatalf("validation rights %#x omitted synthetic-root read compatibility", validationRights)
+		t.Fatalf(
+			"validation rights %#x omitted synthetic-root read compatibility",
+			validationRights,
+		)
 	}
-	if err := validateDestinationRights(directory, validationRights, destination, info, attributes); err != nil {
+	if err := validateDestinationRights(
+		directory,
+		validationRights,
+		destination,
+		info,
+		attributes,
+	); err != nil {
 		t.Fatalf("list-only directory bind was rejected after safe reductions: %v", err)
 	}
 	if !listPathAllowed("/scratch/theo", []string{"/", "/scratch"}) {
@@ -643,7 +709,13 @@ func TestBindWithoutBaseWriteAuthorityIsReducedToReadOnly(t *testing.T) {
 	}
 
 	broker.cfg.WriteRoots = []string{"/nix"}
-	attributes, err = broker.bindRequiredAttributes(operation, "/nix", readExecute|landlock.LANDLOCK_ACCESS_FS_WRITE_FILE, nil, nil)
+	attributes, err = broker.bindRequiredAttributes(
+		operation,
+		"/nix",
+		readExecute|landlock.LANDLOCK_ACCESS_FS_WRITE_FILE,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,7 +742,12 @@ func TestHeterogeneousBindPreservesRetainedWritableDescendant(t *testing.T) {
 	defer source.Close()
 	projectObject := openPath(project)
 	defer projectObject.Close()
-	projectMetadata, err := objectMetadata(SetupObjectPolicy, project, compositionMutationRights|landlock.LANDLOCK_ACCESS_FS_READ_DIR|landlock.LANDLOCK_ACCESS_FS_EXECUTE, projectObject)
+	projectMetadata, err := objectMetadata(
+		SetupObjectPolicy,
+		project,
+		compositionMutationRights|landlock.LANDLOCK_ACCESS_FS_READ_DIR|landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+		projectObject,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -679,33 +756,58 @@ func TestHeterogeneousBindPreservesRetainedWritableDescendant(t *testing.T) {
 			WriteRoots:   []string{project},
 			ExecuteRoots: []string{project},
 		},
-		setup: &ReceivedSetup{Objects: []ReceivedSetupObject{{SetupObject: projectMetadata, File: projectObject}}},
+		setup: &ReceivedSetup{
+			Objects: []ReceivedSetupObject{{SetupObject: projectMetadata, File: projectObject}},
+		},
 	}
 	info, err := source.Stat()
 	if err != nil {
 		t.Fatal(err)
 	}
 	operation := Operation{Type: OperationBind, Source: root, Target: "/scratch", Recursive: true}
-	rootRights := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR)
+	rootRights := uint64(
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR,
+	)
 	attributes, err := broker.bindRequiredAttributes(operation, root, rootRights, source, info)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if attributes&unix.MOUNT_ATTR_RDONLY != 0 {
-		t.Fatalf("heterogeneous bind attributes=%#x, writable descendant was flattened to read-only", attributes)
+		t.Fatalf(
+			"heterogeneous bind attributes=%#x, writable descendant was flattened to read-only",
+			attributes,
+		)
 	}
 	if attributes&unix.MOUNT_ATTR_NOEXEC != 0 {
-		t.Fatalf("heterogeneous bind attributes=%#x, executable descendant was flattened to noexec", attributes)
+		t.Fatalf(
+			"heterogeneous bind attributes=%#x, executable descendant was flattened to noexec",
+			attributes,
+		)
 	}
-	validationRights, err := broker.recursiveBindValidationRights(operation, source, info, rootRights)
+	validationRights, err := broker.recursiveBindValidationRights(
+		operation,
+		source,
+		info,
+		rootRights,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	wantValidationRights := rootRights | compositionMutationRights | landlock.LANDLOCK_ACCESS_FS_EXECUTE
 	if validationRights&wantValidationRights != wantValidationRights {
-		t.Fatalf("heterogeneous validation rights=%#x, want coverage %#x", validationRights, wantValidationRights)
+		t.Fatalf(
+			"heterogeneous validation rights=%#x, want coverage %#x",
+			validationRights,
+			wantValidationRights,
+		)
 	}
-	if err := validateDestinationRights(root, validationRights, wantValidationRights, info, attributes); err != nil {
+	if err := validateDestinationRights(
+		root,
+		validationRights,
+		wantValidationRights,
+		info,
+		attributes,
+	); err != nil {
 		t.Fatalf("heterogeneous bind did not preserve descendant authority: %v", err)
 	}
 
@@ -717,7 +819,12 @@ func TestHeterogeneousBindPreservesRetainedWritableDescendant(t *testing.T) {
 	if attributes&unix.MOUNT_ATTR_RDONLY == 0 || attributes&unix.MOUNT_ATTR_NOEXEC == 0 {
 		t.Fatalf("homogeneous non-writable bind attributes=%#x, want ro,noexec", attributes)
 	}
-	validationRights, err = broker.recursiveBindValidationRights(operation, source, info, rootRights)
+	validationRights, err = broker.recursiveBindValidationRights(
+		operation,
+		source,
+		info,
+		rootRights,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,7 +835,11 @@ func TestHeterogeneousBindPreservesRetainedWritableDescendant(t *testing.T) {
 
 func TestBrokerRejectsScratchRootAsBindSourceOrDescendant(t *testing.T) {
 	scratch := t.TempDir()
-	rootFD, err := unix.Open(string(filepath.Separator), unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	rootFD, err := unix.Open(
+		string(filepath.Separator),
+		unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -743,7 +854,14 @@ func TestBrokerRejectsScratchRootAsBindSourceOrDescendant(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		err := broker.validateScratchIsolation(context, Plan{Operations: []Operation{{Type: OperationBind, Source: source, Target: "/target", Recursive: true}}})
+		err := broker.validateScratchIsolation(
+			context,
+			Plan{
+				Operations: []Operation{
+					{Type: OperationBind, Source: source, Target: "/target", Recursive: true},
+				},
+			},
+		)
 		if err == nil || !strings.Contains(err.Error(), "E_COMPOSITION_SOURCE_DENIED") {
 			t.Errorf("scratch-overlapping source %q error = %v", source, err)
 		}
@@ -758,8 +876,15 @@ func TestBrokerRejectsSetupRightsOutsideServerCeiling(t *testing.T) {
 	admitted := t.TempDir()
 	outside := t.TempDir()
 	broker, sender := newSetupTestBroker(t, os.Getpid(), self, []string{admitted})
-	sendSetupTestObjects(t, sender, outside, broker.cfg.ScratchRoot, landlock.LANDLOCK_ACCESS_FS_READ_DIR)
-	if err := broker.awaitSetup(); err == nil || !strings.Contains(err.Error(), "E_COMPOSITION_SETUP_INVALID") {
+	sendSetupTestObjects(
+		t,
+		sender,
+		outside,
+		broker.cfg.ScratchRoot,
+		landlock.LANDLOCK_ACCESS_FS_READ_DIR,
+	)
+	if err := broker.awaitSetup(); err == nil ||
+		!strings.Contains(err.Error(), "E_COMPOSITION_SETUP_INVALID") {
 		t.Fatalf("setup rights ceiling error = %v", err)
 	}
 }

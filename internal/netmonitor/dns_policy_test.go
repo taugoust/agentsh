@@ -16,7 +16,12 @@ func TestDNSInterceptorPolicyAdjustments(t *testing.T) {
 		Version: 1,
 		NetworkRules: []policy.NetworkRule{
 			{Name: "default-deny-network", Decision: "deny", Domains: []string{"*"}},
-			{Name: "approve-dns", Decision: "approve", Domains: []string{"example.com"}, Ports: []int{53}},
+			{
+				Name:     "approve-dns",
+				Decision: "approve",
+				Domains:  []string{"example.com"},
+				Ports:    []int{53},
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, true, true)
@@ -44,14 +49,21 @@ func TestDNSInterceptorPolicyAdjustments(t *testing.T) {
 	}
 
 	defaultDeny := d.policyDecision(context.Background(), "foo.com", 53)
-	if defaultDeny.PolicyDecision != types.DecisionDeny || defaultDeny.Rule != "default-deny-network" {
+	if defaultDeny.PolicyDecision != types.DecisionDeny ||
+		defaultDeny.Rule != "default-deny-network" {
 		t.Fatalf("unexpected default decision: %+v", defaultDeny)
 	}
 	// The handle path adjusts default-deny to monitor-only; simulate that logic inline.
-	if defaultDeny.PolicyDecision == types.DecisionDeny && defaultDeny.Rule == "default-deny-network" {
-		defaultDeny = policy.Decision{PolicyDecision: types.DecisionAllow, EffectiveDecision: types.DecisionAllow, Rule: "dns-monitor-only"}
+	if defaultDeny.PolicyDecision == types.DecisionDeny &&
+		defaultDeny.Rule == "default-deny-network" {
+		defaultDeny = policy.Decision{
+			PolicyDecision:    types.DecisionAllow,
+			EffectiveDecision: types.DecisionAllow,
+			Rule:              "dns-monitor-only",
+		}
 	}
-	if defaultDeny.EffectiveDecision != types.DecisionAllow || defaultDeny.Rule != "dns-monitor-only" {
+	if defaultDeny.EffectiveDecision != types.DecisionAllow ||
+		defaultDeny.Rule != "dns-monitor-only" {
 		t.Fatalf("expected monitor-only adjustment, got %+v", defaultDeny)
 	}
 }

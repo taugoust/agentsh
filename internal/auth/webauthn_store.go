@@ -37,7 +37,12 @@ func NewWebAuthnStore(db *sql.DB) *WebAuthnStore {
 }
 
 // SaveCredential persists a new WebAuthn credential for a user.
-func (s *WebAuthnStore) SaveCredential(ctx context.Context, userID string, cred *webauthn.Credential, name string) error {
+func (s *WebAuthnStore) SaveCredential(
+	ctx context.Context,
+	userID string,
+	cred *webauthn.Credential,
+	name string,
+) error {
 	if cred == nil {
 		return fmt.Errorf("credential is nil")
 	}
@@ -68,7 +73,10 @@ func (s *WebAuthnStore) SaveCredential(ctx context.Context, userID string, cred 
 }
 
 // GetCredentials retrieves all WebAuthn credentials for a user as webauthn.Credential structs.
-func (s *WebAuthnStore) GetCredentials(ctx context.Context, userID string) ([]webauthn.Credential, error) {
+func (s *WebAuthnStore) GetCredentials(
+	ctx context.Context,
+	userID string,
+) ([]webauthn.Credential, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT credential_id, public_key, attestation_type, transport, sign_count
 		FROM webauthn_credentials
@@ -109,7 +117,11 @@ func (s *WebAuthnStore) GetCredentials(ctx context.Context, userID string) ([]we
 }
 
 // UpdateSignCount updates the sign count for a credential after successful authentication.
-func (s *WebAuthnStore) UpdateSignCount(ctx context.Context, credentialID []byte, signCount uint32) error {
+func (s *WebAuthnStore) UpdateSignCount(
+	ctx context.Context,
+	credentialID []byte,
+	signCount uint32,
+) error {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE webauthn_credentials
 		SET sign_count = ?, last_used_ns = ?
@@ -133,7 +145,11 @@ func (s *WebAuthnStore) UpdateSignCount(ctx context.Context, credentialID []byte
 }
 
 // DeleteCredential removes a credential for a user.
-func (s *WebAuthnStore) DeleteCredential(ctx context.Context, userID string, credentialID []byte) error {
+func (s *WebAuthnStore) DeleteCredential(
+	ctx context.Context,
+	userID string,
+	credentialID []byte,
+) error {
 	result, err := s.db.ExecContext(ctx, `
 		DELETE FROM webauthn_credentials
 		WHERE user_id = ? AND credential_id = ?`,
@@ -155,7 +171,10 @@ func (s *WebAuthnStore) DeleteCredential(ctx context.Context, userID string, cre
 }
 
 // ListCredentials returns all credentials for a user with full metadata.
-func (s *WebAuthnStore) ListCredentials(ctx context.Context, userID string) ([]WebAuthnCredential, error) {
+func (s *WebAuthnStore) ListCredentials(
+	ctx context.Context,
+	userID string,
+) ([]WebAuthnCredential, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, user_id, credential_id, public_key, attestation_type,
 		       transport, sign_count, created_at_ns, last_used_ns, name

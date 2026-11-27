@@ -223,7 +223,11 @@ func Restore(trashDir, token, dest string, force bool) (string, error) {
 			return "", fmt.Errorf("hash target: %w", err)
 		}
 		if actual.Value != entry.Hash {
-			return "", fmt.Errorf("hash mismatch on restore: expected %s got %s", entry.Hash, actual.Value)
+			return "", fmt.Errorf(
+				"hash mismatch on restore: expected %s got %s",
+				entry.Hash,
+				actual.Value,
+			)
 		}
 	}
 

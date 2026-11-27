@@ -16,7 +16,14 @@ func TestCommandOutputArtifactCapture_DirenvEnvironmentPrecedenceAndProtectedFil
 		"PATH": "dev-shell-path", "DEV_SHELL": "ready", "home": "stolen",
 		"Http_Proxy": "stolen", "AGENTSH_NOTIFY_SOCK_FD": "99",
 	})
-	env, err := buildCommandEnvironment(&config.Config{}, policy.ResolvedEnvPolicy{}, []string{"PATH=host-path", "HOME=host-home"}, s, nil, nil)
+	env, err := buildCommandEnvironment(
+		&config.Config{},
+		policy.ResolvedEnvPolicy{},
+		[]string{"PATH=host-path", "HOME=host-home"},
+		s,
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

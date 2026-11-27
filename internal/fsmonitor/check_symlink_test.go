@@ -21,7 +21,12 @@ func newCheckTestNode(t *testing.T, workspace string, pol *policy.Policy) *node 
 // without rewriting the whole node construction. escapeDeny=false (default)
 // matches the policies.symlink_escape="evaluate" mode; escapeDeny=true
 // matches the historical workspace-escape blanket-deny ("deny" mode).
-func newCheckTestNodeWithEscape(t *testing.T, workspace string, pol *policy.Policy, escapeDeny bool) *node {
+func newCheckTestNodeWithEscape(
+	t *testing.T,
+	workspace string,
+	pol *policy.Policy,
+	escapeDeny bool,
+) *node {
 	t.Helper()
 	engine, err := policy.NewEngine(pol, false, true)
 	if err != nil {
@@ -40,7 +45,13 @@ func newCheckTestNodeWithEscape(t *testing.T, workspace string, pol *policy.Poli
 
 // newCheckTestNodeWithEscapeCwd is newCheckTestNodeWithEscape plus a session
 // whose Cwd is set, so deny-mode cwd-subtree behavior (#377) is testable.
-func newCheckTestNodeWithEscapeCwd(t *testing.T, workspace string, pol *policy.Policy, escapeDeny bool, cwd string) *node {
+func newCheckTestNodeWithEscapeCwd(
+	t *testing.T,
+	workspace string,
+	pol *policy.Policy,
+	escapeDeny bool,
+	cwd string,
+) *node {
 	t.Helper()
 	n := newCheckTestNodeWithEscape(t, workspace, pol, escapeDeny)
 	n.hooks.Session = &session.Session{Cwd: cwd}
@@ -78,7 +89,10 @@ func TestCheck_StatOnSymlinkLeafDoesNotResolveTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Mimic venv/bin/python -> <outside>/system-binary.
-	if err := os.Symlink(outsideTarget, filepath.Join(workspace, "venv", "bin", "python")); err != nil {
+	if err := os.Symlink(
+		outsideTarget,
+		filepath.Join(workspace, "venv", "bin", "python"),
+	); err != nil {
 		t.Skipf("symlink not supported: %v", err)
 	}
 
@@ -90,8 +104,18 @@ func TestCheck_StatOnSymlinkLeafDoesNotResolveTarget(t *testing.T) {
 		Version: 1,
 		Name:    "venv-test",
 		FileRules: []policy.FileRule{
-			{Name: "deny-outside", Paths: []string{realRoot(t, outsideDir) + "/**"}, Operations: []string{"*"}, Decision: "deny"},
-			{Name: "allow-workspace", Paths: []string{realRoot(t, workspace) + "/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "deny-outside",
+				Paths:      []string{realRoot(t, outsideDir) + "/**"},
+				Operations: []string{"*"},
+				Decision:   "deny",
+			},
+			{
+				Name:       "allow-workspace",
+				Paths:      []string{realRoot(t, workspace) + "/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	n := newCheckTestNode(t, workspace, pol)
@@ -126,7 +150,10 @@ func TestCheck_OpenOnSymlinkFallsThroughToTargetPolicy(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(workspace, "venv", "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outsideTarget, filepath.Join(workspace, "venv", "bin", "python")); err != nil {
+	if err := os.Symlink(
+		outsideTarget,
+		filepath.Join(workspace, "venv", "bin", "python"),
+	); err != nil {
 		t.Skipf("symlink not supported: %v", err)
 	}
 
@@ -140,8 +167,18 @@ func TestCheck_OpenOnSymlinkFallsThroughToTargetPolicy(t *testing.T) {
 		Version: 1,
 		Name:    "allow-outside",
 		FileRules: []policy.FileRule{
-			{Name: "allow-outside", Paths: []string{outsideGlob}, Operations: []string{"*"}, Decision: "allow"},
-			{Name: "allow-workspace", Paths: []string{workspaceGlob}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-outside",
+				Paths:      []string{outsideGlob},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
+			{
+				Name:       "allow-workspace",
+				Paths:      []string{workspaceGlob},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	n := newCheckTestNode(t, workspace, allowPol)
@@ -160,8 +197,18 @@ func TestCheck_OpenOnSymlinkFallsThroughToTargetPolicy(t *testing.T) {
 		Version: 1,
 		Name:    "deny-outside",
 		FileRules: []policy.FileRule{
-			{Name: "deny-outside", Paths: []string{outsideGlob}, Operations: []string{"*"}, Decision: "deny"},
-			{Name: "allow-workspace", Paths: []string{workspaceGlob}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "deny-outside",
+				Paths:      []string{outsideGlob},
+				Operations: []string{"*"},
+				Decision:   "deny",
+			},
+			{
+				Name:       "allow-workspace",
+				Paths:      []string{workspaceGlob},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	n2 := newCheckTestNode(t, workspace, denyPol)
@@ -191,7 +238,10 @@ func TestCheck_SymlinkEscapeDenyRestoresBlanketDeny(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(workspace, "venv", "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outsideTarget, filepath.Join(workspace, "venv", "bin", "python")); err != nil {
+	if err := os.Symlink(
+		outsideTarget,
+		filepath.Join(workspace, "venv", "bin", "python"),
+	); err != nil {
 		t.Skipf("symlink not supported: %v", err)
 	}
 
@@ -201,8 +251,18 @@ func TestCheck_SymlinkEscapeDenyRestoresBlanketDeny(t *testing.T) {
 		Version: 1,
 		Name:    "allow-outside",
 		FileRules: []policy.FileRule{
-			{Name: "allow-outside", Paths: []string{realRoot(t, outsideDir) + "/**"}, Operations: []string{"*"}, Decision: "allow"},
-			{Name: "allow-workspace", Paths: []string{realRoot(t, workspace) + "/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-outside",
+				Paths:      []string{realRoot(t, outsideDir) + "/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
+			{
+				Name:       "allow-workspace",
+				Paths:      []string{realRoot(t, workspace) + "/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	n := newCheckTestNodeWithEscape(t, workspace, pol, true)
@@ -225,7 +285,12 @@ func TestCheck_DotDotEscapeStillDeniesAsWorkspaceEscape(t *testing.T) {
 		Version: 1,
 		Name:    "allow-all",
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	n := newCheckTestNode(t, workspace, pol)
@@ -265,14 +330,23 @@ func TestCheck_DotDotEscapeToExistingSiblingDeniesAsWorkspaceEscape(t *testing.T
 		Version: 1,
 		Name:    "allow-all",
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	n := newCheckTestNode(t, workspace, pol)
 
 	dec := n.check(context.Background(), "/workspace/../outside/secret", "read")
 	if dec.EffectiveDecision != types.DecisionDeny {
-		t.Fatalf("..-escape to existing sibling must deny; got %v rule=%q", dec.EffectiveDecision, dec.Rule)
+		t.Fatalf(
+			"..-escape to existing sibling must deny; got %v rule=%q",
+			dec.EffectiveDecision,
+			dec.Rule,
+		)
 	}
 	if dec.Rule != "workspace-escape" {
 		t.Errorf("..-escape to existing sibling rule=%q; want workspace-escape", dec.Rule)
@@ -295,21 +369,33 @@ func TestCheck_DenyCwdSubtreeEscapeIsEvaluatedAndAllowed(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(workspace, "venv", "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outsideTarget, filepath.Join(workspace, "venv", "bin", "python")); err != nil {
+	if err := os.Symlink(
+		outsideTarget,
+		filepath.Join(workspace, "venv", "bin", "python"),
+	); err != nil {
 		t.Skipf("symlink not supported: %v", err)
 	}
 	pol := &policy.Policy{
 		Version: 1,
 		Name:    "allow-outside",
 		FileRules: []policy.FileRule{
-			{Name: "allow-outside", Paths: []string{realRoot(t, outsideDir) + "/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-outside",
+				Paths:      []string{realRoot(t, outsideDir) + "/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	// cwd is the venv subtree; the escaping symlink is under it.
 	n := newCheckTestNodeWithEscapeCwd(t, workspace, pol, true, "/workspace/venv")
 	dec := n.check(context.Background(), "/workspace/venv/bin/python", "read")
 	if dec.EffectiveDecision != types.DecisionAllow {
-		t.Fatalf("deny mode + cwd-subtree escape must evaluate file_rules; got %v rule=%q", dec.EffectiveDecision, dec.Rule)
+		t.Fatalf(
+			"deny mode + cwd-subtree escape must evaluate file_rules; got %v rule=%q",
+			dec.EffectiveDecision,
+			dec.Rule,
+		)
 	}
 	if dec.Rule == "workspace-escape" {
 		t.Errorf("rule=%q; want a file_rule (not blanket workspace-escape)", dec.Rule)
@@ -326,14 +412,22 @@ func TestCheck_DenyCwdSubtreeEscapeIsEvaluatedAndDeniedByFileRule(t *testing.T) 
 	if err := os.MkdirAll(filepath.Join(workspace, "venv", "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outsideTarget, filepath.Join(workspace, "venv", "bin", "python")); err != nil {
+	if err := os.Symlink(
+		outsideTarget,
+		filepath.Join(workspace, "venv", "bin", "python"),
+	); err != nil {
 		t.Skipf("symlink not supported: %v", err)
 	}
 	pol := &policy.Policy{
 		Version: 1,
 		Name:    "deny-outside",
 		FileRules: []policy.FileRule{
-			{Name: "deny-outside", Paths: []string{realRoot(t, outsideDir) + "/**"}, Operations: []string{"*"}, Decision: "deny"},
+			{
+				Name:       "deny-outside",
+				Paths:      []string{realRoot(t, outsideDir) + "/**"},
+				Operations: []string{"*"},
+				Decision:   "deny",
+			},
 		},
 	}
 	n := newCheckTestNodeWithEscapeCwd(t, workspace, pol, true, "/workspace/venv")
@@ -356,21 +450,33 @@ func TestCheck_DenyEscapeOutsideCwdSubtreeStillBlanketDenies(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(workspace, "venv", "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outsideTarget, filepath.Join(workspace, "venv", "bin", "python")); err != nil {
+	if err := os.Symlink(
+		outsideTarget,
+		filepath.Join(workspace, "venv", "bin", "python"),
+	); err != nil {
 		t.Skipf("symlink not supported: %v", err)
 	}
 	pol := &policy.Policy{
 		Version: 1,
 		Name:    "allow-outside",
 		FileRules: []policy.FileRule{
-			{Name: "allow-outside", Paths: []string{realRoot(t, outsideDir) + "/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-outside",
+				Paths:      []string{realRoot(t, outsideDir) + "/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	// cwd is a DIFFERENT subtree; the escaping symlink is NOT under it.
 	n := newCheckTestNodeWithEscapeCwd(t, workspace, pol, true, "/workspace/proj")
 	dec := n.check(context.Background(), "/workspace/venv/bin/python", "read")
 	if dec.EffectiveDecision != types.DecisionDeny {
-		t.Fatalf("escape outside cwd subtree must deny; got %v rule=%q", dec.EffectiveDecision, dec.Rule)
+		t.Fatalf(
+			"escape outside cwd subtree must deny; got %v rule=%q",
+			dec.EffectiveDecision,
+			dec.Rule,
+		)
 	}
 	if dec.Rule != "workspace-escape" {
 		t.Errorf("rule=%q; want workspace-escape (deny mode, outside cwd subtree)", dec.Rule)
@@ -383,7 +489,12 @@ func TestCheck_DenyDotDotEscapeUnderCwdStillBlanketDenies(t *testing.T) {
 		Version: 1,
 		Name:    "allow-all",
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	// cwd is the whole workspace, so the path is "in the cwd subtree", forcing
@@ -408,20 +519,32 @@ func TestCheck_DenyCwdSubtreeBrokenSymlinkStillBlanketDenies(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(workspace, "venv", "bin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("/nonexistent/target", filepath.Join(workspace, "venv", "bin", "python")); err != nil {
+	if err := os.Symlink(
+		"/nonexistent/target",
+		filepath.Join(workspace, "venv", "bin", "python"),
+	); err != nil {
 		t.Skipf("symlink not supported: %v", err)
 	}
 	pol := &policy.Policy{
 		Version: 1,
 		Name:    "allow-all",
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	n := newCheckTestNodeWithEscapeCwd(t, workspace, pol, true, "/workspace/venv")
 	dec := n.check(context.Background(), "/workspace/venv/bin/python", "read")
 	if dec.EffectiveDecision != types.DecisionDeny {
-		t.Fatalf("broken symlink in cwd subtree must deny; got %v rule=%q", dec.EffectiveDecision, dec.Rule)
+		t.Fatalf(
+			"broken symlink in cwd subtree must deny; got %v rule=%q",
+			dec.EffectiveDecision,
+			dec.Rule,
+		)
 	}
 	if dec.Rule != "workspace-escape" {
 		t.Errorf("rule=%q; want workspace-escape (broken link always denies)", dec.Rule)

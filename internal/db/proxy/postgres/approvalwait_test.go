@@ -24,7 +24,11 @@ type fakeApprover struct {
 	hold    time.Duration
 }
 
-func (f *fakeApprover) Decide(ctx context.Context, _ effects.ClassifiedStatement, _ time.Duration) (bool, error) {
+func (f *fakeApprover) Decide(
+	ctx context.Context,
+	_ effects.ClassifiedStatement,
+	_ time.Duration,
+) (bool, error) {
 	f.mu.Lock()
 	f.calls++
 	f.mu.Unlock()
@@ -201,10 +205,20 @@ func TestEmitApprovalFrameEventIncludesResolvedMetadata(t *testing.T) {
 			Name:   "users",
 		}},
 	}}}
-	pc.emitApprovalFrameEvent(context.Background(), &pgproto3.Parse{Query: "SELECT * FROM users"}, statemachine.ActionApproverWait{
-		Stmt: stmt,
-		Rule: policy.StatementRule{Name: "approve-read"},
-	}, policy.Decision{Verb: policy.VerbApprove, RuleKind: policy.RuleKindStatement, RuleName: "approve-read"}, "none")
+	pc.emitApprovalFrameEvent(
+		context.Background(),
+		&pgproto3.Parse{Query: "SELECT * FROM users"},
+		statemachine.ActionApproverWait{
+			Stmt: stmt,
+			Rule: policy.StatementRule{Name: "approve-read"},
+		},
+		policy.Decision{
+			Verb:     policy.VerbApprove,
+			RuleKind: policy.RuleKindStatement,
+			RuleName: "approve-read",
+		},
+		"none",
+	)
 	evs := sink.DrainStatements()
 	if len(evs) != 1 || evs[0].ObjectResolution != "catalog_resolved" {
 		t.Fatalf("events = %+v", evs)

@@ -89,7 +89,11 @@ This stops the running daemon and removes the service configuration.`,
 			case "linux":
 				return uninstallSystemdService(cmd)
 			default:
-				fmt.Fprintf(cmd.OutOrStdout(), "Daemon uninstall not supported on %s\n", runtime.GOOS)
+				fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"Daemon uninstall not supported on %s\n",
+					runtime.GOOS,
+				)
 				return nil
 			}
 		},
@@ -292,7 +296,13 @@ func uninstallSystemdService(cmd *cobra.Command) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	servicePath := filepath.Join(currentUser.HomeDir, ".config", "systemd", "user", "agentsh.service")
+	servicePath := filepath.Join(
+		currentUser.HomeDir,
+		".config",
+		"systemd",
+		"user",
+		"agentsh.service",
+	)
 
 	// Stop service if running
 	_ = runSystemctl("stop", "agentsh")

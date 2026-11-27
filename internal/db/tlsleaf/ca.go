@@ -76,7 +76,11 @@ func LoadOrCreate(stateDir string, clock func() time.Time) (*CA, error) {
 		return ca, nil
 	}
 	if keyExists != crtExists {
-		return nil, fmt.Errorf("tlsleaf: incomplete CA on disk (have key=%v, cert=%v); refusing to regenerate", keyExists, crtExists)
+		return nil, fmt.Errorf(
+			"tlsleaf: incomplete CA on disk (have key=%v, cert=%v); refusing to regenerate",
+			keyExists,
+			crtExists,
+		)
 	}
 	return generateAndPersist(stateDir, clock)
 }
@@ -130,7 +134,9 @@ func generateAndPersist(stateDir string, clock func() time.Time) (*CA, error) {
 		return nil, fmt.Errorf("parse self-signed: %w", err)
 	}
 
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	keyPEM := pem.EncodeToMemory(
+		&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)},
+	)
 	crtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 
 	keyPath := filepath.Join(stateDir, caKeyFile)

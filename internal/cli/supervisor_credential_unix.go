@@ -12,7 +12,11 @@ func validateSupervisorCredentialFileOwner(info os.FileInfo) error {
 		return fmt.Errorf("credential file ownership is unavailable")
 	}
 	if stat.Uid != uint32(os.Geteuid()) {
-		return fmt.Errorf("credential file must be owned by supervisor uid %d, got uid %d", os.Geteuid(), stat.Uid)
+		return fmt.Errorf(
+			"credential file must be owned by supervisor uid %d, got uid %d",
+			os.Geteuid(),
+			stat.Uid,
+		)
 	}
 	return nil
 }

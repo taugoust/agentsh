@@ -60,7 +60,11 @@ func subagentTerminalEventFields(terminal subagentTerminal) map[string]any {
 	}
 }
 
-func (a *App) persistSubagentTerminalEvent(sessionID, eventType, operationID, parentID string, terminal subagentTerminal, extra map[string]any) error {
+func (a *App) persistSubagentTerminalEvent(
+	sessionID, eventType, operationID, parentID string,
+	terminal subagentTerminal,
+	extra map[string]any,
+) error {
 	if a == nil {
 		return nil
 	}
@@ -90,7 +94,9 @@ func (a *App) persistSubagentTerminalEvent(sessionID, eventType, operationID, pa
 	if a.store != nil {
 		if err := a.store.AppendEvent(terminalCtx, event); err != nil {
 			if a.detachedRuntime != nil {
-				_ = a.detachedRuntime.MarkFailed("persist subagent terminal evidence: " + err.Error())
+				_ = a.detachedRuntime.MarkFailed(
+					"persist subagent terminal evidence: " + err.Error(),
+				)
 			}
 			return fmt.Errorf("persist subagent terminal evidence: %w", err)
 		}

@@ -43,7 +43,11 @@ file_rules:
     operations: ["*"]
     decision: allow
 `
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policyContent), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policyContent),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	workspace := filepath.Join(dir, "ws")
@@ -175,7 +179,11 @@ file_rules:
     operations: ["*"]
     decision: allow
 `
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policyContent), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policyContent),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	workspace := filepath.Join(dir, "ws")
@@ -221,7 +229,12 @@ file_rules:
 	// Create session via generic gRPC endpoint.
 	createReq, _ := structpb.NewStruct(map[string]any{"workspace": workspace, "policy": "default"})
 	createResp := &structpb.Struct{}
-	if err := conn.Invoke(ctx, "/agentsh.v1.Agentsh/CreateSession", createReq, createResp); err != nil {
+	if err := conn.Invoke(
+		ctx,
+		"/agentsh.v1.Agentsh/CreateSession",
+		createReq,
+		createResp,
+	); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := json.Marshal(createResp.AsMap())
@@ -240,16 +253,24 @@ file_rules:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := stream.Send(&ptygrpc.ExecPTYClientMsg{Msg: &ptygrpc.ExecPTYClientMsg_Start{Start: &ptygrpc.ExecPTYStart{
-		SessionId: snap.ID,
-		Command:   "sh",
-		Args:      []string{"-c", `read x; echo "X:$x"`},
-		Rows:      24,
-		Cols:      80,
-	}}}); err != nil {
+	if err := stream.Send(
+		&ptygrpc.ExecPTYClientMsg{Msg: &ptygrpc.ExecPTYClientMsg_Start{Start: &ptygrpc.ExecPTYStart{
+			SessionId: snap.ID,
+			Command:   "sh",
+			Args:      []string{"-c", `read x; echo "X:$x"`},
+			Rows:      24,
+			Cols:      80,
+		}}},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := stream.Send(&ptygrpc.ExecPTYClientMsg{Msg: &ptygrpc.ExecPTYClientMsg_Stdin{Stdin: &ptygrpc.ExecPTYStdin{Data: []byte("hello\n")}}}); err != nil {
+	if err := stream.Send(
+		&ptygrpc.ExecPTYClientMsg{
+			Msg: &ptygrpc.ExecPTYClientMsg_Stdin{
+				Stdin: &ptygrpc.ExecPTYStdin{Data: []byte("hello\n")},
+			},
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -273,7 +294,11 @@ file_rules:
 			<-errCh
 			return
 		case *ptygrpc.ExecPTYServerMsg_Error:
-			t.Fatalf("server error: %s (%s)", strings.TrimSpace(m.Error.Message), strings.TrimSpace(m.Error.Code))
+			t.Fatalf(
+				"server error: %s (%s)",
+				strings.TrimSpace(m.Error.Message),
+				strings.TrimSpace(m.Error.Code),
+			)
 		}
 	}
 }

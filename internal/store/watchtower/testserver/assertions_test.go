@@ -101,7 +101,10 @@ func TestWaitForFirstBatch_ReturnsFirstBatch(t *testing.T) {
 	// internal record (deep-copy contract).
 	got.GetUncompressed().Events = nil
 	if n := len(srv.Batches()[0].GetUncompressed().GetEvents()); n != 1 {
-		t.Fatalf("after caller mutation, server's batch has %d events; want 1 (deep-copy broken)", n)
+		t.Fatalf(
+			"after caller mutation, server's batch has %d events; want 1 (deep-copy broken)",
+			n,
+		)
 	}
 
 	if err := srv.AssertSequenceRange(1, 1); err != nil {
@@ -228,7 +231,11 @@ func TestAssertSequenceRange_DetectsGapsAndDuplicates(t *testing.T) {
 			t.Fatal("AssertSequenceRange: want duplicate-seq error, got nil")
 		}
 		if !strings.Contains(err.Error(), "duplicate seq 1") {
-			t.Fatalf("AssertSequenceRange err=%q, want substring %q", err.Error(), "duplicate seq 1")
+			t.Fatalf(
+				"AssertSequenceRange err=%q, want substring %q",
+				err.Error(),
+				"duplicate seq 1",
+			)
 		}
 	})
 
@@ -256,7 +263,8 @@ func TestAssertSequenceRange_DetectsGapsAndDuplicates(t *testing.T) {
 		if err == nil {
 			t.Fatal("AssertSequenceRange: want out-of-range error, got nil")
 		}
-		if !strings.Contains(err.Error(), "outside expected range") || !strings.Contains(err.Error(), "seq 5") {
+		if !strings.Contains(err.Error(), "outside expected range") ||
+			!strings.Contains(err.Error(), "seq 5") {
 			t.Fatalf("AssertSequenceRange err=%q, want out-of-range substring", err.Error())
 		}
 	})
@@ -400,12 +408,17 @@ func TestServerBatches_DeepCopyIsolatesCallerMutation(t *testing.T) {
 		t.Fatalf("snap2 len=%d, want 1", len(snap2))
 	}
 	if snap2[0].GetCompression() != wtpv1.Compression_COMPRESSION_NONE {
-		t.Fatalf("snap2 compression=%v; want COMPRESSION_NONE (snap1 mutation leaked into server state)",
-			snap2[0].GetCompression())
+		t.Fatalf(
+			"snap2 compression=%v; want COMPRESSION_NONE (snap1 mutation leaked into server state)",
+			snap2[0].GetCompression(),
+		)
 	}
 	events := snap2[0].GetUncompressed().GetEvents()
 	if len(events) != 1 || events[0].GetSequence() != 7 || events[0].GetGeneration() != 2 {
-		t.Fatalf("snap2 events=%+v; want one event (7, 2) (snap1 mutation corrupted server state)", events)
+		t.Fatalf(
+			"snap2 events=%+v; want one event (7, 2) (snap1 mutation corrupted server state)",
+			events,
+		)
 	}
 
 	// The sequence-range assertion MUST also still see the original
@@ -521,11 +534,16 @@ func TestServer_NilEventBatchRejectedByValidator(t *testing.T) {
 	// message by the unmarshaler), so the validator catches the
 	// missing Compression enum first, not the nil batch pointer.
 	// The counter lands under ReasonEventBatchCompressionUnspecified.
-	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonEventBatchCompressionUnspec); got != 1 {
+	if got := m.DroppedInvalidFrame(
+		metrics.WTPInvalidFrameReasonEventBatchCompressionUnspec,
+	); got != 1 {
 		t.Errorf("DroppedInvalidFrame(event_batch_compression_unspecified) = %d, want 1", got)
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 0 {
-		t.Errorf("DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed *ValidationError)", got)
+		t.Errorf(
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed *ValidationError)",
+			got,
+		)
 	}
 	if logBuf.Len() != 0 {
 		t.Errorf("expected no defense-in-depth WARN on typed path, got:\n%s", logBuf.String())
@@ -541,7 +559,12 @@ func TestServer_NilEventBatchRejectedByValidator(t *testing.T) {
 // UncompressedEvents bytes, compresses with the named algo via the
 // production compress.NewEncoder, and sends as a CompressedPayload-
 // shaped EventBatch. Shared by compressed-batch tests.
-func sendCompressedBatch(t *testing.T, conn testserver.Conn, algo string, events []*wtpv1.CompactEvent) {
+func sendCompressedBatch(
+	t *testing.T,
+	conn testserver.Conn,
+	algo string,
+	events []*wtpv1.CompactEvent,
+) {
 	t.Helper()
 	enc, err := compress.NewEncoder(algo, 3, 6)
 	if err != nil {

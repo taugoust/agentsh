@@ -82,7 +82,11 @@ func NewConditionEvaluator() *ConditionEvaluator {
 }
 
 // Evaluate checks if a taint and execution context match a condition.
-func (e *ConditionEvaluator) Evaluate(cond *ChainCondition, taint *ProcessTaint, ctx *ExecutionContext) bool {
+func (e *ConditionEvaluator) Evaluate(
+	cond *ChainCondition,
+	taint *ProcessTaint,
+	ctx *ExecutionContext,
+) bool {
 	if cond == nil {
 		return true // No condition = always matches
 	}
@@ -115,7 +119,11 @@ func (e *ConditionEvaluator) Evaluate(cond *ChainCondition, taint *ProcessTaint,
 }
 
 // evaluateLeafConditions checks all non-composite conditions.
-func (e *ConditionEvaluator) evaluateLeafConditions(cond *ChainCondition, taint *ProcessTaint, ctx *ExecutionContext) bool {
+func (e *ConditionEvaluator) evaluateLeafConditions(
+	cond *ChainCondition,
+	taint *ProcessTaint,
+	ctx *ExecutionContext,
+) bool {
 	// Via index check
 	if cond.ViaIndex != nil && cond.ViaIndexValue != "" {
 		if !e.checkViaIndex(taint, *cond.ViaIndex, cond.ViaIndexValue) {
@@ -320,7 +328,10 @@ func (e *ConditionEvaluator) checkClassContains(taint *ProcessTaint, classNames 
 	return false
 }
 
-func (e *ConditionEvaluator) checkConsecutiveClass(taint *ProcessTaint, match *ConsecutiveMatch) bool {
+func (e *ConditionEvaluator) checkConsecutiveClass(
+	taint *ProcessTaint,
+	match *ConsecutiveMatch,
+) bool {
 	if taint == nil || match == nil {
 		return false
 	}
@@ -338,7 +349,10 @@ func (e *ConditionEvaluator) checkConsecutiveClass(taint *ProcessTaint, match *C
 	return true
 }
 
-func (e *ConditionEvaluator) checkConsecutiveComm(taint *ProcessTaint, match *ConsecutiveMatch) bool {
+func (e *ConditionEvaluator) checkConsecutiveComm(
+	taint *ProcessTaint,
+	match *ConsecutiveMatch,
+) bool {
 	if taint == nil || match == nil {
 		return false
 	}
@@ -568,7 +582,10 @@ func (e *ChainRuleEvaluator) EvaluateAll(taint *ProcessTaint, ctx *ExecutionCont
 
 // EvaluateWithContinue evaluates rules, collecting all matching rules
 // until a non-Continue rule matches.
-func (e *ChainRuleEvaluator) EvaluateWithContinue(taint *ProcessTaint, ctx *ExecutionContext) ([]*ChainRule, ChainAction) {
+func (e *ChainRuleEvaluator) EvaluateWithContinue(
+	taint *ProcessTaint,
+	ctx *ExecutionContext,
+) ([]*ChainRule, ChainAction) {
 	var matches []*ChainRule
 	var finalAction ChainAction
 

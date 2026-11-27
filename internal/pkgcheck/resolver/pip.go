@@ -58,7 +58,11 @@ func (r *pipResolver) CanResolve(command string, args []string) bool {
 	return args[0] == "install"
 }
 
-func (r *pipResolver) Resolve(ctx context.Context, workDir string, command []string) (*pkgcheck.InstallPlan, error) {
+func (r *pipResolver) Resolve(
+	ctx context.Context,
+	workDir string,
+	command []string,
+) (*pkgcheck.InstallPlan, error) {
 	var packages []string
 	var args []string
 	if len(command) > 1 {

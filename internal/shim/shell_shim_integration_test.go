@@ -96,7 +96,11 @@ func TestShellShim_UsesPATHWhenAgentshBinUnset(t *testing.T) {
 	}
 	shimPath := filepath.Join(binDir, "sh")
 	copyFile(t, shimBin, shimPath, 0o755)
-	if err := os.WriteFile(filepath.Join(binDir, "sh.real"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(binDir, "sh.real"),
+		[]byte("#!/bin/sh\nexit 0\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write sh.real: %v", err)
 	}
 
@@ -339,7 +343,11 @@ func TestShellShim_AddsPTYWhenTTY(t *testing.T) {
 	}
 	shimPath := filepath.Join(binDir, "sh")
 	copyFile(t, shimBin, shimPath, 0o755)
-	if err := os.WriteFile(filepath.Join(binDir, "sh.real"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(binDir, "sh.real"),
+		[]byte("#!/bin/sh\nexit 0\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write sh.real: %v", err)
 	}
 

@@ -63,17 +63,32 @@ type wrapperSetupResult struct {
 // setupSeccompWrapper configures the command to run through agentsh-unixwrap for seccomp enforcement.
 // Returns the wrapped request and extra process config, or nil extraCfg if wrapping is disabled.
 // Note: agentsh-unixwrap is Linux-only; this function returns early on other platforms.
-func (a *App) setupSeccompWrapper(req types.ExecRequest, sessionID string, s *session.Session) *wrapperSetupResult {
+func (a *App) setupSeccompWrapper(
+	req types.ExecRequest,
+	sessionID string,
+	s *session.Session,
+) *wrapperSetupResult {
 	return a.setupSeccompWrapperWithPolicyAndState(req, sessionID, s, a.policyEngineFor(s), s)
 }
 
 // setupSeccompWrapperWithPolicy keeps one admitted command on the same policy
 // snapshot used for its timeout resolution and command checks.
-func (a *App) setupSeccompWrapperWithPolicy(req types.ExecRequest, sessionID string, s *session.Session, sessionPolicy *policy.Engine) *wrapperSetupResult {
+func (a *App) setupSeccompWrapperWithPolicy(
+	req types.ExecRequest,
+	sessionID string,
+	s *session.Session,
+	sessionPolicy *policy.Engine,
+) *wrapperSetupResult {
 	return a.setupSeccompWrapperWithPolicyAndState(req, sessionID, s, sessionPolicy, s)
 }
 
-func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessionID string, s *session.Session, sessionPolicy *policy.Engine, runtimeState session.CommandRuntimeState) *wrapperSetupResult {
+func (a *App) setupSeccompWrapperWithPolicyAndState(
+	req types.ExecRequest,
+	sessionID string,
+	s *session.Session,
+	sessionPolicy *policy.Engine,
+	runtimeState session.CommandRuntimeState,
+) *wrapperSetupResult {
 	if runtimeState == nil {
 		runtimeState = s
 	}
@@ -85,7 +100,10 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 	earlyReturn := func() *wrapperSetupResult {
 		envInject := mergeEnvInject(a.cfg, sessionPolicy)
 		if len(envInject) > 0 || runtimeState != s {
-			return &wrapperSetupResult{wrappedReq: req, extraCfg: &extraProcConfig{envInject: envInject, commandState: runtimeState}}
+			return &wrapperSetupResult{
+				wrappedReq: req,
+				extraCfg:   &extraProcConfig{envInject: envInject, commandState: runtimeState},
+			}
 		}
 		return &wrapperSetupResult{wrappedReq: req, extraCfg: nil}
 	}
@@ -97,18 +115,29 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 	// an unsupported boundary into a best-effort launch.
 	if runtime.GOOS != "linux" {
 		if jailRequired {
-			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail is unavailable on %s", runtime.GOOS)}
+			return &wrapperSetupResult{
+				wrappedReq: req,
+				setupErr:   fmt.Errorf("strict command jail is unavailable on %s", runtime.GOOS),
+			}
 		}
 		return earlyReturn()
 	}
 
 	if jailRequired {
 		if err := hardenSupervisorForCommandBoundary(); err != nil {
-			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command boundary unavailable: %w", err)}
+			return &wrapperSetupResult{
+				wrappedReq: req,
+				setupErr:   fmt.Errorf("strict command boundary unavailable: %w", err),
+			}
 		}
 	}
 	if jailRequired && a.ptraceTracer != nil {
-		return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail is unavailable with ptrace execution; refusing to run without the same-UID boundary")}
+		return &wrapperSetupResult{
+			wrappedReq: req,
+			setupErr: fmt.Errorf(
+				"strict command jail is unavailable with ptrace execution; refusing to run without the same-UID boundary",
+			),
+		}
 	}
 
 	// Full ptrace mode: skip wrapper (ptrace handles everything).
@@ -135,18 +164,32 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 	wrapperPath, wrapperPathErr := exec.LookPath(wrapperBin)
 	if wrapperPathErr != nil {
 		if jailRequired {
-			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail requires %q: %w", wrapperBin, wrapperPathErr)}
+			return &wrapperSetupResult{
+				wrappedReq: req,
+				setupErr: fmt.Errorf(
+					"strict command jail requires %q: %w",
+					wrapperBin,
+					wrapperPathErr,
+				),
+			}
 		}
-		slog.Warn("seccomp wrapper unavailable: wrapper binary not found (running without seccomp enforcement)",
-			"wrapper_bin", wrapperBin,
-			"session_id", sessionID)
+		slog.Warn(
+			"seccomp wrapper unavailable: wrapper binary not found (running without seccomp enforcement)",
+			"wrapper_bin",
+			wrapperBin,
+			"session_id",
+			sessionID,
+		)
 		return earlyReturn()
 	}
 
 	sp := createUnixSocketPair()
 	if sp == nil {
 		if jailRequired {
-			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("strict command jail requires a wrapper control socket")}
+			return &wrapperSetupResult{
+				wrappedReq: req,
+				setupErr:   fmt.Errorf("strict command jail requires a wrapper control socket"),
+			}
 		}
 		// Log that seccomp wrapping failed - this is security-relevant.
 		slog.Warn("seccomp wrapper disabled: failed to create notify socket pair",
@@ -197,7 +240,8 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 
 	// Pass seccomp and command-jail configuration to the wrapper.
 	fileLookupWorkerPath := fileLookupWorkerForWrapper(wrapperPath)
-	if config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.Enabled, false) && fileLookupWorkerPath == "" {
+	if config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.Enabled, false) &&
+		fileLookupWorkerPath == "" {
 		slog.Warn("seccomp file lookup worker unavailable", "wrapper_path", wrapperPath)
 	}
 	seccompCfg := a.buildSeccompWrapperConfig(s, seccompWrapperParams{
@@ -213,7 +257,16 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 	})
 	if jailRequired {
 		binding := a.nethelperBindingSnapshot()
-		seccompCfg.CommandJail = buildCommandJailConfig(a.cfg, s, a.detachedCommandJailStateDir(), binding.SocketPath, binding.CredentialFile, binding.BootstrapResultPath, a.nethelperRecoveryTokenFile, seccompCfg.CompositionScratchRoot)
+		seccompCfg.CommandJail = buildCommandJailConfig(
+			a.cfg,
+			s,
+			a.detachedCommandJailStateDir(),
+			binding.SocketPath,
+			binding.CredentialFile,
+			binding.BootstrapResultPath,
+			a.nethelperRecoveryTokenFile,
+			seccompCfg.CompositionScratchRoot,
+		)
 	}
 	cfgJSON, marshalErr := json.Marshal(seccompCfg)
 	if marshalErr != nil {
@@ -223,7 +276,10 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 			_ = sigSP.parent.Close()
 			_ = sigSP.child.Close()
 		}
-		return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("encode wrapper boundary configuration: %w", marshalErr)}
+		return &wrapperSetupResult{
+			wrappedReq: req,
+			setupErr:   fmt.Errorf("encode wrapper boundary configuration: %w", marshalErr),
+		}
 	}
 	wrappedReq.Env["AGENTSH_SECCOMP_CONFIG"] = string(cfgJSON)
 
@@ -278,20 +334,32 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 		fileMonitorCfg:    a.cfg.Sandbox.Seccomp.FileMonitor,
 		landlockEnabled:   a.cfg.Landlock.Enabled,
 		ptraceSync:        a.ptraceTracer != nil && hasNotifyFeatures,
-		commandBoundary:   commandJailRequirements(jailRequired, runtimeState.CurrentSandboxComposition()),
-		commandState:      runtimeState,
-		blockList:         a.buildBlockListConfigFor(sessionID),
+		commandBoundary: commandJailRequirements(
+			jailRequired,
+			runtimeState.CurrentSandboxComposition(),
+		),
+		commandState: runtimeState,
+		blockList:    a.buildBlockListConfigFor(sessionID),
 	}
 
 	// Create execve handler if enabled (Linux-specific, will be nil on other platforms)
 	if execveEnabled {
-		extraCfg.execveHandler = createExecveHandler(a.cfg.Sandbox.Seccomp.Execve, sessionPolicy, a.approvals)
+		extraCfg.execveHandler = createExecveHandler(
+			a.cfg.Sandbox.Seccomp.Execve,
+			sessionPolicy,
+			a.approvals,
+		)
 	}
 	if runtimeState.CurrentSandboxComposition() != "" {
 		setupPair := createUnixSocketPair()
 		if setupPair == nil {
 			closePreStartProcessFiles(extraCfg)
-			return &wrapperSetupResult{wrappedReq: req, setupErr: fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: create trusted composition setup channel")}
+			return &wrapperSetupResult{
+				wrappedReq: req,
+				setupErr: fmt.Errorf(
+					"E_COMPOSITION_BACKEND_UNAVAILABLE: create trusted composition setup channel",
+				),
+			}
 		}
 		setupFD := 3 + len(extraCfg.extraFiles)
 		extraCfg.extraFiles = append(extraCfg.extraFiles, setupPair.child)
@@ -300,7 +368,14 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(req types.ExecRequest, sessi
 		extraCfg.env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
 		wrappedReq.Env[compositionpkg.SetupFDEnv] = strconv.Itoa(setupFD)
 		extraCfg.configureComposition = func(handler any, setup *os.File, wrapperPID int) error {
-			return a.configureExecveCompositionForState(handler, s, runtimeState, seccompCfg, setup, wrapperPID)
+			return a.configureExecveCompositionForState(
+				handler,
+				s,
+				runtimeState,
+				seccompCfg,
+				setup,
+				wrapperPID,
+			)
 		}
 	}
 
@@ -345,7 +420,10 @@ func commandJailRequired(cfg *config.Config) bool {
 	return cfg != nil && (cfg.Sandbox.Network.EBPF.Required || cfg.Sandbox.Network.EBPF.Enforce)
 }
 
-func commandJailRequirements(required bool, composition ...string) *types.LinuxCommandJailRequirements {
+func commandJailRequirements(
+	required bool,
+	composition ...string,
+) *types.LinuxCommandJailRequirements {
 	if !required {
 		return nil
 	}
@@ -376,7 +454,11 @@ func (a *App) detachedCommandJailStateDir() string {
 	return a.detachedRuntime.StateDir()
 }
 
-func buildCommandJailConfig(cfg *config.Config, sess *session.Session, detachedStateDir, nethelperSocket, nethelperCredentialFile, nethelperBootstrapResult, recoveryTokenFile, compositionScratchRoot string) *commandJailConfig {
+func buildCommandJailConfig(
+	cfg *config.Config,
+	sess *session.Session,
+	detachedStateDir, nethelperSocket, nethelperCredentialFile, nethelperBootstrapResult, recoveryTokenFile, compositionScratchRoot string,
+) *commandJailConfig {
 	jail := &commandJailConfig{Required: true}
 	compositionScratchRoot = strings.TrimSpace(compositionScratchRoot)
 	compositionLeaseRoot := ""
@@ -404,7 +486,10 @@ func buildCommandJailConfig(cfg *config.Config, sess *session.Session, detachedS
 	addHelperControl(nethelperSocket)
 	addHelperControl(nethelperCredentialFile)
 	addHelperControl(nethelperBootstrapResult)
-	if tokenFile := strings.TrimSpace(recoveryTokenFile); tokenFile != "" && filepath.IsAbs(tokenFile) {
+	if tokenFile := strings.TrimSpace(
+		recoveryTokenFile,
+	); tokenFile != "" &&
+		filepath.IsAbs(tokenFile) {
 		// Hide the whole fixed wrapper-control container, not merely today's
 		// token inode, so same-UID commands cannot race replacement or discover
 		// future recovery authority.
@@ -432,7 +517,10 @@ func buildCommandJailConfig(cfg *config.Config, sess *session.Session, detachedS
 		controlPaths = append(controlPaths, sqlitePath+"-wal", sqlitePath+"-shm")
 	}
 	for _, path := range controlPaths {
-		if info, err := os.Lstat(path); err == nil && !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+		if info, err := os.Lstat(
+			path,
+		); err == nil && !info.IsDir() &&
+			info.Mode()&os.ModeSymlink == 0 {
 			jail.HidePaths = append(jail.HidePaths, path)
 		}
 	}
@@ -444,7 +532,10 @@ func buildCommandJailConfig(cfg *config.Config, sess *session.Session, detachedS
 			cfg.Sessions.WorkspaceShadow.BaseDir,
 			cfg.Sessions.WorkspaceOverlay.BaseDir,
 		} {
-			if info, err := os.Lstat(candidate); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			if info, err := os.Lstat(
+				candidate,
+			); err == nil && info.IsDir() &&
+				info.Mode()&os.ModeSymlink == 0 {
 				preserve = append(preserve, candidate)
 			}
 		}
@@ -462,8 +553,14 @@ func buildCommandJailConfig(cfg *config.Config, sess *session.Session, detachedS
 			PreserveDirectories: cleanPreservedDirectories(stateDir, preserve),
 		})
 	}
-	jail.HideDirectories = filterPathsOutsideHiddenTrees(cleanUniqueAbsolutePaths(jail.HideDirectories), jail.HideDirectoryTrees)
-	jail.HidePaths = filterPathsOutsideHiddenTrees(cleanUniqueAbsolutePaths(jail.HidePaths), jail.HideDirectoryTrees)
+	jail.HideDirectories = filterPathsOutsideHiddenTrees(
+		cleanUniqueAbsolutePaths(jail.HideDirectories),
+		jail.HideDirectoryTrees,
+	)
+	jail.HidePaths = filterPathsOutsideHiddenTrees(
+		cleanUniqueAbsolutePaths(jail.HidePaths),
+		jail.HideDirectoryTrees,
+	)
 	return jail
 }
 
@@ -523,7 +620,8 @@ func cleanPreservedDirectories(root string, paths []string) []string {
 
 func pathWithinRoot(path, root string) bool {
 	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
-	return err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	return err == nil && relative != "." && relative != ".." &&
+		!strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func cleanUniqueAbsolutePaths(paths []string) []string {
@@ -560,7 +658,11 @@ func (a *App) resolveProfile(profileName string) (*config.MountProfile, error) {
 }
 
 // setupProfileMounts creates FUSE mounts for all paths in a profile.
-func (a *App) setupProfileMounts(ctx context.Context, s *session.Session, profile *config.MountProfile) ([]session.ResolvedMount, error) {
+func (a *App) setupProfileMounts(
+	ctx context.Context,
+	s *session.Session,
+	profile *config.MountProfile,
+) ([]session.ResolvedMount, error) {
 	var mounts []session.ResolvedMount
 
 	mountBase := a.cfg.Sandbox.FUSE.MountBaseDir
@@ -608,7 +710,12 @@ func (a *App) setupProfileMounts(ctx context.Context, s *session.Session, profil
 						_ = m.Unmount()
 					}
 				}
-				return nil, fmt.Errorf("load policy %q for mount %q: %w", spec.Policy, mountPath, err)
+				return nil, fmt.Errorf(
+					"load policy %q for mount %q: %w",
+					spec.Policy,
+					mountPath,
+					err,
+				)
 			}
 		} else {
 			// Fall back to global policy if no per-mount policy specified
@@ -727,14 +834,26 @@ func (a *App) loadOptionalProfileBasePolicy(policyName string) (*policy.Policy, 
 	if sigMode != "off" {
 		if a.cfg.Policies.Signing.TrustStore == "" {
 			if sigMode == "enforce" {
-				return nil, http.StatusInternalServerError, fmt.Errorf("signing mode is enforce but trust_store not configured")
+				return nil, http.StatusInternalServerError, fmt.Errorf(
+					"signing mode is enforce but trust_store not configured",
+				)
 			}
-			fmt.Fprintf(os.Stderr, "WARNING: signing mode is %q but trust_store not configured\n", sigMode)
+			fmt.Fprintf(
+				os.Stderr,
+				"WARNING: signing mode is %q but trust_store not configured\n",
+				sigMode,
+			)
 		} else {
-			ts, tsErr := signing.LoadTrustStore(a.cfg.Policies.Signing.TrustStore, sigMode == "enforce")
+			ts, tsErr := signing.LoadTrustStore(
+				a.cfg.Policies.Signing.TrustStore,
+				sigMode == "enforce",
+			)
 			if tsErr != nil {
 				if sigMode == "enforce" {
-					return nil, http.StatusInternalServerError, fmt.Errorf("load trust store: %w", tsErr)
+					return nil, http.StatusInternalServerError, fmt.Errorf(
+						"load trust store: %w",
+						tsErr,
+					)
 				}
 				fmt.Fprintf(os.Stderr, "WARNING: failed to load trust store: %v\n", tsErr)
 			} else if _, vErr := signing.VerifyPolicyBytes(policyData, policyPath+".sig", ts); vErr != nil {
@@ -753,7 +872,10 @@ func (a *App) loadOptionalProfileBasePolicy(policyName string) (*policy.Policy, 
 }
 
 // createSessionWithProfile creates a session using a mount profile.
-func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSessionRequest) (types.Session, int, error) {
+func (a *App) createSessionWithProfile(
+	ctx context.Context,
+	req types.CreateSessionRequest,
+) (types.Session, int, error) {
 	profile, err := a.resolveProfile(req.Profile)
 	if err != nil {
 		return types.Session{}, http.StatusBadRequest, err
@@ -777,12 +899,20 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 			var err error
 			mountPath, err = filepath.Abs(mountPath)
 			if err != nil {
-				return types.Session{}, http.StatusBadRequest, fmt.Errorf("mount path %q: cannot resolve absolute path: %w", spec.Path, err)
+				return types.Session{}, http.StatusBadRequest, fmt.Errorf(
+					"mount path %q: cannot resolve absolute path: %w",
+					spec.Path,
+					err,
+				)
 			}
 		}
 		// Validate path exists
 		if _, err := os.Stat(mountPath); err != nil {
-			return types.Session{}, http.StatusBadRequest, fmt.Errorf("mount path %q: %w", mountPath, err)
+			return types.Session{}, http.StatusBadRequest, fmt.Errorf(
+				"mount path %q: %w",
+				mountPath,
+				err,
+			)
 		}
 		initialMounts = append(initialMounts, session.ResolvedMount{
 			Path:       mountPath,
@@ -850,7 +980,13 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 	}
 	if basePolicyDoc != nil {
 		enforceApprovals := a.cfg.Approvals.Enabled && a.cfg.Approvals.Mode != ""
-		engine, dbRuleSet, dbStateDir, err := a.compileDBPolicyForSession(ctx, s, basePolicyDoc, policyVars, enforceApprovals)
+		engine, dbRuleSet, dbStateDir, err := a.compileDBPolicyForSession(
+			ctx,
+			s,
+			basePolicyDoc,
+			policyVars,
+			enforceApprovals,
+		)
 		if err != nil {
 			a.cleanupCreatedSession(s)
 			return types.Session{}, http.StatusBadRequest, fmt.Errorf("compile policy: %w", err)
@@ -860,7 +996,10 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 		s.SetPolicyEngine(engine)
 		if err := a.startSessionDBProxy(ctx, s, dbRuleSet, dbStateDir); err != nil {
 			a.cleanupCreatedSession(s)
-			return types.Session{}, http.StatusInternalServerError, fmt.Errorf("start DB proxy: %w", err)
+			return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+				"start DB proxy: %w",
+				err,
+			)
 		}
 	}
 
@@ -869,7 +1008,10 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 		secret, err := approvals.GenerateTOTPSecret()
 		if err != nil {
 			a.cleanupCreatedSession(s)
-			return types.Session{}, http.StatusInternalServerError, fmt.Errorf("generate TOTP secret: %w", err)
+			return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+				"generate TOTP secret: %w",
+				err,
+			)
 		}
 		s.TOTPSecret = secret
 
@@ -920,7 +1062,10 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 		if err := a.startExplicitProxy(ctx, s); err != nil {
 			if commandJailRequired(a.cfg) {
 				a.cleanupCreatedSession(s)
-				return types.Session{}, http.StatusInternalServerError, fmt.Errorf("start network proxy required for eBPF enforcement: %w", err)
+				return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+					"start network proxy required for eBPF enforcement: %w",
+					err,
+				)
 			}
 		}
 	}
@@ -931,7 +1076,11 @@ func (a *App) createSessionWithProfile(ctx context.Context, req types.CreateSess
 	return a.sessionSnapshot(s), http.StatusCreated, nil
 }
 
-func (a *App) setupOverlayWorkspace(ctx context.Context, s *session.Session, req types.CreateSessionRequest) error {
+func (a *App) setupOverlayWorkspace(
+	ctx context.Context,
+	s *session.Session,
+	req types.CreateSessionRequest,
+) error {
 	mode := strings.ToLower(strings.TrimSpace(req.WorkspaceMode))
 	if mode == "" {
 		mode = string(types.WorkspaceModeDirect)
@@ -950,7 +1099,9 @@ func (a *App) setupOverlayWorkspace(ctx context.Context, s *session.Session, req
 		return fmt.Errorf("overlay workspaces are only supported on Linux")
 	}
 	if !a.cfg.Sessions.WorkspaceOverlay.Enabled {
-		return fmt.Errorf("workspace_mode=overlay requested but sessions.workspace_overlay.enabled is false")
+		return fmt.Errorf(
+			"workspace_mode=overlay requested but sessions.workspace_overlay.enabled is false",
+		)
 	}
 
 	excludes := a.cfg.Sessions.WorkspaceOverlay.DefaultExcludes
@@ -996,12 +1147,18 @@ func (a *App) setupOverlayWorkspace(ctx context.Context, s *session.Session, req
 	return nil
 }
 
-func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req types.CreateSessionRequest) error {
+func (a *App) setupShadowWorkspace(
+	ctx context.Context,
+	s *session.Session,
+	req types.CreateSessionRequest,
+) error {
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("shadow workspaces are only supported on Linux")
 	}
 	if !a.cfg.Sessions.WorkspaceShadow.Enabled {
-		return fmt.Errorf("workspace_mode=shadow requested but sessions.workspace_shadow.enabled is false")
+		return fmt.Errorf(
+			"workspace_mode=shadow requested but sessions.workspace_shadow.enabled is false",
+		)
 	}
 
 	diffExcludes := a.cfg.Sessions.WorkspaceShadow.DiffExcludes
@@ -1041,9 +1198,19 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 		}
 		expected := make([]shadow.Root, 0, len(manifest.Shadow.Roots))
 		for _, root := range manifest.Shadow.Roots {
-			expected = append(expected, shadow.Root{Name: root.Name, Real: root.Real, Work: root.Work})
+			expected = append(
+				expected,
+				shadow.Root{Name: root.Name, Real: root.Real, Work: root.Work},
+			)
 		}
-		sw, err = shadow.OpenMulti(ctx, s.ID, rootSpecs, shadowOptions, expected, manifest.Shadow.CreatedAt)
+		sw, err = shadow.OpenMulti(
+			ctx,
+			s.ID,
+			rootSpecs,
+			shadowOptions,
+			expected,
+			manifest.Shadow.CreatedAt,
+		)
 	} else {
 		sw, err = shadow.CreateMulti(ctx, s.ID, rootSpecs, shadowOptions)
 	}
@@ -1058,7 +1225,10 @@ func (a *App) setupShadowWorkspace(ctx context.Context, s *session.Session, req 
 			return sw.Close(context.Background())
 		}
 		if pending, ok := sw.PendingFinalization(); ok {
-			return fmt.Errorf("refusing destroy while shadow finalization %s is pending", pending.ID)
+			return fmt.Errorf(
+				"refusing destroy while shadow finalization %s is pending",
+				pending.ID,
+			)
 		}
 		intent, err := sw.PrepareReject(context.Background(), "destroy-reject-"+uuid.NewString())
 		if err != nil {
@@ -1157,7 +1327,11 @@ func sessionEnvInherit(req types.CreateSessionRequest, cfg *config.Config) []str
 	return nil
 }
 
-func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session, requestedHome, runtimeHomeMode string) error {
+func (a *App) setupRuntimeEnvironment(
+	ctx context.Context,
+	s *session.Session,
+	requestedHome, runtimeHomeMode string,
+) error {
 	if s == nil {
 		return nil
 	}
@@ -1173,7 +1347,15 @@ func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session, r
 		return fmt.Errorf("configure output artifacts: %w", err)
 	}
 	if s.Shadow != nil && s.Shadow.Home != "" && s.Shadow.Tmp != "" {
-		runtimeDirs := []string{s.Shadow.Home, s.Shadow.Tmp, filepath.Join(s.Shadow.Home, ".config"), filepath.Join(s.Shadow.Home, ".cache"), filepath.Join(s.Shadow.Home, ".local"), filepath.Join(s.Shadow.Home, ".local", "state"), filepath.Join(s.Shadow.Home, ".local", "share")}
+		runtimeDirs := []string{
+			s.Shadow.Home,
+			s.Shadow.Tmp,
+			filepath.Join(s.Shadow.Home, ".config"),
+			filepath.Join(s.Shadow.Home, ".cache"),
+			filepath.Join(s.Shadow.Home, ".local"),
+			filepath.Join(s.Shadow.Home, ".local", "state"),
+			filepath.Join(s.Shadow.Home, ".local", "share"),
+		}
 		for _, dir := range runtimeDirs {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
 				return fmt.Errorf("create runtime dir %s: %w", dir, err)
@@ -1215,7 +1397,16 @@ func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session, r
 			return err
 		}
 	}
-	runtimeDirs := []string{runtimeDir, home, tmp, filepath.Join(home, ".config"), filepath.Join(home, ".cache"), filepath.Join(home, ".local"), filepath.Join(home, ".local", "state"), filepath.Join(home, ".local", "share")}
+	runtimeDirs := []string{
+		runtimeDir,
+		home,
+		tmp,
+		filepath.Join(home, ".config"),
+		filepath.Join(home, ".cache"),
+		filepath.Join(home, ".local"),
+		filepath.Join(home, ".local", "state"),
+		filepath.Join(home, ".local", "share"),
+	}
 	for _, dir := range runtimeDirs {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("create runtime dir %s: %w", dir, err)
@@ -1229,7 +1420,13 @@ func (a *App) setupRuntimeEnvironment(ctx context.Context, s *session.Session, r
 			}
 		}
 	}
-	s.SetRuntimePathsWithProcessHome(home, tmp, processHome, mode, func() error { return cleanup.RemoveAllWritable(runtimeDir) })
+	s.SetRuntimePathsWithProcessHome(
+		home,
+		tmp,
+		processHome,
+		mode,
+		func() error { return cleanup.RemoveAllWritable(runtimeDir) },
+	)
 
 	ev := types.Event{
 		ID:        uuid.NewString(),
@@ -1260,7 +1457,11 @@ func ownerOfPath(path string) (int, int, bool) {
 	return int(st.Uid), int(st.Gid), true
 }
 
-func (a *App) buildPolicyVarsForSession(req types.CreateSessionRequest, s *session.Session, shouldDetect bool) map[string]string {
+func (a *App) buildPolicyVarsForSession(
+	req types.CreateSessionRequest,
+	s *session.Session,
+	shouldDetect bool,
+) map[string]string {
 	policyVars := make(map[string]string)
 	realWorkspace := s.Workspace
 	effectiveWorkspace := s.WorkspaceMountPath()
@@ -1319,7 +1520,11 @@ func (a *App) buildPolicyVarsForSession(req types.CreateSessionRequest, s *sessi
 	return policyVars
 }
 
-func resolveRealProjectRoot(req types.CreateSessionRequest, shouldDetect bool, markers []string) (string, error) {
+func resolveRealProjectRoot(
+	req types.CreateSessionRequest,
+	shouldDetect bool,
+	markers []string,
+) (string, error) {
 	workspace := req.Workspace
 	if strings.TrimSpace(workspace) == "" && len(req.WorkspaceRoots) > 0 {
 		workspace = req.WorkspaceRoots[0].Path
@@ -1415,14 +1620,20 @@ func firstNStrings(in []string, n int) []string {
 	return out
 }
 
-func (a *App) approveProjectOverlays(ctx context.Context, sessionID, projectRoot, basePolicyName string, files []policy.OverlayFile) (bool, error) {
+func (a *App) approveProjectOverlays(
+	ctx context.Context,
+	sessionID, projectRoot, basePolicyName string,
+	files []policy.OverlayFile,
+) (bool, error) {
 	if len(files) == 0 {
 		return false, nil
 	}
 	cfg := a.cfg.Policies.ProjectOverlays
 	if cfg.RequireApproval {
 		if !a.cfg.Approvals.Enabled || a.approvals == nil {
-			return false, fmt.Errorf("project policy overlays require approval, but approvals are unavailable")
+			return false, fmt.Errorf(
+				"project policy overlays require approval, but approvals are unavailable",
+			)
 		}
 		fields := summarizeProjectOverlays(files)
 		fields["project_root"] = projectRoot
@@ -1486,7 +1697,10 @@ func mapPathPrefix(path, oldRoot, newRoot string) string {
 	return path
 }
 
-func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequest) (types.Session, int, error) {
+func (a *App) createSessionCore(
+	ctx context.Context,
+	req types.CreateSessionRequest,
+) (types.Session, int, error) {
 	a.sessionTopologyMu.Lock()
 	defer a.sessionTopologyMu.Unlock()
 	// Handle profile-based session creation
@@ -1532,7 +1746,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		// Read raw bytes for signing verification
 		policyData, err := os.ReadFile(policyPath)
 		if err != nil {
-			return types.Session{}, http.StatusInternalServerError, fmt.Errorf("read policy: %w", err)
+			return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+				"read policy: %w",
+				err,
+			)
 		}
 
 		// Signature verification
@@ -1540,22 +1757,45 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		if sigMode != "off" {
 			if a.cfg.Policies.Signing.TrustStore == "" {
 				if sigMode == "enforce" {
-					return types.Session{}, http.StatusInternalServerError, fmt.Errorf("signing mode is enforce but trust_store not configured")
+					return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+						"signing mode is enforce but trust_store not configured",
+					)
 				}
-				fmt.Fprintf(os.Stderr, "WARNING: signing mode is %q but trust_store not configured\n", sigMode)
+				fmt.Fprintf(
+					os.Stderr,
+					"WARNING: signing mode is %q but trust_store not configured\n",
+					sigMode,
+				)
 			} else {
-				ts, tsErr := signing.LoadTrustStore(a.cfg.Policies.Signing.TrustStore, sigMode == "enforce")
+				ts, tsErr := signing.LoadTrustStore(
+					a.cfg.Policies.Signing.TrustStore,
+					sigMode == "enforce",
+				)
 				if tsErr != nil {
 					if sigMode == "enforce" {
-						return types.Session{}, http.StatusInternalServerError, fmt.Errorf("load trust store: %w", tsErr)
+						return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+							"load trust store: %w",
+							tsErr,
+						)
 					}
 					fmt.Fprintf(os.Stderr, "WARNING: failed to load trust store: %v\n", tsErr)
 				} else {
-					if _, vErr := signing.VerifyPolicyBytes(policyData, policyPath+".sig", ts); vErr != nil {
+					if _, vErr := signing.VerifyPolicyBytes(
+						policyData,
+						policyPath+".sig",
+						ts,
+					); vErr != nil {
 						if sigMode == "enforce" {
-							return types.Session{}, http.StatusForbidden, fmt.Errorf("policy signing: %w", vErr)
+							return types.Session{}, http.StatusForbidden, fmt.Errorf(
+								"policy signing: %w",
+								vErr,
+							)
 						}
-						fmt.Fprintf(os.Stderr, "WARNING: policy signing verification failed: %v\n", vErr)
+						fmt.Fprintf(
+							os.Stderr,
+							"WARNING: policy signing verification failed: %v\n",
+							vErr,
+						)
 					}
 				}
 			}
@@ -1563,7 +1803,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 
 		pol, err := policy.LoadFromBytes(policyData)
 		if err != nil {
-			return types.Session{}, http.StatusInternalServerError, fmt.Errorf("load policy: %w", err)
+			return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+				"load policy: %w",
+				err,
+			)
 		}
 		basePolicy = pol
 	}
@@ -1575,13 +1818,22 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		}
 		realProjectRoot, err := resolveRealProjectRoot(req, shouldDetect, markers)
 		if err != nil {
-			return types.Session{}, http.StatusBadRequest, fmt.Errorf("resolve project root for policy overlays: %w", err)
+			return types.Session{}, http.StatusBadRequest, fmt.Errorf(
+				"resolve project root for policy overlays: %w",
+				err,
+			)
 		}
 		projectOverlayProjectRoot = realProjectRoot
 		if realProjectRoot != "" {
-			files, err := policy.DiscoverProjectOverlays(realProjectRoot, projectOverlayConfigForPolicy(a.cfg.Policies.ProjectOverlays))
+			files, err := policy.DiscoverProjectOverlays(
+				realProjectRoot,
+				projectOverlayConfigForPolicy(a.cfg.Policies.ProjectOverlays),
+			)
 			if err != nil {
-				return types.Session{}, http.StatusBadRequest, fmt.Errorf("discover project policy overlays: %w", err)
+				return types.Session{}, http.StatusBadRequest, fmt.Errorf(
+					"discover project policy overlays: %w",
+					err,
+				)
 			}
 			projectOverlayFiles = files
 		}
@@ -1603,11 +1855,20 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 	}
 
 	if len(projectOverlayFiles) > 0 {
-		if a.cfg.Policies.ProjectOverlays.RequireApproval && (!a.cfg.Approvals.Enabled || a.approvals == nil) {
+		if a.cfg.Policies.ProjectOverlays.RequireApproval &&
+			(!a.cfg.Approvals.Enabled || a.approvals == nil) {
 			a.cleanupCreatedSession(s)
-			return types.Session{}, http.StatusForbidden, fmt.Errorf("project policy overlays require approval, but approvals are unavailable")
+			return types.Session{}, http.StatusForbidden, fmt.Errorf(
+				"project policy overlays require approval, but approvals are unavailable",
+			)
 		}
-		approved, err := a.approveProjectOverlays(ctx, s.ID, projectOverlayProjectRoot, policyName, projectOverlayFiles)
+		approved, err := a.approveProjectOverlays(
+			ctx,
+			s.ID,
+			projectOverlayProjectRoot,
+			policyName,
+			projectOverlayFiles,
+		)
 		if err != nil {
 			if a.cfg.Policies.ProjectOverlays.OnDenied == "ignore" {
 				slog.Warn("project policy overlays ignored", "session_id", s.ID, "error", err)
@@ -1616,10 +1877,16 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 				return types.Session{}, http.StatusForbidden, err
 			}
 		} else if approved {
-			merged, err := policy.MergePolicyOverlays(basePolicy, overlayPolicies(projectOverlayFiles))
+			merged, err := policy.MergePolicyOverlays(
+				basePolicy,
+				overlayPolicies(projectOverlayFiles),
+			)
 			if err != nil {
 				a.cleanupCreatedSession(s)
-				return types.Session{}, http.StatusBadRequest, fmt.Errorf("merge project policy overlays: %w", err)
+				return types.Session{}, http.StatusBadRequest, fmt.Errorf(
+					"merge project policy overlays: %w",
+					err,
+				)
 			}
 			basePolicy = merged
 			approvedProjectOverlayFiles = projectOverlayFiles
@@ -1630,7 +1897,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 			effectivePolicyHash = hash
 		} else {
 			a.cleanupCreatedSession(s)
-			return types.Session{}, http.StatusInternalServerError, fmt.Errorf("hash effective policy: %w", err)
+			return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+				"hash effective policy: %w",
+				err,
+			)
 		}
 	}
 
@@ -1660,7 +1930,13 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 	policyVars = a.buildPolicyVarsForSession(req, s, shouldDetect)
 
 	enforceApprovals := a.cfg.Approvals.Enabled && a.cfg.Approvals.Mode != ""
-	engine, dbRuleSet, dbStateDir, err := a.compileDBPolicyForSession(ctx, s, basePolicy, policyVars, enforceApprovals)
+	engine, dbRuleSet, dbStateDir, err := a.compileDBPolicyForSession(
+		ctx,
+		s,
+		basePolicy,
+		policyVars,
+		enforceApprovals,
+	)
 	if err != nil {
 		a.cleanupCreatedSession(s)
 		return types.Session{}, http.StatusBadRequest, fmt.Errorf("compile policy: %w", err)
@@ -1679,7 +1955,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		secret, err := approvals.GenerateTOTPSecret()
 		if err != nil {
 			a.cleanupCreatedSession(s)
-			return types.Session{}, http.StatusInternalServerError, fmt.Errorf("generate TOTP secret: %w", err)
+			return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+				"generate TOTP secret: %w",
+				err,
+			)
 		}
 		s.TOTPSecret = secret
 
@@ -1692,7 +1971,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 
 	if err := a.startSessionDBProxy(ctx, s, dbRuleSet, dbStateDir); err != nil {
 		a.cleanupCreatedSession(s)
-		return types.Session{}, http.StatusInternalServerError, fmt.Errorf("start DB proxy: %w", err)
+		return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+			"start DB proxy: %w",
+			err,
+		)
 	}
 
 	ev := types.Event{
@@ -1775,7 +2057,10 @@ func (a *App) createSessionCore(ctx context.Context, req types.CreateSessionRequ
 		if err := a.startExplicitProxy(ctx, s); err != nil {
 			if commandJailRequired(a.cfg) {
 				a.cleanupCreatedSession(s)
-				return types.Session{}, http.StatusInternalServerError, fmt.Errorf("start network proxy required for eBPF enforcement: %w", err)
+				return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
+					"start network proxy required for eBPF enforcement: %w",
+					err,
+				)
 			}
 		}
 	}
@@ -1863,13 +2148,24 @@ type internalSensitiveExecResult struct {
 	ExecErr         error
 }
 
-func (a *App) execInSessionCore(ctx context.Context, id string, req types.ExecRequest) (*types.ExecResponse, int, error) {
+func (a *App) execInSessionCore(
+	ctx context.Context,
+	id string,
+	req types.ExecRequest,
+) (*types.ExecResponse, int, error) {
 	return a.execInSessionCoreWithOptions(ctx, id, req, internalExecOptions{})
 }
 
-func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req types.ExecRequest, opts internalExecOptions) (*types.ExecResponse, int, error) {
+func (a *App) execInSessionCoreWithOptions(
+	ctx context.Context,
+	id string,
+	req types.ExecRequest,
+	opts internalExecOptions,
+) (*types.ExecResponse, int, error) {
 	if a.ptraceFailed.Load() {
-		return nil, http.StatusServiceUnavailable, errors.New("ptrace tracer exited unexpectedly; refusing to execute commands without enforcement")
+		return nil, http.StatusServiceUnavailable, errors.New(
+			"ptrace tracer exited unexpectedly; refusing to execute commands without enforcement",
+		)
 	}
 	s, ok := a.sessions.Get(id)
 	if !ok {
@@ -1894,16 +2190,37 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		if opts.provenance == policy.CommandProvenanceDirenvRefresh {
 			recoveryAction = "direnv_refresh"
 		}
-		if status.LifecycleState != detached.LifecycleReady && !a.detachedRuntime.CanRunRecoveryAction(recoveryAction) {
-			message := fmt.Sprintf("detached supervisor lifecycle is %s; command was not executed", status.LifecycleState)
+		if status.LifecycleState != detached.LifecycleReady &&
+			!a.detachedRuntime.CanRunRecoveryAction(recoveryAction) {
+			message := fmt.Sprintf(
+				"detached supervisor lifecycle is %s; command was not executed",
+				status.LifecycleState,
+			)
 			if strings.TrimSpace(status.LastError) != "" {
 				message += ": " + status.LastError
 			}
-			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: queuedAt, Request: req,
-				Result: types.ExecResult{ExitCode: 127,
-					Error:   &types.ExecError{Code: "E_SUPERVISOR_NOT_READY", Message: message},
-					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_SUPERVISOR_NOT_READY", Message: message}},
-				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			resp := &types.ExecResponse{
+				CommandID: cmdID,
+				SessionID: id,
+				Timestamp: queuedAt,
+				Request:   req,
+				Result: types.ExecResult{
+					ExitCode: 127,
+					Error:    &types.ExecError{Code: "E_SUPERVISOR_NOT_READY", Message: message},
+					Outcome: &types.ExecOutcome{
+						CommandStarted: false,
+						DispatchState:  "not_dispatched",
+						FailureKind:    types.ExecFailurePreExec,
+						Retryable:      false,
+						Code:           "E_SUPERVISOR_NOT_READY",
+						Message:        message,
+					},
+				},
+				Events: types.ExecEvents{
+					FileOperations:    []types.Event{},
+					NetworkOperations: []types.Event{},
+					BlockedOperations: []types.Event{},
+				},
 			}
 			return resp, http.StatusServiceUnavailable, nil
 		}
@@ -1915,7 +2232,10 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		defer cancelQueue()
 	}
 	lease, admissionErr := s.AcquireExecution(queueCtx, session.ExecutionAdmission{
-		CommandID: cmdID, LaneID: opts.executionLaneID, Shared: opts.sharedExecution, SharedLimit: opts.executionLaneLimit,
+		CommandID:   cmdID,
+		LaneID:      opts.executionLaneID,
+		Shared:      opts.sharedExecution,
+		SharedLimit: opts.executionLaneLimit,
 	})
 	queueDuration := time.Since(queuedAt)
 	if admissionErr != nil {
@@ -1937,11 +2257,30 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			code = "E_QUEUE_TIMEOUT"
 			retryable = true
 		}
-		resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: queuedAt, Request: req,
-			Result: types.ExecResult{ExitCode: 127, DurationMs: int64(queueDuration / time.Millisecond),
-				Error:   &types.ExecError{Code: code, Message: admissionErr.Error()},
-				Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: kind, Retryable: retryable, Code: code, Message: admissionErr.Error(), QueueDurationMs: int64(queueDuration / time.Millisecond)}},
-			Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+		resp := &types.ExecResponse{
+			CommandID: cmdID,
+			SessionID: id,
+			Timestamp: queuedAt,
+			Request:   req,
+			Result: types.ExecResult{
+				ExitCode:   127,
+				DurationMs: int64(queueDuration / time.Millisecond),
+				Error:      &types.ExecError{Code: code, Message: admissionErr.Error()},
+				Outcome: &types.ExecOutcome{
+					CommandStarted:  false,
+					DispatchState:   "not_dispatched",
+					FailureKind:     kind,
+					Retryable:       retryable,
+					Code:            code,
+					Message:         admissionErr.Error(),
+					QueueDurationMs: int64(queueDuration / time.Millisecond),
+				},
+			},
+			Events: types.ExecEvents{
+				FileOperations:    []types.Event{},
+				NetworkOperations: []types.Event{},
+				BlockedOperations: []types.Event{},
+			},
 		}
 		return resp, status, nil
 	}
@@ -1957,11 +2296,30 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			if !errors.Is(checkErr, errChildCapabilityRevoked) {
 				code = "E_CHILD_CAPABILITY_INVALID"
 			}
-			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: queuedAt, Request: req,
-				Result: types.ExecResult{ExitCode: 127, DurationMs: int64(time.Since(queuedAt) / time.Millisecond),
-					Error:   &types.ExecError{Code: code, Message: checkErr.Error()},
-					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureCancellation, Retryable: false, Code: code, Message: checkErr.Error(), QueueDurationMs: int64(queueDuration / time.Millisecond)}},
-				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			resp := &types.ExecResponse{
+				CommandID: cmdID,
+				SessionID: id,
+				Timestamp: queuedAt,
+				Request:   req,
+				Result: types.ExecResult{
+					ExitCode:   127,
+					DurationMs: int64(time.Since(queuedAt) / time.Millisecond),
+					Error:      &types.ExecError{Code: code, Message: checkErr.Error()},
+					Outcome: &types.ExecOutcome{
+						CommandStarted:  false,
+						DispatchState:   "not_dispatched",
+						FailureKind:     types.ExecFailureCancellation,
+						Retryable:       false,
+						Code:            code,
+						Message:         checkErr.Error(),
+						QueueDurationMs: int64(queueDuration / time.Millisecond),
+					},
+				},
+				Events: types.ExecEvents{
+					FileOperations:    []types.Event{},
+					NetworkOperations: []types.Event{},
+					BlockedOperations: []types.Event{},
+				},
 			}
 			return resp, http.StatusForbidden, nil
 		}
@@ -1998,11 +2356,34 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			if report != nil && strings.TrimSpace(report.Detail) != "" {
 				message += ": " + report.Detail
 			}
-			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
-				Result: types.ExecResult{ExitCode: 127, CommandTimeout: timeoutResolution.Metadata, DurationMs: int64(time.Since(start) / time.Millisecond),
-					Error:   &types.ExecError{Code: "E_NETWORK_ENFORCEMENT_NOT_READY", Message: message},
-					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_NETWORK_ENFORCEMENT_NOT_READY", Message: message, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
-				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			resp := &types.ExecResponse{
+				CommandID: cmdID,
+				SessionID: id,
+				Timestamp: start,
+				Request:   req,
+				Result: types.ExecResult{
+					ExitCode:       127,
+					CommandTimeout: timeoutResolution.Metadata,
+					DurationMs:     int64(time.Since(start) / time.Millisecond),
+					Error: &types.ExecError{
+						Code:    "E_NETWORK_ENFORCEMENT_NOT_READY",
+						Message: message,
+					},
+					Outcome: &types.ExecOutcome{
+						CommandStarted:  false,
+						DispatchState:   "pre_exec_refused",
+						FailureKind:     types.ExecFailurePreExec,
+						Retryable:       false,
+						Code:            "E_NETWORK_ENFORCEMENT_NOT_READY",
+						Message:         message,
+						QueueDurationMs: int64(queueDuration / time.Millisecond),
+					},
+				},
+				Events: types.ExecEvents{
+					FileOperations:    []types.Event{},
+					NetworkOperations: []types.Event{},
+					BlockedOperations: []types.Event{},
+				},
 			}
 			return resp, http.StatusServiceUnavailable, nil
 		}
@@ -2031,16 +2412,34 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		includeEvents = "all"
 	}
 
-	normalizedPolicyWorkingDir, normalizedPolicyWorkingDirErr := resolveWorkingDir(s, req.WorkingDir)
+	normalizedPolicyWorkingDir, normalizedPolicyWorkingDirErr := resolveWorkingDir(
+		s,
+		req.WorkingDir,
+	)
 	commandMatchContext := policy.CommandMatchContext{}
 	if normalizedPolicyWorkingDirErr == nil {
 		commandMatchContext.WorkingDirectory = normalizedPolicyWorkingDir
 	}
-	pre := engine.CheckCommandWithExecveProvenanceContext(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode(), opts.provenance, commandMatchContext)
+	pre := engine.CheckCommandWithExecveProvenanceContext(
+		req.Command,
+		req.Args,
+		a.execveEnforcementActive(),
+		a.shellCOpaqueMode(),
+		opts.provenance,
+		commandMatchContext,
+	)
 	compositionMode, compositionErrorCode := a.selectSandboxComposition(&pre)
 	runtimeState.SetCurrentSandboxComposition(compositionMode)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
-	approvalErr := a.applyCommandApproval(ctx, id, cmdID, originalCmd, originalArgs, req.Actor, &pre)
+	approvalErr := a.applyCommandApproval(
+		ctx,
+		id,
+		cmdID,
+		originalCmd,
+		originalArgs,
+		req.Actor,
+		&pre,
+	)
 	pkgApprovalDenied := false
 
 	// Package install check (after command policy check and approval, before event emission).
@@ -2089,7 +2488,10 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 					} else if !res.Approved {
 						pkgApprovalDenied = true
 						pre.EffectiveDecision = types.DecisionDeny
-						pre.Message = fmt.Sprintf("package install approval denied: %s", verdict.Summary)
+						pre.Message = fmt.Sprintf(
+							"package install approval denied: %s",
+							verdict.Summary,
+						)
 						if pre.Approval == nil {
 							pre.Approval = &types.ApprovalInfo{Required: true, Mode: ""}
 						}
@@ -2170,7 +2572,8 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		}
 		if pre.PolicyDecision == types.DecisionApprove || pkgApprovalDenied {
 			code = "E_APPROVAL_DENIED"
-			if approvalErr != nil && strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {
+			if approvalErr != nil &&
+				strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {
 				code = "E_APPROVAL_TIMEOUT"
 			}
 		}
@@ -2181,11 +2584,18 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			Timestamp: start,
 			Request:   req,
 			Result: types.ExecResult{
-
 				ExitCode:       126,
 				CommandTimeout: timeoutResolution.Metadata,
 				DurationMs:     int64(time.Since(start).Milliseconds()),
-				Outcome:        &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureDenied, Retryable: false, Code: code, Message: "command denied by policy", QueueDurationMs: int64(queueDuration / time.Millisecond)},
+				Outcome: &types.ExecOutcome{
+					CommandStarted:  false,
+					DispatchState:   "not_dispatched",
+					FailureKind:     types.ExecFailureDenied,
+					Retryable:       false,
+					Code:            code,
+					Message:         "command denied by policy",
+					QueueDurationMs: int64(queueDuration / time.Millisecond),
+				},
 
 				Error: &types.ExecError{
 					Code:       code,
@@ -2223,7 +2633,11 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		}
 		commandProxyClosed = true
 		if closeErr := commandProxy.Close(); closeErr != nil {
-			a.recordNetworkCleanupFailure(id, cmdID, fmt.Errorf("close command-local network proxy: %w", closeErr))
+			a.recordNetworkCleanupFailure(
+				id,
+				cmdID,
+				fmt.Errorf("close command-local network proxy: %w", closeErr),
+			)
 		}
 	}
 	if lease.Shared() && commandJailRequired(a.cfg) && !s.ExternalProxy() {
@@ -2231,15 +2645,41 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		commandProxy, proxyErr = a.startCommandExplicitProxy(ctx, s, cmdID)
 		if proxyErr != nil {
 			message := "command-local strict network proxy could not start; command was not executed: " + proxyErr.Error()
-			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
-				Result: types.ExecResult{ExitCode: 127, CommandTimeout: timeoutResolution.Metadata, DurationMs: int64(time.Since(start) / time.Millisecond),
-					Error:   &types.ExecError{Code: "E_NETWORK_PROXY_UNAVAILABLE", Message: message},
-					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_NETWORK_PROXY_UNAVAILABLE", Message: message, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
-				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			resp := &types.ExecResponse{
+				CommandID: cmdID,
+				SessionID: id,
+				Timestamp: start,
+				Request:   req,
+				Result: types.ExecResult{
+					ExitCode:       127,
+					CommandTimeout: timeoutResolution.Metadata,
+					DurationMs:     int64(time.Since(start) / time.Millisecond),
+					Error: &types.ExecError{
+						Code:    "E_NETWORK_PROXY_UNAVAILABLE",
+						Message: message,
+					},
+					Outcome: &types.ExecOutcome{
+						CommandStarted:  false,
+						DispatchState:   "pre_exec_refused",
+						FailureKind:     types.ExecFailurePreExec,
+						Retryable:       false,
+						Code:            "E_NETWORK_PROXY_UNAVAILABLE",
+						Message:         message,
+						QueueDurationMs: int64(queueDuration / time.Millisecond),
+					},
+				},
+				Events: types.ExecEvents{
+					FileOperations:    []types.Event{},
+					NetworkOperations: []types.Event{},
+					BlockedOperations: []types.Event{},
+				},
 			}
 			return resp, http.StatusServiceUnavailable, nil
 		}
-		commandProxyEndpoints = &networkProxyEndpoints{ProxyURL: commandProxy.URL(), LLMProxyURL: s.LLMProxyURL()}
+		commandProxyEndpoints = &networkProxyEndpoints{
+			ProxyURL:    commandProxy.URL(),
+			LLMProxyURL: s.LLMProxyURL(),
+		}
 		defer closeCommandProxy()
 	}
 
@@ -2249,15 +2689,37 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	clearDetachedJournal := true
 	if a.detachedRuntime != nil {
 		if err := a.detachedRuntime.RecordCommand(detached.InflightCommand{
-			CommandID: cmdID, Operation: "exec", AdmittedAt: time.Now().UTC(), Sensitive: opts.sensitive,
+			CommandID:  cmdID,
+			Operation:  "exec",
+			AdmittedAt: time.Now().UTC(),
+			Sensitive:  opts.sensitive,
 		}); err != nil {
 			_ = a.detachedRuntime.MarkFailed("persist command admission: " + err.Error())
 			message := "durable command admission failed; command was not executed"
-			resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
-				Result: types.ExecResult{ExitCode: 127, CommandTimeout: timeoutResolution.Metadata, DurationMs: int64(time.Since(start) / time.Millisecond),
-					Error:   &types.ExecError{Code: "E_DURABLE_ADMISSION", Message: message},
-					Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_DURABLE_ADMISSION", Message: message}},
-				Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+			resp := &types.ExecResponse{
+				CommandID: cmdID,
+				SessionID: id,
+				Timestamp: start,
+				Request:   req,
+				Result: types.ExecResult{
+					ExitCode:       127,
+					CommandTimeout: timeoutResolution.Metadata,
+					DurationMs:     int64(time.Since(start) / time.Millisecond),
+					Error:          &types.ExecError{Code: "E_DURABLE_ADMISSION", Message: message},
+					Outcome: &types.ExecOutcome{
+						CommandStarted: false,
+						DispatchState:  "pre_exec_refused",
+						FailureKind:    types.ExecFailurePreExec,
+						Retryable:      false,
+						Code:           "E_DURABLE_ADMISSION",
+						Message:        message,
+					},
+				},
+				Events: types.ExecEvents{
+					FileOperations:    []types.Event{},
+					NetworkOperations: []types.Event{},
+					BlockedOperations: []types.Event{},
+				},
 			}
 			return resp, http.StatusServiceUnavailable, nil
 		}
@@ -2296,7 +2758,10 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			if extraCfg == nil {
 				extraCfg = &extraProcConfig{}
 			}
-			extraCfg.envInject = mergeTrustedEnvironment(extraCfg.envInject, explicitProxyEnvironment(commandProxy.URL()))
+			extraCfg.envInject = mergeTrustedEnvironment(
+				extraCfg.envInject,
+				explicitProxyEnvironment(commandProxy.URL()),
+			)
 		}
 		if extraCfg != nil {
 			setExecveProvenance(extraCfg.execveHandler, opts.provenance)
@@ -2314,8 +2779,18 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 				_ = a.detachedRuntime.MarkFailed("persist command start: " + err.Error())
 			}
 		}
-		startEv := types.Event{ID: uuid.NewString(), Timestamp: startedAt, Type: "command_started", SessionID: id, CommandID: cmdID, CommandTimeout: &timeoutResolution.Metadata,
-			Fields: map[string]any{"command": origCommand, "args": auditArgumentValues(origArgs, opts.sensitive)}}
+		startEv := types.Event{
+			ID:             uuid.NewString(),
+			Timestamp:      startedAt,
+			Type:           "command_started",
+			SessionID:      id,
+			CommandID:      cmdID,
+			CommandTimeout: &timeoutResolution.Metadata,
+			Fields: map[string]any{
+				"command": origCommand,
+				"args":    auditArgumentValues(origArgs, opts.sensitive),
+			},
+		}
 		runtimeState.InjectTraceContext(startEv.Fields)
 		_ = a.store.AppendEvent(ctx, startEv)
 		a.broker.Publish(startEv)
@@ -2345,29 +2820,85 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			a.recordNetworkEnforcementFailure(id, cmdID, wrapperResult.setupErr)
 			if attemptCount == 1 {
 				message := "pre-exec boundary unavailable: " + wrapperResult.setupErr.Error()
-				resp := &types.ExecResponse{CommandID: cmdID, SessionID: id, Timestamp: start, Request: req,
-					Result: types.ExecResult{ExitCode: 127, CommandTimeout: timeoutResolution.Metadata, DurationMs: int64(time.Since(start) / time.Millisecond),
-						Error:   &types.ExecError{Code: "E_PRE_EXEC_BOUNDARY", Message: message},
-						Outcome: &types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Retryable: false, Code: "E_PRE_EXEC_BOUNDARY", Message: message, AttemptCount: 1, QueueDurationMs: int64(queueDuration / time.Millisecond)}},
-					Events: types.ExecEvents{FileOperations: []types.Event{}, NetworkOperations: []types.Event{}, BlockedOperations: []types.Event{}},
+				resp := &types.ExecResponse{
+					CommandID: cmdID,
+					SessionID: id,
+					Timestamp: start,
+					Request:   req,
+					Result: types.ExecResult{
+						ExitCode:       127,
+						CommandTimeout: timeoutResolution.Metadata,
+						DurationMs:     int64(time.Since(start) / time.Millisecond),
+						Error: &types.ExecError{
+							Code:    "E_PRE_EXEC_BOUNDARY",
+							Message: message,
+						},
+						Outcome: &types.ExecOutcome{
+							CommandStarted:  false,
+							DispatchState:   "pre_exec_refused",
+							FailureKind:     types.ExecFailurePreExec,
+							Retryable:       false,
+							Code:            "E_PRE_EXEC_BOUNDARY",
+							Message:         message,
+							AttemptCount:    1,
+							QueueDurationMs: int64(queueDuration / time.Millisecond),
+						},
+					},
+					Events: types.ExecEvents{
+						FileOperations:    []types.Event{},
+						NetworkOperations: []types.Event{},
+						BlockedOperations: []types.Event{},
+					},
 				}
 				return resp, http.StatusServiceUnavailable, nil
 			}
 			exitCode = 127
-			execErr = markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr))
-			attemptDiagnostics = append(attemptDiagnostics, types.ExecAttemptDiagnostic{Attempt: attemptCount, ProtocolStage: "command_boundary_setup"})
+			execErr = markPreExecEnforcementError(
+				"E_PRE_EXEC_BOUNDARY",
+				fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr),
+			)
+			attemptDiagnostics = append(
+				attemptDiagnostics,
+				types.ExecAttemptDiagnostic{
+					Attempt:       attemptCount,
+					ProtocolStage: "command_boundary_setup",
+				},
+			)
 			break
 		}
 		wrappedReq = wrapperResult.wrappedReq
 		extraCfg = configureAttempt(wrapperResult.extraCfg)
 
 		if !envPolicyResolved {
-			cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+			cmdDecision := engine.CheckCommandWithExecve(
+				wrappedReq.Command,
+				wrappedReq.Args,
+				a.execveEnforcementActive(),
+				a.shellCOpaqueMode(),
+			)
 			envPolicy = cmdDecision.EnvPolicy
 			envPolicyResolved = true
 		}
 
-		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, wrappedReq, a.cfg, envPolicy, timeoutResolution.Duration, a.cgroupHookWithProxyEndpoints(id, cmdID, reserveLineagePIDs(limits, extraCfg), commandProxyEndpoints), extraCfg, a.ptraceTracer, id, onStarted)
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesResolvedTimeout(
+			ctx,
+			s,
+			cmdID,
+			wrappedReq,
+			a.cfg,
+			envPolicy,
+			timeoutResolution.Duration,
+			a.cgroupHookWithProxyEndpoints(
+				id,
+				cmdID,
+				reserveLineagePIDs(limits, extraCfg),
+				commandProxyEndpoints,
+			),
+			extraCfg,
+			a.ptraceTracer,
+			id,
+			onStarted,
+		)
 		failure := commandJailFailureFrom(execErr)
 		if failure == nil {
 			break
@@ -2401,7 +2932,8 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		stdoutB = nil
 		stderrB = nil
 	}
-	if !commandStarted && commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
+	if !commandStarted && commandBoundaryRequired(extraCfg) &&
+		shouldRecordNetworkEnforcementFailure(execErr) {
 		a.recordNetworkEnforcementFailure(id, cmdID, execErr)
 	}
 
@@ -2493,7 +3025,11 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	}
 
 	stderrB, stderrTotal, softSuggestions := addSoftDeleteHints(fileOps, stderrB, stderrTotal)
-	stderrB, stderrTotal, approvalSuggestions := addExecveApprovalHints(blockedOps, stderrB, stderrTotal)
+	stderrB, stderrTotal, approvalSuggestions := addExecveApprovalHints(
+		blockedOps,
+		stderrB,
+		stderrTotal,
+	)
 
 	outcome := normalizeExecOutcome(commandStarted, exitCode, execErr)
 	outcome.QueueDurationMs = int64(queueDuration / time.Millisecond)
@@ -2523,7 +3059,13 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 			CurrentOffset: 0,
 			CurrentLimit:  int64(len(stdoutB)),
 			HasMore:       true,
-			NextCommand:   fmt.Sprintf("agentsh output %s %s --stream stdout --offset %d --limit %d", id, cmdID, len(stdoutB), len(stdoutB)),
+			NextCommand: fmt.Sprintf(
+				"agentsh output %s %s --stream stdout --offset %d --limit %d",
+				id,
+				cmdID,
+				len(stdoutB),
+				len(stdoutB),
+			),
 		}
 	}
 
@@ -2555,7 +3097,17 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 		resp.Guidance.Suggestions = append(resp.Guidance.Suggestions, approvalSuggestions...)
 	}
 	if !opts.sensitive {
-		_ = a.store.SaveOutput(terminalCtx, id, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
+		_ = a.store.SaveOutput(
+			terminalCtx,
+			id,
+			cmdID,
+			stdoutB,
+			stderrB,
+			stdoutTotal,
+			stderrTotal,
+			stdoutTrunc,
+			stderrTrunc,
+		)
 	} else {
 		// Values stay inside the callback above; never expose them through the
 		// internal response accidentally used by a future wire handler.
@@ -2569,7 +3121,9 @@ func (a *App) execInSessionCoreWithOptions(ctx context.Context, id string, req t
 	if a.detachedRuntime != nil {
 		if err := a.detachedRuntime.UpdateMutable(detachedEnvironmentRecoveryState(s)); err != nil {
 			clearDetachedJournal = false
-			_ = a.detachedRuntime.MarkFailed("persist terminal mutable session state: " + err.Error())
+			_ = a.detachedRuntime.MarkFailed(
+				"persist terminal mutable session state: " + err.Error(),
+			)
 			message := "command completed, but durable detached session state could not be committed; side effects may have occurred and the command must not be replayed"
 			resp.Result.Error = &types.ExecError{Code: "E_TERMINAL_PERSISTENCE", Message: message}
 			resp.Result.Outcome.Code = "E_TERMINAL_PERSISTENCE"
@@ -2663,7 +3217,15 @@ func (a *App) mountFUSEForSession(ctx context.Context, p fuseMountParams) bool {
 			err := a.store.AppendEvent(persistCtx, ev)
 			cancel()
 			if err != nil {
-				slog.Error("persist fuse soft-delete event", "error", err, "event_type", ev.Type, "path", path)
+				slog.Error(
+					"persist fuse soft-delete event",
+					"error",
+					err,
+					"event_type",
+					ev.Type,
+					"path",
+					path,
+				)
 			}
 			a.broker.Publish(ev)
 		}
@@ -2749,7 +3311,15 @@ func (a *App) processIOEvents(eventChan <-chan platform.IOEvent) {
 		err := a.store.AppendEvent(persistCtx, ev)
 		cancel()
 		if err != nil && !errors.Is(err, storepkg.ErrEventBufferFull) {
-			slog.Error("persist fuse io event", "error", err, "event_type", ev.Type, "event_id", ev.ID)
+			slog.Error(
+				"persist fuse io event",
+				"error",
+				err,
+				"event_type",
+				ev.Type,
+				"event_id",
+				ev.ID,
+			)
 		}
 		a.broker.Publish(ev)
 	}
@@ -2770,7 +3340,15 @@ func (a *App) tryEnableFUSE(fs platform.FilesystemInterceptor) {
 	}
 	out, err := exec.Command(cmd[0], cmd[1:]...).CombinedOutput()
 	if err != nil {
-		slog.Warn("ensureFUSEMount: deferred enable command failed", "cmd", cmd, "error", err, "output", string(out))
+		slog.Warn(
+			"ensureFUSEMount: deferred enable command failed",
+			"cmd",
+			cmd,
+			"error",
+			err,
+			"output",
+			string(out),
+		)
 	} else {
 		slog.Info("ensureFUSEMount: deferred enable command succeeded", "cmd", cmd)
 		fs.Recheck()
@@ -2821,25 +3399,46 @@ func (a *App) ensureFUSEMount(ctx context.Context, s *session.Session) {
 				sigMode := a.cfg.Policies.Signing.SigningMode()
 				if sigMode != "off" {
 					if a.cfg.Policies.Signing.TrustStore != "" {
-						ts, tsErr := signing.LoadTrustStore(a.cfg.Policies.Signing.TrustStore, sigMode == "enforce")
+						ts, tsErr := signing.LoadTrustStore(
+							a.cfg.Policies.Signing.TrustStore,
+							sigMode == "enforce",
+						)
 						if tsErr != nil {
 							if sigMode == "enforce" {
-								slog.Error("ensureFUSEMount: trust store load failed", "error", tsErr)
+								slog.Error(
+									"ensureFUSEMount: trust store load failed",
+									"error",
+									tsErr,
+								)
 								return
 							}
 							slog.Warn("ensureFUSEMount: trust store load failed", "error", tsErr)
 						} else if _, vErr := signing.VerifyPolicyBytes(policyData, policyPath+".sig", ts); vErr != nil {
 							if sigMode == "enforce" {
-								slog.Error("ensureFUSEMount: policy signing verification failed", "error", vErr)
+								slog.Error(
+									"ensureFUSEMount: policy signing verification failed",
+									"error",
+									vErr,
+								)
 								return
 							}
-							slog.Warn("ensureFUSEMount: policy signing verification failed", "error", vErr)
+							slog.Warn(
+								"ensureFUSEMount: policy signing verification failed",
+								"error",
+								vErr,
+							)
 						}
 					} else if sigMode == "enforce" {
-						slog.Error("ensureFUSEMount: signing mode is enforce but trust_store not configured")
+						slog.Error(
+							"ensureFUSEMount: signing mode is enforce but trust_store not configured",
+						)
 						return
 					} else {
-						slog.Warn("ensureFUSEMount: signing mode is set but trust_store not configured", "mode", sigMode)
+						slog.Warn(
+							"ensureFUSEMount: signing mode is set but trust_store not configured",
+							"mode",
+							sigMode,
+						)
 					}
 				}
 
@@ -2851,7 +3450,12 @@ func (a *App) ensureFUSEMount(ctx context.Context, s *session.Session) {
 						"HOME":         os.Getenv("HOME"),
 					}
 					enforceApprovals := a.cfg.Approvals.Enabled && a.cfg.Approvals.Mode != ""
-					engine, _ = policy.NewEngineWithVariables(pol, enforceApprovals, true, policyVars)
+					engine, _ = policy.NewEngineWithVariables(
+						pol,
+						enforceApprovals,
+						true,
+						policyVars,
+					)
 				}
 			}
 		}
@@ -2874,7 +3478,11 @@ func (a *App) ensureFUSEMount(ctx context.Context, s *session.Session) {
 }
 
 // emitPackageCheckEvent publishes a package check audit event.
-func (a *App) emitPackageCheckEvent(ctx context.Context, sessionID, commandID string, verdict *pkgcheck.Verdict) {
+func (a *App) emitPackageCheckEvent(
+	ctx context.Context,
+	sessionID, commandID string,
+	verdict *pkgcheck.Verdict,
+) {
 	evType := events.EventPackageCheckCompleted
 	switch verdict.Action {
 	case pkgcheck.VerdictBlock:
@@ -2939,25 +3547,45 @@ func (a *App) setTraceContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isValidHex(req.TraceID, 32) {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "trace_id must be 32 hex characters"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"error": "trace_id must be 32 hex characters"},
+		)
 		return
 	}
 	if req.TraceID == "00000000000000000000000000000000" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "trace_id must not be all zeros"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"error": "trace_id must not be all zeros"},
+		)
 		return
 	}
 	if req.SpanID != "" {
 		if !isValidHex(req.SpanID, 16) {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "span_id must be 16 hex characters"})
+			writeJSON(
+				w,
+				http.StatusBadRequest,
+				map[string]any{"error": "span_id must be 16 hex characters"},
+			)
 			return
 		}
 		if req.SpanID == "0000000000000000" {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "span_id must not be all zeros"})
+			writeJSON(
+				w,
+				http.StatusBadRequest,
+				map[string]any{"error": "span_id must not be all zeros"},
+			)
 			return
 		}
 	}
 	if req.TraceFlags != "" && !isValidHex(req.TraceFlags, 2) {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "trace_flags must be 2 hex characters"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"error": "trace_flags must be 2 hex characters"},
+		)
 		return
 	}
 
@@ -2979,9 +3607,15 @@ func (a *App) applyRealPaths(s *session.Session, reqRealPaths *bool) {
 				"session_id", s.ID)
 			return
 		}
-		if !config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE, false) {
-			slog.Warn("session created with real_paths but enforce_without_fuse is false: outside-workspace file access will be audit-only",
-				"session_id", s.ID)
+		if !config.FileMonitorBoolWithDefault(
+			a.cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE,
+			false,
+		) {
+			slog.Warn(
+				"session created with real_paths but enforce_without_fuse is false: outside-workspace file access will be audit-only",
+				"session_id",
+				s.ID,
+			)
 		}
 	}
 }

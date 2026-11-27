@@ -12,7 +12,11 @@ database_rules:
 `)
 	d := Evaluate(tableRead("uncovered", "needs_approval"), rs, "appdb")
 	if d.Verb != VerbDeny || d.RuleName != "" {
-		t.Fatalf("verb = %v, RuleName = %q; want implicit deny (uncovered uncovered)", d.Verb, d.RuleName)
+		t.Fatalf(
+			"verb = %v, RuleName = %q; want implicit deny (uncovered uncovered)",
+			d.Verb,
+			d.RuleName,
+		)
 	}
 }
 
@@ -29,7 +33,8 @@ database_rules:
 	if d.Verb != VerbApprove {
 		t.Fatalf("verb = %v, want approve (most-restrictive of allow+approve)", d.Verb)
 	}
-	if d.Approval == nil || len(d.Approval.ContributingApproveRules) != 1 || d.Approval.ContributingApproveRules[0] != "appr-y" {
+	if d.Approval == nil || len(d.Approval.ContributingApproveRules) != 1 ||
+		d.Approval.ContributingApproveRules[0] != "appr-y" {
 		t.Errorf("ContributingApproveRules = %v, want [appr-y]", d.Approval)
 	}
 }

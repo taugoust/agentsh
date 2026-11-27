@@ -20,12 +20,20 @@ type notificationLookupPolicy struct {
 
 func (p *notificationLookupPolicy) CheckFile(context.Context, string, string) FilePolicyDecision {
 	return FilePolicyDecision{
-		Decision: "approve", EffectiveDecision: "approve", Rule: "approve-read",
-		CacheOutcome: FileApprovalCacheMiss, ApprovalScopeKey: "file:test", ApprovalCommandID: "cmd-test",
+		Decision:          "approve",
+		EffectiveDecision: "approve",
+		Rule:              "approve-read",
+		CacheOutcome:      FileApprovalCacheMiss,
+		ApprovalScopeKey:  "file:test",
+		ApprovalCommandID: "cmd-test",
 	}
 }
 
-func (p *notificationLookupPolicy) ResolveFileApproval(ctx context.Context, _, _ string, decision FilePolicyDecision) (FilePolicyDecision, error) {
+func (p *notificationLookupPolicy) ResolveFileApproval(
+	ctx context.Context,
+	_, _ string,
+	decision FilePolicyDecision,
+) (FilePolicyDecision, error) {
 	p.resolveCalls.Add(1)
 	if p.block {
 		<-ctx.Done()
@@ -41,7 +49,10 @@ type fixedFileLookupProbe struct {
 	calls  atomic.Int32
 }
 
-func (p *fixedFileLookupProbe) ProbeFileLookup(context.Context, FileLookupRequest) FileLookupResult {
+func (p *fixedFileLookupProbe) ProbeFileLookup(
+	context.Context,
+	FileLookupRequest,
+) FileLookupResult {
 	p.calls.Add(1)
 	return p.result
 }
@@ -66,21 +77,34 @@ func osGetpid() int { return unix.Getpid() }
 func TestEvaluateFileNotificationConfirmedAbsentCompletesENOENTWithoutApproval(t *testing.T) {
 	policy := &notificationLookupPolicy{}
 	handler := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true)
-	probe := &fixedFileLookupProbe{result: FileLookupResult{Class: LookupAbsent, Reason: LookupReasonNone, Errno: int32(unix.ENOENT)}}
+	probe := &fixedFileLookupProbe{
+		result: FileLookupResult{
+			Class:  LookupAbsent,
+			Reason: LookupReasonNone,
+			Errno:  int32(unix.ENOENT),
+		},
+	}
 	handler.SetFileLookupProbe(probe)
 	request, pathname := lookupNotificationRequest(t)
 
 	var responded atomic.Int32
-	evaluation := evaluateFileNotificationWithOps(context.Background(), 99, 7, handler, request, fileNotificationOps{
-		validate: func(int, uint64) error { return nil },
-		respondErrno: func(_ int, id uint64, errno int32) error {
-			if id != 7 || errno != int32(unix.ENOENT) {
-				t.Fatalf("response id=%d errno=%d", id, errno)
-			}
-			responded.Add(1)
-			return nil
+	evaluation := evaluateFileNotificationWithOps(
+		context.Background(),
+		99,
+		7,
+		handler,
+		request,
+		fileNotificationOps{
+			validate: func(int, uint64) error { return nil },
+			respondErrno: func(_ int, id uint64, errno int32) error {
+				if id != 7 || errno != int32(unix.ENOENT) {
+					t.Fatalf("response id=%d errno=%d", id, errno)
+				}
+				responded.Add(1)
+				return nil
+			},
 		},
-	})
+	)
 	runtime.KeepAlive(pathname)
 
 	if !evaluation.completed || evaluation.stale || responded.Load() != 1 {
@@ -100,17 +124,26 @@ func TestEvaluateFileNotificationConfirmedAbsentCompletesENOENTWithoutApproval(t
 func TestEvaluateFileNotificationExistingStillResolvesApproval(t *testing.T) {
 	policy := &notificationLookupPolicy{}
 	handler := NewFileHandler(policy, NewMountRegistry(), &mockFileEmitter{}, true)
-	probe := &fixedFileLookupProbe{result: FileLookupResult{Class: LookupExists, Reason: LookupReasonNone}}
+	probe := &fixedFileLookupProbe{
+		result: FileLookupResult{Class: LookupExists, Reason: LookupReasonNone},
+	}
 	handler.SetFileLookupProbe(probe)
 	request, pathname := lookupNotificationRequest(t)
 
-	evaluation := evaluateFileNotificationWithOps(context.Background(), 99, 8, handler, request, fileNotificationOps{
-		validate: func(int, uint64) error { return nil },
-		respondErrno: func(int, uint64, int32) error {
-			t.Fatal("existing lookup received direct errno")
-			return nil
+	evaluation := evaluateFileNotificationWithOps(
+		context.Background(),
+		99,
+		8,
+		handler,
+		request,
+		fileNotificationOps{
+			validate: func(int, uint64) error { return nil },
+			respondErrno: func(int, uint64, int32) error {
+				t.Fatal("existing lookup received direct errno")
+				return nil
+			},
 		},
-	})
+	)
 	runtime.KeepAlive(pathname)
 
 	if evaluation.completed || evaluation.stale || evaluation.result.Action != ActionContinue {
@@ -127,22 +160,37 @@ func TestEvaluateFileNotificationExistingStillResolvesApproval(t *testing.T) {
 func TestEvaluateFileNotificationStaleAfterProbeNeverApprovesOrResponds(t *testing.T) {
 	policy := &notificationLookupPolicy{}
 	handler := NewFileHandler(policy, NewMountRegistry(), nil, true)
-	handler.SetFileLookupProbe(&fixedFileLookupProbe{result: FileLookupResult{Class: LookupAbsent, Reason: LookupReasonNone, Errno: int32(unix.ENOENT)}})
+	handler.SetFileLookupProbe(
+		&fixedFileLookupProbe{
+			result: FileLookupResult{
+				Class:  LookupAbsent,
+				Reason: LookupReasonNone,
+				Errno:  int32(unix.ENOENT),
+			},
+		},
+	)
 	request, pathname := lookupNotificationRequest(t)
 	var validations atomic.Int32
 
-	evaluation := evaluateFileNotificationWithOps(context.Background(), 99, 9, handler, request, fileNotificationOps{
-		validate: func(int, uint64) error {
-			if validations.Add(1) >= 2 {
-				return unix.ENOENT
-			}
-			return nil
+	evaluation := evaluateFileNotificationWithOps(
+		context.Background(),
+		99,
+		9,
+		handler,
+		request,
+		fileNotificationOps{
+			validate: func(int, uint64) error {
+				if validations.Add(1) >= 2 {
+					return unix.ENOENT
+				}
+				return nil
+			},
+			respondErrno: func(int, uint64, int32) error {
+				t.Fatal("stale notification received response")
+				return nil
+			},
 		},
-		respondErrno: func(int, uint64, int32) error {
-			t.Fatal("stale notification received response")
-			return nil
-		},
-	})
+	)
 	runtime.KeepAlive(pathname)
 	if !evaluation.stale || policy.resolveCalls.Load() != 0 {
 		t.Fatalf("evaluation=%+v resolver=%d", evaluation, policy.resolveCalls.Load())
@@ -152,20 +200,31 @@ func TestEvaluateFileNotificationStaleAfterProbeNeverApprovesOrResponds(t *testi
 func TestEvaluateFileNotificationStalenessCancelsPendingResolution(t *testing.T) {
 	policy := &notificationLookupPolicy{block: true}
 	handler := NewFileHandler(policy, NewMountRegistry(), nil, true)
-	handler.SetFileLookupProbe(&fixedFileLookupProbe{result: FileLookupResult{Class: LookupExists, Reason: LookupReasonNone}})
+	handler.SetFileLookupProbe(
+		&fixedFileLookupProbe{
+			result: FileLookupResult{Class: LookupExists, Reason: LookupReasonNone},
+		},
+	)
 	request, pathname := lookupNotificationRequest(t)
 	var validations atomic.Int32
 	started := time.Now()
 
-	evaluation := evaluateFileNotificationWithOps(context.Background(), 99, 10, handler, request, fileNotificationOps{
-		validate: func(int, uint64) error {
-			if validations.Add(1) >= 3 {
-				return unix.ENOENT
-			}
-			return nil
+	evaluation := evaluateFileNotificationWithOps(
+		context.Background(),
+		99,
+		10,
+		handler,
+		request,
+		fileNotificationOps{
+			validate: func(int, uint64) error {
+				if validations.Add(1) >= 3 {
+					return unix.ENOENT
+				}
+				return nil
+			},
+			respondErrno: func(int, uint64, int32) error { return nil },
 		},
-		respondErrno: func(int, uint64, int32) error { return nil },
-	})
+	)
 	runtime.KeepAlive(pathname)
 	if !evaluation.stale || policy.resolveCalls.Load() != 1 {
 		t.Fatalf("evaluation=%+v resolver=%d", evaluation, policy.resolveCalls.Load())

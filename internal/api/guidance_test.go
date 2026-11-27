@@ -89,7 +89,10 @@ func TestGuidance_ApprovalBlocked_IsRetryable(t *testing.T) {
 				Decision:          types.DecisionApprove,
 				EffectiveDecision: types.DecisionDeny,
 				Rule:              "approve-unknown-https",
-				Approval:          &types.ApprovalInfo{Required: true, Mode: types.ApprovalModeEnforced},
+				Approval: &types.ApprovalInfo{
+					Required: true,
+					Mode:     types.ApprovalModeEnforced,
+				},
 			},
 		},
 	}

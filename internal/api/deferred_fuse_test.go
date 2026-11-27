@@ -105,7 +105,12 @@ func newDeferredTestApp(t *testing.T, sessions *session.Manager, store *composit
 			{Name: "allow-all", Commands: []string{"*"}, Decision: "allow"},
 		},
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 		NetworkRules: []policy.NetworkRule{
 			{Name: "allow-all", Domains: []string{"**"}, Decision: "allow"},
@@ -114,7 +119,19 @@ func newDeferredTestApp(t *testing.T, sessions *session.Manager, store *composit
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewApp(cfg, sessions, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	return NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 }
 
 func newDeferredTestSession(t *testing.T, mgr *session.Manager) *session.Session {
@@ -252,7 +269,11 @@ func TestEnsureFUSEMount_MountError(t *testing.T) {
 		t.Fatalf("expected 1 mount call, got %d", mfs.mountCalls.Load())
 	}
 	if s.WorkspaceMount != s.Workspace {
-		t.Fatalf("expected WorkspaceMount unchanged after mount error (%q), got %q", s.Workspace, s.WorkspaceMount)
+		t.Fatalf(
+			"expected WorkspaceMount unchanged after mount error (%q), got %q",
+			s.Workspace,
+			s.WorkspaceMount,
+		)
 	}
 }
 
@@ -357,7 +378,12 @@ func TestEnsureFUSEMount_NilPolicyAndEmitter(t *testing.T) {
 			{Name: "allow-all", Commands: []string{"*"}, Decision: "allow"},
 		},
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 		NetworkRules: []policy.NetworkRule{
 			{Name: "allow-all", Domains: []string{"**"}, Decision: "allow"},
@@ -398,7 +424,12 @@ func TestMountFUSEForSession_DeferredEventField(t *testing.T) {
 			{Name: "allow-all", Commands: []string{"*"}, Decision: "allow"},
 		},
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 		NetworkRules: []policy.NetworkRule{
 			{Name: "allow-all", Domains: []string{"**"}, Decision: "allow"},

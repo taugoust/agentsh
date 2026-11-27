@@ -21,22 +21,32 @@ func newWrapEnvTestApp(t *testing.T, enabled bool, p *policy.Policy) *App {
 
 func TestWrapEnvPolicyWire_NilWhenDisabled(t *testing.T) {
 	p := &policy.Policy{
-		EnvPolicy:    policy.EnvPolicy{Deny: []string{"FOO"}},
-		CommandRules: []policy.CommandRule{{Name: "allow-sh", Commands: []string{"sh"}, Decision: "allow"}},
+		EnvPolicy: policy.EnvPolicy{Deny: []string{"FOO"}},
+		CommandRules: []policy.CommandRule{
+			{Name: "allow-sh", Commands: []string{"sh"}, Decision: "allow"},
+		},
 	}
 	a := newWrapEnvTestApp(t, false, p)
-	if w := a.wrapEnvPolicyWire(nil, types.WrapInitRequest{AgentCommand: "/bin/sh", AgentArgs: []string{"-c", "echo hi"}}); w != nil {
+	if w := a.wrapEnvPolicyWire(
+		nil,
+		types.WrapInitRequest{AgentCommand: "/bin/sh", AgentArgs: []string{"-c", "echo hi"}},
+	); w != nil {
 		t.Errorf("flag off must yield nil wire; got %+v", w)
 	}
 }
 
 func TestWrapEnvPolicyWire_PopulatedWhenEnabled(t *testing.T) {
 	p := &policy.Policy{
-		EnvPolicy:    policy.EnvPolicy{Deny: []string{"FOO"}},
-		CommandRules: []policy.CommandRule{{Name: "allow-sh", Commands: []string{"sh"}, Decision: "allow"}},
+		EnvPolicy: policy.EnvPolicy{Deny: []string{"FOO"}},
+		CommandRules: []policy.CommandRule{
+			{Name: "allow-sh", Commands: []string{"sh"}, Decision: "allow"},
+		},
 	}
 	a := newWrapEnvTestApp(t, true, p)
-	w := a.wrapEnvPolicyWire(nil, types.WrapInitRequest{AgentCommand: "/bin/sh", AgentArgs: []string{"-c", "echo hi"}})
+	w := a.wrapEnvPolicyWire(
+		nil,
+		types.WrapInitRequest{AgentCommand: "/bin/sh", AgentArgs: []string{"-c", "echo hi"}},
+	)
 	if w == nil {
 		t.Fatal("flag on must yield a non-nil wire")
 	}
@@ -57,7 +67,10 @@ func TestWrapEnvPolicyWire_NilWhenNoEngine(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Sandbox.WrapEnvPolicy.Enabled = true
 	a := &App{cfg: cfg, policy: nil} // policyEngineFor(nil) -> a.Policy() -> nil
-	if w := a.wrapEnvPolicyWire(nil, types.WrapInitRequest{AgentCommand: "/bin/sh", AgentArgs: []string{"-c", "echo hi"}}); w != nil {
+	if w := a.wrapEnvPolicyWire(
+		nil,
+		types.WrapInitRequest{AgentCommand: "/bin/sh", AgentArgs: []string{"-c", "echo hi"}},
+	); w != nil {
 		t.Errorf("flag on but nil engine must yield nil wire (fail-open); got %+v", w)
 	}
 }

@@ -20,7 +20,9 @@ import (
 
 const detachedRuntimeCleanupTimeout = 30 * time.Second
 
-var errLegacyRuntimeProviderIdentity = errors.New("legacy detached session has no runtime-provider identity")
+var errLegacyRuntimeProviderIdentity = errors.New(
+	"legacy detached session has no runtime-provider identity",
+)
 
 type nativeRuntimeProvider struct {
 	configPath      string
@@ -29,12 +31,20 @@ type nativeRuntimeProvider struct {
 
 func (p *nativeRuntimeProvider) Name() string { return runtimeprovider.NativeProvider }
 
-func (p *nativeRuntimeProvider) Preflight(_ context.Context, request runtimeprovider.Request) (runtimeprovider.Capabilities, error) {
+func (p *nativeRuntimeProvider) Preflight(
+	_ context.Context,
+	request runtimeprovider.Request,
+) (runtimeprovider.Capabilities, error) {
 	if p == nil || p.preflightConfig == nil {
-		return runtimeprovider.Capabilities{}, fmt.Errorf("native runtime provider configuration is unavailable")
+		return runtimeprovider.Capabilities{}, fmt.Errorf(
+			"native runtime provider configuration is unavailable",
+		)
 	}
 	if request.Provider != runtimeprovider.NativeProvider {
-		return runtimeprovider.Capabilities{}, fmt.Errorf("native runtime provider cannot start provider %q", request.Provider)
+		return runtimeprovider.Capabilities{}, fmt.Errorf(
+			"native runtime provider cannot start provider %q",
+			request.Provider,
+		)
 	}
 	return runtimeprovider.Capabilities{
 		ContractVersion: runtimeprovider.ContractVersion,
@@ -44,22 +54,48 @@ func (p *nativeRuntimeProvider) Preflight(_ context.Context, request runtimeprov
 	}, nil
 }
 
-func (p *nativeRuntimeProvider) Start(ctx context.Context, request runtimeprovider.Request) (runtimeprovider.Instance, error) {
-	result, err := startNativeDetachedSupervisorSession(ctx, request, p.configPath, p.preflightConfig)
+func (p *nativeRuntimeProvider) Start(
+	ctx context.Context,
+	request runtimeprovider.Request,
+) (runtimeprovider.Instance, error) {
+	result, err := startNativeDetachedSupervisorSession(
+		ctx,
+		request,
+		p.configPath,
+		p.preflightConfig,
+	)
 	if err != nil {
 		// The native launcher may have crossed process start before a readiness
 		// failure. Return an exact protected-metadata handle when available so the
 		// controller verifies teardown instead of merely assuming the launcher's
 		// best-effort defer succeeded.
-		if meta, stateDir, readErr := readSupervisorMetadata(request.SessionID); readErr == nil && filepath.Clean(stateDir) == filepath.Clean(request.StateDir) {
-			return newNativeRuntimeInstance(request.Profile, stateDir, meta, nil, detached.RuntimeStatus{}), err
+		if meta, stateDir, readErr := readSupervisorMetadata(
+			request.SessionID,
+		); readErr == nil &&
+			filepath.Clean(stateDir) == filepath.Clean(request.StateDir) {
+			return newNativeRuntimeInstance(
+				request.Profile,
+				stateDir,
+				meta,
+				nil,
+				detached.RuntimeStatus{},
+			), err
 		}
 		return nil, err
 	}
-	return newNativeRuntimeInstance(request.Profile, request.StateDir, result.supervisorMetadata, &result.Session, detached.RuntimeStatus{}), nil
+	return newNativeRuntimeInstance(
+		request.Profile,
+		request.StateDir,
+		result.supervisorMetadata,
+		&result.Session,
+		detached.RuntimeStatus{},
+	), nil
 }
 
-func (p *nativeRuntimeProvider) Open(_ context.Context, manifest runtimeprovider.Manifest) (runtimeprovider.Instance, error) {
+func (p *nativeRuntimeProvider) Open(
+	_ context.Context,
+	manifest runtimeprovider.Manifest,
+) (runtimeprovider.Instance, error) {
 	meta, stateDir, err := readSupervisorMetadata(manifest.SessionID)
 	if err != nil {
 		return nil, err
@@ -71,12 +107,24 @@ func (p *nativeRuntimeProvider) Open(_ context.Context, manifest runtimeprovider
 		(runtimeprovider.Endpoint{Transport: "unix", Address: meta.SupervisorSock}) != manifest.Endpoint {
 		return nil, fmt.Errorf("native runtime exact incarnation mismatch")
 	}
-	return newNativeRuntimeInstance(manifest.Profile, stateDir, meta, nil, detached.RuntimeStatus{}), nil
+	return newNativeRuntimeInstance(
+		manifest.Profile,
+		stateDir,
+		meta,
+		nil,
+		detached.RuntimeStatus{},
+	), nil
 }
 
-func (p *nativeRuntimeProvider) OpenUnprovisionedCleanup(_ context.Context, manifest runtimeprovider.Manifest) (runtimeprovider.Instance, error) {
-	if manifest.Identity != (runtimeprovider.Identity{}) || manifest.Endpoint != (runtimeprovider.Endpoint{}) {
-		return nil, fmt.Errorf("native unprovisioned cleanup requires an unpublished runtime identity")
+func (p *nativeRuntimeProvider) OpenUnprovisionedCleanup(
+	_ context.Context,
+	manifest runtimeprovider.Manifest,
+) (runtimeprovider.Instance, error) {
+	if manifest.Identity != (runtimeprovider.Identity{}) ||
+		manifest.Endpoint != (runtimeprovider.Endpoint{}) {
+		return nil, fmt.Errorf(
+			"native unprovisioned cleanup requires an unpublished runtime identity",
+		)
 	}
 	meta, stateDir, err := readSupervisorMetadata(manifest.SessionID)
 	if err != nil {
@@ -86,25 +134,47 @@ func (p *nativeRuntimeProvider) OpenUnprovisionedCleanup(_ context.Context, mani
 		return nil, fmt.Errorf("native runtime state directory identity mismatch")
 	}
 	recovery, recoveryErr := detached.ReadRecoveryManifest(stateDir)
-	if err := validateDetachedStopAuthority(manifest.SessionID, stateDir, meta, recovery, recoveryErr); err != nil {
+	if err := validateDetachedStopAuthority(
+		manifest.SessionID,
+		stateDir,
+		meta,
+		recovery,
+		recoveryErr,
+	); err != nil {
 		return nil, err
 	}
 	identity := nativeRuntimeIdentity(manifest.Profile, meta)
 	if err := identity.ValidateComplete(); err != nil {
-		if meta.Generation != 0 || meta.IncarnationID != "" || meta.OwnerPID != 0 || meta.OwnerStartIdentity != "" || meta.BootID != "" || meta.State != detached.LifecycleProvisioning {
-			return nil, fmt.Errorf("native runtime has partially published an untrusted incarnation")
+		if meta.Generation != 0 || meta.IncarnationID != "" || meta.OwnerPID != 0 ||
+			meta.OwnerStartIdentity != "" ||
+			meta.BootID != "" ||
+			meta.State != detached.LifecycleProvisioning {
+			return nil, fmt.Errorf(
+				"native runtime has partially published an untrusted incarnation",
+			)
 		}
 		if _, socketErr := os.Lstat(meta.SupervisorSock); !errors.Is(socketErr, os.ErrNotExist) {
 			if socketErr == nil {
-				return nil, fmt.Errorf("native unprovisioned runtime has a live or ambiguous supervisor socket")
+				return nil, fmt.Errorf(
+					"native unprovisioned runtime has a live or ambiguous supervisor socket",
+				)
 			}
 			return nil, fmt.Errorf("inspect native unprovisioned supervisor socket: %w", socketErr)
 		}
 	}
-	return newNativeRuntimeInstance(manifest.Profile, stateDir, meta, nil, detached.RuntimeStatus{}), nil
+	return newNativeRuntimeInstance(
+		manifest.Profile,
+		stateDir,
+		meta,
+		nil,
+		detached.RuntimeStatus{},
+	), nil
 }
 
-func (p *nativeRuntimeProvider) Recover(ctx context.Context, manifest runtimeprovider.Manifest) (runtimeprovider.Instance, error) {
+func (p *nativeRuntimeProvider) Recover(
+	ctx context.Context,
+	manifest runtimeprovider.Manifest,
+) (runtimeprovider.Instance, error) {
 	status, err := recoverNativeDetachedSession(ctx, manifest.SessionID)
 	if err != nil {
 		// Recovery may have launched a replacement before readiness failed. Bind
@@ -113,8 +183,15 @@ func (p *nativeRuntimeProvider) Recover(ctx context.Context, manifest runtimepro
 		if meta, stateDir, readErr := readSupervisorMetadata(manifest.SessionID); readErr == nil &&
 			filepath.Clean(stateDir) == filepath.Clean(manifest.StateDir) {
 			identity := nativeRuntimeIdentity(manifest.Profile, meta)
-			if identity.Generation > manifest.Identity.Generation && identity.IncarnationID != manifest.Identity.IncarnationID {
-				return newNativeRuntimeInstance(manifest.Profile, stateDir, meta, nil, detached.RuntimeStatus{}), err
+			if identity.Generation > manifest.Identity.Generation &&
+				identity.IncarnationID != manifest.Identity.IncarnationID {
+				return newNativeRuntimeInstance(
+					manifest.Profile,
+					stateDir,
+					meta,
+					nil,
+					detached.RuntimeStatus{},
+				), err
 			}
 		}
 		return nil, err
@@ -137,7 +214,12 @@ type nativeRuntimeInstance struct {
 	cleanupErr  error
 }
 
-func newNativeRuntimeInstance(profile, stateDir string, meta supervisorMetadata, session *types.Session, status detached.RuntimeStatus) *nativeRuntimeInstance {
+func newNativeRuntimeInstance(
+	profile, stateDir string,
+	meta supervisorMetadata,
+	session *types.Session,
+	status detached.RuntimeStatus,
+) *nativeRuntimeInstance {
 	return &nativeRuntimeInstance{
 		profile: profile, stateDir: stateDir, metadata: meta,
 		startedSession: session, recoveredStatus: status,
@@ -160,11 +242,15 @@ func (i *nativeRuntimeInstance) Probe(ctx context.Context) (runtimeprovider.Stat
 	if filepath.Clean(stateDir) != filepath.Clean(i.stateDir) {
 		return runtimeprovider.Status{}, fmt.Errorf("native runtime probe state directory mismatch")
 	}
-	if nativeRuntimeIdentity(i.profile, meta) != i.Identity() || meta.SupervisorSock != i.metadata.SupervisorSock {
-		return runtimeprovider.Status{}, fmt.Errorf("native runtime exact incarnation changed before probe")
+	if nativeRuntimeIdentity(i.profile, meta) != i.Identity() ||
+		meta.SupervisorSock != i.metadata.SupervisorSock {
+		return runtimeprovider.Status{}, fmt.Errorf(
+			"native runtime exact incarnation changed before probe",
+		)
 	}
 	status := i.recoveredStatus
-	if status.SessionID == "" || (status.LifecycleState != detached.LifecycleStopped && status.LifecycleState != detached.LifecycleFinalized) {
+	if status.SessionID == "" ||
+		(status.LifecycleState != detached.LifecycleStopped && status.LifecycleState != detached.LifecycleFinalized) {
 		client := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", 3*time.Second)
 		status, err = detachedRuntimeHandshakeStatus(ctx, client, meta)
 		if err != nil {
@@ -180,15 +266,24 @@ func (i *nativeRuntimeInstance) Probe(ctx context.Context) (runtimeprovider.Stat
 	}, nil
 }
 
-func (i *nativeRuntimeInstance) ControlPlane(ctx context.Context) (runtimeprovider.ControlPlaneSnapshot, error) {
+func (i *nativeRuntimeInstance) ControlPlane(
+	ctx context.Context,
+) (runtimeprovider.ControlPlaneSnapshot, error) {
 	meta, stateDir, err := readSupervisorMetadata(i.metadata.SessionID)
 	if err != nil {
 		return runtimeprovider.ControlPlaneSnapshot{}, err
 	}
-	if filepath.Clean(stateDir) != filepath.Clean(i.stateDir) || nativeRuntimeIdentity(i.profile, meta) != i.Identity() {
-		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf("native runtime control-plane incarnation mismatch")
+	if filepath.Clean(stateDir) != filepath.Clean(i.stateDir) ||
+		nativeRuntimeIdentity(i.profile, meta) != i.Identity() {
+		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf(
+			"native runtime control-plane incarnation mismatch",
+		)
 	}
-	snapshot := runtimeprovider.ControlPlaneSnapshot{Metadata: meta, StateDir: stateDir, Status: i.recoveredStatus}
+	snapshot := runtimeprovider.ControlPlaneSnapshot{
+		Metadata: meta,
+		StateDir: stateDir,
+		Status:   i.recoveredStatus,
+	}
 	if i.startedSession != nil {
 		snapshot.Session = *i.startedSession
 	}
@@ -253,7 +348,13 @@ func nativeProviderState(state string) (runtimeprovider.State, bool) {
 	}
 }
 
-func prepareDetachedRuntimeRequest(requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, requestedProfile string) (runtimeprovider.Request, string, *config.Config, error) {
+func prepareDetachedRuntimeRequest(
+	requestedSessionID string,
+	workspaces []string,
+	workspaceMode, policyName, runtimeHomeMode, envBaseMode string,
+	envInherit []string,
+	requestedProfile string,
+) (runtimeprovider.Request, string, *config.Config, error) {
 	if len(workspaces) == 0 {
 		workspaces = []string{"."}
 	}
@@ -274,7 +375,9 @@ func prepareDetachedRuntimeRequest(requestedSessionID string, workspaces []strin
 		realWorkspaces = append(realWorkspaces, realWorkspace)
 	}
 	if len(realWorkspaces) > 1 && workspaceMode != string(types.WorkspaceModeShadow) {
-		return runtimeprovider.Request{}, "", nil, fmt.Errorf("multiple workspaces require workspace_mode=shadow")
+		return runtimeprovider.Request{}, "", nil, fmt.Errorf(
+			"multiple workspaces require workspace_mode=shadow",
+		)
 	}
 
 	configPath, _ := findDetachedSupervisorConfigPath()
@@ -293,17 +396,27 @@ func prepareDetachedRuntimeRequest(requestedSessionID string, workspaces []strin
 	case runtimeprovider.NativeProvider:
 	case externalrunner.ProviderName:
 		if !cfg.Sessions.Runtime.EnableExternalRunners {
-			return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q is disabled by the external-runner operator ceiling", profileName)
+			return runtimeprovider.Request{}, "", nil, fmt.Errorf(
+				"runtime profile %q is disabled by the external-runner operator ceiling",
+				profileName,
+			)
 		}
 		externalProfile, profileErr := externalrunner.ReadProfile(profile.ProfileFile)
 		if profileErr != nil {
 			return runtimeprovider.Request{}, "", nil, profileErr
 		}
 		if externalProfile.Name != profileName || externalProfile.Provider != profile.Provider {
-			return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q does not match its operator profile file", profileName)
+			return runtimeprovider.Request{}, "", nil, fmt.Errorf(
+				"runtime profile %q does not match its operator profile file",
+				profileName,
+			)
 		}
 	default:
-		return runtimeprovider.Request{}, "", nil, fmt.Errorf("runtime profile %q selects unavailable provider %q", profileName, profile.Provider)
+		return runtimeprovider.Request{}, "", nil, fmt.Errorf(
+			"runtime profile %q selects unavailable provider %q",
+			profileName,
+			profile.Provider,
+		)
 	}
 
 	sessionID, err := detachedSessionID(requestedSessionID)
@@ -316,8 +429,14 @@ func prepareDetachedRuntimeRequest(requestedSessionID string, workspaces []strin
 	}
 	realWorkspace := realWorkspaces[0]
 	req := types.CreateSessionRequest{
-		ID: sessionID, Workspace: realWorkspace, Policy: policyName, WorkspaceMode: workspaceMode,
-		Home: userHomeDir(), RuntimeHomeMode: runtimeHomeMode, EnvBaseMode: envBaseMode, EnvInherit: envInherit,
+		ID:              sessionID,
+		Workspace:       realWorkspace,
+		Policy:          policyName,
+		WorkspaceMode:   workspaceMode,
+		Home:            userHomeDir(),
+		RuntimeHomeMode: runtimeHomeMode,
+		EnvBaseMode:     envBaseMode,
+		EnvInherit:      envInherit,
 	}
 	if len(realWorkspaces) > 1 {
 		for _, path := range realWorkspaces {
@@ -336,7 +455,10 @@ func prepareDetachedRuntimeRequest(requestedSessionID string, workspaces []strin
 	}, configPath, cfg, nil
 }
 
-func detachedRuntimeRegistry(configPath string, cfg *config.Config) (*runtimeprovider.Registry, error) {
+func detachedRuntimeRegistry(
+	configPath string,
+	cfg *config.Config,
+) (*runtimeprovider.Registry, error) {
 	executable, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -348,16 +470,29 @@ func detachedRuntimeRegistry(configPath string, cfg *config.Config) (*runtimepro
 		}
 	}
 	external, err := externalrunner.NewProvider(externalrunner.ProviderOptions{
-		Enabled: cfg.Sessions.Runtime.EnableExternalRunners, Profiles: profiles,
-		CIDLeaseRoot: filepath.Join(detachedSessionsRoot(), ".external-runner-cids"), MonitorExecutable: executable,
+		Enabled:  cfg.Sessions.Runtime.EnableExternalRunners,
+		Profiles: profiles,
+		CIDLeaseRoot: filepath.Join(
+			detachedSessionsRoot(),
+			".external-runner-cids",
+		),
+		MonitorExecutable: executable,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return runtimeprovider.NewRegistry(&nativeRuntimeProvider{configPath: configPath, preflightConfig: cfg}, external)
+	return runtimeprovider.NewRegistry(
+		&nativeRuntimeProvider{configPath: configPath, preflightConfig: cfg},
+		external,
+	)
 }
 
-func startDetachedRuntime(ctx context.Context, request runtimeprovider.Request, configPath string, cfg *config.Config) (*detachedSessionStartResult, error) {
+func startDetachedRuntime(
+	ctx context.Context,
+	request runtimeprovider.Request,
+	configPath string,
+	cfg *config.Config,
+) (*detachedSessionStartResult, error) {
 	registry, err := detachedRuntimeRegistry(configPath, cfg)
 	if err != nil {
 		return nil, err
@@ -376,7 +511,13 @@ func startDetachedRuntime(ctx context.Context, request runtimeprovider.Request, 
 		if readErr != nil {
 			return errors.Join(cause, fmt.Errorf("read committed runtime for cleanup: %w", readErr))
 		}
-		cleanupErr := controller.Stop(context.Background(), provider, request.StateDir, manifest, runtimeprovider.StopReasonStartupFailed)
+		cleanupErr := controller.Stop(
+			context.Background(),
+			provider,
+			request.StateDir,
+			manifest,
+			runtimeprovider.StopReasonStartupFailed,
+		)
 		return errors.Join(cause, cleanupErr)
 	}
 	snapshot, err := instance.ControlPlane(ctx)
@@ -384,7 +525,9 @@ func startDetachedRuntime(ctx context.Context, request runtimeprovider.Request, 
 		return nil, cleanupCommitted(fmt.Errorf("read runtime provider control plane: %w", err))
 	}
 	if snapshot.Session.ID == "" {
-		return nil, cleanupCommitted(fmt.Errorf("runtime provider %q returned no detached session result", request.Provider))
+		return nil, cleanupCommitted(
+			fmt.Errorf("runtime provider %q returned no detached session result", request.Provider),
+		)
 	}
 	return &detachedSessionStartResult{
 		supervisorMetadata: snapshot.Metadata,
@@ -393,11 +536,16 @@ func startDetachedRuntime(ctx context.Context, request runtimeprovider.Request, 
 	}, nil
 }
 
-func runtimeManifestForDetachedSession(sessionID, stateDir string) (runtimeprovider.Manifest, bool, error) {
+func runtimeManifestForDetachedSession(
+	sessionID, stateDir string,
+) (runtimeprovider.Manifest, bool, error) {
 	manifest, err := runtimeprovider.ReadManifest(stateDir)
 	if err == nil {
-		if manifest.SessionID != sessionID || filepath.Clean(manifest.StateDir) != filepath.Clean(stateDir) {
-			return runtimeprovider.Manifest{}, false, fmt.Errorf("runtime-provider manifest identity mismatch")
+		if manifest.SessionID != sessionID ||
+			filepath.Clean(manifest.StateDir) != filepath.Clean(stateDir) {
+			return runtimeprovider.Manifest{}, false, fmt.Errorf(
+				"runtime-provider manifest identity mismatch",
+			)
 		}
 		return manifest, false, nil
 	}
@@ -412,7 +560,8 @@ func runtimeManifestForDetachedSession(sessionID, stateDir string) (runtimeprovi
 	if metaErr != nil {
 		return runtimeprovider.Manifest{}, false, metaErr
 	}
-	if meta.ProtocolVersion < detached.ProtocolVersion || meta.Generation == 0 || strings.TrimSpace(meta.IncarnationID) == "" {
+	if meta.ProtocolVersion < detached.ProtocolVersion || meta.Generation == 0 ||
+		strings.TrimSpace(meta.IncarnationID) == "" {
 		return runtimeprovider.Manifest{}, true, errLegacyRuntimeProviderIdentity
 	}
 	state, cleanupComplete := inferredRuntimeState(recovery.State)
@@ -432,10 +581,16 @@ func runtimeManifestForDetachedSession(sessionID, stateDir string) (runtimeprovi
 	}
 	if meta.Generation > 0 && strings.TrimSpace(meta.IncarnationID) != "" {
 		manifest.Identity = nativeRuntimeIdentity(runtimeprovider.DefaultProfile, meta)
-		manifest.Endpoint = runtimeprovider.Endpoint{Transport: "unix", Address: meta.SupervisorSock}
+		manifest.Endpoint = runtimeprovider.Endpoint{
+			Transport: "unix",
+			Address:   meta.SupervisorSock,
+		}
 	}
 	if err := manifest.Validate(); err != nil {
-		return runtimeprovider.Manifest{}, false, fmt.Errorf("infer legacy native runtime provider: %w", err)
+		return runtimeprovider.Manifest{}, false, fmt.Errorf(
+			"infer legacy native runtime provider: %w",
+			err,
+		)
 	}
 	return manifest, true, nil
 }
@@ -460,13 +615,17 @@ func syncNativeRuntimeProviderManifestLocked(stateDir string, meta supervisorMet
 	if err != nil {
 		return err
 	}
-	if manifest.Provider != runtimeprovider.NativeProvider || manifest.SessionID != meta.SessionID || filepath.Clean(manifest.StateDir) != filepath.Clean(stateDir) {
+	if manifest.Provider != runtimeprovider.NativeProvider ||
+		manifest.SessionID != meta.SessionID ||
+		filepath.Clean(manifest.StateDir) != filepath.Clean(stateDir) {
 		return fmt.Errorf("native runtime-provider manifest identity mismatch")
 	}
-	if manifest.State == runtimeprovider.StateStopping || manifest.State == runtimeprovider.StateStopped {
+	if manifest.State == runtimeprovider.StateStopping ||
+		manifest.State == runtimeprovider.StateStopped {
 		return nil
 	}
-	if manifest.CleanupPending || (!manifest.CleanupIntentKnown && manifest.State == runtimeprovider.StateFailed && !manifest.CleanupComplete) {
+	if manifest.CleanupPending ||
+		(!manifest.CleanupIntentKnown && manifest.State == runtimeprovider.StateFailed && !manifest.CleanupComplete) {
 		return fmt.Errorf("native runtime-provider cleanup debt is absorbing")
 	}
 	identity := nativeRuntimeIdentity(manifest.Profile, meta)
@@ -532,16 +691,27 @@ func recoverDetachedSession(ctx context.Context, sessionID string) (detached.Run
 	if err != nil {
 		return detached.RuntimeStatus{}, err
 	}
-	instance, err := (runtimeprovider.Controller{CleanupTimeout: detachedRuntimeCleanupTimeout}).Recover(ctx, selected, stateDir, manifest)
+	instance, err := (runtimeprovider.Controller{CleanupTimeout: detachedRuntimeCleanupTimeout}).Recover(
+		ctx,
+		selected,
+		stateDir,
+		manifest,
+	)
 	if err != nil {
 		return detached.RuntimeStatus{}, err
 	}
 	snapshot, err := instance.ControlPlane(ctx)
 	if err != nil {
-		return detached.RuntimeStatus{}, fmt.Errorf("read recovered runtime provider control plane: %w", err)
+		return detached.RuntimeStatus{}, fmt.Errorf(
+			"read recovered runtime provider control plane: %w",
+			err,
+		)
 	}
 	if snapshot.Status.SessionID == "" {
-		return detached.RuntimeStatus{}, fmt.Errorf("runtime provider %q returned no detached recovery status", manifest.Provider)
+		return detached.RuntimeStatus{}, fmt.Errorf(
+			"runtime provider %q returned no detached recovery status",
+			manifest.Provider,
+		)
 	}
 	return snapshot.Status, nil
 }
@@ -569,10 +739,18 @@ func stopDetachedSessionExact(ctx context.Context, sessionID string) error {
 	if err != nil {
 		return err
 	}
-	return (runtimeprovider.Controller{CleanupTimeout: detachedRuntimeCleanupTimeout}).Stop(ctx, provider, stateDir, manifest, runtimeprovider.StopReasonUser)
+	return (runtimeprovider.Controller{CleanupTimeout: detachedRuntimeCleanupTimeout}).Stop(
+		ctx,
+		provider,
+		stateDir,
+		manifest,
+		runtimeprovider.StopReasonUser,
+	)
 }
 
-func detachedRuntimeRegistryForManifest(manifest runtimeprovider.Manifest) (*runtimeprovider.Registry, error) {
+func detachedRuntimeRegistryForManifest(
+	manifest runtimeprovider.Manifest,
+) (*runtimeprovider.Registry, error) {
 	native := &nativeRuntimeProvider{}
 	if manifest.Provider != externalrunner.ProviderName {
 		return runtimeprovider.NewRegistry(native)

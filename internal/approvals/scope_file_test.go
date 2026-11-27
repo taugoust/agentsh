@@ -30,7 +30,8 @@ func TestScopeFields_ExportsScopeFields(t *testing.T) {
 		t.Fatal("NewFileScope returned !ok")
 	}
 	fields := ScopeFields(scope)
-	if fields["scope_kind"] != "file" || fields["scope_key"] != "file:write:/workspace/out.txt" || fields["scope_label"] != "write /workspace/out.txt" {
+	if fields["scope_kind"] != "file" || fields["scope_key"] != "file:write:/workspace/out.txt" ||
+		fields["scope_label"] != "write /workspace/out.txt" {
 		t.Fatalf("unexpected fields: %#v", fields)
 	}
 }

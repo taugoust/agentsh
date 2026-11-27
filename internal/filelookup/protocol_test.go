@@ -44,7 +44,12 @@ func TestProtocolRejectsUnknownResultEnums(t *testing.T) {
 }
 
 func TestProtocolHelloRoundTrip(t *testing.T) {
-	want := Hello{WrapperPID: 1, PayloadPID: 2, MaxPacketBytes: MaxPacketBytes, WorkerTimeoutMS: 200}
+	want := Hello{
+		WrapperPID:      1,
+		PayloadPID:      2,
+		MaxPacketBytes:  MaxPacketBytes,
+		WorkerTimeoutMS: 200,
+	}
 	got, err := DecodeHello(EncodeHello(want))
 	if err != nil {
 		t.Fatal(err)

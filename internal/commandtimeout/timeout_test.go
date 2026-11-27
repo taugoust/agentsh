@@ -18,7 +18,11 @@ func TestCeilMillisecondsNeverShortensDuration(t *testing.T) {
 		{name: "sub millisecond", duration: 999 * time.Microsecond, want: 1},
 		{name: "integral millisecond", duration: time.Millisecond, want: 1},
 		{name: "fractional millisecond", duration: time.Millisecond + time.Nanosecond, want: 2},
-		{name: "maximum duration does not overflow", duration: time.Duration(1<<63 - 1), want: 9_223_372_036_855},
+		{
+			name:     "maximum duration does not overflow",
+			duration: time.Duration(1<<63 - 1),
+			want:     9_223_372_036_855,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -37,11 +41,13 @@ func TestParseRequestSeparatesCallerValidationFromPolicyResolution(t *testing.T)
 	}
 
 	capped := ResolveParsed(parsed, time.Second)
-	if capped.Duration != time.Second || capped.Metadata.Source != types.CommandTimeoutSourcePolicyCap {
+	if capped.Duration != time.Second ||
+		capped.Metadata.Source != types.CommandTimeoutSourcePolicyCap {
 		t.Fatalf("capped resolution = %+v", capped)
 	}
 	explicit := ResolveParsed(parsed, 3*time.Second)
-	if explicit.Duration != 2*time.Second || explicit.Metadata.Source != types.CommandTimeoutSourceExplicit {
+	if explicit.Duration != 2*time.Second ||
+		explicit.Metadata.Source != types.CommandTimeoutSourceExplicit {
 		t.Fatalf("explicit resolution = %+v", explicit)
 	}
 
@@ -61,7 +67,10 @@ func TestResolveRoundsFractionalMetadataUp(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolution.Duration != 1900*time.Microsecond || resolution.Metadata.RequestedMS == nil || *resolution.Metadata.RequestedMS != 2 || resolution.Metadata.EffectiveMS != 2 || resolution.Metadata.Source != types.CommandTimeoutSourceExplicit {
+		if resolution.Duration != 1900*time.Microsecond || resolution.Metadata.RequestedMS == nil ||
+			*resolution.Metadata.RequestedMS != 2 ||
+			resolution.Metadata.EffectiveMS != 2 ||
+			resolution.Metadata.Source != types.CommandTimeoutSourceExplicit {
 			t.Fatalf("resolution = %+v", resolution)
 		}
 	})
@@ -72,7 +81,10 @@ func TestResolveRoundsFractionalMetadataUp(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolution.Duration != 1900*time.Microsecond || resolution.Metadata.RequestedMS == nil || *resolution.Metadata.RequestedMS != 3 || resolution.Metadata.EffectiveMS != 2 || resolution.Metadata.Source != types.CommandTimeoutSourcePolicyCap {
+		if resolution.Duration != 1900*time.Microsecond || resolution.Metadata.RequestedMS == nil ||
+			*resolution.Metadata.RequestedMS != 3 ||
+			resolution.Metadata.EffectiveMS != 2 ||
+			resolution.Metadata.Source != types.CommandTimeoutSourcePolicyCap {
 			t.Fatalf("resolution = %+v", resolution)
 		}
 	})
@@ -82,7 +94,9 @@ func TestResolveRoundsFractionalMetadataUp(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolution.Duration != 1900*time.Microsecond || resolution.Metadata.RequestedMS != nil || resolution.Metadata.EffectiveMS != 2 || resolution.Metadata.Source != types.CommandTimeoutSourcePolicyDefault {
+		if resolution.Duration != 1900*time.Microsecond || resolution.Metadata.RequestedMS != nil ||
+			resolution.Metadata.EffectiveMS != 2 ||
+			resolution.Metadata.Source != types.CommandTimeoutSourcePolicyDefault {
 			t.Fatalf("resolution = %+v", resolution)
 		}
 	})
@@ -90,7 +104,8 @@ func TestResolveRoundsFractionalMetadataUp(t *testing.T) {
 
 func TestSessionMetadataRoundsFractionalPolicyUp(t *testing.T) {
 	metadata := SessionMetadata(1900 * time.Microsecond)
-	if metadata.DefaultMS != 2 || metadata.MaximumMS == nil || *metadata.MaximumMS != 2 || metadata.Source != types.SessionCommandTimeoutSourcePolicy {
+	if metadata.DefaultMS != 2 || metadata.MaximumMS == nil || *metadata.MaximumMS != 2 ||
+		metadata.Source != types.SessionCommandTimeoutSourcePolicy {
 		t.Fatalf("metadata = %+v", metadata)
 	}
 }

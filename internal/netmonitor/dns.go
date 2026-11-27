@@ -34,7 +34,17 @@ type DNSInterceptor struct {
 	upstream string
 }
 
-func StartDNS(listenAddr string, upstream string, sessionID string, sess *session.Session, dnsCache *DNSCache, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, correlationMap *redirect.CorrelationMap) (*DNSInterceptor, int, error) {
+func StartDNS(
+	listenAddr string,
+	upstream string,
+	sessionID string,
+	sess *session.Session,
+	dnsCache *DNSCache,
+	engine *policy.Engine,
+	approvalsMgr *approvals.Manager,
+	emit Emitter,
+	correlationMap *redirect.CorrelationMap,
+) (*DNSInterceptor, int, error) {
 	if upstream == "" {
 		upstream = "8.8.8.8:53"
 	}
@@ -178,7 +188,13 @@ func (d *DNSInterceptor) handle(clientAddr net.Addr, query []byte) error {
 
 // handleDNSRedirect processes a DNS query that matches a redirect rule.
 // It returns a synthetic DNS response with the redirect IP instead of querying upstream.
-func (d *DNSInterceptor) handleDNSRedirect(ctx context.Context, clientAddr net.Addr, query []byte, domain, commandID string, result *policy.DnsRedirectResult) error {
+func (d *DNSInterceptor) handleDNSRedirect(
+	ctx context.Context,
+	clientAddr net.Addr,
+	query []byte,
+	domain, commandID string,
+	result *policy.DnsRedirectResult,
+) error {
 	redirectIP := net.ParseIP(result.ResolveTo)
 	if redirectIP == nil {
 		// Invalid IP in redirect rule, fall through to normal resolution
@@ -226,15 +242,29 @@ func (d *DNSInterceptor) handleDNSRedirect(ctx context.Context, clientAddr net.A
 	return nil
 }
 
-func (d *DNSInterceptor) policyDecision(ctx context.Context, domain string, port int) policy.Decision {
+func (d *DNSInterceptor) policyDecision(
+	ctx context.Context,
+	domain string,
+	port int,
+) policy.Decision {
 	if d.policy == nil {
-		return policy.Decision{PolicyDecision: types.DecisionAllow, EffectiveDecision: types.DecisionAllow}
+		return policy.Decision{
+			PolicyDecision:    types.DecisionAllow,
+			EffectiveDecision: types.DecisionAllow,
+		}
 	}
 	return d.policy.CheckNetworkCtx(ctx, domain, port)
 }
 
-func (d *DNSInterceptor) maybeApprove(ctx context.Context, commandID string, dec policy.Decision, kind string, target string) policy.Decision {
-	if dec.PolicyDecision != types.DecisionApprove || dec.EffectiveDecision != types.DecisionApprove {
+func (d *DNSInterceptor) maybeApprove(
+	ctx context.Context,
+	commandID string,
+	dec policy.Decision,
+	kind string,
+	target string,
+) policy.Decision {
+	if dec.PolicyDecision != types.DecisionApprove ||
+		dec.EffectiveDecision != types.DecisionApprove {
 		return dec
 	}
 	if d.approvals == nil {
@@ -403,11 +433,19 @@ func parseDNSDomain(msg []byte) string {
 		}
 		// compression not handled
 		if l&0xC0 != 0 {
-			fmt.Fprintf(os.Stderr, "dns: parse failed, compression pointer at offset %d not supported\n", i-1)
+			fmt.Fprintf(
+				os.Stderr,
+				"dns: parse failed, compression pointer at offset %d not supported\n",
+				i-1,
+			)
 			return ""
 		}
 		if i+l > len(msg) {
-			fmt.Fprintf(os.Stderr, "dns: parse failed, label extends beyond message at offset %d\n", i)
+			fmt.Fprintf(
+				os.Stderr,
+				"dns: parse failed, label extends beyond message at offset %d\n",
+				i,
+			)
 			return ""
 		}
 		if out != "" {

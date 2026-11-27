@@ -70,7 +70,13 @@ func TestReadOpenHowExact_AcceptsOnlyZeroTrailingBytes(t *testing.T) {
 
 func TestReadOpenHowExact_RejectsShortPageBoundaryObject(t *testing.T) {
 	pageSize := os.Getpagesize()
-	mapping, err := unix.Mmap(-1, 0, pageSize*2, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_ANON|unix.MAP_PRIVATE)
+	mapping, err := unix.Mmap(
+		-1,
+		0,
+		pageSize*2,
+		unix.PROT_READ|unix.PROT_WRITE,
+		unix.MAP_ANON|unix.MAP_PRIVATE,
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = unix.Mprotect(mapping[pageSize:], unix.PROT_READ|unix.PROT_WRITE)

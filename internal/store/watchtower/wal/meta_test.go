@@ -8,7 +8,12 @@ import (
 
 func TestMeta_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	m := Meta{AckHighWatermarkSeq: 42, AckHighWatermarkGen: 7, SessionID: "01HX", KeyFingerprint: "sha256:abcd"}
+	m := Meta{
+		AckHighWatermarkSeq: 42,
+		AckHighWatermarkGen: 7,
+		SessionID:           "01HX",
+		KeyFingerprint:      "sha256:abcd",
+	}
 	if err := WriteMeta(dir, m); err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +73,9 @@ func TestMeta_LegacyV1ReadInfersAckRecorded(t *testing.T) {
 	dir := t.TempDir()
 	// Hand-write a v1 meta.json with no ack_recorded field — exactly the
 	// shape an older binary would have left on disk.
-	raw := []byte(`{"format_version":1,"ack_high_watermark_seq":42,"ack_high_watermark_gen":7,"session_id":"s1","key_fingerprint":"k1"}`)
+	raw := []byte(
+		`{"format_version":1,"ack_high_watermark_seq":42,"ack_high_watermark_gen":7,"session_id":"s1","key_fingerprint":"k1"}`,
+	)
 	if err := os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -77,14 +84,20 @@ func TestMeta_LegacyV1ReadInfersAckRecorded(t *testing.T) {
 		t.Fatalf("ReadMeta legacy v1: %v", err)
 	}
 	if !m.AckRecorded {
-		t.Errorf("legacy v1 meta.json must read back as AckRecorded=true (its existence implied an ack); got false")
+		t.Errorf(
+			"legacy v1 meta.json must read back as AckRecorded=true (its existence implied an ack); got false",
+		)
 	}
 	if m.AckHighWatermarkSeq != 42 || m.AckHighWatermarkGen != 7 {
 		t.Errorf("watermark not preserved across legacy read: got (gen=%d, seq=%d), want (7, 42)",
 			m.AckHighWatermarkGen, m.AckHighWatermarkSeq)
 	}
 	if m.SessionID != "s1" || m.KeyFingerprint != "k1" {
-		t.Errorf("legacy fields not preserved: got SessionID=%q, KeyFingerprint=%q", m.SessionID, m.KeyFingerprint)
+		t.Errorf(
+			"legacy fields not preserved: got SessionID=%q, KeyFingerprint=%q",
+			m.SessionID,
+			m.KeyFingerprint,
+		)
 	}
 }
 

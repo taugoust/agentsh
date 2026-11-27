@@ -28,7 +28,8 @@ func TestCreateSession_AssignsRuntimeHomeAndTmp(t *testing.T) {
 
 	body := `{"workspace":` + strconvQuote(ws) + `,"policy":"default","workspace_mode":"direct"}`
 	rr := httptest.NewRecorder()
-	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body)))
+	app.Router().
+		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body)))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create session status = %d body = %s", rr.Code, rr.Body.String())
 	}
@@ -87,9 +88,14 @@ func TestCreateSession_RuntimeHomeModeRealKeepsRuntimeDataIsolated(t *testing.T)
 		t.Fatal(err)
 	}
 
-	body := `{"workspace":` + strconvQuote(ws) + `,"policy":"default","workspace_mode":"direct","home":` + strconvQuote(realHome) + `,"runtime_home_mode":"real","env_base_mode":"inherit_allowed","env_inherit":["SSH_AUTH_SOCK"]}`
+	body := `{"workspace":` + strconvQuote(
+		ws,
+	) + `,"policy":"default","workspace_mode":"direct","home":` + strconvQuote(
+		realHome,
+	) + `,"runtime_home_mode":"real","env_base_mode":"inherit_allowed","env_inherit":["SSH_AUTH_SOCK"]}`
 	rr := httptest.NewRecorder()
-	app.Router().ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body)))
+	app.Router().
+		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body)))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create session status = %d body = %s", rr.Code, rr.Body.String())
 	}
@@ -111,7 +117,9 @@ func TestCreateSession_RuntimeHomeModeRealKeepsRuntimeDataIsolated(t *testing.T)
 	if out.RuntimeHome == "" || out.RuntimeHome == realHome || out.RuntimeTmp == "" {
 		t.Fatalf("runtime data dirs not isolated: %+v", out)
 	}
-	if out.RuntimeHomeMode != "real" || out.EnvBaseMode != "inherit_allowed" || len(out.EnvInherit) != 1 || out.EnvInherit[0] != "SSH_AUTH_SOCK" {
+	if out.RuntimeHomeMode != "real" || out.EnvBaseMode != "inherit_allowed" ||
+		len(out.EnvInherit) != 1 ||
+		out.EnvInherit[0] != "SSH_AUTH_SOCK" {
 		t.Fatalf("runtime/env modes not surfaced: %+v", out)
 	}
 }

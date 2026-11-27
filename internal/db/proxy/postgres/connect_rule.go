@@ -11,7 +11,10 @@ import (
 // evaluateConnection runs Plan 02's connection-rule evaluator with the
 // given match_kind against the parsed StartupMessage state. Returns the
 // Decision so callers can choose between allow-path and deny-path.
-func (pc *proxyConn) evaluateConnection(_ context.Context, mk policy.ConnectionMatchKind) policy.Decision {
+func (pc *proxyConn) evaluateConnection(
+	_ context.Context,
+	mk policy.ConnectionMatchKind,
+) policy.Decision {
 	return policy.EvaluateConnection(policy.ConnectionInfo{
 		Service:         policy.ServiceID(pc.svc.Name),
 		MatchKind:       mk,

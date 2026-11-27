@@ -46,7 +46,10 @@ func validateOutputArtifactRequest(req *types.OutputArtifactRequest) error {
 		return fmt.Errorf("output artifact line threshold must be non-negative")
 	}
 	if req.PersistOverBytes > maxOutputArtifactPresentationThreshold {
-		return fmt.Errorf("output artifact byte threshold exceeds %d", maxOutputArtifactPresentationThreshold)
+		return fmt.Errorf(
+			"output artifact byte threshold exceeds %d",
+			maxOutputArtifactPresentationThreshold,
+		)
 	}
 	if req.PersistOverLines > 1_000_000 {
 		return fmt.Errorf("output artifact line threshold exceeds 1000000")
@@ -54,7 +57,11 @@ func validateOutputArtifactRequest(req *types.OutputArtifactRequest) error {
 	return nil
 }
 
-func newCommandOutputArtifactCapture(s *session.Session, commandID string, req *types.OutputArtifactRequest) *commandOutputArtifactCapture {
+func newCommandOutputArtifactCapture(
+	s *session.Session,
+	commandID string,
+	req *types.OutputArtifactRequest,
+) *commandOutputArtifactCapture {
 	if s == nil || req == nil || (req.PersistOverBytes == 0 && req.PersistOverLines == 0) {
 		return nil
 	}

@@ -14,5 +14,8 @@ type InstallProbeResult struct {
 // ProbeSeccompInstall is a stub for non-Linux / linux-without-cgo builds: there
 // is no probe-child handler compiled in, so there is nothing to re-exec.
 func ProbeSeccompInstall() InstallProbeResult {
-	return InstallProbeResult{Installable: false, Detail: "seccomp install probe unavailable (no cgo / unsupported OS)"}
+	return InstallProbeResult{
+		Installable: false,
+		Detail:      "seccomp install probe unavailable (no cgo / unsupported OS)",
+	}
 }

@@ -48,7 +48,8 @@ func TestBytePump_BothDirections(t *testing.T) {
 	_ = a1.Close()
 	select {
 	case err := <-done:
-		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, net.ErrClosed) {
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) &&
+			!errors.Is(err, net.ErrClosed) {
 			t.Errorf("bytePump returned %v", err)
 		}
 	case <-time.After(1 * time.Second):

@@ -57,7 +57,8 @@ func newAuditChainStatusCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "Path to agentsh config YAML (default: auto-discover)")
+	cmd.Flags().
+		StringVar(&configPath, "config", "", "Path to agentsh config YAML (default: auto-discover)")
 	return cmd
 }
 
@@ -107,7 +108,13 @@ func newAuditChainResetCmd() *cobra.Command {
 			}()
 
 			if !force {
-				confirmed, err := confirmReset(cmd.InOrStdin(), cmd.OutOrStdout(), reason, legacyArchive, logPath)
+				confirmed, err := confirmReset(
+					cmd.InOrStdin(),
+					cmd.OutOrStdout(),
+					reason,
+					legacyArchive,
+					logPath,
+				)
 				if err != nil {
 					return err
 				}
@@ -129,10 +136,14 @@ func newAuditChainResetCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "Path to agentsh config YAML (default: auto-discover)")
-	cmd.Flags().StringVar(&reason, "reason", "", "Required free-form reason stored in the integrity_chain_rotated event")
-	cmd.Flags().StringVar(&reasonCode, "reason-code", "", "Structured reset reason code (sidecar_missing, sidecar_corrupt, key_rotated, legacy_archived, manual_reset, post_tamper_recovery)")
-	cmd.Flags().BoolVar(&legacyArchive, "legacy-archive", false, "Rename the current log to audit.jsonl.legacy.<timestamp> before starting fresh")
+	cmd.Flags().
+		StringVar(&configPath, "config", "", "Path to agentsh config YAML (default: auto-discover)")
+	cmd.Flags().
+		StringVar(&reason, "reason", "", "Required free-form reason stored in the integrity_chain_rotated event")
+	cmd.Flags().
+		StringVar(&reasonCode, "reason-code", "", "Structured reset reason code (sidecar_missing, sidecar_corrupt, key_rotated, legacy_archived, manual_reset, post_tamper_recovery)")
+	cmd.Flags().
+		BoolVar(&legacyArchive, "legacy-archive", false, "Rename the current log to audit.jsonl.legacy.<timestamp> before starting fresh")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip the confirmation prompt")
 	return cmd
 }
@@ -151,12 +162,24 @@ type resetOptions struct {
 	Now           func() time.Time
 }
 
-func confirmReset(in io.Reader, out io.Writer, reason string, legacyArchive bool, logPath string) (bool, error) {
+func confirmReset(
+	in io.Reader,
+	out io.Writer,
+	reason string,
+	legacyArchive bool,
+	logPath string,
+) (bool, error) {
 	mode := "preserve the current log and append a rotation event"
 	if legacyArchive {
 		mode = "rename the current log to a legacy archive and start fresh"
 	}
-	if _, err := fmt.Fprintf(out, "This will reset the audit integrity chain for %s\nMode: %s\nReason: %q\nContinue? [y/N] ", logPath, mode, reason); err != nil {
+	if _, err := fmt.Fprintf(
+		out,
+		"This will reset the audit integrity chain for %s\nMode: %s\nReason: %q\nContinue? [y/N] ",
+		logPath,
+		mode,
+		reason,
+	); err != nil {
 		return false, err
 	}
 
@@ -169,7 +192,14 @@ func confirmReset(in io.Reader, out io.Writer, reason string, legacyArchive bool
 	return answer == "y" || answer == "yes", nil
 }
 
-func resetIntegrityChain(ctx context.Context, cfg *config.Config, key []byte, logPath string, lockFile *os.File, opts resetOptions) error {
+func resetIntegrityChain(
+	ctx context.Context,
+	cfg *config.Config,
+	key []byte,
+	logPath string,
+	lockFile *os.File,
+	opts resetOptions,
+) error {
 	now := opts.Now
 	if now == nil {
 		now = time.Now
@@ -182,7 +212,10 @@ func resetIntegrityChain(ctx context.Context, cfg *config.Config, key []byte, lo
 
 	if !opts.LegacyArchive {
 		if _, err := audit.DiscoverRotationSet(logPath); err != nil {
-			return fmt.Errorf("cannot perform in-place reset on incomplete audit rotation set: %w; retry with --legacy-archive", err)
+			return fmt.Errorf(
+				"cannot perform in-place reset on incomplete audit rotation set: %w; retry with --legacy-archive",
+				err,
+			)
 		}
 	}
 
@@ -191,10 +224,14 @@ func resetIntegrityChain(ctx context.Context, cfg *config.Config, key []byte, lo
 		return err
 	}
 	if !opts.LegacyArchive && hasPriorData && priorSummary == nil {
-		return fmt.Errorf("cannot capture prior chain summary for in-place reset; retry with --legacy-archive")
+		return fmt.Errorf(
+			"cannot capture prior chain summary for in-place reset; retry with --legacy-archive",
+		)
 	}
 	if !opts.LegacyArchive && hasPriorData && opts.ReasonCode == "key_rotated" {
-		return fmt.Errorf("cannot acknowledge key rotation with an in-place reset; retry with --legacy-archive")
+		return fmt.Errorf(
+			"cannot acknowledge key rotation with an in-place reset; retry with --legacy-archive",
+		)
 	}
 	if !opts.LegacyArchive && hasPriorData {
 		ok, err := visibleRotationSetVerifiesWith(logPath, key, algorithm)
@@ -202,7 +239,9 @@ func resetIntegrityChain(ctx context.Context, cfg *config.Config, key []byte, lo
 			return err
 		}
 		if !ok {
-			return fmt.Errorf("cannot perform in-place reset with the current audit integrity key/algorithm; retry with --legacy-archive")
+			return fmt.Errorf(
+				"cannot perform in-place reset with the current audit integrity key/algorithm; retry with --legacy-archive",
+			)
 		}
 	}
 
@@ -214,7 +253,12 @@ func resetIntegrityChain(ctx context.Context, cfg *config.Config, key []byte, lo
 		}
 	}
 
-	inner, err := jsonl.NewWithLock(logPath, cfg.Audit.Rotation.MaxSizeMB, cfg.Audit.Rotation.MaxBackups, lockFile)
+	inner, err := jsonl.NewWithLock(
+		logPath,
+		cfg.Audit.Rotation.MaxSizeMB,
+		cfg.Audit.Rotation.MaxBackups,
+		lockFile,
+	)
 	if err != nil {
 		return err
 	}
@@ -366,7 +410,12 @@ func visibleRotationSetVerifiesWith(logPath string, key []byte, algorithm string
 			}
 
 			if rotationBoundary {
-				if err := verifyRotationBoundary(entry.CanonicalPayload, summary, state, file.IsBackup); err != nil {
+				if err := verifyRotationBoundary(
+					entry.CanonicalPayload,
+					summary,
+					state,
+					file.IsBackup,
+				); err != nil {
 					_ = f.Close()
 					return false, nil
 				}

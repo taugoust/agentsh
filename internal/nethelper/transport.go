@@ -69,7 +69,13 @@ const (
 
 func (op Operation) Valid() bool {
 	switch op {
-	case OperationRegisterSessionCgroup, OperationUpdatePolicyMap, OperationCleanupSession, OperationInstanceStatus, OperationRenewInstance, OperationAttestCompositionRuntime, OperationReleaseInstance:
+	case OperationRegisterSessionCgroup,
+		OperationUpdatePolicyMap,
+		OperationCleanupSession,
+		OperationInstanceStatus,
+		OperationRenewInstance,
+		OperationAttestCompositionRuntime,
+		OperationReleaseInstance:
 		return true
 	default:
 		return false
@@ -140,8 +146,16 @@ func (p *PeerInfo) closeIdentity() {
 // authorization. Production backends must use only AgentSH's built-in BPF
 // assets and helper-owned kernel fds/maps/links.
 type Backend interface {
-	RegisterSessionCgroup(context.Context, PeerInfo, RegisterSessionCgroupRequest) (RegisterSessionCgroupResponse, error)
-	UpdatePolicyMap(context.Context, PeerInfo, UpdatePolicyMapRequest) (UpdatePolicyMapResponse, error)
+	RegisterSessionCgroup(
+		context.Context,
+		PeerInfo,
+		RegisterSessionCgroupRequest,
+	) (RegisterSessionCgroupResponse, error)
+	UpdatePolicyMap(
+		context.Context,
+		PeerInfo,
+		UpdatePolicyMapRequest,
+	) (UpdatePolicyMapResponse, error)
 	CleanupSession(context.Context, PeerInfo, CleanupSessionRequest) (CleanupSessionResponse, error)
 }
 
@@ -164,8 +178,16 @@ type lifecycleOperationAdmitter interface {
 type InstanceController interface {
 	InstanceStatus(context.Context, PeerInfo, InstanceStatusRequest) (InstanceStatusResponse, error)
 	RenewInstance(context.Context, PeerInfo, RenewInstanceRequest) (RenewInstanceResponse, error)
-	AttestCompositionRuntime(context.Context, PeerInfo, AttestCompositionRuntimeRequest) (AttestCompositionRuntimeResponse, error)
-	ReleaseInstance(context.Context, PeerInfo, ReleaseInstanceRequest) (ReleaseInstanceResponse, error)
+	AttestCompositionRuntime(
+		context.Context,
+		PeerInfo,
+		AttestCompositionRuntimeRequest,
+	) (AttestCompositionRuntimeResponse, error)
+	ReleaseInstance(
+		context.Context,
+		PeerInfo,
+		ReleaseInstanceRequest,
+	) (ReleaseInstanceResponse, error)
 }
 
 type authorizerLifecycle interface {
@@ -190,7 +212,11 @@ type updateLifecycle interface {
 
 type denyAuthorizer struct{}
 
-func (denyAuthorizer) AuthorizeRegister(context.Context, PeerInfo, RegisterSessionCgroupRequest) error {
+func (denyAuthorizer) AuthorizeRegister(
+	context.Context,
+	PeerInfo,
+	RegisterSessionCgroupRequest,
+) error {
 	return errors.New("nethelper authorizer is not configured; refusing privileged registration")
 }
 func (denyAuthorizer) AuthorizeUpdate(context.Context, PeerInfo, UpdatePolicyMapRequest) error {
@@ -204,7 +230,11 @@ func (denyAuthorizer) AuthorizeCleanup(context.Context, PeerInfo, CleanupSession
 // harnesses. Do not use it for a privileged helper exposed to same-UID tools.
 type AllowAuthorizer struct{}
 
-func (AllowAuthorizer) AuthorizeRegister(context.Context, PeerInfo, RegisterSessionCgroupRequest) error {
+func (AllowAuthorizer) AuthorizeRegister(
+	context.Context,
+	PeerInfo,
+	RegisterSessionCgroupRequest,
+) error {
 	return nil
 }
 func (AllowAuthorizer) AuthorizeUpdate(context.Context, PeerInfo, UpdatePolicyMapRequest) error {
@@ -218,14 +248,52 @@ func (AllowAuthorizer) AuthorizeCleanup(context.Context, PeerInfo, CleanupSessio
 // usable in tests and in early deployments without ever claiming enforcement.
 type FailClosedBackend struct{}
 
-func (FailClosedBackend) RegisterSessionCgroup(_ context.Context, _ PeerInfo, req RegisterSessionCgroupRequest) (RegisterSessionCgroupResponse, error) {
-	return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: "nethelper kernel backend is not configured"}, errors.New("nethelper kernel backend is not configured")
+func (FailClosedBackend) RegisterSessionCgroup(
+	_ context.Context,
+	_ PeerInfo,
+	req RegisterSessionCgroupRequest,
+) (RegisterSessionCgroupResponse, error) {
+	return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           "nethelper kernel backend is not configured",
+		}, errors.New(
+			"nethelper kernel backend is not configured",
+		)
 }
-func (FailClosedBackend) UpdatePolicyMap(_ context.Context, _ PeerInfo, req UpdatePolicyMapRequest) (UpdatePolicyMapResponse, error) {
-	return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: "nethelper kernel backend is not configured"}, errors.New("nethelper kernel backend is not configured")
+
+func (FailClosedBackend) UpdatePolicyMap(
+	_ context.Context,
+	_ PeerInfo,
+	req UpdatePolicyMapRequest,
+) (UpdatePolicyMapResponse, error) {
+	return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           "nethelper kernel backend is not configured",
+		}, errors.New(
+			"nethelper kernel backend is not configured",
+		)
 }
-func (FailClosedBackend) CleanupSession(_ context.Context, _ PeerInfo, req CleanupSessionRequest) (CleanupSessionResponse, error) {
-	return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: "nethelper kernel backend is not configured"}, errors.New("nethelper kernel backend is not configured")
+
+func (FailClosedBackend) CleanupSession(
+	_ context.Context,
+	_ PeerInfo,
+	req CleanupSessionRequest,
+) (CleanupSessionResponse, error) {
+	return CleanupSessionResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           "nethelper kernel backend is not configured",
+		}, errors.New(
+			"nethelper kernel backend is not configured",
+		)
 }
 
 // Server is a minimal one-request-per-connection Unix-socket helper server.
@@ -386,7 +454,11 @@ func (s *Server) ServeListener(ctx context.Context, ln net.Listener) error {
 	return serveErr
 }
 
-func (s *Server) serveReaper(ctx context.Context, registrations registrationReaper, orphans orphanResourceReaper) {
+func (s *Server) serveReaper(
+	ctx context.Context,
+	registrations registrationReaper,
+	orphans orphanResourceReaper,
+) {
 	ticker := time.NewTicker(s.ReapInterval)
 	defer ticker.Stop()
 	for {
@@ -454,7 +526,8 @@ func (s *Server) writeGenericError(conn net.Conn, err error) {
 	if s.WriteTimeout > 0 {
 		_ = conn.SetWriteDeadline(time.Now().Add(s.WriteTimeout))
 	}
-	_ = json.NewEncoder(conn).Encode(ErrorResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()})
+	_ = json.NewEncoder(conn).
+		Encode(ErrorResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()})
 }
 
 func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
@@ -466,15 +539,29 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 	case OperationRegisterSessionCgroup:
 		done, err := admitLifecycleOperation(s.Authorizer)
 		if err != nil {
-			return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return RegisterSessionCgroupResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		defer done()
 		req, err := DecodeRegisterSessionCgroupRequestJSON(env.Request)
 		if err != nil {
-			return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return RegisterSessionCgroupResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		if err := s.Authorizer.AuthorizeRegister(ctx, peer, req); err != nil {
-			return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}
+			return RegisterSessionCgroupResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				SessionID:       req.SessionID,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		resp, err := s.Backend.RegisterSessionCgroup(ctx, peer, req)
 		out := ensureRegisterResponse(req, resp, err)
@@ -530,15 +617,29 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 	case OperationUpdatePolicyMap:
 		done, err := admitLifecycleOperation(s.Authorizer)
 		if err != nil {
-			return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return UpdatePolicyMapResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		defer done()
 		req, err := DecodeUpdatePolicyMapRequestJSON(env.Request)
 		if err != nil {
-			return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return UpdatePolicyMapResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		if err := s.Authorizer.AuthorizeUpdate(ctx, peer, req); err != nil {
-			return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}
+			return UpdatePolicyMapResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				SessionID:       req.SessionID,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		resp, err := s.Backend.UpdatePolicyMap(ctx, peer, req)
 		out := ensureUpdateResponse(req, resp, err)
@@ -549,15 +650,29 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 	case OperationCleanupSession:
 		done, err := admitLifecycleOperation(s.Authorizer)
 		if err != nil {
-			return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return CleanupSessionResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		defer done()
 		req, err := DecodeCleanupSessionRequestJSON(env.Request)
 		if err != nil {
-			return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return CleanupSessionResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		if err := s.Authorizer.AuthorizeCleanup(ctx, peer, req); err != nil {
-			return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}
+			return CleanupSessionResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				SessionID:       req.SessionID,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		resp, err := s.Backend.CleanupSession(ctx, peer, req)
 		out := ensureCleanupResponse(req, resp, err)
@@ -568,40 +683,80 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 	case OperationInstanceStatus:
 		req, err := DecodeInstanceStatusRequestJSON(env.Request)
 		if err != nil {
-			return InstanceStatusResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return InstanceStatusResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		if s.InstanceController == nil {
-			return InstanceStatusResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, OK: false, Error: "nethelper instance status is not configured"}
+			return InstanceStatusResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				LeaseID:         req.LeaseID,
+				OK:              false,
+				Error:           "nethelper instance status is not configured",
+			}
 		}
 		resp, err := s.InstanceController.InstanceStatus(ctx, peer, req)
 		return ensureInstanceStatusResponse(req.RequestID, req.LeaseID, resp, err)
 	case OperationRenewInstance:
 		req, err := DecodeRenewInstanceRequestJSON(env.Request)
 		if err != nil {
-			return RenewInstanceResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return RenewInstanceResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		if s.InstanceController == nil {
-			return RenewInstanceResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, OK: false, Error: "nethelper instance renewal is not configured"}
+			return RenewInstanceResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				LeaseID:         req.LeaseID,
+				OK:              false,
+				Error:           "nethelper instance renewal is not configured",
+			}
 		}
 		resp, err := s.InstanceController.RenewInstance(ctx, peer, req)
 		return ensureInstanceStatusResponse(req.RequestID, req.LeaseID, resp, err)
 	case OperationAttestCompositionRuntime:
 		req, err := DecodeAttestCompositionRuntimeRequestJSON(env.Request)
 		if err != nil {
-			return AttestCompositionRuntimeResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return AttestCompositionRuntimeResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		if s.InstanceController == nil {
-			return AttestCompositionRuntimeResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, OK: false, Error: "composition runtime attestation is not configured"}
+			return AttestCompositionRuntimeResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				LeaseID:         req.LeaseID,
+				OK:              false,
+				Error:           "composition runtime attestation is not configured",
+			}
 		}
 		resp, err := s.InstanceController.AttestCompositionRuntime(ctx, peer, req)
 		return ensureAttestCompositionRuntimeResponse(req, resp, err)
 	case OperationReleaseInstance:
 		req, err := DecodeReleaseInstanceRequestJSON(env.Request)
 		if err != nil {
-			return ReleaseInstanceResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()}
+			return ReleaseInstanceResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				OK:              false,
+				Error:           err.Error(),
+			}
 		}
 		if s.InstanceController == nil {
-			return ReleaseInstanceResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, OK: false, Error: "nethelper instance release is not configured"}
+			return ReleaseInstanceResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				LeaseID:         req.LeaseID,
+				OK:              false,
+				Error:           "nethelper instance release is not configured",
+			}
 		}
 		resp, err := s.InstanceController.ReleaseInstance(ctx, peer, req)
 		out := ensureReleaseResponse(req, resp, err)
@@ -610,11 +765,19 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 		}
 		return out
 	default:
-		return ErrorResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: fmt.Sprintf("invalid operation %q", env.Operation)}
+		return ErrorResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			OK:              false,
+			Error:           fmt.Sprintf("invalid operation %q", env.Operation),
+		}
 	}
 }
 
-func ensureRegisterResponse(req RegisterSessionCgroupRequest, resp RegisterSessionCgroupResponse, err error) RegisterSessionCgroupResponse {
+func ensureRegisterResponse(
+	req RegisterSessionCgroupRequest,
+	resp RegisterSessionCgroupResponse,
+	err error,
+) RegisterSessionCgroupResponse {
 	if resp.ProtocolVersion == 0 {
 		resp.ProtocolVersion = CurrentProtocolVersion
 	}
@@ -633,7 +796,11 @@ func ensureRegisterResponse(req RegisterSessionCgroupRequest, resp RegisterSessi
 	return resp
 }
 
-func ensureUpdateResponse(req UpdatePolicyMapRequest, resp UpdatePolicyMapResponse, err error) UpdatePolicyMapResponse {
+func ensureUpdateResponse(
+	req UpdatePolicyMapRequest,
+	resp UpdatePolicyMapResponse,
+	err error,
+) UpdatePolicyMapResponse {
 	if resp.ProtocolVersion == 0 {
 		resp.ProtocolVersion = CurrentProtocolVersion
 	}
@@ -659,7 +826,11 @@ func admitLifecycleOperation(authorizer Authorizer) (func(), error) {
 	return func() {}, nil
 }
 
-func ensureCleanupResponse(req CleanupSessionRequest, resp CleanupSessionResponse, err error) CleanupSessionResponse {
+func ensureCleanupResponse(
+	req CleanupSessionRequest,
+	resp CleanupSessionResponse,
+	err error,
+) CleanupSessionResponse {
 	if resp.ProtocolVersion == 0 {
 		resp.ProtocolVersion = CurrentProtocolVersion
 	}
@@ -678,7 +849,11 @@ func ensureCleanupResponse(req CleanupSessionRequest, resp CleanupSessionRespons
 	return resp
 }
 
-func ensureInstanceStatusResponse(requestID, leaseID string, resp InstanceStatusResponse, err error) InstanceStatusResponse {
+func ensureInstanceStatusResponse(
+	requestID, leaseID string,
+	resp InstanceStatusResponse,
+	err error,
+) InstanceStatusResponse {
 	if resp.ProtocolVersion == 0 {
 		resp.ProtocolVersion = CurrentProtocolVersion
 	}
@@ -697,7 +872,11 @@ func ensureInstanceStatusResponse(requestID, leaseID string, resp InstanceStatus
 	return resp
 }
 
-func ensureAttestCompositionRuntimeResponse(req AttestCompositionRuntimeRequest, resp AttestCompositionRuntimeResponse, err error) AttestCompositionRuntimeResponse {
+func ensureAttestCompositionRuntimeResponse(
+	req AttestCompositionRuntimeRequest,
+	resp AttestCompositionRuntimeResponse,
+	err error,
+) AttestCompositionRuntimeResponse {
 	if resp.ProtocolVersion == 0 {
 		resp.ProtocolVersion = CurrentProtocolVersion
 	}
@@ -716,7 +895,11 @@ func ensureAttestCompositionRuntimeResponse(req AttestCompositionRuntimeRequest,
 	return resp
 }
 
-func ensureReleaseResponse(req ReleaseInstanceRequest, resp ReleaseInstanceResponse, err error) ReleaseInstanceResponse {
+func ensureReleaseResponse(
+	req ReleaseInstanceRequest,
+	resp ReleaseInstanceResponse,
+	err error,
+) ReleaseInstanceResponse {
 	if resp.ProtocolVersion == 0 {
 		resp.ProtocolVersion = CurrentProtocolVersion
 	}
@@ -764,7 +947,10 @@ func NewClient(socketPath string) *Client {
 	}
 }
 
-func (c *Client) RegisterSessionCgroup(ctx context.Context, req RegisterSessionCgroupRequest) (RegisterSessionCgroupResponse, error) {
+func (c *Client) RegisterSessionCgroup(
+	ctx context.Context,
+	req RegisterSessionCgroupRequest,
+) (RegisterSessionCgroupResponse, error) {
 	if err := req.Validate(); err != nil {
 		return RegisterSessionCgroupResponse{}, err
 	}
@@ -783,7 +969,13 @@ func (c *Client) RegisterSessionCgroup(ctx context.Context, req RegisterSessionC
 		}
 		req = legacyReq
 	}
-	if err := validateResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.SessionID, req.RequestID, req.SessionID); err != nil {
+	if err := validateResponseIdentity(
+		resp.ProtocolVersion,
+		resp.RequestID,
+		resp.SessionID,
+		req.RequestID,
+		req.SessionID,
+	); err != nil {
 		return resp, err
 	}
 	if !resp.OK {
@@ -794,14 +986,19 @@ func (c *Client) RegisterSessionCgroup(ctx context.Context, req RegisterSessionC
 }
 
 func shouldRetryLegacyCredential(req RegisterSessionCgroupRequest, responseMessage string) bool {
-	if strings.TrimSpace(req.HelperInstanceCredential) == "" || strings.TrimSpace(req.SessionNonce) != "" {
+	if strings.TrimSpace(req.HelperInstanceCredential) == "" ||
+		strings.TrimSpace(req.SessionNonce) != "" {
 		return false
 	}
 	message := strings.ToLower(responseMessage)
-	return strings.Contains(message, "unknown field") && strings.Contains(message, "helper_instance_credential")
+	return strings.Contains(message, "unknown field") &&
+		strings.Contains(message, "helper_instance_credential")
 }
 
-func (c *Client) UpdatePolicyMap(ctx context.Context, req UpdatePolicyMapRequest) (UpdatePolicyMapResponse, error) {
+func (c *Client) UpdatePolicyMap(
+	ctx context.Context,
+	req UpdatePolicyMapRequest,
+) (UpdatePolicyMapResponse, error) {
 	c.fillUpdateRegistration(&req)
 	if err := req.Validate(); err != nil {
 		return UpdatePolicyMapResponse{}, err
@@ -811,7 +1008,13 @@ func (c *Client) UpdatePolicyMap(ctx context.Context, req UpdatePolicyMapRequest
 	if err != nil {
 		return resp, err
 	}
-	if err := validateResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.SessionID, req.RequestID, req.SessionID); err != nil {
+	if err := validateResponseIdentity(
+		resp.ProtocolVersion,
+		resp.RequestID,
+		resp.SessionID,
+		req.RequestID,
+		req.SessionID,
+	); err != nil {
 		return resp, err
 	}
 	if !resp.OK {
@@ -820,7 +1023,10 @@ func (c *Client) UpdatePolicyMap(ctx context.Context, req UpdatePolicyMapRequest
 	return resp, nil
 }
 
-func (c *Client) CleanupSession(ctx context.Context, req CleanupSessionRequest) (CleanupSessionResponse, error) {
+func (c *Client) CleanupSession(
+	ctx context.Context,
+	req CleanupSessionRequest,
+) (CleanupSessionResponse, error) {
 	c.fillCleanupRegistration(&req)
 	if err := req.Validate(); err != nil {
 		return CleanupSessionResponse{}, err
@@ -830,7 +1036,13 @@ func (c *Client) CleanupSession(ctx context.Context, req CleanupSessionRequest) 
 	if err != nil {
 		return resp, err
 	}
-	if err := validateResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.SessionID, req.RequestID, req.SessionID); err != nil {
+	if err := validateResponseIdentity(
+		resp.ProtocolVersion,
+		resp.RequestID,
+		resp.SessionID,
+		req.RequestID,
+		req.SessionID,
+	); err != nil {
 		return resp, err
 	}
 	if !resp.OK {
@@ -840,7 +1052,10 @@ func (c *Client) CleanupSession(ctx context.Context, req CleanupSessionRequest) 
 	return resp, nil
 }
 
-func (c *Client) InstanceStatus(ctx context.Context, req InstanceStatusRequest) (InstanceStatusResponse, error) {
+func (c *Client) InstanceStatus(
+	ctx context.Context,
+	req InstanceStatusRequest,
+) (InstanceStatusResponse, error) {
 	if err := req.Validate(); err != nil {
 		return InstanceStatusResponse{}, err
 	}
@@ -848,7 +1063,13 @@ func (c *Client) InstanceStatus(ctx context.Context, req InstanceStatusRequest) 
 	if err := c.roundTrip(ctx, OperationInstanceStatus, req, &resp); err != nil {
 		return resp, err
 	}
-	if err := validateInstanceResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.LeaseID, req.RequestID, req.LeaseID); err != nil {
+	if err := validateInstanceResponseIdentity(
+		resp.ProtocolVersion,
+		resp.RequestID,
+		resp.LeaseID,
+		req.RequestID,
+		req.LeaseID,
+	); err != nil {
 		return resp, err
 	}
 	if !resp.OK {
@@ -857,7 +1078,10 @@ func (c *Client) InstanceStatus(ctx context.Context, req InstanceStatusRequest) 
 	return resp, nil
 }
 
-func (c *Client) RenewInstance(ctx context.Context, req RenewInstanceRequest) (RenewInstanceResponse, error) {
+func (c *Client) RenewInstance(
+	ctx context.Context,
+	req RenewInstanceRequest,
+) (RenewInstanceResponse, error) {
 	if err := req.Validate(); err != nil {
 		return RenewInstanceResponse{}, err
 	}
@@ -865,7 +1089,13 @@ func (c *Client) RenewInstance(ctx context.Context, req RenewInstanceRequest) (R
 	if err := c.roundTrip(ctx, OperationRenewInstance, req, &resp); err != nil {
 		return resp, err
 	}
-	if err := validateInstanceResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.LeaseID, req.RequestID, req.LeaseID); err != nil {
+	if err := validateInstanceResponseIdentity(
+		resp.ProtocolVersion,
+		resp.RequestID,
+		resp.LeaseID,
+		req.RequestID,
+		req.LeaseID,
+	); err != nil {
 		return resp, err
 	}
 	if !resp.OK {
@@ -874,7 +1104,10 @@ func (c *Client) RenewInstance(ctx context.Context, req RenewInstanceRequest) (R
 	return resp, nil
 }
 
-func (c *Client) AttestCompositionRuntime(ctx context.Context, req AttestCompositionRuntimeRequest) (AttestCompositionRuntimeResponse, error) {
+func (c *Client) AttestCompositionRuntime(
+	ctx context.Context,
+	req AttestCompositionRuntimeRequest,
+) (AttestCompositionRuntimeResponse, error) {
 	if err := req.Validate(); err != nil {
 		return AttestCompositionRuntimeResponse{}, err
 	}
@@ -882,7 +1115,13 @@ func (c *Client) AttestCompositionRuntime(ctx context.Context, req AttestComposi
 	if err := c.roundTrip(ctx, OperationAttestCompositionRuntime, req, &resp); err != nil {
 		return resp, err
 	}
-	if err := validateInstanceResponseIdentity(resp.ProtocolVersion, resp.RequestID, resp.LeaseID, req.RequestID, req.LeaseID); err != nil {
+	if err := validateInstanceResponseIdentity(
+		resp.ProtocolVersion,
+		resp.RequestID,
+		resp.LeaseID,
+		req.RequestID,
+		req.LeaseID,
+	); err != nil {
 		return resp, err
 	}
 	if !resp.OK {
@@ -891,9 +1130,16 @@ func (c *Client) AttestCompositionRuntime(ctx context.Context, req AttestComposi
 	return resp, nil
 }
 
-func validateInstanceResponseIdentity(protocolVersion int, responseRequestID, responseLeaseID, requestID, leaseID string) error {
+func validateInstanceResponseIdentity(
+	protocolVersion int,
+	responseRequestID, responseLeaseID, requestID, leaseID string,
+) error {
 	if protocolVersion != CurrentProtocolVersion {
-		return fmt.Errorf("nethelper response protocol_version=%d, want %d", protocolVersion, CurrentProtocolVersion)
+		return fmt.Errorf(
+			"nethelper response protocol_version=%d, want %d",
+			protocolVersion,
+			CurrentProtocolVersion,
+		)
 	}
 	if responseRequestID != strings.TrimSpace(requestID) {
 		return fmt.Errorf("nethelper response request_id does not match request")
@@ -906,7 +1152,10 @@ func validateInstanceResponseIdentity(protocolVersion int, responseRequestID, re
 
 // ReleaseInstance asks an ephemeral helper to stop after all command
 // registrations are gone. Persistent helpers reject this operation.
-func (c *Client) ReleaseInstance(ctx context.Context, req ReleaseInstanceRequest) (ReleaseInstanceResponse, error) {
+func (c *Client) ReleaseInstance(
+	ctx context.Context,
+	req ReleaseInstanceRequest,
+) (ReleaseInstanceResponse, error) {
 	if err := req.Validate(); err != nil {
 		return ReleaseInstanceResponse{}, err
 	}
@@ -915,7 +1164,11 @@ func (c *Client) ReleaseInstance(ctx context.Context, req ReleaseInstanceRequest
 		return resp, err
 	}
 	if resp.ProtocolVersion != CurrentProtocolVersion {
-		return resp, fmt.Errorf("nethelper response protocol_version=%d, want %d", resp.ProtocolVersion, CurrentProtocolVersion)
+		return resp, fmt.Errorf(
+			"nethelper response protocol_version=%d, want %d",
+			resp.ProtocolVersion,
+			CurrentProtocolVersion,
+		)
 	}
 	if resp.RequestID != strings.TrimSpace(req.RequestID) {
 		return resp, fmt.Errorf("nethelper response request_id does not match request")
@@ -929,7 +1182,10 @@ func (c *Client) ReleaseInstance(ctx context.Context, req ReleaseInstanceRequest
 	return resp, nil
 }
 
-func (c *Client) rememberRegistration(req RegisterSessionCgroupRequest, resp RegisterSessionCgroupResponse) {
+func (c *Client) rememberRegistration(
+	req RegisterSessionCgroupRequest,
+	resp RegisterSessionCgroupResponse,
+) {
 	if c == nil || strings.TrimSpace(resp.RegistrationID) == "" || resp.CgroupID == 0 {
 		return
 	}
@@ -982,7 +1238,10 @@ func (c *Client) fillCleanupRegistration(req *CleanupSessionRequest) {
 	}
 }
 
-func (c *Client) lookupRegistration(sessionID, cgroupPath string, cgroupID uint64) (clientRegistration, bool) {
+func (c *Client) lookupRegistration(
+	sessionID, cgroupPath string,
+	cgroupID uint64,
+) (clientRegistration, bool) {
 	if c == nil {
 		return clientRegistration{}, false
 	}
@@ -1100,9 +1359,16 @@ func (c *Client) roundTrip(ctx context.Context, op Operation, req any, resp any)
 	return nil
 }
 
-func validateResponseIdentity(protocolVersion int, responseRequestID, responseSessionID, requestID, sessionID string) error {
+func validateResponseIdentity(
+	protocolVersion int,
+	responseRequestID, responseSessionID, requestID, sessionID string,
+) error {
 	if protocolVersion != CurrentProtocolVersion {
-		return fmt.Errorf("nethelper response protocol_version=%d, want %d", protocolVersion, CurrentProtocolVersion)
+		return fmt.Errorf(
+			"nethelper response protocol_version=%d, want %d",
+			protocolVersion,
+			CurrentProtocolVersion,
+		)
 	}
 	if responseRequestID != strings.TrimSpace(requestID) {
 		return fmt.Errorf("nethelper response request_id does not match request")

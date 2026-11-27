@@ -129,7 +129,12 @@ func TestManager_SigningEnforce_Valid(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = kid
-	if err := signing.SignFile(filepath.Join(dir, "p.yaml"), filepath.Join(keyDir, "private.key.json"), "", ""); err != nil {
+	if err := signing.SignFile(
+		filepath.Join(dir, "p.yaml"),
+		filepath.Join(keyDir, "private.key.json"),
+		"",
+		"",
+	); err != nil {
 		t.Fatal(err)
 	}
 	tsDir := t.TempDir()
@@ -197,7 +202,12 @@ func setupSignedPolicyDir(t *testing.T, policyName, policyContent string) (strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := signing.SignFile(filepath.Join(dir, policyName+".yaml"), filepath.Join(keyDir, "private.key.json"), "", ""); err != nil {
+	if err := signing.SignFile(
+		filepath.Join(dir, policyName+".yaml"),
+		filepath.Join(keyDir, "private.key.json"),
+		"",
+		"",
+	); err != nil {
 		t.Fatal(err)
 	}
 	tsDir := t.TempDir()

@@ -40,12 +40,18 @@ type ptyRun struct {
 	attempts     []types.ExecAttemptDiagnostic
 }
 
-func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams) (*ptyRun, int, error) {
+func (a *App) startPTY(
+	ctx context.Context,
+	sessionID string,
+	req ptyStartParams,
+) (*ptyRun, int, error) {
 	if a == nil {
 		return nil, http.StatusServiceUnavailable, errors.New("server not initialized")
 	}
 	if a.ptraceFailed.Load() {
-		return nil, http.StatusServiceUnavailable, errors.New("ptrace tracer exited unexpectedly; refusing to execute commands without enforcement")
+		return nil, http.StatusServiceUnavailable, errors.New(
+			"ptrace tracer exited unexpectedly; refusing to execute commands without enforcement",
+		)
 	}
 	sess, ok := a.sessions.Get(sessionID)
 	if !ok {
@@ -59,15 +65,31 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 	start := time.Now().UTC()
 	unlock, admissionErr := sess.LockExecContext(ctx)
 	if admissionErr != nil {
-		return nil, http.StatusRequestTimeout, fmt.Errorf("PTY execution admission cancelled before dispatch: %w", admissionErr)
+		return nil, http.StatusRequestTimeout, fmt.Errorf(
+			"PTY execution admission cancelled before dispatch: %w",
+			admissionErr,
+		)
 	}
 	sess.SetCurrentCommandID(cmdID)
 
 	engine := a.policyEngineFor(sess)
-	pre := engine.CheckCommandWithExecve(req.Command, req.Args, a.execveEnforcementActive(), a.shellCOpaqueMode())
+	pre := engine.CheckCommandWithExecve(
+		req.Command,
+		req.Args,
+		a.execveEnforcementActive(),
+		a.shellCOpaqueMode(),
+	)
 	compositionErrorCode := a.applySandboxCompositionSelection(sess, &pre)
 	redirected, originalCmd, originalArgs := applyCommandRedirect(&req.Command, &req.Args, pre)
-	approvalErr := a.applyCommandApproval(ctx, sessionID, cmdID, originalCmd, originalArgs, nil, &pre)
+	approvalErr := a.applyCommandApproval(
+		ctx,
+		sessionID,
+		cmdID,
+		originalCmd,
+		originalArgs,
+		nil,
+		&pre,
+	)
 
 	preEv := types.Event{
 		ID:        uuid.NewString(),
@@ -126,7 +148,8 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 		}
 		if pre.PolicyDecision == types.DecisionApprove {
 			msg = "command denied (approval required)"
-			if approvalErr != nil && strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {
+			if approvalErr != nil &&
+				strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {
 				msg = "command denied (approval timed out)"
 			}
 		}
@@ -170,15 +193,28 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 		if wrapperResult.setupErr != nil {
 			a.recordNetworkEnforcementFailure(sessionID, cmdID, wrapperResult.setupErr)
 			defer unlock()
-			return nil, http.StatusServiceUnavailable, fmt.Errorf("pre-exec boundary unavailable: %w", wrapperResult.setupErr)
+			return nil, http.StatusServiceUnavailable, fmt.Errorf(
+				"pre-exec boundary unavailable: %w",
+				wrapperResult.setupErr,
+			)
 		}
 		wrappedReq := wrapperResult.wrappedReq
 		extraCfg := wrapperResult.extraCfg
-		env, envErr := buildCommandEnvironment(a.cfg, policy.ResolvedEnvPolicy{}, os.Environ(), sess, wrappedReq.Env, extraCfg)
+		env, envErr := buildCommandEnvironment(
+			a.cfg,
+			policy.ResolvedEnvPolicy{},
+			os.Environ(),
+			sess,
+			wrappedReq.Env,
+			extraCfg,
+		)
 		if envErr != nil {
 			defer unlock()
 			closePreStartProcessFiles(extraCfg)
-			return nil, http.StatusInternalServerError, fmt.Errorf("build PTY environment: %w", envErr)
+			return nil, http.StatusInternalServerError, fmt.Errorf(
+				"build PTY environment: %w",
+				envErr,
+			)
 		}
 
 		hook := a.cgroupHook(sessionID, cmdID, reserveLineagePIDs(limits, extraCfg))
@@ -200,8 +236,12 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 				}
 				handlers = startWrapperHandlers(ctx, extraCfg, pid, getProcessGroupID(pid), ready)
 				extraOwnershipTransferred = true
-				releaseSteps := []preExecReleaseStep{{name: "resume stopped PTY process", run: resume}}
-				releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extraCfg, ready)...)
+				releaseSteps := []preExecReleaseStep{
+					{name: "resume stopped PTY process", run: resume},
+				}
+				releaseSteps = append(
+					releaseSteps,
+					commandBoundaryReleaseSteps(ctx, extraCfg, ready)...)
 				return barrier.CleanupFunc(), barrier.Release(pid, releaseSteps...)
 			}
 		}
@@ -220,7 +260,13 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 			CommandBoundary: commandBoundary,
 			PreExec:         preExec,
 			FinalizePreExecFailure: func(processState *os.ProcessState, waitErr, cleanupErr, preExecErr error) error {
-				return finalizePTYCommandBoundaryFailure(processState, waitErr, cleanupErr, handlers, preExecErr)
+				return finalizePTYCommandBoundaryFailure(
+					processState,
+					waitErr,
+					cleanupErr,
+					handlers,
+					preExecErr,
+				)
 			},
 			PreExecFailureGrace: commandJailNaturalExitGrace,
 			InitialSize: pty.Winsize{
@@ -230,7 +276,13 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 		})
 		if err == nil {
 			if !extraOwnershipTransferred {
-				handlers = startWrapperHandlers(ctx, extraCfg, ps.PID(), getProcessGroupID(ps.PID()), nil)
+				handlers = startWrapperHandlers(
+					ctx,
+					extraCfg,
+					ps.PID(),
+					getProcessGroupID(ps.PID()),
+					nil,
+				)
 			}
 			break
 		}
@@ -283,7 +335,16 @@ func (a *App) startPTY(ctx context.Context, sessionID string, req ptyStartParams
 	}, http.StatusOK, nil
 }
 
-func (a *App) finishPTY(ctx context.Context, run *ptyRun, exitCode int, started time.Time, err error, out []byte, outTotal int64, outTrunc bool) {
+func (a *App) finishPTY(
+	ctx context.Context,
+	run *ptyRun,
+	exitCode int,
+	started time.Time,
+	err error,
+	out []byte,
+	outTotal int64,
+	outTrunc bool,
+) {
 	if a == nil || run == nil {
 		return
 	}
@@ -314,5 +375,15 @@ func (a *App) finishPTY(ctx context.Context, run *ptyRun, exitCode int, started 
 	a.broker.Publish(endEv)
 
 	// Best-effort store of PTY output as stdout.
-	_ = a.store.SaveOutput(ctx, run.sessionID, run.cmdID, out, []byte{}, outTotal, 0, outTrunc, false)
+	_ = a.store.SaveOutput(
+		ctx,
+		run.sessionID,
+		run.cmdID,
+		out,
+		[]byte{},
+		outTotal,
+		0,
+		outTrunc,
+		false,
+	)
 }

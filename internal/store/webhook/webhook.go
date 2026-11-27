@@ -27,7 +27,13 @@ type Store struct {
 	closed    bool
 }
 
-func New(url string, batchSize int, flushInterval time.Duration, timeout time.Duration, headers map[string]string) (*Store, error) {
+func New(
+	url string,
+	batchSize int,
+	flushInterval time.Duration,
+	timeout time.Duration,
+	headers map[string]string,
+) (*Store, error) {
 	if url == "" {
 		return nil, fmt.Errorf("webhook url is empty")
 	}
@@ -65,7 +71,8 @@ func (s *Store) AppendEvent(ctx context.Context, ev types.Event) error {
 	}
 	s.buf = append(s.buf, ev)
 	now := time.Now().UTC()
-	shouldFlush := len(s.buf) >= s.batchSize || (s.flushInterval > 0 && now.Sub(s.lastFlush) >= s.flushInterval)
+	shouldFlush := len(s.buf) >= s.batchSize ||
+		(s.flushInterval > 0 && now.Sub(s.lastFlush) >= s.flushInterval)
 	if shouldFlush {
 		toFlush = append([]types.Event(nil), s.buf...)
 		s.buf = nil

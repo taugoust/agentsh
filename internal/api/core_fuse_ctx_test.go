@@ -31,7 +31,10 @@ func (f *ctxAwareEventStore) AppendEvent(ctx context.Context, ev types.Event) er
 	return nil
 }
 
-func (f *ctxAwareEventStore) QueryEvents(_ context.Context, _ types.EventQuery) ([]types.Event, error) {
+func (f *ctxAwareEventStore) QueryEvents(
+	_ context.Context,
+	_ types.EventQuery,
+) ([]types.Event, error) {
 	return nil, nil
 }
 

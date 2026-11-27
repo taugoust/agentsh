@@ -11,7 +11,11 @@ import (
 
 func TestResolutionInboxExactReplayAppliesOnce(t *testing.T) {
 	identity := Identity{SessionID: "session", Generation: 1, IncarnationID: "incarnation"}
-	record, err := NewApprovalResolution(1, "approval", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
+	record, err := NewApprovalResolution(
+		1,
+		"approval",
+		approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +35,11 @@ func TestResolutionInboxExactReplayAppliesOnce(t *testing.T) {
 
 func TestResolutionInboxConcurrentReplayAppliesOnce(t *testing.T) {
 	identity := Identity{SessionID: "session", Generation: 2, IncarnationID: "incarnation"}
-	record, err := NewApprovalResolution(1, "approval", approvals.Resolution{Approved: false, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
+	record, err := NewApprovalResolution(
+		1,
+		"approval",
+		approvals.Resolution{Approved: false, Scope: approvals.ScopeOnce, At: time.Now().UTC()},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,16 +65,43 @@ func TestResolutionInboxConcurrentReplayAppliesOnce(t *testing.T) {
 func TestResolutionInboxRejectsGapAndConflictingReplay(t *testing.T) {
 	identity := Identity{SessionID: "session", Generation: 1, IncarnationID: "incarnation"}
 	inbox := NewResolutionInbox(8)
-	second, _ := NewApprovalResolution(2, "approval", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
-	if _, err := inbox.Apply(identity, 0, []Record{second}, func(Record) ResolveResult { return ResolveApplied }); err == nil {
+	second, _ := NewApprovalResolution(
+		2,
+		"approval",
+		approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()},
+	)
+	if _, err := inbox.Apply(
+		identity,
+		0,
+		[]Record{second},
+		func(Record) ResolveResult { return ResolveApplied },
+	); err == nil {
 		t.Fatal("sequence gap was accepted")
 	}
-	first, _ := NewApprovalResolution(1, "approval", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
-	if _, err := inbox.Apply(identity, 0, []Record{first}, func(Record) ResolveResult { return ResolveApplied }); err != nil {
+	first, _ := NewApprovalResolution(
+		1,
+		"approval",
+		approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()},
+	)
+	if _, err := inbox.Apply(
+		identity,
+		0,
+		[]Record{first},
+		func(Record) ResolveResult { return ResolveApplied },
+	); err != nil {
 		t.Fatal(err)
 	}
-	conflict, _ := NewApprovalResolution(1, "approval", approvals.Resolution{Approved: false, Scope: approvals.ScopeOnce, At: first.CreatedAt})
-	if _, err := inbox.Apply(identity, 0, []Record{conflict}, func(Record) ResolveResult { return ResolveApplied }); err == nil {
+	conflict, _ := NewApprovalResolution(
+		1,
+		"approval",
+		approvals.Resolution{Approved: false, Scope: approvals.ScopeOnce, At: first.CreatedAt},
+	)
+	if _, err := inbox.Apply(
+		identity,
+		0,
+		[]Record{conflict},
+		func(Record) ResolveResult { return ResolveApplied },
+	); err == nil {
 		t.Fatal("conflicting replay was accepted")
 	}
 }
@@ -74,8 +109,16 @@ func TestResolutionInboxRejectsGapAndConflictingReplay(t *testing.T) {
 func TestResolutionInboxPrunesOnlyPeerConfirmedReceipts(t *testing.T) {
 	identity := Identity{SessionID: "session", Generation: 1, IncarnationID: "incarnation"}
 	inbox := NewResolutionInbox(1)
-	first, _ := NewApprovalResolution(1, "one", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
-	second, _ := NewApprovalResolution(2, "two", approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()})
+	first, _ := NewApprovalResolution(
+		1,
+		"one",
+		approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()},
+	)
+	second, _ := NewApprovalResolution(
+		2,
+		"two",
+		approvals.Resolution{Approved: true, Scope: approvals.ScopeOnce, At: time.Now().UTC()},
+	)
 	resolve := func(Record) ResolveResult { return ResolveApplied }
 	if _, err := inbox.Apply(identity, 0, []Record{first}, resolve); err != nil {
 		t.Fatal(err)
@@ -93,17 +136,44 @@ func TestJournalAcknowledgmentCompactsWithoutReusingSequence(t *testing.T) {
 	journal := NewJournal(2)
 	now := time.Now().UTC()
 	for _, id := range []string{"one", "two"} {
-		if _, err := journal.AppendApproval(identity, approvals.Request{ID: id, SessionID: identity.SessionID, Kind: "file", CreatedAt: now, ExpiresAt: now.Add(time.Minute)}); err != nil {
+		if _, err := journal.AppendApproval(
+			identity,
+			approvals.Request{
+				ID:        id,
+				SessionID: identity.SessionID,
+				Kind:      "file",
+				CreatedAt: now,
+				ExpiresAt: now.Add(time.Minute),
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := journal.AppendApproval(identity, approvals.Request{ID: "full", SessionID: identity.SessionID, Kind: "file", CreatedAt: now, ExpiresAt: now.Add(time.Minute)}); err == nil {
+	if _, err := journal.AppendApproval(
+		identity,
+		approvals.Request{
+			ID:        "full",
+			SessionID: identity.SessionID,
+			Kind:      "file",
+			CreatedAt: now,
+			ExpiresAt: now.Add(time.Minute),
+		},
+	); err == nil {
 		t.Fatal("full unacknowledged journal accepted another record")
 	}
 	if err := journal.Acknowledge(identity, 2); err != nil {
 		t.Fatal(err)
 	}
-	record, err := journal.AppendApproval(identity, approvals.Request{ID: "three", SessionID: identity.SessionID, Kind: "file", CreatedAt: now, ExpiresAt: now.Add(time.Minute)})
+	record, err := journal.AppendApproval(
+		identity,
+		approvals.Request{
+			ID:        "three",
+			SessionID: identity.SessionID,
+			Kind:      "file",
+			CreatedAt: now,
+			ExpiresAt: now.Add(time.Minute),
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

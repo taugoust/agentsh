@@ -68,9 +68,14 @@ func readTestFrame[T any](t *testing.T, reader *frameReader) T {
 
 func testHandshake(t *testing.T, connection net.Conn, reader *frameReader) {
 	t.Helper()
-	sendTestFrame(t, connection, HelloRequest{V: ProtocolVersion, Type: messageHello, Client: "pi-permission-gate"})
+	sendTestFrame(
+		t,
+		connection,
+		HelloRequest{V: ProtocolVersion, Type: messageHello, Client: "pi-permission-gate"},
+	)
 	response := readTestFrame[HelloResponse](t, reader)
-	if response.V != ProtocolVersion || response.Type != messageHello || response.Service != "agentsh-permission-gate" {
+	if response.V != ProtocolVersion || response.Type != messageHello ||
+		response.Service != "agentsh-permission-gate" {
 		t.Fatalf("hello response = %#v", response)
 	}
 }
@@ -91,7 +96,8 @@ func TestPermissionGateBrokerAllowsHarmlessBashOnlyAfterAudit(t *testing.T) {
 		t.Fatalf("decision = %#v", response)
 	}
 	records := audit.snapshot()
-	if len(records) != 1 || records[0].Decision != "allow" || records[0].CommandPreview != request.Command {
+	if len(records) != 1 || records[0].Decision != "allow" ||
+		records[0].CommandPreview != request.Command {
 		t.Fatalf("audit records = %#v", records)
 	}
 
@@ -127,7 +133,8 @@ func TestPermissionGateBrokerPromptResolutionIsAuditedBeforeComplete(t *testing.
 		V: ProtocolVersion, Type: messageResolve, ID: request.ID, Decision: "allow",
 	})
 	complete := readTestFrame[CompleteResponse](t, reader)
-	if complete.Type != messageComplete || complete.Decision != "allow" || complete.ID != request.ID {
+	if complete.Type != messageComplete || complete.Decision != "allow" ||
+		complete.ID != request.ID {
 		t.Fatalf("complete = %#v", complete)
 	}
 	records := audit.snapshot()
@@ -154,7 +161,11 @@ func TestPermissionGateBrokerDenyAndCancel(t *testing.T) {
 			reader := newFrameReader(connection)
 			testHandshake(t, connection, reader)
 			sendTestFrame(t, connection, AuthorizeRequest{
-				V: ProtocolVersion, Type: messageAuthorize, ID: "request-1", Kind: "bash", Command: "ssh host",
+				V:       ProtocolVersion,
+				Type:    messageAuthorize,
+				ID:      "request-1",
+				Kind:    "bash",
+				Command: "ssh host",
 			})
 			_ = readTestFrame[DecisionResponse](t, reader)
 			sendTestFrame(t, connection, test.finish)
@@ -163,7 +174,8 @@ func TestPermissionGateBrokerDenyAndCancel(t *testing.T) {
 				t.Fatalf("complete = %#v", complete)
 			}
 			records := audit.snapshot()
-			if len(records) != 1 || records[0].Decision != "deny" || records[0].Reason != test.reason {
+			if len(records) != 1 || records[0].Decision != "deny" ||
+				records[0].Reason != test.reason {
 				t.Fatalf("records = %#v", records)
 			}
 			_ = connection.Close()
@@ -178,7 +190,11 @@ func TestPermissionGateBrokerAuditFailureNeverAllows(t *testing.T) {
 	reader := newFrameReader(connection)
 	testHandshake(t, connection, reader)
 	sendTestFrame(t, connection, AuthorizeRequest{
-		V: ProtocolVersion, Type: messageAuthorize, ID: "request-1", Kind: "bash", Command: "printf safe",
+		V:       ProtocolVersion,
+		Type:    messageAuthorize,
+		ID:      "request-1",
+		Kind:    "bash",
+		Command: "printf safe",
 	})
 	if err := <-result; !errors.Is(err, auditFailure) {
 		t.Fatalf("Serve() error = %v, want audit failure", err)
@@ -195,10 +211,26 @@ func TestPermissionGateBrokerRejectsMalformedProtocolAndEOF(t *testing.T) {
 		want  error
 	}{
 		{name: "malformed JSON", input: "{not-json}\n", want: ErrProtocol},
-		{name: "unknown field", input: `{"v":1,"type":"hello","client":"pi-permission-gate","extra":true}` + "\n", want: ErrProtocol},
-		{name: "duplicate field", input: `{"v":1,"v":1,"type":"hello","client":"pi-permission-gate"}` + "\n", want: ErrProtocol},
-		{name: "unterminated", input: `{"v":1,"type":"hello","client":"pi-permission-gate"}`, want: ErrProtocol},
-		{name: "wrong first message", input: `{"v":1,"type":"authorize","id":"x","kind":"bash","command":"true"}` + "\n", want: ErrProtocol},
+		{
+			name:  "unknown field",
+			input: `{"v":1,"type":"hello","client":"pi-permission-gate","extra":true}` + "\n",
+			want:  ErrProtocol,
+		},
+		{
+			name:  "duplicate field",
+			input: `{"v":1,"v":1,"type":"hello","client":"pi-permission-gate"}` + "\n",
+			want:  ErrProtocol,
+		},
+		{
+			name:  "unterminated",
+			input: `{"v":1,"type":"hello","client":"pi-permission-gate"}`,
+			want:  ErrProtocol,
+		},
+		{
+			name:  "wrong first message",
+			input: `{"v":1,"type":"authorize","id":"x","kind":"bash","command":"true"}` + "\n",
+			want:  ErrProtocol,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -228,9 +260,15 @@ func TestPermissionGateProtocolFragmentedAndCoalescedFrames(t *testing.T) {
 	audit := &recordingAudit{}
 	connection, result := startTestBroker(t, audit)
 	reader := newFrameReader(connection)
-	hello, _ := json.Marshal(HelloRequest{V: ProtocolVersion, Type: messageHello, Client: "pi-permission-gate"})
+	hello, _ := json.Marshal(
+		HelloRequest{V: ProtocolVersion, Type: messageHello, Client: "pi-permission-gate"},
+	)
 	authorize, _ := json.Marshal(AuthorizeRequest{
-		V: ProtocolVersion, Type: messageAuthorize, ID: "request-1", Kind: "bash", Command: "printf ok",
+		V:       ProtocolVersion,
+		Type:    messageAuthorize,
+		ID:      "request-1",
+		Kind:    "bash",
+		Command: "printf ok",
 	})
 	payload := append(append(append([]byte{}, hello...), '\n'), authorize...)
 	payload = append(payload, '\n')
@@ -305,6 +343,10 @@ func TestPermissionGateAuditLogPrivateAndBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !decoded.CommandTruncated || len(decoded.CommandPreview) > maxAuditCommandPreview {
-		t.Fatalf("bounded preview = %d bytes, truncated=%v", len(decoded.CommandPreview), decoded.CommandTruncated)
+		t.Fatalf(
+			"bounded preview = %d bytes, truncated=%v",
+			len(decoded.CommandPreview),
+			decoded.CommandTruncated,
+		)
 	}
 }

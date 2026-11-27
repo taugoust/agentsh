@@ -34,7 +34,11 @@ func TestWatcher_DetectsNewSkill(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: test\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: test\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -114,7 +118,11 @@ func TestWatcher_DetectsNestedSkillInAtomicTree(t *testing.T) {
 	if err := os.MkdirAll(nestedSkill, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(nestedSkill, "SKILL.md"), []byte("---\nname: nested\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(nestedSkill, "SKILL.md"),
+		[]byte("---\nname: nested\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	moved := filepath.Join(root, "outer")
@@ -159,7 +167,11 @@ func TestWatcher_DetectsRootCreatedAfterStart(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir skill: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: first\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: first\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -204,7 +216,11 @@ func TestWatcher_DeepNestedRootMissing(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir skill: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: first\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: first\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -220,7 +236,9 @@ func TestWatcher_DeepNestedRootMissing(t *testing.T) {
 
 func TestWatcher_GlobMatchesMultiplePluginsOverTime(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("glob root behavior on Windows fsnotify needs deeper investigation; tracking as follow-up")
+		t.Skip(
+			"glob root behavior on Windows fsnotify needs deeper investigation; tracking as follow-up",
+		)
 	}
 	parent := t.TempDir()
 	pluginsDir := filepath.Join(parent, "plugins")
@@ -252,7 +270,11 @@ func TestWatcher_GlobMatchesMultiplePluginsOverTime(t *testing.T) {
 	if err := os.MkdirAll(skillA, 0o755); err != nil {
 		t.Fatalf("mkdir A: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillA, "SKILL.md"), []byte("---\nname: a\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillA, "SKILL.md"),
+		[]byte("---\nname: a\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write A: %v", err)
 	}
 
@@ -263,7 +285,11 @@ func TestWatcher_GlobMatchesMultiplePluginsOverTime(t *testing.T) {
 	if err := os.MkdirAll(skillB, 0o755); err != nil {
 		t.Fatalf("mkdir B: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillB, "SKILL.md"), []byte("---\nname: b\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillB, "SKILL.md"),
+		[]byte("---\nname: b\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write B: %v", err)
 	}
 
@@ -284,7 +310,9 @@ func TestWatcher_GlobMatchesMultiplePluginsOverTime(t *testing.T) {
 
 func TestWatcher_GlobStaticAncestorAppearsAfterStart(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("glob root behavior on Windows fsnotify needs deeper investigation; tracking as follow-up")
+		t.Skip(
+			"glob root behavior on Windows fsnotify needs deeper investigation; tracking as follow-up",
+		)
 	}
 	parent := t.TempDir()
 	pluginsDir := filepath.Join(parent, "plugins") // doesn't exist yet
@@ -320,7 +348,11 @@ func TestWatcher_GlobStaticAncestorAppearsAfterStart(t *testing.T) {
 	if err := os.MkdirAll(skill, 0o755); err != nil {
 		t.Fatalf("mkdir plug: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("---\nname: first\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skill, "SKILL.md"),
+		[]byte("---\nname: first\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -358,7 +390,11 @@ func TestWatcher_AtomicLiteralRootCreation(t *testing.T) {
 	if err := os.MkdirAll(skill, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("---\nname: first\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skill, "SKILL.md"),
+		[]byte("---\nname: first\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -400,7 +436,11 @@ func TestWatcher_DeepAtomicCreateUnderRunningWatcher(t *testing.T) {
 		if err := os.MkdirAll(skill, 0o755); err != nil {
 			t.Fatalf("mkdir %d: %v", i, err)
 		}
-		if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(skill, "SKILL.md"),
+			[]byte("---\nname: x\n---\n"),
+			0o644,
+		); err != nil {
 			t.Fatalf("write %d: %v", i, err)
 		}
 	}
@@ -443,7 +483,11 @@ func TestWatcher_DoesNotFireOnSiblingsOfMissingRoot(t *testing.T) {
 	if err := os.MkdirAll(siblingSkill, 0o755); err != nil {
 		t.Fatalf("mkdir sibling: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(siblingSkill, "SKILL.md"), []byte("---\nname: noisy\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(siblingSkill, "SKILL.md"),
+		[]byte("---\nname: noisy\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write sibling: %v", err)
 	}
 
@@ -464,7 +508,11 @@ func TestWatcher_DoesNotFireOnSiblingsOfMissingRoot(t *testing.T) {
 	if err := os.MkdirAll(realSkill, 0o755); err != nil {
 		t.Fatalf("mkdir real: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(realSkill, "SKILL.md"), []byte("---\nname: ok\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(realSkill, "SKILL.md"),
+		[]byte("---\nname: ok\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write real: %v", err)
 	}
 

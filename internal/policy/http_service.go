@@ -189,7 +189,12 @@ func ValidateHTTPServices(svcs []HTTPService) error {
 			return fmt.Errorf("http_services[%d]: name is required", i)
 		}
 		if !httpServiceNameRe.MatchString(s.Name) {
-			return fmt.Errorf("http_services[%d]: name %q must match %s (URL-safe segment)", i, s.Name, httpServiceNameRe)
+			return fmt.Errorf(
+				"http_services[%d]: name %q must match %s (URL-safe segment)",
+				i,
+				s.Name,
+				httpServiceNameRe,
+			)
 		}
 		lower := strings.ToLower(s.Name)
 		if nameSeen[lower] {
@@ -202,26 +207,48 @@ func ValidateHTTPServices(svcs []HTTPService) error {
 			return fmt.Errorf("http_services[%q]: invalid upstream URL %q", s.Name, s.Upstream)
 		}
 		if u.Scheme != "https" && !(httpServiceAllowInsecureUpstreamForTest && u.Scheme == "http") {
-			return fmt.Errorf("http_services[%q]: upstream must be https (got %q)", s.Name, u.Scheme)
+			return fmt.Errorf(
+				"http_services[%q]: upstream must be https (got %q)",
+				s.Name,
+				u.Scheme,
+			)
 		}
 
 		// u.Host (not u.Hostname()) preserves brackets for IPv6 literals so
 		// the canonicalizer can distinguish bracketed from bare forms.
 		host, ok := canonicalizeHost(u.Host)
 		if !ok {
-			return fmt.Errorf("http_services[%q]: invalid upstream host %q (IPv6 literals must be bracketed)", s.Name, u.Host)
+			return fmt.Errorf(
+				"http_services[%q]: invalid upstream host %q (IPv6 literals must be bracketed)",
+				s.Name,
+				u.Host,
+			)
 		}
 		if other, dup := hostSeen[host]; dup {
-			return fmt.Errorf("http_services[%q]: duplicate upstream host %q (also claimed by %q)", s.Name, host, other)
+			return fmt.Errorf(
+				"http_services[%q]: duplicate upstream host %q (also claimed by %q)",
+				s.Name,
+				host,
+				other,
+			)
 		}
 		hostSeen[host] = s.Name
 		for _, alias := range s.Aliases {
 			a, ok := canonicalizeHost(alias)
 			if !ok {
-				return fmt.Errorf("http_services[%q]: invalid alias %q (IPv6 literals must be bracketed, hostnames must be non-empty)", s.Name, alias)
+				return fmt.Errorf(
+					"http_services[%q]: invalid alias %q (IPv6 literals must be bracketed, hostnames must be non-empty)",
+					s.Name,
+					alias,
+				)
 			}
 			if other, dup := hostSeen[a]; dup {
-				return fmt.Errorf("http_services[%q]: duplicate upstream host %q via alias (also claimed by %q)", s.Name, a, other)
+				return fmt.Errorf(
+					"http_services[%q]: duplicate upstream host %q via alias (also claimed by %q)",
+					s.Name,
+					a,
+					other,
+				)
 			}
 			hostSeen[a] = s.Name
 		}
@@ -230,7 +257,11 @@ func ValidateHTTPServices(svcs []HTTPService) error {
 		case "", "allow", "deny":
 			// OK
 		default:
-			return fmt.Errorf("http_services[%q]: invalid default %q (want allow|deny)", s.Name, s.Default)
+			return fmt.Errorf(
+				"http_services[%q]: invalid default %q (want allow|deny)",
+				s.Name,
+				s.Default,
+			)
 		}
 
 		// Derive the effective env var name once and use it for both the
@@ -249,17 +280,30 @@ func ValidateHTTPServices(svcs []HTTPService) error {
 		if exposeAs == "" {
 			exposeAs = strings.ToUpper(s.Name) + "_API_URL"
 			if !envVarNameRe.MatchString(exposeAs) {
-				return fmt.Errorf("http_services[%q]: derived env var name %q is invalid; set expose_as explicitly", s.Name, exposeAs)
+				return fmt.Errorf(
+					"http_services[%q]: derived env var name %q is invalid; set expose_as explicitly",
+					s.Name,
+					exposeAs,
+				)
 			}
 		} else if !envVarNameRe.MatchString(exposeAs) {
 			return fmt.Errorf("http_services[%q]: invalid expose_as %q", s.Name, exposeAs)
 		}
 		exposeAsKey := strings.ToUpper(exposeAs)
 		if _, reserved := reservedEnvVarNames[exposeAsKey]; reserved {
-			return fmt.Errorf("http_services[%q]: reserved env var name %q (used by LLM proxy)", s.Name, exposeAs)
+			return fmt.Errorf(
+				"http_services[%q]: reserved env var name %q (used by LLM proxy)",
+				s.Name,
+				exposeAs,
+			)
 		}
 		if other, dup := envVarSeen[exposeAsKey]; dup {
-			return fmt.Errorf("http_services[%q]: duplicate env var name %q (also claimed by %q)", s.Name, exposeAs, other)
+			return fmt.Errorf(
+				"http_services[%q]: duplicate env var name %q (also claimed by %q)",
+				s.Name,
+				exposeAs,
+				other,
+			)
 		}
 		envVarSeen[exposeAsKey] = s.Name
 
@@ -329,7 +373,12 @@ func ValidateHTTPServicesWithProviders(svcs []HTTPService, providers map[string]
 			return fmt.Errorf("providers.%s: unknown type %q", name, base.Type)
 		}
 		if prev, dup := providerSchemes[base.Type]; dup {
-			return fmt.Errorf("providers.%s: duplicate type %q (already declared by %q)", name, base.Type, prev)
+			return fmt.Errorf(
+				"providers.%s: duplicate type %q (already declared by %q)",
+				name,
+				base.Type,
+				prev,
+			)
 		}
 		providerSchemes[base.Type] = name
 	}
@@ -348,11 +397,19 @@ func ValidateHTTPServicesWithProviders(svcs []HTTPService, providers map[string]
 			}
 			if len(providerSchemes) > 0 {
 				if _, ok := providerSchemes[ref.Scheme]; !ok {
-					return fmt.Errorf("http_services[%q]: secret ref scheme %q has no matching provider", s.Name, ref.Scheme)
+					return fmt.Errorf(
+						"http_services[%q]: secret ref scheme %q has no matching provider",
+						s.Name,
+						ref.Scheme,
+					)
 				}
 			}
 			if len(providerSchemes) == 0 && s.Secret != nil {
-				return fmt.Errorf("http_services[%q]: secret ref scheme %q has no matching provider (no providers declared)", s.Name, ref.Scheme)
+				return fmt.Errorf(
+					"http_services[%q]: secret ref scheme %q has no matching provider (no providers declared)",
+					s.Name,
+					ref.Scheme,
+				)
 			}
 			if _, _, err := secrets.ParseFormat(s.Secret.Format); err != nil {
 				return fmt.Errorf("http_services[%q]: invalid fake format: %w", s.Name, err)
@@ -360,14 +417,20 @@ func ValidateHTTPServicesWithProviders(svcs []HTTPService, providers map[string]
 		}
 		if s.Inject != nil && s.Inject.Header != nil {
 			if !strings.Contains(s.Inject.Header.Template, "{{secret}}") {
-				return fmt.Errorf("http_services[%q]: inject.header.template must contain {{secret}}", s.Name)
+				return fmt.Errorf(
+					"http_services[%q]: inject.header.template must contain {{secret}}",
+					s.Name,
+				)
 			}
 			if strings.TrimSpace(s.Inject.Header.Name) == "" {
 				return fmt.Errorf("http_services[%q]: inject.header name is required", s.Name)
 			}
 		}
 		if s.Inject != nil && s.Inject.Header == nil {
-			return fmt.Errorf("http_services[%q]: inject.header is required when inject is set", s.Name)
+			return fmt.Errorf(
+				"http_services[%q]: inject.header is required when inject is set",
+				s.Name,
+			)
 		}
 	}
 	return nil

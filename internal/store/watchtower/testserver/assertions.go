@@ -24,7 +24,9 @@ import (
 // themselves (malformed payload, proto unmarshal failure) are also
 // wrapped in this sentinel so callers can use errors.Is to gate on
 // "the helpers could not extract events from this batch."
-var ErrUnsupportedCompression = errors.New("testserver: assertion helpers could not decode recorded batch body")
+var ErrUnsupportedCompression = errors.New(
+	"testserver: assertion helpers could not decode recorded batch body",
+)
 
 // ErrInvalidRange is returned by AssertSequenceRange and
 // AssertReplayObserved when first > last. The helpers interpret the
@@ -61,7 +63,10 @@ func (s *Server) WaitForFirstBatch(deadline time.Duration) (*wtpv1.EventBatch, e
 		}
 		select {
 		case <-expire:
-			return nil, fmt.Errorf("WaitForFirstBatch: timeout after %v with no EventBatch recorded", deadline)
+			return nil, fmt.Errorf(
+				"WaitForFirstBatch: timeout after %v with no EventBatch recorded",
+				deadline,
+			)
 		case <-time.After(5 * time.Millisecond):
 		}
 	}

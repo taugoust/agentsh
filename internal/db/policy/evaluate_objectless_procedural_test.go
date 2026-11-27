@@ -36,8 +36,12 @@ database_rules:
 	}
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbAllow {
-		t.Fatalf("verb = %v, want allow; FunctionCallProtocol effect must be reachable via objectless coverage (RuleName=%q, Reason=%q)",
-			d.Verb, d.RuleName, d.Reason)
+		t.Fatalf(
+			"verb = %v, want allow; FunctionCallProtocol effect must be reachable via objectless coverage (RuleName=%q, Reason=%q)",
+			d.Verb,
+			d.RuleName,
+			d.Reason,
+		)
 	}
 	if d.RuleName != "allow-funccall" {
 		t.Errorf("RuleName = %q, want \"allow-funccall\"", d.RuleName)
@@ -73,8 +77,11 @@ database_rules:
 	}
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbDeny {
-		t.Fatalf("verb = %v, want deny; SQL-escalated objectless procedural must fail closed (RuleName=%q)",
-			d.Verb, d.RuleName)
+		t.Fatalf(
+			"verb = %v, want deny; SQL-escalated objectless procedural must fail closed (RuleName=%q)",
+			d.Verb,
+			d.RuleName,
+		)
 	}
 	if d.RuleName != "" {
 		t.Errorf("RuleName = %q, want \"\" for implicit deny", d.RuleName)

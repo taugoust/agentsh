@@ -12,7 +12,11 @@ import (
 	"github.com/agentsh/agentsh/pkg/types"
 )
 
-func (c *Client) ExecStream(ctx context.Context, sessionID string, req types.ExecRequest) (io.ReadCloser, error) {
+func (c *Client) ExecStream(
+	ctx context.Context,
+	sessionID string,
+	req types.ExecRequest,
+) (io.ReadCloser, error) {
 	path := "/api/v1/sessions/" + url.PathEscape(sessionID) + "/exec/stream"
 	u := c.baseURL + path
 	b, err := json.Marshal(req)
@@ -34,7 +38,13 @@ func (c *Client) ExecStream(ctx context.Context, sessionID string, req types.Exe
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		return nil, &HTTPError{Method: http.MethodPost, Path: path, Status: resp.Status, StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return nil, &HTTPError{
+			Method:     http.MethodPost,
+			Path:       path,
+			Status:     resp.Status,
+			StatusCode: resp.StatusCode,
+			Body:       strings.TrimSpace(string(body)),
+		}
 	}
 	return resp.Body, nil
 }

@@ -53,7 +53,10 @@ func resolveDomainTTL(domain string, maxTTL time.Duration) ([]net.IP, time.Durat
 	dnsMu.Unlock()
 
 	nameserver := ""
-	if conf, err := dns.ClientConfigFromFile("/etc/resolv.conf"); err == nil && len(conf.Servers) > 0 {
+	if conf, err := dns.ClientConfigFromFile(
+		"/etc/resolv.conf",
+	); err == nil &&
+		len(conf.Servers) > 0 {
 		nameserver = net.JoinHostPort(conf.Servers[0], conf.Port)
 	}
 	useSystem := nameserver == ""

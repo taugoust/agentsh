@@ -61,14 +61,29 @@ func TestMCPInterceptedToEvent_Allow(t *testing.T) {
 		t.Errorf("policy.decision: got %q, want %q", out.Policy.Decision, types.DecisionAllow)
 	}
 	if out.Policy.EffectiveDecision != types.DecisionAllow {
-		t.Errorf("policy.effective_decision: got %q, want %q", out.Policy.EffectiveDecision, types.DecisionAllow)
+		t.Errorf(
+			"policy.effective_decision: got %q, want %q",
+			out.Policy.EffectiveDecision,
+			types.DecisionAllow,
+		)
 	}
 	if out.Policy.Rule != "mcp-allow" {
 		t.Errorf("policy.rule: got %q, want %q", out.Policy.Rule, "mcp-allow")
 	}
 
 	// Verify Fields contains expected keys
-	expectedKeys := []string{"request_id", "dialect", "tool_name", "tool_call_id", "server_id", "server_type", "server_addr", "tool_hash", "action", "reason"}
+	expectedKeys := []string{
+		"request_id",
+		"dialect",
+		"tool_name",
+		"tool_call_id",
+		"server_id",
+		"server_type",
+		"server_addr",
+		"tool_hash",
+		"action",
+		"reason",
+	}
 	for _, k := range expectedKeys {
 		if _, ok := out.Fields[k]; !ok {
 			t.Errorf("fields missing key %q", k)
@@ -185,7 +200,11 @@ func TestMCPCrossServerToEvent(t *testing.T) {
 		t.Errorf("policy.decision: got %q, want %q", out.Policy.Decision, types.DecisionDeny)
 	}
 	if out.Policy.EffectiveDecision != types.DecisionDeny {
-		t.Errorf("policy.effective_decision: got %q, want %q", out.Policy.EffectiveDecision, types.DecisionDeny)
+		t.Errorf(
+			"policy.effective_decision: got %q, want %q",
+			out.Policy.EffectiveDecision,
+			types.DecisionDeny,
+		)
 	}
 	if out.Policy.Rule != "cross_server_read_then_send" {
 		t.Errorf("policy.rule: got %q, want %q", out.Policy.Rule, "cross_server_read_then_send")
@@ -195,7 +214,14 @@ func TestMCPCrossServerToEvent(t *testing.T) {
 	}
 
 	// Fields checks
-	expectedKeys := []string{"rule", "severity", "blocked_server_id", "blocked_tool_name", "reason", "related_calls"}
+	expectedKeys := []string{
+		"rule",
+		"severity",
+		"blocked_server_id",
+		"blocked_tool_name",
+		"reason",
+		"related_calls",
+	}
 	for _, k := range expectedKeys {
 		if _, ok := out.Fields[k]; !ok {
 			t.Errorf("fields missing key %q", k)
@@ -208,10 +234,18 @@ func TestMCPCrossServerToEvent(t *testing.T) {
 		t.Errorf("fields.severity: got %v, want %q", out.Fields["severity"], "critical")
 	}
 	if out.Fields["blocked_server_id"] != "exfil-server" {
-		t.Errorf("fields.blocked_server_id: got %v, want %q", out.Fields["blocked_server_id"], "exfil-server")
+		t.Errorf(
+			"fields.blocked_server_id: got %v, want %q",
+			out.Fields["blocked_server_id"],
+			"exfil-server",
+		)
 	}
 	if out.Fields["blocked_tool_name"] != "send_email" {
-		t.Errorf("fields.blocked_tool_name: got %v, want %q", out.Fields["blocked_tool_name"], "send_email")
+		t.Errorf(
+			"fields.blocked_tool_name: got %v, want %q",
+			out.Fields["blocked_tool_name"],
+			"send_email",
+		)
 	}
 
 	// Verify related_calls is a slice with one entry
@@ -278,6 +312,10 @@ func TestMCPCrossServerToEvent_CrossServerFlowNoDoublePrefix(t *testing.T) {
 
 	// Must NOT double-prefix to "cross_server_cross_server_flow".
 	if out.Policy.Rule != "cross_server_flow" {
-		t.Errorf("policy.rule: got %q, want %q (should not double-prefix)", out.Policy.Rule, "cross_server_flow")
+		t.Errorf(
+			"policy.rule: got %q, want %q (should not double-prefix)",
+			out.Policy.Rule,
+			"cross_server_flow",
+		)
 	}
 }

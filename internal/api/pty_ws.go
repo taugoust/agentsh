@@ -41,7 +41,11 @@ type ptyWSExit struct {
 
 func (a *App) execInSessionPTYWS(w http.ResponseWriter, r *http.Request) {
 	if a == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "server not initialized"})
+		writeJSON(
+			w,
+			http.StatusServiceUnavailable,
+			map[string]any{"error": "server not initialized"},
+		)
 		return
 	}
 	if !websocket.IsWebSocketUpgrade(r) {
@@ -114,20 +118,34 @@ func (a *App) execInSessionPTYWS(w http.ResponseWriter, r *http.Request) {
 	}
 	conn.SetReadDeadline(time.Now().Add(wsPongWait))
 	if mt != websocket.TextMessage {
-		_ = wsWriteMessage(websocket.TextMessage, mustJSON(map[string]any{"type": "error", "message": "first message must be text start"}))
+		_ = wsWriteMessage(
+			websocket.TextMessage,
+			mustJSON(
+				map[string]any{"type": "error", "message": "first message must be text start"},
+			),
+		)
 		return
 	}
 	var start ptyWSStart
 	if err := json.Unmarshal(data, &start); err != nil {
-		_ = wsWriteMessage(websocket.TextMessage, mustJSON(map[string]any{"type": "error", "message": "invalid start json"}))
+		_ = wsWriteMessage(
+			websocket.TextMessage,
+			mustJSON(map[string]any{"type": "error", "message": "invalid start json"}),
+		)
 		return
 	}
 	if start.Type != "" && start.Type != "start" {
-		_ = wsWriteMessage(websocket.TextMessage, mustJSON(map[string]any{"type": "error", "message": "expected type=start"}))
+		_ = wsWriteMessage(
+			websocket.TextMessage,
+			mustJSON(map[string]any{"type": "error", "message": "expected type=start"}),
+		)
 		return
 	}
 	if strings.TrimSpace(start.Command) == "" {
-		_ = wsWriteMessage(websocket.TextMessage, mustJSON(map[string]any{"type": "error", "message": "command is required"}))
+		_ = wsWriteMessage(
+			websocket.TextMessage,
+			mustJSON(map[string]any{"type": "error", "message": "command is required"}),
+		)
 		return
 	}
 
@@ -141,7 +159,10 @@ func (a *App) execInSessionPTYWS(w http.ResponseWriter, r *http.Request) {
 		Cols:       start.Cols,
 	})
 	if err != nil {
-		_ = wsWriteMessage(websocket.TextMessage, mustJSON(map[string]any{"type": "error", "code": httpCode, "message": err.Error()}))
+		_ = wsWriteMessage(
+			websocket.TextMessage,
+			mustJSON(map[string]any{"type": "error", "code": httpCode, "message": err.Error()}),
+		)
 		return
 	}
 	defer run.unlock()
@@ -220,7 +241,10 @@ func (a *App) execInSessionPTYWS(w http.ResponseWriter, r *http.Request) {
 	exitCode, waitErr := run.ps.Wait()
 	a.finishPTY(r.Context(), run, exitCode, run.started, waitErr, out.Bytes(), outTotal, outTrunc)
 	if waitErr != nil {
-		_ = wsWriteMessage(websocket.TextMessage, mustJSON(map[string]any{"type": "error", "message": waitErr.Error()}))
+		_ = wsWriteMessage(
+			websocket.TextMessage,
+			mustJSON(map[string]any{"type": "error", "message": waitErr.Error()}),
+		)
 		return
 	}
 
@@ -229,7 +253,10 @@ func (a *App) execInSessionPTYWS(w http.ResponseWriter, r *http.Request) {
 		ExitCode:   exitCode,
 		DurationMs: time.Since(run.started).Milliseconds(),
 	}))
-	_ = wsWriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	_ = wsWriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+	)
 }
 
 func mustJSON(v any) []byte {

@@ -154,7 +154,12 @@ func (l *AuditLog) Close() error {
 	return l.sticky
 }
 
-func newAuditRecord(runID string, request AuthorizeRequest, matches []Match, decision, reason string) AuditRecord {
+func newAuditRecord(
+	runID string,
+	request AuthorizeRequest,
+	matches []Match,
+	decision, reason string,
+) AuditRecord {
 	labels := make([]string, 0, len(matches))
 	for _, match := range matches {
 		labels = append(labels, match.Label)

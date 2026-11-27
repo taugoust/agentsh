@@ -204,8 +204,12 @@ func TestDBAuditSinkEmitStatementPublishesToBroker(t *testing.T) {
 		DBFamily:       "postgres",
 		DBDialect:      "postgres",
 		OperationGroup: "session",
-		Decision:       dbevents.EventDecision{Verb: "allow", RuleKind: "cancel", RuleName: "allow-app-cancel"},
-		Result:         dbevents.EventResult{ErrorCode: "57014"},
+		Decision: dbevents.EventDecision{
+			Verb:     "allow",
+			RuleKind: "cancel",
+			RuleName: "allow-app-cancel",
+		},
+		Result: dbevents.EventResult{ErrorCode: "57014"},
 	})
 	if err != nil {
 		t.Fatalf("EmitStatement: %v", err)

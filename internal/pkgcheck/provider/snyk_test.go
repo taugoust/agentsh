@@ -316,7 +316,12 @@ func TestSnykProvider_ConcurrentFanOut(t *testing.T) {
 		Packages:  packages,
 	})
 	require.NoError(t, err)
-	assert.GreaterOrEqual(t, maxConcurrent, 2, "expected at least 2 simultaneous in-flight requests")
+	assert.GreaterOrEqual(
+		t,
+		maxConcurrent,
+		2,
+		"expected at least 2 simultaneous in-flight requests",
+	)
 }
 
 func TestSnykProvider_AuthErrorIsFailFast(t *testing.T) {
@@ -456,7 +461,12 @@ func TestSnykProvider_FindingsOrderMatchesInputOrder(t *testing.T) {
 	wantOrder := []string{"slow-1", "fast-1", "slow-2", "fast-2"}
 	for i, want := range wantOrder {
 		if resp.Findings[i].Package.Name != want {
-			t.Errorf("findings[%d]: want package %q, got %q", i, want, resp.Findings[i].Package.Name)
+			t.Errorf(
+				"findings[%d]: want package %q, got %q",
+				i,
+				want,
+				resp.Findings[i].Package.Name,
+			)
 		}
 	}
 }

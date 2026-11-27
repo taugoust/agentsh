@@ -28,7 +28,10 @@ type capturingDNSNetworkHandler struct {
 	called  chan struct{}
 }
 
-func (h *capturingDNSNetworkHandler) HandleNetwork(_ context.Context, nc NetworkContext) NetworkResult {
+func (h *capturingDNSNetworkHandler) HandleNetwork(
+	_ context.Context,
+	nc NetworkContext,
+) NetworkResult {
 	h.lastCtx = nc
 	select {
 	case h.called <- struct{}{}:

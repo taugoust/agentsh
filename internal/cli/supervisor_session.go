@@ -86,7 +86,10 @@ func newSupervisorRunCmd() *cobra.Command {
 	return cmd
 }
 
-func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath string) (runErr error) {
+func runDetachedSupervisor(
+	ctx context.Context,
+	configPath, stateDir, sockPath string,
+) (runErr error) {
 	if strings.TrimSpace(stateDir) == "" {
 		return fmt.Errorf("--state-dir is required")
 	}
@@ -116,19 +119,32 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 	var runtimeState *detached.Runtime
 	if err := runtimeprovider.WithLifecycleLock(stateDir, func() error {
 		manifest, readErr := runtimeprovider.ReadManifest(stateDir)
-		if readErr == nil && (manifest.State == runtimeprovider.StateStopping || manifest.State == runtimeprovider.StateStopped || manifest.CleanupPending ||
-			(!manifest.CleanupIntentKnown && manifest.State == runtimeprovider.StateFailed && !manifest.CleanupComplete)) {
-			return fmt.Errorf("detached session %s has committed runtime cleanup state and cannot restart", manifest.SessionID)
+		if readErr == nil &&
+			(manifest.State == runtimeprovider.StateStopping || manifest.State == runtimeprovider.StateStopped || manifest.CleanupPending ||
+				(!manifest.CleanupIntentKnown && manifest.State == runtimeprovider.StateFailed && !manifest.CleanupComplete)) {
+			return fmt.Errorf(
+				"detached session %s has committed runtime cleanup state and cannot restart",
+				manifest.SessionID,
+			)
 		}
 		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 			return readErr
 		}
 		var beginErr error
-		runtimeState, beginErr = detached.BeginRuntime(stateDir, os.Getpid(), startIdentity, bootID, time.Now().UTC())
+		runtimeState, beginErr = detached.BeginRuntime(
+			stateDir,
+			os.Getpid(),
+			startIdentity,
+			bootID,
+			time.Now().UTC(),
+		)
 		if beginErr != nil {
 			return beginErr
 		}
-		protectedMeta, _, metaErr := detached.ReadMetadataFromRoot(filepath.Dir(stateDir), runtimeState.Manifest().SessionID)
+		protectedMeta, _, metaErr := detached.ReadMetadataFromRoot(
+			filepath.Dir(stateDir),
+			runtimeState.Manifest().SessionID,
+		)
 		if metaErr != nil {
 			return fmt.Errorf("read detached control credential: %w", metaErr)
 		}
@@ -159,14 +175,21 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 		if detachedSupervisorStrictNetworkEnforcement(cfg) && !runtimeState.IsRecovery() {
 			return fmt.Errorf("strict detached helper credential unavailable: %w", err)
 		}
-		fmt.Fprintf(os.Stderr, "agentsh: warning: nethelper credential unavailable; starting fail-closed recovery control plane: %v\n", err)
+		fmt.Fprintf(
+			os.Stderr,
+			"agentsh: warning: nethelper credential unavailable; starting fail-closed recovery control plane: %v\n",
+			err,
+		)
 		if detachedSupervisorStrictNetworkEnforcement(cfg) {
 			// Keep capability initialization on the external-helper path while
 			// carrying no valid helper authority. The random placeholder can never
 			// authenticate; strict command admission remains blocked until the
 			// wrapper performs an authorized transactional rebind.
 			if strings.TrimSpace(os.Getenv(nethelper.EnvSocket)) == "" {
-				_ = os.Setenv(nethelper.EnvSocket, filepath.Join(stateDir, "nethelper-unavailable.sock"))
+				_ = os.Setenv(
+					nethelper.EnvSocket,
+					filepath.Join(stateDir, "nethelper-unavailable.sock"),
+				)
 			}
 			_ = os.Setenv(nethelper.EnvHelperInstanceCredential, randomDetachedEventToken())
 		} else {
@@ -201,7 +224,11 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 				return
 			case now := <-ticker.C:
 				if err := runtimeState.Heartbeat(now); err != nil {
-					fmt.Fprintf(os.Stderr, "agentsh: detached heartbeat persistence failed: %v\n", err)
+					fmt.Fprintf(
+						os.Stderr,
+						"agentsh: detached heartbeat persistence failed: %v\n",
+						err,
+					)
 				}
 			}
 		}
@@ -215,7 +242,11 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 		// Restart=on-failure cannot resurrect an expired or explicitly stopped
 		// session.
 		if err := runtimeState.MarkStopped(); err != nil {
-			fmt.Fprintf(os.Stderr, "agentsh: detached stopping state is durable but final stopped persistence failed: %v\n", err)
+			fmt.Fprintf(
+				os.Stderr,
+				"agentsh: detached stopping state is durable but final stopped persistence failed: %v\n",
+				err,
+			)
 		}
 		runErr = nil
 	case detached.LifecycleStopped, detached.LifecycleFinalized:
@@ -229,7 +260,10 @@ func runDetachedSupervisor(ctx context.Context, configPath, stateDir, sockPath s
 		}
 	}
 	if err := syncNativeRuntimeProviderManifest(stateDir, runtimeState.Metadata()); err != nil {
-		runErr = errors.Join(runErr, fmt.Errorf("persist terminal native runtime-provider state: %w", err))
+		runErr = errors.Join(
+			runErr,
+			fmt.Errorf("persist terminal native runtime-provider state: %w", err),
+		)
 	}
 	return runErr
 }
@@ -326,7 +360,11 @@ func detachedSupervisorNetworkEnforcementWarning(cfg *config.Config) string {
 		return ""
 	}
 	if features := detachedSupervisorUnsupportedNetworkFeatures(cfg); len(features) > 0 {
-		return fmt.Sprintf("detached supervisor MVP is disabling best-effort network enforcement (%s); %s", strings.Join(features, ", "), detachedSupervisorNetworkPolicyRuntimeGap)
+		return fmt.Sprintf(
+			"detached supervisor MVP is disabling best-effort network enforcement (%s); %s",
+			strings.Join(features, ", "),
+			detachedSupervisorNetworkPolicyRuntimeGap,
+		)
 	}
 	return ""
 }
@@ -394,7 +432,14 @@ func detachedSupervisorServiceEnv(env, inheritPatterns []string) []string {
 	// file path; the supervisor reads it before serving requests. The generic
 	// subagent runtime configuration is non-secret control-plane data and must
 	// cross the systemd-run boundary so spawn_subagent works in detached mode.
-	keys := []string{nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile, detached.EnvNetworkEnforcementRequested, detached.EnvGuestEgressProxyURL}
+	keys := []string{
+		nethelper.EnvCredentialFile,
+		nethelper.EnvSocket,
+		nethelper.EnvBootstrapResult,
+		nethelper.EnvRecoveryTokenFile,
+		detached.EnvNetworkEnforcementRequested,
+		detached.EnvGuestEgressProxyURL,
+	}
 	keys = append(keys, detachedSupervisorRuntimeEnvKeys...)
 	seen := map[string]struct{}{}
 	for _, key := range keys {
@@ -409,7 +454,8 @@ func detachedSupervisorServiceEnv(env, inheritPatterns []string) []string {
 	// and expand policy variables such as ${SSH_AUTH_SOCK} to the exact path.
 	for _, assignment := range env {
 		name, value, ok := strings.Cut(assignment, "=")
-		if !ok || name == "" || value == "" || !detachedSupervisorEnvRequested(name, inheritPatterns) {
+		if !ok || name == "" || value == "" ||
+			!detachedSupervisorEnvRequested(name, inheritPatterns) {
 			continue
 		}
 		if _, ok := seen[name]; ok || isSensitiveSupervisorAssignment(assignment) {
@@ -477,7 +523,10 @@ func loadSupervisorNethelperCredential() error {
 		return err
 	}
 	if err := os.Setenv(nethelper.EnvHelperInstanceCredential, credential); err != nil {
-		return fmt.Errorf("retain nethelper instance credential until server initialization: %w", err)
+		return fmt.Errorf(
+			"retain nethelper instance credential until server initialization: %w",
+			err,
+		)
 	}
 	_ = os.Unsetenv(nethelper.EnvSessionNonce)
 	// api.NewApp captures the value into the trusted App and unsets both the
@@ -566,13 +615,19 @@ broker features remain out of scope.`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !detach {
-				return fmt.Errorf("session start currently requires --detach (use 'agentsh session create' for daemon-backed sessions)")
+				return fmt.Errorf(
+					"session start currently requires --detach (use 'agentsh session create' for daemon-backed sessions)",
+				)
 			}
 			if workspaceMode == "" {
 				workspaceMode = string(types.WorkspaceModeShadow)
 			}
-			if workspaceMode != string(types.WorkspaceModeShadow) && workspaceMode != string(types.WorkspaceModeDirect) {
-				return fmt.Errorf("unsupported workspace mode %q for experimental detached supervisor: Stage 1 supports only shadow (recommended) or direct; overlay/COW/FUSE backends are intentionally not implemented in this MVP", workspaceMode)
+			if workspaceMode != string(types.WorkspaceModeShadow) &&
+				workspaceMode != string(types.WorkspaceModeDirect) {
+				return fmt.Errorf(
+					"unsupported workspace mode %q for experimental detached supervisor: Stage 1 supports only shadow (recommended) or direct; overlay/COW/FUSE backends are intentionally not implemented in this MVP",
+					workspaceMode,
+				)
 			}
 			if policy == "" {
 				policy = "agent-default"
@@ -580,12 +635,26 @@ broker features remain out of scope.`,
 			if len(workspaces) == 0 {
 				workspaces = []string{"."}
 			}
-			res, err := startDetachedSupervisorSessionWithInput(cmd.Context(), sessionID, workspaces, workspaceMode, policy, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, runtimeInputBundle)
+			res, err := startDetachedSupervisorSessionWithInput(
+				cmd.Context(),
+				sessionID,
+				workspaces,
+				workspaceMode,
+				policy,
+				runtimeHomeMode,
+				envBaseMode,
+				envInherit,
+				runtimeProfile,
+				runtimeInputBundle,
+			)
 			if err != nil {
 				return err
 			}
 			if controlTokenFile != "" {
-				if err := writeDetachedControlTokenFile(controlTokenFile, res.EventToken); err != nil {
+				if err := writeDetachedControlTokenFile(
+					controlTokenFile,
+					res.EventToken,
+				); err != nil {
 					return err
 				}
 			}
@@ -598,28 +667,44 @@ broker features remain out of scope.`,
 			for _, line := range detachedreport.HumanLines(res.NetworkEnforcement, "  ") {
 				fmt.Fprintln(cmd.OutOrStdout(), line)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "\nWrap with:\n  agentsh wrap --server unix://%s --session %s -- <cmd>\n", res.SupervisorSock, res.SessionID)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"\nWrap with:\n  agentsh wrap --server unix://%s --session %s -- <cmd>\n",
+				res.SupervisorSock,
+				res.SessionID,
+			)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&detach, "detach", false, "Start a detached per-session supervisor")
-	cmd.Flags().StringArrayVar(&workspaces, "workspace", nil, "Workspace directory (repeatable for shadow multi-root sessions)")
-	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", string(types.WorkspaceModeShadow), "Workspace mode: shadow or direct")
+	cmd.Flags().
+		StringArrayVar(&workspaces, "workspace", nil, "Workspace directory (repeatable for shadow multi-root sessions)")
+	cmd.Flags().
+		StringVar(&workspaceMode, "workspace-mode", string(types.WorkspaceModeShadow), "Workspace mode: shadow or direct")
 	cmd.Flags().StringVar(&policy, "policy", "agent-default", "Policy name")
-	cmd.Flags().StringVar(&runtimeHomeMode, "runtime-home", "", "Process HOME mode: isolated or real")
-	cmd.Flags().StringVar(&envBaseMode, "env-base", "", "Child env base: minimal or inherit_allowed")
-	cmd.Flags().StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
-	cmd.Flags().StringVar(&sessionID, "session-id", "", "Exact caller-preallocated session-UUID identity")
-	cmd.Flags().StringVar(&runtimeProfile, "runtime-profile", "", "Operator-configured detached runtime profile (default: sessions.runtime.default_profile)")
-	cmd.Flags().StringVar(&runtimeInputBundle, "runtime-input-bundle", "", "Trusted Git input bundle for an isolated external runtime")
-	cmd.Flags().StringVar(&controlTokenFile, "control-token-file", "", "Create a private detached-control credential file for a trusted wrapper")
+	cmd.Flags().
+		StringVar(&runtimeHomeMode, "runtime-home", "", "Process HOME mode: isolated or real")
+	cmd.Flags().
+		StringVar(&envBaseMode, "env-base", "", "Child env base: minimal or inherit_allowed")
+	cmd.Flags().
+		StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
+	cmd.Flags().
+		StringVar(&sessionID, "session-id", "", "Exact caller-preallocated session-UUID identity")
+	cmd.Flags().
+		StringVar(&runtimeProfile, "runtime-profile", "", "Operator-configured detached runtime profile (default: sessions.runtime.default_profile)")
+	cmd.Flags().
+		StringVar(&runtimeInputBundle, "runtime-input-bundle", "", "Trusted Git input bundle for an isolated external runtime")
+	cmd.Flags().
+		StringVar(&controlTokenFile, "control-token-file", "", "Create a private detached-control credential file for a trusted wrapper")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	return cmd
 }
 
 func writeDetachedControlTokenFile(path, token string) error {
 	path = filepath.Clean(strings.TrimSpace(path))
-	if !filepath.IsAbs(path) || path == string(filepath.Separator) || strings.TrimSpace(token) == "" || strings.ContainsAny(token, " \t\r\n") {
+	if !filepath.IsAbs(path) || path == string(filepath.Separator) ||
+		strings.TrimSpace(token) == "" ||
+		strings.ContainsAny(token, " \t\r\n") {
 		return fmt.Errorf("detached control token file request is invalid")
 	}
 	parent := filepath.Dir(path)
@@ -701,7 +786,10 @@ func reserveDetachedSessionState(sessionID string) (string, error) {
 
 type detachedSupervisorFixedEnvironmentKey struct{}
 
-func withDetachedSupervisorFixedEnvironment(ctx context.Context, assignments []string) (context.Context, error) {
+func withDetachedSupervisorFixedEnvironment(
+	ctx context.Context,
+	assignments []string,
+) (context.Context, error) {
 	if len(assignments) == 0 {
 		return ctx, nil
 	}
@@ -710,7 +798,8 @@ func withDetachedSupervisorFixedEnvironment(ctx context.Context, assignments []s
 	for _, assignment := range assignments {
 		name, value, ok := strings.Cut(assignment, "=")
 		name = strings.TrimSpace(name)
-		if !ok || name == "" || value == "" || strings.ContainsAny(name, "= \t\r\n") || strings.ContainsAny(value, "\x00\r\n") {
+		if !ok || name == "" || value == "" || strings.ContainsAny(name, "= \t\r\n") ||
+			strings.ContainsAny(value, "\x00\r\n") {
 			return nil, fmt.Errorf("fixed detached supervisor environment assignment is invalid")
 		}
 		if _, duplicate := seen[name]; duplicate {
@@ -730,11 +819,38 @@ func detachedSupervisorFixedEnvironment(ctx context.Context) []string {
 	return append([]string(nil), assignments...)
 }
 
-func startDetachedSupervisorSessionWithInput(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile, inputBundle string) (*detachedSessionStartResult, error) {
-	return startDetachedSupervisorSessionAtGeneration(ctx, requestedSessionID, workspaces, workspaceMode, policyName, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, inputBundle, 1)
+func startDetachedSupervisorSessionWithInput(
+	ctx context.Context,
+	requestedSessionID string,
+	workspaces []string,
+	workspaceMode, policyName, runtimeHomeMode, envBaseMode string,
+	envInherit []string,
+	runtimeProfile, inputBundle string,
+) (*detachedSessionStartResult, error) {
+	return startDetachedSupervisorSessionAtGeneration(
+		ctx,
+		requestedSessionID,
+		workspaces,
+		workspaceMode,
+		policyName,
+		runtimeHomeMode,
+		envBaseMode,
+		envInherit,
+		runtimeProfile,
+		inputBundle,
+		1,
+	)
 }
 
-func startDetachedSupervisorSessionAtGeneration(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile, inputBundle string, expectedGeneration uint64) (*detachedSessionStartResult, error) {
+func startDetachedSupervisorSessionAtGeneration(
+	ctx context.Context,
+	requestedSessionID string,
+	workspaces []string,
+	workspaceMode, policyName, runtimeHomeMode, envBaseMode string,
+	envInherit []string,
+	runtimeProfile, inputBundle string,
+	expectedGeneration uint64,
+) (*detachedSessionStartResult, error) {
 	if expectedGeneration == 0 {
 		return nil, fmt.Errorf("detached supervisor expected generation must be positive")
 	}
@@ -761,7 +877,12 @@ func startDetachedSupervisorSessionAtGeneration(ctx context.Context, requestedSe
 				return nil, fmt.Errorf("legacy external runtime does not accept a Git input bundle")
 			}
 		case externalrunner.ProfileSchemaV2, externalrunner.ProfileSchemaV3:
-			descriptor, ingestErr := ingestRuntimeInputBundle(ctx, request.StateDir, request.SessionID, inputBundle)
+			descriptor, ingestErr := ingestRuntimeInputBundle(
+				ctx,
+				request.StateDir,
+				request.SessionID,
+				inputBundle,
+			)
 			if ingestErr != nil {
 				return nil, ingestErr
 			}
@@ -773,14 +894,21 @@ func startDetachedSupervisorSessionAtGeneration(ctx context.Context, requestedSe
 	return startDetachedRuntime(ctx, request, configPath, cfg)
 }
 
-func ingestRuntimeInputBundle(ctx context.Context, stateDir, sessionID, path string) (artifact.Descriptor, error) {
+func ingestRuntimeInputBundle(
+	ctx context.Context,
+	stateDir, sessionID, path string,
+) (artifact.Descriptor, error) {
 	path = filepath.Clean(strings.TrimSpace(path))
 	if !filepath.IsAbs(path) || path == string(filepath.Separator) {
-		return artifact.Descriptor{}, fmt.Errorf("external runtime Git input bundle path must be clean and absolute")
+		return artifact.Descriptor{}, fmt.Errorf(
+			"external runtime Git input bundle path must be clean and absolute",
+		)
 	}
 	before, err := os.Lstat(path)
 	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 {
-		return artifact.Descriptor{}, fmt.Errorf("external runtime Git input bundle is not a direct regular file")
+		return artifact.Descriptor{}, fmt.Errorf(
+			"external runtime Git input bundle is not a direct regular file",
+		)
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -789,7 +917,9 @@ func ingestRuntimeInputBundle(ctx context.Context, stateDir, sessionID, path str
 	defer file.Close()
 	opened, err := file.Stat()
 	if err != nil || !os.SameFile(before, opened) {
-		return artifact.Descriptor{}, fmt.Errorf("external runtime Git input bundle identity changed while opening")
+		return artifact.Descriptor{}, fmt.Errorf(
+			"external runtime Git input bundle identity changed while opening",
+		)
 	}
 	store, err := artifact.NewStore(stateDir, sessionID, guestcontrol.MaxArtifactTransferBytes)
 	if err != nil {
@@ -798,7 +928,12 @@ func ingestRuntimeInputBundle(ctx context.Context, stateDir, sessionID, path str
 	return store.Put(ctx, artifact.KindGitInputBundle, file)
 }
 
-func startNativeDetachedSupervisorSession(ctx context.Context, request runtimeprovider.Request, configPath string, preflightCfg *config.Config) (*detachedSessionStartResult, error) {
+func startNativeDetachedSupervisorSession(
+	ctx context.Context,
+	request runtimeprovider.Request,
+	configPath string,
+	preflightCfg *config.Config,
+) (*detachedSessionStartResult, error) {
 	sessionID := request.SessionID
 	stateDir := request.StateDir
 	req := request.Session
@@ -853,14 +988,23 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 		detached.EnvNetworkEnforcementRequested,
 		detached.EnvSupervisorLaunchMode,
 	)
-	launcherEnv = append(launcherEnv,
-		detached.EnvNetworkEnforcementRequested+"="+string(detachedSupervisorNetworkRequest(preflightCfg)),
+	launcherEnv = append(
+		launcherEnv,
+		detached.EnvNetworkEnforcementRequested+"="+string(
+			detachedSupervisorNetworkRequest(preflightCfg),
+		),
 	)
 	if strings.TrimSpace(helperCredential) != "" {
-		launcherEnv = append(launcherEnv, nethelper.EnvHelperInstanceCredential+"="+strings.TrimSpace(helperCredential))
+		launcherEnv = append(
+			launcherEnv,
+			nethelper.EnvHelperInstanceCredential+"="+strings.TrimSpace(helperCredential),
+		)
 	}
 	if strings.TrimSpace(credentialFile) != "" {
-		launcherEnv = append(launcherEnv, nethelper.EnvCredentialFile+"="+strings.TrimSpace(credentialFile))
+		launcherEnv = append(
+			launcherEnv,
+			nethelper.EnvCredentialFile+"="+strings.TrimSpace(credentialFile),
+		)
 	}
 	serviceEnv := detachedSupervisorServiceEnv(launcherEnv, envInherit)
 	serviceEnvFile := filepath.Join(stateDir, "supervisor.env")
@@ -906,21 +1050,30 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 			name, _, _ := strings.Cut(assignment, "=")
 			fixedNames[strings.ToLower(name)] = struct{}{}
 		}
-		manifest.Mutable.VolatileEnvironment = slices.DeleteFunc(manifest.Mutable.VolatileEnvironment, func(name string) bool {
-			_, fixed := fixedNames[strings.ToLower(name)]
-			return fixed
-		})
+		manifest.Mutable.VolatileEnvironment = slices.DeleteFunc(
+			manifest.Mutable.VolatileEnvironment,
+			func(name string) bool {
+				_, fixed := fixedNames[strings.ToLower(name)]
+				return fixed
+			},
+		)
 	}
 	if err := detached.WriteRecoveryManifest(stateDir, manifest); err != nil {
 		return nil, err
 	}
 	provisioningMeta := supervisorMetadata{
-		SessionID: sessionID, ID: sessionID, CreatedAt: createdAt,
-		State: detached.LifecycleProvisioning, Policy: policyName,
-		RealWorkspace: realWorkspace, WorkspaceMode: workspaceMode,
-		SupervisorSock: sockPath, EventToken: eventToken,
-		SystemdUnit: launch.SystemdUnit, NetworkEnforcement: detachedSupervisorPendingNetworkEnforcement(preflightCfg),
-		ProtocolVersion: supervisorProtocolVersion,
+		SessionID:          sessionID,
+		ID:                 sessionID,
+		CreatedAt:          createdAt,
+		State:              detached.LifecycleProvisioning,
+		Policy:             policyName,
+		RealWorkspace:      realWorkspace,
+		WorkspaceMode:      workspaceMode,
+		SupervisorSock:     sockPath,
+		EventToken:         eventToken,
+		SystemdUnit:        launch.SystemdUnit,
+		NetworkEnforcement: detachedSupervisorPendingNetworkEnforcement(preflightCfg),
+		ProtocolVersion:    supervisorProtocolVersion,
 	}
 	if err := writeSupervisorMetadata(stateDir, provisioningMeta); err != nil {
 		return nil, err
@@ -974,7 +1127,11 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 		return nil, fmt.Errorf("read bootstrapped supervised session: %w", err)
 	}
 	if sess.ID != sessionID {
-		return nil, fmt.Errorf("detached supervisor identity mismatch: got %s, want %s", sess.ID, sessionID)
+		return nil, fmt.Errorf(
+			"detached supervisor identity mismatch: got %s, want %s",
+			sess.ID,
+			sessionID,
+		)
 	}
 	var networkEnforcement detached.NetworkEnforcement
 	networkPath := "/api/v1/sessions/" + url.PathEscape(sessionID) + "/network-enforcement"
@@ -983,14 +1140,24 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 	}
 	networkEnforcement.Normalize()
 	if detachedSupervisorStrictNetworkEnforcement(preflightCfg) && !networkEnforcement.Ready() {
-		return nil, fmt.Errorf("strict detached network startup refused: status=%s tier=%s: %s", networkEnforcement.Status, networkEnforcement.Tier, networkEnforcement.Detail)
+		return nil, fmt.Errorf(
+			"strict detached network startup refused: status=%s tier=%s: %s",
+			networkEnforcement.Status,
+			networkEnforcement.Tier,
+			networkEnforcement.Detail,
+		)
 	}
 	meta, _, err := detached.ReadMetadataFromRoot(filepath.Dir(stateDir), sessionID)
 	if err != nil {
 		return nil, err
 	}
-	if meta.SessionID != sessionID || meta.State != detached.LifecycleReady || meta.Generation == 0 || strings.TrimSpace(meta.IncarnationID) == "" {
-		return nil, fmt.Errorf("detached supervisor did not publish a complete ready identity for %s", sessionID)
+	if meta.SessionID != sessionID || meta.State != detached.LifecycleReady ||
+		meta.Generation == 0 ||
+		strings.TrimSpace(meta.IncarnationID) == "" {
+		return nil, fmt.Errorf(
+			"detached supervisor did not publish a complete ready identity for %s",
+			sessionID,
+		)
 	}
 	meta.NetworkEnforcement = &networkEnforcement
 	worktree := sess.WorkspaceMount
@@ -1002,14 +1169,23 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 	}
 	meta.Worktree = worktree
 	keepSupervisor = true
-	return &detachedSessionStartResult{supervisorMetadata: meta, Session: sess, StateDir: stateDir}, nil
+	return &detachedSessionStartResult{
+		supervisorMetadata: meta,
+		Session:            sess,
+		StateDir:           stateDir,
+	}, nil
 }
 
 func waitForSupervisor(ctx context.Context, sockPath string, c *client.Client) error {
 	return waitForSupervisorAfterGeneration(ctx, sockPath, c, 0)
 }
 
-func waitForSupervisorAfterGeneration(ctx context.Context, sockPath string, c *client.Client, priorGeneration uint64) error {
+func waitForSupervisorAfterGeneration(
+	ctx context.Context,
+	sockPath string,
+	c *client.Client,
+	priorGeneration uint64,
+) error {
 	// Shadow materialization can legitimately take many minutes. The socket is
 	// bound during server construction but is not served until exact bootstrap
 	// and enforcement preflight commit, so this wait is also the readiness gate.
@@ -1027,14 +1203,26 @@ func waitForSupervisorAfterGeneration(ctx context.Context, sockPath string, c *c
 		if metaErr == nil && (priorGeneration == 0 || meta.Generation > priorGeneration) {
 			switch meta.State {
 			case detached.LifecycleFailed:
-				return fmt.Errorf("detached supervisor %s failed during startup: %s", sessionID, meta.LastError)
+				return fmt.Errorf(
+					"detached supervisor %s failed during startup: %s",
+					sessionID,
+					meta.LastError,
+				)
 			case detached.LifecycleFinalized:
 				if priorGeneration > 0 {
 					return errDetachedFinalizationCompleted
 				}
-				return fmt.Errorf("detached supervisor %s became %s during startup", sessionID, meta.State)
+				return fmt.Errorf(
+					"detached supervisor %s became %s during startup",
+					sessionID,
+					meta.State,
+				)
 			case detached.LifecycleStopped:
-				return fmt.Errorf("detached supervisor %s became %s during startup", sessionID, meta.State)
+				return fmt.Errorf(
+					"detached supervisor %s became %s during startup",
+					sessionID,
+					meta.State,
+				)
 			}
 			if _, statErr := os.Stat(sockPath); statErr == nil {
 				if _, err := c.ListSessions(ctx); err == nil {
@@ -1066,23 +1254,46 @@ func detachedClientForSession(sessionID string) (*client.Client, supervisorMetad
 	return c.WithDetachedControlToken(meta.EventToken), meta, nil
 }
 
-func detachedRuntimeHandshakeStatus(ctx context.Context, c *client.Client, meta supervisorMetadata) (detached.RuntimeStatus, error) {
+func detachedRuntimeHandshakeStatus(
+	ctx context.Context,
+	c *client.Client,
+	meta supervisorMetadata,
+) (detached.RuntimeStatus, error) {
 	if meta.ProtocolVersion < detached.ProtocolVersion {
 		// Version-one metadata has no incarnation handshake. Keep read
 		// compatibility, but never describe it as crash recoverable.
 		return detached.RuntimeStatus{}, nil
 	}
 	var status detached.RuntimeStatus
-	if err := c.DoRawJSON(ctx, http.MethodGet, "/api/v1/detached/status", nil, &status); err != nil {
-		return detached.RuntimeStatus{}, fmt.Errorf("detached supervisor identity handshake failed for %s: %w", meta.SessionID, err)
+	if err := c.DoRawJSON(
+		ctx,
+		http.MethodGet,
+		"/api/v1/detached/status",
+		nil,
+		&status,
+	); err != nil {
+		return detached.RuntimeStatus{}, fmt.Errorf(
+			"detached supervisor identity handshake failed for %s: %w",
+			meta.SessionID,
+			err,
+		)
 	}
-	providerManifest, manifestErr := runtimeprovider.ReadManifest(filepath.Join(detachedSessionsRoot(), meta.SessionID))
+	providerManifest, manifestErr := runtimeprovider.ReadManifest(
+		filepath.Join(detachedSessionsRoot(), meta.SessionID),
+	)
 	if manifestErr == nil && providerManifest.Provider == externalrunner.ProviderName {
 		hostStatus, hostErr := externalrunner.ReadHostMonitorStatus(providerManifest.StateDir)
-		if hostErr != nil || status.ProtocolVersion != meta.ProtocolVersion || status.SessionID != meta.SessionID ||
-			status.Generation != meta.Generation || status.IncarnationID != meta.IncarnationID ||
-			hostStatus.Monitor.PID != meta.OwnerPID || hostStatus.Monitor.StartIdentity != meta.OwnerStartIdentity || hostStatus.Monitor.BootID != meta.BootID {
-			return detached.RuntimeStatus{}, fmt.Errorf("external detached runtime identity handshake mismatch for expected session %s", meta.SessionID)
+		if hostErr != nil || status.ProtocolVersion != meta.ProtocolVersion ||
+			status.SessionID != meta.SessionID ||
+			status.Generation != meta.Generation ||
+			status.IncarnationID != meta.IncarnationID ||
+			hostStatus.Monitor.PID != meta.OwnerPID ||
+			hostStatus.Monitor.StartIdentity != meta.OwnerStartIdentity ||
+			hostStatus.Monitor.BootID != meta.BootID {
+			return detached.RuntimeStatus{}, fmt.Errorf(
+				"external detached runtime identity handshake mismatch for expected session %s",
+				meta.SessionID,
+			)
 		}
 		status.OwnerPID = meta.OwnerPID
 		status.OwnerStartIdentity = meta.OwnerStartIdentity
@@ -1093,18 +1304,32 @@ func detachedRuntimeHandshakeStatus(ctx context.Context, c *client.Client, meta 
 	if status.ProtocolVersion != meta.ProtocolVersion || status.SessionID != meta.SessionID ||
 		status.Generation != meta.Generation || status.IncarnationID != meta.IncarnationID ||
 		status.OwnerPID != meta.OwnerPID || status.OwnerStartIdentity != meta.OwnerStartIdentity || status.BootID != meta.BootID {
-		return detached.RuntimeStatus{}, fmt.Errorf("detached supervisor identity handshake mismatch for expected session %s", meta.SessionID)
+		return detached.RuntimeStatus{}, fmt.Errorf(
+			"detached supervisor identity handshake mismatch for expected session %s",
+			meta.SessionID,
+		)
 	}
 	return status, nil
 }
 
-func validateDetachedRuntimeHandshake(ctx context.Context, c *client.Client, meta supervisorMetadata) error {
+func validateDetachedRuntimeHandshake(
+	ctx context.Context,
+	c *client.Client,
+	meta supervisorMetadata,
+) error {
 	status, err := detachedRuntimeHandshakeStatus(ctx, c, meta)
 	if err != nil || meta.ProtocolVersion < detached.ProtocolVersion {
 		return err
 	}
-	if status.LifecycleState != detached.LifecycleReady && status.LifecycleState != detached.LifecycleDegraded && status.LifecycleState != detached.LifecycleRecovering {
-		return fmt.Errorf("detached supervisor %s is %s: %s", meta.SessionID, status.LifecycleState, status.LastError)
+	if status.LifecycleState != detached.LifecycleReady &&
+		status.LifecycleState != detached.LifecycleDegraded &&
+		status.LifecycleState != detached.LifecycleRecovering {
+		return fmt.Errorf(
+			"detached supervisor %s is %s: %s",
+			meta.SessionID,
+			status.LifecycleState,
+			status.LastError,
+		)
 	}
 	return nil
 }
@@ -1123,7 +1348,13 @@ func newSessionRecoverCmd() *cobra.Command {
 			if outputJSON {
 				return printJSON(cmd, status)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Session %s recovered (generation %d, state %s)\n", status.SessionID, status.Generation, status.LifecycleState)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"Session %s recovered (generation %d, state %s)\n",
+				status.SessionID,
+				status.Generation,
+				status.LifecycleState,
+			)
 			return nil
 		},
 	}
@@ -1131,29 +1362,49 @@ func newSessionRecoverCmd() *cobra.Command {
 	return cmd
 }
 
-func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detached.RuntimeStatus, error) {
+func recoverNativeDetachedSession(
+	ctx context.Context,
+	sessionID string,
+) (detached.RuntimeStatus, error) {
 	meta, stateDir, err := readSupervisorMetadata(sessionID)
 	if err != nil {
 		return detached.RuntimeStatus{}, err
 	}
 	manifest, err := detached.ReadRecoveryManifest(stateDir)
 	if err != nil {
-		return detached.RuntimeStatus{}, fmt.Errorf("exact recovery is unavailable for legacy/incomplete detached session %s: %w", sessionID, err)
+		return detached.RuntimeStatus{}, fmt.Errorf(
+			"exact recovery is unavailable for legacy/incomplete detached session %s: %w",
+			sessionID,
+			err,
+		)
 	}
 	if manifest.SessionID != sessionID {
 		return detached.RuntimeStatus{}, fmt.Errorf("detached recovery manifest identity mismatch")
 	}
 	switch manifest.State {
 	case detached.LifecycleStopping, detached.LifecycleStopped, detached.LifecycleFinalized:
-		return detached.RuntimeStatus{}, fmt.Errorf("detached session %s is %s and cannot be recovered", sessionID, manifest.State)
+		return detached.RuntimeStatus{}, fmt.Errorf(
+			"detached session %s is %s and cannot be recovered",
+			sessionID,
+			manifest.State,
+		)
 	case detached.LifecycleFinalizing:
 		if manifest.Finalization == nil || manifest.Shadow == nil {
-			return detached.RuntimeStatus{}, fmt.Errorf("detached session %s has incomplete finalization recovery state", sessionID)
+			return detached.RuntimeStatus{}, fmt.Errorf(
+				"detached session %s has incomplete finalization recovery state",
+				sessionID,
+			)
 		}
 	}
 	if c, _, liveErr := detachedClientForSession(sessionID); liveErr == nil {
 		var status detached.RuntimeStatus
-		if err := c.DoRawJSON(ctx, http.MethodGet, "/api/v1/detached/status", nil, &status); err == nil {
+		if err := c.DoRawJSON(
+			ctx,
+			http.MethodGet,
+			"/api/v1/detached/status",
+			nil,
+			&status,
+		); err == nil {
 			return status, nil
 		}
 	}
@@ -1164,16 +1415,25 @@ func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detach
 	// a kernel-verified exact owner and wait for it to die first.
 	if !manifest.Launch.UsesSystemd && meta.OwnerPID > 0 && supervisorPIDAlive(meta.OwnerPID) {
 		if meta.OwnerStartIdentity == "" || meta.BootID == "" {
-			return detached.RuntimeStatus{}, fmt.Errorf("refusing direct recovery while unverified owner_pid %d is still alive", meta.OwnerPID)
+			return detached.RuntimeStatus{}, fmt.Errorf(
+				"refusing direct recovery while unverified owner_pid %d is still alive",
+				meta.OwnerPID,
+			)
 		}
 		if detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
 			if err := signalProcess(meta.OwnerPID, os.Kill); err != nil {
-				return detached.RuntimeStatus{}, fmt.Errorf("terminate unresponsive exact detached supervisor: %w", err)
+				return detached.RuntimeStatus{}, fmt.Errorf(
+					"terminate unresponsive exact detached supervisor: %w",
+					err,
+				)
 			}
 			deadline := time.Now().Add(10 * time.Second)
 			for supervisorPIDAlive(meta.OwnerPID) && detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
 				if time.Now().After(deadline) {
-					return detached.RuntimeStatus{}, fmt.Errorf("timed out terminating unresponsive exact detached supervisor %d", meta.OwnerPID)
+					return detached.RuntimeStatus{}, fmt.Errorf(
+						"timed out terminating unresponsive exact detached supervisor %d",
+						meta.OwnerPID,
+					)
 				}
 				time.Sleep(50 * time.Millisecond)
 			}
@@ -1182,25 +1442,42 @@ func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detach
 	_ = os.Remove(meta.SupervisorSock)
 	serviceEnv, err := detached.ReadServiceEnvironment(manifest.Launch.EnvironmentFile)
 	if err != nil {
-		return detached.RuntimeStatus{}, fmt.Errorf("load exact supervisor recovery environment: %w", err)
+		return detached.RuntimeStatus{}, fmt.Errorf(
+			"load exact supervisor recovery environment: %w",
+			err,
+		)
 	}
 	args := detachedSupervisorRunArgs(stateDir, meta.SupervisorSock, manifest.Launch.ConfigPath)
 	if manifest.Launch.UsesSystemd {
 		if manifest.Launch.SystemdUnit == "" || manifest.Launch.SystemdUnit != meta.SystemdUnit {
-			return detached.RuntimeStatus{}, fmt.Errorf("detached systemd recovery identity is incomplete")
+			return detached.RuntimeStatus{}, fmt.Errorf(
+				"detached systemd recovery identity is incomplete",
+			)
 		}
 		restartCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		restart := exec.CommandContext(restartCtx, "systemctl", "--user", "restart", manifest.Launch.SystemdUnit)
+		restart := exec.CommandContext(
+			restartCtx,
+			"systemctl",
+			"--user",
+			"restart",
+			manifest.Launch.SystemdUnit,
+		)
 		restartErr := restart.Run()
 		cancel()
 		if restartErr != nil {
 			systemdRun, lookErr := exec.LookPath("systemd-run")
 			if lookErr != nil {
-				return detached.RuntimeStatus{}, fmt.Errorf("recreate detached systemd unit: %w", lookErr)
+				return detached.RuntimeStatus{}, fmt.Errorf(
+					"recreate detached systemd unit: %w",
+					lookErr,
+				)
 			}
 			propertyEnv := serviceEnv
 			if !manifest.Launch.PrivateTmp {
-				propertyEnv = append(append([]string(nil), serviceEnv...), "SSH_AUTH_SOCK="+filepath.Join(os.TempDir(), "agentsh-recovery-agent.sock"))
+				propertyEnv = append(
+					append([]string(nil), serviceEnv...),
+					"SSH_AUTH_SOCK="+filepath.Join(os.TempDir(), "agentsh-recovery-agent.sock"),
+				)
 			}
 			launchArgs := buildSystemdRunDetachedSupervisorArgs(
 				manifest.Launch.SystemdUnit, manifest.Launch.WorkingDir,
@@ -1208,10 +1485,19 @@ func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detach
 				propertyEnv, manifest.Launch.Executable, args,
 			)
 			launchCmd := exec.CommandContext(ctx, systemdRun, launchArgs...)
-			launchCmd.Env = withoutEnvAssignments(os.Environ(), "AGENTSH_DETACHED_EVENT_TOKEN", nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce)
+			launchCmd.Env = withoutEnvAssignments(
+				os.Environ(),
+				"AGENTSH_DETACHED_EVENT_TOKEN",
+				nethelper.EnvHelperInstanceCredential,
+				nethelper.EnvSessionNonce,
+			)
 			launchCmd.Dir = manifest.Launch.WorkingDir
 			if output, launchErr := launchCmd.CombinedOutput(); launchErr != nil {
-				return detached.RuntimeStatus{}, fmt.Errorf("recreate detached supervisor unit: %w: %s", launchErr, strings.TrimSpace(string(output)))
+				return detached.RuntimeStatus{}, fmt.Errorf(
+					"recreate detached supervisor unit: %w: %s",
+					launchErr,
+					strings.TrimSpace(string(output)),
+				)
 			}
 		}
 	} else {
@@ -1226,7 +1512,11 @@ func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detach
 		env = append(env, serviceEnv...)
 		env = withoutEnvAssignments(env, detached.EnvSupervisorLaunchMode)
 		env = append(env, detached.EnvSupervisorLaunchMode+"=direct")
-		logFile, openErr := os.OpenFile(manifest.Launch.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		logFile, openErr := os.OpenFile(
+			manifest.Launch.LogFile,
+			os.O_CREATE|os.O_WRONLY|os.O_APPEND,
+			0o600,
+		)
 		if openErr != nil {
 			return detached.RuntimeStatus{}, openErr
 		}
@@ -1244,7 +1534,12 @@ func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detach
 	}
 
 	waitClient := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", time.Second)
-	if err := waitForSupervisorAfterGeneration(ctx, meta.SupervisorSock, waitClient, meta.Generation); err != nil {
+	if err := waitForSupervisorAfterGeneration(
+		ctx,
+		meta.SupervisorSock,
+		waitClient,
+		meta.Generation,
+	); err != nil {
 		if errors.Is(err, errDetachedFinalizationCompleted) {
 			return detached.ReadTerminalRuntimeStatusFromRoot(filepath.Dir(stateDir), sessionID)
 		}
@@ -1259,11 +1554,21 @@ func recoverNativeDetachedSession(ctx context.Context, sessionID string) (detach
 	}
 	var status detached.RuntimeStatus
 	statusClient := client.NewWithTimeout("unix://"+fresh.SupervisorSock, "", 3*time.Second)
-	if err := statusClient.DoRawJSON(ctx, http.MethodGet, "/api/v1/detached/status", nil, &status); err != nil {
+	if err := statusClient.DoRawJSON(
+		ctx,
+		http.MethodGet,
+		"/api/v1/detached/status",
+		nil,
+		&status,
+	); err != nil {
 		return detached.RuntimeStatus{}, err
 	}
-	if status.SessionID != sessionID || status.Generation <= meta.Generation || status.IncarnationID == "" || status.IncarnationID == meta.IncarnationID {
-		return detached.RuntimeStatus{}, fmt.Errorf("recovered supervisor did not publish a new valid exact incarnation")
+	if status.SessionID != sessionID || status.Generation <= meta.Generation ||
+		status.IncarnationID == "" ||
+		status.IncarnationID == meta.IncarnationID {
+		return detached.RuntimeStatus{}, fmt.Errorf(
+			"recovered supervisor did not publish a new valid exact incarnation",
+		)
 	}
 	if err := validateDetachedRuntimeHandshake(ctx, statusClient, fresh); err != nil {
 		return detached.RuntimeStatus{}, err
@@ -1287,7 +1592,12 @@ func newSessionStopCmd() *cobra.Command {
 	return cmd
 }
 
-func validateDetachedStopAuthority(sessionID, stateDir string, meta supervisorMetadata, manifest detached.RecoveryManifest, manifestErr error) error {
+func validateDetachedStopAuthority(
+	sessionID, stateDir string,
+	meta supervisorMetadata,
+	manifest detached.RecoveryManifest,
+	manifestErr error,
+) error {
 	if err := validateDetachedSessionID(sessionID); err != nil {
 		return err
 	}
@@ -1295,7 +1605,10 @@ func validateDetachedStopAuthority(sessionID, stateDir string, meta supervisorMe
 		return fmt.Errorf("detached stop metadata identity mismatch for %s", sessionID)
 	}
 	if meta.SupervisorSock != filepath.Join(stateDir, "supervisor.sock") {
-		return fmt.Errorf("detached stop socket is outside the exact state directory for %s", sessionID)
+		return fmt.Errorf(
+			"detached stop socket is outside the exact state directory for %s",
+			sessionID,
+		)
 	}
 	expectedUnit := detachedSupervisorSystemdUnit(sessionID)
 	if meta.SystemdUnit != "" && meta.SystemdUnit != expectedUnit {
@@ -1311,7 +1624,8 @@ func validateDetachedStopAuthority(sessionID, stateDir string, meta supervisorMe
 		manifest.Generation != meta.Generation || manifest.IncarnationID != meta.IncarnationID {
 		return fmt.Errorf("detached stop manifest identity mismatch for %s", sessionID)
 	}
-	if manifest.Launch.SystemdUnit != meta.SystemdUnit || manifest.Launch.UsesSystemd != (meta.SystemdUnit != "") {
+	if manifest.Launch.SystemdUnit != meta.SystemdUnit ||
+		manifest.Launch.UsesSystemd != (meta.SystemdUnit != "") {
 		return fmt.Errorf("detached stop launch authority mismatch for %s", sessionID)
 	}
 	return nil
@@ -1319,15 +1633,23 @@ func validateDetachedStopAuthority(sessionID, stateDir string, meta supervisorMe
 
 func validateDetachedStopSocket(meta supervisorMetadata, info os.FileInfo) error {
 	if info == nil || info.Mode()&os.ModeSocket == 0 || info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("detached supervisor path for %s is not a direct Unix socket", meta.SessionID)
+		return fmt.Errorf(
+			"detached supervisor path for %s is not a direct Unix socket",
+			meta.SessionID,
+		)
 	}
-	if meta.ProtocolVersion >= detached.ProtocolVersion && (meta.Generation == 0 || strings.TrimSpace(meta.IncarnationID) == "") {
-		return fmt.Errorf("detached supervisor %s has incomplete incarnation identity", meta.SessionID)
+	if meta.ProtocolVersion >= detached.ProtocolVersion &&
+		(meta.Generation == 0 || strings.TrimSpace(meta.IncarnationID) == "") {
+		return fmt.Errorf(
+			"detached supervisor %s has incomplete incarnation identity",
+			meta.SessionID,
+		)
 	}
 	if meta.OwnerPID <= 0 || !supervisorPIDAlive(meta.OwnerPID) {
 		return fmt.Errorf("detached supervisor %s has no live exact owner process", meta.SessionID)
 	}
-	if meta.OwnerStartIdentity != "" && meta.BootID != "" && !detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
+	if meta.OwnerStartIdentity != "" && meta.BootID != "" &&
+		!detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
 		return fmt.Errorf("detached supervisor owner identity mismatch for %s", meta.SessionID)
 	}
 	return nil
@@ -1344,7 +1666,11 @@ func stopNativeDetachedSessionExact(ctx context.Context, sessionID string) error
 	return stopNativeDetachedRuntimeInstanceExact(ctx, stateDir, meta)
 }
 
-func stopNativeDetachedRuntimeInstanceExact(ctx context.Context, stateDir string, expected supervisorMetadata) error {
+func stopNativeDetachedRuntimeInstanceExact(
+	ctx context.Context,
+	stateDir string,
+	expected supervisorMetadata,
+) error {
 	if err := validateDetachedSessionID(expected.SessionID); err != nil {
 		return err
 	}
@@ -1352,12 +1678,19 @@ func stopNativeDetachedRuntimeInstanceExact(ctx context.Context, stateDir string
 	if err != nil {
 		return err
 	}
-	if filepath.Clean(actualStateDir) != filepath.Clean(stateDir) || !sameSupervisorIncarnation(meta, expected) {
+	if filepath.Clean(actualStateDir) != filepath.Clean(stateDir) ||
+		!sameSupervisorIncarnation(meta, expected) {
 		return fmt.Errorf("detached stop exact incarnation mismatch for %s", expected.SessionID)
 	}
 	sessionID := expected.SessionID
 	manifest, manifestErr := detached.ReadRecoveryManifest(stateDir)
-	if err := validateDetachedStopAuthority(sessionID, stateDir, meta, manifest, manifestErr); err != nil {
+	if err := validateDetachedStopAuthority(
+		sessionID,
+		stateDir,
+		meta,
+		manifest,
+		manifestErr,
+	); err != nil {
 		return err
 	}
 
@@ -1376,17 +1709,32 @@ func stopNativeDetachedRuntimeInstanceExact(ctx context.Context, stateDir string
 				return handshakeErr
 			}
 			switch status.LifecycleState {
-			case detached.LifecycleReady, detached.LifecycleDegraded, detached.LifecycleRecovering, detached.LifecycleFailed:
-				if err := c.DestroySession(ctx, sessionID); err != nil && !isExactDetachedSessionNotFound(err, meta) {
+			case detached.LifecycleReady,
+				detached.LifecycleDegraded,
+				detached.LifecycleRecovering,
+				detached.LifecycleFailed:
+				if err := c.DestroySession(
+					ctx,
+					sessionID,
+				); err != nil &&
+					!isExactDetachedSessionNotFound(err, meta) {
 					return fmt.Errorf("destroy exact detached session %s: %w", sessionID, err)
 				}
 			case detached.LifecycleStopping, detached.LifecycleStopped, detached.LifecycleFinalized:
 				// The exact incarnation has already committed a terminal decision.
 				// Continue with its independently bound unit/process teardown.
 			case detached.LifecycleProvisioning, detached.LifecycleFinalizing:
-				return fmt.Errorf("refusing to stop detached session %s while exact lifecycle is %s", sessionID, status.LifecycleState)
+				return fmt.Errorf(
+					"refusing to stop detached session %s while exact lifecycle is %s",
+					sessionID,
+					status.LifecycleState,
+				)
 			default:
-				return fmt.Errorf("refusing to stop detached session %s with unknown lifecycle %q", sessionID, status.LifecycleState)
+				return fmt.Errorf(
+					"refusing to stop detached session %s with unknown lifecycle %q",
+					sessionID,
+					status.LifecycleState,
+				)
 			}
 		} else {
 			if err := c.DestroySession(ctx, sessionID); err != nil {
@@ -1397,7 +1745,11 @@ func stopNativeDetachedRuntimeInstanceExact(ctx context.Context, stateDir string
 		// Exact durable state plus a missing exact socket is sufficient to
 		// continue unit/process teardown. A present but unqueryable socket is not.
 	default:
-		return fmt.Errorf("inspect exact detached supervisor socket for %s: %w", sessionID, socketErr)
+		return fmt.Errorf(
+			"inspect exact detached supervisor socket for %s: %w",
+			sessionID,
+			socketErr,
+		)
 	}
 
 	if meta.SystemdUnit != "" {
@@ -1405,8 +1757,13 @@ func stopNativeDetachedRuntimeInstanceExact(ctx context.Context, stateDir string
 			return err
 		}
 	} else if meta.OwnerPID > 0 && supervisorPIDAlive(meta.OwnerPID) {
-		if meta.OwnerStartIdentity != "" && meta.BootID != "" && !detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
-			return fmt.Errorf("refusing to signal reused owner_pid %d for detached session %s", meta.OwnerPID, sessionID)
+		if meta.OwnerStartIdentity != "" && meta.BootID != "" &&
+			!detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
+			return fmt.Errorf(
+				"refusing to signal reused owner_pid %d for detached session %s",
+				meta.OwnerPID,
+				sessionID,
+			)
 		}
 		_ = signalProcess(meta.OwnerPID, os.Kill)
 	}
@@ -1448,10 +1805,14 @@ func stopNativeDetachedRuntimeInstanceExact(ctx context.Context, stateDir string
 }
 
 func sameSupervisorIncarnation(current, expected supervisorMetadata) bool {
-	return current.SessionID == expected.SessionID && current.ProtocolVersion == expected.ProtocolVersion &&
-		current.Generation == expected.Generation && current.IncarnationID == expected.IncarnationID &&
-		current.OwnerPID == expected.OwnerPID && current.OwnerStartIdentity == expected.OwnerStartIdentity &&
-		current.BootID == expected.BootID && current.SupervisorSock == expected.SupervisorSock &&
+	return current.SessionID == expected.SessionID &&
+		current.ProtocolVersion == expected.ProtocolVersion &&
+		current.Generation == expected.Generation &&
+		current.IncarnationID == expected.IncarnationID &&
+		current.OwnerPID == expected.OwnerPID &&
+		current.OwnerStartIdentity == expected.OwnerStartIdentity &&
+		current.BootID == expected.BootID &&
+		current.SupervisorSock == expected.SupervisorSock &&
 		current.SystemdUnit == expected.SystemdUnit
 }
 

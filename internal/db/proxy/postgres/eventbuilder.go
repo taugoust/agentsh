@@ -136,11 +136,14 @@ func buildStatementEvent(a buildArgs) events.DBEvent {
 		RedirectTargetRelation:   a.Redirect.TargetRelation,
 		RedirectRuntimeStatus:    a.Redirect.RuntimeStatus,
 		RedirectRejectionReason:  a.Redirect.RejectionReason,
-		TLS:                      events.EventTLS{Mode: a.Conn.tlsMode, ClientSNI: a.Conn.sniHostname},
-		Decision:                 dec,
-		Result:                   result,
-		TxContext:                tx,
-		Predicates:               predicates,
+		TLS: events.EventTLS{
+			Mode:      a.Conn.tlsMode,
+			ClientSNI: a.Conn.sniHostname,
+		},
+		Decision:   dec,
+		Result:     result,
+		TxContext:  tx,
+		Predicates: predicates,
 	}
 }
 
@@ -163,17 +166,19 @@ func statementDigest(parser classify_pg.Parser, sql string) string {
 
 func buildCancelEvent(entry cancelEntry, d policy.Decision, resultErr string) events.DBEvent {
 	return events.DBEvent{
-		EventID:            newEventID(),
-		SessionID:          eventSessionID(entry.AgentSessionID, entry.ClientIdentity),
-		Timestamp:          timeNow(),
-		DBService:          entry.ServiceName,
-		DBFamily:           "postgres",
-		DBDialect:          "postgres",
-		DBUser:             entry.DBUser,
-		Database:           entry.Database,
-		ApplicationName:    entry.ApplicationName,
-		ClientIdentity:     entry.ClientIdentity,
-		Effects:            []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeCancelRequest}},
+		EventID:         newEventID(),
+		SessionID:       eventSessionID(entry.AgentSessionID, entry.ClientIdentity),
+		Timestamp:       timeNow(),
+		DBService:       entry.ServiceName,
+		DBFamily:        "postgres",
+		DBDialect:       "postgres",
+		DBUser:          entry.DBUser,
+		Database:        entry.Database,
+		ApplicationName: entry.ApplicationName,
+		ClientIdentity:  entry.ClientIdentity,
+		Effects: []effects.Effect{
+			{Group: effects.GroupSession, Subtype: effects.SubtypeCancelRequest},
+		},
 		OperationGroup:     "session",
 		OperationGroupID:   effects.GroupSession.ID(),
 		OperationSubtype:   "cancel_request",

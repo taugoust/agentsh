@@ -11,7 +11,11 @@ func TestOutputArtifacts_DefaultMaxBytes(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if got := cfg.Sessions.OutputArtifacts.MaxBytes; got != DefaultOutputArtifactMaxBytes {
-		t.Fatalf("sessions.output_artifacts.max_bytes = %d, want %d", got, DefaultOutputArtifactMaxBytes)
+		t.Fatalf(
+			"sessions.output_artifacts.max_bytes = %d, want %d",
+			got,
+			DefaultOutputArtifactMaxBytes,
+		)
 	}
 }
 

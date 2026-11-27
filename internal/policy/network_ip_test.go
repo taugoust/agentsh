@@ -12,7 +12,12 @@ func TestEngine_CheckNetworkIP_MatchesDomainAndCIDR(t *testing.T) {
 		Version: 1,
 		Name:    "test",
 		NetworkRules: []NetworkRule{
-			{Name: "allow-example", Domains: []string{"example.com"}, Ports: []int{443}, Decision: "allow"},
+			{
+				Name:     "allow-example",
+				Domains:  []string{"example.com"},
+				Ports:    []int{443},
+				Decision: "allow",
+			},
 			{Name: "deny-private", CIDRs: []string{"10.0.0.0/8"}, Decision: "deny"},
 			{Name: "default", Domains: []string{"*"}, Decision: "deny"},
 		},

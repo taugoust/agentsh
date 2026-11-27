@@ -310,7 +310,12 @@ func TestSyncer_DiskCachePartialFirstSyncFailure(t *testing.T) {
 	syncer.syncAll(context.Background())
 
 	// Both domains should be present: feed-a from fresh fetch, feed-b from seeded cache.
-	assert.Equal(t, 2, store.Size(), "partial first-sync failure should retain cached entries for failed feed")
+	assert.Equal(
+		t,
+		2,
+		store.Size(),
+		"partial first-sync failure should retain cached entries for failed feed",
+	)
 	_, matched := store.Check("feed-a-evil.com")
 	assert.True(t, matched, "feed-a domain should be present from fresh fetch")
 	_, matched = store.Check("feed-b-evil.com")
@@ -395,7 +400,12 @@ func TestSyncer_LocalListBasenamCollisionKeepsSeparateCache(t *testing.T) {
 	os.Remove(list1)
 	syncer.syncAll(context.Background())
 
-	assert.Equal(t, 2, store.Size(), "failed list should use its own last-known-good, not the other list's")
+	assert.Equal(
+		t,
+		2,
+		store.Size(),
+		"failed list should use its own last-known-good, not the other list's",
+	)
 	_, matched = store.Check("evil-from-list1.com")
 	assert.True(t, matched, "list1 last-known-good should be retained independently")
 	_, matched = store.Check("evil-from-list2.com")
@@ -442,7 +452,11 @@ func TestSyncer_RestartLocalFailRemoteSuccessRetainsCachedLocal(t *testing.T) {
 	_, matched := store.Check("remote-evil.com")
 	assert.True(t, matched)
 	_, matched = store.Check("local-evil.com")
-	assert.True(t, matched, "local list entries should be retained from disk cache via seeded lastGood")
+	assert.True(
+		t,
+		matched,
+		"local list entries should be retained from disk cache via seeded lastGood",
+	)
 }
 
 func TestSyncer_LocalListFile(t *testing.T) {

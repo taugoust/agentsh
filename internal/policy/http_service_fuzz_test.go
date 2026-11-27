@@ -21,8 +21,18 @@ func FuzzCheckHTTPServicePath(f *testing.F) {
 		Name: "github", Upstream: "https://api.github.com",
 		Default: "deny",
 		Rules: []HTTPServiceRule{
-			{Name: "read", Methods: []string{"GET"}, Paths: []string{"/repos/*/*"}, Decision: "allow"},
-			{Name: "open", Methods: []string{"*"}, Paths: []string{"/public/**"}, Decision: "allow"},
+			{
+				Name:     "read",
+				Methods:  []string{"GET"},
+				Paths:    []string{"/repos/*/*"},
+				Decision: "allow",
+			},
+			{
+				Name:     "open",
+				Methods:  []string{"*"},
+				Paths:    []string{"/public/**"},
+				Decision: "allow",
+			},
 		},
 	}}
 	if err := ValidateHTTPServices(svcs); err != nil {
@@ -65,7 +75,12 @@ func FuzzCheckHTTPServicePath(f *testing.F) {
 				normalized = strings.TrimSuffix(normalized, "/")
 			}
 			if got := path.Clean(normalized); got != normalized {
-				t.Errorf("allow decision with non-canonical path: reqPath=%q normalized=%q clean=%q", reqPath, normalized, got)
+				t.Errorf(
+					"allow decision with non-canonical path: reqPath=%q normalized=%q clean=%q",
+					reqPath,
+					normalized,
+					got,
+				)
 			}
 		}
 		// Invariant 3: casing-insensitive method.

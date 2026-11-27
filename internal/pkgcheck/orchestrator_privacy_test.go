@@ -14,7 +14,11 @@ type recordingProvider struct {
 
 func (r *recordingProvider) Name() string                { return r.name }
 func (r *recordingProvider) Capabilities() []FindingType { return nil }
-func (r *recordingProvider) CheckBatch(ctx context.Context, req CheckRequest) (*CheckResponse, error) {
+
+func (r *recordingProvider) CheckBatch(
+	ctx context.Context,
+	req CheckRequest,
+) (*CheckResponse, error) {
 	r.last = append([]PackageRef(nil), req.Packages...)
 	return &CheckResponse{Provider: r.name}, nil
 }
@@ -149,7 +153,11 @@ func TestOrchestrator_LocalProviderBypassesPrivacyFilter(t *testing.T) {
 
 	// Local provider sees all three packages (bypasses privacy filter).
 	if len(local.last) != 3 {
-		t.Errorf("local provider should see all 3 packages, got %d: %+v", len(local.last), local.last)
+		t.Errorf(
+			"local provider should see all 3 packages, got %d: %+v",
+			len(local.last),
+			local.last,
+		)
 	}
 }
 
@@ -186,11 +194,18 @@ func TestOrchestrator_AllSkippedLocalProviderStillInvoked(t *testing.T) {
 	}
 	// External provider must not have been called.
 	if external.last != nil {
-		t.Errorf("external provider must not be invoked when scan list is empty; got %+v", external.last)
+		t.Errorf(
+			"external provider must not be invoked when scan list is empty; got %+v",
+			external.last,
+		)
 	}
 	// Local provider must still have been called with both packages.
 	if len(local.last) != 2 {
-		t.Errorf("local provider should see both packages, got %d: %+v", len(local.last), local.last)
+		t.Errorf(
+			"local provider should see both packages, got %d: %+v",
+			len(local.last),
+			local.last,
+		)
 	}
 }
 
@@ -217,7 +232,10 @@ func TestOrchestrator_AllSkippedSkipsExternalEvenWithLocalProvider(t *testing.T)
 		t.Fatalf("want 1 skipped, got %d", len(skipped))
 	}
 	if external.last != nil {
-		t.Errorf("external must not be invoked when scan list is empty, even with local present; got last=%+v", external.last)
+		t.Errorf(
+			"external must not be invoked when scan list is empty, even with local present; got last=%+v",
+			external.last,
+		)
 	}
 	if len(local.last) != 1 {
 		t.Errorf("local should still see the full list; got last=%+v", local.last)
@@ -232,13 +250,21 @@ type respWithErrProvider struct {
 
 func (r *respWithErrProvider) Name() string                { return r.name }
 func (r *respWithErrProvider) Capabilities() []FindingType { return nil }
-func (r *respWithErrProvider) CheckBatch(ctx context.Context, req CheckRequest) (*CheckResponse, error) {
+
+func (r *respWithErrProvider) CheckBatch(
+	ctx context.Context,
+	req CheckRequest,
+) (*CheckResponse, error) {
 	return &CheckResponse{Provider: r.name, Findings: r.findings}, r.err
 }
 
 func TestOrchestrator_PreservesFindingsWhenProviderReturnsError(t *testing.T) {
 	finding := Finding{Type: FindingVulnerability, Provider: "x", Title: "partial-found"}
-	rp := &respWithErrProvider{name: "x", findings: []Finding{finding}, err: errors.New("partial: 1 of 2 packages failed")}
+	rp := &respWithErrProvider{
+		name:     "x",
+		findings: []Finding{finding},
+		err:      errors.New("partial: 1 of 2 packages failed"),
+	}
 	o := NewOrchestrator(OrchestratorConfig{
 		Providers: map[string]ProviderEntry{
 			"x": {Provider: rp, Timeout: time.Second, OnFailure: "warn"},
@@ -249,7 +275,10 @@ func TestOrchestrator_PreservesFindingsWhenProviderReturnsError(t *testing.T) {
 		Packages:  []PackageRef{{Name: "ok", Version: "1"}, {Name: "fail", Version: "1"}},
 	})
 	if len(findings) != 1 {
-		t.Errorf("partial findings must be preserved alongside the error; got %d findings", len(findings))
+		t.Errorf(
+			"partial findings must be preserved alongside the error; got %d findings",
+			len(findings),
+		)
 	}
 	if len(errs) != 1 {
 		t.Errorf("provider error must still be recorded; got %d errs", len(errs))

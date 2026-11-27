@@ -176,7 +176,9 @@ func (m *Manager) SetDetachedRequestObserver(observer func(context.Context, Requ
 
 // SetDetachedTerminalObserver publishes the immutable winning outcome after an
 // approval terminalizes, including cancellation and timeout.
-func (m *Manager) SetDetachedTerminalObserver(observer func(context.Context, Request, Resolution) error) {
+func (m *Manager) SetDetachedTerminalObserver(
+	observer func(context.Context, Request, Resolution) error,
+) {
 	m.mu.Lock()
 	m.terminalObserver = observer
 	m.mu.Unlock()
@@ -204,7 +206,9 @@ func (m *Manager) notifyDetachedTerminal(request Request, resolution Resolution)
 	return observer(ctx, request, resolution)
 }
 
-func (m *Manager) SetScopedPersistenceHook(hook func(sessionID string, decisions []ScopedDecision)) {
+func (m *Manager) SetScopedPersistenceHook(
+	hook func(sessionID string, decisions []ScopedDecision),
+) {
 	m.mu.Lock()
 	m.scopedChanged = hook
 	m.mu.Unlock()
@@ -233,14 +237,25 @@ func (m *Manager) SessionScopedDecisions(sessionID string) []ScopedDecision {
 
 // RestoreSessionScopedDecisions reinstates only grants bound to the exact
 // session identity. Callers must first verify the recovery policy digest.
-func (m *Manager) RestoreSessionScopedDecisions(sessionID string, decisions []ScopedDecision) error {
+func (m *Manager) RestoreSessionScopedDecisions(
+	sessionID string,
+	decisions []ScopedDecision,
+) error {
 	if m == nil || sessionID == "" {
 		return nil
 	}
 	now := time.Now().UTC()
 	restored := make(map[string]ScopedDecision, len(decisions))
 	for _, decision := range decisions {
-		scope := Scope{Kind: decision.Kind, Key: decision.Key, Label: decision.Label, Rule: decision.Rule, Operation: decision.Operation, Path: decision.Path, Prefix: decision.Prefix}
+		scope := Scope{
+			Kind:      decision.Kind,
+			Key:       decision.Key,
+			Label:     decision.Label,
+			Rule:      decision.Rule,
+			Operation: decision.Operation,
+			Path:      decision.Path,
+			Prefix:    decision.Prefix,
+		}
 		if decision.SessionID != sessionID || !validScope(scope) {
 			return fmt.Errorf("invalid scoped approval recovery identity")
 		}
@@ -284,7 +299,10 @@ func (m *Manager) SetWebAuthnApprover(approver *WebAuthnApprover) {
 // session) is performed at a higher layer (e.g., API authentication middleware). This design
 // separates concerns: the approval manager handles approval logic, while access control is
 // handled by the transport layer.
-func (m *Manager) GetWebAuthnChallenge(ctx context.Context, approvalID, userID string) (*WebAuthnChallenge, error) {
+func (m *Manager) GetWebAuthnChallenge(
+	ctx context.Context,
+	approvalID, userID string,
+) (*WebAuthnChallenge, error) {
 	if m.mode != "webauthn" {
 		return nil, fmt.Errorf("webauthn mode not enabled")
 	}
@@ -310,7 +328,11 @@ func (m *Manager) GetWebAuthnChallenge(ctx context.Context, approvalID, userID s
 // session) is performed at a higher layer (e.g., API authentication middleware). This design
 // separates concerns: the approval manager handles approval logic, while access control is
 // handled by the transport layer.
-func (m *Manager) ResolveWithWebAuthn(ctx context.Context, approvalID, userID string, responseJSON []byte) error {
+func (m *Manager) ResolveWithWebAuthn(
+	ctx context.Context,
+	approvalID, userID string,
+	responseJSON []byte,
+) error {
 	if m.mode != "webauthn" {
 		return fmt.Errorf("webauthn mode not enabled")
 	}
@@ -370,22 +392,46 @@ func (m *Manager) ResolveWithScope(id string, approved bool, reason string, scop
 	return m.resolveForSession("", id, approved, reason, scope, Scope{})
 }
 
-func (m *Manager) ResolveWithScopeTarget(id string, approved bool, reason string, scope string, target Scope) bool {
+func (m *Manager) ResolveWithScopeTarget(
+	id string,
+	approved bool,
+	reason string,
+	scope string,
+	target Scope,
+) bool {
 	return m.resolveForSession("", id, approved, reason, scope, target)
 }
 
-func (m *Manager) ResolveForSession(sessionID string, id string, approved bool, reason string) bool {
+func (m *Manager) ResolveForSession(
+	sessionID string,
+	id string,
+	approved bool,
+	reason string,
+) bool {
 	return m.ResolveForSessionWithScope(sessionID, id, approved, reason, ScopeOnce)
 }
 
-func (m *Manager) ResolveForSessionWithScope(sessionID string, id string, approved bool, reason string, scope string) bool {
+func (m *Manager) ResolveForSessionWithScope(
+	sessionID string,
+	id string,
+	approved bool,
+	reason string,
+	scope string,
+) bool {
 	if sessionID == "" {
 		return false
 	}
 	return m.resolveForSession(sessionID, id, approved, reason, scope, Scope{})
 }
 
-func (m *Manager) ResolveForSessionWithScopeTarget(sessionID string, id string, approved bool, reason string, scope string, target Scope) bool {
+func (m *Manager) ResolveForSessionWithScopeTarget(
+	sessionID string,
+	id string,
+	approved bool,
+	reason string,
+	scope string,
+	target Scope,
+) bool {
 	if sessionID == "" {
 		return false
 	}
@@ -402,12 +448,26 @@ func (m *Manager) HasPendingForSession(sessionID, id string) bool {
 	return pending != nil && pending.req.SessionID == sessionID
 }
 
-func (m *Manager) resolveForSession(sessionID string, id string, approved bool, reason string, scope string, target Scope) bool {
+func (m *Manager) resolveForSession(
+	sessionID string,
+	id string,
+	approved bool,
+	reason string,
+	scope string,
+	target Scope,
+) bool {
 	scope, err := NormalizeResolutionScope(scope)
 	if err != nil {
 		return false
 	}
-	p, terminal, publication, ok := m.resolveDecisionForSession(sessionID, id, approved, reason, scope, target)
+	p, terminal, publication, ok := m.resolveDecisionForSession(
+		sessionID,
+		id,
+		approved,
+		reason,
+		scope,
+		target,
+	)
 	if !ok {
 		return false
 	}
@@ -420,7 +480,12 @@ func (m *Manager) resolveForSession(sessionID string, id string, approved bool, 
 		if eventCtx == nil {
 			eventCtx = context.Background()
 		}
-		m.emitScopedEvent(eventCtx, publication.eventType, publication.commandID, publication.decision)
+		m.emitScopedEvent(
+			eventCtx,
+			publication.eventType,
+			publication.commandID,
+			publication.decision,
+		)
 	}
 
 	res := terminal.resolution
@@ -436,7 +501,14 @@ func (m *Manager) resolveForSession(sessionID string, id string, approved bool, 
 	return true
 }
 
-func (m *Manager) resolveDecisionForSession(sessionID string, id string, approved bool, reason string, scope string, target Scope) (*pending, terminalResolution, *scopedPublication, bool) {
+func (m *Manager) resolveDecisionForSession(
+	sessionID string,
+	id string,
+	approved bool,
+	reason string,
+	scope string,
+	target Scope,
+) (*pending, terminalResolution, *scopedPublication, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -482,7 +554,12 @@ func (m *Manager) resolveDecisionForSession(sessionID string, id string, approve
 	return p, terminal, publication, true
 }
 
-func (m *Manager) publishResolutionScopeLocked(req Request, res Resolution, target Scope, now time.Time) *scopedPublication {
+func (m *Manager) publishResolutionScopeLocked(
+	req Request,
+	res Resolution,
+	target Scope,
+	now time.Time,
+) *scopedPublication {
 	if !validScope(target) || req.SessionID == "" {
 		return nil
 	}
@@ -539,7 +616,11 @@ func (m *Manager) publishResolutionScopeLocked(req Request, res Resolution, targ
 	}
 }
 
-func (m *Manager) terminalizePendingLocked(id string, p *pending, terminal terminalResolution) bool {
+func (m *Manager) terminalizePendingLocked(
+	id string,
+	p *pending,
+	terminal terminalResolution,
+) bool {
 	current, ok := m.pending[id]
 	if !ok || current != p || p == nil || p.terminal != nil {
 		return false
@@ -621,7 +702,11 @@ func (m *Manager) observePending(p *pending) terminalResolution {
 	return *p.terminal
 }
 
-func (m *Manager) waitForPendingResolution(ctx context.Context, p *pending, timeout <-chan time.Time) terminalResolution {
+func (m *Manager) waitForPendingResolution(
+	ctx context.Context,
+	p *pending,
+	timeout <-chan time.Time,
+) terminalResolution {
 	select {
 	case <-p.done:
 		return m.observePending(p)
@@ -662,14 +747,28 @@ func (m *Manager) RequestApproval(ctx context.Context, req Request) (Resolution,
 // holding the same manager lock. This closes the race in a separate
 // CheckScoped-then-RequestApproval sequence where a grant could be installed
 // between the check and pending registration.
-func (m *Manager) RequestApprovalScoped(ctx context.Context, req Request, scope Scope) (Resolution, error) {
+func (m *Manager) RequestApprovalScoped(
+	ctx context.Context,
+	req Request,
+	scope Scope,
+) (Resolution, error) {
 	if m == nil {
 		err := fmt.Errorf("approval manager is unavailable")
-		return Resolution{Approved: false, Reason: err.Error(), Scope: ScopeOnce, At: time.Now().UTC()}, err
+		return Resolution{
+			Approved: false,
+			Reason:   err.Error(),
+			Scope:    ScopeOnce,
+			At:       time.Now().UTC(),
+		}, err
 	}
 	if req.SessionID == "" || !validScope(scope) {
 		err := fmt.Errorf("scoped approval request is invalid")
-		return Resolution{Approved: false, Reason: err.Error(), Scope: ScopeOnce, At: time.Now().UTC()}, err
+		return Resolution{
+			Approved: false,
+			Reason:   err.Error(),
+			Scope:    ScopeOnce,
+			At:       time.Now().UTC(),
+		}, err
 	}
 	fields := make(map[string]any, len(req.Fields)+8)
 	for key, value := range req.Fields {
@@ -692,10 +791,19 @@ func (m *Manager) RequestApprovalScoped(ctx context.Context, req Request, scope 
 	return m.requestApproval(ctx, req, &scope)
 }
 
-func (m *Manager) requestApproval(ctx context.Context, req Request, cacheScope *Scope) (Resolution, error) {
+func (m *Manager) requestApproval(
+	ctx context.Context,
+	req Request,
+	cacheScope *Scope,
+) (Resolution, error) {
 	if m == nil {
 		err := fmt.Errorf("approval manager is unavailable")
-		return Resolution{Approved: false, Reason: err.Error(), Scope: ScopeOnce, At: time.Now().UTC()}, err
+		return Resolution{
+			Approved: false,
+			Reason:   err.Error(),
+			Scope:    ScopeOnce,
+			At:       time.Now().UTC(),
+		}, err
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -729,7 +837,12 @@ func (m *Manager) requestApproval(ctx context.Context, req Request, cacheScope *
 		return terminal.resolution, err
 	}
 	if cacheScope != nil {
-		if cached, eventType, ok := m.checkScopedLocked(req.SessionID, req.CommandID, *cacheScope, now); ok {
+		if cached, eventType, ok := m.checkScopedLocked(
+			req.SessionID,
+			req.CommandID,
+			*cacheScope,
+			now,
+		); ok {
 			if err := ctx.Err(); err != nil {
 				m.mu.Unlock()
 				terminal := canceledTerminalResolution(err, time.Now().UTC())
@@ -758,8 +871,17 @@ func (m *Manager) requestApproval(ctx context.Context, req Request, cacheScope *
 		if count >= m.maxPerSession {
 			m.rateMu.Unlock()
 			m.mu.Unlock()
-			return Resolution{Approved: false, Reason: "rate limit exceeded", Scope: ScopeOnce, At: now},
-				fmt.Errorf("too many pending approvals for session %s (max %d)", req.SessionID, m.maxPerSession)
+			return Resolution{
+					Approved: false,
+					Reason:   "rate limit exceeded",
+					Scope:    ScopeOnce,
+					At:       now,
+				},
+				fmt.Errorf(
+					"too many pending approvals for session %s (max %d)",
+					req.SessionID,
+					m.maxPerSession,
+				)
 		}
 		m.sessionCounts[req.SessionID] = count + 1
 		m.rateMu.Unlock()
@@ -790,7 +912,12 @@ func (m *Manager) requestApproval(ctx context.Context, req Request, cacheScope *
 
 	m.emitEvent(ctx, "approval_requested", req, nil)
 	if observerErr := m.notifyDetachedRequest(ctx, req); observerErr != nil {
-		_ = m.ResolveForSession(req.SessionID, req.ID, false, "detached control transport unavailable: "+observerErr.Error())
+		_ = m.ResolveForSession(
+			req.SessionID,
+			req.ID,
+			false,
+			"detached control transport unavailable: "+observerErr.Error(),
+		)
 	}
 
 	var cancelPrompt context.CancelFunc
@@ -847,7 +974,12 @@ func resolutionFromScopedDecision(cached ScopedDecision, eventType string) Resol
 	}
 }
 
-func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID string, scope Scope) (ScopedDecision, bool) {
+func (m *Manager) CheckScoped(
+	ctx context.Context,
+	sessionID string,
+	commandID string,
+	scope Scope,
+) (ScopedDecision, bool) {
 	if m == nil || sessionID == "" || !validScope(scope) {
 		return ScopedDecision{}, false
 	}
@@ -863,7 +995,12 @@ func (m *Manager) CheckScoped(ctx context.Context, sessionID string, commandID s
 
 // checkScopedLocked implements CheckScoped without lock or event side effects.
 // The caller must hold m.mu and emit eventType after releasing it.
-func (m *Manager) checkScopedLocked(sessionID string, commandID string, scope Scope, now time.Time) (ScopedDecision, string, bool) {
+func (m *Manager) checkScopedLocked(
+	sessionID string,
+	commandID string,
+	scope Scope,
+	now time.Time,
+) (ScopedDecision, string, bool) {
 	if sessionID == "" || !validScope(scope) {
 		return ScopedDecision{}, "", false
 	}
@@ -906,15 +1043,29 @@ func (m *Manager) checkScopedLocked(sessionID string, commandID string, scope Sc
 	return dec, "approval_scope_used", true
 }
 
-func findFileDirScopedDecision(decisions map[string]ScopedDecision, requested Scope, now time.Time) (ScopedDecision, bool) {
+func findFileDirScopedDecision(
+	decisions map[string]ScopedDecision,
+	requested Scope,
+	now time.Time,
+) (ScopedDecision, bool) {
 	return findFileScopedDecision(decisions, requested, now, "file-dir", fileDirContains)
 }
 
-func findFileTreeScopedDecision(decisions map[string]ScopedDecision, requested Scope, now time.Time) (ScopedDecision, bool) {
+func findFileTreeScopedDecision(
+	decisions map[string]ScopedDecision,
+	requested Scope,
+	now time.Time,
+) (ScopedDecision, bool) {
 	return findFileScopedDecision(decisions, requested, now, "file-tree", fileTreeContains)
 }
 
-func findFileScopedDecision(decisions map[string]ScopedDecision, requested Scope, now time.Time, kind string, contains func(string, string) bool) (ScopedDecision, bool) {
+func findFileScopedDecision(
+	decisions map[string]ScopedDecision,
+	requested Scope,
+	now time.Time,
+	kind string,
+	contains func(string, string) bool,
+) (ScopedDecision, bool) {
 	for key, dec := range decisions {
 		if dec.Kind != kind {
 			continue
@@ -923,7 +1074,8 @@ func findFileScopedDecision(decisions map[string]ScopedDecision, requested Scope
 			delete(decisions, key)
 			continue
 		}
-		if dec.Operation == "" || requested.Operation == "" || dec.Operation != requested.Operation {
+		if dec.Operation == "" || requested.Operation == "" ||
+			dec.Operation != requested.Operation {
 			continue
 		}
 		// Directory approvals are deliberately rule-aware: approving a broad
@@ -975,7 +1127,15 @@ func fileTreeContains(dirPath, filePath string) bool {
 	return strings.HasPrefix(filePath, dirPath+"/")
 }
 
-func (m *Manager) SetScoped(ctx context.Context, sessionID string, commandID string, scope Scope, approved bool, reason string, rule string) bool {
+func (m *Manager) SetScoped(
+	ctx context.Context,
+	sessionID string,
+	commandID string,
+	scope Scope,
+	approved bool,
+	reason string,
+	rule string,
+) bool {
 	if m == nil || sessionID == "" || !validScope(scope) || IsCommandRunScope(scope) {
 		return false
 	}
@@ -1016,7 +1176,15 @@ func (m *Manager) SetScoped(ctx context.Context, sessionID string, commandID str
 	return true
 }
 
-func (m *Manager) SetCommandScoped(ctx context.Context, sessionID string, commandID string, scope Scope, approved bool, reason string, rule string) bool {
+func (m *Manager) SetCommandScoped(
+	ctx context.Context,
+	sessionID string,
+	commandID string,
+	scope Scope,
+	approved bool,
+	reason string,
+	rule string,
+) bool {
 	if m == nil || sessionID == "" || commandID == "" || !validScope(scope) {
 		return false
 	}
@@ -1086,14 +1254,19 @@ func (m *Manager) ClearSession(ctx context.Context, sessionID string) {
 	}
 }
 
-func (m *Manager) resolvePendingCoveredByCommandRun(source Request, granted Scope, sourceRes Resolution) {
+func (m *Manager) resolvePendingCoveredByCommandRun(
+	source Request,
+	granted Scope,
+	sourceRes Resolution,
+) {
 	if source.SessionID == "" || source.CommandID == "" || !IsCommandRunScope(granted) {
 		return
 	}
 	m.mu.Lock()
 	now := time.Now().UTC()
 	for id, p := range m.pending {
-		if p == nil || id == source.ID || p.req.SessionID != source.SessionID || p.req.CommandID != source.CommandID {
+		if p == nil || id == source.ID || p.req.SessionID != source.SessionID ||
+			p.req.CommandID != source.CommandID {
 			continue
 		}
 		if p.req.ExpiresAt.Before(now) {
@@ -1123,7 +1296,11 @@ func (m *Manager) resolvePendingCoveredByCommandRun(source Request, granted Scop
 	m.mu.Unlock()
 }
 
-func (m *Manager) resolvePendingCoveredBySessionScope(source Request, granted Scope, sourceRes Resolution) {
+func (m *Manager) resolvePendingCoveredBySessionScope(
+	source Request,
+	granted Scope,
+	sourceRes Resolution,
+) {
 	if source.SessionID == "" || !validScope(granted) {
 		return
 	}
@@ -1246,7 +1423,8 @@ func scopeCovers(granted Scope, requested Scope) bool {
 	if requested.Kind != "file" {
 		return false
 	}
-	if granted.Operation == "" || requested.Operation == "" || granted.Operation != requested.Operation {
+	if granted.Operation == "" || requested.Operation == "" ||
+		granted.Operation != requested.Operation {
 		return false
 	}
 	if granted.Rule == "" || requested.Rule == "" || granted.Rule != requested.Rule {
@@ -1279,7 +1457,12 @@ func ScopeFromResolution(res Resolution) (Scope, bool) {
 	}, true
 }
 
-func (m *Manager) emitScopedEvent(ctx context.Context, evType string, commandID string, dec ScopedDecision) {
+func (m *Manager) emitScopedEvent(
+	ctx context.Context,
+	evType string,
+	commandID string,
+	dec ScopedDecision,
+) {
 	if m.emit == nil {
 		return
 	}
@@ -1398,8 +1581,17 @@ func (m *Manager) promptTTY(ctx context.Context, req Request) (Resolution, error
 
 	a, b := challenge()
 	fmt.Fprintf(f, "\n=== APPROVAL REQUIRED ===\n")
-	fmt.Fprintf(f, "ID: %s\nSession: %s\nCommand: %s\nKind: %s\nTarget: %s\nRule: %s\nMessage: %s\n",
-		req.ID, req.SessionID, req.CommandID, req.Kind, req.Target, req.Rule, req.Message)
+	fmt.Fprintf(
+		f,
+		"ID: %s\nSession: %s\nCommand: %s\nKind: %s\nTarget: %s\nRule: %s\nMessage: %s\n",
+		req.ID,
+		req.SessionID,
+		req.CommandID,
+		req.Kind,
+		req.Target,
+		req.Rule,
+		req.Message,
+	)
 
 	answer, err := readLineCtx(fmt.Sprintf("To approve, solve: %d + %d = ?\n> ", a, b))
 	if err != nil {

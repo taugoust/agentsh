@@ -208,7 +208,12 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	parentFile := os.NewFile(uintptr(fds[0]), "notify-parent")
 	childFile := os.NewFile(uintptr(fds[1]), "notify-child")
 	controlTimeout := unix.NsecToTimeval(notifySetupStatusTimeout.Nanoseconds())
-	_ = unix.SetsockoptTimeval(int(parentFile.Fd()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, &controlTimeout)
+	_ = unix.SetsockoptTimeval(
+		int(parentFile.Fd()),
+		unix.SOL_SOCKET,
+		unix.SO_RCVTIMEO,
+		&controlTimeout,
+	)
 
 	// Clear CLOEXEC on the child fd so it survives exec into the wrapper.
 	if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(fds[1]), unix.F_SETFD, 0); errno != 0 {
@@ -219,7 +224,11 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 
 	var compositionParentFile, compositionChildFile *os.File
 	if hasCompositionSetup {
-		setupFDs, setupErr := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+		setupFDs, setupErr := unix.Socketpair(
+			unix.AF_UNIX,
+			unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC,
+			0,
+		)
 		if setupErr != nil {
 			parentFile.Close()
 			childFile.Close()
@@ -227,7 +236,12 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 		}
 		compositionParentFile = os.NewFile(uintptr(setupFDs[0]), "composition-setup-parent")
 		compositionChildFile = os.NewFile(uintptr(setupFDs[1]), "composition-setup-child")
-		if _, _, errno := unix.Syscall(unix.SYS_FCNTL, uintptr(setupFDs[1]), unix.F_SETFD, 0); errno != 0 {
+		if _, _, errno := unix.Syscall(
+			unix.SYS_FCNTL,
+			uintptr(setupFDs[1]),
+			unix.F_SETFD,
+			0,
+		); errno != 0 {
 			parentFile.Close()
 			childFile.Close()
 			compositionParentFile.Close()
@@ -251,7 +265,12 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	// markers (notify fd, argv0 override, wrapper config). See
 	// assembleWrapperEnv for the env_inject override and AGENTSH_SIGNAL_SOCK_FD
 	// stripping rationale (issue #374).
-	env := assembleWrapperEnv(wrapenv.Filter(filterShimInternalEnv(p.Env), resp.EnvPolicy), p.Argv0, resp.WrapperEnv, resp.EnvInject)
+	env := assembleWrapperEnv(
+		wrapenv.Filter(filterShimInternalEnv(p.Env), resp.EnvPolicy),
+		p.Argv0,
+		resp.WrapperEnv,
+		resp.EnvInject,
+	)
 	if hasCompositionSetup {
 		env = append(env, composition.SetupFDEnv+"=4")
 	}
@@ -264,7 +283,11 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 	// failure for the same reason — the relay must not add stderr noise.
 	logFile, logErr := wrapperlog.OpenStateLogFile()
 	if logErr != nil {
-		slog.Debug("kernelinstall: wrapper log file unavailable; wrapper diagnostics stay on stderr", "error", logErr)
+		slog.Debug(
+			"kernelinstall: wrapper log file unavailable; wrapper diagnostics stay on stderr",
+			"error",
+			logErr,
+		)
 	}
 
 	// Build wrapper argv: wrapperBin -- realShell shellArgs...
@@ -322,15 +345,30 @@ func runRelay(p InstallParams, resp types.WrapInitResponse) (Result, error) {
 		logFile.Close()
 	}
 
-	if lineageErr := completeKernelLineageHandoff(parentFile, compositionParentFile, notifySocket, cmd.Process.Pid, resp.CommandJail != nil); lineageErr != nil {
+	if lineageErr := completeKernelLineageHandoff(
+		parentFile,
+		compositionParentFile,
+		notifySocket,
+		cmd.Process.Pid,
+		resp.CommandJail != nil,
+	); lineageErr != nil {
 		parentFile.Close()
 		_ = cmd.Process.Kill()
 		_ = waitWrapper(cmd)
-		return Result{Action: ResultFailClosed, Reason: fmt.Sprintf("lineage notify handoff failed: %v", lineageErr)}, nil
+		return Result{
+			Action: ResultFailClosed,
+			Reason: fmt.Sprintf("lineage notify handoff failed: %v", lineageErr),
+		}, nil
 	}
 	parentFile.Close()
 	lineageExitCode := waitWrapper(cmd)
-	return Result{Action: ResultExec, ExecPath: wrapperBin, ExecArgs: cmd.Args, ExecEnv: env, WrapperExitCode: lineageExitCode}, nil
+	return Result{
+		Action:          ResultExec,
+		ExecPath:        wrapperBin,
+		ExecArgs:        cmd.Args,
+		ExecEnv:         env,
+		WrapperExitCode: lineageExitCode,
+	}, nil
 }
 
 func validateCommandJailResponse(resp types.WrapInitResponse) error {
@@ -351,7 +389,9 @@ func validateCommandJailResponse(resp types.WrapInitResponse) error {
 	configRequiresJail := wire.CommandJail != nil && wire.CommandJail.Required
 	if resp.CommandJail == nil {
 		if configRequiresJail {
-			return fmt.Errorf("server requires a command jail but omitted Linux launch requirements")
+			return fmt.Errorf(
+				"server requires a command jail but omitted Linux launch requirements",
+			)
 		}
 		return nil
 	}
@@ -359,17 +399,24 @@ func validateCommandJailResponse(resp types.WrapInitResponse) error {
 		return fmt.Errorf("server returned incomplete Linux command-jail requirements")
 	}
 	if !configRequiresJail {
-		return fmt.Errorf("server returned command-jail launch requirements without a required wrapper jail")
+		return fmt.Errorf(
+			"server returned command-jail launch requirements without a required wrapper jail",
+		)
 	}
 	mode, err := responseCompositionMode(resp)
 	if err != nil {
 		return err
 	}
 	if mode != "" && !resp.CommandJail.MapCurrentUserToNonRoot {
-		return fmt.Errorf("server selected %s without the required non-root namespace identity", mode)
+		return fmt.Errorf(
+			"server selected %s without the required non-root namespace identity",
+			mode,
+		)
 	}
 	if mode == "" && resp.CommandJail.MapCurrentUserToNonRoot {
-		return fmt.Errorf("server requested a non-root namespace identity without sandbox composition")
+		return fmt.Errorf(
+			"server requested a non-root namespace identity without sandbox composition",
+		)
 	}
 	return nil
 }
@@ -393,7 +440,10 @@ func responseCompositionMode(resp types.WrapInitResponse) (string, error) {
 		return "", nil
 	case composition.Mode:
 		if resp.PtraceMode || resp.CommandJail == nil {
-			return "", fmt.Errorf("server selected %s without a supported command-jail wrap path", wire.SandboxComposition)
+			return "", fmt.Errorf(
+				"server selected %s without a supported command-jail wrap path",
+				wire.SandboxComposition,
+			)
 		}
 		return wire.SandboxComposition, nil
 	default:
@@ -401,7 +451,10 @@ func responseCompositionMode(resp types.WrapInitResponse) (string, error) {
 	}
 }
 
-func configureCommandJailProcess(attr *syscall.SysProcAttr, requirements *types.LinuxCommandJailRequirements) error {
+func configureCommandJailProcess(
+	attr *syscall.SysProcAttr,
+	requirements *types.LinuxCommandJailRequirements,
+) error {
 	if requirements == nil {
 		return nil
 	}
@@ -409,7 +462,9 @@ func configureCommandJailProcess(attr *syscall.SysProcAttr, requirements *types.
 		return fmt.Errorf("strict command boundary requirements are incomplete")
 	}
 	if len(attr.UidMappings) != 0 || len(attr.GidMappings) != 0 || attr.Credential != nil {
-		return fmt.Errorf("strict command boundary cannot compose with existing credentials or mappings")
+		return fmt.Errorf(
+			"strict command boundary cannot compose with existing credentials or mappings",
+		)
 	}
 	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
 	attr.Pdeathsig = syscall.SIGKILL
@@ -418,8 +473,12 @@ func configureCommandJailProcess(attr *syscall.SysProcAttr, requirements *types.
 		namespaceID = 1
 		attr.AmbientCaps = append(attr.AmbientCaps, unix.CAP_SYS_ADMIN, unix.CAP_SETPCAP)
 	}
-	attr.UidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Geteuid(), Size: 1}}
-	attr.GidMappings = []syscall.SysProcIDMap{{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1}}
+	attr.UidMappings = []syscall.SysProcIDMap{
+		{ContainerID: namespaceID, HostID: os.Geteuid(), Size: 1},
+	}
+	attr.GidMappings = []syscall.SysProcIDMap{
+		{ContainerID: namespaceID, HostID: os.Getegid(), Size: 1},
+	}
 	attr.GidMappingsEnableSetgroups = false
 	return nil
 }
@@ -604,7 +663,11 @@ func runPtraceHandshake(p InstallParams, resp types.WrapInitResponse) (Result, e
 	}
 
 	// ACK: session is bound. Signal child to proceed by writing a byte.
-	if _, writeErr := unix.Write(writeFD, []byte{1}); writeErr != nil && !errors.Is(writeErr, unix.EPIPE) {
+	if _, writeErr := unix.Write(
+		writeFD,
+		[]byte{1},
+	); writeErr != nil &&
+		!errors.Is(writeErr, unix.EPIPE) {
 		// EPIPE means child already exited (closed read end); any other error
 		// means the child is stuck on the pipe read and will hang — kill it.
 		slog.Warn("kernelinstall: write to sync pipe failed, killing child", "error", writeErr)
@@ -661,7 +724,11 @@ func createPipe() (int, int, error) {
 // appended afterward and remain authoritative. AGENTSH_SIGNAL_SOCK_FD from
 // wrapperEnv is dropped: shim mode does not replicate the signal-filter
 // socketpair, so the wrapper must not try to open that fd.
-func assembleWrapperEnv(base []string, argv0 string, wrapperEnv, envInject map[string]string) []string {
+func assembleWrapperEnv(
+	base []string,
+	argv0 string,
+	wrapperEnv, envInject map[string]string,
+) []string {
 	// Copy so appends never alias the caller's backing array (Apply may
 	// return base unchanged when envInject is empty). Re-run the
 	// internal-marker filter AFTER Apply: env_inject is operator
@@ -685,7 +752,9 @@ func assembleWrapperEnv(base []string, argv0 string, wrapperEnv, envInject map[s
 			continue
 		}
 		if k == signalSockFDKey {
-			slog.Debug("kernelinstall: stripping signal sock fd from wrapper env (shim mode limitation)")
+			slog.Debug(
+				"kernelinstall: stripping signal sock fd from wrapper env (shim mode limitation)",
+			)
 			continue
 		}
 		if k == wrapperlog.EnvKey {

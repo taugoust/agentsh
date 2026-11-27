@@ -271,7 +271,10 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 	fmt.Fprint(w, "# TYPE wtp_bytes_sent_total counter\n")
 	fmt.Fprintf(w, "wtp_bytes_sent_total %d\n", c.wtpBytesSent.Load())
 
-	fmt.Fprint(w, "# HELP wtp_transport_loss_total Transport-loss markers emitted by the WTP sink.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_transport_loss_total Transport-loss markers emitted by the WTP sink.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_transport_loss_total counter\n")
 	fmt.Fprintf(w, "wtp_transport_loss_total %d\n", c.wtpTransportLoss.Load())
 
@@ -288,7 +291,10 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 		fmt.Fprintf(w, "wtp_reconnects_total{reason=%q} %d\n", escapeLabelValue(string(r)), n)
 	}
 
-	fmt.Fprint(w, "# HELP wtp_session_state Current WTP session state (0=connecting,1=replaying,2=live,3=shutdown).\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_session_state Current WTP session state (0=connecting,1=replaying,2=live,3=shutdown).\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_session_state gauge\n")
 	fmt.Fprintf(w, "wtp_session_state %d\n", c.wtpSessionState.Load())
 
@@ -304,7 +310,10 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 	fmt.Fprint(w, "# TYPE wtp_ack_high_watermark gauge\n")
 	fmt.Fprintf(w, "wtp_ack_high_watermark %d\n", c.wtpAckHighWatermark.Load())
 
-	fmt.Fprint(w, "# HELP wtp_wal_corruption_total CRC corruption events encountered during WAL replay.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_wal_corruption_total CRC corruption events encountered during WAL replay.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_wal_corruption_total counter\n")
 	fmt.Fprintf(w, "wtp_wal_corruption_total %d\n", c.wtpWALCorruption.Load())
 
@@ -315,7 +324,10 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 	// reasons so "no anomalies yet" is distinguishable from "metric
 	// absent after restart" and so the exposition order is stable
 	// across scrapes.
-	fmt.Fprint(w, "# HELP wtp_anomalous_ack_total Server ack tuples that fell into one of the AckOutcomeAnomaly sub-cases, by reason.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_anomalous_ack_total Server ack tuples that fell into one of the AckOutcomeAnomaly sub-cases, by reason.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_anomalous_ack_total counter\n")
 	for _, reason := range wtpAnomalousAckReasons {
 		var n uint64
@@ -337,36 +349,60 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 		return true
 	})
 
-	fmt.Fprint(w, "# HELP wtp_resend_needed_total Server ack tuples that landed in the ResendNeeded branch (legitimate stale-server recovery).\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_resend_needed_total Server ack tuples that landed in the ResendNeeded branch (legitimate stale-server recovery).\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_resend_needed_total counter\n")
 	fmt.Fprintf(w, "wtp_resend_needed_total %d\n", c.wtpResendNeeded.Load())
 
-	fmt.Fprint(w, "# HELP wtp_ack_regression_loss_total Synthesized in-memory loss markers from computeReplayStart Case A or C.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_ack_regression_loss_total Synthesized in-memory loss markers from computeReplayStart Case A or C.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_ack_regression_loss_total counter\n")
 	fmt.Fprintf(w, "wtp_ack_regression_loss_total %d\n", c.wtpAckRegressionLoss.Load())
 
 	// Task 22a: sink-failure unlabeled counters.
-	fmt.Fprint(w, "# HELP wtp_dropped_invalid_utf8_total Records dropped because the canonical encoder reported invalid UTF-8.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_dropped_invalid_utf8_total Records dropped because the canonical encoder reported invalid UTF-8.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_invalid_utf8_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_invalid_utf8_total %d\n", c.wtpDroppedInvalidUTF8.Load())
 
-	fmt.Fprint(w, "# HELP wtp_dropped_sequence_overflow_total Records dropped because Chain.Sequence exceeded math.MaxInt64.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_dropped_sequence_overflow_total Records dropped because Chain.Sequence exceeded math.MaxInt64.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_sequence_overflow_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_sequence_overflow_total %d\n", c.wtpDroppedSequenceOverflow.Load())
 
-	fmt.Fprint(w, "# HELP wtp_dropped_invalid_mapper_total Records dropped because compact.Encode rejected the mapper (defense in depth).\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_dropped_invalid_mapper_total Records dropped because compact.Encode rejected the mapper (defense in depth).\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_invalid_mapper_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_invalid_mapper_total %d\n", c.wtpDroppedInvalidMapper.Load())
 
-	fmt.Fprint(w, "# HELP wtp_dropped_invalid_timestamp_total Records dropped because compact.Encode rejected ev.Timestamp (zero or pre-epoch).\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_dropped_invalid_timestamp_total Records dropped because compact.Encode rejected ev.Timestamp (zero or pre-epoch).\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_invalid_timestamp_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_invalid_timestamp_total %d\n", c.wtpDroppedInvalidTimestamp.Load())
 
-	fmt.Fprint(w, "# HELP wtp_dropped_mapper_failure_total Records dropped because compact.Encode wrapped a mapper-side error.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_dropped_mapper_failure_total Records dropped because compact.Encode wrapped a mapper-side error.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_mapper_failure_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_mapper_failure_total %d\n", c.wtpDroppedMapperFailure.Load())
 
-	fmt.Fprint(w, "# HELP wtp_loss_unknown_reason_total Loss markers dropped because the in-WAL Reason string had no wire enum mapping. Non-zero indicates a producer added a new reason without updating ToWireReason — programming bug.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_loss_unknown_reason_total Loss markers dropped because the in-WAL Reason string had no wire enum mapping. Non-zero indicates a producer added a new reason without updating ToWireReason — programming bug.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_loss_unknown_reason_total counter\n")
 	fmt.Fprintf(w, "wtp_loss_unknown_reason_total %d\n", c.wtpLossUnknownReason.Load())
 
@@ -374,14 +410,22 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 	// enumerated reason appears in the exposition with a (possibly
 	// zero) value on every scrape, so dashboards never see "no data"
 	// vs. "zero events" ambiguity.
-	fmt.Fprint(w, "# HELP wtp_dropped_invalid_frame_total WTP peer frames dropped at the protocol-validation boundary, by reason.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_dropped_invalid_frame_total WTP peer frames dropped at the protocol-validation boundary, by reason.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_invalid_frame_total counter\n")
 	for _, r := range wtpInvalidFrameReasonsEmitOrder {
 		var n uint64
 		if v, ok := c.wtpDroppedInvalidFrameByReason.Load(string(r)); ok && v != nil {
 			n = v.(*atomic.Uint64).Load()
 		}
-		fmt.Fprintf(w, "wtp_dropped_invalid_frame_total{reason=%q} %d\n", escapeLabelValue(string(r)), n)
+		fmt.Fprintf(
+			w,
+			"wtp_dropped_invalid_frame_total{reason=%q} %d\n",
+			escapeLabelValue(string(r)),
+			n,
+		)
 	}
 
 	fmt.Fprint(w, "# HELP wtp_session_init_failures_total WTP session-init failures by reason.\n")
@@ -391,20 +435,36 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 		if v, ok := c.wtpSessionInitFailuresByReason.Load(string(r)); ok && v != nil {
 			n = v.(*atomic.Uint64).Load()
 		}
-		fmt.Fprintf(w, "wtp_session_init_failures_total{reason=%q} %d\n", escapeLabelValue(string(r)), n)
+		fmt.Fprintf(
+			w,
+			"wtp_session_init_failures_total{reason=%q} %d\n",
+			escapeLabelValue(string(r)),
+			n,
+		)
 	}
 
-	fmt.Fprint(w, "# HELP wtp_session_rotation_failures_total WTP session-rotation failures by reason.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_session_rotation_failures_total WTP session-rotation failures by reason.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_session_rotation_failures_total counter\n")
 	for _, r := range wtpSessionFailureReasonsEmitOrder {
 		var n uint64
 		if v, ok := c.wtpSessionRotationFailuresByReason.Load(string(r)); ok && v != nil {
 			n = v.(*atomic.Uint64).Load()
 		}
-		fmt.Fprintf(w, "wtp_session_rotation_failures_total{reason=%q} %d\n", escapeLabelValue(string(r)), n)
+		fmt.Fprintf(
+			w,
+			"wtp_session_rotation_failures_total{reason=%q} %d\n",
+			escapeLabelValue(string(r)),
+			n,
+		)
 	}
 
-	fmt.Fprint(w, "# HELP wtp_wal_quarantine_total WTP WAL identity-mismatch quarantines by reason.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_wal_quarantine_total WTP WAL identity-mismatch quarantines by reason.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_wal_quarantine_total counter\n")
 	for _, r := range wtpWALQuarantineReasonsEmitOrder {
 		var n uint64
@@ -427,7 +487,11 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 	for i, ub := range wtpLatencyBucketsSeconds {
 		fmt.Fprintf(w, "wtp_send_latency_seconds_bucket{le=\"%g\"} %d\n", ub, bucketsSnapshot[i])
 	}
-	fmt.Fprintf(w, "wtp_send_latency_seconds_bucket{le=\"+Inf\"} %d\n", bucketsSnapshot[len(wtpLatencyBucketsSeconds)])
+	fmt.Fprintf(
+		w,
+		"wtp_send_latency_seconds_bucket{le=\"+Inf\"} %d\n",
+		bucketsSnapshot[len(wtpLatencyBucketsSeconds)],
+	)
 	fmt.Fprintf(w, "wtp_send_latency_seconds_sum %g\n", sumSnapshot)
 	fmt.Fprintf(w, "wtp_send_latency_seconds_count %d\n", countSnapshot)
 
@@ -435,7 +499,10 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 	// labels. Always-emit cross product so dashboards have a stable
 	// schema before any compression happens.
 
-	fmt.Fprint(w, "# HELP wtp_batch_compression_ratio Compressed/uncompressed size ratio per WTP batch.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_batch_compression_ratio Compressed/uncompressed size ratio per WTP batch.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_batch_compression_ratio histogram\n")
 	for _, algo := range wtpCompressionAlgos {
 		var h *compressionRatioBuckets
@@ -451,14 +518,28 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 		count := h.count
 		h.mu.Unlock()
 		for i, ub := range wtpCompressionRatioBucketsValues {
-			fmt.Fprintf(w, "wtp_batch_compression_ratio_bucket{algo=%q,le=\"%g\"} %d\n", algo, ub, bs[i])
+			fmt.Fprintf(
+				w,
+				"wtp_batch_compression_ratio_bucket{algo=%q,le=\"%g\"} %d\n",
+				algo,
+				ub,
+				bs[i],
+			)
 		}
-		fmt.Fprintf(w, "wtp_batch_compression_ratio_bucket{algo=%q,le=\"+Inf\"} %d\n", algo, bs[len(wtpCompressionRatioBucketsValues)])
+		fmt.Fprintf(
+			w,
+			"wtp_batch_compression_ratio_bucket{algo=%q,le=\"+Inf\"} %d\n",
+			algo,
+			bs[len(wtpCompressionRatioBucketsValues)],
+		)
 		fmt.Fprintf(w, "wtp_batch_compression_ratio_sum{algo=%q} %g\n", algo, sum)
 		fmt.Fprintf(w, "wtp_batch_compression_ratio_count{algo=%q} %d\n", algo, count)
 	}
 
-	fmt.Fprint(w, "# HELP wtp_batch_compressed_bytes_total Bytes emitted as EventBatch.compressed_payload, by algorithm.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_batch_compressed_bytes_total Bytes emitted as EventBatch.compressed_payload, by algorithm.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_batch_compressed_bytes_total counter\n")
 	for _, algo := range wtpCompressionAlgos {
 		var n uint64
@@ -468,7 +549,10 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 		fmt.Fprintf(w, "wtp_batch_compressed_bytes_total{algo=%q} %d\n", algo, n)
 	}
 
-	fmt.Fprint(w, "# HELP wtp_batch_uncompressed_bytes_total Marshaled UncompressedEvents size pre-compression, by algorithm.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_batch_uncompressed_bytes_total Marshaled UncompressedEvents size pre-compression, by algorithm.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_batch_uncompressed_bytes_total counter\n")
 	for _, algo := range wtpCompressionAlgos {
 		var n uint64
@@ -478,7 +562,10 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 		fmt.Fprintf(w, "wtp_batch_uncompressed_bytes_total{algo=%q} %d\n", algo, n)
 	}
 
-	fmt.Fprint(w, "# HELP wtp_compress_error_total Sender-side fail-open fallbacks: encoder returned an error and the batch was emitted as COMPRESSION_NONE.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_compress_error_total Sender-side fail-open fallbacks: encoder returned an error and the batch was emitted as COMPRESSION_NONE.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_compress_error_total counter\n")
 	for _, algo := range wtpCompressionAlgos {
 		var n uint64
@@ -488,7 +575,10 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 		fmt.Fprintf(w, "wtp_compress_error_total{algo=%q} %d\n", algo, n)
 	}
 
-	fmt.Fprint(w, "# HELP wtp_decompress_error_total Receiver-side decode failures by algorithm and reason.\n")
+	fmt.Fprint(
+		w,
+		"# HELP wtp_decompress_error_total Receiver-side decode failures by algorithm and reason.\n",
+	)
 	fmt.Fprint(w, "# TYPE wtp_decompress_error_total counter\n")
 	for _, algo := range wtpCompressionAlgos {
 		for _, reason := range wtpDecompressReasons {

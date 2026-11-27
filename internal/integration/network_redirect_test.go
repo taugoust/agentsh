@@ -94,12 +94,24 @@ resource_limits:
 	// available in all test environments.
 	resp, err := cli.Exec(ctx, sess.ID, types.ExecRequest{
 		Command: "curl",
-		Args:    []string{"-s", "-o", "/dev/null", "-w", "%{http_code}", fmt.Sprintf("http://redirect.test.local:%s/", port)},
+		Args: []string{
+			"-s",
+			"-o",
+			"/dev/null",
+			"-w",
+			"%{http_code}",
+			fmt.Sprintf("http://redirect.test.local:%s/", port),
+		},
 	})
 	if err != nil {
 		t.Logf("curl exec error (may be expected in some environments): %v", err)
 	} else {
-		t.Logf("curl response: exit=%d stdout=%s stderr=%s", resp.Result.ExitCode, resp.Result.Stdout, resp.Result.Stderr)
+		t.Logf(
+			"curl response: exit=%d stdout=%s stderr=%s",
+			resp.Result.ExitCode,
+			resp.Result.Stdout,
+			resp.Result.Stderr,
+		)
 	}
 
 	// Check for DNS redirect events in the session events
@@ -114,7 +126,9 @@ resource_limits:
 	}
 
 	if !hasDNSRedirectEvent {
-		t.Logf("Note: DNS redirect event not found - this may be expected if transparent proxy mode is not active")
+		t.Logf(
+			"Note: DNS redirect event not found - this may be expected if transparent proxy mode is not active",
+		)
 	}
 }
 

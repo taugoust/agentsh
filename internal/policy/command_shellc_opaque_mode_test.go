@@ -45,10 +45,21 @@ func TestCheckCommand_OpaqueModeMatrix(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newInterceptionTestEngine(t) // has a restrictive rule (deny-shutdown)
-			dec := e.CheckCommandWithExecve("/bin/sh", []string{"-c", opaqueScript}, tc.execveOn, tc.mode)
-			gotDeny := dec.PolicyDecision == types.DecisionDeny && dec.Rule == "shellc-opaque-script"
+			dec := e.CheckCommandWithExecve(
+				"/bin/sh",
+				[]string{"-c", opaqueScript},
+				tc.execveOn,
+				tc.mode,
+			)
+			gotDeny := dec.PolicyDecision == types.DecisionDeny &&
+				dec.Rule == "shellc-opaque-script"
 			if gotDeny != tc.wantDeny {
-				t.Fatalf("decision=%s rule=%q; want deny=%v", dec.PolicyDecision, dec.Rule, tc.wantDeny)
+				t.Fatalf(
+					"decision=%s rule=%q; want deny=%v",
+					dec.PolicyDecision,
+					dec.Rule,
+					tc.wantDeny,
+				)
 			}
 			if tc.wantDeny && !strings.Contains(dec.Message, "shellc.opaque=allow") {
 				t.Errorf("deny message should name the remedy; got %q", dec.Message)

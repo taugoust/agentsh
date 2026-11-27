@@ -30,30 +30,58 @@ func (a *App) selectSandboxComposition(dec *policy.Decision) (string, string) {
 		return "", code
 	}
 	if dec.SandboxComposition != bubblewrapCompositionMode {
-		return deny("E_COMPOSITION_DIALECT_MISMATCH", fmt.Sprintf("unsupported sandbox composition %q", dec.SandboxComposition))
+		return deny(
+			"E_COMPOSITION_DIALECT_MISMATCH",
+			fmt.Sprintf("unsupported sandbox composition %q", dec.SandboxComposition),
+		)
 	}
 	if runtime.GOOS != "linux" {
-		return deny("E_COMPOSITION_BACKEND_UNAVAILABLE", "Bubblewrap composition is available only on Linux")
+		return deny(
+			"E_COMPOSITION_BACKEND_UNAVAILABLE",
+			"Bubblewrap composition is available only on Linux",
+		)
 	}
 	if a == nil || a.cfg == nil || !a.cfg.Sandbox.Composition.Bubblewrap.Enabled {
-		return deny("E_COMPOSITION_HOST_DISABLED", "Bubblewrap composition was selected by policy but is disabled by the host ceiling")
+		return deny(
+			"E_COMPOSITION_HOST_DISABLED",
+			"Bubblewrap composition was selected by policy but is disabled by the host ceiling",
+		)
 	}
 	if a.cfg.Sandbox.Composition.Bubblewrap.Dialect != "0.11.2" {
-		return deny("E_COMPOSITION_DIALECT_MISMATCH", "host Bubblewrap composition dialect does not match policy")
+		return deny(
+			"E_COMPOSITION_DIALECT_MISMATCH",
+			"host Bubblewrap composition dialect does not match policy",
+		)
 	}
-	if !a.cfg.Landlock.Enabled || !a.cfg.Sandbox.Seccomp.Execve.Enabled || !commandJailRequired(a.cfg) {
-		return deny("E_COMPOSITION_BACKEND_UNAVAILABLE", "Bubblewrap composition requires Landlock, exec interception, and the strict command jail")
+	if !a.cfg.Landlock.Enabled || !a.cfg.Sandbox.Seccomp.Execve.Enabled ||
+		!commandJailRequired(a.cfg) {
+		return deny(
+			"E_COMPOSITION_BACKEND_UNAVAILABLE",
+			"Bubblewrap composition requires Landlock, exec interception, and the strict command jail",
+		)
 	}
 	fileMonitor := a.cfg.Sandbox.Seccomp.FileMonitor
 	if !config.FileMonitorBoolWithDefault(fileMonitor.Enabled, false) ||
 		!config.FileMonitorBoolWithDefault(fileMonitor.EnforceWithoutFUSE, false) ||
 		!config.FileMonitorBoolWithDefault(fileMonitor.InterceptMetadata, false) ||
-		config.FileMonitorBoolWithDefault(fileMonitor.WriteOnlyOpens, !config.FileMonitorBoolWithDefault(fileMonitor.InterceptMetadata, false)) ||
-		!config.FileMonitorBoolWithDefault(fileMonitor.BlockIOUring, config.FileMonitorBoolWithDefault(fileMonitor.EnforceWithoutFUSE, false)) {
-		return deny("E_COMPOSITION_BACKEND_UNAVAILABLE", "Bubblewrap composition requires enforced read/write and metadata file interception plus io_uring denial for source attribution")
+		config.FileMonitorBoolWithDefault(
+			fileMonitor.WriteOnlyOpens,
+			!config.FileMonitorBoolWithDefault(fileMonitor.InterceptMetadata, false),
+		) ||
+		!config.FileMonitorBoolWithDefault(
+			fileMonitor.BlockIOUring,
+			config.FileMonitorBoolWithDefault(fileMonitor.EnforceWithoutFUSE, false),
+		) {
+		return deny(
+			"E_COMPOSITION_BACKEND_UNAVAILABLE",
+			"Bubblewrap composition requires enforced read/write and metadata file interception plus io_uring denial for source attribution",
+		)
 	}
 	if _, err := a.compositionScratchRoot(); err != nil {
-		return deny("E_COMPOSITION_RUNTIME_UNAVAILABLE", fmt.Sprintf("automatic composition runtime is unavailable: %v", err))
+		return deny(
+			"E_COMPOSITION_RUNTIME_UNAVAILABLE",
+			fmt.Sprintf("automatic composition runtime is unavailable: %v", err),
+		)
 	}
 	return bubblewrapCompositionMode, ""
 }

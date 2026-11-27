@@ -1120,7 +1120,10 @@ func TestCompileHTTPServices_RejectsDuplicateName(t *testing.T) {
 			Rules: []HTTPServiceRule{{Name: "r", Paths: []string{"/**"}, Decision: "allow"}},
 		},
 	}
-	if _, _, err := compileHTTPServices(svcs); err == nil || !strings.Contains(err.Error(), "duplicate service name") {
+	if _, _, err := compileHTTPServices(
+		svcs,
+	); err == nil ||
+		!strings.Contains(err.Error(), "duplicate service name") {
 		t.Fatalf("want duplicate service name error, got %v", err)
 	}
 }
@@ -1136,7 +1139,10 @@ func TestCompileHTTPServices_RejectsDuplicateUpstreamHost(t *testing.T) {
 			Rules: []HTTPServiceRule{{Name: "r", Paths: []string{"/**"}, Decision: "allow"}},
 		},
 	}
-	if _, _, err := compileHTTPServices(svcs); err == nil || !strings.Contains(err.Error(), "duplicate upstream host") {
+	if _, _, err := compileHTTPServices(
+		svcs,
+	); err == nil ||
+		!strings.Contains(err.Error(), "duplicate upstream host") {
 		t.Fatalf("want duplicate upstream host error, got %v", err)
 	}
 }
@@ -1154,7 +1160,10 @@ func TestCompileHTTPServices_RejectsDuplicateAliasHost(t *testing.T) {
 			Rules:   []HTTPServiceRule{{Name: "r", Paths: []string{"/**"}, Decision: "allow"}},
 		},
 	}
-	if _, _, err := compileHTTPServices(svcs); err == nil || !strings.Contains(err.Error(), "via alias") {
+	if _, _, err := compileHTTPServices(
+		svcs,
+	); err == nil ||
+		!strings.Contains(err.Error(), "via alias") {
 		t.Fatalf("want alias collision error, got %v", err)
 	}
 }
@@ -1291,7 +1300,10 @@ func TestHTTPServices_DeepCopyPointerFields(t *testing.T) {
 		t.Errorf("Secret.Ref = %q, want original (shallow-copy leak)", got2[0].Secret.Ref)
 	}
 	if got2[0].Inject.Header.Name != "Authorization" {
-		t.Errorf("Inject.Header.Name = %q, want original (shallow-copy leak)", got2[0].Inject.Header.Name)
+		t.Errorf(
+			"Inject.Header.Name = %q, want original (shallow-copy leak)",
+			got2[0].Inject.Header.Name,
+		)
 	}
 	if got2[0].ScrubResponse == nil || !*got2[0].ScrubResponse {
 		t.Errorf("ScrubResponse = %v, want true (shallow-copy leak)", got2[0].ScrubResponse)

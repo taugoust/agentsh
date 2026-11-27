@@ -333,7 +333,10 @@ func TestResolveWorkingDir_DotDotEscape_RealPaths(t *testing.T) {
 	// outside-workspace (pass through), not rejected as escape.
 	real, err := resolveWorkingDir(s, wsClean+"/../tmp")
 	if err != nil {
-		t.Fatalf("expected pass-through for dotdot outside workspace in real_paths mode, got: %v", err)
+		t.Fatalf(
+			"expected pass-through for dotdot outside workspace in real_paths mode, got: %v",
+			err,
+		)
 	}
 	// After normalization, should resolve to the parent's "tmp" sibling
 	if strings.Contains(real, "..") {
@@ -432,7 +435,11 @@ func TestExec_RealPaths_OutsideWorkspace_Allowed(t *testing.T) {
 		"working_dir":    outsideDir,
 		"include_events": "none",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+sess.ID+"/exec",
+		bytes.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -444,7 +451,11 @@ func TestExec_RealPaths_OutsideWorkspace_Allowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resp.Result.ExitCode != 0 {
-		t.Fatalf("expected exit_code 0, got %d (stderr=%q)", resp.Result.ExitCode, resp.Result.Stderr)
+		t.Fatalf(
+			"expected exit_code 0, got %d (stderr=%q)",
+			resp.Result.ExitCode,
+			resp.Result.Stderr,
+		)
 	}
 	// pwd output should contain the outside dir path
 	if !strings.Contains(resp.Result.Stdout, filepath.Base(outsideDir)) {
@@ -479,7 +490,11 @@ func TestExec_Default_OutsideWorkspace_Rejected(t *testing.T) {
 		"working_dir":    outsideDir,
 		"include_events": "none",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+sess.ID+"/exec",
+		bytes.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
@@ -529,7 +544,11 @@ func TestExec_RealPaths_InWorkspace_UsesRealPath(t *testing.T) {
 		"working_dir":    wsClean + "/sub",
 		"include_events": "none",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+sess.ID+"/exec",
+		bytes.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -541,7 +560,11 @@ func TestExec_RealPaths_InWorkspace_UsesRealPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resp.Result.ExitCode != 0 {
-		t.Fatalf("expected exit_code 0, got %d (stderr=%q)", resp.Result.ExitCode, resp.Result.Stderr)
+		t.Fatalf(
+			"expected exit_code 0, got %d (stderr=%q)",
+			resp.Result.ExitCode,
+			resp.Result.Stderr,
+		)
 	}
 	// pwd output should show the real subdirectory path
 	if !strings.Contains(resp.Result.Stdout, "sub") {

@@ -20,7 +20,11 @@ func TestStubMapper_MapsToZeroClass(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out.OCSFClassUID != 0 || out.OCSFActivityID != 0 {
-		t.Errorf("StubMapper should produce class=0 activity=0, got class=%d activity=%d", out.OCSFClassUID, out.OCSFActivityID)
+		t.Errorf(
+			"StubMapper should produce class=0 activity=0, got class=%d activity=%d",
+			out.OCSFClassUID,
+			out.OCSFActivityID,
+		)
 	}
 	if len(out.Payload) == 0 {
 		t.Error("StubMapper should set non-empty payload")

@@ -27,7 +27,10 @@ func TestProjectRootAwarePolicies_Integration(t *testing.T) {
 
 	require.NoError(t, os.MkdirAll(gitDir, 0755))
 	require.NoError(t, os.MkdirAll(srcDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "go.mod"), []byte("module myrepo"), 0644))
+	require.NoError(
+		t,
+		os.WriteFile(filepath.Join(repoDir, "go.mod"), []byte("module myrepo"), 0644),
+	)
 
 	// Create a test policy using variables
 	policy := &Policy{

@@ -51,8 +51,14 @@ func ListenEgressRelay(hostPort uint32, token string) (*EgressRelay, error) {
 	return relay, nil
 }
 
-func newEgressRelay(listener net.Listener, dial dialControlFunc, hostPort uint32, token string) (*EgressRelay, error) {
-	if listener == nil || dial == nil || hostPort < 1024 || hostPort > 65535 || !validHexSecret(token) {
+func newEgressRelay(
+	listener net.Listener,
+	dial dialControlFunc,
+	hostPort uint32,
+	token string,
+) (*EgressRelay, error) {
+	if listener == nil || dial == nil || hostPort < 1024 || hostPort > 65535 ||
+		!validHexSecret(token) {
 		return nil, fmt.Errorf("guest egress relay is not initialized")
 	}
 	address := listener.Addr()
@@ -120,7 +126,10 @@ func (r *EgressRelay) ProbeHost(ctx context.Context) error {
 		return fmt.Errorf("read host egress VSOCK probe: %w", err)
 	}
 	if !strings.HasPrefix(status, "HTTP/1.1 400 ") {
-		return fmt.Errorf("host egress VSOCK probe received unexpected status %q", strings.TrimSpace(status))
+		return fmt.Errorf(
+			"host egress VSOCK probe received unexpected status %q",
+			strings.TrimSpace(status),
+		)
 	}
 	return nil
 }

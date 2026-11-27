@@ -25,7 +25,11 @@ func NewFileRulePersister(filePath string) *FileRulePersister {
 }
 
 // AddRule adds a rule to the configuration file.
-func (p *FileRulePersister) AddRule(processName string, target NetworkTarget, comment string) error {
+func (p *FileRulePersister) AddRule(
+	processName string,
+	target NetworkTarget,
+	comment string,
+) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -106,7 +110,10 @@ func (p *FileRulePersister) loadOrCreateConfig() (*Config, error) {
 }
 
 // writeConfigWithComment writes the config to file with a comment for the new rule.
-func (p *FileRulePersister) writeConfigWithComment(config *Config, processName, comment string) error {
+func (p *FileRulePersister) writeConfigWithComment(
+	config *Config,
+	processName, comment string,
+) error {
 	// Ensure directory exists
 	dir := filepath.Dir(p.filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -164,7 +171,8 @@ func (p *FileRulePersister) injectComment(content, processName, comment string) 
 		}
 
 		// Add comment before first rule entry
-		if inProcess && inRules && !ruleCommentAdded && strings.HasPrefix(strings.TrimSpace(line), "- ") {
+		if inProcess && inRules && !ruleCommentAdded &&
+			strings.HasPrefix(strings.TrimSpace(line), "- ") {
 			indent := strings.Repeat(" ", len(line)-len(strings.TrimLeft(line, " ")))
 			result = append(result, indent+"# "+comment)
 			ruleCommentAdded = true
@@ -172,7 +180,8 @@ func (p *FileRulePersister) injectComment(content, processName, comment string) 
 
 		// Reset when we exit the process
 		if inProcess && len(line) > 0 && line[0] != ' ' && !strings.HasPrefix(line, "  ") {
-			if strings.HasPrefix(line, "-") && !strings.HasPrefix(strings.TrimSpace(line), "- target:") {
+			if strings.HasPrefix(line, "-") &&
+				!strings.HasPrefix(strings.TrimSpace(line), "- target:") {
 				inProcess = false
 				inRules = false
 			}

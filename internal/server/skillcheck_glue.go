@@ -18,7 +18,9 @@ import (
 
 // buildSkillcheckProviders constructs a ProviderEntry map from the config.
 // It returns an error if any enabled provider has an unrecognized name.
-func buildSkillcheckProviders(cfgs map[string]config.SkillcheckProviderConfig) (map[string]skillcheck.ProviderEntry, error) {
+func buildSkillcheckProviders(
+	cfgs map[string]config.SkillcheckProviderConfig,
+) (map[string]skillcheck.ProviderEntry, error) {
 	out := map[string]skillcheck.ProviderEntry{}
 	valid := map[string]bool{
 		"local": true, "snyk": true, "skills_sh": true,
@@ -29,7 +31,10 @@ func buildSkillcheckProviders(cfgs map[string]config.SkillcheckProviderConfig) (
 			continue
 		}
 		if !valid[name] {
-			return nil, fmt.Errorf("skillcheck.providers: unknown provider %q (valid: local, snyk, skills_sh, chainguard, repello)", name)
+			return nil, fmt.Errorf(
+				"skillcheck.providers: unknown provider %q (valid: local, snyk, skills_sh, chainguard, repello)",
+				name,
+			)
 		}
 		var p skillcheck.CheckProvider
 		switch name {
@@ -48,7 +53,11 @@ func buildSkillcheckProviders(cfgs map[string]config.SkillcheckProviderConfig) (
 		case "repello":
 			p = provider.NewRepelloProvider()
 		}
-		out[name] = skillcheck.ProviderEntry{Provider: p, Timeout: c.Timeout, OnFailure: c.OnFailure}
+		out[name] = skillcheck.ProviderEntry{
+			Provider:  p,
+			Timeout:   c.Timeout,
+			OnFailure: c.OnFailure,
+		}
 	}
 	return out, nil
 }
@@ -83,7 +92,13 @@ func buildSkillcheckThresholds(cfgs map[string]string) skillcheck.Thresholds {
 		}
 		act, actOK := validActions[strings.ToLower(actStr)]
 		if !actOK {
-			slog.Warn("skillcheck threshold for severity has invalid action; using default", "severity", sevStr, "action", actStr)
+			slog.Warn(
+				"skillcheck threshold for severity has invalid action; using default",
+				"severity",
+				sevStr,
+				"action",
+				actStr,
+			)
 			continue
 		}
 		t[sev] = act
@@ -145,7 +160,11 @@ func newSkillcheckApproval(mgr *approvals.Manager) skillcheck.Approver {
 	return &skillcheckApproval{mgr: mgr}
 }
 
-func (a *skillcheckApproval) Ask(ctx context.Context, skill skillcheck.SkillRef, v *skillcheck.Verdict) (bool, error) {
+func (a *skillcheckApproval) Ask(
+	ctx context.Context,
+	skill skillcheck.SkillRef,
+	v *skillcheck.Verdict,
+) (bool, error) {
 	if a.mgr == nil {
 		// Approvals not configured: deny so the action layer escalates to block.
 		// This is the safe fail-closed default.

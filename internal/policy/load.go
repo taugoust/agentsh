@@ -9,7 +9,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func validateYAMLMappingFields(value *yaml.Node, typeName string, allowed map[string]struct{}) error {
+func validateYAMLMappingFields(
+	value *yaml.Node,
+	typeName string,
+	allowed map[string]struct{},
+) error {
 	var validate func(*yaml.Node, map[*yaml.Node]struct{}) error
 	validate = func(node *yaml.Node, seen map[*yaml.Node]struct{}) error {
 		if node == nil {

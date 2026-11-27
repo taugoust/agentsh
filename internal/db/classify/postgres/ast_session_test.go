@@ -39,7 +39,9 @@ func TestApplyStatement_DiscardAll(t *testing.T) {
 		DefaultRole:       "",
 	}
 	cs := effects.ClassifiedStatement{
-		Effects: []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardAll}},
+		Effects: []effects.Effect{
+			{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardAll},
+		},
 		RawVerb: "DISCARD_ALL",
 	}
 	got := ApplyStatement(in, cs)
@@ -126,7 +128,9 @@ func TestApplyStatement_DiscardTemp(t *testing.T) {
 		Role:       "alice",
 	}
 	cs := effects.ClassifiedStatement{
-		Effects: []effects.Effect{{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardTemp}},
+		Effects: []effects.Effect{
+			{Group: effects.GroupSession, Subtype: effects.SubtypeDiscardTemp},
+		},
 		RawVerb: "DISCARD_TEMP",
 	}
 	got := ApplyStatement(in, cs)

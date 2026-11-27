@@ -38,7 +38,12 @@ func TestWorkspaceLifecycleRetainsResolvedExecutablesAfterPathIsCleared(t *testi
 		t.Fatal(err)
 	}
 	baseDir := filepath.Join(t.TempDir(), "shadow root with spaces")
-	workspace, err := Create(context.Background(), "session-test", realRoot, Options{BaseDir: baseDir})
+	workspace, err := Create(
+		context.Background(),
+		"session-test",
+		realRoot,
+		Options{BaseDir: baseDir},
+	)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -50,7 +55,12 @@ func TestWorkspaceLifecycleRetainsResolvedExecutablesAfterPathIsCleared(t *testi
 	if err != nil {
 		t.Fatalf("Diff() error with empty PATH = %v", err)
 	}
-	if _, err := workspace.PrepareAccept(context.Background(), "finalization-test", review.Generation, review.Hash); err != nil {
+	if _, err := workspace.PrepareAccept(
+		context.Background(),
+		"finalization-test",
+		review.Generation,
+		review.Hash,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := workspace.Accept(context.Background()); err != nil {
@@ -60,14 +70,26 @@ func TestWorkspaceLifecycleRetainsResolvedExecutablesAfterPathIsCleared(t *testi
 
 func TestWorkspaceDiffHandlesDanglingSymlinks(t *testing.T) {
 	realRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(realRoot, "regular.txt"), []byte("real\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(realRoot, "regular.txt"),
+		[]byte("real\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(string(filepath.Separator), "missing", "same"), filepath.Join(realRoot, "same-link")); err != nil {
+	if err := os.Symlink(
+		filepath.Join(string(filepath.Separator), "missing", "same"),
+		filepath.Join(realRoot, "same-link"),
+	); err != nil {
 		t.Fatal(err)
 	}
 
-	workspace, err := Create(context.Background(), "session-links", realRoot, Options{BaseDir: t.TempDir()})
+	workspace, err := Create(
+		context.Background(),
+		"session-links",
+		realRoot,
+		Options{BaseDir: t.TempDir()},
+	)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -83,31 +105,51 @@ func TestWorkspaceDiffHandlesDanglingSymlinks(t *testing.T) {
 	if err := os.Remove(workLink); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(string(filepath.Separator), "missing", "changed"), workLink); err != nil {
+	if err := os.Symlink(
+		filepath.Join(string(filepath.Separator), "missing", "changed"),
+		workLink,
+	); err != nil {
 		t.Fatal(err)
 	}
 	out, err = workspace.Diff(context.Background())
 	if err != nil {
 		t.Fatalf("Diff() error for changed dangling link = %v: %s", err, out)
 	}
-	if text := string(out); !strings.Contains(text, "same-link") || !strings.Contains(text, "differ") {
+	if text := string(
+		out,
+	); !strings.Contains(text, "same-link") ||
+		!strings.Contains(text, "differ") {
 		t.Fatalf("Diff() changed-link output = %q", text)
 	}
 
-	if err := os.Symlink(filepath.Join(string(filepath.Separator), "missing", "work-only"), filepath.Join(workspace.Work, "work-only-link")); err != nil {
+	if err := os.Symlink(
+		filepath.Join(string(filepath.Separator), "missing", "work-only"),
+		filepath.Join(workspace.Work, "work-only-link"),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(string(filepath.Separator), "missing", "real-only"), filepath.Join(realRoot, "real-only-link")); err != nil {
+	if err := os.Symlink(
+		filepath.Join(string(filepath.Separator), "missing", "real-only"),
+		filepath.Join(realRoot, "real-only-link"),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace.Work, "regular.txt"), []byte("draft is longer\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace.Work, "regular.txt"),
+		[]byte("draft is longer\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	for _, excluded := range []string{".git", ".direnv"} {
 		if err := os.MkdirAll(filepath.Join(workspace.Work, excluded), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(workspace.Work, excluded, "draft-only"), []byte("excluded\n"), 0o644); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(workspace.Work, excluded, "draft-only"),
+			[]byte("excluded\n"),
+			0o644,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -132,37 +174,69 @@ func TestWorkspaceDiffHandlesDanglingSymlinks(t *testing.T) {
 			t.Errorf("Diff() output includes excluded path %q: %s", excluded, text)
 		}
 	}
-	if data, err := os.ReadFile(filepath.Join(realRoot, "regular.txt")); err != nil || string(data) != "real\n" {
+	if data, err := os.ReadFile(
+		filepath.Join(realRoot, "regular.txt"),
+	); err != nil ||
+		string(data) != "real\n" {
 		t.Fatalf("Diff() mutated real content: data=%q err=%v", data, err)
 	}
-	if target, err := os.Readlink(filepath.Join(realRoot, "real-only-link")); err != nil || target != filepath.Join(string(filepath.Separator), "missing", "real-only") {
+	if target, err := os.Readlink(
+		filepath.Join(realRoot, "real-only-link"),
+	); err != nil ||
+		target != filepath.Join(string(filepath.Separator), "missing", "real-only") {
 		t.Fatalf("Diff() mutated real symlink: target=%q err=%v", target, err)
 	}
 }
 
 func TestReviewBindsRealAndShadowTreesBeforeAccept(t *testing.T) {
 	realRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(realRoot, "value.bin"), []byte{0, 1, 2}, 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(realRoot, "value.bin"),
+		[]byte{0, 1, 2},
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	workspace, err := Create(context.Background(), "session-review", realRoot, Options{BaseDir: t.TempDir()})
+	workspace, err := Create(
+		context.Background(),
+		"session-review",
+		realRoot,
+		Options{BaseDir: t.TempDir()},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace.Work, "value.bin"), []byte{3, 4, 5, 6}, 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace.Work, "value.bin"),
+		[]byte{3, 4, 5, 6},
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	review, err := workspace.Review(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if review.Generation != 1 || !strings.HasPrefix(review.Hash, "sha256:") || review.BaseHash == review.ShadowHash {
+	if review.Generation != 1 || !strings.HasPrefix(review.Hash, "sha256:") ||
+		review.BaseHash == review.ShadowHash {
 		t.Fatalf("review = %+v", review)
 	}
-	if err := os.WriteFile(filepath.Join(realRoot, "concurrent.txt"), []byte("changed"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(realRoot, "concurrent.txt"),
+		[]byte("changed"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workspace.PrepareAccept(context.Background(), "stale-finalization", review.Generation, review.Hash); !errors.Is(err, ErrStaleReview) {
+	if _, err := workspace.PrepareAccept(
+		context.Background(),
+		"stale-finalization",
+		review.Generation,
+		review.Hash,
+	); !errors.Is(
+		err,
+		ErrStaleReview,
+	) {
 		t.Fatalf("accept after real change error = %v", err)
 	}
 	if _, err := os.Stat(workspace.Work); err != nil {
@@ -180,10 +254,19 @@ func TestReviewBindsRealAndShadowTreesBeforeAccept(t *testing.T) {
 	if fresh.Generation != 2 || fresh.Hash == review.Hash {
 		t.Fatalf("fresh review = %+v", fresh)
 	}
-	if _, err := workspace.PrepareAccept(context.Background(), "fresh-finalization", fresh.Generation, fresh.Hash); err != nil {
+	if _, err := workspace.PrepareAccept(
+		context.Background(),
+		"fresh-finalization",
+		fresh.Generation,
+		fresh.Hash,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := workspace.AcceptReviewed(context.Background(), fresh.Generation, fresh.Hash); err != nil {
+	if err := workspace.AcceptReviewed(
+		context.Background(),
+		fresh.Generation,
+		fresh.Hash,
+	); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(realRoot, "value.bin"))
@@ -194,22 +277,42 @@ func TestReviewBindsRealAndShadowTreesBeforeAccept(t *testing.T) {
 
 func TestOpenMultiRestoresPersistedReviewGeneration(t *testing.T) {
 	realRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(realRoot, "value.txt"), []byte("real\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(realRoot, "value.txt"),
+		[]byte("real\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	baseDir := t.TempDir()
-	workspace, err := Create(context.Background(), "session-resume-review", realRoot, Options{BaseDir: baseDir})
+	workspace, err := Create(
+		context.Background(),
+		"session-resume-review",
+		realRoot,
+		Options{BaseDir: baseDir},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace.Work, "value.txt"), []byte("draft\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(workspace.Work, "value.txt"),
+		[]byte("draft\n"),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 	first, err := workspace.Review(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := OpenMulti(context.Background(), workspace.ID, []RootSpec{{Path: realRoot}}, Options{BaseDir: baseDir}, workspace.Roots, workspace.CreatedAt)
+	reopened, err := OpenMulti(
+		context.Background(),
+		workspace.ID,
+		[]RootSpec{{Path: realRoot}},
+		Options{BaseDir: baseDir},
+		workspace.Roots,
+		workspace.CreatedAt,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

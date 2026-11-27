@@ -293,7 +293,12 @@ func TestEngine_CheckExecve_PathAliasMatchesPathGlobButNotBasename(t *testing.T)
 	require.Equal(t, types.DecisionDeny, dec.EffectiveDecision)
 	require.Equal(t, "default-deny-execve", dec.Rule)
 
-	dec = e.CheckExecveWithAliases("/nix/store/abc-pkg/bin/tool", []string{"/workspace/result/bin/tool"}, []string{"./result/bin/tool"}, 0)
+	dec = e.CheckExecveWithAliases(
+		"/nix/store/abc-pkg/bin/tool",
+		[]string{"/workspace/result/bin/tool"},
+		[]string{"./result/bin/tool"},
+		0,
+	)
 	require.Equal(t, types.DecisionAllow, dec.EffectiveDecision)
 	require.Equal(t, "allow-project", dec.Rule)
 }
@@ -599,7 +604,12 @@ func TestEngine_HasSoftDeleteFileRule(t *testing.T) {
 		Version: 1,
 		Name:    "with-soft-delete",
 		FileRules: []FileRule{
-			{Name: "sd", Paths: []string{"/workspace/**"}, Operations: []string{"*"}, Decision: "soft_delete"},
+			{
+				Name:       "sd",
+				Paths:      []string{"/workspace/**"},
+				Operations: []string{"*"},
+				Decision:   "soft_delete",
+			},
 		},
 	}
 	eng, err := NewEngine(withRule, false, true)
@@ -614,7 +624,12 @@ func TestEngine_HasSoftDeleteFileRule(t *testing.T) {
 		Version: 1,
 		Name:    "no-soft-delete",
 		FileRules: []FileRule{
-			{Name: "allow", Paths: []string{"/workspace/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow",
+				Paths:      []string{"/workspace/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	eng2, err := NewEngine(withoutRule, false, true)
@@ -629,7 +644,12 @@ func TestEngine_HasSoftDeleteFileRule(t *testing.T) {
 		Version: 1,
 		Name:    "mixed-case-soft-delete",
 		FileRules: []FileRule{
-			{Name: "sd", Paths: []string{"/workspace/**"}, Operations: []string{"*"}, Decision: "Soft_Delete"},
+			{
+				Name:       "sd",
+				Paths:      []string{"/workspace/**"},
+				Operations: []string{"*"},
+				Decision:   "Soft_Delete",
+			},
 		},
 	}
 	eng3, err := NewEngine(mixedCase, false, true)
@@ -637,6 +657,8 @@ func TestEngine_HasSoftDeleteFileRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !eng3.HasSoftDeleteFileRule() {
-		t.Fatal("expected HasSoftDeleteFileRule() == true for a case-variant 'Soft_Delete' decision")
+		t.Fatal(
+			"expected HasSoftDeleteFileRule() == true for a case-variant 'Soft_Delete' decision",
+		)
 	}
 }

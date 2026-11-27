@@ -89,11 +89,22 @@ func runHelper() {
 				// (e.g., a future runtime change), abort before firing
 				// ptrace rather than silently mask a regression.
 				if syscall.Gettid() == tgid {
-					fmt.Fprintln(os.Stderr, "ptrace-storm: worker landed on TGL thread; aborting to avoid masking regression")
+					fmt.Fprintln(
+						os.Stderr,
+						"ptrace-storm: worker landed on TGL thread; aborting to avoid masking regression",
+					)
 					os.Exit(3)
 				}
 				for j := 0; j < 5; j++ {
-					_, _, _ = unix.Syscall6(unix.SYS_PTRACE, uintptr(unix.PTRACE_TRACEME), 0, 0, 0, 0, 0)
+					_, _, _ = unix.Syscall6(
+						unix.SYS_PTRACE,
+						uintptr(unix.PTRACE_TRACEME),
+						0,
+						0,
+						0,
+						0,
+						0,
+					)
 				}
 			}()
 		}
@@ -227,7 +238,11 @@ func buildBlockListFromCfgJSON(t *testing.T, cfgJSON string) *unixmon.BlockListC
 // For errno/kill modes the wrapper installs a kernel-side filter (no
 // ActNotify rule), so no notify fd is created and no handler runs — events
 // will be nil in those cases, matching production.
-func startWrappedChild(t *testing.T, cfgJSON string, cmdArg string) (syscall.WaitStatus, []types.Event, error) {
+func startWrappedChild(
+	t *testing.T,
+	cfgJSON string,
+	cmdArg string,
+) (syscall.WaitStatus, []types.Event, error) {
 	t.Helper()
 
 	wrap := buildUnixwrapOnce(t)
@@ -300,7 +315,16 @@ func startWrappedChild(t *testing.T, cfgJSON string, cmdArg string) (syscall.Wai
 		serveDone = make(chan struct{})
 		go func() {
 			defer close(serveDone)
-			unixmon.ServeNotifyWithExecve(ctx, notifyFile, "test-session", nil, emitter, nil, nil, bl)
+			unixmon.ServeNotifyWithExecve(
+				ctx,
+				notifyFile,
+				"test-session",
+				nil,
+				emitter,
+				nil,
+				nil,
+				bl,
+			)
 		}()
 	}
 
@@ -405,7 +429,12 @@ func TestSeccompOnBlock_LogAndKill_GCPressure(t *testing.T) {
 		sawTarget := strings.Contains(string(out), "ACK: invalid argument") ||
 			strings.Contains(string(out), "RecvFD: bad file descriptor") ||
 			strings.Contains(string(out), "ACK handshake failed: expected 1 ACK byte, got 0")
-		require.Truef(t, sawTarget, "child output did not include a target handshake failure:\n%s", out)
+		require.Truef(
+			t,
+			sawTarget,
+			"child output did not include a target handshake failure:\n%s",
+			out,
+		)
 	}
 	require.NoErrorf(t, err, "child output:\n%s", out)
 }
@@ -432,7 +461,12 @@ func TestSeccompOnBlock_Kill(t *testing.T) {
 	st, events, err := startWrappedChild(t, cfgJSON, "ptrace-traceme")
 	require.NoError(t, err)
 	require.True(t, st.Signaled(), "child should die by signal")
-	require.Equal(t, syscall.SIGSYS, st.Signal(), "kill mode uses SCMP_ACT_KILL_PROCESS which delivers SIGSYS")
+	require.Equal(
+		t,
+		syscall.SIGSYS,
+		st.Signal(),
+		"kill mode uses SCMP_ACT_KILL_PROCESS which delivers SIGSYS",
+	)
 	require.Empty(t, events, "kill mode must not emit seccomp_blocked events")
 }
 
@@ -518,19 +552,29 @@ func TestSeccompOnBlock_LogAndKill_ConcurrentCalls(t *testing.T) {
 			break
 		}
 	}
-	require.True(t, sawKilled, "at least one event must record outcome=killed (proves TGID resolution worked for a non-TGL thread)")
+	require.True(
+		t,
+		sawKilled,
+		"at least one event must record outcome=killed (proves TGID resolution worked for a non-TGL thread)",
+	)
 }
 
 func TestSeccompOnBlock_DoesNotAffectFileMonitor(t *testing.T) {
-	t.Skip("non-interference covered by other subsystem integration suites; block-list dispatch uses IsBlockListed over a fixed map of resolved syscall numbers and cannot intercept file_monitor syscalls")
+	t.Skip(
+		"non-interference covered by other subsystem integration suites; block-list dispatch uses IsBlockListed over a fixed map of resolved syscall numbers and cannot intercept file_monitor syscalls",
+	)
 }
 
 func TestSeccompOnBlock_DoesNotAffectUnixSocket(t *testing.T) {
-	t.Skip("non-interference covered by other subsystem integration suites; block-list dispatch uses IsBlockListed over a fixed map of resolved syscall numbers and cannot intercept unix socket syscalls")
+	t.Skip(
+		"non-interference covered by other subsystem integration suites; block-list dispatch uses IsBlockListed over a fixed map of resolved syscall numbers and cannot intercept unix socket syscalls",
+	)
 }
 
 func TestSeccompOnBlock_DoesNotAffectSignalFilter(t *testing.T) {
-	t.Skip("non-interference covered by other subsystem integration suites; block-list dispatch uses IsBlockListed over a fixed map of resolved syscall numbers and cannot intercept signal filter syscalls")
+	t.Skip(
+		"non-interference covered by other subsystem integration suites; block-list dispatch uses IsBlockListed over a fixed map of resolved syscall numbers and cannot intercept signal filter syscalls",
+	)
 }
 
 func TestSeccompOnBlock_DefaultBlockListResolvesOnThisArch(t *testing.T) {

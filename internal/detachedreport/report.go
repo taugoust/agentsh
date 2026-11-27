@@ -127,8 +127,17 @@ func NetworkEnforcement(meta *detached.NetworkEnforcement) NetworkReport {
 func HumanLines(meta *detached.NetworkEnforcement, prefix string) []string {
 	report := NetworkEnforcement(meta)
 	lines := []string{report.Summary}
-	if report.Requested != "" && report.Requested != string(detached.NetworkEnforcementRequestNone) {
-		lines = append(lines, fmt.Sprintf("Requested: %s; readiness: %s; status: %s", report.Requested, report.Readiness, report.Status))
+	if report.Requested != "" &&
+		report.Requested != string(detached.NetworkEnforcementRequestNone) {
+		lines = append(
+			lines,
+			fmt.Sprintf(
+				"Requested: %s; readiness: %s; status: %s",
+				report.Requested,
+				report.Readiness,
+				report.Status,
+			),
+		)
 	}
 	if report.Detail != "" {
 		lines = append(lines, report.Detail)

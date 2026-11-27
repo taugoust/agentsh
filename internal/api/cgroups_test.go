@@ -32,7 +32,17 @@ func TestApplyCgroupV2_EBPFEnabledRequiresCgroupManager(t *testing.T) {
 		nil,
 	)
 
-	_, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	_, err := applyCgroupV2(
+		context.Background(),
+		storeEmitter{store: app.store, broker: app.broker},
+		app,
+		"sess",
+		"cmd",
+		1234,
+		policy.Limits{},
+		nil,
+		nil,
+	)
 	if err == nil {
 		t.Fatal("expected error when ebpf is enabled without cgroup manager")
 	}

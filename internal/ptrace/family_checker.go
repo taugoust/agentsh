@@ -47,7 +47,10 @@ func NewFamilyChecker(entries []seccomp.BlockedFamily) *FamilyChecker {
 // audit-sink emitter so that every family-block event reaches the same
 // audit pipeline as the seccomp engine.  Pass nil to skip audit emission
 // (equivalent to NewFamilyChecker).
-func NewFamilyCheckerWithEmitter(entries []seccomp.BlockedFamily, emit FamilyEmitter) *FamilyChecker {
+func NewFamilyCheckerWithEmitter(
+	entries []seccomp.BlockedFamily,
+	emit FamilyEmitter,
+) *FamilyChecker {
 	c := &FamilyChecker{
 		bySyscall: map[uint64]map[uint64]seccomp.BlockedFamily{},
 		emit:      emit,

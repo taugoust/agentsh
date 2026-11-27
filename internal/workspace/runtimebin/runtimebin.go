@@ -33,7 +33,10 @@ func Resolve(name string) (string, error) {
 				return filepath.Clean(resolved), nil
 			}
 		}
-		return "", fmt.Errorf("required runtime executable %q is unavailable in the packaged runtime closure", name)
+		return "", fmt.Errorf(
+			"required runtime executable %q is unavailable in the packaged runtime closure",
+			name,
+		)
 	}
 
 	resolved, err := exec.LookPath(name)

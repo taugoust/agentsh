@@ -28,7 +28,10 @@ type WebAuthnUser struct {
 }
 
 // NewWebAuthnUser creates a new WebAuthnUser.
-func NewWebAuthnUser(id, name, displayName string, credentials []webauthn.Credential) *WebAuthnUser {
+func NewWebAuthnUser(
+	id, name, displayName string,
+	credentials []webauthn.Credential,
+) *WebAuthnUser {
 	return &WebAuthnUser{
 		id:          []byte(id),
 		name:        name,
@@ -67,7 +70,12 @@ type WebAuthnService struct {
 }
 
 // NewWebAuthnService creates a new WebAuthn service.
-func NewWebAuthnService(rpID, rpName string, rpOrigins []string, userVerification string, store *WebAuthnStore) (*WebAuthnService, error) {
+func NewWebAuthnService(
+	rpID, rpName string,
+	rpOrigins []string,
+	userVerification string,
+	store *WebAuthnStore,
+) (*WebAuthnService, error) {
 	if rpID == "" {
 		return nil, fmt.Errorf("rpID is required")
 	}
@@ -117,7 +125,10 @@ func NewWebAuthnService(rpID, rpName string, rpOrigins []string, userVerificatio
 }
 
 // BeginRegistration starts a WebAuthn registration ceremony for a user.
-func (s *WebAuthnService) BeginRegistration(ctx context.Context, userID, userName, displayName string) (*protocol.CredentialCreation, error) {
+func (s *WebAuthnService) BeginRegistration(
+	ctx context.Context,
+	userID, userName, displayName string,
+) (*protocol.CredentialCreation, error) {
 	if userID == "" {
 		return nil, fmt.Errorf("userID is required")
 	}
@@ -154,7 +165,11 @@ func (s *WebAuthnService) BeginRegistration(ctx context.Context, userID, userNam
 }
 
 // FinishRegistration completes a WebAuthn registration ceremony.
-func (s *WebAuthnService) FinishRegistration(ctx context.Context, userID, userName, displayName, credName string, response *protocol.ParsedCredentialCreationData) error {
+func (s *WebAuthnService) FinishRegistration(
+	ctx context.Context,
+	userID, userName, displayName, credName string,
+	response *protocol.ParsedCredentialCreationData,
+) error {
 	if userID == "" {
 		return fmt.Errorf("userID is required")
 	}
@@ -203,7 +218,10 @@ func (s *WebAuthnService) FinishRegistration(ctx context.Context, userID, userNa
 }
 
 // BeginAuthentication starts a WebAuthn authentication ceremony for a user.
-func (s *WebAuthnService) BeginAuthentication(ctx context.Context, userID string) (*protocol.CredentialAssertion, error) {
+func (s *WebAuthnService) BeginAuthentication(
+	ctx context.Context,
+	userID string,
+) (*protocol.CredentialAssertion, error) {
 	if userID == "" {
 		return nil, fmt.Errorf("userID is required")
 	}
@@ -238,7 +256,11 @@ func (s *WebAuthnService) BeginAuthentication(ctx context.Context, userID string
 }
 
 // FinishAuthentication completes a WebAuthn authentication ceremony.
-func (s *WebAuthnService) FinishAuthentication(ctx context.Context, userID string, response *protocol.ParsedCredentialAssertionData) error {
+func (s *WebAuthnService) FinishAuthentication(
+	ctx context.Context,
+	userID string,
+	response *protocol.ParsedCredentialAssertionData,
+) error {
 	if userID == "" {
 		return fmt.Errorf("userID is required")
 	}
@@ -279,7 +301,11 @@ func (s *WebAuthnService) FinishAuthentication(ctx context.Context, userID strin
 	}
 
 	// Update sign count
-	if err := s.store.UpdateSignCount(ctx, credential.ID, credential.Authenticator.SignCount); err != nil {
+	if err := s.store.UpdateSignCount(
+		ctx,
+		credential.ID,
+		credential.Authenticator.SignCount,
+	); err != nil {
 		return fmt.Errorf("update sign count: %w", err)
 	}
 

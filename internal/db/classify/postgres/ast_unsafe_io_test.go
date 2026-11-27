@@ -8,7 +8,11 @@ import (
 
 // findEffect scans cs for the first effect with the given group/subtype.
 // Returns the effect and a found flag.
-func findEffect(cs effects.ClassifiedStatement, g effects.Group, sub effects.Subtype) (effects.Effect, bool) {
+func findEffect(
+	cs effects.ClassifiedStatement,
+	g effects.Group,
+	sub effects.Subtype,
+) (effects.Effect, bool) {
 	for _, e := range cs.Effects {
 		if e.Group == g && e.Subtype == sub {
 			return e, true
@@ -98,12 +102,17 @@ func TestUnsafeIO_LoExport_SecondArgIsPath(t *testing.T) {
 }
 
 func TestUnsafeIO_DblinkExec_EmptyPath(t *testing.T) {
-	cs := classifyOne(t, "SELECT dblink_exec('host=remote dbname=db', 'INSERT INTO t VALUES (1)')", SessionState{})
+	cs := classifyOne(
+		t,
+		"SELECT dblink_exec('host=remote dbname=db', 'INSERT INTO t VALUES (1)')",
+		SessionState{},
+	)
 	e, ok := findEffect(cs, effects.GroupUnsafeIO, effects.SubtypeDblinkCall)
 	if !ok {
 		t.Fatalf("missing effect; got %+v", cs.Effects)
 	}
-	if len(e.Objects) != 1 || e.Objects[0].Kind != effects.ObjectFilesystemPath || e.Objects[0].Path != "" {
+	if len(e.Objects) != 1 || e.Objects[0].Kind != effects.ObjectFilesystemPath ||
+		e.Objects[0].Path != "" {
 		t.Fatalf("expected one empty filesystem_path object; got %+v", e.Objects)
 	}
 }
@@ -139,7 +148,11 @@ func TestUnsafeIO_NotMatchedOnColumnReference(t *testing.T) {
 }
 
 func TestUnsafeIO_CallInWhereClause(t *testing.T) {
-	cs := classifyOne(t, "SELECT 1 FROM t WHERE pg_read_file('/etc/passwd') IS NOT NULL", SessionState{})
+	cs := classifyOne(
+		t,
+		"SELECT 1 FROM t WHERE pg_read_file('/etc/passwd') IS NOT NULL",
+		SessionState{},
+	)
 	if _, ok := findEffect(cs, effects.GroupUnsafeIO, effects.SubtypeServerFileRead); !ok {
 		t.Fatalf("WHERE-clause call must be detected; got %+v", cs.Effects)
 	}

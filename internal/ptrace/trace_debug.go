@@ -146,7 +146,16 @@ func traceWaitRet(layer string, ret int, status unix.WaitStatus, err error) {
 			errno = -1
 		}
 	}
-	ringAppend(traceEvent{kind: evWaitRet, tid: ret, arg: int64(ret), status: uint32(status), errno: errno, layer: layer})
+	ringAppend(
+		traceEvent{
+			kind:   evWaitRet,
+			tid:    ret,
+			arg:    int64(ret),
+			status: uint32(status),
+			errno:  errno,
+			layer:  layer,
+		},
+	)
 }
 
 // traceStop records a stop dispatched from the Run loop and arms the (v1)
@@ -283,8 +292,17 @@ func (t *Tracer) reconcileProc() {
 		t.mu.Unlock()
 
 		if fire {
-			slog.Warn("ptrace-trace WEDGE(v2): tracee kernel-stopped but Run loop not progressing it (#369 #2)",
-				"tid", c.tid, "proc_state", string(rune(state)), "tracer_pid", tracerPid, "stuck_ms", stuckMs)
+			slog.Warn(
+				"ptrace-trace WEDGE(v2): tracee kernel-stopped but Run loop not progressing it (#369 #2)",
+				"tid",
+				c.tid,
+				"proc_state",
+				string(rune(state)),
+				"tracer_pid",
+				tracerPid,
+				"stuck_ms",
+				stuckMs,
+			)
 			flagged = append(flagged, c.tid)
 		}
 	}
@@ -316,17 +334,72 @@ func (t *Tracer) dumpTraceRing(reason string) {
 		offUs := (ev.mono - t0) / 1000
 		switch ev.kind {
 		case evWaitCall:
-			slog.Warn("ptrace-trace", "seq", ev.seq, "us", offUs, "ev", "wait_call", "layer", ev.layer, "pid_arg", ev.arg)
+			slog.Warn(
+				"ptrace-trace",
+				"seq",
+				ev.seq,
+				"us",
+				offUs,
+				"ev",
+				"wait_call",
+				"layer",
+				ev.layer,
+				"pid_arg",
+				ev.arg,
+			)
 		case evWaitRet:
-			slog.Warn("ptrace-trace", "seq", ev.seq, "us", offUs, "ev", "wait_ret", "layer", ev.layer,
-				"ret_tid", ev.arg, "status", describeWaitStatus(unix.WaitStatus(ev.status)), "errno", ev.errno)
+			slog.Warn(
+				"ptrace-trace",
+				"seq",
+				ev.seq,
+				"us",
+				offUs,
+				"ev",
+				"wait_ret",
+				"layer",
+				ev.layer,
+				"ret_tid",
+				ev.arg,
+				"status",
+				describeWaitStatus(unix.WaitStatus(ev.status)),
+				"errno",
+				ev.errno,
+			)
 		case evStop:
 			slog.Warn("ptrace-trace", "seq", ev.seq, "us", offUs, "ev", "stop", "tid", ev.tid,
 				"status", describeWaitStatus(unix.WaitStatus(ev.status)))
 		case evResume:
-			slog.Warn("ptrace-trace", "seq", ev.seq, "us", offUs, "ev", "resume", "tid", ev.tid, "via", ev.via, "sig", ev.arg)
+			slog.Warn(
+				"ptrace-trace",
+				"seq",
+				ev.seq,
+				"us",
+				offUs,
+				"ev",
+				"resume",
+				"tid",
+				ev.tid,
+				"via",
+				ev.via,
+				"sig",
+				ev.arg,
+			)
 		case evNote:
-			slog.Warn("ptrace-trace", "seq", ev.seq, "us", offUs, "ev", "note", "layer", ev.layer, "msg", ev.via, "id", ev.tid)
+			slog.Warn(
+				"ptrace-trace",
+				"seq",
+				ev.seq,
+				"us",
+				offUs,
+				"ev",
+				"note",
+				"layer",
+				ev.layer,
+				"msg",
+				ev.via,
+				"id",
+				ev.tid,
+			)
 		}
 	}
 	slog.Warn("ptrace-trace ring DUMP END", "reason", reason)

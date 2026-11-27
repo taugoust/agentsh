@@ -245,7 +245,10 @@ type memEventStore struct {
 	events []types.Event
 }
 
-func (m *memEventStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (m *memEventStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return m.events, nil
 }
 

@@ -21,7 +21,11 @@ type wasmParser struct {
 	dialect Dialect
 }
 
-func (p *wasmParser) Classify(sql string, sess SessionState, opts Options) ([]effects.ClassifiedStatement, error) {
+func (p *wasmParser) Classify(
+	sql string,
+	sess SessionState,
+	opts Options,
+) ([]effects.ClassifiedStatement, error) {
 	return classifyWithBackend(p.dialect, sql, sess, opts, parseWASM, effects.ParserBackendPureGo)
 }
 

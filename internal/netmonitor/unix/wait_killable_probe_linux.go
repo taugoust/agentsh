@@ -66,7 +66,10 @@ func iterationName(r IterationResult) string {
 // both indicate the kernel bug from issue #369 and cause (false, nil).
 func ProbeWaitKillableBehavior(ctx context.Context, iterations int) (bool, error) {
 	if iterations <= 0 {
-		return false, fmt.Errorf("ProbeWaitKillableBehavior: iterations must be >0, got %d", iterations)
+		return false, fmt.Errorf(
+			"ProbeWaitKillableBehavior: iterations must be >0, got %d",
+			iterations,
+		)
 	}
 	// timeout_per_iter_ms matches the 1s deadline the production runner
 	// applies in runProbeIteration. Hardcoded here to keep the log line

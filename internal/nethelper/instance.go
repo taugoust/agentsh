@@ -57,7 +57,9 @@ type EphemeralInstanceController struct {
 	wake              chan struct{}
 }
 
-func NewEphemeralInstanceController(opts EphemeralInstanceControllerOptions) *EphemeralInstanceController {
+func NewEphemeralInstanceController(
+	opts EphemeralInstanceControllerOptions,
+) *EphemeralInstanceController {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -94,7 +96,10 @@ func NewEphemeralInstanceController(opts EphemeralInstanceControllerOptions) *Ep
 
 func (c *EphemeralInstanceController) now() time.Time { return c.opts.Now().UTC() }
 
-func (c *EphemeralInstanceController) authenticate(peer PeerInfo, leaseID, credential, operation string) error {
+func (c *EphemeralInstanceController) authenticate(
+	peer PeerInfo,
+	leaseID, credential, operation string,
+) error {
 	if !peer.Supported || peer.PID <= 0 {
 		return fmt.Errorf("peer credentials are required for instance %s", operation)
 	}
@@ -105,11 +110,13 @@ func (c *EphemeralInstanceController) authenticate(peer PeerInfo, leaseID, crede
 		return fmt.Errorf("peer gid is not authorized for this helper instance")
 	}
 	lease := strings.TrimSpace(c.opts.LeaseID)
-	if lease == "" || subtle.ConstantTimeCompare([]byte(strings.TrimSpace(leaseID)), []byte(lease)) != 1 {
+	if lease == "" ||
+		subtle.ConstantTimeCompare([]byte(strings.TrimSpace(leaseID)), []byte(lease)) != 1 {
 		return fmt.Errorf("lease_id is not authorized")
 	}
 	expected := strings.TrimSpace(c.opts.HelperInstanceCredential)
-	if expected == "" || subtle.ConstantTimeCompare([]byte(strings.TrimSpace(credential)), []byte(expected)) != 1 {
+	if expected == "" ||
+		subtle.ConstantTimeCompare([]byte(strings.TrimSpace(credential)), []byte(expected)) != 1 {
 		return fmt.Errorf("helper instance credential is not authorized")
 	}
 	return nil
@@ -122,7 +129,10 @@ func (c *EphemeralInstanceController) activeRegistrations() int {
 	return c.opts.Registrations.ActiveRegistrationCount()
 }
 
-func (c *EphemeralInstanceController) statusLocked(requestID string, now time.Time) InstanceStatusResponse {
+func (c *EphemeralInstanceController) statusLocked(
+	requestID string,
+	now time.Time,
+) InstanceStatusResponse {
 	status := "active"
 	reason := ""
 	if c.released {
@@ -152,15 +162,29 @@ func (c *EphemeralInstanceController) statusLocked(requestID string, now time.Ti
 	}
 }
 
-func (c *EphemeralInstanceController) InstanceStatus(_ context.Context, peer PeerInfo, req InstanceStatusRequest) (InstanceStatusResponse, error) {
-	resp := InstanceStatusResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, HelperKind: "ephemeral"}
+func (c *EphemeralInstanceController) InstanceStatus(
+	_ context.Context,
+	peer PeerInfo,
+	req InstanceStatusRequest,
+) (InstanceStatusResponse, error) {
+	resp := InstanceStatusResponse{
+		ProtocolVersion: CurrentProtocolVersion,
+		RequestID:       req.RequestID,
+		LeaseID:         req.LeaseID,
+		HelperKind:      "ephemeral",
+	}
 	if c == nil {
 		return resp, fmt.Errorf("ephemeral instance controller is nil")
 	}
 	if err := req.Validate(); err != nil {
 		return resp, err
 	}
-	if err := c.authenticate(peer, req.LeaseID, req.HelperInstanceCredential, "status"); err != nil {
+	if err := c.authenticate(
+		peer,
+		req.LeaseID,
+		req.HelperInstanceCredential,
+		"status",
+	); err != nil {
 		return resp, err
 	}
 	c.mu.Lock()
@@ -172,15 +196,29 @@ func (c *EphemeralInstanceController) InstanceStatus(_ context.Context, peer Pee
 	return resp, nil
 }
 
-func (c *EphemeralInstanceController) RenewInstance(_ context.Context, peer PeerInfo, req RenewInstanceRequest) (RenewInstanceResponse, error) {
-	resp := RenewInstanceResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID, HelperKind: "ephemeral"}
+func (c *EphemeralInstanceController) RenewInstance(
+	_ context.Context,
+	peer PeerInfo,
+	req RenewInstanceRequest,
+) (RenewInstanceResponse, error) {
+	resp := RenewInstanceResponse{
+		ProtocolVersion: CurrentProtocolVersion,
+		RequestID:       req.RequestID,
+		LeaseID:         req.LeaseID,
+		HelperKind:      "ephemeral",
+	}
 	if c == nil {
 		return resp, fmt.Errorf("ephemeral instance controller is nil")
 	}
 	if err := req.Validate(); err != nil {
 		return resp, err
 	}
-	if err := c.authenticate(peer, req.LeaseID, req.HelperInstanceCredential, "renewal"); err != nil {
+	if err := c.authenticate(
+		peer,
+		req.LeaseID,
+		req.HelperInstanceCredential,
+		"renewal",
+	); err != nil {
 		return resp, err
 	}
 	c.mu.Lock()
@@ -209,22 +247,38 @@ func (c *EphemeralInstanceController) RenewInstance(_ context.Context, peer Peer
 	return resp, nil
 }
 
-func (c *EphemeralInstanceController) AttestCompositionRuntime(_ context.Context, peer PeerInfo, req AttestCompositionRuntimeRequest) (AttestCompositionRuntimeResponse, error) {
-	resp := AttestCompositionRuntimeResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID}
+func (c *EphemeralInstanceController) AttestCompositionRuntime(
+	_ context.Context,
+	peer PeerInfo,
+	req AttestCompositionRuntimeRequest,
+) (AttestCompositionRuntimeResponse, error) {
+	resp := AttestCompositionRuntimeResponse{
+		ProtocolVersion: CurrentProtocolVersion,
+		RequestID:       req.RequestID,
+		LeaseID:         req.LeaseID,
+	}
 	if c == nil {
 		return resp, fmt.Errorf("ephemeral instance controller is nil")
 	}
 	if err := req.Validate(); err != nil {
 		return resp, err
 	}
-	if err := c.authenticate(peer, req.LeaseID, req.HelperInstanceCredential, "composition runtime attestation"); err != nil {
+	if err := c.authenticate(
+		peer,
+		req.LeaseID,
+		req.HelperInstanceCredential,
+		"composition runtime attestation",
+	); err != nil {
 		return resp, err
 	}
 	c.mu.Lock()
 	status := c.statusLocked(req.RequestID, c.now())
 	c.mu.Unlock()
 	if !status.OK {
-		return resp, fmt.Errorf("helper instance cannot attest composition runtime after %s", status.Reason)
+		return resp, fmt.Errorf(
+			"helper instance cannot attest composition runtime after %s",
+			status.Reason,
+		)
 	}
 	attester := c.opts.AttestCompositionRuntime
 	if attester == nil {
@@ -238,7 +292,10 @@ func (c *EphemeralInstanceController) AttestCompositionRuntime(_ context.Context
 	status = c.statusLocked(req.RequestID, c.now())
 	c.mu.Unlock()
 	if !status.OK {
-		return resp, fmt.Errorf("helper instance stopped while attesting composition runtime: %s", status.Reason)
+		return resp, fmt.Errorf(
+			"helper instance stopped while attesting composition runtime: %s",
+			status.Reason,
+		)
 	}
 	resp.Attestation = attestation
 	resp.OK = true
@@ -248,15 +305,28 @@ func (c *EphemeralInstanceController) AttestCompositionRuntime(_ context.Context
 // ReleaseInstance authenticates the wrapper and refuses to stop while any
 // command registration remains. Server invokes Stop only after writing the
 // successful response.
-func (c *EphemeralInstanceController) ReleaseInstance(ctx context.Context, peer PeerInfo, req ReleaseInstanceRequest) (ReleaseInstanceResponse, error) {
-	resp := ReleaseInstanceResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, LeaseID: req.LeaseID}
+func (c *EphemeralInstanceController) ReleaseInstance(
+	ctx context.Context,
+	peer PeerInfo,
+	req ReleaseInstanceRequest,
+) (ReleaseInstanceResponse, error) {
+	resp := ReleaseInstanceResponse{
+		ProtocolVersion: CurrentProtocolVersion,
+		RequestID:       req.RequestID,
+		LeaseID:         req.LeaseID,
+	}
 	if c == nil {
 		return resp, fmt.Errorf("ephemeral instance controller is nil")
 	}
 	if err := req.Validate(); err != nil {
 		return resp, err
 	}
-	if err := c.authenticate(peer, req.LeaseID, req.HelperInstanceCredential, "release"); err != nil {
+	if err := c.authenticate(
+		peer,
+		req.LeaseID,
+		req.HelperInstanceCredential,
+		"release",
+	); err != nil {
 		return resp, err
 	}
 	drainTimeout := c.opts.ReleaseDrainTimeout
@@ -282,7 +352,10 @@ func (c *EphemeralInstanceController) ReleaseInstance(ctx context.Context, peer 
 	// Admission is closed and all register/update/cleanup dispatch has finished,
 	// so this count is authoritative for the release transition.
 	if count := c.activeRegistrations(); count != 0 {
-		return resp, fmt.Errorf("cannot release helper instance while %d command registrations remain", count)
+		return resp, fmt.Errorf(
+			"cannot release helper instance while %d command registrations remain",
+			count,
+		)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()

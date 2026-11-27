@@ -69,7 +69,12 @@ func validateSocketFileOwner(socketPath string, expectedUID uint32, allowRoot bo
 		return fmt.Errorf("helper socket %s ownership is unavailable", socketPath)
 	}
 	if st.Uid != expectedUID && !(allowRoot && st.Uid == 0) {
-		return fmt.Errorf("helper socket %s must be owned by uid %d, got uid %d", socketPath, expectedUID, st.Uid)
+		return fmt.Errorf(
+			"helper socket %s must be owned by uid %d, got uid %d",
+			socketPath,
+			expectedUID,
+			st.Uid,
+		)
 	}
 	resolved, err := filepath.EvalSymlinks(socketPath)
 	if err != nil {

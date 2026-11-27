@@ -296,7 +296,10 @@ func TestFetch_NotFound(t *testing.T) {
 	mock := &mockKVClient{
 		GetSecretFunc: func(_ context.Context, _ string, _ string,
 			_ *azsecrets.GetSecretOptions) (azsecrets.GetSecretResponse, error) {
-			return azsecrets.GetSecretResponse{}, mockAzureError(http.StatusNotFound, "SecretNotFound")
+			return azsecrets.GetSecretResponse{}, mockAzureError(
+				http.StatusNotFound,
+				"SecretNotFound",
+			)
 		},
 	}
 	p := newFromClient(mock)
@@ -323,7 +326,10 @@ func TestMapAzureError_AuthCodes(t *testing.T) {
 			mock := &mockKVClient{
 				GetSecretFunc: func(_ context.Context, _ string, _ string,
 					_ *azsecrets.GetSecretOptions) (azsecrets.GetSecretResponse, error) {
-					return azsecrets.GetSecretResponse{}, mockAzureError(tc.statusCode, tc.errorCode)
+					return azsecrets.GetSecretResponse{}, mockAzureError(
+						tc.statusCode,
+						tc.errorCode,
+					)
 				},
 			}
 			p := newFromClient(mock)
@@ -341,7 +347,10 @@ func TestFetch_GenericAzureError(t *testing.T) {
 	mock := &mockKVClient{
 		GetSecretFunc: func(_ context.Context, _ string, _ string,
 			_ *azsecrets.GetSecretOptions) (azsecrets.GetSecretResponse, error) {
-			return azsecrets.GetSecretResponse{}, mockAzureError(http.StatusServiceUnavailable, "ServiceUnavailable")
+			return azsecrets.GetSecretResponse{}, mockAzureError(
+				http.StatusServiceUnavailable,
+				"ServiceUnavailable",
+			)
 		},
 	}
 	p := newFromClient(mock)
@@ -474,7 +483,10 @@ func TestProviderContract(t *testing.T) {
 	mock := &mockKVClient{
 		GetSecretFunc: func(_ context.Context, _ string, _ string,
 			_ *azsecrets.GetSecretOptions) (azsecrets.GetSecretResponse, error) {
-			return azsecrets.GetSecretResponse{}, mockAzureError(http.StatusNotFound, "SecretNotFound")
+			return azsecrets.GetSecretResponse{}, mockAzureError(
+				http.StatusNotFound,
+				"SecretNotFound",
+			)
 		},
 	}
 	p := newFromClient(mock)

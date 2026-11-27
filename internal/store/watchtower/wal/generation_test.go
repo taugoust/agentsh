@@ -12,7 +12,14 @@ import (
 //   - the boundary segment's header.generation reflects the new generation.
 func TestWAL_GenerationBoundaryOrdering(t *testing.T) {
 	dir := t.TempDir()
-	w, err := Open(Options{Dir: dir, SegmentSize: 64 * 1024, MaxTotalBytes: 1024 * 1024, SyncMode: SyncImmediate})
+	w, err := Open(
+		Options{
+			Dir:           dir,
+			SegmentSize:   64 * 1024,
+			MaxTotalBytes: 1024 * 1024,
+			SyncMode:      SyncImmediate,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

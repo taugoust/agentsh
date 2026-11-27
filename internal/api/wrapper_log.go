@@ -18,9 +18,13 @@ const (
 
 var (
 	wrapperAuthRE   = regexp.MustCompile(`(?i)(authorization[=: ]+(?:bearer|basic)[ ]+)[^ ]+`)
-	wrapperSecretRE = regexp.MustCompile(`(?i)((?:access[_-]?token|api[_-]?key|token|secret|signature|password)[=:])[^	 ,;]+`)
-	wrapperQueryRE  = regexp.MustCompile(`(?i)([?&](?:access_token|api[_-]?key|key|token|secret|signature|sig|password)=)[^&# ]*`)
-	wrapperPathRE   = regexp.MustCompile(`(^|[ =])/[^	 ,;]+`)
+	wrapperSecretRE = regexp.MustCompile(
+		`(?i)((?:access[_-]?token|api[_-]?key|token|secret|signature|password)[=:])[^	 ,;]+`,
+	)
+	wrapperQueryRE = regexp.MustCompile(
+		`(?i)([?&](?:access_token|api[_-]?key|key|token|secret|signature|sig|password)=)[^&# ]*`,
+	)
+	wrapperPathRE = regexp.MustCompile(`(^|[ =])/[^	 ,;]+`)
 )
 
 // closeWrapperLogPipe releases both wrapper-log pipe ends on exec paths
@@ -102,7 +106,11 @@ func sanitizeWrapperDiagnostic(value string) string {
 // startWrapperLogCaptureDrain forwards agentsh-unixwrap diagnostics to the
 // operator log and retains only a small sanitized command-jail fatal tail for
 // typed pre-GO failure evidence. The capture closes after the pipe reaches EOF.
-func startWrapperLogCaptureDrain(r *os.File, logger *slog.Logger, sessionID, command string) *wrapperLogCapture {
+func startWrapperLogCaptureDrain(
+	r *os.File,
+	logger *slog.Logger,
+	sessionID, command string,
+) *wrapperLogCapture {
 	capture := newWrapperLogCapture()
 	go func() {
 		defer close(capture.done)
@@ -121,6 +129,10 @@ func startWrapperLogCaptureDrain(r *os.File, logger *slog.Logger, sessionID, com
 }
 
 // startWrapperLogDrain preserves the original test/helper API.
-func startWrapperLogDrain(r *os.File, logger *slog.Logger, sessionID, command string) <-chan struct{} {
+func startWrapperLogDrain(
+	r *os.File,
+	logger *slog.Logger,
+	sessionID, command string,
+) <-chan struct{} {
 	return startWrapperLogCaptureDrain(r, logger, sessionID, command).done
 }

@@ -8,7 +8,9 @@ import (
 
 func TestOutputArtifact_DirenvEnvironmentAtomicOwnership(t *testing.T) {
 	s := &Session{}
-	generation, changed := s.ReplaceDirenvEnvironment(map[string]string{"PATH": "one", "DEV": "yes"})
+	generation, changed := s.ReplaceDirenvEnvironment(
+		map[string]string{"PATH": "one", "DEV": "yes"},
+	)
 	if !changed || generation != 1 {
 		t.Fatalf("first replace = (%d,%v)", generation, changed)
 	}
@@ -16,7 +18,11 @@ func TestOutputArtifact_DirenvEnvironmentAtomicOwnership(t *testing.T) {
 	snapshot["DEV"] = "mutated"
 	again, _ := s.DirenvEnvironment()
 	if gotGeneration != 1 || again["DEV"] != "yes" {
-		t.Fatalf("private snapshot aliased or generation wrong: %#v generation=%d", again, gotGeneration)
+		t.Fatalf(
+			"private snapshot aliased or generation wrong: %#v generation=%d",
+			again,
+			gotGeneration,
+		)
 	}
 	generation, changed = s.ReplaceDirenvEnvironment(map[string]string{"PATH": "one", "DEV": "yes"})
 	if changed || generation != 1 {

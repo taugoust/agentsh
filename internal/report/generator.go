@@ -30,7 +30,11 @@ func (g *Generator) WithLLMLogPath(path string) *Generator {
 }
 
 // Generate creates a report for the given session.
-func (g *Generator) Generate(ctx context.Context, sess types.Session, level Level) (*Report, error) {
+func (g *Generator) Generate(
+	ctx context.Context,
+	sess types.Session,
+	level Level,
+) (*Report, error) {
 	// Query all events for this session
 	events, err := g.store.QueryEvents(ctx, types.EventQuery{
 		SessionID: sess.ID,
@@ -226,7 +230,8 @@ func extractRedirects(events []types.Event) []RedirectDetail {
 		if ev.Policy == nil || ev.Policy.Redirect == nil {
 			continue
 		}
-		if ev.Policy.Decision == types.DecisionRedirect || ev.Policy.EffectiveDecision == types.DecisionRedirect {
+		if ev.Policy.Decision == types.DecisionRedirect ||
+			ev.Policy.EffectiveDecision == types.DecisionRedirect {
 			// Build original from event context
 			original := ev.Path
 			if original == "" {

@@ -43,8 +43,22 @@ func TestExpandSignalGroup(t *testing.T) {
 		expected []int
 		wantErr  bool
 	}{
-		{"@fatal", []int{int(unix.SIGKILL), int(unix.SIGTERM), int(unix.SIGQUIT), int(unix.SIGABRT)}, false},
-		{"@job", []int{int(unix.SIGSTOP), int(unix.SIGCONT), int(unix.SIGTSTP), int(unix.SIGTTIN), int(unix.SIGTTOU)}, false},
+		{
+			"@fatal",
+			[]int{int(unix.SIGKILL), int(unix.SIGTERM), int(unix.SIGQUIT), int(unix.SIGABRT)},
+			false,
+		},
+		{
+			"@job",
+			[]int{
+				int(unix.SIGSTOP),
+				int(unix.SIGCONT),
+				int(unix.SIGTSTP),
+				int(unix.SIGTTIN),
+				int(unix.SIGTTOU),
+			},
+			false,
+		},
 		{"@all", AllSignals(), false},
 		{"@invalid", nil, true},
 	}

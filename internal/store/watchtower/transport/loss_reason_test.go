@@ -13,13 +13,31 @@ func TestToWireReason_MapsKnownConstants(t *testing.T) {
 		want wtpv1.TransportLossReason
 	}{
 		{wal.LossReasonOverflow, wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_OVERFLOW},
-		{wal.LossReasonCRCCorruption, wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_CRC_CORRUPTION},
-		{wal.LossReasonAckRegressionAfterGC, wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_ACK_REGRESSION_AFTER_GC},
-		{wal.LossReasonMapperFailure, wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_MAPPER_FAILURE},
-		{wal.LossReasonInvalidMapper, wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_MAPPER},
-		{wal.LossReasonInvalidTimestamp, wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_TIMESTAMP},
+		{
+			wal.LossReasonCRCCorruption,
+			wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_CRC_CORRUPTION,
+		},
+		{
+			wal.LossReasonAckRegressionAfterGC,
+			wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_ACK_REGRESSION_AFTER_GC,
+		},
+		{
+			wal.LossReasonMapperFailure,
+			wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_MAPPER_FAILURE,
+		},
+		{
+			wal.LossReasonInvalidMapper,
+			wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_MAPPER,
+		},
+		{
+			wal.LossReasonInvalidTimestamp,
+			wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_TIMESTAMP,
+		},
 		{wal.LossReasonInvalidUTF8, wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_INVALID_UTF8},
-		{wal.LossReasonSequenceOverflow, wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_SEQUENCE_OVERFLOW},
+		{
+			wal.LossReasonSequenceOverflow,
+			wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_SEQUENCE_OVERFLOW,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
@@ -62,7 +80,10 @@ func TestToWireReason_NeverReturnsUnspecifiedForKnownConstants(t *testing.T) {
 			continue
 		}
 		if got == wtpv1.TransportLossReason_TRANSPORT_LOSS_REASON_UNSPECIFIED {
-			t.Errorf("ToWireReason(%q) returned UNSPECIFIED — would emit wire-incompatible frame", r)
+			t.Errorf(
+				"ToWireReason(%q) returned UNSPECIFIED — would emit wire-incompatible frame",
+				r,
+			)
 		}
 	}
 }

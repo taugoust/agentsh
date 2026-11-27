@@ -25,7 +25,11 @@ func (f *fakeEventStore) AppendEvent(ctx context.Context, ev types.Event) error 
 	f.appended++
 	return f.appendErr
 }
-func (f *fakeEventStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+
+func (f *fakeEventStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return []types.Event{{ID: "x"}}, nil
 }
 func (f *fakeEventStore) Close() error { f.closed = true; return nil }
@@ -35,10 +39,22 @@ type fakeOutputStore struct {
 	readErr error
 }
 
-func (f *fakeOutputStore) SaveOutput(ctx context.Context, sessionID, commandID string, stdout, stderr []byte, stdoutTotal, stderrTotal int64, stdoutTrunc, stderrTrunc bool) error {
+func (f *fakeOutputStore) SaveOutput(
+	ctx context.Context,
+	sessionID, commandID string,
+	stdout, stderr []byte,
+	stdoutTotal, stderrTotal int64,
+	stdoutTrunc, stderrTrunc bool,
+) error {
 	return f.saveErr
 }
-func (f *fakeOutputStore) ReadOutputChunk(ctx context.Context, commandID string, stream string, offset, limit int64) ([]byte, int64, bool, error) {
+
+func (f *fakeOutputStore) ReadOutputChunk(
+	ctx context.Context,
+	commandID string,
+	stream string,
+	offset, limit int64,
+) ([]byte, int64, bool, error) {
 	if f.readErr != nil {
 		return nil, 0, false, f.readErr
 	}
@@ -55,7 +71,11 @@ func TestAppendEventCollectsFirstError(t *testing.T) {
 		t.Fatalf("expected primary error, got %v", err)
 	}
 	if primary.appended != 1 || secondary.appended != 1 {
-		t.Fatalf("expected both stores to receive append, got %d %d", primary.appended, secondary.appended)
+		t.Fatalf(
+			"expected both stores to receive append, got %d %d",
+			primary.appended,
+			secondary.appended,
+		)
 	}
 }
 
@@ -97,7 +117,10 @@ func TestAppendEventErrorHookNotCalledOnSuccess(t *testing.T) {
 
 func TestAppendEventErrorHookReceivesLaterFatalIntegrityError(t *testing.T) {
 	primaryErr := errors.New("primary")
-	fatalErr := &storepkg.FatalIntegrityError{Op: "write audit integrity sidecar", Err: errors.New("disk full")}
+	fatalErr := &storepkg.FatalIntegrityError{
+		Op:  "write audit integrity sidecar",
+		Err: errors.New("disk full"),
+	}
 
 	primary := &fakeEventStore{appendErr: primaryErr}
 	secondary := &fakeEventStore{appendErr: fatalErr}
@@ -128,16 +151,42 @@ func TestAppendEventErrorHookReceivesLaterFatalIntegrityError(t *testing.T) {
 func TestOutputDelegationAndErrors(t *testing.T) {
 	out := &fakeOutputStore{}
 	s := New(&fakeEventStore{}, out)
-	if err := s.SaveOutput(context.Background(), "s", "c", nil, nil, 0, 0, false, false); err != nil {
+	if err := s.SaveOutput(
+		context.Background(),
+		"s",
+		"c",
+		nil,
+		nil,
+		0,
+		0,
+		false,
+		false,
+	); err != nil {
 		t.Fatalf("SaveOutput unexpected error: %v", err)
 	}
 	data, total, truncated, err := s.ReadOutputChunk(context.Background(), "c", "stdout", 0, 10)
 	if err != nil || string(data) != "ok" || total != 2 || truncated {
-		t.Fatalf("ReadOutputChunk unexpected: data=%q total=%d trunc=%v err=%v", data, total, truncated, err)
+		t.Fatalf(
+			"ReadOutputChunk unexpected: data=%q total=%d trunc=%v err=%v",
+			data,
+			total,
+			truncated,
+			err,
+		)
 	}
 
 	sNoOut := New(&fakeEventStore{}, nil)
-	if err := sNoOut.SaveOutput(context.Background(), "", "", nil, nil, 0, 0, false, false); err == nil {
+	if err := sNoOut.SaveOutput(
+		context.Background(),
+		"",
+		"",
+		nil,
+		nil,
+		0,
+		0,
+		false,
+		false,
+	); err == nil {
 		t.Fatal("expected error when output store missing")
 	}
 	if _, _, _, err := sNoOut.ReadOutputChunk(context.Background(), "", "", 0, 1); err == nil {
@@ -235,7 +284,11 @@ func (s *chainCapturingStore) AppendEvent(ctx context.Context, ev types.Event) e
 	s.captured = append(s.captured, ev.Chain)
 	return nil
 }
-func (s *chainCapturingStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+
+func (s *chainCapturingStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return nil, nil
 }
 func (s *chainCapturingStore) Close() error { return nil }
@@ -260,13 +313,23 @@ func TestComposite_StampsChainBeforeFanout(t *testing.T) {
 			t.Fatalf("event %d: nil Chain — primary=%v other=%v", i, p, o)
 		}
 		if p.Sequence != uint64(i) || p.Generation != 0 {
-			t.Errorf("primary event %d: Chain=(seq=%d,gen=%d) want (seq=%d,gen=0)", i, p.Sequence, p.Generation, i)
+			t.Errorf(
+				"primary event %d: Chain=(seq=%d,gen=%d) want (seq=%d,gen=0)",
+				i,
+				p.Sequence,
+				p.Generation,
+				i,
+			)
 		}
 		// Per-sink-copy contract: pointer-distinct across sinks but
 		// value-equal. Use == on pointers (must differ) and DeepEqual
 		// on dereferenced values (must match).
 		if p == o {
-			t.Errorf("event %d: sinks alias the same *ChainState pointer (%p); composite must stamp fresh per sink", i, p)
+			t.Errorf(
+				"event %d: sinks alias the same *ChainState pointer (%p); composite must stamp fresh per sink",
+				i,
+				p,
+			)
 		}
 		if !reflect.DeepEqual(*p, *o) {
 			t.Errorf("event %d: sinks saw different Chain values: primary=%+v other=%+v", i, *p, *o)
@@ -304,7 +367,11 @@ func TestComposite_NextGeneration_ResetsSequence(t *testing.T) {
 
 	last := primary.captured[len(primary.captured)-1]
 	if last == nil || last.Sequence != 0 || last.Generation != 1 {
-		t.Errorf("after rollover: Chain=(seq=%d,gen=%d) want (seq=0,gen=1)", last.Sequence, last.Generation)
+		t.Errorf(
+			"after rollover: Chain=(seq=%d,gen=%d) want (seq=0,gen=1)",
+			last.Sequence,
+			last.Generation,
+		)
 	}
 }
 
@@ -337,7 +404,10 @@ func (b *blockingEventStore) AppendEvent(ctx context.Context, ev types.Event) er
 	return nil
 }
 
-func (b *blockingEventStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (b *blockingEventStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return nil, nil
 }
 func (b *blockingEventStore) Close() error { return nil }
@@ -388,7 +458,11 @@ func TestComposite_NextGeneration_BlocksUntilInflightFanoutCompletes(t *testing.
 	// window while the AppendEvent is still in fanout.
 	select {
 	case got := <-nextGenDone:
-		t.Fatalf("NextGeneration returned (gen=%d, err=%v) while AppendEvent was mid-fanout; expected to block", got.gen, got.err)
+		t.Fatalf(
+			"NextGeneration returned (gen=%d, err=%v) while AppendEvent was mid-fanout; expected to block",
+			got.gen,
+			got.err,
+		)
 	case <-time.After(150 * time.Millisecond):
 		// Good: NextGeneration is properly blocked.
 	}
@@ -424,7 +498,10 @@ func TestComposite_NextGeneration_BlocksUntilInflightFanoutCompletes(t *testing.
 		t.Fatalf("blocker captured %d events, want 1", len(blocker.captured))
 	}
 	if blocker.captured[0].Generation != 0 {
-		t.Errorf("blocked AppendEvent stamped Generation=%d, want 0 (OLD generation)", blocker.captured[0].Generation)
+		t.Errorf(
+			"blocked AppendEvent stamped Generation=%d, want 0 (OLD generation)",
+			blocker.captured[0].Generation,
+		)
 	}
 	if len(tail.captured) != 1 || tail.captured[0].Generation != 0 {
 		t.Errorf("tail sink Generation=%v, want 0", tail.captured)
@@ -438,7 +515,11 @@ func TestComposite_NextGeneration_BlocksUntilInflightFanoutCompletes(t *testing.
 		t.Fatalf("tail captured %d events, want 2", len(tail.captured))
 	}
 	if tail.captured[1].Generation != 1 || tail.captured[1].Sequence != 0 {
-		t.Errorf("post-rollover tuple = (seq=%d, gen=%d), want (seq=0, gen=1)", tail.captured[1].Sequence, tail.captured[1].Generation)
+		t.Errorf(
+			"post-rollover tuple = (seq=%d, gen=%d), want (seq=0, gen=1)",
+			tail.captured[1].Sequence,
+			tail.captured[1].Generation,
+		)
 	}
 }
 
@@ -465,7 +546,10 @@ func (s *concurrentChainCapturingStore) AppendEvent(ctx context.Context, ev type
 	return nil
 }
 
-func (s *concurrentChainCapturingStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (s *concurrentChainCapturingStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return nil, nil
 }
 func (s *concurrentChainCapturingStore) Close() error { return nil }
@@ -551,7 +635,12 @@ func TestComposite_NextGeneration_NoStaleStamping(t *testing.T) {
 			seen[gen] = make(map[uint64]bool)
 		}
 		if seen[gen][c.Sequence] {
-			t.Fatalf("captured[%d]: duplicate (seq=%d, gen=%d) in stream", i, c.Sequence, c.Generation)
+			t.Fatalf(
+				"captured[%d]: duplicate (seq=%d, gen=%d) in stream",
+				i,
+				c.Sequence,
+				c.Generation,
+			)
 		}
 		seen[gen][c.Sequence] = true
 		if c.Sequence > maxSeqPerGen[gen] {
@@ -599,7 +688,12 @@ func TestComposite_NextGeneration_NoStaleStamping(t *testing.T) {
 		// newer-generation event, which is exactly the rollover-atomicity
 		// violation we are testing for.
 		if gen < maxGenSeen {
-			t.Fatalf("captured[%d]: stale stamping — got gen=%d after observing gen=%d earlier in stream", i, gen, maxGenSeen)
+			t.Fatalf(
+				"captured[%d]: stale stamping — got gen=%d after observing gen=%d earlier in stream",
+				i,
+				gen,
+				maxGenSeen,
+			)
 		}
 	}
 }
@@ -653,7 +747,11 @@ func TestComposite_AppendEvent_AllocatorErrorRoutedToHook(t *testing.T) {
 		t.Fatalf("hook err = %T(%v), want *FatalIntegrityError", hookErr, hookErr)
 	}
 	if hookFatal != fatal {
-		t.Errorf("hook delivered a different *FatalIntegrityError instance: hook=%p returned=%p", hookFatal, fatal)
+		t.Errorf(
+			"hook delivered a different *FatalIntegrityError instance: hook=%p returned=%p",
+			hookFatal,
+			fatal,
+		)
 	}
 
 	// No sink should have seen the event — allocator failure short-circuits
@@ -700,10 +798,18 @@ func TestComposite_State_Restore_Roundtrip(t *testing.T) {
 		t.Fatalf("tail captured %d events, want 1", len(tail.captured))
 	}
 	if tail.captured[0].Sequence != uint64(snap.Sequence+1) {
-		t.Errorf("post-Restore stamp Sequence = %d, want %d", tail.captured[0].Sequence, snap.Sequence+1)
+		t.Errorf(
+			"post-Restore stamp Sequence = %d, want %d",
+			tail.captured[0].Sequence,
+			snap.Sequence+1,
+		)
 	}
 	if tail.captured[0].Generation != snap.Generation {
-		t.Errorf("post-Restore stamp Generation = %d, want %d", tail.captured[0].Generation, snap.Generation)
+		t.Errorf(
+			"post-Restore stamp Generation = %d, want %d",
+			tail.captured[0].Generation,
+			snap.Generation,
+		)
 	}
 }
 

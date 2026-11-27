@@ -20,7 +20,11 @@ type emittedEvent struct {
 	data      map[string]interface{}
 }
 
-func (m *mockEmitter) Emit(ctx context.Context, eventType events.EventType, data map[string]interface{}) {
+func (m *mockEmitter) Emit(
+	ctx context.Context,
+	eventType events.EventType,
+	data map[string]interface{},
+) {
 	m.events = append(m.events, emittedEvent{eventType: eventType, data: data})
 }
 

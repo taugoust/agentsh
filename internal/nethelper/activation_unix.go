@@ -13,11 +13,18 @@ import (
 
 // ListenSystemdActivationForUID accepts exactly one named AF_UNIX/SOCK_STREAM
 // activation fd and requires the filesystem socket to be owned by expectedUID.
-func ListenSystemdActivationForUID(socketPath string, expectedUID uint32) (net.Listener, bool, error) {
+func ListenSystemdActivationForUID(
+	socketPath string,
+	expectedUID uint32,
+) (net.Listener, bool, error) {
 	return listenSystemdActivation(socketPath, expectedUID, false)
 }
 
-func listenSystemdActivation(socketPath string, expectedUID uint32, allowRootOwner bool) (net.Listener, bool, error) {
+func listenSystemdActivation(
+	socketPath string,
+	expectedUID uint32,
+	allowRootOwner bool,
+) (net.Listener, bool, error) {
 	pidText := strings.TrimSpace(os.Getenv("LISTEN_PID"))
 	fdsText := strings.TrimSpace(os.Getenv("LISTEN_FDS"))
 	if pidText == "" && fdsText == "" {
@@ -79,7 +86,8 @@ func listenSystemdActivation(socketPath string, expectedUID uint32, allowRootOwn
 		return nil, false, fmt.Errorf("read systemd activation socket address: %w", err)
 	}
 	unixAddress, ok := address.(*unix.SockaddrUnix)
-	if !ok || strings.TrimSpace(unixAddress.Name) == "" || filepath.Clean(unixAddress.Name) != filepath.Clean(socketPath) {
+	if !ok || strings.TrimSpace(unixAddress.Name) == "" ||
+		filepath.Clean(unixAddress.Name) != filepath.Clean(socketPath) {
 		return nil, false, fmt.Errorf("systemd activation fd has unexpected Unix socket path")
 	}
 	unix.CloseOnExec(int(file.Fd()))

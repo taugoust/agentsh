@@ -18,7 +18,10 @@ func TestWrapEnvPolicy_DefaultsOff(t *testing.T) {
 
 func TestWrapEnvPolicy_UnmarshalsTrue(t *testing.T) {
 	var cfg Config
-	if err := yaml.Unmarshal([]byte("sandbox:\n  wrap_env_policy:\n    enabled: true\n"), &cfg); err != nil {
+	if err := yaml.Unmarshal(
+		[]byte("sandbox:\n  wrap_env_policy:\n    enabled: true\n"),
+		&cfg,
+	); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if !cfg.Sandbox.WrapEnvPolicy.Enabled {

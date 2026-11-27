@@ -66,7 +66,10 @@ func TestSeccompFamilyBlock_Errno(t *testing.T) {
 	if !strings.Contains(combined, "socket_result=EAFNOSUPPORT") &&
 		!strings.Contains(combined, "socket_result=address family not supported") &&
 		!strings.Contains(combined, "errno=97") {
-		t.Errorf("expected socket(AF_ALG) to return EAFNOSUPPORT (errno 97); helper output:\n%s", combined)
+		t.Errorf(
+			"expected socket(AF_ALG) to return EAFNOSUPPORT (errno 97); helper output:\n%s",
+			combined,
+		)
 	}
 }
 
@@ -152,7 +155,11 @@ func TestSeccompFamilyBlock_Map_Log(t *testing.T) {
 		t.Errorf("BlockedFamilyMap missing SYS_SOCKETPAIR|AF_ALG key; map: %v", m)
 	}
 	if len(m) != 2 {
-		t.Errorf("expected exactly 2 map entries (socket+socketpair for AF_ALG); got %d: %v", len(m), m)
+		t.Errorf(
+			"expected exactly 2 map entries (socket+socketpair for AF_ALG); got %d: %v",
+			len(m),
+			m,
+		)
 	}
 	if m[socketKey].Name != "AF_ALG" {
 		t.Errorf("map entry name=%q, want AF_ALG", m[socketKey].Name)
@@ -373,7 +380,10 @@ func TestSeccompFamilyBlock_Notify_LogDispatched(t *testing.T) {
 	if !strings.Contains(combined, "socket_result=EAFNOSUPPORT") &&
 		!strings.Contains(combined, "socket_result=address family not supported") &&
 		!strings.Contains(combined, "errno=97") {
-		t.Errorf("expected socket(AF_ALG) to return EAFNOSUPPORT via notify handler; helper output:\n%s", combined)
+		t.Errorf(
+			"expected socket(AF_ALG) to return EAFNOSUPPORT via notify handler; helper output:\n%s",
+			combined,
+		)
 	}
 	if !strings.Contains(combined, "audit_event=seccomp_socket_family_blocked") {
 		t.Errorf("expected seccomp_socket_family_blocked audit event; helper output:\n%s", combined)
@@ -399,7 +409,8 @@ func runFamilyHelperNotifyLog(t *testing.T) {
 	filt, err := InstallFilterWithConfig(cfg)
 	if err != nil {
 		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "permission") || strings.Contains(lower, "operation not permitted") {
+		if strings.Contains(lower, "permission") ||
+			strings.Contains(lower, "operation not permitted") {
 			t.Skipf("cannot install seccomp filter (privilege): %v", err)
 		}
 		t.Fatalf("InstallFilterWithConfig: %v", err)
@@ -535,10 +546,16 @@ func TestFamilyDispatchBeforeGenericBlocklist(t *testing.T) {
 
 	// Family action must win: audit event is socket_family_blocked, not syscall_blocked.
 	if !strings.Contains(combined, "audit_event=seccomp_socket_family_blocked") {
-		t.Errorf("expected seccomp_socket_family_blocked audit event (family action must win);\nhelper output:\n%s", combined)
+		t.Errorf(
+			"expected seccomp_socket_family_blocked audit event (family action must win);\nhelper output:\n%s",
+			combined,
+		)
 	}
 	if strings.Contains(combined, "audit_event=seccomp_blocked") {
-		t.Errorf("seccomp_blocked event emitted — generic blocklist shadowed family action;\nhelper output:\n%s", combined)
+		t.Errorf(
+			"seccomp_blocked event emitted — generic blocklist shadowed family action;\nhelper output:\n%s",
+			combined,
+		)
 	}
 }
 
@@ -572,7 +589,8 @@ func runFamilyHelperFamilyWinsOverBlocklist(t *testing.T) {
 	filt, err := InstallFilterWithConfig(cfg)
 	if err != nil {
 		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "permission") || strings.Contains(lower, "operation not permitted") {
+		if strings.Contains(lower, "permission") ||
+			strings.Contains(lower, "operation not permitted") {
 			t.Skipf("cannot install seccomp filter (privilege): %v", err)
 		}
 		t.Fatalf("InstallFilterWithConfig: %v", err)
@@ -615,7 +633,16 @@ func runFamilyHelperFamilyWinsOverBlocklist(t *testing.T) {
 	handlerDone := make(chan struct{})
 	go func() {
 		defer close(handlerDone)
-		ServeNotifyWithExecve(ctx, notifyFile, "test-family-dispatch-order", nil, emitter, nil, nil, bl)
+		ServeNotifyWithExecve(
+			ctx,
+			notifyFile,
+			"test-family-dispatch-order",
+			nil,
+			emitter,
+			nil,
+			nil,
+			bl,
+		)
 	}()
 
 	// Perform the blocked socket call.

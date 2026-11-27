@@ -32,7 +32,8 @@ func ListenHostRelay(path string, client *Client) (*HostRelay, error) {
 	}
 	parent := filepath.Dir(path)
 	parentInfo, err := os.Lstat(parent)
-	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 || parentInfo.Mode().Perm()&0o077 != 0 {
+	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 ||
+		parentInfo.Mode().Perm()&0o077 != 0 {
 		return nil, fmt.Errorf("host guest-relay directory is not private")
 	}
 	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
@@ -57,7 +58,10 @@ func ListenHostRelay(path string, client *Client) (*HostRelay, error) {
 	defer func() {
 		if !ok {
 			_ = listener.Close()
-			if current, statErr := os.Lstat(path); statErr == nil && os.SameFile(boundInfo, current) {
+			if current, statErr := os.Lstat(
+				path,
+			); statErr == nil &&
+				os.SameFile(boundInfo, current) {
 				_ = os.Remove(path)
 			}
 		}

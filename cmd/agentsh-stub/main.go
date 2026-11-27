@@ -53,7 +53,12 @@ func runWithFD(fdStr string) int {
 	conn, err := net.FileConn(f)
 	f.Close()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "agentsh-stub: failed to create connection from fd %d: %v\n", fd, err)
+		fmt.Fprintf(
+			os.Stderr,
+			"agentsh-stub: failed to create connection from fd %d: %v\n",
+			fd,
+			err,
+		)
 		return 126
 	}
 	defer conn.Close()

@@ -49,7 +49,19 @@ func TestApprovalsEndpointsRequireApproverRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), apiKeyAuth, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		apiKeyAuth,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	// Agent key: forbidden.
@@ -83,7 +95,19 @@ func TestApprovalsEndpointsForbiddenWhenAuthDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/approvals", nil)
@@ -114,7 +138,19 @@ func TestApprovalsEndpointsForbiddenWhenDevelopmentDisableAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/approvals", nil)
@@ -139,7 +175,19 @@ func TestApprovalsEndpointsAllowedForOptInUnixSupervisor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := MarkUnixSocketRequests(app.Router())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/approvals", nil)
@@ -180,7 +228,19 @@ func TestOIDCAuthModeWithValidToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, oidcAuth, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		nil,
+		oidcAuth,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	// Agent token: forbidden for approvals endpoint
@@ -225,7 +285,19 @@ func TestOIDCAuthMissingToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, oidcAuth, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		nil,
+		oidcAuth,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	// No Authorization header
@@ -251,7 +323,19 @@ func TestOIDCAuthEmptyToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, oidcAuth, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		nil,
+		oidcAuth,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	// Empty Bearer token
@@ -287,7 +371,19 @@ func TestOIDCAuthInvalidToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, oidcAuth, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		nil,
+		oidcAuth,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	// Token not in cache (invalid)
@@ -339,7 +435,19 @@ func TestHybridAuthModeAPIKeyFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), apiKeyAuth, oidcAuth, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		apiKeyAuth,
+		oidcAuth,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	// API key takes precedence in hybrid mode
@@ -387,7 +495,19 @@ func TestHybridAuthModeOIDCFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, oidcAuth, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		nil,
+		oidcAuth,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	// OIDC should work when API key not provided
@@ -425,7 +545,19 @@ func TestHybridAuthModeNeitherSucceeds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, composite.New(nil, nil), engine, events.NewBroker(), nil, oidcAuth, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		composite.New(nil, nil),
+		engine,
+		events.NewBroker(),
+		nil,
+		oidcAuth,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	// No valid credentials - should fail

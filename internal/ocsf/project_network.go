@@ -81,7 +81,11 @@ func buildConnInfo(ev types.Event) *ocsfpb.ConnectionInfo {
 		if ev.Abstract {
 			ci.IsUnixAbstract = boolp(true)
 		}
-	case "net_connect", "connection_allowed", "connect_redirect", "ptrace_network", "mcp_network_connection":
+	case "net_connect",
+		"connection_allowed",
+		"connect_redirect",
+		"ptrace_network",
+		"mcp_network_connection":
 		ci.ProtocolName = strp("tcp")
 		ci.Direction = strp("Outbound")
 		populated = true

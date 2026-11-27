@@ -37,7 +37,10 @@ func (d *productionDialer) Dial(ctx context.Context) (transport.Conn, error) {
 			}
 			pool := x509.NewCertPool()
 			if !pool.AppendCertsFromPEM(pem) {
-				return nil, fmt.Errorf("parse TLS CA cert: no certificates found in %q", d.opts.TLSCACertFile)
+				return nil, fmt.Errorf(
+					"parse TLS CA cert: no certificates found in %q",
+					d.opts.TLSCACertFile,
+				)
 			}
 			tlsCfg.RootCAs = pool
 		}

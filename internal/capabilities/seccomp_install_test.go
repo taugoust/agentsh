@@ -12,7 +12,11 @@ func TestDetectSecurityCapabilities_SeccompInstallable(t *testing.T) {
 
 	checkSeccompUserNotify = func() CheckResult { return CheckResult{Feature: "seccomp-user-notify", Available: true} }
 	checkSeccompInstall = func() CheckResult {
-		return CheckResult{Feature: "seccomp-install", Available: false, Error: errForTest("EBUSY (errno 16)")}
+		return CheckResult{
+			Feature:   "seccomp-install",
+			Available: false,
+			Error:     errForTest("EBUSY (errno 16)"),
+		}
 	}
 
 	caps := DetectSecurityCapabilities()

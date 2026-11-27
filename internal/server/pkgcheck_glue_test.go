@@ -187,7 +187,11 @@ func TestComposedRules_NoCatchAllLeakFromBlockOn(t *testing.T) {
 
 	// Simulate an operator policy that has no catch-all (deliberately fail-closed).
 	engineRules := []policy.PackageRule{
-		{Match: policy.PackageMatch{FindingType: "malware"}, Action: "deny", Reason: "operator deny malware"},
+		{
+			Match:  policy.PackageMatch{FindingType: "malware"},
+			Action: "deny",
+			Reason: "operator deny malware",
+		},
 	}
 
 	// This is exactly what server.go does now (uses CompileBlockOnRules, not CompileBlockOn).
@@ -199,8 +203,11 @@ func TestComposedRules_NoCatchAllLeakFromBlockOn(t *testing.T) {
 	}
 	last := rules[len(rules)-1]
 	if last.Match.FindingType == "" && last.Action == "allow" {
-		t.Errorf("merged rules must NOT end with a catch-all allow when using CompileBlockOnRules; "+
-			"engine fail-closed intent would be shadowed. Last rule: %+v", last)
+		t.Errorf(
+			"merged rules must NOT end with a catch-all allow when using CompileBlockOnRules; "+
+				"engine fail-closed intent would be shadowed. Last rule: %+v",
+			last,
+		)
 	}
 }
 
@@ -230,7 +237,10 @@ func TestMissingAPIKey_ClosedModeIsFatal(t *testing.T) {
 	var fatalErr error
 	if errors.Is(err, errMissingAPIKeyValue) {
 		if mode == "closed" {
-			fatalErr = fmt.Errorf("pkgcheck: provider %q enabled with missing API key under fail_mode=closed: configured to fail closed, but provider cannot operate", "snyk")
+			fatalErr = fmt.Errorf(
+				"pkgcheck: provider %q enabled with missing API key under fail_mode=closed: configured to fail closed, but provider cannot operate",
+				"snyk",
+			)
 		}
 	}
 	if fatalErr == nil {

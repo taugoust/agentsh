@@ -30,7 +30,11 @@ func TestBackendDeterministic(t *testing.T) {
 	snap1 := snapshotCorpus(t, rows)
 	snap2 := snapshotCorpus(t, rows)
 	if snap1 != snap2 {
-		t.Fatalf("non-deterministic classification across two runs of the same corpus:\n--- run1 ---\n%s\n--- run2 ---\n%s", snap1, snap2)
+		t.Fatalf(
+			"non-deterministic classification across two runs of the same corpus:\n--- run1 ---\n%s\n--- run2 ---\n%s",
+			snap1,
+			snap2,
+		)
 	}
 }
 
@@ -86,7 +90,10 @@ func snapshotCorpus(t *testing.T, rows []corpus.Row) string {
 		}
 		opts := Options{EscalateUnknownFunctions: row.Options.EscalateUnknownFunctions}
 		if len(row.Options.SafeFunctionAllowlist) > 0 {
-			opts.SafeFunctionAllowlist = make(map[string]struct{}, len(row.Options.SafeFunctionAllowlist))
+			opts.SafeFunctionAllowlist = make(
+				map[string]struct{},
+				len(row.Options.SafeFunctionAllowlist),
+			)
 			for _, n := range row.Options.SafeFunctionAllowlist {
 				opts.SafeFunctionAllowlist[strings.ToLower(n)] = struct{}{}
 			}

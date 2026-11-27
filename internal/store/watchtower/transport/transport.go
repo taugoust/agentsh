@@ -906,7 +906,10 @@ func (t *Transport) applyServerAckTuple(serverGen uint32, serverSeq uint64) AckO
 //   - readerStart: the seq the WAL Reader should be opened at.
 //   - err != nil: a hard I/O error reading WAL state. The caller MUST
 //     treat this as a transport error and reconnect.
-func (t *Transport) computeReplayStart(remoteReplayCursor AckCursor, persistedAck AckCursor) (*wal.LossRecord, uint64, error) {
+func (t *Transport) computeReplayStart(
+	remoteReplayCursor AckCursor,
+	persistedAck AckCursor,
+) (*wal.LossRecord, uint64, error) {
 	earliestOnDisk, ok, err := t.walEarliestDataSequenceFn(persistedAck.Generation)
 	if err != nil {
 		return nil, 0, fmt.Errorf("ack_regression_check: wal.EarliestDataSequence: %w", err)
@@ -1024,7 +1027,10 @@ type ReplayStage struct {
 //     computeReplayStart (the first-stage call) and from
 //     walWrittenDataHighWaterFn (later-stage probes) are both surfaced
 //     here unchanged; on error the partial plan is discarded.
-func (t *Transport) computeReplayPlan(remoteReplayCursor AckCursor, persistedAck AckCursor) ([]ReplayStage, error) {
+func (t *Transport) computeReplayPlan(
+	remoteReplayCursor AckCursor,
+	persistedAck AckCursor,
+) ([]ReplayStage, error) {
 	prefixLoss, readerStart, err := t.computeReplayStart(remoteReplayCursor, persistedAck)
 	if err != nil {
 		return nil, err
@@ -1050,7 +1056,11 @@ func (t *Transport) computeReplayPlan(remoteReplayCursor AckCursor, persistedAck
 	for gen := persistedAck.Generation + 1; gen <= highGen && gen > persistedAck.Generation; gen++ {
 		haveAny, walErr := t.walHasReplayableRecordsFn(gen)
 		if walErr != nil {
-			return nil, fmt.Errorf("computeReplayPlan: wal.HasReplayableRecords(gen=%d): %w", gen, walErr)
+			return nil, fmt.Errorf(
+				"computeReplayPlan: wal.HasReplayableRecords(gen=%d): %w",
+				gen,
+				walErr,
+			)
 		}
 		if !haveAny {
 			continue
@@ -1180,7 +1190,11 @@ func (t *Transport) logEmittedLossIfApplicable(ctx context.Context, msg *wtpv1.C
 // entry on the next connect cycle. rep is also consumed (cleared to
 // nil) at the top of StateLive so a subsequent Live entry after a
 // reconnect picks up the fresh value (or nil if no replay ran).
-func (t *Transport) Run(ctx context.Context, rdrFactory func(gen uint32, start uint64) (*wal.Reader, error), liveOpts LiveOptions) error {
+func (t *Transport) Run(
+	ctx context.Context,
+	rdrFactory func(gen uint32, start uint64) (*wal.Reader, error),
+	liveOpts LiveOptions,
+) error {
 	// Single-use guard: Run owns the close of t.runDone, so a second
 	// invocation would panic on close-of-closed-channel. Reject the
 	// second call cleanly. Per Task 27c.

@@ -41,7 +41,12 @@ func TestCLI_ScanExitsNonZeroOnBlock(t *testing.T) {
 	cli := &CLI{
 		Stdout: new(bytes.Buffer),
 		Providers: map[string]ProviderEntry{
-			"x": {Provider: stubProvider{name: "x", findings: []Finding{{Severity: SeverityCritical}}}},
+			"x": {
+				Provider: stubProvider{
+					name:     "x",
+					findings: []Finding{{Severity: SeverityCritical}},
+				},
+			},
 		},
 	}
 	code := cli.Run(context.Background(), []string{"scan", skillDir})
@@ -302,7 +307,11 @@ func TestCLI_ProviderDenyFailureExitsBlock(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: skill\n---\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: skill\n---\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -317,7 +326,10 @@ func TestCLI_ProviderDenyFailureExitsBlock(t *testing.T) {
 	}
 	code := cli.Run(context.Background(), []string{"scan", skillDir})
 	if code != 3 {
-		t.Errorf("expected exit code 3 (block) when provider with on_failure=deny fails; got %d", code)
+		t.Errorf(
+			"expected exit code 3 (block) when provider with on_failure=deny fails; got %d",
+			code,
+		)
 	}
 }
 
@@ -327,7 +339,11 @@ func TestCLI_PartialLimitsConfigStillScans(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: skill\n---\nbody\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: skill\n---\nbody\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -340,6 +356,9 @@ func TestCLI_PartialLimitsConfigStillScans(t *testing.T) {
 	}
 	code := cli.Run(context.Background(), []string{"scan", skillDir})
 	if code != 0 {
-		t.Errorf("expected exit code 0 with partial limits; got %d (TotalBytes default not applied)", code)
+		t.Errorf(
+			"expected exit code 0 with partial limits; got %d (TotalBytes default not applied)",
+			code,
+		)
 	}
 }

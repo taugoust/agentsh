@@ -120,7 +120,11 @@ func (a *SupervisorAuthorizer) OperationGate() *OperationGate {
 	return a.operations
 }
 
-func (a *SupervisorAuthorizer) AuthorizeRegister(_ context.Context, peer PeerInfo, req RegisterSessionCgroupRequest) error {
+func (a *SupervisorAuthorizer) AuthorizeRegister(
+	_ context.Context,
+	peer PeerInfo,
+	req RegisterSessionCgroupRequest,
+) error {
 	if a == nil {
 		return fmt.Errorf("nethelper supervisor authorizer is nil")
 	}
@@ -130,7 +134,8 @@ func (a *SupervisorAuthorizer) AuthorizeRegister(_ context.Context, peer PeerInf
 	if err := a.authorizePeer(peer, req.SupervisorPID); err != nil {
 		return err
 	}
-	if strings.TrimSpace(a.opts.HelperInstanceCredential) != "" && strings.TrimSpace(req.HelperInstanceCredential) == "" {
+	if strings.TrimSpace(a.opts.HelperInstanceCredential) != "" &&
+		strings.TrimSpace(req.HelperInstanceCredential) == "" {
 		return fmt.Errorf("helper_instance_credential is required by this helper instance")
 	}
 	if err := a.authorizeCredential(requestHelperCredential(req)); err != nil {
@@ -183,8 +188,9 @@ func (a *SupervisorAuthorizer) AuthorizeRegister(_ context.Context, peer PeerInf
 		CgroupPath:           targetPath,
 		AuthorizedCgroupID:   targetCgroupID,
 		Mode:                 req.Mode.Normalized(),
-		LegacyWire:           strings.TrimSpace(req.HelperInstanceCredential) == "" && strings.TrimSpace(req.SessionNonce) != "",
-		Identity:             identity,
+		LegacyWire: strings.TrimSpace(req.HelperInstanceCredential) == "" &&
+			strings.TrimSpace(req.SessionNonce) != "",
+		Identity: identity,
 	}
 	key := registrationKey(req.SessionID, targetPath)
 	a.mu.Lock()
@@ -208,14 +214,23 @@ func (a *SupervisorAuthorizer) AuthorizeRegister(_ context.Context, peer PeerInf
 	return nil
 }
 
-func (a *SupervisorAuthorizer) AuthorizeUpdate(_ context.Context, peer PeerInfo, req UpdatePolicyMapRequest) error {
+func (a *SupervisorAuthorizer) AuthorizeUpdate(
+	_ context.Context,
+	peer PeerInfo,
+	req UpdatePolicyMapRequest,
+) error {
 	if a == nil {
 		return fmt.Errorf("nethelper supervisor authorizer is nil")
 	}
 	if err := req.Validate(); err != nil {
 		return err
 	}
-	reg, key, err := a.registeredRequestWithKey(req.SessionID, req.CgroupPath, req.CgroupID, req.RegistrationID)
+	reg, key, err := a.registeredRequestWithKey(
+		req.SessionID,
+		req.CgroupPath,
+		req.CgroupID,
+		req.RegistrationID,
+	)
 	if err != nil {
 		return err
 	}
@@ -237,14 +252,23 @@ func (a *SupervisorAuthorizer) AuthorizeUpdate(_ context.Context, peer PeerInfo,
 	return nil
 }
 
-func (a *SupervisorAuthorizer) AuthorizeCleanup(_ context.Context, peer PeerInfo, req CleanupSessionRequest) error {
+func (a *SupervisorAuthorizer) AuthorizeCleanup(
+	_ context.Context,
+	peer PeerInfo,
+	req CleanupSessionRequest,
+) error {
 	if a == nil {
 		return fmt.Errorf("nethelper supervisor authorizer is nil")
 	}
 	if err := req.Validate(); err != nil {
 		return err
 	}
-	reg, key, err := a.registeredRequestWithKey(req.SessionID, req.CgroupPath, req.CgroupID, req.RegistrationID)
+	reg, key, err := a.registeredRequestWithKey(
+		req.SessionID,
+		req.CgroupPath,
+		req.CgroupID,
+		req.RegistrationID,
+	)
 	if err != nil {
 		return err
 	}
@@ -284,7 +308,10 @@ func (a *SupervisorAuthorizer) authorizePeer(peer PeerInfo, supervisorPID int) e
 	return nil
 }
 
-func (a *SupervisorAuthorizer) authorizeRegisteredPeer(peer PeerInfo, reg *supervisorRegistration) error {
+func (a *SupervisorAuthorizer) authorizeRegisteredPeer(
+	peer PeerInfo,
+	reg *supervisorRegistration,
+) error {
 	if reg == nil {
 		return fmt.Errorf("session cgroup is not registered with this helper")
 	}
@@ -317,7 +344,11 @@ func (a *SupervisorAuthorizer) authorizeRegisteredPeer(peer PeerInfo, reg *super
 		if err != nil {
 			return fmt.Errorf("read peer cgroup: %w", err)
 		}
-		if ok, err := peerInSupervisorCgroup(resolver, peerPath, reg.SupervisorCgroupPath); err != nil {
+		if ok, err := peerInSupervisorCgroup(
+			resolver,
+			peerPath,
+			reg.SupervisorCgroupPath,
+		); err != nil {
 			return fmt.Errorf("verify peer cgroup: %w", err)
 		} else if !ok {
 			return fmt.Errorf("peer cgroup does not match registered supervisor cgroup")
@@ -409,7 +440,10 @@ func (a *SupervisorAuthorizer) captureStableIdentity(peer PeerInfo) (*processIde
 	return identity, nil
 }
 
-func (a *SupervisorAuthorizer) authorizeCgroupRegistration(peer PeerInfo, req RegisterSessionCgroupRequest) (string, string, error) {
+func (a *SupervisorAuthorizer) authorizeCgroupRegistration(
+	peer PeerInfo,
+	req RegisterSessionCgroupRequest,
+) (string, string, error) {
 	if a.opts.RequireKernelCgroupChecks {
 		resolver := a.resolver()
 		peerPath, err := resolver.CgroupPathForPID(peer.PID)
@@ -464,7 +498,10 @@ func (a *SupervisorAuthorizer) resolver() CgroupResolver {
 
 // CompleteRegister binds the backend-observed cgroup ID to the pending
 // authorization and returns the helper-selected registration handle.
-func (a *SupervisorAuthorizer) CompleteRegister(req RegisterSessionCgroupRequest, cgroupID uint64) (string, error) {
+func (a *SupervisorAuthorizer) CompleteRegister(
+	req RegisterSessionCgroupRequest,
+	cgroupID uint64,
+) (string, error) {
 	if a == nil || cgroupID == 0 {
 		return "", fmt.Errorf("backend returned an invalid cgroup id")
 	}
@@ -498,7 +535,11 @@ func (a *SupervisorAuthorizer) CompleteRegister(req RegisterSessionCgroupRequest
 	if !ok || reg.Active || reg.CleanupPending {
 		return "", fmt.Errorf("pending session cgroup registration was not found")
 	}
-	if reg.SessionID != strings.TrimSpace(req.SessionID) || reg.SupervisorPID != req.SupervisorPID || reg.SupervisorCgroupPath != supervisorPath || reg.CgroupPath != path || reg.Mode != req.Mode.Normalized() {
+	if reg.SessionID != strings.TrimSpace(req.SessionID) ||
+		reg.SupervisorPID != req.SupervisorPID ||
+		reg.SupervisorCgroupPath != supervisorPath ||
+		reg.CgroupPath != path ||
+		reg.Mode != req.Mode.Normalized() {
 		return "", fmt.Errorf("pending registration identity changed before backend completion")
 	}
 	if a.opts.RequireKernelCgroupChecks {
@@ -532,7 +573,10 @@ func (a *SupervisorAuthorizer) CompleteRegister(req RegisterSessionCgroupRequest
 // completion failed. Admission must remain dirty until compensation is proven
 // successful; otherwise authenticated cleanup and the reaper retain the exact
 // registration, process, path, and cgroup identities needed for a later retry.
-func (a *SupervisorAuthorizer) PreserveFailedRegister(req RegisterSessionCgroupRequest, cgroupID uint64) (string, error) {
+func (a *SupervisorAuthorizer) PreserveFailedRegister(
+	req RegisterSessionCgroupRequest,
+	cgroupID uint64,
+) (string, error) {
 	if a == nil || cgroupID == 0 {
 		return "", fmt.Errorf("cannot preserve failed registration without a cgroup id")
 	}
@@ -578,7 +622,12 @@ func (a *SupervisorAuthorizer) CompleteUpdate(req UpdatePolicyMapRequest) {
 		return
 	}
 	a.mu.Lock()
-	reg, _ := a.registrationForCompletionLocked(req.SessionID, req.CgroupPath, req.CgroupID, req.RegistrationID)
+	reg, _ := a.registrationForCompletionLocked(
+		req.SessionID,
+		req.CgroupPath,
+		req.CgroupID,
+		req.RegistrationID,
+	)
 	if reg != nil && reg.InFlight > 0 {
 		reg.InFlight--
 	}
@@ -592,7 +641,12 @@ func (a *SupervisorAuthorizer) CompleteCleanup(req CleanupSessionRequest, succee
 		return
 	}
 	a.mu.Lock()
-	reg, key := a.registrationForCompletionLocked(req.SessionID, req.CgroupPath, req.CgroupID, req.RegistrationID)
+	reg, key := a.registrationForCompletionLocked(
+		req.SessionID,
+		req.CgroupPath,
+		req.CgroupID,
+		req.RegistrationID,
+	)
 	if reg == nil {
 		a.mu.Unlock()
 		return
@@ -615,13 +669,18 @@ func (a *SupervisorAuthorizer) CompleteCleanup(req CleanupSessionRequest, succee
 	}
 }
 
-func (a *SupervisorAuthorizer) registrationForCompletionLocked(sessionID, cgroupPath string, cgroupID uint64, registrationID string) (*supervisorRegistration, string) {
+func (a *SupervisorAuthorizer) registrationForCompletionLocked(
+	sessionID, cgroupPath string,
+	cgroupID uint64,
+	registrationID string,
+) (*supervisorRegistration, string) {
 	if cgroupID == 0 {
 		return nil, ""
 	}
 	key := registrationKey(sessionID, cleanCgroupPath(cgroupPath))
 	reg := a.registrations[key]
-	if reg == nil || reg.SessionID != strings.TrimSpace(sessionID) || reg.CgroupID != cgroupID || reg.CgroupPath != cleanCgroupPath(cgroupPath) {
+	if reg == nil || reg.SessionID != strings.TrimSpace(sessionID) || reg.CgroupID != cgroupID ||
+		reg.CgroupPath != cleanCgroupPath(cgroupPath) {
 		return nil, ""
 	}
 	registrationID = strings.TrimSpace(registrationID)
@@ -635,7 +694,11 @@ func (a *SupervisorAuthorizer) registrationForCompletionLocked(sessionID, cgroup
 	return reg, key
 }
 
-func (a *SupervisorAuthorizer) registeredRequestWithKey(sessionID, cgroupPath string, cgroupID uint64, registrationID string) (*supervisorRegistration, string, error) {
+func (a *SupervisorAuthorizer) registeredRequestWithKey(
+	sessionID, cgroupPath string,
+	cgroupID uint64,
+	registrationID string,
+) (*supervisorRegistration, string, error) {
 	path, err := a.canonicalLookupPath(cgroupPath)
 	if err != nil {
 		return nil, "", err
@@ -785,7 +848,10 @@ func (a *SupervisorAuthorizer) Close() {
 	}
 }
 
-func peerInSupervisorCgroup(resolver CgroupResolver, peerPath, supervisorPath string) (bool, error) {
+func peerInSupervisorCgroup(
+	resolver CgroupResolver,
+	peerPath, supervisorPath string,
+) (bool, error) {
 	same, err := resolver.SameCgroupPath(peerPath, supervisorPath)
 	if err != nil {
 		return false, err
@@ -801,7 +867,8 @@ func peerInSupervisorCgroup(resolver CgroupResolver, peerPath, supervisorPath st
 	if err != nil {
 		return false, err
 	}
-	return filepath.Base(peerCanonical) == "agentsh.leaf" && filepath.Dir(peerCanonical) == supervisorCanonical, nil
+	return filepath.Base(peerCanonical) == "agentsh.leaf" &&
+		filepath.Dir(peerCanonical) == supervisorCanonical, nil
 }
 
 func registrationKey(sessionID, cgroupPath string) string {

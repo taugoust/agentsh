@@ -2,12 +2,13 @@ package metrics
 
 import (
 	"context"
-	"github.com/agentsh/agentsh/pkg/types"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/agentsh/agentsh/pkg/types"
 )
 
 func TestHandlerExportsCountersAndEscapes(t *testing.T) {
@@ -53,7 +54,10 @@ func (f *fakeEventStore) AppendEvent(ctx context.Context, ev types.Event) error 
 	return nil
 }
 
-func (f *fakeEventStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (f *fakeEventStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return nil, nil
 }
 

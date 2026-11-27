@@ -26,7 +26,10 @@ func newResolveContext(fixture CatalogFixture) resolveContext {
 	}
 }
 
-func resolveStatements(stmts []effects.ClassifiedStatement, fixture CatalogFixture) []effects.ClassifiedStatement {
+func resolveStatements(
+	stmts []effects.ClassifiedStatement,
+	fixture CatalogFixture,
+) []effects.ClassifiedStatement {
 	out := make([]effects.ClassifiedStatement, len(stmts))
 	current := newResolveContext(fixture)
 	for i := range stmts {
@@ -36,11 +39,17 @@ func resolveStatements(stmts []effects.ClassifiedStatement, fixture CatalogFixtu
 	return out
 }
 
-func resolveStatement(stmt effects.ClassifiedStatement, fixture CatalogFixture) effects.ClassifiedStatement {
+func resolveStatement(
+	stmt effects.ClassifiedStatement,
+	fixture CatalogFixture,
+) effects.ClassifiedStatement {
 	return resolveStatementWithContext(stmt, newResolveContext(fixture))
 }
 
-func resolveStatementWithContext(stmt effects.ClassifiedStatement, ctx resolveContext) effects.ClassifiedStatement {
+func resolveStatementWithContext(
+	stmt effects.ClassifiedStatement,
+	ctx resolveContext,
+) effects.ClassifiedStatement {
 	out := stmt
 	out.Effects = make([]effects.Effect, len(stmt.Effects))
 	for i, eff := range stmt.Effects {
@@ -117,7 +126,11 @@ func resolveObjectWithContext(obj effects.ObjectRef, ctx resolveContext) effects
 			UnresolvedReason: ctx.searchPathUnavailableReason,
 		}
 	}
-	res := catalog.ResolveRelation(ctx.fixture.Snapshot, catalog.Name{Schema: obj.Schema, Name: obj.Name}, ctx.fixture.SearchPath)
+	res := catalog.ResolveRelation(
+		ctx.fixture.Snapshot,
+		catalog.Name{Schema: obj.Schema, Name: obj.Name},
+		ctx.fixture.SearchPath,
+	)
 	if !res.OK() {
 		return effects.ResolvedObjectRef{
 			Source:           effects.ResolvedObjectSourceCatalog,
@@ -199,7 +212,10 @@ func functionVolatility(v catalog.FunctionVolatility) string {
 	}
 }
 
-func effectCatalogRefreshNeeds(eff effects.Effect, rawVerb string) (searchPath bool, snapshot bool) {
+func effectCatalogRefreshNeeds(
+	eff effects.Effect,
+	rawVerb string,
+) (searchPath bool, snapshot bool) {
 	switch eff.Subtype {
 	case effects.SubtypeSetSearchPath,
 		effects.SubtypeResetAll,
@@ -245,14 +261,21 @@ func effectCatalogRefreshNeeds(eff effects.Effect, rawVerb string) (searchPath b
 	return false, false
 }
 
-func applyStatementCatalogContext(ctx resolveContext, stmt effects.ClassifiedStatement) resolveContext {
+func applyStatementCatalogContext(
+	ctx resolveContext,
+	stmt effects.ClassifiedStatement,
+) resolveContext {
 	for _, eff := range stmt.Effects {
 		ctx = applyEffectCatalogContext(ctx, eff, stmt.RawVerb)
 	}
 	return ctx
 }
 
-func applyEffectCatalogContext(ctx resolveContext, eff effects.Effect, rawVerb string) resolveContext {
+func applyEffectCatalogContext(
+	ctx resolveContext,
+	eff effects.Effect,
+	rawVerb string,
+) resolveContext {
 	switch eff.Subtype {
 	case effects.SubtypeSetSearchPath:
 		if path, ok := parseSetSearchPathRawVerb(rawVerb); ok {
@@ -284,7 +307,8 @@ func applyEffectCatalogContext(ctx resolveContext, eff effects.Effect, rawVerb s
 		ctx.fixture.SearchPath = nil
 		return ctx
 	case effects.SubtypeSetLocal:
-		if effectHasAnyGUC(eff, "search_path", "role", "session_authorization") && !ctx.localSearchPathActive {
+		if effectHasAnyGUC(eff, "search_path", "role", "session_authorization") &&
+			!ctx.localSearchPathActive {
 			ctx.localSearchPathActive = true
 			ctx.localSearchPathBase = append([]string(nil), ctx.fixture.SearchPath...)
 		}

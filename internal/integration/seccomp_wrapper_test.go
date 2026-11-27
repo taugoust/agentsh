@@ -32,7 +32,9 @@ func TestCreateSessionWithRetry_RetriesTransientTransportErrors(t *testing.T) {
 		createWithID: func(context.Context, string, string, string) (types.Session, error) {
 			attempts++
 			if attempts == 1 {
-				return types.Session{}, errors.New(`Post "http://localhost:1234/api/v1/sessions": read tcp [::1]:123->[::1]:456: read: bad file descriptor`)
+				return types.Session{}, errors.New(
+					`Post "http://localhost:1234/api/v1/sessions": read tcp [::1]:123->[::1]:456: read: bad file descriptor`,
+				)
 			}
 			return want, nil
 		},
@@ -80,9 +82,16 @@ func TestCreateSessionWithRetry_UsesExistingSessionAfterConflict(t *testing.T) {
 		createWithID: func(context.Context, string, string, string) (types.Session, error) {
 			createAttempts++
 			if createAttempts == 1 {
-				return types.Session{}, errors.New(`Post "http://localhost:1234/api/v1/sessions": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`)
+				return types.Session{}, errors.New(
+					`Post "http://localhost:1234/api/v1/sessions": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`,
+				)
 			}
-			return types.Session{}, &client.HTTPError{Method: http.MethodPost, Path: "/api/v1/sessions", Status: "409 Conflict", StatusCode: http.StatusConflict}
+			return types.Session{}, &client.HTTPError{
+				Method:     http.MethodPost,
+				Path:       "/api/v1/sessions",
+				Status:     "409 Conflict",
+				StatusCode: http.StatusConflict,
+			}
 		},
 		getSession: func(context.Context, string) (types.Session, error) {
 			getAttempts++
@@ -139,7 +148,9 @@ func TestContainerHTTPEndpointWithRetry_RetriesTransientMappedPortErrors(t *test
 		portFunc: func(context.Context, nat.Port) (nat.Port, error) {
 			attempts++
 			if attempts == 1 {
-				return "", errors.New(`inspect: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.48/containers/abc/json": context deadline exceeded`)
+				return "", errors.New(
+					`inspect: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.48/containers/abc/json": context deadline exceeded`,
+				)
 			}
 			return wantPort, nil
 		},
@@ -199,7 +210,9 @@ func TestStartContainerWithRetry_RetriesTransientNetworkSetupTimeout(t *testing.
 		func(context.Context) (testcontainers.Container, error) {
 			attempts++
 			if attempts == 1 {
-				return nil, errors.New(`create container: ensure default network: network list: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.51/networks": context deadline exceeded`)
+				return nil, errors.New(
+					`create container: ensure default network: network list: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.51/networks": context deadline exceeded`,
+				)
 			}
 			return nil, nil
 		},
@@ -268,7 +281,15 @@ func TestSeccompWrapperEnabled(t *testing.T) {
 	workspace := filepath.Join(temp, "workspace")
 	mustMkdir(t, workspace)
 
-	endpoint, cleanup := startSeccompServerContainer(t, ctx, agentshBin, unixwrapBin, configPath, policiesDir, workspace)
+	endpoint, cleanup := startSeccompServerContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -333,7 +354,15 @@ func TestSeccompWrapperDisabled(t *testing.T) {
 	workspace := filepath.Join(temp, "workspace")
 	mustMkdir(t, workspace)
 
-	endpoint, cleanup := startSeccompServerContainer(t, ctx, agentshBin, unixwrapBin, configPath, policiesDir, workspace)
+	endpoint, cleanup := startSeccompServerContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -381,7 +410,15 @@ func TestSeccompWrapperDisabled_WrapInitRefuses(t *testing.T) {
 	workspace := filepath.Join(temp, "workspace")
 	mustMkdir(t, workspace)
 
-	endpoint, cleanup := startSeccompServerContainer(t, ctx, agentshBin, unixwrapBin, configPath, policiesDir, workspace)
+	endpoint, cleanup := startSeccompServerContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -407,7 +444,9 @@ func TestSeccompWrapperDisabled_WrapInitRefuses(t *testing.T) {
 		Mode:         "shim",
 	})
 	if wrapErr == nil {
-		t.Fatal("wrap-init succeeded with unix_sockets.enabled=false; expected 503 (regression #361)")
+		t.Fatal(
+			"wrap-init succeeded with unix_sockets.enabled=false; expected 503 (regression #361)",
+		)
 	}
 	var httpErr *client.HTTPError
 	if !errors.As(wrapErr, &httpErr) {
@@ -436,7 +475,11 @@ func TestSeccompWrapperDisabled_WrapInitRefuses(t *testing.T) {
 		t.Fatalf("Exec: %v", err)
 	}
 	if result.Result.ExitCode != 0 {
-		t.Errorf("expected exit 0, got %d (stderr=%q)", result.Result.ExitCode, result.Result.Stderr)
+		t.Errorf(
+			"expected exit 0, got %d (stderr=%q)",
+			result.Result.ExitCode,
+			result.Result.Stderr,
+		)
 	}
 	if want := "hello from unwrapped\n"; result.Result.Stdout != want {
 		t.Errorf("expected stdout %q, got %q", want, result.Result.Stdout)
@@ -474,7 +517,11 @@ func TestSeccompWrapperDisabled_WrapInitRefuses_WithPolicyLimits(t *testing.T) {
 
 	policiesDir := filepath.Join(temp, "policies")
 	mustMkdir(t, policiesDir)
-	writeFile(t, filepath.Join(policiesDir, "default.yaml"), seccompTestPolicyWithResourceLimitsYAML)
+	writeFile(
+		t,
+		filepath.Join(policiesDir, "default.yaml"),
+		seccompTestPolicyWithResourceLimitsYAML,
+	)
 
 	keysPath := filepath.Join(temp, "keys.yaml")
 	writeFile(t, keysPath, testAPIKeysYAML)
@@ -485,7 +532,15 @@ func TestSeccompWrapperDisabled_WrapInitRefuses_WithPolicyLimits(t *testing.T) {
 	workspace := filepath.Join(temp, "workspace")
 	mustMkdir(t, workspace)
 
-	endpoint, cleanup := startSeccompServerContainer(t, ctx, agentshBin, unixwrapBin, configPath, policiesDir, workspace)
+	endpoint, cleanup := startSeccompServerContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -507,7 +562,9 @@ func TestSeccompWrapperDisabled_WrapInitRefuses_WithPolicyLimits(t *testing.T) {
 		Mode:         "shim",
 	})
 	if wrapErr == nil {
-		t.Fatal("wrap-init succeeded with unix_sockets.enabled=false and policy limits (no cgroup config); expected 503 (regression #361 follow-up)")
+		t.Fatal(
+			"wrap-init succeeded with unix_sockets.enabled=false and policy limits (no cgroup config); expected 503 (regression #361 follow-up)",
+		)
 	}
 	var httpErr *client.HTTPError
 	if !errors.As(wrapErr, &httpErr) {
@@ -534,7 +591,11 @@ func TestSeccompWrapperDisabled_WrapInitRefuses_WithPolicyLimits(t *testing.T) {
 		t.Fatalf("Exec: %v", err)
 	}
 	if result.Result.ExitCode != 0 {
-		t.Errorf("expected exit 0, got %d (stderr=%q)", result.Result.ExitCode, result.Result.Stderr)
+		t.Errorf(
+			"expected exit 0, got %d (stderr=%q)",
+			result.Result.ExitCode,
+			result.Result.Stderr,
+		)
 	}
 	if want := "hello from unwrapped\n"; result.Result.Stdout != want {
 		t.Errorf("expected stdout %q, got %q", want, result.Result.Stdout)
@@ -592,14 +653,21 @@ func buildSeccompBinaries(t *testing.T) (agentsh, unixwrap string) {
 	return agentshOut, unixwrapOut
 }
 
-func startSeccompServerContainer(t *testing.T, ctx context.Context, agentshBin, unixwrapBin, configPath, policiesDir, workspace string) (string, func()) {
+func startSeccompServerContainer(
+	t *testing.T,
+	ctx context.Context,
+	agentshBin, unixwrapBin, configPath, policiesDir, workspace string,
+) (string, func()) {
 	t.Helper()
 
 	binds := []testcontainers.ContainerMount{
 		testcontainers.BindMount(agentshBin, "/usr/local/bin/agentsh"),
 		testcontainers.BindMount(unixwrapBin, "/usr/local/bin/agentsh-unixwrap"),
 		testcontainers.BindMount(configPath, "/config.yaml"),
-		testcontainers.BindMount(filepath.Join(filepath.Dir(configPath), "keys.yaml"), "/keys.yaml"),
+		testcontainers.BindMount(
+			filepath.Join(filepath.Dir(configPath), "keys.yaml"),
+			"/keys.yaml",
+		),
 		testcontainers.BindMount(policiesDir, "/policies"),
 		testcontainers.BindMount(workspace, "/workspace"),
 	}
@@ -663,7 +731,11 @@ func startSeccompServerContainer(t *testing.T, ctx context.Context, agentshBin, 
 // best-effort log capture) before we return or retry, so privileged
 // containers never leak across attempts or out to the caller (which
 // typically t.Fatal's and would skip cleanup itself).
-func startContainerWithRetry(t *testing.T, ctx context.Context, req testcontainers.GenericContainerRequest) (testcontainers.Container, error) {
+func startContainerWithRetry(
+	t *testing.T,
+	ctx context.Context,
+	req testcontainers.GenericContainerRequest,
+) (testcontainers.Container, error) {
 	t.Helper()
 	cleanup := func(c testcontainers.Container, logLabel string) {
 		if c == nil {
@@ -756,7 +828,10 @@ type fakeSessionClient struct {
 	getSession   func(ctx context.Context, id string) (types.Session, error)
 }
 
-func (f *fakeSessionClient) CreateSessionWithID(ctx context.Context, id, workspace, policy string) (types.Session, error) {
+func (f *fakeSessionClient) CreateSessionWithID(
+	ctx context.Context,
+	id, workspace, policy string,
+) (types.Session, error) {
 	return f.createWithID(ctx, id, workspace, policy)
 }
 
@@ -764,7 +839,11 @@ func (f *fakeSessionClient) GetSession(ctx context.Context, id string) (types.Se
 	return f.getSession(ctx, id)
 }
 
-func createSessionWithRetry(ctx context.Context, cli sessionCreator, workspace, policy string) (types.Session, error) {
+func createSessionWithRetry(
+	ctx context.Context,
+	cli sessionCreator,
+	workspace, policy string,
+) (types.Session, error) {
 	sessionID := fmt.Sprintf("session-%d", time.Now().UnixNano())
 	var err error
 	for attempt := 1; attempt <= 3; attempt++ {
@@ -915,7 +994,15 @@ func TestExecveInterception_DepthEnforcement(t *testing.T) {
 	mustMkdir(t, workspace)
 	writeFile(t, filepath.Join(workspace, "test.txt"), "test content")
 
-	endpoint, cleanup := startSeccompServerContainer(t, ctx, agentshBin, unixwrapBin, configPath, policiesDir, workspace)
+	endpoint, cleanup := startSeccompServerContainer(
+		t,
+		ctx,
+		agentshBin,
+		unixwrapBin,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	t.Cleanup(cleanup)
 
 	cli := client.New(endpoint, "test-key")
@@ -939,8 +1026,11 @@ func TestExecveInterception_DepthEnforcement(t *testing.T) {
 	probeCancel()
 
 	if probeErr != nil {
-		if errors.Is(probeErr, context.DeadlineExceeded) || strings.Contains(probeErr.Error(), "deadline exceeded") {
-			t.Skip("seccomp-user-notify appears to not be working in this environment (command timeout)")
+		if errors.Is(probeErr, context.DeadlineExceeded) ||
+			strings.Contains(probeErr.Error(), "deadline exceeded") {
+			t.Skip(
+				"seccomp-user-notify appears to not be working in this environment (command timeout)",
+			)
 		}
 		t.Fatalf("Exec probe: %v", probeErr)
 	}
@@ -965,7 +1055,11 @@ func TestExecveInterception_DepthEnforcement(t *testing.T) {
 			t.Fatalf("Exec direct cat: %v", err)
 		}
 		if result.Result.ExitCode != 0 {
-			t.Errorf("direct cat should succeed, got exit %d: %s", result.Result.ExitCode, result.Result.Stderr)
+			t.Errorf(
+				"direct cat should succeed, got exit %d: %s",
+				result.Result.ExitCode,
+				result.Result.Stderr,
+			)
 		}
 		if result.Result.Stdout != "test content" {
 			t.Errorf("expected 'test content', got %q", result.Result.Stdout)

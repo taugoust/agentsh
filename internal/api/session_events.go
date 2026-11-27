@@ -131,7 +131,10 @@ func (s *sessionEventStore) Ack(id string) bool {
 	return true
 }
 
-func (s *sessionEventStore) Answer(eventID string, answer sessionQuestionAnswer) (sessionQuestionAnswer, bool) {
+func (s *sessionEventStore) Answer(
+	eventID string,
+	answer sessionQuestionAnswer,
+) (sessionQuestionAnswer, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ev, ok := s.events[eventID]
@@ -159,7 +162,9 @@ func (s *sessionEventStore) Answer(eventID string, answer sessionQuestionAnswer)
 	return answer, true
 }
 
-func (s *sessionEventStore) GetAnswer(sessionID, questionnaireID string) (sessionQuestionAnswer, bool) {
+func (s *sessionEventStore) GetAnswer(
+	sessionID, questionnaireID string,
+) (sessionQuestionAnswer, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	answer, ok := s.answersByQuestionnaire[strings.TrimSpace(sessionID)+"\x00"+strings.TrimSpace(questionnaireID)]
@@ -176,7 +181,11 @@ func (a *App) publishSessionEvent(ev sessionEvent) sessionEvent {
 func (a *App) publishSessionEventForSession(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
 	if id == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing session id"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"ok": false, "error": "missing session id"},
+		)
 		return
 	}
 	if _, ok := a.sessions.Get(id); !ok {
@@ -190,7 +199,11 @@ func (a *App) publishSessionEventForSession(w http.ResponseWriter, r *http.Reque
 	}
 	ev.SessionID = id
 	if strings.TrimSpace(ev.Type) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing event type"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"ok": false, "error": "missing event type"},
+		)
 		return
 	}
 	if strings.TrimSpace(ev.Title) == "" {
@@ -204,7 +217,11 @@ func (a *App) getSessionQuestionAnswerForSession(w http.ResponseWriter, r *http.
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
 	qid := strings.TrimSpace(chi.URLParam(r, "qid"))
 	if id == "" || qid == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "missing session id or questionnaire id"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"ok": false, "error": "missing session id or questionnaire id"},
+		)
 		return
 	}
 	if _, ok := a.sessions.Get(id); !ok {
@@ -244,7 +261,11 @@ func (a *App) ackSessionEvent(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		return
 	}
-	if a.forwardDetachedRaw(r.Context(), escapedAPIPath("session-events", id, "ack"), []byte(`{}`)) {
+	if a.forwardDetachedRaw(
+		r.Context(),
+		escapedAPIPath("session-events", id, "ack"),
+		[]byte(`{}`),
+	) {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		return
 	}

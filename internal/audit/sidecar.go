@@ -57,13 +57,17 @@ func ReadSidecar(path string) (SidecarState, error) {
 	}
 	switch {
 	case disk.FormatVersion == nil || *disk.FormatVersion <= 0:
-		return SidecarState{}, wrapSidecarCorrupt(errors.New("parse sidecar: missing or invalid format_version"))
+		return SidecarState{}, wrapSidecarCorrupt(
+			errors.New("parse sidecar: missing or invalid format_version"),
+		)
 	case disk.Sequence == nil:
 		return SidecarState{}, wrapSidecarCorrupt(errors.New("parse sidecar: missing sequence"))
 	case disk.PrevHash == nil:
 		return SidecarState{}, wrapSidecarCorrupt(errors.New("parse sidecar: missing prev_hash"))
 	case disk.KeyFingerprint == nil || *disk.KeyFingerprint == "":
-		return SidecarState{}, wrapSidecarCorrupt(errors.New("parse sidecar: missing key_fingerprint"))
+		return SidecarState{}, wrapSidecarCorrupt(
+			errors.New("parse sidecar: missing key_fingerprint"),
+		)
 	}
 
 	state := SidecarState{
@@ -78,16 +82,24 @@ func ReadSidecar(path string) (SidecarState, error) {
 
 	switch {
 	case state.FormatVersion > IntegrityFormatVersion:
-		return SidecarState{}, wrapSidecarUnsupported(fmt.Errorf("parse sidecar: unsupported format_version %d", state.FormatVersion))
+		return SidecarState{}, wrapSidecarUnsupported(
+			fmt.Errorf("parse sidecar: unsupported format_version %d", state.FormatVersion),
+		)
 	case state.Sequence < -1:
 		return SidecarState{}, wrapSidecarCorrupt(errors.New("parse sidecar: invalid sequence"))
 	case state.Sequence < 0 && state.PrevHash != "":
-		return SidecarState{}, wrapSidecarCorrupt(errors.New("parse sidecar: negative sequence with non-empty prev_hash"))
+		return SidecarState{}, wrapSidecarCorrupt(
+			errors.New("parse sidecar: negative sequence with non-empty prev_hash"),
+		)
 	case state.Sequence >= 0 && state.PrevHash == "":
-		return SidecarState{}, wrapSidecarCorrupt(errors.New("parse sidecar: persisted sequence requires non-empty prev_hash"))
+		return SidecarState{}, wrapSidecarCorrupt(
+			errors.New("parse sidecar: persisted sequence requires non-empty prev_hash"),
+		)
 	case state.PrevHash != "":
 		if _, err := hex.DecodeString(state.PrevHash); err != nil {
-			return SidecarState{}, wrapSidecarCorrupt(errors.New("parse sidecar: invalid prev_hash"))
+			return SidecarState{}, wrapSidecarCorrupt(
+				errors.New("parse sidecar: invalid prev_hash"),
+			)
 		}
 	}
 

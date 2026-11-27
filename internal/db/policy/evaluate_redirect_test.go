@@ -38,8 +38,12 @@ func TestEvaluate_RedirectCoversResolvedRelation(t *testing.T) {
 	d.Redirect.SourceRelation = "mutated.source"
 	d.Redirect.TargetRelation = "mutated.target"
 	d = Evaluate(catalogResolvedRead("public", "users"), rs, "appdb")
-	if d.Redirect == nil || d.Redirect.SourceRelation != "public.users" || d.Redirect.TargetRelation != "public.safe_users" {
-		t.Fatalf("Redirect after prior decision mutation = %+v, want fresh public.users -> public.safe_users", d.Redirect)
+	if d.Redirect == nil || d.Redirect.SourceRelation != "public.users" ||
+		d.Redirect.TargetRelation != "public.safe_users" {
+		t.Fatalf(
+			"Redirect after prior decision mutation = %+v, want fresh public.users -> public.safe_users",
+			d.Redirect,
+		)
 	}
 }
 
@@ -147,13 +151,19 @@ func TestEvaluate_RedirectCoversOneRelationAndAllowCoversAnother(t *testing.T) {
 `))
 
 	stmt := catalogResolvedRead("public", "users")
-	stmt.Effects[0].Objects = append(stmt.Effects[0].Objects, effects.ObjectRef{Kind: effects.ObjectTable, Name: "orders"})
-	stmt.Effects[0].ResolvedObjects = append(stmt.Effects[0].ResolvedObjects, effects.ResolvedObjectRef{
-		Source: effects.ResolvedObjectSourceCatalog,
-		Kind:   effects.ResolvedObjectRelation,
-		Schema: "public",
-		Name:   "orders",
-	})
+	stmt.Effects[0].Objects = append(
+		stmt.Effects[0].Objects,
+		effects.ObjectRef{Kind: effects.ObjectTable, Name: "orders"},
+	)
+	stmt.Effects[0].ResolvedObjects = append(
+		stmt.Effects[0].ResolvedObjects,
+		effects.ResolvedObjectRef{
+			Source: effects.ResolvedObjectSourceCatalog,
+			Kind:   effects.ResolvedObjectRelation,
+			Schema: "public",
+			Name:   "orders",
+		},
+	)
 
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbRedirect || d.RuleName != "redirect-users" {
@@ -162,7 +172,8 @@ func TestEvaluate_RedirectCoversOneRelationAndAllowCoversAnother(t *testing.T) {
 	if d.Redirect == nil {
 		t.Fatal("Redirect metadata nil")
 	}
-	if d.Redirect.SourceRelation != "public.users" || d.Redirect.TargetRelation != "public.safe_users" {
+	if d.Redirect.SourceRelation != "public.users" ||
+		d.Redirect.TargetRelation != "public.safe_users" {
 		t.Fatalf("Redirect = %+v, want public.users -> public.safe_users", d.Redirect)
 	}
 }
@@ -188,13 +199,19 @@ func TestEvaluate_TwoRedirectCoveredRelationsImplicitDeny(t *testing.T) {
 `))
 
 	stmt := catalogResolvedRead("public", "users")
-	stmt.Effects[0].Objects = append(stmt.Effects[0].Objects, effects.ObjectRef{Kind: effects.ObjectTable, Name: "orders"})
-	stmt.Effects[0].ResolvedObjects = append(stmt.Effects[0].ResolvedObjects, effects.ResolvedObjectRef{
-		Source: effects.ResolvedObjectSourceCatalog,
-		Kind:   effects.ResolvedObjectRelation,
-		Schema: "public",
-		Name:   "orders",
-	})
+	stmt.Effects[0].Objects = append(
+		stmt.Effects[0].Objects,
+		effects.ObjectRef{Kind: effects.ObjectTable, Name: "orders"},
+	)
+	stmt.Effects[0].ResolvedObjects = append(
+		stmt.Effects[0].ResolvedObjects,
+		effects.ResolvedObjectRef{
+			Source: effects.ResolvedObjectSourceCatalog,
+			Kind:   effects.ResolvedObjectRelation,
+			Schema: "public",
+			Name:   "orders",
+		},
+	)
 
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbDeny || d.RuleName != "" {
@@ -218,13 +235,19 @@ func TestEvaluate_ImplicitDenyBeatsRedirect(t *testing.T) {
 `))
 
 	stmt := catalogResolvedRead("public", "users")
-	stmt.Effects[0].Objects = append(stmt.Effects[0].Objects, effects.ObjectRef{Kind: effects.ObjectTable, Name: "orders"})
-	stmt.Effects[0].ResolvedObjects = append(stmt.Effects[0].ResolvedObjects, effects.ResolvedObjectRef{
-		Source: effects.ResolvedObjectSourceCatalog,
-		Kind:   effects.ResolvedObjectRelation,
-		Schema: "public",
-		Name:   "orders",
-	})
+	stmt.Effects[0].Objects = append(
+		stmt.Effects[0].Objects,
+		effects.ObjectRef{Kind: effects.ObjectTable, Name: "orders"},
+	)
+	stmt.Effects[0].ResolvedObjects = append(
+		stmt.Effects[0].ResolvedObjects,
+		effects.ResolvedObjectRef{
+			Source: effects.ResolvedObjectSourceCatalog,
+			Kind:   effects.ResolvedObjectRelation,
+			Schema: "public",
+			Name:   "orders",
+		},
+	)
 
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbDeny || d.RuleName != "" {

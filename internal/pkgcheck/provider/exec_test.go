@@ -157,7 +157,11 @@ exit 0
 		Packages:  []pkgcheck.PackageRef{{Name: "test", Version: "1.0.0"}},
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Findings, "subprocess should not have access to parent environment variables")
+	assert.Empty(
+		t,
+		resp.Findings,
+		"subprocess should not have access to parent environment variables",
+	)
 }
 
 func TestExecProvider_ReadsStdin(t *testing.T) {

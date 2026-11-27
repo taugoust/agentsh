@@ -61,6 +61,10 @@ func TestFilter_NoMaxEnforcementLargeEnvNotRejected(t *testing.T) {
 		t.Error("denied var must be stripped")
 	}
 	if len(got) != 4 {
-		t.Errorf("large env must pass through (minus denied), not be rejected; got %d entries: %v", len(got), got)
+		t.Errorf(
+			"large env must pass through (minus denied), not be rejected; got %d entries: %v",
+			len(got),
+			got,
+		)
 	}
 }

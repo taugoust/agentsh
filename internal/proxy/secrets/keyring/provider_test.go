@@ -139,7 +139,11 @@ func TestFetch_RoundTrip(t *testing.T) {
 		t.Fatalf("second Fetch error: %v", err)
 	}
 	if string(sv2.Value) != want {
-		t.Errorf("mutating returned buffer affected provider state: got %q, want %q", sv2.Value, want)
+		t.Errorf(
+			"mutating returned buffer affected provider state: got %q, want %q",
+			sv2.Value,
+			want,
+		)
 	}
 }
 

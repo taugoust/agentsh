@@ -130,7 +130,10 @@ type plan11RedirectPlanner struct {
 	backend redirect.SQLBackend
 }
 
-func (p plan11RedirectPlanner) PlanRedirect(_ context.Context, input redirectRuntimeInput) (redirectRuntimePlan, error) {
+func (p plan11RedirectPlanner) PlanRedirect(
+	_ context.Context,
+	input redirectRuntimeInput,
+) (redirectRuntimePlan, error) {
 	if p.backend == nil {
 		return redirectRuntimePlan{}, fmt.Errorf("unsupported_redirect_dialect")
 	}

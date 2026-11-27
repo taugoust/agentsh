@@ -135,7 +135,9 @@ func (s *FileCheckpointStorage) Load(sessionID, checkpointID string) (*Checkpoin
 }
 
 // LoadMetadata retrieves full checkpoint metadata including file list.
-func (s *FileCheckpointStorage) LoadMetadata(sessionID, checkpointID string) (*CheckpointMetadata, error) {
+func (s *FileCheckpointStorage) LoadMetadata(
+	sessionID, checkpointID string,
+) (*CheckpointMetadata, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -217,7 +219,11 @@ func (s *FileCheckpointStorage) Delete(sessionID, checkpointID string) error {
 
 // CreateSnapshot backs up specified files to checkpoint storage.
 // If files is nil, backs up the entire workspace.
-func (s *FileCheckpointStorage) CreateSnapshot(sessionID, checkpointID string, files []string, workspacePath string) error {
+func (s *FileCheckpointStorage) CreateSnapshot(
+	sessionID, checkpointID string,
+	files []string,
+	workspacePath string,
+) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -339,7 +345,10 @@ func (s *FileCheckpointStorage) CreateSnapshot(sessionID, checkpointID string, f
 
 // Rollback restores files from checkpoint to workspace.
 // Returns list of restored file paths.
-func (s *FileCheckpointStorage) Rollback(sessionID, checkpointID string, workspacePath string) ([]string, error) {
+func (s *FileCheckpointStorage) Rollback(
+	sessionID, checkpointID string,
+	workspacePath string,
+) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -390,7 +399,10 @@ func (s *FileCheckpointStorage) Rollback(sessionID, checkpointID string, workspa
 }
 
 // Diff returns files that changed between checkpoint and current workspace.
-func (s *FileCheckpointStorage) Diff(sessionID, checkpointID string, workspacePath string) ([]FileDiff, error) {
+func (s *FileCheckpointStorage) Diff(
+	sessionID, checkpointID string,
+	workspacePath string,
+) ([]FileDiff, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -480,7 +492,11 @@ func (s *FileCheckpointStorage) Diff(sessionID, checkpointID string, workspacePa
 }
 
 // Purge removes checkpoints older than maxAge or exceeding count limit.
-func (s *FileCheckpointStorage) Purge(sessionID string, maxAge time.Duration, maxCount int) (int, error) {
+func (s *FileCheckpointStorage) Purge(
+	sessionID string,
+	maxAge time.Duration,
+	maxCount int,
+) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -579,7 +595,9 @@ func (s *FileCheckpointStorage) listLocked(sessionID string) ([]*Checkpoint, err
 }
 
 // loadMetadataLocked loads metadata without locking (caller must hold lock).
-func (s *FileCheckpointStorage) loadMetadataLocked(sessionID, checkpointID string) (*CheckpointMetadata, error) {
+func (s *FileCheckpointStorage) loadMetadataLocked(
+	sessionID, checkpointID string,
+) (*CheckpointMetadata, error) {
 	metaPath := s.metadataPath(sessionID, checkpointID)
 	data, err := os.ReadFile(metaPath)
 	if err != nil {

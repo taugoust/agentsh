@@ -140,9 +140,23 @@ func TestDenyPrecedenceWhenHomeEqualsProjectRoot(t *testing.T) {
 		t.Run(tt.desc, func(t *testing.T) {
 			dec := engine.CheckFile(tt.path, tt.operation)
 			if tt.wantDeny {
-				assert.Equal(t, "deny", string(dec.PolicyDecision), "expected deny for %s %s", tt.operation, tt.path)
+				assert.Equal(
+					t,
+					"deny",
+					string(dec.PolicyDecision),
+					"expected deny for %s %s",
+					tt.operation,
+					tt.path,
+				)
 			} else {
-				assert.Equal(t, "allow", string(dec.PolicyDecision), "expected allow for %s %s", tt.operation, tt.path)
+				assert.Equal(
+					t,
+					"allow",
+					string(dec.PolicyDecision),
+					"expected allow for %s %s",
+					tt.operation,
+					tt.path,
+				)
 			}
 		})
 	}
@@ -185,7 +199,10 @@ func TestNewEngineWithVariables_CommandRulesCommandExpansion(t *testing.T) {
 	engine, err := NewEngineWithVariables(p, false, true, vars)
 	require.NoError(t, err)
 
-	decision := engine.CheckCommand("/var/lib/agentsh/workspaces/session-123/work/result/bin/txlat", []string{"--help"})
+	decision := engine.CheckCommand(
+		"/var/lib/agentsh/workspaces/session-123/work/result/bin/txlat",
+		[]string{"--help"},
+	)
 	assert.Equal(t, "allow", string(decision.PolicyDecision))
 	assert.Equal(t, "allow-project-root-executables", decision.Rule)
 
@@ -198,7 +215,10 @@ func TestNewEngineWithVariables_CommandRulesCommandExpansion(t *testing.T) {
 	assert.Equal(t, "allow", string(decision.PolicyDecision))
 	assert.Equal(t, "allow-project-root-executables", decision.Rule)
 
-	decision = engine.CheckCommand("/var/lib/agentsh/workspaces/session-456/work/result/bin/txlat", []string{"--help"})
+	decision = engine.CheckCommand(
+		"/var/lib/agentsh/workspaces/session-456/work/result/bin/txlat",
+		[]string{"--help"},
+	)
 	assert.Equal(t, "deny", string(decision.PolicyDecision))
 
 	decision = engine.CheckExecve("/nix/store/hash-tool/bin/some-tool", []string{"some-tool"}, 0)

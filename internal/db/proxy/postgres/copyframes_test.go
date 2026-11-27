@@ -27,7 +27,10 @@ func copyLoopFixture(t *testing.T) (*proxyConn, *pgproto3.Frontend, *pgproto3.Ba
 
 func TestCopyLoop_BulkLoad_PassesBytesAndExitsOnCopyDone(t *testing.T) {
 	pc, clientFE, upstreamBE := copyLoopFixture(t)
-	pc.state.smState = &statemachine.ConnState{LastUpstreamRFQ: 'I', Phase: statemachine.PhaseInCopyIn}
+	pc.state.smState = &statemachine.ConnState{
+		LastUpstreamRFQ: 'I',
+		Phase:           statemachine.PhaseInCopyIn,
+	}
 
 	clientDrain := make(chan struct{})
 	go func() {
@@ -90,7 +93,10 @@ func TestCopyLoop_BulkLoad_PassesBytesAndExitsOnCopyDone(t *testing.T) {
 
 func TestCopyLoop_BulkExport_PassesUpstreamBytes(t *testing.T) {
 	pc, clientFE, upstreamBE := copyLoopFixture(t)
-	pc.state.smState = &statemachine.ConnState{LastUpstreamRFQ: 'I', Phase: statemachine.PhaseInCopyOut}
+	pc.state.smState = &statemachine.ConnState{
+		LastUpstreamRFQ: 'I',
+		Phase:           statemachine.PhaseInCopyOut,
+	}
 
 	gotClient := make(chan []byte, 1)
 	go func() {
@@ -132,7 +138,10 @@ func TestCopyLoop_BulkExport_PassesUpstreamBytes(t *testing.T) {
 
 func TestCopyLoop_BulkLoad_ClientTerminateSendsCopyFail(t *testing.T) {
 	pc, clientFE, upstreamBE := copyLoopFixture(t)
-	pc.state.smState = &statemachine.ConnState{LastUpstreamRFQ: 'I', Phase: statemachine.PhaseInCopyIn}
+	pc.state.smState = &statemachine.ConnState{
+		LastUpstreamRFQ: 'I',
+		Phase:           statemachine.PhaseInCopyIn,
+	}
 
 	sawCopyFail := make(chan bool, 1)
 	go func() {
@@ -166,7 +175,10 @@ func TestCopyLoop_BulkLoad_ClientTerminateSendsCopyFail(t *testing.T) {
 
 func TestCopyLoop_BulkExport_MidCopyErrorResponse_ExitsCleanly(t *testing.T) {
 	pc, clientFE, upstreamBE := copyLoopFixture(t)
-	pc.state.smState = &statemachine.ConnState{LastUpstreamRFQ: 'I', Phase: statemachine.PhaseInCopyOut}
+	pc.state.smState = &statemachine.ConnState{
+		LastUpstreamRFQ: 'I',
+		Phase:           statemachine.PhaseInCopyOut,
+	}
 
 	go func() {
 		for i := 0; i < 3; i++ {
@@ -178,7 +190,9 @@ func TestCopyLoop_BulkExport_MidCopyErrorResponse_ExitsCleanly(t *testing.T) {
 
 	go func() {
 		upstreamBE.Send(&pgproto3.CopyData{Data: []byte("partial")})
-		upstreamBE.Send(&pgproto3.ErrorResponse{Severity: "ERROR", Code: "57014", Message: "canceled"})
+		upstreamBE.Send(
+			&pgproto3.ErrorResponse{Severity: "ERROR", Code: "57014", Message: "canceled"},
+		)
 		upstreamBE.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
 		_ = upstreamBE.Flush()
 	}()

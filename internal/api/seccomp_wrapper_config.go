@@ -125,16 +125,26 @@ type seccompWrapperParams struct {
 	FileLookupWorkerPath      string
 }
 
-func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperParams) seccompWrapperConfig {
+func (a *App) buildSeccompWrapperConfig(
+	s *session.Session,
+	p seccompWrapperParams,
+) seccompWrapperConfig {
 	blockedSyscalls, onBlock, err := config.EffectiveSyscallBlock(a.cfg.Sandbox.Seccomp)
 	if err != nil {
-		slog.Warn("seccomp: failed to resolve effective syscall block list; syscall rules will not be blocked", "error", err)
+		slog.Warn(
+			"seccomp: failed to resolve effective syscall block list; syscall rules will not be blocked",
+			"error",
+			err,
+		)
 	}
 	seccompCfg := seccompWrapperConfig{
-		UnixSocketEnabled:    p.UnixSocketEnabled,
-		SignalFilterEnabled:  p.SignalFilterEnabled,
-		ExecveEnabled:        p.ExecveEnabled,
-		FileMonitorEnabled:   config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.Enabled, false),
+		UnixSocketEnabled:   p.UnixSocketEnabled,
+		SignalFilterEnabled: p.SignalFilterEnabled,
+		ExecveEnabled:       p.ExecveEnabled,
+		FileMonitorEnabled: config.FileMonitorBoolWithDefault(
+			a.cfg.Sandbox.Seccomp.FileMonitor.Enabled,
+			false,
+		),
 		BlockedSyscalls:      blockedSyscalls,
 		OnBlock:              onBlock,
 		ServerPID:            os.Getpid(),
@@ -145,13 +155,21 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 	// Resolve and forward blocked socket families.
 	families, err := config.ResolveEffectiveBlockedFamilies(a.cfg.Sandbox.Seccomp)
 	if err != nil {
-		slog.Warn("seccomp: failed to resolve blocked_socket_families; families will not be blocked", "error", err)
+		slog.Warn(
+			"seccomp: failed to resolve blocked_socket_families; families will not be blocked",
+			"error",
+			err,
+		)
 	} else {
 		seccompCfg.BlockedFamilies = families
 	}
 
 	if rules, err := config.ResolveSocketRules(a.cfg.Sandbox.Seccomp); err != nil {
-		slog.Warn("seccomp: failed to resolve socket_rules; socket rules will not be blocked", "error", err)
+		slog.Warn(
+			"seccomp: failed to resolve socket_rules; socket rules will not be blocked",
+			"error",
+			err,
+		)
 	} else {
 		seccompCfg.SocketRules = rules
 	}
@@ -159,15 +177,24 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 		appendProxyRequiredUnsupportedTrafficRules(&seccompCfg)
 	}
 
-	fmDefault := config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE, false)
-	seccompCfg.InterceptMetadata = config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.InterceptMetadata, fmDefault)
+	fmDefault := config.FileMonitorBoolWithDefault(
+		a.cfg.Sandbox.Seccomp.FileMonitor.EnforceWithoutFUSE,
+		false,
+	)
+	seccompCfg.InterceptMetadata = config.FileMonitorBoolWithDefault(
+		a.cfg.Sandbox.Seccomp.FileMonitor.InterceptMetadata,
+		fmDefault,
+	)
 	if seccompCfg.FileMonitorEnabled {
 		seccompCfg.WriteOnlyOpens = config.FileMonitorBoolWithDefault(
 			a.cfg.Sandbox.Seccomp.FileMonitor.WriteOnlyOpens,
 			!seccompCfg.InterceptMetadata,
 		)
 	}
-	seccompCfg.BlockIOUring = config.FileMonitorBoolWithDefault(a.cfg.Sandbox.Seccomp.FileMonitor.BlockIOUring, fmDefault)
+	seccompCfg.BlockIOUring = config.FileMonitorBoolWithDefault(
+		a.cfg.Sandbox.Seccomp.FileMonitor.BlockIOUring,
+		fmDefault,
+	)
 
 	// Pass the boot-time decision to every wrapper. The pointer is
 	// per-exec; the bool storage is the server-process App field. Issue #369.
@@ -190,10 +217,14 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 			seccompCfg.LandlockABI = llResult.ABI
 			seccompCfg.Workspace = workspace
 
-			seccompCfg.AllowExecute, seccompCfg.AllowRead, seccompCfg.AllowWrite = a.deriveLandlockAllowPaths(s)
+			seccompCfg.AllowExecute, seccompCfg.AllowRead, seccompCfg.AllowWrite = a.deriveLandlockAllowPaths(
+				s,
+			)
 			seccompCfg.AllowList = a.deriveLandlockBaseListPaths(s)
 			appendRuntimeLandlockPaths(&seccompCfg, s)
-			seccompCfg.AllowExecute = append(seccompCfg.AllowExecute, a.cfg.Landlock.AllowExecute...)
+			seccompCfg.AllowExecute = append(
+				seccompCfg.AllowExecute,
+				a.cfg.Landlock.AllowExecute...)
 			seccompCfg.AllowRead = append(seccompCfg.AllowRead, a.cfg.Landlock.AllowRead...)
 			seccompCfg.AllowWrite = append(seccompCfg.AllowWrite, a.cfg.Landlock.AllowWrite...)
 			seccompCfg.DenyPaths = append(seccompCfg.DenyPaths, a.cfg.Landlock.DenyPaths...)
@@ -202,12 +233,20 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 			// ordinary commands preserve their existing Landlock contract.
 			if s != nil && compositionMode == bubblewrapCompositionMode {
 				seccompCfg.SandboxComposition = bubblewrapCompositionMode
-				seccompCfg.CompositionAllowExecute, seccompCfg.CompositionAllowRead, seccompCfg.CompositionAllowWrite = a.deriveLandlockBaseAllowPaths(s)
+				seccompCfg.CompositionAllowExecute, seccompCfg.CompositionAllowRead, seccompCfg.CompositionAllowWrite = a.deriveLandlockBaseAllowPaths(
+					s,
+				)
 				seccompCfg.CompositionAllowList = a.deriveLandlockBaseListPaths(s)
 				appendRuntimeCompositionPaths(&seccompCfg, s)
-				seccompCfg.CompositionAllowExecute = append(seccompCfg.CompositionAllowExecute, a.cfg.Landlock.AllowExecute...)
-				seccompCfg.CompositionAllowRead = append(seccompCfg.CompositionAllowRead, a.cfg.Landlock.AllowRead...)
-				seccompCfg.CompositionAllowWrite = append(seccompCfg.CompositionAllowWrite, a.cfg.Landlock.AllowWrite...)
+				seccompCfg.CompositionAllowExecute = append(
+					seccompCfg.CompositionAllowExecute,
+					a.cfg.Landlock.AllowExecute...)
+				seccompCfg.CompositionAllowRead = append(
+					seccompCfg.CompositionAllowRead,
+					a.cfg.Landlock.AllowRead...)
+				seccompCfg.CompositionAllowWrite = append(
+					seccompCfg.CompositionAllowWrite,
+					a.cfg.Landlock.AllowWrite...)
 				if scratchRoot, err := a.compositionScratchRoot(); err == nil {
 					controlRoot := scratchRoot
 					if a.cfg.Sandbox.Composition.Bubblewrap.ScratchRoot == config.CompositionScratchRootAuto {
@@ -216,12 +255,18 @@ func (a *App) buildSeccompWrapperConfig(s *session.Session, p seccompWrapperPara
 					if err == nil {
 						seccompCfg.CompositionScratchRoot = scratchRoot
 						seccompCfg.CompositionControlRoot = controlRoot
-						seccompCfg.DenyPaths = append([]string{controlRoot}, seccompCfg.DenyPaths...)
+						seccompCfg.DenyPaths = append(
+							[]string{controlRoot},
+							seccompCfg.DenyPaths...)
 					} else {
 						slog.Warn("composition control runtime has invalid topology", "error", err)
 					}
 				} else {
-					slog.Warn("composition runtime became unavailable while building the command boundary", "error", err)
+					slog.Warn(
+						"composition runtime became unavailable while building the command boundary",
+						"error",
+						err,
+					)
 				}
 				seccompCfg.CompositionSyntheticMounts = a.cfg.Sandbox.Composition.Bubblewrap.MaxSyntheticMounts
 				seccompCfg.CompositionMaxTransitions = a.cfg.Sandbox.Composition.Bubblewrap.MaxNamespaceTransitions
@@ -342,8 +387,24 @@ func appendProxyRequiredUnsupportedTrafficRules(cfg *seccompWrapperConfig) {
 	addRule("agentsh-proxy-required-raw-ipv6", "AF_INET6", afINET6, sockRAW, "SOCK_RAW", nil, "")
 	icmp := ipprotoICMP
 	icmp6 := ipprotoICMP6
-	addRule("agentsh-proxy-required-icmp-dgram-ipv4", "AF_INET", afINET, sockDGRAM, "SOCK_DGRAM", &icmp, "IPPROTO_ICMP")
-	addRule("agentsh-proxy-required-icmp-dgram-ipv6", "AF_INET6", afINET6, sockDGRAM, "SOCK_DGRAM", &icmp6, "IPPROTO_ICMPV6")
+	addRule(
+		"agentsh-proxy-required-icmp-dgram-ipv4",
+		"AF_INET",
+		afINET,
+		sockDGRAM,
+		"SOCK_DGRAM",
+		&icmp,
+		"IPPROTO_ICMP",
+	)
+	addRule(
+		"agentsh-proxy-required-icmp-dgram-ipv6",
+		"AF_INET6",
+		afINET6,
+		sockDGRAM,
+		"SOCK_DGRAM",
+		&icmp6,
+		"IPPROTO_ICMPV6",
+	)
 }
 
 // proxyRequiredRawSocketRulesConfigured verifies the fixed kernel-side
@@ -369,7 +430,9 @@ func proxyRequiredRawSocketRulesConfigured(cfg *seccompWrapperConfig) bool {
 	}
 	rawDenied := func(family int) bool {
 		for _, rule := range cfg.SocketRules {
-			if rule.Family == family && rule.Type != nil && *rule.Type == sockRAW && rule.Protocol == nil && rule.Action == seccompkg.OnBlockErrno {
+			if rule.Family == family && rule.Type != nil && *rule.Type == sockRAW &&
+				rule.Protocol == nil &&
+				rule.Action == seccompkg.OnBlockErrno {
 				return true
 			}
 		}

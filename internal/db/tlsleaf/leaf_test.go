@@ -25,7 +25,9 @@ func TestIssueLeaf_SignedByCA(t *testing.T) {
 	}
 	pool := x509.NewCertPool()
 	pool.AddCert(ca.Cert())
-	if _, err := parsed.Verify(x509.VerifyOptions{Roots: pool, DNSName: "db.internal"}); err != nil {
+	if _, err := parsed.Verify(
+		x509.VerifyOptions{Roots: pool, DNSName: "db.internal"},
+	); err != nil {
 		t.Fatalf("verify leaf against CA: %v", err)
 	}
 }

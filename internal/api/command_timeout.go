@@ -45,13 +45,19 @@ type commandTimeoutExtender struct {
 	stopped         bool
 }
 
-func withExtendableCommandTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+func withExtendableCommandTimeout(
+	parent context.Context,
+	timeout time.Duration,
+) (context.Context, context.CancelFunc) {
 	baseCtx, extender := newCommandTimeoutExtender(parent, timeout)
 	ctx := approvals.WithCommandTimeoutExtension(baseCtx, extender.extend)
 	return ctx, extender.cancelContext
 }
 
-func newCommandTimeoutExtender(parent context.Context, timeout time.Duration) (context.Context, *commandTimeoutExtender) {
+func newCommandTimeoutExtender(
+	parent context.Context,
+	timeout time.Duration,
+) (context.Context, *commandTimeoutExtender) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -104,7 +110,10 @@ func (e *commandTimeoutExtender) cancelFromParent() {
 	e.finishLocked(commandTerminalParentCancelled, cause)
 }
 
-func (e *commandTimeoutExtender) timeoutWinsOverParentLocked(now time.Time, parentCause error) bool {
+func (e *commandTimeoutExtender) timeoutWinsOverParentLocked(
+	now time.Time,
+	parentCause error,
+) bool {
 	if e.deadline.IsZero() || now.Before(e.deadline) {
 		return false
 	}
@@ -298,11 +307,17 @@ func parseCommandTimeout(req types.ExecRequest) (commandtimeout.ParsedRequest, e
 	return commandtimeout.ParseRequest(&req.Timeout)
 }
 
-func resolveParsedCommandTimeout(requested commandtimeout.ParsedRequest, policyLimit time.Duration) commandtimeout.Resolution {
+func resolveParsedCommandTimeout(
+	requested commandtimeout.ParsedRequest,
+	policyLimit time.Duration,
+) commandtimeout.Resolution {
 	return commandtimeout.ResolveParsed(requested, policyLimit)
 }
 
-func resolveCommandTimeout(req types.ExecRequest, policyLimit time.Duration) (commandtimeout.Resolution, error) {
+func resolveCommandTimeout(
+	req types.ExecRequest,
+	policyLimit time.Duration,
+) (commandtimeout.Resolution, error) {
 	requested, err := parseCommandTimeout(req)
 	if err != nil {
 		return commandtimeout.Resolution{}, err
@@ -310,13 +325,19 @@ func resolveCommandTimeout(req types.ExecRequest, policyLimit time.Duration) (co
 	return resolveParsedCommandTimeout(requested, policyLimit), nil
 }
 
-func (a *App) resolveParsedCommandTimeout(requested commandtimeout.ParsedRequest, policyLimit time.Duration) commandtimeout.Resolution {
+func (a *App) resolveParsedCommandTimeout(
+	requested commandtimeout.ParsedRequest,
+	policyLimit time.Duration,
+) commandtimeout.Resolution {
 	resolution := resolveParsedCommandTimeout(requested, policyLimit)
 	resolution.Metadata.ApprovalExtensionMS = approvalExtensionMilliseconds(a.approvals)
 	return resolution
 }
 
-func (a *App) resolveCommandTimeout(req types.ExecRequest, policyLimit time.Duration) (commandtimeout.Resolution, error) {
+func (a *App) resolveCommandTimeout(
+	req types.ExecRequest,
+	policyLimit time.Duration,
+) (commandtimeout.Resolution, error) {
 	requested, err := parseCommandTimeout(req)
 	if err != nil {
 		return commandtimeout.Resolution{}, err

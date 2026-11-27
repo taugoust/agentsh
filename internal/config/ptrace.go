@@ -68,11 +68,16 @@ func (c *SandboxPtraceConfig) Validate() error {
 	switch c.AttachMode {
 	case "children", "pid":
 	default:
-		return fmt.Errorf("sandbox.ptrace.attach_mode: invalid value %q (must be \"children\" or \"pid\")", c.AttachMode)
+		return fmt.Errorf(
+			"sandbox.ptrace.attach_mode: invalid value %q (must be \"children\" or \"pid\")",
+			c.AttachMode,
+		)
 	}
 
 	if c.AttachMode == "pid" && c.TargetPID <= 0 && c.TargetPIDFile == "" {
-		return fmt.Errorf("sandbox.ptrace: attach_mode \"pid\" requires target_pid or target_pid_file")
+		return fmt.Errorf(
+			"sandbox.ptrace: attach_mode \"pid\" requires target_pid or target_pid_file",
+		)
 	}
 
 	switch c.OnAttachFailure {
@@ -82,7 +87,10 @@ func (c *SandboxPtraceConfig) Validate() error {
 	}
 
 	if c.MaskTracerPid != "off" {
-		return fmt.Errorf("sandbox.ptrace.mask_tracer_pid: %q not supported in this version (use \"off\")", c.MaskTracerPid)
+		return fmt.Errorf(
+			"sandbox.ptrace.mask_tracer_pid: %q not supported in this version (use \"off\")",
+			c.MaskTracerPid,
+		)
 	}
 
 	if c.Performance.MaxHoldMs <= 0 {

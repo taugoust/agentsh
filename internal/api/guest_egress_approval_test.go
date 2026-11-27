@@ -32,7 +32,10 @@ func TestValidateGuestEgressApprovalRequest(t *testing.T) {
 }
 
 func TestGuestEgressDelegationsPinDraftIndependently(t *testing.T) {
-	a := &App{approvals: approvals.New("remote", 0, nil), guestEgressApprovalDelegations: make(map[[32]byte]*guestEgressApprovalDelegation)}
+	a := &App{
+		approvals:                      approvals.New("remote", 0, nil),
+		guestEgressApprovalDelegations: make(map[[32]byte]*guestEgressApprovalDelegation),
+	}
 	_, firstDigest, err := mintChildCapabilityToken()
 	if err != nil {
 		t.Fatal(err)
@@ -43,8 +46,16 @@ func TestGuestEgressDelegationsPinDraftIndependently(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	a.guestEgressApprovalDelegations[firstDigest] = &guestEgressApprovalDelegation{digest: firstDigest, lifecycle: ctx, cancel: cancel}
-	a.guestEgressApprovalDelegations[secondDigest] = &guestEgressApprovalDelegation{digest: secondDigest, lifecycle: ctx, cancel: cancel}
+	a.guestEgressApprovalDelegations[firstDigest] = &guestEgressApprovalDelegation{
+		digest:    firstDigest,
+		lifecycle: ctx,
+		cancel:    cancel,
+	}
+	a.guestEgressApprovalDelegations[secondDigest] = &guestEgressApprovalDelegation{
+		digest:    secondDigest,
+		lifecycle: ctx,
+		cancel:    cancel,
+	}
 	first := *a.guestEgressApprovalDelegations[firstDigest]
 	second := *a.guestEgressApprovalDelegations[secondDigest]
 	one := "session-11111111-1111-1111-1111-111111111111"

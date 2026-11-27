@@ -38,7 +38,9 @@ type ResolvedServices struct {
 
 // ResolveProviderConfigs decodes policy YAML provider nodes into
 // typed ProviderConfig values suitable for secrets.NewRegistry.
-func ResolveProviderConfigs(providers map[string]yaml.Node) (map[string]secrets.ProviderConfig, error) {
+func ResolveProviderConfigs(
+	providers map[string]yaml.Node,
+) (map[string]secrets.ProviderConfig, error) {
 	if len(providers) == 0 {
 		return nil, nil
 	}
@@ -325,6 +327,9 @@ func decodeOPConfig(node yaml.Node) (secrets.ProviderConfig, error) {
 // BuildSecretsRegistry creates a provider registry from the resolved
 // config and returns a SecretFetcher. Convenience wrapper around
 // secrets.NewRegistry.
-func BuildSecretsRegistry(ctx context.Context, configs map[string]secrets.ProviderConfig) (*secrets.Registry, error) {
+func BuildSecretsRegistry(
+	ctx context.Context,
+	configs map[string]secrets.ProviderConfig,
+) (*secrets.Registry, error) {
 	return secrets.NewRegistry(ctx, configs, DefaultConstructors())
 }

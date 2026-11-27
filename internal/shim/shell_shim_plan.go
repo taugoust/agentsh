@@ -83,7 +83,9 @@ func planInstallOne(root, name string, shimBytes []byte) []ShellShimAction {
 		if os.IsNotExist(err) {
 			return []ShellShimAction{{Op: "skip", Path: target, Note: "target missing"}}
 		}
-		return []ShellShimAction{{Op: "note", Path: target, Note: fmt.Sprintf("stat failed: %v", err)}}
+		return []ShellShimAction{
+			{Op: "note", Path: target, Note: fmt.Sprintf("stat failed: %v", err)},
+		}
 	}
 
 	actions := []ShellShimAction{}
@@ -92,7 +94,10 @@ func planInstallOne(root, name string, shimBytes []byte) []ShellShimAction {
 		if os.IsNotExist(err) {
 			realExists = false
 		} else {
-			actions = append(actions, ShellShimAction{Op: "note", Path: real, Note: fmt.Sprintf("stat failed: %v", err)})
+			actions = append(
+				actions,
+				ShellShimAction{Op: "note", Path: real, Note: fmt.Sprintf("stat failed: %v", err)},
+			)
 		}
 	}
 
@@ -109,7 +114,10 @@ func planInstallOne(root, name string, shimBytes []byte) []ShellShimAction {
 	}
 
 	if sameFileContents(target, shimBytes) {
-		actions = append(actions, ShellShimAction{Op: "note", Path: target, Note: "shim already installed"})
+		actions = append(
+			actions,
+			ShellShimAction{Op: "note", Path: target, Note: "shim already installed"},
+		)
 		return actions
 	}
 	actions = append(actions, ShellShimAction{Op: "write", Path: target, Note: "write shim bytes"})
@@ -124,7 +132,9 @@ func planUninstallOne(root, name string) []ShellShimAction {
 		if os.IsNotExist(err) {
 			return []ShellShimAction{{Op: "skip", Path: real, Note: ".real missing"}}
 		}
-		return []ShellShimAction{{Op: "note", Path: real, Note: fmt.Sprintf("stat failed: %v", err)}}
+		return []ShellShimAction{
+			{Op: "note", Path: real, Note: fmt.Sprintf("stat failed: %v", err)},
+		}
 	}
 	return []ShellShimAction{
 		{Op: "remove", Path: target, Note: "remove current target (best effort)"},

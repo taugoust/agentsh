@@ -46,7 +46,9 @@ func TestStore_ServerRestart_AcksCatchUp(t *testing.T) {
 		BatchMaxAge:     30 * time.Millisecond,
 		AllowStubMapper: true,
 		Dialer:          router,
-		Logger:          slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New: %v", err)
@@ -108,8 +110,19 @@ func TestStore_ServerRestart_AcksCatchUp(t *testing.T) {
 				seqs = append(seqs, ev.GetSequence())
 			}
 		}
-		t.Logf("  batch %d: from=%d to=%d gen=%d seqs=%v", i, b.GetFromSequence(), b.GetToSequence(), b.GetGeneration(), seqs)
+		t.Logf(
+			"  batch %d: from=%d to=%d gen=%d seqs=%v",
+			i,
+			b.GetFromSequence(),
+			b.GetToSequence(),
+			b.GetGeneration(),
+			seqs,
+		)
 	}
 	t.Logf("store Err()=%v", s.Err())
-	t.Fatalf("srv2 did not observe all %d sequences after restart: %v", total, srv2.AssertReplayObserved(1, total))
+	t.Fatalf(
+		"srv2 did not observe all %d sequences after restart: %v",
+		total,
+		srv2.AssertReplayObserved(1, total),
+	)
 }

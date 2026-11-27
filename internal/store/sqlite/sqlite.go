@@ -570,8 +570,12 @@ func (s *Store) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Ev
 		offset = 0
 	}
 
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT payload_json FROM events WHERE `+strings.Join(where, " AND ")+` ORDER BY ts_unix_ns `+order+` LIMIT ? OFFSET ?`,
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT payload_json FROM events WHERE `+strings.Join(
+			where,
+			" AND ",
+		)+` ORDER BY ts_unix_ns `+order+` LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...,
 	)
 	if err != nil {
@@ -597,7 +601,13 @@ func (s *Store) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Ev
 	return out, nil
 }
 
-func (s *Store) SaveOutput(ctx context.Context, sessionID, commandID string, stdout, stderr []byte, stdoutTotal, stderrTotal int64, stdoutTrunc, stderrTrunc bool) error {
+func (s *Store) SaveOutput(
+	ctx context.Context,
+	sessionID, commandID string,
+	stdout, stderr []byte,
+	stdoutTotal, stderrTotal int64,
+	stdoutTrunc, stderrTrunc bool,
+) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT OR REPLACE INTO command_outputs(
 			command_id, session_id, stdout, stderr,
@@ -621,7 +631,12 @@ func (s *Store) SaveOutput(ctx context.Context, sessionID, commandID string, std
 	return nil
 }
 
-func (s *Store) ReadOutputChunk(ctx context.Context, commandID string, stream string, offset, limit int64) ([]byte, int64, bool, error) {
+func (s *Store) ReadOutputChunk(
+	ctx context.Context,
+	commandID string,
+	stream string,
+	offset, limit int64,
+) ([]byte, int64, bool, error) {
 	if limit <= 0 || limit > 10*1024*1024 {
 		limit = 64 * 1024
 	}
@@ -637,7 +652,11 @@ func (s *Store) ReadOutputChunk(ctx context.Context, commandID string, stream st
 	var total int64
 	var truncatedInt int
 
-	row := s.db.QueryRowContext(ctx, `SELECT `+stream+`, `+stream+`_total_bytes, `+stream+`_truncated FROM command_outputs WHERE command_id = ?`, commandID)
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT `+stream+`, `+stream+`_total_bytes, `+stream+`_truncated FROM command_outputs WHERE command_id = ?`,
+		commandID,
+	)
 	if err := row.Scan(&data, &total, &truncatedInt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, 0, false, fmt.Errorf("output not found")
@@ -703,9 +722,13 @@ func (s *Store) ListMCPTools(ctx context.Context, filter MCPToolFilter) ([]MCPTo
 		where = append(where, "detection_count > 0")
 	}
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.db.QueryContext(
+		ctx,
 		`SELECT server_id, tool_name, tool_hash, description, first_seen_ns, last_seen_ns, pinned, detection_count, max_severity
-		 FROM mcp_tools WHERE `+strings.Join(where, " AND ")+` ORDER BY server_id, tool_name`,
+		 FROM mcp_tools WHERE `+strings.Join(
+			where,
+			" AND ",
+		)+` ORDER BY server_id, tool_name`,
 		args...,
 	)
 	if err != nil {
@@ -721,7 +744,17 @@ func (s *Store) ListMCPTools(ctx context.Context, filter MCPToolFilter) ([]MCPTo
 		var firstNs, lastNs int64
 		var pinned int
 
-		if err := rows.Scan(&t.ServerID, &t.ToolName, &t.ToolHash, &desc, &firstNs, &lastNs, &pinned, &t.DetectionCount, &severity); err != nil {
+		if err := rows.Scan(
+			&t.ServerID,
+			&t.ToolName,
+			&t.ToolHash,
+			&desc,
+			&firstNs,
+			&lastNs,
+			&pinned,
+			&t.DetectionCount,
+			&severity,
+		); err != nil {
 			return nil, fmt.Errorf("scan mcp tool: %w", err)
 		}
 		t.Description = desc.String
@@ -751,7 +784,12 @@ func (s *Store) ListMCPServers(ctx context.Context) ([]MCPServerSummary, error) 
 	for rows.Next() {
 		var srv MCPServerSummary
 		var lastNs int64
-		if err := rows.Scan(&srv.ServerID, &srv.ToolCount, &lastNs, &srv.DetectionCount); err != nil {
+		if err := rows.Scan(
+			&srv.ServerID,
+			&srv.ToolCount,
+			&lastNs,
+			&srv.DetectionCount,
+		); err != nil {
 			return nil, fmt.Errorf("scan mcp server: %w", err)
 		}
 		srv.LastSeen = time.Unix(0, lastNs)

@@ -13,7 +13,10 @@ type mockEventStore struct {
 	events []types.Event
 }
 
-func (m *mockEventStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (m *mockEventStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return m.events, nil
 }
 func (m *mockEventStore) AppendEvent(ctx context.Context, ev types.Event) error { return nil }
@@ -34,9 +37,24 @@ func TestGenerator_EmptySession(t *testing.T) {
 func TestGenerator_FileEvents(t *testing.T) {
 	now := time.Now()
 	events := []types.Event{
-		{Type: "file_write", Path: "/workspace/src/a.ts", Timestamp: now, Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
-		{Type: "file_write", Path: "/workspace/src/b.ts", Timestamp: now.Add(time.Second), Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
-		{Type: "file_read", Path: "/workspace/src/c.ts", Timestamp: now.Add(2 * time.Second), Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/src/a.ts",
+			Timestamp: now,
+			Policy:    &types.PolicyInfo{Decision: types.DecisionAllow},
+		},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/src/b.ts",
+			Timestamp: now.Add(time.Second),
+			Policy:    &types.PolicyInfo{Decision: types.DecisionAllow},
+		},
+		{
+			Type:      "file_read",
+			Path:      "/workspace/src/c.ts",
+			Timestamp: now.Add(2 * time.Second),
+			Policy:    &types.PolicyInfo{Decision: types.DecisionAllow},
+		},
 	}
 
 	store := &mockEventStore{events: events}
@@ -59,9 +77,24 @@ func TestGenerator_FileEvents(t *testing.T) {
 func TestGenerator_BlockedEvents(t *testing.T) {
 	now := time.Now()
 	events := []types.Event{
-		{Type: "file_write", Path: "/workspace/src/a.ts", Timestamp: now, Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
-		{Type: "file_write", Path: "/etc/hosts", Timestamp: now.Add(time.Second), Policy: &types.PolicyInfo{Decision: types.DecisionDeny, Message: "system file"}},
-		{Type: "unix_connect", Path: "/run/private.sock", Timestamp: now.Add(2 * time.Second), Policy: &types.PolicyInfo{Decision: types.DecisionDeny, Message: "private socket"}},
+		{
+			Type:      "file_write",
+			Path:      "/workspace/src/a.ts",
+			Timestamp: now,
+			Policy:    &types.PolicyInfo{Decision: types.DecisionAllow},
+		},
+		{
+			Type:      "file_write",
+			Path:      "/etc/hosts",
+			Timestamp: now.Add(time.Second),
+			Policy:    &types.PolicyInfo{Decision: types.DecisionDeny, Message: "system file"},
+		},
+		{
+			Type:      "unix_connect",
+			Path:      "/run/private.sock",
+			Timestamp: now.Add(2 * time.Second),
+			Policy:    &types.PolicyInfo{Decision: types.DecisionDeny, Message: "private socket"},
+		},
 	}
 
 	store := &mockEventStore{events: events}
@@ -87,8 +120,18 @@ func TestGenerator_BlockedEvents(t *testing.T) {
 func TestGenerator_NetworkEvents(t *testing.T) {
 	now := time.Now()
 	events := []types.Event{
-		{Type: "net_connect", Domain: "api.github.com", Timestamp: now, Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
-		{Type: "net_connect", Domain: "raw.github.com", Timestamp: now.Add(time.Second), Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
+		{
+			Type:      "net_connect",
+			Domain:    "api.github.com",
+			Timestamp: now,
+			Policy:    &types.PolicyInfo{Decision: types.DecisionAllow},
+		},
+		{
+			Type:      "net_connect",
+			Domain:    "raw.github.com",
+			Timestamp: now.Add(time.Second),
+			Policy:    &types.PolicyInfo{Decision: types.DecisionAllow},
+		},
 	}
 
 	store := &mockEventStore{events: events}
@@ -187,33 +230,63 @@ func TestGenerator_MCPEvents(t *testing.T) {
 			"tool_hash": "sha256:def456", "server_type": "stdio",
 		}},
 		// mcp_tool_called — confirms usage
-		{ID: "3", Type: "mcp_tool_called", Timestamp: now.Add(2 * time.Second), Fields: map[string]any{
-			"server_id": "weather", "tool_name": "get_weather",
-		}},
+		{
+			ID:        "3",
+			Type:      "mcp_tool_called",
+			Timestamp: now.Add(2 * time.Second),
+			Fields: map[string]any{
+				"server_id": "weather", "tool_name": "get_weather",
+			},
+		},
 		// mcp_tool_call_intercepted — allowed
-		{ID: "4", Type: "mcp_tool_call_intercepted", Timestamp: now.Add(3 * time.Second), Fields: map[string]any{
-			"server_id": "weather", "tool_name": "get_weather",
-			"action": "allow", "tool_hash": "sha256:abc123",
-		}},
+		{
+			ID:        "4",
+			Type:      "mcp_tool_call_intercepted",
+			Timestamp: now.Add(3 * time.Second),
+			Fields: map[string]any{
+				"server_id": "weather", "tool_name": "get_weather",
+				"action": "allow", "tool_hash": "sha256:abc123",
+			},
+		},
 		// mcp_tool_call_intercepted — blocked
-		{ID: "5", Type: "mcp_tool_call_intercepted", Timestamp: now.Add(4 * time.Second), Fields: map[string]any{
-			"server_id": "weather", "tool_name": "execute_cmd",
-			"action": "block", "reason": "version_pin",
-		}},
+		{
+			ID:        "5",
+			Type:      "mcp_tool_call_intercepted",
+			Timestamp: now.Add(4 * time.Second),
+			Fields: map[string]any{
+				"server_id": "weather", "tool_name": "execute_cmd",
+				"action": "block", "reason": "version_pin",
+			},
+		},
 		// mcp_tool_changed — triggers version pinning
-		{ID: "6", Type: "mcp_tool_changed", Timestamp: now.Add(5 * time.Second), Fields: map[string]any{
-			"server_id": "weather", "tool_name": "get_weather",
-			"new_hash": "sha256:changed",
-		}},
+		{
+			ID:        "6",
+			Type:      "mcp_tool_changed",
+			Timestamp: now.Add(5 * time.Second),
+			Fields: map[string]any{
+				"server_id": "weather", "tool_name": "get_weather",
+				"new_hash": "sha256:changed",
+			},
+		},
 		// mcp_cross_server_blocked
-		{ID: "7", Type: "mcp_cross_server_blocked", Timestamp: now.Add(6 * time.Second), Fields: map[string]any{
-			"rule": "read_then_send", "severity": "critical",
-			"blocked_server_id": "evil", "blocked_tool_name": "exfil",
-		}},
+		{
+			ID:        "7",
+			Type:      "mcp_cross_server_blocked",
+			Timestamp: now.Add(6 * time.Second),
+			Fields: map[string]any{
+				"rule": "read_then_send", "severity": "critical",
+				"blocked_server_id": "evil", "blocked_tool_name": "exfil",
+			},
+		},
 		// mcp_network_connection
-		{ID: "8", Type: "mcp_network_connection", Timestamp: now.Add(7 * time.Second), Fields: map[string]any{
-			"server_id": "weather",
-		}},
+		{
+			ID:        "8",
+			Type:      "mcp_network_connection",
+			Timestamp: now.Add(7 * time.Second),
+			Fields: map[string]any{
+				"server_id": "weather",
+			},
+		},
 	}
 
 	store := &mockEventStore{events: events}
@@ -235,7 +308,10 @@ func TestGenerator_MCPEvents(t *testing.T) {
 		t.Errorf("expected 1 blocked MCP tool, got %d", len(policy.MCPBlockedTools))
 	}
 	if len(policy.MCPBlockedTools) > 0 && policy.MCPBlockedTools[0].BlockReason != "version_pin" {
-		t.Errorf("expected block reason 'version_pin', got %q", policy.MCPBlockedTools[0].BlockReason)
+		t.Errorf(
+			"expected block reason 'version_pin', got %q",
+			policy.MCPBlockedTools[0].BlockReason,
+		)
 	}
 
 	// Should have servers

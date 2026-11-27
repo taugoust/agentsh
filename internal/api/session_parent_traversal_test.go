@@ -55,13 +55,17 @@ func TestWithSessionParentTraversalRulesPrependsMetadataAllow(t *testing.T) {
 		t.Fatalf("context paths missing parent AGENTS.md: %#v", contextRule.Paths)
 	}
 	dirOpenRule := out.FileRules[1]
-	if dirOpenRule.Name != "allow-session-parent-directory-open" || dirOpenRule.Decision != "allow" {
+	if dirOpenRule.Name != "allow-session-parent-directory-open" ||
+		dirOpenRule.Decision != "allow" {
 		t.Fatalf("unexpected directory-open rule: %#v", dirOpenRule)
 	}
 	if containsString(dirOpenRule.Paths, "/") {
 		t.Fatalf("directory-open rule should not include root: %#v", dirOpenRule.Paths)
 	}
-	if got, want := dirOpenRule.Operations, []string{"open"}; len(got) != len(want) || got[0] != want[0] {
+	if got, want := dirOpenRule.Operations, []string{
+		"open",
+	}; len(got) != len(want) ||
+		got[0] != want[0] {
 		t.Fatalf("directory-open operations = %#v, want %#v", got, want)
 	}
 	rule := out.FileRules[2]

@@ -30,7 +30,15 @@ func TestBackupRestore_RoundTrip(t *testing.T) {
 
 	// Create test config file
 	configPath := filepath.Join(dir, "config.yaml")
-	configContent := []byte("audit:\n  storage:\n    sqlite_path: " + filepath.Join(dir, "events.db") + "\npolicies:\n  dir: " + filepath.Join(dir, "policies"))
+	configContent := []byte(
+		"audit:\n  storage:\n    sqlite_path: " + filepath.Join(
+			dir,
+			"events.db",
+		) + "\npolicies:\n  dir: " + filepath.Join(
+			dir,
+			"policies",
+		),
+	)
 	if err := os.WriteFile(configPath, configContent, 0644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -48,7 +56,11 @@ func TestBackupRestore_RoundTrip(t *testing.T) {
 		t.Fatalf("create policies dir: %v", err)
 	}
 	policyContent := []byte("version: 1\nname: default")
-	if err := os.WriteFile(filepath.Join(policiesDir, "default.yaml"), policyContent, 0644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policiesDir, "default.yaml"),
+		policyContent,
+		0644,
+	); err != nil {
 		t.Fatalf("write policy: %v", err)
 	}
 
@@ -106,7 +118,15 @@ func TestRestore_DryRunShowsFiles(t *testing.T) {
 
 	// Create a minimal valid backup
 	configPath := filepath.Join(dir, "config.yaml")
-	configContent := []byte("audit:\n  storage:\n    sqlite_path: " + filepath.Join(dir, "events.db") + "\npolicies:\n  dir: " + filepath.Join(dir, "policies"))
+	configContent := []byte(
+		"audit:\n  storage:\n    sqlite_path: " + filepath.Join(
+			dir,
+			"events.db",
+		) + "\npolicies:\n  dir: " + filepath.Join(
+			dir,
+			"policies",
+		),
+	)
 	if err := os.WriteFile(configPath, configContent, 0644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}

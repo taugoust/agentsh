@@ -73,7 +73,11 @@ func ReadSegmentHeader(r io.Reader) (SegmentHeader, error) {
 		Generation: binary.BigEndian.Uint32(buf[8:12]),
 	}
 	if h.Version != SegmentVersion {
-		return SegmentHeader{}, fmt.Errorf("unsupported segment version %d (want %d)", h.Version, SegmentVersion)
+		return SegmentHeader{}, fmt.Errorf(
+			"unsupported segment version %d (want %d)",
+			h.Version,
+			SegmentVersion,
+		)
 	}
 	if h.Flags&^knownFlagsMask != 0 {
 		return SegmentHeader{}, fmt.Errorf("reserved flag bits set: %#x", h.Flags)
@@ -143,7 +147,11 @@ func WriteRecord(w io.Writer, payload []byte, maxPayload int) error {
 		return fmt.Errorf("wal: maxPayload must be > 0, got %d", maxPayload)
 	}
 	if uint64(maxPayload) > MaxFramedPayload {
-		return fmt.Errorf("wal: maxPayload %d exceeds protocol cap %d", maxPayload, uint64(MaxFramedPayload))
+		return fmt.Errorf(
+			"wal: maxPayload %d exceeds protocol cap %d",
+			maxPayload,
+			uint64(MaxFramedPayload),
+		)
 	}
 	if len(payload) == 0 {
 		return errors.New("wal: empty payload")
@@ -181,7 +189,11 @@ func ReadRecord(r io.Reader, maxPayload int) ([]byte, error) {
 		return nil, fmt.Errorf("wal: maxPayload must be > 0, got %d", maxPayload)
 	}
 	if uint64(maxPayload) > MaxFramedPayload {
-		return nil, fmt.Errorf("wal: maxPayload %d exceeds protocol cap %d", maxPayload, uint64(MaxFramedPayload))
+		return nil, fmt.Errorf(
+			"wal: maxPayload %d exceeds protocol cap %d",
+			maxPayload,
+			uint64(MaxFramedPayload),
+		)
 	}
 	header := make([]byte, 8)
 	n, err := io.ReadFull(r, header)
@@ -204,7 +216,11 @@ func ReadRecord(r io.Reader, maxPayload int) ([]byte, error) {
 		// wrote the segment), and treating it as truncatable corruption
 		// during recovery would silently chop a perfectly-valid file.
 		// Recovery must surface this as a hard open error instead.
-		return nil, fmt.Errorf("wal: record payload size %d exceeds maxPayload %d", payloadLen, maxPayload)
+		return nil, fmt.Errorf(
+			"wal: record payload size %d exceeds maxPayload %d",
+			payloadLen,
+			maxPayload,
+		)
 	}
 	// Stream the payload into a growable buffer rather than pre-allocating
 	// `payloadLen` bytes up front. A corrupted on-disk length can claim up

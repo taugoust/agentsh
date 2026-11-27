@@ -65,7 +65,10 @@ database_rules:
 
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbDeny || d.RuleName != "" {
-		t.Fatalf("decision = %+v, want implicit deny because second users slot resolved to audit.users", d)
+		t.Fatalf(
+			"decision = %+v, want implicit deny because second users slot resolved to audit.users",
+			d,
+		)
 	}
 }
 

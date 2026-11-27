@@ -34,7 +34,11 @@ func (c *ContextConfig) UnmarshalYAML(value *yaml.Node) error {
 		MinDepth int  `yaml:"min_depth"`
 		MaxDepth *int `yaml:"max_depth"`
 	}
-	if err := validateYAMLMappingFields(value, "policy.ContextConfig", contextConfigYAMLFields); err != nil {
+	if err := validateYAMLMappingFields(
+		value,
+		"policy.ContextConfig",
+		contextConfigYAMLFields,
+	); err != nil {
 		return err
 	}
 	var r raw

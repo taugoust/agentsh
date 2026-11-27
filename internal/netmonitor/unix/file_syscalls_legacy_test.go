@@ -253,7 +253,11 @@ func TestExtractLegacyFileArgs_MetadataContext(t *testing.T) {
 		},
 		{
 			name: "access mode",
-			args: SyscallArgs{Nr: unix.SYS_ACCESS, Arg0: 0x1000, Arg1: uint64(unix.R_OK | unix.X_OK)},
+			args: SyscallArgs{
+				Nr:   unix.SYS_ACCESS,
+				Arg0: 0x1000,
+				Arg1: uint64(unix.R_OK | unix.X_OK),
+			},
 			check: func(t *testing.T, got FileArgs) {
 				assert.Equal(t, uint32(unix.R_OK|unix.X_OK), got.AccessMode)
 				assert.Zero(t, got.AccessFlags)
@@ -285,7 +289,12 @@ func TestLegacyFileSyscallList(t *testing.T) {
 	// Verify all listed syscalls are recognized
 	for _, nr := range list {
 		assert.True(t, isLegacyFileSyscall(nr), "syscall %d from list not recognized", nr)
-		assert.True(t, isFileSyscall(nr), "syscall %d from list not recognized by isFileSyscall", nr)
+		assert.True(
+			t,
+			isFileSyscall(nr),
+			"syscall %d from list not recognized by isFileSyscall",
+			nr,
+		)
 	}
 }
 
@@ -369,7 +378,12 @@ func TestIsReadOnlyFileOp_Legacy(t *testing.T) {
 		{"open O_RDONLY", unix.SYS_OPEN, unix.O_RDONLY, true},
 		{"open O_WRONLY", unix.SYS_OPEN, unix.O_WRONLY, false},
 		{"open O_CREAT", unix.SYS_OPEN, unix.O_RDONLY | unix.O_CREAT, false},
-		{"creat (implicit write flags)", unix.SYS_CREAT, unix.O_WRONLY | unix.O_CREAT | unix.O_TRUNC, false},
+		{
+			"creat (implicit write flags)",
+			unix.SYS_CREAT,
+			unix.O_WRONLY | unix.O_CREAT | unix.O_TRUNC,
+			false,
+		},
 
 		// Legacy mutating syscalls (flags=0, still mutating)
 		{"mkdir", unix.SYS_MKDIR, 0, false},

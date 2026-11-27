@@ -349,7 +349,10 @@ func TestNewRegistry_NilProvider_ReturnsError(t *testing.T) {
 	}
 	// The already-constructed keyring provider must have been cleaned up.
 	if krProvider.closeCt.Load() != 1 {
-		t.Errorf("keyring Close count = %d, want 1 (cleanup on nil provider)", krProvider.closeCt.Load())
+		t.Errorf(
+			"keyring Close count = %d, want 1 (cleanup on nil provider)",
+			krProvider.closeCt.Load(),
+		)
 	}
 }
 

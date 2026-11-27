@@ -28,7 +28,11 @@ file_rules:
     operations: ["*"]
     decision: allow
 `
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policyContent), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policyContent),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 

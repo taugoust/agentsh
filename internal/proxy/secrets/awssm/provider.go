@@ -92,7 +92,11 @@ func New(ctx context.Context, cfg Config, _ secrets.RefResolver) (*Provider, err
 			return nil, ctx.Err()
 		}
 		if isAuthError(probeErr) {
-			return nil, fmt.Errorf("%w: aws-sm connectivity probe: %s", secrets.ErrUnauthorized, probeErr.Error())
+			return nil, fmt.Errorf(
+				"%w: aws-sm connectivity probe: %s",
+				secrets.ErrUnauthorized,
+				probeErr.Error(),
+			)
 		}
 		// Non-auth, non-context failure (e.g. STS endpoint unreachable):
 		// swallow — the SM endpoint may still work.
@@ -131,10 +135,17 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	}
 
 	if ref.Scheme != "aws-sm" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: wrong scheme %q", secrets.ErrInvalidURI, ref.Scheme)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: wrong scheme %q",
+			secrets.ErrInvalidURI,
+			ref.Scheme,
+		)
 	}
 	if ref.Host == "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: aws-sm URI missing secret name (host)", secrets.ErrInvalidURI)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: aws-sm URI missing secret name (host)",
+			secrets.ErrInvalidURI,
+		)
 	}
 
 	if hook := testFetchPreLockHook; hook != nil {

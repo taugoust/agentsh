@@ -47,7 +47,13 @@ it, or how to launch a long-lived agent under "agentsh wrap" instead.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Get session ID from env var if not in args
 			envSessionID := strings.TrimSpace(os.Getenv("AGENTSH_SESSION_ID"))
-			sessionID, req, err := parseExecInputWithEnv(args, jsonStr, timeout, stream, envSessionID)
+			sessionID, req, err := parseExecInputWithEnv(
+				args,
+				jsonStr,
+				timeout,
+				stream,
+				envSessionID,
+			)
 			if err != nil {
 				return err
 			}
@@ -141,15 +147,32 @@ it, or how to launch a long-lived agent under "agentsh wrap" instead.`,
 			}
 
 			if req.StreamOutput {
-				return execStream(cmd, cl, cfg.serverAddr, sessionID, req, outMode, createReq, sessionFile)
+				return execStream(
+					cmd,
+					cl,
+					cfg.serverAddr,
+					sessionID,
+					req,
+					outMode,
+					createReq,
+					sessionFile,
+				)
 			}
 
 			resp, err := cl.Exec(cmd.Context(), sessionID, req)
 			if err != nil && !autoDisabled() && isConnectionError(err) {
-				if startErr := ensureServerRunning(cmd.Context(), cfg.serverAddr, cmd.ErrOrStderr()); startErr == nil {
+				if startErr := ensureServerRunning(
+					cmd.Context(),
+					cfg.serverAddr,
+					cmd.ErrOrStderr(),
+				); startErr == nil {
 					resp, err = cl.Exec(cmd.Context(), sessionID, req)
 				} else {
-					return fmt.Errorf("server unreachable (%v); auto-start failed: %w", err, startErr)
+					return fmt.Errorf(
+						"server unreachable (%v); auto-start failed: %w",
+						err,
+						startErr,
+					)
 				}
 			}
 			if err != nil {
@@ -158,12 +181,16 @@ it, or how to launch a long-lived agent under "agentsh wrap" instead.`,
 					st, ok := status.FromError(e)
 					return ok && st.Code() == codes.NotFound
 				}
-				isSessionNotFound := (errors.As(err, &he) && he.StatusCode == http.StatusNotFound && strings.Contains(strings.ToLower(he.Body), "session not found")) || grpcNotFound(err)
+				isSessionNotFound := (errors.As(err, &he) && he.StatusCode == http.StatusNotFound && strings.Contains(strings.ToLower(he.Body), "session not found")) ||
+					grpcNotFound(err)
 				if isSessionNotFound {
 					// Try auto-create first if we have a workspace (unless auto is disabled)
 					autoCreated := false
 					if !autoDisabled() && createReq.Workspace != "" {
-						if _, createErr := cl.CreateSessionWithRequest(cmd.Context(), createReq); createErr == nil {
+						if _, createErr := cl.CreateSessionWithRequest(
+							cmd.Context(),
+							createReq,
+						); createErr == nil {
 							resp, err = cl.Exec(cmd.Context(), sessionID, req)
 							autoCreated = true
 						}
@@ -172,7 +199,10 @@ it, or how to launch a long-lived agent under "agentsh wrap" instead.`,
 					// invalidate the cache so next invocation resolves a fresh session ID
 					if !autoCreated && err != nil && sessionFile != "" {
 						_ = os.Remove(sessionFile)
-						return fmt.Errorf("session %q no longer exists (cache invalidated); retry your command", sessionID)
+						return fmt.Errorf(
+							"session %q no longer exists (cache invalidated); retry your command",
+							sessionID,
+						)
 					}
 				}
 			}
@@ -206,24 +236,44 @@ it, or how to launch a long-lived agent under "agentsh wrap" instead.`,
 		DisableFlagsInUseLine: true,
 	}
 	c.Flags().StringVar(&timeout, "timeout", "", "Command timeout (e.g. 30s, 5m)")
-	c.Flags().StringVar(&jsonStr, "json", "", "Exec request as JSON (e.g. '{\"command\":\"ls\",\"args\":[\"-la\"]}')")
+	c.Flags().
+		StringVar(&jsonStr, "json", "", "Exec request as JSON (e.g. '{\"command\":\"ls\",\"args\":[\"-la\"]}')")
 	c.Flags().BoolVar(&stream, "stream", false, "Stream output (requires server support)")
-	c.Flags().BoolVar(&pty, "pty", false, "Execute in an interactive PTY (stdin/stdout streaming, resize, signals)")
+	c.Flags().
+		BoolVar(&pty, "pty", false, "Execute in an interactive PTY (stdin/stdout streaming, resize, signals)")
 	c.Flags().StringVar(&argv0, "argv0", "", "Override argv[0] for the executed process")
-	c.Flags().StringVar(&output, "output", getenvDefault("AGENTSH_OUTPUT", "shell"), "Output format: shell|json")
-	c.Flags().StringVar(&events, "events", getenvDefault("AGENTSH_EVENTS", ""), "Events to include in response: all|summary|blocked|none (default depends on --output)")
-	c.Flags().StringVar(&root, "root", "", "Root directory for auto-creating session if it doesn't exist (defaults to $PWD)")
-	c.Flags().BoolVar(&noDetectRoot, "no-detect-root", false, "Disable project root detection when auto-creating session")
-	c.Flags().StringVar(&projectRoot, "project-root", "", "Explicit project root (skips detection) when auto-creating session")
-	c.Flags().StringVar(&sessionFile, "session-file", "", "Path to cached session file (deleted on 404 to invalidate stale sessions)")
+	c.Flags().
+		StringVar(&output, "output", getenvDefault("AGENTSH_OUTPUT", "shell"), "Output format: shell|json")
+	c.Flags().
+		StringVar(&events, "events", getenvDefault("AGENTSH_EVENTS", ""), "Events to include in response: all|summary|blocked|none (default depends on --output)")
+	c.Flags().
+		StringVar(&root, "root", "", "Root directory for auto-creating session if it doesn't exist (defaults to $PWD)")
+	c.Flags().
+		BoolVar(&noDetectRoot, "no-detect-root", false, "Disable project root detection when auto-creating session")
+	c.Flags().
+		StringVar(&projectRoot, "project-root", "", "Explicit project root (skips detection) when auto-creating session")
+	c.Flags().
+		StringVar(&sessionFile, "session-file", "", "Path to cached session file (deleted on 404 to invalidate stale sessions)")
 	c.Flags().BoolVar(&realPaths, "real-paths", false, "Use real host paths instead of /workspace")
 	return c
 }
 
-func execStream(cmd *cobra.Command, cl client.CLIClient, serverAddr, sessionID string, req types.ExecRequest, output string, createReq types.CreateSessionRequest, sessionFile string) error {
+func execStream(
+	cmd *cobra.Command,
+	cl client.CLIClient,
+	serverAddr, sessionID string,
+	req types.ExecRequest,
+	output string,
+	createReq types.CreateSessionRequest,
+	sessionFile string,
+) error {
 	body, err := cl.ExecStream(cmd.Context(), sessionID, req)
 	if err != nil && !autoDisabled() && isConnectionError(err) {
-		if startErr := ensureServerRunning(cmd.Context(), serverAddr, cmd.ErrOrStderr()); startErr == nil {
+		if startErr := ensureServerRunning(
+			cmd.Context(),
+			serverAddr,
+			cmd.ErrOrStderr(),
+		); startErr == nil {
 			body, err = cl.ExecStream(cmd.Context(), sessionID, req)
 		} else {
 			return fmt.Errorf("server unreachable (%v); auto-start failed: %w", err, startErr)
@@ -235,12 +285,16 @@ func execStream(cmd *cobra.Command, cl client.CLIClient, serverAddr, sessionID s
 			st, ok := status.FromError(e)
 			return ok && st.Code() == codes.NotFound
 		}
-		isSessionNotFound := (errors.As(err, &he) && he.StatusCode == http.StatusNotFound && strings.Contains(strings.ToLower(he.Body), "session not found")) || grpcNotFound(err)
+		isSessionNotFound := (errors.As(err, &he) && he.StatusCode == http.StatusNotFound && strings.Contains(strings.ToLower(he.Body), "session not found")) ||
+			grpcNotFound(err)
 		if isSessionNotFound {
 			// Try auto-create first if we have a workspace (unless auto is disabled)
 			autoCreated := false
 			if !autoDisabled() && createReq.Workspace != "" {
-				if _, createErr := cl.CreateSessionWithRequest(cmd.Context(), createReq); createErr == nil {
+				if _, createErr := cl.CreateSessionWithRequest(
+					cmd.Context(),
+					createReq,
+				); createErr == nil {
 					body, err = cl.ExecStream(cmd.Context(), sessionID, req)
 					autoCreated = true
 				}
@@ -249,7 +303,10 @@ func execStream(cmd *cobra.Command, cl client.CLIClient, serverAddr, sessionID s
 			// invalidate the cache so next invocation resolves a fresh session ID
 			if !autoCreated && err != nil && sessionFile != "" {
 				_ = os.Remove(sessionFile)
-				return fmt.Errorf("session %q no longer exists (cache invalidated); retry your command", sessionID)
+				return fmt.Errorf(
+					"session %q no longer exists (cache invalidated); retry your command",
+					sessionID,
+				)
 			}
 		}
 	}
@@ -305,7 +362,12 @@ func execStream(cmd *cobra.Command, cl client.CLIClient, serverAddr, sessionID s
 		case "done":
 			if p.ExitCode != 0 {
 				if !strings.EqualFold(output, "shell") {
-					fmt.Fprintf(cmd.ErrOrStderr(), "exit_code=%d duration_ms=%d\n", p.ExitCode, p.DurationMs)
+					fmt.Fprintf(
+						cmd.ErrOrStderr(),
+						"exit_code=%d duration_ms=%d\n",
+						p.ExitCode,
+						p.DurationMs,
+					)
 				}
 				return &ExitError{code: p.ExitCode}
 			}
@@ -345,9 +407,17 @@ func printShellExec(cmd *cobra.Command, resp types.ExecResponse) error {
 	}
 
 	if resp.Guidance != nil {
-		if msg := strings.TrimSpace(resp.Guidance.Reason); msg != "" && (resp.Guidance.Blocked || resp.Result.ExitCode != 0) {
+		if msg := strings.TrimSpace(
+			resp.Guidance.Reason,
+		); msg != "" &&
+			(resp.Guidance.Blocked || resp.Result.ExitCode != 0) {
 			if resp.Guidance.PolicyRule != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "agentsh: %s (rule=%s)\n", msg, resp.Guidance.PolicyRule)
+				fmt.Fprintf(
+					cmd.ErrOrStderr(),
+					"agentsh: %s (rule=%s)\n",
+					msg,
+					resp.Guidance.PolicyRule,
+				)
 			} else {
 				fmt.Fprintln(cmd.ErrOrStderr(), "agentsh: "+msg)
 			}
@@ -382,7 +452,11 @@ func printShellExec(cmd *cobra.Command, resp types.ExecResponse) error {
 func shellBlockSummary(resp types.ExecResponse) string {
 	// Prefer explicit policy error when present.
 	if resp.Result.Error != nil && resp.Result.Error.PolicyRule != "" {
-		return fmt.Sprintf("agentsh: blocked by policy (rule=%s): %s", resp.Result.Error.PolicyRule, resp.Result.Error.Message)
+		return fmt.Sprintf(
+			"agentsh: blocked by policy (rule=%s): %s",
+			resp.Result.Error.PolicyRule,
+			resp.Result.Error.Message,
+		)
 	}
 	// Otherwise, summarize first blocked operation if present.
 	if len(resp.Events.BlockedOperations) == 0 {

@@ -116,7 +116,12 @@ func (t *Transport) runReplaying(ctx context.Context, r *Replayer) (State, error
 			return StateConnecting, fmt.Errorf("replay batch: %w", err)
 		}
 		if len(batch.Records) > 0 {
-			msgs, err := buildEventBatchFn(batch.Records, t.emitExtendedLossReasons, t.compressor, t.compressMetrics)
+			msgs, err := buildEventBatchFn(
+				batch.Records,
+				t.emitExtendedLossReasons,
+				t.compressor,
+				t.compressMetrics,
+			)
 			if err != nil {
 				t.opts.Logger.LogAttrs(context.Background(), slog.LevelWarn,
 					"wtp: runReplaying exit (buildEventBatch)",

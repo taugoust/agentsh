@@ -58,29 +58,86 @@ func TestDB07CRealPostgresProxySQLAndUnavoidability(t *testing.T) {
 	sess := createDB07CSession(t, ctx, env.client)
 	socket := filepath.Join(sess.DBProxySocketDir, "appdb.sock")
 
-	allow := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "scalar", "-sql", "select '07c-ok' from db07c_guard where id = 1", "-simple")
+	allow := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select '07c-ok' from db07c_guard where id = 1",
+		"-simple",
+	)
 	if allow.Scalar != "07c-ok" {
 		t.Fatalf("07c real Postgres proxy did not return rows through appdb: %+v", allow)
 	}
 
-	extended := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "scalar", "-sql", "select note from db07c_guard where id = 1")
+	extended := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select note from db07c_guard where id = 1",
+	)
 	if extended.Scalar != "seed" {
 		t.Fatalf("07c extended query through appdb returned %+v", extended)
 	}
 
-	simpleDeny := execDB07CClientAllowFailure(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "exec", "-sql", "insert into db07c_guard(id, note) values (2, 'simple-denied')", "-simple")
+	simpleDeny := execDB07CClientAllowFailure(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"exec",
+		"-sql",
+		"insert into db07c_guard(id, note) values (2, 'simple-denied')",
+		"-simple",
+	)
 	if simpleDeny.OK || (simpleDeny.SQLState == "" && simpleDeny.Error == "") {
 		t.Fatalf("07c simple query deny did not fail with SQLSTATE or error: %+v", simpleDeny)
 	}
 	assertGuardCount07C(t, ctx, env.hostDSN, 1)
 
-	extendedDeny := execDB07CClientAllowFailure(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "exec", "-sql", "insert into db07c_guard(id, note) values (3, 'extended-denied')")
+	extendedDeny := execDB07CClientAllowFailure(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"exec",
+		"-sql",
+		"insert into db07c_guard(id, note) values (3, 'extended-denied')",
+	)
 	if extendedDeny.OK || (extendedDeny.SQLState == "" && extendedDeny.Error == "") {
 		t.Fatalf("07c extended query deny did not fail with SQLSTATE or error: %+v", extendedDeny)
 	}
 	assertGuardCount07C(t, ctx, env.hostDSN, 1)
 
-	deny := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "tx-deny", "-sql", "insert into db07c_guard(id, note) values (4, 'tx-denied')")
+	deny := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"tx-deny",
+		"-sql",
+		"insert into db07c_guard(id, note) values (4, 'tx-denied')",
+	)
 	if deny.SQLState == "" && deny.Error == "" {
 		t.Fatalf("07c in-transaction deny did not report SQLSTATE or error: %+v", deny)
 	}
@@ -96,7 +153,18 @@ func TestDB07CRealPostgresProxySQLAndUnavoidability(t *testing.T) {
 			txContext["deny_action"] == "connection_terminated"
 	}, "db_statement in-transaction deny connection_terminated")
 
-	bypass := execDB07CClientAllowFailure(t, ctx, env.client, sess.ID, "-dsn", env.containerDSN, "-mode", "scalar", "-sql", "select 'bypass'")
+	bypass := execDB07CClientAllowFailure(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-dsn",
+		env.containerDSN,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select 'bypass'",
+	)
 	if bypass.OK {
 		t.Fatalf("07c direct TCP bypass unexpectedly succeeded: %+v", bypass)
 	}
@@ -114,7 +182,18 @@ func TestDB07CRejectsListenerAccessOutsideOwningSession(t *testing.T) {
 	sess := createDB07CSession(t, ctx, env.client)
 	socket := filepath.Join(sess.DBProxySocketDir, "appdb.sock")
 
-	exitCode, reader, err := env.server.Exec(ctx, []string{"/usr/local/bin/db07c-client", "-socket", socket, "-mode", "scalar", "-sql", "select 'outside'"})
+	exitCode, reader, err := env.server.Exec(
+		ctx,
+		[]string{
+			"/usr/local/bin/db07c-client",
+			"-socket",
+			socket,
+			"-mode",
+			"scalar",
+			"-sql",
+			"select 'outside'",
+		},
+	)
 	if err != nil {
 		t.Fatalf("server Exec db07c-client: %v", err)
 	}
@@ -136,11 +215,35 @@ func TestDB07CRealPostgresCancelRequest(t *testing.T) {
 	sess := createDB07CSession(t, ctx, env.client)
 	socket := filepath.Join(sess.DBProxySocketDir, "appdb.sock")
 
-	warm := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "scalar", "-sql", "select note from db07c_guard where id = 1")
+	warm := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select note from db07c_guard where id = 1",
+	)
 	if warm.Scalar != "seed" {
 		t.Fatalf("07c warmup query returned %+v", warm)
 	}
-	cancel := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "cancel", "-sql", "select pg_sleep(10) from db07c_guard where id = 1", "-timeout", "5s")
+	cancel := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"cancel",
+		"-sql",
+		"select pg_sleep(10) from db07c_guard where id = 1",
+		"-timeout",
+		"5s",
+	)
 	if cancel.SQLState != "57014" && !strings.Contains(strings.ToLower(cancel.Error), "cancel") {
 		t.Fatalf("07c cancel request did not cancel pg_sleep: %+v", cancel)
 	}
@@ -150,7 +253,8 @@ func TestDB07CRealPostgresCancelRequest(t *testing.T) {
 			return false
 		}
 		decision, _ := ev.Fields["decision"].(map[string]any)
-		return ev.Fields["operation_subtype"] == "cancel_request" || decision["rule_kind"] == "cancel"
+		return ev.Fields["operation_subtype"] == "cancel_request" ||
+			decision["rule_kind"] == "cancel"
 	}, "db_statement cancel_request")
 }
 
@@ -163,7 +267,18 @@ func TestDB07CRealPostgresCopyEvents(t *testing.T) {
 	sess := createDB07CSession(t, ctx, env.client)
 	socket := filepath.Join(sess.DBProxySocketDir, "appdb.sock")
 
-	copyTo := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "copy-to", "-sql", "COPY db07c_copy(note) TO STDOUT WITH CSV")
+	copyTo := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"copy-to",
+		"-sql",
+		"COPY db07c_copy(note) TO STDOUT WITH CSV",
+	)
 	if copyTo.BytesOut == 0 {
 		t.Fatalf("07c COPY TO returned no bytes: %+v", copyTo)
 	}
@@ -179,7 +294,20 @@ func TestDB07CRealPostgresCopyEvents(t *testing.T) {
 			statementText != ""
 	}, "db_statement bulk_export")
 
-	copyFrom := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "copy-from", "-sql", "COPY db07c_copy(note) FROM STDIN WITH CSV", "-data", "from-copy\n")
+	copyFrom := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"copy-from",
+		"-sql",
+		"COPY db07c_copy(note) FROM STDIN WITH CSV",
+		"-data",
+		"from-copy\n",
+	)
 	if copyFrom.BytesIn == 0 {
 		t.Fatalf("07c COPY FROM sent no bytes: %+v", copyFrom)
 	}
@@ -207,7 +335,19 @@ func TestDB09RealPostgresCatalogResolution(t *testing.T) {
 	sess := createDB07CSession(t, ctx, env.client)
 	socket := filepath.Join(sess.DBProxySocketDir, "appdb.sock")
 
-	qualified := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "scalar", "-sql", "select note from plan09.users where id = 1", "-simple")
+	qualified := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select note from plan09.users where id = 1",
+		"-simple",
+	)
 	if qualified.Scalar != "schema-qualified" {
 		t.Fatalf("qualified catalog query returned %+v", qualified)
 	}
@@ -215,7 +355,19 @@ func TestDB09RealPostgresCatalogResolution(t *testing.T) {
 		return isPlan09CatalogAllowEvent(ev, "users", "select note from plan09.users")
 	}, "catalog_resolved schema-qualified event")
 
-	view := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "scalar", "-sql", "select note from plan09.active_users where id = 1", "-simple")
+	view := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select note from plan09.active_users where id = 1",
+		"-simple",
+	)
 	if view.Scalar != "schema-qualified" {
 		t.Fatalf("view catalog query returned %+v", view)
 	}
@@ -223,7 +375,19 @@ func TestDB09RealPostgresCatalogResolution(t *testing.T) {
 		return isPlan09CatalogAllowEvent(ev, "active_users", "select note from plan09.active_users")
 	}, "catalog_resolved schema-qualified view event")
 
-	unqualified := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "scalar", "-sql", "select note from users where id = 1", "-simple")
+	unqualified := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select note from users where id = 1",
+		"-simple",
+	)
 	if unqualified.Scalar != "schema-qualified" {
 		t.Fatalf("unqualified catalog query returned %+v", unqualified)
 	}
@@ -231,7 +395,19 @@ func TestDB09RealPostgresCatalogResolution(t *testing.T) {
 		return isPlan09CatalogAllowEvent(ev, "users", "select note from users")
 	}, "catalog_resolved unqualified event")
 
-	missing := execDB07CClientAllowFailure(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "scalar", "-sql", "select * from plan09.missing_relation", "-simple")
+	missing := execDB07CClientAllowFailure(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select * from plan09.missing_relation",
+		"-simple",
+	)
 	if missing.OK {
 		t.Fatalf("missing relation unexpectedly succeeded: %+v", missing)
 	}
@@ -252,13 +428,30 @@ func TestDB12RealPostgresSimpleQueryRedirect(t *testing.T) {
 	sess := createDB07CSession(t, ctx, env.client)
 	socket := filepath.Join(sess.DBProxySocketDir, "appdb.sock")
 
-	out := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "scalar", "-sql", "select note from plan12.users_source where id = 1", "-simple")
+	out := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select note from plan12.users_source where id = 1",
+		"-simple",
+	)
 	if out.Scalar != "target-a" {
 		t.Fatalf("plan12 simple redirect returned %+v", out)
 	}
 
 	waitForSessionEvent07C(t, ctx, env.client, sess.ID, func(ev types.Event) bool {
-		return isPlan12RedirectEvent(ev, "executed", "redirect-plan12-source-a", "plan12.users_target_a")
+		return isPlan12RedirectEvent(
+			ev,
+			"executed",
+			"redirect-plan12-source-a",
+			"plan12.users_target_a",
+		)
 	}, "db_statement plan12 simple redirect executed")
 }
 
@@ -271,13 +464,29 @@ func TestDB12RealPostgresExtendedPreparedRedirect(t *testing.T) {
 	sess := createDB07CSession(t, ctx, env.client)
 	socket := filepath.Join(sess.DBProxySocketDir, "appdb.sock")
 
-	out := execDB07CClient(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "prepared-repeat", "-sql", "select note from plan12.users_source where id = $1")
+	out := execDB07CClient(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"prepared-repeat",
+		"-sql",
+		"select note from plan12.users_source where id = $1",
+	)
 	if out.Scalar != "target-a,target-a" {
 		t.Fatalf("plan12 prepared redirect returned %+v", out)
 	}
 
 	waitForSessionEvent07C(t, ctx, env.client, sess.ID, func(ev types.Event) bool {
-		return isPlan12RedirectEvent(ev, "executed", "redirect-plan12-source-a", "plan12.users_target_a")
+		return isPlan12RedirectEvent(
+			ev,
+			"executed",
+			"redirect-plan12-source-a",
+			"plan12.users_target_a",
+		)
 	}, "db_statement plan12 prepared redirect executed")
 }
 
@@ -290,18 +499,47 @@ func TestDB12RealPostgresRedirectUnsupportedFormsFailClosed(t *testing.T) {
 	sess := createDB07CSession(t, ctx, env.client)
 	socket := filepath.Join(sess.DBProxySocketDir, "appdb.sock")
 
-	multi := execDB07CClientAllowFailure(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "scalar", "-sql", "select note from plan12.users_source where id = 1; select note from plan12.users_source where id = 1", "-simple")
+	multi := execDB07CClientAllowFailure(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"scalar",
+		"-sql",
+		"select note from plan12.users_source where id = 1; select note from plan12.users_source where id = 1",
+		"-simple",
+	)
 	if multi.OK || multi.SQLState != "0A000" {
 		t.Fatalf("plan12 multi-statement redirect did not fail closed with 0A000: %+v", multi)
 	}
 	waitForSessionEvent07C(t, ctx, env.client, sess.ID, func(ev types.Event) bool {
-		if !isPlan12RedirectEvent(ev, "rejected", "redirect-plan12-source-a", "plan12.users_target_a") {
+		if !isPlan12RedirectEvent(
+			ev,
+			"rejected",
+			"redirect-plan12-source-a",
+			"plan12.users_target_a",
+		) {
 			return false
 		}
 		return ev.Fields["redirect_rejection_reason"] == "multi_statement_redirect_unsupported"
 	}, "db_statement plan12 redirect rejected")
 
-	write := execDB07CClientAllowFailure(t, ctx, env.client, sess.ID, "-socket", socket, "-mode", "exec", "-sql", "insert into plan12.users_source(id, note) values (2, 'blocked')", "-simple")
+	write := execDB07CClientAllowFailure(
+		t,
+		ctx,
+		env.client,
+		sess.ID,
+		"-socket",
+		socket,
+		"-mode",
+		"exec",
+		"-sql",
+		"insert into plan12.users_source(id, note) values (2, 'blocked')",
+		"-simple",
+	)
 	if write.OK || write.SQLState == "" {
 		t.Fatalf("plan12 source write was not blocked: %+v", write)
 	}
@@ -380,7 +618,10 @@ func startDB07CEnvironment(t *testing.T, ctx context.Context) db07cEnv {
 			WithOccurrence(2).
 			WithStartupTimeout(60 * time.Second),
 	}
-	pg, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: pgReq, Started: true})
+	pg, err := testcontainers.GenericContainer(
+		ctx,
+		testcontainers.GenericContainerRequest{ContainerRequest: pgReq, Started: true},
+	)
 	if err != nil {
 		t.Fatalf("07c start postgres container: %v", err)
 	}
@@ -413,7 +654,16 @@ func startDB07CEnvironment(t *testing.T, ctx context.Context) db07cEnv {
 	workspace := filepath.Join(temp, "workspace")
 	mustMkdir(t, workspace)
 
-	endpoint, server, serverCleanup := startDB07CServerContainer(t, ctx, netw.Name, agentshBin, clientBin, configPath, policiesDir, workspace)
+	endpoint, server, serverCleanup := startDB07CServerContainer(
+		t,
+		ctx,
+		netw.Name,
+		agentshBin,
+		clientBin,
+		configPath,
+		policiesDir,
+		workspace,
+	)
 	var serverCleanupOnce sync.Once
 	cleanupServer := func() {
 		serverCleanupOnce.Do(serverCleanup)
@@ -468,7 +718,11 @@ func repoRoot07C(t *testing.T) string {
 	}
 }
 
-func startDB07CServerContainer(t *testing.T, ctx context.Context, networkName, agentshBin, dbClientBin, configPath, policiesDir, workspace string) (string, testcontainers.Container, func()) {
+func startDB07CServerContainer(
+	t *testing.T,
+	ctx context.Context,
+	networkName, agentshBin, dbClientBin, configPath, policiesDir, workspace string,
+) (string, testcontainers.Container, func()) {
 	t.Helper()
 	req := testcontainers.ContainerRequest{
 		Image:        "debian:bookworm-slim",
@@ -478,7 +732,10 @@ func startDB07CServerContainer(t *testing.T, ctx context.Context, networkName, a
 			testcontainers.BindMount(agentshBin, "/usr/local/bin/agentsh"),
 			testcontainers.BindMount(dbClientBin, "/usr/local/bin/db07c-client"),
 			testcontainers.BindMount(configPath, "/config.yaml"),
-			testcontainers.BindMount(filepath.Join(filepath.Dir(configPath), "keys.yaml"), "/keys.yaml"),
+			testcontainers.BindMount(
+				filepath.Join(filepath.Dir(configPath), "keys.yaml"),
+				"/keys.yaml",
+			),
 			testcontainers.BindMount(policiesDir, "/policies"),
 			testcontainers.BindMount(workspace, "/workspace"),
 		},
@@ -501,7 +758,10 @@ func startDB07CServerContainer(t *testing.T, ctx context.Context, networkName, a
 			WithStartupTimeout(60 * time.Second).
 			WithStatusCodeMatcher(func(code int) bool { return code == http.StatusOK || code == http.StatusNotFound }),
 	}
-	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
+	ctr, err := testcontainers.GenericContainer(
+		ctx,
+		testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true},
+	)
 	if err != nil {
 		if ctr != nil {
 			if logs, logErr := ctr.Logs(ctx); logErr == nil {
@@ -713,7 +973,13 @@ func createDB07CSession(t *testing.T, ctx context.Context, cli *client.Client) t
 	return sess
 }
 
-func execDB07CClient(t *testing.T, ctx context.Context, cli *client.Client, sessionID string, args ...string) db07cClientOutput {
+func execDB07CClient(
+	t *testing.T,
+	ctx context.Context,
+	cli *client.Client,
+	sessionID string,
+	args ...string,
+) db07cClientOutput {
 	t.Helper()
 	out := execDB07CClientAllowFailure(t, ctx, cli, sessionID, args...)
 	if !out.OK {
@@ -722,7 +988,13 @@ func execDB07CClient(t *testing.T, ctx context.Context, cli *client.Client, sess
 	return out
 }
 
-func execDB07CClientAllowFailure(t *testing.T, ctx context.Context, cli *client.Client, sessionID string, args ...string) db07cClientOutput {
+func execDB07CClientAllowFailure(
+	t *testing.T,
+	ctx context.Context,
+	cli *client.Client,
+	sessionID string,
+	args ...string,
+) db07cClientOutput {
 	t.Helper()
 	resp, err := cli.Exec(ctx, sessionID, types.ExecRequest{
 		Command:       "/usr/local/bin/db07c-client",
@@ -734,7 +1006,13 @@ func execDB07CClientAllowFailure(t *testing.T, ctx context.Context, cli *client.
 	}
 	var out db07cClientOutput
 	if err := json.Unmarshal([]byte(resp.Result.Stdout), &out); err != nil {
-		t.Fatalf("07c decode db07c-client stdout %q stderr %q exit %d: %v", resp.Result.Stdout, resp.Result.Stderr, resp.Result.ExitCode, err)
+		t.Fatalf(
+			"07c decode db07c-client stdout %q stderr %q exit %d: %v",
+			resp.Result.Stdout,
+			resp.Result.Stderr,
+			resp.Result.ExitCode,
+			err,
+		)
 	}
 	if resp.Result.ExitCode == 0 && !out.OK {
 		t.Fatalf("07c helper exit 0 with ok=false: %+v", out)
@@ -766,7 +1044,8 @@ func assertCopyRow07C(t *testing.T, ctx context.Context, dsn, note string) {
 	}
 	defer conn.Close(ctx)
 	var count int
-	if err := conn.QueryRow(ctx, "select count(*) from db07c_copy where note = $1", note).Scan(&count); err != nil {
+	if err := conn.QueryRow(ctx, "select count(*) from db07c_copy where note = $1", note).
+		Scan(&count); err != nil {
 		t.Fatalf("07c query copy row: %v", err)
 	}
 	if count != 1 {
@@ -782,7 +1061,8 @@ func assertPlan12SourceCount(t *testing.T, ctx context.Context, dsn string, want
 	}
 	defer conn.Close(ctx)
 	var got int
-	if err := conn.QueryRow(ctx, "select count(*) from plan12.users_source").Scan(&got); err != nil {
+	if err := conn.QueryRow(ctx, "select count(*) from plan12.users_source").
+		Scan(&got); err != nil {
 		t.Fatalf("plan12 count source rows: %v", err)
 	}
 	if got != want {
@@ -790,7 +1070,14 @@ func assertPlan12SourceCount(t *testing.T, ctx context.Context, dsn string, want
 	}
 }
 
-func waitForSessionEvent07C(t *testing.T, ctx context.Context, cli *client.Client, sessionID string, pred func(types.Event) bool, label string) types.Event {
+func waitForSessionEvent07C(
+	t *testing.T,
+	ctx context.Context,
+	cli *client.Client,
+	sessionID string,
+	pred func(types.Event) bool,
+	label string,
+) types.Event {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	var observed []types.Event

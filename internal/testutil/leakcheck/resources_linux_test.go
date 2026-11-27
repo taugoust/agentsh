@@ -30,14 +30,21 @@ func TestResourceSnapshotDetectsOpenFile(t *testing.T) {
 		file.Close()
 		t.Fatal(err)
 	}
-	if want := "file descriptor: " + name; !slices.Contains(diffResources(baseline, current), want) {
+	if want := "file descriptor: " + name; !slices.Contains(
+		diffResources(baseline, current),
+		want,
+	) {
 		file.Close()
 		t.Fatalf("open descriptor %q was not detected", want)
 	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if leaked, err := waitForResourceCleanup(baseline, time.Second); err != nil || len(leaked) != 0 {
+	if leaked, err := waitForResourceCleanup(
+		baseline,
+		time.Second,
+	); err != nil ||
+		len(leaked) != 0 {
 		t.Fatalf("resources after close = %v, err = %v", leaked, err)
 	}
 }
@@ -81,7 +88,11 @@ func TestResourceSnapshotDetectsChildProcess(t *testing.T) {
 		t.Fatal("killed child unexpectedly exited successfully")
 	}
 	reaped = true
-	if leaked, err := waitForResourceCleanup(baseline, time.Second); err != nil || len(leaked) != 0 {
+	if leaked, err := waitForResourceCleanup(
+		baseline,
+		time.Second,
+	); err != nil ||
+		len(leaked) != 0 {
 		t.Fatalf("resources after child reap = %v, err = %v", leaked, err)
 	}
 }

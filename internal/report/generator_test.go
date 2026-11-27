@@ -12,7 +12,10 @@ type mockEventStore struct {
 	events []types.Event
 }
 
-func (m *mockEventStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (m *mockEventStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return m.events, nil
 }
 
@@ -22,9 +25,25 @@ func (m *mockEventStore) Close() error                                          
 func TestGenerateSummaryReport(t *testing.T) {
 	store := &mockEventStore{
 		events: []types.Event{
-			{ID: "1", Type: "file_read", Path: "/workspace/main.go", Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
-			{ID: "2", Type: "file_write", Path: "/workspace/main.go", Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
-			{ID: "3", Type: "net_connect", Domain: "api.github.com", Remote: "api.github.com:443", Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
+			{
+				ID:     "1",
+				Type:   "file_read",
+				Path:   "/workspace/main.go",
+				Policy: &types.PolicyInfo{Decision: types.DecisionAllow},
+			},
+			{
+				ID:     "2",
+				Type:   "file_write",
+				Path:   "/workspace/main.go",
+				Policy: &types.PolicyInfo{Decision: types.DecisionAllow},
+			},
+			{
+				ID:     "3",
+				Type:   "net_connect",
+				Domain: "api.github.com",
+				Remote: "api.github.com:443",
+				Policy: &types.PolicyInfo{Decision: types.DecisionAllow},
+			},
 		},
 	}
 
@@ -155,7 +174,12 @@ func TestExtractMCPSummary_OnlyNewEvents(t *testing.T) {
 func TestGenerateDetailedReport(t *testing.T) {
 	store := &mockEventStore{
 		events: []types.Event{
-			{ID: "1", Type: "file_read", Path: "/workspace/main.go", Policy: &types.PolicyInfo{Decision: types.DecisionAllow}},
+			{
+				ID:     "1",
+				Type:   "file_read",
+				Path:   "/workspace/main.go",
+				Policy: &types.PolicyInfo{Decision: types.DecisionAllow},
+			},
 		},
 	}
 

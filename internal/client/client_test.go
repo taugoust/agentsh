@@ -31,7 +31,8 @@ func TestDoJSONSuccessAndAuthHeader(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		_ = json.NewEncoder(w).Encode(types.Session{ID: "abc", Policy: req.Policy, Workspace: req.Workspace})
+		_ = json.NewEncoder(w).
+			Encode(types.Session{ID: "abc", Policy: req.Policy, Workspace: req.Workspace})
 	}))
 	defer srv.Close()
 
@@ -75,7 +76,14 @@ func TestDoJSONNoContent(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "")
-	if err := c.doJSON(context.Background(), http.MethodPost, "/empty", nil, map[string]any{}, nil); err != nil {
+	if err := c.doJSON(
+		context.Background(),
+		http.MethodPost,
+		"/empty",
+		nil,
+		map[string]any{},
+		nil,
+	); err != nil {
 		t.Fatalf("doJSON returned error: %v", err)
 	}
 }

@@ -66,8 +66,15 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 		old, _ := s.DirenvEnvironment()
 		_, generation, revoked := pruneDirenvEnvironment(cfg, s, old)
 		writeJSON(w, http.StatusForbidden, toolResponse{
-			OK: false, Result: refreshDirenvResult{State: "policy_denied", UnsetCount: revoked, Generation: generation},
-			Code: toolErrorPolicyDenied, Error: "direnv refresh is disabled by policy", ErrorID: "error-" + uuid.NewString(),
+			OK: false,
+			Result: refreshDirenvResult{
+				State:      "policy_denied",
+				UnsetCount: revoked,
+				Generation: generation,
+			},
+			Code:    toolErrorPolicyDenied,
+			Error:   "direnv refresh is disabled by policy",
+			ErrorID: "error-" + uuid.NewString(),
 		})
 		return
 	}
@@ -91,14 +98,30 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 	if !hasEnvrc {
 		old, _ := s.DirenvEnvironment()
 		generation, _ := s.ReplaceDirenvEnvironment(map[string]string{})
-		result := refreshDirenvResult{State: "no_envrc", UnsetCount: len(old), Generation: generation}
+		result := refreshDirenvResult{
+			State:      "no_envrc",
+			UnsetCount: len(old),
+			Generation: generation,
+		}
 		actor := piToolActor{"kind": "extension", "label": "Pi direnv refresh"}
-		a.emitToolEvent(r.Context(), id, "tool_refresh_direnv", "refresh", "", actor, map[string]any{
-			"state": result.State, "set_count": 0, "unset_count": result.UnsetCount,
-			"rejected_count": 0, "generation": result.Generation, "duration_ms": 0,
-		})
+		a.emitToolEvent(
+			r.Context(),
+			id,
+			"tool_refresh_direnv",
+			"refresh",
+			"",
+			actor,
+			map[string]any{
+				"state": result.State, "set_count": 0, "unset_count": result.UnsetCount,
+				"rejected_count": 0, "generation": result.Generation, "duration_ms": 0,
+			},
+		)
 		if err := a.persistDetachedDirenvState(s, true); err != nil {
-			writeToolError(w, http.StatusInternalServerError, "persist detached direnv recovery state")
+			writeToolError(
+				w,
+				http.StatusInternalServerError,
+				"persist detached direnv recovery state",
+			)
 			return
 		}
 		writeJSON(w, http.StatusOK, toolResponse{OK: true, Result: result})
@@ -116,9 +139,14 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 		Actor: map[string]any{"kind": "extension", "label": "Pi direnv refresh"},
 	}
 	resp, code, err := a.execInSessionCoreWithOptions(r.Context(), id, execReq, internalExecOptions{
-		sensitive: true, provenance: policy.CommandProvenanceDirenvRefresh,
-		stdoutCaptureBytes: int64(cfg.MaxStdoutBytes), stderrCaptureBytes: int64(cfg.MaxStderrBytes),
-		queueTimeout: cfg.QueueTimeout, evaluationTimeout: cfg.EvaluationTimeout,
+		sensitive:  true,
+		provenance: policy.CommandProvenanceDirenvRefresh,
+		stdoutCaptureBytes: int64(
+			cfg.MaxStdoutBytes,
+		),
+		stderrCaptureBytes: int64(cfg.MaxStderrBytes),
+		queueTimeout:       cfg.QueueTimeout,
+		evaluationTimeout:  cfg.EvaluationTimeout,
 		onAdmitted: func() {
 			old, generation = s.DirenvEnvironment()
 			old, generation, result.UnsetCount = pruneDirenvEnvironment(cfg, s, old)
@@ -133,12 +161,14 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 	})
 	result.DurationMS = time.Since(start).Milliseconds()
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "queue timeout") {
+		if errors.Is(err, context.DeadlineExceeded) ||
+			strings.Contains(err.Error(), "queue timeout") {
 			result.State = "timed_out"
 		}
 	} else if code == http.StatusForbidden {
 		result.State = "policy_denied"
-		if resp != nil && resp.Result.Error != nil && resp.Result.Error.Code == "E_APPROVAL_DENIED" {
+		if resp != nil && resp.Result.Error != nil &&
+			resp.Result.Error.Code == "E_APPROVAL_DENIED" {
 			result.State = "policy_denied"
 		}
 	} else if !callbackRan {
@@ -148,13 +178,22 @@ func (a *App) refreshDirenvTool(w http.ResponseWriter, r *http.Request) {
 	// the audit stream for this sensitive operation.
 	actor := piToolActor{"kind": "extension", "label": "Pi direnv refresh"}
 	a.emitToolEvent(r.Context(), id, "tool_refresh_direnv", "refresh", "", actor, map[string]any{
-		"state": result.State, "set_count": result.SetCount, "unset_count": result.UnsetCount,
-		"rejected_count": result.RejectedCount, "generation": result.Generation, "duration_ms": result.DurationMS,
+		"state":          result.State,
+		"set_count":      result.SetCount,
+		"unset_count":    result.UnsetCount,
+		"rejected_count": result.RejectedCount,
+		"generation":     result.Generation,
+		"duration_ms":    result.DurationMS,
 	})
-	okResult := result.State == "loaded" || result.State == "unchanged" || result.State == "no_envrc"
+	okResult := result.State == "loaded" || result.State == "unchanged" ||
+		result.State == "no_envrc"
 	if okResult {
 		if err := a.persistDetachedDirenvState(s, true); err != nil {
-			writeToolError(w, http.StatusInternalServerError, "persist detached direnv recovery state")
+			writeToolError(
+				w,
+				http.StatusInternalServerError,
+				"persist detached direnv recovery state",
+			)
 			return
 		}
 	}
@@ -188,12 +227,17 @@ func direnvFileWithinWorkspace(workdir, workspaceRoot string) (bool, error) {
 // the current policy no longer allows them or the supervisor now owns the key.
 // Callers that dispatch a refresh must do this after execution admission so the
 // stale values cannot enter the refresh command's own environment.
-func pruneDirenvEnvironment(cfg policy.ResolvedDirenvImportPolicy, s *session.Session, old map[string]string) (map[string]string, uint64, int) {
+func pruneDirenvEnvironment(
+	cfg policy.ResolvedDirenvImportPolicy,
+	s *session.Session,
+	old map[string]string,
+) (map[string]string, uint64, int) {
 	next := cloneStringMap(old)
 	serviceEnv := s.ServiceEnvVars()
 	removed := 0
 	for name := range old {
-		if cfg.Enabled && policy.DirenvImportAllowed(cfg, name) && !containsKeyFold(serviceEnv, name) {
+		if cfg.Enabled && policy.DirenvImportAllowed(cfg, name) &&
+			!containsKeyFold(serviceEnv, name) {
 			continue
 		}
 		deleteFold(next, name)
@@ -203,9 +247,16 @@ func pruneDirenvEnvironment(cfg policy.ResolvedDirenvImportPolicy, s *session.Se
 	return next, generation, removed
 }
 
-func evaluateDirenvResult(cfg policy.ResolvedDirenvImportPolicy, s *session.Session, old map[string]string, generation uint64, run internalSensitiveExecResult) refreshDirenvResult {
+func evaluateDirenvResult(
+	cfg policy.ResolvedDirenvImportPolicy,
+	s *session.Session,
+	old map[string]string,
+	generation uint64,
+	run internalSensitiveExecResult,
+) refreshDirenvResult {
 	out := refreshDirenvResult{Generation: generation}
-	if run.StdoutTruncated || run.StderrTruncated || run.StdoutTotal > int64(cfg.MaxStdoutBytes) || run.StderrTotal > int64(cfg.MaxStderrBytes) {
+	if run.StdoutTruncated || run.StderrTruncated || run.StdoutTotal > int64(cfg.MaxStdoutBytes) ||
+		run.StderrTotal > int64(cfg.MaxStderrBytes) {
 		out.State = "invalid_output"
 		return out
 	}
@@ -246,7 +297,8 @@ func evaluateDirenvResult(cfg policy.ResolvedDirenvImportPolicy, s *session.Sess
 	next := cloneStringMap(old)
 	serviceEnv := s.ServiceEnvVars()
 	for _, change := range changes {
-		if !policy.DirenvImportAllowed(cfg, change.name) || containsKeyFold(serviceEnv, change.name) {
+		if !policy.DirenvImportAllowed(cfg, change.name) ||
+			containsKeyFold(serviceEnv, change.name) {
 			out.RejectedCount++
 			continue
 		}

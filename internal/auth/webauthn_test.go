@@ -85,7 +85,13 @@ func TestNewWebAuthnService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc, err := NewWebAuthnService(tt.rpID, tt.rpName, tt.rpOrigins, tt.userVerification, store)
+			svc, err := NewWebAuthnService(
+				tt.rpID,
+				tt.rpName,
+				tt.rpOrigins,
+				tt.userVerification,
+				store,
+			)
 
 			if tt.wantErr {
 				if err == nil {

@@ -55,7 +55,8 @@ func stripSubagentTerminalControls(value string) string {
 			i = skipSubagentEscapeSequence(value, i)
 			continue
 		}
-		if (value[i] < 0x20 && value[i] != '\n' && value[i] != '\r' && value[i] != '\t') || value[i] == 0x7f {
+		if (value[i] < 0x20 && value[i] != '\n' && value[i] != '\r' && value[i] != '\t') ||
+			value[i] == 0x7f {
 			i++
 			continue
 		}

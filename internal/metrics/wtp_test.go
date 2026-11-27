@@ -177,7 +177,10 @@ func TestWTPMetrics_WALCorruptionCounter(t *testing.T) {
 	rr := httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_wal_corruption_total 0") {
-		t.Errorf("expected zero-valued wtp_wal_corruption_total in initial scrape\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected zero-valued wtp_wal_corruption_total in initial scrape\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 
 	// After increments, the value must reflect the sum.
@@ -187,7 +190,10 @@ func TestWTPMetrics_WALCorruptionCounter(t *testing.T) {
 	rr = httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_wal_corruption_total 5") {
-		t.Errorf("expected wtp_wal_corruption_total 5 after increments\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected wtp_wal_corruption_total 5 after increments\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 }
 
@@ -292,7 +298,10 @@ func TestWTPMetrics_DroppedInvalidUTF8(t *testing.T) {
 	rr := httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_invalid_utf8_total 0") {
-		t.Errorf("expected zero-valued wtp_dropped_invalid_utf8_total in initial scrape\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected zero-valued wtp_dropped_invalid_utf8_total in initial scrape\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 
 	w.IncDroppedInvalidUTF8(2)
@@ -300,7 +309,10 @@ func TestWTPMetrics_DroppedInvalidUTF8(t *testing.T) {
 	rr = httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_invalid_utf8_total 2") {
-		t.Errorf("expected wtp_dropped_invalid_utf8_total 2 after IncDroppedInvalidUTF8(2)\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected wtp_dropped_invalid_utf8_total 2 after IncDroppedInvalidUTF8(2)\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 	if got := c.WTP().DroppedInvalidUTF8(); got != 2 {
 		t.Errorf("DroppedInvalidUTF8 accessor returned %d, want 2", got)
@@ -314,7 +326,10 @@ func TestWTPMetrics_DroppedSequenceOverflow(t *testing.T) {
 	rr := httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_sequence_overflow_total 0") {
-		t.Errorf("expected zero-valued wtp_dropped_sequence_overflow_total in initial scrape\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected zero-valued wtp_dropped_sequence_overflow_total in initial scrape\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 
 	w.IncDroppedSequenceOverflow(3)
@@ -322,7 +337,10 @@ func TestWTPMetrics_DroppedSequenceOverflow(t *testing.T) {
 	rr = httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_sequence_overflow_total 3") {
-		t.Errorf("expected wtp_dropped_sequence_overflow_total 3 after IncDroppedSequenceOverflow(3)\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected wtp_dropped_sequence_overflow_total 3 after IncDroppedSequenceOverflow(3)\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 	if got := c.WTP().DroppedSequenceOverflow(); got != 3 {
 		t.Errorf("DroppedSequenceOverflow accessor returned %d, want 3", got)
@@ -414,7 +432,10 @@ func TestWTPMetrics_DroppedInvalidMapper(t *testing.T) {
 	rr := httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_invalid_mapper_total 0") {
-		t.Errorf("expected zero-valued wtp_dropped_invalid_mapper_total in initial scrape\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected zero-valued wtp_dropped_invalid_mapper_total in initial scrape\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 
 	w.IncDroppedInvalidMapper(1)
@@ -422,7 +443,10 @@ func TestWTPMetrics_DroppedInvalidMapper(t *testing.T) {
 	rr = httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_invalid_mapper_total 1") {
-		t.Errorf("expected wtp_dropped_invalid_mapper_total 1 after IncDroppedInvalidMapper(1)\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected wtp_dropped_invalid_mapper_total 1 after IncDroppedInvalidMapper(1)\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 	if got := c.WTP().DroppedInvalidMapper(); got != 1 {
 		t.Errorf("DroppedInvalidMapper accessor returned %d, want 1", got)
@@ -436,7 +460,10 @@ func TestWTPMetrics_DroppedInvalidTimestamp(t *testing.T) {
 	rr := httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_invalid_timestamp_total 0") {
-		t.Errorf("expected zero-valued wtp_dropped_invalid_timestamp_total in initial scrape\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected zero-valued wtp_dropped_invalid_timestamp_total in initial scrape\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 
 	w.IncDroppedInvalidTimestamp(2)
@@ -444,7 +471,10 @@ func TestWTPMetrics_DroppedInvalidTimestamp(t *testing.T) {
 	rr = httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_invalid_timestamp_total 2") {
-		t.Errorf("expected wtp_dropped_invalid_timestamp_total 2 after IncDroppedInvalidTimestamp(2)\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected wtp_dropped_invalid_timestamp_total 2 after IncDroppedInvalidTimestamp(2)\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 	if got := c.WTP().DroppedInvalidTimestamp(); got != 2 {
 		t.Errorf("DroppedInvalidTimestamp accessor returned %d, want 2", got)
@@ -458,7 +488,10 @@ func TestWTPMetrics_DroppedMapperFailure(t *testing.T) {
 	rr := httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_mapper_failure_total 0") {
-		t.Errorf("expected zero-valued wtp_dropped_mapper_failure_total in initial scrape\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected zero-valued wtp_dropped_mapper_failure_total in initial scrape\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 
 	w.IncDroppedMapperFailure(4)
@@ -466,7 +499,10 @@ func TestWTPMetrics_DroppedMapperFailure(t *testing.T) {
 	rr = httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_mapper_failure_total 4") {
-		t.Errorf("expected wtp_dropped_mapper_failure_total 4 after IncDroppedMapperFailure(4)\nbody:\n%s", rr.Body.String())
+		t.Errorf(
+			"expected wtp_dropped_mapper_failure_total 4 after IncDroppedMapperFailure(4)\nbody:\n%s",
+			rr.Body.String(),
+		)
 	}
 	if got := c.WTP().DroppedMapperFailure(); got != 4 {
 		t.Errorf("DroppedMapperFailure accessor returned %d, want 4", got)
@@ -502,11 +538,20 @@ func TestWTPMetrics_DroppedInvalidFrameAlwaysEmittedAllReasons(t *testing.T) {
 	rr = httptest.NewRecorder()
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	body = rr.Body.String()
-	if !strings.Contains(body, `wtp_dropped_invalid_frame_total{reason="event_batch_body_unset"} 1`) {
-		t.Errorf("expected event_batch_body_unset=1 after one IncDroppedInvalidFrame\nbody:\n%s", body)
+	if !strings.Contains(
+		body,
+		`wtp_dropped_invalid_frame_total{reason="event_batch_body_unset"} 1`,
+	) {
+		t.Errorf(
+			"expected event_batch_body_unset=1 after one IncDroppedInvalidFrame\nbody:\n%s",
+			body,
+		)
 	}
 	if !strings.Contains(body, `wtp_dropped_invalid_frame_total{reason="unknown"} 0`) {
-		t.Errorf("expected unknown to remain 0 after event_batch_body_unset increment\nbody:\n%s", body)
+		t.Errorf(
+			"expected unknown to remain 0 after event_batch_body_unset increment\nbody:\n%s",
+			body,
+		)
 	}
 
 	c.WTP().IncDroppedInvalidFrame(WTPInvalidFrameReason("evil\"label\\value"))
@@ -530,7 +575,9 @@ func TestIncDroppedInvalidFrame_InvalidLabelLogsAndCollapses(t *testing.T) {
 
 	var buf bytes.Buffer
 	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	slog.SetDefault(
+		slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})),
+	)
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	c := New()
@@ -552,7 +599,10 @@ func TestIncDroppedInvalidFrame_InvalidLabelLogsAndCollapses(t *testing.T) {
 		t.Errorf("expected raw_reason field %q in captured log output\nlog:\n%s", want, logOutput)
 	}
 	if want := `"reason":"classifier_bypass"`; !strings.Contains(logOutput, want) {
-		t.Errorf("expected reason=classifier_bypass field in captured log output\nlog:\n%s", logOutput)
+		t.Errorf(
+			"expected reason=classifier_bypass field in captured log output\nlog:\n%s",
+			logOutput,
+		)
 	}
 	if got := strings.Count(strings.TrimRight(logOutput, "\n"), "\n") + 1; got != 1 {
 		t.Errorf("expected exactly one WARN log entry, got %d\nlog:\n%s", got, logOutput)
@@ -571,7 +621,10 @@ func TestIncDroppedInvalidFrame_InvalidLabelLogsAndCollapses(t *testing.T) {
 func TestWTPInvalidFrameReason_ValidationReasonsAllValid(t *testing.T) {
 	for _, r := range validationReasonsShared {
 		if _, ok := wtpInvalidFrameReasonsValid[r]; !ok {
-			t.Errorf("validationReasonsShared contains %q but wtpInvalidFrameReasonsValid does not", r)
+			t.Errorf(
+				"validationReasonsShared contains %q but wtpInvalidFrameReasonsValid does not",
+				r,
+			)
 		}
 	}
 }
@@ -591,7 +644,10 @@ func TestWTPInvalidFrameReason_ValidationAndMetricsOnlyDisjoint(t *testing.T) {
 	}
 	for _, r := range metricsOnlyReasons {
 		if _, ok := validation[r]; ok {
-			t.Errorf("reason %q appears in BOTH validationReasonsShared and metricsOnlyReasons (must be disjoint)", r)
+			t.Errorf(
+				"reason %q appears in BOTH validationReasonsShared and metricsOnlyReasons (must be disjoint)",
+				r,
+			)
 		}
 	}
 }
@@ -606,7 +662,10 @@ func TestWTPInvalidFrameReason_ValidationPlusMetricsOnlyCoversAllValid(t *testin
 	}
 	for r := range wtpInvalidFrameReasonsValid {
 		if _, ok := covered[r]; !ok {
-			t.Errorf("wtpInvalidFrameReasonsValid contains %q but neither validationReasonsShared nor metricsOnlyReasons covers it", r)
+			t.Errorf(
+				"wtpInvalidFrameReasonsValid contains %q but neither validationReasonsShared nor metricsOnlyReasons covers it",
+				r,
+			)
 		}
 	}
 }
@@ -652,7 +711,10 @@ func TestWTPMetrics_WALQuarantineAlwaysEmittedAllReasons(t *testing.T) {
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	body = rr.Body.String()
 	if !strings.Contains(body, `wtp_wal_quarantine_total{reason="unknown_identity_mismatch"} 1`) {
-		t.Errorf("expected unknown_identity_mismatch=1 after invalid-label collapse\nbody:\n%s", body)
+		t.Errorf(
+			"expected unknown_identity_mismatch=1 after invalid-label collapse\nbody:\n%s",
+			body,
+		)
 	}
 	if strings.Contains(body, `evil`) {
 		t.Errorf("invalid reason leaked through validator into output:\n%s", body)
@@ -681,7 +743,11 @@ func TestWTPMetrics_ReconnectsAlwaysEmittedIncludesFailClosedControlFrameLabels(
 	for _, reason := range []string{"server_update_unsupported", "recv_unknown_frame"} {
 		want := fmt.Sprintf(`wtp_reconnects_total{reason=%q} 0`, reason)
 		if !strings.Contains(body, want) {
-			t.Errorf("missing zero-valued reconnect series %q (Task 22c always-emit)\nbody:\n%s", want, body)
+			t.Errorf(
+				"missing zero-valued reconnect series %q (Task 22c always-emit)\nbody:\n%s",
+				want,
+				body,
+			)
 		}
 	}
 
@@ -722,7 +788,11 @@ func TestWTPMetrics_ReconnectsAlwaysEmittedIncludesFailClosedControlFrameLabels(
 		}
 		want := fmt.Sprintf(`wtp_reconnects_total{reason=%q} 0`, string(reason))
 		if !strings.Contains(body, want) {
-			t.Errorf("expected non-targeted reason %q to remain at 0; cross-series mutation suspected\nbody:\n%s", reason, body)
+			t.Errorf(
+				"expected non-targeted reason %q to remain at 0; cross-series mutation suspected\nbody:\n%s",
+				reason,
+				body,
+			)
 		}
 	}
 }

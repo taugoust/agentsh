@@ -10,7 +10,9 @@ import (
 
 // DetectAndValidateSecurityMode detects security capabilities and selects the appropriate mode.
 // Returns the selected mode, detected capabilities, and any error.
-func DetectAndValidateSecurityMode(cfg *config.Config) (string, *capabilities.SecurityCapabilities, error) {
+func DetectAndValidateSecurityMode(
+	cfg *config.Config,
+) (string, *capabilities.SecurityCapabilities, error) {
 	// Detect available security capabilities
 	caps := capabilities.DetectSecurityCapabilities()
 

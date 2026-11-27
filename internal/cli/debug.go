@@ -346,7 +346,8 @@ func newDebugPolicyTestCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&sessionID, "session", "", "Session ID (uses session's policy)")
-	cmd.Flags().StringVar(&operation, "op", "", "Operation type (file_read, file_write, net_connect, exec)")
+	cmd.Flags().
+		StringVar(&operation, "op", "", "Operation type (file_read, file_write, net_connect, exec)")
 	cmd.Flags().StringVar(&path, "path", "", "Path or target to test")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 
@@ -375,7 +376,8 @@ func printPolicyTestHuman(cmd *cobra.Command, op, path string, result map[string
 	if source != "" {
 		fmt.Fprintf(w, "Source:    %s\n", source)
 	}
-	if runtimeReport, ok := result["runtime_enforcement"].(map[string]any); ok && len(runtimeReport) > 0 {
+	if runtimeReport, ok := result["runtime_enforcement"].(map[string]any); ok &&
+		len(runtimeReport) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Runtime enforcement:")
 		if requested := getString(runtimeReport, "requested"); requested != "" {
@@ -390,19 +392,60 @@ func printPolicyTestHuman(cmd *cobra.Command, op, path string, result map[string
 		if status := getString(runtimeReport, "status"); status != "" {
 			fmt.Fprintf(w, "  Status:                %s\n", status)
 		}
-		fmt.Fprintf(w, "  Network policy enforced: %v\n", getBool(runtimeReport, "network_policy_enforced"))
+		fmt.Fprintf(
+			w,
+			"  Network policy enforced: %v\n",
+			getBool(runtimeReport, "network_policy_enforced"),
+		)
 		fmt.Fprintf(w, "  Cgroup delegated:      %v\n", getBool(runtimeReport, "cgroup_delegated"))
-		fmt.Fprintf(w, "  Helper authenticated:  %v\n", getBool(runtimeReport, "helper_authenticated"))
-		fmt.Fprintf(w, "  Tool boundary active:  %v\n", getBool(runtimeReport, "tool_boundary_active"))
+		fmt.Fprintf(
+			w,
+			"  Helper authenticated:  %v\n",
+			getBool(runtimeReport, "helper_authenticated"),
+		)
+		fmt.Fprintf(
+			w,
+			"  Tool boundary active:  %v\n",
+			getBool(runtimeReport, "tool_boundary_active"),
+		)
 		fmt.Fprintf(w, "  Proxy ready:           %v\n", getBool(runtimeReport, "proxy_ready"))
 		fmt.Fprintf(w, "  Proxy required:        %v\n", getBool(runtimeReport, "proxy_required"))
-		fmt.Fprintf(w, "  Exact proxy only:      %v\n", getBool(runtimeReport, "exact_proxy_endpoint_only"))
-		fmt.Fprintf(w, "  Direct bypass blocked: %v\n", getBool(runtimeReport, "direct_bypass_blocked"))
-		fmt.Fprintf(w, "  Direct TCP blocked:    %v\n", getBool(runtimeReport, "direct_tcp_blocked"))
-		fmt.Fprintf(w, "  Local TCP blocked:     %v\n", getBool(runtimeReport, "local_non_proxy_tcp_blocked"))
-		fmt.Fprintf(w, "  UDP/QUIC blocked:      %v/%v\n", getBool(runtimeReport, "udp_blocked"), getBool(runtimeReport, "quic_blocked"))
-		fmt.Fprintf(w, "  Raw sockets blocked:   %v\n", getBool(runtimeReport, "raw_sockets_blocked"))
-		fmt.Fprintf(w, "  Unsupported blocked:   %v\n", getBool(runtimeReport, "unsupported_traffic_blocked"))
+		fmt.Fprintf(
+			w,
+			"  Exact proxy only:      %v\n",
+			getBool(runtimeReport, "exact_proxy_endpoint_only"),
+		)
+		fmt.Fprintf(
+			w,
+			"  Direct bypass blocked: %v\n",
+			getBool(runtimeReport, "direct_bypass_blocked"),
+		)
+		fmt.Fprintf(
+			w,
+			"  Direct TCP blocked:    %v\n",
+			getBool(runtimeReport, "direct_tcp_blocked"),
+		)
+		fmt.Fprintf(
+			w,
+			"  Local TCP blocked:     %v\n",
+			getBool(runtimeReport, "local_non_proxy_tcp_blocked"),
+		)
+		fmt.Fprintf(
+			w,
+			"  UDP/QUIC blocked:      %v/%v\n",
+			getBool(runtimeReport, "udp_blocked"),
+			getBool(runtimeReport, "quic_blocked"),
+		)
+		fmt.Fprintf(
+			w,
+			"  Raw sockets blocked:   %v\n",
+			getBool(runtimeReport, "raw_sockets_blocked"),
+		)
+		fmt.Fprintf(
+			w,
+			"  Unsupported blocked:   %v\n",
+			getBool(runtimeReport, "unsupported_traffic_blocked"),
+		)
 		fmt.Fprintf(w, "  Fail-closed setup:     %v\n", getBool(runtimeReport, "fail_closed_setup"))
 		if !getBool(runtimeReport, "operation_executed") {
 			fmt.Fprintln(w, "  Tested operation run:  false (decision evaluation only)")

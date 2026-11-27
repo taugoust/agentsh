@@ -49,7 +49,26 @@ func TestStartNotifyHandler_NilSocket_NoOp(t *testing.T) {
 	pol := &policy.Engine{}
 
 	// Should not panic with nil socket
-	startNotifyHandler(context.Background(), nil, "test-session", pol, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
+	startNotifyHandler(
+		context.Background(),
+		nil,
+		"test-session",
+		pol,
+		store,
+		broker,
+		nil,
+		config.SandboxSeccompFileMonitorConfig{},
+		false,
+		nil,
+		nil,
+		false,
+		nil,
+		nil,
+		0,
+		"",
+		nil,
+		nil,
+	)
 }
 
 func TestStartNotifyHandler_NilPolicy_NoOp(t *testing.T) {
@@ -67,7 +86,26 @@ func TestStartNotifyHandler_NilPolicy_NoOp(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	done := startNotifyHandler(context.Background(), r, "test-session", nil, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
+	done := startNotifyHandler(
+		context.Background(),
+		r,
+		"test-session",
+		nil,
+		store,
+		broker,
+		nil,
+		config.SandboxSeccompFileMonitorConfig{},
+		false,
+		nil,
+		nil,
+		false,
+		nil,
+		nil,
+		0,
+		"",
+		nil,
+		nil,
+	)
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -81,7 +119,26 @@ func TestStartNotifyHandler_NilStore_NoOp(t *testing.T) {
 	pol := &policy.Engine{}
 
 	// Should not panic with nil socket (store doesn't matter if socket is nil)
-	startNotifyHandler(context.Background(), nil, "test-session", pol, store, broker, nil, config.SandboxSeccompFileMonitorConfig{}, false, nil, nil, false, nil, nil, 0, "", nil, nil)
+	startNotifyHandler(
+		context.Background(),
+		nil,
+		"test-session",
+		pol,
+		store,
+		broker,
+		nil,
+		config.SandboxSeccompFileMonitorConfig{},
+		false,
+		nil,
+		nil,
+		false,
+		nil,
+		nil,
+		0,
+		"",
+		nil,
+		nil,
+	)
 }
 
 func TestExtraProcConfig_NotifyFields(t *testing.T) {

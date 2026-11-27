@@ -24,7 +24,12 @@ import (
 // helper is scheme-agnostic and avoids collisions with real
 // secrets. For example, the keyring tests pass a per-run unique
 // service name via testServiceName(t).
-func ProviderContract(t *testing.T, name string, p secrets.SecretProvider, probeRef secrets.SecretRef) {
+func ProviderContract(
+	t *testing.T,
+	name string,
+	p secrets.SecretProvider,
+	probeRef secrets.SecretRef,
+) {
 	t.Helper()
 
 	t.Cleanup(func() { _ = p.Close() })

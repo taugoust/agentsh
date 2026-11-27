@@ -51,7 +51,20 @@ func TestCommandTimeoutKillsProcessGroup(t *testing.T) {
 	childFile := filepath.Join(s.Workspace, "child.txt")
 	req := processTreeRequest(childFile, "50ms")
 
-	exitCode, _, _, _, _, _, _, _, err := runCommandWithResources(context.Background(), s, "cmd-timeout", req, &config.Config{}, policy.ResolvedEnvPolicy{}, 0, nil, nil, nil, "", nil)
+	exitCode, _, _, _, _, _, _, _, err := runCommandWithResources(
+		context.Background(),
+		s,
+		"cmd-timeout",
+		req,
+		&config.Config{},
+		policy.ResolvedEnvPolicy{},
+		0,
+		nil,
+		nil,
+		nil,
+		"",
+		nil,
+	)
 	if exitCode != 124 || !errors.Is(err, errCommandTimeout) {
 		t.Fatalf("timeout result = exit %d err %v", exitCode, err)
 	}
@@ -66,7 +79,21 @@ func TestCommandTimeoutKillsProcessGroupStreaming(t *testing.T) {
 	childFile := filepath.Join(s.Workspace, "child-stream.txt")
 	req := processTreeRequest(childFile, "50ms")
 
-	exitCode, _, _, _, _, _, _, _, err := runCommandWithResourcesStreamingEmit(context.Background(), s, "cmd-timeout-stream", req, &config.Config{}, policy.ResolvedEnvPolicy{}, 0, nil, nil, nil, nil, "", nil)
+	exitCode, _, _, _, _, _, _, _, err := runCommandWithResourcesStreamingEmit(
+		context.Background(),
+		s,
+		"cmd-timeout-stream",
+		req,
+		&config.Config{},
+		policy.ResolvedEnvPolicy{},
+		0,
+		nil,
+		nil,
+		nil,
+		nil,
+		"",
+		nil,
+	)
 	if exitCode != 124 || !errors.Is(err, errCommandTimeout) {
 		t.Fatalf("stream timeout result = exit %d err %v", exitCode, err)
 	}
@@ -83,7 +110,10 @@ func TestCommandTimeoutEscapedPipeHolderDoesNotBlockWaitForever(t *testing.T) {
 		time.Sleep(30 * time.Second)
 		return
 	case "launcher":
-		cmd := exec.Command(os.Args[0], "-test.run=^TestCommandTimeoutEscapedPipeHolderDoesNotBlockWaitForever$")
+		cmd := exec.Command(
+			os.Args[0],
+			"-test.run=^TestCommandTimeoutEscapedPipeHolderDoesNotBlockWaitForever$",
+		)
 		cmd.Env = append(os.Environ(), roleEnv+"=holder")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -91,7 +121,11 @@ func TestCommandTimeoutEscapedPipeHolderDoesNotBlockWaitForever(t *testing.T) {
 		if err := cmd.Start(); err != nil {
 			os.Exit(2)
 		}
-		if err := os.WriteFile(os.Getenv("AGENTSH_TEST_ESCAPED_PIPE_PID_FILE"), []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
+		if err := os.WriteFile(
+			os.Getenv("AGENTSH_TEST_ESCAPED_PIPE_PID_FILE"),
+			[]byte(strconv.Itoa(cmd.Process.Pid)),
+			0o600,
+		); err != nil {
 			_ = cmd.Process.Kill()
 			os.Exit(3)
 		}
@@ -111,7 +145,20 @@ func TestCommandTimeoutEscapedPipeHolderDoesNotBlockWaitForever(t *testing.T) {
 		},
 	}
 	started := time.Now()
-	exitCode, _, _, _, _, _, _, _, err := runCommandWithResources(context.Background(), s, "cmd-escaped-pipe", req, &config.Config{}, policy.ResolvedEnvPolicy{}, 0, nil, nil, nil, "", nil)
+	exitCode, _, _, _, _, _, _, _, err := runCommandWithResources(
+		context.Background(),
+		s,
+		"cmd-escaped-pipe",
+		req,
+		&config.Config{},
+		policy.ResolvedEnvPolicy{},
+		0,
+		nil,
+		nil,
+		nil,
+		"",
+		nil,
+	)
 	if elapsed := time.Since(started); elapsed > commandWaitDelay+2*time.Second {
 		t.Fatalf("cancellation remained blocked on escaped capture pipe for %v", elapsed)
 	}
@@ -138,7 +185,20 @@ func TestCommandTimeoutDoesNotClaimCallerDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	exitCode, _, _, _, _, _, _, _, err := runCommandWithResources(ctx, s, "cmd-caller-deadline", req, &config.Config{}, policy.ResolvedEnvPolicy{}, 0, nil, nil, nil, "", nil)
+	exitCode, _, _, _, _, _, _, _, err := runCommandWithResources(
+		ctx,
+		s,
+		"cmd-caller-deadline",
+		req,
+		&config.Config{},
+		policy.ResolvedEnvPolicy{},
+		0,
+		nil,
+		nil,
+		nil,
+		"",
+		nil,
+	)
 	if exitCode == 124 || errors.Is(err, errCommandTimeout) {
 		t.Fatalf("caller deadline was mislabeled = exit %d err %v", exitCode, err)
 	}

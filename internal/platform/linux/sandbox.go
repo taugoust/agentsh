@@ -133,7 +133,11 @@ func (s *Sandbox) ID() string {
 }
 
 // Execute runs a command in the sandbox with namespace isolation.
-func (s *Sandbox) Execute(ctx context.Context, cmd string, args ...string) (*platform.ExecResult, error) {
+func (s *Sandbox) Execute(
+	ctx context.Context,
+	cmd string,
+	args ...string,
+) (*platform.ExecResult, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()

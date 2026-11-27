@@ -124,7 +124,11 @@ package_rules:
 	require.Len(t, p.PackageRules, 1)
 	r := p.PackageRules[0]
 	require.NotNil(t, r.Match.LicenseSPDX)
-	assert.Equal(t, []string{"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause"}, r.Match.LicenseSPDX.Allow)
+	assert.Equal(
+		t,
+		[]string{"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause"},
+		r.Match.LicenseSPDX.Allow,
+	)
 	assert.Nil(t, r.Match.LicenseSPDX.Deny)
 	assert.Equal(t, "allow", r.Action)
 }

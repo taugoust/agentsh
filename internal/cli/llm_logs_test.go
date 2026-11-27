@@ -283,7 +283,13 @@ func TestTruncatePath(t *testing.T) {
 	for _, tt := range tests {
 		got := truncatePath(tt.path, tt.maxLen)
 		if len(got) > tt.maxLen {
-			t.Errorf("truncatePath(%q, %d) = %q (len %d), exceeds maxLen", tt.path, tt.maxLen, got, len(got))
+			t.Errorf(
+				"truncatePath(%q, %d) = %q (len %d), exceeds maxLen",
+				tt.path,
+				tt.maxLen,
+				got,
+				len(got),
+			)
 		}
 	}
 }

@@ -296,8 +296,15 @@ func (s *SSEInterceptor) handleMessageDelta(originalLine, data string) []string 
 func (s *SSEInterceptor) emitAnthropicTextBlock(index int, toolName string) []string {
 	msg := fmt.Sprintf("[agentsh] Tool '%s' blocked by policy", toolName)
 
-	startData := fmt.Sprintf(`{"type":"content_block_start","index":%d,"content_block":{"type":"text","text":""}}`, index)
-	deltaData := fmt.Sprintf(`{"type":"content_block_delta","index":%d,"delta":{"type":"text_delta","text":%s}}`, index, mustMarshalString(msg))
+	startData := fmt.Sprintf(
+		`{"type":"content_block_start","index":%d,"content_block":{"type":"text","text":""}}`,
+		index,
+	)
+	deltaData := fmt.Sprintf(
+		`{"type":"content_block_delta","index":%d,"delta":{"type":"text_delta","text":%s}}`,
+		index,
+		mustMarshalString(msg),
+	)
 	stopData := fmt.Sprintf(`{"type":"content_block_stop","index":%d}`, index)
 
 	return []string{
@@ -350,7 +357,9 @@ func (s *SSEInterceptor) rewriteAnthropicStopReason(data string) string {
 // When a SessionAnalyzer is configured, cross-server rules are checked before
 // regular policy evaluation. The third return value carries the cross-server
 // decision details when the block was caused by a cross-server rule.
-func (s *SSEInterceptor) lookupAndEvaluate(toolName, toolCallID string) (*mcpregistry.ToolEntry, *mcpinspect.PolicyDecision, *mcpinspect.CrossServerDecision) {
+func (s *SSEInterceptor) lookupAndEvaluate(
+	toolName, toolCallID string,
+) (*mcpregistry.ToolEntry, *mcpinspect.PolicyDecision, *mcpinspect.CrossServerDecision) {
 	if s.registry == nil {
 		return nil, nil, nil
 	}
@@ -362,7 +371,12 @@ func (s *SSEInterceptor) lookupAndEvaluate(toolName, toolCallID string) (*mcpreg
 
 	// Cross-server check + record (atomic to eliminate TOCTOU race).
 	if s.analyzer != nil {
-		if block, _ := s.analyzer.CheckAndRecord(entry.ServerID, toolName, toolCallID, s.requestID); block != nil {
+		if block, _ := s.analyzer.CheckAndRecord(
+			entry.ServerID,
+			toolName,
+			toolCallID,
+			s.requestID,
+		); block != nil {
 			return entry, &mcpinspect.PolicyDecision{Allowed: false, Reason: block.Reason}, block
 		}
 	}
@@ -384,7 +398,10 @@ func (s *SSEInterceptor) lookupAndEvaluate(toolName, toolCallID string) (*mcpreg
 	// Version pin check.
 	var alertReason string
 	if s.versionPinCfg != nil && s.versionPinCfg.Enabled {
-		if pinnedHash, pinned := s.registry.PinnedHash(toolName); pinned && entry.ToolHash != pinnedHash {
+		if pinnedHash, pinned := s.registry.PinnedHash(
+			toolName,
+		); pinned &&
+			entry.ToolHash != pinnedHash {
 			switch s.versionPinCfg.OnChange {
 			case "block":
 				dec := mcpinspect.PolicyDecision{
@@ -398,8 +415,12 @@ func (s *SSEInterceptor) lookupAndEvaluate(toolName, toolCallID string) (*mcpreg
 				return entry, &dec, nil
 			case "alert":
 				// Store alert reason but continue to policy evaluation.
-				alertReason = fmt.Sprintf("tool %q hash changed (pinned: %s, current: %s) [alert only]",
-					toolName, pinnedHash, entry.ToolHash)
+				alertReason = fmt.Sprintf(
+					"tool %q hash changed (pinned: %s, current: %s) [alert only]",
+					toolName,
+					pinnedHash,
+					entry.ToolHash,
+				)
 			}
 		}
 	}
@@ -428,7 +449,11 @@ func (s *SSEInterceptor) lookupAndEvaluate(toolName, toolCallID string) (*mcpreg
 
 // fireEvent fires the onEvent callback with the given parameters.
 // When a cross-server decision is provided, its metadata is included in the event.
-func (s *SSEInterceptor) fireEvent(toolName, toolCallID, action, reason string, entry *mcpregistry.ToolEntry, crossServerDec ...*mcpinspect.CrossServerDecision) {
+func (s *SSEInterceptor) fireEvent(
+	toolName, toolCallID, action, reason string,
+	entry *mcpregistry.ToolEntry,
+	crossServerDec ...*mcpinspect.CrossServerDecision,
+) {
 	if s.onEvent == nil {
 		return
 	}
@@ -562,7 +587,8 @@ func (s *SSEInterceptor) processOpenAIEvent(originalLine string) []string {
 	// If so, suppress the entire line to avoid emitting useless empty chunks.
 	allEmpty := true
 	for _, c := range chunk.Choices {
-		if len(c.Delta.ToolCalls) > 0 || len(c.Delta.Content) > 0 || c.Delta.Role != "" || c.FinishReason != nil {
+		if len(c.Delta.ToolCalls) > 0 || len(c.Delta.Content) > 0 || c.Delta.Role != "" ||
+			c.FinishReason != nil {
 			allEmpty = false
 			break
 		}
@@ -638,7 +664,10 @@ func (s *SSEInterceptor) handleOpenAIFirstToolChunk(choice *openAIChunkChoice) b
 			st.nblocked++
 			st.blocked[tc.Index] = true
 			s.fireEvent(toolName, toolCallID, "block", decision.Reason, entry, crossServerDec)
-			blockedMessages = append(blockedMessages, fmt.Sprintf("[agentsh] Tool '%s' blocked by policy", toolName))
+			blockedMessages = append(
+				blockedMessages,
+				fmt.Sprintf("[agentsh] Tool '%s' blocked by policy", toolName),
+			)
 		}
 	}
 
@@ -696,7 +725,8 @@ func (s *SSEInterceptor) rewriteOpenAIFinish(choice *openAIChunkChoice) bool {
 		return false
 	}
 
-	if st.total > 0 && st.nblocked == st.total && choice.FinishReason != nil && *choice.FinishReason == "tool_calls" {
+	if st.total > 0 && st.nblocked == st.total && choice.FinishReason != nil &&
+		*choice.FinishReason == "tool_calls" {
 		stop := "stop"
 		choice.FinishReason = &stop
 		return true

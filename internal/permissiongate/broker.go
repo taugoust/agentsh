@@ -129,7 +129,9 @@ func (b *Broker) handleAuthorize(request AuthorizeRequest) error {
 
 	matches := MatchDangerous(request.Command)
 	if len(matches) == 0 {
-		if err := b.audit.Append(newAuditRecord(b.runID, request, nil, "allow", "no dangerous command pattern matched")); err != nil {
+		if err := b.audit.Append(
+			newAuditRecord(b.runID, request, nil, "allow", "no dangerous command pattern matched"),
+		); err != nil {
 			return fmt.Errorf("permission gate audit before allow: %w", err)
 		}
 		return writeFrame(b.transport, DecisionResponse{
@@ -172,7 +174,9 @@ func (b *Broker) handleResolve(request ResolveRequest) error {
 	if request.Decision == "deny" {
 		reason = "denied by Pi user interface"
 	}
-	if err := b.audit.Append(newAuditRecord(b.runID, pending.request, pending.matches, request.Decision, reason)); err != nil {
+	if err := b.audit.Append(
+		newAuditRecord(b.runID, pending.request, pending.matches, request.Decision, reason),
+	); err != nil {
 		return fmt.Errorf("permission gate audit before resolution: %w", err)
 	}
 	delete(b.pending, request.ID)
@@ -197,7 +201,9 @@ func (b *Broker) handleCancel(request CancelRequest) error {
 	if len(reason) > maxAuditReasonBytes {
 		return fmt.Errorf("%w: cancellation reason is too long", ErrProtocol)
 	}
-	if err := b.audit.Append(newAuditRecord(b.runID, pending.request, pending.matches, "deny", reason)); err != nil {
+	if err := b.audit.Append(
+		newAuditRecord(b.runID, pending.request, pending.matches, "deny", reason),
+	); err != nil {
 		return fmt.Errorf("permission gate audit before cancellation: %w", err)
 	}
 	delete(b.pending, request.ID)

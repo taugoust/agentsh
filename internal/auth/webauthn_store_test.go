@@ -36,7 +36,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("create table: %v", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON webauthn_credentials(user_id)`)
+	_, err = db.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON webauthn_credentials(user_id)`,
+	)
 	if err != nil {
 		t.Fatalf("create index: %v", err)
 	}
@@ -88,10 +90,18 @@ func TestWebAuthnStore_SaveAndGet(t *testing.T) {
 		t.Errorf("public key mismatch: got %q, want %q", got.PublicKey, cred.PublicKey)
 	}
 	if got.AttestationType != cred.AttestationType {
-		t.Errorf("attestation type mismatch: got %q, want %q", got.AttestationType, cred.AttestationType)
+		t.Errorf(
+			"attestation type mismatch: got %q, want %q",
+			got.AttestationType,
+			cred.AttestationType,
+		)
 	}
 	if len(got.Transport) != len(cred.Transport) {
-		t.Errorf("transport count mismatch: got %d, want %d", len(got.Transport), len(cred.Transport))
+		t.Errorf(
+			"transport count mismatch: got %d, want %d",
+			len(got.Transport),
+			len(cred.Transport),
+		)
 	}
 
 	// List credentials with full metadata

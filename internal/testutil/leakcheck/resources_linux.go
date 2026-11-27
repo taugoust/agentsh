@@ -93,7 +93,9 @@ func snapshotChildren() (map[int]struct{}, error) {
 }
 
 func snapshotMounts() (map[string]int, error) {
-	contents, err := os.ReadFile(filepath.Join(string(filepath.Separator), "proc", "self", "mountinfo"))
+	contents, err := os.ReadFile(
+		filepath.Join(string(filepath.Separator), "proc", "self", "mountinfo"),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("read mountinfo: %w", err)
 	}

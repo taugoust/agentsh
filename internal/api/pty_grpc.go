@@ -145,7 +145,16 @@ func (s *ptyGRPCServer) ExecPTY(stream ptygrpc.AgentshPTY_ExecPTYServer) error {
 	}
 
 	res := <-waitCh
-	s.app.finishPTY(stream.Context(), run, res.code, run.started, res.err, out.Bytes(), outTotal, outTrunc)
+	s.app.finishPTY(
+		stream.Context(),
+		run,
+		res.code,
+		run.started,
+		res.err,
+		out.Bytes(),
+		outTotal,
+		outTrunc,
+	)
 	if res.err != nil {
 		return status.Error(codes.Internal, res.err.Error())
 	}

@@ -19,7 +19,14 @@ func newApproveCmd() *cobra.Command {
 		Short: "List pending approvals",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -48,19 +55,38 @@ func newApproveCmd() *cobra.Command {
 				decision = "approve"
 			}
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
 			if scope != "" {
 				type scopedResolver interface {
-					ResolveApprovalWithScope(ctx context.Context, id string, decision string, reason string, scope string) error
+					ResolveApprovalWithScope(
+						ctx context.Context,
+						id string,
+						decision string,
+						reason string,
+						scope string,
+					) error
 				}
 				sr, ok := c.(scopedResolver)
 				if !ok {
 					return fmt.Errorf("client does not support approval scope")
 				}
-				if err := sr.ResolveApprovalWithScope(cmd.Context(), args[0], decision, reason, scope); err != nil {
+				if err := sr.ResolveApprovalWithScope(
+					cmd.Context(),
+					args[0],
+					decision,
+					reason,
+					scope,
+				); err != nil {
 					return err
 				}
 			} else if err := c.ResolveApproval(cmd.Context(), args[0], decision, reason); err != nil {
@@ -73,7 +99,8 @@ func newApproveCmd() *cobra.Command {
 	resolveCmd.Flags().BoolVar(&allow, "allow", false, "Approve")
 	resolveCmd.Flags().BoolVar(&deny, "deny", false, "Deny")
 	resolveCmd.Flags().StringVar(&reason, "reason", "", "Reason (optional)")
-	resolveCmd.Flags().StringVar(&scope, "scope", "", "Approval scope: once or session (default once)")
+	resolveCmd.Flags().
+		StringVar(&scope, "scope", "", "Approval scope: once or session (default once)")
 	cmd.AddCommand(resolveCmd)
 
 	return cmd

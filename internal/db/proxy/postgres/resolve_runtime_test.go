@@ -36,11 +36,15 @@ func testCatalogContext() catalogRuntimeContext {
 }
 
 func TestResolveStatementCatalog_QualifiedRelation(t *testing.T) {
-	stmt := effects.ClassifiedStatement{Effects: []effects.Effect{{
-		Group:      effects.GroupRead,
-		Resolution: effects.ResolutionQualified,
-		Objects:    []effects.ObjectRef{{Kind: effects.ObjectTable, Schema: "public", Name: "users"}},
-	}}}
+	stmt := effects.ClassifiedStatement{Effects: []effects.Effect{
+		{
+			Group:      effects.GroupRead,
+			Resolution: effects.ResolutionQualified,
+			Objects: []effects.ObjectRef{
+				{Kind: effects.ObjectTable, Schema: "public", Name: "users"},
+			},
+		},
+	}}
 	got := resolveStatementCatalog(stmt, testCatalogContext())
 	eff := got.Effects[0]
 	if eff.Resolution != effects.ResolutionCatalogResolved {
@@ -85,7 +89,10 @@ func TestResolveStatementCatalog_Unavailable(t *testing.T) {
 		Resolution: effects.ResolutionUnqualified,
 		Objects:    []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "users"}},
 	}}}
-	got := resolveStatementCatalog(stmt, catalogRuntimeContext{UnavailableReason: "snapshot_load_failed"})
+	got := resolveStatementCatalog(
+		stmt,
+		catalogRuntimeContext{UnavailableReason: "snapshot_load_failed"},
+	)
 	if got.Effects[0].Resolution != effects.ResolutionCatalogUnavailable {
 		t.Fatalf("Resolution = %v", got.Effects[0].Resolution)
 	}
@@ -162,7 +169,8 @@ func TestResolveStatementCatalog_FunctionOIDReplacesStaleResolvedObjects(t *test
 	}}}
 	got := resolveStatementCatalog(stmt, testCatalogContext())
 	eff := got.Effects[0]
-	if len(eff.ResolvedObjects) != 1 || eff.ResolvedObjects[0].Kind != effects.ResolvedObjectFunction {
+	if len(eff.ResolvedObjects) != 1 ||
+		eff.ResolvedObjects[0].Kind != effects.ResolvedObjectFunction {
 		t.Fatalf("ResolvedObjects = %+v", eff.ResolvedObjects)
 	}
 	if stmt.Effects[0].ResolvedObjects[0].Name != "stale" {
@@ -193,7 +201,8 @@ func TestResolveStatementsCatalog_FailsClosedAfterSearchPathMutationInBatch(t *t
 	if eff.Resolution != effects.ResolutionCatalogUnavailable {
 		t.Fatalf("second statement resolution = %v, want catalog_unavailable", eff.Resolution)
 	}
-	if len(eff.ResolvedObjects) != 1 || eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
+	if len(eff.ResolvedObjects) != 1 ||
+		eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
 		t.Fatalf("second statement resolved objects = %+v", eff.ResolvedObjects)
 	}
 }
@@ -221,7 +230,8 @@ func TestResolveStatementsCatalog_FailsClosedAfterSetLocalSearchPathInBatch(t *t
 	if eff.Resolution != effects.ResolutionCatalogUnavailable {
 		t.Fatalf("second statement resolution = %v, want catalog_unavailable", eff.Resolution)
 	}
-	if len(eff.ResolvedObjects) != 1 || eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
+	if len(eff.ResolvedObjects) != 1 ||
+		eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
 		t.Fatalf("second statement resolved objects = %+v", eff.ResolvedObjects)
 	}
 }
@@ -249,7 +259,8 @@ func TestResolveStatementsCatalog_FailsClosedAfterResetSessionAuthorizationInBat
 	if eff.Resolution != effects.ResolutionCatalogUnavailable {
 		t.Fatalf("second statement resolution = %v, want catalog_unavailable", eff.Resolution)
 	}
-	if len(eff.ResolvedObjects) != 1 || eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
+	if len(eff.ResolvedObjects) != 1 ||
+		eff.ResolvedObjects[0].UnresolvedReason != "session_state_changed" {
 		t.Fatalf("second statement resolved objects = %+v", eff.ResolvedObjects)
 	}
 }
@@ -276,7 +287,8 @@ func TestResolvingParser_ClassifyErrorReturnsBaseStatementsUnresolved(t *testing
 	if len(got) != 1 || len(got[0].Effects) != 1 {
 		t.Fatalf("statements = %+v", got)
 	}
-	if got[0].Effects[0].Resolution == effects.ResolutionCatalogResolved || len(got[0].Effects[0].ResolvedObjects) != 0 {
+	if got[0].Effects[0].Resolution == effects.ResolutionCatalogResolved ||
+		len(got[0].Effects[0].ResolvedObjects) != 0 {
 		t.Fatalf("statements were resolved on error = %+v", got)
 	}
 }
@@ -286,7 +298,11 @@ type fakeRuntimeParser struct {
 	err   error
 }
 
-func (p fakeRuntimeParser) Classify(string, classify_pg.SessionState, classify_pg.Options) ([]effects.ClassifiedStatement, error) {
+func (p fakeRuntimeParser) Classify(
+	string,
+	classify_pg.SessionState,
+	classify_pg.Options,
+) ([]effects.ClassifiedStatement, error) {
 	return p.stmts, p.err
 }
 

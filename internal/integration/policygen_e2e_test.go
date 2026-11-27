@@ -189,9 +189,12 @@ func TestPolicyGenEndToEnd(t *testing.T) {
 	// FUSE often fails in containerized CI environments due to missing fusermount binary
 	// or security restrictions. The test gracefully skips file_rules assertions in this case.
 	fuseMountFailed := typeCounts["fuse_mount_failed"] > 0
-	fuseAvailable := typeCounts["file_access"] > 0 || typeCounts["file_read"] > 0 || typeCounts["file_write"] > 0
+	fuseAvailable := typeCounts["file_access"] > 0 || typeCounts["file_read"] > 0 ||
+		typeCounts["file_write"] > 0
 	if fuseMountFailed {
-		t.Log("FUSE mount failed - file_rules tests will be skipped (FUSE not available in this environment)")
+		t.Log(
+			"FUSE mount failed - file_rules tests will be skipped (FUSE not available in this environment)",
+		)
 	}
 	if !fuseAvailable && !fuseMountFailed {
 		t.Log("No file events captured - FUSE likely disabled or not available")

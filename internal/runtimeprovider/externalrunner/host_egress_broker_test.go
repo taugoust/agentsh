@@ -41,24 +41,38 @@ network_rules:
 		t.Fatal(err)
 	}
 	allowed := engine.CheckNetwork("allowed.example", 443)
-	if allowed.PolicyDecision != types.DecisionAllow || allowed.EffectiveDecision != types.DecisionAllow {
+	if allowed.PolicyDecision != types.DecisionAllow ||
+		allowed.EffectiveDecision != types.DecisionAllow {
 		t.Fatalf("allow decision = %+v", allowed)
 	}
 	approval := engine.CheckNetwork("approve.example", 443)
-	if approval.PolicyDecision != types.DecisionApprove || approval.EffectiveDecision != types.DecisionApprove || approval.Approval == nil || !approval.Approval.Required {
+	if approval.PolicyDecision != types.DecisionApprove ||
+		approval.EffectiveDecision != types.DecisionApprove ||
+		approval.Approval == nil ||
+		!approval.Approval.Required {
 		t.Fatalf("approval was not compiled in enforced mode: %+v", approval)
 	}
 
-	if err := os.WriteFile(path, append(append([]byte(nil), data...), []byte("\n# changed")...), 0o600); err != nil {
+	if err := os.WriteFile(
+		path,
+		append(append([]byte(nil), data...), []byte("\n# changed")...),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := compileHostEgressPolicy(spec); err == nil || !strings.Contains(err.Error(), "digest mismatch") {
+	if _, err := compileHostEgressPolicy(
+		spec,
+	); err == nil ||
+		!strings.Contains(err.Error(), "digest mismatch") {
 		t.Fatalf("changed policy snapshot error = %v", err)
 	}
 	if err := os.Chmod(path, 0o622); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := compileHostEgressPolicy(spec); err == nil || !strings.Contains(err.Error(), "unsafe") {
+	if _, err := compileHostEgressPolicy(
+		spec,
+	); err == nil ||
+		!strings.Contains(err.Error(), "unsafe") {
 		t.Fatalf("writable policy snapshot error = %v", err)
 	}
 }
@@ -76,7 +90,9 @@ network_rules:
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := compileHostEgressPolicy(HostEgressSpec{PolicyFile: path, PolicySHA256: digest(data)})
+	engine, err := compileHostEgressPolicy(
+		HostEgressSpec{PolicyFile: path, PolicySHA256: digest(data)},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +105,14 @@ network_rules:
 		_ = audit.Close()
 		t.Skipf("IPv4 loopback unavailable: %v", err)
 	}
-	proxy, _, err := netmonitor.StartProxyWithOptions(netmonitor.ProxyStartOptions{Listener: listener, StrictPublicEgress: true}, "session-approve", nil, engine, nil, audit)
+	proxy, _, err := netmonitor.StartProxyWithOptions(
+		netmonitor.ProxyStartOptions{Listener: listener, StrictPublicEgress: true},
+		"session-approve",
+		nil,
+		engine,
+		nil,
+		audit,
+	)
 	if err != nil {
 		_ = listener.Close()
 		_ = audit.Close()
@@ -101,7 +124,9 @@ network_rules:
 		_ = audit.Close()
 		t.Fatal(err)
 	}
-	_, _ = client.Write([]byte("CONNECT approve.example:443 HTTP/1.1\r\nHost: approve.example:443\r\n\r\n"))
+	_, _ = client.Write(
+		[]byte("CONNECT approve.example:443 HTTP/1.1\r\nHost: approve.example:443\r\n\r\n"),
+	)
 	_ = client.SetReadDeadline(time.Now().Add(time.Second))
 	status, readErr := bufio.NewReader(client).ReadString('\n')
 	_ = client.Close()
@@ -125,7 +150,14 @@ func TestHostEgressBrokerSignalsFatalAuditHealth(t *testing.T) {
 		_ = audit.Close()
 		t.Skipf("IPv4 loopback unavailable: %v", err)
 	}
-	proxy, _, err := netmonitor.StartProxyWithOptions(netmonitor.ProxyStartOptions{Listener: listener, StrictPublicEgress: true}, "session-health", nil, nil, nil, audit)
+	proxy, _, err := netmonitor.StartProxyWithOptions(
+		netmonitor.ProxyStartOptions{Listener: listener, StrictPublicEgress: true},
+		"session-health",
+		nil,
+		nil,
+		nil,
+		audit,
+	)
 	if err != nil {
 		_ = listener.Close()
 		_ = audit.Close()
@@ -181,7 +213,8 @@ func TestHostNetworkAuditWritesDurableJSONL(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[0]), &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.ID != event.ID || decoded.Type != event.Type || decoded.SessionID != event.SessionID {
+	if decoded.ID != event.ID || decoded.Type != event.Type ||
+		decoded.SessionID != event.SessionID {
 		t.Fatalf("audit event = %+v", decoded)
 	}
 	info, err := os.Stat(path)
@@ -197,7 +230,11 @@ func TestHostNetworkAuditWritesDurableJSONL(t *testing.T) {
 }
 
 func TestHostNetworkAuditBoundsBytesAndLatchesStorageFailures(t *testing.T) {
-	event := types.Event{ID: strings.Repeat("x", 128), Type: "net_connect", SessionID: "session-test"}
+	event := types.Event{
+		ID:        strings.Repeat("x", 128),
+		Type:      "net_connect",
+		SessionID: "session-test",
+	}
 	audit, err := openHostNetworkAuditWithLimit(filepath.Join(t.TempDir(), HostEgressAuditName), 32)
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +248,11 @@ func TestHostNetworkAuditBoundsBytesAndLatchesStorageFailures(t *testing.T) {
 	default:
 		t.Fatal("bounded audit failure did not latch Done")
 	}
-	if secondErr := audit.AppendEvent(context.Background(), types.Event{}); secondErr == nil || secondErr.Error() != firstErr.Error() {
+	if secondErr := audit.AppendEvent(
+		context.Background(),
+		types.Event{},
+	); secondErr == nil ||
+		secondErr.Error() != firstErr.Error() {
 		t.Fatalf("latched error = %v, want %v", secondErr, firstErr)
 	}
 	_ = audit.Close()
@@ -227,7 +268,11 @@ func TestHostNetworkAuditBoundsBytesAndLatchesStorageFailures(t *testing.T) {
 	if firstErr == nil || !strings.Contains(firstErr.Error(), "append") {
 		t.Fatalf("write failure = %v", firstErr)
 	}
-	if secondErr := audit.AppendEvent(context.Background(), types.Event{}); secondErr == nil || secondErr.Error() != firstErr.Error() {
+	if secondErr := audit.AppendEvent(
+		context.Background(),
+		types.Event{},
+	); secondErr == nil ||
+		secondErr.Error() != firstErr.Error() {
 		t.Fatalf("latched write error = %v, want %v", secondErr, firstErr)
 	}
 	_ = audit.Close()

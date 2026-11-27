@@ -103,7 +103,11 @@ func startTestServerWithLandlockDeny(t *testing.T, denyPath string) *shimInstall
 // startTestServerWithLandlockDenyOpts is like startTestServerWithLandlockDeny
 // but accepts extra AllowExecute directories (e.g., the shim's tempdir for
 // the nested-install test so the inner shim binary can be exec'd).
-func startTestServerWithLandlockDenyOpts(t *testing.T, denyPath string, extraAllowExecute []string) *shimInstallTestServerSpec {
+func startTestServerWithLandlockDenyOpts(
+	t *testing.T,
+	denyPath string,
+	extraAllowExecute []string,
+) *shimInstallTestServerSpec {
 	t.Helper()
 
 	llResult := capabilities.DetectLandlock()

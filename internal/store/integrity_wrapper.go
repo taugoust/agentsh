@@ -77,7 +77,11 @@ type rotationBoundaryPayload struct {
 }
 
 // NewIntegrityStore wraps an existing store with integrity chain persistence.
-func NewIntegrityStore(inner EventStore, chain *audit.IntegrityChain, opts IntegrityOptions) (*IntegrityStore, error) {
+func NewIntegrityStore(
+	inner EventStore,
+	chain *audit.IntegrityChain,
+	opts IntegrityOptions,
+) (*IntegrityStore, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -134,12 +138,28 @@ func (s *IntegrityStore) bootstrap() error {
 		}
 		return s.resumeFromSidecar(sidecar, lastFile, lastLine, lastErr)
 	case errors.Is(sidecarErr, audit.ErrSidecarNotFound):
-		return s.bootstrapWithoutSidecar(files, lastFile, lastLine, lastErr, "sidecar_missing", "sidecar missing; starting fresh chain")
+		return s.bootstrapWithoutSidecar(
+			files,
+			lastFile,
+			lastLine,
+			lastErr,
+			"sidecar_missing",
+			"sidecar missing; starting fresh chain",
+		)
 	case errors.Is(sidecarErr, audit.ErrSidecarCorrupt):
 		if errors.Is(lastErr, os.ErrNotExist) {
-			return fmt.Errorf("audit integrity chain mismatch: sidecar corrupt with no visible audit log")
+			return fmt.Errorf(
+				"audit integrity chain mismatch: sidecar corrupt with no visible audit log",
+			)
 		}
-		return s.bootstrapWithoutSidecar(files, lastFile, lastLine, lastErr, "sidecar_corrupt", "sidecar corrupt; starting fresh chain")
+		return s.bootstrapWithoutSidecar(
+			files,
+			lastFile,
+			lastLine,
+			lastErr,
+			"sidecar_corrupt",
+			"sidecar corrupt; starting fresh chain",
+		)
 	default:
 		return fmt.Errorf("read audit integrity sidecar: %w", sidecarErr)
 	}
@@ -199,7 +219,11 @@ func (s *IntegrityStore) validateVisibleChain(files []audit.LogFile) error {
 			}
 			if entry.Integrity.FormatVersion > audit.IntegrityFormatVersion {
 				_ = f.Close()
-				return fmt.Errorf("unsupported audit integrity format_version %d in %s", entry.Integrity.FormatVersion, file.Path)
+				return fmt.Errorf(
+					"unsupported audit integrity format_version %d in %s",
+					entry.Integrity.FormatVersion,
+					file.Path,
+				)
 			}
 
 			rotationBoundary := entry.Type == "integrity_chain_rotated" &&
@@ -207,7 +231,11 @@ func (s *IntegrityStore) validateVisibleChain(files []audit.LogFile) error {
 				entry.Integrity.PrevHash == ""
 
 			if rotationBoundary {
-				if err := validateRotationBoundary(entry.CanonicalPayload, state, file.IsBackup); err != nil {
+				if err := validateRotationBoundary(
+					entry.CanonicalPayload,
+					state,
+					file.IsBackup,
+				); err != nil {
 					_ = f.Close()
 					return fmt.Errorf("rotation boundary at %s:%d: %w", file.Path, lineNo, err)
 				}
@@ -224,11 +252,23 @@ func (s *IntegrityStore) validateVisibleChain(files []audit.LogFile) error {
 				}
 				if entry.Integrity.Sequence != state.expectedSequence {
 					_ = f.Close()
-					return fmt.Errorf("audit integrity chain mismatch: sequence mismatch at %s:%d: expected %d, got %d", file.Path, lineNo, state.expectedSequence, entry.Integrity.Sequence)
+					return fmt.Errorf(
+						"audit integrity chain mismatch: sequence mismatch at %s:%d: expected %d, got %d",
+						file.Path,
+						lineNo,
+						state.expectedSequence,
+						entry.Integrity.Sequence,
+					)
 				}
 				if entry.Integrity.PrevHash != state.expectedPrevHash {
 					_ = f.Close()
-					return fmt.Errorf("audit integrity chain mismatch: chain broken at %s:%d: expected prev_hash %q, got %q", file.Path, lineNo, state.expectedPrevHash, entry.Integrity.PrevHash)
+					return fmt.Errorf(
+						"audit integrity chain mismatch: chain broken at %s:%d: expected prev_hash %q, got %q",
+						file.Path,
+						lineNo,
+						state.expectedPrevHash,
+						entry.Integrity.PrevHash,
+					)
 				}
 			}
 
@@ -241,11 +281,20 @@ func (s *IntegrityStore) validateVisibleChain(files []audit.LogFile) error {
 			)
 			if err != nil {
 				_ = f.Close()
-				return fmt.Errorf("audit integrity chain mismatch: verify entry at %s:%d: %w", file.Path, lineNo, err)
+				return fmt.Errorf(
+					"audit integrity chain mismatch: verify entry at %s:%d: %w",
+					file.Path,
+					lineNo,
+					err,
+				)
 			}
 			if !ok {
 				_ = f.Close()
-				return fmt.Errorf("audit integrity chain mismatch: invalid entry at %s:%d", file.Path, lineNo)
+				return fmt.Errorf(
+					"audit integrity chain mismatch: invalid entry at %s:%d",
+					file.Path,
+					lineNo,
+				)
 			}
 
 			state.expectedSequence = entry.Integrity.Sequence + 1
@@ -262,7 +311,11 @@ func (s *IntegrityStore) validateVisibleChain(files []audit.LogFile) error {
 	return nil
 }
 
-func validateRotationBoundary(payload []byte, state visibleChainState, visibleOriginIsBackup bool) error {
+func validateRotationBoundary(
+	payload []byte,
+	state visibleChainState,
+	visibleOriginIsBackup bool,
+) error {
 	var event rotationBoundaryPayload
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return fmt.Errorf("parse rotation payload: %w", err)
@@ -282,15 +335,28 @@ func validateRotationBoundary(payload []byte, state visibleChainState, visibleOr
 
 	wantSequence := state.expectedSequence - 1
 	if got := event.Fields.PriorChainSummary.LastSequence; got != wantSequence {
-		return fmt.Errorf("prior_chain_summary.last_sequence_seen_in_log = %d, want %d", got, wantSequence)
+		return fmt.Errorf(
+			"prior_chain_summary.last_sequence_seen_in_log = %d, want %d",
+			got,
+			wantSequence,
+		)
 	}
 	if got := event.Fields.PriorChainSummary.LastEntryHash; got != state.expectedPrevHash {
-		return fmt.Errorf("prior_chain_summary.last_entry_hash_seen_in_log = %q, want %q", got, state.expectedPrevHash)
+		return fmt.Errorf(
+			"prior_chain_summary.last_entry_hash_seen_in_log = %q, want %q",
+			got,
+			state.expectedPrevHash,
+		)
 	}
 	return nil
 }
 
-func (s *IntegrityStore) resumeFromSidecar(sidecar audit.SidecarState, lastFile audit.LogFile, lastLine []byte, lastErr error) error {
+func (s *IntegrityStore) resumeFromSidecar(
+	sidecar audit.SidecarState,
+	lastFile audit.LogFile,
+	lastLine []byte,
+	lastErr error,
+) error {
 	if lastErr != nil {
 		return fmt.Errorf("audit integrity chain mismatch: %w", lastErr)
 	}
@@ -306,11 +372,15 @@ func (s *IntegrityStore) resumeFromSidecar(sidecar audit.SidecarState, lastFile 
 		if advanced {
 			return nil
 		}
-		return fmt.Errorf("audit integrity chain mismatch: malformed last entry in %s", lastFile.Path)
+		return fmt.Errorf(
+			"audit integrity chain mismatch: malformed last entry in %s",
+			lastFile.Path,
+		)
 	}
 
 	// Case 1: sidecar exactly matches last entry — normal resume.
-	if sidecar.Sequence == entry.Integrity.Sequence && sidecar.PrevHash == entry.Integrity.EntryHash {
+	if sidecar.Sequence == entry.Integrity.Sequence &&
+		sidecar.PrevHash == entry.Integrity.EntryHash {
 		ok, err := s.chain.VerifyHash(
 			entry.Integrity.FormatVersion,
 			entry.Integrity.Sequence,
@@ -322,7 +392,10 @@ func (s *IntegrityStore) resumeFromSidecar(sidecar audit.SidecarState, lastFile 
 			return fmt.Errorf("audit integrity chain mismatch: verify last entry: %w", err)
 		}
 		if !ok {
-			return fmt.Errorf("audit integrity chain mismatch: invalid last entry in %s", lastFile.Path)
+			return fmt.Errorf(
+				"audit integrity chain mismatch: invalid last entry in %s",
+				lastFile.Path,
+			)
 		}
 		if err := s.chain.Restore(sidecar.Sequence, sidecar.PrevHash); err != nil {
 			return fmt.Errorf("restore integrity chain: %w", err)
@@ -348,7 +421,10 @@ func (s *IntegrityStore) resumeFromSidecar(sidecar audit.SidecarState, lastFile 
 // verifying each entry forms a valid chain continuation. On success, advances
 // the sidecar to the last verified entry. Also handles truncated last lines
 // from crash-during-Write by truncating the file back to the last complete line.
-func (s *IntegrityStore) recoverFromSidecarGap(sidecar audit.SidecarState, lastFile audit.LogFile) (bool, error) {
+func (s *IntegrityStore) recoverFromSidecarGap(
+	sidecar audit.SidecarState,
+	lastFile audit.LogFile,
+) (bool, error) {
 	f, err := os.Open(lastFile.Path)
 	if err != nil {
 		return false, fmt.Errorf("open %s for recovery: %w", lastFile.Path, err)
@@ -405,7 +481,10 @@ func (s *IntegrityStore) recoverFromSidecarGap(sidecar audit.SidecarState, lastF
 
 		// Verify chain link
 		if entry.Integrity.Sequence != expectedSeq || entry.Integrity.PrevHash != expectedPrev {
-			return false, fmt.Errorf("audit integrity chain mismatch: chain broken during recovery at seq %d", entry.Integrity.Sequence)
+			return false, fmt.Errorf(
+				"audit integrity chain mismatch: chain broken during recovery at seq %d",
+				entry.Integrity.Sequence,
+			)
 		}
 
 		ok, err := s.chain.VerifyHash(
@@ -416,10 +495,17 @@ func (s *IntegrityStore) recoverFromSidecarGap(sidecar audit.SidecarState, lastF
 			entry.Integrity.EntryHash,
 		)
 		if err != nil {
-			return false, fmt.Errorf("audit integrity chain mismatch: verify entry seq %d: %w", entry.Integrity.Sequence, err)
+			return false, fmt.Errorf(
+				"audit integrity chain mismatch: verify entry seq %d: %w",
+				entry.Integrity.Sequence,
+				err,
+			)
 		}
 		if !ok {
-			return false, fmt.Errorf("audit integrity chain mismatch: invalid HMAC at seq %d", entry.Integrity.Sequence)
+			return false, fmt.Errorf(
+				"audit integrity chain mismatch: invalid HMAC at seq %d",
+				entry.Integrity.Sequence,
+			)
 		}
 
 		expectedSeq = entry.Integrity.Sequence + 1
@@ -436,7 +522,10 @@ func (s *IntegrityStore) recoverFromSidecarGap(sidecar audit.SidecarState, lastF
 		return false, nil
 	}
 
-	if err := s.chain.Restore(lastVerified.Integrity.Sequence, lastVerified.Integrity.EntryHash); err != nil {
+	if err := s.chain.Restore(
+		lastVerified.Integrity.Sequence,
+		lastVerified.Integrity.EntryHash,
+	); err != nil {
 		return false, fmt.Errorf("restore integrity chain: %w", err)
 	}
 	slog.Warn("audit integrity: sidecar behind, advancing after crash recovery",
@@ -462,7 +551,13 @@ func truncateFile(path string, size int64) error {
 	return f.Truncate(size)
 }
 
-func (s *IntegrityStore) bootstrapWithoutSidecar(files []audit.LogFile, lastFile audit.LogFile, lastLine []byte, lastErr error, reasonCode, reason string) error {
+func (s *IntegrityStore) bootstrapWithoutSidecar(
+	files []audit.LogFile,
+	lastFile audit.LogFile,
+	lastLine []byte,
+	lastErr error,
+	reasonCode, reason string,
+) error {
 	if errors.Is(lastErr, os.ErrNotExist) {
 		return s.appendRotationBoundary("initial", "initial chain creation", nil)
 	}
@@ -478,7 +573,11 @@ func (s *IntegrityStore) bootstrapWithoutSidecar(files []audit.LogFile, lastFile
 		return fmt.Errorf("legacy audit log detected in %s", lastFile.Path)
 	}
 	if entry.Integrity.FormatVersion > audit.IntegrityFormatVersion {
-		return fmt.Errorf("unsupported audit integrity format_version %d in %s", entry.Integrity.FormatVersion, lastFile.Path)
+		return fmt.Errorf(
+			"unsupported audit integrity format_version %d in %s",
+			entry.Integrity.FormatVersion,
+			lastFile.Path,
+		)
 	}
 
 	// If the last entry is already a rotation boundary we wrote (verifiable
@@ -497,7 +596,10 @@ func (s *IntegrityStore) bootstrapWithoutSidecar(files []audit.LogFile, lastFile
 			if err := s.validateVisibleChain(files); err != nil {
 				return err
 			}
-			if err := s.chain.Restore(entry.Integrity.Sequence, entry.Integrity.EntryHash); err != nil {
+			if err := s.chain.Restore(
+				entry.Integrity.Sequence,
+				entry.Integrity.EntryHash,
+			); err != nil {
 				return fmt.Errorf("restore integrity chain: %w", err)
 			}
 			return audit.WriteSidecar(s.sidecarPath, audit.SidecarState{
@@ -532,7 +634,10 @@ func (s *IntegrityStore) bootstrapWithoutSidecar(files []audit.LogFile, lastFile
 	})
 }
 
-func (s *IntegrityStore) appendRotationBoundary(reasonCode, reason string, priorSummary map[string]any) error {
+func (s *IntegrityStore) appendRotationBoundary(
+	reasonCode, reason string,
+	priorSummary map[string]any,
+) error {
 	rw, ok := s.inner.(RawWriter)
 	if !ok {
 		return fmt.Errorf("integrity store requires RawWriter for rotation boundary events")
@@ -610,7 +715,10 @@ func (s *IntegrityStore) AppendEvent(ctx context.Context, ev types.Event) error 
 			return &FatalIntegrityError{Op: "write audit log", Err: err}
 		}
 		// Clean failure: no bytes hit disk, safe to roll back chain state.
-		if restoreErr := s.chain.Restore(prevState.Sequence, prevState.PrevHash); restoreErr != nil {
+		if restoreErr := s.chain.Restore(
+			prevState.Sequence,
+			prevState.PrevHash,
+		); restoreErr != nil {
 			return fmt.Errorf("restore integrity chain after write failure: %w", restoreErr)
 		}
 		return err
@@ -672,7 +780,10 @@ func (s *IntegrityStore) runFlushLoop() {
 }
 
 // QueryEvents delegates to the inner store.
-func (s *IntegrityStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (s *IntegrityStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return s.inner.QueryEvents(ctx, q)
 }
 

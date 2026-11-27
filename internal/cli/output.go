@@ -20,7 +20,14 @@ func newOutputCmd() *cobra.Command {
 			sessionID := args[0]
 			commandID := args[1]
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -34,7 +41,12 @@ func newOutputCmd() *cobra.Command {
 				if hasMore, ok := out["has_more"].(bool); ok && hasMore {
 					if total, ok := out["total_bytes"].(float64); ok {
 						next := offset + int64(len(data))
-						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "\n-- more -- offset=%s total=%s\n", strconv.FormatInt(next, 10), strconv.FormatInt(int64(total), 10))
+						_, _ = fmt.Fprintf(
+							cmd.ErrOrStderr(),
+							"\n-- more -- offset=%s total=%s\n",
+							strconv.FormatInt(next, 10),
+							strconv.FormatInt(int64(total), 10),
+						)
 					}
 				}
 				return nil

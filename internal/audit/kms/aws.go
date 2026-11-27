@@ -131,7 +131,9 @@ func (p *AWSKMSProvider) decryptDEK(ctx context.Context, encryptedDEK []byte) ([
 
 // generateDEK generates a new data encryption key using AWS KMS.
 // Returns the plaintext key and the encrypted (wrapped) key.
-func (p *AWSKMSProvider) generateDEK(ctx context.Context) (plaintext, ciphertext []byte, err error) {
+func (p *AWSKMSProvider) generateDEK(
+	ctx context.Context,
+) (plaintext, ciphertext []byte, err error) {
 	resp, err := p.client.GenerateDataKey(ctx, &kms.GenerateDataKeyInput{
 		KeyId:   aws.String(p.keyID),
 		KeySpec: types.DataKeySpecAes256,

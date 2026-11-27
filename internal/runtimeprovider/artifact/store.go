@@ -63,7 +63,8 @@ func NewStore(stateDir, sessionID string, maxBytes int64) (*Store, error) {
 	if !validName(sessionID) || filepath.Base(sessionID) != sessionID {
 		return nil, fmt.Errorf("%w: invalid session identity", ErrInvalid)
 	}
-	if !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir || filepath.Base(stateDir) != sessionID {
+	if !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir ||
+		filepath.Base(stateDir) != sessionID {
 		return nil, fmt.Errorf("%w: state directory is not bound to the exact session", ErrInvalid)
 	}
 	if maxBytes <= 0 {
@@ -112,7 +113,11 @@ func (s *Store) Put(ctx context.Context, kind Kind, source io.Reader) (Descripto
 	}
 	defer unlock()
 	id := uuid.NewString()
-	temporary, err := os.OpenFile(filepath.Join(s.root, ".tmp-"+id), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	temporary, err := os.OpenFile(
+		filepath.Join(s.root, ".tmp-"+id),
+		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+		0o600,
+	)
 	if err != nil {
 		return Descriptor{}, fmt.Errorf("create runtime artifact: %w", err)
 	}
@@ -165,7 +170,11 @@ func (s *Store) Put(ctx context.Context, kind Kind, source io.Reader) (Descripto
 	return descriptor, nil
 }
 
-func (s *Store) Open(ctx context.Context, artifactID string, expectedKind Kind) (*os.File, Descriptor, error) {
+func (s *Store) Open(
+	ctx context.Context,
+	artifactID string,
+	expectedKind Kind,
+) (*os.File, Descriptor, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return nil, Descriptor{}, err
@@ -192,8 +201,12 @@ func (s *Store) Open(ctx context.Context, artifactID string, expectedKind Kind) 
 	if err != nil {
 		return nil, Descriptor{}, err
 	}
-	if !pathInfo.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 || pathInfo.Mode().Perm()&0o077 != 0 {
-		return nil, Descriptor{}, fmt.Errorf("%w: content is not a private regular file", ErrCorrupt)
+	if !pathInfo.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 ||
+		pathInfo.Mode().Perm()&0o077 != 0 {
+		return nil, Descriptor{}, fmt.Errorf(
+			"%w: content is not a private regular file",
+			ErrCorrupt,
+		)
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -202,14 +215,19 @@ func (s *Store) Open(ctx context.Context, artifactID string, expectedKind Kind) 
 	openedInfo, err := file.Stat()
 	if err != nil || !openedInfo.Mode().IsRegular() || !os.SameFile(pathInfo, openedInfo) {
 		_ = file.Close()
-		return nil, Descriptor{}, fmt.Errorf("%w: content identity changed while opening", ErrCorrupt)
+		return nil, Descriptor{}, fmt.Errorf(
+			"%w: content identity changed while opening",
+			ErrCorrupt,
+		)
 	}
 	hasher := sha256.New()
 	size, hashErr := copyBounded(ctx, hasher, file, s.maxBytes)
-	if hashErr != nil || size != descriptor.Size || "sha256:"+hex.EncodeToString(hasher.Sum(nil)) != descriptor.SHA256 {
+	if hashErr != nil || size != descriptor.Size ||
+		"sha256:"+hex.EncodeToString(hasher.Sum(nil)) != descriptor.SHA256 {
 		_ = file.Close()
 		if hashErr != nil {
-			if errors.Is(hashErr, context.Canceled) || errors.Is(hashErr, context.DeadlineExceeded) {
+			if errors.Is(hashErr, context.Canceled) ||
+				errors.Is(hashErr, context.DeadlineExceeded) {
 				return nil, Descriptor{}, hashErr
 			}
 			return nil, Descriptor{}, fmt.Errorf("%w: %v", ErrCorrupt, hashErr)
@@ -304,7 +322,11 @@ func (s *Store) finishDeleteLocked(artifactID string) error {
 }
 
 func (s *Store) lock() (func(), error) {
-	fd, err := unix.Open(filepath.Join(s.root, ".lock"), unix.O_RDWR|unix.O_CREAT|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0o600)
+	fd, err := unix.Open(
+		filepath.Join(s.root, ".lock"),
+		unix.O_RDWR|unix.O_CREAT|unix.O_CLOEXEC|unix.O_NOFOLLOW,
+		0o600,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("open runtime artifact lock: %w", err)
 	}
@@ -447,8 +469,13 @@ func (s *Store) readDescriptor(artifactID string) (Descriptor, error) {
 	if err != nil {
 		return Descriptor{}, err
 	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 || info.Size() > maxDescriptorBytes {
-		return Descriptor{}, fmt.Errorf("%w: descriptor is not a protected regular file", ErrInvalid)
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 ||
+		info.Mode().Perm()&0o077 != 0 ||
+		info.Size() > maxDescriptorBytes {
+		return Descriptor{}, fmt.Errorf(
+			"%w: descriptor is not a protected regular file",
+			ErrInvalid,
+		)
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -511,14 +538,16 @@ func validateKind(kind Kind) error {
 
 func validateArtifactID(value string) error {
 	parsed, err := uuid.Parse(value)
-	if err != nil || parsed.String() != value || parsed.Version() != 4 || parsed.Variant() != uuid.RFC4122 {
+	if err != nil || parsed.String() != value || parsed.Version() != 4 ||
+		parsed.Variant() != uuid.RFC4122 {
 		return fmt.Errorf("%w: artifact ID is invalid", ErrInvalid)
 	}
 	return nil
 }
 
 func validName(value string) bool {
-	if value != strings.TrimSpace(value) || value == "" || len(value) > 128 || strings.ContainsAny(value, "\x00\r\n/\\") {
+	if value != strings.TrimSpace(value) || value == "" || len(value) > 128 ||
+		strings.ContainsAny(value, "\x00\r\n/\\") {
 		return false
 	}
 	for _, char := range value {
@@ -542,7 +571,12 @@ func validSHA256(value string) bool {
 	return err == nil
 }
 
-func copyBounded(ctx context.Context, destination io.Writer, source io.Reader, limit int64) (int64, error) {
+func copyBounded(
+	ctx context.Context,
+	destination io.Writer,
+	source io.Reader,
+	limit int64,
+) (int64, error) {
 	buffer := make([]byte, 128*1024)
 	if limit <= 0 || limit == int64(^uint64(0)>>1) {
 		return 0, fmt.Errorf("%w: invalid copy limit", ErrInvalid)

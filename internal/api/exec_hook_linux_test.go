@@ -47,20 +47,55 @@ func assertHookFailureResult(t *testing.T, exitCode int, err error, marker strin
 
 func TestRunCommandWithResourcesHookErrorFailsClosed(t *testing.T) {
 	s, marker := newHookFailureTestSession(t)
-	req := types.ExecRequest{Command: "sh", Args: []string{"-c", "touch \"$MARKER\""}, Env: map[string]string{"MARKER": marker}}
+	req := types.ExecRequest{
+		Command: "sh",
+		Args:    []string{"-c", "touch \"$MARKER\""},
+		Env:     map[string]string{"MARKER": marker},
+	}
 	hookErr := errors.New("hook boom")
 	hook := func(pid int) (func() error, error) { return nil, hookErr }
 
-	exitCode, _, _, _, _, _, _, _, err := runCommandWithResources(context.Background(), s, "cmd-hook-fail", req, &config.Config{}, policy.ResolvedEnvPolicy{}, 0, hook, nil, nil, "", nil)
+	exitCode, _, _, _, _, _, _, _, err := runCommandWithResources(
+		context.Background(),
+		s,
+		"cmd-hook-fail",
+		req,
+		&config.Config{},
+		policy.ResolvedEnvPolicy{},
+		0,
+		hook,
+		nil,
+		nil,
+		"",
+		nil,
+	)
 	assertHookFailureResult(t, exitCode, err, marker)
 }
 
 func TestRunCommandWithResourcesStreamingHookErrorFailsClosed(t *testing.T) {
 	s, marker := newHookFailureTestSession(t)
-	req := types.ExecRequest{Command: "sh", Args: []string{"-c", "touch \"$MARKER\""}, Env: map[string]string{"MARKER": marker}}
+	req := types.ExecRequest{
+		Command: "sh",
+		Args:    []string{"-c", "touch \"$MARKER\""},
+		Env:     map[string]string{"MARKER": marker},
+	}
 	hookErr := errors.New("hook boom")
 	hook := func(pid int) (func() error, error) { return nil, hookErr }
 
-	exitCode, _, _, _, _, _, _, _, err := runCommandWithResourcesStreamingEmit(context.Background(), s, "cmd-hook-fail-stream", req, &config.Config{}, policy.ResolvedEnvPolicy{}, 0, nil, hook, nil, nil, "", nil)
+	exitCode, _, _, _, _, _, _, _, err := runCommandWithResourcesStreamingEmit(
+		context.Background(),
+		s,
+		"cmd-hook-fail-stream",
+		req,
+		&config.Config{},
+		policy.ResolvedEnvPolicy{},
+		0,
+		nil,
+		hook,
+		nil,
+		nil,
+		"",
+		nil,
+	)
 	assertHookFailureResult(t, exitCode, err, marker)
 }

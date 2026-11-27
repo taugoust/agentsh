@@ -55,7 +55,12 @@ func TestSubagentProcessCancellationUsesGracefulTermination(t *testing.T) {
 		t.Fatal("timed out waiting for cancelled subagent process")
 	}
 	if outcome.Termination != subagentTerminationGraceful {
-		t.Fatalf("termination = %q, want graceful (error=%v signal=%q)", outcome.Termination, outcome.RunError, outcome.Signal)
+		t.Fatalf(
+			"termination = %q, want graceful (error=%v signal=%q)",
+			outcome.Termination,
+			outcome.RunError,
+			outcome.Signal,
+		)
 	}
 	if got := waitForSubagentTestFile(t, termFile); got != "terminated" {
 		t.Fatalf("termination marker = %q", got)
@@ -81,7 +86,12 @@ func TestSubagentProcessCancellationEscalatesToForcedTermination(t *testing.T) {
 	select {
 	case outcome := <-outcomeCh:
 		if outcome.Termination != subagentTerminationForced {
-			t.Fatalf("termination = %q, want forced (error=%v signal=%q)", outcome.Termination, outcome.RunError, outcome.Signal)
+			t.Fatalf(
+				"termination = %q, want forced (error=%v signal=%q)",
+				outcome.Termination,
+				outcome.RunError,
+				outcome.Signal,
+			)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for forced subagent termination")

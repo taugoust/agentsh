@@ -44,7 +44,12 @@ func (r *fakeHostRunner) stop(result hostRunnerResult) {
 	})
 }
 func (r *fakeHostRunner) ForceStop() error {
-	r.stop(hostRunnerResult{Exit: HostRunnerExit{ExitCode: -1, Signaled: true}, Err: errors.New("forced")})
+	r.stop(
+		hostRunnerResult{
+			Exit: HostRunnerExit{ExitCode: -1, Signaled: true},
+			Err:  errors.New("forced"),
+		},
+	)
 	return nil
 }
 func (r *fakeHostRunner) EnsureStopped(ctx context.Context) (*hostRunnerResult, error) {
@@ -112,7 +117,10 @@ type fakeHostControl struct {
 	onShutdown func()
 }
 
-func (c *fakeHostControl) Hello(_ context.Context, requireNetwork bool) (guestcontrol.Handshake, error) {
+func (c *fakeHostControl) Hello(
+	_ context.Context,
+	requireNetwork bool,
+) (guestcontrol.Handshake, error) {
 	if c.onHello != nil {
 		c.onHello(requireNetwork)
 	}
@@ -125,7 +133,12 @@ func (c *fakeHostControl) Shutdown(context.Context) error {
 	c.runner.stop(hostRunnerResult{Exit: HostRunnerExit{ExitCode: 0}})
 	return nil
 }
-func (c *fakeHostControl) ImportArtifact(_ context.Context, transfer guestcontrol.ArtifactTransfer, source io.Reader) error {
+
+func (c *fakeHostControl) ImportArtifact(
+	_ context.Context,
+	transfer guestcontrol.ArtifactTransfer,
+	source io.Reader,
+) error {
 	data, err := io.ReadAll(source)
 	if err != nil {
 		return err
@@ -155,15 +168,26 @@ type hostMonitorTestCloser func() error
 
 func (f hostMonitorTestCloser) Close() error { return f() }
 
-func testOpenedHostMonitorVolume(t *testing.T, request WorkspaceVolumeRequest, volumeID string, onClose func()) *WorkspaceVolume {
+func testOpenedHostMonitorVolume(
+	t *testing.T,
+	request WorkspaceVolumeRequest,
+	volumeID string,
+	onClose func(),
+) *WorkspaceVolume {
 	t.Helper()
 	imagePath := filepath.Join(t.TempDir(), WorkspaceVolumeImageName)
 	image, err := os.OpenFile(imagePath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := newWorkspaceVolumeCreateIntent(request, volumeID, time.Now().UTC()).manifest(WorkspaceVolumeImageIdentity{
-		FileName: WorkspaceVolumeImageName, Inode: 1, HeaderSHA256: digest([]byte("host-monitor-test-header")),
+	manifest := newWorkspaceVolumeCreateIntent(
+		request,
+		volumeID,
+		time.Now().UTC(),
+	).manifest(WorkspaceVolumeImageIdentity{
+		FileName:     WorkspaceVolumeImageName,
+		Inode:        1,
+		HeaderSHA256: digest([]byte("host-monitor-test-header")),
 	})
 	return &WorkspaceVolume{
 		Manifest: manifest,
@@ -187,7 +211,9 @@ func TestLinuxHostRunnerUsesExactGroupAndBoundedForce(t *testing.T) {
 	if err := os.Mkdir(layout.WorkspaceDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	scriptData := []byte("#!" + shell + "\nprintf '%s\\n' \"$PI_AGENT_MICROVM_VSOCK_CID\" > workspace/cid\nwhile :; do :; done\n")
+	scriptData := []byte(
+		"#!" + shell + "\nprintf '%s\\n' \"$PI_AGENT_MICROVM_VSOCK_CID\" > workspace/cid\nwhile :; do :; done\n",
+	)
 	script := filepath.Join(root, "runner")
 	if err := os.WriteFile(script, scriptData, 0o555); err != nil {
 		t.Fatal(err)
@@ -264,7 +290,11 @@ func TestPartialLinuxHostRunnerDefersWaitUntilExactGroupCleanupAndBecomesIdempot
 		t.Fatalf("partial runner reaped before exact group cleanup: result=%+v err=%v", result, err)
 	}
 	if waitCalls.Load() != 0 || closeCalls.Load() != 0 {
-		t.Fatalf("failed group cleanup waited or closed pidfd: wait=%d close=%d", waitCalls.Load(), closeCalls.Load())
+		t.Fatalf(
+			"failed group cleanup waited or closed pidfd: wait=%d close=%d",
+			waitCalls.Load(),
+			closeCalls.Load(),
+		)
 	}
 
 	if err := runner.ForceStop(); err != nil {
@@ -281,8 +311,15 @@ func TestPartialLinuxHostRunnerDefersWaitUntilExactGroupCleanupAndBecomesIdempot
 	if err != nil || again == nil || again.Exit != result.Exit {
 		t.Fatalf("idempotent exact reap = %+v, %v", again, err)
 	}
-	if signalCalls.Load() != 2 || groupCalls.Load() != 2 || waitCalls.Load() != 1 || closeCalls.Load() != 1 {
-		t.Fatalf("partial runner calls: signal=%d group=%d wait=%d close=%d", signalCalls.Load(), groupCalls.Load(), waitCalls.Load(), closeCalls.Load())
+	if signalCalls.Load() != 2 || groupCalls.Load() != 2 || waitCalls.Load() != 1 ||
+		closeCalls.Load() != 1 {
+		t.Fatalf(
+			"partial runner calls: signal=%d group=%d wait=%d close=%d",
+			signalCalls.Load(),
+			groupCalls.Load(),
+			waitCalls.Load(),
+			closeCalls.Load(),
+		)
 	}
 }
 
@@ -294,7 +331,9 @@ func TestLinuxHostRunnerV2InheritsExactImageAsFD4WithFixedEnvironment(t *testing
 	root := t.TempDir()
 	resultPath := filepath.Join(root, "result")
 	volumeFDPath := filepath.Join(string(filepath.Separator), "proc", "self", "fd", "4")
-	scriptData := []byte("#!" + shell + "\nIFS= read -r marker < " + volumeFDPath + "\nprintf '%s|%s|%s\\n' \"$marker\" \"$PI_AGENT_MICROVM_VSOCK_CID\" \"${HOME-unset}\" > result\nwhile :; do :; done\n")
+	scriptData := []byte(
+		"#!" + shell + "\nIFS= read -r marker < " + volumeFDPath + "\nprintf '%s|%s|%s\\n' \"$marker\" \"$PI_AGENT_MICROVM_VSOCK_CID\" \"${HOME-unset}\" > result\nwhile :; do :; done\n",
+	)
 	script := filepath.Join(root, "runner")
 	if err := os.WriteFile(script, scriptData, 0o555); err != nil {
 		t.Fatal(err)
@@ -327,11 +366,20 @@ func TestLinuxHostRunnerV2InheritsExactImageAsFD4WithFixedEnvironment(t *testing
 		Image: image,
 		lock:  nopCloser{},
 	}
-	if got := fixedHostRunnerEnvironment(41124); len(got) != 1 || got[0] != "PI_AGENT_MICROVM_VSOCK_CID=41124" || strings.Contains(strings.Join(got, "\n"), imagePath) {
+	if got := fixedHostRunnerEnvironment(
+		41124,
+	); len(got) != 1 || got[0] != "PI_AGENT_MICROVM_VSOCK_CID=41124" ||
+		strings.Contains(strings.Join(got, "\n"), imagePath) {
 		t.Fatalf("fixed runner environment = %#v", got)
 	}
 	var output bytes.Buffer
-	runner, err := startHostRunner(profile, HostMonitorLayout{RuntimeDir: root}, 41124, volume, &output)
+	runner, err := startHostRunner(
+		profile,
+		HostMonitorLayout{RuntimeDir: root},
+		41124,
+		volume,
+		&output,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +390,12 @@ func TestLinuxHostRunnerV2InheritsExactImageAsFD4WithFixedEnvironment(t *testing
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("v2 runner did not receive exact fd 4 and allowlisted environment: data=%q err=%v output=%q", data, readErr, output.String())
+			t.Fatalf(
+				"v2 runner did not receive exact fd 4 and allowlisted environment: data=%q err=%v output=%q",
+				data,
+				readErr,
+				output.String(),
+			)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -369,7 +422,12 @@ func TestHostMonitorPublishesOnlyAfterAuthenticationAndStopsExactly(t *testing.T
 		t.Fatal(err)
 	}
 	runner := &fakeHostRunner{
-		identity: HostProcessIdentity{PID: os.Getpid(), ProcessGroup: os.Getpid(), StartIdentity: start, BootID: boot},
+		identity: HostProcessIdentity{
+			PID:           os.Getpid(),
+			ProcessGroup:  os.Getpid(),
+			StartIdentity: start,
+			BootID:        boot,
+		},
 		done:     make(chan hostRunnerResult, 1),
 		waitDone: make(chan struct{}),
 	}
@@ -395,7 +453,8 @@ func TestHostMonitorPublishesOnlyAfterAuthenticationAndStopsExactly(t *testing.T
 			if volume != nil {
 				t.Fatal("v1 runner received a workspace volume")
 			}
-			if got.Name != profile.Name || cid != request.CIDLease.CID || layout.StateDir != stateDir {
+			if got.Name != profile.Name || cid != request.CIDLease.CID ||
+				layout.StateDir != stateDir {
 				t.Fatal("runner launch identity changed")
 			}
 			_, _ = output.Write([]byte("runner output"))
@@ -430,25 +489,38 @@ func TestHostMonitorPublishesOnlyAfterAuthenticationAndStopsExactly(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.State != HostMonitorStopped || !status.StopRequested || !status.RunnerReaped || !status.RelayClosed || status.RunnerExit.ExitCode != 0 {
+	if status.State != HostMonitorStopped || !status.StopRequested || !status.RunnerReaped ||
+		!status.RelayClosed ||
+		status.RunnerExit.ExitCode != 0 {
 		t.Fatalf("terminal status = %+v", status)
 	}
 	data, err := os.ReadFile(filepath.Join(stateDir, "runtime", "host", HostMonitorStatusName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), manifest.ControlToken) || strings.Contains(string(data), manifest.SupervisorToken) {
+	if strings.Contains(string(data), manifest.ControlToken) ||
+		strings.Contains(string(data), manifest.SupervisorToken) {
 		t.Fatal("host monitor status leaked a guest credential")
 	}
-	if strings.Contains(string(data), "volume_id") || strings.Contains(string(data), "volume_closed") || strings.Contains(string(data), "startup_child_reaped") {
+	if strings.Contains(string(data), "volume_id") ||
+		strings.Contains(string(data), "volume_closed") ||
+		strings.Contains(string(data), "startup_child_reaped") {
 		t.Fatal("v1 host monitor status protocol gained schema-v2 fields")
 	}
-	if err := VerifyCIDLease(context.Background(), request.CIDLeaseRoot, request.CIDLease, profile.VSock.CIDMin, profile.VSock.CIDMax); err != nil {
+	if err := VerifyCIDLease(
+		context.Background(),
+		request.CIDLeaseRoot,
+		request.CIDLease,
+		profile.VSock.CIDMin,
+		profile.VSock.CIDMax,
+	); err != nil {
 		t.Fatalf("monitor incorrectly released provider-owned CID lease: %v", err)
 	}
 }
 
-func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnlyAfterRunnerReaping(t *testing.T) {
+func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnlyAfterRunnerReaping(
+	t *testing.T,
+) {
 	stateDir, request, profile, manifest := prepareV2HostMonitorFixture(t)
 	start, boot, err := detached.CurrentProcessIdentity(os.Getpid())
 	if err != nil {
@@ -458,8 +530,14 @@ func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnl
 	var volumeClosed atomic.Bool
 	var volumeClosedEarly atomic.Bool
 	runner := &fakeHostRunner{
-		identity: HostProcessIdentity{PID: os.Getpid(), ProcessGroup: os.Getpid(), StartIdentity: start, BootID: boot},
-		done:     make(chan hostRunnerResult, 1), waitDone: make(chan struct{}),
+		identity: HostProcessIdentity{
+			PID:           os.Getpid(),
+			ProcessGroup:  os.Getpid(),
+			StartIdentity: start,
+			BootID:        boot,
+		},
+		done:            make(chan hostRunnerResult, 1),
+		waitDone:        make(chan struct{}),
 		onEnsureStopped: func() { runnerReaped.Store(true) },
 	}
 	control := &fakeHostControl{handshake: testHostHandshake(manifest), runner: runner}
@@ -480,13 +558,27 @@ func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnl
 		createVolume: func(_ context.Context, got WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
 			durableRequest, requestErr := ReadHostMonitorRequest(stateDir)
 			durableStatus, statusErr := ReadHostMonitorStatus(stateDir)
-			if requestErr != nil || statusErr != nil || durableRequest.MonitorID != request.MonitorID || durableRequest.VolumeID != request.VolumeID ||
-				durableRequest.SchemaVersion != HostMonitorSchemaVersionV2 || durableRequest.WorkspaceVolume == nil || *durableRequest.WorkspaceVolume != *request.WorkspaceVolume ||
-				durableStatus.SchemaVersion != HostMonitorSchemaVersionV2 || durableStatus.State != HostMonitorInitializing {
-				t.Fatalf("volume creation preceded durable v2 monitor evidence: request=%+v (%v), status=%+v (%v)", durableRequest, requestErr, durableStatus, statusErr)
+			if requestErr != nil || statusErr != nil ||
+				durableRequest.MonitorID != request.MonitorID ||
+				durableRequest.VolumeID != request.VolumeID ||
+				durableRequest.SchemaVersion != HostMonitorSchemaVersionV2 ||
+				durableRequest.WorkspaceVolume == nil ||
+				*durableRequest.WorkspaceVolume != *request.WorkspaceVolume ||
+				durableStatus.SchemaVersion != HostMonitorSchemaVersionV2 ||
+				durableStatus.State != HostMonitorInitializing {
+				t.Fatalf(
+					"volume creation preceded durable v2 monitor evidence: request=%+v (%v), status=%+v (%v)",
+					durableRequest,
+					requestErr,
+					durableStatus,
+					statusErr,
+				)
 			}
-			if volumeID != request.VolumeID || got.StateDir != stateDir || got.SessionID != request.SessionID ||
-				got.Profile.Schema != ProfileSchemaV2 || got.Profile.Name != profile.Name || got.ProfileFileSHA256 != request.ProfileFileSHA256 {
+			if volumeID != request.VolumeID || got.StateDir != stateDir ||
+				got.SessionID != request.SessionID ||
+				got.Profile.Schema != ProfileSchemaV2 ||
+				got.Profile.Name != profile.Name ||
+				got.ProfileFileSHA256 != request.ProfileFileSHA256 {
 				t.Fatalf("monitor volume create = %#v, id %q", got, volumeID)
 			}
 			openedVolume = testOpenedHostMonitorVolume(t, got, volumeID, func() {
@@ -498,7 +590,10 @@ func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnl
 			return openedVolume, nil
 		},
 		startRunner: func(got Profile, layout HostMonitorLayout, cid uint32, volume *WorkspaceVolume, _ io.Writer) (hostRunner, error) {
-			if got.Schema != ProfileSchemaV2 || layout.StateDir != stateDir || cid != request.CIDLease.CID || volume != openedVolume || volumeClosed.Load() {
+			if got.Schema != ProfileSchemaV2 || layout.StateDir != stateDir ||
+				cid != request.CIDLease.CID ||
+				volume != openedVolume ||
+				volumeClosed.Load() {
 				t.Fatal("runner did not receive the exact open v2 workspace volume")
 			}
 			return runner, nil
@@ -532,9 +627,19 @@ func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnl
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.State != HostMonitorStopped || status.VolumeID != request.VolumeID || !status.VolumeClosed ||
-		!status.RunnerReaped || !status.RelayClosed || !volumeClosed.Load() || volumeClosedEarly.Load() {
-		t.Fatalf("terminal v2 status = %+v, reaped=%t closed=%t closed_early=%t", status, runnerReaped.Load(), volumeClosed.Load(), volumeClosedEarly.Load())
+	if status.State != HostMonitorStopped || status.VolumeID != request.VolumeID ||
+		!status.VolumeClosed ||
+		!status.RunnerReaped ||
+		!status.RelayClosed ||
+		!volumeClosed.Load() ||
+		volumeClosedEarly.Load() {
+		t.Fatalf(
+			"terminal v2 status = %+v, reaped=%t closed=%t closed_early=%t",
+			status,
+			runnerReaped.Load(),
+			volumeClosed.Load(),
+			volumeClosedEarly.Load(),
+		)
 	}
 	if !exactHostMonitorStatusTerminal(status, status.Monitor) {
 		t.Fatal("complete v2 teardown evidence was not terminal")
@@ -548,8 +653,14 @@ func TestHostMonitorV2RejectsHandshakeForDifferentVolumeBeforeReadiness(t *testi
 		t.Fatal(err)
 	}
 	runner := &fakeHostRunner{
-		identity: HostProcessIdentity{PID: os.Getpid(), ProcessGroup: os.Getpid(), StartIdentity: start, BootID: boot},
-		done:     make(chan hostRunnerResult, 1), waitDone: make(chan struct{}),
+		identity: HostProcessIdentity{
+			PID:           os.Getpid(),
+			ProcessGroup:  os.Getpid(),
+			StartIdentity: start,
+			BootID:        boot,
+		},
+		done:     make(chan hostRunnerResult, 1),
+		waitDone: make(chan struct{}),
 	}
 	handshake := testHostHandshake(manifest)
 	handshake.VolumeID = testOtherWorkspaceVolumeID
@@ -581,7 +692,10 @@ func TestHostMonitorV2RejectsHandshakeForDifferentVolumeBeforeReadiness(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.State != HostMonitorFailed || status.Guest != nil || status.Endpoint != nil || status.VolumeID != request.VolumeID || !status.VolumeClosed || !status.RunnerReaped {
+	if status.State != HostMonitorFailed || status.Guest != nil || status.Endpoint != nil ||
+		status.VolumeID != request.VolumeID ||
+		!status.VolumeClosed ||
+		!status.RunnerReaped {
 		t.Fatalf("mismatched-volume terminal status = %+v", status)
 	}
 }
@@ -589,7 +703,13 @@ func TestHostMonitorV2RejectsHandshakeForDifferentVolumeBeforeReadiness(t *testi
 func TestHostMonitorV2BindingsRequireExactManifestVolume(t *testing.T) {
 	_, request, profile, manifest := prepareV2HostMonitorFixture(t)
 	manifest.VolumeID = testOtherWorkspaceVolumeID
-	if err := validateHostMonitorBindings(request, profile, request.ProfileFileSHA256, manifest, request.GuestManifestSHA256); err == nil {
+	if err := validateHostMonitorBindings(
+		request,
+		profile,
+		request.ProfileFileSHA256,
+		manifest,
+		request.GuestManifestSHA256,
+	); err == nil {
 		t.Fatal("host monitor bindings accepted a manifest for a different volume")
 	}
 }
@@ -600,7 +720,12 @@ func TestHostMonitorV2PreLaunchFailureClosesButDoesNotDeleteVolumeAndIsTerminal(
 	var retainedPath string
 	deps := hostMonitorDeps{
 		createVolume: func(_ context.Context, got WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
-			volume := testOpenedHostMonitorVolume(t, got, volumeID, func() { volumeClosed.Store(true) })
+			volume := testOpenedHostMonitorVolume(
+				t,
+				got,
+				volumeID,
+				func() { volumeClosed.Store(true) },
+			)
 			retainedPath = volume.Image.Name()
 			return volume, nil
 		},
@@ -618,8 +743,14 @@ func TestHostMonitorV2PreLaunchFailureClosesButDoesNotDeleteVolumeAndIsTerminal(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.SchemaVersion != HostMonitorSchemaVersionV2 || status.State != HostMonitorFailed || status.Runner != nil || status.StartupChildReaped ||
-		status.RunnerExit != nil || status.RunnerReaped || status.VolumeID != request.VolumeID || !status.VolumeClosed || !volumeClosed.Load() {
+	if status.SchemaVersion != HostMonitorSchemaVersionV2 || status.State != HostMonitorFailed ||
+		status.Runner != nil ||
+		status.StartupChildReaped ||
+		status.RunnerExit != nil ||
+		status.RunnerReaped ||
+		status.VolumeID != request.VolumeID ||
+		!status.VolumeClosed ||
+		!volumeClosed.Load() {
 		t.Fatalf("v2 no-child startup-failure status = %+v, closed=%t", status, volumeClosed.Load())
 	}
 	if !exactHostMonitorStatusTerminal(status, status.Monitor) {
@@ -663,9 +794,17 @@ func TestHostMonitorV2PartialStartupRetainsLeaseUntilExactReap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.State != HostMonitorInitializing || status.StartupChildReaped || status.RunnerExit != nil || status.RunnerReaped ||
-		status.VolumeClosed || volumeClosed.Load() || exactHostMonitorStatusTerminal(status, status.Monitor) {
-		t.Fatalf("partial startup published reap evidence, terminal state, or released volume early: status=%+v closed=%t", status, volumeClosed.Load())
+	if status.State != HostMonitorInitializing || status.StartupChildReaped ||
+		status.RunnerExit != nil ||
+		status.RunnerReaped ||
+		status.VolumeClosed ||
+		volumeClosed.Load() ||
+		exactHostMonitorStatusTerminal(status, status.Monitor) {
+		t.Fatalf(
+			"partial startup published reap evidence, terminal state, or released volume early: status=%+v closed=%t",
+			status,
+			volumeClosed.Load(),
+		)
 	}
 	close(partial.reap)
 	if err := <-result; err == nil {
@@ -675,11 +814,26 @@ func TestHostMonitorV2PartialStartupRetainsLeaseUntilExactReap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.State != HostMonitorFailed || status.Runner != nil || !status.StartupChildReaped || status.RunnerExit == nil ||
-		status.RunnerExit.ExitCode != -1 || !status.RunnerExit.Signaled || status.RunnerReaped || status.VolumeID != request.VolumeID || !status.VolumeClosed ||
-		!volumeClosed.Load() || volumeClosedEarly.Load() || partial.ensureBeforeCleanup.Load() || partial.forceCalls.Load() != 2 ||
+	if status.State != HostMonitorFailed || status.Runner != nil || !status.StartupChildReaped ||
+		status.RunnerExit == nil ||
+		status.RunnerExit.ExitCode != -1 ||
+		!status.RunnerExit.Signaled ||
+		status.RunnerReaped ||
+		status.VolumeID != request.VolumeID ||
+		!status.VolumeClosed ||
+		!volumeClosed.Load() ||
+		volumeClosedEarly.Load() ||
+		partial.ensureBeforeCleanup.Load() ||
+		partial.forceCalls.Load() != 2 ||
 		!exactHostMonitorStatusTerminal(status, status.Monitor) {
-		t.Fatalf("partial startup cleanup status=%+v closed=%t early=%t force_calls=%d ensure_early=%t", status, volumeClosed.Load(), volumeClosedEarly.Load(), partial.forceCalls.Load(), partial.ensureBeforeCleanup.Load())
+		t.Fatalf(
+			"partial startup cleanup status=%+v closed=%t early=%t force_calls=%d ensure_early=%t",
+			status,
+			volumeClosed.Load(),
+			volumeClosedEarly.Load(),
+			partial.forceCalls.Load(),
+			partial.ensureBeforeCleanup.Load(),
+		)
 	}
 }
 
@@ -690,7 +844,12 @@ func TestHostMonitorAuthenticationFailureNeverPublishesEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := &fakeHostRunner{
-		identity: HostProcessIdentity{PID: os.Getpid(), ProcessGroup: os.Getpid(), StartIdentity: start, BootID: boot},
+		identity: HostProcessIdentity{
+			PID:           os.Getpid(),
+			ProcessGroup:  os.Getpid(),
+			StartIdentity: start,
+			BootID:        boot,
+		},
 		done:     make(chan hostRunnerResult, 1),
 		waitDone: make(chan struct{}),
 	}
@@ -698,7 +857,11 @@ func TestHostMonitorAuthenticationFailureNeverPublishesEndpoint(t *testing.T) {
 	relayCalled := false
 	deps := hostMonitorDeps{
 		newControl: func(guestcontrol.Manifest) (hostMonitorControl, error) {
-			return &fakeHostControl{handshake: testHostHandshake(manifest), runner: runner, helloErr: errors.New("authentication failed " + manifest.ControlToken)}, nil
+			return &fakeHostControl{
+				handshake: testHostHandshake(manifest),
+				runner:    runner,
+				helloErr:  errors.New("authentication failed " + manifest.ControlToken),
+			}, nil
 		},
 		newRelay: func(string, hostMonitorControl) (hostMonitorRelay, error) {
 			relayCalled = true
@@ -725,7 +888,8 @@ func TestHostMonitorAuthenticationFailureNeverPublishesEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.State != HostMonitorFailed || status.Endpoint != nil || !status.RunnerReaped || strings.Contains(status.LastError, manifest.ControlToken) {
+	if status.State != HostMonitorFailed || status.Endpoint != nil || !status.RunnerReaped ||
+		strings.Contains(status.LastError, manifest.ControlToken) {
 		t.Fatalf("failed status = %+v", status)
 	}
 }
@@ -738,11 +902,22 @@ func TestHostMonitorV1JSONKeepsSchemaV2FieldsUnknown(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	status := HostMonitorStatus{
-		SchemaVersion: HostMonitorSchemaVersionV1, Revision: 1,
-		MonitorID: request.MonitorID, SessionID: request.SessionID,
-		Profile: request.ProfileName, ExternalProfileDigest: request.ProfileDigest, GuestProfileDigest: request.GuestProfileDigest,
-		State: HostMonitorInitializing, CreatedAt: now, UpdatedAt: now,
-		Monitor: HostProcessIdentity{PID: os.Getpid(), StartIdentity: start, BootID: boot}, RelayClosed: true,
+		SchemaVersion:         HostMonitorSchemaVersionV1,
+		Revision:              1,
+		MonitorID:             request.MonitorID,
+		SessionID:             request.SessionID,
+		Profile:               request.ProfileName,
+		ExternalProfileDigest: request.ProfileDigest,
+		GuestProfileDigest:    request.GuestProfileDigest,
+		State:                 HostMonitorInitializing,
+		CreatedAt:             now,
+		UpdatedAt:             now,
+		Monitor: HostProcessIdentity{
+			PID:           os.Getpid(),
+			StartIdentity: start,
+			BootID:        boot,
+		},
+		RelayClosed: true,
 	}
 	tests := []struct {
 		name      string
@@ -804,7 +979,11 @@ func TestHostMonitorV2JSONKeepsV3EgressFieldsUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	var decodedRequest HostMonitorRequest
-	if err := json.Unmarshal(requestData, &decodedRequest); err == nil || !strings.Contains(err.Error(), "unknown field") {
+	if err := json.Unmarshal(
+		requestData,
+		&decodedRequest,
+	); err == nil ||
+		!strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("schema-v2 request accepted host_egress: %v", err)
 	}
 
@@ -814,11 +993,23 @@ func TestHostMonitorV2JSONKeepsV3EgressFieldsUnknown(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	status := HostMonitorStatus{
-		SchemaVersion: HostMonitorSchemaVersionV2, Revision: 1,
-		MonitorID: request.MonitorID, SessionID: request.SessionID,
-		Profile: request.ProfileName, ExternalProfileDigest: request.ProfileDigest, GuestProfileDigest: request.GuestProfileDigest,
-		VolumeID: request.VolumeID, State: HostMonitorInitializing, CreatedAt: now, UpdatedAt: now,
-		Monitor: HostProcessIdentity{PID: os.Getpid(), StartIdentity: start, BootID: boot}, RelayClosed: true,
+		SchemaVersion:         HostMonitorSchemaVersionV2,
+		Revision:              1,
+		MonitorID:             request.MonitorID,
+		SessionID:             request.SessionID,
+		Profile:               request.ProfileName,
+		ExternalProfileDigest: request.ProfileDigest,
+		GuestProfileDigest:    request.GuestProfileDigest,
+		VolumeID:              request.VolumeID,
+		State:                 HostMonitorInitializing,
+		CreatedAt:             now,
+		UpdatedAt:             now,
+		Monitor: HostProcessIdentity{
+			PID:           os.Getpid(),
+			StartIdentity: start,
+			BootID:        boot,
+		},
+		RelayClosed: true,
 	}
 	statusData, err := json.Marshal(status)
 	if err != nil {
@@ -834,7 +1025,11 @@ func TestHostMonitorV2JSONKeepsV3EgressFieldsUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	var decodedStatus HostMonitorStatus
-	if err := json.Unmarshal(statusData, &decodedStatus); err == nil || !strings.Contains(err.Error(), "unknown field") {
+	if err := json.Unmarshal(
+		statusData,
+		&decodedStatus,
+	); err == nil ||
+		!strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("schema-v2 status accepted egress_broker_closed: %v", err)
 	}
 }
@@ -847,10 +1042,17 @@ func TestHostMonitorV2StartupChildReapEvidenceValidation(t *testing.T) {
 	base := func() HostMonitorStatus {
 		now := time.Now().UTC()
 		return HostMonitorStatus{
-			SchemaVersion: HostMonitorSchemaVersionV2, Revision: 1,
-			MonitorID: strings.Repeat("4", 64), SessionID: "session-11111111-1111-4111-8111-111111111111",
-			VolumeID: "22222222-2222-4222-8222-222222222222",
-			State:    HostMonitorFailed, CreatedAt: now, UpdatedAt: now,
+			SchemaVersion: HostMonitorSchemaVersionV2,
+			Revision:      1,
+			MonitorID: strings.Repeat(
+				"4",
+				64,
+			),
+			SessionID:    "session-11111111-1111-4111-8111-111111111111",
+			VolumeID:     "22222222-2222-4222-8222-222222222222",
+			State:        HostMonitorFailed,
+			CreatedAt:    now,
+			UpdatedAt:    now,
 			Monitor:      HostProcessIdentity{PID: os.Getpid(), StartIdentity: start, BootID: boot},
 			RelayClosed:  true,
 			VolumeClosed: true,
@@ -867,7 +1069,12 @@ func TestHostMonitorV2StartupChildReapEvidenceValidation(t *testing.T) {
 	runnerReapedWithoutIdentity := startupChild
 	runnerReapedWithoutIdentity.RunnerReaped = true
 	markerWithRunner := startupChild
-	markerWithRunner.Runner = &HostProcessIdentity{PID: 123, ProcessGroup: 123, StartIdentity: "runner-start", BootID: boot}
+	markerWithRunner.Runner = &HostProcessIdentity{
+		PID:           123,
+		ProcessGroup:  123,
+		StartIdentity: "runner-start",
+		BootID:        boot,
+	}
 	markerOutsideFailure := startupChild
 	markerOutsideFailure.State = HostMonitorInitializing
 	markerOutsideFailure.VolumeClosed = false
@@ -928,22 +1135,31 @@ func TestHostMonitorRequestIsExclusiveAndStrict(t *testing.T) {
 	}
 }
 
-func prepareHostMonitorFixture(t *testing.T) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
+func prepareHostMonitorFixture(
+	t *testing.T,
+) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
 	t.Helper()
 	return prepareHostMonitorFixtureForSchema(t, ProfileSchemaV1)
 }
 
-func prepareV2HostMonitorFixture(t *testing.T) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
+func prepareV2HostMonitorFixture(
+	t *testing.T,
+) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
 	t.Helper()
 	return prepareHostMonitorFixtureForSchema(t, ProfileSchemaV2)
 }
 
-func prepareV3HostMonitorFixture(t *testing.T) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
+func prepareV3HostMonitorFixture(
+	t *testing.T,
+) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
 	t.Helper()
 	return prepareHostMonitorFixtureForSchema(t, ProfileSchemaV3)
 }
 
-func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
+func prepareHostMonitorFixtureForSchema(
+	t *testing.T,
+	schema string,
+) (string, HostMonitorRequest, Profile, guestcontrol.Manifest) {
 	t.Helper()
 	stateDir := filepath.Join(t.TempDir(), "session-11111111-1111-4111-8111-111111111111")
 	paths := []string{
@@ -969,11 +1185,16 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 		profile.Guest.Protocol = guestcontrol.ProtocolVersionV3
 		volumeID = testWorkspaceVolumeID
 		profile.WorkspaceVolume = &WorkspaceVolumeSpec{
-			Model: WorkspaceVolumeModel, Format: WorkspaceVolumeFormat, Filesystem: WorkspaceVolumeFilesystem,
-			RunnerFD: WorkspaceVolumeRunnerFD, VirtualSizeBytes: 8 << 30,
+			Model:            WorkspaceVolumeModel,
+			Format:           WorkspaceVolumeFormat,
+			Filesystem:       WorkspaceVolumeFilesystem,
+			RunnerFD:         WorkspaceVolumeRunnerFD,
+			VirtualSizeBytes: 8 << 30,
 		}
 		if schema == ProfileSchemaV3 {
-			policyData := []byte("version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n    domains: [example.com]\n    ports: [443]\n    decision: allow\n")
+			policyData := []byte(
+				"version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n    domains: [example.com]\n    ports: [443]\n    decision: allow\n",
+			)
 			policyPath := filepath.Join(t.TempDir(), "host-egress.yaml")
 			if err := os.WriteFile(policyPath, policyData, 0o600); err != nil {
 				t.Fatal(err)
@@ -984,7 +1205,10 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 			profile.Network.Enforcement = "host-broker-strict"
 			profile.Network.RequireReadyBeforePublish = true
 			profile.Guest.Protocol = guestcontrol.ProtocolVersionV4
-			profile.HostEgress = &HostEgressSpec{PolicyFile: policyPath, PolicySHA256: digest(policyData)}
+			profile.HostEgress = &HostEgressSpec{
+				PolicyFile:   policyPath,
+				PolicySHA256: digest(policyData),
+			}
 		}
 	}
 	profile.Timeouts.ReadinessSeconds = 1
@@ -995,18 +1219,31 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 		t.Fatal(err)
 	}
 	leaseRoot := filepath.Join(t.TempDir(), "cid-leases")
-	lease, err := AllocateCID(context.Background(), leaseRoot, filepath.Base(stateDir), profile.VSock.CIDMin, profile.VSock.CIDMax)
+	lease, err := AllocateCID(
+		context.Background(),
+		leaseRoot,
+		filepath.Base(stateDir),
+		profile.VSock.CIDMin,
+		profile.VSock.CIDMax,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	manifest := guestcontrol.Manifest{
-		ProtocolVersion: profile.Guest.Protocol,
-		SessionID:       filepath.Base(stateDir), LaunchNonce: strings.Repeat("1", 64),
-		ControlToken: strings.Repeat("2", 64), SupervisorToken: strings.Repeat("3", 64),
-		Profile: profile.Name, ProfileDigest: profile.Guest.ProfileDigest,
-		Policy: profile.Guest.Policy, Workspace: profile.Guest.Workspace,
-		VSockCID: lease.CID, VSockPort: profile.Guest.ControlPort, SupervisorPort: profile.Guest.SupervisorPort,
-		ExpectedGeneration: 1, VolumeID: volumeID,
+		ProtocolVersion:    profile.Guest.Protocol,
+		SessionID:          filepath.Base(stateDir),
+		LaunchNonce:        strings.Repeat("1", 64),
+		ControlToken:       strings.Repeat("2", 64),
+		SupervisorToken:    strings.Repeat("3", 64),
+		Profile:            profile.Name,
+		ProfileDigest:      profile.Guest.ProfileDigest,
+		Policy:             profile.Guest.Policy,
+		Workspace:          profile.Guest.Workspace,
+		VSockCID:           lease.CID,
+		VSockPort:          profile.Guest.ControlPort,
+		SupervisorPort:     profile.Guest.SupervisorPort,
+		ExpectedGeneration: 1,
+		VolumeID:           volumeID,
 	}
 	if profile.HostEgress != nil {
 		manifest.EgressPort, err = deriveHostEgressPort(profile, lease.CID)
@@ -1038,23 +1275,46 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 		t.Fatal(err)
 	}
 	request := HostMonitorRequest{
-		SchemaVersion: monitorSchema, MonitorID: strings.Repeat("4", 64),
-		SessionID: filepath.Base(stateDir), StateDir: stateDir, SourceWorkspace: filepath.Join(t.TempDir(), "source"), ProfileFile: profilePath,
-		ProfileFileSHA256: profileFileDigest, ProfileName: profile.Name, ProfileDigest: profile.ProfileDigest, GuestProfileDigest: profile.Guest.ProfileDigest,
-		GuestPolicy: profile.Guest.Policy, GuestControlPort: profile.Guest.ControlPort, GuestSupervisorPort: profile.Guest.SupervisorPort,
-		GuestManifestSHA256: manifestDigest, ExpectedGuestGeneration: manifest.ExpectedGeneration, LaunchNonce: manifest.LaunchNonce,
-		CIDLeaseRoot: leaseRoot, CIDLease: lease, CreatedAt: time.Now().UTC(),
+		SchemaVersion: monitorSchema,
+		MonitorID:     strings.Repeat("4", 64),
+		SessionID: filepath.Base(
+			stateDir,
+		),
+		StateDir:                stateDir,
+		SourceWorkspace:         filepath.Join(t.TempDir(), "source"),
+		ProfileFile:             profilePath,
+		ProfileFileSHA256:       profileFileDigest,
+		ProfileName:             profile.Name,
+		ProfileDigest:           profile.ProfileDigest,
+		GuestProfileDigest:      profile.Guest.ProfileDigest,
+		GuestPolicy:             profile.Guest.Policy,
+		GuestControlPort:        profile.Guest.ControlPort,
+		GuestSupervisorPort:     profile.Guest.SupervisorPort,
+		GuestManifestSHA256:     manifestDigest,
+		ExpectedGuestGeneration: manifest.ExpectedGeneration,
+		LaunchNonce:             manifest.LaunchNonce,
+		CIDLeaseRoot:            leaseRoot,
+		CIDLease:                lease,
+		CreatedAt:               time.Now().UTC(),
 	}
 	if schema == ProfileSchemaV2 || schema == ProfileSchemaV3 {
 		contract := *profile.WorkspaceVolume
 		request.ProfileSchema = profile.Schema
 		request.WorkspaceVolume = &contract
 		request.VolumeID = volumeID
-		store, storeErr := artifact.NewStore(stateDir, filepath.Base(stateDir), guestcontrol.MaxArtifactTransferBytes)
+		store, storeErr := artifact.NewStore(
+			stateDir,
+			filepath.Base(stateDir),
+			guestcontrol.MaxArtifactTransferBytes,
+		)
 		if storeErr != nil {
 			t.Fatal(storeErr)
 		}
-		descriptor, putErr := store.Put(context.Background(), artifact.KindGitInputBundle, strings.NewReader("test input bundle"))
+		descriptor, putErr := store.Put(
+			context.Background(),
+			artifact.KindGitInputBundle,
+			strings.NewReader("test input bundle"),
+		)
 		if putErr != nil {
 			t.Fatal(putErr)
 		}
@@ -1072,18 +1332,35 @@ func prepareHostMonitorFixtureForSchema(t *testing.T, schema string) (string, Ho
 }
 
 func testHostHandshake(manifest guestcontrol.Manifest) guestcontrol.Handshake {
-	capabilities := []string{"exec_probe", "shutdown", "supervisor_proxy", "artifact_import", "artifact_export", manifest.ControlToken}
+	capabilities := []string{
+		"exec_probe",
+		"shutdown",
+		"supervisor_proxy",
+		"artifact_import",
+		"artifact_export",
+		manifest.ControlToken,
+	}
 	if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
 		capabilities = append(capabilities, "host_egress_proxy")
 	}
 	return guestcontrol.Handshake{
-		ProtocolVersion: manifest.ProtocolVersion, SessionID: manifest.SessionID,
-		Generation: manifest.ExpectedGeneration, IncarnationID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-		LaunchNonce: manifest.LaunchNonce, GuestBootID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-		Profile: manifest.Profile, ProfileDigest: manifest.ProfileDigest,
-		AgentSHVersion: "test", EventToken: strings.Repeat("7", 64), Policy: manifest.Policy, VSockCID: manifest.VSockCID,
-		VSockPort: manifest.VSockPort, SupervisorPort: manifest.SupervisorPort,
-		Capabilities: capabilities, VolumeID: manifest.VolumeID,
-		EgressPort: manifest.EgressPort, EgressReady: manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4,
+		ProtocolVersion: manifest.ProtocolVersion,
+		SessionID:       manifest.SessionID,
+		Generation:      manifest.ExpectedGeneration,
+		IncarnationID:   "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+		LaunchNonce:     manifest.LaunchNonce,
+		GuestBootID:     "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		Profile:         manifest.Profile,
+		ProfileDigest:   manifest.ProfileDigest,
+		AgentSHVersion:  "test",
+		EventToken:      strings.Repeat("7", 64),
+		Policy:          manifest.Policy,
+		VSockCID:        manifest.VSockCID,
+		VSockPort:       manifest.VSockPort,
+		SupervisorPort:  manifest.SupervisorPort,
+		Capabilities:    capabilities,
+		VolumeID:        manifest.VolumeID,
+		EgressPort:      manifest.EgressPort,
+		EgressReady:     manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4,
 	}
 }

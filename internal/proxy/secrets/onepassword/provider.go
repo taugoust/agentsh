@@ -199,7 +199,11 @@ func New(ctx context.Context, cfg Config, resolver secrets.RefResolver) (*Provid
 		}
 		mapped := mapOPError(probeErr)
 		if mapped != nil && isOPAuthError(mapped) {
-			return nil, fmt.Errorf("%w: op connectivity probe: %s", secrets.ErrUnauthorized, probeErr.Error())
+			return nil, fmt.Errorf(
+				"%w: op connectivity probe: %s",
+				secrets.ErrUnauthorized,
+				probeErr.Error(),
+			)
 		}
 		// Non-auth failure (e.g. network): swallow -- the Connect
 		// server may still work for real requests.
@@ -238,13 +242,23 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	}
 
 	if ref.Scheme != "op" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: wrong scheme %q", secrets.ErrInvalidURI, ref.Scheme)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: wrong scheme %q",
+			secrets.ErrInvalidURI,
+			ref.Scheme,
+		)
 	}
 	if ref.Host == "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: op URI missing vault name (host)", secrets.ErrInvalidURI)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: op URI missing vault name (host)",
+			secrets.ErrInvalidURI,
+		)
 	}
 	if ref.Path == "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: op URI missing item title (path)", secrets.ErrInvalidURI)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: op URI missing item title (path)",
+			secrets.ErrInvalidURI,
+		)
 	}
 
 	if hook := testFetchPreLockHook; hook != nil {
@@ -272,7 +286,11 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 		return secrets.SecretValue{}, mapOPError(err)
 	}
 	if len(vaults) == 0 {
-		return secrets.SecretValue{}, fmt.Errorf("%w: vault %q not found", secrets.ErrNotFound, ref.Host)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: vault %q not found",
+			secrets.ErrNotFound,
+			ref.Host,
+		)
 	}
 	vaultUUID := vaults[0].ID
 

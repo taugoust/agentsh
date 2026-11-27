@@ -20,7 +20,13 @@ func TestDetachedControlOnlyAuthorizationIsRouteAndTransportScoped(t *testing.T)
 	app.cfg.Auth.Type = "none"
 	app.cfg.Development.DisableAuth = true
 	app.cfg.Development.DetachedControlOnly = true
-	protected := app.requireRoles("approver")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	protected := app.requireRoles(
+		"approver",
+	)(
+		http.HandlerFunc(
+			func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) },
+		),
+	)
 	unix := MarkUnixSocketRequests(protected)
 
 	request := func(handler http.Handler, method, path, token string) int {
@@ -40,8 +46,18 @@ func TestDetachedControlOnlyAuthorizationIsRouteAndTransportScoped(t *testing.T)
 		{http.MethodGet, "/api/v1/approvals"},
 		{http.MethodPost, "/api/v1/approvals/id"},
 	} {
-		if got := request(unix, authorized.method, authorized.path, "control-secret"); got != http.StatusNoContent {
-			t.Fatalf("authorized request status=%d method=%s path=%s", got, authorized.method, authorized.path)
+		if got := request(
+			unix,
+			authorized.method,
+			authorized.path,
+			"control-secret",
+		); got != http.StatusNoContent {
+			t.Fatalf(
+				"authorized request status=%d method=%s path=%s",
+				got,
+				authorized.method,
+				authorized.path,
+			)
 		}
 	}
 	for _, test := range []struct {
@@ -56,7 +72,12 @@ func TestDetachedControlOnlyAuthorizationIsRouteAndTransportScoped(t *testing.T)
 		{unix, http.MethodPost, "/api/v1/approvals", "control-secret"},
 		{unix, http.MethodGet, "/api/v1/policies", "control-secret"},
 	} {
-		if got := request(test.handler, test.method, test.path, test.token); got == http.StatusNoContent {
+		if got := request(
+			test.handler,
+			test.method,
+			test.path,
+			test.token,
+		); got == http.StatusNoContent {
 			t.Fatalf("unauthorized request passed path=%s", test.path)
 		}
 	}

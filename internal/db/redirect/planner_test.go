@@ -12,7 +12,11 @@ import (
 
 func TestReasonAmbiguousSourceAlias(t *testing.T) {
 	if ReasonAmbiguousSource != ReasonAmbiguousRedirectSource {
-		t.Fatalf("ReasonAmbiguousSource = %q, want %q", ReasonAmbiguousSource, ReasonAmbiguousRedirectSource)
+		t.Fatalf(
+			"ReasonAmbiguousSource = %q, want %q",
+			ReasonAmbiguousSource,
+			ReasonAmbiguousRedirectSource,
+		)
 	}
 }
 

@@ -52,15 +52,23 @@ func TestCompositionPathRegistryRemovesMappingAfterPinnedOwnerExit(t *testing.T)
 
 	registry := NewCompositionPathRegistry()
 	t.Cleanup(func() { _ = registry.Close() })
-	if err := registry.Register(os.Getpid(), owner.Process.Pid, composition.PathMappings{Aliases: []composition.PathAlias{
-		{Target: "/", Source: ""},
-		{Target: "/visible", Source: "/source"},
-	}}); err != nil {
+	if err := registry.Register(
+		os.Getpid(),
+		owner.Process.Pid,
+		composition.PathMappings{Aliases: []composition.PathAlias{
+			{Target: "/", Source: ""},
+			{Target: "/visible", Source: "/source"},
+		}},
+	); err != nil {
 		_ = owner.Process.Kill()
 		_ = owner.Wait()
 		t.Fatal(err)
 	}
-	if got, covered, err := registry.Resolve(os.Getpid(), "/visible/file"); err != nil || !covered || got != "/source/file" {
+	if got, covered, err := registry.Resolve(
+		os.Getpid(),
+		"/visible/file",
+	); err != nil || !covered ||
+		got != "/source/file" {
 		t.Fatalf("mapping before owner exit = %q covered=%v err=%v", got, covered, err)
 	}
 	if err := barrierWrite.Close(); err != nil {
@@ -90,10 +98,14 @@ func TestCompositionPathRegistryStaleOwnerCannotRemoveReplacementSnapshot(t *tes
 	t.Cleanup(func() { _ = registry.Close() })
 	pid := os.Getpid()
 	for _, source := range []string{"/source-a", "/source-b"} {
-		if err := registry.Register(pid, pid, composition.PathMappings{Aliases: []composition.PathAlias{
-			{Target: "/", Source: ""},
-			{Target: "/visible", Source: source},
-		}}); err != nil {
+		if err := registry.Register(
+			pid,
+			pid,
+			composition.PathMappings{Aliases: []composition.PathAlias{
+				{Target: "/", Source: ""},
+				{Target: "/visible", Source: source},
+			}},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -180,7 +192,11 @@ func TestCompositionPathRegistryRejectsInvalidFreshWritableMappings(t *testing.T
 			{Target: "/invalid", Source: "/source", FreshWritable: true},
 		},
 	} {
-		if err := registry.Register(pid, pid, composition.PathMappings{Aliases: aliases}); err == nil {
+		if err := registry.Register(
+			pid,
+			pid,
+			composition.PathMappings{Aliases: aliases},
+		); err == nil {
 			t.Fatalf("invalid fresh-writable mappings were accepted: %+v", aliases)
 		}
 	}

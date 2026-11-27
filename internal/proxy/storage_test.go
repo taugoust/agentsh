@@ -275,7 +275,9 @@ func TestStorage_ReadLogEntries(t *testing.T) {
 
 	// Log some entries
 	storage.LogRequest(&RequestLogEntry{ID: "req_001", Dialect: DialectAnthropic})
-	storage.LogResponse(&ResponseLogEntry{RequestID: "req_001", Response: ResponseInfo{Status: 200}})
+	storage.LogResponse(
+		&ResponseLogEntry{RequestID: "req_001", Response: ResponseInfo{Status: 200}},
+	)
 	storage.LogRequest(&RequestLogEntry{ID: "req_002", Dialect: DialectOpenAI})
 
 	// Close to flush

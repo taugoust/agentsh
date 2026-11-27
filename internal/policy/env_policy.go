@@ -52,7 +52,11 @@ func MergeEnvPolicy(global EnvPolicy, rule CommandRule) ResolvedEnvPolicy {
 // BuildEnv constructs the child environment per policy.
 // baseEnv should already be minimal; addKeys are merged after allow/deny filtering.
 // Supports glob patterns in allow/deny lists (e.g., "AWS_*", "*_TOKEN").
-func BuildEnv(pol ResolvedEnvPolicy, baseEnv []string, addKeys map[string]string) ([]string, error) {
+func BuildEnv(
+	pol ResolvedEnvPolicy,
+	baseEnv []string,
+	addKeys map[string]string,
+) ([]string, error) {
 	// Compile patterns once for this call
 	allowGlobs := compilePatterns(pol.Allow)
 	denyGlobs := compilePatterns(pol.Deny)

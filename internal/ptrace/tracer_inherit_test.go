@@ -88,14 +88,21 @@ func TestSeedChildStateFromParent_CopiesAllEnforcementFields(t *testing.T) {
 		t.Error("thread-level escalation flags must be inherited")
 	}
 	if !child.SessionlessPIDAttach {
-		t.Error("SessionlessPIDAttach must be inherited so descendants of an attach_mode=pid root keep the marker")
+		t.Error(
+			"SessionlessPIDAttach must be inherited so descendants of an attach_mode=pid root keep the marker",
+		)
 	}
 
 	// Per-thread runtime defaults
 	if child.LastNr != -1 || child.MemFD != -1 ||
 		child.PendingExecStubFD != -1 || child.PendingExecSavedFD != -1 {
-		t.Errorf("runtime defaults wrong: LastNr=%d MemFD=%d PendingExecStubFD=%d PendingExecSavedFD=%d",
-			child.LastNr, child.MemFD, child.PendingExecStubFD, child.PendingExecSavedFD)
+		t.Errorf(
+			"runtime defaults wrong: LastNr=%d MemFD=%d PendingExecStubFD=%d PendingExecSavedFD=%d",
+			child.LastNr,
+			child.MemFD,
+			child.PendingExecStubFD,
+			child.PendingExecSavedFD,
+		)
 	}
 }
 
@@ -114,7 +121,9 @@ func TestSeedChildStateFromParent_PendingPrefilterPropagatedWhenParentLacksFilte
 		t.Error("child HasPrefilter must mirror parent (false here)")
 	}
 	if !child.PendingPrefilter {
-		t.Error("child PendingPrefilter must be true when parent has pending-but-not-installed filter")
+		t.Error(
+			"child PendingPrefilter must be true when parent has pending-but-not-installed filter",
+		)
 	}
 }
 

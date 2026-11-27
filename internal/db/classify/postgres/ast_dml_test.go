@@ -128,7 +128,11 @@ func TestClassifyUpdate_NoWhere(t *testing.T) {
 }
 
 func TestClassifyUpdate_HasWhereOnlyOnModifyEffect(t *testing.T) {
-	cs := classifyOne(t, "UPDATE users SET active = false FROM logins WHERE users.id = logins.user_id", SessionState{})
+	cs := classifyOne(
+		t,
+		"UPDATE users SET active = false FROM logins WHERE users.id = logins.user_id",
+		SessionState{},
+	)
 	if len(cs.Effects) != 2 {
 		t.Fatalf("effects count: got %d want 2: %+v", len(cs.Effects), cs.Effects)
 	}
@@ -144,7 +148,11 @@ func TestClassifyUpdate_HasWhereOnlyOnModifyEffect(t *testing.T) {
 }
 
 func TestClassifyUpdate_HasWhereWithCTE(t *testing.T) {
-	cs := classifyOne(t, "WITH r AS (SELECT id FROM logins) UPDATE users SET active = false WHERE id IN (SELECT id FROM r)", SessionState{})
+	cs := classifyOne(
+		t,
+		"WITH r AS (SELECT id FROM logins) UPDATE users SET active = false WHERE id IN (SELECT id FROM r)",
+		SessionState{},
+	)
 	e := requireEffectGroup(t, cs, effects.GroupModify)
 	if !e.HasWhere {
 		t.Fatalf("top-level UPDATE with CTE and WHERE should set HasWhere: %+v", e)
@@ -152,7 +160,11 @@ func TestClassifyUpdate_HasWhereWithCTE(t *testing.T) {
 }
 
 func TestClassifyUpdate_FromClauseAddsRead(t *testing.T) {
-	cs := classifyOne(t, "UPDATE users SET active = false FROM logins WHERE users.id = logins.user_id", SessionState{})
+	cs := classifyOne(
+		t,
+		"UPDATE users SET active = false FROM logins WHERE users.id = logins.user_id",
+		SessionState{},
+	)
 	if len(cs.Effects) != 2 {
 		t.Fatalf("effects count: got %d want 2: %+v", len(cs.Effects), cs.Effects)
 	}
@@ -198,7 +210,11 @@ func TestClassifyDelete_NoWhere(t *testing.T) {
 }
 
 func TestClassifyPrepare_UpdateHasWhereNestedOnly(t *testing.T) {
-	cs := classifyOne(t, "PREPARE q AS UPDATE users SET active = false WHERE id = 1", SessionState{})
+	cs := classifyOne(
+		t,
+		"PREPARE q AS UPDATE users SET active = false WHERE id = 1",
+		SessionState{},
+	)
 	e := requireEffectGroup(t, cs, effects.GroupModify)
 	if e.HasWhere {
 		t.Fatalf("nested PREPARE UPDATE should not set HasWhere: %+v", e)
@@ -206,7 +222,11 @@ func TestClassifyPrepare_UpdateHasWhereNestedOnly(t *testing.T) {
 }
 
 func TestClassifyWithUpdateHasWhereNestedOnly(t *testing.T) {
-	cs := classifyOne(t, "WITH u AS (UPDATE users SET active = false WHERE id = 1 RETURNING id) SELECT * FROM u", SessionState{})
+	cs := classifyOne(
+		t,
+		"WITH u AS (UPDATE users SET active = false WHERE id = 1 RETURNING id) SELECT * FROM u",
+		SessionState{},
+	)
 	e := requireEffectGroup(t, cs, effects.GroupModify)
 	if e.HasWhere {
 		t.Fatalf("data-modifying CTE UPDATE should not set HasWhere: %+v", e)
@@ -214,7 +234,11 @@ func TestClassifyWithUpdateHasWhereNestedOnly(t *testing.T) {
 }
 
 func TestClassifyCopyQueryDeleteHasWhereNestedOnly(t *testing.T) {
-	cs := classifyOne(t, "COPY (DELETE FROM users WHERE id = 1 RETURNING *) TO STDOUT", SessionState{})
+	cs := classifyOne(
+		t,
+		"COPY (DELETE FROM users WHERE id = 1 RETURNING *) TO STDOUT",
+		SessionState{},
+	)
 	e := requireEffectGroup(t, cs, effects.GroupDelete)
 	if e.HasWhere {
 		t.Fatalf("COPY query DELETE should not set HasWhere: %+v", e)
@@ -324,7 +348,11 @@ func TestClassifyDeallocate_DiscardPlans(t *testing.T) {
 }
 
 func TestClassifyWithDeleteReturning_PropagatesCTEEffects(t *testing.T) {
-	cs := classifyOne(t, "WITH d AS (DELETE FROM users RETURNING *) SELECT * FROM d", SessionState{})
+	cs := classifyOne(
+		t,
+		"WITH d AS (DELETE FROM users RETURNING *) SELECT * FROM d",
+		SessionState{},
+	)
 	// Outer SELECT contributes a read; CTE body contributes delete + read.
 	groups := map[effects.Group]int{}
 	for _, e := range cs.Effects {
@@ -351,7 +379,10 @@ func TestClassifyQualifiedSelect_Resolution(t *testing.T) {
 }
 
 func TestClassifySelect_AmbiguousAfterSearchPath(t *testing.T) {
-	sess := SessionState{SearchPath: []string{"app", "public"}, DefaultSearchPath: []string{"public"}}
+	sess := SessionState{
+		SearchPath:        []string{"app", "public"},
+		DefaultSearchPath: []string{"public"},
+	}
 	cs := classifyOne(t, "SELECT * FROM users", sess)
 	prim, _ := cs.Primary()
 	if prim.Resolution != effects.ResolutionAmbiguousAfterSearchPath {
@@ -418,7 +449,11 @@ func TestClassifyDeallocate_All(t *testing.T) {
 	}
 }
 
-func requireEffectGroup(t *testing.T, cs effects.ClassifiedStatement, group effects.Group) effects.Effect {
+func requireEffectGroup(
+	t *testing.T,
+	cs effects.ClassifiedStatement,
+	group effects.Group,
+) effects.Effect {
 	t.Helper()
 	for _, e := range cs.Effects {
 		if e.Group == group {

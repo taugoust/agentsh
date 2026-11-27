@@ -58,7 +58,9 @@ func TestStore_DropsMidBatchTriggersReplay(t *testing.T) {
 		BatchMaxAge:     50 * time.Millisecond,
 		AllowStubMapper: true,
 		Dialer:          srv.DialerFor(),
-		Logger:          slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Logger: slog.New(
+			slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
 	})
 	if err != nil {
 		t.Fatalf("watchtower.New: %v", err)
@@ -102,7 +104,14 @@ func TestStore_DropsMidBatchTriggersReplay(t *testing.T) {
 				seqs = append(seqs, ev.GetSequence())
 			}
 		}
-		t.Logf("  batch %d: from=%d to=%d gen=%d seqs=%v", i, b.GetFromSequence(), b.GetToSequence(), b.GetGeneration(), seqs)
+		t.Logf(
+			"  batch %d: from=%d to=%d gen=%d seqs=%v",
+			i,
+			b.GetFromSequence(),
+			b.GetToSequence(),
+			b.GetGeneration(),
+			seqs,
+		)
 	}
 	t.Logf("store Err()=%v", s.Err())
 	t.Fatalf("replay did not deliver all %d sequences within 5s: %v", total, lastErr)

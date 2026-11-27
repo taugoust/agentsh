@@ -110,7 +110,13 @@ func (p *dnsProxy) listenUDP(ctx context.Context, conn *net.UDPConn, family int)
 	}
 }
 
-func (p *dnsProxy) handleQuery(ctx context.Context, conn *net.UDPConn, raw []byte, remoteAddr *net.UDPAddr, family int) {
+func (p *dnsProxy) handleQuery(
+	ctx context.Context,
+	conn *net.UDPConn,
+	raw []byte,
+	remoteAddr *net.UDPAddr,
+	family int,
+) {
 	var msg dnsmessage.Message
 	if err := msg.Unpack(raw); err != nil {
 		slog.Warn("dns_proxy: failed to parse DNS query", "error", err)
@@ -201,7 +207,11 @@ func (p *dnsProxy) buildSERVFAIL(query dnsmessage.Message) ([]byte, error) {
 	return resp.Pack()
 }
 
-func (p *dnsProxy) buildSyntheticResponse(query dnsmessage.Message, q dnsmessage.Question, records []DNSRecord) ([]byte, error) {
+func (p *dnsProxy) buildSyntheticResponse(
+	query dnsmessage.Message,
+	q dnsmessage.Question,
+	records []DNSRecord,
+) ([]byte, error) {
 	var answers []dnsmessage.Resource
 	for _, rec := range records {
 		hdr := dnsmessage.ResourceHeader{
@@ -218,7 +228,10 @@ func (p *dnsProxy) buildSyntheticResponse(query dnsmessage.Message, q dnsmessage
 			hdr.Type = dnsmessage.TypeA
 			var a [4]byte
 			copy(a[:], ip)
-			answers = append(answers, dnsmessage.Resource{Header: hdr, Body: &dnsmessage.AResource{A: a}})
+			answers = append(
+				answers,
+				dnsmessage.Resource{Header: hdr, Body: &dnsmessage.AResource{A: a}},
+			)
 		case 28: // AAAA
 			ip := net.ParseIP(rec.Value).To16()
 			if ip == nil {
@@ -227,14 +240,20 @@ func (p *dnsProxy) buildSyntheticResponse(query dnsmessage.Message, q dnsmessage
 			hdr.Type = dnsmessage.TypeAAAA
 			var a [16]byte
 			copy(a[:], ip)
-			answers = append(answers, dnsmessage.Resource{Header: hdr, Body: &dnsmessage.AAAAResource{AAAA: a}})
+			answers = append(
+				answers,
+				dnsmessage.Resource{Header: hdr, Body: &dnsmessage.AAAAResource{AAAA: a}},
+			)
 		case 5: // CNAME
 			name, err := dnsmessage.NewName(rec.Value + ".")
 			if err != nil {
 				continue
 			}
 			hdr.Type = dnsmessage.TypeCNAME
-			answers = append(answers, dnsmessage.Resource{Header: hdr, Body: &dnsmessage.CNAMEResource{CNAME: name}})
+			answers = append(
+				answers,
+				dnsmessage.Resource{Header: hdr, Body: &dnsmessage.CNAMEResource{CNAME: name}},
+			)
 		}
 	}
 	resp := dnsmessage.Message{

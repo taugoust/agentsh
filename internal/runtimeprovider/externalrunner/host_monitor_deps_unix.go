@@ -25,7 +25,13 @@ func productionHostMonitorDeps() hostMonitorDeps {
 		startEgressBroker: startHostEgressBroker,
 		startRunner:       startHostRunner,
 		validateRunner: func(profile Profile) error {
-			store := filepath.Join(string(filepath.Separator), "nix", "store") + string(filepath.Separator)
+			store := filepath.Join(
+				string(filepath.Separator),
+				"nix",
+				"store",
+			) + string(
+				filepath.Separator,
+			)
 			if !strings.HasPrefix(profile.Runner.Path, store) {
 				return fmt.Errorf("host monitor runner must be an immutable Nix store executable")
 			}

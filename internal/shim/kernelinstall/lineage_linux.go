@@ -15,12 +15,18 @@ import (
 	"github.com/agentsh/agentsh/internal/wraphandoff"
 )
 
-func completeKernelLineageHandoff(control, compositionSetup *os.File, notifySocket string, wrapperPID int, commandJail bool) error {
+func completeKernelLineageHandoff(
+	control, compositionSetup *os.File,
+	notifySocket string,
+	wrapperPID int,
+	commandJail bool,
+) error {
 	prelude, err := wraphandoff.RecvLocalPrelude(control)
 	if err != nil {
 		return err
 	}
-	if prelude.Sender == nil || int(prelude.Sender.Pid) != wrapperPID || prelude.Metadata.CommandJail != commandJail {
+	if prelude.Sender == nil || int(prelude.Sender.Pid) != wrapperPID ||
+		prelude.Metadata.CommandJail != commandJail {
 		return errors.New("lineage prelude identity mismatch")
 	}
 	connection, err := net.DialTimeout("unix", notifySocket, notifySetupStatusTimeout)
@@ -33,7 +39,10 @@ func completeKernelLineageHandoff(control, compositionSetup *os.File, notifySock
 		return errors.New("notify endpoint is not a Unix connection")
 	}
 	_ = server.SetDeadline(time.Now().Add(notifySetupStatusTimeout))
-	if err := wraphandoff.SendPrelude(server, wraphandoff.Metadata{WrapperPID: wrapperPID, CommandJail: commandJail}); err != nil {
+	if err := wraphandoff.SendPrelude(
+		server,
+		wraphandoff.Metadata{WrapperPID: wrapperPID, CommandJail: commandJail},
+	); err != nil {
 		return err
 	}
 	if err := wraphandoff.ReadStatus(server); err != nil {
@@ -47,7 +56,8 @@ func completeKernelLineageHandoff(control, compositionSetup *os.File, notifySock
 		return err
 	}
 	defer payload.Close()
-	if payload.Sender == nil || payload.NotifyFD == nil || payload.Metadata.CommandJail != commandJail {
+	if payload.Sender == nil || payload.NotifyFD == nil ||
+		payload.Metadata.CommandJail != commandJail {
 		return errors.New("incomplete payload handoff")
 	}
 	payloadPID := int(payload.Sender.Pid)
@@ -62,9 +72,15 @@ func completeKernelLineageHandoff(control, compositionSetup *os.File, notifySock
 	if payload.FileLookup != nil {
 		lookupFD = int(payload.FileLookup.Fd())
 	}
-	if err := wraphandoff.SendPayloadHandoff(server, int(payload.NotifyFD.Fd()), setupFD, lookupFD, wraphandoff.Metadata{
-		WrapperPID: wrapperPID, PayloadPID: payloadPID, CommandJail: commandJail,
-	}); err != nil {
+	if err := wraphandoff.SendPayloadHandoff(
+		server,
+		int(payload.NotifyFD.Fd()),
+		setupFD,
+		lookupFD,
+		wraphandoff.Metadata{
+			WrapperPID: wrapperPID, PayloadPID: payloadPID, CommandJail: commandJail,
+		},
+	); err != nil {
 		return err
 	}
 	if err := wraphandoff.ReadStatus(server); err != nil {
@@ -83,7 +99,9 @@ func kernelPayloadLineageMatches(payloadPID, wrapperPID int) bool {
 	if payloadPID <= 0 || wrapperPID <= 0 || payloadPID == wrapperPID {
 		return false
 	}
-	data, err := os.ReadFile(filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(payloadPID), "status"))
+	data, err := os.ReadFile(
+		filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(payloadPID), "status"),
+	)
 	if err != nil {
 		return false
 	}

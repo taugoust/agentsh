@@ -50,7 +50,13 @@ type OIDCAuth struct {
 
 // NewOIDCAuth creates a new OIDC authenticator.
 // It connects to the OIDC provider to fetch the JWKS for token validation.
-func NewOIDCAuth(ctx context.Context, issuer, clientID, audience string, mappings config.OIDCClaimMappings, allowedGroups []string, groupPolicyMap, groupRoleMap map[string]string) (*OIDCAuth, error) {
+func NewOIDCAuth(
+	ctx context.Context,
+	issuer, clientID, audience string,
+	mappings config.OIDCClaimMappings,
+	allowedGroups []string,
+	groupPolicyMap, groupRoleMap map[string]string,
+) (*OIDCAuth, error) {
 	if issuer == "" {
 		return nil, fmt.Errorf("OIDC issuer is required")
 	}

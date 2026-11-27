@@ -14,7 +14,8 @@ func TestPermissionGateCommandRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if command == nil || command.Name() != "run" || command.Parent() == nil || command.Parent().Name() != "permission-gate" {
+	if command == nil || command.Name() != "run" || command.Parent() == nil ||
+		command.Parent().Name() != "permission-gate" {
 		t.Fatalf("permission-gate run command was not registered: %#v", command)
 	}
 	if !strings.Contains(command.Long, "private one-shot Unix") {

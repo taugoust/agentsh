@@ -29,9 +29,15 @@ import (
 //
 // Encodes TEMP into RawVerb ("CREATE_TEMP_TABLE") so applyTempLifecycle (Task 6)
 // can register the table in SessionState.TempTables.
-func classifyCreateTable(cs *effects.ClassifiedStatement, s *pg_query.CreateStmt, sess SessionState) {
+func classifyCreateTable(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CreateStmt,
+	sess SessionState,
+) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateStmt"
 		return
 	}
@@ -55,9 +61,16 @@ func classifyCreateTable(cs *effects.ClassifiedStatement, s *pg_query.CreateStmt
 // Spec §7.3: CTAS → primary schema_create(create_table) + secondary read.
 //
 //	CREATE MATERIALIZED VIEW → primary schema_create(create_materialized_view) + secondary read.
-func classifyCreateTableAs(cs *effects.ClassifiedStatement, s *pg_query.CreateTableAsStmt, sess SessionState, opts Options) {
+func classifyCreateTableAs(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CreateTableAsStmt,
+	sess SessionState,
+	opts Options,
+) {
 	if s == nil || s.Into == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateTableAsStmt"
 		return
 	}
@@ -106,9 +119,15 @@ func classifyCreateTableAs(cs *effects.ClassifiedStatement, s *pg_query.CreateTa
 //
 // Spec §7.3: schema_create(create_index). Index is the primary object;
 // index has Schema = relation's Schema (best-effort) and Name = idxname.
-func classifyCreateIndex(cs *effects.ClassifiedStatement, s *pg_query.IndexStmt, sess SessionState) {
+func classifyCreateIndex(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.IndexStmt,
+	sess SessionState,
+) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil IndexStmt"
 		return
 	}
@@ -133,7 +152,9 @@ func classifyCreateIndex(cs *effects.ClassifiedStatement, s *pg_query.IndexStmt,
 // MATERIALIZED VIEW is parsed as CreateTableAsStmt and handled separately.
 func classifyCreateView(cs *effects.ClassifiedStatement, s *pg_query.ViewStmt, sess SessionState) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil ViewStmt"
 		return
 	}
@@ -153,7 +174,9 @@ func classifyCreateView(cs *effects.ClassifiedStatement, s *pg_query.ViewStmt, s
 // classifyCreateSchema maps CREATE SCHEMA.
 func classifyCreateSchema(cs *effects.ClassifiedStatement, s *pg_query.CreateSchemaStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateSchemaStmt"
 		return
 	}
@@ -172,7 +195,9 @@ func classifyCreateSchema(cs *effects.ClassifiedStatement, s *pg_query.CreateSch
 // classifyCreateFunction maps CREATE FUNCTION / CREATE PROCEDURE.
 func classifyCreateFunction(cs *effects.ClassifiedStatement, s *pg_query.CreateFunctionStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateFunctionStmt"
 		return
 	}
@@ -197,7 +222,9 @@ func classifyCreateFunction(cs *effects.ClassifiedStatement, s *pg_query.CreateF
 // classifyCreateExtension maps CREATE EXTENSION.
 func classifyCreateExtension(cs *effects.ClassifiedStatement, s *pg_query.CreateExtensionStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateExtensionStmt"
 		return
 	}
@@ -218,7 +245,9 @@ func classifyCreateExtension(cs *effects.ClassifiedStatement, s *pg_query.Create
 // classifyCreateDatabase maps CREATE DATABASE.
 func classifyCreateDatabase(cs *effects.ClassifiedStatement, s *pg_query.CreatedbStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreatedbStmt"
 		return
 	}
@@ -237,7 +266,9 @@ func classifyCreateDatabase(cs *effects.ClassifiedStatement, s *pg_query.Created
 // classifyCreatePublication maps CREATE PUBLICATION.
 func classifyCreatePublication(cs *effects.ClassifiedStatement, s *pg_query.CreatePublicationStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreatePublicationStmt"
 		return
 	}
@@ -254,9 +285,15 @@ func classifyCreatePublication(cs *effects.ClassifiedStatement, s *pg_query.Crea
 }
 
 // classifyCreateSequence maps CREATE SEQUENCE → schema_create (group only).
-func classifyCreateSequence(cs *effects.ClassifiedStatement, s *pg_query.CreateSeqStmt, sess SessionState) {
+func classifyCreateSequence(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CreateSeqStmt,
+	sess SessionState,
+) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateSeqStmt"
 		return
 	}
@@ -270,17 +307,25 @@ func classifyCreateSequence(cs *effects.ClassifiedStatement, s *pg_query.CreateS
 }
 
 // classifyCreateTrigger maps CREATE TRIGGER → schema_create (group only).
-func classifyCreateTrigger(cs *effects.ClassifiedStatement, s *pg_query.CreateTrigStmt, sess SessionState) {
+func classifyCreateTrigger(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CreateTrigStmt,
+	sess SessionState,
+) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateTrigStmt"
 		return
 	}
 	cs.RawVerb = "CREATE_TRIGGER"
-	objs := []effects.ObjectRef{{
-		Kind: effects.ObjectFunction, // trigger names lack a dedicated kind; use function as nearest fit
-		Name: strings.ToLower(s.Trigname),
-	}}
+	objs := []effects.ObjectRef{
+		{
+			Kind: effects.ObjectFunction, // trigger names lack a dedicated kind; use function as nearest fit
+			Name: strings.ToLower(s.Trigname),
+		},
+	}
 	res := effects.ResolutionUnqualified
 	if s.Relation != nil {
 		// Include the parent relation so policy can match on it.
@@ -296,9 +341,15 @@ func classifyCreateTrigger(cs *effects.ClassifiedStatement, s *pg_query.CreateTr
 }
 
 // classifyCompositeType maps CREATE TYPE … AS (…) → schema_create (group only).
-func classifyCompositeType(cs *effects.ClassifiedStatement, s *pg_query.CompositeTypeStmt, sess SessionState) {
+func classifyCompositeType(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.CompositeTypeStmt,
+	sess SessionState,
+) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CompositeTypeStmt"
 		return
 	}
@@ -314,7 +365,9 @@ func classifyCompositeType(cs *effects.ClassifiedStatement, s *pg_query.Composit
 // classifyCreateEnum maps CREATE TYPE … AS ENUM → schema_create (group only).
 func classifyCreateEnum(cs *effects.ClassifiedStatement, s *pg_query.CreateEnumStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateEnumStmt"
 		return
 	}
@@ -330,7 +383,9 @@ func classifyCreateEnum(cs *effects.ClassifiedStatement, s *pg_query.CreateEnumS
 // classifyCreateDomain maps CREATE DOMAIN → schema_create (group only).
 func classifyCreateDomain(cs *effects.ClassifiedStatement, s *pg_query.CreateDomainStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CreateDomainStmt"
 		return
 	}
@@ -348,7 +403,9 @@ func classifyCreateDomain(cs *effects.ClassifiedStatement, s *pg_query.CreateDom
 // (group only) per spec §7.3.
 func classifyDefine(cs *effects.ClassifiedStatement, s *pg_query.DefineStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DefineStmt"
 		return
 	}
@@ -370,7 +427,9 @@ func classifyDefine(cs *effects.ClassifiedStatement, s *pg_query.DefineStmt) {
 // Per spec §7.3 these all map to schema_alter (group only, no subtype).
 func classifyAlter(cs *effects.ClassifiedStatement, s *pg_query.AlterTableStmt, sess SessionState) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil AlterTableStmt"
 		return
 	}
@@ -387,7 +446,9 @@ func classifyAlter(cs *effects.ClassifiedStatement, s *pg_query.AlterTableStmt, 
 // classifyRename maps RENAME of a table/view/index/etc. → schema_alter.
 func classifyRename(cs *effects.ClassifiedStatement, s *pg_query.RenameStmt, sess SessionState) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil RenameStmt"
 		return
 	}
@@ -422,7 +483,9 @@ func classifyRename(cs *effects.ClassifiedStatement, s *pg_query.RenameStmt, ses
 // classifyComment maps COMMENT ON … → schema_alter.
 func classifyComment(cs *effects.ClassifiedStatement, s *pg_query.CommentStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil CommentStmt"
 		return
 	}
@@ -451,7 +514,9 @@ func classifyComment(cs *effects.ClassifiedStatement, s *pg_query.CommentStmt) {
 // classifyAlterPublication maps ALTER PUBLICATION → schema_alter(alter_publication).
 func classifyAlterPublication(cs *effects.ClassifiedStatement, s *pg_query.AlterPublicationStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil AlterPublicationStmt"
 		return
 	}
@@ -479,7 +544,9 @@ func classifyAlterPublication(cs *effects.ClassifiedStatement, s *pg_query.Alter
 // DropTableSpaceStmt), routed directly from ast_walk.go.
 func classifyDrop(cs *effects.ClassifiedStatement, s *pg_query.DropStmt, sess SessionState) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DropStmt"
 		return
 	}
@@ -494,15 +561,40 @@ func classifyDrop(cs *effects.ClassifiedStatement, s *pg_query.DropStmt, sess Se
 	case pg_query.ObjectType_OBJECT_MATVIEW:
 		// MATERIALIZED VIEW shares the schema_destroy group; spec uses the bare
 		// drop_view subtype for consistency with §7.3 schema_destroy entries.
-		emitDropPerObject(cs, s, sess, "DROP_MATERIALIZED_VIEW", effects.SubtypeDropView, effects.ObjectView)
+		emitDropPerObject(
+			cs,
+			s,
+			sess,
+			"DROP_MATERIALIZED_VIEW",
+			effects.SubtypeDropView,
+			effects.ObjectView,
+		)
 	case pg_query.ObjectType_OBJECT_SCHEMA:
-		emitDropFromSimpleNames(cs, s, "DROP_SCHEMA", effects.SubtypeDropSchema, effects.ObjectSchema)
+		emitDropFromSimpleNames(
+			cs,
+			s,
+			"DROP_SCHEMA",
+			effects.SubtypeDropSchema,
+			effects.ObjectSchema,
+		)
 	case pg_query.ObjectType_OBJECT_FUNCTION,
 		pg_query.ObjectType_OBJECT_PROCEDURE,
 		pg_query.ObjectType_OBJECT_ROUTINE:
-		emitDropFromObjectWithArgs(cs, s, "DROP_FUNCTION", effects.SubtypeDropFunction, effects.ObjectFunction)
+		emitDropFromObjectWithArgs(
+			cs,
+			s,
+			"DROP_FUNCTION",
+			effects.SubtypeDropFunction,
+			effects.ObjectFunction,
+		)
 	case pg_query.ObjectType_OBJECT_PUBLICATION:
-		emitDropFromSimpleNames(cs, s, "DROP_PUBLICATION", effects.SubtypeDropPublication, effects.ObjectPublication)
+		emitDropFromSimpleNames(
+			cs,
+			s,
+			"DROP_PUBLICATION",
+			effects.SubtypeDropPublication,
+			effects.ObjectPublication,
+		)
 	case pg_query.ObjectType_OBJECT_EXTENSION:
 		// schema_destroy without a dedicated subtype.
 		emitDropFromSimpleNames(cs, s, "DROP_EXTENSION", effects.SubtypeNone, effects.ObjectSchema)
@@ -512,13 +604,25 @@ func classifyDrop(cs *effects.ClassifiedStatement, s *pg_query.DropStmt, sess Se
 		pg_query.ObjectType_OBJECT_DOMAIN:
 		emitDropFromQualifiedNames(cs, s, "DROP_TYPE", effects.SubtypeNone, effects.ObjectTable)
 	case pg_query.ObjectType_OBJECT_AGGREGATE:
-		emitDropFromObjectWithArgs(cs, s, "DROP_AGGREGATE", effects.SubtypeNone, effects.ObjectFunction)
+		emitDropFromObjectWithArgs(
+			cs,
+			s,
+			"DROP_AGGREGATE",
+			effects.SubtypeNone,
+			effects.ObjectFunction,
+		)
 	case pg_query.ObjectType_OBJECT_TRIGGER,
 		pg_query.ObjectType_OBJECT_RULE,
 		pg_query.ObjectType_OBJECT_POLICY:
 		// These are List<schema?, parent_relation, name> in pg_query;
 		// we extract the trailing name as the primary identifier.
-		emitDropFromQualifiedNames(cs, s, "DROP_"+strings.TrimPrefix(s.RemoveType.String(), "OBJECT_"), effects.SubtypeNone, effects.ObjectFunction)
+		emitDropFromQualifiedNames(
+			cs,
+			s,
+			"DROP_"+strings.TrimPrefix(s.RemoveType.String(), "OBJECT_"),
+			effects.SubtypeNone,
+			effects.ObjectFunction,
+		)
 	case pg_query.ObjectType_OBJECT_FOREIGN_SERVER:
 		// DROP SERVER → unsafe_io(drop_server) + schema_destroy. Implementation
 		// lives in ast_external.go alongside the rest of the foreign-server
@@ -538,7 +642,9 @@ func classifyDrop(cs *effects.ClassifiedStatement, s *pg_query.DropStmt, sess Se
 // classifyDropDatabase maps DROP DATABASE → schema_destroy(drop_database).
 func classifyDropDatabase(cs *effects.ClassifiedStatement, s *pg_query.DropdbStmt) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DropdbStmt"
 		return
 	}
@@ -556,9 +662,15 @@ func classifyDropDatabase(cs *effects.ClassifiedStatement, s *pg_query.DropdbStm
 
 // classifyTruncate maps TRUNCATE → schema_destroy(truncate) with one
 // ObjectRef per relation in s.Relations.
-func classifyTruncate(cs *effects.ClassifiedStatement, s *pg_query.TruncateStmt, sess SessionState) {
+func classifyTruncate(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.TruncateStmt,
+	sess SessionState,
+) {
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil TruncateStmt"
 		return
 	}
@@ -591,7 +703,14 @@ func classifyTruncate(cs *effects.ClassifiedStatement, s *pg_query.TruncateStmt,
 // list-of-string entry in s.Objects. Used for forms whose Objects[i] is a
 // Node_List of String_ name parts (DROP TABLE / INDEX / VIEW / SEQUENCE /
 // MATVIEW). Resolution is folded across objects.
-func emitDropPerObject(cs *effects.ClassifiedStatement, s *pg_query.DropStmt, sess SessionState, raw string, sub effects.Subtype, kind effects.ObjectKind) {
+func emitDropPerObject(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.DropStmt,
+	sess SessionState,
+	raw string,
+	sub effects.Subtype,
+	kind effects.ObjectKind,
+) {
 	cs.RawVerb = raw
 	objs := make([]effects.ObjectRef, 0, len(s.Objects))
 	resolutions := make([]effects.Resolution, 0, len(s.Objects))
@@ -611,7 +730,13 @@ func emitDropPerObject(cs *effects.ClassifiedStatement, s *pg_query.DropStmt, se
 
 // emitDropFromSimpleNames builds one schema_destroy effect for forms whose
 // Objects[i] is a bare Node_String_ (DROP SCHEMA / EXTENSION / PUBLICATION).
-func emitDropFromSimpleNames(cs *effects.ClassifiedStatement, s *pg_query.DropStmt, raw string, sub effects.Subtype, kind effects.ObjectKind) {
+func emitDropFromSimpleNames(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.DropStmt,
+	raw string,
+	sub effects.Subtype,
+	kind effects.ObjectKind,
+) {
 	cs.RawVerb = raw
 	objs := make([]effects.ObjectRef, 0, len(s.Objects))
 	for _, n := range s.Objects {
@@ -629,7 +754,13 @@ func emitDropFromSimpleNames(cs *effects.ClassifiedStatement, s *pg_query.DropSt
 // emitDropFromQualifiedNames is the variant for forms whose Objects[i] is a
 // Node_List of String_ name parts (DROP TYPE / DOMAIN / TRIGGER / RULE /
 // POLICY) where Resolution comes from whether a schema was supplied.
-func emitDropFromQualifiedNames(cs *effects.ClassifiedStatement, s *pg_query.DropStmt, raw string, sub effects.Subtype, kind effects.ObjectKind) {
+func emitDropFromQualifiedNames(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.DropStmt,
+	raw string,
+	sub effects.Subtype,
+	kind effects.ObjectKind,
+) {
 	cs.RawVerb = raw
 	objs := make([]effects.ObjectRef, 0, len(s.Objects))
 	resolutions := make([]effects.Resolution, 0, len(s.Objects))
@@ -649,7 +780,13 @@ func emitDropFromQualifiedNames(cs *effects.ClassifiedStatement, s *pg_query.Dro
 
 // emitDropFromObjectWithArgs is for DROP FUNCTION / DROP AGGREGATE — Objects[i]
 // is a Node_ObjectWithArgs holding objname (a list of String_).
-func emitDropFromObjectWithArgs(cs *effects.ClassifiedStatement, s *pg_query.DropStmt, raw string, sub effects.Subtype, kind effects.ObjectKind) {
+func emitDropFromObjectWithArgs(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.DropStmt,
+	raw string,
+	sub effects.Subtype,
+	kind effects.ObjectKind,
+) {
 	cs.RawVerb = raw
 	objs := make([]effects.ObjectRef, 0, len(s.Objects))
 	resolutions := make([]effects.Resolution, 0, len(s.Objects))

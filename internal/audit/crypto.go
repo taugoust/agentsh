@@ -44,7 +44,11 @@ func LoadEncryptionKey(keyFile, keyEnv string) ([]byte, error) {
 		if key := os.Getenv(keyEnv); key != "" {
 			keyBytes := []byte(key)
 			if len(keyBytes) < 32 {
-				return nil, fmt.Errorf("key from env %s too short: need 32 bytes, got %d", keyEnv, len(keyBytes))
+				return nil, fmt.Errorf(
+					"key from env %s too short: need 32 bytes, got %d",
+					keyEnv,
+					len(keyBytes),
+				)
 			}
 			return keyBytes[:32], nil // Truncate to 32 bytes for consistency
 		}

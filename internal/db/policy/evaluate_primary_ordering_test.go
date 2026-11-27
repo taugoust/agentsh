@@ -21,8 +21,14 @@ database_rules:
   - {name: deny-x,   db_service: appdb, operations: [READ], objects: [x],      decision: deny}
 `)
 	stmt := effects.ClassifiedStatement{Effects: []effects.Effect{
-		{Group: effects.GroupRead, Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "pii.ssns"}}},
-		{Group: effects.GroupRead, Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "x"}}},
+		{
+			Group:   effects.GroupRead,
+			Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "pii.ssns"}},
+		},
+		{
+			Group:   effects.GroupRead,
+			Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "x"}},
+		},
 	}}
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbDeny {

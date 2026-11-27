@@ -107,9 +107,24 @@ Examples:
 			fmt.Fprintf(cmd.OutOrStdout(), "Session: %s\n", sessionID)
 			fmt.Fprintf(cmd.OutOrStdout(), "Proxy: %s on %s\n", state, address)
 			fmt.Fprintf(cmd.OutOrStdout(), "Mode: %s\n", mode)
-			fmt.Fprintf(cmd.OutOrStdout(), "DLP: %s (%d patterns active)\n", dlpMode, activePatterns)
-			fmt.Fprintf(cmd.OutOrStdout(), "Requests: %d (%d with redactions)\n", totalRequests, requestsWithRedactions)
-			fmt.Fprintf(cmd.OutOrStdout(), "Tokens: %d in / %d out\n", totalInputTokens, totalOutputTokens)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"DLP: %s (%d patterns active)\n",
+				dlpMode,
+				activePatterns,
+			)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"Requests: %d (%d with redactions)\n",
+				totalRequests,
+				requestsWithRedactions,
+			)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"Tokens: %d in / %d out\n",
+				totalInputTokens,
+				totalOutputTokens,
+			)
 
 			return nil
 		},

@@ -25,7 +25,12 @@ func TestInjectProbe_InjectableOnCIKernel(t *testing.T) {
 	if elapsed > 30*time.Second {
 		t.Fatalf("ProbePtraceInject took %v, expected to return promptly", elapsed)
 	}
-	t.Logf("ProbePtraceInject: injectable=%v detail=%q elapsed=%v", res.Injectable, res.Detail, elapsed)
+	t.Logf(
+		"ProbePtraceInject: injectable=%v detail=%q elapsed=%v",
+		res.Injectable,
+		res.Detail,
+		elapsed,
+	)
 
 	// Cached: a second call must return the identical result instantly without
 	// spawning another child.

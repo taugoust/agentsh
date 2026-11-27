@@ -130,19 +130,25 @@ func TestBypassEmitter_EmitsDBUnavoidabilityDeny(t *testing.T) {
 	if ev.Timestamp.Location() != time.UTC || !ev.Timestamp.Equal(now.UTC()) {
 		t.Fatalf("timestamp = %v, want UTC %v", ev.Timestamp, now.UTC())
 	}
-	if ev.Type != "db_bypass_attempt" || ev.SessionID != "session-1" || ev.CommandID != "cmd-1" || ev.PID != 4242 {
+	if ev.Type != "db_bypass_attempt" || ev.SessionID != "session-1" || ev.CommandID != "cmd-1" ||
+		ev.PID != 4242 {
 		t.Fatalf("unexpected event identity: %+v", ev)
 	}
-	if ev.Policy == nil || ev.Policy.Decision != types.DecisionDeny || ev.Policy.EffectiveDecision != types.DecisionDeny || ev.Policy.Rule != "db-appdb-deny-direct" {
+	if ev.Policy == nil || ev.Policy.Decision != types.DecisionDeny ||
+		ev.Policy.EffectiveDecision != types.DecisionDeny ||
+		ev.Policy.Rule != "db-appdb-deny-direct" {
 		t.Fatalf("unexpected policy info: %+v", ev.Policy)
 	}
 	if ev.Fields["process_id"] != 4242 || ev.Fields["process_identity"] != "psql:/usr/bin/psql" {
 		t.Fatalf("unexpected process fields: %+v", ev.Fields)
 	}
-	if ev.Fields["db_service"] != "appdb" || ev.Fields["rule_name"] != "db-appdb-deny-direct" || ev.Fields["bypass_mode"] != dbservice.BypassModeTCPDirect {
+	if ev.Fields["db_service"] != "appdb" || ev.Fields["rule_name"] != "db-appdb-deny-direct" ||
+		ev.Fields["bypass_mode"] != dbservice.BypassModeTCPDirect {
 		t.Fatalf("unexpected rule fields: %+v", ev.Fields)
 	}
-	if ev.Fields["destination"] != "db.internal:5432" || ev.Fields["reason"] != "direct database egress is blocked" || ev.Fields["suppressed_count"] != 0 {
+	if ev.Fields["destination"] != "db.internal:5432" ||
+		ev.Fields["reason"] != "direct database egress is blocked" ||
+		ev.Fields["suppressed_count"] != 0 {
 		t.Fatalf("unexpected detail fields: %+v", ev.Fields)
 	}
 }

@@ -27,7 +27,10 @@ func readSupervisorMetadata(sessionID string) (supervisorMetadata, string, error
 	return readSupervisorMetadataFromRoot(detachedSessionsRoot(), sessionID)
 }
 
-func readSupervisorMetadataFromRoot(root string, sessionID string) (supervisorMetadata, string, error) {
+func readSupervisorMetadataFromRoot(
+	root string,
+	sessionID string,
+) (supervisorMetadata, string, error) {
 	return detached.ReadMetadataFromRoot(root, sessionID)
 }
 
@@ -65,7 +68,10 @@ func listSupervisorMetadata() ([]supervisorMetadata, error) {
 	return out, nil
 }
 
-func listSupervisorMetadataFromRoot(root string, opts supervisorDiscoveryOptions) ([]supervisorMetadata, error) {
+func listSupervisorMetadataFromRoot(
+	root string,
+	opts supervisorDiscoveryOptions,
+) ([]supervisorMetadata, error) {
 	if opts.CheckPID && opts.PIDAlive == nil {
 		opts.PIDAlive = supervisorPIDAlive
 	}

@@ -14,14 +14,22 @@ var ErrApproverNotConfigured = errors.New("policy: approver not configured")
 
 // Approver decides whether a statement awaiting approval should run.
 type Approver interface {
-	Decide(ctx context.Context, cs effects.ClassifiedStatement, timeout time.Duration) (approved bool, err error)
+	Decide(
+		ctx context.Context,
+		cs effects.ClassifiedStatement,
+		timeout time.Duration,
+	) (approved bool, err error)
 }
 
 // NopApprover is the default. It blocks until context cancellation or timeout,
 // then denies by returning approved=false.
 type NopApprover struct{}
 
-func (NopApprover) Decide(ctx context.Context, _ effects.ClassifiedStatement, timeout time.Duration) (bool, error) {
+func (NopApprover) Decide(
+	ctx context.Context,
+	_ effects.ClassifiedStatement,
+	timeout time.Duration,
+) (bool, error) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 

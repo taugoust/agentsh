@@ -23,7 +23,10 @@ type CLI struct {
 // (scan, doctor, list-quarantined, restore, cache).
 func (c *CLI) Run(ctx context.Context, argv []string) int {
 	if len(argv) == 0 {
-		fmt.Fprintln(c.stdout(), "usage: agentsh skillcheck <scan|doctor|list-quarantined|restore|cache>")
+		fmt.Fprintln(
+			c.stdout(),
+			"usage: agentsh skillcheck <scan|doctor|list-quarantined|restore|cache>",
+		)
 		return 2
 	}
 	switch argv[0] {

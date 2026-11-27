@@ -96,7 +96,10 @@ func NewKernelBackendWithOptions(opts KernelBackendOptions) *KernelBackend {
 
 func validateKernelRegistration(req RegisterSessionCgroupRequest) error {
 	if req.Mode.Normalized() != BuiltinModeCgroupConnectGate {
-		return fmt.Errorf("built-in mode %q is not implemented: transparent redirect is not part of proxy-required enforcement", req.Mode.Normalized())
+		return fmt.Errorf(
+			"built-in mode %q is not implemented: transparent redirect is not part of proxy-required enforcement",
+			req.Mode.Normalized(),
+		)
 	}
 	switch req.Tier.Normalized() {
 	case EnforcementTierHelperEBPFGate:
@@ -111,7 +114,10 @@ func validateKernelRegistration(req RegisterSessionCgroupRequest) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("kernel helper does not implement enforcement tier %q", req.Tier.Normalized())
+		return fmt.Errorf(
+			"kernel helper does not implement enforcement tier %q",
+			req.Tier.Normalized(),
+		)
 	}
 	return nil
 }
@@ -128,7 +134,8 @@ func validateKernelPolicyUpdate(sess *kernelSession, req UpdatePolicyMapRequest)
 	if sess == nil {
 		return fmt.Errorf("registered kernel session is unavailable")
 	}
-	proxyRequired := sess.Tier == EnforcementTierHelperEBPFProxy || sess.Tier == EnforcementTierHelperEBPFProxyRequired
+	proxyRequired := sess.Tier == EnforcementTierHelperEBPFProxy ||
+		sess.Tier == EnforcementTierHelperEBPFProxyRequired
 	if !proxyRequired {
 		if req.Proxy != nil {
 			return fmt.Errorf("proxy metadata does not match the registered enforcement tier")
@@ -193,44 +200,89 @@ func validateKernelPolicyUpdate(sess *kernelSession, req UpdatePolicyMapRequest)
 	return nil
 }
 
-func (b *KernelBackend) RegisterSessionCgroup(ctx context.Context, peer PeerInfo, req RegisterSessionCgroupRequest) (RegisterSessionCgroupResponse, error) {
+func (b *KernelBackend) RegisterSessionCgroup(
+	ctx context.Context,
+	peer PeerInfo,
+	req RegisterSessionCgroupRequest,
+) (RegisterSessionCgroupResponse, error) {
 	if b == nil {
-		return RegisterSessionCgroupResponse{OK: false, Error: "nethelper kernel backend is nil"}, fmt.Errorf("nethelper kernel backend is nil")
+		return RegisterSessionCgroupResponse{
+				OK:    false,
+				Error: "nethelper kernel backend is nil",
+			}, fmt.Errorf(
+				"nethelper kernel backend is nil",
+			)
 	}
 	if err := req.Validate(); err != nil {
 		return RegisterSessionCgroupResponse{OK: false, Error: err.Error()}, err
 	}
 	if err := validateKernelRegistration(req); err != nil {
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	select {
 	case <-ctx.Done():
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: ctx.Err().Error()}, ctx.Err()
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           ctx.Err().Error(),
+		}, ctx.Err()
 	default:
 	}
 
 	cgroupPath, err := (kernelCgroupResolver{}).CanonicalCgroupPath(req.CgroupPath)
 	if err != nil {
 		err = fmt.Errorf("canonicalize target cgroup: %w", err)
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	key := registrationKey(req.SessionID, cgroupPath)
 	cgroupID, err := ebpftrace.CgroupID(cgroupPath)
 	if err != nil {
 		err = fmt.Errorf("resolve cgroup id: %w", err)
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 
 	b.mu.Lock()
 	if _, exists := b.sessions[key]; exists {
 		b.mu.Unlock()
 		err := fmt.Errorf("session cgroup is already registered with this helper")
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	if _, exists := b.byPath[cgroupPath]; exists || b.byID[cgroupID] != "" || b.reserved[cgroupID] {
 		b.mu.Unlock()
 		err := fmt.Errorf("target cgroup identity is already registered with this helper")
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	b.reserved[cgroupID] = true
 	b.mu.Unlock()
@@ -245,19 +297,41 @@ func (b *KernelBackend) RegisterSessionCgroup(ctx context.Context, peer PeerInfo
 
 	pinPath, err := b.pinPath(peer, req, cgroupID)
 	if err != nil {
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	if pinPath != "" {
 		if err := preparePinPath(b.opts.PinRoot, pinPath, b.opts.PinOwnerUID); err != nil {
 			err = fmt.Errorf("prepare helper-selected pin path: %w", err)
-			return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+			return RegisterSessionCgroupResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				SessionID:       req.SessionID,
+				OK:              false,
+				Error:           err.Error(),
+			}, err
 		}
 	}
 
-	attachment, reloadedPins, err := loadPinnedCgroupAttachment(pinPath, cgroupID, b.opts.PinOwnerUID)
+	attachment, reloadedPins, err := loadPinnedCgroupAttachment(
+		pinPath,
+		cgroupID,
+		b.opts.PinOwnerUID,
+	)
 	if err != nil {
 		err = fmt.Errorf("reload pinned helper resources: %w", err)
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	if attachment == nil {
 		attachOpts := ebpftrace.CgroupAttachOptions{
@@ -268,13 +342,35 @@ func (b *KernelBackend) RegisterSessionCgroup(ctx context.Context, peer PeerInfo
 		if err != nil {
 			_ = removeEmptyPinDirectories(b.opts.PinRoot, pinPath)
 			err = fmt.Errorf("attach built-in cgroup connect programs: %w", err)
-			return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+			return RegisterSessionCgroupResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				SessionID:       req.SessionID,
+				OK:              false,
+				Error:           err.Error(),
+			}, err
 		}
 	}
 	if attachment == nil || attachment.Collection == nil {
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: "helper attachment has no eBPF collection"}, fmt.Errorf("helper attachment has no eBPF collection")
+		return RegisterSessionCgroupResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				SessionID:       req.SessionID,
+				OK:              false,
+				Error:           "helper attachment has no eBPF collection",
+			}, fmt.Errorf(
+				"helper attachment has no eBPF collection",
+			)
 	}
-	if err := ebpftrace.PopulateAllowlist(attachment.Collection, cgroupID, nil, nil, nil, nil, true); err != nil {
+	if err := ebpftrace.PopulateAllowlist(
+		attachment.Collection,
+		cgroupID,
+		nil,
+		nil,
+		nil,
+		nil,
+		true,
+	); err != nil {
 		if reloadedPins {
 			closeAttachmentRefs(attachment)
 		} else {
@@ -282,7 +378,13 @@ func (b *KernelBackend) RegisterSessionCgroup(ctx context.Context, peer PeerInfo
 			_ = removeEmptyPinDirectories(b.opts.PinRoot, pinPath)
 		}
 		err = fmt.Errorf("initialize helper gate fail closed: %w", err)
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 
 	sess := &kernelSession{
@@ -299,7 +401,8 @@ func (b *KernelBackend) RegisterSessionCgroup(ctx context.Context, peer PeerInfo
 	b.mu.Lock()
 	delete(b.reserved, cgroupID)
 	reserved = false
-	if _, exists := b.sessions[key]; exists || b.byPath[cgroupPath] != "" || b.byID[cgroupID] != "" {
+	if _, exists := b.sessions[key]; exists || b.byPath[cgroupPath] != "" ||
+		b.byID[cgroupID] != "" {
 		b.mu.Unlock()
 		if reloadedPins {
 			closeAttachmentRefs(attachment)
@@ -308,7 +411,13 @@ func (b *KernelBackend) RegisterSessionCgroup(ctx context.Context, peer PeerInfo
 			_ = removeEmptyPinDirectories(b.opts.PinRoot, pinPath)
 		}
 		err := fmt.Errorf("target cgroup identity is already registered with this helper")
-		return RegisterSessionCgroupResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return RegisterSessionCgroupResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	b.sessions[key] = sess
 	b.byID[cgroupID] = key
@@ -330,77 +439,180 @@ func (b *KernelBackend) RegisterSessionCgroup(ctx context.Context, peer PeerInfo
 	}, nil
 }
 
-func (b *KernelBackend) UpdatePolicyMap(ctx context.Context, _ PeerInfo, req UpdatePolicyMapRequest) (UpdatePolicyMapResponse, error) {
+func (b *KernelBackend) UpdatePolicyMap(
+	ctx context.Context,
+	_ PeerInfo,
+	req UpdatePolicyMapRequest,
+) (UpdatePolicyMapResponse, error) {
 	if b == nil {
-		return UpdatePolicyMapResponse{OK: false, Error: "nethelper kernel backend is nil"}, fmt.Errorf("nethelper kernel backend is nil")
+		return UpdatePolicyMapResponse{
+				OK:    false,
+				Error: "nethelper kernel backend is nil",
+			}, fmt.Errorf(
+				"nethelper kernel backend is nil",
+			)
 	}
 	if err := req.Validate(); err != nil {
 		return UpdatePolicyMapResponse{OK: false, Error: err.Error()}, err
 	}
 	if req.Mode.Normalized() == BuiltinModeCgroupProxyRedirect {
-		err := fmt.Errorf("built-in mode %q is not implemented: transparent redirect is not part of proxy-required enforcement", BuiltinModeCgroupProxyRedirect)
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		err := fmt.Errorf(
+			"built-in mode %q is not implemented: transparent redirect is not part of proxy-required enforcement",
+			BuiltinModeCgroupProxyRedirect,
+		)
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	select {
 	case <-ctx.Done():
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: ctx.Err().Error()}, ctx.Err()
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           ctx.Err().Error(),
+		}, ctx.Err()
 	default:
 	}
 
 	sess, err := b.lookupSession(req.SessionID, req.CgroupPath, req.CgroupID)
 	if err != nil {
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	sess.opMu.Lock()
 	defer sess.opMu.Unlock()
 	b.mu.Lock()
-	active := b.sessions[registrationKey(sess.SessionID, sess.CgroupPath)] == sess && !sess.CleanupPending
+	active := b.sessions[registrationKey(sess.SessionID, sess.CgroupPath)] == sess &&
+		!sess.CleanupPending
 	b.mu.Unlock()
 	if !active {
 		err := fmt.Errorf("session cgroup cleanup is in progress")
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	if req.CgroupID == 0 || req.CgroupID != sess.CgroupID {
 		err := fmt.Errorf("cgroup_id does not match registered session cgroup")
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	if cleanCgroupPath(req.CgroupPath) != sess.CgroupPath {
 		err := fmt.Errorf("cgroup_path does not match registered session cgroup")
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	if req.Mode.Normalized() != sess.Mode {
 		err := fmt.Errorf("mode does not match registered session cgroup")
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	if err := validateKernelPolicyUpdate(sess, req); err != nil {
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	currentID, idErr := ebpftrace.CgroupID(sess.CgroupPath)
 	if idErr != nil || currentID != sess.CgroupID {
 		err := fmt.Errorf("registered cgroup identity changed: got %d: %w", currentID, idErr)
 		if idErr == nil {
-			err = fmt.Errorf("registered cgroup identity changed: got %d, want %d", currentID, sess.CgroupID)
+			err = fmt.Errorf(
+				"registered cgroup identity changed: got %d, want %d",
+				currentID,
+				sess.CgroupID,
+			)
 		}
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	if sess.attachment == nil || sess.attachment.Collection == nil {
 		err := fmt.Errorf("registered session has no active eBPF collection")
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 
 	allowExact, allowCIDR, err := policyEntriesToEBPF(req.Allow)
 	if err != nil {
 		err = fmt.Errorf("allow entries: %w", err)
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	denyExact, denyCIDR, err := policyEntriesToEBPF(req.Deny)
 	if err != nil {
 		err = fmt.Errorf("deny entries: %w", err)
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
-	if err := ebpftrace.PopulateAllowlist(sess.attachment.Collection, sess.CgroupID, allowExact, allowCIDR, denyExact, denyCIDR, req.DefaultDeny); err != nil {
+	if err := ebpftrace.PopulateAllowlist(
+		sess.attachment.Collection,
+		sess.CgroupID,
+		allowExact,
+		allowCIDR,
+		denyExact,
+		denyCIDR,
+		req.DefaultDeny,
+	); err != nil {
 		err = fmt.Errorf("populate helper-owned policy maps: %w", err)
-		return UpdatePolicyMapResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return UpdatePolicyMapResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 
 	warnings := updateWarnings(req)
@@ -416,26 +628,53 @@ func (b *KernelBackend) UpdatePolicyMap(ctx context.Context, _ PeerInfo, req Upd
 	}, nil
 }
 
-func (b *KernelBackend) CleanupSession(ctx context.Context, _ PeerInfo, req CleanupSessionRequest) (CleanupSessionResponse, error) {
+func (b *KernelBackend) CleanupSession(
+	ctx context.Context,
+	_ PeerInfo,
+	req CleanupSessionRequest,
+) (CleanupSessionResponse, error) {
 	if b == nil {
-		return CleanupSessionResponse{OK: false, Error: "nethelper kernel backend is nil"}, fmt.Errorf("nethelper kernel backend is nil")
+		return CleanupSessionResponse{
+				OK:    false,
+				Error: "nethelper kernel backend is nil",
+			}, fmt.Errorf(
+				"nethelper kernel backend is nil",
+			)
 	}
 	if err := req.Validate(); err != nil {
 		return CleanupSessionResponse{OK: false, Error: err.Error()}, err
 	}
 	select {
 	case <-ctx.Done():
-		return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: ctx.Err().Error()}, ctx.Err()
+		return CleanupSessionResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           ctx.Err().Error(),
+		}, ctx.Err()
 	default:
 	}
 
 	if strings.TrimSpace(req.CgroupPath) == "" || req.CgroupID == 0 {
 		err := fmt.Errorf("cleanup requires the exact registered cgroup_path and cgroup_id")
-		return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return CleanupSessionResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	sess, err := b.beginSessionCleanup(req.SessionID, req.CgroupPath, req.CgroupID)
 	if err != nil {
-		return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, Error: err.Error()}, err
+		return CleanupSessionResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			RequestID:       req.RequestID,
+			SessionID:       req.SessionID,
+			OK:              false,
+			Error:           err.Error(),
+		}, err
 	}
 	sess.opMu.Lock()
 	defer sess.opMu.Unlock()
@@ -450,13 +689,27 @@ func (b *KernelBackend) CleanupSession(ctx context.Context, _ PeerInfo, req Clea
 		if err := sess.attachment.Close(); err != nil {
 			b.finishSessionCleanup(sess, false)
 			err = fmt.Errorf("close helper-owned eBPF resources: %w", err)
-			return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, RemovedPins: removed, Error: err.Error()}, err
+			return CleanupSessionResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				SessionID:       req.SessionID,
+				OK:              false,
+				RemovedPins:     removed,
+				Error:           err.Error(),
+			}, err
 		}
 	}
 	if sess.PinPath != "" {
 		if err := removeEmptyPinDirectories(b.opts.PinRoot, sess.PinPath); err != nil {
 			b.finishSessionCleanup(sess, false)
-			return CleanupSessionResponse{ProtocolVersion: CurrentProtocolVersion, RequestID: req.RequestID, SessionID: req.SessionID, OK: false, RemovedPins: removed, Error: err.Error()}, err
+			return CleanupSessionResponse{
+				ProtocolVersion: CurrentProtocolVersion,
+				RequestID:       req.RequestID,
+				SessionID:       req.SessionID,
+				OK:              false,
+				RemovedPins:     removed,
+				Error:           err.Error(),
+			}, err
 		}
 	}
 	b.finishSessionCleanup(sess, true)
@@ -469,7 +722,10 @@ func (b *KernelBackend) CleanupSession(ctx context.Context, _ PeerInfo, req Clea
 	}, nil
 }
 
-func (b *KernelBackend) lookupSession(sessionID, cgroupPath string, cgroupID uint64) (*kernelSession, error) {
+func (b *KernelBackend) lookupSession(
+	sessionID, cgroupPath string,
+	cgroupID uint64,
+) (*kernelSession, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	var sess *kernelSession
@@ -490,12 +746,17 @@ func (b *KernelBackend) lookupSession(sessionID, cgroupPath string, cgroupID uin
 	return sess, nil
 }
 
-func (b *KernelBackend) beginSessionCleanup(sessionID, cgroupPath string, cgroupID uint64) (*kernelSession, error) {
+func (b *KernelBackend) beginSessionCleanup(
+	sessionID, cgroupPath string,
+	cgroupID uint64,
+) (*kernelSession, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	key := registrationKey(sessionID, cgroupPath)
 	sess := b.sessions[key]
-	if sess == nil || sess.CleanupPending || sess.SessionID != strings.TrimSpace(sessionID) || sess.CgroupPath != cleanCgroupPath(cgroupPath) || sess.CgroupID != cgroupID {
+	if sess == nil || sess.CleanupPending || sess.SessionID != strings.TrimSpace(sessionID) ||
+		sess.CgroupPath != cleanCgroupPath(cgroupPath) ||
+		sess.CgroupID != cgroupID {
 		return nil, fmt.Errorf("cleanup identity does not match a registered session cgroup")
 	}
 	sess.CleanupPending = true
@@ -521,7 +782,11 @@ func (b *KernelBackend) finishSessionCleanup(sess *kernelSession, succeeded bool
 	delete(b.byPath, sess.CgroupPath)
 }
 
-func (b *KernelBackend) pinPath(peer PeerInfo, req RegisterSessionCgroupRequest, cgroupID uint64) (string, error) {
+func (b *KernelBackend) pinPath(
+	peer PeerInfo,
+	req RegisterSessionCgroupRequest,
+	cgroupID uint64,
+) (string, error) {
 	root := strings.TrimSpace(b.opts.PinRoot)
 	if root == "" {
 		return "", nil
@@ -547,18 +812,35 @@ func (b *KernelBackend) pinPath(peer PeerInfo, req RegisterSessionCgroupRequest,
 	return filepath.Clean(pinPath), nil
 }
 
-func (b *KernelBackend) registrationWarnings(req RegisterSessionCgroupRequest, pinPath string, reloadedPins bool) []string {
+func (b *KernelBackend) registrationWarnings(
+	req RegisterSessionCgroupRequest,
+	pinPath string,
+	reloadedPins bool,
+) []string {
 	var warnings []string
 	if !b.opts.TrustBoundaryComplete {
-		warnings = append(warnings, "helper attached the built-in cgroup eBPF gate, but network_policy_enforced is not claimed until same-UID socket/fd isolation and proxy bypass controls are proven")
+		warnings = append(
+			warnings,
+			"helper attached the built-in cgroup eBPF gate, but network_policy_enforced is not claimed until same-UID socket/fd isolation and proxy bypass controls are proven",
+		)
 	}
 	if pinPath == "" {
-		warnings = append(warnings, "helper resources are not pinned in bpffs; enforcement is helper-process-lifetime only")
+		warnings = append(
+			warnings,
+			"helper resources are not pinned in bpffs; enforcement is helper-process-lifetime only",
+		)
 	} else if reloadedPins {
-		warnings = append(warnings, "reloaded pinned bpffs maps/links for this session cgroup after helper restart")
+		warnings = append(
+			warnings,
+			"reloaded pinned bpffs maps/links for this session cgroup after helper restart",
+		)
 	}
-	if req.Proxy != nil || req.Tier.Normalized() == EnforcementTierHelperEBPFProxy || req.Tier.Normalized() == EnforcementTierHelperEBPFProxyRequired {
-		warnings = append(warnings, "transparent cgroup redirect is not implemented; helper supports proxy-required mode only when the supervisor installs a default-deny map for exact proxy endpoints")
+	if req.Proxy != nil || req.Tier.Normalized() == EnforcementTierHelperEBPFProxy ||
+		req.Tier.Normalized() == EnforcementTierHelperEBPFProxyRequired {
+		warnings = append(
+			warnings,
+			"transparent cgroup redirect is not implemented; helper supports proxy-required mode only when the supervisor installs a default-deny map for exact proxy endpoints",
+		)
 	}
 	return warnings
 }
@@ -566,15 +848,23 @@ func (b *KernelBackend) registrationWarnings(req RegisterSessionCgroupRequest, p
 func updateWarnings(req UpdatePolicyMapRequest) []string {
 	var warnings []string
 	if req.Proxy != nil && req.DefaultDeny {
-		warnings = append(warnings, "proxy-or-block gate active: direct external connects are denied; proxy-aware clients must use the AgentSH proxy approval path")
+		warnings = append(
+			warnings,
+			"proxy-or-block gate active: direct external connects are denied; proxy-aware clients must use the AgentSH proxy approval path",
+		)
 	}
 	if req.Proxy != nil && !req.DefaultDeny {
-		warnings = append(warnings, "proxy metadata supplied without default_deny; direct network bypasses may still be possible")
+		warnings = append(
+			warnings,
+			"proxy metadata supplied without default_deny; direct network bypasses may still be possible",
+		)
 	}
 	return warnings
 }
 
-func policyEntriesToEBPF(entries []PolicyMapEntry) ([]ebpftrace.AllowKey, []ebpftrace.AllowCIDR, error) {
+func policyEntriesToEBPF(
+	entries []PolicyMapEntry,
+) ([]ebpftrace.AllowKey, []ebpftrace.AllowCIDR, error) {
 	var exact []ebpftrace.AllowKey
 	var cidrs []ebpftrace.AllowCIDR
 	for i, entry := range entries {
@@ -659,7 +949,11 @@ func expectedPinnedProgramSchemas() (map[string]pinnedProgramSchema, error) {
 	}
 	defer collection.Close()
 	if len(collection.Programs) != len(expectedLinkRoles) {
-		return nil, fmt.Errorf("built-in program set has %d entries, want exactly %d", len(collection.Programs), len(expectedLinkRoles))
+		return nil, fmt.Errorf(
+			"built-in program set has %d entries, want exactly %d",
+			len(collection.Programs),
+			len(expectedLinkRoles),
+		)
 	}
 	expected := make(map[string]pinnedProgramSchema, len(expectedLinkRoles))
 	for name, attachType := range expectedLinkRoles {
@@ -671,8 +965,12 @@ func expectedPinnedProgramSchemas() (map[string]pinnedProgramSchema, error) {
 		if err != nil {
 			return nil, fmt.Errorf("inspect built-in program role %s: %w", name, err)
 		}
-		if info.Type != ebpf.CGroupSockAddr || info.Name != name || strings.TrimSpace(info.Tag) == "" {
-			return nil, fmt.Errorf("built-in program role %s has an unexpected kernel identity", name)
+		if info.Type != ebpf.CGroupSockAddr || info.Name != name ||
+			strings.TrimSpace(info.Tag) == "" {
+			return nil, fmt.Errorf(
+				"built-in program role %s has an unexpected kernel identity",
+				name,
+			)
 		}
 		expected[name] = pinnedProgramSchema{AttachType: attachType, Tag: info.Tag}
 	}
@@ -704,7 +1002,11 @@ func expectedPinnedMapSchemas() (map[string]pinnedMapSchema, error) {
 	}
 	defer collection.Close()
 	if len(collection.Maps) != len(expectedNames) {
-		return nil, fmt.Errorf("built-in map set has %d entries, want exactly %d", len(collection.Maps), len(expectedNames))
+		return nil, fmt.Errorf(
+			"built-in map set has %d entries, want exactly %d",
+			len(collection.Maps),
+			len(expectedNames),
+		)
 	}
 	expected := make(map[string]pinnedMapSchema, len(expectedNames))
 	for name := range expectedNames {
@@ -730,7 +1032,11 @@ func expectedPinnedMapSchemas() (map[string]pinnedMapSchema, error) {
 	return expected, nil
 }
 
-func loadPinnedCgroupAttachment(pinPath string, cgroupID uint64, ownerUID uint32) (*ebpftrace.CgroupAttachment, bool, error) {
+func loadPinnedCgroupAttachment(
+	pinPath string,
+	cgroupID uint64,
+	ownerUID uint32,
+) (*ebpftrace.CgroupAttachment, bool, error) {
 	pinPath = strings.TrimSpace(pinPath)
 	if pinPath == "" {
 		return nil, false, nil
@@ -749,8 +1055,12 @@ func loadPinnedCgroupAttachment(pinPath string, cgroupID uint64, ownerUID uint32
 	if len(pinEntries) == 0 {
 		return nil, false, nil
 	}
-	if len(pinEntries) != 2 || pinEntries[0].Name() != "links" || pinEntries[1].Name() != "maps" || !pinEntries[0].IsDir() || !pinEntries[1].IsDir() {
-		return nil, true, fmt.Errorf("pinned registration directory must contain exactly links and maps directories")
+	if len(pinEntries) != 2 || pinEntries[0].Name() != "links" || pinEntries[1].Name() != "maps" ||
+		!pinEntries[0].IsDir() ||
+		!pinEntries[1].IsDir() {
+		return nil, true, fmt.Errorf(
+			"pinned registration directory must contain exactly links and maps directories",
+		)
 	}
 	mapsDir := filepath.Join(pinPath, "maps")
 	linksDir := filepath.Join(pinPath, "links")
@@ -798,7 +1108,10 @@ func loadPinnedCgroupAttachment(pinPath string, cgroupID uint64, ownerUID uint32
 		lockErr := ebpftrace.LockPolicy(collection, cgroupID)
 		closeAttachmentRefs(attachment)
 		if lockErr != nil {
-			return nil, true, errors.Join(err, fmt.Errorf("lock rejected pinned policy: %w", lockErr))
+			return nil, true, errors.Join(
+				err,
+				fmt.Errorf("lock rejected pinned policy: %w", lockErr),
+			)
 		}
 		return nil, true, err
 	}
@@ -833,7 +1146,11 @@ func loadPinnedMaps(mapsDir string, ownerUID uint32) (map[string]*ebpf.Map, []st
 		return nil, nil, fmt.Errorf("read pinned maps: %w", err)
 	}
 	if len(entries) != len(expected) {
-		return nil, nil, fmt.Errorf("pinned map set has %d entries, want exactly %d", len(entries), len(expected))
+		return nil, nil, fmt.Errorf(
+			"pinned map set has %d entries, want exactly %d",
+			len(entries),
+			len(expected),
+		)
 	}
 	maps := make(map[string]*ebpf.Map, len(expected))
 	var pinned []string
@@ -869,10 +1186,18 @@ func loadPinnedMaps(mapsDir string, ownerUID uint32) (map[string]*ebpf.Map, []st
 			cleanup()
 			return nil, nil, fmt.Errorf("inspect pinned map %s: %w", path, err)
 		}
-		if mapInfo.Type != schema.Type || mapInfo.KeySize != schema.KeySize || mapInfo.ValueSize != schema.ValueSize || mapInfo.MaxEntries != schema.MaxEntries || mapInfo.Flags != schema.Flags || mapInfo.Name != ent.Name() {
+		if mapInfo.Type != schema.Type || mapInfo.KeySize != schema.KeySize ||
+			mapInfo.ValueSize != schema.ValueSize ||
+			mapInfo.MaxEntries != schema.MaxEntries ||
+			mapInfo.Flags != schema.Flags ||
+			mapInfo.Name != ent.Name() {
 			_ = m.Close()
 			cleanup()
-			return nil, nil, fmt.Errorf("pinned map %s does not match built-in schema %s", path, pinSchemaComponent)
+			return nil, nil, fmt.Errorf(
+				"pinned map %s does not match built-in schema %s",
+				path,
+				pinSchemaComponent,
+			)
 		}
 		maps[ent.Name()] = m
 		pinned = append(pinned, path)
@@ -880,7 +1205,12 @@ func loadPinnedMaps(mapsDir string, ownerUID uint32) (map[string]*ebpf.Map, []st
 	return maps, pinned, nil
 }
 
-func loadPinnedLinks(linksDir string, cgroupID uint64, ownerUID uint32, maps map[string]*ebpf.Map) ([]link.Link, []string, error) {
+func loadPinnedLinks(
+	linksDir string,
+	cgroupID uint64,
+	ownerUID uint32,
+	maps map[string]*ebpf.Map,
+) ([]link.Link, []string, error) {
 	expectedPrograms, err := expectedPinnedProgramSchemas()
 	if err != nil {
 		return nil, nil, err
@@ -894,7 +1224,11 @@ func loadPinnedLinks(linksDir string, cgroupID uint64, ownerUID uint32, maps map
 		return nil, nil, fmt.Errorf("read pinned links: %w", err)
 	}
 	if len(entries) != len(expectedPrograms) {
-		return nil, nil, fmt.Errorf("pinned link set has %d entries, want exactly %d", len(entries), len(expectedPrograms))
+		return nil, nil, fmt.Errorf(
+			"pinned link set has %d entries, want exactly %d",
+			len(entries),
+			len(expectedPrograms),
+		)
 	}
 	var links []link.Link
 	var pinned []string
@@ -932,10 +1266,17 @@ func loadPinnedLinks(linksDir string, cgroupID uint64, ownerUID uint32, maps map
 			return nil, nil, fmt.Errorf("inspect pinned link %s: %w", path, err)
 		}
 		cgroupInfo := linkInfo.Cgroup()
-		if linkInfo.Type != link.CgroupType || cgroupInfo == nil || cgroupInfo.CgroupId != cgroupID || uint32(cgroupInfo.AttachType) != uint32(expected.AttachType) {
+		if linkInfo.Type != link.CgroupType || cgroupInfo == nil ||
+			cgroupInfo.CgroupId != cgroupID ||
+			uint32(cgroupInfo.AttachType) != uint32(expected.AttachType) {
 			_ = loaded.Close()
 			cleanup()
-			return nil, nil, fmt.Errorf("pinned link %s does not match cgroup %d role %s", path, cgroupID, ent.Name())
+			return nil, nil, fmt.Errorf(
+				"pinned link %s does not match cgroup %d role %s",
+				path,
+				cgroupID,
+				ent.Name(),
+			)
 		}
 		program, err := ebpf.NewProgramFromID(linkInfo.Program)
 		if err != nil {
@@ -951,10 +1292,18 @@ func loadPinnedLinks(linksDir string, cgroupID uint64, ownerUID uint32, maps map
 			return nil, nil, fmt.Errorf("inspect pinned link program for %s: %w", path, infoErr)
 		}
 		programMapIDs, available := programInfo.MapIDs()
-		if programInfo.Type != ebpf.CGroupSockAddr || programInfo.Name != ent.Name() || programInfo.Tag != expected.Tag || seenPrograms[linkInfo.Program] || !available || !sameMapIDSet(programMapIDs, expectedMapIDs) {
+		if programInfo.Type != ebpf.CGroupSockAddr || programInfo.Name != ent.Name() ||
+			programInfo.Tag != expected.Tag ||
+			seenPrograms[linkInfo.Program] ||
+			!available ||
+			!sameMapIDSet(programMapIDs, expectedMapIDs) {
 			_ = loaded.Close()
 			cleanup()
-			return nil, nil, fmt.Errorf("pinned link %s program does not match built-in role %s and helper-owned maps", path, ent.Name())
+			return nil, nil, fmt.Errorf(
+				"pinned link %s program does not match built-in role %s and helper-owned maps",
+				path,
+				ent.Name(),
+			)
 		}
 		seenPrograms[linkInfo.Program] = true
 		links = append(links, loaded)
@@ -1141,7 +1490,8 @@ func removeEmptyPinDirectories(root, pinPath string) error {
 	root = filepath.Clean(root)
 	for current := filepath.Clean(pinPath); current != root && pathInSubtree(root, current, false); current = filepath.Dir(current) {
 		if err := os.Remove(current); err != nil {
-			if os.IsNotExist(err) || errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST) {
+			if os.IsNotExist(err) || errors.Is(err, syscall.ENOTEMPTY) ||
+				errors.Is(err, syscall.EEXIST) {
 				break
 			}
 			return fmt.Errorf("remove pin directory %s: %w", current, err)
@@ -1194,22 +1544,39 @@ func CleanupPinnedResources(opts PinCleanupOptions) (PinCleanupResult, error) {
 	}
 	result := PinCleanupResult{Warnings: warnings}
 	for _, reg := range registrations {
-		attachment, _, validateErr := loadPinnedCgroupAttachment(reg.Path, reg.CgroupID, opts.OwnerUID)
+		attachment, _, validateErr := loadPinnedCgroupAttachment(
+			reg.Path,
+			reg.CgroupID,
+			opts.OwnerUID,
+		)
 		if attachment != nil {
 			closeAttachmentRefs(attachment)
 		}
 		if validateErr != nil && !opts.Force {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("skip malformed pin tree %s: %v (use --force for explicit recovery)", reg.Path, validateErr))
+			result.Warnings = append(
+				result.Warnings,
+				fmt.Sprintf(
+					"skip malformed pin tree %s: %v (use --force for explicit recovery)",
+					reg.Path,
+					validateErr,
+				),
+			)
 			continue
 		}
 		if !opts.Force {
 			reapable, reason, reapErr := pinnedRegistrationReapable(reg)
 			if reapErr != nil {
-				result.Warnings = append(result.Warnings, fmt.Sprintf("skip pin tree %s: %v", reg.Path, reapErr))
+				result.Warnings = append(
+					result.Warnings,
+					fmt.Sprintf("skip pin tree %s: %v", reg.Path, reapErr),
+				)
 				continue
 			}
 			if !reapable {
-				result.Warnings = append(result.Warnings, fmt.Sprintf("skip active pin tree %s: %s", reg.Path, reason))
+				result.Warnings = append(
+					result.Warnings,
+					fmt.Sprintf("skip active pin tree %s: %s", reg.Path, reason),
+				)
 				continue
 			}
 		}
@@ -1227,7 +1594,10 @@ func CleanupPinnedResources(opts PinCleanupOptions) (PinCleanupResult, error) {
 	return result, nil
 }
 
-func discoverPinnedRegistrations(root string, opts PinCleanupOptions) ([]pinnedRegistrationPath, []string, error) {
+func discoverPinnedRegistrations(
+	root string,
+	opts PinCleanupOptions,
+) ([]pinnedRegistrationPath, []string, error) {
 	schemaRoot := filepath.Join(root, pinSchemaComponent)
 	schemaInfo, err := os.Lstat(schemaRoot)
 	if err != nil {
@@ -1258,7 +1628,10 @@ func discoverPinnedRegistrations(root string, opts PinCleanupOptions) ([]pinnedR
 				return err
 			}
 			if err := validateOwnedPinPath(path, info, opts.OwnerUID, true); err != nil {
-				warnings = append(warnings, fmt.Sprintf("skip unprotected pin directory %s: %v", path, err))
+				warnings = append(
+					warnings,
+					fmt.Sprintf("skip unprotected pin directory %s: %v", path, err),
+				)
 				return filepath.SkipDir
 			}
 		}
@@ -1273,7 +1646,10 @@ func discoverPinnedRegistrations(root string, opts PinCleanupOptions) ([]pinnedR
 		if opts.EnforceTargetUID && reg.UID != opts.TargetUID {
 			return filepath.SkipDir
 		}
-		if sessionID := strings.TrimSpace(opts.SessionID); sessionID != "" && reg.SessionID != sessionID {
+		if sessionID := strings.TrimSpace(
+			opts.SessionID,
+		); sessionID != "" &&
+			reg.SessionID != sessionID {
 			return filepath.SkipDir
 		}
 		registrations = append(registrations, reg)
@@ -1282,7 +1658,10 @@ func discoverPinnedRegistrations(root string, opts PinCleanupOptions) ([]pinnedR
 	if err != nil {
 		return nil, warnings, fmt.Errorf("walk helper pin root: %w", err)
 	}
-	sort.Slice(registrations, func(i, j int) bool { return registrations[i].Path < registrations[j].Path })
+	sort.Slice(
+		registrations,
+		func(i, j int) bool { return registrations[i].Path < registrations[j].Path },
+	)
 	return registrations, warnings, nil
 }
 
@@ -1431,7 +1810,11 @@ func (b *KernelBackend) ReapOrphanedResources(ctx context.Context) error {
 			b.mu.Unlock()
 			continue
 		}
-		attachment, _, validateErr := loadPinnedCgroupAttachment(reg.Path, reg.CgroupID, opts.OwnerUID)
+		attachment, _, validateErr := loadPinnedCgroupAttachment(
+			reg.Path,
+			reg.CgroupID,
+			opts.OwnerUID,
+		)
 		if attachment != nil {
 			closeAttachmentRefs(attachment)
 		}

@@ -116,7 +116,11 @@ func newCancelMap(cfg cancelMapConfig) *cancelMap {
 	}
 }
 
-func (m *cancelMap) Register(meta cancelMeta, realPID uint32, realSecret []byte) (*cancelRegistration, error) {
+func (m *cancelMap) Register(
+	meta cancelMeta,
+	realPID uint32,
+	realSecret []byte,
+) (*cancelRegistration, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

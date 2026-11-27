@@ -94,7 +94,12 @@ func TestSetupPtracerPreload_YamaInactive_NoLog(t *testing.T) {
 
 	setupPtracerPreload(123, false)
 
-	assert.NotContains(t, buf.String(), "ptracer:", "must not log ptracer warning when Yama is inactive")
+	assert.NotContains(
+		t,
+		buf.String(),
+		"ptracer:",
+		"must not log ptracer warning when Yama is inactive",
+	)
 	assert.Empty(t, os.Getenv("LD_PRELOAD"), "must not modify LD_PRELOAD when Yama is inactive")
 }
 
@@ -126,7 +131,12 @@ func TestSetupPtracerPreload_YamaActive_LogsWhenLibMissing(t *testing.T) {
 
 	setupPtracerPreload(123, true)
 
-	assert.Contains(t, buf.String(), "ptracer:", "must log ptracer warning when Yama is active and lib is missing")
+	assert.Contains(
+		t,
+		buf.String(),
+		"ptracer:",
+		"must log ptracer warning when Yama is active and lib is missing",
+	)
 }
 
 func TestFindPtracerLib_NextToBinary(t *testing.T) {

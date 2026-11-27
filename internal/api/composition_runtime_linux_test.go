@@ -38,7 +38,11 @@ func TestCompositionRuntimeAutoRequiresProtectedLeaseMetadata(t *testing.T) {
 func TestValidateLeaseCompositionScratchRootRejectsArbitraryPath(t *testing.T) {
 	runtimeDir := t.TempDir()
 	path := filepath.Join(t.TempDir(), "composition")
-	if err := validateLeaseCompositionScratchRoot(path, runtimeDir, nethelper.CompositionRuntimeAttestation{}); err == nil {
+	if err := validateLeaseCompositionScratchRoot(
+		path,
+		runtimeDir,
+		nethelper.CompositionRuntimeAttestation{},
+	); err == nil {
 		t.Fatal("arbitrary composition path accepted")
 	}
 }
@@ -59,18 +63,31 @@ func TestValidateLeaseCompositionScratchRootAcceptsAuthenticatedHostRootInode(t 
 
 	mismatch := attestation
 	mismatch.Runtime.Inode++
-	if err := validateLeaseCompositionScratchRoot(path, runtimeDir, mismatch); err == nil || !strings.Contains(err.Error(), "does not match authenticated helper inode") {
+	if err := validateLeaseCompositionScratchRoot(
+		path,
+		runtimeDir,
+		mismatch,
+	); err == nil ||
+		!strings.Contains(err.Error(), "does not match authenticated helper inode") {
 		t.Fatalf("mismatched helper inode error = %v", err)
 	}
 
 	unsafeOwner := attestation
 	unsafeOwner.Runtime.UID = 1000
-	if err := validateLeaseCompositionScratchRoot(path, runtimeDir, unsafeOwner); err == nil || !strings.Contains(err.Error(), "helper attestation") {
+	if err := validateLeaseCompositionScratchRoot(
+		path,
+		runtimeDir,
+		unsafeOwner,
+	); err == nil ||
+		!strings.Contains(err.Error(), "helper attestation") {
 		t.Fatalf("unsafe attested owner error = %v", err)
 	}
 }
 
-func compositionRuntimeTestAttestation(t *testing.T, path, runtimeDir string) nethelper.CompositionRuntimeAttestation {
+func compositionRuntimeTestAttestation(
+	t *testing.T,
+	path, runtimeDir string,
+) nethelper.CompositionRuntimeAttestation {
 	t.Helper()
 	var runtimeStat, parentStat unix.Stat_t
 	if err := unix.Lstat(path, &runtimeStat); err != nil {
@@ -81,10 +98,22 @@ func compositionRuntimeTestAttestation(t *testing.T, path, runtimeDir string) ne
 	}
 	return nethelper.CompositionRuntimeAttestation{
 		Runtime: nethelper.CompositionRuntimeInode{
-			Device: uint64(runtimeStat.Dev), Inode: runtimeStat.Ino, Mode: runtimeStat.Mode, UID: 0, GID: 0,
+			Device: uint64(
+				runtimeStat.Dev,
+			),
+			Inode: runtimeStat.Ino,
+			Mode:  runtimeStat.Mode,
+			UID:   0,
+			GID:   0,
 		},
 		LeaseDirectory: nethelper.CompositionRuntimeInode{
-			Device: uint64(parentStat.Dev), Inode: parentStat.Ino, Mode: parentStat.Mode, UID: 0, GID: 0,
+			Device: uint64(
+				parentStat.Dev,
+			),
+			Inode: parentStat.Ino,
+			Mode:  parentStat.Mode,
+			UID:   0,
+			GID:   0,
 		},
 	}
 }

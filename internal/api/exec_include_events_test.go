@@ -36,7 +36,11 @@ func TestExec_IncludeEventsNone_ReturnsCountsOnly(t *testing.T) {
 	h := app.Router()
 
 	body := `{"command":"echo","args":["hi"],"include_events":"none"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+sess.ID+"/exec",
+		strings.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
@@ -54,7 +58,9 @@ func TestExec_IncludeEventsNone_ReturnsCountsOnly(t *testing.T) {
 	if resp.Events.Truncated != true {
 		t.Fatalf("expected events.truncated true")
 	}
-	if len(resp.Events.FileOperations) != 0 || len(resp.Events.NetworkOperations) != 0 || len(resp.Events.BlockedOperations) != 0 || len(resp.Events.Other) != 0 {
+	if len(resp.Events.FileOperations) != 0 || len(resp.Events.NetworkOperations) != 0 ||
+		len(resp.Events.BlockedOperations) != 0 ||
+		len(resp.Events.Other) != 0 {
 		t.Fatalf("expected no events returned in arrays")
 	}
 	if resp.Events.OtherCount == 0 {
@@ -100,12 +106,28 @@ func TestExec_IncludeEventsSummary_CapsBlockedOps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := NewApp(cfg, sessions, store, engine, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		store,
+		engine,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	h := app.Router()
 
 	// Trigger a command policy deny (rm -rf) which returns blocked_operations in response.
 	body := `{"command":"rm","args":["-rf","/tmp/agentsh-test"],"include_events":"summary"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(body))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+sess.ID+"/exec",
+		strings.NewReader(body),
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {

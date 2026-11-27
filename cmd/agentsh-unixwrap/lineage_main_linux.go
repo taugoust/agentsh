@@ -149,11 +149,17 @@ func runLineageMain() error {
 	}
 
 	commandJail := cfg.CommandJail != nil && cfg.CommandJail.Required
-	if err := wraphandoff.SendLocalPrelude(controlFD, wraphandoff.LocalMetadata{CommandJail: commandJail}); err != nil {
+	if err := wraphandoff.SendLocalPrelude(
+		controlFD,
+		wraphandoff.LocalMetadata{CommandJail: commandJail},
+	); err != nil {
 		return fmt.Errorf("send pre-fork lineage capability: %w", err)
 	}
 	_ = unix.SetsockoptTimeval(controlFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: 30})
-	if err := waitForControlByte(func(buffer []byte) (int, error) { return unix.Read(controlFD, buffer) }, 'G'); err != nil {
+	if err := waitForControlByte(
+		func(buffer []byte) (int, error) { return unix.Read(controlFD, buffer) },
+		'G',
+	); err != nil {
 		return fmt.Errorf("pre-fork cgroup barrier failed: %w", err)
 	}
 	_ = unix.SetsockoptTimeval(controlFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{})
@@ -176,13 +182,18 @@ func runLineageMain() error {
 	if preparedLandlock != nil {
 		enforcePreparedLandlock(preparedLandlock)
 	}
-	if lookup.procRoot != nil && lookup.baseline == nil && lookup.unsupportedReason == lookupproto.ReasonContextUnavailable {
+	if lookup.procRoot != nil && lookup.baseline == nil &&
+		lookup.unsupportedReason == lookupproto.ReasonContextUnavailable {
 		if err := lookup.finalizeContext(); err != nil {
 			log.Printf("file lookup broker unavailable: %v", err)
 		}
 	}
 
-	exitCode, err := runTrustedPayloadParent(controlFD, launch, payloadEnvironment(os.Environ(), false))
+	exitCode, err := runTrustedPayloadParent(
+		controlFD,
+		launch,
+		payloadEnvironment(os.Environ(), false),
+	)
 	if err != nil {
 		return err
 	}

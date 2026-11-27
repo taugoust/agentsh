@@ -63,27 +63,48 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 			if err != nil || !workspaceInfo.IsDir() || workspaceInfo.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("guest control workspace mount is invalid")
 			}
-			manifest, err := guestcontrol.ReadManifest(manifestPath, workspace, profile, profileDigest, allowedPolicies)
+			manifest, err := guestcontrol.ReadManifest(
+				manifestPath,
+				workspace,
+				profile,
+				profileDigest,
+				allowedPolicies,
+			)
 			if err != nil {
 				return err
 			}
-			if err := verifyGuestControlWorkspaceVolume(manifest, workspace, volumeRoot); err != nil {
+			if err := verifyGuestControlWorkspaceVolume(
+				manifest,
+				workspace,
+				volumeRoot,
+			); err != nil {
 				return err
 			}
-			if strings.TrimSpace(probeCommand) == "" || !filepath.IsAbs(probeCommand) || filepath.Clean(probeCommand) != probeCommand {
+			if strings.TrimSpace(probeCommand) == "" || !filepath.IsAbs(probeCommand) ||
+				filepath.Clean(probeCommand) != probeCommand {
 				return fmt.Errorf("guest control probe command must be a fixed absolute executable")
 			}
-			if (manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 || manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4) && (!filepath.IsAbs(gitCommand) || filepath.Clean(gitCommand) != gitCommand) {
-				return fmt.Errorf("guest control protocol version %d requires a fixed absolute Git executable", manifest.ProtocolVersion)
+			if (manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 || manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4) &&
+				(!filepath.IsAbs(gitCommand) || filepath.Clean(gitCommand) != gitCommand) {
+				return fmt.Errorf(
+					"guest control protocol version %d requires a fixed absolute Git executable",
+					manifest.ProtocolVersion,
+				)
 			}
-			if info, err := os.Lstat(probeCommand); err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			if info, err := os.Lstat(
+				probeCommand,
+			); err != nil || !info.Mode().IsRegular() ||
+				info.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("guest control probe command is invalid")
 			}
 
 			var egressRelay *guestcontrol.EgressRelay
 			supervisorCtx := cmd.Context()
 			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
-				egressRelay, err = guestcontrol.ListenEgressRelay(manifest.EgressPort, manifest.EgressToken)
+				egressRelay, err = guestcontrol.ListenEgressRelay(
+					manifest.EgressPort,
+					manifest.EgressToken,
+				)
 				if err != nil {
 					return err
 				}
@@ -95,29 +116,59 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 					return err
 				}
 				proxyEnvironment := guestEgressProxyEnvironment(egressRelay.ProxyURL())
-				supervisorCtx, err = withDetachedSupervisorFixedEnvironment(supervisorCtx, proxyEnvironment)
+				supervisorCtx, err = withDetachedSupervisorFixedEnvironment(
+					supervisorCtx,
+					proxyEnvironment,
+				)
 				if err != nil {
 					return err
 				}
 			}
 
 			result, err := startDetachedSupervisorSessionAtGeneration(
-				supervisorCtx, manifest.SessionID, []string{workspace}, string(types.WorkspaceModeDirect),
-				manifest.Policy, "isolated", "minimal", nil, runtimeprovider.DefaultProfile, "", manifest.ExpectedGeneration,
+				supervisorCtx,
+				manifest.SessionID,
+				[]string{workspace},
+				string(types.WorkspaceModeDirect),
+				manifest.Policy,
+				"isolated",
+				"minimal",
+				nil,
+				runtimeprovider.DefaultProfile,
+				"",
+				manifest.ExpectedGeneration,
 			)
 			if err != nil {
 				return fmt.Errorf("start guest AgentSH supervisor: %w", err)
 			}
 			handler := &guestControlHandler{
 				sessionID: manifest.SessionID,
-				client:    client.NewWithTimeout("unix://"+result.SupervisorSock, "", 30*time.Second),
-				probe:     types.ExecRequest{Command: probeCommand, Args: append([]string(nil), probeArgs...), WorkingDir: workspace, IncludeEvents: "summary"},
+				client: client.NewWithTimeout(
+					"unix://"+result.SupervisorSock,
+					"",
+					30*time.Second,
+				),
+				probe: types.ExecRequest{
+					Command:       probeCommand,
+					Args:          append([]string(nil), probeArgs...),
+					WorkingDir:    workspace,
+					IncludeEvents: "summary",
+				},
 			}
-			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 || manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
-				handler.draft = &gitdraft.GuestWorkspace{SessionID: manifest.SessionID, Workspace: workspace, VolumeRoot: volumeRoot, Git: gitCommand}
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 ||
+				manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
+				handler.draft = &gitdraft.GuestWorkspace{
+					SessionID:  manifest.SessionID,
+					Workspace:  workspace,
+					VolumeRoot: volumeRoot,
+					Git:        gitCommand,
+				}
 			}
 			defer func() {
-				cleanupCtx, cancel := context.WithTimeout(context.Background(), guestControlCleanupTimeout)
+				cleanupCtx, cancel := context.WithTimeout(
+					context.Background(),
+					guestControlCleanupTimeout,
+				)
 				defer cancel()
 				_ = handler.Shutdown(cleanupCtx)
 			}()
@@ -133,13 +184,23 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 			}
 			defer relay.Close()
 
-			bootIDBytes, err := os.ReadFile(filepath.Join(string(filepath.Separator), "proc", "sys", "kernel", "random", "boot_id"))
+			bootIDBytes, err := os.ReadFile(
+				filepath.Join(
+					string(filepath.Separator),
+					"proc",
+					"sys",
+					"kernel",
+					"random",
+					"boot_id",
+				),
+			)
 			if err != nil {
 				return fmt.Errorf("read guest boot identity: %w", err)
 			}
 			networkReady := result.NetworkEnforcement != nil && result.NetworkEnforcement.Ready()
 			capabilities := []string{"exec_probe", "shutdown", "supervisor_proxy"}
-			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 || manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
+			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 ||
+				manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
 				capabilities = append(capabilities, "artifact_import", "artifact_export")
 			}
 			egressReady := false
@@ -172,14 +233,28 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				EgressPort:      manifest.EgressPort,
 				EgressReady:     egressReady,
 			}
-			if localCID := server.LocalCID(); localCID != 0 && localCID != ^uint32(0) && localCID != manifest.VSockCID {
-				return fmt.Errorf("guest kernel reported VSOCK CID %d, expected %d", localCID, manifest.VSockCID)
+			if localCID := server.LocalCID(); localCID != 0 && localCID != ^uint32(0) &&
+				localCID != manifest.VSockCID {
+				return fmt.Errorf(
+					"guest kernel reported VSOCK CID %d, expected %d",
+					localCID,
+					manifest.VSockCID,
+				)
 			}
 			if err := handler.handshake.Validate(manifest); err != nil {
 				return err
 			}
 			if manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4 {
-				return serveGuestControlV4(cmd.Context(), handshakePath, manifest, handler, server, relay, egressRelay, result.SupervisorSock)
+				return serveGuestControlV4(
+					cmd.Context(),
+					handshakePath,
+					manifest,
+					handler,
+					server,
+					relay,
+					egressRelay,
+					result.SupervisorSock,
+				)
 			}
 			if err := guestcontrol.WriteHandshake(handshakePath, handler.handshake); err != nil {
 				return fmt.Errorf("publish guest control handshake: %w", err)
@@ -219,20 +294,35 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Protected host request manifest")
 	cmd.Flags().StringVar(&handshakePath, "handshake", "", "Protected handshake output path")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Operator-owned staged workspace mount")
-	cmd.Flags().StringVar(&volumeRoot, "volume-root", "", "Operator-owned workspace volume root (required by protocol v3 and later)")
+	cmd.Flags().
+		StringVar(&volumeRoot, "volume-root", "", "Operator-owned workspace volume root (required by protocol v3 and later)")
 	cmd.Flags().StringVar(&profile, "profile", "", "Compiled operator-owned guest profile name")
-	cmd.Flags().StringVar(&profileDigest, "profile-digest", "", "Compiled operator-owned guest profile digest")
-	cmd.Flags().StringArrayVar(&allowedPolicies, "allowed-policy", nil, "Operator-allowed guest policy (repeatable)")
-	cmd.Flags().StringVar(&probeCommand, "probe-command", "", "Fixed harmless executable used by the bring-up probe")
-	cmd.Flags().StringArrayVar(&probeArgs, "probe-arg", nil, "Fixed bring-up probe argument (repeatable)")
-	cmd.Flags().StringVar(&gitCommand, "git-command", "", "Fixed Git executable used for protocol-v3-and-later Draft materialization")
+	cmd.Flags().
+		StringVar(&profileDigest, "profile-digest", "", "Compiled operator-owned guest profile digest")
+	cmd.Flags().
+		StringArrayVar(&allowedPolicies, "allowed-policy", nil, "Operator-allowed guest policy (repeatable)")
+	cmd.Flags().
+		StringVar(&probeCommand, "probe-command", "", "Fixed harmless executable used by the bring-up probe")
+	cmd.Flags().
+		StringArrayVar(&probeArgs, "probe-arg", nil, "Fixed bring-up probe argument (repeatable)")
+	cmd.Flags().
+		StringVar(&gitCommand, "git-command", "", "Fixed Git executable used for protocol-v3-and-later Draft materialization")
 	for _, name := range []string{"manifest", "handshake", "workspace", "profile", "profile-digest", "allowed-policy", "probe-command"} {
 		_ = cmd.MarkFlagRequired(name)
 	}
 	return cmd
 }
 
-func serveGuestControlV4(ctx context.Context, handshakePath string, manifest guestcontrol.Manifest, handler *guestControlHandler, control *guestcontrol.Server, supervisor *guestcontrol.SupervisorRelay, egress *guestcontrol.EgressRelay, supervisorSocket string) error {
+func serveGuestControlV4(
+	ctx context.Context,
+	handshakePath string,
+	manifest guestcontrol.Manifest,
+	handler *guestControlHandler,
+	control *guestcontrol.Server,
+	supervisor *guestcontrol.SupervisorRelay,
+	egress *guestcontrol.EgressRelay,
+	supervisorSocket string,
+) error {
 	if handler == nil || control == nil || supervisor == nil || egress == nil {
 		return fmt.Errorf("guest control protocol version 4 relay set is incomplete")
 	}
@@ -319,7 +409,11 @@ func (h *guestControlHandler) ClaimRequest(requestID string) bool {
 	return true
 }
 
-func (h *guestControlHandler) ImportArtifact(ctx context.Context, transfer guestcontrol.ArtifactTransfer, source io.Reader) error {
+func (h *guestControlHandler) ImportArtifact(
+	ctx context.Context,
+	transfer guestcontrol.ArtifactTransfer,
+	source io.Reader,
+) error {
 	if h == nil || h.draft == nil {
 		return fmt.Errorf("guest Git Draft workspace is unavailable")
 	}
@@ -336,15 +430,27 @@ func (h *guestControlHandler) ImportArtifact(ctx context.Context, transfer guest
 	return nil
 }
 
-func (h *guestControlHandler) ExportArtifact(ctx context.Context, kind string) (guestcontrol.ArtifactTransfer, io.ReadCloser, error) {
-	if h == nil || h.draft == nil || h.client == nil || kind != guestcontrol.ArtifactKindGitResultBundle {
-		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("guest Git Draft result export is unavailable")
+func (h *guestControlHandler) ExportArtifact(
+	ctx context.Context,
+	kind string,
+) (guestcontrol.ArtifactTransfer, io.ReadCloser, error) {
+	if h == nil || h.draft == nil || h.client == nil ||
+		kind != guestcontrol.ArtifactKindGitResultBundle {
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf(
+			"guest Git Draft result export is unavailable",
+		)
 	}
 	if err := h.draft.BeginSeal(); err != nil {
-		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("persist guest sealing intent: %w", err)
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf(
+			"persist guest sealing intent: %w",
+			err,
+		)
 	}
 	if err := h.client.SealWorkspaceAdmission(ctx, h.sessionID); err != nil {
-		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf("quiesce guest workspace before sealing: %w", err)
+		return guestcontrol.ArtifactTransfer{}, nil, fmt.Errorf(
+			"quiesce guest workspace before sealing: %w",
+			err,
+		)
 	}
 	return h.draft.Seal(ctx)
 }

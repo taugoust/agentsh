@@ -252,7 +252,12 @@ func (s *Server) WaitForSessionInits(want int, deadline time.Duration) (int, err
 		}
 		select {
 		case <-t.C:
-			return got, fmt.Errorf("WaitForSessionInits: want %d, got %d after %v", want, got, deadline)
+			return got, fmt.Errorf(
+				"WaitForSessionInits: want %d, got %d after %v",
+				want,
+				got,
+				deadline,
+			)
 		case <-tick.C:
 		}
 	}
@@ -339,7 +344,9 @@ func (noopClassifierMetrics) IncSessionInitFailures(metrics.WTPSessionFailureRea
 // addition does not break existing tests silently. Add a scenario
 // Option if a specific negative test needs to observe unknown-frame
 // handling.
-func (h *srvHandler) Stream(stream grpc.BidiStreamingServer[wtpv1.ClientMessage, wtpv1.ServerMessage]) error {
+func (h *srvHandler) Stream(
+	stream grpc.BidiStreamingServer[wtpv1.ClientMessage, wtpv1.ServerMessage],
+) error {
 	// Per-stream batch counter. DropAfterBatchN and GoawayAfterBatchN
 	// reference this, NOT the Server's cumulative s.batches count —
 	// each Dial starts a fresh stream with its own counter so
@@ -362,7 +369,11 @@ func (h *srvHandler) Stream(stream grpc.BidiStreamingServer[wtpv1.ClientMessage,
 			// counter side-effects stay off without gating the
 			// validation itself.
 			if verr := wtpv1.ValidateSessionInit(x.SessionInit); verr != nil {
-				transport.ClassifyAndIncInvalidFrame(h.s.classifierLogger(), h.s.classifierMetrics(), verr)
+				transport.ClassifyAndIncInvalidFrame(
+					h.s.classifierLogger(),
+					h.s.classifierMetrics(),
+					verr,
+				)
 				return fmt.Errorf("testserver: invalid inbound SessionInit: %w", verr)
 			}
 			// Capture the first accepted SessionInit so handshake
@@ -443,7 +454,11 @@ func (h *srvHandler) Stream(stream grpc.BidiStreamingServer[wtpv1.ClientMessage,
 			// classifier routes to a noop metrics sink when the
 			// caller hasn't configured one.
 			if verr := wtpv1.ValidateEventBatch(x.EventBatch); verr != nil {
-				transport.ClassifyAndIncInvalidFrame(h.s.classifierLogger(), h.s.classifierMetrics(), verr)
+				transport.ClassifyAndIncInvalidFrame(
+					h.s.classifierLogger(),
+					h.s.classifierMetrics(),
+					verr,
+				)
 				return fmt.Errorf("testserver: invalid inbound EventBatch: %w", verr)
 			}
 			_ = h.s.addBatch(x.EventBatch)

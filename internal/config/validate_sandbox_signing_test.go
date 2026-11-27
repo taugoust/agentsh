@@ -22,7 +22,8 @@ func TestValidateConfig_RejectsPtraceUnixSocketsNonExecveOnly(t *testing.T) {
 	if err == nil {
 		t.Fatal("ptrace + unix_sockets with non-execve-only tracing must fail validation")
 	}
-	if !strings.Contains(err.Error(), "sandbox config:") || !strings.Contains(err.Error(), "requires execve-only tracing") {
+	if !strings.Contains(err.Error(), "sandbox config:") ||
+		!strings.Contains(err.Error(), "requires execve-only tracing") {
 		t.Errorf("error should match the startup message; got: %v", err)
 	}
 }
@@ -38,7 +39,8 @@ func TestValidateConfig_RejectsPtraceWithSeccompExecve(t *testing.T) {
 	if err == nil {
 		t.Fatal("ptrace + seccomp.execve must fail validation (mutually exclusive)")
 	}
-	if !strings.Contains(err.Error(), "sandbox config:") || !strings.Contains(err.Error(), "mutually exclusive") {
+	if !strings.Contains(err.Error(), "sandbox config:") ||
+		!strings.Contains(err.Error(), "mutually exclusive") {
 		t.Errorf("error should match the startup message; got: %v", err)
 	}
 }
@@ -53,7 +55,8 @@ func TestValidateConfig_RejectsSigningEnforceWithoutTrustStore(t *testing.T) {
 	if err == nil {
 		t.Fatal("signing mode=enforce without trust_store must fail validation")
 	}
-	if !strings.Contains(err.Error(), "signing config:") || !strings.Contains(err.Error(), "trust_store is required") {
+	if !strings.Contains(err.Error(), "signing config:") ||
+		!strings.Contains(err.Error(), "trust_store is required") {
 		t.Errorf("error should match the startup message; got: %v", err)
 	}
 }
@@ -68,7 +71,8 @@ func TestValidateConfig_RejectsSigningWarnWithoutTrustStore(t *testing.T) {
 	if err == nil {
 		t.Fatal("signing mode=warn without trust_store must fail validation")
 	}
-	if !strings.Contains(err.Error(), "signing config:") || !strings.Contains(err.Error(), "trust_store is required") {
+	if !strings.Contains(err.Error(), "signing config:") ||
+		!strings.Contains(err.Error(), "trust_store is required") {
 		t.Errorf("error should match the startup message; got: %v", err)
 	}
 }

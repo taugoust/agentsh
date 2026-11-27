@@ -20,7 +20,10 @@ func (i policyOwnerFileInfo) Sys() any         { return &syscall.Stat_t{Uid: i.u
 
 func TestOperatorPolicyOverflowOwnerOnlyTrustedInNixStore(t *testing.T) {
 	info := policyOwnerFileInfo{uid: linuxOverflowUID}
-	if !operatorPolicyOwnerTrusted("/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-policy/policy.yaml", info) {
+	if !operatorPolicyOwnerTrusted(
+		"/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-policy/policy.yaml",
+		info,
+	) {
 		t.Fatal("overflow-mapped root-owned Nix store policy was rejected")
 	}
 	if operatorPolicyOwnerTrusted("/tmp/policy.yaml", info) {

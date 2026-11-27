@@ -18,7 +18,13 @@ import (
 // in-lineage adapter and starts a single broker request channel. The channel is
 // capability-safe; successful rewriting is not treated as authentication.
 type CompositionRedirector interface {
-	Redirect(notifFD int, requestID uint64, ctx ExecveContext, filenamePtr uint64, originalFilenameLen int) error
+	Redirect(
+		notifFD int,
+		requestID uint64,
+		ctx ExecveContext,
+		filenamePtr uint64,
+		originalFilenameLen int,
+	) error
 	Close() error
 }
 
@@ -44,7 +50,12 @@ type compositionRedirector struct {
 	cleanup     func() error
 }
 
-func NewManagedCompositionRedirector(adapterPath string, serve func(*os.File, int), maxTransitions, maxDepth int, cleanup func() error) (CompositionRedirector, error) {
+func NewManagedCompositionRedirector(
+	adapterPath string,
+	serve func(*os.File, int),
+	maxTransitions, maxDepth int,
+	cleanup func() error,
+) (CompositionRedirector, error) {
 	if !filepath.IsAbs(adapterPath) {
 		return nil, fmt.Errorf("composition adapter path must be absolute")
 	}
@@ -65,7 +76,9 @@ func NewManagedCompositionRedirector(adapterPath string, serve func(*os.File, in
 }
 
 func processParent(pid int) (int, error) {
-	contents, err := os.ReadFile(filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(pid), "status"))
+	contents, err := os.ReadFile(
+		filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(pid), "status"),
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -110,13 +123,22 @@ func (r *compositionRedirector) reserveTransition(pid int) (compositionProcess, 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
-		return compositionProcess{}, fmt.Errorf("E_COMPOSITION_BACKEND_UNAVAILABLE: composition redirector is closed")
+		return compositionProcess{}, fmt.Errorf(
+			"E_COMPOSITION_BACKEND_UNAVAILABLE: composition redirector is closed",
+		)
 	}
 	if r.transitions >= r.maxTransitions {
-		return compositionProcess{}, fmt.Errorf("E_COMPOSITION_LIMIT_EXCEEDED: namespace transition limit %d reached", r.maxTransitions)
+		return compositionProcess{}, fmt.Errorf(
+			"E_COMPOSITION_LIMIT_EXCEEDED: namespace transition limit %d reached",
+			r.maxTransitions,
+		)
 	}
 	if depth > r.maxDepth {
-		return compositionProcess{}, fmt.Errorf("E_COMPOSITION_LIMIT_EXCEEDED: namespace depth %d exceeds maximum %d", depth, r.maxDepth)
+		return compositionProcess{}, fmt.Errorf(
+			"E_COMPOSITION_LIMIT_EXCEEDED: namespace depth %d exceeds maximum %d",
+			depth,
+			r.maxDepth,
+		)
 	}
 	r.transitions++
 	r.nextToken++
@@ -169,11 +191,23 @@ func (r *compositionRedirector) Close() error {
 	return r.closeErr
 }
 
-func (r *compositionRedirector) Redirect(notifFD int, requestID uint64, ctx ExecveContext, filenamePtr uint64, originalFilenameLen int) error {
+func (r *compositionRedirector) Redirect(
+	notifFD int,
+	requestID uint64,
+	ctx ExecveContext,
+	filenamePtr uint64,
+	originalFilenameLen int,
+) error {
 	if filenamePtr == 0 {
 		return fmt.Errorf("composition requires execve with a pathname")
 	}
-	fdPath := filepath.Join(string(filepath.Separator), "proc", "self", "fd", strconv.Itoa(composition.AdapterFD))
+	fdPath := filepath.Join(
+		string(filepath.Separator),
+		"proc",
+		"self",
+		"fd",
+		strconv.Itoa(composition.AdapterFD),
+	)
 	if len(fdPath) > originalFilenameLen {
 		return fmt.Errorf("composition adapter fd path does not fit exec pathname buffer")
 	}
@@ -207,7 +241,12 @@ func (r *compositionRedirector) Redirect(notifFD int, requestID uint64, ctx Exec
 		}
 		_ = unix.Close(clientFD)
 	}()
-	if err := unix.SetsockoptInt(int(server.Fd()), unix.SOL_SOCKET, unix.SO_PASSCRED, 1); err != nil {
+	if err := unix.SetsockoptInt(
+		int(server.Fd()),
+		unix.SOL_SOCKET,
+		unix.SO_PASSCRED,
+		1,
+	); err != nil {
 		return fmt.Errorf("enable composition sender credentials: %w", err)
 	}
 	adapterFD, err := unix.Open(r.adapterPath, unix.O_RDONLY|unix.O_CLOEXEC, 0)
@@ -216,10 +255,22 @@ func (r *compositionRedirector) Redirect(notifFD int, requestID uint64, ctx Exec
 	}
 	defer unix.Close(adapterFD)
 
-	if _, err := NotifAddFD(notifFD, requestID, clientFD, composition.InjectFD, SECCOMP_ADDFD_FLAG_SETFD); err != nil {
+	if _, err := NotifAddFD(
+		notifFD,
+		requestID,
+		clientFD,
+		composition.InjectFD,
+		SECCOMP_ADDFD_FLAG_SETFD,
+	); err != nil {
 		return fmt.Errorf("inject composition channel: %w", err)
 	}
-	if _, err := NotifAddFD(notifFD, requestID, adapterFD, composition.AdapterFD, SECCOMP_ADDFD_FLAG_SETFD); err != nil {
+	if _, err := NotifAddFD(
+		notifFD,
+		requestID,
+		adapterFD,
+		composition.AdapterFD,
+		SECCOMP_ADDFD_FLAG_SETFD,
+	); err != nil {
 		return fmt.Errorf("inject composition adapter: %w", err)
 	}
 	if err := writeString(ctx.PID, filenamePtr, fdPath); err != nil {

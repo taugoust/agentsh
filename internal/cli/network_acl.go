@@ -69,7 +69,11 @@ and decision for each rule.`,
 							"processes":   []any{},
 						})
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "No network ACL configuration found at %s\n", cfgPath)
+					fmt.Fprintf(
+						cmd.OutOrStdout(),
+						"No network ACL configuration found at %s\n",
+						cfgPath,
+					)
 					fmt.Fprintln(cmd.OutOrStdout(), "Use 'agentsh network-acl add' to create rules")
 					return nil
 				}
@@ -84,7 +88,11 @@ and decision for each rule.`,
 				}
 				var processes []any
 				for _, pc := range config.NetworkACL.Processes {
-					if processFilter != "" && !strings.Contains(strings.ToLower(pc.Name), strings.ToLower(processFilter)) {
+					if processFilter != "" &&
+						!strings.Contains(
+							strings.ToLower(pc.Name),
+							strings.ToLower(processFilter),
+						) {
 						continue
 					}
 					processes = append(processes, pc)
@@ -107,7 +115,8 @@ and decision for each rule.`,
 			}
 
 			for _, pc := range config.NetworkACL.Processes {
-				if processFilter != "" && !strings.Contains(strings.ToLower(pc.Name), strings.ToLower(processFilter)) {
+				if processFilter != "" &&
+					!strings.Contains(strings.ToLower(pc.Name), strings.ToLower(processFilter)) {
 					continue
 				}
 
@@ -136,7 +145,13 @@ and decision for each rule.`,
 				if len(pc.Children) > 0 {
 					fmt.Fprintln(w, "  Children:")
 					for _, cc := range pc.Children {
-						fmt.Fprintf(w, "    - %s (inherit: %v, rules: %d)\n", cc.Name, cc.Inherit, len(cc.Rules))
+						fmt.Fprintf(
+							w,
+							"    - %s (inherit: %v, rules: %d)\n",
+							cc.Name,
+							cc.Inherit,
+							len(cc.Rules),
+						)
 					}
 				}
 				fmt.Fprintln(w)
@@ -146,7 +161,8 @@ and decision for each rule.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "", "Path to network ACL config (default: ~/.config/agentsh/network-acl.yml)")
+	cmd.Flags().
+		StringVar(&configPath, "config", "", "Path to network ACL config (default: ~/.config/agentsh/network-acl.yml)")
 	cmd.Flags().StringVar(&processFilter, "process", "", "Filter rules by process name")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 
@@ -218,7 +234,10 @@ Decisions:
 				decision = "allow"
 			}
 			if !isValidACLDecision(decision) {
-				return fmt.Errorf("invalid decision %q: must be allow, deny, approve, or audit", decision)
+				return fmt.Errorf(
+					"invalid decision %q: must be allow, deny, approve, or audit",
+					decision,
+				)
 			}
 
 			// Build the rule
@@ -252,7 +271,13 @@ Decisions:
 				return fmt.Errorf("add rule: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Rule added: %s -> %s (%s)\n", processName, formatTarget(rule), decision)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"Rule added: %s -> %s (%s)\n",
+				processName,
+				formatTarget(rule),
+				decision,
+			)
 			fmt.Fprintf(cmd.OutOrStdout(), "Config: %s\n", cfgPath)
 			return nil
 		},
@@ -261,7 +286,8 @@ Decisions:
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to network ACL config")
 	cmd.Flags().StringVar(&port, "port", "*", "Port number, range (8000-9000), or * for any")
 	cmd.Flags().StringVar(&protocol, "protocol", "*", "Protocol: tcp, udp, or * for any")
-	cmd.Flags().StringVar(&decision, "decision", "allow", "Decision: allow, deny, approve, or audit")
+	cmd.Flags().
+		StringVar(&decision, "decision", "allow", "Decision: allow, deny, approve, or audit")
 	cmd.Flags().StringVar(&comment, "comment", "", "Comment to add above the rule")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "Interactive mode to add rules")
 
@@ -311,7 +337,11 @@ Use 'agentsh network-acl list' to see rule indices.`,
 			}
 
 			if ruleIndex < 0 || ruleIndex >= len(targetPC.Rules) {
-				return fmt.Errorf("rule index %d out of range (0-%d)", ruleIndex, len(targetPC.Rules)-1)
+				return fmt.Errorf(
+					"rule index %d out of range (0-%d)",
+					ruleIndex,
+					len(targetPC.Rules)-1,
+				)
 			}
 
 			rule := targetPC.Rules[ruleIndex]
@@ -320,7 +350,12 @@ Use 'agentsh network-acl list' to see rule indices.`,
 				return fmt.Errorf("remove rule: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Rule removed: %s -> %s\n", processName, formatTarget(rule))
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"Rule removed: %s -> %s\n",
+				processName,
+				formatTarget(rule),
+			)
 			return nil
 		},
 	}
@@ -521,7 +556,8 @@ while recording them for policy generation.`,
 
 	cmd.Flags().StringVar(&processFilter, "process", "", "Process name to learn (required)")
 	cmd.Flags().StringVar(&duration, "duration", "1h", "How long to observe (e.g., 30m, 1h, 2h)")
-	cmd.Flags().StringVar(&outputFile, "output", "", "Output file for learned rules (default: stdout)")
+	cmd.Flags().
+		StringVar(&outputFile, "output", "", "Output file for learned rules (default: stdout)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Path to network ACL config")
 	_ = cmd.MarkFlagRequired("process")
 
@@ -572,7 +608,9 @@ func isValidACLDecision(d string) bool {
 	}
 }
 
-func promptForRule(cmd *cobra.Command) (processName, target, port, protocol, decision string, err error) {
+func promptForRule(
+	cmd *cobra.Command,
+) (processName, target, port, protocol, decision string, err error) {
 	reader := bufio.NewReader(cmd.InOrStdin())
 	w := cmd.OutOrStdout()
 
@@ -614,7 +652,12 @@ func promptForRule(cmd *cobra.Command) (processName, target, port, protocol, dec
 	return processName, target, port, protocol, decision, nil
 }
 
-func watchNetworkEvents(ctx context.Context, cmd *cobra.Command, processFilter string, outputJSON bool) error {
+func watchNetworkEvents(
+	ctx context.Context,
+	cmd *cobra.Command,
+	processFilter string,
+	outputJSON bool,
+) error {
 	w := cmd.OutOrStdout()
 
 	// This is a simplified implementation that reads from the event file
@@ -639,7 +682,12 @@ func watchNetworkEvents(ctx context.Context, cmd *cobra.Command, processFilter s
 	return printJSON(cmd, []any{})
 }
 
-func runLearnMode(cmd *cobra.Command, processFilter string, duration time.Duration, outputFile, configPath string) error {
+func runLearnMode(
+	cmd *cobra.Command,
+	processFilter string,
+	duration time.Duration,
+	outputFile, configPath string,
+) error {
 	w := cmd.OutOrStdout()
 	ctx := cmd.Context()
 
@@ -711,7 +759,9 @@ func generateLearnedConfig(learned *LearnedRules) string {
 	var sb strings.Builder
 
 	sb.WriteString("# PNACL Configuration\n")
-	sb.WriteString(fmt.Sprintf("# Generated by learning mode for process: %s\n", learned.ProcessName))
+	sb.WriteString(
+		fmt.Sprintf("# Generated by learning mode for process: %s\n", learned.ProcessName),
+	)
 	sb.WriteString(fmt.Sprintf("# Learning period: %s to %s\n",
 		learned.StartedAt.Format(time.RFC3339),
 		learned.EndedAt.Format(time.RFC3339)))

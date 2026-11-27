@@ -307,7 +307,8 @@ func (s *Session) canAdmitExecutionLocked(req ExecutionAdmission) bool {
 	if !req.Shared {
 		return !s.execExclusiveActive && s.execSharedActive == 0
 	}
-	if s.execExclusiveActive || s.execExclusiveWaiters != 0 || s.execSharedActive >= req.SharedLimit {
+	if s.execExclusiveActive || s.execExclusiveWaiters != 0 ||
+		s.execSharedActive >= req.SharedLimit {
 		return false
 	}
 	_, laneActive := s.execActiveLanes[req.LaneID]
@@ -318,7 +319,10 @@ func (s *Session) canAdmitExecutionLocked(req ExecutionAdmission) bool {
 // commands. Exclusive requests wait for every child lane to drain. Shared
 // requests require a non-empty authenticated lane and are bounded both per lane
 // and by SharedLimit. Waiting cancellation is typed and can never acquire later.
-func (s *Session) AcquireExecution(ctx context.Context, req ExecutionAdmission) (*ExecutionLease, error) {
+func (s *Session) AcquireExecution(
+	ctx context.Context,
+	req ExecutionAdmission,
+) (*ExecutionLease, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -396,7 +400,12 @@ func (s *Session) AcquireExecution(ctx context.Context, req ExecutionAdmission) 
 				sharedWaiting = false
 			}
 			state := newCommandRuntime(req.CommandID)
-			lease := &ExecutionLease{session: s, shared: req.Shared, laneID: req.LaneID, state: state}
+			lease := &ExecutionLease{
+				session: s,
+				shared:  req.Shared,
+				laneID:  req.LaneID,
+				state:   state,
+			}
 			if req.Shared {
 				s.execSharedActive++
 				s.execActiveLanes[req.LaneID] = struct{}{}

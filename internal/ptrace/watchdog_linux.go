@@ -99,9 +99,15 @@ func (t *Tracer) scanStalledExecs(firstSeen map[int]time.Time, dumped map[int]bo
 		}
 		if !dumped[pid] && now.Sub(firstSeen[pid]) >= watchdogExecStallDump {
 			dumped[pid] = true
-			slog.Warn("ptrace WATCHDOG: exec stalled — exit-notify pending past threshold, dumping trace ring (#369 #2)",
-				"pid", pid, "stalled_ms", now.Sub(firstSeen[pid]).Milliseconds(),
-				"run_thread_tid", t.runThreadTID)
+			slog.Warn(
+				"ptrace WATCHDOG: exec stalled — exit-notify pending past threshold, dumping trace ring (#369 #2)",
+				"pid",
+				pid,
+				"stalled_ms",
+				now.Sub(firstSeen[pid]).Milliseconds(),
+				"run_thread_tid",
+				t.runThreadTID,
+			)
 			t.dumpTraceRing(fmt.Sprintf("exec-stall pid=%d", pid))
 		}
 		return true
@@ -113,7 +119,11 @@ func (t *Tracer) scanStalledExecs(firstSeen map[int]time.Time, dumped map[int]bo
 		// The exec resolved. If it had stalled, capture the terminating sequence
 		// (what finally unblocked it — the ~35s cliff's end).
 		if dumped[pid] {
-			slog.Warn("ptrace WATCHDOG: stalled exec resolved, dumping terminating trace ring (#369 #2)", "pid", pid)
+			slog.Warn(
+				"ptrace WATCHDOG: stalled exec resolved, dumping terminating trace ring (#369 #2)",
+				"pid",
+				pid,
+			)
 			t.dumpTraceRing(fmt.Sprintf("exec-stall-resolved pid=%d", pid))
 		}
 		delete(firstSeen, pid)
@@ -162,11 +172,23 @@ func (t *Tracer) scanStuckTracees(stuckSince map[int]time.Time, diagged map[int]
 
 		if dur >= watchdogDiagAfter && !diagged[tid] {
 			diagged[tid] = true
-			slog.Warn("ptrace WATCHDOG: tracee ptrace-stopped but Run loop not advancing it (#369 #2)",
-				"tid", tid, "proc_state", string(rune(state)),
-				"syscall", procSyscallSummary(tid), "stuck_ms", dur.Milliseconds(),
-				"run_thread_tid", t.runThreadTID, "watchdog_tid", unix.Gettid(),
-				"loop_progress_ms_ago", t.loopIdleFor(now).Milliseconds())
+			slog.Warn(
+				"ptrace WATCHDOG: tracee ptrace-stopped but Run loop not advancing it (#369 #2)",
+				"tid",
+				tid,
+				"proc_state",
+				string(rune(state)),
+				"syscall",
+				procSyscallSummary(tid),
+				"stuck_ms",
+				dur.Milliseconds(),
+				"run_thread_tid",
+				t.runThreadTID,
+				"watchdog_tid",
+				unix.Gettid(),
+				"loop_progress_ms_ago",
+				t.loopIdleFor(now).Milliseconds(),
+			)
 			if ptraceTraceOn() {
 				t.dumpTraceRing(fmt.Sprintf("watchdog tid=%d stuck=%dms", tid, dur.Milliseconds()))
 			}

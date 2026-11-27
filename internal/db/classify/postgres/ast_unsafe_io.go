@@ -46,18 +46,42 @@ type unsafeIOSpec struct {
 }
 
 var unsafeIOFunctions = map[string]unsafeIOSpec{
-	"pg_read_file":        {subtype: effects.SubtypeServerFileRead, pathArgIndex: 0, emitPath: true},
-	"pg_read_binary_file": {subtype: effects.SubtypeServerFileRead, pathArgIndex: 0, emitPath: true},
-	"pg_ls_dir":           {subtype: effects.SubtypeServerFileRead, pathArgIndex: 0, emitPath: true},
-	"pg_ls_logdir":        {subtype: effects.SubtypeServerFileRead, pathArgIndex: 0, emitPath: false},
-	"pg_ls_waldir":        {subtype: effects.SubtypeServerFileRead, pathArgIndex: 0, emitPath: false},
-	"pg_stat_file":        {subtype: effects.SubtypeServerFileRead, pathArgIndex: 0, emitPath: true},
-	"lo_import":           {subtype: effects.SubtypeLargeObjectIO, pathArgIndex: 0, emitPath: true},
-	"lo_export":           {subtype: effects.SubtypeLargeObjectIO, pathArgIndex: 1, emitPath: true},
-	"dblink":              {subtype: effects.SubtypeDblinkCall, emitPath: false},
-	"dblink_exec":         {subtype: effects.SubtypeDblinkCall, emitPath: false},
-	"dblink_open":         {subtype: effects.SubtypeDblinkCall, emitPath: false},
-	"dblink_send_query":   {subtype: effects.SubtypeDblinkCall, emitPath: false},
+	"pg_read_file": {
+		subtype:      effects.SubtypeServerFileRead,
+		pathArgIndex: 0,
+		emitPath:     true,
+	},
+	"pg_read_binary_file": {
+		subtype:      effects.SubtypeServerFileRead,
+		pathArgIndex: 0,
+		emitPath:     true,
+	},
+	"pg_ls_dir": {
+		subtype:      effects.SubtypeServerFileRead,
+		pathArgIndex: 0,
+		emitPath:     true,
+	},
+	"pg_ls_logdir": {
+		subtype:      effects.SubtypeServerFileRead,
+		pathArgIndex: 0,
+		emitPath:     false,
+	},
+	"pg_ls_waldir": {
+		subtype:      effects.SubtypeServerFileRead,
+		pathArgIndex: 0,
+		emitPath:     false,
+	},
+	"pg_stat_file": {
+		subtype:      effects.SubtypeServerFileRead,
+		pathArgIndex: 0,
+		emitPath:     true,
+	},
+	"lo_import":         {subtype: effects.SubtypeLargeObjectIO, pathArgIndex: 0, emitPath: true},
+	"lo_export":         {subtype: effects.SubtypeLargeObjectIO, pathArgIndex: 1, emitPath: true},
+	"dblink":            {subtype: effects.SubtypeDblinkCall, emitPath: false},
+	"dblink_exec":       {subtype: effects.SubtypeDblinkCall, emitPath: false},
+	"dblink_open":       {subtype: effects.SubtypeDblinkCall, emitPath: false},
+	"dblink_send_query": {subtype: effects.SubtypeDblinkCall, emitPath: false},
 }
 
 // appendUnsafeIO walks any AST subtree (typically a SelectStmt's projection,
@@ -105,7 +129,10 @@ func lastFuncNamePart(parts []*pg_query.Node) string {
 // is the signal. When emitPath is true and the indexed argument is a string
 // literal we return the literal value; otherwise the path is empty and
 // resolution is unresolved (dynamic argument).
-func pathObjectFromArg(args []*pg_query.Node, spec unsafeIOSpec) (effects.ObjectRef, effects.Resolution) {
+func pathObjectFromArg(
+	args []*pg_query.Node,
+	spec unsafeIOSpec,
+) (effects.ObjectRef, effects.Resolution) {
 	obj := effects.ObjectRef{Kind: effects.ObjectFilesystemPath}
 	if !spec.emitPath {
 		return obj, effects.ResolutionQualified

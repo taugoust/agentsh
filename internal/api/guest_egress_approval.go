@@ -38,7 +38,10 @@ type guestEgressApprovalRequest struct {
 	Message        string `json:"message,omitempty"`
 }
 
-func (a *App) mintGuestEgressApprovalDelegation(parent context.Context, sessionID, requestID string) (*guestEgressApprovalHandle, error) {
+func (a *App) mintGuestEgressApprovalDelegation(
+	parent context.Context,
+	sessionID, requestID string,
+) (*guestEgressApprovalHandle, error) {
 	if a == nil || parent == nil || a.approvals == nil || !validSubagentRequestID(requestID) {
 		return nil, fmt.Errorf("guest egress approval delegation is unavailable")
 	}
@@ -82,7 +85,10 @@ func (a *App) revokeGuestEgressApprovalDelegation(handle *guestEgressApprovalHan
 	}
 }
 
-func (a *App) authenticateGuestEgressApproval(r *http.Request, sessionID string) (*guestEgressApprovalDelegation, error) {
+func (a *App) authenticateGuestEgressApproval(
+	r *http.Request,
+	sessionID string,
+) (*guestEgressApprovalDelegation, error) {
 	digest, err := parseChildCapabilityToken(r.Header.Get(guestEgressApprovalHeader))
 	if err != nil {
 		return nil, err
@@ -98,14 +104,18 @@ func (a *App) authenticateGuestEgressApproval(r *http.Request, sessionID string)
 	return &copy, nil
 }
 
-func (a *App) bindGuestEgressApprovalDraft(delegation *guestEgressApprovalDelegation, draftSessionID string) error {
+func (a *App) bindGuestEgressApprovalDraft(
+	delegation *guestEgressApprovalDelegation,
+	draftSessionID string,
+) error {
 	if a == nil || delegation == nil || !draftLandingSessionPattern.MatchString(draftSessionID) {
 		return fmt.Errorf("guest egress approval Draft binding is invalid")
 	}
 	a.guestEgressApprovalMu.Lock()
 	defer a.guestEgressApprovalMu.Unlock()
 	record := a.guestEgressApprovalDelegations[delegation.digest]
-	if record == nil || record.lifecycle.Err() != nil || (record.draftSessionID != "" && record.draftSessionID != draftSessionID) {
+	if record == nil || record.lifecycle.Err() != nil ||
+		(record.draftSessionID != "" && record.draftSessionID != draftSessionID) {
 		return fmt.Errorf("guest egress approval delegation is not bound to this Draft")
 	}
 	record.draftSessionID = draftSessionID
@@ -124,8 +134,14 @@ func guestEgressApprovalScope(req guestEgressApprovalRequest) (approvals.Scope, 
 }
 
 func validateGuestEgressApprovalRequest(req guestEgressApprovalRequest) (approvals.Scope, error) {
-	if !draftLandingSessionPattern.MatchString(req.DraftSessionID) || len(req.Target) > 1024 || len(req.Rule) > 1024 || len(req.Message) > 16*1024 ||
-		!utf8.ValidString(req.Target) || !utf8.ValidString(req.Rule) || !utf8.ValidString(req.Message) || strings.TrimSpace(req.Target) != req.Target || req.Target == "" {
+	if !draftLandingSessionPattern.MatchString(req.DraftSessionID) || len(req.Target) > 1024 ||
+		len(req.Rule) > 1024 ||
+		len(req.Message) > 16*1024 ||
+		!utf8.ValidString(req.Target) ||
+		!utf8.ValidString(req.Rule) ||
+		!utf8.ValidString(req.Message) ||
+		strings.TrimSpace(req.Target) != req.Target ||
+		req.Target == "" {
 		return approvals.Scope{}, fmt.Errorf("invalid guest egress approval identity")
 	}
 	scope, ok := guestEgressApprovalScope(req)
@@ -139,7 +155,11 @@ func (a *App) requestGuestEgressApproval(w http.ResponseWriter, r *http.Request)
 	sessionID := chi.URLParam(r, "id")
 	delegation, err := a.authenticateGuestEgressApproval(r, sessionID)
 	if err != nil {
-		writeToolError(w, http.StatusUnauthorized, "valid active guest egress approval delegation required")
+		writeToolError(
+			w,
+			http.StatusUnauthorized,
+			"valid active guest egress approval delegation required",
+		)
 		return
 	}
 	var req guestEgressApprovalRequest
@@ -170,7 +190,11 @@ func (a *App) requestGuestEgressApproval(w http.ResponseWriter, r *http.Request)
 		stop()
 		cancel()
 	}()
-	message := fmt.Sprintf("A disposable MicroVM Draft requests %s access to %q.", req.Kind, req.Target)
+	message := fmt.Sprintf(
+		"A disposable MicroVM Draft requests %s access to %q.",
+		req.Kind,
+		req.Target,
+	)
 	if detail := strings.TrimSpace(req.Message); detail != "" {
 		message += "\n" + detail
 	}

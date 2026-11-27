@@ -33,7 +33,11 @@ func (s SessionState) IsTerminal() bool {
 // IsActive returns true if the session is currently active.
 func (s SessionState) IsActive() bool {
 	switch s {
-	case SessionStateStarting, SessionStateCreating, SessionStateRunning, SessionStateReady, SessionStateBusy:
+	case SessionStateStarting,
+		SessionStateCreating,
+		SessionStateRunning,
+		SessionStateReady,
+		SessionStateBusy:
 		return true
 	default:
 		return false

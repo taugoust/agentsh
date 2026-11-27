@@ -93,27 +93,76 @@ type Proxy struct {
 	conns   map[net.Conn]struct{}
 }
 
-func StartProxy(listenAddr string, sessionID string, sess *session.Session, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, dbBypass ...*dbevents.BypassEmitter) (*Proxy, string, error) {
-	return StartProxyWithOptions(ProxyStartOptions{ListenAddr: listenAddr}, sessionID, sess, engine, approvalsMgr, emit, dbBypass...)
+func StartProxy(
+	listenAddr string,
+	sessionID string,
+	sess *session.Session,
+	engine *policy.Engine,
+	approvalsMgr *approvals.Manager,
+	emit Emitter,
+	dbBypass ...*dbevents.BypassEmitter,
+) (*Proxy, string, error) {
+	return StartProxyWithOptions(
+		ProxyStartOptions{ListenAddr: listenAddr},
+		sessionID,
+		sess,
+		engine,
+		approvalsMgr,
+		emit,
+		dbBypass...)
 }
 
 // StartProxyWithOptions starts an explicit proxy from either a configured TCP
 // address or an already-bound listener. StrictPublicEgress is opt-in; the zero
 // value preserves StartProxy behavior.
-func StartProxyWithOptions(options ProxyStartOptions, sessionID string, sess *session.Session, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, dbBypass ...*dbevents.BypassEmitter) (*Proxy, string, error) {
+func StartProxyWithOptions(
+	options ProxyStartOptions,
+	sessionID string,
+	sess *session.Session,
+	engine *policy.Engine,
+	approvalsMgr *approvals.Manager,
+	emit Emitter,
+	dbBypass ...*dbevents.BypassEmitter,
+) (*Proxy, string, error) {
 	return startProxy(options, sessionID, "", sess, engine, approvalsMgr, emit, dbBypass...)
 }
 
 // StartCommandProxy starts an explicit proxy whose attribution cannot change
 // for its lifetime. It is used with one stopped command cgroup whose eBPF gate
 // permits only this listener's exact loopback address and port.
-func StartCommandProxy(listenAddr string, sessionID string, commandID string, sess *session.Session, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, dbBypass ...*dbevents.BypassEmitter) (*Proxy, string, error) {
-	return StartCommandProxyWithOptions(ProxyStartOptions{ListenAddr: listenAddr}, sessionID, commandID, sess, engine, approvalsMgr, emit, dbBypass...)
+func StartCommandProxy(
+	listenAddr string,
+	sessionID string,
+	commandID string,
+	sess *session.Session,
+	engine *policy.Engine,
+	approvalsMgr *approvals.Manager,
+	emit Emitter,
+	dbBypass ...*dbevents.BypassEmitter,
+) (*Proxy, string, error) {
+	return StartCommandProxyWithOptions(
+		ProxyStartOptions{ListenAddr: listenAddr},
+		sessionID,
+		commandID,
+		sess,
+		engine,
+		approvalsMgr,
+		emit,
+		dbBypass...)
 }
 
 // StartCommandProxyWithOptions is the command-bound counterpart to
 // StartProxyWithOptions.
-func StartCommandProxyWithOptions(options ProxyStartOptions, sessionID string, commandID string, sess *session.Session, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, dbBypass ...*dbevents.BypassEmitter) (*Proxy, string, error) {
+func StartCommandProxyWithOptions(
+	options ProxyStartOptions,
+	sessionID string,
+	commandID string,
+	sess *session.Session,
+	engine *policy.Engine,
+	approvalsMgr *approvals.Manager,
+	emit Emitter,
+	dbBypass ...*dbevents.BypassEmitter,
+) (*Proxy, string, error) {
 	commandID = strings.TrimSpace(commandID)
 	if commandID == "" {
 		return nil, "", fmt.Errorf("command-bound proxy requires a command ID")
@@ -121,13 +170,25 @@ func StartCommandProxyWithOptions(options ProxyStartOptions, sessionID string, c
 	return startProxy(options, sessionID, commandID, sess, engine, approvalsMgr, emit, dbBypass...)
 }
 
-func startProxy(options ProxyStartOptions, sessionID string, commandID string, sess *session.Session, engine *policy.Engine, approvalsMgr *approvals.Manager, emit Emitter, dbBypass ...*dbevents.BypassEmitter) (*Proxy, string, error) {
-	if options.MaxConnections < 0 || options.InitialRequestTimeout < 0 || options.TLSClientHelloTimeout < 0 {
+func startProxy(
+	options ProxyStartOptions,
+	sessionID string,
+	commandID string,
+	sess *session.Session,
+	engine *policy.Engine,
+	approvalsMgr *approvals.Manager,
+	emit Emitter,
+	dbBypass ...*dbevents.BypassEmitter,
+) (*Proxy, string, error) {
+	if options.MaxConnections < 0 || options.InitialRequestTimeout < 0 ||
+		options.TLSClientHelloTimeout < 0 {
 		return nil, "", fmt.Errorf("proxy connection limits or timeouts are invalid")
 	}
 	if options.StrictPublicEgress {
 		if _, ok := emit.(DurableEmitter); !ok {
-			return nil, "", fmt.Errorf("strict public egress requires an emitter with a durable FlushSync barrier")
+			return nil, "", fmt.Errorf(
+				"strict public egress requires an emitter with a durable FlushSync barrier",
+			)
 		}
 		if options.MaxConnections == 0 {
 			options.MaxConnections = 64
@@ -421,9 +482,16 @@ func (p *Proxy) lookup(ctx context.Context, host string) ([]net.IPAddr, error) {
 // prepareStrictPublicDialTarget resolves and pins TCP targets before validating
 // the exact IP that dial will receive. Local sockets and other transports are
 // outside the public-egress contract and always fail closed.
-func (p *Proxy) prepareStrictPublicDialTarget(ctx context.Context, commandID string, target resolvedConnectDialTarget) (resolvedConnectDialTarget, string, error) {
+func (p *Proxy) prepareStrictPublicDialTarget(
+	ctx context.Context,
+	commandID string,
+	target resolvedConnectDialTarget,
+) (resolvedConnectDialTarget, string, error) {
 	if target.Network != "tcp" {
-		return target, "", fmt.Errorf("strict public egress rejects non-TCP dial transport %q", target.Network)
+		return target, "", fmt.Errorf(
+			"strict public egress rejects non-TCP dial transport %q",
+			target.Network,
+		)
 	}
 	host, port, err := net.SplitHostPort(target.Address)
 	if err != nil {
@@ -440,13 +508,20 @@ func (p *Proxy) prepareStrictPublicDialTarget(ctx context.Context, commandID str
 		var resolved bool
 		resolvedIP, resolved = p.resolveAndEmitDNSChecked(ctx, commandID, host)
 		if !resolved {
-			return target, "", fmt.Errorf("strict public egress could not resolve dial target %q", host)
+			return target, "", fmt.Errorf(
+				"strict public egress could not resolve dial target %q",
+				host,
+			)
 		}
 	}
 
 	ip, err := netip.ParseAddr(resolvedIP)
 	if err != nil {
-		return target, resolvedIP, fmt.Errorf("strict public egress received invalid resolved IP %q: %w", resolvedIP, err)
+		return target, resolvedIP, fmt.Errorf(
+			"strict public egress received invalid resolved IP %q: %w",
+			resolvedIP,
+			err,
+		)
 	}
 	if err := ValidatePublicEgressIP(ip); err != nil {
 		return target, resolvedIP, err
@@ -492,7 +567,9 @@ func (p *Proxy) appendPreDialEvent(ctx context.Context, ev types.Event) error {
 	}
 	durable, ok := p.emit.(DurableEmitter)
 	if !ok {
-		return fmt.Errorf("strict public egress requires an emitter with a durable FlushSync barrier")
+		return fmt.Errorf(
+			"strict public egress requires an emitter with a durable FlushSync barrier",
+		)
 	}
 	if err := durable.FlushSync(ctx); err != nil {
 		return fmt.Errorf("flush pre-dial audit event: %w", err)
@@ -503,10 +580,17 @@ func (p *Proxy) appendPreDialEvent(ctx context.Context, ev types.Event) error {
 
 var errStrictConnectSNIBinding = errors.New("strict HTTPS CONNECT SNI binding failed")
 
-func (p *Proxy) readAndVerifyStrictConnectClientHello(client net.Conn, connectHost string) ([]byte, tlsClientHelloInfo, string, error) {
+func (p *Proxy) readAndVerifyStrictConnectClientHello(
+	client net.Conn,
+	connectHost string,
+) ([]byte, tlsClientHelloInfo, string, error) {
 	expectedSNI, err := normalizeStrictConnectHost(connectHost)
 	if err != nil {
-		return nil, tlsClientHelloInfo{}, "", fmt.Errorf("%w: normalize CONNECT authority: %w", errStrictConnectSNIBinding, err)
+		return nil, tlsClientHelloInfo{}, "", fmt.Errorf(
+			"%w: normalize CONNECT authority: %w",
+			errStrictConnectSNIBinding,
+			err,
+		)
 	}
 
 	timeout := p.tlsClientHelloTimeout
@@ -514,7 +598,11 @@ func (p *Proxy) readAndVerifyStrictConnectClientHello(client net.Conn, connectHo
 		timeout = defaultStrictTLSClientHelloTimeout
 	}
 	if err := client.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, tlsClientHelloInfo{}, expectedSNI, fmt.Errorf("%w: set ClientHello deadline: %w", errStrictConnectSNIBinding, err)
+		return nil, tlsClientHelloInfo{}, expectedSNI, fmt.Errorf(
+			"%w: set ClientHello deadline: %w",
+			errStrictConnectSNIBinding,
+			err,
+		)
 	}
 	wire, info, readErr := readBoundedTLSClientHello(client, maxStrictTLSClientHelloBytes)
 	clearErr := client.SetReadDeadline(time.Time{})
@@ -522,7 +610,11 @@ func (p *Proxy) readAndVerifyStrictConnectClientHello(client net.Conn, connectHo
 		return wire, info, expectedSNI, fmt.Errorf("%w: %w", errStrictConnectSNIBinding, readErr)
 	}
 	if clearErr != nil {
-		return wire, info, expectedSNI, fmt.Errorf("%w: clear ClientHello deadline: %w", errStrictConnectSNIBinding, clearErr)
+		return wire, info, expectedSNI, fmt.Errorf(
+			"%w: clear ClientHello deadline: %w",
+			errStrictConnectSNIBinding,
+			clearErr,
+		)
 	}
 
 	observedSNI, err := normalizeStrictClientHelloSNI(info.ServerName)
@@ -534,7 +626,13 @@ func (p *Proxy) readAndVerifyStrictConnectClientHello(client net.Conn, connectHo
 		if info.ECHOffered {
 			nameKind = "ECH outer SNI"
 		}
-		return wire, info, expectedSNI, fmt.Errorf("%w: %s %q does not match CONNECT host %q", errStrictConnectSNIBinding, nameKind, info.ServerName, expectedSNI)
+		return wire, info, expectedSNI, fmt.Errorf(
+			"%w: %s %q does not match CONNECT host %q",
+			errStrictConnectSNIBinding,
+			nameKind,
+			info.ServerName,
+			expectedSNI,
+		)
 	}
 	return wire, info, expectedSNI, nil
 }
@@ -557,7 +655,8 @@ func normalizeStrictClientHelloSNI(serverName string) (string, error) {
 }
 
 func normalizeStrictTLSHostname(host string) (string, error) {
-	if host == "" || host != strings.TrimSpace(host) || strings.ContainsAny(host, "\x00\r\n\t @/?#[]") {
+	if host == "" || host != strings.TrimSpace(host) ||
+		strings.ContainsAny(host, "\x00\r\n\t @/?#[]") {
 		return "", fmt.Errorf("invalid empty or delimited hostname")
 	}
 	if ip, err := netip.ParseAddr(host); err == nil && ip.Zone() == "" {
@@ -614,9 +713,17 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 	// that blocked requests do not trigger DNS lookups, DNS approval
 	// prompts, or redirect side effects.
 	if engine != nil {
-		if svcName, envVar, ok := engine.DeclaredHTTPServiceHost(host); ok && !engine.DeclaredHTTPServiceAllowsDirect(host) {
+		if svcName, envVar, ok := engine.DeclaredHTTPServiceHost(
+			host,
+		); ok &&
+			!engine.DeclaredHTTPServiceAllowsDirect(host) {
 			msg := "direct HTTPS to " + host + " is blocked; use " + envVar + " to route through the gateway"
-			_, _ = io.WriteString(client, "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "+strconv.Itoa(len(msg))+"\r\n\r\n"+msg)
+			_, _ = io.WriteString(
+				client,
+				"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "+strconv.Itoa(
+					len(msg),
+				)+"\r\n\r\n"+msg,
+			)
 			failClosedDec := policy.Decision{
 				PolicyDecision:    types.DecisionDeny,
 				EffectiveDecision: types.DecisionDeny,
@@ -629,11 +736,34 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 				"service_name": svcName,
 				"env_var":      envVar,
 			}
-			netConnectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, failClosedDec, failClosedFields)
+			netConnectEv := p.emitNetEvent(
+				context.Background(),
+				"net_connect",
+				commandID,
+				host,
+				hostPort,
+				port,
+				failClosedDec,
+				failClosedFields,
+			)
 			_ = p.emit.AppendEvent(context.Background(), netConnectEv)
 			p.emit.Publish(netConnectEv)
-			p.emitDBBypassAttempt(context.Background(), commandID, 0, failClosedDec.Rule, failClosedDec.Message)
-			p.emitHTTPServiceDeniedDirect(context.Background(), commandID, svcName, envVar, host, "", "CONNECT")
+			p.emitDBBypassAttempt(
+				context.Background(),
+				commandID,
+				0,
+				failClosedDec.Rule,
+				failClosedDec.Message,
+			)
+			p.emitHTTPServiceDeniedDirect(
+				context.Background(),
+				commandID,
+				svcName,
+				envVar,
+				host,
+				"",
+				"CONNECT",
+			)
 			return nil
 		}
 	}
@@ -651,7 +781,14 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 			redirectSNI = result.SNI
 			// Emit redirect event if visibility is not silent
 			if result.Visibility != "silent" {
-				p.emitConnectRedirectEvent(context.Background(), commandID, host, hostPort, port, result)
+				p.emitConnectRedirectEvent(
+					context.Background(),
+					commandID,
+					host,
+					hostPort,
+					port,
+					result,
+				)
 			}
 		}
 	}
@@ -676,7 +813,16 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 	}
 	if dec.EffectiveDecision != types.DecisionAllow {
 		dec.EffectiveDecision = types.DecisionDeny
-		connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, dec, eventFields)
+		connectEv := p.emitNetEvent(
+			context.Background(),
+			"net_connect",
+			commandID,
+			host,
+			hostPort,
+			port,
+			dec,
+			eventFields,
+		)
 		_, _ = io.WriteString(client, "HTTP/1.1 403 Forbidden\r\n\r\n")
 		_ = p.emit.AppendEvent(context.Background(), connectEv)
 		p.emit.Publish(connectEv)
@@ -685,7 +831,8 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 	}
 
 	resolvedIP := ""
-	needsOriginalDNS := redirectResult == nil || (redirectResult.RedirectTo == "" && redirectResult.RedirectToUnix == "")
+	needsOriginalDNS := redirectResult == nil ||
+		(redirectResult.RedirectTo == "" && redirectResult.RedirectToUnix == "")
 	if needsOriginalDNS {
 		var resolved bool
 		resolvedIP, resolved = p.resolveAndEmitDNSChecked(context.Background(), commandID, host)
@@ -693,7 +840,16 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 			failed := dec
 			failed.EffectiveDecision = types.DecisionDeny
 			eventFields["proxy_error"] = "destination resolution was denied or failed"
-			connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, failed, eventFields)
+			connectEv := p.emitNetEvent(
+				context.Background(),
+				"net_connect",
+				commandID,
+				host,
+				hostPort,
+				port,
+				failed,
+				eventFields,
+			)
 			_, _ = io.WriteString(client, "HTTP/1.1 502 Bad Gateway\r\n\r\n")
 			_ = p.emit.AppendEvent(context.Background(), connectEv)
 			p.emit.Publish(connectEv)
@@ -710,7 +866,11 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 	})
 	if p.strictPublicEgress {
 		var dialResolvedIP string
-		dialTarget, dialResolvedIP, err = p.prepareStrictPublicDialTarget(ctx, commandID, dialTarget)
+		dialTarget, dialResolvedIP, err = p.prepareStrictPublicDialTarget(
+			ctx,
+			commandID,
+			dialTarget,
+		)
 		if err != nil {
 			eventFields["strict_public_egress"] = true
 			eventFields["proxy_error"] = err.Error()
@@ -718,7 +878,16 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 				eventFields["rejected_ip"] = dialResolvedIP
 			}
 			denied := strictPublicEgressDeny(dec, err)
-			connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, denied, eventFields)
+			connectEv := p.emitNetEvent(
+				context.Background(),
+				"net_connect",
+				commandID,
+				host,
+				hostPort,
+				port,
+				denied,
+				eventFields,
+			)
 			_, _ = io.WriteString(client, "HTTP/1.1 403 Forbidden\r\n\r\n")
 			if p.emit != nil {
 				_ = p.emit.AppendEvent(context.Background(), connectEv)
@@ -735,7 +904,16 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 		if exactDecision.EffectiveDecision != types.DecisionAllow {
 			exactDecision.EffectiveDecision = types.DecisionDeny
 			eventFields["policy_ip"] = dialResolvedIP
-			connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, exactDecision, eventFields)
+			connectEv := p.emitNetEvent(
+				context.Background(),
+				"net_connect",
+				commandID,
+				host,
+				hostPort,
+				port,
+				exactDecision,
+				eventFields,
+			)
 			_, _ = io.WriteString(client, "HTTP/1.1 403 Forbidden\r\n\r\n")
 			if p.emit != nil {
 				_ = p.emit.AppendEvent(context.Background(), connectEv)
@@ -754,14 +932,20 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 		// therefore establish only the client-side tunnel, inspect its bounded
 		// ClientHello, and bind the visible (outer, for ECH) SNI before any
 		// upstream socket exists.
-		if err := writeAll(client, []byte("HTTP/1.1 200 Connection Established\r\n\r\n")); err != nil {
+		if err := writeAll(
+			client,
+			[]byte("HTTP/1.1 200 Connection Established\r\n\r\n"),
+		); err != nil {
 			return nil
 		}
 		tunnelEstablished = true
 
 		var helloInfo tlsClientHelloInfo
 		var expectedSNI string
-		firstClientHello, helloInfo, expectedSNI, err = p.readAndVerifyStrictConnectClientHello(client, host)
+		firstClientHello, helloInfo, expectedSNI, err = p.readAndVerifyStrictConnectClientHello(
+			client,
+			host,
+		)
 		eventFields["tls_sni_expected"] = expectedSNI
 		if helloInfo.ServerName != "" {
 			eventFields["tls_sni"] = helloInfo.ServerName
@@ -772,7 +956,16 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 		if err != nil {
 			eventFields["proxy_error"] = err.Error()
 			denied := strictPublicEgressSNIDeny(dec, err)
-			deniedEvent := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, denied, eventFields)
+			deniedEvent := p.emitNetEvent(
+				context.Background(),
+				"net_connect",
+				commandID,
+				host,
+				hostPort,
+				port,
+				denied,
+				eventFields,
+			)
 			if auditErr := p.appendPreDialEvent(ctx, deniedEvent); auditErr != nil {
 				p.fail(auditErr)
 			}
@@ -780,7 +973,16 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 		}
 	}
 
-	connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, dec, eventFields)
+	connectEv := p.emitNetEvent(
+		context.Background(),
+		"net_connect",
+		commandID,
+		host,
+		hostPort,
+		port,
+		dec,
+		eventFields,
+	)
 	if err := p.appendPreDialEvent(ctx, connectEv); err != nil {
 		if !tunnelEstablished {
 			_, _ = io.WriteString(client, "HTTP/1.1 502 Bad Gateway\r\n\r\n")
@@ -789,7 +991,16 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 		return nil
 	}
 
-	emitMCPConnectionIfMatched(context.Background(), p.sess, p.emit, p.sessionID, commandID, host, hostPort, port)
+	emitMCPConnectionIfMatched(
+		context.Background(),
+		p.sess,
+		p.emit,
+		p.sessionID,
+		commandID,
+		host,
+		hostPort,
+		port,
+	)
 
 	up, err := p.dial(ctx, dialTarget.Network, dialTarget.Address)
 	if err != nil {
@@ -849,18 +1060,28 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 	<-errCh
 	<-errCh
 
-	closeEv := p.emitNetEvent(context.Background(), "net_close", commandID, host, hostPort, port, dec, map[string]any{
-		"bytes_sent":     upBytes,
-		"bytes_received": downBytes,
-		"resolved_ip":    resolvedIP,
-	})
+	closeEv := p.emitNetEvent(
+		context.Background(),
+		"net_close",
+		commandID,
+		host,
+		hostPort,
+		port,
+		dec,
+		map[string]any{
+			"bytes_sent":     upBytes,
+			"bytes_received": downBytes,
+			"resolved_ip":    resolvedIP,
+		},
+	)
 	_ = p.emit.AppendEvent(context.Background(), closeEv)
 	p.emit.Publish(closeEv)
 	return nil
 }
 
 func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
-	if req.URL == nil || req.URL.User != nil || (req.URL.Scheme != "" && !strings.EqualFold(req.URL.Scheme, "http")) {
+	if req.URL == nil || req.URL.User != nil ||
+		(req.URL.Scheme != "" && !strings.EqualFold(req.URL.Scheme, "http")) {
 		_, _ = io.WriteString(client, "HTTP/1.1 400 Bad Request\r\n\r\n")
 		return nil
 	}
@@ -886,9 +1107,17 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 	// that blocked requests do not trigger DNS lookups, DNS approval
 	// prompts, or observable request-tracking side effects.
 	if engine != nil {
-		if svcName, envVar, ok := engine.DeclaredHTTPServiceHost(host); ok && !engine.DeclaredHTTPServiceAllowsDirect(host) {
+		if svcName, envVar, ok := engine.DeclaredHTTPServiceHost(
+			host,
+		); ok &&
+			!engine.DeclaredHTTPServiceAllowsDirect(host) {
 			msg := "direct HTTP to " + host + " is blocked; use " + envVar + " to route through the gateway"
-			_, _ = io.WriteString(client, "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "+strconv.Itoa(len(msg))+"\r\n\r\n"+msg)
+			_, _ = io.WriteString(
+				client,
+				"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "+strconv.Itoa(
+					len(msg),
+				)+"\r\n\r\n"+msg,
+			)
 			failClosedDec := policy.Decision{
 				PolicyDecision:    types.DecisionDeny,
 				EffectiveDecision: types.DecisionDeny,
@@ -901,11 +1130,34 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 				"service_name": svcName,
 				"env_var":      envVar,
 			}
-			netConnectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, failClosedDec, failClosedFields)
+			netConnectEv := p.emitNetEvent(
+				context.Background(),
+				"net_connect",
+				commandID,
+				host,
+				hostPort,
+				port,
+				failClosedDec,
+				failClosedFields,
+			)
 			_ = p.emit.AppendEvent(context.Background(), netConnectEv)
 			p.emit.Publish(netConnectEv)
-			p.emitDBBypassAttempt(context.Background(), commandID, 0, failClosedDec.Rule, failClosedDec.Message)
-			p.emitHTTPServiceDeniedDirect(context.Background(), commandID, svcName, envVar, host, "", req.Method)
+			p.emitDBBypassAttempt(
+				context.Background(),
+				commandID,
+				0,
+				failClosedDec.Rule,
+				failClosedDec.Message,
+			)
+			p.emitHTTPServiceDeniedDirect(
+				context.Background(),
+				commandID,
+				svcName,
+				envVar,
+				host,
+				"",
+				req.Method,
+			)
 			return nil
 		}
 	}
@@ -919,7 +1171,16 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 	}
 	if dec.EffectiveDecision != types.DecisionAllow {
 		dec.EffectiveDecision = types.DecisionDeny
-		connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, dec, connectFields)
+		connectEv := p.emitNetEvent(
+			context.Background(),
+			"net_connect",
+			commandID,
+			host,
+			hostPort,
+			port,
+			dec,
+			connectFields,
+		)
 		resp := "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nblocked by policy\n"
 		_, _ = io.WriteString(client, resp)
 		_ = p.emit.AppendEvent(context.Background(), connectEv)
@@ -933,7 +1194,16 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 		failed := dec
 		failed.EffectiveDecision = types.DecisionDeny
 		connectFields["proxy_error"] = "destination resolution was denied or failed"
-		connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, failed, connectFields)
+		connectEv := p.emitNetEvent(
+			context.Background(),
+			"net_connect",
+			commandID,
+			host,
+			hostPort,
+			port,
+			failed,
+			connectFields,
+		)
 		_, _ = io.WriteString(client, "HTTP/1.1 502 Bad Gateway\r\n\r\n")
 		_ = p.emit.AppendEvent(context.Background(), connectEv)
 		p.emit.Publish(connectEv)
@@ -947,7 +1217,11 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 	}
 	if p.strictPublicEgress {
 		var dialResolvedIP string
-		approvedDialTarget, dialResolvedIP, err = p.prepareStrictPublicDialTarget(ctx, commandID, approvedDialTarget)
+		approvedDialTarget, dialResolvedIP, err = p.prepareStrictPublicDialTarget(
+			ctx,
+			commandID,
+			approvedDialTarget,
+		)
 		if err != nil {
 			connectFields["strict_public_egress"] = true
 			connectFields["proxy_error"] = err.Error()
@@ -955,7 +1229,16 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 				connectFields["rejected_ip"] = dialResolvedIP
 			}
 			denied := strictPublicEgressDeny(dec, err)
-			connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, denied, connectFields)
+			connectEv := p.emitNetEvent(
+				context.Background(),
+				"net_connect",
+				commandID,
+				host,
+				hostPort,
+				port,
+				denied,
+				connectFields,
+			)
 			_, _ = io.WriteString(client, "HTTP/1.1 403 Forbidden\r\n\r\n")
 			if p.emit != nil {
 				_ = p.emit.AppendEvent(context.Background(), connectEv)
@@ -970,7 +1253,16 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 		if exactDecision.EffectiveDecision != types.DecisionAllow {
 			exactDecision.EffectiveDecision = types.DecisionDeny
 			connectFields["policy_ip"] = dialResolvedIP
-			connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, exactDecision, connectFields)
+			connectEv := p.emitNetEvent(
+				context.Background(),
+				"net_connect",
+				commandID,
+				host,
+				hostPort,
+				port,
+				exactDecision,
+				connectFields,
+			)
 			_, _ = io.WriteString(client, "HTTP/1.1 403 Forbidden\r\n\r\n")
 			if p.emit != nil {
 				_ = p.emit.AppendEvent(context.Background(), connectEv)
@@ -1003,20 +1295,42 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 		p.emit.Publish(ev)
 	}
 
-	connectEv := p.emitNetEvent(context.Background(), "net_connect", commandID, host, hostPort, port, dec, connectFields)
+	connectEv := p.emitNetEvent(
+		context.Background(),
+		"net_connect",
+		commandID,
+		host,
+		hostPort,
+		port,
+		dec,
+		connectFields,
+	)
 	if err := p.appendPreDialEvent(ctx, connectEv); err != nil {
 		_, _ = io.WriteString(client, "HTTP/1.1 502 Bad Gateway\r\n\r\n")
 		p.fail(err)
 		return nil
 	}
 
-	emitMCPConnectionIfMatched(context.Background(), p.sess, p.emit, p.sessionID, commandID, host, hostPort, port)
+	emitMCPConnectionIfMatched(
+		context.Background(),
+		p.sess,
+		p.emit,
+		p.sessionID,
+		commandID,
+		host,
+		hostPort,
+		port,
+	)
 
 	transport := &http.Transport{
 		Proxy: nil,
 		DialContext: func(dialCtx context.Context, network, address string) (net.Conn, error) {
 			if network != "tcp" || !strings.EqualFold(address, hostPort) {
-				return nil, fmt.Errorf("refusing unapproved proxy dial target %s %s", network, address)
+				return nil, fmt.Errorf(
+					"refusing unapproved proxy dial target %s %s",
+					network,
+					address,
+				)
 			}
 			return p.dial(dialCtx, approvedDialTarget.Network, approvedDialTarget.Address)
 		},
@@ -1058,7 +1372,10 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 func (p *Proxy) checkNetwork(ctx context.Context, domain string, port int) policy.Decision {
 	engine := p.policyEngine()
 	if engine == nil {
-		return policy.Decision{PolicyDecision: types.DecisionAllow, EffectiveDecision: types.DecisionAllow}
+		return policy.Decision{
+			PolicyDecision:    types.DecisionAllow,
+			EffectiveDecision: types.DecisionAllow,
+		}
 	}
 	if p.strictPublicEgress {
 		// Strict mode's first policy pass is hostname-only. CheckNetworkIP with a
@@ -1071,19 +1388,31 @@ func (p *Proxy) checkNetwork(ctx context.Context, domain string, port int) polic
 func (p *Proxy) checkNetworkExactIP(domain string, resolvedIP string, port int) policy.Decision {
 	engine := p.policyEngine()
 	if engine == nil {
-		return policy.Decision{PolicyDecision: types.DecisionAllow, EffectiveDecision: types.DecisionAllow}
+		return policy.Decision{
+			PolicyDecision:    types.DecisionAllow,
+			EffectiveDecision: types.DecisionAllow,
+		}
 	}
 	ip := net.ParseIP(resolvedIP)
 	if ip == nil {
 		return policy.Decision{
-			PolicyDecision: types.DecisionDeny, EffectiveDecision: types.DecisionDeny,
-			Rule: "strict-public-egress-perimeter", Message: "strict public egress selected an invalid policy IP",
+			PolicyDecision:    types.DecisionDeny,
+			EffectiveDecision: types.DecisionDeny,
+			Rule:              "strict-public-egress-perimeter",
+			Message:           "strict public egress selected an invalid policy IP",
 		}
 	}
 	return engine.CheckNetworkIP(domain, ip, port)
 }
 
-func (p *Proxy) checkConnectNetwork(ctx context.Context, commandID string, host string, hostPort string, port int, redirect *policy.ConnectRedirectResult) policy.Decision {
+func (p *Proxy) checkConnectNetwork(
+	ctx context.Context,
+	commandID string,
+	host string,
+	hostPort string,
+	port int,
+	redirect *policy.ConnectRedirectResult,
+) policy.Decision {
 	dec := p.checkNetwork(ctx, host, port)
 	if allowUnixRedirectForDBUnavoidability(p.policyEngine(), dec, redirect) {
 		return allowConnectRedirectDecision(redirect)
@@ -1104,7 +1433,13 @@ func (p *Proxy) policyEngine() *policy.Engine {
 	return p.policy
 }
 
-func (p *Proxy) emitDBBypassAttempt(ctx context.Context, commandID string, pid int, ruleName string, reason string) {
+func (p *Proxy) emitDBBypassAttempt(
+	ctx context.Context,
+	commandID string,
+	pid int,
+	ruleName string,
+	reason string,
+) {
 	if p == nil {
 		return
 	}
@@ -1130,7 +1465,11 @@ func dbBypassProcessIdentity(sessionID string, commandID string) string {
 	return "session:" + sessionID
 }
 
-func allowUnixRedirectForDBUnavoidability(engine *policy.Engine, dec policy.Decision, redirect *policy.ConnectRedirectResult) bool {
+func allowUnixRedirectForDBUnavoidability(
+	engine *policy.Engine,
+	dec policy.Decision,
+	redirect *policy.ConnectRedirectResult,
+) bool {
 	return redirect != nil &&
 		redirect.RedirectToUnix != "" &&
 		dec.EffectiveDecision == types.DecisionDeny &&
@@ -1147,7 +1486,8 @@ func isDBUnavoidabilityTCPDirectRule(engine *policy.Engine, ruleName string) boo
 		return false
 	}
 	for _, m := range pol.Metadata {
-		if m.RuleName == ruleName && m.Source == "db_unavoidability" && m.BypassMode == "tcp_direct" {
+		if m.RuleName == ruleName && m.Source == "db_unavoidability" &&
+			m.BypassMode == "tcp_direct" {
 			return true
 		}
 	}
@@ -1163,8 +1503,15 @@ func allowConnectRedirectDecision(redirect *policy.ConnectRedirectResult) policy
 	}
 }
 
-func (p *Proxy) maybeApprove(ctx context.Context, commandID string, dec policy.Decision, kind string, target string) policy.Decision {
-	if dec.PolicyDecision != types.DecisionApprove || dec.EffectiveDecision != types.DecisionApprove {
+func (p *Proxy) maybeApprove(
+	ctx context.Context,
+	commandID string,
+	dec policy.Decision,
+	kind string,
+	target string,
+) policy.Decision {
+	if dec.PolicyDecision != types.DecisionApprove ||
+		dec.EffectiveDecision != types.DecisionApprove {
 		return dec
 	}
 	if p.approvals == nil {
@@ -1211,7 +1558,16 @@ func (p *Proxy) maybeApprove(ctx context.Context, commandID string, dec policy.D
 	return dec
 }
 
-func (p *Proxy) emitNetEvent(ctx context.Context, evType string, commandID string, domain string, remote string, port int, dec policy.Decision, fields map[string]any) types.Event {
+func (p *Proxy) emitNetEvent(
+	ctx context.Context,
+	evType string,
+	commandID string,
+	domain string,
+	remote string,
+	port int,
+	dec policy.Decision,
+	fields map[string]any,
+) types.Event {
 	ev := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now().UTC(),
@@ -1235,14 +1591,30 @@ func (p *Proxy) emitNetEvent(ctx context.Context, evType string, commandID strin
 	return ev
 }
 
-func (p *Proxy) emitConnectRedirectEvent(ctx context.Context, commandID string, domain string, hostPort string, port int, result *policy.ConnectRedirectResult) {
+func (p *Proxy) emitConnectRedirectEvent(
+	ctx context.Context,
+	commandID string,
+	domain string,
+	hostPort string,
+	port int,
+	result *policy.ConnectRedirectResult,
+) {
 	if p == nil {
 		return
 	}
 	emitConnectRedirectEvent(ctx, p.emit, p.sessionID, commandID, domain, hostPort, port, result)
 }
 
-func emitConnectRedirectEvent(ctx context.Context, emit Emitter, sessionID string, commandID string, domain string, hostPort string, port int, result *policy.ConnectRedirectResult) {
+func emitConnectRedirectEvent(
+	ctx context.Context,
+	emit Emitter,
+	sessionID string,
+	commandID string,
+	domain string,
+	hostPort string,
+	port int,
+	result *policy.ConnectRedirectResult,
+) {
 	if emit == nil {
 		return
 	}
@@ -1277,7 +1649,13 @@ func emitConnectRedirectEvent(ctx context.Context, emit Emitter, sessionID strin
 // emitMCPConnectionIfMatched checks whether the connection target is a known
 // MCP server address and, if so, emits an mcp_network_connection event.
 // This is a shared function called from both Proxy and TransparentTCP handlers.
-func emitMCPConnectionIfMatched(ctx context.Context, sess *session.Session, emit Emitter, sessionID, commandID, domain, remote string, port int) {
+func emitMCPConnectionIfMatched(
+	ctx context.Context,
+	sess *session.Session,
+	emit Emitter,
+	sessionID, commandID, domain, remote string,
+	port int,
+) {
 	if sess == nil || emit == nil {
 		return
 	}
@@ -1320,7 +1698,10 @@ func emitMCPConnectionIfMatched(ctx context.Context, sess *session.Session, emit
 // declared http_services upstream. These events give operators an
 // observable signal that a child process attempted to bypass the
 // gateway, even though they can take no corrective action in-band.
-func (p *Proxy) emitHTTPServiceDeniedDirect(ctx context.Context, commandID, svcName, envVar, host, resolvedIP, method string) {
+func (p *Proxy) emitHTTPServiceDeniedDirect(
+	ctx context.Context,
+	commandID, svcName, envVar, host, resolvedIP, method string,
+) {
 	if p.emit == nil {
 		return
 	}
@@ -1348,7 +1729,11 @@ func (p *Proxy) emitHTTPServiceDeniedDirect(ctx context.Context, commandID, svcN
 // CONNECT requires an explicit numeric port; plain HTTP may use its protocol
 // default. Malformed authorities, userinfo-like whitespace, zones, and
 // out-of-range/service-name ports are rejected before policy evaluation.
-func parseProxyAuthority(authority string, defaultPort int, requireExplicitPort bool) (host, hostPort string, port int, err error) {
+func parseProxyAuthority(
+	authority string,
+	defaultPort int,
+	requireExplicitPort bool,
+) (host, hostPort string, port int, err error) {
 	authority = strings.TrimSpace(authority)
 	if authority == "" || strings.ContainsAny(authority, "\x00\r\n\t @/?#") {
 		return "", "", 0, fmt.Errorf("invalid empty or whitespace-containing proxy authority")
@@ -1357,7 +1742,10 @@ func parseProxyAuthority(authority string, defaultPort int, requireExplicitPort 
 	host, portText, splitErr := net.SplitHostPort(authority)
 	if splitErr != nil {
 		if requireExplicitPort {
-			return "", "", 0, fmt.Errorf("proxy authority requires an explicit numeric port: %w", splitErr)
+			return "", "", 0, fmt.Errorf(
+				"proxy authority requires an explicit numeric port: %w",
+				splitErr,
+			)
 		}
 		port = defaultPort
 		switch {
@@ -1371,7 +1759,10 @@ func parseProxyAuthority(authority string, defaultPort int, requireExplicitPort 
 	} else {
 		parsed, parseErr := strconv.ParseUint(portText, 10, 16)
 		if parseErr != nil || parsed == 0 {
-			return "", "", 0, fmt.Errorf("proxy authority port %q must be numeric and between 1 and 65535", portText)
+			return "", "", 0, fmt.Errorf(
+				"proxy authority port %q must be numeric and between 1 and 65535",
+				portText,
+			)
 		}
 		port = int(parsed)
 	}
@@ -1399,7 +1790,11 @@ func (p *Proxy) resolveAndEmitDNS(ctx context.Context, commandID string, host st
 	return ip
 }
 
-func (p *Proxy) resolveAndEmitDNSChecked(ctx context.Context, commandID string, host string) (string, bool) {
+func (p *Proxy) resolveAndEmitDNSChecked(
+	ctx context.Context,
+	commandID string,
+	host string,
+) (string, bool) {
 	host = strings.TrimSpace(host)
 	if host == "" {
 		return "", false

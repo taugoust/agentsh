@@ -198,7 +198,11 @@ func checkRegexComplexity(pattern string, maxComplexity int) error {
 	// Calculate complexity score
 	complexity := calculateComplexity(re)
 	if complexity > maxComplexity {
-		return fmt.Errorf("regex complexity %d exceeds maximum %d (potential ReDoS)", complexity, maxComplexity)
+		return fmt.Errorf(
+			"regex complexity %d exceeds maximum %d (potential ReDoS)",
+			complexity,
+			maxComplexity,
+		)
 	}
 
 	return nil
@@ -280,7 +284,10 @@ func (p *Pattern) Match(s string) bool {
 }
 
 // MatchWithResolver checks if the input matches, using the resolver for class patterns.
-func (p *Pattern) MatchWithResolver(s string, resolver func(string) ([]string, error)) (bool, error) {
+func (p *Pattern) MatchWithResolver(
+	s string,
+	resolver func(string) ([]string, error),
+) (bool, error) {
 	switch p.Type {
 	case PatternTypeLiteral:
 		return s == p.compiled.(string), nil
@@ -360,7 +367,10 @@ func (ps *PatternSet) MatchAny(s string) bool {
 }
 
 // MatchAnyWithResolver returns true if any pattern matches, using resolver for classes.
-func (ps *PatternSet) MatchAnyWithResolver(s string, resolver func(string) ([]string, error)) (bool, error) {
+func (ps *PatternSet) MatchAnyWithResolver(
+	s string,
+	resolver func(string) ([]string, error),
+) (bool, error) {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
 

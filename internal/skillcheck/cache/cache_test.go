@@ -91,7 +91,11 @@ func TestFlush_DropsExpiredEntries(t *testing.T) {
 func TestNew_SurfacesCorruption(t *testing.T) {
 	dir := t.TempDir()
 	// Write garbage where the cache file lives.
-	if err := os.WriteFile(filepath.Join(dir, "skillcache.json"), []byte("{not json"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(dir, "skillcache.json"),
+		[]byte("{not json"),
+		0o600,
+	); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	_, err := New(Config{Dir: dir, DefaultTTL: time.Hour})

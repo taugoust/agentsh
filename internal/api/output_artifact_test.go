@@ -123,7 +123,11 @@ func TestCommandOutputArtifactCapture_WriteFailureDoesNotPanic(t *testing.T) {
 	if err := s.ConfigureOutputArtifacts(16); err != nil {
 		t.Fatal(err)
 	}
-	capture := newCommandOutputArtifactCapture(s, "missing-runtime", &types.OutputArtifactRequest{PersistOverBytes: 1})
+	capture := newCommandOutputArtifactCapture(
+		s,
+		"missing-runtime",
+		&types.OutputArtifactRequest{PersistOverBytes: 1},
+	)
 	_ = capture.Append([]byte("overflow"))
 	result := capture.Finish()
 	if result == nil || result.ErrorMessage == "" || result.Complete || result.Path != "" {
@@ -169,7 +173,8 @@ func TestPersistSubagentFinalArtifact_TrustAndSanitization(t *testing.T) {
 		Terminal:        completedSubagentTerminal(0, subagentTerminationNatural),
 	}
 	app.persistSubagentFinalArtifact(s, &result, "pi-json", 16)
-	if result.FullResultPath == "" || !result.FinalTruncated || result.ArtifactComplete == nil || !*result.ArtifactComplete {
+	if result.FullResultPath == "" || !result.FinalTruncated || result.ArtifactComplete == nil ||
+		!*result.ArtifactComplete {
 		t.Fatalf("subagent artifact metadata = %+v", result)
 	}
 	data, err := os.ReadFile(result.FullResultPath)
@@ -180,7 +185,8 @@ func TestPersistSubagentFinalArtifact_TrustAndSanitization(t *testing.T) {
 	if strings.Contains(text, "abc.def") || strings.Contains(text, "secret-value") {
 		t.Fatalf("artifact retained credential material: %q", text)
 	}
-	if !strings.Contains(text, "Bearer [redacted]") || !strings.Contains(text, "api_key=[redacted]") {
+	if !strings.Contains(text, "Bearer [redacted]") ||
+		!strings.Contains(text, "api_key=[redacted]") {
 		t.Fatalf("artifact redaction missing: %q", text)
 	}
 

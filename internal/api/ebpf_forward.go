@@ -13,7 +13,14 @@ import (
 )
 
 // forwardConnectEvents transforms raw BPF connect events into agentsh events.
-func forwardConnectEvents(ctx context.Context, in <-chan ebpf.ConnectEvent, emit storeEmitter, sessionID string, commandID string, metrics *metrics.Collector) {
+func forwardConnectEvents(
+	ctx context.Context,
+	in <-chan ebpf.ConnectEvent,
+	emit storeEmitter,
+	sessionID string,
+	commandID string,
+	metrics *metrics.Collector,
+) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -37,7 +44,12 @@ func forwardConnectEvents(ctx context.Context, in <-chan ebpf.ConnectEvent, emit
 				// DstIPv4 was decoded little-endian from the network-order bytes
 				// emitted by BPF. Read low-to-high so 127.0.0.1 is never reported
 				// as the old byte-swapped 1.0.0.127 compatibility address.
-				ip := net.IPv4(byte(ev.DstIPv4), byte(ev.DstIPv4>>8), byte(ev.DstIPv4>>16), byte(ev.DstIPv4>>24))
+				ip := net.IPv4(
+					byte(ev.DstIPv4),
+					byte(ev.DstIPv4>>8),
+					byte(ev.DstIPv4>>16),
+					byte(ev.DstIPv4>>24),
+				)
 				ipStr = ip.String()
 				remote = net.JoinHostPort(ipStr, itoa(ev.Dport))
 			} else {

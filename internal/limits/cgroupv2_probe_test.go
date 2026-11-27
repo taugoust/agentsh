@@ -53,7 +53,12 @@ func TestProbe_NestedEnableSucceeds(t *testing.T) {
 	if res.Mode != ModeNested || res.Reason != "enabled by probe" {
 		t.Fatalf("mode/reason: got %q/%q, want nested/enabled by probe", res.Mode, res.Reason)
 	}
-	if err := f.assertSubtreeControl(own+"/cgroup.subtree_control", "cpu", "memory", "pids"); err != nil {
+	if err := f.assertSubtreeControl(
+		own+"/cgroup.subtree_control",
+		"cpu",
+		"memory",
+		"pids",
+	); err != nil {
 		t.Fatalf("expected subtree_control populated: %v", err)
 	}
 }
@@ -366,7 +371,11 @@ func TestProbe_LeafMove_IdempotentSecondProbe(t *testing.T) {
 		t.Fatalf("probe 1: %v", err)
 	}
 	if !res1.LeafMoved || res1.Mode != ModeNested {
-		t.Fatalf("probe 1: expected leaf-moved nested, got mode=%q leaf=%v", res1.Mode, res1.LeafMoved)
+		t.Fatalf(
+			"probe 1: expected leaf-moved nested, got mode=%q leaf=%v",
+			res1.Mode,
+			res1.LeafMoved,
+		)
 	}
 
 	// Second probe: same ownHint (parent). Subtree_control was enabled by
@@ -413,7 +422,10 @@ func TestProbe_AlreadyDelegated_EEXISTTreatedAsFailure(t *testing.T) {
 		t.Fatalf("probe: %v", err)
 	}
 	if res.Mode == ModeNested {
-		t.Fatalf("EEXIST under own must NOT be treated as proof of writability; got mode=%q", res.Mode)
+		t.Fatalf(
+			"EEXIST under own must NOT be treated as proof of writability; got mode=%q",
+			res.Mode,
+		)
 	}
 	if res.Mode != ModeTopLevel {
 		t.Fatalf("expected fallback to top-level, got mode=%q reason=%q", res.Mode, res.Reason)
@@ -434,7 +446,11 @@ func TestProbe_ExplicitLeafHintNotStripped(t *testing.T) {
 		t.Fatalf("probe: %v", err)
 	}
 	if res.OwnCgroup != leafPath {
-		t.Fatalf("explicit leaf hint should NOT be stripped: got %q, want %q", res.OwnCgroup, leafPath)
+		t.Fatalf(
+			"explicit leaf hint should NOT be stripped: got %q, want %q",
+			res.OwnCgroup,
+			leafPath,
+		)
 	}
 }
 
@@ -458,7 +474,10 @@ func TestProbe_AlreadyDelegated_MkdirDeniedFallsBack(t *testing.T) {
 		t.Fatalf("probe: %v", err)
 	}
 	if res.Mode != ModeUnavailable {
-		t.Fatalf("mode: got %q, want unavailable (subtree mkdir denied + top-level mkdir denied)", res.Mode)
+		t.Fatalf(
+			"mode: got %q, want unavailable (subtree mkdir denied + top-level mkdir denied)",
+			res.Mode,
+		)
 	}
 	if !strings.Contains(res.Reason, "subtree delegated but child cgroup mkdir denied") {
 		t.Fatalf("reason should explain delegated-but-not-writable: %q", res.Reason)
@@ -573,7 +592,10 @@ func TestProbe_LeafMove_MkdirDeniedFallsBack(t *testing.T) {
 		t.Fatalf("probe: %v", err)
 	}
 	if res.Mode != ModeTopLevel {
-		t.Fatalf("mode: got %q, want top-level (probe should reject nested when child mkdir denied)", res.Mode)
+		t.Fatalf(
+			"mode: got %q, want top-level (probe should reject nested when child mkdir denied)",
+			res.Mode,
+		)
 	}
 	if !strings.Contains(res.Reason, "child cgroup mkdir denied") {
 		t.Fatalf("reason should mention the writability failure: %q", res.Reason)
@@ -630,7 +652,12 @@ func TestManager_AttachOnly_ControllerPoisonDoesNotBreakPidAttach(t *testing.T) 
 		t.Fatalf("new manager: %v", err)
 	}
 	if m.Probe().Mode != ModeAttachOnly {
-		t.Fatalf("mode: got %q, want %q (reason=%q)", m.Probe().Mode, ModeAttachOnly, m.Probe().Reason)
+		t.Fatalf(
+			"mode: got %q, want %q (reason=%q)",
+			m.Probe().Mode,
+			ModeAttachOnly,
+			m.Probe().Reason,
+		)
 	}
 	cg, err := m.Apply("agentsh-sess-cmd", 4242, CgroupV2Limits{})
 	if err != nil {
@@ -751,7 +778,10 @@ func TestProbe_TopLevelMemoryMaxNotWritable_DowngradesFromTopLevel(t *testing.T)
 		t.Fatalf("probe: %v", err)
 	}
 	if res.Mode != ModeUnavailable {
-		t.Fatalf("mode: got %q, want ModeUnavailable (memory.max not writable, attach-only not permitted)", res.Mode)
+		t.Fatalf(
+			"mode: got %q, want ModeUnavailable (memory.max not writable, attach-only not permitted)",
+			res.Mode,
+		)
 	}
 	if !strings.Contains(res.Reason, "memory.max not writable") {
 		t.Errorf("reason should contain 'memory.max not writable': %q", res.Reason)

@@ -29,10 +29,26 @@ func TestApplyCommandApproval_UsesSessionScopedCommandApproval(t *testing.T) {
 	if !ok {
 		t.Fatal("NewCommandExecutableScope returned !ok")
 	}
-	app.approvals.SetScoped(context.Background(), sess.ID, "cmd-prev", scope, true, "ok", "approve-git")
+	app.approvals.SetScoped(
+		context.Background(),
+		sess.ID,
+		"cmd-prev",
+		scope,
+		true,
+		"ok",
+		"approve-git",
+	)
 
 	pre := commandApprovalDecision("approve-git")
-	if err := app.applyCommandApproval(context.Background(), sess.ID, "cmd-now", "git", []string{"status", "--short"}, nil, &pre); err != nil {
+	if err := app.applyCommandApproval(
+		context.Background(),
+		sess.ID,
+		"cmd-now",
+		"git",
+		[]string{"status", "--short"},
+		nil,
+		&pre,
+	); err != nil {
 		t.Fatalf("applyCommandApproval: %v", err)
 	}
 	if pre.EffectiveDecision != types.DecisionAllow {
@@ -67,7 +83,9 @@ func TestApplyCommandApproval_RequestIncludesCommandSessionScope(t *testing.T) {
 	if req.Fields["command"] != "git" {
 		t.Fatalf("command field = %#v", req.Fields["command"])
 	}
-	if req.Fields["scope_kind"] != "command" || req.Fields["scope_operation"] != "exec" || req.Fields["scope_rule"] != "approve-git" || req.Fields["scope_path"] != "git" {
+	if req.Fields["scope_kind"] != "command" || req.Fields["scope_operation"] != "exec" ||
+		req.Fields["scope_rule"] != "approve-git" ||
+		req.Fields["scope_path"] != "git" {
 		t.Fatalf("missing command executable scope fields: %#v", req.Fields)
 	}
 	if key, _ := req.Fields["scope_key"].(string); !strings.HasPrefix(key, "command-executable:") {
@@ -86,7 +104,13 @@ func TestApplyCommandApproval_RequestIncludesCommandSessionScope(t *testing.T) {
 	if key, _ := options[2]["scope_key"].(string); !strings.HasPrefix(key, "command-run:") {
 		t.Fatalf("third option key = %q, want command-run", key)
 	}
-	if !app.approvals.ResolveForSessionWithScope(sess.ID, req.ID, true, "ok", approvals.ScopeSession) {
+	if !app.approvals.ResolveForSessionWithScope(
+		sess.ID,
+		req.ID,
+		true,
+		"ok",
+		approvals.ScopeSession,
+	) {
 		t.Fatal("ResolveForSessionWithScope returned false")
 	}
 
@@ -108,7 +132,13 @@ func TestApplyCommandApproval_RequestIncludesCommandSessionScope(t *testing.T) {
 	if !ok {
 		t.Fatal("NewCommandExecutableScope returned !ok")
 	}
-	if cached, ok := app.approvals.CheckScoped(context.Background(), sess.ID, "cmd-next", scope); !ok || !cached.Approved {
+	if cached, ok := app.approvals.CheckScoped(
+		context.Background(),
+		sess.ID,
+		"cmd-next",
+		scope,
+	); !ok ||
+		!cached.Approved {
 		t.Fatalf("session-scoped command approval was not cached: ok=%v cached=%+v", ok, cached)
 	}
 }
@@ -132,13 +162,27 @@ func TestApplyCommandApproval_ApproveExecutableForSessionAllowsDifferentArgs(t *
 	if key, _ := req.Fields["scope_key"].(string); !strings.HasPrefix(key, "command-executable:") {
 		t.Fatalf("scope_key = %q, want executable scope", key)
 	}
-	if !app.approvals.ResolveForSessionWithScope(sess.ID, req.ID, true, "ok", approvals.ScopeSession) {
+	if !app.approvals.ResolveForSessionWithScope(
+		sess.ID,
+		req.ID,
+		true,
+		"ok",
+		approvals.ScopeSession,
+	) {
 		t.Fatal("ResolveForSessionWithScope returned false")
 	}
 	waitApplyDone(t, ctx, done)
 
 	pre2 := commandApprovalDecision("approve-unknown-nix-store-executables")
-	if err := app.applyCommandApproval(ctx, sess.ID, "cmd-2", command, []string{"-readonly", "events.db", "select * from events limit 50"}, nil, &pre2); err != nil {
+	if err := app.applyCommandApproval(
+		ctx,
+		sess.ID,
+		"cmd-2",
+		command,
+		[]string{"-readonly", "events.db", "select * from events limit 50"},
+		nil,
+		&pre2,
+	); err != nil {
 		t.Fatalf("second applyCommandApproval: %v", err)
 	}
 	if pre2.EffectiveDecision != types.DecisionAllow {
@@ -153,11 +197,22 @@ func TestApplyCommandApproval_DifferentExecutableStillPrompts(t *testing.T) {
 	app, sess := newCommandApprovalTestApp(t)
 	sqlite := "/nix/store/abc-sqlite/bin/sqlite3"
 	psql := "/nix/store/def-postgresql/bin/psql"
-	scope, ok := approvals.NewCommandExecutableScope(sqlite, "approve-unknown-nix-store-executables")
+	scope, ok := approvals.NewCommandExecutableScope(
+		sqlite,
+		"approve-unknown-nix-store-executables",
+	)
 	if !ok {
 		t.Fatal("NewCommandExecutableScope returned !ok")
 	}
-	app.approvals.SetScoped(context.Background(), sess.ID, "cmd-prev", scope, true, "ok", "approve-unknown-nix-store-executables")
+	app.approvals.SetScoped(
+		context.Background(),
+		sess.ID,
+		"cmd-prev",
+		scope,
+		true,
+		"ok",
+		"approve-unknown-nix-store-executables",
+	)
 
 	pre := commandApprovalDecision("approve-unknown-nix-store-executables")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -177,7 +232,9 @@ func TestApplyCommandApproval_DifferentExecutableStillPrompts(t *testing.T) {
 	_ = waitApplyDone(t, ctx, done)
 }
 
-func TestResolveApprovalLocal_PiSelectedExecutableSessionScopeResolvesConcurrentPending(t *testing.T) {
+func TestResolveApprovalLocal_PiSelectedExecutableSessionScopeResolvesConcurrentPending(
+	t *testing.T,
+) {
 	app, sess := newCommandApprovalTestApp(t)
 	command := "/nix/store/abc-sqlite/bin/sqlite3"
 	rule := "approve-unknown-nix-store-executables"
@@ -197,18 +254,29 @@ func TestResolveApprovalLocal_PiSelectedExecutableSessionScopeResolvesConcurrent
 
 	reqs := waitPendingCommandApprovals(t, ctx, app.approvals, sess.ID, 2)
 	executable := findCommandScopeOption(t, reqs[0], "command-executable:")
-	status, body, handled := app.resolveApprovalLocal(reqs[0].ID, approvalResolutionJSON(t, "approve", approvals.ScopeSession, executable))
+	status, body, handled := app.resolveApprovalLocal(
+		reqs[0].ID,
+		approvalResolutionJSON(t, "approve", approvals.ScopeSession, executable),
+	)
 	if !handled || status != 200 || body["ok"] != true {
 		t.Fatalf("resolveApprovalLocal status=%d handled=%v body=%#v", status, handled, body)
 	}
 	if pending := app.approvals.ListPendingForSession(sess.ID); len(pending) != 0 {
-		t.Fatalf("covered pending approvals still listed immediately after local resolve: %+v", pending)
+		t.Fatalf(
+			"covered pending approvals still listed immediately after local resolve: %+v",
+			pending,
+		)
 	}
 
 	waitApplyDone(t, ctx, done1)
 	waitApplyDone(t, ctx, done2)
-	if pre1.EffectiveDecision != types.DecisionAllow || pre2.EffectiveDecision != types.DecisionAllow {
-		t.Fatalf("effective decisions = %s/%s, want allow/allow", pre1.EffectiveDecision, pre2.EffectiveDecision)
+	if pre1.EffectiveDecision != types.DecisionAllow ||
+		pre2.EffectiveDecision != types.DecisionAllow {
+		t.Fatalf(
+			"effective decisions = %s/%s, want allow/allow",
+			pre1.EffectiveDecision,
+			pre2.EffectiveDecision,
+		)
 	}
 	if pending := app.approvals.ListPendingForSession(sess.ID); len(pending) != 0 {
 		t.Fatalf("covered pending approvals were not cleared: %+v", pending)
@@ -254,13 +322,21 @@ func TestApprovalUIResolve_PiSelectedExecutableSessionScopeResolvesConcurrentPen
 		t.Fatalf("approval UI resolve failed: %+v", resp)
 	}
 	if pending := app.approvals.ListPendingForSession(sess.ID); len(pending) != 0 {
-		t.Fatalf("covered pending approvals still listed immediately after approval UI resolve: %+v", pending)
+		t.Fatalf(
+			"covered pending approvals still listed immediately after approval UI resolve: %+v",
+			pending,
+		)
 	}
 
 	waitApplyDone(t, ctx, done1)
 	waitApplyDone(t, ctx, done2)
-	if pre1.EffectiveDecision != types.DecisionAllow || pre2.EffectiveDecision != types.DecisionAllow {
-		t.Fatalf("effective decisions = %s/%s, want allow/allow", pre1.EffectiveDecision, pre2.EffectiveDecision)
+	if pre1.EffectiveDecision != types.DecisionAllow ||
+		pre2.EffectiveDecision != types.DecisionAllow {
+		t.Fatalf(
+			"effective decisions = %s/%s, want allow/allow",
+			pre1.EffectiveDecision,
+			pre2.EffectiveDecision,
+		)
 	}
 	if pending := app.approvals.ListPendingForSession(sess.ID); len(pending) != 0 {
 		t.Fatalf("covered pending approvals were not cleared: %+v", pending)
@@ -283,13 +359,28 @@ func TestApplyCommandApproval_ExactInvocationSessionScopeIsNarrow(t *testing.T) 
 
 	req := waitPendingCommandApproval(t, ctx, app.approvals, sess.ID)
 	exact := findCommandScopeOption(t, req, "command-invocation:")
-	if !app.approvals.ResolveForSessionWithScopeTarget(sess.ID, req.ID, true, "exact", approvals.ScopeSession, exact) {
+	if !app.approvals.ResolveForSessionWithScopeTarget(
+		sess.ID,
+		req.ID,
+		true,
+		"exact",
+		approvals.ScopeSession,
+		exact,
+	) {
 		t.Fatal("ResolveForSessionWithScopeTarget returned false")
 	}
 	waitApplyDone(t, ctx, done)
 
 	preSame := commandApprovalDecision(rule)
-	if err := app.applyCommandApproval(ctx, sess.ID, "cmd-2", command, args, nil, &preSame); err != nil {
+	if err := app.applyCommandApproval(
+		ctx,
+		sess.ID,
+		"cmd-2",
+		command,
+		args,
+		nil,
+		&preSame,
+	); err != nil {
 		t.Fatalf("same invocation applyCommandApproval: %v", err)
 	}
 	if preSame.EffectiveDecision != types.DecisionAllow {
@@ -338,7 +429,11 @@ func commandScopeOptionsFromRequest(t *testing.T, req approvals.Request) []map[s
 	t.Helper()
 	options, ok := req.Fields["scope_options"].([]map[string]any)
 	if !ok {
-		t.Fatalf("scope_options has type %T: %#v", req.Fields["scope_options"], req.Fields["scope_options"])
+		t.Fatalf(
+			"scope_options has type %T: %#v",
+			req.Fields["scope_options"],
+			req.Fields["scope_options"],
+		)
 	}
 	return options
 }
@@ -399,7 +494,12 @@ func waitApplyDone(t *testing.T, ctx context.Context, done <-chan error) error {
 	}
 }
 
-func approvalResolutionJSON(t *testing.T, decision string, scope string, target approvals.Scope) []byte {
+func approvalResolutionJSON(
+	t *testing.T,
+	decision string,
+	scope string,
+	target approvals.Scope,
+) []byte {
 	t.Helper()
 	body := map[string]any{
 		"decision":        decision,
@@ -420,12 +520,23 @@ func approvalResolutionJSON(t *testing.T, decision string, scope string, target 
 	return raw
 }
 
-func waitPendingCommandApproval(t *testing.T, ctx context.Context, mgr *approvals.Manager, sessionID string) approvals.Request {
+func waitPendingCommandApproval(
+	t *testing.T,
+	ctx context.Context,
+	mgr *approvals.Manager,
+	sessionID string,
+) approvals.Request {
 	t.Helper()
 	return waitPendingCommandApprovals(t, ctx, mgr, sessionID, 1)[0]
 }
 
-func waitPendingCommandApprovals(t *testing.T, ctx context.Context, mgr *approvals.Manager, sessionID string, want int) []approvals.Request {
+func waitPendingCommandApprovals(
+	t *testing.T,
+	ctx context.Context,
+	mgr *approvals.Manager,
+	sessionID string,
+	want int,
+) []approvals.Request {
 	t.Helper()
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -436,7 +547,12 @@ func waitPendingCommandApprovals(t *testing.T, ctx context.Context, mgr *approva
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatalf("timed out waiting for %d pending approvals: %v (got %d)", want, ctx.Err(), len(pending))
+			t.Fatalf(
+				"timed out waiting for %d pending approvals: %v (got %d)",
+				want,
+				ctx.Err(),
+				len(pending),
+			)
 		case <-ticker.C:
 		}
 	}

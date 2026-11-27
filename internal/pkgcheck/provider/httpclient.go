@@ -123,7 +123,11 @@ func (c *retryClient) Do(req *http.Request) (*http.Response, error) {
 	if ctxErr := req.Context().Err(); ctxErr != nil {
 		return nil, fmt.Errorf("retryClient: aborted: %w", ctxErr)
 	}
-	return nil, fmt.Errorf("retryClient: gave up after %d attempts: %w", c.cfg.MaxAttempts, errors.Join(errMaxAttempts, lastErr))
+	return nil, fmt.Errorf(
+		"retryClient: gave up after %d attempts: %w",
+		c.cfg.MaxAttempts,
+		errors.Join(errMaxAttempts, lastErr),
+	)
 }
 
 // sleep applies Retry-After (when configured and present) or exponential
@@ -269,7 +273,12 @@ var errBreakerOpen = errors.New("circuit breaker open")
 // errors as neutral for breaker accounting — e.g. authentication errors
 // where N concurrent workers all see a 401 and would otherwise open the
 // breaker before the auth error reaches the caller.
-func callWithBreaker(b *circuitBreaker, callerCtx context.Context, neutralIfErr func(error) bool, fn func() error) error {
+func callWithBreaker(
+	b *circuitBreaker,
+	callerCtx context.Context,
+	neutralIfErr func(error) bool,
+	fn func() error,
+) error {
 	if b == nil {
 		return fn()
 	}

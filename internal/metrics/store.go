@@ -29,7 +29,10 @@ func (w *wrappedEventStore) AppendEvent(ctx context.Context, ev types.Event) err
 	return w.inner.AppendEvent(ctx, ev)
 }
 
-func (w *wrappedEventStore) QueryEvents(ctx context.Context, q types.EventQuery) ([]types.Event, error) {
+func (w *wrappedEventStore) QueryEvents(
+	ctx context.Context,
+	q types.EventQuery,
+) ([]types.Event, error) {
 	return w.inner.QueryEvents(ctx, q)
 }
 

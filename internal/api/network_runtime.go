@@ -41,9 +41,13 @@ func probeLoopbackProxy(endpoint string) bool {
 }
 
 func requestedNetworkEnforcement(cfgStrict bool, cfgNetwork bool) types.NetworkEnforcementRequest {
-	if requested := strings.TrimSpace(os.Getenv(detached.EnvNetworkEnforcementRequested)); requested != "" {
+	if requested := strings.TrimSpace(
+		os.Getenv(detached.EnvNetworkEnforcementRequested),
+	); requested != "" {
 		switch types.NetworkEnforcementRequest(requested) {
-		case types.NetworkEnforcementRequestNone, types.NetworkEnforcementRequestBestEffort, types.NetworkEnforcementRequestStrict:
+		case types.NetworkEnforcementRequestNone,
+			types.NetworkEnforcementRequestBestEffort,
+			types.NetworkEnforcementRequestStrict:
 			return types.NetworkEnforcementRequest(requested)
 		}
 	}
@@ -92,7 +96,8 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 		if probe := a.cgroupMgr.Probe(); probe != nil {
 			report.CgroupMode = string(probe.Mode)
 			report.CgroupRoot = strings.TrimSpace(probe.OwnCgroup)
-			report.CgroupDelegated = probe.Mode != "" && probe.Mode != limits.ModeUnavailable && report.CgroupRoot != ""
+			report.CgroupDelegated = probe.Mode != "" && probe.Mode != limits.ModeUnavailable &&
+				report.CgroupRoot != ""
 		}
 	}
 
@@ -111,7 +116,9 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 		report.Readiness = types.NetworkEnforcementStatusFailed
 		report.HelperConfigured = false
 		report.HelperAuthenticated = false
-		report.Detail = "authenticated nethelper lifecycle check failed: " + boundedLifecycleReason(lifecycleErr)
+		report.Detail = "authenticated nethelper lifecycle check failed: " + boundedLifecycleReason(
+			lifecycleErr,
+		)
 		report.Warning = "strict command execution is disabled until a fresh helper preflight succeeds"
 		report.Normalize()
 		return report
@@ -142,7 +149,8 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 			if previous.Readiness != "" {
 				report.Readiness = previous.Readiness
 			}
-			if previous.Status == types.NetworkEnforcementStatusActive && previous.Attachment != nil {
+			if previous.Status == types.NetworkEnforcementStatusActive &&
+				previous.Attachment != nil {
 				report.Status = previous.Status
 				report.Tier = previous.Tier
 				report.CgroupDelegated = previous.CgroupDelegated
@@ -161,7 +169,9 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 				report.RawSocketBlockConfigured = previous.RawSocketBlockConfigured
 				report.RawSocketsBlocked = previous.RawSocketsBlocked
 				report.UnsupportedTrafficAction = previous.UnsupportedTrafficAction
-				report.BlockedTrafficClasses = append([]string(nil), previous.BlockedTrafficClasses...)
+				report.BlockedTrafficClasses = append(
+					[]string(nil),
+					previous.BlockedTrafficClasses...)
 				report.UnsupportedTrafficBlocked = previous.UnsupportedTrafficBlocked
 				report.FailClosedSetup = previous.FailClosedSetup
 				report.Attachment = previous.Attachment
@@ -183,7 +193,10 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 				report.Normalize()
 				return report
 			}
-			if previous.Status == types.NetworkEnforcementStatusReady && previous.Proven() && report.CgroupDelegated && report.HelperConfigured && report.ProxyReady {
+			if previous.Status == types.NetworkEnforcementStatusReady && previous.Proven() &&
+				report.CgroupDelegated &&
+				report.HelperConfigured &&
+				report.ProxyReady {
 				report.Status = types.NetworkEnforcementStatusReady
 				report.Readiness = types.NetworkEnforcementStatusReady
 				report.Tier = previous.Tier
@@ -201,7 +214,9 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 				report.RawSocketBlockConfigured = previous.RawSocketBlockConfigured
 				report.RawSocketsBlocked = previous.RawSocketsBlocked
 				report.UnsupportedTrafficAction = previous.UnsupportedTrafficAction
-				report.BlockedTrafficClasses = append([]string(nil), previous.BlockedTrafficClasses...)
+				report.BlockedTrafficClasses = append(
+					[]string(nil),
+					previous.BlockedTrafficClasses...)
 				report.UnsupportedTrafficBlocked = previous.UnsupportedTrafficBlocked
 				report.FailClosedSetup = previous.FailClosedSetup
 				report.Detail = previous.Detail
@@ -259,7 +274,16 @@ func (a *App) refreshNetworkEnforcement(sessionID string) *types.NetworkEnforcem
 	return report
 }
 
-func (a *App) recordNetworkAttachment(sessionID, commandID, cgroupPath string, cgroupID uint64, tier types.NetworkEnforcementTier, registrationID string, helperAuthenticated bool, proxyEndpoints []string, allowEntries, denyEntries int, defaultDeny, proxyRequired, pinned, reloaded bool) {
+func (a *App) recordNetworkAttachment(
+	sessionID, commandID, cgroupPath string,
+	cgroupID uint64,
+	tier types.NetworkEnforcementTier,
+	registrationID string,
+	helperAuthenticated bool,
+	proxyEndpoints []string,
+	allowEntries, denyEntries int,
+	defaultDeny, proxyRequired, pinned, reloaded bool,
+) {
 	if a == nil || a.sessions == nil {
 		return
 	}
@@ -364,7 +388,13 @@ func (a *App) recordNetworkAttachment(sessionID, commandID, cgroupPath string, c
 	a.emitNetworkEnforcementEvidence("network_enforcement_active", sessionID, commandID, report)
 }
 
-func (a *App) recordDirectNetworkAttachment(sessionID, commandID, cgroupPath string, cgroupID uint64, proxyEndpoints []string, allowEntries, denyEntries int, defaultDeny, proxyRequired bool) {
+func (a *App) recordDirectNetworkAttachment(
+	sessionID, commandID, cgroupPath string,
+	cgroupID uint64,
+	proxyEndpoints []string,
+	allowEntries, denyEntries int,
+	defaultDeny, proxyRequired bool,
+) {
 	if a == nil || a.sessions == nil {
 		return
 	}
@@ -440,7 +470,12 @@ func (a *App) recordDirectNetworkAttachment(sessionID, commandID, cgroupPath str
 	report.Warning = "in-process attachment is degraded and cannot claim full network policy enforcement"
 	report.Normalize()
 	sess.SetNetworkEnforcement(report)
-	a.emitNetworkEnforcementEvidence("network_enforcement_active_degraded", sessionID, commandID, report)
+	a.emitNetworkEnforcementEvidence(
+		"network_enforcement_active_degraded",
+		sessionID,
+		commandID,
+		report,
+	)
 }
 
 func (a *App) recordNetworkAttachmentEnded(sessionID, commandID string) {
@@ -504,7 +539,8 @@ func (a *App) finishNetworkAttachment(sessionID, commandID string, resolveSetupR
 			report.UnsupportedTrafficAction = ""
 			report.BlockedTrafficClasses = nil
 			report.UnsupportedTrafficBlocked = false
-			report.FailClosedSetup = report.Preflight != nil && report.Preflight.FailClosedBarrierProven
+			report.FailClosedSetup = report.Preflight != nil &&
+				report.Preflight.FailClosedBarrierProven
 			report.Detail = "a disposable or completed command attachment was observed; no proven session preflight is available"
 			report.Warning = "network policy enforcement is not ready for strict autonomous startup"
 		}
@@ -676,10 +712,18 @@ func (a *App) recordNetworkCleanupFailure(sessionID, commandID string, err error
 	if a.detachedRuntime != nil {
 		_ = a.detachedRuntime.UpdateNetwork(report)
 	}
-	a.emitNetworkEnforcementEvidence("network_enforcement_cleanup_failed", sessionID, commandID, report)
+	a.emitNetworkEnforcementEvidence(
+		"network_enforcement_cleanup_failed",
+		sessionID,
+		commandID,
+		report,
+	)
 }
 
-func (a *App) emitNetworkEnforcementEvidence(eventType, sessionID, commandID string, report *types.NetworkEnforcement) {
+func (a *App) emitNetworkEnforcementEvidence(
+	eventType, sessionID, commandID string,
+	report *types.NetworkEnforcement,
+) {
 	if a == nil || report == nil {
 		return
 	}
@@ -755,11 +799,18 @@ type networkRuntimeProbeOptions struct {
 // user code stopped. The second traverses the production command-jail and
 // cgroup hook, causing real helper registration, fixed-program attachment,
 // locked default-deny map update, local-only bypass probes, and helper cleanup.
-func (a *App) runNetworkEnforcementPreflight(ctx context.Context, sessionID string) *types.NetworkEnforcement {
+func (a *App) runNetworkEnforcementPreflight(
+	ctx context.Context,
+	sessionID string,
+) *types.NetworkEnforcement {
 	return a.runNetworkEnforcementPreflightWithLock(ctx, sessionID, true)
 }
 
-func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessionID string, acquireExec bool) *types.NetworkEnforcement {
+func (a *App) runNetworkEnforcementPreflightWithLock(
+	ctx context.Context,
+	sessionID string,
+	acquireExec bool,
+) *types.NetworkEnforcement {
 	report := a.observedNetworkEnforcement(sessionID)
 	if report.Requested == types.NetworkEnforcementRequestNone {
 		report.Readiness = types.NetworkEnforcementStatusNone
@@ -780,16 +831,37 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 		CheckedAt: checkedAt,
 	}
 	if a == nil || a.cfg == nil || a.sessions == nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, nil, report, preflight, "runtime preflight dependencies are unavailable", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			nil,
+			report,
+			preflight,
+			"runtime preflight dependencies are unavailable",
+			false,
+		)
 	}
 	sess, ok := a.sessions.Get(sessionID)
 	if !ok {
-		return a.finishNetworkEnforcementPreflight(sessionID, nil, report, preflight, "session is unavailable", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			nil,
+			report,
+			preflight,
+			"session is unavailable",
+			false,
+		)
 	}
 	if acquireExec {
 		unlock, err := sess.LockExecContext(ctx)
 		if err != nil {
-			return a.finishNetworkEnforcementPreflight(sessionID, nil, report, preflight, "network preflight execution admission was cancelled: "+err.Error(), false)
+			return a.finishNetworkEnforcementPreflight(
+				sessionID,
+				nil,
+				report,
+				preflight,
+				"network preflight execution admission was cancelled: "+err.Error(),
+				false,
+			)
 		}
 		defer unlock()
 		// Admission may have waited for shared commands and their attachments to
@@ -810,49 +882,135 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 	sess.ResetNetworkEnforcement(report)
 
 	if runtime.GOOS != "linux" {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "proxy-required preflight is only available on Linux", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"proxy-required preflight is only available on Linux",
+			false,
+		)
 	}
-	if launchMode := strings.TrimSpace(os.Getenv(detached.EnvSupervisorLaunchMode)); launchMode != "systemd-user-delegated" {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the supervisor was not launched through the supported delegated systemd user-service path", false)
+	if launchMode := strings.TrimSpace(
+		os.Getenv(detached.EnvSupervisorLaunchMode),
+	); launchMode != "systemd-user-delegated" {
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"the supervisor was not launched through the supported delegated systemd user-service path",
+			false,
+		)
 	}
 	if !supportedDelegatedSupervisorCgroup(report.CgroupRoot) {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the observed cgroup root is not the delegated AgentSH transient supervisor unit", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"the observed cgroup root is not the delegated AgentSH transient supervisor unit",
+			false,
+		)
 	}
 	if !commandJailRequired(a.cfg) {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the strict command jail is not required by this runtime configuration", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"the strict command jail is not required by this runtime configuration",
+			false,
+		)
 	}
 	if !a.cfg.Approvals.Enabled || a.approvals == nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the synchronous AgentSH approval resolver is unavailable", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"the synchronous AgentSH approval resolver is unavailable",
+			false,
+		)
 	}
 	if a.ptraceTracer != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "strict command-jail preflight cannot run with ptrace execution", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"strict command-jail preflight cannot run with ptrace execution",
+			false,
+		)
 	}
 	binding := a.nethelperBindingSnapshot()
 	if strings.TrimSpace(binding.Credential) == "" {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the trusted supervisor has no in-memory nethelper instance credential", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"the trusted supervisor has no in-memory nethelper instance credential",
+			false,
+		)
 	}
 	if strings.TrimSpace(binding.CredentialFile) == "" {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the installed protected nethelper credential source was not supplied", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"the installed protected nethelper credential source was not supplied",
+			false,
+		)
 	}
 	helperSocket := strings.TrimSpace(binding.SocketPath)
 	if helperSocket == "" {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the privileged nethelper socket is not configured", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"the privileged nethelper socket is not configured",
+			false,
+		)
 	}
 
 	proxyURL := strings.TrimSpace(sess.ProxyURL())
 	proxyAddr, err := exactLoopbackProxyAddrPort(proxyURL)
 	if err != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "resolve exact AgentSH proxy listener: "+err.Error(), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"resolve exact AgentSH proxy listener: "+err.Error(),
+			false,
+		)
 	}
 	preflight.ProxyEndpointID = proxyAddr.String()
 	preflight.ProxyListenerProven = probeLoopbackProxy(proxyAddr.String())
 	if !preflight.ProxyListenerProven {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the actual AgentSH proxy listener did not accept a readiness connection", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"the actual AgentSH proxy listener did not accept a readiness connection",
+			false,
+		)
 	}
 
 	tcpListener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", "0"))
 	if err != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "start local direct-bypass TCP listener: "+err.Error(), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"start local direct-bypass TCP listener: "+err.Error(),
+			false,
+		)
 	}
 	defer tcpListener.Close()
 	tcpAccepted := make(chan bool, 1)
@@ -868,11 +1026,25 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 
 	udpAddr, err := net.ResolveUDPAddr("udp4", net.JoinHostPort("127.0.0.1", "0"))
 	if err != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "resolve local UDP probe listener: "+err.Error(), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"resolve local UDP probe listener: "+err.Error(),
+			false,
+		)
 	}
 	udpListener, err := net.ListenUDP("udp4", udpAddr)
 	if err != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "start local UDP probe listener: "+err.Error(), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"start local UDP probe listener: "+err.Error(),
+			false,
+		)
 	}
 	defer udpListener.Close()
 
@@ -881,7 +1053,14 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 		probeDir = os.TempDir()
 	}
 	if err := os.MkdirAll(probeDir, 0o700); err != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "prepare disposable preflight directory: "+err.Error(), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"prepare disposable preflight directory: "+err.Error(),
+			false,
+		)
 	}
 	probeID := "network-preflight-" + uuid.NewString()
 	refusalMarker := filepath.Join(probeDir, probeID+"-refusal-marker")
@@ -901,19 +1080,47 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 		ControlPath:       a.cfg.Server.UnixSocket.Path,
 	}
 	if strings.TrimSpace(probeOpts.ControlPath) == "" {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "the detached supervisor control socket path is unavailable for boundary probing", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"the detached supervisor control socket path is unavailable for boundary probing",
+			false,
+		)
 	}
 
-	barrierProven, barrierDetail := a.proveNetworkPreExecRefusal(ctx, sess, sessionID, probeID+"-refusal", refusalMarker, probeOpts)
+	barrierProven, barrierDetail := a.proveNetworkPreExecRefusal(
+		ctx,
+		sess,
+		sessionID,
+		probeID+"-refusal",
+		refusalMarker,
+		probeOpts,
+	)
 	preflight.FailClosedBarrierProven = barrierProven
 	preflight.RefusalLeftChildStopped = barrierProven
 	if !barrierProven {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, barrierDetail, false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			barrierDetail,
+			false,
+		)
 	}
 
 	inheritedFile, err := os.OpenFile(inheritedPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o600)
 	if err != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "create inherited-descriptor sentinel: "+err.Error(), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"create inherited-descriptor sentinel: "+err.Error(),
+			false,
+		)
 	}
 	defer inheritedFile.Close()
 	probeOpts.MarkerPath = runtimeMarker
@@ -924,11 +1131,25 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 	sess.SetCurrentCommandID(commandID)
 	wrappedReq, extra, err := a.prepareNetworkRuntimeProbe(sessionID, sess, commandID, probeOpts)
 	if err != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, err.Error(), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			err.Error(),
+			false,
+		)
 	}
 	if !commandBoundaryRequired(extra) {
 		closePreStartProcessFiles(extra)
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "strict wrapper did not select the command-jail boundary", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"strict wrapper did not select the command-jail boundary",
+			false,
+		)
 	}
 	extra.extraFiles = append(extra.extraFiles, inheritedFile)
 
@@ -938,7 +1159,14 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 	baseHook := a.cgroupHook(sessionID, commandID, policy.Limits{})
 	if baseHook == nil {
 		closePreStartProcessFiles(extra)
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "runtime cgroup hook is unavailable", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"runtime cgroup hook is unavailable",
+			false,
+		)
 	}
 	probeHook := func(pid int) (func() error, error) {
 		_, beforeErr := os.Lstat(runtimeMarker)
@@ -957,11 +1185,17 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 		}
 		active := sess.NetworkEnforcement()
 		if active == nil || active.Attachment == nil {
-			return wrapCleanup, fmt.Errorf("helper setup returned without per-command attachment evidence")
+			return wrapCleanup, fmt.Errorf(
+				"helper setup returned without per-command attachment evidence",
+			)
 		}
 		attachmentCopy := *active.Attachment
-		attachmentCopy.ProxyEndpointIDs = append([]string(nil), active.Attachment.ProxyEndpointIDs...)
-		attachmentCopy.BlockedTrafficClasses = append([]string(nil), active.Attachment.BlockedTrafficClasses...)
+		attachmentCopy.ProxyEndpointIDs = append(
+			[]string(nil),
+			active.Attachment.ProxyEndpointIDs...)
+		attachmentCopy.BlockedTrafficClasses = append(
+			[]string(nil),
+			active.Attachment.BlockedTrafficClasses...)
 		attachment = &attachmentCopy
 		_, afterErr := os.Lstat(runtimeMarker)
 		childStoppedDuringSetup = stoppedBefore && errors.Is(afterErr, os.ErrNotExist)
@@ -969,7 +1203,9 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 			return wrapCleanup, fmt.Errorf("disposable user code ran before helper setup completed")
 		}
 		if !cgroupContainsPID(attachment.CgroupPath, pid) {
-			return wrapCleanup, fmt.Errorf("disposable child PID was not observed in the attached command cgroup")
+			return wrapCleanup, fmt.Errorf(
+				"disposable child PID was not observed in the attached command cgroup",
+			)
 		}
 		return wrapCleanup, nil
 	}
@@ -992,14 +1228,35 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 	// decoding fails below. Persist that proof before every post-run return.
 	captureNetworkPreflightRunEvidence(preflight, report, attachment, cleanupProven)
 	if runErr != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "disposable runtime probe failed: "+runErr.Error(), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"disposable runtime probe failed: "+runErr.Error(),
+			false,
+		)
 	}
 	if exitCode != 0 {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, fmt.Sprintf("disposable runtime probe exited %d", exitCode), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			fmt.Sprintf("disposable runtime probe exited %d", exitCode),
+			false,
+		)
 	}
 	var runtimeProbe networkRuntimeProbeResult
 	if err := json.Unmarshal(bytes.TrimSpace(stdout), &runtimeProbe); err != nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "decode disposable runtime probe evidence: "+err.Error(), false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"decode disposable runtime probe evidence: "+err.Error(),
+			false,
+		)
 	}
 
 	directListenerUnreached := true
@@ -1017,14 +1274,23 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 	}
 
 	if attachment == nil {
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "disposable helper attachment evidence is missing", false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			"disposable helper attachment evidence is missing",
+			false,
+		)
 	}
 	preflight.CgroupPath = attachment.CgroupPath
 	preflight.CgroupID = attachment.CgroupID
 	preflight.RegistrationID = attachment.RegistrationID
-	preflight.CgroupPlacementProven = childStoppedDuringSetup && attachment.CgroupID != 0 && strings.TrimSpace(attachment.CgroupPath) != ""
+	preflight.CgroupPlacementProven = childStoppedDuringSetup && attachment.CgroupID != 0 &&
+		strings.TrimSpace(attachment.CgroupPath) != ""
 	preflight.HelperAuthenticated = attachment.HelperAuthenticated
-	preflight.HelperAttachProven = attachment.Status == types.NetworkEnforcementStatusActive && attachment.Tier == types.NetworkEnforcementTierHelperEBPFProxyRequired
+	preflight.HelperAttachProven = attachment.Status == types.NetworkEnforcementStatusActive &&
+		attachment.Tier == types.NetworkEnforcementTierHelperEBPFProxyRequired
 	preflight.DefaultDenyMapProven = attachment.DefaultDeny && attachment.AllowEntries > 0
 	preflight.InitialPolicyLocked = attachment.InitialPolicyLocked
 	preflight.PolicyUpdateFailClosed = attachment.PolicyUpdateFailClosed
@@ -1032,7 +1298,14 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 	preflight.Pinned = attachment.Pinned
 	preflight.Reloaded = attachment.Reloaded
 	preflight.ProxyConnectProven = runtimeProbe.ProxyConnectProven
-	preflight.ToolBoundaryProven = runtimeProbe.PrivateProcProven && runtimeProbe.CgroupFSHidden && runtimeProbe.HelperSocketHidden && runtimeProbe.CredentialSourceHidden && runtimeProbe.ControlPathsHidden && runtimeProbe.ReservedEnvScrubbed && runtimeProbe.InheritedDescriptorsClosed && runtimeProbe.NoNewPrivileges && runtimeProbe.CapabilitiesDropped
+	preflight.ToolBoundaryProven = runtimeProbe.PrivateProcProven && runtimeProbe.CgroupFSHidden &&
+		runtimeProbe.HelperSocketHidden &&
+		runtimeProbe.CredentialSourceHidden &&
+		runtimeProbe.ControlPathsHidden &&
+		runtimeProbe.ReservedEnvScrubbed &&
+		runtimeProbe.InheritedDescriptorsClosed &&
+		runtimeProbe.NoNewPrivileges &&
+		runtimeProbe.CapabilitiesDropped
 	preflight.PrivateProcProven = runtimeProbe.PrivateProcProven
 	preflight.CgroupFSHidden = runtimeProbe.CgroupFSHidden
 	preflight.HelperSocketHidden = runtimeProbe.HelperSocketHidden
@@ -1055,12 +1328,31 @@ func (a *App) runNetworkEnforcementPreflightWithLock(ctx context.Context, sessio
 		if strings.TrimSpace(runtimeProbe.Detail) != "" {
 			detail += ": " + runtimeProbe.Detail
 		}
-		return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, detail, false)
+		return a.finishNetworkEnforcementPreflight(
+			sessionID,
+			sess,
+			report,
+			preflight,
+			detail,
+			false,
+		)
 	}
-	return a.finishNetworkEnforcementPreflight(sessionID, sess, report, preflight, "disposable cgroup/helper/proxy/command-jail/bypass/cleanup preflight passed", true)
+	return a.finishNetworkEnforcementPreflight(
+		sessionID,
+		sess,
+		report,
+		preflight,
+		"disposable cgroup/helper/proxy/command-jail/bypass/cleanup preflight passed",
+		true,
+	)
 }
 
-func captureNetworkPreflightRunEvidence(preflight *types.NetworkPreflightEvidence, report *types.NetworkEnforcement, attachment *types.NetworkAttachmentEvidence, cleanupProven bool) {
+func captureNetworkPreflightRunEvidence(
+	preflight *types.NetworkPreflightEvidence,
+	report *types.NetworkEnforcement,
+	attachment *types.NetworkAttachmentEvidence,
+	cleanupProven bool,
+) {
 	if preflight == nil {
 		return
 	}
@@ -1078,7 +1370,12 @@ func captureNetworkPreflightRunEvidence(preflight *types.NetworkPreflightEvidenc
 	}
 }
 
-func (a *App) prepareNetworkRuntimeProbe(sessionID string, sess *session.Session, commandID string, opts networkRuntimeProbeOptions) (types.ExecRequest, *extraProcConfig, error) {
+func (a *App) prepareNetworkRuntimeProbe(
+	sessionID string,
+	sess *session.Session,
+	commandID string,
+	opts networkRuntimeProbeOptions,
+) (types.ExecRequest, *extraProcConfig, error) {
 	executable, err := os.Executable()
 	if err != nil {
 		return types.ExecRequest{}, nil, fmt.Errorf("locate AgentSH preflight executable: %w", err)
@@ -1108,25 +1405,37 @@ func (a *App) prepareNetworkRuntimeProbe(sessionID string, sess *session.Session
 	}
 	wrapper := a.setupSeccompWrapper(req, sessionID, sess)
 	if wrapper.setupErr != nil {
-		return types.ExecRequest{}, nil, fmt.Errorf("prepare strict command-jail probe: %w", wrapper.setupErr)
+		return types.ExecRequest{}, nil, fmt.Errorf(
+			"prepare strict command-jail probe: %w",
+			wrapper.setupErr,
+		)
 	}
 	if !commandBoundaryRequired(wrapper.extraCfg) {
 		closePreStartProcessFiles(wrapper.extraCfg)
-		return types.ExecRequest{}, nil, fmt.Errorf("strict command-jail probe did not receive a command boundary")
+		return types.ExecRequest{}, nil, fmt.Errorf(
+			"strict command-jail probe did not receive a command boundary",
+		)
 	}
 	configJSON := wrapper.wrappedReq.Env["AGENTSH_SECCOMP_CONFIG"]
 	var wrapperConfig seccompWrapperConfig
 	if err := json.Unmarshal([]byte(configJSON), &wrapperConfig); err != nil {
 		closePreStartProcessFiles(wrapper.extraCfg)
-		return types.ExecRequest{}, nil, fmt.Errorf("decode strict command-jail probe config: %w", err)
+		return types.ExecRequest{}, nil, fmt.Errorf(
+			"decode strict command-jail probe config: %w",
+			err,
+		)
 	}
 	if wrapperConfig.CommandJail == nil || !wrapperConfig.CommandJail.Required {
 		closePreStartProcessFiles(wrapper.extraCfg)
-		return types.ExecRequest{}, nil, fmt.Errorf("strict command-jail probe config omitted the required jail")
+		return types.ExecRequest{}, nil, fmt.Errorf(
+			"strict command-jail probe config omitted the required jail",
+		)
 	}
 	if !proxyRequiredRawSocketRulesConfigured(&wrapperConfig) {
 		closePreStartProcessFiles(wrapper.extraCfg)
-		return types.ExecRequest{}, nil, fmt.Errorf("strict command-jail probe config omitted fixed raw/packet socket creation denials")
+		return types.ExecRequest{}, nil, fmt.Errorf(
+			"strict command-jail probe config omitted fixed raw/packet socket creation denials",
+		)
 	}
 	// The probe is infrastructure evidence, not a policy operation. Keep the
 	// wrapper ACK and strict socket rules, while disabling file/exec policy and
@@ -1143,14 +1452,22 @@ func (a *App) prepareNetworkRuntimeProbe(sessionID string, sess *session.Session
 	encoded, err := json.Marshal(wrapperConfig)
 	if err != nil {
 		closePreStartProcessFiles(wrapper.extraCfg)
-		return types.ExecRequest{}, nil, fmt.Errorf("encode strict command-jail probe config: %w", err)
+		return types.ExecRequest{}, nil, fmt.Errorf(
+			"encode strict command-jail probe config: %w",
+			err,
+		)
 	}
 	wrapper.wrappedReq.Env["AGENTSH_SECCOMP_CONFIG"] = string(encoded)
 	wrapper.extraCfg.env["AGENTSH_SECCOMP_CONFIG"] = string(encoded)
 	return wrapper.wrappedReq, wrapper.extraCfg, nil
 }
 
-func (a *App) proveNetworkPreExecRefusal(ctx context.Context, sess *session.Session, sessionID, commandID, markerPath string, opts networkRuntimeProbeOptions) (bool, string) {
+func (a *App) proveNetworkPreExecRefusal(
+	ctx context.Context,
+	sess *session.Session,
+	sessionID, commandID, markerPath string,
+	opts networkRuntimeProbeOptions,
+) (bool, string) {
 	_ = os.Remove(markerPath)
 	opts.MarkerPath = markerPath
 	wrappedReq, extra, err := a.prepareNetworkRuntimeProbe(sessionID, sess, commandID, opts)
@@ -1180,8 +1497,16 @@ func (a *App) proveNetworkPreExecRefusal(ctx context.Context, sess *session.Sess
 	)
 	_, markerErr := os.Lstat(markerPath)
 	markerAbsent := errors.Is(markerErr, os.ErrNotExist)
-	if !hookSawStoppedChild || !markerAbsent || !errors.Is(runErr, forcedRefusal) || exitCode != 127 {
-		return false, fmt.Sprintf("forced setup failure did not prove that the disposable child remained stopped (hook_observed=%t marker_absent=%t expected_error=%t exit_code=%d error=%v)", hookSawStoppedChild, markerAbsent, errors.Is(runErr, forcedRefusal), exitCode, runErr)
+	if !hookSawStoppedChild || !markerAbsent || !errors.Is(runErr, forcedRefusal) ||
+		exitCode != 127 {
+		return false, fmt.Sprintf(
+			"forced setup failure did not prove that the disposable child remained stopped (hook_observed=%t marker_absent=%t expected_error=%t exit_code=%d error=%v)",
+			hookSawStoppedChild,
+			markerAbsent,
+			errors.Is(runErr, forcedRefusal),
+			exitCode,
+			runErr,
+		)
 	}
 	return true, ""
 }
@@ -1215,7 +1540,14 @@ func cgroupContainsPID(cgroupPath string, pid int) bool {
 	return false
 }
 
-func (a *App) finishNetworkEnforcementPreflight(sessionID string, sess *session.Session, report *types.NetworkEnforcement, preflight *types.NetworkPreflightEvidence, detail string, ready bool) *types.NetworkEnforcement {
+func (a *App) finishNetworkEnforcementPreflight(
+	sessionID string,
+	sess *session.Session,
+	report *types.NetworkEnforcement,
+	preflight *types.NetworkPreflightEvidence,
+	detail string,
+	ready bool,
+) *types.NetworkEnforcement {
 	if report == nil {
 		report = &types.NetworkEnforcement{}
 	}
@@ -1263,7 +1595,15 @@ func (a *App) finishNetworkEnforcementPreflight(sessionID string, sess *session.
 		report.RawSocketBlockConfigured = true
 		report.RawSocketsBlocked = preflight.RawSocketsBlocked
 		report.UnsupportedTrafficAction = "deny"
-		report.BlockedTrafficClasses = []string{"direct-tcp", "local-non-proxy-tcp", "udp", "quic", "command-dns", "raw-ip", "packet"}
+		report.BlockedTrafficClasses = []string{
+			"direct-tcp",
+			"local-non-proxy-tcp",
+			"udp",
+			"quic",
+			"command-dns",
+			"raw-ip",
+			"packet",
+		}
 		report.UnsupportedTrafficBlocked = preflight.UnsupportedTrafficProven
 		report.FailClosedSetup = preflight.FailClosedBarrierProven
 		report.TransparentRedirect = false
@@ -1315,13 +1655,14 @@ func (a *App) finishNetworkEnforcementPreflight(sessionID string, sess *session.
 		Type:      eventType,
 		SessionID: sessionID,
 		Fields: map[string]any{
-			"requested":                       report.Requested,
-			"readiness":                       report.Readiness,
-			"status":                          report.Status,
-			"tier":                            report.Tier,
-			"network_policy_enforced":         report.NetworkPolicyEnforced,
-			"strict_startup_refusal_required": report.Requested == types.NetworkEnforcementRequestStrict && !report.Ready(),
-			"preflight":                       preflight,
+			"requested":               report.Requested,
+			"readiness":               report.Readiness,
+			"status":                  report.Status,
+			"tier":                    report.Tier,
+			"network_policy_enforced": report.NetworkPolicyEnforced,
+			"strict_startup_refusal_required": report.Requested == types.NetworkEnforcementRequestStrict &&
+				!report.Ready(),
+			"preflight": preflight,
 		},
 	}
 	if a != nil && a.store != nil {
@@ -1336,7 +1677,11 @@ func (a *App) finishNetworkEnforcementPreflight(sessionID string, sess *session.
 func (a *App) getSessionNetworkEnforcement(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "id")
 	if a == nil || a.sessions == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "session manager unavailable"})
+		writeJSON(
+			w,
+			http.StatusServiceUnavailable,
+			map[string]any{"error": "session manager unavailable"},
+		)
 		return
 	}
 	if _, ok := a.sessions.Get(sessionID); !ok {
@@ -1349,7 +1694,11 @@ func (a *App) getSessionNetworkEnforcement(w http.ResponseWriter, r *http.Reques
 func (a *App) preflightSessionNetworkEnforcement(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "id")
 	if a == nil || a.sessions == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "session manager unavailable"})
+		writeJSON(
+			w,
+			http.StatusServiceUnavailable,
+			map[string]any{"error": "session manager unavailable"},
+		)
 		return
 	}
 	sess, ok := a.sessions.Get(sessionID)
@@ -1358,7 +1707,11 @@ func (a *App) preflightSessionNetworkEnforcement(w http.ResponseWriter, r *http.
 		return
 	}
 	if sess.Snapshot().State == types.SessionStateBusy {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "network enforcement preflight requires an idle session"})
+		writeJSON(
+			w,
+			http.StatusConflict,
+			map[string]any{"error": "network enforcement preflight requires an idle session"},
+		)
 		return
 	}
 	report := a.runNetworkEnforcementPreflight(r.Context(), sessionID)
@@ -1370,12 +1723,20 @@ func (a *App) preflightSessionNetworkEnforcement(w http.ResponseWriter, r *http.
 
 func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 	if !a.authorizeNethelperRecovery(r) {
-		writeJSON(w, http.StatusForbidden, map[string]any{"error": "wrapper-owned Unix recovery authority is required"})
+		writeJSON(
+			w,
+			http.StatusForbidden,
+			map[string]any{"error": "wrapper-owned Unix recovery authority is required"},
+		)
 		return
 	}
 	sessionID := chi.URLParam(r, "id")
 	if a == nil || a.sessions == nil || a.nethelperBinding == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "nethelper binding is unavailable"})
+		writeJSON(
+			w,
+			http.StatusServiceUnavailable,
+			map[string]any{"error": "nethelper binding is unavailable"},
+		)
 		return
 	}
 	a.sessionTopologyMu.Lock()
@@ -1386,7 +1747,11 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.sessions.Count() != 1 {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "nethelper rebind requires an exact single-session supervisor"})
+		writeJSON(
+			w,
+			http.StatusConflict,
+			map[string]any{"error": "nethelper rebind requires an exact single-session supervisor"},
+		)
 		return
 	}
 	var req helperRebindRequest
@@ -1395,7 +1760,11 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 	}
 	unlock, err := sess.LockExecContext(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusRequestTimeout, map[string]any{"error": "rebind execution admission cancelled"})
+		writeJSON(
+			w,
+			http.StatusRequestTimeout,
+			map[string]any{"error": "rebind execution admission cancelled"},
+		)
 		return
 	}
 	defer unlock()
@@ -1403,7 +1772,13 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 	oldBinding := a.nethelperBindingSnapshot()
 	if a.nethelperBinding.uncertainCandidate() != nil {
 		if err := a.resolveCandidateCleanup(r.Context()); err != nil {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": "candidate cleanup remains uncertain; exact cleanup confirmation and authenticated zero-registration status are required before rebinding"})
+			writeJSON(
+				w,
+				http.StatusConflict,
+				map[string]any{
+					"error": "candidate cleanup remains uncertain; exact cleanup confirmation and authenticated zero-registration status are required before rebinding",
+				},
+			)
 			return
 		}
 	}
@@ -1417,21 +1792,41 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 	}
 	previous := sess.NetworkEnforcement()
 	if helperBindingCleanupUncertain(previous) {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "previous helper cleanup is uncertain; retaining fail-closed registration state"})
+		writeJSON(
+			w,
+			http.StatusConflict,
+			map[string]any{
+				"error": "previous helper cleanup is uncertain; retaining fail-closed registration state",
+			},
+		)
 		return
 	}
-	if previous != nil && previous.Attachment != nil && previous.Attachment.Status == types.NetworkEnforcementStatusActive {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "a command helper attachment is active"})
+	if previous != nil && previous.Attachment != nil &&
+		previous.Attachment.Status == types.NetworkEnforcementStatusActive {
+		writeJSON(
+			w,
+			http.StatusConflict,
+			map[string]any{"error": "a command helper attachment is active"},
+		)
 		return
 	}
 	if oldBinding.LeaseID != "" {
 		oldStatus, statusErr := a.authenticatedNethelperStatus(r.Context(), oldBinding)
 		if statusErr == nil && oldStatus.ActiveRegistrationCount != 0 {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": "old helper still reports active registrations"})
+			writeJSON(
+				w,
+				http.StatusConflict,
+				map[string]any{"error": "old helper still reports active registrations"},
+			)
 			return
 		}
-		if statusErr != nil && previous != nil && previous.Status == types.NetworkEnforcementStatusActive {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": "old helper registration state is uncertain"})
+		if statusErr != nil && previous != nil &&
+			previous.Status == types.NetworkEnforcementStatusActive {
+			writeJSON(
+				w,
+				http.StatusConflict,
+				map[string]any{"error": "old helper registration state is uncertain"},
+			)
 			return
 		}
 	}
@@ -1443,42 +1838,92 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 		candidate, err = a.loadCandidateNethelperBinding(req, oldBinding.Generation+1)
 	}
 	if err != nil {
-		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper validation failed: %w", err))
+		a.recordNetworkEnforcementFailure(
+			sessionID,
+			"",
+			fmt.Errorf("candidate helper validation failed: %w", err),
+		)
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": boundedLifecycleReason(err)})
 		return
 	}
 	if candidate.LeaseID == oldBinding.LeaseID || candidate.SocketPath == oldBinding.SocketPath {
-		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper must be a distinct lease and socket"))
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate helper must be a distinct lease and socket"})
+		a.recordNetworkEnforcementFailure(
+			sessionID,
+			"",
+			fmt.Errorf("candidate helper must be a distinct lease and socket"),
+		)
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"error": "candidate helper must be a distinct lease and socket"},
+		)
 		return
 	}
 	status, err := a.authenticatedNethelperStatus(r.Context(), candidate)
 	if err != nil {
-		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper authentication failed: %w", err))
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "candidate helper authentication failed"})
+		a.recordNetworkEnforcementFailure(
+			sessionID,
+			"",
+			fmt.Errorf("candidate helper authentication failed: %w", err),
+		)
+		writeJSON(
+			w,
+			http.StatusBadGateway,
+			map[string]any{"error": "candidate helper authentication failed"},
+		)
 		return
 	}
-	if status.HelperKind != "ephemeral" || status.LeaseID != candidate.LeaseID || status.UnitName != candidate.UnitName ||
-		!status.CreatedAt.Equal(candidate.CreatedAt) || !status.HardExpiresAt.Equal(candidate.HardExpiresAt) {
-		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper status identity does not match bootstrap metadata"))
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate helper identity does not match bootstrap metadata"})
+	if status.HelperKind != "ephemeral" || status.LeaseID != candidate.LeaseID ||
+		status.UnitName != candidate.UnitName ||
+		!status.CreatedAt.Equal(candidate.CreatedAt) ||
+		!status.HardExpiresAt.Equal(candidate.HardExpiresAt) {
+		a.recordNetworkEnforcementFailure(
+			sessionID,
+			"",
+			fmt.Errorf("candidate helper status identity does not match bootstrap metadata"),
+		)
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"error": "candidate helper identity does not match bootstrap metadata"},
+		)
 		return
 	}
-	if !containsCapability(status.Capabilities, string(nethelper.OperationInstanceStatus)) || !containsCapability(status.Capabilities, string(nethelper.OperationRenewInstance)) {
-		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper lacks required lifecycle capabilities"))
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate helper lacks required lifecycle capabilities"})
+	if !containsCapability(status.Capabilities, string(nethelper.OperationInstanceStatus)) ||
+		!containsCapability(status.Capabilities, string(nethelper.OperationRenewInstance)) {
+		a.recordNetworkEnforcementFailure(
+			sessionID,
+			"",
+			fmt.Errorf("candidate helper lacks required lifecycle capabilities"),
+		)
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"error": "candidate helper lacks required lifecycle capabilities"},
+		)
 		return
 	}
 	if status.ActiveRegistrationCount != 0 {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "candidate helper has active registrations"})
+		writeJSON(
+			w,
+			http.StatusConflict,
+			map[string]any{"error": "candidate helper has active registrations"},
+		)
 		return
 	}
 	const cleanupSlack = 10 * time.Minute
 	const recoveryThreshold = time.Hour
 	createdAt, _ := sess.Timestamps()
 	sessionLifetime := a.sessionAbsoluteTimeout
-	if sessionLifetime <= 0 || status.HardExpiresAt.Before(createdAt.Add(sessionLifetime).Add(cleanupSlack)) {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate hard expiry does not cover the remaining absolute session lifetime and cleanup slack"})
+	if sessionLifetime <= 0 ||
+		status.HardExpiresAt.Before(createdAt.Add(sessionLifetime).Add(cleanupSlack)) {
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{
+				"error": "candidate hard expiry does not cover the remaining absolute session lifetime and cleanup slack",
+			},
+		)
 		return
 	}
 	expectedInitialSoft := candidate.HardExpiresAt
@@ -1488,16 +1933,31 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 			expectedInitialSoft = candidate.HardExpiresAt
 		}
 	}
-	if status.SoftExpiresAt.After(status.HardExpiresAt) || status.SoftExpiresAt.Before(expectedInitialSoft) {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate soft expiry is inconsistent with bootstrap negotiation"})
+	if status.SoftExpiresAt.After(status.HardExpiresAt) ||
+		status.SoftExpiresAt.Before(expectedInitialSoft) {
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{
+				"error": "candidate soft expiry is inconsistent with bootstrap negotiation",
+			},
+		)
 		return
 	}
 	if candidate.RenewalRequired && status.SoftExpiresAt.Sub(time.Now().UTC()) < recoveryThreshold {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "candidate soft expiry is below the recovery threshold"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"error": "candidate soft expiry is below the recovery threshold"},
+		)
 		return
 	}
 	if !candidate.RenewalRequired && !status.SoftExpiresAt.Equal(status.HardExpiresAt) {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "runtime-only candidate unexpectedly advertises soft expiry"})
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			map[string]any{"error": "runtime-only candidate unexpectedly advertises soft expiry"},
+		)
 		return
 	}
 	candidate.Capabilities = append([]string(nil), status.Capabilities...)
@@ -1522,19 +1982,35 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 		// Retain exact registration identity only when candidate cleanup was not
 		// proven. A successfully cleaned, disposable preflight must not create a
 		// tombstone that would retry the helper's non-idempotent cleanup RPC.
-		cleanupProven := report != nil && report.Preflight != nil && report.Preflight.HelperCleanupProven
+		cleanupProven := report != nil && report.Preflight != nil &&
+			report.Preflight.HelperCleanupProven
 		if !cleanupProven {
 			var attachment *types.NetworkAttachmentEvidence
 			if report != nil {
 				attachment = report.Attachment
 				if attachment == nil && report.Preflight != nil {
-					attachment = &types.NetworkAttachmentEvidence{RegistrationID: report.Preflight.RegistrationID, CgroupID: report.Preflight.CgroupID, CgroupPath: report.Preflight.CgroupPath, Pinned: report.Preflight.Pinned, Status: types.NetworkEnforcementStatusFailed}
+					attachment = &types.NetworkAttachmentEvidence{
+						RegistrationID: report.Preflight.RegistrationID,
+						CgroupID:       report.Preflight.CgroupID,
+						CgroupPath:     report.Preflight.CgroupPath,
+						Pinned:         report.Preflight.Pinned,
+						Status:         types.NetworkEnforcementStatusFailed,
+					}
 				}
 			}
-			a.nethelperBinding.recordUncertainCandidate(sessionID, candidate, attachment, "staged strict preflight failed")
+			a.nethelperBinding.recordUncertainCandidate(
+				sessionID,
+				candidate,
+				attachment,
+				"staged strict preflight failed",
+			)
 		}
 		a.nethelperBinding.replace(oldBinding)
-		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper strict preflight failed"))
+		a.recordNetworkEnforcementFailure(
+			sessionID,
+			"",
+			fmt.Errorf("candidate helper strict preflight failed"),
+		)
 		report = sess.NetworkEnforcement()
 		writeJSON(w, http.StatusBadGateway, map[string]any{
 			"error":               "candidate helper strict preflight failed; previous binding retained and execution remains failed",
@@ -1544,25 +2020,60 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lifecycle, lifecycleErr := a.nethelperLifecycleEvidence(r.Context())
-	if lifecycleErr != nil || lifecycle == nil || lifecycle.Status != "active" || lifecycle.ActiveRegistrationCount != 0 {
-		a.nethelperBinding.recordUncertainCandidate(sessionID, candidate, report.Attachment, "post-preflight lifecycle status was uncertain")
+	if lifecycleErr != nil || lifecycle == nil || lifecycle.Status != "active" ||
+		lifecycle.ActiveRegistrationCount != 0 {
+		a.nethelperBinding.recordUncertainCandidate(
+			sessionID,
+			candidate,
+			report.Attachment,
+			"post-preflight lifecycle status was uncertain",
+		)
 		a.nethelperBinding.replace(oldBinding)
-		a.recordNetworkEnforcementFailure(sessionID, "", fmt.Errorf("candidate helper lost authenticated status after preflight"))
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "candidate helper lost authenticated status after preflight"})
+		a.recordNetworkEnforcementFailure(
+			sessionID,
+			"",
+			fmt.Errorf("candidate helper lost authenticated status after preflight"),
+		)
+		writeJSON(
+			w,
+			http.StatusBadGateway,
+			map[string]any{"error": "candidate helper lost authenticated status after preflight"},
+		)
 		return
 	}
 	report.HelperLifecycle = lifecycle
 	report.Normalize()
 	sess.ResetNetworkEnforcement(report)
 	if a.detachedRuntime != nil {
-		if err := a.detachedRuntime.UpdateNethelperBinding(candidate.SocketPath, candidate.CredentialFile, candidate.BootstrapResultPath, candidate.Generation); err != nil {
-			_ = a.detachedRuntime.MarkFailed("persist replacement nethelper identity: " + err.Error())
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "replacement helper is live but its durable path/generation identity could not be committed; exact reconciliation is required"})
+		if err := a.detachedRuntime.UpdateNethelperBinding(
+			candidate.SocketPath,
+			candidate.CredentialFile,
+			candidate.BootstrapResultPath,
+			candidate.Generation,
+		); err != nil {
+			_ = a.detachedRuntime.MarkFailed(
+				"persist replacement nethelper identity: " + err.Error(),
+			)
+			writeJSON(
+				w,
+				http.StatusInternalServerError,
+				map[string]any{
+					"error": "replacement helper is live but its durable path/generation identity could not be committed; exact reconciliation is required",
+				},
+			)
 			return
 		}
 		if err := a.detachedRuntime.UpdateNetwork(report); err != nil {
-			_ = a.detachedRuntime.MarkFailed("persist replacement network readiness: " + err.Error())
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "replacement helper readiness could not be persisted; exact reconciliation is required"})
+			_ = a.detachedRuntime.MarkFailed(
+				"persist replacement network readiness: " + err.Error(),
+			)
+			writeJSON(
+				w,
+				http.StatusInternalServerError,
+				map[string]any{
+					"error": "replacement helper readiness could not be persisted; exact reconciliation is required",
+				},
+			)
 			return
 		}
 	}

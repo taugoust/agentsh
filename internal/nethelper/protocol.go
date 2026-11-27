@@ -44,7 +44,12 @@ const (
 // omitted/default field and normalizes to EnforcementTierNone.
 func (t EnforcementTier) Valid() bool {
 	switch t {
-	case "", EnforcementTierNone, EnforcementTierCgroupDelegated, EnforcementTierHelperEBPFGate, EnforcementTierHelperEBPFProxy, EnforcementTierHelperEBPFProxyRequired:
+	case "",
+		EnforcementTierNone,
+		EnforcementTierCgroupDelegated,
+		EnforcementTierHelperEBPFGate,
+		EnforcementTierHelperEBPFProxy,
+		EnforcementTierHelperEBPFProxyRequired:
 		return true
 	default:
 		return false
@@ -161,7 +166,12 @@ const (
 // Valid reports whether r is empty or a known cleanup reason.
 func (r CleanupReason) Valid() bool {
 	switch r {
-	case "", CleanupReasonSessionEnded, CleanupReasonSupervisorExit, CleanupReasonRegistrationFailed, CleanupReasonPolicyReset, CleanupReasonOrphanReaped:
+	case "",
+		CleanupReasonSessionEnded,
+		CleanupReasonSupervisorExit,
+		CleanupReasonRegistrationFailed,
+		CleanupReasonPolicyReset,
+		CleanupReasonOrphanReaped:
 		return true
 	default:
 		return false
@@ -305,10 +315,16 @@ func (r RegisterSessionCgroupRequest) Validate() error {
 	if r.SupervisorPID < 0 {
 		return fmt.Errorf("supervisor_pid must not be negative")
 	}
-	if strings.TrimSpace(r.HelperInstanceCredential) != "" && strings.TrimSpace(r.SessionNonce) != "" {
-		return fmt.Errorf("helper_instance_credential and legacy session_nonce must not both be set")
+	if strings.TrimSpace(r.HelperInstanceCredential) != "" &&
+		strings.TrimSpace(r.SessionNonce) != "" {
+		return fmt.Errorf(
+			"helper_instance_credential and legacy session_nonce must not both be set",
+		)
 	}
-	if err := validateWireCredential("helper_instance_credential", r.HelperInstanceCredential); err != nil {
+	if err := validateWireCredential(
+		"helper_instance_credential",
+		r.HelperInstanceCredential,
+	); err != nil {
 		return err
 	}
 	if err := validateWireCredential("session_nonce", r.SessionNonce); err != nil {
@@ -317,7 +333,11 @@ func (r RegisterSessionCgroupRequest) Validate() error {
 	if err := validateCgroupPath("cgroup_path", r.CgroupPath, true); err != nil {
 		return err
 	}
-	if err := validateCgroupPath("supervisor_cgroup_path", r.SupervisorCgroupPath, false); err != nil {
+	if err := validateCgroupPath(
+		"supervisor_cgroup_path",
+		r.SupervisorCgroupPath,
+		false,
+	); err != nil {
 		return err
 	}
 	if strings.TrimSpace(r.PinPath) != "" {
@@ -330,7 +350,8 @@ func (r RegisterSessionCgroupRequest) Validate() error {
 		return fmt.Errorf("invalid mode %q", r.Mode)
 	}
 	mode := r.Mode.Normalized()
-	if (r.Tier.Normalized() == EnforcementTierHelperEBPFProxy || r.Tier.Normalized() == EnforcementTierHelperEBPFProxyRequired) && r.Proxy == nil {
+	if (r.Tier.Normalized() == EnforcementTierHelperEBPFProxy || r.Tier.Normalized() == EnforcementTierHelperEBPFProxyRequired) &&
+		r.Proxy == nil {
 		return fmt.Errorf("tier %q requires proxy metadata", r.Tier.Normalized())
 	}
 	if mode == BuiltinModeCgroupProxyRedirect && r.Proxy == nil {
@@ -416,10 +437,18 @@ func (r UpdatePolicyMapRequest) Validate() error {
 		}
 	}
 	if len(r.Allow) > maxPolicyMapEntries {
-		return fmt.Errorf("allow contains %d entries, maximum is %d", len(r.Allow), maxPolicyMapEntries)
+		return fmt.Errorf(
+			"allow contains %d entries, maximum is %d",
+			len(r.Allow),
+			maxPolicyMapEntries,
+		)
 	}
 	if len(r.Deny) > maxPolicyMapEntries {
-		return fmt.Errorf("deny contains %d entries, maximum is %d", len(r.Deny), maxPolicyMapEntries)
+		return fmt.Errorf(
+			"deny contains %d entries, maximum is %d",
+			len(r.Deny),
+			maxPolicyMapEntries,
+		)
 	}
 	for i, entry := range r.Allow {
 		if err := entry.Validate(); err != nil {
@@ -513,7 +542,12 @@ type InstanceStatusRequest struct {
 }
 
 func (r InstanceStatusRequest) Validate() error {
-	return validateInstanceLifecycleRequest(r.ProtocolVersion, r.RequestID, r.LeaseID, r.HelperInstanceCredential)
+	return validateInstanceLifecycleRequest(
+		r.ProtocolVersion,
+		r.RequestID,
+		r.LeaseID,
+		r.HelperInstanceCredential,
+	)
 }
 
 type InstanceStatusResponse struct {
@@ -542,7 +576,12 @@ type RenewInstanceRequest struct {
 }
 
 func (r RenewInstanceRequest) Validate() error {
-	return validateInstanceLifecycleRequest(r.ProtocolVersion, r.RequestID, r.LeaseID, r.HelperInstanceCredential)
+	return validateInstanceLifecycleRequest(
+		r.ProtocolVersion,
+		r.RequestID,
+		r.LeaseID,
+		r.HelperInstanceCredential,
+	)
 }
 
 type RenewInstanceResponse = InstanceStatusResponse
@@ -570,7 +609,12 @@ type AttestCompositionRuntimeRequest struct {
 }
 
 func (r AttestCompositionRuntimeRequest) Validate() error {
-	return validateInstanceLifecycleRequest(r.ProtocolVersion, r.RequestID, r.LeaseID, r.HelperInstanceCredential)
+	return validateInstanceLifecycleRequest(
+		r.ProtocolVersion,
+		r.RequestID,
+		r.LeaseID,
+		r.HelperInstanceCredential,
+	)
 }
 
 type CompositionRuntimeAttestation struct {
@@ -589,7 +633,10 @@ type AttestCompositionRuntimeResponse struct {
 	Error           string                        `json:"error,omitempty"`
 }
 
-func validateInstanceLifecycleRequest(protocolVersion int, requestID, leaseID, credential string) error {
+func validateInstanceLifecycleRequest(
+	protocolVersion int,
+	requestID, leaseID, credential string,
+) error {
 	if err := validateProtocolVersion(protocolVersion); err != nil {
 		return err
 	}
@@ -694,7 +741,9 @@ func DecodeRenewInstanceRequestJSON(data []byte) (RenewInstanceRequest, error) {
 	return req, req.Validate()
 }
 
-func DecodeAttestCompositionRuntimeRequestJSON(data []byte) (AttestCompositionRuntimeRequest, error) {
+func DecodeAttestCompositionRuntimeRequestJSON(
+	data []byte,
+) (AttestCompositionRuntimeRequest, error) {
 	var req AttestCompositionRuntimeRequest
 	if err := decodeStrictJSON(data, &req); err != nil {
 		return req, err

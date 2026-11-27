@@ -43,7 +43,11 @@ func waitForTraceesDrained(t *testing.T, tr *Tracer, timeout time.Duration) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Logf("waitForTraceesDrained: timed out after %v with %d tracees remaining", timeout, tr.TraceeCount())
+	t.Logf(
+		"waitForTraceesDrained: timed out after %v with %d tracees remaining",
+		timeout,
+		tr.TraceeCount(),
+	)
 }
 
 // waitForAttach polls until TraceeCount() > 0 or timeout, ensuring attach happened.
@@ -785,7 +789,12 @@ func TestIntegration_FileDeny(t *testing.T) {
 
 	// Use ready-file sync: shell waits for ready file before running test action
 	markerFile := filepath.Join(tmpDir, "marker.txt")
-	shellCmd := fmt.Sprintf(`while [ ! -f %s ]; do sleep 0.01; done; echo test > %s 2>/dev/null || echo denied > %s`, readyFile, targetFile, markerFile)
+	shellCmd := fmt.Sprintf(
+		`while [ ! -f %s ]; do sleep 0.01; done; echo test > %s 2>/dev/null || echo denied > %s`,
+		readyFile,
+		targetFile,
+		markerFile,
+	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -805,7 +814,11 @@ func TestIntegration_FileDeny(t *testing.T) {
 	<-errCh
 
 	calls := fileHandler.CallsMatching("denied.txt")
-	t.Logf("file handler received %d calls matching 'denied.txt' out of %d total", len(calls), fileHandler.CallCount())
+	t.Logf(
+		"file handler received %d calls matching 'denied.txt' out of %d total",
+		len(calls),
+		fileHandler.CallCount(),
+	)
 
 	if fileHandler.CallCount() == 0 {
 		t.Error("file handler received zero calls; handleFile is not wired up")
@@ -852,7 +865,11 @@ func TestIntegration_FileAllow(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() { errCh <- tr.Run(ctx) }()
 
-	shellCmd := fmt.Sprintf(`while [ ! -f %s ]; do sleep 0.01; done; echo hello > %s`, readyFile, targetFile)
+	shellCmd := fmt.Sprintf(
+		`while [ ! -f %s ]; do sleep 0.01; done; echo hello > %s`,
+		readyFile,
+		targetFile,
+	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -921,7 +938,13 @@ func TestIntegration_NetworkDenyConnect(t *testing.T) {
 	readyFile := filepath.Join(tmpDir, "ready")
 	outfile := filepath.Join(tmpDir, "result.txt")
 	// Use -n to skip DNS resolution (avoids systemd-resolved latency).
-	shellCmd := fmt.Sprintf(`while [ ! -f %s ]; do sleep 0.01; done; (echo test | %s -n -w 1 127.0.0.1 12345) 2>/dev/null && echo connected > %s || echo refused > %s`, readyFile, ncPath, outfile, outfile)
+	shellCmd := fmt.Sprintf(
+		`while [ ! -f %s ]; do sleep 0.01; done; (echo test | %s -n -w 1 127.0.0.1 12345) 2>/dev/null && echo connected > %s || echo refused > %s`,
+		readyFile,
+		ncPath,
+		outfile,
+		outfile,
+	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -982,7 +1005,12 @@ func TestIntegration_SignalDeny(t *testing.T) {
 	tmpDir := t.TempDir()
 	readyFile := filepath.Join(tmpDir, "ready")
 	outfile := filepath.Join(tmpDir, "result.txt")
-	shellCmd := fmt.Sprintf(`while [ ! -f %s ]; do sleep 0.01; done; kill -USR1 $$ 2>/dev/null && echo signaled > %s || echo denied > %s`, readyFile, outfile, outfile)
+	shellCmd := fmt.Sprintf(
+		`while [ ! -f %s ]; do sleep 0.01; done; kill -USR1 $$ 2>/dev/null && echo signaled > %s || echo denied > %s`,
+		readyFile,
+		outfile,
+		outfile,
+	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -1040,7 +1068,11 @@ func TestIntegration_SignalRedirect(t *testing.T) {
 	tmpDir := t.TempDir()
 	readyFile := filepath.Join(tmpDir, "ready")
 	outfile := filepath.Join(tmpDir, "result.txt")
-	shellCmd := fmt.Sprintf(`trap "echo redirected > %s" USR2; while [ ! -f %s ]; do sleep 0.01; done; kill -USR1 $$; sleep 0.1`, outfile, readyFile)
+	shellCmd := fmt.Sprintf(
+		`trap "echo redirected > %s" USR2; while [ ! -f %s ]; do sleep 0.01; done; kill -USR1 $$; sleep 0.1`,
+		outfile,
+		readyFile,
+	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -1109,8 +1141,16 @@ func TestIntegration_FileRedirect(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() { errCh <- tr.Run(ctx) }()
 
-	cmd := exec.Command("/bin/sh", "-c",
-		fmt.Sprintf("while [ ! -f %s ]; do sleep 0.01; done; cat %s > %s", readyFile, origFile, outputFile))
+	cmd := exec.Command(
+		"/bin/sh",
+		"-c",
+		fmt.Sprintf(
+			"while [ ! -f %s ]; do sleep 0.01; done; cat %s > %s",
+			readyFile,
+			origFile,
+			outputFile,
+		),
+	)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -1197,7 +1237,11 @@ func TestIntegration_SoftDelete(t *testing.T) {
 	// Original location should be gone.
 	t.Logf("checking targetFile: %s", targetFile)
 	if fi, err := os.Stat(targetFile); err == nil {
-		t.Errorf("file should not exist at original path, but it does: mode=%v size=%d", fi.Mode(), fi.Size())
+		t.Errorf(
+			"file should not exist at original path, but it does: mode=%v size=%d",
+			fi.Mode(),
+			fi.Size(),
+		)
 	} else {
 		t.Logf("targetFile stat: %v", err)
 	}
@@ -1283,9 +1327,17 @@ func TestIntegration_ConnectRedirect(t *testing.T) {
 
 	// Use nc (netcat) to connect; -n skips DNS resolution to avoid
 	// systemd-resolved latency. Wait for ready file first.
-	cmd := exec.Command("/bin/sh", "-c",
-		fmt.Sprintf("while [ ! -f %s ]; do sleep 0.01; done; echo | nc -n -w2 127.0.0.1 %d > %s 2>/dev/null || echo failed > %s",
-			readyFile, origPort, outputFile, outputFile))
+	cmd := exec.Command(
+		"/bin/sh",
+		"-c",
+		fmt.Sprintf(
+			"while [ ! -f %s ]; do sleep 0.01; done; echo | nc -n -w2 127.0.0.1 %d > %s 2>/dev/null || echo failed > %s",
+			readyFile,
+			origPort,
+			outputFile,
+			outputFile,
+		),
+	)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -1348,8 +1400,16 @@ func TestIntegration_ScratchPage(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() { errCh <- tr.Run(ctx) }()
 
-	cmd := exec.Command("/bin/sh", "-c",
-		fmt.Sprintf("while [ ! -f %s ]; do sleep 0.01; done; cat %s > %s", readyFile, origFile, outputFile))
+	cmd := exec.Command(
+		"/bin/sh",
+		"-c",
+		fmt.Sprintf(
+			"while [ ! -f %s ]; do sleep 0.01; done; cat %s > %s",
+			readyFile,
+			origFile,
+			outputFile,
+		),
+	)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -1404,7 +1464,11 @@ func TestIntegration_TracerPidMasked(t *testing.T) {
 	tmpDir := t.TempDir()
 	readyFile := filepath.Join(tmpDir, "ready")
 	outfile := filepath.Join(tmpDir, "tracerpid.txt")
-	shellCmd := fmt.Sprintf(`while [ ! -f %s ]; do sleep 0.01; done; grep TracerPid /proc/self/status > %s`, readyFile, outfile)
+	shellCmd := fmt.Sprintf(
+		`while [ ! -f %s ]; do sleep 0.01; done; grep TracerPid /proc/self/status > %s`,
+		readyFile,
+		outfile,
+	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -1458,7 +1522,11 @@ func TestIntegration_TracerPidNotMasked(t *testing.T) {
 	tmpDir := t.TempDir()
 	readyFile := filepath.Join(tmpDir, "ready")
 	outfile := filepath.Join(tmpDir, "tracerpid.txt")
-	shellCmd := fmt.Sprintf(`while [ ! -f %s ]; do sleep 0.01; done; grep TracerPid /proc/self/status > %s`, readyFile, outfile)
+	shellCmd := fmt.Sprintf(
+		`while [ ! -f %s ]; do sleep 0.01; done; grep TracerPid /proc/self/status > %s`,
+		readyFile,
+		outfile,
+	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -1647,7 +1715,12 @@ func TestIntegration_DNSConnectRedirect(t *testing.T) {
 	readyFile := filepath.Join(tmpDir, "ready")
 	outfile := filepath.Join(tmpDir, "dns.txt")
 	// Use getent to trigger a DNS query
-	shellCmd := fmt.Sprintf(`while [ ! -f %s ]; do sleep 0.01; done; getent hosts example.com > %s 2>&1 || echo "failed" > %s`, readyFile, outfile, outfile)
+	shellCmd := fmt.Sprintf(
+		`while [ ! -f %s ]; do sleep 0.01; done; getent hosts example.com > %s 2>&1 || echo "failed" > %s`,
+		readyFile,
+		outfile,
+		outfile,
+	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -1678,7 +1751,9 @@ func TestIntegration_DNSConnectRedirect(t *testing.T) {
 	netHandler.mu.Unlock()
 
 	if !sawDNS {
-		t.Log("DNS operation not captured — DNS proxy may not have intercepted (system DNS config dependent)")
+		t.Log(
+			"DNS operation not captured — DNS proxy may not have intercepted (system DNS config dependent)",
+		)
 		// This is expected in some CI environments where DNS doesn't go through connect()
 	}
 }
@@ -1941,7 +2016,8 @@ func TestIntegration_ChildInheritsEscalation(t *testing.T) {
 	outfile := filepath.Join(tmpDir, "child_tracerpid.txt")
 	shellCmd := fmt.Sprintf(
 		`while [ ! -f %s ]; do sleep 0.01; done; cat /proc/self/status > /dev/null; grep TracerPid /proc/self/status > %s`,
-		readyFile, outfile,
+		readyFile,
+		outfile,
 	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
 	if err := cmd.Start(); err != nil {
@@ -2071,7 +2147,9 @@ func TestIntegration_SkipReinjectionForChildren(t *testing.T) {
 // --- Arg-Level BPF Filter Integration Tests ---
 
 func TestArgFilterOpenatReadOnly(t *testing.T) {
-	t.Skip("openat arg filter not wired in injection path yet (policy bypass risk); see inject_seccomp.go")
+	t.Skip(
+		"openat arg filter not wired in injection path yet (policy bypass risk); see inject_seccomp.go",
+	)
 	requirePtrace(t)
 
 	tmpDir := t.TempDir()
@@ -2138,14 +2216,21 @@ func TestArgFilterOpenatReadOnly(t *testing.T) {
 	if len(writeCalls) == 0 {
 		t.Error("file handler did not intercept the write/create open of writable.txt")
 	} else {
-		t.Logf("write/create open intercepted: path=%q flags=0x%x", writeCalls[0].Path, writeCalls[0].Flags)
+		t.Logf(
+			"write/create open intercepted: path=%q flags=0x%x",
+			writeCalls[0].Path,
+			writeCalls[0].Flags,
+		)
 	}
 
 	// The read-only open (cat readFile) must NOT have been intercepted when
 	// ArgLevelFilter is active — BPF allows it in-kernel.
 	readCalls := fileHandler.CallsMatching("readable.txt")
 	if len(readCalls) > 0 {
-		t.Errorf("file handler intercepted a read-only open that should have been bypassed by BPF: %+v", readCalls)
+		t.Errorf(
+			"file handler intercepted a read-only open that should have been bypassed by BPF: %+v",
+			readCalls,
+		)
 	} else {
 		t.Log("read-only open was correctly bypassed by BPF arg filter (no ptrace stop)")
 	}
@@ -2294,9 +2379,17 @@ func TestArgFilterSendtoConnected(t *testing.T) {
 	netHandler.mu.Lock()
 	for _, c := range netHandler.calls {
 		if c.Syscall == unix.SYS_SENDTO {
-			t.Errorf("sendto reached network handler (should have been bypassed by BPF null-pointer filter): family=%d addr=%s port=%d", c.Family, c.Address, c.Port)
+			t.Errorf(
+				"sendto reached network handler (should have been bypassed by BPF null-pointer filter): family=%d addr=%s port=%d",
+				c.Family,
+				c.Address,
+				c.Port,
+			)
 		}
 	}
 	netHandler.mu.Unlock()
-	t.Logf("network handler call count: %d (connect allowed; sendto-null-dest bypassed)", netHandler.CallCount())
+	t.Logf(
+		"network handler call count: %d (connect allowed; sendto-null-dest bypassed)",
+		netHandler.CallCount(),
+	)
 }

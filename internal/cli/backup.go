@@ -40,13 +40,17 @@ func newBackupCmd() *cobra.Command {
 		Short: "Create a backup of agentsh data",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if output == "" {
-				output = fmt.Sprintf("agentsh-backup-%s.tar.gz", time.Now().Format("20060102-150405"))
+				output = fmt.Sprintf(
+					"agentsh-backup-%s.tar.gz",
+					time.Now().Format("20060102-150405"),
+				)
 			}
 			return createBackup(cmd, output, configPath, verify)
 		},
 	}
 
-	cmd.Flags().StringVarP(&output, "output", "o", "", "Output file path (default: agentsh-backup-<timestamp>.tar.gz)")
+	cmd.Flags().
+		StringVarP(&output, "output", "o", "", "Output file path (default: agentsh-backup-<timestamp>.tar.gz)")
 	cmd.Flags().BoolVar(&verify, "verify", false, "Verify backup after creation")
 	cmd.Flags().StringVar(&configPath, "config", "/etc/agentsh/config.yaml", "Path to config file")
 
@@ -71,7 +75,8 @@ func newRestoreCmd() *cobra.Command {
 
 	cmd.Flags().StringVarP(&input, "input", "i", "", "Input backup file (required)")
 	cmd.Flags().BoolVar(&verify, "verify", false, "Verify restored data")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be restored without making changes")
+	cmd.Flags().
+		BoolVar(&dryRun, "dry-run", false, "Show what would be restored without making changes")
 	cmd.MarkFlagRequired("input")
 
 	return cmd
@@ -81,7 +86,12 @@ func createBackup(cmd *cobra.Command, output, configPath string, verify bool) er
 	// Load config to get actual paths
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not load config from %s: %v (using defaults)\n", configPath, err)
+		fmt.Fprintf(
+			cmd.ErrOrStderr(),
+			"warning: could not load config from %s: %v (using defaults)\n",
+			configPath,
+			err,
+		)
 		cfg = &config.Config{}
 		// Apply defaults manually if config load fails
 		cfg.Audit.Storage.SQLitePath = "/var/lib/agentsh/events.db"
@@ -192,7 +202,12 @@ func verifyBackup(cmd *cobra.Command, backupPath string) error {
 		}
 
 		if n != header.Size {
-			return fmt.Errorf("size mismatch for %q: expected %d, got %d", header.Name, header.Size, n)
+			return fmt.Errorf(
+				"size mismatch for %q: expected %d, got %d",
+				header.Name,
+				header.Size,
+				n,
+			)
 		}
 
 		fileCount++
@@ -257,7 +272,13 @@ func restoreBackup(cmd *cobra.Command, input string, verify, dryRun bool) error 
 		}
 
 		if dryRun {
-			fmt.Fprintf(cmd.OutOrStdout(), "Would restore: %s -> %s (%d bytes)\n", safeName, destPath, header.Size)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"Would restore: %s -> %s (%d bytes)\n",
+				safeName,
+				destPath,
+				header.Size,
+			)
 			continue
 		}
 
@@ -269,7 +290,11 @@ func restoreBackup(cmd *cobra.Command, input string, verify, dryRun bool) error 
 		}
 
 		// Extract file
-		outFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
+		outFile, err := os.OpenFile(
+			destPath,
+			os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
+			os.FileMode(header.Mode),
+		)
 		if err != nil {
 			return fmt.Errorf("create file %s: %w", destPath, err)
 		}
@@ -282,7 +307,12 @@ func restoreBackup(cmd *cobra.Command, input string, verify, dryRun bool) error 
 
 		// Restore modification time
 		if err := os.Chtimes(destPath, header.ModTime, header.ModTime); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not set mtime for %s: %v\n", destPath, err)
+			fmt.Fprintf(
+				cmd.ErrOrStderr(),
+				"warning: could not set mtime for %s: %v\n",
+				destPath,
+				err,
+			)
 		}
 
 		restoredCount++
@@ -296,7 +326,12 @@ func restoreBackup(cmd *cobra.Command, input string, verify, dryRun bool) error 
 		// Verify restored files exist and have content
 		for _, path := range []string{configDest, auditDBDest} {
 			if info, err := os.Stat(path); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "warning: restored file %s not accessible: %v\n", path, err)
+				fmt.Fprintf(
+					cmd.ErrOrStderr(),
+					"warning: restored file %s not accessible: %v\n",
+					path,
+					err,
+				)
 			} else if info.Size() == 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), "warning: restored file %s is empty\n", path)
 			}

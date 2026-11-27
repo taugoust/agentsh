@@ -33,8 +33,14 @@ func TestParseCommandTag(t *testing.T) {
 		t.Run(tc.tag, func(t *testing.T) {
 			gotRows, gotAff := parseCommandTag(tc.tag)
 			if !i64eq(gotRows, tc.wantRows) || !i64eq(gotAff, tc.wantAff) {
-				t.Fatalf("parseCommandTag(%q) = (%v, %v) want (%v, %v)",
-					tc.tag, ptrToStr(gotRows), ptrToStr(gotAff), ptrToStr(tc.wantRows), ptrToStr(tc.wantAff))
+				t.Fatalf(
+					"parseCommandTag(%q) = (%v, %v) want (%v, %v)",
+					tc.tag,
+					ptrToStr(gotRows),
+					ptrToStr(gotAff),
+					ptrToStr(tc.wantRows),
+					ptrToStr(tc.wantAff),
+				)
 			}
 		})
 	}
@@ -59,7 +65,9 @@ func ptrToStr(p *int64) string {
 // of backend frames to the upstream-side pipe (asynchronously, so the test
 // can call forwardUpstreamUntilRFQ which reads them). drainClient drains the
 // client-side pipe in the background so writes don't block.
-func upstreamReadFixture(t *testing.T) (pc *proxyConn, scriptUpstream func([]pgproto3.BackendMessage), clientFE *pgproto3.Frontend) {
+func upstreamReadFixture(
+	t *testing.T,
+) (pc *proxyConn, scriptUpstream func([]pgproto3.BackendMessage), clientFE *pgproto3.Frontend) {
 	pc, fe, _ := newSimpleQueryFixture(t)
 	clientFE = fe
 	up1, up2 := net.Pipe()
@@ -279,7 +287,11 @@ func TestForwardUpstream_TxStartedAt_PreservedOnTtoT(t *testing.T) {
 		t.Fatalf("forward: %v", err)
 	}
 	if !pc.state.smState.TxStartedAt.Equal(preserved) {
-		t.Errorf("TxStartedAt drifted on T→T: got %v want %v", pc.state.smState.TxStartedAt, preserved)
+		t.Errorf(
+			"TxStartedAt drifted on T→T: got %v want %v",
+			pc.state.smState.TxStartedAt,
+			preserved,
+		)
 	}
 }
 

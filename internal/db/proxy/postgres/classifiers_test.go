@@ -11,9 +11,24 @@ import (
 
 func TestBuildClassifierMap_PerDialect(t *testing.T) {
 	svcs := []Service{
-		{Name: "a", Family: "postgres", Dialect: "postgres", Listen: ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "a")}},
-		{Name: "b", Family: "postgres", Dialect: "postgres", Listen: ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "b")}},
-		{Name: "c", Family: "postgres", Dialect: "cockroachdb", Listen: ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "c")}},
+		{
+			Name:    "a",
+			Family:  "postgres",
+			Dialect: "postgres",
+			Listen:  ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "a")},
+		},
+		{
+			Name:    "b",
+			Family:  "postgres",
+			Dialect: "postgres",
+			Listen:  ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "b")},
+		},
+		{
+			Name:    "c",
+			Family:  "postgres",
+			Dialect: "cockroachdb",
+			Listen:  ServiceListener{Kind: "unix", Path: filepath.Join(t.TempDir(), "c")},
+		},
 	}
 	m, err := buildClassifierMap(svcs)
 	if err != nil {

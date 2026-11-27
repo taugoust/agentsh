@@ -52,7 +52,15 @@ func newSessionNethelperRebindCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL:   cfg.serverAddr,
+					GRPCAddr:      cfg.grpcAddr,
+					APIKey:        cfg.apiKey,
+					Transport:     cfg.transport,
+					ClientTimeout: cfg.getClientTimeout(),
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -60,7 +68,9 @@ func newSessionNethelperRebindCmd() *cobra.Command {
 				RebindSessionNethelperAuthorized(context.Context, string, types.NethelperRebindRequest, string) (types.NetworkEnforcement, error)
 			})
 			if !ok {
-				return fmt.Errorf("selected client transport does not support the REST nethelper rebind endpoint")
+				return fmt.Errorf(
+					"selected client transport does not support the REST nethelper rebind endpoint",
+				)
 			}
 			tokenBytes, err := os.ReadFile(recoveryTokenFile)
 			if err != nil {
@@ -73,25 +83,34 @@ func newSessionNethelperRebindCmd() *cobra.Command {
 			if len(recoveryToken) < 32 || strings.ContainsAny(recoveryToken, " \t\r\n") {
 				return fmt.Errorf("wrapper recovery token is invalid")
 			}
-			report, err := rebindClient.RebindSessionNethelperAuthorized(cmd.Context(), args[0], types.NethelperRebindRequest{
-				BootstrapResultPath:       bootstrapResult,
-				SocketPath:                socketPath,
-				CredentialFile:            credentialFile,
-				ExpectedLeaseID:           expectedLease,
-				ExpectedBindingGeneration: expectedGeneration,
-			}, recoveryToken)
+			report, err := rebindClient.RebindSessionNethelperAuthorized(
+				cmd.Context(),
+				args[0],
+				types.NethelperRebindRequest{
+					BootstrapResultPath:       bootstrapResult,
+					SocketPath:                socketPath,
+					CredentialFile:            credentialFile,
+					ExpectedLeaseID:           expectedLease,
+					ExpectedBindingGeneration: expectedGeneration,
+				},
+				recoveryToken,
+			)
 			if err != nil {
 				return err
 			}
 			return printJSON(cmd, report)
 		},
 	}
-	cmd.Flags().StringVar(&bootstrapResult, "bootstrap-result", "", "Protected candidate bootstrap.json path")
+	cmd.Flags().
+		StringVar(&bootstrapResult, "bootstrap-result", "", "Protected candidate bootstrap.json path")
 	cmd.Flags().StringVar(&socketPath, "socket", "", "Candidate helper Unix socket path")
-	cmd.Flags().StringVar(&credentialFile, "credential-file", "", "Protected candidate credential source path")
+	cmd.Flags().
+		StringVar(&credentialFile, "credential-file", "", "Protected candidate credential source path")
 	cmd.Flags().StringVar(&expectedLease, "expected-lease", "", "Expected candidate lease ID")
-	cmd.Flags().Uint64Var(&expectedGeneration, "expected-generation", 0, "Current binding generation (optimistic concurrency check)")
-	cmd.Flags().StringVar(&recoveryTokenFile, "recovery-token-file", "", "Wrapper-owned private recovery token file")
+	cmd.Flags().
+		Uint64Var(&expectedGeneration, "expected-generation", 0, "Current binding generation (optimistic concurrency check)")
+	cmd.Flags().
+		StringVar(&recoveryTokenFile, "recovery-token-file", "", "Wrapper-owned private recovery token file")
 	for _, name := range []string{"bootstrap-result", "socket", "credential-file", "expected-lease", "expected-generation", "recovery-token-file"} {
 		_ = cmd.MarkFlagRequired(name)
 	}
@@ -115,11 +134,23 @@ func newSessionCreateCmd() *cobra.Command {
 		Short: "Create a new session",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL:   cfg.serverAddr,
+					GRPCAddr:      cfg.grpcAddr,
+					APIKey:        cfg.apiKey,
+					Transport:     cfg.transport,
+					ClientTimeout: cfg.getClientTimeout(),
+				},
+			)
 			if err != nil {
 				return err
 			}
-			req := types.CreateSessionRequest{Workspace: workspace, Policy: policy, Home: userHomeDir()}
+			req := types.CreateSessionRequest{
+				Workspace: workspace,
+				Policy:    policy,
+				Home:      userHomeDir(),
+			}
 			if overlayMode && shadowMode {
 				return fmt.Errorf("--overlay and --shadow are mutually exclusive")
 			}
@@ -132,7 +163,9 @@ func newSessionCreateCmd() *cobra.Command {
 			}
 			if shadowKeepOnDestroy {
 				if req.WorkspaceMode != string(types.WorkspaceModeShadow) {
-					return fmt.Errorf("--shadow-keep-on-destroy requires --shadow or --workspace-mode shadow")
+					return fmt.Errorf(
+						"--shadow-keep-on-destroy requires --shadow or --workspace-mode shadow",
+					)
 				}
 				req.Shadow = &types.CreateShadowOptions{KeepOnDestroy: true}
 			}
@@ -164,14 +197,20 @@ func newSessionCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&workspace, "workspace", ".", "Workspace directory")
 	cmd.Flags().StringVar(&policy, "policy", "default", "Policy name")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
-	cmd.Flags().BoolVar(&realPaths, "real-paths", false, "Use real host paths instead of /workspace")
-	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct, overlay, or shadow")
-	cmd.Flags().StringVar(&runtimeHomeMode, "runtime-home", "", "Process HOME mode: isolated or real")
-	cmd.Flags().StringVar(&envBaseMode, "env-base", "", "Child env base: minimal or inherit_allowed")
-	cmd.Flags().StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
+	cmd.Flags().
+		BoolVar(&realPaths, "real-paths", false, "Use real host paths instead of /workspace")
+	cmd.Flags().
+		StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct, overlay, or shadow")
+	cmd.Flags().
+		StringVar(&runtimeHomeMode, "runtime-home", "", "Process HOME mode: isolated or real")
+	cmd.Flags().
+		StringVar(&envBaseMode, "env-base", "", "Child env base: minimal or inherit_allowed")
+	cmd.Flags().
+		StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
 	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
 	cmd.Flags().BoolVar(&shadowMode, "shadow", false, "Use shadow workspace mode")
-	cmd.Flags().BoolVar(&shadowKeepOnDestroy, "shadow-keep-on-destroy", false, "Keep shadow workspace on session destroy/expiry for later accept/reject")
+	cmd.Flags().
+		BoolVar(&shadowKeepOnDestroy, "shadow-keep-on-destroy", false, "Keep shadow workspace on session destroy/expiry for later accept/reject")
 	return cmd
 }
 
@@ -181,7 +220,14 @@ func newSessionListCmd() *cobra.Command {
 		Short: "List sessions",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -193,7 +239,11 @@ func newSessionListCmd() *cobra.Command {
 						return listErr
 					}
 					if len(metas) == 0 {
-						return fmt.Errorf("agentsh daemon unavailable at %s and no usable detached supervisors were found under %s (stale metadata, missing supervisor.sock, and dead PIDs are ignored); start one with: agentsh session start --detach --workspace . --workspace-mode shadow --json", cfg.serverAddr, detachedSessionsRoot())
+						return fmt.Errorf(
+							"agentsh daemon unavailable at %s and no usable detached supervisors were found under %s (stale metadata, missing supervisor.sock, and dead PIDs are ignored); start one with: agentsh session start --detach --workspace . --workspace-mode shadow --json",
+							cfg.serverAddr,
+							detachedSessionsRoot(),
+						)
 					}
 					return printJSON(cmd, metas)
 				}
@@ -212,7 +262,14 @@ func newSessionInfoCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -221,7 +278,10 @@ func newSessionInfoCmd() *cobra.Command {
 				// A successful exact stop removes the supervisor socket, so a live
 				// API can no longer return a 404. Protocol-v2 terminal records are
 				// protected durable evidence for wrapper cleanup after that point.
-				status, terminalErr := detached.ReadTerminalRuntimeStatusFromRoot(detachedSessionsRoot(), args[0])
+				status, terminalErr := detached.ReadTerminalRuntimeStatusFromRoot(
+					detachedSessionsRoot(),
+					args[0],
+				)
 				if terminalErr == nil {
 					return printJSON(cmd, status)
 				}
@@ -240,7 +300,14 @@ func newSessionDestroyCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -261,7 +328,15 @@ func newSessionDiffCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL:   cfg.serverAddr,
+					GRPCAddr:      cfg.grpcAddr,
+					APIKey:        cfg.apiKey,
+					Transport:     cfg.transport,
+					ClientTimeout: cfg.getClientTimeout(),
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -274,7 +349,12 @@ func newSessionDiffCmd() *cobra.Command {
 				return err
 			}
 			if review.Generation != 0 && review.Hash != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Review generation: %d\nReview hash: %s\n", review.Generation, review.Hash)
+				fmt.Fprintf(
+					cmd.ErrOrStderr(),
+					"Review generation: %d\nReview hash: %s\n",
+					review.Generation,
+					review.Hash,
+				)
 			}
 			return nil
 		},
@@ -291,19 +371,34 @@ func newSessionAcceptCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport, ClientTimeout: cfg.getClientTimeout()})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL:   cfg.serverAddr,
+					GRPCAddr:      cfg.grpcAddr,
+					APIKey:        cfg.apiKey,
+					Transport:     cfg.transport,
+					ClientTimeout: cfg.getClientTimeout(),
+				},
+			)
 			if err != nil {
 				return err
 			}
-			s, err := c.AcceptSessionOverlayReviewed(cmd.Context(), args[0], reviewGeneration, reviewHash)
+			s, err := c.AcceptSessionOverlayReviewed(
+				cmd.Context(),
+				args[0],
+				reviewGeneration,
+				reviewHash,
+			)
 			if err != nil {
 				return err
 			}
 			return printJSON(cmd, s)
 		},
 	}
-	cmd.Flags().Uint64Var(&reviewGeneration, "review-generation", 0, "Fresh shadow review generation returned by session diff")
-	cmd.Flags().StringVar(&reviewHash, "review-hash", "", "Fresh shadow review hash returned by session diff")
+	cmd.Flags().
+		Uint64Var(&reviewGeneration, "review-generation", 0, "Fresh shadow review generation returned by session diff")
+	cmd.Flags().
+		StringVar(&reviewHash, "review-hash", "", "Fresh shadow review hash returned by session diff")
 	return cmd
 }
 
@@ -314,7 +409,14 @@ func newSessionRejectCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -351,7 +453,14 @@ func newSessionUpdateCmd() *cobra.Command {
 			}
 
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}
@@ -421,12 +530,23 @@ When no type is specified, all log types are shown.`,
 					}
 				}
 				if !valid {
-					return fmt.Errorf("invalid log type %q: must be one of %v", logType, ValidLogTypes())
+					return fmt.Errorf(
+						"invalid log type %q: must be one of %v",
+						logType,
+						ValidLogTypes(),
+					)
 				}
 			}
 
 			cfg := getClientConfig(cmd)
-			c, err := client.NewForCLI(client.CLIOptions{HTTPBaseURL: cfg.serverAddr, GRPCAddr: cfg.grpcAddr, APIKey: cfg.apiKey, Transport: cfg.transport})
+			c, err := client.NewForCLI(
+				client.CLIOptions{
+					HTTPBaseURL: cfg.serverAddr,
+					GRPCAddr:    cfg.grpcAddr,
+					APIKey:      cfg.apiKey,
+					Transport:   cfg.transport,
+				},
+			)
 			if err != nil {
 				return err
 			}

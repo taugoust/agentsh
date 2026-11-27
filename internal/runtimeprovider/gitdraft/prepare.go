@@ -23,7 +23,8 @@ type InputReport struct {
 }
 
 func PrepareInputBundle(ctx context.Context, git, repository, output string) (InputReport, error) {
-	if !cleanAbsolute(git) || !cleanAbsolute(repository) || !cleanAbsolute(output) || pathsOverlap(repository, output) {
+	if !cleanAbsolute(git) || !cleanAbsolute(repository) || !cleanAbsolute(output) ||
+		pathsOverlap(repository, output) {
 		return InputReport{}, fmt.Errorf("Git Draft input preparation paths are invalid")
 	}
 	resolved, err := filepath.EvalSymlinks(repository)
@@ -39,9 +40,27 @@ func PrepareInputBundle(ctx context.Context, git, repository, output string) (In
 	}
 	defer os.RemoveAll(home)
 	run := func(dir string, allowNoMatch bool, args ...string) (string, error) {
-		cmd := exec.CommandContext(ctx, git, append([]string{"-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "-c", "protocol.file.allow=always"}, args...)...)
+		cmd := exec.CommandContext(
+			ctx,
+			git,
+			append(
+				[]string{
+					"-c",
+					"core.hooksPath=/dev/null",
+					"-c",
+					"commit.gpgSign=false",
+					"-c",
+					"protocol.file.allow=always",
+				},
+				args...)...)
 		cmd.Dir = dir
-		cmd.Env = []string{"HOME=" + home, "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_LFS_SKIP_SMUDGE=1", "LC_ALL=C"}
+		cmd.Env = []string{
+			"HOME=" + home,
+			"GIT_CONFIG_NOSYSTEM=1",
+			"GIT_TERMINAL_PROMPT=0",
+			"GIT_LFS_SKIP_SMUDGE=1",
+			"LC_ALL=C",
+		}
 		data, runErr := cmd.CombinedOutput()
 		if allowNoMatch {
 			if exit, ok := runErr.(*exec.ExitError); ok && exit.ExitCode() == 1 {
@@ -49,7 +68,11 @@ func PrepareInputBundle(ctx context.Context, git, repository, output string) (In
 			}
 		}
 		if runErr != nil {
-			return "", fmt.Errorf("trusted Git preparation %q failed: %s", args[0], bounded(string(data)))
+			return "", fmt.Errorf(
+				"trusted Git preparation %q failed: %s",
+				args[0],
+				bounded(string(data)),
+			)
 		}
 		return string(data), nil
 	}
@@ -71,14 +94,25 @@ func PrepareInputBundle(ctx context.Context, git, repository, output string) (In
 	}
 	commonDir, _ = filepath.Abs(commonDir)
 	if filepath.Clean(strings.TrimSpace(gitDir)) != filepath.Clean(commonDir) {
-		return InputReport{}, fmt.Errorf("linked Git worktrees are unsupported for autonomous Drafts")
+		return InputReport{}, fmt.Errorf(
+			"linked Git worktrees are unsupported for autonomous Drafts",
+		)
 	}
-	status, err := run(repository, false, "status", "--porcelain=v2", "--untracked-files=all", "--ignored=matching")
+	status, err := run(
+		repository,
+		false,
+		"status",
+		"--porcelain=v2",
+		"--untracked-files=all",
+		"--ignored=matching",
+	)
 	if err != nil {
 		return InputReport{}, err
 	}
 	if strings.TrimSpace(status) != "" {
-		return InputReport{}, fmt.Errorf("autonomous Drafts require a clean repository without untracked or ignored files")
+		return InputReport{}, fmt.Errorf(
+			"autonomous Drafts require a clean repository without untracked or ignored files",
+		)
 	}
 	sparse, _ := run(repository, true, "config", "--bool", "core.sparseCheckout")
 	if strings.TrimSpace(sparse) == "true" {
@@ -93,7 +127,19 @@ func PrepareInputBundle(ctx context.Context, git, repository, output string) (In
 			return InputReport{}, fmt.Errorf("submodules are unsupported for autonomous Drafts")
 		}
 	}
-	lfs, err := run(repository, true, "grep", "-I", "-n", "-E", `filter[[:space:]]*=[[:space:]]*lfs`, "HEAD", "--", ".gitattributes", ":(glob)**/.gitattributes")
+	lfs, err := run(
+		repository,
+		true,
+		"grep",
+		"-I",
+		"-n",
+		"-E",
+		`filter[[:space:]]*=[[:space:]]*lfs`,
+		"HEAD",
+		"--",
+		".gitattributes",
+		":(glob)**/.gitattributes",
+	)
 	if err != nil {
 		return InputReport{}, err
 	}
@@ -127,7 +173,15 @@ func PrepareInputBundle(ctx context.Context, git, repository, output string) (In
 	if _, err := run(bare, false, "init", "--quiet", "--bare"); err != nil {
 		return InputReport{}, err
 	}
-	if _, err := run(bare, false, "fetch", "--quiet", "--no-tags", repository, baseline+":"+baselineRef); err != nil {
+	if _, err := run(
+		bare,
+		false,
+		"fetch",
+		"--quiet",
+		"--no-tags",
+		repository,
+		baseline+":"+baselineRef,
+	); err != nil {
 		return InputReport{}, err
 	}
 	bundle := filepath.Join(work, "input.bundle")
@@ -160,10 +214,18 @@ func PrepareInputBundle(ctx context.Context, git, repository, output string) (In
 	if err != nil {
 		return InputReport{}, err
 	}
-	return InputReport{SchemaVersion: 1, Repository: repository, Branch: branch, BaselineCommit: baseline, SHA256: "sha256:" + hex.EncodeToString(hasher.Sum(nil)), Size: size}, nil
+	return InputReport{
+		SchemaVersion:  1,
+		Repository:     repository,
+		Branch:         branch,
+		BaselineCommit: baseline,
+		SHA256:         "sha256:" + hex.EncodeToString(hasher.Sum(nil)),
+		Size:           size,
+	}, nil
 }
 
 func pathsOverlap(left, right string) bool {
 	rel, err := filepath.Rel(left, right)
-	return err == nil && (rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+	return err == nil &&
+		(rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }

@@ -23,7 +23,9 @@ func TestInstallShellShim_ReplacesAndPreservesReal(t *testing.T) {
 		t.Fatalf("write shim: %v", err)
 	}
 
-	if err := InstallShellShim(InstallShellShimOptions{Root: root, ShimPath: shimPath}); err != nil {
+	if err := InstallShellShim(
+		InstallShellShimOptions{Root: root, ShimPath: shimPath},
+	); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 
@@ -58,10 +60,14 @@ func TestInstallShellShim_Idempotent(t *testing.T) {
 		t.Fatalf("write shim: %v", err)
 	}
 
-	if err := InstallShellShim(InstallShellShimOptions{Root: root, ShimPath: shimPath}); err != nil {
+	if err := InstallShellShim(
+		InstallShellShimOptions{Root: root, ShimPath: shimPath},
+	); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if err := InstallShellShim(InstallShellShimOptions{Root: root, ShimPath: shimPath}); err != nil {
+	if err := InstallShellShim(
+		InstallShellShimOptions{Root: root, ShimPath: shimPath},
+	); err != nil {
 		t.Fatalf("install again: %v", err)
 	}
 
@@ -81,7 +87,9 @@ func TestInstallShellShim_SkipsMissingTargets(t *testing.T) {
 	if err := os.WriteFile(shimPath, []byte("SHIM\n"), 0o755); err != nil {
 		t.Fatalf("write shim: %v", err)
 	}
-	if err := InstallShellShim(InstallShellShimOptions{Root: root, ShimPath: shimPath, InstallBash: true}); err != nil {
+	if err := InstallShellShim(
+		InstallShellShimOptions{Root: root, ShimPath: shimPath, InstallBash: true},
+	); err != nil {
 		t.Fatalf("install: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "bin", "sh")); err == nil {
@@ -103,10 +111,14 @@ func TestUninstallShellShim_RestoresReal(t *testing.T) {
 		t.Fatalf("write shim: %v", err)
 	}
 
-	if err := InstallShellShim(InstallShellShimOptions{Root: root, ShimPath: shimPath}); err != nil {
+	if err := InstallShellShim(
+		InstallShellShimOptions{Root: root, ShimPath: shimPath},
+	); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if err := UninstallShellShim(InstallShellShimOptions{Root: root, InstallBash: false}); err != nil {
+	if err := UninstallShellShim(
+		InstallShellShimOptions{Root: root, InstallBash: false},
+	); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(binDir, "sh.real")); err == nil {

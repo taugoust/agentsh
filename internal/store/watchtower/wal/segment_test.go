@@ -15,7 +15,12 @@ const testSegmentMax = 16 * 1024 * 1024
 
 func TestSegment_OpenWriteSeal(t *testing.T) {
 	dir := t.TempDir()
-	seg, err := OpenSegment(dir, 0, SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 7}, testSegmentMax)
+	seg, err := OpenSegment(
+		dir,
+		0,
+		SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 7},
+		testSegmentMax,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +58,12 @@ func TestSegment_OpenWriteSeal(t *testing.T) {
 
 func TestSegment_RecoversInProgress(t *testing.T) {
 	dir := t.TempDir()
-	seg, err := OpenSegment(dir, 0, SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 0}, testSegmentMax)
+	seg, err := OpenSegment(
+		dir,
+		0,
+		SegmentHeader{Version: SegmentVersion, Flags: FlagGenInit, Generation: 0},
+		testSegmentMax,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +110,12 @@ func TestSegment_RecoversInProgress(t *testing.T) {
 
 func TestSegment_FilenamePadding(t *testing.T) {
 	dir := t.TempDir()
-	seg, err := OpenSegment(dir, 42, SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 0}, testSegmentMax)
+	seg, err := OpenSegment(
+		dir,
+		42,
+		SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 0},
+		testSegmentMax,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +132,12 @@ func TestSegment_FilenamePadding(t *testing.T) {
 // Seal is idempotent (returns nil).
 func TestSegment_OperationsAfterSealReturnError(t *testing.T) {
 	dir := t.TempDir()
-	seg, err := OpenSegment(dir, 0, SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 0}, testSegmentMax)
+	seg, err := OpenSegment(
+		dir,
+		0,
+		SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 0},
+		testSegmentMax,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +163,12 @@ func TestSegment_OperationsAfterSealReturnError(t *testing.T) {
 // ErrSegmentClosed; a second Close is a no-op.
 func TestSegment_OperationsAfterCloseReturnError(t *testing.T) {
 	dir := t.TempDir()
-	seg, err := OpenSegment(dir, 0, SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 0}, testSegmentMax)
+	seg, err := OpenSegment(
+		dir,
+		0,
+		SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 0},
+		testSegmentMax,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +195,12 @@ func TestSegment_OperationsAfterCloseReturnError(t *testing.T) {
 func TestSegment_RoundTripLargeIndex(t *testing.T) {
 	dir := t.TempDir()
 	const largeIndex uint64 = 12_345_678_901
-	seg, err := OpenSegment(dir, largeIndex, SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 1}, testSegmentMax)
+	seg, err := OpenSegment(
+		dir,
+		largeIndex,
+		SegmentHeader{Version: SegmentVersion, Flags: 0, Generation: 1},
+		testSegmentMax,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

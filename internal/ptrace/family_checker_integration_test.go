@@ -176,7 +176,11 @@ func buildSocketHelper(t *testing.T) string {
 //  2. Shell execs helperBin, which waits for readyFile2 → written by the
 //     test after a 200ms pause to let the exec event propagate through the
 //     tracer. This ensures the helper's socket() call is seen under ptrace.
-func runWithFamilyChecker(t *testing.T, cfg TracerConfig, helperBin, readyFile1, readyFile2, outFile string) string {
+func runWithFamilyChecker(
+	t *testing.T,
+	cfg TracerConfig,
+	helperBin, readyFile1, readyFile2, outFile string,
+) string {
 	t.Helper()
 	tr := NewTracer(cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -246,7 +250,10 @@ func TestIntegration_FamilyChecker_Errno(t *testing.T) {
 	if !strings.Contains(result, "EAFNOSUPPORT") &&
 		!strings.Contains(result, "address family not supported") &&
 		!strings.Contains(result, "errno=97") {
-		t.Errorf("expected socket(AF_ALG) to return EAFNOSUPPORT from FamilyChecker; got: %q", result)
+		t.Errorf(
+			"expected socket(AF_ALG) to return EAFNOSUPPORT from FamilyChecker; got: %q",
+			result,
+		)
 	}
 	if result == "socket_result=OK" {
 		t.Errorf("socket(AF_ALG) was NOT blocked by FamilyChecker (errno action returned OK)")
@@ -308,7 +315,10 @@ func TestIntegration_FamilyChecker_Log(t *testing.T) {
 		t.Errorf("log action must deny socket(AF_ALG) with EAFNOSUPPORT; got: %q", result)
 	}
 	if result == "socket_result=OK" {
-		t.Errorf("socket(AF_ALG) was NOT blocked by FamilyChecker (log action must deny); got: %q", result)
+		t.Errorf(
+			"socket(AF_ALG) was NOT blocked by FamilyChecker (log action must deny); got: %q",
+			result,
+		)
 	}
 
 	// Audit-sink assertion: the event must reach the same pipeline as the
@@ -316,7 +326,9 @@ func TestIntegration_FamilyChecker_Log(t *testing.T) {
 	// correct shape (Type, Outcome, engine field).
 	events := sink.Events()
 	if len(events) == 0 {
-		t.Fatal("audit sink received no events; expected exactly one seccomp_socket_family_blocked event from ptrace engine")
+		t.Fatal(
+			"audit sink received no events; expected exactly one seccomp_socket_family_blocked event from ptrace engine",
+		)
 	}
 	if len(events) > 1 {
 		t.Errorf("audit sink received %d events; expected exactly 1", len(events))

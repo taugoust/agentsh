@@ -9,7 +9,9 @@ import (
 
 func TestDecodeNamespaceMapRequestBindsNonceAndRejectsUnknownFields(t *testing.T) {
 	const nonce = "00112233445566778899aabbccddeeff"
-	payload := []byte(`{"version":1,"type":"namespace-map","uid":1,"gid":1,"nonce":"` + nonce + `"}`)
+	payload := []byte(
+		`{"version":1,"type":"namespace-map","uid":1,"gid":1,"nonce":"` + nonce + `"}`,
+	)
 	request, err := decodeNamespaceMapRequest(payload, nonce)
 	if err != nil || request.Nonce != nonce {
 		t.Fatalf("request=%+v err=%v", request, err)

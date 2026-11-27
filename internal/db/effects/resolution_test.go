@@ -28,7 +28,14 @@ func TestResolution_Fold(t *testing.T) {
 	}{
 		{[]Resolution{ResolutionQualified}, ResolutionQualified},
 		{[]Resolution{ResolutionQualified, ResolutionUnqualified}, ResolutionUnqualified},
-		{[]Resolution{ResolutionQualified, ResolutionMaybeTempShadowed, ResolutionAmbiguousAfterSearchPath}, ResolutionMaybeTempShadowed},
+		{
+			[]Resolution{
+				ResolutionQualified,
+				ResolutionMaybeTempShadowed,
+				ResolutionAmbiguousAfterSearchPath,
+			},
+			ResolutionMaybeTempShadowed,
+		},
 		{[]Resolution{ResolutionUnresolved, ResolutionQualified}, ResolutionUnresolved},
 	}
 	for _, tc := range cases {
@@ -85,10 +92,14 @@ func TestResolutionCatalogTags(t *testing.T) {
 }
 
 func TestFoldResolutionUsesCatalogConfidenceRank(t *testing.T) {
-	if got := Fold([]Resolution{ResolutionCatalogResolved, ResolutionQualified}); got != ResolutionQualified {
+	if got := Fold(
+		[]Resolution{ResolutionCatalogResolved, ResolutionQualified},
+	); got != ResolutionQualified {
 		t.Fatalf("Fold(catalog_resolved, qualified_syntactic) = %v, want qualified_syntactic", got)
 	}
-	if got := Fold([]Resolution{ResolutionUnresolved, ResolutionCatalogUnavailable}); got != ResolutionCatalogUnavailable {
+	if got := Fold(
+		[]Resolution{ResolutionUnresolved, ResolutionCatalogUnavailable},
+	); got != ResolutionCatalogUnavailable {
 		t.Fatalf("Fold(unresolved, catalog_unavailable) = %v, want catalog_unavailable", got)
 	}
 	if got := Fold([]Resolution{ResolutionCatalogResolved}); got != ResolutionCatalogResolved {

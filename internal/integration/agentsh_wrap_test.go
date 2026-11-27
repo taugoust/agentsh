@@ -153,7 +153,9 @@ func TestWrapAutoStart(t *testing.T) {
 
 	// Verify session was created
 	if !strings.Contains(logOutput, "session") || !strings.Contains(logOutput, "created") {
-		t.Error("expected log output containing 'session' and 'created' (session should have been established)")
+		t.Error(
+			"expected log output containing 'session' and 'created' (session should have been established)",
+		)
 	}
 
 	// Verify the child command produced output
@@ -181,8 +183,12 @@ func TestWrapFallback_OmitsInSessionMarker(t *testing.T) {
 	req := testcontainers.ContainerRequest{
 		Image: "debian:bookworm-slim",
 		Cmd: []string{
-			"/usr/local/bin/agentsh", "wrap", "--",
-			"/bin/sh", "-c", `if [ -n "$AGENTSH_IN_SESSION" ]; then echo MARKER_SET; else echo MARKER_UNSET; fi`,
+			"/usr/local/bin/agentsh",
+			"wrap",
+			"--",
+			"/bin/sh",
+			"-c",
+			`if [ -n "$AGENTSH_IN_SESSION" ]; then echo MARKER_SET; else echo MARKER_UNSET; fi`,
 		},
 		Mounts: []testcontainers.ContainerMount{
 			testcontainers.BindMount(bin, "/usr/local/bin/agentsh"),

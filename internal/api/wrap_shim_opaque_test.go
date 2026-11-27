@@ -32,7 +32,11 @@ func TestWrapInit_ShimGuard_OpaqueInterceptionAware(t *testing.T) {
 		p := &policy.Policy{
 			CommandRules: []policy.CommandRule{
 				{Name: "deny-shutdown", Commands: []string{"shutdown"}, Decision: "deny"},
-				{Name: "allow-shells", Commands: []string{"sh", "bash", "dash", "zsh"}, Decision: "allow"},
+				{
+					Name:     "allow-shells",
+					Commands: []string{"sh", "bash", "dash", "zsh"},
+					Decision: "allow",
+				},
 			},
 		}
 		eng, err := policy.NewEngine(p, false, true)
@@ -70,7 +74,11 @@ func TestWrapInit_ShimGuard_OpaqueInterceptionAware(t *testing.T) {
 		}
 		resp, code, err := app.wrapInitCore(s, s.ID, req)
 		if code != http.StatusOK {
-			t.Fatalf("code = %d (err=%v), want 200 (opaque allowed/wrap-init proceeds when execve enforced)", code, err)
+			t.Fatalf(
+				"code = %d (err=%v), want 200 (opaque allowed/wrap-init proceeds when execve enforced)",
+				code,
+				err,
+			)
 		}
 		if resp.NotifySocket != "" {
 			t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(resp.NotifySocket)) })

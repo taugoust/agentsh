@@ -27,8 +27,16 @@ func TestIsShellCBypassAttempt_CommandIntrospection(t *testing.T) {
 }
 
 func TestDerivePolicyTarget_CommandForms(t *testing.T) {
-	if cmd, _, ok := DerivePolicyTarget("/bin/sh", []string{"-c", "command shutdown"}); !ok || cmd != "shutdown" {
-		t.Errorf("DerivePolicyTarget(command shutdown) = (%q, ok=%v), want (\"shutdown\", true)", cmd, ok)
+	if cmd, _, ok := DerivePolicyTarget(
+		"/bin/sh",
+		[]string{"-c", "command shutdown"},
+	); !ok ||
+		cmd != "shutdown" {
+		t.Errorf(
+			"DerivePolicyTarget(command shutdown) = (%q, ok=%v), want (\"shutdown\", true)",
+			cmd,
+			ok,
+		)
 	}
 	if _, _, ok := DerivePolicyTarget("/bin/sh", []string{"-c", "command -v ls"}); ok {
 		t.Error("DerivePolicyTarget(command -v ls) ok=true, want false (introspection)")

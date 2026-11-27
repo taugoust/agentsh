@@ -34,7 +34,8 @@ func testManifest(workspace string) Manifest {
 
 func testHandshake(manifest Manifest) Handshake {
 	capabilities := []string{"exec_probe", "shutdown", "supervisor_proxy"}
-	if manifest.ProtocolVersion == ProtocolVersionV3 || manifest.ProtocolVersion == ProtocolVersionV4 {
+	if manifest.ProtocolVersion == ProtocolVersionV3 ||
+		manifest.ProtocolVersion == ProtocolVersionV4 {
 		capabilities = append(capabilities, "artifact_import", "artifact_export")
 	}
 	if manifest.ProtocolVersion == ProtocolVersionV4 {
@@ -68,7 +69,12 @@ func TestProtocolV4BindsUniqueEgressEndpointAndOlderVersionsRejectField(t *testi
 	manifest.ProtocolVersion = ProtocolVersionV4
 	manifest.EgressPort = 41001
 	manifest.EgressToken = strings.Repeat("5", 64)
-	if err := manifest.Validate(workspace, manifest.Profile, manifest.ProfileDigest, []string{manifest.Policy}); err != nil {
+	if err := manifest.Validate(
+		workspace,
+		manifest.Profile,
+		manifest.ProfileDigest,
+		[]string{manifest.Policy},
+	); err != nil {
 		t.Fatalf("protocol v4 manifest: %v", err)
 	}
 	handshake := testHandshake(manifest)
@@ -96,7 +102,12 @@ func TestProtocolV4BindsUniqueEgressEndpointAndOlderVersionsRejectField(t *testi
 		t.Run(name, func(t *testing.T) {
 			invalid := manifest
 			mutate(&invalid)
-			if err := invalid.Validate(workspace, invalid.Profile, invalid.ProfileDigest, []string{invalid.Policy}); err == nil {
+			if err := invalid.Validate(
+				workspace,
+				invalid.Profile,
+				invalid.ProfileDigest,
+				[]string{invalid.Policy},
+			); err == nil {
 				t.Fatal("invalid protocol-v4 egress endpoint was accepted")
 			}
 		})
@@ -111,7 +122,11 @@ func TestProtocolV4BindsUniqueEgressEndpointAndOlderVersionsRejectField(t *testi
 		legacyData[len(legacyData)-1] = ','
 		legacyData = append(legacyData, []byte(fmt.Sprintf(`%q:null}`, field))...)
 		var decoded Manifest
-		if err := json.Unmarshal(legacyData, &decoded); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		if err := json.Unmarshal(
+			legacyData,
+			&decoded,
+		); err == nil ||
+			!strings.Contains(err.Error(), "unknown field") {
 			t.Fatalf("protocol-v3 %s error = %v", field, err)
 		}
 	}
@@ -125,7 +140,11 @@ func TestProtocolV4BindsUniqueEgressEndpointAndOlderVersionsRejectField(t *testi
 		handshakeData[len(handshakeData)-1] = ','
 		handshakeData = append(handshakeData, []byte(fmt.Sprintf(`%q:null}`, field))...)
 		var decodedHandshake Handshake
-		if err := json.Unmarshal(handshakeData, &decodedHandshake); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		if err := json.Unmarshal(
+			handshakeData,
+			&decodedHandshake,
+		); err == nil ||
+			!strings.Contains(err.Error(), "unknown field") {
 			t.Fatalf("protocol-v3 handshake %s error = %v", field, err)
 		}
 	}
@@ -142,7 +161,13 @@ func TestReadManifestStrictAndProtected(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := ReadManifest(path, workspace, manifest.Profile, manifest.ProfileDigest, []string{"pi-autonomous"})
+	got, err := ReadManifest(
+		path,
+		workspace,
+		manifest.Profile,
+		manifest.ProfileDigest,
+		[]string{"pi-autonomous"},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +178,13 @@ func TestReadManifestStrictAndProtected(t *testing.T) {
 	if err := os.Chmod(path, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadManifest(path, workspace, manifest.Profile, manifest.ProfileDigest, []string{"pi-autonomous"}); err == nil {
+	if _, err := ReadManifest(
+		path,
+		workspace,
+		manifest.Profile,
+		manifest.ProfileDigest,
+		[]string{"pi-autonomous"},
+	); err == nil {
 		t.Fatal("group-readable guest manifest was accepted")
 	}
 }
@@ -161,28 +192,53 @@ func TestReadManifestStrictAndProtected(t *testing.T) {
 func TestManifestVersionsBindVolumeIdentity(t *testing.T) {
 	workspace := t.TempDir()
 	current := testManifest(workspace)
-	if err := current.Validate(workspace, current.Profile, current.ProfileDigest, []string{current.Policy}); err != nil {
+	if err := current.Validate(
+		workspace,
+		current.Profile,
+		current.ProfileDigest,
+		[]string{current.Policy},
+	); err != nil {
 		t.Fatalf("protocol v3 manifest: %v", err)
 	}
 	missingVolume := current
 	missingVolume.VolumeID = ""
-	if err := missingVolume.Validate(workspace, current.Profile, current.ProfileDigest, []string{current.Policy}); err == nil {
+	if err := missingVolume.Validate(
+		workspace,
+		current.Profile,
+		current.ProfileDigest,
+		[]string{current.Policy},
+	); err == nil {
 		t.Fatal("protocol v3 manifest without a volume identity was accepted")
 	}
 	noncanonicalVolume := current
 	noncanonicalVolume.VolumeID = strings.ToUpper("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
-	if err := noncanonicalVolume.Validate(workspace, current.Profile, current.ProfileDigest, []string{current.Policy}); err == nil {
+	if err := noncanonicalVolume.Validate(
+		workspace,
+		current.Profile,
+		current.ProfileDigest,
+		[]string{current.Policy},
+	); err == nil {
 		t.Fatal("protocol v3 manifest with a noncanonical volume identity was accepted")
 	}
 
 	legacy := current
 	legacy.ProtocolVersion = ProtocolVersionV2
 	legacy.VolumeID = ""
-	if err := legacy.Validate(workspace, legacy.Profile, legacy.ProfileDigest, []string{legacy.Policy}); err != nil {
+	if err := legacy.Validate(
+		workspace,
+		legacy.Profile,
+		legacy.ProfileDigest,
+		[]string{legacy.Policy},
+	); err != nil {
 		t.Fatalf("retained protocol v2 manifest: %v", err)
 	}
 	legacy.VolumeID = current.VolumeID
-	if err := legacy.Validate(workspace, legacy.Profile, legacy.ProfileDigest, []string{legacy.Policy}); err == nil {
+	if err := legacy.Validate(
+		workspace,
+		legacy.Profile,
+		legacy.ProfileDigest,
+		[]string{legacy.Policy},
+	); err == nil {
 		t.Fatal("legacy protocol v2 manifest carrying a volume identity was accepted")
 	}
 }
@@ -235,7 +291,12 @@ func TestManifestRejectsUntrustedSelections(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			manifest := base
 			test.mutate(&manifest)
-			if err := manifest.Validate(workspace, base.Profile, base.ProfileDigest, []string{"pi-autonomous"}); err == nil {
+			if err := manifest.Validate(
+				workspace,
+				base.Profile,
+				base.ProfileDigest,
+				[]string{"pi-autonomous"},
+			); err == nil {
 				t.Fatal("invalid manifest was accepted")
 			}
 		})
@@ -310,13 +371,18 @@ func exchange(t *testing.T, manifest Manifest, handler Handler, request Request)
 func TestAuthenticatedProtocolOperations(t *testing.T) {
 	manifest := testManifest(t.TempDir())
 	handler := &fakeHandler{handshake: testHandshake(manifest)}
-	base := Request{ProtocolVersion: ProtocolVersion, LaunchNonce: manifest.LaunchNonce, ControlToken: manifest.ControlToken}
+	base := Request{
+		ProtocolVersion: ProtocolVersion,
+		LaunchNonce:     manifest.LaunchNonce,
+		ControlToken:    manifest.ControlToken,
+	}
 
 	hello := base
 	hello.Type = "hello"
 	hello.RequestID = "hello-1"
 	response, shutdown := exchange(t, manifest, handler, hello)
-	if shutdown || !response.OK || response.Handshake == nil || response.Handshake.SessionID != manifest.SessionID {
+	if shutdown || !response.OK || response.Handshake == nil ||
+		response.Handshake.SessionID != manifest.SessionID {
 		t.Fatalf("hello response = %+v shutdown=%t", response, shutdown)
 	}
 
@@ -324,7 +390,8 @@ func TestAuthenticatedProtocolOperations(t *testing.T) {
 	probe.Type = "exec_probe"
 	probe.RequestID = "probe-1"
 	response, shutdown = exchange(t, manifest, handler, probe)
-	if shutdown || !response.OK || response.ExecProbe == nil || response.ExecProbe.Stdout != "probe\n" {
+	if shutdown || !response.OK || response.ExecProbe == nil ||
+		response.ExecProbe.Stdout != "probe\n" {
 		t.Fatalf("probe response = %+v shutdown=%t", response, shutdown)
 	}
 
@@ -353,7 +420,10 @@ func TestRetainedProtocolV2OperationsUseManifestVersion(t *testing.T) {
 		RequestID:       "legacy-hello",
 	}
 	response, shutdown := exchange(t, manifest, handler, request)
-	if shutdown || !response.OK || response.ProtocolVersion != ProtocolVersionV2 || response.Handshake == nil || response.Handshake.ProtocolVersion != ProtocolVersionV2 || response.Handshake.VolumeID != "" {
+	if shutdown || !response.OK || response.ProtocolVersion != ProtocolVersionV2 ||
+		response.Handshake == nil ||
+		response.Handshake.ProtocolVersion != ProtocolVersionV2 ||
+		response.Handshake.VolumeID != "" {
 		t.Fatalf("legacy response = %+v shutdown=%t", response, shutdown)
 	}
 
@@ -361,7 +431,8 @@ func TestRetainedProtocolV2OperationsUseManifestVersion(t *testing.T) {
 	wrongVersion.ProtocolVersion = ProtocolVersionV3
 	wrongVersion.RequestID = "wrong-version"
 	response, shutdown = exchange(t, manifest, handler, wrongVersion)
-	if shutdown || response.OK || response.ProtocolVersion != ProtocolVersionV2 || response.Error != "authentication failed" {
+	if shutdown || response.OK || response.ProtocolVersion != ProtocolVersionV2 ||
+		response.Error != "authentication failed" {
 		t.Fatalf("legacy wrong-version response = %+v shutdown=%t", response, shutdown)
 	}
 }
@@ -378,8 +449,15 @@ func TestProtocolRejectsReplayWithoutDispatch(t *testing.T) {
 	}
 	first, _ := exchange(t, manifest, handler, request)
 	second, shutdown := exchange(t, manifest, handler, request)
-	if !first.OK || shutdown || second.OK || second.Error != "duplicate request identity" || handler.execs != 1 {
-		t.Fatalf("replay responses first=%+v second=%+v shutdown=%t execs=%d", first, second, shutdown, handler.execs)
+	if !first.OK || shutdown || second.OK || second.Error != "duplicate request identity" ||
+		handler.execs != 1 {
+		t.Fatalf(
+			"replay responses first=%+v second=%+v shutdown=%t execs=%d",
+			first,
+			second,
+			shutdown,
+			handler.execs,
+		)
 	}
 }
 
@@ -395,6 +473,11 @@ func TestProtocolRejectsWrongCredentialWithoutDispatch(t *testing.T) {
 	}
 	response, shutdown := exchange(t, manifest, handler, request)
 	if shutdown || response.OK || response.Error != "authentication failed" || handler.execs != 0 {
-		t.Fatalf("unauthenticated response = %+v shutdown=%t execs=%d", response, shutdown, handler.execs)
+		t.Fatalf(
+			"unauthenticated response = %+v shutdown=%t execs=%d",
+			response,
+			shutdown,
+			handler.execs,
+		)
 	}
 }

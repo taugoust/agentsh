@@ -29,7 +29,11 @@ type fakeCgroupManagerForAPITest struct {
 	applyErr error             // when set, Apply returns this instead of a CgroupV2
 }
 
-func (m *fakeCgroupManagerForAPITest) Apply(name string, pid int, lim limits.CgroupV2Limits) (*limits.CgroupV2, error) {
+func (m *fakeCgroupManagerForAPITest) Apply(
+	name string,
+	pid int,
+	lim limits.CgroupV2Limits,
+) (*limits.CgroupV2, error) {
 	if m.applyErr != nil {
 		return nil, m.applyErr
 	}
@@ -103,7 +107,17 @@ func TestApplyCgroupV2_CleansCgroupWhenRequiredEBPFUnsupported(t *testing.T) {
 		return ebpftrace.SupportStatus{Supported: false, Reason: "test unsupported"}
 	}
 
-	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	cleanup, err := applyCgroupV2(
+		context.Background(),
+		storeEmitter{store: app.store, broker: app.broker},
+		app,
+		"sess",
+		"cmd",
+		1234,
+		policy.Limits{},
+		nil,
+		nil,
+	)
 	if err == nil {
 		t.Fatal("expected required ebpf error")
 	}
@@ -142,7 +156,17 @@ func TestApplyCgroupV2_AttachOnly_NoLimits_Succeeds(t *testing.T) {
 		return nil, errors.New("collector not needed in attach-only test")
 	}
 
-	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	cleanup, err := applyCgroupV2(
+		context.Background(),
+		storeEmitter{store: app.store, broker: app.broker},
+		app,
+		"sess",
+		"cmd",
+		1234,
+		policy.Limits{},
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("applyCgroupV2: %v", err)
 	}
@@ -182,7 +206,13 @@ func TestDefaultWrapCgroupSetup_AttachOnly_NoLimits_Succeeds(t *testing.T) {
 		return nil, errors.New("collector not needed in attach-only test")
 	}
 
-	cleanup, err := defaultWrapCgroupSetupForNotify(context.Background(), app, &session.Session{}, "sess-1", 4242)
+	cleanup, err := defaultWrapCgroupSetupForNotify(
+		context.Background(),
+		app,
+		&session.Session{},
+		"sess-1",
+		4242,
+	)
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -215,7 +245,13 @@ func TestDefaultWrapCgroupSetup_AttachOnly_LimitsRequested_Errors(t *testing.T) 
 		Limits: limits.CgroupV2Limits{MaxMemoryBytes: 16 << 20},
 	}
 
-	_, err := defaultWrapCgroupSetupForNotify(context.Background(), app, &session.Session{}, "sess-1", 4242)
+	_, err := defaultWrapCgroupSetupForNotify(
+		context.Background(),
+		app,
+		&session.Session{},
+		"sess-1",
+		4242,
+	)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -245,7 +281,13 @@ func TestDefaultWrapCgroupSetup_Unavailable_NotRequired_WarnContinues(t *testing
 		Reason: "probe unavailable: capability gap",
 	}
 
-	cleanup, err := defaultWrapCgroupSetupForNotify(context.Background(), app, &session.Session{}, "sess-2", 4242)
+	cleanup, err := defaultWrapCgroupSetupForNotify(
+		context.Background(),
+		app,
+		&session.Session{},
+		"sess-2",
+		4242,
+	)
 	if err != nil {
 		t.Fatalf("expected nil error (soft fail), got %v", err)
 	}
@@ -314,7 +356,10 @@ func TestApplyCgroupV2_BestEffort_LimitsUnavailable_Degrades(t *testing.T) {
 		t.Fatal("expected a cgroup_limits_degraded event to be published")
 	}
 	if degraded.Fields["error_type"] != "resource_limits_unavailable" {
-		t.Errorf("error_type: got %v, want resource_limits_unavailable", degraded.Fields["error_type"])
+		t.Errorf(
+			"error_type: got %v, want resource_limits_unavailable",
+			degraded.Fields["error_type"],
+		)
 	}
 	if sawRefusal {
 		t.Error("cgroup_unavailable_refusal must not be emitted on the degrade path")
@@ -437,7 +482,13 @@ func TestDefaultWrapCgroupSetup_Unavailable_Required_HardFails(t *testing.T) {
 	fake.mode = limits.ModeUnavailable
 	fake.applyErr = &limits.CgroupUnavailableError{Reason: "probe unavailable"}
 
-	_, err := defaultWrapCgroupSetupForNotify(context.Background(), app, &session.Session{}, "sess-3", 4242)
+	_, err := defaultWrapCgroupSetupForNotify(
+		context.Background(),
+		app,
+		&session.Session{},
+		"sess-3",
+		4242,
+	)
 	if err == nil {
 		t.Fatalf("expected error under ebpf.required=true, got nil")
 	}
@@ -456,7 +507,11 @@ type apiNethelperBackend struct {
 	cleanups    atomic.Int32
 }
 
-func (b *apiNethelperBackend) RegisterSessionCgroup(_ context.Context, _ nethelper.PeerInfo, req nethelper.RegisterSessionCgroupRequest) (nethelper.RegisterSessionCgroupResponse, error) {
+func (b *apiNethelperBackend) RegisterSessionCgroup(
+	_ context.Context,
+	_ nethelper.PeerInfo,
+	req nethelper.RegisterSessionCgroupRequest,
+) (nethelper.RegisterSessionCgroupResponse, error) {
 	b.registerReq = req
 	b.registers.Add(1)
 	return nethelper.RegisterSessionCgroupResponse{
@@ -465,17 +520,37 @@ func (b *apiNethelperBackend) RegisterSessionCgroup(_ context.Context, _ nethelp
 		Mode:           req.Mode.Normalized(),
 		CgroupID:       99,
 		RegistrationID: "test-registration",
-		PinPath:        filepath.Join(string(filepath.Separator), "sys", "fs", "bpf", "agentsh", "test-registration"),
+		PinPath: filepath.Join(
+			string(filepath.Separator),
+			"sys",
+			"fs",
+			"bpf",
+			"agentsh",
+			"test-registration",
+		),
 	}, nil
 }
 
-func (b *apiNethelperBackend) UpdatePolicyMap(_ context.Context, _ nethelper.PeerInfo, req nethelper.UpdatePolicyMapRequest) (nethelper.UpdatePolicyMapResponse, error) {
+func (b *apiNethelperBackend) UpdatePolicyMap(
+	_ context.Context,
+	_ nethelper.PeerInfo,
+	req nethelper.UpdatePolicyMapRequest,
+) (nethelper.UpdatePolicyMapResponse, error) {
 	b.updateReq = req
 	b.updates.Add(1)
-	return nethelper.UpdatePolicyMapResponse{OK: true, DefaultDeny: req.DefaultDeny, AllowEntries: len(req.Allow), DenyEntries: len(req.Deny)}, nil
+	return nethelper.UpdatePolicyMapResponse{
+		OK:           true,
+		DefaultDeny:  req.DefaultDeny,
+		AllowEntries: len(req.Allow),
+		DenyEntries:  len(req.Deny),
+	}, nil
 }
 
-func (b *apiNethelperBackend) CleanupSession(_ context.Context, _ nethelper.PeerInfo, req nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error) {
+func (b *apiNethelperBackend) CleanupSession(
+	_ context.Context,
+	_ nethelper.PeerInfo,
+	req nethelper.CleanupSessionRequest,
+) (nethelper.CleanupSessionResponse, error) {
 	b.cleanupReq = req
 	b.cleanups.Add(1)
 	return nethelper.CleanupSessionResponse{OK: true}, nil
@@ -512,7 +587,17 @@ func TestApplyCgroupV2_UsesNethelperProxyGateWhenConfigured(t *testing.T) {
 	socket := startAPITestNethelper(t, backend)
 	app.nethelperBinding = newNethelperBindingState(socket, "", "", "instance-credential-test")
 
-	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	cleanup, err := applyCgroupV2(
+		context.Background(),
+		storeEmitter{store: app.store, broker: app.broker},
+		app,
+		"sess",
+		"cmd",
+		1234,
+		policy.Limits{},
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("applyCgroupV2: %v", err)
 	}
@@ -541,7 +626,8 @@ func TestApplyCgroupV2_UsesNethelperProxyGateWhenConfigured(t *testing.T) {
 		t.Fatalf("proxy gate allow entries = %+v, want one exact listener", backend.updateReq.Allow)
 	}
 	allow := backend.updateReq.Allow[0]
-	if allow.IP != "127.0.0.1" || allow.CIDR != "" || allow.Port != 18080 || allow.Protocol != nethelper.TransportProtocolTCP {
+	if allow.IP != "127.0.0.1" || allow.CIDR != "" || allow.Port != 18080 ||
+		allow.Protocol != nethelper.TransportProtocolTCP {
 		t.Fatalf("proxy gate allow entry = %+v, want exact 127.0.0.1:18080/tcp", allow)
 	}
 	if err := cleanup(); err != nil {
@@ -558,9 +644,24 @@ func TestApplyCgroupV2_NethelperFailureFailsClosedWhenEnforced(t *testing.T) {
 	cfg.Sandbox.Network.EBPF.Enabled = true
 	cfg.Sandbox.Network.EBPF.Enforce = true
 	app := newAppWithFakeCgroupManager(t, cfg, cgPath)
-	app.nethelperBinding = newNethelperBindingState(filepath.Join(t.TempDir(), "missing.sock"), "", "", "instance-credential-test")
+	app.nethelperBinding = newNethelperBindingState(
+		filepath.Join(t.TempDir(), "missing.sock"),
+		"",
+		"",
+		"instance-credential-test",
+	)
 
-	cleanup, err := applyCgroupV2(context.Background(), storeEmitter{store: app.store, broker: app.broker}, app, "sess", "cmd", 1234, policy.Limits{}, nil, nil)
+	cleanup, err := applyCgroupV2(
+		context.Background(),
+		storeEmitter{store: app.store, broker: app.broker},
+		app,
+		"sess",
+		"cmd",
+		1234,
+		policy.Limits{},
+		nil,
+		nil,
+	)
 	if err == nil {
 		t.Fatal("expected enforced nethelper setup failure")
 	}

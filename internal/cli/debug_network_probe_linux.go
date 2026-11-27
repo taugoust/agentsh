@@ -77,9 +77,12 @@ func newDebugNetworkRuntimeProbeCmd() *cobra.Command {
 	cmd.Flags().IntVar(&supervisorPID, "supervisor-pid", 0, "host supervisor PID")
 	cmd.Flags().StringVar(&cgroupRoot, "cgroup-root", "", "host cgroup root expected to be hidden")
 	cmd.Flags().StringVar(&helperSocket, "helper-socket", "", "helper socket expected to be hidden")
-	cmd.Flags().StringVar(&credentialFile, "credential-file", "", "credential source expected to be hidden")
-	cmd.Flags().StringVar(&controlPath, "control-path", "", "supervisor control path expected to be hidden")
-	cmd.Flags().StringVar(&inheritedFile, "inherited-file", "", "descriptor sentinel that must not be inherited")
+	cmd.Flags().
+		StringVar(&credentialFile, "credential-file", "", "credential source expected to be hidden")
+	cmd.Flags().
+		StringVar(&controlPath, "control-path", "", "supervisor control path expected to be hidden")
+	cmd.Flags().
+		StringVar(&inheritedFile, "inherited-file", "", "descriptor sentinel that must not be inherited")
 	return cmd
 }
 
@@ -236,10 +239,15 @@ func privateProcObserved(supervisorPID int) bool {
 	// The supervisor is alive for the duration of this probe. Its host PID must
 	// therefore exist in host proc and be absent only because the jail mounted a
 	// procfs bound to the command PID namespace.
-	if _, err := os.Stat(filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(supervisorPID))); err == nil || !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(
+		filepath.Join(string(filepath.Separator), "proc", strconv.Itoa(supervisorPID)),
+	); err == nil ||
+		!errors.Is(err, os.ErrNotExist) {
 		return false
 	}
-	if _, err := os.Stat(filepath.Join(string(filepath.Separator), "proc", "1", "status")); err != nil {
+	if _, err := os.Stat(
+		filepath.Join(string(filepath.Separator), "proc", "1", "status"),
+	); err != nil {
 		return false
 	}
 	_, err := os.Stat(filepath.Join(string(filepath.Separator), "proc", "self", "status"))

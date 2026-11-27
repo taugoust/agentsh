@@ -19,8 +19,11 @@ func buildClassifierMap(svcs []Service) (map[string]classify_pg.Parser, error) {
 		}
 		d, ok := classify_pg.ParseDialect(svc.Dialect)
 		if !ok {
-			return nil, fmt.Errorf("postgres.New: services[%q].Dialect = %q is not a recognized dialect",
-				svc.Name, svc.Dialect)
+			return nil, fmt.Errorf(
+				"postgres.New: services[%q].Dialect = %q is not a recognized dialect",
+				svc.Name,
+				svc.Dialect,
+			)
 		}
 		out[svc.Dialect] = classify_pg.New(d)
 	}

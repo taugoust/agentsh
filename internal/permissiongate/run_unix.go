@@ -86,7 +86,8 @@ func run(ctx context.Context, options RunOptions) (RunResult, error) {
 		var cleanupErrs []error
 		if rendezvousOpen {
 			rendezvousOpen = false
-			if closeErr := listener.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+			if closeErr := listener.Close(); closeErr != nil &&
+				!errors.Is(closeErr, net.ErrClosed) {
 				cleanupErrs = append(cleanupErrs, fmt.Errorf("close listener: %w", closeErr))
 			}
 		}
@@ -161,14 +162,19 @@ func run(ctx context.Context, options RunOptions) (RunResult, error) {
 			killProcessGroup(command.Process.Pid)
 			waitErr := <-waitCh
 			result.ExitCode = childExitCode(waitErr)
-			return result, fmt.Errorf("permission gate broker failed: accept rendezvous: %w", accepted.err)
+			return result, fmt.Errorf(
+				"permission gate broker failed: accept rendezvous: %w",
+				accepted.err,
+			)
 		}
 		if accepted.connection == nil {
 			_ = cleanupRendezvous()
 			killProcessGroup(command.Process.Pid)
 			waitErr := <-waitCh
 			result.ExitCode = childExitCode(waitErr)
-			return result, errors.New("permission gate broker failed: accepted nil rendezvous connection")
+			return result, errors.New(
+				"permission gate broker failed: accepted nil rendezvous connection",
+			)
 		}
 		transport = accepted.connection
 		if err := verifyPermissionGatePeer(transport, command.Process.Pid); err != nil {
@@ -177,7 +183,10 @@ func run(ctx context.Context, options RunOptions) (RunResult, error) {
 			killProcessGroup(command.Process.Pid)
 			waitErr := <-waitCh
 			result.ExitCode = childExitCode(waitErr)
-			return result, fmt.Errorf("permission gate broker failed: verify rendezvous peer: %w", err)
+			return result, fmt.Errorf(
+				"permission gate broker failed: verify rendezvous peer: %w",
+				err,
+			)
 		}
 		// The rendezvous is one-shot. Retire its listener, socket path, and
 		// private directory before reading any protocol data from the client.
@@ -342,5 +351,10 @@ func reclaimForegroundTerminal() {
 	signal.Ignore(syscall.SIGTTOU)
 	defer signal.Reset(syscall.SIGTTOU)
 	processGroup := int32(unix.Getpgrp())
-	_, _, _ = unix.Syscall(unix.SYS_IOCTL, os.Stdin.Fd(), unix.TIOCSPGRP, uintptr(unsafe.Pointer(&processGroup)))
+	_, _, _ = unix.Syscall(
+		unix.SYS_IOCTL,
+		os.Stdin.Fd(),
+		unix.TIOCSPGRP,
+		uintptr(unsafe.Pointer(&processGroup)),
+	)
 }

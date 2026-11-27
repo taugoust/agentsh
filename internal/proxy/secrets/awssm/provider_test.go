@@ -22,8 +22,11 @@ type mockSMClient struct {
 		opts ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
 }
 
-func (m *mockSMClient) GetSecretValue(ctx context.Context, input *secretsmanager.GetSecretValueInput,
-	opts ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
+func (m *mockSMClient) GetSecretValue(
+	ctx context.Context,
+	input *secretsmanager.GetSecretValueInput,
+	opts ...func(*secretsmanager.Options),
+) (*secretsmanager.GetSecretValueOutput, error) {
 	return m.GetSecretValueFunc(ctx, input, opts...)
 }
 
@@ -155,7 +158,9 @@ func TestFetch_JSONFieldExtraction(t *testing.T) {
 		GetSecretValueFunc: func(_ context.Context, _ *secretsmanager.GetSecretValueInput,
 			_ ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
 			return &secretsmanager.GetSecretValueOutput{
-				SecretString: aws.String(`{"token":"ghp_abc123","endpoint":"https://api.github.com"}`),
+				SecretString: aws.String(
+					`{"token":"ghp_abc123","endpoint":"https://api.github.com"}`,
+				),
 			}, nil
 		},
 	}
@@ -363,7 +368,9 @@ func TestFetch_InvalidRequest(t *testing.T) {
 	mock := &mockSMClient{
 		GetSecretValueFunc: func(_ context.Context, _ *secretsmanager.GetSecretValueInput,
 			_ ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-			return nil, &types.InvalidRequestException{Message: aws.String("secret pending deletion")}
+			return nil, &types.InvalidRequestException{
+				Message: aws.String("secret pending deletion"),
+			}
 		},
 	}
 	p := newFromClient(mock)

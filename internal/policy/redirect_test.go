@@ -47,7 +47,10 @@ func TestCheckFile_WithRedirect(t *testing.T) {
 		t.Fatal("expected FileRedirect, got nil")
 	}
 	if dec.FileRedirect.RedirectPath != "/workspace/.scratch/home/user/file.txt" {
-		t.Errorf("RedirectPath = %q, want /workspace/.scratch/home/user/file.txt", dec.FileRedirect.RedirectPath)
+		t.Errorf(
+			"RedirectPath = %q, want /workspace/.scratch/home/user/file.txt",
+			dec.FileRedirect.RedirectPath,
+		)
 	}
 
 	// Test allow (no redirect)
@@ -140,7 +143,10 @@ func TestDecision_AuditAndSoftDelete(t *testing.T) {
 		t.Errorf("PolicyDecision = %q, want audit", dec.PolicyDecision)
 	}
 	if dec.EffectiveDecision != types.DecisionAllow {
-		t.Errorf("EffectiveDecision = %q, want allow (audit is allow + logging)", dec.EffectiveDecision)
+		t.Errorf(
+			"EffectiveDecision = %q, want allow (audit is allow + logging)",
+			dec.EffectiveDecision,
+		)
 	}
 
 	// Test soft_delete decision
@@ -149,7 +155,10 @@ func TestDecision_AuditAndSoftDelete(t *testing.T) {
 		t.Errorf("PolicyDecision = %q, want soft_delete", dec.PolicyDecision)
 	}
 	if dec.EffectiveDecision != types.DecisionAllow {
-		t.Errorf("EffectiveDecision = %q, want allow (soft_delete proceeds with trash)", dec.EffectiveDecision)
+		t.Errorf(
+			"EffectiveDecision = %q, want allow (soft_delete proceeds with trash)",
+			dec.EffectiveDecision,
+		)
 	}
 }
 
@@ -664,17 +673,37 @@ func TestEvaluateDnsRedirect(t *testing.T) {
 		t.Run(tt.hostname, func(t *testing.T) {
 			result := engine.EvaluateDnsRedirect(tt.hostname)
 			if result.Matched != tt.wantMatch {
-				t.Errorf("EvaluateDnsRedirect(%s) matched = %v, want %v", tt.hostname, result.Matched, tt.wantMatch)
+				t.Errorf(
+					"EvaluateDnsRedirect(%s) matched = %v, want %v",
+					tt.hostname,
+					result.Matched,
+					tt.wantMatch,
+				)
 			}
 			if result.Matched {
 				if result.ResolveTo != tt.wantIP {
-					t.Errorf("EvaluateDnsRedirect(%s) resolveTo = %v, want %v", tt.hostname, result.ResolveTo, tt.wantIP)
+					t.Errorf(
+						"EvaluateDnsRedirect(%s) resolveTo = %v, want %v",
+						tt.hostname,
+						result.ResolveTo,
+						tt.wantIP,
+					)
 				}
 				if result.Rule != tt.wantRule {
-					t.Errorf("EvaluateDnsRedirect(%s) rule = %v, want %v", tt.hostname, result.Rule, tt.wantRule)
+					t.Errorf(
+						"EvaluateDnsRedirect(%s) rule = %v, want %v",
+						tt.hostname,
+						result.Rule,
+						tt.wantRule,
+					)
 				}
 				if result.Visibility != tt.wantVisibility {
-					t.Errorf("EvaluateDnsRedirect(%s) visibility = %v, want %v", tt.hostname, result.Visibility, tt.wantVisibility)
+					t.Errorf(
+						"EvaluateDnsRedirect(%s) visibility = %v, want %v",
+						tt.hostname,
+						result.Visibility,
+						tt.wantVisibility,
+					)
 				}
 			}
 		})
@@ -765,9 +794,36 @@ func TestEvaluateConnectRedirect(t *testing.T) {
 		wantVisibility string
 		wantMessage    string
 	}{
-		{"api.anthropic.com:443", true, "vertex-proxy.internal:443", "anthropic-redirect", "passthrough", "", "audit_only", "Routed through Vertex"},
-		{"google.com:443", true, "https-proxy.internal:8443", "all-https", "rewrite_sni", "proxy.internal", "silent", ""},
-		{"other.example.com:443", true, "https-proxy.internal:8443", "all-https", "rewrite_sni", "proxy.internal", "silent", ""},
+		{
+			"api.anthropic.com:443",
+			true,
+			"vertex-proxy.internal:443",
+			"anthropic-redirect",
+			"passthrough",
+			"",
+			"audit_only",
+			"Routed through Vertex",
+		},
+		{
+			"google.com:443",
+			true,
+			"https-proxy.internal:8443",
+			"all-https",
+			"rewrite_sni",
+			"proxy.internal",
+			"silent",
+			"",
+		},
+		{
+			"other.example.com:443",
+			true,
+			"https-proxy.internal:8443",
+			"all-https",
+			"rewrite_sni",
+			"proxy.internal",
+			"silent",
+			"",
+		},
 		{"api.anthropic.com:80", false, "", "", "", "", "", ""},
 		{"google.com:80", false, "", "", "", "", "", ""},
 	}
@@ -776,26 +832,61 @@ func TestEvaluateConnectRedirect(t *testing.T) {
 		t.Run(tt.hostPort, func(t *testing.T) {
 			result := engine.EvaluateConnectRedirect(tt.hostPort)
 			if result.Matched != tt.wantMatch {
-				t.Errorf("EvaluateConnectRedirect(%s) matched = %v, want %v", tt.hostPort, result.Matched, tt.wantMatch)
+				t.Errorf(
+					"EvaluateConnectRedirect(%s) matched = %v, want %v",
+					tt.hostPort,
+					result.Matched,
+					tt.wantMatch,
+				)
 			}
 			if result.Matched {
 				if result.RedirectTo != tt.wantTarget {
-					t.Errorf("EvaluateConnectRedirect(%s) redirectTo = %v, want %v", tt.hostPort, result.RedirectTo, tt.wantTarget)
+					t.Errorf(
+						"EvaluateConnectRedirect(%s) redirectTo = %v, want %v",
+						tt.hostPort,
+						result.RedirectTo,
+						tt.wantTarget,
+					)
 				}
 				if result.Rule != tt.wantRule {
-					t.Errorf("EvaluateConnectRedirect(%s) rule = %v, want %v", tt.hostPort, result.Rule, tt.wantRule)
+					t.Errorf(
+						"EvaluateConnectRedirect(%s) rule = %v, want %v",
+						tt.hostPort,
+						result.Rule,
+						tt.wantRule,
+					)
 				}
 				if result.TLSMode != tt.wantTLSMode {
-					t.Errorf("EvaluateConnectRedirect(%s) tlsMode = %v, want %v", tt.hostPort, result.TLSMode, tt.wantTLSMode)
+					t.Errorf(
+						"EvaluateConnectRedirect(%s) tlsMode = %v, want %v",
+						tt.hostPort,
+						result.TLSMode,
+						tt.wantTLSMode,
+					)
 				}
 				if result.SNI != tt.wantSNI {
-					t.Errorf("EvaluateConnectRedirect(%s) sni = %v, want %v", tt.hostPort, result.SNI, tt.wantSNI)
+					t.Errorf(
+						"EvaluateConnectRedirect(%s) sni = %v, want %v",
+						tt.hostPort,
+						result.SNI,
+						tt.wantSNI,
+					)
 				}
 				if result.Visibility != tt.wantVisibility {
-					t.Errorf("EvaluateConnectRedirect(%s) visibility = %v, want %v", tt.hostPort, result.Visibility, tt.wantVisibility)
+					t.Errorf(
+						"EvaluateConnectRedirect(%s) visibility = %v, want %v",
+						tt.hostPort,
+						result.Visibility,
+						tt.wantVisibility,
+					)
 				}
 				if result.Message != tt.wantMessage {
-					t.Errorf("EvaluateConnectRedirect(%s) message = %v, want %v", tt.hostPort, result.Message, tt.wantMessage)
+					t.Errorf(
+						"EvaluateConnectRedirect(%s) message = %v, want %v",
+						tt.hostPort,
+						result.Message,
+						tt.wantMessage,
+					)
 				}
 			}
 		})
@@ -1021,7 +1112,12 @@ func TestEvaluateDnsRedirect_CaseNormalization(t *testing.T) {
 		t.Run(tt.hostname, func(t *testing.T) {
 			result := engine.EvaluateDnsRedirect(tt.hostname)
 			if result.Matched != tt.wantMatch {
-				t.Errorf("EvaluateDnsRedirect(%q) matched = %v, want %v", tt.hostname, result.Matched, tt.wantMatch)
+				t.Errorf(
+					"EvaluateDnsRedirect(%q) matched = %v, want %v",
+					tt.hostname,
+					result.Matched,
+					tt.wantMatch,
+				)
 			}
 		})
 	}
@@ -1063,7 +1159,12 @@ func TestEvaluateConnectRedirect_CaseNormalization(t *testing.T) {
 		t.Run(tt.hostPort, func(t *testing.T) {
 			result := engine.EvaluateConnectRedirect(tt.hostPort)
 			if result.Matched != tt.wantMatch {
-				t.Errorf("EvaluateConnectRedirect(%q) matched = %v, want %v", tt.hostPort, result.Matched, tt.wantMatch)
+				t.Errorf(
+					"EvaluateConnectRedirect(%q) matched = %v, want %v",
+					tt.hostPort,
+					result.Matched,
+					tt.wantMatch,
+				)
 			}
 		})
 	}

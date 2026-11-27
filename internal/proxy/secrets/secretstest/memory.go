@@ -66,7 +66,10 @@ func (m *MemoryProvider) Name() string { return m.name }
 //
 // The returned SecretValue's Value buffer is a fresh copy. Tests
 // may mutate it without affecting the provider's internal state.
-func (m *MemoryProvider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.SecretValue, error) {
+func (m *MemoryProvider) Fetch(
+	ctx context.Context,
+	ref secrets.SecretRef,
+) (secrets.SecretValue, error) {
 	if err := ctx.Err(); err != nil {
 		return secrets.SecretValue{}, err
 	}

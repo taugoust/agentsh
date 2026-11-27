@@ -27,8 +27,10 @@ func decodeApprovalResolution(raw []byte) (approvals.Resolution, error) {
 	if err := decodeRawJSON(raw, &req); err != nil {
 		return approvals.Resolution{}, err
 	}
-	approved := strings.EqualFold(req.Decision, "approve") || strings.EqualFold(req.Decision, "allow")
-	if !approved && !strings.EqualFold(req.Decision, "deny") && !strings.EqualFold(req.Decision, "reject") {
+	approved := strings.EqualFold(req.Decision, "approve") ||
+		strings.EqualFold(req.Decision, "allow")
+	if !approved && !strings.EqualFold(req.Decision, "deny") &&
+		!strings.EqualFold(req.Decision, "reject") {
 		return approvals.Resolution{}, errApprovalInvalidDecision{}
 	}
 	scope, err := approvals.NormalizeResolutionScope(req.Scope)

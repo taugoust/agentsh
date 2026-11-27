@@ -128,7 +128,13 @@ func TestProxyEmitDBBypassAttempt(t *testing.T) {
 	}
 	p.SetDBBypassEmitter(dbevents.NewBypassEmitter(capture))
 
-	p.emitDBBypassAttempt(context.Background(), "cmd-123", 0, "db-appdb-deny-direct", "blocked by policy")
+	p.emitDBBypassAttempt(
+		context.Background(),
+		"cmd-123",
+		0,
+		"db-appdb-deny-direct",
+		"blocked by policy",
+	)
 
 	if len(capture.events) != 1 {
 		t.Fatalf("db bypass events = %d, want 1", len(capture.events))
@@ -141,12 +147,18 @@ func TestProxyEmitDBBypassAttempt(t *testing.T) {
 		t.Fatalf("event type = %q, want db_bypass_attempt", ev.Type)
 	}
 	if ev.SessionID != "session-db" || ev.CommandID != "cmd-123" || ev.PID != 0 {
-		t.Fatalf("event identity = session %q command %q pid %d", ev.SessionID, ev.CommandID, ev.PID)
+		t.Fatalf(
+			"event identity = session %q command %q pid %d",
+			ev.SessionID,
+			ev.CommandID,
+			ev.PID,
+		)
 	}
 	if ev.Fields["process_identity"] != "command:cmd-123" {
 		t.Fatalf("process_identity = %v, want command:cmd-123", ev.Fields["process_identity"])
 	}
-	if ev.Fields["rule_name"] != "db-appdb-deny-direct" || ev.Fields["bypass_mode"] != dbservice.BypassModeTCPDirect {
+	if ev.Fields["rule_name"] != "db-appdb-deny-direct" ||
+		ev.Fields["bypass_mode"] != dbservice.BypassModeTCPDirect {
 		t.Fatalf("db metadata fields = %+v", ev.Fields)
 	}
 	if ev.Fields["reason"] != "blocked by policy" {
@@ -156,13 +168,27 @@ func TestProxyEmitDBBypassAttempt(t *testing.T) {
 
 func TestStartProxyInstallsInitialDBBypassEmitter(t *testing.T) {
 	capture := &captureDBBypassEmitter{}
-	p, _, err := StartProxy("127.0.0.1:0", "session-db", nil, newNetmonitorDBUnavoidabilityEngine(t), nil, &stubEmitter{}, dbevents.NewBypassEmitter(capture))
+	p, _, err := StartProxy(
+		"127.0.0.1:0",
+		"session-db",
+		nil,
+		newNetmonitorDBUnavoidabilityEngine(t),
+		nil,
+		&stubEmitter{},
+		dbevents.NewBypassEmitter(capture),
+	)
 	if err != nil {
 		t.Fatalf("StartProxy: %v", err)
 	}
 	defer p.Close()
 
-	p.emitDBBypassAttempt(context.Background(), "", 0, "db-appdb-deny-direct", "blocked before publish")
+	p.emitDBBypassAttempt(
+		context.Background(),
+		"",
+		0,
+		"db-appdb-deny-direct",
+		"blocked before publish",
+	)
 
 	if len(capture.events) != 1 {
 		t.Fatalf("db bypass events = %d, want 1", len(capture.events))
@@ -292,7 +318,14 @@ func TestEmitConnectRedirectEvent(t *testing.T) {
 		Message:    "Routed through Vertex",
 	}
 
-	p.emitConnectRedirectEvent(context.Background(), "cmd-123", "api.anthropic.com", "api.anthropic.com:443", 443, result)
+	p.emitConnectRedirectEvent(
+		context.Background(),
+		"cmd-123",
+		"api.anthropic.com",
+		"api.anthropic.com:443",
+		443,
+		result,
+	)
 
 	// Event should be emitted twice (AppendEvent + Publish)
 	if len(em.events) != 2 {
@@ -310,7 +343,10 @@ func TestEmitConnectRedirectEvent(t *testing.T) {
 		t.Errorf("expected domain 'api.anthropic.com', got %s", ev.Domain)
 	}
 	if ev.Fields["redirect_to"] != "vertex-proxy.internal:443" {
-		t.Errorf("expected redirect_to 'vertex-proxy.internal:443', got %v", ev.Fields["redirect_to"])
+		t.Errorf(
+			"expected redirect_to 'vertex-proxy.internal:443', got %v",
+			ev.Fields["redirect_to"],
+		)
 	}
 	if ev.Fields["tls_mode"] != "passthrough" {
 		t.Errorf("expected tls_mode 'passthrough', got %v", ev.Fields["tls_mode"])
@@ -334,7 +370,14 @@ func TestEmitConnectRedirectEventWithSNI(t *testing.T) {
 		Message:    "SNI rewritten",
 	}
 
-	p.emitConnectRedirectEvent(context.Background(), "cmd-456", "api.openai.com", "api.openai.com:443", 443, result)
+	p.emitConnectRedirectEvent(
+		context.Background(),
+		"cmd-456",
+		"api.openai.com",
+		"api.openai.com:443",
+		443,
+		result,
+	)
 
 	if len(em.events) != 2 {
 		t.Fatalf("expected 2 events, got %d", len(em.events))
@@ -366,7 +409,14 @@ func TestEmitConnectRedirectEventWithUnixRedirect(t *testing.T) {
 		Message:        "Routed to local database socket",
 	}
 
-	p.emitConnectRedirectEvent(context.Background(), "cmd-789", "db.internal", "db.internal:5432", 5432, result)
+	p.emitConnectRedirectEvent(
+		context.Background(),
+		"cmd-789",
+		"db.internal",
+		"db.internal:5432",
+		5432,
+		result,
+	)
 
 	if len(em.events) != 2 {
 		t.Fatalf("expected 2 events, got %d", len(em.events))
@@ -394,7 +444,14 @@ func TestEmitConnectRedirectEventNilEmitter(t *testing.T) {
 	}
 
 	// Should not panic
-	p.emitConnectRedirectEvent(context.Background(), "cmd", "example.com", "example.com:443", 443, result)
+	p.emitConnectRedirectEvent(
+		context.Background(),
+		"cmd",
+		"example.com",
+		"example.com:443",
+		443,
+		result,
+	)
 }
 
 func TestConnectDialTarget_UnixRedirect(t *testing.T) {
@@ -422,7 +479,12 @@ func TestHandleConnect_UnixRedirectNetConnectFields(t *testing.T) {
 	pol := &policy.Policy{
 		Version: 1,
 		NetworkRules: []policy.NetworkRule{
-			{Name: "allow-db", Decision: "allow", Domains: []string{"127.0.0.1"}, Ports: []int{5432}},
+			{
+				Name:     "allow-db",
+				Decision: "allow",
+				Domains:  []string{"127.0.0.1"},
+				Ports:    []int{5432},
+			},
 		},
 		ConnectRedirectRules: []policy.ConnectRedirectRule{
 			{
@@ -464,10 +526,19 @@ func TestHandleConnect_UnixRedirectNetConnectFields(t *testing.T) {
 			continue
 		}
 		if ev.Fields["redirect_to_unix"] != socketPath {
-			t.Fatalf("redirect_to_unix = %v, want %q in event %+v", ev.Fields["redirect_to_unix"], socketPath, ev)
+			t.Fatalf(
+				"redirect_to_unix = %v, want %q in event %+v",
+				ev.Fields["redirect_to_unix"],
+				socketPath,
+				ev,
+			)
 		}
 		if _, ok := ev.Fields["redirect_to"]; ok {
-			t.Fatalf("did not expect redirect_to for unix redirect, got %v in event %+v", ev.Fields["redirect_to"], ev)
+			t.Fatalf(
+				"did not expect redirect_to for unix redirect, got %v in event %+v",
+				ev.Fields["redirect_to"],
+				ev,
+			)
 		}
 		return
 	}
@@ -491,7 +562,12 @@ func TestHandleConnect_UnixRedirectBypassesOriginalNetworkDeny(t *testing.T) {
 			},
 		},
 		NetworkRules: []policy.NetworkRule{
-			{Name: "deny-db-direct", Decision: "deny", Domains: []string{"db.internal"}, Ports: []int{5432}},
+			{
+				Name:     "deny-db-direct",
+				Decision: "deny",
+				Domains:  []string{"db.internal"},
+				Ports:    []int{5432},
+			},
 		},
 		ConnectRedirectRules: []policy.ConnectRedirectRule{
 			{
@@ -518,7 +594,9 @@ func TestHandleConnect_UnixRedirectBypassesOriginalNetworkDeny(t *testing.T) {
 		close(done)
 	}()
 
-	_, _ = client.Write([]byte("CONNECT db.internal:5432 HTTP/1.1\r\nHost: db.internal:5432\r\n\r\n"))
+	_, _ = client.Write(
+		[]byte("CONNECT db.internal:5432 HTTP/1.1\r\nHost: db.internal:5432\r\n\r\n"),
+	)
 	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
 	buf := make([]byte, 128)
 	n, _ := client.Read(buf)
@@ -541,7 +619,12 @@ func TestHandleConnect_UnixRedirectDoesNotBypassDBDenyWithoutRedirectMetadata(t 
 			},
 		},
 		NetworkRules: []policy.NetworkRule{
-			{Name: "deny-db-direct", Decision: "deny", Domains: []string{"db.internal"}, Ports: []int{5432}},
+			{
+				Name:     "deny-db-direct",
+				Decision: "deny",
+				Domains:  []string{"db.internal"},
+				Ports:    []int{5432},
+			},
 		},
 		ConnectRedirectRules: []policy.ConnectRedirectRule{
 			{
@@ -568,12 +651,17 @@ func TestHandleConnect_UnixRedirectDoesNotBypassDBDenyWithoutRedirectMetadata(t 
 		close(done)
 	}()
 
-	_, _ = client.Write([]byte("CONNECT db.internal:5432 HTTP/1.1\r\nHost: db.internal:5432\r\n\r\n"))
+	_, _ = client.Write(
+		[]byte("CONNECT db.internal:5432 HTTP/1.1\r\nHost: db.internal:5432\r\n\r\n"),
+	)
 	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
 	buf := make([]byte, 128)
 	n, _ := client.Read(buf)
 	if !strings.Contains(string(buf[:n]), "403 Forbidden") {
-		t.Fatalf("expected 403 response for non-DB redirect despite DB deny, got %q", string(buf[:n]))
+		t.Fatalf(
+			"expected 403 response for non-DB redirect despite DB deny, got %q",
+			string(buf[:n]),
+		)
 	}
 	client.Close()
 	<-done
@@ -584,7 +672,12 @@ func TestHandleConnect_UnixRedirectDoesNotBypassNonDBNetworkDeny(t *testing.T) {
 	pol := &policy.Policy{
 		Version: 1,
 		NetworkRules: []policy.NetworkRule{
-			{Name: "deny-db-direct", Decision: "deny", Domains: []string{"db.internal"}, Ports: []int{5432}},
+			{
+				Name:     "deny-db-direct",
+				Decision: "deny",
+				Domains:  []string{"db.internal"},
+				Ports:    []int{5432},
+			},
 		},
 		ConnectRedirectRules: []policy.ConnectRedirectRule{
 			{
@@ -611,12 +704,17 @@ func TestHandleConnect_UnixRedirectDoesNotBypassNonDBNetworkDeny(t *testing.T) {
 		close(done)
 	}()
 
-	_, _ = client.Write([]byte("CONNECT db.internal:5432 HTTP/1.1\r\nHost: db.internal:5432\r\n\r\n"))
+	_, _ = client.Write(
+		[]byte("CONNECT db.internal:5432 HTTP/1.1\r\nHost: db.internal:5432\r\n\r\n"),
+	)
 	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
 	buf := make([]byte, 128)
 	n, _ := client.Read(buf)
 	if !strings.Contains(string(buf[:n]), "403 Forbidden") {
-		t.Fatalf("expected 403 response for non-DB deny despite unix redirect, got %q", string(buf[:n]))
+		t.Fatalf(
+			"expected 403 response for non-DB deny despite unix redirect, got %q",
+			string(buf[:n]),
+		)
 	}
 	client.Close()
 	<-done
@@ -626,7 +724,12 @@ func TestHandleConnect_NonRedirectedNetworkDenyReturnsForbidden(t *testing.T) {
 	pol := &policy.Policy{
 		Version: 1,
 		NetworkRules: []policy.NetworkRule{
-			{Name: "deny-db-direct", Decision: "deny", Domains: []string{"127.0.0.1"}, Ports: []int{5432}},
+			{
+				Name:     "deny-db-direct",
+				Decision: "deny",
+				Domains:  []string{"127.0.0.1"},
+				Ports:    []int{5432},
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, false, true)
@@ -660,7 +763,12 @@ func TestCheckConnectNetwork_DeniedApprovalWithUnixRedirectStaysDenied(t *testin
 	pol := &policy.Policy{
 		Version: 1,
 		NetworkRules: []policy.NetworkRule{
-			{Name: "approve-db", Decision: "approve", Domains: []string{"db.internal"}, Ports: []int{5432}},
+			{
+				Name:     "approve-db",
+				Decision: "approve",
+				Domains:  []string{"db.internal"},
+				Ports:    []int{5432},
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, true, true)
@@ -675,11 +783,18 @@ func TestCheckConnectNetwork_DeniedApprovalWithUnixRedirectStaysDenied(t *testin
 		emit:      em,
 	}
 
-	dec := p.checkConnectNetwork(context.Background(), "cmd", "db.internal", "db.internal:5432", 5432, &policy.ConnectRedirectResult{
-		Matched:        true,
-		Rule:           "db-unix-redirect",
-		RedirectToUnix: filepath.Join(t.TempDir(), "db", "appdb.sock"),
-	})
+	dec := p.checkConnectNetwork(
+		context.Background(),
+		"cmd",
+		"db.internal",
+		"db.internal:5432",
+		5432,
+		&policy.ConnectRedirectResult{
+			Matched:        true,
+			Rule:           "db-unix-redirect",
+			RedirectToUnix: filepath.Join(t.TempDir(), "db", "appdb.sock"),
+		},
+	)
 	if dec.EffectiveDecision != types.DecisionDeny {
 		t.Fatalf("EffectiveDecision = %v, want deny", dec.EffectiveDecision)
 	}
@@ -733,7 +848,16 @@ func TestMCPConnectionTaggingMatchesDomain(t *testing.T) {
 		"mcp.example.com:443": "test-server",
 	})
 
-	emitMCPConnectionIfMatched(context.Background(), sess, em, "test-session", "cmd-1", "MCP.Example.Com", "mcp.example.com:443", 443)
+	emitMCPConnectionIfMatched(
+		context.Background(),
+		sess,
+		em,
+		"test-session",
+		"cmd-1",
+		"MCP.Example.Com",
+		"mcp.example.com:443",
+		443,
+	)
 
 	var mcpEvents []types.Event
 	for _, ev := range em.events {
@@ -766,7 +890,16 @@ func TestMCPConnectionTaggingMatchesRemote(t *testing.T) {
 	})
 
 	// domain won't match, but remote (IP:port) should
-	emitMCPConnectionIfMatched(context.Background(), sess, em, "test-session", "cmd-2", "some-host", "192.168.1.10:8080", 8080)
+	emitMCPConnectionIfMatched(
+		context.Background(),
+		sess,
+		em,
+		"test-session",
+		"cmd-2",
+		"some-host",
+		"192.168.1.10:8080",
+		8080,
+	)
 
 	var mcpEvents []types.Event
 	for _, ev := range em.events {
@@ -788,7 +921,16 @@ func TestMCPConnectionTaggingNoMatchSkips(t *testing.T) {
 		"mcp.example.com:443": "test-server",
 	})
 
-	emitMCPConnectionIfMatched(context.Background(), sess, em, "test-session", "cmd-3", "other.com", "other.com:443", 443)
+	emitMCPConnectionIfMatched(
+		context.Background(),
+		sess,
+		em,
+		"test-session",
+		"cmd-3",
+		"other.com",
+		"other.com:443",
+		443,
+	)
 
 	for _, ev := range em.events {
 		if ev.Type == "mcp_network_connection" {
@@ -801,7 +943,16 @@ func TestMCPConnectionTaggingNilSession(t *testing.T) {
 	em := &stubEmitter{}
 
 	// Should not panic
-	emitMCPConnectionIfMatched(context.Background(), nil, em, "test-session", "cmd", "example.com", "example.com:443", 443)
+	emitMCPConnectionIfMatched(
+		context.Background(),
+		nil,
+		em,
+		"test-session",
+		"cmd",
+		"example.com",
+		"example.com:443",
+		443,
+	)
 
 	if len(em.events) != 0 {
 		t.Fatalf("expected 0 events with nil session, got %d", len(em.events))
@@ -814,7 +965,16 @@ func TestMCPConnectionTaggingNoRegistry(t *testing.T) {
 	// Don't set registry
 
 	// Should not panic, no events emitted
-	emitMCPConnectionIfMatched(context.Background(), sess, em, "test-session", "cmd", "example.com", "example.com:443", 443)
+	emitMCPConnectionIfMatched(
+		context.Background(),
+		sess,
+		em,
+		"test-session",
+		"cmd",
+		"example.com",
+		"example.com:443",
+		443,
+	)
 
 	if len(em.events) != 0 {
 		t.Fatalf("expected 0 events with no registry, got %d", len(em.events))
@@ -835,7 +995,16 @@ func TestProxyEmitNetEventThreatMetadata(t *testing.T) {
 		ThreatMatch:       "evil.com",
 		ThreatAction:      "deny",
 	}
-	ev := p.emitNetEvent(context.Background(), "net_connect", "cmd-1", "evil.com", "1.2.3.4:443", 443, dec, nil)
+	ev := p.emitNetEvent(
+		context.Background(),
+		"net_connect",
+		"cmd-1",
+		"evil.com",
+		"1.2.3.4:443",
+		443,
+		dec,
+		nil,
+	)
 	if ev.Policy == nil {
 		t.Fatal("expected Policy to be set")
 	}
@@ -861,7 +1030,16 @@ func TestProxyEmitNetEventNoThreatMetadata(t *testing.T) {
 		EffectiveDecision: types.DecisionAllow,
 		Rule:              "allow-all",
 	}
-	ev := p.emitNetEvent(context.Background(), "net_connect", "cmd-1", "safe.com", "1.2.3.4:443", 443, dec, nil)
+	ev := p.emitNetEvent(
+		context.Background(),
+		"net_connect",
+		"cmd-1",
+		"safe.com",
+		"1.2.3.4:443",
+		443,
+		dec,
+		nil,
+	)
 	if ev.Policy == nil {
 		t.Fatal("expected Policy to be set")
 	}
@@ -879,5 +1057,14 @@ func TestMCPConnectionTaggingNilEmitter(t *testing.T) {
 	})
 
 	// Should not panic with nil emitter
-	emitMCPConnectionIfMatched(context.Background(), sess, nil, "test-session", "cmd", "mcp.example.com", "mcp.example.com:443", 443)
+	emitMCPConnectionIfMatched(
+		context.Background(),
+		sess,
+		nil,
+		"test-session",
+		"cmd",
+		"mcp.example.com",
+		"mcp.example.com:443",
+		443,
+	)
 }

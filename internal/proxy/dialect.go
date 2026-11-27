@@ -49,9 +49,14 @@ func DefaultDialectConfigs() map[Dialect]*DialectConfig {
 			PathPrefixes: []string{"/v1/messages", "/v1/complete"},
 		},
 		DialectOpenAI: {
-			Upstream:     openaiURL,
-			AuthHeader:   "Authorization",
-			PathPrefixes: []string{"/v1/chat/completions", "/v1/responses", "/v1/embeddings", "/backend-api/"},
+			Upstream:   openaiURL,
+			AuthHeader: "Authorization",
+			PathPrefixes: []string{
+				"/v1/chat/completions",
+				"/v1/responses",
+				"/v1/embeddings",
+				"/backend-api/",
+			},
 		},
 	}
 }
@@ -126,7 +131,11 @@ func NewRequestRewriter(detector *DialectDetector) *RequestRewriter {
 
 // Rewrite modifies the request for forwarding to the upstream provider.
 // It updates the URL scheme/host and adjusts headers as needed.
-func (rw *RequestRewriter) Rewrite(r *http.Request, dialect Dialect, upstream *url.URL) (*http.Request, error) {
+func (rw *RequestRewriter) Rewrite(
+	r *http.Request,
+	dialect Dialect,
+	upstream *url.URL,
+) (*http.Request, error) {
 	if upstream == nil {
 		upstream = rw.detector.GetUpstream(dialect)
 	}

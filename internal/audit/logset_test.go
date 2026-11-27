@@ -100,7 +100,9 @@ func TestReadLastNonEmptyLine_SearchesNewestFirst(t *testing.T) {
 func TestParseIntegrityEntry_ExtractsIntegrityAndCanonicalPayload(t *testing.T) {
 	t.Parallel()
 
-	line := []byte(`{"z":"last","type":"event","integrity":{"format_version":2,"sequence":17,"prev_hash":"abcd1234","entry_hash":"deadbeef"},"a":"first"}`)
+	line := []byte(
+		`{"z":"last","type":"event","integrity":{"format_version":2,"sequence":17,"prev_hash":"abcd1234","entry_hash":"deadbeef"},"a":"first"}`,
+	)
 
 	got, err := ParseIntegrityEntry(line)
 	if err != nil {
@@ -114,7 +116,11 @@ func TestParseIntegrityEntry_ExtractsIntegrityAndCanonicalPayload(t *testing.T) 
 		t.Fatal("Integrity = nil, want metadata")
 	}
 	if got.Integrity.FormatVersion != IntegrityFormatVersion {
-		t.Fatalf("Integrity.FormatVersion = %d, want %d", got.Integrity.FormatVersion, IntegrityFormatVersion)
+		t.Fatalf(
+			"Integrity.FormatVersion = %d, want %d",
+			got.Integrity.FormatVersion,
+			IntegrityFormatVersion,
+		)
 	}
 	if got.Integrity.Sequence != 17 {
 		t.Fatalf("Integrity.Sequence = %d, want 17", got.Integrity.Sequence)

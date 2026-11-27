@@ -64,10 +64,16 @@ func (e *Engine) DirenvImportPolicy() ResolvedDirenvImportPolicy {
 	}
 	p := e.policy.Direnv
 	return ResolvedDirenvImportPolicy{
-		Enabled: p.Enabled, Allow: append([]string(nil), p.Allow...), Deny: append([]string(nil), p.Deny...),
-		MaxKeys: p.MaxKeys, MaxValueBytes: p.MaxValueBytes, MaxBytes: p.MaxBytes,
-		MaxStdoutBytes: p.MaxStdoutBytes, MaxStderrBytes: p.MaxStderrBytes,
-		QueueTimeout: p.QueueTimeout.Duration, EvaluationTimeout: p.EvaluationTimeout.Duration,
+		Enabled:           p.Enabled,
+		Allow:             append([]string(nil), p.Allow...),
+		Deny:              append([]string(nil), p.Deny...),
+		MaxKeys:           p.MaxKeys,
+		MaxValueBytes:     p.MaxValueBytes,
+		MaxBytes:          p.MaxBytes,
+		MaxStdoutBytes:    p.MaxStdoutBytes,
+		MaxStderrBytes:    p.MaxStderrBytes,
+		QueueTimeout:      p.QueueTimeout.Duration,
+		EvaluationTimeout: p.EvaluationTimeout.Duration,
 	}
 }
 

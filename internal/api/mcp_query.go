@@ -18,7 +18,11 @@ func (a *App) listMCPTools(w http.ResponseWriter, r *http.Request) {
 	tools, err := a.store.ListMCPTools(r.Context(), filter)
 	if err != nil {
 		slog.Error("list MCP tools", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+		writeJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]any{"error": "internal server error"},
+		)
 		return
 	}
 	if tools == nil {
@@ -32,7 +36,11 @@ func (a *App) listMCPServers(w http.ResponseWriter, r *http.Request) {
 	servers, err := a.store.ListMCPServers(r.Context())
 	if err != nil {
 		slog.Error("list MCP servers", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+		writeJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]any{"error": "internal server error"},
+		)
 		return
 	}
 	if servers == nil {

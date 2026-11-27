@@ -49,7 +49,10 @@ func testWorkspaceVolumeRequest(t *testing.T) WorkspaceVolumeRequest {
 	}
 }
 
-func testWorkspaceVolumeDependencies(t *testing.T, inspect func(string, string, *os.File, ...string) error) workspaceVolumeDependencies {
+func testWorkspaceVolumeDependencies(
+	t *testing.T,
+	inspect func(string, string, *os.File, ...string) error,
+) workspaceVolumeDependencies {
 	t.Helper()
 	return workspaceVolumeDependencies{
 		resolveQEMUImg: func(name string) (string, error) {
@@ -81,12 +84,28 @@ func testWorkspaceVolumeDependencies(t *testing.T, inspect func(string, string, 
 				}
 				return nil, writeTestQcow2(args[6], size, 0o644)
 			case "info", "check", "map":
-				if image == nil || len(args) != 5 || args[1] != "--output=json" || args[2] != "-f" || args[3] != WorkspaceVolumeFormat {
-					return nil, fmt.Errorf("qemu-img validation args = %#v, image = %v", args, image)
+				if image == nil || len(args) != 5 || args[1] != "--output=json" ||
+					args[2] != "-f" ||
+					args[3] != WorkspaceVolumeFormat {
+					return nil, fmt.Errorf(
+						"qemu-img validation args = %#v, image = %v",
+						args,
+						image,
+					)
 				}
-				wantDescriptor := filepath.Join(string(filepath.Separator), "proc", "self", "fd", "3")
+				wantDescriptor := filepath.Join(
+					string(filepath.Separator),
+					"proc",
+					"self",
+					"fd",
+					"3",
+				)
 				if args[4] != wantDescriptor {
-					return nil, fmt.Errorf("qemu-img descriptor = %q, want %q", args[4], wantDescriptor)
+					return nil, fmt.Errorf(
+						"qemu-img descriptor = %q, want %q",
+						args[4],
+						wantDescriptor,
+					)
 				}
 				virtualSize, err := validateTestQcow2(image)
 				if err != nil {
@@ -94,11 +113,21 @@ func testWorkspaceVolumeDependencies(t *testing.T, inspect func(string, string, 
 				}
 				switch args[0] {
 				case "info":
-					return []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1","corrupt":false}}}`, virtualSize)), nil
+					return []byte(
+						fmt.Sprintf(
+							`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1","corrupt":false}}}`,
+							virtualSize,
+						),
+					), nil
 				case "check":
 					return []byte(`{"format":"qcow2","check-errors":0}`), nil
 				default:
-					return []byte(fmt.Sprintf(`[{"start":0,"length":%d,"depth":0,"present":false,"zero":true,"data":false}]`, virtualSize)), nil
+					return []byte(
+						fmt.Sprintf(
+							`[{"start":0,"length":%d,"depth":0,"present":false,"zero":true,"data":false}]`,
+							virtualSize,
+						),
+					), nil
 				}
 			default:
 				return nil, fmt.Errorf("unexpected qemu-img operation %q", args[0])
@@ -133,28 +162,48 @@ func validateTestQcow2(image *os.File) (int64, error) {
 func TestWorkspaceVolumeCreatePublishesAndReopensExactImage(t *testing.T) {
 	request := testWorkspaceVolumeRequest(t)
 	var operations []string
-	deps := testWorkspaceVolumeDependencies(t, func(executable, workingDirectory string, image *os.File, args ...string) error {
-		operations = append(operations, args[0])
-		if executable != filepath.Join(string(filepath.Separator), "packaged", "bin", "qemu-img") {
-			t.Fatalf("qemu-img executable = %q", executable)
-		}
-		if args[0] == "create" {
-			if filepath.Dir(args[6]) != workingDirectory || args[2] != "-f" || args[3] != WorkspaceVolumeFormat || args[4] != "-o" || args[5] != "compat=1.1" {
-				t.Fatalf("qemu-img invocation = %#v in %q", args, workingDirectory)
+	deps := testWorkspaceVolumeDependencies(
+		t,
+		func(executable, workingDirectory string, image *os.File, args ...string) error {
+			operations = append(operations, args[0])
+			if executable != filepath.Join(
+				string(filepath.Separator),
+				"packaged",
+				"bin",
+				"qemu-img",
+			) {
+				t.Fatalf("qemu-img executable = %q", executable)
 			}
-			joined := strings.Join(args, " ")
-			for _, forbidden := range []string{"mount", "loop", "nbd", filepath.Join(request.StateDir, "runtime", "workspace")} {
-				if strings.Contains(joined, forbidden) {
-					t.Fatalf("qemu-img invocation contains forbidden staging or attachment term %q: %s", forbidden, joined)
+			if args[0] == "create" {
+				if filepath.Dir(args[6]) != workingDirectory || args[2] != "-f" ||
+					args[3] != WorkspaceVolumeFormat ||
+					args[4] != "-o" ||
+					args[5] != "compat=1.1" {
+					t.Fatalf("qemu-img invocation = %#v in %q", args, workingDirectory)
 				}
+				joined := strings.Join(args, " ")
+				for _, forbidden := range []string{"mount", "loop", "nbd", filepath.Join(request.StateDir, "runtime", "workspace")} {
+					if strings.Contains(joined, forbidden) {
+						t.Fatalf(
+							"qemu-img invocation contains forbidden staging or attachment term %q: %s",
+							forbidden,
+							joined,
+						)
+					}
+				}
+			} else if image == nil {
+				t.Fatal("qemu-img validation did not receive the exact read-only image")
 			}
-		} else if image == nil {
-			t.Fatal("qemu-img validation did not receive the exact read-only image")
-		}
-		return nil
-	})
+			return nil
+		},
+	)
 
-	volume, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	volume, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,8 +214,11 @@ func TestWorkspaceVolumeCreatePublishesAndReopensExactImage(t *testing.T) {
 		t.Fatalf("qemu-img operations = %v", operations)
 	}
 	manifest := volume.Manifest
-	if manifest.SessionID != request.SessionID || manifest.Provider != ProviderName || manifest.Profile != request.Profile.Name ||
-		manifest.ProfileFileSHA256 != request.ProfileFileSHA256 || manifest.VolumeID != testWorkspaceVolumeID || manifest.Image.Inode == 0 {
+	if manifest.SessionID != request.SessionID || manifest.Provider != ProviderName ||
+		manifest.Profile != request.Profile.Name ||
+		manifest.ProfileFileSHA256 != request.ProfileFileSHA256 ||
+		manifest.VolumeID != testWorkspaceVolumeID ||
+		manifest.Image.Inode == 0 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	layout := workspaceVolumePaths(request.StateDir)
@@ -187,7 +239,12 @@ func TestWorkspaceVolumeCreatePublishesAndReopensExactImage(t *testing.T) {
 		t.Fatalf("Close deleted published volume: %v", err)
 	}
 
-	reopened, err := openWorkspaceVolumeWithDependencies(context.Background(), request, manifest.VolumeID, deps)
+	reopened, err := openWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		manifest.VolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,13 +259,21 @@ func TestWorkspaceVolumeCreatePublishesAndReopensExactImage(t *testing.T) {
 func TestWorkspaceVolumeCreateIsCallerIdentifiedAndIdempotent(t *testing.T) {
 	request := testWorkspaceVolumeRequest(t)
 	var creates int
-	deps := testWorkspaceVolumeDependencies(t, func(_ string, _ string, _ *os.File, args ...string) error {
-		if args[0] == "create" {
-			creates++
-		}
-		return nil
-	})
-	first, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	deps := testWorkspaceVolumeDependencies(
+		t,
+		func(_ string, _ string, _ *os.File, args ...string) error {
+			if args[0] == "create" {
+				creates++
+			}
+			return nil
+		},
+	)
+	first, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +281,12 @@ func TestWorkspaceVolumeCreateIsCallerIdentifiedAndIdempotent(t *testing.T) {
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
-	second, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	second, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +296,15 @@ func TestWorkspaceVolumeCreateIsCallerIdentifiedAndIdempotent(t *testing.T) {
 	if err := second.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if volume, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testOtherWorkspaceVolumeID, deps); !errors.Is(err, ErrWorkspaceVolumeExists) {
+	if volume, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testOtherWorkspaceVolumeID,
+		deps,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeExists,
+	) {
 		if volume != nil {
 			_ = volume.Close()
 		}
@@ -242,16 +320,27 @@ func TestWorkspaceVolumeCreateRecoversOnlyExactTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	transactionDir := workspaceVolumeCreateTransactionPath(layout, testWorkspaceVolumeID)
-	prepareDir, err := os.MkdirTemp(layout.volumesDir, workspaceVolumePreparePrefix+testWorkspaceVolumeID+"-")
+	prepareDir, err := os.MkdirTemp(
+		layout.volumesDir,
+		workspaceVolumePreparePrefix+testWorkspaceVolumeID+"-",
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	intent := newWorkspaceVolumeCreateIntent(request, testWorkspaceVolumeID, deps.now())
-	if err := writeWorkspaceVolumeCreateIntent(filepath.Join(prepareDir, workspaceVolumeCreateIntentName), intent); err != nil {
+	if err := writeWorkspaceVolumeCreateIntent(
+		filepath.Join(prepareDir, workspaceVolumeCreateIntentName),
+		intent,
+	); err != nil {
 		t.Fatal(err)
 	}
 
-	volume, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	volume, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,10 +365,19 @@ func TestWorkspaceVolumeCreateRecoversOnlyExactTransaction(t *testing.T) {
 	}
 	foreign := newWorkspaceVolumeCreateIntent(other, testWorkspaceVolumeID, deps.now())
 	foreign.ProfileFileSHA256 = digest([]byte("foreign-profile"))
-	if err := writeWorkspaceVolumeCreateIntent(filepath.Join(otherTransaction, workspaceVolumeCreateIntentName), foreign); err != nil {
+	if err := writeWorkspaceVolumeCreateIntent(
+		filepath.Join(otherTransaction, workspaceVolumeCreateIntentName),
+		foreign,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := createWorkspaceVolumeWithDependencies(context.Background(), other, testWorkspaceVolumeID, deps); !errors.Is(err, ErrWorkspaceVolumeExists) || !errors.Is(err, ErrWorkspaceVolumeInvalid) {
+	if got, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		other,
+		testWorkspaceVolumeID,
+		deps,
+	); !errors.Is(err, ErrWorkspaceVolumeExists) ||
+		!errors.Is(err, ErrWorkspaceVolumeInvalid) {
 		if got != nil {
 			_ = got.Close()
 		}
@@ -293,7 +391,12 @@ func TestWorkspaceVolumeCreateRecoversOnlyExactTransaction(t *testing.T) {
 func TestWorkspaceVolumeReopenRejectsReplacementTruncationAndProfileConfusion(t *testing.T) {
 	request := testWorkspaceVolumeRequest(t)
 	deps := testWorkspaceVolumeDependencies(t, nil)
-	volume, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	volume, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +407,15 @@ func TestWorkspaceVolumeReopenRejectsReplacementTruncationAndProfileConfusion(t 
 
 	confused := request
 	confused.ProfileFileSHA256 = digest([]byte("different-profile-file"))
-	if reopened, err := openWorkspaceVolumeWithDependencies(context.Background(), confused, manifest.VolumeID, deps); !errors.Is(err, ErrWorkspaceVolumeInvalid) {
+	if reopened, err := openWorkspaceVolumeWithDependencies(
+		context.Background(),
+		confused,
+		manifest.VolumeID,
+		deps,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeInvalid,
+	) {
 		if reopened != nil {
 			_ = reopened.Close()
 		}
@@ -313,13 +424,25 @@ func TestWorkspaceVolumeReopenRejectsReplacementTruncationAndProfileConfusion(t 
 
 	layout := workspaceVolumePaths(request.StateDir)
 	replacement := filepath.Join(layout.workspaceDir, "replacement.qcow2")
-	if err := writeTestQcow2(replacement, request.Profile.WorkspaceVolume.VirtualSizeBytes, 0o600); err != nil {
+	if err := writeTestQcow2(
+		replacement,
+		request.Profile.WorkspaceVolume.VirtualSizeBytes,
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Rename(replacement, layout.imagePath); err != nil {
 		t.Fatal(err)
 	}
-	if reopened, err := openWorkspaceVolumeWithDependencies(context.Background(), request, manifest.VolumeID, deps); !errors.Is(err, ErrWorkspaceVolumeCorrupt) {
+	if reopened, err := openWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		manifest.VolumeID,
+		deps,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeCorrupt,
+	) {
 		if reopened != nil {
 			_ = reopened.Close()
 		}
@@ -327,7 +450,12 @@ func TestWorkspaceVolumeReopenRejectsReplacementTruncationAndProfileConfusion(t 
 	}
 
 	truncatedRequest := testWorkspaceVolumeRequest(t)
-	truncated, err := createWorkspaceVolumeWithDependencies(context.Background(), truncatedRequest, testWorkspaceVolumeID, deps)
+	truncated, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		truncatedRequest,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +466,15 @@ func TestWorkspaceVolumeReopenRejectsReplacementTruncationAndProfileConfusion(t 
 	if err := os.Truncate(truncatedLayout.imagePath, qcow2ValidationHeaderBytes); err != nil {
 		t.Fatal(err)
 	}
-	if reopened, err := openWorkspaceVolumeWithDependencies(context.Background(), truncatedRequest, testWorkspaceVolumeID, deps); !errors.Is(err, ErrWorkspaceVolumeCorrupt) {
+	if reopened, err := openWorkspaceVolumeWithDependencies(
+		context.Background(),
+		truncatedRequest,
+		testWorkspaceVolumeID,
+		deps,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeCorrupt,
+	) {
 		if reopened != nil {
 			_ = reopened.Close()
 		}
@@ -349,13 +485,26 @@ func TestWorkspaceVolumeReopenRejectsReplacementTruncationAndProfileConfusion(t 
 func TestWorkspaceVolumeMutableLeaseIsExclusive(t *testing.T) {
 	request := testWorkspaceVolumeRequest(t)
 	deps := testWorkspaceVolumeDependencies(t, nil)
-	volume, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	volume, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	if second, err := openWorkspaceVolumeWithDependencies(ctx, request, testWorkspaceVolumeID, deps); !errors.Is(err, context.DeadlineExceeded) {
+	if second, err := openWorkspaceVolumeWithDependencies(
+		ctx,
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	); !errors.Is(
+		err,
+		context.DeadlineExceeded,
+	) {
 		if second != nil {
 			_ = second.Close()
 		}
@@ -364,7 +513,12 @@ func TestWorkspaceVolumeMutableLeaseIsExclusive(t *testing.T) {
 	if err := volume.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := openWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	reopened, err := openWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,30 +530,58 @@ func TestWorkspaceVolumeMutableLeaseIsExclusive(t *testing.T) {
 func TestWorkspaceVolumeDeleteIsExplicitIdempotentAndLeaseGuarded(t *testing.T) {
 	request := testWorkspaceVolumeRequest(t)
 	deps := testWorkspaceVolumeDependencies(t, nil)
-	volume, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	volume, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	volumeID := volume.Manifest.VolumeID
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	if err := deleteWorkspaceVolumeWithDependencies(ctx, request, volumeID, deps); !errors.Is(err, context.DeadlineExceeded) {
+	if err := deleteWorkspaceVolumeWithDependencies(
+		ctx,
+		request,
+		volumeID,
+		deps,
+	); !errors.Is(
+		err,
+		context.DeadlineExceeded,
+	) {
 		t.Fatalf("Delete while open error = %v, want deadline", err)
 	}
 	if err := volume.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := deleteWorkspaceVolumeWithDependencies(context.Background(), request, volumeID, deps); err != nil {
+	if err := deleteWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		volumeID,
+		deps,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := deleteWorkspaceVolumeWithDependencies(context.Background(), request, volumeID, deps); err != nil {
+	if err := deleteWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		volumeID,
+		deps,
+	); err != nil {
 		t.Fatalf("repeated Delete: %v", err)
 	}
 	layout := workspaceVolumePaths(request.StateDir)
 	if _, err := os.Lstat(layout.workspaceDir); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("workspace survived explicit deletion: %v", err)
 	}
-	if _, err := os.Lstat(workspaceVolumeTombstonePath(layout, volumeID)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(
+		workspaceVolumeTombstonePath(layout, volumeID),
+	); !errors.Is(
+		err,
+		os.ErrNotExist,
+	) {
 		t.Fatalf("deletion tombstone survived: %v", err)
 	}
 }
@@ -421,7 +603,12 @@ func TestWorkspaceVolumeFailedCreatePublishesNothingAndCanResume(t *testing.T) {
 		}
 		return goodRunner(ctx, executable, workingDirectory, image, args...)
 	}
-	if volume, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps); err == nil {
+	if volume, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	); err == nil {
 		if volume != nil {
 			_ = volume.Close()
 		}
@@ -432,12 +619,19 @@ func TestWorkspaceVolumeFailedCreatePublishesNothingAndCanResume(t *testing.T) {
 		t.Fatalf("failed create published workspace: %v", err)
 	}
 	transactionDir := workspaceVolumeCreateTransactionPath(layout, testWorkspaceVolumeID)
-	if _, err := os.Lstat(filepath.Join(transactionDir, workspaceVolumeCreateIntentName)); err != nil {
+	if _, err := os.Lstat(
+		filepath.Join(transactionDir, workspaceVolumeCreateIntentName),
+	); err != nil {
 		t.Fatalf("failed exact transaction is not recoverable: %v", err)
 	}
 
 	deps.runQEMUImg = goodRunner
-	volume, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	volume, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,7 +646,12 @@ func TestWorkspaceVolumeFailedCreatePublishesNothingAndCanResume(t *testing.T) {
 func TestWorkspaceVolumeManifestIsStrictAndPrivate(t *testing.T) {
 	request := testWorkspaceVolumeRequest(t)
 	deps := testWorkspaceVolumeDependencies(t, nil)
-	volume, err := createWorkspaceVolumeWithDependencies(context.Background(), request, testWorkspaceVolumeID, deps)
+	volume, err := createWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+		deps,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +668,15 @@ func TestWorkspaceVolumeManifestIsStrictAndPrivate(t *testing.T) {
 	if err := os.WriteFile(layout.manifestPath, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if reopened, err := openWorkspaceVolumeWithDependencies(context.Background(), request, volumeID, deps); !errors.Is(err, ErrWorkspaceVolumeInvalid) {
+	if reopened, err := openWorkspaceVolumeWithDependencies(
+		context.Background(),
+		request,
+		volumeID,
+		deps,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeInvalid,
+	) {
 		if reopened != nil {
 			_ = reopened.Close()
 		}
@@ -479,14 +686,34 @@ func TestWorkspaceVolumeManifestIsStrictAndPrivate(t *testing.T) {
 
 func TestWorkspaceVolumeQEMUJSONValidation(t *testing.T) {
 	const size = int64(8 << 30)
-	if err := validateWorkspaceVolumeQEMUInfoJSON(make([]byte, maxQEMUImgJSONBytes+1), size); !errors.Is(err, ErrWorkspaceVolumeCorrupt) {
+	if err := validateWorkspaceVolumeQEMUInfoJSON(
+		make([]byte, maxQEMUImgJSONBytes+1),
+		size,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeCorrupt,
+	) {
 		t.Fatalf("oversized qemu-img JSON error = %v", err)
 	}
 	bounded := boundedQEMUImgOutput{limit: 4}
-	if written, err := bounded.Write([]byte("123456")); err != nil || written != 6 || string(bounded.data) != "1234" || !bounded.truncated {
-		t.Fatalf("bounded qemu-img output = %q, %d, %v, truncated=%t", bounded.data, written, err, bounded.truncated)
+	if written, err := bounded.Write(
+		[]byte("123456"),
+	); err != nil || written != 6 || string(bounded.data) != "1234" ||
+		!bounded.truncated {
+		t.Fatalf(
+			"bounded qemu-img output = %q, %d, %v, truncated=%t",
+			bounded.data,
+			written,
+			err,
+			bounded.truncated,
+		)
 	}
-	validInfo := []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1","corrupt":false}}}`, size))
+	validInfo := []byte(
+		fmt.Sprintf(
+			`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1","corrupt":false}}}`,
+			size,
+		),
+	)
 	if err := validateWorkspaceVolumeQEMUInfoJSON(validInfo, size); err != nil {
 		t.Fatal(err)
 	}
@@ -498,32 +725,77 @@ func TestWorkspaceVolumeQEMUJSONValidation(t *testing.T) {
 		"corrupt":           []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1","corrupt":true}}}`, size)),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := validateWorkspaceVolumeQEMUInfoJSON(data, size); !errors.Is(err, ErrWorkspaceVolumeCorrupt) {
+			if err := validateWorkspaceVolumeQEMUInfoJSON(
+				data,
+				size,
+			); !errors.Is(
+				err,
+				ErrWorkspaceVolumeCorrupt,
+			) {
 				t.Fatalf("validation error = %v", err)
 			}
 		})
 	}
-	if err := validateWorkspaceVolumeQEMUCheckJSON([]byte(`{"format":"qcow2","check-errors":0}`), true); err != nil {
+	if err := validateWorkspaceVolumeQEMUCheckJSON(
+		[]byte(`{"format":"qcow2","check-errors":0}`),
+		true,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateWorkspaceVolumeQEMUCheckJSON([]byte(`{"format":"qcow2","check-errors":1,"corruptions":1}`), false); !errors.Is(err, ErrWorkspaceVolumeCorrupt) {
+	if err := validateWorkspaceVolumeQEMUCheckJSON(
+		[]byte(`{"format":"qcow2","check-errors":1,"corruptions":1}`),
+		false,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeCorrupt,
+	) {
 		t.Fatalf("check error = %v", err)
 	}
-	if err := validateWorkspaceVolumeQEMUCheckJSON([]byte(`{"format":"qcow2","check-errors":0,"allocated-clusters":1}`), true); !errors.Is(err, ErrWorkspaceVolumeCorrupt) {
+	if err := validateWorkspaceVolumeQEMUCheckJSON(
+		[]byte(`{"format":"qcow2","check-errors":0,"allocated-clusters":1}`),
+		true,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeCorrupt,
+	) {
 		t.Fatalf("allocated initial image check error = %v", err)
 	}
-	blankMap := []byte(fmt.Sprintf(`[{"start":0,"length":%d,"depth":0,"present":false,"zero":true,"data":false}]`, size))
+	blankMap := []byte(
+		fmt.Sprintf(
+			`[{"start":0,"length":%d,"depth":0,"present":false,"zero":true,"data":false}]`,
+			size,
+		),
+	)
 	if err := validateWorkspaceVolumeQEMUMapJSON(blankMap, size, true); err != nil {
 		t.Fatal(err)
 	}
-	mutableMap := []byte(fmt.Sprintf(`[{"start":0,"length":4096,"depth":0,"present":true,"zero":false,"data":true},{"start":4096,"length":%d,"depth":0,"present":false,"zero":true,"data":false}]`, size-4096))
+	mutableMap := []byte(
+		fmt.Sprintf(
+			`[{"start":0,"length":4096,"depth":0,"present":true,"zero":false,"data":true},{"start":4096,"length":%d,"depth":0,"present":false,"zero":true,"data":false}]`,
+			size-4096,
+		),
+	)
 	if err := validateWorkspaceVolumeQEMUMapJSON(mutableMap, size, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateWorkspaceVolumeQEMUMapJSON(mutableMap, size, true); !errors.Is(err, ErrWorkspaceVolumeCorrupt) {
+	if err := validateWorkspaceVolumeQEMUMapJSON(
+		mutableMap,
+		size,
+		true,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeCorrupt,
+	) {
 		t.Fatalf("nonblank initial map error = %v", err)
 	}
-	if err := validateWorkspaceVolumeQEMUMapJSON([]byte(`[]`), size, false); !errors.Is(err, ErrWorkspaceVolumeCorrupt) {
+	if err := validateWorkspaceVolumeQEMUMapJSON(
+		[]byte(`[]`),
+		size,
+		false,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeCorrupt,
+	) {
 		t.Fatalf("incomplete map error = %v", err)
 	}
 }
@@ -561,7 +833,11 @@ func TestWorkspaceVolumePackagedQEMUImgIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if idempotent.Manifest != manifest {
-		t.Fatalf("idempotent packaged create manifest = %#v, want %#v", idempotent.Manifest, manifest)
+		t.Fatalf(
+			"idempotent packaged create manifest = %#v, want %#v",
+			idempotent.Manifest,
+			manifest,
+		)
 	}
 	if err := idempotent.Close(); err != nil {
 		t.Fatal(err)
@@ -573,22 +849,40 @@ func TestWorkspaceVolumePackagedQEMUImgIntegration(t *testing.T) {
 	if err := reopened.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := DeleteWorkspaceVolume(context.Background(), request, testWorkspaceVolumeID); err != nil {
+	if err := DeleteWorkspaceVolume(
+		context.Background(),
+		request,
+		testWorkspaceVolumeID,
+	); err != nil {
 		t.Fatal(err)
 	}
 
 	truncatedRequest := testWorkspaceVolumeRequest(t)
-	truncated, err := CreateWorkspaceVolume(context.Background(), truncatedRequest, testWorkspaceVolumeID)
+	truncated, err := CreateWorkspaceVolume(
+		context.Background(),
+		truncatedRequest,
+		testWorkspaceVolumeID,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := truncated.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Truncate(workspaceVolumePaths(truncatedRequest.StateDir).imagePath, qcow2ValidationHeaderBytes); err != nil {
+	if err := os.Truncate(
+		workspaceVolumePaths(truncatedRequest.StateDir).imagePath,
+		qcow2ValidationHeaderBytes,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if reopened, err := OpenWorkspaceVolume(context.Background(), truncatedRequest, testWorkspaceVolumeID); !errors.Is(err, ErrWorkspaceVolumeCorrupt) {
+	if reopened, err := OpenWorkspaceVolume(
+		context.Background(),
+		truncatedRequest,
+		testWorkspaceVolumeID,
+	); !errors.Is(
+		err,
+		ErrWorkspaceVolumeCorrupt,
+	) {
 		if reopened != nil {
 			_ = reopened.Close()
 		}

@@ -422,7 +422,11 @@ func findParentByTGID(tracees map[int]*TraceeState, parentTGID int) *TraceeState
 // populated.
 //
 // Caller must hold t.mu.
-func seedChildStateFromParent(parent *TraceeState, childTID, childTGID int, suppressInitialStop bool) *TraceeState {
+func seedChildStateFromParent(
+	parent *TraceeState,
+	childTID, childTGID int,
+	suppressInitialStop bool,
+) *TraceeState {
 	st := &TraceeState{
 		TID:                 childTID,
 		TGID:                childTGID,
@@ -460,7 +464,15 @@ func (t *Tracer) writeReadyFile() {
 	}
 	t.readyFileAttempts++
 	if err := os.WriteFile(t.cfg.ReadyFile, []byte("ready\n"), 0644); err != nil {
-		slog.Error("failed to write ready file", "path", t.cfg.ReadyFile, "error", err, "attempt", t.readyFileAttempts)
+		slog.Error(
+			"failed to write ready file",
+			"path",
+			t.cfg.ReadyFile,
+			"error",
+			err,
+			"attempt",
+			t.readyFileAttempts,
+		)
 		if t.readyFileAttempts >= 3 {
 			slog.Error("giving up on ready file after max attempts", "path", t.cfg.ReadyFile)
 			t.readyFileWritten = true // stop retrying
@@ -692,7 +704,8 @@ func mustCatchExit(s *TraceeState) bool {
 	if s == nil {
 		return false
 	}
-	return s.NeedExitStop || s.PendingDenyErrno != 0 || s.PendingFakeZero || s.HasPendingReturn || s.PendingExecStubFD >= 0
+	return s.NeedExitStop || s.PendingDenyErrno != 0 || s.PendingFakeZero || s.HasPendingReturn ||
+		s.PendingExecStubFD >= 0
 }
 
 // allowSyscall resumes the tracee, allowing the syscall to proceed.
@@ -845,7 +858,12 @@ func (t *Tracer) applyReturnOverride(tid int, retval int64) {
 }
 
 // handleStop dispatches a tracee stop event.
-func (t *Tracer) handleStop(ctx context.Context, tid int, status unix.WaitStatus, rusage *unix.Rusage) {
+func (t *Tracer) handleStop(
+	ctx context.Context,
+	tid int,
+	status unix.WaitStatus,
+	rusage *unix.Rusage,
+) {
 	// #369 #2 watchdog coordination: record that the Run loop is making progress
 	// (handling a stop), mark the tid it is actively servicing so the watchdog
 	// never heals a tracee mid-handling, and clear the listening flag — any stop
@@ -890,7 +908,13 @@ func (t *Tracer) handleStop(ctx context.Context, tid int, status unix.WaitStatus
 				t.handleExecEvent(tid)
 				if t.shouldDetachAfterExec(tid) {
 					if err := unix.PtraceDetach(tid); err != nil && err != unix.ESRCH {
-						slog.Warn("ptrace: detach after exec failed, resuming instead", "tid", tid, "err", err)
+						slog.Warn(
+							"ptrace: detach after exec failed, resuming instead",
+							"tid",
+							tid,
+							"err",
+							err,
+						)
 						t.resumeTracee(tid, 0)
 					} else {
 						t.traceResume(tid, "detach-after-exec", 0)
@@ -1823,7 +1847,12 @@ func (t *Tracer) handleExitEvent(tid int) {
 	t.resumeTracee(tid, 0)
 }
 
-func (t *Tracer) handleExit(tid int, status unix.WaitStatus, rusage *unix.Rusage, reason ExitReason) {
+func (t *Tracer) handleExit(
+	tid int,
+	status unix.WaitStatus,
+	rusage *unix.Rusage,
+	reason ExitReason,
+) {
 	t.mu.Lock()
 	state := t.tracees[tid]
 	var tgid int
@@ -2011,7 +2040,13 @@ func (t *Tracer) handleExecve(ctx context.Context, tid int, sc *SyscallContext) 
 	case "redirect":
 		regs, err := sc.Regs()
 		if err != nil {
-			slog.Warn("handleExecve: cannot load regs for redirect, denying", "tid", tid, "error", err)
+			slog.Warn(
+				"handleExecve: cannot load regs for redirect, denying",
+				"tid",
+				tid,
+				"error",
+				err,
+			)
 			t.denySyscall(tid, int(unix.EACCES))
 			return
 		}
@@ -2052,7 +2087,13 @@ func (t *Tracer) Run(ctx context.Context) error {
 		} else {
 			t.dnsProxy = proxy
 			go t.dnsProxy.run(ctx)
-			slog.Info("ptrace: DNS proxy started", "addr4", t.dnsProxy.addr4(), "addr6", t.dnsProxy.addr6())
+			slog.Info(
+				"ptrace: DNS proxy started",
+				"addr4",
+				t.dnsProxy.addr4(),
+				"addr6",
+				t.dnsProxy.addr6(),
+			)
 		}
 	}
 
@@ -2270,7 +2311,11 @@ func (t *Tracer) reconcileExitNotify() int {
 		if !ok {
 			continue // handleExit won the race and already delivered the real exit
 		}
-		slog.Warn("ptrace: recovering vanished exec — registered pid gone from /proc, no exit delivered (#369 #2)", "pid", pid)
+		slog.Warn(
+			"ptrace: recovering vanished exec — registered pid gone from /proc, no exit delivered (#369 #2)",
+			"pid",
+			pid,
+		)
 		traceNote("exit", "recover-vanished", pid)
 		select {
 		case v.(chan ExitStatus) <- ExitStatus{PID: pid, Reason: ExitVanished}:
@@ -2309,8 +2354,13 @@ func (t *Tracer) onEchildWithTracees() int {
 	now := time.Now()
 	if now.Sub(t.lastEchildLog) >= time.Second {
 		t.lastEchildLog = now
-		slog.Warn("ptrace: Wait4 ECHILD while tracees tracked — stolen-exit/wedge anomaly (#369 #2)",
-			"tracee_count", t.TraceeCount(), "recovered", recovered)
+		slog.Warn(
+			"ptrace: Wait4 ECHILD while tracees tracked — stolen-exit/wedge anomaly (#369 #2)",
+			"tracee_count",
+			t.TraceeCount(),
+			"recovered",
+			recovered,
+		)
 		if ptraceTraceOn() {
 			t.dumpTraceRing("echild-with-tracees")
 		}
@@ -2357,7 +2407,11 @@ func (t *Tracer) recoverVanishedTracees() int {
 		if procExists(tid) {
 			continue // still present (running or ptrace-stopped) — not a stolen exit
 		}
-		slog.Warn("ptrace: recovering stolen exit — tracee vanished from /proc under ECHILD (#369 #2)", "tid", tid)
+		slog.Warn(
+			"ptrace: recovering stolen exit — tracee vanished from /proc under ECHILD (#369 #2)",
+			"tid",
+			tid,
+		)
 		t.handleExit(tid, unix.WaitStatus(0), nil, ExitVanished)
 		recovered++
 	}

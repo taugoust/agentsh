@@ -152,7 +152,11 @@ func TestIntegration_FullFlowAnthropic(t *testing.T) {
 	}
 
 	if respEntry.RequestID != reqEntry.ID {
-		t.Errorf("response request_id %q does not match request id %q", respEntry.RequestID, reqEntry.ID)
+		t.Errorf(
+			"response request_id %q does not match request id %q",
+			respEntry.RequestID,
+			reqEntry.ID,
+		)
 	}
 	if respEntry.Response.Status != http.StatusOK {
 		t.Errorf("expected status 200, got %d", respEntry.Response.Status)
@@ -285,7 +289,9 @@ func TestIntegration_MultiplePIITypes(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"content":[{"text":"OK"}],"usage":{"input_tokens":10,"output_tokens":20}}`))
+		w.Write(
+			[]byte(`{"content":[{"text":"OK"}],"usage":{"input_tokens":10,"output_tokens":20}}`),
+		)
 	}))
 	defer upstream.Close()
 
@@ -660,13 +666,21 @@ func TestIntegration_EnvVars(t *testing.T) {
 		t.Error("OPENAI_BASE_URL should be set")
 	}
 	if envVars["AGENTSH_SESSION_ID"] != "integration-test-envvars" {
-		t.Errorf("expected session ID %q, got %q", "integration-test-envvars", envVars["AGENTSH_SESSION_ID"])
+		t.Errorf(
+			"expected session ID %q, got %q",
+			"integration-test-envvars",
+			envVars["AGENTSH_SESSION_ID"],
+		)
 	}
 
 	// Verify URLs point to proxy address
 	addr := p.Addr().String()
 	if !strings.Contains(envVars["ANTHROPIC_BASE_URL"], addr) {
-		t.Errorf("ANTHROPIC_BASE_URL should contain proxy address %s, got %s", addr, envVars["ANTHROPIC_BASE_URL"])
+		t.Errorf(
+			"ANTHROPIC_BASE_URL should contain proxy address %s, got %s",
+			addr,
+			envVars["ANTHROPIC_BASE_URL"],
+		)
 	}
 }
 

@@ -62,7 +62,11 @@ func TestCreateSessionRequestCompat_RealPaths_TriState(t *testing.T) {
 					t.Fatal("req.RealPaths = nil after ToTypes(), want non-nil")
 				}
 				if *req.RealPaths != tt.wantBool {
-					t.Errorf("req.RealPaths = %v after ToTypes(), want %v", *req.RealPaths, tt.wantBool)
+					t.Errorf(
+						"req.RealPaths = %v after ToTypes(), want %v",
+						*req.RealPaths,
+						tt.wantBool,
+					)
 				}
 			}
 		})

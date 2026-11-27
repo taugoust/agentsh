@@ -64,7 +64,10 @@ func TestBuildAllowedEndpoints_NonStrictOnWildcard(t *testing.T) {
 }
 
 func TestBuildProxyOnlyAllowedEndpoints_ExactTCPListeners(t *testing.T) {
-	entries, cidrs, err := buildProxyOnlyAllowedEndpoints("http://127.0.0.1:18081", "http://[::1]:19091")
+	entries, cidrs, err := buildProxyOnlyAllowedEndpoints(
+		"http://127.0.0.1:18081",
+		"http://[::1]:19091",
+	)
 	if err != nil {
 		t.Fatalf("build exact proxy endpoints: %v", err)
 	}

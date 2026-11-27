@@ -55,9 +55,18 @@ func TestMCPServersCmd_ListsServers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
-	st.UpsertMCPTool(context.Background(), sqlite.MCPTool{ServerID: "filesystem", ToolName: "read", ToolHash: "a"})
-	st.UpsertMCPTool(context.Background(), sqlite.MCPTool{ServerID: "filesystem", ToolName: "write", ToolHash: "b"})
-	st.UpsertMCPTool(context.Background(), sqlite.MCPTool{ServerID: "sqlite", ToolName: "query", ToolHash: "c"})
+	st.UpsertMCPTool(
+		context.Background(),
+		sqlite.MCPTool{ServerID: "filesystem", ToolName: "read", ToolHash: "a"},
+	)
+	st.UpsertMCPTool(
+		context.Background(),
+		sqlite.MCPTool{ServerID: "filesystem", ToolName: "write", ToolHash: "b"},
+	)
+	st.UpsertMCPTool(
+		context.Background(),
+		sqlite.MCPTool{ServerID: "sqlite", ToolName: "query", ToolHash: "c"},
+	)
 	st.Close()
 
 	cmd := NewRoot("test")
@@ -159,7 +168,12 @@ func TestMCPDetectionsCmd_ShowsDetections(t *testing.T) {
 }
 
 // helper: insert an mcp_tool_call_intercepted event.
-func insertCallEvent(t *testing.T, st *sqlite.Store, id, toolName, serverID, action, reason string, decision types.Decision) {
+func insertCallEvent(
+	t *testing.T,
+	st *sqlite.Store,
+	id, toolName, serverID, action, reason string,
+	decision types.Decision,
+) {
 	t.Helper()
 	ev := types.Event{
 		ID:        id,
@@ -190,7 +204,16 @@ func TestMCPCallsCmd_ListsCalls(t *testing.T) {
 		t.Fatalf("Open failed: %v", err)
 	}
 	insertCallEvent(t, st, "evt_1", "read_file", "filesystem", "allow", "", types.DecisionAllow)
-	insertCallEvent(t, st, "evt_2", "exec_cmd", "malicious-srv", "block", "tool denied by policy", types.DecisionDeny)
+	insertCallEvent(
+		t,
+		st,
+		"evt_2",
+		"exec_cmd",
+		"malicious-srv",
+		"block",
+		"tool denied by policy",
+		types.DecisionDeny,
+	)
 	st.Close()
 
 	cmd := NewRoot("test")
@@ -223,7 +246,16 @@ func TestMCPCallsCmd_FilterByAction(t *testing.T) {
 		t.Fatalf("Open failed: %v", err)
 	}
 	insertCallEvent(t, st, "evt_1", "read_file", "filesystem", "allow", "", types.DecisionAllow)
-	insertCallEvent(t, st, "evt_2", "exec_cmd", "malicious-srv", "block", "denied", types.DecisionDeny)
+	insertCallEvent(
+		t,
+		st,
+		"evt_2",
+		"exec_cmd",
+		"malicious-srv",
+		"block",
+		"denied",
+		types.DecisionDeny,
+	)
 	st.Close()
 
 	cmd := NewRoot("test")
@@ -253,7 +285,16 @@ func TestMCPCallsCmd_FilterByTool(t *testing.T) {
 		t.Fatalf("Open failed: %v", err)
 	}
 	insertCallEvent(t, st, "evt_1", "read_file", "filesystem", "allow", "", types.DecisionAllow)
-	insertCallEvent(t, st, "evt_2", "exec_cmd", "malicious-srv", "block", "denied", types.DecisionDeny)
+	insertCallEvent(
+		t,
+		st,
+		"evt_2",
+		"exec_cmd",
+		"malicious-srv",
+		"block",
+		"denied",
+		types.DecisionDeny,
+	)
 	st.Close()
 
 	cmd := NewRoot("test")

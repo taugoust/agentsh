@@ -60,7 +60,9 @@ func newMCPPinsListCmd() *cobra.Command {
 				return printJSON(cmd, pins)
 			}
 
-			cmd.Println("SERVER              TOOL                HASH                     TRUSTED AT")
+			cmd.Println(
+				"SERVER              TOOL                HASH                     TRUSTED AT",
+			)
 			for _, p := range pins {
 				cmd.Printf("%-19s %-19s %-24s %s\n",
 					truncate(p.ServerID, 19),

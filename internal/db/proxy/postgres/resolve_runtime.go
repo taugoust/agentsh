@@ -12,7 +12,10 @@ import (
 
 const catalogSessionStateChangedReason = "session_state_changed"
 
-func resolveStatementCatalog(stmt effects.ClassifiedStatement, ctx catalogRuntimeContext) effects.ClassifiedStatement {
+func resolveStatementCatalog(
+	stmt effects.ClassifiedStatement,
+	ctx catalogRuntimeContext,
+) effects.ClassifiedStatement {
 	out := stmt
 	out.Effects = make([]effects.Effect, len(stmt.Effects))
 	for i, eff := range stmt.Effects {
@@ -21,7 +24,10 @@ func resolveStatementCatalog(stmt effects.ClassifiedStatement, ctx catalogRuntim
 	return out
 }
 
-func resolveStatementsCatalog(stmts []effects.ClassifiedStatement, ctx catalogRuntimeContext) []effects.ClassifiedStatement {
+func resolveStatementsCatalog(
+	stmts []effects.ClassifiedStatement,
+	ctx catalogRuntimeContext,
+) []effects.ClassifiedStatement {
 	out := make([]effects.ClassifiedStatement, len(stmts))
 	current := ctx
 	for i := range stmts {
@@ -84,7 +90,10 @@ func hasCatalogRelationObject(objects []effects.ObjectRef) bool {
 	return false
 }
 
-func resolveObjectCatalog(obj effects.ObjectRef, ctx catalogRuntimeContext) effects.ResolvedObjectRef {
+func resolveObjectCatalog(
+	obj effects.ObjectRef,
+	ctx catalogRuntimeContext,
+) effects.ResolvedObjectRef {
 	if !isCatalogRelationObject(obj.Kind) {
 		return effects.ResolvedObjectRef{
 			Source:           effects.ResolvedObjectSourceCatalog,
@@ -103,7 +112,11 @@ func resolveObjectCatalog(obj effects.ObjectRef, ctx catalogRuntimeContext) effe
 			UnresolvedReason: ctx.UnavailableReason,
 		}
 	}
-	res := catalog.ResolveRelation(ctx.Snapshot, catalog.Name{Schema: obj.Schema, Name: obj.Name}, ctx.SearchPath)
+	res := catalog.ResolveRelation(
+		ctx.Snapshot,
+		catalog.Name{Schema: obj.Schema, Name: obj.Name},
+		ctx.SearchPath,
+	)
 	if !res.OK() {
 		return effects.ResolvedObjectRef{
 			Source:           effects.ResolvedObjectSourceCatalog,
@@ -185,7 +198,9 @@ func statementInvalidatesCatalogContext(stmt effects.ClassifiedStatement) bool {
 	return false
 }
 
-func statementsNeedCatalogRefresh(stmts []effects.ClassifiedStatement) (searchPath bool, snapshot bool) {
+func statementsNeedCatalogRefresh(
+	stmts []effects.ClassifiedStatement,
+) (searchPath bool, snapshot bool) {
 	for _, stmt := range stmts {
 		for _, eff := range stmt.Effects {
 			needSearchPath, needSnapshot := effectCatalogRefreshNeeds(eff, stmt.RawVerb)
@@ -201,7 +216,10 @@ func effectInvalidatesCatalogContext(eff effects.Effect, rawVerb string) bool {
 	return searchPath || snapshot
 }
 
-func effectCatalogRefreshNeeds(eff effects.Effect, rawVerb string) (searchPath bool, snapshot bool) {
+func effectCatalogRefreshNeeds(
+	eff effects.Effect,
+	rawVerb string,
+) (searchPath bool, snapshot bool) {
 	switch eff.Subtype {
 	case effects.SubtypeSetSearchPath,
 		effects.SubtypeResetAll,
@@ -275,7 +293,11 @@ type resolvingParser struct {
 	ctx  catalogRuntimeContext
 }
 
-func (p resolvingParser) Classify(sql string, sess classify_pg.SessionState, opts classify_pg.Options) ([]effects.ClassifiedStatement, error) {
+func (p resolvingParser) Classify(
+	sql string,
+	sess classify_pg.SessionState,
+	opts classify_pg.Options,
+) ([]effects.ClassifiedStatement, error) {
 	stmts, err := p.base.Classify(sql, sess, opts)
 	if err != nil {
 		return stmts, err

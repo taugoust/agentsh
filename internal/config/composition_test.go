@@ -31,7 +31,8 @@ sandbox:
 		t.Fatal(err)
 	}
 	bubblewrap := cfg.Sandbox.Composition.Bubblewrap
-	if bubblewrap.Dialect != "0.11.2" || bubblewrap.MaxPlanOperations != 256 || bubblewrap.MaxNamespaceDepth != 4 {
+	if bubblewrap.Dialect != "0.11.2" || bubblewrap.MaxPlanOperations != 256 ||
+		bubblewrap.MaxNamespaceDepth != 4 {
 		t.Fatalf("unexpected composition defaults: %+v", bubblewrap)
 	}
 }
@@ -53,7 +54,10 @@ sandbox:
 	}
 
 	for _, path := range []string{"dev/null", "/dev/*", "/dev/../dev/null"} {
-		_, err := loadFromString(t, "sandbox:\n  composition:\n    bubblewrap:\n      device_ioctl_paths:\n        - "+path+"\n")
+		_, err := loadFromString(
+			t,
+			"sandbox:\n  composition:\n    bubblewrap:\n      device_ioctl_paths:\n        - "+path+"\n",
+		)
 		if err == nil {
 			t.Errorf("device ioctl path %q unexpectedly accepted", path)
 		}

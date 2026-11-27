@@ -11,10 +11,17 @@ import (
 
 // ---- per-family handlers ----
 
-func classifySelect(cs *effects.ClassifiedStatement, s *pg_query.SelectStmt, sess SessionState, opts Options) {
+func classifySelect(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.SelectStmt,
+	sess SessionState,
+	opts Options,
+) {
 	cs.RawVerb = "SELECT"
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+		}
 		return
 	}
 
@@ -60,14 +67,23 @@ func classifySelect(cs *effects.ClassifiedStatement, s *pg_query.SelectStmt, ses
 
 	if len(cs.Effects) == 0 {
 		// SELECT 1 with no relations — still classify as read.
-		cs.Effects = []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+		}
 	}
 }
 
-func classifyInsert(cs *effects.ClassifiedStatement, s *pg_query.InsertStmt, sess SessionState, opts Options) {
+func classifyInsert(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.InsertStmt,
+	sess SessionState,
+	opts Options,
+) {
 	cs.RawVerb = "INSERT"
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil InsertStmt"
 		return
 	}
@@ -98,10 +114,18 @@ func classifyInsert(cs *effects.ClassifiedStatement, s *pg_query.InsertStmt, ses
 	}
 }
 
-func classifyUpdate(cs *effects.ClassifiedStatement, s *pg_query.UpdateStmt, sess SessionState, opts Options, topLevel bool) {
+func classifyUpdate(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.UpdateStmt,
+	sess SessionState,
+	opts Options,
+	topLevel bool,
+) {
 	cs.RawVerb = "UPDATE"
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil UpdateStmt"
 		return
 	}
@@ -125,10 +149,18 @@ func classifyUpdate(cs *effects.ClassifiedStatement, s *pg_query.UpdateStmt, ses
 	}
 }
 
-func classifyDelete(cs *effects.ClassifiedStatement, s *pg_query.DeleteStmt, sess SessionState, opts Options, topLevel bool) {
+func classifyDelete(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.DeleteStmt,
+	sess SessionState,
+	opts Options,
+	topLevel bool,
+) {
 	cs.RawVerb = "DELETE"
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil DeleteStmt"
 		return
 	}
@@ -159,10 +191,17 @@ func classifyDelete(cs *effects.ClassifiedStatement, s *pg_query.DeleteStmt, ses
 	}
 }
 
-func classifyMerge(cs *effects.ClassifiedStatement, s *pg_query.MergeStmt, sess SessionState, opts Options) {
+func classifyMerge(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.MergeStmt,
+	sess SessionState,
+	opts Options,
+) {
 	cs.RawVerb = "MERGE"
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: nil MergeStmt"
 		return
 	}
@@ -190,10 +229,17 @@ func classifyMerge(cs *effects.ClassifiedStatement, s *pg_query.MergeStmt, sess 
 	}
 }
 
-func classifyExplain(cs *effects.ClassifiedStatement, s *pg_query.ExplainStmt, sess SessionState, opts Options) {
+func classifyExplain(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.ExplainStmt,
+	sess SessionState,
+	opts Options,
+) {
 	cs.RawVerb = "EXPLAIN"
 	if s == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+		}
 		return
 	}
 	analyze := false
@@ -210,7 +256,13 @@ func classifyExplain(cs *effects.ClassifiedStatement, s *pg_query.ExplainStmt, s
 	}
 	if analyze && s.Query != nil {
 		// EXPLAIN ANALYZE <inner> matches inner statement.
-		inner := classifyNestedRawStmt(DialectPostgres, &pg_query.RawStmt{Stmt: s.Query}, sess, opts, cs.ParserBackend)
+		inner := classifyNestedRawStmt(
+			DialectPostgres,
+			&pg_query.RawStmt{Stmt: s.Query},
+			sess,
+			opts,
+			cs.ParserBackend,
+		)
 		cs.RawVerb = "EXPLAIN_ANALYZE"
 		cs.Effects = inner.Effects
 		// Inherit the inner statement's diagnostic Error (if any) so callers
@@ -221,18 +273,33 @@ func classifyExplain(cs *effects.ClassifiedStatement, s *pg_query.ExplainStmt, s
 		return
 	}
 	// Plain EXPLAIN — read.
-	cs.Effects = []effects.Effect{{Group: effects.GroupRead, Resolution: effects.ResolutionQualified}}
+	cs.Effects = []effects.Effect{
+		{Group: effects.GroupRead, Resolution: effects.ResolutionQualified},
+	}
 }
 
-func classifyPrepare(cs *effects.ClassifiedStatement, s *pg_query.PrepareStmt, sess SessionState, opts Options) {
+func classifyPrepare(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.PrepareStmt,
+	sess SessionState,
+	opts Options,
+) {
 	cs.RawVerb = "PREPARE"
 	if s == nil || s.Query == nil {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		cs.Error = "unmapped form: PREPARE without query"
 		return
 	}
 	cs.PreparedName = s.Name
-	inner := classifyNestedRawStmt(DialectPostgres, &pg_query.RawStmt{Stmt: s.Query}, sess, opts, cs.ParserBackend)
+	inner := classifyNestedRawStmt(
+		DialectPostgres,
+		&pg_query.RawStmt{Stmt: s.Query},
+		sess,
+		opts,
+		cs.ParserBackend,
+	)
 	cs.Effects = inner.Effects
 	if inner.RawVerb != "" {
 		cs.RawVerb = "PREPARE_" + inner.RawVerb
@@ -242,14 +309,21 @@ func classifyPrepare(cs *effects.ClassifiedStatement, s *pg_query.PrepareStmt, s
 	}
 }
 
-func classifyExecute(cs *effects.ClassifiedStatement, s *pg_query.ExecuteStmt, _ SessionState, _ Options) {
+func classifyExecute(
+	cs *effects.ClassifiedStatement,
+	s *pg_query.ExecuteStmt,
+	_ SessionState,
+	_ Options,
+) {
 	// Cache lookup is owned by Plan 05 (proxy). Plan 03 returns unknown so the
 	// proxy can synthesize the cache-miss deny path per spec §7.4.
 	cs.RawVerb = "EXECUTE"
 	if s != nil {
 		cs.PreparedName = s.Name
 	}
-	cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+	cs.Effects = []effects.Effect{
+		{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+	}
 	cs.Error = "execute: cache lookup deferred to proxy (Plan 05)"
 }
 
@@ -282,7 +356,10 @@ func hasSchemaCreateEffect(cs *effects.ClassifiedStatement) bool {
 // walkSelectRelations enumerates relations referenced anywhere in a SelectStmt
 // (FROM, JOINs, sub-selects, set-ops, CTE bodies). The returned Resolution is
 // folded across all collected relations per §6.2.
-func walkSelectRelations(s *pg_query.SelectStmt, sess SessionState) ([]effects.ObjectRef, effects.Resolution) {
+func walkSelectRelations(
+	s *pg_query.SelectStmt,
+	sess SessionState,
+) ([]effects.ObjectRef, effects.Resolution) {
 	if s == nil {
 		return nil, effects.ResolutionQualified
 	}
@@ -300,7 +377,8 @@ func walkSelectRelations(s *pg_query.SelectStmt, sess SessionState) ([]effects.O
 			if !ok || cn.CommonTableExpr == nil || cn.CommonTableExpr.Ctequery == nil {
 				continue
 			}
-			if inner, ok := cn.CommonTableExpr.Ctequery.Node.(*pg_query.Node_SelectStmt); ok && inner.SelectStmt != nil {
+			if inner, ok := cn.CommonTableExpr.Ctequery.Node.(*pg_query.Node_SelectStmt); ok &&
+				inner.SelectStmt != nil {
 				more, mres := walkSelectRelations(inner.SelectStmt, sess)
 				objs = append(objs, more...)
 				ress = append(ress, mres)
@@ -322,7 +400,10 @@ func walkSelectRelations(s *pg_query.SelectStmt, sess SessionState) ([]effects.O
 
 // walkRangeRelations enumerates RangeVar nodes inside a list of *pg_query.Node
 // (used for FROM lists, USING lists, etc.).
-func walkRangeRelations(list []*pg_query.Node, sess SessionState) ([]effects.ObjectRef, effects.Resolution) {
+func walkRangeRelations(
+	list []*pg_query.Node,
+	sess SessionState,
+) ([]effects.ObjectRef, effects.Resolution) {
 	objs := []effects.ObjectRef{}
 	ress := []effects.Resolution{}
 	collectRangeRefs(list, sess, &objs, &ress)
@@ -331,7 +412,12 @@ func walkRangeRelations(list []*pg_query.Node, sess SessionState) ([]effects.Obj
 
 // collectRangeRefs walks a list of nodes and appends any RangeVar references
 // (and recurses into JoinExpr / RangeSubselect children).
-func collectRangeRefs(list []*pg_query.Node, sess SessionState, objs *[]effects.ObjectRef, ress *[]effects.Resolution) {
+func collectRangeRefs(
+	list []*pg_query.Node,
+	sess SessionState,
+	objs *[]effects.ObjectRef,
+	ress *[]effects.Resolution,
+) {
 	for _, n := range list {
 		if n == nil {
 			continue
@@ -343,11 +429,17 @@ func collectRangeRefs(list []*pg_query.Node, sess SessionState, objs *[]effects.
 			*ress = append(*ress, res)
 		case *pg_query.Node_JoinExpr:
 			if v.JoinExpr != nil {
-				collectRangeRefs([]*pg_query.Node{v.JoinExpr.Larg, v.JoinExpr.Rarg}, sess, objs, ress)
+				collectRangeRefs(
+					[]*pg_query.Node{v.JoinExpr.Larg, v.JoinExpr.Rarg},
+					sess,
+					objs,
+					ress,
+				)
 			}
 		case *pg_query.Node_RangeSubselect:
 			if v.RangeSubselect != nil && v.RangeSubselect.Subquery != nil {
-				if sel, ok := v.RangeSubselect.Subquery.Node.(*pg_query.Node_SelectStmt); ok && sel.SelectStmt != nil {
+				if sel, ok := v.RangeSubselect.Subquery.Node.(*pg_query.Node_SelectStmt); ok &&
+					sel.SelectStmt != nil {
 					more, mres := walkSelectRelations(sel.SelectStmt, sess)
 					*objs = append(*objs, more...)
 					*ress = append(*ress, mres)
@@ -360,7 +452,12 @@ func collectRangeRefs(list []*pg_query.Node, sess SessionState, objs *[]effects.
 // appendCTEEffects walks a WITH-clause and appends each CTE body's effects to
 // the outer statement. Spec §20: data-modifying CTEs (INSERT/UPDATE/DELETE
 // inside WITH) propagate to the outer statement.
-func appendCTEEffects(cs *effects.ClassifiedStatement, with *pg_query.WithClause, sess SessionState, opts Options) {
+func appendCTEEffects(
+	cs *effects.ClassifiedStatement,
+	with *pg_query.WithClause,
+	sess SessionState,
+	opts Options,
+) {
 	if with == nil {
 		return
 	}
@@ -372,7 +469,13 @@ func appendCTEEffects(cs *effects.ClassifiedStatement, with *pg_query.WithClause
 		if !ok || cn.CommonTableExpr == nil || cn.CommonTableExpr.Ctequery == nil {
 			continue
 		}
-		inner := classifyNestedRawStmt(DialectPostgres, &pg_query.RawStmt{Stmt: cn.CommonTableExpr.Ctequery}, sess, opts, cs.ParserBackend)
+		inner := classifyNestedRawStmt(
+			DialectPostgres,
+			&pg_query.RawStmt{Stmt: cn.CommonTableExpr.Ctequery},
+			sess,
+			opts,
+			cs.ParserBackend,
+		)
 		cs.Effects = append(cs.Effects, inner.Effects...)
 	}
 }

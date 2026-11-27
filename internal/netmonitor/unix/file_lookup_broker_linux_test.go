@@ -55,7 +55,10 @@ func TestFileLookupBrokerTypedRoundTrip(t *testing.T) {
 			return
 		}
 		response, encodeErr := lookupproto.EncodeResult(lookupproto.Result{
-			ID: request.ID, Class: lookupproto.ClassAbsent, Reason: lookupproto.ReasonNone, Errno: int32(unix.ENOENT),
+			ID:     request.ID,
+			Class:  lookupproto.ClassAbsent,
+			Reason: lookupproto.ReasonNone,
+			Errno:  int32(unix.ENOENT),
 		})
 		if encodeErr != nil {
 			done <- encodeErr
@@ -72,7 +75,8 @@ func TestFileLookupBrokerTypedRoundTrip(t *testing.T) {
 		PathnameNULTerminated: true,
 	}
 	result := broker.ProbeFileLookup(context.Background(), request)
-	if result.Class != LookupAbsent || result.Errno != int32(unix.ENOENT) || result.Reason != LookupReasonNone {
+	if result.Class != LookupAbsent || result.Errno != int32(unix.ENOENT) ||
+		result.Reason != LookupReasonNone {
 		t.Fatalf("result = %+v", result)
 	}
 	if err := <-done; err != nil {

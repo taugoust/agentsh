@@ -148,12 +148,18 @@ func prepareCommandJail(cfg *CommandJailConfig, commandPath string) error {
 	return nil
 }
 
-func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRuleset, lineage ...*lineageLaunch) (int, error) {
+func runCommandJailStage(
+	controlFD int,
+	preparedLandlock *preparedLandlockRuleset,
+	lineage ...*lineageLaunch,
+) (int, error) {
 	if preparedLandlock != nil {
 		defer preparedLandlock.close()
 	}
 	if unix.Getpid() != 1 {
-		return 127, errors.New("refusing untrusted command-jail stage marker outside a new PID namespace")
+		return 127, errors.New(
+			"refusing untrusted command-jail stage marker outside a new PID namespace",
+		)
 	}
 	// Capability state, no_new_privs, and seccomp filters are per-thread.
 	// Keep all boundary setup and the final fork on this exact thread.
@@ -191,7 +197,16 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 	// the final child still inherits Landlock and seccomp from this locked
 	// thread.
 	sigCh := make(chan os.Signal, 8)
-	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2, syscall.SIGWINCH)
+	signal.Notify(
+		sigCh,
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGQUIT,
+		syscall.SIGTERM,
+		syscall.SIGUSR1,
+		syscall.SIGUSR2,
+		syscall.SIGWINCH,
+	)
 	defer signal.Stop(sigCh)
 
 	var compositionSetup *compositionSetupState
@@ -199,8 +214,17 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 	var hiddenProcRoots []string
 	if err := completeCommandJailSetup(commandJailSetupOps{
 		makeMountsPrivate: func() error {
-			if err := unix.Mount("", string(filepath.Separator), "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-				return fmt.Errorf("stage=mount_propagation_private: make mount propagation private: %w", err)
+			if err := unix.Mount(
+				"",
+				string(filepath.Separator),
+				"",
+				unix.MS_REC|unix.MS_PRIVATE,
+				"",
+			); err != nil {
+				return fmt.Errorf(
+					"stage=mount_propagation_private: make mount propagation private: %w",
+					err,
+				)
 			}
 			return nil
 		},
@@ -217,7 +241,8 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 			if err := refreshPrivateProcLandlock(preparedLandlock, hiddenProcRoots); err != nil {
 				return err
 			}
-			if len(lineage) > 0 && lineage[0] != nil && lineage[0].lookup != nil && lineage[0].lookup.worker != nil {
+			if len(lineage) > 0 && lineage[0] != nil && lineage[0].lookup != nil &&
+				lineage[0].lookup.worker != nil {
 				if err := lineage[0].lookup.pinProcRoot(); err != nil {
 					lineage[0].lookup.unsupportedReason = lookupproto.ReasonContextUnavailable
 					log.Printf("file lookup broker proc pin unavailable: %v", err)
@@ -255,7 +280,8 @@ func runCommandJailStage(controlFD int, preparedLandlock *preparedLandlockRulese
 	env := scrubCommandJailEnv(os.Environ())
 	if len(lineage) > 0 && lineage[0] != nil {
 		launch := lineage[0]
-		if launch.lookup != nil && launch.lookup.worker != nil && launch.lookup.procRoot != nil && launch.lookup.unsupportedReason == lookupproto.ReasonContextUnavailable {
+		if launch.lookup != nil && launch.lookup.worker != nil && launch.lookup.procRoot != nil &&
+			launch.lookup.unsupportedReason == lookupproto.ReasonContextUnavailable {
 			if err := launch.lookup.finalizeContext(); err != nil {
 				// File lookup suppression is optional. Preserve the already-complete
 				// command jail and continue with an unavailable probe capability.
@@ -341,7 +367,11 @@ func validateCommandJailHideTargets(cfg *CommandJailConfig) error {
 		}
 		for _, preserved := range tree.PreserveDirectories {
 			if preserved == tree.Path || !pathCoveredByRoot(preserved, []string{tree.Path}) {
-				return fmt.Errorf("preserved directory %s escapes hidden tree %s", preserved, tree.Path)
+				return fmt.Errorf(
+					"preserved directory %s escapes hidden tree %s",
+					preserved,
+					tree.Path,
+				)
 			}
 			if err := validateCommandJailHideTarget(preserved, true); err != nil {
 				return fmt.Errorf("invalid preserved directory %s: %w", preserved, err)
@@ -363,7 +393,11 @@ func validateCommandJailHideTargets(cfg *CommandJailConfig) error {
 
 func loadCommandJailMountInventory() ([]mountedFilesystem, error) {
 	var mounts []mountedFilesystem
-	if err := json.Unmarshal([]byte(os.Getenv(commandJailMountsEnv)), &mounts); err != nil || len(mounts) == 0 {
+	if err := json.Unmarshal(
+		[]byte(os.Getenv(commandJailMountsEnv)),
+		&mounts,
+	); err != nil ||
+		len(mounts) == 0 {
 		if err == nil {
 			err = errors.New("empty mount inventory")
 		}
@@ -425,9 +459,14 @@ func refreshPrivateProcLandlock(prepared *preparedLandlockRuleset, procRoots []s
 	return nil
 }
 
-func installCommandJailRemainingMounts(cfg *CommandJailConfig, mounts []mountedFilesystem, hiddenRoots []string) error {
+func installCommandJailRemainingMounts(
+	cfg *CommandJailConfig,
+	mounts []mountedFilesystem,
+	hiddenRoots []string,
+) error {
 	for _, mount := range mounts {
-		if (mount.FSType != "cgroup" && mount.FSType != "cgroup2") || pathCoveredByRoot(mount.Path, hiddenRoots) {
+		if (mount.FSType != "cgroup" && mount.FSType != "cgroup2") ||
+			pathCoveredByRoot(mount.Path, hiddenRoots) {
 			continue
 		}
 		if err := maskDirectory(mount.Path); err != nil {
@@ -437,7 +476,10 @@ func installCommandJailRemainingMounts(cfg *CommandJailConfig, mounts []mountedF
 	}
 
 	hideTrees := append([]HiddenDirectoryTree(nil), cfg.HideDirectoryTrees...)
-	sort.Slice(hideTrees, func(i, j int) bool { return len(hideTrees[i].Path) < len(hideTrees[j].Path) })
+	sort.Slice(
+		hideTrees,
+		func(i, j int) bool { return len(hideTrees[i].Path) < len(hideTrees[j].Path) },
+	)
 	for _, tree := range hideTrees {
 		if pathCoveredByRoot(tree.Path, hiddenRoots) {
 			continue
@@ -501,7 +543,11 @@ func pinCommandJailDirectory(path string) (int, error) {
 		_ = unix.Close(fd)
 		return -1, err
 	}
-	if err := unix.Stat(path, &current); err != nil || pinned.Dev != current.Dev || pinned.Ino != current.Ino {
+	if err := unix.Stat(
+		path,
+		&current,
+	); err != nil || pinned.Dev != current.Dev ||
+		pinned.Ino != current.Ino {
 		_ = unix.Close(fd)
 		if err != nil {
 			return -1, err
@@ -538,12 +584,28 @@ func maskDirectoryTree(tree HiddenDirectoryTree) error {
 	}
 
 	flags := uintptr(unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC)
-	rootTarget := filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprintf("%d", rootFD))
-	if err := unix.Mount("tmpfs", rootTarget, "tmpfs", flags, "mode=0755,size=1048576"); err != nil {
+	rootTarget := filepath.Join(
+		string(filepath.Separator),
+		"proc",
+		"self",
+		"fd",
+		fmt.Sprintf("%d", rootFD),
+	)
+	if err := unix.Mount(
+		"tmpfs",
+		rootTarget,
+		"tmpfs",
+		flags,
+		"mode=0755,size=1048576",
+	); err != nil {
 		return err
 	}
 	var mounted unix.Statfs_t
-	if err := unix.Statfs(tree.Path, &mounted); err != nil || uint64(mounted.Type) != uint64(unix.TMPFS_MAGIC) {
+	if err := unix.Statfs(
+		tree.Path,
+		&mounted,
+	); err != nil ||
+		uint64(mounted.Type) != uint64(unix.TMPFS_MAGIC) {
 		if err != nil {
 			return fmt.Errorf("verify hidden directory tree mount: %w", err)
 		}
@@ -551,14 +613,21 @@ func maskDirectoryTree(tree HiddenDirectoryTree) error {
 	}
 	for _, directory := range pinned {
 		relative, err := filepath.Rel(tree.Path, directory.path)
-		if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		if err != nil || relative == "." || relative == ".." ||
+			strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			return fmt.Errorf("preserved directory %s escapes hidden tree", directory.path)
 		}
 		target := filepath.Join(tree.Path, relative)
 		if err := os.MkdirAll(target, 0o700); err != nil {
 			return fmt.Errorf("create preserved directory mountpoint %s: %w", target, err)
 		}
-		source := filepath.Join(string(filepath.Separator), "proc", "self", "fd", fmt.Sprintf("%d", directory.fd))
+		source := filepath.Join(
+			string(filepath.Separator),
+			"proc",
+			"self",
+			"fd",
+			fmt.Sprintf("%d", directory.fd),
+		)
 		if err := unix.Mount(source, target, "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
 			return fmt.Errorf("restore preserved directory %s: %w", directory.path, err)
 		}
@@ -657,7 +726,9 @@ func maskPath(target string) error {
 	if err := unix.Mount(devNull, target, "", unix.MS_BIND, ""); err != nil {
 		return err
 	}
-	flags := uintptr(unix.MS_BIND | unix.MS_REMOUNT | unix.MS_RDONLY | unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC)
+	flags := uintptr(
+		unix.MS_BIND | unix.MS_REMOUNT | unix.MS_RDONLY | unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC,
+	)
 	if err := unix.Mount("", target, "", flags, ""); err != nil {
 		return fmt.Errorf("remount read-only: %w", err)
 	}
@@ -690,11 +761,25 @@ func dropCommandJailPrivileges() error {
 	// numbers above this kernel's cap_last_cap, so no post-seccomp /proc read is
 	// needed during trusted jail setup.
 	for capability := 0; capability <= 63; capability++ {
-		if err := unix.Prctl(unix.PR_CAPBSET_DROP, uintptr(capability), 0, 0, 0); err != nil && !errors.Is(err, unix.EINVAL) {
+		if err := unix.Prctl(
+			unix.PR_CAPBSET_DROP,
+			uintptr(capability),
+			0,
+			0,
+			0,
+		); err != nil &&
+			!errors.Is(err, unix.EINVAL) {
 			return fmt.Errorf("drop capability %d from bounding set: %w", capability, err)
 		}
 	}
-	if err := unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0); err != nil && !errors.Is(err, unix.EINVAL) {
+	if err := unix.Prctl(
+		unix.PR_CAP_AMBIENT,
+		unix.PR_CAP_AMBIENT_CLEAR_ALL,
+		0,
+		0,
+		0,
+	); err != nil &&
+		!errors.Is(err, unix.EINVAL) {
 		return fmt.Errorf("clear ambient capabilities: %w", err)
 	}
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
@@ -729,7 +814,8 @@ func verifyCommandJailPrivileges() error {
 		return fmt.Errorf("read command-jail capabilities: %w", err)
 	}
 	for i, capabilities := range data {
-		if capabilities.Effective != 0 || capabilities.Permitted != 0 || capabilities.Inheritable != 0 {
+		if capabilities.Effective != 0 || capabilities.Permitted != 0 ||
+			capabilities.Inheritable != 0 {
 			return fmt.Errorf("command-jail capability word %d was not empty", i)
 		}
 	}
@@ -748,7 +834,10 @@ func commandJailReadyAndWaitForGO(controlFD int) error {
 		return fmt.Errorf("send command-jail READY byte: wrote %d bytes, want 1", n)
 	}
 	_ = unix.SetsockoptTimeval(controlFD, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: 30})
-	if err := waitForControlByte(func(b []byte) (int, error) { return unix.Read(controlFD, b) }, 'G'); err != nil {
+	if err := waitForControlByte(
+		func(b []byte) (int, error) { return unix.Read(controlFD, b) },
+		'G',
+	); err != nil {
 		return fmt.Errorf("wait for command-jail GO byte: %w", err)
 	}
 	return nil

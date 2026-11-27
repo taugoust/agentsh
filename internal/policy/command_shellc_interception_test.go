@@ -14,7 +14,11 @@ func newInterceptionTestEngine(t *testing.T) *Engine {
 	p := &Policy{
 		CommandRules: []CommandRule{
 			{Name: "deny-shutdown", Commands: []string{"shutdown"}, Decision: "deny"},
-			{Name: "allow-shells", Commands: []string{"sh", "bash", "dash", "zsh"}, Decision: "allow"},
+			{
+				Name:     "allow-shells",
+				Commands: []string{"sh", "bash", "dash", "zsh"},
+				Decision: "allow",
+			},
 		},
 	}
 	e, err := NewEngine(p, false, true)
@@ -39,12 +43,25 @@ func TestCheckCommand_OpaqueAllowedWhenExecveEnforced(t *testing.T) {
 		"curl https://example.com",
 	}
 	for _, script := range battery {
-		dec := e.CheckCommandWithExecve("/bin/sh", []string{"-c", script}, true, ShellCOpaqueEnforce)
+		dec := e.CheckCommandWithExecve(
+			"/bin/sh",
+			[]string{"-c", script},
+			true,
+			ShellCOpaqueEnforce,
+		)
 		if dec.Rule == "shellc-opaque-script" {
-			t.Errorf("script %q: pre-denied as opaque with execve enforcement active; want fall-through to allow", script)
+			t.Errorf(
+				"script %q: pre-denied as opaque with execve enforcement active; want fall-through to allow",
+				script,
+			)
 		}
 		if dec.PolicyDecision != types.DecisionAllow {
-			t.Errorf("script %q: decision = %s (rule=%q), want allow", script, dec.PolicyDecision, dec.Rule)
+			t.Errorf(
+				"script %q: decision = %s (rule=%q), want allow",
+				script,
+				dec.PolicyDecision,
+				dec.Rule,
+			)
 		}
 	}
 }
@@ -53,7 +70,12 @@ func TestCheckCommand_OpaqueAllowedWhenExecveEnforced(t *testing.T) {
 func TestCheckCommand_OpaqueDeniedWhenNoExecveEnforcement(t *testing.T) {
 	e := newInterceptionTestEngine(t)
 
-	dec := e.CheckCommandWithExecve("/bin/sh", []string{"-c", "echo $HOME | head"}, false, ShellCOpaqueEnforce)
+	dec := e.CheckCommandWithExecve(
+		"/bin/sh",
+		[]string{"-c", "echo $HOME | head"},
+		false,
+		ShellCOpaqueEnforce,
+	)
 	if dec.PolicyDecision != types.DecisionDeny || dec.Rule != "shellc-opaque-script" {
 		t.Errorf("got %s rule=%q, want deny shellc-opaque-script", dec.PolicyDecision, dec.Rule)
 	}
@@ -61,7 +83,11 @@ func TestCheckCommand_OpaqueDeniedWhenNoExecveEnforcement(t *testing.T) {
 	// Plain CheckCommand (no execve param) must keep the legacy hard-deny too.
 	dec2 := e.CheckCommand("/bin/sh", []string{"-c", "echo $HOME | head"})
 	if dec2.PolicyDecision != types.DecisionDeny || dec2.Rule != "shellc-opaque-script" {
-		t.Errorf("CheckCommand: got %s rule=%q, want deny shellc-opaque-script", dec2.PolicyDecision, dec2.Rule)
+		t.Errorf(
+			"CheckCommand: got %s rule=%q, want deny shellc-opaque-script",
+			dec2.PolicyDecision,
+			dec2.Rule,
+		)
 	}
 }
 
@@ -71,9 +97,18 @@ func TestCheckCommand_OpaqueDeniedWhenNoExecveEnforcement(t *testing.T) {
 // whole interception-aware change depends on (issue #375).
 func TestCheckCommand_DerivableDenyStillDeniedWhenExecveEnforced(t *testing.T) {
 	e := newInterceptionTestEngine(t)
-	dec := e.CheckCommandWithExecve("/bin/sh", []string{"-c", "shutdown now"}, true, ShellCOpaqueEnforce)
+	dec := e.CheckCommandWithExecve(
+		"/bin/sh",
+		[]string{"-c", "shutdown now"},
+		true,
+		ShellCOpaqueEnforce,
+	)
 	if dec.PolicyDecision != types.DecisionDeny || dec.Rule != "deny-shutdown" {
-		t.Fatalf("got %s rule=%q, want deny rule=deny-shutdown (derivable deny must survive execve relaxation)", dec.PolicyDecision, dec.Rule)
+		t.Fatalf(
+			"got %s rule=%q, want deny rule=deny-shutdown (derivable deny must survive execve relaxation)",
+			dec.PolicyDecision,
+			dec.Rule,
+		)
 	}
 }
 
@@ -89,9 +124,16 @@ func TestCheckCommand_WrapperBypassAllowedWhenExecveEnforced(t *testing.T) {
 	}
 	for _, script := range cases {
 		t.Run(script+"/execve-on", func(t *testing.T) {
-			dec := e.CheckCommandWithExecve("/bin/sh", []string{"-c", script}, true, ShellCOpaqueEnforce)
+			dec := e.CheckCommandWithExecve(
+				"/bin/sh",
+				[]string{"-c", script},
+				true,
+				ShellCOpaqueEnforce,
+			)
 			if dec.Rule == "shellc-wrapper-bypass" {
-				t.Fatalf("pre-denied as shellc-wrapper-bypass with execve enforcement active; want shell allow and runtime execve policing")
+				t.Fatalf(
+					"pre-denied as shellc-wrapper-bypass with execve enforcement active; want shell allow and runtime execve policing",
+				)
 			}
 			if dec.PolicyDecision != types.DecisionAllow {
 				t.Fatalf("got %s rule=%q, want allow", dec.PolicyDecision, dec.Rule)
@@ -99,9 +141,18 @@ func TestCheckCommand_WrapperBypassAllowedWhenExecveEnforced(t *testing.T) {
 		})
 
 		t.Run(script+"/execve-off", func(t *testing.T) {
-			dec := e.CheckCommandWithExecve("/bin/sh", []string{"-c", script}, false, ShellCOpaqueEnforce)
+			dec := e.CheckCommandWithExecve(
+				"/bin/sh",
+				[]string{"-c", script},
+				false,
+				ShellCOpaqueEnforce,
+			)
 			if dec.PolicyDecision != types.DecisionDeny || dec.Rule != "shellc-wrapper-bypass" {
-				t.Fatalf("got %s rule=%q, want deny shellc-wrapper-bypass", dec.PolicyDecision, dec.Rule)
+				t.Fatalf(
+					"got %s rule=%q, want deny shellc-wrapper-bypass",
+					dec.PolicyDecision,
+					dec.Rule,
+				)
 			}
 		})
 	}

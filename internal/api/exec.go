@@ -214,7 +214,13 @@ func closePreStartProcessFiles(extra *extraProcConfig) {
 
 // emitSeccompBlockedIfSIGSYS checks if the error indicates a SIGSYS (seccomp kill)
 // and emits a seccomp_blocked event if so.
-func emitSeccompBlockedIfSIGSYS(ctx context.Context, store eventStore, broker eventBroker, sessionID, cmdID string, err error) {
+func emitSeccompBlockedIfSIGSYS(
+	ctx context.Context,
+	store eventStore,
+	broker eventBroker,
+	sessionID, cmdID string,
+	err error,
+) {
 	info := checkSIGSYS(err)
 	if info == nil {
 		return
@@ -240,16 +246,55 @@ func emitSeccompBlockedIfSIGSYS(ctx context.Context, store eventStore, broker ev
 	}
 }
 
-func runCommandWithResources(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, envPol policy.ResolvedEnvPolicy, policyLimit time.Duration, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string, onStarted func()) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
+func runCommandWithResources(
+	ctx context.Context,
+	s *session.Session,
+	cmdID string,
+	req types.ExecRequest,
+	cfg *config.Config,
+	envPol policy.ResolvedEnvPolicy,
+	policyLimit time.Duration,
+	hook postStartHook,
+	extra *extraProcConfig,
+	tracer any,
+	sessionID string,
+	onStarted func(),
+) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
 	resolution, resolveErr := resolveCommandTimeout(req, policyLimit)
 	if resolveErr != nil {
 		closePreStartProcessFiles(extra)
 		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, resolveErr
 	}
-	return runCommandWithResourcesResolvedTimeout(ctx, s, cmdID, req, cfg, envPol, resolution.Duration, hook, extra, tracer, sessionID, onStarted)
+	return runCommandWithResourcesResolvedTimeout(
+		ctx,
+		s,
+		cmdID,
+		req,
+		cfg,
+		envPol,
+		resolution.Duration,
+		hook,
+		extra,
+		tracer,
+		sessionID,
+		onStarted,
+	)
 }
 
-func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Session, cmdID string, req types.ExecRequest, cfg *config.Config, envPol policy.ResolvedEnvPolicy, timeout time.Duration, hook postStartHook, extra *extraProcConfig, tracer any, sessionID string, onStarted func()) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
+func runCommandWithResourcesResolvedTimeout(
+	ctx context.Context,
+	s *session.Session,
+	cmdID string,
+	req types.ExecRequest,
+	cfg *config.Config,
+	envPol policy.ResolvedEnvPolicy,
+	timeout time.Duration,
+	hook postStartHook,
+	extra *extraProcConfig,
+	tracer any,
+	sessionID string,
+	onStarted func(),
+) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
 	ctx, cancel := withExtendableCommandTimeout(ctx, timeout)
 	defer cancel()
 	defer func() {
@@ -285,7 +330,11 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			_ = extra.outputArtifact.Append(out)
 			_ = extra.outputArtifact.Append(errOut)
 		}
-		return code, out, errOut, int64(len(out)), int64(len(errOut)), false, false, types.ExecResources{}, nil
+		return code, out, errOut, int64(
+				len(out),
+			), int64(
+				len(errOut),
+			), false, false, types.ExecResources{}, nil
 	}
 
 	s.RecordHistory(strings.TrimSpace(req.Command + " " + strings.Join(req.Args, " ")))
@@ -293,7 +342,12 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 	workdir, err := resolveWorkingDir(s, req.WorkingDir)
 	if err != nil {
 		msg := []byte(err.Error() + "\n")
-		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, &commandPreStartError{code: "E_INVALID_WORKING_DIRECTORY", err: err}
+		return 2, []byte{}, msg, 0, int64(
+				len(msg),
+			), false, false, types.ExecResources{}, &commandPreStartError{
+				code: "E_INVALID_WORKING_DIRECTORY",
+				err:  err,
+			}
 	}
 	if barrierErr := validatePreExecBarrierPath(hook, tracer, extra); barrierErr != nil {
 		closePreStartProcessFiles(extra)
@@ -343,15 +397,26 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 	} else {
 		cmd.SysProcAttr = getSysProcAttr()
 	}
-	if boundaryErr := configureCommandBoundaryProcess(cmd.SysProcAttr, commandBoundary); boundaryErr != nil {
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", boundaryErr)
+	if boundaryErr := configureCommandBoundaryProcess(
+		cmd.SysProcAttr,
+		commandBoundary,
+	); boundaryErr != nil {
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError(
+			"E_PRE_EXEC_BOUNDARY",
+			boundaryErr,
+		)
 	}
 
 	env, err := buildCommandEnvironment(cfg, envPol, os.Environ(), s, req.Env, extra)
 	if err != nil {
 		closePreStartProcessFiles(extra)
 		msg := []byte(err.Error() + "\n")
-		return 2, []byte{}, msg, 0, int64(len(msg)), false, false, types.ExecResources{}, &commandPreStartError{code: "E_INVALID_ENVIRONMENT", err: err}
+		return 2, []byte{}, msg, 0, int64(
+				len(msg),
+			), false, false, types.ExecResources{}, &commandPreStartError{
+				code: "E_INVALID_ENVIRONMENT",
+				err:  err,
+			}
 	}
 	// Debug: log whether AGENTSH_IN_SESSION is in the environment
 	hasInSession := false
@@ -361,14 +426,32 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			break
 		}
 	}
-	slog.Debug("exec env built", "command", req.Command, "has_AGENTSH_IN_SESSION", hasInSession, "env_count", len(env))
+	slog.Debug(
+		"exec env built",
+		"command",
+		req.Command,
+		"has_AGENTSH_IN_SESSION",
+		hasInSession,
+		"env_count",
+		len(env),
+	)
 	cmd.Env = env
-	slog.Debug("exec env final", "command", req.Command, "env_count", len(env), "has_extra", extra != nil, "envInject_count", func() int {
-		if extra != nil {
-			return len(extra.envInject)
-		}
-		return 0
-	}())
+	slog.Debug(
+		"exec env final",
+		"command",
+		req.Command,
+		"env_count",
+		len(env),
+		"has_extra",
+		extra != nil,
+		"envInject_count",
+		func() int {
+			if extra != nil {
+				return len(extra.envInject)
+			}
+			return 0
+		}(),
+	)
 	if extra != nil && len(extra.extraFiles) > 0 {
 		cmd.ExtraFiles = append(cmd.ExtraFiles, extra.extraFiles...)
 	}
@@ -402,14 +485,20 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 		stdoutPipeR, stdoutPipeW, pipeErr = os.Pipe()
 		if pipeErr != nil {
 			extra.closeWrapperLogPipe()
-			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("stdout pipe: %w", pipeErr)
+			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+				"stdout pipe: %w",
+				pipeErr,
+			)
 		}
 		stderrPipeR, stderrPipeW, pipeErr = os.Pipe()
 		if pipeErr != nil {
 			extra.closeWrapperLogPipe()
 			stdoutPipeR.Close()
 			stdoutPipeW.Close()
-			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("stderr pipe: %w", pipeErr)
+			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+				"stderr pipe: %w",
+				pipeErr,
+			)
 		}
 		cmd.Stdout = stdoutPipeW
 		cmd.Stderr = stderrPipeW
@@ -461,7 +550,9 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 		if stderrPipeW != nil {
 			stderrPipeW.Close()
 		}
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandStartError{err: fmt.Errorf("start: %w", err)}
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, &commandStartError{
+			err: fmt.Errorf("start: %w", err),
+		}
 	}
 	slog.Debug("exec command started", "command", req.Command, "pid", cmd.Process.Pid)
 	if extra != nil && extra.onProcessStarted != nil {
@@ -482,7 +573,10 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			if stderrPipeW != nil {
 				stderrPipeW.Close()
 			}
-			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError("E_DETACHED_COMMAND_JOURNAL", persistErr)
+			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError(
+				"E_DETACHED_COMMAND_JOURNAL",
+				persistErr,
+			)
 		}
 	}
 
@@ -524,12 +618,19 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 
 		// If we started with ptrace (stopped), run the hook BEFORE resuming.
 		// This ensures eBPF/cgroups are attached before the process executes.
-		hasWrapperHandlers := extra != nil && (extra.notifyParentSock != nil || (extra.signalParentSock != nil && extra.signalEngine != nil))
+		hasWrapperHandlers := extra != nil &&
+			(extra.notifyParentSock != nil || (extra.signalParentSock != nil && extra.signalEngine != nil))
 		wrapperHandlersStarted := false
 		var commandBoundaryReady chan error
 		if tracer == nil && commandBoundaryRequired(extra) {
 			commandBoundaryReady = make(chan error, 1)
-			handlerLifecycle = startWrapperHandlers(ctx, extra, cmd.Process.Pid, pgid, commandBoundaryReady)
+			handlerLifecycle = startWrapperHandlers(
+				ctx,
+				extra,
+				cmd.Process.Pid,
+				pgid,
+				commandBoundaryReady,
+			)
 			extraOwnershipTransferred = true
 			wrapperHandlersStarted = true
 		}
@@ -554,7 +655,13 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			if extra.ptraceSync {
 				ptraceReady = make(chan error, 1)
 			}
-			handlerLifecycle = startWrapperHandlers(handlerCtx, extra, cmd.Process.Pid, pgid, ptraceReady)
+			handlerLifecycle = startWrapperHandlers(
+				handlerCtx,
+				extra,
+				cmd.Process.Pid,
+				pgid,
+				ptraceReady,
+			)
 			extraOwnershipTransferred = true
 
 			// 2. Wait for wrapper to signal READY (only when ptrace sync is enabled).
@@ -572,12 +679,21 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 					_ = killProcessGroup(pgid)
 					waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 					cmd.Process.Release()
-					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid wrapper ready: %w", readyErr)
+					return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+						"hybrid wrapper ready: %w",
+						readyErr,
+					)
 				}
 			}
 
 			// 3. Attach ptrace NOW — wrapper is idle, waiting for GO byte.
-			waitExit, resume, attachErr := ptraceExecAttach(tracer, cmd.Process.Pid, sessionID, cmdID, hook != nil)
+			waitExit, resume, attachErr := ptraceExecAttach(
+				tracer,
+				cmd.Process.Pid,
+				sessionID,
+				cmdID,
+				hook != nil,
+			)
 			if attachErr != nil {
 				close(ptraceDone)
 				handlerCancel()
@@ -585,7 +701,10 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 				_ = killProcessGroup(pgid)
 				waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 				cmd.Process.Release()
-				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("hybrid ptrace attach: %w", attachErr)
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+					"hybrid ptrace attach: %w",
+					attachErr,
+				)
 			}
 
 			// 4-6. Enforce the cgroup/helper boundary exactly once, then resume
@@ -614,7 +733,13 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 
 			// 7. Wait for exit via ptrace exit channel
 			waitStart := time.Now()
-			slog.Debug("exec waiting for command (hybrid)", "command", req.Command, "pid", cmd.Process.Pid)
+			slog.Debug(
+				"exec waiting for command (hybrid)",
+				"command",
+				req.Command,
+				"pid",
+				cmd.Process.Pid,
+			)
 			result := waitExit()
 			completeCommandExecution(ctx, time.Now())
 			close(ptraceDone)
@@ -624,7 +749,17 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 				_ = killProcessGroup(pgid)
 			}
 			waitDuration := time.Since(waitStart)
-			slog.Debug("exec command finished (hybrid)", "command", req.Command, "pid", cmd.Process.Pid, "exit_code", result.exitCode, "wait_duration_ms", waitDuration.Milliseconds())
+			slog.Debug(
+				"exec command finished (hybrid)",
+				"command",
+				req.Command,
+				"pid",
+				cmd.Process.Pid,
+				"exit_code",
+				result.exitCode,
+				"wait_duration_ms",
+				waitDuration.Milliseconds(),
+			)
 			waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 			stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 			stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
@@ -636,10 +771,16 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
-				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
+				return 124, stdout, append(
+						stderr,
+						[]byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(
+						len("command timed out\n"),
+					), true, true, resources, errCommandTimeout
 			}
 			if commandContextError(ctx) != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(
+					ctx,
+				)
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if tracer != nil {
@@ -657,16 +798,28 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			}()
 
 			// Ptrace tracer active: attach via PTRACE_SEIZE, run hook while stopped, resume
-			waitExit, resume, attachErr := ptraceExecAttach(tracer, cmd.Process.Pid, sessionID, cmdID, hook != nil)
+			waitExit, resume, attachErr := ptraceExecAttach(
+				tracer,
+				cmd.Process.Pid,
+				sessionID,
+				cmdID,
+				hook != nil,
+			)
 			if attachErr != nil {
 				close(ptraceDone)
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
 				waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 				cmd.Process.Release()
-				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf("ptrace attach: %w", attachErr)
+				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, fmt.Errorf(
+					"ptrace attach: %w",
+					attachErr,
+				)
 			}
-			if releaseErr := barrier.Release(cmd.Process.Pid, preExecReleaseStep{name: "ptrace resume", run: resume}); releaseErr != nil {
+			if releaseErr := barrier.Release(
+				cmd.Process.Pid,
+				preExecReleaseStep{name: "ptrace resume", run: resume},
+			); releaseErr != nil {
 				close(ptraceDone)
 				_ = killProcess(cmd.Process.Pid)
 				_ = killProcessGroup(pgid)
@@ -681,7 +834,13 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			// Tracer-managed wait: block on exit channel instead of cmd.Wait()
 			// to avoid Wait4(-1) race between tracer and Go runtime.
 			waitStart := time.Now()
-			slog.Debug("exec waiting for command (ptrace)", "command", req.Command, "pid", cmd.Process.Pid)
+			slog.Debug(
+				"exec waiting for command (ptrace)",
+				"command",
+				req.Command,
+				"pid",
+				cmd.Process.Pid,
+			)
 			result := waitExit()
 			completeCommandExecution(ctx, time.Now())
 			close(ptraceDone) // stop context watcher immediately after exit
@@ -691,7 +850,17 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 				_ = killProcessGroup(pgid)
 			}
 			waitDuration := time.Since(waitStart)
-			slog.Debug("exec command finished (ptrace)", "command", req.Command, "pid", cmd.Process.Pid, "exit_code", result.exitCode, "wait_duration_ms", waitDuration.Milliseconds())
+			slog.Debug(
+				"exec command finished (ptrace)",
+				"command",
+				req.Command,
+				"pid",
+				cmd.Process.Pid,
+				"exit_code",
+				result.exitCode,
+				"wait_duration_ms",
+				waitDuration.Milliseconds(),
+			)
 			waitForPipeDrain(&pipeWG, stdoutPipeR, stderrPipeR)
 			stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 			stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
@@ -703,10 +872,16 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 				_ = killProcessGroup(pgid)
 			}
 			if commandTimedOut(ctx) {
-				return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
+				return 124, stdout, append(
+						stderr,
+						[]byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(
+						len("command timed out\n"),
+					), true, true, resources, errCommandTimeout
 			}
 			if commandContextError(ctx) != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(
+					ctx,
+				)
 			}
 			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
 		} else if hook != nil {
@@ -715,13 +890,24 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 			// requested command until its ACK/READY/GO barrier is released.
 			releaseSteps := make([]preExecReleaseStep, 0, 3)
 			if !commandBoundaryRequired(extra) {
-				releaseSteps = append(releaseSteps, preExecReleaseStep{name: "resume traced process", run: func() error {
-					return resumeTracedProcess(cmd.Process.Pid)
-				}})
+				releaseSteps = append(
+					releaseSteps,
+					preExecReleaseStep{name: "resume traced process", run: func() error {
+						return resumeTracedProcess(cmd.Process.Pid)
+					}},
+				)
 			}
-			releaseSteps = append(releaseSteps, commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
+			releaseSteps = append(
+				releaseSteps,
+				commandBoundaryReleaseSteps(ctx, extra, commandBoundaryReady)...)
 			if releaseErr := barrier.Release(cmd.Process.Pid, releaseSteps...); releaseErr != nil {
-				releaseErr = finalizeCommandBoundaryFailure(cmd, pgid, barrier, handlerLifecycle, releaseErr)
+				releaseErr = finalizeCommandBoundaryFailure(
+					cmd,
+					pgid,
+					barrier,
+					handlerLifecycle,
+					releaseErr,
+				)
 				return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, releaseErr
 			}
 		}
@@ -741,13 +927,47 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 		notifyStarted()
 	}
 	waitStart := time.Now()
-	slog.Debug("exec waiting for command", "command", req.Command, "pid", cmd.Process.Pid, "tracer_nil", tracer == nil, "hook_nil", hook == nil, "extra_nil", extra == nil)
+	slog.Debug(
+		"exec waiting for command",
+		"command",
+		req.Command,
+		"pid",
+		cmd.Process.Pid,
+		"tracer_nil",
+		tracer == nil,
+		"hook_nil",
+		hook == nil,
+		"extra_nil",
+		extra == nil,
+	)
 	waitErr := cmd.Wait()
 	completeCommandExecution(ctx, time.Now())
 	waitDuration := time.Since(waitStart)
 	stdout, stderr = stdoutW.Bytes(), stderrW.Bytes()
 	stdoutTotal, stderrTotal = stdoutW.total, stderrW.total
-	slog.Debug("exec command finished", "command", req.Command, "pid", cmd.Process.Pid, "wait_error", waitErr, "ctx_err", commandContextError(ctx), "wait_duration_ms", waitDuration.Milliseconds(), "stdout_len", len(stdout), "stdout_total", stdoutW.total, "stderr_len", len(stderr), "stderr_total", stderrW.total, "stdout_truncated", stdoutW.truncated)
+	slog.Debug(
+		"exec command finished",
+		"command",
+		req.Command,
+		"pid",
+		cmd.Process.Pid,
+		"wait_error",
+		waitErr,
+		"ctx_err",
+		commandContextError(ctx),
+		"wait_duration_ms",
+		waitDuration.Milliseconds(),
+		"stdout_len",
+		len(stdout),
+		"stdout_total",
+		stdoutW.total,
+		"stderr_len",
+		len(stderr),
+		"stderr_total",
+		stderrW.total,
+		"stdout_truncated",
+		stdoutW.truncated,
+	)
 	stdoutTrunc, stderrTrunc = stdoutW.truncated, stderrW.truncated
 
 	resources = resourcesFromProcessState(cmd.ProcessState)
@@ -757,10 +977,16 @@ func runCommandWithResourcesResolvedTimeout(ctx context.Context, s *session.Sess
 	}
 
 	if commandTimedOut(ctx) {
-		return 124, stdout, append(stderr, []byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(len("command timed out\n")), true, true, resources, errCommandTimeout
+		return 124, stdout, append(
+				stderr,
+				[]byte("command timed out\n")...), stdoutTotal, stderrTotal + int64(
+				len("command timed out\n"),
+			), true, true, resources, errCommandTimeout
 	}
 	if commandContextError(ctx) != nil {
-		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(ctx)
+		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(
+			ctx,
+		)
 	}
 	if waitErr == nil {
 		return 0, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, err
@@ -905,7 +1131,12 @@ func sortedEnvNames(values map[string]string) []string {
 	return names
 }
 
-func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.Session, overrides map[string]string) ([]string, error) {
+func buildPolicyEnv(
+	pol policy.ResolvedEnvPolicy,
+	hostEnv []string,
+	s *session.Session,
+	overrides map[string]string,
+) ([]string, error) {
 	minimal := map[string]string{}
 	hostMap := map[string]string{}
 	for _, kv := range hostEnv {
@@ -1030,7 +1261,14 @@ func buildPolicyEnv(pol policy.ResolvedEnvPolicy, hostEnv []string, s *session.S
 	return env, nil
 }
 
-func buildCommandEnvironment(cfg *config.Config, envPol policy.ResolvedEnvPolicy, hostEnv []string, s *session.Session, overrides map[string]string, extra *extraProcConfig) ([]string, error) {
+func buildCommandEnvironment(
+	cfg *config.Config,
+	envPol policy.ResolvedEnvPolicy,
+	hostEnv []string,
+	s *session.Session,
+	overrides map[string]string,
+	extra *extraProcConfig,
+) ([]string, error) {
 	env, err := buildPolicyEnv(envPol, hostEnv, s, overrides)
 	if err != nil {
 		return nil, err
@@ -1321,7 +1559,12 @@ func (l *wrapperHandlerLifecycle) wrapperLogTail() string {
 
 // startWrapperHandlers starts the seccomp notify handler and signal filter handler
 // if configured. Used by both regular exec and hybrid ptrace+wrapper mode.
-func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid int, ptraceReady chan<- error) *wrapperHandlerLifecycle {
+func startWrapperHandlers(
+	ctx context.Context,
+	extra *extraProcConfig,
+	pid, pgid int,
+	ptraceReady chan<- error,
+) *wrapperHandlerLifecycle {
 	handlerCtx, cancel := context.WithCancel(ctx)
 	lifecycle := &wrapperHandlerLifecycle{cancel: cancel}
 	if extra == nil {
@@ -1337,7 +1580,12 @@ func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid
 		extra.wrapperLogChild = nil
 	}
 	if extra.wrapperLogParent != nil {
-		capture := startWrapperLogCaptureDrain(extra.wrapperLogParent, slog.Default(), extra.notifySessionID, extra.origCommand)
+		capture := startWrapperLogCaptureDrain(
+			extra.wrapperLogParent,
+			slog.Default(),
+			extra.notifySessionID,
+			extra.origCommand,
+		)
 		extra.wrapperLogCapture = capture
 		lifecycle.logCapture = capture
 		extra.wrapperLogParent = nil
@@ -1349,15 +1597,43 @@ func startWrapperHandlers(ctx context.Context, extra *extraProcConfig, pid, pgid
 	if extra.notifyParentSock != nil {
 		compositionSetup := extra.compositionParentSock
 		extra.compositionParentSock = nil
-		lifecycle.notifyDone = startNotifyHandlerForState(handlerCtx, extra.notifyParentSock, extra.notifySessionID, extra.notifyPolicy, extra.notifyStore, extra.notifyBroker, extra.execveHandler, extra.fileMonitorCfg, extra.landlockEnabled, extra.blockList, ptraceReady, commandBoundaryRequired(extra), extra.notifyApprovals, extra.notifySession, extra.commandState, pid, extra.compositionControlRoot, compositionSetup, extra.configureComposition)
+		lifecycle.notifyDone = startNotifyHandlerForState(
+			handlerCtx,
+			extra.notifyParentSock,
+			extra.notifySessionID,
+			extra.notifyPolicy,
+			extra.notifyStore,
+			extra.notifyBroker,
+			extra.execveHandler,
+			extra.fileMonitorCfg,
+			extra.landlockEnabled,
+			extra.blockList,
+			ptraceReady,
+			commandBoundaryRequired(extra),
+			extra.notifyApprovals,
+			extra.notifySession,
+			extra.commandState,
+			pid,
+			extra.compositionControlRoot,
+			compositionSetup,
+			extra.configureComposition,
+		)
 	}
 	if extra.signalParentSock != nil && extra.signalEngine != nil {
 		if extra.signalRegistry != nil {
 			extra.signalRegistry.Register(pid, pgid, extra.origCommand)
 		}
-		lifecycle.signalDone = startSignalHandler(handlerCtx, extra.signalParentSock, extra.notifySessionID, pid,
-			extra.signalEngine, extra.signalRegistry,
-			extra.notifyStore, extra.notifyBroker, extra.signalCommandID)
+		lifecycle.signalDone = startSignalHandler(
+			handlerCtx,
+			extra.signalParentSock,
+			extra.notifySessionID,
+			pid,
+			extra.signalEngine,
+			extra.signalRegistry,
+			extra.notifyStore,
+			extra.notifyBroker,
+			extra.signalCommandID,
+		)
 	}
 	return lifecycle
 }

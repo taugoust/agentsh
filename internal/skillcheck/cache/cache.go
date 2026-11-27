@@ -37,7 +37,11 @@ func New(cfg Config) (*Cache, error) {
 	if err := os.MkdirAll(cfg.Dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create cache dir: %w", err)
 	}
-	c := &Cache{cfg: cfg, entries: map[string]entry{}, path: filepath.Join(cfg.Dir, "skillcache.json")}
+	c := &Cache{
+		cfg:     cfg,
+		entries: map[string]entry{},
+		path:    filepath.Join(cfg.Dir, "skillcache.json"),
+	}
 	if err := c.load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("skillcheck cache: load %s: %w", c.path, err)
 	}

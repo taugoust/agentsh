@@ -53,7 +53,8 @@ type payloadAttestation struct {
 }
 
 func forkPayload(config payloadForkConfig) (*payloadChild, error) {
-	if config.controlFD < 3 || config.execPath == "" || len(config.argv) == 0 || len(config.baseProgram) == 0 {
+	if config.controlFD < 3 || config.execPath == "" || len(config.argv) == 0 ||
+		len(config.baseProgram) == 0 {
 		return nil, errors.New("incomplete payload fork configuration")
 	}
 	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)

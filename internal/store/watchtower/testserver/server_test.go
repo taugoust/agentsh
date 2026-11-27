@@ -47,7 +47,9 @@ func sendEmptyBatch(t *testing.T, conn testserver.Conn) {
 		Msg: &wtpv1.ClientMessage_EventBatch{
 			EventBatch: &wtpv1.EventBatch{
 				Compression: wtpv1.Compression_COMPRESSION_NONE,
-				Body:        &wtpv1.EventBatch_Uncompressed{Uncompressed: &wtpv1.UncompressedEvents{}},
+				Body: &wtpv1.EventBatch_Uncompressed{
+					Uncompressed: &wtpv1.UncompressedEvents{},
+				},
 			},
 		},
 	}); err != nil {
@@ -58,7 +60,11 @@ func sendEmptyBatch(t *testing.T, conn testserver.Conn) {
 // recvWithDeadline reads from conn with a bounded wait; fails the
 // test if nothing arrives in time. Kept as a helper because every
 // scenario test needs the same timeout discipline.
-func recvWithDeadline(t *testing.T, conn testserver.Conn, d time.Duration) (*wtpv1.ServerMessage, error) {
+func recvWithDeadline(
+	t *testing.T,
+	conn testserver.Conn,
+	d time.Duration,
+) (*wtpv1.ServerMessage, error) {
 	t.Helper()
 	type result struct {
 		msg *wtpv1.ServerMessage
@@ -220,8 +226,11 @@ func TestServer_SessionAckZeroIsLiteralNotMirror(t *testing.T) {
 		t.Fatalf("got %T, want SessionAck", got.Msg)
 	}
 	if ack.GetAckHighWatermarkSeq() != 0 || ack.GetGeneration() != 0 {
-		t.Fatalf("SessionAck tuple=(%d, %d) — server appears to be mirroring the client's SessionInit watermark; want literal (0, 0) per Options doc",
-			ack.GetAckHighWatermarkSeq(), ack.GetGeneration())
+		t.Fatalf(
+			"SessionAck tuple=(%d, %d) — server appears to be mirroring the client's SessionInit watermark; want literal (0, 0) per Options doc",
+			ack.GetAckHighWatermarkSeq(),
+			ack.GetGeneration(),
+		)
 	}
 }
 
@@ -395,7 +404,8 @@ func TestServer_GoawayAfterBatchN(t *testing.T) {
 	if err == nil {
 		t.Fatalf("recv returned nil; want stream-closed after Goaway")
 	}
-	if !errors.Is(err, io.EOF) && !strings.Contains(err.Error(), "EOF") && !strings.Contains(err.Error(), "closed") {
+	if !errors.Is(err, io.EOF) && !strings.Contains(err.Error(), "EOF") &&
+		!strings.Contains(err.Error(), "closed") {
 		// gRPC may surface the end as io.EOF, "rpc error ... code =
 		// Unavailable", or a plain "closed" string depending on
 		// version. Accept any of them.
@@ -501,11 +511,16 @@ func TestServer_InvalidEventBatchClassifiedAndStreamDropped(t *testing.T) {
 		t.Fatal("Recv returned nil error; stream should have been dropped on invalid EventBatch")
 	}
 
-	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonEventBatchCompressionUnspec); got != 1 {
+	if got := m.DroppedInvalidFrame(
+		metrics.WTPInvalidFrameReasonEventBatchCompressionUnspec,
+	); got != 1 {
 		t.Errorf("DroppedInvalidFrame(event_batch_compression_unspecified) = %d, want 1", got)
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 0 {
-		t.Errorf("DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed *ValidationError — no bypass)", got)
+		t.Errorf(
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed *ValidationError — no bypass)",
+			got,
+		)
 	}
 	if logBuf.Len() != 0 {
 		t.Errorf("expected no WARN on typed validator path, got:\n%s", logBuf.String())
@@ -557,11 +572,16 @@ func TestServer_InvalidSessionInitClassifiedAndStreamDropped(t *testing.T) {
 		t.Fatal("Recv returned nil error; invalid SessionInit should have dropped the stream")
 	}
 
-	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonSessionInitAlgorithmUnspec); got != 1 {
+	if got := m.DroppedInvalidFrame(
+		metrics.WTPInvalidFrameReasonSessionInitAlgorithmUnspec,
+	); got != 1 {
 		t.Errorf("DroppedInvalidFrame(session_init_algorithm_unspecified) = %d, want 1", got)
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 0 {
-		t.Errorf("DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed *ValidationError)", got)
+		t.Errorf(
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed *ValidationError)",
+			got,
+		)
 	}
 	if logBuf.Len() != 0 {
 		t.Errorf("expected no defense-in-depth WARN on typed path, got:\n%s", logBuf.String())

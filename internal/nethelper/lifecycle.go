@@ -14,7 +14,11 @@ const (
 	EphemeralSoftLease      = 49 * time.Hour
 )
 
-var LifecycleCapabilities = []string{"instance_status", "renew_instance", "attest_composition_runtime"}
+var LifecycleCapabilities = []string{
+	"instance_status",
+	"renew_instance",
+	"attest_composition_runtime",
+}
 
 type BootstrapResult struct {
 	ProtocolVersion        int       `json:"protocol_version"`
@@ -37,10 +41,17 @@ type BootstrapResult struct {
 
 func (r BootstrapResult) Validate(now time.Time) error {
 	if r.ProtocolVersion != CurrentProtocolVersion {
-		return fmt.Errorf("bootstrap protocol_version=%d, want %d", r.ProtocolVersion, CurrentProtocolVersion)
+		return fmt.Errorf(
+			"bootstrap protocol_version=%d, want %d",
+			r.ProtocolVersion,
+			CurrentProtocolVersion,
+		)
 	}
 	if r.BootstrapSchemaVersion < BootstrapSchemaVersion {
-		return fmt.Errorf("bootstrap_schema_version=%d does not support helper rebinding", r.BootstrapSchemaVersion)
+		return fmt.Errorf(
+			"bootstrap_schema_version=%d does not support helper rebinding",
+			r.BootstrapSchemaVersion,
+		)
 	}
 	if err := ValidateEphemeralLeaseID(strings.TrimSpace(r.LeaseID)); err != nil {
 		return err
@@ -63,11 +74,14 @@ func (r BootstrapResult) Validate(now time.Time) error {
 	if r.RuntimeSeconds <= 0 || r.RuntimeSeconds > int64(MaximumBootstrapRuntime/time.Second) {
 		return fmt.Errorf("bootstrap runtime_seconds is outside the supported bound")
 	}
-	if r.SoftLeaseSeconds < 0 || r.SoftLeaseSeconds > r.RuntimeSeconds || (r.RenewalRequired != (r.SoftLeaseSeconds > 0)) {
+	if r.SoftLeaseSeconds < 0 || r.SoftLeaseSeconds > r.RuntimeSeconds ||
+		(r.RenewalRequired != (r.SoftLeaseSeconds > 0)) {
 		return fmt.Errorf("bootstrap soft lease negotiation is inconsistent")
 	}
 	if !r.StartedAt.Add(time.Duration(r.RuntimeSeconds) * time.Second).Equal(r.ExpiresAt) {
-		return fmt.Errorf("bootstrap expires_at is inconsistent with started_at and runtime_seconds")
+		return fmt.Errorf(
+			"bootstrap expires_at is inconsistent with started_at and runtime_seconds",
+		)
 	}
 	if !now.IsZero() {
 		if r.StartedAt.After(now.Add(time.Minute)) {

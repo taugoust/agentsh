@@ -94,7 +94,11 @@ func (t *Tracer) attachThread(tid int, opts attachOpts) error {
 	if !status.Stopped() {
 		t.safeDetach(tid)
 		t.metrics.IncAttachFailure("other")
-		return fmt.Errorf("tid %d: expected ptrace-stop after interrupt, got status %v", tid, status)
+		return fmt.Errorf(
+			"tid %d: expected ptrace-stop after interrupt, got status %v",
+			tid,
+			status,
+		)
 	}
 
 	if err := unix.PtraceSetOptions(tid, t.ptraceOptions()); err != nil {

@@ -26,8 +26,10 @@ func newPolicyCmd() *cobra.Command {
 		Use:   "policy",
 		Short: "Manage policies",
 	}
-	cmd.PersistentFlags().StringVar(&configPath, "config", "", "Config file path (defaults to AGENTSH_CONFIG or config.yml)")
-	cmd.PersistentFlags().StringVar(&dir, "dir", "", "Policies directory (overrides config policies.dir)")
+	cmd.PersistentFlags().
+		StringVar(&configPath, "config", "", "Config file path (defaults to AGENTSH_CONFIG or config.yml)")
+	cmd.PersistentFlags().
+		StringVar(&dir, "dir", "", "Policies directory (overrides config policies.dir)")
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
@@ -194,11 +196,16 @@ Examples:
 	}
 
 	generateCmd.Flags().StringVar(&genOutput, "output", "", "Output file path (default: stdout)")
-	generateCmd.Flags().StringVar(&genName, "name", "", "Policy name (default: generated-<session-id>)")
-	generateCmd.Flags().IntVar(&genThreshold, "threshold", 5, "Files in same dir before collapsing to glob")
-	generateCmd.Flags().BoolVar(&genIncludeBlock, "include-blocked", true, "Include blocked ops as comments")
-	generateCmd.Flags().BoolVar(&genArgPatterns, "arg-patterns", true, "Generate arg patterns for risky commands")
-	generateCmd.Flags().BoolVar(&genDirectDB, "direct-db", false, "Query local database directly (offline mode)")
+	generateCmd.Flags().
+		StringVar(&genName, "name", "", "Policy name (default: generated-<session-id>)")
+	generateCmd.Flags().
+		IntVar(&genThreshold, "threshold", 5, "Files in same dir before collapsing to glob")
+	generateCmd.Flags().
+		BoolVar(&genIncludeBlock, "include-blocked", true, "Include blocked ops as comments")
+	generateCmd.Flags().
+		BoolVar(&genArgPatterns, "arg-patterns", true, "Generate arg patterns for risky commands")
+	generateCmd.Flags().
+		BoolVar(&genDirectDB, "direct-db", false, "Query local database directly (offline mode)")
 	generateCmd.Flags().StringVar(&genDBPath, "db-path", "", "Path to events database")
 
 	cmd.AddCommand(generateCmd)
@@ -223,7 +230,8 @@ Examples:
 			return nil
 		},
 	}
-	keygenCmd.Flags().StringVar(&keygenOutput, "output", "", "Output directory (default: current dir)")
+	keygenCmd.Flags().
+		StringVar(&keygenOutput, "output", "", "Output directory (default: current dir)")
 	keygenCmd.Flags().StringVar(&keygenLabel, "label", "", "Human-readable label for the key")
 	cmd.AddCommand(keygenCmd)
 
@@ -251,7 +259,8 @@ Examples:
 		},
 	}
 	signCmd.Flags().StringVar(&signKey, "key", "", "Path to private key file (required)")
-	signCmd.Flags().StringVar(&signOutput, "output", "", "Output path for .sig file (default: <policy>.sig)")
+	signCmd.Flags().
+		StringVar(&signOutput, "output", "", "Output path for .sig file (default: <policy>.sig)")
 	signCmd.Flags().StringVar(&signSigner, "signer", "", "Human-readable signer label")
 	cmd.AddCommand(signCmd)
 
@@ -281,7 +290,8 @@ Examples:
 			})
 		},
 	}
-	verifyCmd.Flags().StringVar(&verifyKeyDir, "key-dir", "", "Path to trust store directory (required)")
+	verifyCmd.Flags().
+		StringVar(&verifyKeyDir, "key-dir", "", "Path to trust store directory (required)")
 	cmd.AddCommand(verifyCmd)
 
 	cmd.AddCommand(newPolicyDBCmd(configPath, dir))
@@ -308,7 +318,9 @@ func resolvePolicyPath(dir, nameOrPath string) (string, error) {
 	if nameOrPath == "" {
 		return "", fmt.Errorf("policy name/path is required")
 	}
-	if strings.ContainsRune(nameOrPath, os.PathSeparator) || strings.HasSuffix(nameOrPath, ".yml") || strings.HasSuffix(nameOrPath, ".yaml") {
+	if strings.ContainsRune(nameOrPath, os.PathSeparator) ||
+		strings.HasSuffix(nameOrPath, ".yml") ||
+		strings.HasSuffix(nameOrPath, ".yaml") {
 		p := nameOrPath
 		if !filepath.IsAbs(p) {
 			p = filepath.Clean(p)
@@ -449,12 +461,28 @@ func printDBExplainText(cmd *cobra.Command, report policyexplain.Report) error {
 			fmt.Fprintf(cmd.OutOrStdout(), "rule: %s\n", stmt.Decision.RuleName)
 		}
 		for _, eff := range stmt.Effects {
-			fmt.Fprintf(cmd.OutOrStdout(), "effect %d: %s resolution=%s\n", eff.Index, eff.Operation, eff.Resolution)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"effect %d: %s resolution=%s\n",
+				eff.Index,
+				eff.Operation,
+				eff.Resolution,
+			)
 			for _, cov := range eff.Coverage {
 				if cov.Covered {
-					fmt.Fprintf(cmd.OutOrStdout(), "  covered: %s selector=%s\n", cov.Object, cov.Selector)
+					fmt.Fprintf(
+						cmd.OutOrStdout(),
+						"  covered: %s selector=%s\n",
+						cov.Object,
+						cov.Selector,
+					)
 				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "  uncovered: %s reason=%s\n", cov.Object, cov.UncoveredReason)
+					fmt.Fprintf(
+						cmd.OutOrStdout(),
+						"  uncovered: %s reason=%s\n",
+						cov.Object,
+						cov.UncoveredReason,
+					)
 				}
 			}
 		}

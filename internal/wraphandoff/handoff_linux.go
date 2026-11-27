@@ -77,7 +77,8 @@ func SendPrelude(conn *net.UnixConn, meta Metadata) error {
 	if conn == nil {
 		return errors.New("nil unix connection")
 	}
-	if meta.WrapperPID <= 0 || meta.PayloadPID != 0 || meta.CompositionSetup || meta.FileLookupBroker {
+	if meta.WrapperPID <= 0 || meta.PayloadPID != 0 || meta.CompositionSetup ||
+		meta.FileLookupBroker {
 		return errors.New("invalid lineage handoff prelude metadata")
 	}
 	frame := encodeLineageFrame(lineageFramePrelude, meta)
@@ -135,7 +136,14 @@ func SendPayloadHandoff(conn *net.UnixConn, notifyFD, setupFD, lookupFD int, met
 		return fmt.Errorf("send lineage payload handoff: %w", err)
 	}
 	if n != len(frame) || oobn != len(rights) {
-		return fmt.Errorf("send lineage payload handoff: %w (n=%d/%d, oobn=%d/%d)", io.ErrShortWrite, n, len(frame), oobn, len(rights))
+		return fmt.Errorf(
+			"send lineage payload handoff: %w (n=%d/%d, oobn=%d/%d)",
+			io.ErrShortWrite,
+			n,
+			len(frame),
+			oobn,
+			len(rights),
+		)
 	}
 	return nil
 }
@@ -162,7 +170,10 @@ func encodeLineageFrame(frameType uint16, meta Metadata) []byte {
 }
 
 func decodeLineageFrame(frame []byte, expectedType uint16) (Metadata, error) {
-	if len(frame) != lineageFrameSize || binary.LittleEndian.Uint32(frame[0:4]) != lineageProtocolMagic || binary.LittleEndian.Uint16(frame[4:6]) != lineageProtocolVersion || binary.LittleEndian.Uint16(frame[6:8]) != expectedType {
+	if len(frame) != lineageFrameSize ||
+		binary.LittleEndian.Uint32(frame[0:4]) != lineageProtocolMagic ||
+		binary.LittleEndian.Uint16(frame[4:6]) != lineageProtocolVersion ||
+		binary.LittleEndian.Uint16(frame[6:8]) != expectedType {
 		return Metadata{}, errors.New("invalid lineage handoff frame")
 	}
 	flags := binary.LittleEndian.Uint32(frame[8:12])
@@ -236,7 +247,14 @@ func sendHandoff(conn *net.UnixConn, notifyFD, setupFD int, meta Metadata) error
 		return fmt.Errorf("send notify handoff: %w", err)
 	}
 	if n != len(payload) || oobn != len(rights) {
-		return fmt.Errorf("send notify handoff: %w (n=%d/%d, oobn=%d/%d)", io.ErrShortWrite, n, len(payload), oobn, len(rights))
+		return fmt.Errorf(
+			"send notify handoff: %w (n=%d/%d, oobn=%d/%d)",
+			io.ErrShortWrite,
+			n,
+			len(payload),
+			oobn,
+			len(rights),
+		)
 	}
 	return nil
 }
@@ -292,7 +310,11 @@ func RecvHandoff(conn *net.UnixConn) (*Handoff, error) {
 	for _, message := range msgs {
 		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SCM_RIGHTS {
 			closeFDs(receivedFDs)
-			return nil, fmt.Errorf("unexpected handoff ancillary level=%d type=%d", message.Header.Level, message.Header.Type)
+			return nil, fmt.Errorf(
+				"unexpected handoff ancillary level=%d type=%d",
+				message.Header.Level,
+				message.Header.Type,
+			)
 		}
 		rightsMessages++
 		fds, parseErr := unix.ParseUnixRights(&message)
@@ -308,7 +330,10 @@ func RecvHandoff(conn *net.UnixConn) (*Handoff, error) {
 	}
 	if rightsMessages != 1 {
 		closeFDs(receivedFDs)
-		return nil, fmt.Errorf("expected exactly one descriptor control message, received %d", rightsMessages)
+		return nil, fmt.Errorf(
+			"expected exactly one descriptor control message, received %d",
+			rightsMessages,
+		)
 	}
 
 	meta := Metadata{}
@@ -332,7 +357,9 @@ func RecvHandoff(conn *net.UnixConn) (*Handoff, error) {
 				closeFDs(receivedFDs)
 				return nil, fmt.Errorf("invalid metadata handoff payload length %d", n)
 			}
-			if unknown := buf[5] & ^byte(metadataCommandJail|metadataCompositionSetup); unknown != 0 {
+			if unknown := buf[5] & ^byte(
+				metadataCommandJail|metadataCompositionSetup,
+			); unknown != 0 {
 				closeFDs(receivedFDs)
 				return nil, fmt.Errorf("unknown handoff metadata flags %#x", unknown)
 			}
@@ -357,7 +384,11 @@ func RecvHandoff(conn *net.UnixConn) (*Handoff, error) {
 	}
 	if len(receivedFDs) != expectedFDs {
 		closeFDs(receivedFDs)
-		return nil, fmt.Errorf("expected exactly %d handoff fd(s), received %d", expectedFDs, len(receivedFDs))
+		return nil, fmt.Errorf(
+			"expected exactly %d handoff fd(s), received %d",
+			expectedFDs,
+			len(receivedFDs),
+		)
 	}
 	for _, fd := range receivedFDs {
 		unix.CloseOnExec(fd)
@@ -374,7 +405,10 @@ func RecvHandoff(conn *net.UnixConn) (*Handoff, error) {
 	}
 	nextFD := 1
 	if meta.FileLookupBroker {
-		handoff.FileLookupBroker = os.NewFile(uintptr(receivedFDs[nextFD]), "wrap-file-lookup-broker")
+		handoff.FileLookupBroker = os.NewFile(
+			uintptr(receivedFDs[nextFD]),
+			"wrap-file-lookup-broker",
+		)
 		nextFD++
 		if handoff.FileLookupBroker == nil {
 			handoff.Close()
@@ -382,7 +416,10 @@ func RecvHandoff(conn *net.UnixConn) (*Handoff, error) {
 		}
 	}
 	if meta.CompositionSetup {
-		handoff.CompositionSetup = os.NewFile(uintptr(receivedFDs[nextFD]), "wrap-composition-setup")
+		handoff.CompositionSetup = os.NewFile(
+			uintptr(receivedFDs[nextFD]),
+			"wrap-composition-setup",
+		)
 		if handoff.CompositionSetup == nil {
 			handoff.Close()
 			return nil, errors.New("retain composition setup descriptor")

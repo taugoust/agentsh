@@ -80,7 +80,11 @@ func (p *FileProvider) loadFromFile() ([]byte, error) {
 func (p *FileProvider) loadFromEnv() ([]byte, error) {
 	key := os.Getenv(p.keyEnv)
 	if key == "" {
-		return nil, fmt.Errorf("%w: environment variable %q is empty or not set", ErrKeyNotFound, p.keyEnv)
+		return nil, fmt.Errorf(
+			"%w: environment variable %q is empty or not set",
+			ErrKeyNotFound,
+			p.keyEnv,
+		)
 	}
 	return []byte(key), nil
 }

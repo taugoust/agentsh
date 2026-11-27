@@ -40,7 +40,20 @@ relations:
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs([]string{"policy", "db", "explain", policyPath, "--service", "appdb", "--catalog-fixture", fixturePath, "--sql", "SELECT * FROM users"})
+	root.SetArgs(
+		[]string{
+			"policy",
+			"db",
+			"explain",
+			policyPath,
+			"--service",
+			"appdb",
+			"--catalog-fixture",
+			fixturePath,
+			"--sql",
+			"SELECT * FROM users",
+		},
+	)
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, out.String())
 	}
@@ -75,7 +88,9 @@ database_rules:
 	root.SetOut(&out)
 	root.SetErr(&out)
 	root.SetIn(strings.NewReader("SELECT * FROM users"))
-	root.SetArgs([]string{"policy", "db", "explain", policyPath, "--service", "appdb", "--output", "text"})
+	root.SetArgs(
+		[]string{"policy", "db", "explain", policyPath, "--service", "appdb", "--output", "text"},
+	)
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\n%s", err, out.String())
 	}

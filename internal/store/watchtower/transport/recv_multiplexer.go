@@ -412,7 +412,11 @@ func (t *Transport) runRecv(rs *recvSession) {
 // Anomaly / ResendNeeded / NoOp would let duplicate or stale acks
 // reopen send capacity without a newly acknowledged batch and so
 // allow the client to exceed MaxInflight (roborev Medium).
-func (t *Transport) applyAckFromRecv(frame string, serverGen uint32, serverSeq uint64) AckOutcomeKind {
+func (t *Transport) applyAckFromRecv(
+	frame string,
+	serverGen uint32,
+	serverSeq uint64,
+) AckOutcomeKind {
 	// Snapshot BOTH cursors before the helper mutates — required for
 	// rollback on Adopted-then-MarkAcked-failure per Task 15.1 Step 1b.5.
 	priorPersisted := t.persistedAck
@@ -495,14 +499,17 @@ func (t *Transport) applyAckFromRecv(frame string, serverGen uint32, serverSeq u
 		// counter so an unusual rate of legitimate same-gen
 		// regressions is visible to operators.
 		t.metrics.IncResendNeeded()
-		t.opts.Logger.LogAttrs(context.Background(), slog.LevelInfo,
+		t.opts.Logger.LogAttrs(
+			context.Background(),
+			slog.LevelInfo,
 			"ack: server ack tuple lower than persistedAck within same generation; remote replay cursor regressed",
 			slog.String("frame", frame),
 			slog.Uint64("server_seq", serverSeq),
 			slog.Uint64("server_gen", uint64(serverGen)),
 			slog.Uint64("local_persisted_seq", t.persistedAck.Sequence),
 			slog.Uint64("local_persisted_gen", uint64(t.persistedAck.Generation)),
-			slog.String("session_id", t.opts.SessionID))
+			slog.String("session_id", t.opts.SessionID),
+		)
 	case AckOutcomeNoOp:
 		// No cursor moved; nothing to do.
 	}

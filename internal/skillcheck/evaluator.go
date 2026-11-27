@@ -80,7 +80,13 @@ func (e *Evaluator) Evaluate(findings []Finding, skill SkillRef) *Verdict {
 	return &Verdict{
 		Action:   action,
 		Findings: findings,
-		Summary:  fmt.Sprintf("%d finding(s); base=%s adjusted=%s; action=%s", len(findings), base, adjusted, action),
+		Summary: fmt.Sprintf(
+			"%d finding(s); base=%s adjusted=%s; action=%s",
+			len(findings),
+			base,
+			adjusted,
+			action,
+		),
 		Skills: map[string]SkillVerdict{
 			skillKey: {Skill: skill, Action: action, Findings: findings},
 		},

@@ -15,7 +15,10 @@ func TestDivertAndRestoreFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entry, err := Divert(src, Config{TrashDir: filepath.Join(dir, ".trash"), Session: "s1", HashLimitBytes: 1 << 20})
+	entry, err := Divert(
+		src,
+		Config{TrashDir: filepath.Join(dir, ".trash"), Session: "s1", HashLimitBytes: 1 << 20},
+	)
 	if err != nil {
 		t.Fatalf("divert: %v", err)
 	}
@@ -55,7 +58,10 @@ func TestDivertHashesSmallFile(t *testing.T) {
 	if err := os.WriteFile(src, []byte("abc"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	entry, err := Divert(src, Config{TrashDir: filepath.Join(dir, ".trash"), Session: "s1", HashLimitBytes: 10})
+	entry, err := Divert(
+		src,
+		Config{TrashDir: filepath.Join(dir, ".trash"), Session: "s1", HashLimitBytes: 10},
+	)
 	if err != nil {
 		t.Fatalf("divert: %v", err)
 	}

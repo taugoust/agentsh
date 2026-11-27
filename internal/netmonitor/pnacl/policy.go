@@ -352,7 +352,13 @@ type PolicyResult struct {
 }
 
 // Evaluate evaluates the policy for a network connection.
-func (e *PolicyEngine) Evaluate(proc ProcessInfo, host string, ip net.IP, port int, protocol string) PolicyResult {
+func (e *PolicyEngine) Evaluate(
+	proc ProcessInfo,
+	host string,
+	ip net.IP,
+	port int,
+	protocol string,
+) PolicyResult {
 	// Find matching process policy.
 	for _, pp := range e.ProcessPolicies {
 		if !pp.Matcher.Matches(proc) {
@@ -389,7 +395,14 @@ func (e *PolicyEngine) findChildPolicy(parent *ProcessPolicy, proc ProcessInfo) 
 }
 
 // evaluateWithChild evaluates rules for a child process.
-func (e *PolicyEngine) evaluateWithChild(parent *ProcessPolicy, child *ChildPolicy, host string, ip net.IP, port int, protocol string) PolicyResult {
+func (e *PolicyEngine) evaluateWithChild(
+	parent *ProcessPolicy,
+	child *ChildPolicy,
+	host string,
+	ip net.IP,
+	port int,
+	protocol string,
+) PolicyResult {
 	// Check child-specific rules first (most specific wins).
 	for i, rule := range child.Rules {
 		if rule.Matches(host, ip, port, protocol) {
@@ -428,7 +441,13 @@ func (e *PolicyEngine) evaluateWithChild(parent *ProcessPolicy, child *ChildPoli
 }
 
 // evaluateProcessRules evaluates rules for a process.
-func (e *PolicyEngine) evaluateProcessRules(pp *ProcessPolicy, host string, ip net.IP, port int, protocol string) PolicyResult {
+func (e *PolicyEngine) evaluateProcessRules(
+	pp *ProcessPolicy,
+	host string,
+	ip net.IP,
+	port int,
+	protocol string,
+) PolicyResult {
 	for i, rule := range pp.Rules {
 		if rule.Matches(host, ip, port, protocol) {
 			return PolicyResult{

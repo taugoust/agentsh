@@ -125,7 +125,10 @@ func TestIntegration_OTELCollector(t *testing.T) {
 
 	// Assert: contains service name.
 	if !strings.Contains(output, "agentsh-integration-test") {
-		t.Errorf("output does not contain service name 'agentsh-integration-test':\n%s", truncate(output, 2000))
+		t.Errorf(
+			"output does not contain service name 'agentsh-integration-test':\n%s",
+			truncate(output, 2000),
+		)
 	}
 
 	// Assert: contains event type.

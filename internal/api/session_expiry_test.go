@@ -72,7 +72,8 @@ func TestReapExpiredSessions_DurableStoppingFailureRetainsSession(t *testing.T) 
 	}
 
 	result := app.ReapExpiredSessionsWithResult(sess.CreatedAt.Add(2*time.Hour), time.Hour, 0)
-	if result.Err == nil || !strings.Contains(result.Err.Error(), "persist detached session expiry") {
+	if result.Err == nil ||
+		!strings.Contains(result.Err.Error(), "persist detached session expiry") {
 		t.Fatalf("expiry error = %v, want durable transition failure", result.Err)
 	}
 	if result.DetachedSupervisorExpired || len(result.Sessions) != 0 {
@@ -113,7 +114,8 @@ func TestDestroySession_SignalsDetachedSupervisorShutdown(t *testing.T) {
 	if _, ok := manager.Get(sess.ID); ok {
 		t.Fatal("destroyed detached session remains installed")
 	}
-	if status := runtimeState.RuntimeStatus(); status.LifecycleState != detached.LifecycleStopped || status.Recoverable {
+	if status := runtimeState.RuntimeStatus(); status.LifecycleState != detached.LifecycleStopped ||
+		status.Recoverable {
 		t.Fatalf("runtime status = %+v, want stopped and non-recoverable", status)
 	}
 }
@@ -136,7 +138,10 @@ func TestDetachedRuntimeStatus_FailsClosedWhenExactSessionIsAbsent(t *testing.T)
 	}
 }
 
-func newDetachedExpiryFixture(t *testing.T, manager *session.Manager) (*session.Session, *detached.Runtime, string) {
+func newDetachedExpiryFixture(
+	t *testing.T,
+	manager *session.Manager,
+) (*session.Session, *detached.Runtime, string) {
 	t.Helper()
 	workspace := t.TempDir()
 	sessionID := "session-" + uuid.NewString()
@@ -181,7 +186,13 @@ func newDetachedExpiryFixture(t *testing.T, manager *session.Manager) (*session.
 	}); err != nil {
 		t.Fatalf("WriteMetadata: %v", err)
 	}
-	runtimeState, err := detached.BeginRuntime(stateDir, os.Getpid(), "test-start", "test-boot", createdAt)
+	runtimeState, err := detached.BeginRuntime(
+		stateDir,
+		os.Getpid(),
+		"test-start",
+		"test-boot",
+		createdAt,
+	)
 	if err != nil {
 		t.Fatalf("BeginRuntime: %v", err)
 	}

@@ -59,7 +59,10 @@ func probeSeccompUserNotify() ProbeResult {
 	case unix.ENOSYS:
 		return ProbeResult{Available: false, Detail: "ENOSYS (seccomp syscall not available)"}
 	case unix.EINVAL:
-		return ProbeResult{Available: false, Detail: "EINVAL (user-notify not supported, kernel < 5.0)"}
+		return ProbeResult{
+			Available: false,
+			Detail:    "EINVAL (user-notify not supported, kernel < 5.0)",
+		}
 	case unix.EPERM:
 		return ProbeResult{Available: false, Detail: "EPERM (seccomp blocked by runtime)"}
 	default:

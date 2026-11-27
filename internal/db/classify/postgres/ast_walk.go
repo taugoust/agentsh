@@ -22,15 +22,34 @@ import (
 // Empty Effects after a handler runs is treated as a handler bug and replaced
 // with the unknown sentinel + a diagnostic Error; Order canonicalises the
 // resulting slice in-place before return.
-func classifyRawStmt(d Dialect, raw *pg_query.RawStmt, sess SessionState, opts Options, backend effects.ParserBackend) effects.ClassifiedStatement {
+func classifyRawStmt(
+	d Dialect,
+	raw *pg_query.RawStmt,
+	sess SessionState,
+	opts Options,
+	backend effects.ParserBackend,
+) effects.ClassifiedStatement {
 	return classifyRawStmtWithContext(d, raw, sess, opts, backend, true)
 }
 
-func classifyNestedRawStmt(d Dialect, raw *pg_query.RawStmt, sess SessionState, opts Options, backend effects.ParserBackend) effects.ClassifiedStatement {
+func classifyNestedRawStmt(
+	d Dialect,
+	raw *pg_query.RawStmt,
+	sess SessionState,
+	opts Options,
+	backend effects.ParserBackend,
+) effects.ClassifiedStatement {
 	return classifyRawStmtWithContext(d, raw, sess, opts, backend, false)
 }
 
-func classifyRawStmtWithContext(d Dialect, raw *pg_query.RawStmt, sess SessionState, opts Options, backend effects.ParserBackend, topLevel bool) effects.ClassifiedStatement {
+func classifyRawStmtWithContext(
+	d Dialect,
+	raw *pg_query.RawStmt,
+	sess SessionState,
+	opts Options,
+	backend effects.ParserBackend,
+	topLevel bool,
+) effects.ClassifiedStatement {
 	if raw == nil || raw.Stmt == nil {
 		return unknownStatement(backend, "unmapped form: nil RawStmt")
 	}
@@ -178,13 +197,17 @@ func classifyRawStmtWithContext(d Dialect, raw *pg_query.RawStmt, sess SessionSt
 
 	default:
 		cs.Error = unmappedFormError(raw.Stmt)
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		return cs
 	}
 
 	// Empty Effects after dispatch indicates a handler bug; surface as unknown.
 	if len(cs.Effects) == 0 {
-		cs.Effects = []effects.Effect{{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved}}
+		cs.Effects = []effects.Effect{
+			{Group: effects.GroupUnknown, Resolution: effects.ResolutionUnresolved},
+		}
 		if cs.Error == "" {
 			cs.Error = "unmapped form: handler produced no effects"
 		}

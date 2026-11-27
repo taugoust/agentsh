@@ -39,7 +39,12 @@ func (b *lifecycleTestEgressBroker) Close() error {
 func TestHostMonitorV3RequestAndManifestBindDistinctPerCIDPorts(t *testing.T) {
 	_, request, profile, manifest := prepareV3HostMonitorFixture(t)
 	if request.EgressPort != request.CIDLease.CID || manifest.EgressPort != request.EgressPort {
-		t.Fatalf("CID=%d request port=%d manifest port=%d", request.CIDLease.CID, request.EgressPort, manifest.EgressPort)
+		t.Fatalf(
+			"CID=%d request port=%d manifest port=%d",
+			request.CIDLease.CID,
+			request.EgressPort,
+			manifest.EgressPort,
+		)
 	}
 	nextCID := request.CIDLease.CID + 1
 	if nextCID > profile.VSock.CIDMax {
@@ -50,11 +55,20 @@ func TestHostMonitorV3RequestAndManifestBindDistinctPerCIDPorts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if nextPort == request.EgressPort {
-		t.Fatalf("parallel CIDs %d and %d collide on port %d", request.CIDLease.CID, nextCID, nextPort)
+		t.Fatalf(
+			"parallel CIDs %d and %d collide on port %d",
+			request.CIDLease.CID,
+			nextCID,
+			nextPort,
+		)
 	}
 	drifted := request
 	drifted.EgressPort = nextPort
-	if err := validateHostMonitorProfileBinding(drifted, profile, request.ProfileFileSHA256); err == nil {
+	if err := validateHostMonitorProfileBinding(
+		drifted,
+		profile,
+		request.ProfileFileSHA256,
+	); err == nil {
 		t.Fatal("host request accepted an egress port derived from a different CID")
 	}
 }
@@ -66,8 +80,14 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 		t.Fatal(err)
 	}
 	runner := &fakeHostRunner{
-		identity: HostProcessIdentity{PID: os.Getpid(), ProcessGroup: os.Getpid(), StartIdentity: start, BootID: boot},
-		done:     make(chan hostRunnerResult, 1), waitDone: make(chan struct{}),
+		identity: HostProcessIdentity{
+			PID:           os.Getpid(),
+			ProcessGroup:  os.Getpid(),
+			StartIdentity: start,
+			BootID:        boot,
+		},
+		done:     make(chan hostRunnerResult, 1),
+		waitDone: make(chan struct{}),
 	}
 	broker := &lifecycleTestEgressBroker{done: make(chan struct{})}
 	var brokerStarted atomic.Bool
@@ -81,7 +101,11 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 	broker.onClose = func() {
 		status, statusErr := ReadHostMonitorStatus(stateDir)
 		if statusErr != nil || status.State != HostMonitorStopping || status.EgressBrokerClosed {
-			t.Errorf("broker closed before durable open-broker stopping evidence: %+v, %v", status, statusErr)
+			t.Errorf(
+				"broker closed before durable open-broker stopping evidence: %+v, %v",
+				status,
+				statusErr,
+			)
 		}
 	}
 	control.onShutdown = func() {
@@ -109,10 +133,21 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 		},
 		startEgressBroker: func(_ context.Context, got Profile, layout HostMonitorLayout, sessionID string, cid, port uint32, token string, approval *HostEgressApprovalBinding) (hostEgressBroker, error) {
 			status, statusErr := ReadHostMonitorStatus(stateDir)
-			if statusErr != nil || status.State != HostMonitorInitializing || !status.EgressBrokerClosed {
-				t.Fatalf("broker startup preceded durable initializing evidence: %+v, %v", status, statusErr)
+			if statusErr != nil || status.State != HostMonitorInitializing ||
+				!status.EgressBrokerClosed {
+				t.Fatalf(
+					"broker startup preceded durable initializing evidence: %+v, %v",
+					status,
+					statusErr,
+				)
 			}
-			if got.Schema != ProfileSchemaV3 || got.HostEgress == nil || *got.HostEgress != *profile.HostEgress || layout.NetworkAudit == "" || sessionID != request.SessionID || cid != request.CIDLease.CID || port != request.EgressPort || token != manifest.EgressToken {
+			if got.Schema != ProfileSchemaV3 || got.HostEgress == nil ||
+				*got.HostEgress != *profile.HostEgress ||
+				layout.NetworkAudit == "" ||
+				sessionID != request.SessionID ||
+				cid != request.CIDLease.CID ||
+				port != request.EgressPort ||
+				token != manifest.EgressToken {
 				t.Fatal("broker startup identity changed")
 			}
 			brokerStarted.Store(true)
@@ -122,7 +157,8 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 			if !brokerStarted.Load() || broker.closed.Load() {
 				t.Fatal("runner started without the exact live egress broker")
 			}
-			if got.Schema != ProfileSchemaV3 || cid != request.CIDLease.CID || volume != openedVolume {
+			if got.Schema != ProfileSchemaV3 || cid != request.CIDLease.CID ||
+				volume != openedVolume {
 				t.Fatal("v3 runner binding changed")
 			}
 			return runner, nil
@@ -139,7 +175,11 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 	for {
 		status, readErr := ReadHostMonitorStatus(stateDir)
 		if readErr == nil && status.State == HostMonitorControlReady {
-			if status.SchemaVersion != HostMonitorSchemaVersionV3 || status.EgressBrokerClosed || status.Guest == nil || status.Guest.EgressPort != request.EgressPort || !status.Guest.EgressReady || status.Guest.NetworkReady {
+			if status.SchemaVersion != HostMonitorSchemaVersionV3 || status.EgressBrokerClosed ||
+				status.Guest == nil ||
+				status.Guest.EgressPort != request.EgressPort ||
+				!status.Guest.EgressReady ||
+				status.Guest.NetworkReady {
 				t.Fatalf("v3 control-ready status = %+v", status)
 			}
 			break
@@ -157,7 +197,9 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.State != HostMonitorStopped || !status.EgressBrokerClosed || !status.VolumeClosed || !status.RunnerReaped || !status.RelayClosed {
+	if status.State != HostMonitorStopped || !status.EgressBrokerClosed || !status.VolumeClosed ||
+		!status.RunnerReaped ||
+		!status.RelayClosed {
 		t.Fatalf("v3 terminal status = %+v", status)
 	}
 	if broker.calls.Load() != 1 {

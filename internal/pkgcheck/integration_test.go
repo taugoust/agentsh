@@ -89,7 +89,12 @@ func TestIntegrationBlockCriticalVuln(t *testing.T) {
 		allowlist,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "vulnerable-pkg"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "vulnerable-pkg"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 
@@ -138,7 +143,12 @@ func TestIntegrationAllowCleanPackage(t *testing.T) {
 		allowlist,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "lodash"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "lodash"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 
@@ -210,7 +220,12 @@ func TestIntegrationWarnMediumVuln(t *testing.T) {
 		allowlist,
 	)
 
-	verdict, err := checker.Check(context.Background(), "pip", []string{"install", "requests"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"pip",
+		[]string{"install", "requests"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 
@@ -252,13 +267,22 @@ func TestIntegrationProviderDown(t *testing.T) {
 		checker := newIntegrationChecker(
 			[]Resolver{resolver},
 			map[string]ProviderEntry{
-				"down-provider": {Provider: failProvider, Timeout: 5 * time.Second, OnFailure: "deny"},
+				"down-provider": {
+					Provider:  failProvider,
+					Timeout:   5 * time.Second,
+					OnFailure: "deny",
+				},
 			},
 			rules,
 			allowlist,
 		)
 
-		verdict, err := checker.Check(context.Background(), "npm", []string{"install", "express"}, t.TempDir())
+		verdict, err := checker.Check(
+			context.Background(),
+			"npm",
+			[]string{"install", "express"},
+			t.TempDir(),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, verdict)
 
@@ -272,13 +296,22 @@ func TestIntegrationProviderDown(t *testing.T) {
 		checker := newIntegrationChecker(
 			[]Resolver{resolver},
 			map[string]ProviderEntry{
-				"down-provider": {Provider: failProvider, Timeout: 5 * time.Second, OnFailure: "allow"},
+				"down-provider": {
+					Provider:  failProvider,
+					Timeout:   5 * time.Second,
+					OnFailure: "allow",
+				},
 			},
 			rules,
 			allowlist,
 		)
 
-		verdict, err := checker.Check(context.Background(), "npm", []string{"install", "express"}, t.TempDir())
+		verdict, err := checker.Check(
+			context.Background(),
+			"npm",
+			[]string{"install", "express"},
+			t.TempDir(),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, verdict)
 
@@ -293,13 +326,22 @@ func TestIntegrationProviderDown(t *testing.T) {
 		checker := newIntegrationChecker(
 			[]Resolver{resolver},
 			map[string]ProviderEntry{
-				"down-provider": {Provider: failProvider, Timeout: 5 * time.Second, OnFailure: "warn"},
+				"down-provider": {
+					Provider:  failProvider,
+					Timeout:   5 * time.Second,
+					OnFailure: "warn",
+				},
 			},
 			rules,
 			allowlist,
 		)
 
-		verdict, err := checker.Check(context.Background(), "npm", []string{"install", "express"}, t.TempDir())
+		verdict, err := checker.Check(
+			context.Background(),
+			"npm",
+			[]string{"install", "express"},
+			t.TempDir(),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, verdict)
 
@@ -371,14 +413,27 @@ func TestIntegrationMultipleProviders(t *testing.T) {
 	checker := newIntegrationChecker(
 		[]Resolver{resolver},
 		map[string]ProviderEntry{
-			"vuln-db":         {Provider: vulnProvider, Timeout: 5 * time.Second, OnFailure: "warn"},
-			"malware-scanner": {Provider: malwareProvider, Timeout: 5 * time.Second, OnFailure: "deny"},
+			"vuln-db": {
+				Provider:  vulnProvider,
+				Timeout:   5 * time.Second,
+				OnFailure: "warn",
+			},
+			"malware-scanner": {
+				Provider:  malwareProvider,
+				Timeout:   5 * time.Second,
+				OnFailure: "deny",
+			},
 		},
 		rules,
 		nil,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "sketchy-pkg"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "sketchy-pkg"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 

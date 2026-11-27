@@ -290,7 +290,21 @@ func (b *RulesetBuilder) BuildRetained() (int, []RuleObject, error) {
 		return -1, nil, fmt.Errorf("landlock_create_ruleset: %v", errno)
 	}
 	rulesetFd := int(fd)
-	objects := make([]RuleObject, 0, 1+len(b.executePaths)+len(b.readPaths)+len(b.listPaths)+len(b.writePaths)+len(b.deviceIOCTLPaths))
+	objects := make(
+		[]RuleObject,
+		0,
+		1+len(
+			b.executePaths,
+		)+len(
+			b.readPaths,
+		)+len(
+			b.listPaths,
+		)+len(
+			b.writePaths,
+		)+len(
+			b.deviceIOCTLPaths,
+		),
+	)
 	closeWithError := func(err error) (int, []RuleObject, error) {
 		for index := range objects {
 			_ = objects[index].Close()

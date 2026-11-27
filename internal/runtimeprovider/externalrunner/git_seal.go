@@ -35,14 +35,18 @@ var verifyGitSealResult = func(ctx context.Context, input, result *os.File, base
 	return gitdraft.VerifyResultBundles(ctx, git, input, result, baseline, resultCommit)
 }
 
-func ExportGitDraftResult(ctx context.Context, sessionID, stateDir, output string) (GitResultRecord, error) {
+func ExportGitDraftResult(
+	ctx context.Context,
+	sessionID, stateDir, output string,
+) (GitResultRecord, error) {
 	var result GitResultRecord
 	err := runtimeprovider.WithOperationLock(ctx, stateDir, func() error {
 		manifest, err := runtimeprovider.ReadManifest(stateDir)
 		if err != nil {
 			return err
 		}
-		if manifest.SessionID != sessionID || manifest.Provider != ProviderName || (manifest.State != runtimeprovider.StateReady && manifest.State != runtimeprovider.StateStopped) {
+		if manifest.SessionID != sessionID || manifest.Provider != ProviderName ||
+			(manifest.State != runtimeprovider.StateReady && manifest.State != runtimeprovider.StateStopped) {
 			return fmt.Errorf("external Git Draft is not reviewable")
 		}
 		request, err := ReadHostMonitorRequest(stateDir)
@@ -57,7 +61,11 @@ func ExportGitDraftResult(ctx context.Context, sessionID, stateDir, output strin
 		if err != nil {
 			return err
 		}
-		file, descriptor, err := store.Open(ctx, result.ResultArtifact.ArtifactID, artifact.KindGitResultBundle)
+		file, descriptor, err := store.Open(
+			ctx,
+			result.ResultArtifact.ArtifactID,
+			artifact.KindGitResultBundle,
+		)
 		if err != nil {
 			return err
 		}
@@ -76,7 +84,12 @@ func ExportGitDraftResult(ctx context.Context, sessionID, stateDir, output strin
 		written, copyErr := io.CopyN(target, file, descriptor.Size)
 		syncErr := target.Sync()
 		closeErr := target.Close()
-		if err := errors.Join(copyErr, syncErr, closeErr); err != nil || written != descriptor.Size {
+		if err := errors.Join(
+			copyErr,
+			syncErr,
+			closeErr,
+		); err != nil ||
+			written != descriptor.Size {
 			_ = os.Remove(output)
 			return fmt.Errorf("export exact Git result artifact: %w", err)
 		}
@@ -92,14 +105,18 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if err != nil {
 			return err
 		}
-		if manifest.SessionID != sessionID || manifest.Provider != ProviderName || manifest.State != runtimeprovider.StateReady || manifest.CleanupPending || manifest.CleanupComplete {
+		if manifest.SessionID != sessionID || manifest.Provider != ProviderName ||
+			manifest.State != runtimeprovider.StateReady ||
+			manifest.CleanupPending ||
+			manifest.CleanupComplete {
 			return fmt.Errorf("external Git Draft runtime is not ready for sealing")
 		}
 		request, err := ReadHostMonitorRequest(stateDir)
 		if err != nil {
 			return err
 		}
-		if (request.SchemaVersion != HostMonitorSchemaVersionV2 && request.SchemaVersion != HostMonitorSchemaVersionV3) || request.InputArtifact == nil {
+		if (request.SchemaVersion != HostMonitorSchemaVersionV2 && request.SchemaVersion != HostMonitorSchemaVersionV3) ||
+			request.InputArtifact == nil {
 			return fmt.Errorf("external runtime is not a Git-volume Draft")
 		}
 		store, err := artifact.NewStore(stateDir, sessionID, guestcontrol.MaxArtifactTransferBytes)
@@ -107,7 +124,11 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 			return err
 		}
 		if existing, readErr := ReadGitResultRecord(stateDir, request); readErr == nil {
-			file, descriptor, openErr := store.Open(ctx, existing.ResultArtifact.ArtifactID, artifact.KindGitResultBundle)
+			file, descriptor, openErr := store.Open(
+				ctx,
+				existing.ResultArtifact.ArtifactID,
+				artifact.KindGitResultBundle,
+			)
 			if openErr != nil {
 				return openErr
 			}
@@ -124,7 +145,9 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if err != nil {
 			return err
 		}
-		if status.State != HostMonitorControlReady || status.Guest == nil || status.Endpoint == nil || status.VolumeID != request.VolumeID {
+		if status.State != HostMonitorControlReady || status.Guest == nil ||
+			status.Endpoint == nil ||
+			status.VolumeID != request.VolumeID {
 			return fmt.Errorf("external Git Draft guest is not authenticated and ready")
 		}
 		profile, profileFileDigest, err := ReadProfileSnapshot(request.ProfileFile)
@@ -135,11 +158,23 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if err != nil {
 			return err
 		}
-		guestManifest, guestManifestDigest, err := ReadHostGuestManifestSnapshot(layout.GuestManifest, profile.Guest.Workspace, profile.Name, profile.Guest.ProfileDigest, []string{profile.Guest.Policy})
+		guestManifest, guestManifestDigest, err := ReadHostGuestManifestSnapshot(
+			layout.GuestManifest,
+			profile.Guest.Workspace,
+			profile.Name,
+			profile.Guest.ProfileDigest,
+			[]string{profile.Guest.Policy},
+		)
 		if err != nil {
 			return err
 		}
-		if err := validateHostMonitorBindings(request, profile, profileFileDigest, guestManifest, guestManifestDigest); err != nil {
+		if err := validateHostMonitorBindings(
+			request,
+			profile,
+			profileFileDigest,
+			guestManifest,
+			guestManifestDigest,
+		); err != nil {
 			return fmt.Errorf("validate authoritative Git Draft launch bindings: %w", err)
 		}
 		control, err := newGitSealControl(guestManifest)
@@ -153,7 +188,11 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		}
 		exported := make(chan exportResult, 1)
 		go func() {
-			transfer, exportErr := control.ExportArtifact(ctx, guestcontrol.ArtifactKindGitResultBundle, writer)
+			transfer, exportErr := control.ExportArtifact(
+				ctx,
+				guestcontrol.ArtifactKindGitResultBundle,
+				writer,
+			)
 			_ = writer.CloseWithError(exportErr)
 			exported <- exportResult{transfer: transfer, err: exportErr}
 		}()
@@ -163,11 +202,16 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if err := errors.Join(putErr, export.err); err != nil {
 			return fmt.Errorf("persist sealed Git result artifact: %w", err)
 		}
-		if descriptor.SHA256 != export.transfer.SHA256 || descriptor.Size != export.transfer.Size || export.transfer.Validate() != nil {
+		if descriptor.SHA256 != export.transfer.SHA256 || descriptor.Size != export.transfer.Size ||
+			export.transfer.Validate() != nil {
 			_ = store.Delete(descriptor.ArtifactID, artifact.KindGitResultBundle)
 			return fmt.Errorf("sealed Git result host and guest identities differ")
 		}
-		inputFile, inputDescriptor, err := store.Open(ctx, request.InputArtifact.ArtifactID, artifact.KindGitInputBundle)
+		inputFile, inputDescriptor, err := store.Open(
+			ctx,
+			request.InputArtifact.ArtifactID,
+			artifact.KindGitInputBundle,
+		)
 		if err != nil {
 			return err
 		}
@@ -175,7 +219,11 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if inputDescriptor != *request.InputArtifact {
 			return fmt.Errorf("Git input artifact changed before result verification")
 		}
-		resultFile, resultDescriptor, err := store.Open(ctx, descriptor.ArtifactID, artifact.KindGitResultBundle)
+		resultFile, resultDescriptor, err := store.Open(
+			ctx,
+			descriptor.ArtifactID,
+			artifact.KindGitResultBundle,
+		)
 		if err != nil {
 			return err
 		}
@@ -183,14 +231,26 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if resultDescriptor != descriptor {
 			return fmt.Errorf("Git result artifact changed before verification")
 		}
-		if err := verifyGitSealResult(ctx, inputFile, resultFile, export.transfer.BaselineCommit, export.transfer.ResultCommit); err != nil {
+		if err := verifyGitSealResult(
+			ctx,
+			inputFile,
+			resultFile,
+			export.transfer.BaselineCommit,
+			export.transfer.ResultCommit,
+		); err != nil {
 			_ = store.Delete(descriptor.ArtifactID, artifact.KindGitResultBundle)
 			return fmt.Errorf("verify sealed Git result: %w", err)
 		}
 		result = GitResultRecord{
-			SchemaVersion: GitResultSchemaVersion, SessionID: sessionID, VolumeID: request.VolumeID,
-			InputArtifactID: request.InputArtifact.ArtifactID, InputSHA256: request.InputArtifact.SHA256,
-			ResultArtifact: descriptor, BaselineCommit: export.transfer.BaselineCommit, ResultCommit: export.transfer.ResultCommit, CreatedAt: time.Now().UTC(),
+			SchemaVersion:   GitResultSchemaVersion,
+			SessionID:       sessionID,
+			VolumeID:        request.VolumeID,
+			InputArtifactID: request.InputArtifact.ArtifactID,
+			InputSHA256:     request.InputArtifact.SHA256,
+			ResultArtifact:  descriptor,
+			BaselineCommit:  export.transfer.BaselineCommit,
+			ResultCommit:    export.transfer.ResultCommit,
+			CreatedAt:       time.Now().UTC(),
 		}
 		if err := WriteGitResultRecord(stateDir, request, result); err != nil {
 			return err

@@ -32,9 +32,13 @@ type output struct {
 
 func main() {
 	var (
-		dsn      = flag.String("dsn", "", "direct PostgreSQL DSN")
-		socket   = flag.String("socket", "", "AgentSH DB proxy Unix socket path")
-		mode     = flag.String("mode", "scalar", "scalar, exec, tx-deny, cancel, copy-to, copy-from, or prepared-repeat")
+		dsn    = flag.String("dsn", "", "direct PostgreSQL DSN")
+		socket = flag.String("socket", "", "AgentSH DB proxy Unix socket path")
+		mode   = flag.String(
+			"mode",
+			"scalar",
+			"scalar, exec, tx-deny, cancel, copy-to, copy-from, or prepared-repeat",
+		)
 		sqlText  = flag.String("sql", "select 1", "SQL statement")
 		data     = flag.String("data", "", "COPY FROM STDIN payload")
 		user     = flag.String("user", "app", "startup user for socket mode")
@@ -141,9 +145,17 @@ func run(ctx context.Context, conn *pgx.Conn, mode, sqlText, data string) (outpu
 		_, execErr := tx.Exec(ctx, sqlText)
 		_ = tx.Rollback(context.Background())
 		if execErr == nil {
-			return output{ConnectionOpen: ping(context.Background(), conn)}, errors.New("tx-deny statement unexpectedly succeeded")
+			return output{
+					ConnectionOpen: ping(context.Background(), conn),
+				}, errors.New(
+					"tx-deny statement unexpectedly succeeded",
+				)
 		}
-		return output{SQLState: sqlState(execErr), Error: execErr.Error(), ConnectionOpen: ping(context.Background(), conn)}, nil
+		return output{
+			SQLState:       sqlState(execErr),
+			Error:          execErr.Error(),
+			ConnectionOpen: ping(context.Background(), conn),
+		}, nil
 	case "cancel":
 		cancelResult := make(chan error, 1)
 		go func() {
@@ -156,7 +168,14 @@ func run(ctx context.Context, conn *pgx.Conn, mode, sqlText, data string) (outpu
 		_, err := conn.Exec(ctx, sqlText)
 		cancelErr := <-cancelResult
 		if cancelErr != nil {
-			return output{SQLState: sqlState(err), Error: errString(err), ConnectionOpen: ping(context.Background(), conn)}, fmt.Errorf("cancel request delivery failed: %w", cancelErr)
+			return output{
+					SQLState:       sqlState(err),
+					Error:          errString(err),
+					ConnectionOpen: ping(context.Background(), conn),
+				}, fmt.Errorf(
+					"cancel request delivery failed: %w",
+					cancelErr,
+				)
 		}
 		if err == nil {
 			return output{}, errors.New("cancel query unexpectedly completed")
@@ -165,7 +184,11 @@ func run(ctx context.Context, conn *pgx.Conn, mode, sqlText, data string) (outpu
 		if state != "57014" && !strings.Contains(strings.ToLower(err.Error()), "cancel") {
 			return output{SQLState: state, Error: err.Error()}, err
 		}
-		return output{SQLState: state, Error: err.Error(), ConnectionOpen: ping(context.Background(), conn)}, nil
+		return output{
+			SQLState:       state,
+			Error:          err.Error(),
+			ConnectionOpen: ping(context.Background(), conn),
+		}, nil
 	case "copy-to":
 		var buf bytes.Buffer
 		tag, err := conn.PgConn().CopyTo(ctx, &buf, sqlText)

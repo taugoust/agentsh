@@ -21,7 +21,10 @@ type hostVSockAddr struct {
 
 func (a hostVSockAddr) Network() string { return "vsock" }
 func (a hostVSockAddr) String() string {
-	return net.JoinHostPort(strconv.FormatUint(uint64(a.cid), 10), strconv.FormatUint(uint64(a.port), 10))
+	return net.JoinHostPort(
+		strconv.FormatUint(uint64(a.cid), 10),
+		strconv.FormatUint(uint64(a.port), 10),
+	)
 }
 func (a hostVSockAddr) VSockCID() uint32 { return a.cid }
 
@@ -60,7 +63,11 @@ type rawHostVSockListener struct {
 	closeErr  error
 }
 
-func listenHostEgressVSock(port, expectedCID uint32, expectedToken string, authenticationTimeout time.Duration) (net.Listener, error) {
+func listenHostEgressVSock(
+	port, expectedCID uint32,
+	expectedToken string,
+	authenticationTimeout time.Duration,
+) (net.Listener, error) {
 	if port < 1024 || port > 65535 {
 		return nil, fmt.Errorf("host egress VSOCK port is invalid")
 	}
@@ -110,7 +117,10 @@ func (l *rawHostVSockListener) Accept() (net.Conn, error) {
 			continue
 		}
 		if err == unix.EAGAIN || err == unix.EWOULDBLOCK {
-			ready, pollErr := unix.Poll([]unix.PollFd{{Fd: int32(listenerFD), Events: unix.POLLIN}}, 100)
+			ready, pollErr := unix.Poll(
+				[]unix.PollFd{{Fd: int32(listenerFD), Events: unix.POLLIN}},
+				100,
+			)
 			if pollErr == unix.EINTR {
 				continue
 			}

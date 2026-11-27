@@ -53,7 +53,12 @@ func TestFUSE_TruncateUnderSoftDelete(t *testing.T) {
 		Version: 1,
 		Name:    "allow-all",
 		FileRules: []policy.FileRule{
-			{Name: "allow-all", Paths: []string{"/**"}, Operations: []string{"*"}, Decision: "allow"},
+			{
+				Name:       "allow-all",
+				Paths:      []string{"/**"},
+				Operations: []string{"*"},
+				Decision:   "allow",
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, false, true)

@@ -10,7 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestChecker(resolvers []Resolver, providers map[string]ProviderEntry, rules []policy.PackageRule) *Checker {
+func newTestChecker(
+	resolvers []Resolver,
+	providers map[string]ProviderEntry,
+	rules []policy.PackageRule,
+) *Checker {
 	return NewChecker(CheckerConfig{
 		Scope:     "new_packages_only",
 		Resolvers: resolvers,
@@ -50,7 +54,12 @@ func TestCheckerEndToEnd(t *testing.T) {
 		rules,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "express"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "express"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 	assert.Equal(t, VerdictAllow, verdict.Action)
@@ -113,7 +122,12 @@ func TestCheckerBlockedPackage(t *testing.T) {
 		rules,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "evil-pkg"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "evil-pkg"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 	assert.Equal(t, VerdictBlock, verdict.Action)
@@ -127,7 +141,12 @@ func TestCheckerNoResolver(t *testing.T) {
 	// npm install command but no resolvers configured -> should error.
 	checker := newTestChecker(nil, nil, nil)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "express"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "express"},
+		t.TempDir(),
+	)
 	require.Error(t, err)
 	assert.Nil(t, verdict)
 	assert.Contains(t, err.Error(), "no resolver")
@@ -162,7 +181,12 @@ func TestCheckerProviderFailureDeny(t *testing.T) {
 		rules,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "lodash"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "lodash"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 	assert.Equal(t, VerdictBlock, verdict.Action)
@@ -198,7 +222,12 @@ func TestCheckerProviderFailureWarn(t *testing.T) {
 		rules,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "lodash"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "lodash"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 	// With the "warn" on_failure, a finding is injected but the default rule allows.
@@ -234,13 +263,26 @@ func TestCheckerMixedProviderFailures_DenyWins(t *testing.T) {
 	checker := newTestChecker(
 		[]Resolver{resolver},
 		map[string]ProviderEntry{
-			"approve-provider": {Provider: approveProvider, Timeout: 5 * time.Second, OnFailure: "approve"},
-			"deny-provider":    {Provider: denyProvider, Timeout: 5 * time.Second, OnFailure: "deny"},
+			"approve-provider": {
+				Provider:  approveProvider,
+				Timeout:   5 * time.Second,
+				OnFailure: "approve",
+			},
+			"deny-provider": {
+				Provider:  denyProvider,
+				Timeout:   5 * time.Second,
+				OnFailure: "deny",
+			},
 		},
 		rules,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "lodash"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "lodash"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 	// Deny is stricter than approve, so block must win.
@@ -273,12 +315,21 @@ func TestCheckerProviderFailureApproveUpgrades(t *testing.T) {
 	checker := newTestChecker(
 		[]Resolver{resolver},
 		map[string]ProviderEntry{
-			"approve-on-fail": {Provider: failProvider, Timeout: 5 * time.Second, OnFailure: "approve"},
+			"approve-on-fail": {
+				Provider:  failProvider,
+				Timeout:   5 * time.Second,
+				OnFailure: "approve",
+			},
 		},
 		rules,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "express"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "express"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 	// Findings evaluate to allow, but the approve failure upgrades to approve.
@@ -301,7 +352,12 @@ func TestChecker_PrivacyFilterSurfacesSkipped(t *testing.T) {
 			Ecosystem: EcosystemNPM,
 			Direct: []PackageRef{
 				{Name: "lodash", Version: "4.17.21", Registry: "registry.npmjs.org", Direct: true},
-				{Name: "@private/utils", Version: "1.0.0", Registry: "registry.npmjs.org", Direct: true},
+				{
+					Name:     "@private/utils",
+					Version:  "1.0.0",
+					Registry: "registry.npmjs.org",
+					Direct:   true,
+				},
 			},
 		},
 	}
@@ -324,7 +380,12 @@ func TestChecker_PrivacyFilterSurfacesSkipped(t *testing.T) {
 		},
 	})
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "lodash", "@private/utils"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "lodash", "@private/utils"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 
@@ -380,12 +441,22 @@ func TestChecker_WarnProviderErrorProducesDegradedSummary(t *testing.T) {
 		rules,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "lodash"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "lodash"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 	assert.Equal(t, VerdictAllow, verdict.Action)
 	// The summary must start with "degraded:" to signal partial scan.
-	assert.True(t, len(verdict.Summary) > 0 && verdict.Summary[:9] == "degraded:", "expected summary to start with 'degraded:', got: %q", verdict.Summary)
+	assert.True(
+		t,
+		len(verdict.Summary) > 0 && verdict.Summary[:9] == "degraded:",
+		"expected summary to start with 'degraded:', got: %q",
+		verdict.Summary,
+	)
 }
 
 // TestChecker_RegistryPropagationAllowsPublicPackages proves that packages
@@ -423,14 +494,29 @@ func TestChecker_RegistryPropagationAllowsPublicPackages(t *testing.T) {
 		},
 	})
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "lodash"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "lodash"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 
 	// The provider must have received lodash — not skipped due to empty Registry.
-	require.Len(t, rp.last, 1, "provider should receive the package (registry propagated from plan)")
+	require.Len(
+		t,
+		rp.last,
+		1,
+		"provider should receive the package (registry propagated from plan)",
+	)
 	assert.Equal(t, "lodash", rp.last[0].Name)
-	assert.Equal(t, "registry.npmjs.org", rp.last[0].Registry, "registry should be populated from plan")
+	assert.Equal(
+		t,
+		"registry.npmjs.org",
+		rp.last[0].Registry,
+		"registry should be populated from plan",
+	)
 
 	// No packages should be skipped.
 	assert.Empty(t, verdict.Skipped, "no packages should be skipped for a public-registry install")
@@ -483,12 +569,21 @@ func TestCheckerDenyOnFailure_PreservesFindings(t *testing.T) {
 		rules,
 	)
 
-	verdict, err := checker.Check(context.Background(), "npm", []string{"install", "lodash"}, t.TempDir())
+	verdict, err := checker.Check(
+		context.Background(),
+		"npm",
+		[]string{"install", "lodash"},
+		t.TempDir(),
+	)
 	require.NoError(t, err)
 	require.NotNil(t, verdict)
 	assert.Equal(t, VerdictBlock, verdict.Action)
 	// The finding from the successful provider must be preserved on the block verdict.
-	assert.NotEmpty(t, verdict.Findings, "block verdict must carry findings collected before the deny decision")
+	assert.NotEmpty(
+		t,
+		verdict.Findings,
+		"block verdict must carry findings collected before the deny decision",
+	)
 	found := false
 	for _, f := range verdict.Findings {
 		if f.Provider == "good-provider" {

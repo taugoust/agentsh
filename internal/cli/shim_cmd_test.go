@@ -50,7 +50,11 @@ func TestShimInstallShell_AllowsNonRootfs(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(rootfs, "bin"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(rootfs, "bin", "sh"), []byte("REAL\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(rootfs, "bin", "sh"),
+		[]byte("REAL\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write sh: %v", err)
 	}
 	shimPath := filepath.Join(tmp, "shim.bin")
@@ -79,10 +83,18 @@ func TestShimInstallShell_BashOnly(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	// Create both sh and bash in the fake rootfs.
-	if err := os.WriteFile(filepath.Join(rootfs, "bin", "sh"), []byte("REAL_SH\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(rootfs, "bin", "sh"),
+		[]byte("REAL_SH\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write sh: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(rootfs, "bin", "bash"), []byte("REAL_BASH\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(rootfs, "bin", "bash"),
+		[]byte("REAL_BASH\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write bash: %v", err)
 	}
 	shimPath := filepath.Join(tmp, "shim.bin")
@@ -144,7 +156,11 @@ func TestShimInstallShell_ForceWritesConfig(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(rootfs, "bin"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(rootfs, "bin", "sh"), []byte("REAL\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(rootfs, "bin", "sh"),
+		[]byte("REAL\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write sh: %v", err)
 	}
 	shimPath := filepath.Join(tmp, "shim.bin")
@@ -179,7 +195,11 @@ func TestShimInstallShell_NoForceNoConfig(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(rootfs, "bin"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(rootfs, "bin", "sh"), []byte("REAL\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(rootfs, "bin", "sh"),
+		[]byte("REAL\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write sh: %v", err)
 	}
 	shimPath := filepath.Join(tmp, "shim.bin")
@@ -209,7 +229,11 @@ func TestShimInstallShell_ForceDryRun(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(rootfs, "bin"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(rootfs, "bin", "sh"), []byte("REAL\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(rootfs, "bin", "sh"),
+		[]byte("REAL\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write sh: %v", err)
 	}
 	shimPath := filepath.Join(tmp, "shim.bin")
@@ -249,7 +273,11 @@ func TestShimInstallShell_ReinstallWithoutForceClearsConfig(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(rootfs, "bin"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(rootfs, "bin", "sh"), []byte("REAL\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(rootfs, "bin", "sh"),
+		[]byte("REAL\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write sh: %v", err)
 	}
 	shimPath := filepath.Join(tmp, "shim.bin")
@@ -291,7 +319,10 @@ func TestShimInstallShell_ReinstallWithoutForceClearsConfig(t *testing.T) {
 		t.Fatalf("expected shim.conf to still exist: %v", err)
 	}
 	if strings.Contains(string(data), "force=true") {
-		t.Fatalf("expected force=true to be cleared after reinstall without --force, got %q", string(data))
+		t.Fatalf(
+			"expected force=true to be cleared after reinstall without --force, got %q",
+			string(data),
+		)
 	}
 	if !strings.Contains(string(data), "force=false") {
 		t.Fatalf("expected force=false in shim.conf, got %q", string(data))
@@ -304,7 +335,11 @@ func TestShimInstallShell_ForcePreservesExistingKeys(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(rootfs, "bin"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(rootfs, "bin", "sh"), []byte("REAL\n"), 0o755); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(rootfs, "bin", "sh"),
+		[]byte("REAL\n"),
+		0o755,
+	); err != nil {
 		t.Fatalf("write sh: %v", err)
 	}
 	shimPath := filepath.Join(tmp, "shim.bin")
@@ -317,7 +352,11 @@ func TestShimInstallShell_ForcePreservesExistingKeys(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatalf("mkdir conf: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "shim.conf"), []byte("# existing\ndebug=1\nforce=false\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(confDir, "shim.conf"),
+		[]byte("# existing\ndebug=1\nforce=false\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write existing conf: %v", err)
 	}
 

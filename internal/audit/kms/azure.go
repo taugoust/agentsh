@@ -25,7 +25,9 @@ type AzureKeyVaultProvider struct {
 // vaultURL is the vault URL (e.g., https://myvault.vault.azure.net).
 // keyName is the name of the secret in the vault.
 // keyVersion is optional; empty means latest version.
-func NewAzureKeyVaultProvider(vaultURL, keyName, keyVersion string) (*AzureKeyVaultProvider, error) {
+func NewAzureKeyVaultProvider(
+	vaultURL, keyName, keyVersion string,
+) (*AzureKeyVaultProvider, error) {
 	if vaultURL == "" {
 		return nil, fmt.Errorf("azure_keyvault: vault_url is required")
 	}

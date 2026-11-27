@@ -145,11 +145,33 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 	if capabilityErr != nil {
 		switch {
 		case errors.Is(capabilityErr, errChildCapabilityRevoked):
-			writeToolDomainError(w, http.StatusForbidden, toolErrorChildCapabilityRevoked, "child execution capability is revoked", "", capabilityErr)
-		case errors.Is(capabilityErr, context.Canceled), errors.Is(capabilityErr, context.DeadlineExceeded):
-			writeToolDomainError(w, http.StatusRequestTimeout, toolErrorChildCapabilityInvalid, "child capability authentication was cancelled", "", capabilityErr)
+			writeToolDomainError(
+				w,
+				http.StatusForbidden,
+				toolErrorChildCapabilityRevoked,
+				"child execution capability is revoked",
+				"",
+				capabilityErr,
+			)
+		case errors.Is(capabilityErr, context.Canceled),
+			errors.Is(capabilityErr, context.DeadlineExceeded):
+			writeToolDomainError(
+				w,
+				http.StatusRequestTimeout,
+				toolErrorChildCapabilityInvalid,
+				"child capability authentication was cancelled",
+				"",
+				capabilityErr,
+			)
 		default:
-			writeToolDomainError(w, http.StatusForbidden, toolErrorChildCapabilityInvalid, "child execution capability is invalid", "", capabilityErr)
+			writeToolDomainError(
+				w,
+				http.StatusForbidden,
+				toolErrorChildCapabilityInvalid,
+				"child execution capability is invalid",
+				"",
+				capabilityErr,
+			)
 		}
 		return
 	}
@@ -161,12 +183,22 @@ func (a *App) execBashTool(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cleanupCapabilityContext()
 	if req.RequestID != "" {
-		if parsed, err := uuid.Parse(req.RequestID); err != nil || parsed.String() != req.RequestID {
+		if parsed, err := uuid.Parse(
+			req.RequestID,
+		); err != nil ||
+			parsed.String() != req.RequestID {
 			writeToolError(w, http.StatusBadRequest, "request_id must be a canonical UUID")
 			return
 		}
 		if !a.registerExecCancellation(id, req.RequestID, cancelExec) {
-			writeToolDomainError(w, http.StatusConflict, toolErrorConflict, "exec_bash request_id is already active", "", nil)
+			writeToolDomainError(
+				w,
+				http.StatusConflict,
+				toolErrorConflict,
+				"exec_bash request_id is already active",
+				"",
+				nil,
+			)
 			return
 		}
 		defer a.unregisterExecCancellation(id, req.RequestID)
@@ -250,7 +282,10 @@ func execCancellationKey(sessionID, requestID string) string {
 	return sessionID + "\x00" + requestID
 }
 
-func (a *App) registerExecCancellation(sessionID, requestID string, cancel context.CancelFunc) bool {
+func (a *App) registerExecCancellation(
+	sessionID, requestID string,
+	cancel context.CancelFunc,
+) bool {
 	if a == nil || cancel == nil {
 		return false
 	}
@@ -290,7 +325,11 @@ func (a *App) cancelExecBashTool(w http.ResponseWriter, r *http.Request) {
 	if cancel != nil {
 		cancel()
 	}
-	writeJSON(w, http.StatusAccepted, map[string]any{"cancelled": cancel != nil, "request_id": requestID})
+	writeJSON(
+		w,
+		http.StatusAccepted,
+		map[string]any{"cancelled": cancel != nil, "request_id": requestID},
+	)
 }
 
 func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
@@ -299,7 +338,15 @@ func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
 	if ok := decodeJSON(w, r, &req, "invalid json"); !ok {
 		return
 	}
-	s, rp, code, err := a.resolveToolFileRequest(r.Context(), id, req.Path, req.Cwd, "read", req.Actor, true)
+	s, rp, code, err := a.resolveToolFileRequest(
+		r.Context(),
+		id,
+		req.Path,
+		req.Cwd,
+		"read",
+		req.Actor,
+		true,
+	)
 	if err != nil {
 		writeToolErrorWithPath(w, code, err.Error(), req.Path)
 		return
@@ -323,7 +370,14 @@ func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if rp.OutputArtifact && statusForFileError(err) == http.StatusInternalServerError {
-			writeToolDomainError(w, http.StatusForbidden, toolErrorPolicyDenied, "output artifact is unavailable", rp.Virtual, err)
+			writeToolDomainError(
+				w,
+				http.StatusForbidden,
+				toolErrorPolicyDenied,
+				"output artifact is unavailable",
+				rp.Virtual,
+				err,
+			)
 		} else {
 			writeToolFileError(w, err, rp.Virtual)
 		}
@@ -332,7 +386,14 @@ func (a *App) readFileTool(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 	window, err := readTextLineWindow(f, req.Offset, req.Limit, maxBytes)
 	if err != nil {
-		writeToolDomainError(w, http.StatusInternalServerError, toolErrorInternal, err.Error(), rp.Virtual, err)
+		writeToolDomainError(
+			w,
+			http.StatusInternalServerError,
+			toolErrorInternal,
+			err.Error(),
+			rp.Virtual,
+			err,
+		)
 		return
 	}
 	result := map[string]any{
@@ -380,7 +441,14 @@ func (a *App) writeFileTool(w http.ResponseWriter, r *http.Request) {
 	}
 	activity, err := s.BeginWorkspaceActivity()
 	if err != nil {
-		writeToolDomainError(w, http.StatusConflict, toolErrorConflict, err.Error(), rp.Virtual, err)
+		writeToolDomainError(
+			w,
+			http.StatusConflict,
+			toolErrorConflict,
+			err.Error(),
+			rp.Virtual,
+			err,
+		)
 		return
 	}
 	defer activity.Release()
@@ -400,7 +468,15 @@ func (a *App) writeFileTool(w http.ResponseWriter, r *http.Request) {
 		writeToolFileError(w, err, rp.Virtual)
 		return
 	}
-	a.emitToolEvent(r.Context(), id, "tool_write_file", "write", rp.Virtual, req.Actor, map[string]any{"bytes": len(data)})
+	a.emitToolEvent(
+		r.Context(),
+		id,
+		"tool_write_file",
+		"write",
+		rp.Virtual,
+		req.Actor,
+		map[string]any{"bytes": len(data)},
+	)
 	writeJSON(w, http.StatusOK, toolResponse{OK: true, Result: map[string]any{
 		"path":          rp.Virtual,
 		"real_path":     rp.Real,
@@ -422,12 +498,26 @@ func (a *App) editFileTool(w http.ResponseWriter, r *http.Request) {
 		writeToolError(w, http.StatusBadRequest, "oldText is required")
 		return
 	}
-	s, rp, code, err := a.resolveToolFileRequest(r.Context(), id, req.Path, req.Cwd, "read", req.Actor, false)
+	s, rp, code, err := a.resolveToolFileRequest(
+		r.Context(),
+		id,
+		req.Path,
+		req.Cwd,
+		"read",
+		req.Actor,
+		false,
+	)
 	if err != nil {
 		writeToolErrorWithPath(w, code, err.Error(), req.Path)
 		return
 	}
-	if code, err := a.enforceToolFilePolicy(r.Context(), s, "write", rp.Real, req.Actor); err != nil {
+	if code, err := a.enforceToolFilePolicy(
+		r.Context(),
+		s,
+		"write",
+		rp.Real,
+		req.Actor,
+	); err != nil {
 		writeToolErrorWithPath(w, code, err.Error(), rp.Virtual)
 		return
 	}
@@ -437,27 +527,58 @@ func (a *App) editFileTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(data) > maxToolFileBytes {
-		writeToolErrorWithPath(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("file exceeds edit limit of %d bytes", maxToolFileBytes), rp.Virtual)
+		writeToolErrorWithPath(
+			w,
+			http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("file exceeds edit limit of %d bytes", maxToolFileBytes),
+			rp.Virtual,
+		)
 		return
 	}
 	oldB := []byte(req.OldText)
 	count := bytes.Count(data, oldB)
 	if count == 0 {
-		writeToolDomainError(w, http.StatusConflict, toolErrorEditConflict, "oldText not found", rp.Virtual, nil)
+		writeToolDomainError(
+			w,
+			http.StatusConflict,
+			toolErrorEditConflict,
+			"oldText not found",
+			rp.Virtual,
+			nil,
+		)
 		return
 	}
 	if count > 1 {
-		writeToolDomainError(w, http.StatusConflict, toolErrorEditConflict, "oldText is not unique", rp.Virtual, nil)
+		writeToolDomainError(
+			w,
+			http.StatusConflict,
+			toolErrorEditConflict,
+			"oldText is not unique",
+			rp.Virtual,
+			nil,
+		)
 		return
 	}
 	newData := bytes.Replace(data, oldB, []byte(req.NewText), 1)
 	if len(newData) > maxToolFileBytes {
-		writeToolErrorWithPath(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("edited file exceeds limit of %d bytes", maxToolFileBytes), rp.Virtual)
+		writeToolErrorWithPath(
+			w,
+			http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("edited file exceeds limit of %d bytes", maxToolFileBytes),
+			rp.Virtual,
+		)
 		return
 	}
 	activity, err := s.BeginWorkspaceActivity()
 	if err != nil {
-		writeToolDomainError(w, http.StatusConflict, toolErrorConflict, err.Error(), rp.Virtual, err)
+		writeToolDomainError(
+			w,
+			http.StatusConflict,
+			toolErrorConflict,
+			err.Error(),
+			rp.Virtual,
+			err,
+		)
 		return
 	}
 	defer activity.Release()
@@ -475,7 +596,15 @@ func (a *App) editFileTool(w http.ResponseWriter, r *http.Request) {
 	if utf8.Valid(data) && utf8.Valid(newData) {
 		diff = unifiedEditDiff(rp.Virtual, string(data), string(newData))
 	}
-	a.emitToolEvent(r.Context(), id, "tool_edit_file", "write", rp.Virtual, req.Actor, map[string]any{"bytes_written": len(newData)})
+	a.emitToolEvent(
+		r.Context(),
+		id,
+		"tool_edit_file",
+		"write",
+		rp.Virtual,
+		req.Actor,
+		map[string]any{"bytes_written": len(newData)},
+	)
 	result := map[string]any{
 		"path":          rp.Virtual,
 		"real_path":     rp.Real,
@@ -506,7 +635,12 @@ func unifiedEditDiff(path, oldText, newText string) string {
 	return diff
 }
 
-func (a *App) prepareWriteFileTool(ctx context.Context, sessionID string, req fileToolRequest, operation string) (resolvedToolPath, []byte, int, error) {
+func (a *App) prepareWriteFileTool(
+	ctx context.Context,
+	sessionID string,
+	req fileToolRequest,
+	operation string,
+) (resolvedToolPath, []byte, int, error) {
 	s, ok := a.sessions.Get(sessionID)
 	if !ok {
 		return resolvedToolPath{}, nil, http.StatusNotFound, errors.New("session not found")
@@ -524,7 +658,13 @@ func (a *App) prepareWriteFileTool(ctx context.Context, sessionID string, req fi
 	if _, statErr := os.Stat(rp.Real); os.IsNotExist(statErr) {
 		policyOperation = "create"
 	}
-	if code, err := a.enforceToolFilePolicy(ctx, s, policyOperation, rp.Real, req.Actor); err != nil {
+	if code, err := a.enforceToolFilePolicy(
+		ctx,
+		s,
+		policyOperation,
+		rp.Real,
+		req.Actor,
+	); err != nil {
 		return resolvedToolPath{}, nil, code, err
 	}
 	data := []byte(req.Content)
@@ -533,14 +673,23 @@ func (a *App) prepareWriteFileTool(ctx context.Context, sessionID string, req fi
 	case "base64":
 		decoded, decErr := base64.StdEncoding.DecodeString(req.Content)
 		if decErr != nil {
-			return resolvedToolPath{}, nil, http.StatusBadRequest, fmt.Errorf("invalid base64 content: %w", decErr)
+			return resolvedToolPath{}, nil, http.StatusBadRequest, fmt.Errorf(
+				"invalid base64 content: %w",
+				decErr,
+			)
 		}
 		data = decoded
 	default:
-		return resolvedToolPath{}, nil, http.StatusBadRequest, fmt.Errorf("unsupported encoding %q", req.Encoding)
+		return resolvedToolPath{}, nil, http.StatusBadRequest, fmt.Errorf(
+			"unsupported encoding %q",
+			req.Encoding,
+		)
 	}
 	if len(data) > maxToolFileBytes {
-		return resolvedToolPath{}, nil, http.StatusRequestEntityTooLarge, fmt.Errorf("content exceeds write limit of %d bytes", maxToolFileBytes)
+		return resolvedToolPath{}, nil, http.StatusRequestEntityTooLarge, fmt.Errorf(
+			"content exceeds write limit of %d bytes",
+			maxToolFileBytes,
+		)
 	}
 	if !req.CreateDirs {
 		if _, err := os.Stat(filepath.Dir(rp.Real)); err != nil {
@@ -550,7 +699,12 @@ func (a *App) prepareWriteFileTool(ctx context.Context, sessionID string, req fi
 	return rp, data, http.StatusOK, nil
 }
 
-func (a *App) resolveToolFileRequest(ctx context.Context, sessionID, reqPath, reqCwd, operation string, actor piToolActor, allowOutputArtifact bool) (*session.Session, resolvedToolPath, int, error) {
+func (a *App) resolveToolFileRequest(
+	ctx context.Context,
+	sessionID, reqPath, reqCwd, operation string,
+	actor piToolActor,
+	allowOutputArtifact bool,
+) (*session.Session, resolvedToolPath, int, error) {
 	s, ok := a.sessions.Get(sessionID)
 	if !ok {
 		return nil, resolvedToolPath{}, http.StatusNotFound, errors.New("session not found")
@@ -651,7 +805,11 @@ func resolveToolPath(s *session.Session, reqPath, reqCwd string) (resolvedToolPa
 	if !filepath.IsAbs(real) {
 		return resolvedToolPath{}, errors.New("path resolves to non-absolute host path")
 	}
-	return resolvedToolPath{Real: real, Virtual: filepath.ToSlash(real), InWorkspace: session.IsRealPathUnder(real, root)}, nil
+	return resolvedToolPath{
+		Real:        real,
+		Virtual:     filepath.ToSlash(real),
+		InWorkspace: session.IsRealPathUnder(real, root),
+	}, nil
 }
 
 func ensureToolPathNoSymlinkEscape(realPath, root string) error {
@@ -687,7 +845,12 @@ func ensureToolPathNoSymlinkEscape(realPath, root string) error {
 	}
 }
 
-func (a *App) enforceToolFilePolicy(ctx context.Context, s *session.Session, operation, virtualPath string, actor piToolActor) (int, error) {
+func (a *App) enforceToolFilePolicy(
+	ctx context.Context,
+	s *session.Session,
+	operation, virtualPath string,
+	actor piToolActor,
+) (int, error) {
 	engine := a.policyEngineFor(s)
 	if engine == nil {
 		return http.StatusOK, nil
@@ -702,13 +865,18 @@ func (a *App) enforceToolFilePolicy(ctx context.Context, s *session.Session, ope
 		"effective_decision": string(dec.EffectiveDecision),
 		"rule":               dec.Rule,
 	})
-	if dec.PolicyDecision == types.DecisionApprove && dec.EffectiveDecision == types.DecisionApprove {
+	if dec.PolicyDecision == types.DecisionApprove &&
+		dec.EffectiveDecision == types.DecisionApprove {
 		if a.approvals == nil {
-			return http.StatusForbidden, errors.New("operation requires approval but approvals are not enabled")
+			return http.StatusForbidden, errors.New(
+				"operation requires approval but approvals are not enabled",
+			)
 		}
 		scope, ok, scopeOptions := fileApprovalScopeOptions(operation, virtualPath, dec.Rule)
 		if !ok {
-			return http.StatusForbidden, errors.New("operation requires approval but no valid approval scope exists")
+			return http.StatusForbidden, errors.New(
+				"operation requires approval but no valid approval scope exists",
+			)
 		}
 		if cached, ok := a.approvals.CheckScoped(ctx, s.ID, "", scope); ok {
 			if cached.Approved {
@@ -743,7 +911,12 @@ func (a *App) enforceToolFilePolicy(ctx context.Context, s *session.Session, ope
 	return http.StatusOK, nil
 }
 
-func (a *App) emitToolEvent(ctx context.Context, sessionID, eventType, operation, path string, actor piToolActor, extra map[string]any) {
+func (a *App) emitToolEvent(
+	ctx context.Context,
+	sessionID, eventType, operation, path string,
+	actor piToolActor,
+	extra map[string]any,
+) {
 	if a == nil || a.store == nil || a.broker == nil {
 		return
 	}
@@ -815,7 +988,12 @@ func publicToolErrorMessage(domainCode, message string) string {
 	}
 }
 
-func writeToolDomainError(w http.ResponseWriter, status int, domainCode, message, path string, cause error) {
+func writeToolDomainError(
+	w http.ResponseWriter,
+	status int,
+	domainCode, message, path string,
+	cause error,
+) {
 	if status == 0 {
 		status = http.StatusInternalServerError
 	}
@@ -830,7 +1008,19 @@ func writeToolDomainError(w http.ResponseWriter, status int, domainCode, message
 	if status >= http.StatusInternalServerError {
 		log = slog.Error
 	}
-	log("AgentSH Pi tool request failed", "error_id", errorID, "code", domainCode, "status", status, "path", path, "error", cause)
+	log(
+		"AgentSH Pi tool request failed",
+		"error_id",
+		errorID,
+		"code",
+		domainCode,
+		"status",
+		status,
+		"path",
+		path,
+		"error",
+		cause,
+	)
 	writeJSON(w, status, toolResponse{
 		OK: false, Code: domainCode, Error: publicToolErrorMessage(domainCode, message),
 		Path: strings.TrimSpace(path), ErrorID: errorID,

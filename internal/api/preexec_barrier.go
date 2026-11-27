@@ -87,7 +87,10 @@ func (b *preExecBarrier) Enforce(pid int) error {
 		// trying to remove its populated cgroup here would fail and leak it.
 		b.cleanup = cleanup
 		if err != nil {
-			b.err = markPreExecEnforcementError("E_PRE_EXEC_ENFORCEMENT", fmt.Errorf("post-start hook: %w", err))
+			b.err = markPreExecEnforcementError(
+				"E_PRE_EXEC_ENFORCEMENT",
+				fmt.Errorf("post-start hook: %w", err),
+			)
 		}
 	})
 	return b.err
@@ -114,7 +117,10 @@ func (b *preExecBarrier) Release(pid int, steps ...preExecReleaseStep) error {
 				if step.name == "" {
 					b.releaseErr = markPreExecEnforcementError(code, err)
 				} else {
-					b.releaseErr = markPreExecEnforcementError(code, fmt.Errorf("%s: %w", step.name, err))
+					b.releaseErr = markPreExecEnforcementError(
+						code,
+						fmt.Errorf("%s: %w", step.name, err),
+					)
 				}
 				return
 			}
@@ -153,26 +159,48 @@ func commandBoundaryRequired(extra *extraProcConfig) bool {
 func validatePreExecBarrierPath(hook postStartHook, tracer any, extra *extraProcConfig) error {
 	if commandBoundaryRequired(extra) {
 		if !extra.commandBoundary.Complete() {
-			return markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("strict command boundary requirements are incomplete"))
+			return markPreExecEnforcementError(
+				"E_PRE_EXEC_BOUNDARY",
+				fmt.Errorf("strict command boundary requirements are incomplete"),
+			)
 		}
 		if hook == nil {
-			return markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("strict command boundary requires a stopped-child enforcement hook"))
+			return markPreExecEnforcementError(
+				"E_PRE_EXEC_BOUNDARY",
+				fmt.Errorf("strict command boundary requires a stopped-child enforcement hook"),
+			)
 		}
 		if tracer != nil {
-			return markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("strict command boundary is unavailable with ptrace execution"))
+			return markPreExecEnforcementError(
+				"E_PRE_EXEC_BOUNDARY",
+				fmt.Errorf("strict command boundary is unavailable with ptrace execution"),
+			)
 		}
 		if extra.notifyParentSock == nil {
-			return markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("strict command boundary requires a wrapper ACK/READY/GO control socket"))
+			return markPreExecEnforcementError(
+				"E_PRE_EXEC_BOUNDARY",
+				fmt.Errorf(
+					"strict command boundary requires a wrapper ACK/READY/GO control socket",
+				),
+			)
 		}
 	}
 	if hook == nil {
 		return nil
 	}
 	if !preExecStoppedStartSupported() {
-		return markPreExecEnforcementError("E_PRE_EXEC_BARRIER", fmt.Errorf("pre-exec enforcement barrier is unavailable on this platform"))
+		return markPreExecEnforcementError(
+			"E_PRE_EXEC_BARRIER",
+			fmt.Errorf("pre-exec enforcement barrier is unavailable on this platform"),
+		)
 	}
 	if tracer != nil && (extra == nil || !extra.ptraceSync) {
-		return markPreExecEnforcementError("E_PRE_EXEC_BARRIER", fmt.Errorf("pre-exec enforcement barrier requires wrapper READY/GO synchronization with ptrace"))
+		return markPreExecEnforcementError(
+			"E_PRE_EXEC_BARRIER",
+			fmt.Errorf(
+				"pre-exec enforcement barrier requires wrapper READY/GO synchronization with ptrace",
+			),
+		)
 	}
 	return nil
 }
@@ -206,7 +234,11 @@ func writePreExecControlByte(w io.Writer, value byte) error {
 	return nil
 }
 
-func commandBoundaryReleaseSteps(ctx context.Context, extra *extraProcConfig, ready <-chan error) []preExecReleaseStep {
+func commandBoundaryReleaseSteps(
+	ctx context.Context,
+	extra *extraProcConfig,
+	ready <-chan error,
+) []preExecReleaseStep {
 	if !commandBoundaryRequired(extra) {
 		return nil
 	}

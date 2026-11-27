@@ -91,7 +91,13 @@ func (t *Tracer) redirectExec(ctx context.Context, tid int, regs Regs, result Ex
 	if !useScratch {
 		// Try in-place overwrite first.
 		if err := t.writeString(tid, filenamePtr, stubPath); err != nil {
-			slog.Info("redirectExec: in-place write failed, falling back to scratch", "tid", tid, "error", err)
+			slog.Info(
+				"redirectExec: in-place write failed, falling back to scratch",
+				"tid",
+				tid,
+				"error",
+				err,
+			)
 			useScratch = true
 		}
 	}
@@ -225,7 +231,12 @@ func (t *Tracer) redirectExec(ctx context.Context, tid int, regs Regs, result Ex
 // If dstFDNum was already in use, it is saved via dup and the saved fd number
 // is returned so the caller can restore it on failure. Returns -1 if the
 // destination was not previously open.
-func (t *Tracer) injectFDIntoTracee(tid int, savedRegs Regs, srcFD int, dstFDNum int) (savedFD int, err error) {
+func (t *Tracer) injectFDIntoTracee(
+	tid int,
+	savedRegs Regs,
+	srcFD int,
+	dstFDNum int,
+) (savedFD int, err error) {
 	tracerPID := os.Getpid()
 
 	pidfd, err := t.injectSyscallRet(tid, savedRegs, unix.SYS_PIDFD_OPEN,
@@ -238,7 +249,10 @@ func (t *Tracer) injectFDIntoTracee(tid int, savedRegs Regs, srcFD int, dstFDNum
 		pidfd, uint64(srcFD), 0)
 	if err != nil {
 		t.injectSyscall(tid, savedRegs, unix.SYS_CLOSE, pidfd)
-		return -1, fmt.Errorf("pidfd_getfd: %w (if EPERM, check kernel.yama.ptrace_scope sysctl)", err)
+		return -1, fmt.Errorf(
+			"pidfd_getfd: %w (if EPERM, check kernel.yama.ptrace_scope sysctl)",
+			err,
+		)
 	}
 
 	// Check if dstFDNum is already open in the tracee. If so, save it via

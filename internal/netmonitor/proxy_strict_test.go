@@ -115,7 +115,11 @@ func TestStartProxyStrictModeRequiresDurableEmitter(t *testing.T) {
 }
 
 func TestStrictProxyCapsConnectionsAndInitialRequestTime(t *testing.T) {
-	p := &Proxy{maxConnections: 1, initialRequestTimeout: 20 * time.Millisecond, conns: make(map[net.Conn]struct{})}
+	p := &Proxy{
+		maxConnections:        1,
+		initialRequestTimeout: 20 * time.Millisecond,
+		conns:                 make(map[net.Conn]struct{}),
+	}
 	first, firstPeer := net.Pipe()
 	defer firstPeer.Close()
 	if !p.trackConn(first) {
@@ -152,8 +156,17 @@ func TestStrictProxyFatalAuditFailureSignalsDone(t *testing.T) {
 	if err != nil {
 		t.Skipf("listen tcp4 is unavailable: %v", err)
 	}
-	emitter := &strictAuditTestEmitter{appendError: map[string]error{"net_connect": errors.New("audit failed")}}
-	p, _, err := StartProxyWithOptions(ProxyStartOptions{Listener: ln, StrictPublicEgress: true}, "session-health", nil, nil, nil, emitter)
+	emitter := &strictAuditTestEmitter{
+		appendError: map[string]error{"net_connect": errors.New("audit failed")},
+	}
+	p, _, err := StartProxyWithOptions(
+		ProxyStartOptions{Listener: ln, StrictPublicEgress: true},
+		"session-health",
+		nil,
+		nil,
+		nil,
+		emitter,
+	)
 	if err != nil {
 		_ = ln.Close()
 		t.Fatal(err)
@@ -228,7 +241,11 @@ func TestProxyPublicEgressPerimeter(t *testing.T) {
 				t.Fatalf("ValidatePublicEgressIP(%s): %v", addr, err)
 			}
 			if !tt.want && !errors.Is(err, ErrNonPublicEgressIP) {
-				t.Fatalf("ValidatePublicEgressIP(%s) error = %v, want ErrNonPublicEgressIP", addr, err)
+				t.Fatalf(
+					"ValidatePublicEgressIP(%s) error = %v, want ErrNonPublicEgressIP",
+					addr,
+					err,
+				)
 			}
 		})
 	}
@@ -273,7 +290,11 @@ func runStrictProxyRequest(t *testing.T, p *Proxy, request string) string {
 	return string(buf[:n])
 }
 
-func openStrictHTTPSTunnel(t *testing.T, p *Proxy, authority string) (net.Conn, *bufio.Reader, <-chan error) {
+func openStrictHTTPSTunnel(
+	t *testing.T,
+	p *Proxy,
+	authority string,
+) (net.Conn, *bufio.Reader, <-chan error) {
 	t.Helper()
 	client, server := net.Pipe()
 	done := make(chan error, 1)
@@ -360,7 +381,12 @@ func strictSNIDenialEvent(t *testing.T, emitter *strictAuditTestEmitter) types.E
 	return types.Event{}
 }
 
-func runStrictSNIDenial(t *testing.T, authority string, hello []byte, helloTimeout time.Duration) types.Event {
+func runStrictSNIDenial(
+	t *testing.T,
+	authority string,
+	hello []byte,
+	helloTimeout time.Duration,
+) types.Event {
 	t.Helper()
 	emitter := &strictAuditTestEmitter{}
 	p := strictSNIProxyForTest(emitter)
@@ -433,7 +459,10 @@ func TestHandleConnectStrictSNIMatchForwardsOriginalClientHelloAfterAudit(t *tes
 	if len(observation.calls) < 3 {
 		t.Fatalf("calls before dial = %v", observation.calls)
 	}
-	if got := observation.calls[len(observation.calls)-3:]; strings.Join(got, "|") != "append:net_connect|flush|publish:net_connect" {
+	if got := observation.calls[len(observation.calls)-3:]; strings.Join(
+		got,
+		"|",
+	) != "append:net_connect|flush|publish:net_connect" {
 		t.Fatalf("calls before dial = %v", observation.calls)
 	}
 	if err := observation.peer.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
@@ -454,7 +483,8 @@ func TestHandleConnectStrictSNIMatchForwardsOriginalClientHelloAfterAudit(t *tes
 
 func TestHandleConnectStrictSNIMismatchDeniesWithoutDial(t *testing.T) {
 	event := runStrictSNIDenial(t, "api.example:443", buildClientHello("other.example"), 0)
-	if event.Fields["tls_sni_expected"] != "api.example" || event.Fields["tls_sni"] != "other.example" {
+	if event.Fields["tls_sni_expected"] != "api.example" ||
+		event.Fields["tls_sni"] != "other.example" {
 		t.Fatalf("SNI mismatch fields = %+v", event.Fields)
 	}
 }
@@ -491,8 +521,14 @@ func TestHandleConnectStrictECHOuterSNIMismatchDeniesWithoutDial(t *testing.T) {
 	}
 	echExtension := []byte{0xfe, 0x0d, 0x00, byte(len(echData))}
 	echExtension = append(echExtension, echData...)
-	event := runStrictSNIDenial(t, "secret.example:443", buildClientHello("public.example", echExtension), 0)
-	if event.Fields["tls_ech"] != true || !strings.Contains(event.Fields["proxy_error"].(string), "ECH outer SNI") {
+	event := runStrictSNIDenial(
+		t,
+		"secret.example:443",
+		buildClientHello("public.example", echExtension),
+		0,
+	)
+	if event.Fields["tls_ech"] != true ||
+		!strings.Contains(event.Fields["proxy_error"].(string), "ECH outer SNI") {
 		t.Fatalf("ECH outer-name audit fields = %+v", event.Fields)
 	}
 }
@@ -506,9 +542,13 @@ func TestHandleConnectStrictClientHelloTimeoutDeniesWithoutDial(t *testing.T) {
 
 func TestStrictPublicEgressRejectsLocalSocketTargets(t *testing.T) {
 	p := &Proxy{strictPublicEgress: true}
-	_, _, err := p.prepareStrictPublicDialTarget(context.Background(), "command", resolvedConnectDialTarget{
-		Network: "unix", Address: "/run/private/service.sock",
-	})
+	_, _, err := p.prepareStrictPublicDialTarget(
+		context.Background(),
+		"command",
+		resolvedConnectDialTarget{
+			Network: "unix", Address: "/run/private/service.sock",
+		},
+	)
 	if err == nil || !strings.Contains(err.Error(), "non-TCP") {
 		t.Fatalf("local socket target error = %v, want non-TCP rejection", err)
 	}
@@ -522,7 +562,11 @@ func TestHandleConnectStrictAuditAppendAndFlushPrecedeDial(t *testing.T) {
 		return nil, errors.New("dial stopped by test")
 	}
 
-	response := runStrictProxyRequest(t, p, "CONNECT 8.8.8.8:8443 HTTP/1.1\r\nHost: 8.8.8.8:8443\r\n\r\n")
+	response := runStrictProxyRequest(
+		t,
+		p,
+		"CONNECT 8.8.8.8:8443 HTTP/1.1\r\nHost: 8.8.8.8:8443\r\n\r\n",
+	)
 	if !strings.Contains(response, "502 Bad Gateway") {
 		t.Fatalf("response = %q, want dial failure", response)
 	}
@@ -542,7 +586,11 @@ func TestHandleConnectStrictAuditFailurePreventsDial(t *testing.T) {
 		return nil, errors.New("unexpected dial")
 	}
 
-	response := runStrictProxyRequest(t, p, "CONNECT 8.8.8.8:8443 HTTP/1.1\r\nHost: 8.8.8.8:8443\r\n\r\n")
+	response := runStrictProxyRequest(
+		t,
+		p,
+		"CONNECT 8.8.8.8:8443 HTTP/1.1\r\nHost: 8.8.8.8:8443\r\n\r\n",
+	)
 	if !strings.Contains(response, "502 Bad Gateway") {
 		t.Fatalf("response = %q, want audit failure", response)
 	}
@@ -568,7 +616,9 @@ func TestHandleConnectStrictAuditFlushFailurePreventsDial(t *testing.T) {
 }
 
 func TestHandleConnectDefaultModeKeepsBestEffortAudit(t *testing.T) {
-	emitter := &strictAuditTestEmitter{appendError: map[string]error{"net_connect": errors.New("audit unavailable")}}
+	emitter := &strictAuditTestEmitter{
+		appendError: map[string]error{"net_connect": errors.New("audit unavailable")},
+	}
 	p := &Proxy{sessionID: "s", emit: emitter}
 	p.dialContext = func(_ context.Context, network, address string) (net.Conn, error) {
 		emitter.record("dial:" + network + ":" + address)
@@ -591,7 +641,11 @@ func TestHandleConnectStrictPerimeterRejectsLoopback(t *testing.T) {
 		return nil, errors.New("unexpected dial")
 	}
 
-	response := runStrictProxyRequest(t, p, "CONNECT 127.0.0.1:443 HTTP/1.1\r\nHost: 127.0.0.1:443\r\n\r\n")
+	response := runStrictProxyRequest(
+		t,
+		p,
+		"CONNECT 127.0.0.1:443 HTTP/1.1\r\nHost: 127.0.0.1:443\r\n\r\n",
+	)
 	if !strings.Contains(response, "403 Forbidden") {
 		t.Fatalf("response = %q, want strict perimeter rejection", response)
 	}
@@ -601,7 +655,8 @@ func TestHandleConnectStrictPerimeterRejectsLoopback(t *testing.T) {
 			t.Fatalf("strict perimeter attempted dial: %v", calls)
 		}
 	}
-	if len(events) == 0 || events[0].Policy == nil || events[0].Policy.EffectiveDecision != types.DecisionDeny {
+	if len(events) == 0 || events[0].Policy == nil ||
+		events[0].Policy.EffectiveDecision != types.DecisionDeny {
 		t.Fatalf("strict perimeter deny event missing: %+v", events)
 	}
 	if events[0].Policy.Rule != "strict-public-egress-perimeter" {
@@ -620,7 +675,11 @@ func TestHandleConnectStrictPerimeterRejectsResolvedPrivateIP(t *testing.T) {
 		return nil, errors.New("unexpected dial")
 	}
 
-	response := runStrictProxyRequest(t, p, "CONNECT private.example:443 HTTP/1.1\r\nHost: private.example:443\r\n\r\n")
+	response := runStrictProxyRequest(
+		t,
+		p,
+		"CONNECT private.example:443 HTTP/1.1\r\nHost: private.example:443\r\n\r\n",
+	)
 	if !strings.Contains(response, "403 Forbidden") {
 		t.Fatalf("response = %q, want strict perimeter rejection", response)
 	}
@@ -644,8 +703,18 @@ func TestHandleConnectStrictPerimeterRejectsResolvedPrivateIP(t *testing.T) {
 
 func TestStrictProxyMultiAnswerPolicyUsesExactSelectedIP(t *testing.T) {
 	engine, err := policy.NewEngine(&policy.Policy{NetworkRules: []policy.NetworkRule{
-		{Name: "deny-selected-range", CIDRs: []string{"8.8.8.0/24"}, Ports: []int{8443}, Decision: "deny"},
-		{Name: "allow-hostname", Domains: []string{"multi.example"}, Ports: []int{8443}, Decision: "allow"},
+		{
+			Name:     "deny-selected-range",
+			CIDRs:    []string{"8.8.8.0/24"},
+			Ports:    []int{8443},
+			Decision: "deny",
+		},
+		{
+			Name:     "allow-hostname",
+			Domains:  []string{"multi.example"},
+			Ports:    []int{8443},
+			Decision: "allow",
+		},
 	}}, true, true)
 	if err != nil {
 		t.Fatal(err)
@@ -689,7 +758,11 @@ func TestStrictProxyMultiAnswerPolicyUsesExactSelectedIP(t *testing.T) {
 				return nil, errors.New("dial stopped by test")
 			}
 
-			response := runStrictProxyRequest(t, p, "CONNECT multi.example:8443 HTTP/1.1\r\nHost: multi.example:8443\r\n\r\n")
+			response := runStrictProxyRequest(
+				t,
+				p,
+				"CONNECT multi.example:8443 HTTP/1.1\r\nHost: multi.example:8443\r\n\r\n",
+			)
 			if !strings.Contains(response, test.wantStatus) {
 				t.Fatalf("response = %q, want %s", response, test.wantStatus)
 			}
@@ -705,13 +778,23 @@ func TestStrictProxyMultiAnswerPolicyUsesExactSelectedIP(t *testing.T) {
 
 func TestStrictProxyHostnameDenyDoesNotResolve(t *testing.T) {
 	engine, err := policy.NewEngine(&policy.Policy{NetworkRules: []policy.NetworkRule{
-		{Name: "deny-hostname", Domains: []string{"denied.example"}, Ports: []int{443}, Decision: "deny"},
+		{
+			Name:     "deny-hostname",
+			Domains:  []string{"denied.example"},
+			Ports:    []int{443},
+			Decision: "deny",
+		},
 		{Name: "allow-rest", Domains: []string{"*"}, Decision: "allow"},
 	}}, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &Proxy{sessionID: "s", policy: engine, emit: &strictAuditTestEmitter{}, strictPublicEgress: true}
+	p := &Proxy{
+		sessionID:          "s",
+		policy:             engine,
+		emit:               &strictAuditTestEmitter{},
+		strictPublicEgress: true,
+	}
 	p.lookupIPAddr = func(context.Context, string) ([]net.IPAddr, error) {
 		t.Fatal("hostname-denied strict request attempted DNS")
 		return nil, nil
@@ -720,14 +803,20 @@ func TestStrictProxyHostnameDenyDoesNotResolve(t *testing.T) {
 		t.Fatal("hostname-denied strict request attempted dial")
 		return nil, nil
 	}
-	response := runStrictProxyRequest(t, p, "CONNECT denied.example:443 HTTP/1.1\r\nHost: denied.example:443\r\n\r\n")
+	response := runStrictProxyRequest(
+		t,
+		p,
+		"CONNECT denied.example:443 HTTP/1.1\r\nHost: denied.example:443\r\n\r\n",
+	)
 	if !strings.Contains(response, "403 Forbidden") {
 		t.Fatalf("response = %q", response)
 	}
 }
 
 func TestProxyStrictHTTPAuditFailurePreventsDial(t *testing.T) {
-	emitter := &strictAuditTestEmitter{appendError: map[string]error{"net_connect": errors.New("audit unavailable")}}
+	emitter := &strictAuditTestEmitter{
+		appendError: map[string]error{"net_connect": errors.New("audit unavailable")},
+	}
 	p := &Proxy{sessionID: "s", emit: emitter, strictPublicEgress: true}
 	p.dialContext = func(context.Context, string, string) (net.Conn, error) {
 		emitter.record("dial")

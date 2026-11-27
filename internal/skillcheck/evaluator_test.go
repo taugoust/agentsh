@@ -47,7 +47,12 @@ func TestEvaluator_ProvenanceFailUpgrades(t *testing.T) {
 	skill := SkillRef{Name: "x", SHA256: "abc"}
 	v := e.Evaluate([]Finding{
 		{Type: FindingPromptInjection, Severity: SeverityMedium, Skill: skill},
-		{Type: FindingProvenance, Severity: SeverityHigh, Skill: skill, Reasons: []Reason{{Code: "skills_sh_audit_fail"}}},
+		{
+			Type:     FindingProvenance,
+			Severity: SeverityHigh,
+			Skill:    skill,
+			Reasons:  []Reason{{Code: "skills_sh_audit_fail"}},
+		},
 	}, skill)
 	if v.Action != VerdictBlock {
 		t.Errorf("medium+failed-audit → action=%s want block", v.Action)

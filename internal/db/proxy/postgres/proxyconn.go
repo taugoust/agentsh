@@ -235,8 +235,12 @@ func (pc *proxyConn) emitFrameTooLarge(ctx context.Context, size int) {
 		ClientIdentity: pc.state.clientIdentity,
 		Kind:           "db_handshake_fail",
 		ErrorCode:      "FRAME_TOO_LARGE",
-		Reason:         fmt.Sprintf("statement too large for AgentSH proxy: %d bytes > %d cap", size, pc.srv.cfg.MaxQueryBytes),
-		PeerUID:        pc.state.peerUID,
+		Reason: fmt.Sprintf(
+			"statement too large for AgentSH proxy: %d bytes > %d cap",
+			size,
+			pc.srv.cfg.MaxQueryBytes,
+		),
+		PeerUID: pc.state.peerUID,
 	})
 }
 

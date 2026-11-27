@@ -131,7 +131,12 @@ func TestToolClassifier_ExactPrefixNoUnderscore(t *testing.T) {
 	for _, tool := range tools {
 		got := c.Classify(tool)
 		if got != CategoryUnknown {
-			t.Errorf("Classify(%q) = %q, want %q (bare prefix without underscore should be unknown)", tool, got, CategoryUnknown)
+			t.Errorf(
+				"Classify(%q) = %q, want %q (bare prefix without underscore should be unknown)",
+				tool,
+				got,
+				CategoryUnknown,
+			)
 		}
 	}
 }

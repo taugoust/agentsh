@@ -21,11 +21,17 @@ func TestNopSink_EmitNeverFails(t *testing.T) {
 func TestSyncSink_DrainReturnsEventsInOrder(t *testing.T) {
 	s := &SyncSink{}
 	for i := 0; i < 3; i++ {
-		if err := s.EmitStatement(context.Background(), DBEvent{EventID: string(rune('A' + i))}); err != nil {
+		if err := s.EmitStatement(
+			context.Background(),
+			DBEvent{EventID: string(rune('A' + i))},
+		); err != nil {
 			t.Fatalf("EmitStatement: %v", err)
 		}
 	}
-	if err := s.EmitLifecycle(context.Background(), LifecycleEvent{Kind: "db_listener_auth_fail"}); err != nil {
+	if err := s.EmitLifecycle(
+		context.Background(),
+		LifecycleEvent{Kind: "db_listener_auth_fail"},
+	); err != nil {
 		t.Fatalf("EmitLifecycle: %v", err)
 	}
 	stmts := s.DrainStatements()
@@ -64,7 +70,10 @@ func TestSyncSink_ConcurrentLifecycleEmitIsSafe(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = s.EmitLifecycle(context.Background(), LifecycleEvent{Timestamp: time.Now(), Kind: "db_listener_auth_fail"})
+			_ = s.EmitLifecycle(
+				context.Background(),
+				LifecycleEvent{Timestamp: time.Now(), Kind: "db_listener_auth_fail"},
+			)
 		}()
 	}
 	wg.Wait()

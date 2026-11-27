@@ -91,7 +91,10 @@ func RegisterGRPC(s *grpc.Server, app *App) {
 			{MethodName: "DestroySession", Handler: grpcHandleDestroySession},
 			{MethodName: "PatchSession", Handler: grpcHandlePatchSession},
 			{MethodName: "GetNetworkEnforcement", Handler: grpcHandleGetNetworkEnforcement},
-			{MethodName: "PreflightNetworkEnforcement", Handler: grpcHandlePreflightNetworkEnforcement},
+			{
+				MethodName: "PreflightNetworkEnforcement",
+				Handler:    grpcHandlePreflightNetworkEnforcement,
+			},
 			{MethodName: "Exec", Handler: grpcHandleExec},
 			{MethodName: "KillCommand", Handler: grpcHandleKillCommand},
 			{MethodName: "QueryEvents", Handler: grpcHandleQueryEvents},
@@ -119,7 +122,12 @@ func RegisterGRPC(s *grpc.Server, app *App) {
 	ptygrpc.RegisterAgentshPTYServer(s, &ptyGRPCServer{app: app})
 }
 
-func grpcHandleCreateSession(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func grpcHandleCreateSession(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
 	in := &structpb.Struct{}
 	if err := dec(in); err != nil {
 		return nil, err
@@ -134,7 +142,12 @@ func grpcHandleCreateSession(srv any, ctx context.Context, dec func(any) error, 
 	return interceptor(ctx, in, info, base)
 }
 
-func grpcHandleExec(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+func grpcHandleExec(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
 	in := &structpb.Struct{}
 	if err := dec(in); err != nil {
 		return nil, err
@@ -166,7 +179,10 @@ func grpcHandleEventsTail(srv any, stream grpc.ServerStream) error {
 }
 
 // grpcUnaryHandler creates a standard unary handler for a given method.
-func grpcUnaryHandler(method string, fn func(*grpcServer, context.Context, *structpb.Struct) (*structpb.Struct, error)) func(any, context.Context, func(any) error, grpc.UnaryServerInterceptor) (any, error) {
+func grpcUnaryHandler(
+	method string,
+	fn func(*grpcServer, context.Context, *structpb.Struct) (*structpb.Struct, error),
+) func(any, context.Context, func(any) error, grpc.UnaryServerInterceptor) (any, error) {
 	return func(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 		in := &structpb.Struct{}
 		if err := dec(in); err != nil {
@@ -183,59 +199,231 @@ func grpcUnaryHandler(method string, fn func(*grpcServer, context.Context, *stru
 	}
 }
 
-func grpcHandleListSessions(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodListSessions, (*grpcServer).ListSessions)(srv, ctx, dec, interceptor)
+func grpcHandleListSessions(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodListSessions,
+		(*grpcServer).ListSessions,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandleGetSession(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodGetSession, (*grpcServer).GetSession)(srv, ctx, dec, interceptor)
+func grpcHandleGetSession(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodGetSession,
+		(*grpcServer).GetSession,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandleDestroySession(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodDestroySession, (*grpcServer).DestroySession)(srv, ctx, dec, interceptor)
+func grpcHandleDestroySession(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodDestroySession,
+		(*grpcServer).DestroySession,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandlePatchSession(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodPatchSession, (*grpcServer).PatchSession)(srv, ctx, dec, interceptor)
+func grpcHandlePatchSession(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodPatchSession,
+		(*grpcServer).PatchSession,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandleGetNetworkEnforcement(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodGetNetworkEnforcement, (*grpcServer).GetNetworkEnforcement)(srv, ctx, dec, interceptor)
+func grpcHandleGetNetworkEnforcement(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodGetNetworkEnforcement,
+		(*grpcServer).GetNetworkEnforcement,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandlePreflightNetworkEnforcement(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodPreflightNetworkEnforcement, (*grpcServer).PreflightNetworkEnforcement)(srv, ctx, dec, interceptor)
+func grpcHandlePreflightNetworkEnforcement(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodPreflightNetworkEnforcement,
+		(*grpcServer).PreflightNetworkEnforcement,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandleKillCommand(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodKillCommand, (*grpcServer).KillCommand)(srv, ctx, dec, interceptor)
+func grpcHandleKillCommand(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodKillCommand,
+		(*grpcServer).KillCommand,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandleQueryEvents(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodQueryEvents, (*grpcServer).QueryEvents)(srv, ctx, dec, interceptor)
+func grpcHandleQueryEvents(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodQueryEvents,
+		(*grpcServer).QueryEvents,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandleSearchEvents(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodSearchEvents, (*grpcServer).SearchEvents)(srv, ctx, dec, interceptor)
+func grpcHandleSearchEvents(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodSearchEvents,
+		(*grpcServer).SearchEvents,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandleOutputChunk(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodOutputChunk, (*grpcServer).OutputChunk)(srv, ctx, dec, interceptor)
+func grpcHandleOutputChunk(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodOutputChunk,
+		(*grpcServer).OutputChunk,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandleListApprovals(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodListApprovals, (*grpcServer).ListApprovals)(srv, ctx, dec, interceptor)
+func grpcHandleListApprovals(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodListApprovals,
+		(*grpcServer).ListApprovals,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandleResolveApproval(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodResolveApproval, (*grpcServer).ResolveApproval)(srv, ctx, dec, interceptor)
+func grpcHandleResolveApproval(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodResolveApproval,
+		(*grpcServer).ResolveApproval,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func grpcHandlePolicyTest(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	return grpcUnaryHandler(grpcMethodPolicyTest, (*grpcServer).PolicyTest)(srv, ctx, dec, interceptor)
+func grpcHandlePolicyTest(
+	srv any,
+	ctx context.Context,
+	dec func(any) error,
+	interceptor grpc.UnaryServerInterceptor,
+) (any, error) {
+	return grpcUnaryHandler(
+		grpcMethodPolicyTest,
+		(*grpcServer).PolicyTest,
+	)(
+		srv,
+		ctx,
+		dec,
+		interceptor,
+	)
 }
 
-func (s *grpcServer) CreateSession(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) CreateSession(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -264,7 +452,10 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		return status.Error(codes.Internal, "server not initialized")
 	}
 	if s.app.ptraceFailed.Load() {
-		return status.Error(codes.Unavailable, "ptrace tracer exited unexpectedly; refusing to execute commands without enforcement")
+		return status.Error(
+			codes.Unavailable,
+			"ptrace tracer exited unexpectedly; refusing to execute commands without enforcement",
+		)
 	}
 	var reqMap map[string]any
 	if err := json.Unmarshal(mustProtoJSON(in), &reqMap); err != nil {
@@ -313,7 +504,15 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		return stream.SendMsg(out)
 	}
 	emitRefusal := func(outcome *types.ExecOutcome) {
-		_ = emit("refused", map[string]any{"command_id": cmdID, "command_started": false, "outcome": outcome, "command_timeout": timeoutResolution.Metadata})
+		_ = emit(
+			"refused",
+			map[string]any{
+				"command_id":      cmdID,
+				"command_started": false,
+				"outcome":         outcome,
+				"command_timeout": timeoutResolution.Metadata,
+			},
+		)
 	}
 	sess.SetCurrentCommandID(cmdID)
 
@@ -326,10 +525,27 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		}
 	}
 
-	pre := engine.CheckCommandWithExecve(execReq.Command, execReq.Args, s.app.execveEnforcementActive(), s.app.shellCOpaqueMode())
+	pre := engine.CheckCommandWithExecve(
+		execReq.Command,
+		execReq.Args,
+		s.app.execveEnforcementActive(),
+		s.app.shellCOpaqueMode(),
+	)
 	compositionErrorCode := s.app.applySandboxCompositionSelection(sess, &pre)
-	redirected, originalCmd, originalArgs := applyCommandRedirect(&execReq.Command, &execReq.Args, pre)
-	approvalErr := s.app.applyCommandApproval(stream.Context(), req.SessionID, cmdID, originalCmd, originalArgs, execReq.Actor, &pre)
+	redirected, originalCmd, originalArgs := applyCommandRedirect(
+		&execReq.Command,
+		&execReq.Args,
+		pre,
+	)
+	approvalErr := s.app.applyCommandApproval(
+		stream.Context(),
+		req.SessionID,
+		cmdID,
+		originalCmd,
+		originalArgs,
+		execReq.Actor,
+		&pre,
+	)
 	preEv := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: start,
@@ -388,11 +604,18 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 		}
 		if pre.PolicyDecision == types.DecisionApprove {
 			code = "E_APPROVAL_DENIED"
-			if approvalErr != nil && strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {
+			if approvalErr != nil &&
+				strings.Contains(strings.ToLower(approvalErr.Error()), "timeout") {
 				code = "E_APPROVAL_TIMEOUT"
 			}
 		}
-		outcome := &types.ExecOutcome{CommandStarted: false, DispatchState: "not_dispatched", FailureKind: types.ExecFailureDenied, Code: code, Message: "command denied by policy"}
+		outcome := &types.ExecOutcome{
+			CommandStarted: false,
+			DispatchState:  "not_dispatched",
+			FailureKind:    types.ExecFailureDenied,
+			Code:           code,
+			Message:        "command denied by policy",
+		}
 		emitRefusal(outcome)
 		return status.Error(codes.PermissionDenied, "command denied by policy")
 	}
@@ -400,12 +623,26 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	commandStarted := false
 	onStarted := func() {
 		commandStarted = true
-		startEv := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "command_started", SessionID: req.SessionID, CommandID: cmdID, CommandTimeout: &timeoutResolution.Metadata,
-			Fields: map[string]any{"command": execReq.Command, "args": execReq.Args}}
+		startEv := types.Event{
+			ID:             uuid.NewString(),
+			Timestamp:      time.Now().UTC(),
+			Type:           "command_started",
+			SessionID:      req.SessionID,
+			CommandID:      cmdID,
+			CommandTimeout: &timeoutResolution.Metadata,
+			Fields:         map[string]any{"command": execReq.Command, "args": execReq.Args},
+		}
 		sess.InjectTraceContext(startEv.Fields)
 		_ = s.app.store.AppendEvent(stream.Context(), startEv)
 		s.app.broker.Publish(startEv)
-		_ = emit("start", map[string]any{"command_id": cmdID, "command_started": true, "command_timeout": timeoutResolution.Metadata})
+		_ = emit(
+			"start",
+			map[string]any{
+				"command_id":      cmdID,
+				"command_started": true,
+				"command_timeout": timeoutResolution.Metadata,
+			},
+		)
 	}
 
 	var (
@@ -429,24 +666,62 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 			s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, wrapperResult.setupErr)
 			if attemptCount == 1 {
 				message := fmt.Sprintf("pre-exec boundary unavailable: %v", wrapperResult.setupErr)
-				emitRefusal(&types.ExecOutcome{CommandStarted: false, DispatchState: "pre_exec_refused", FailureKind: types.ExecFailurePreExec, Code: "E_PRE_EXEC_BOUNDARY", Message: message, AttemptCount: 1})
+				emitRefusal(
+					&types.ExecOutcome{
+						CommandStarted: false,
+						DispatchState:  "pre_exec_refused",
+						FailureKind:    types.ExecFailurePreExec,
+						Code:           "E_PRE_EXEC_BOUNDARY",
+						Message:        message,
+						AttemptCount:   1,
+					},
+				)
 				return status.Error(codes.FailedPrecondition, "E_PRE_EXEC_BOUNDARY: "+message)
 			}
 			exitCode = 127
-			execErr = markPreExecEnforcementError("E_PRE_EXEC_BOUNDARY", fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr))
-			attemptDiagnostics = append(attemptDiagnostics, types.ExecAttemptDiagnostic{Attempt: attemptCount, ProtocolStage: "command_boundary_setup"})
+			execErr = markPreExecEnforcementError(
+				"E_PRE_EXEC_BOUNDARY",
+				fmt.Errorf("fresh retry boundary unavailable: %w", wrapperResult.setupErr),
+			)
+			attemptDiagnostics = append(
+				attemptDiagnostics,
+				types.ExecAttemptDiagnostic{
+					Attempt:       attemptCount,
+					ProtocolStage: "command_boundary_setup",
+				},
+			)
 			break
 		}
 		wrappedReq = wrapperResult.wrappedReq
 		extraCfg = wrapperResult.extraCfg
 		if !envPolicyResolved {
-			cmdDecision := engine.CheckCommandWithExecve(wrappedReq.Command, wrappedReq.Args, s.app.execveEnforcementActive(), s.app.shellCOpaqueMode())
+			cmdDecision := engine.CheckCommandWithExecve(
+				wrappedReq.Command,
+				wrappedReq.Args,
+				s.app.execveEnforcementActive(),
+				s.app.shellCOpaqueMode(),
+			)
 			envPolicy = cmdDecision.EnvPolicy
 			envPolicyResolved = true
 		}
 		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesStreamingEmitResolvedTimeout(
-			stream.Context(), sess, cmdID, wrappedReq, s.app.cfg, envPolicy, timeoutResolution.Duration, emit,
-			s.app.cgroupHook(req.SessionID, cmdID, reserveLineagePIDs(limits, extraCfg)), extraCfg, s.app.ptraceTracer, req.SessionID, onStarted,
+			stream.Context(),
+			sess,
+			cmdID,
+			wrappedReq,
+			s.app.cfg,
+			envPolicy,
+			timeoutResolution.Duration,
+			emit,
+			s.app.cgroupHook(
+				req.SessionID,
+				cmdID,
+				reserveLineagePIDs(limits, extraCfg),
+			),
+			extraCfg,
+			s.app.ptraceTracer,
+			req.SessionID,
+			onStarted,
 		)
 		failure := commandJailFailureFrom(execErr)
 		if failure == nil {
@@ -470,13 +745,31 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 	terminalCtx, cancelTerminalPersistence := terminalPersistenceContext(stream.Context())
 	defer cancelTerminalPersistence()
 
-	if !commandStarted && commandBoundaryRequired(extraCfg) && shouldRecordNetworkEnforcementFailure(execErr) {
+	if !commandStarted && commandBoundaryRequired(extraCfg) &&
+		shouldRecordNetworkEnforcementFailure(execErr) {
 		s.app.recordNetworkEnforcementFailure(req.SessionID, cmdID, execErr)
 	}
-	_ = s.app.store.SaveOutput(terminalCtx, req.SessionID, cmdID, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc)
+	_ = s.app.store.SaveOutput(
+		terminalCtx,
+		req.SessionID,
+		cmdID,
+		stdoutB,
+		stderrB,
+		stdoutTotal,
+		stderrTotal,
+		stdoutTrunc,
+		stderrTrunc,
+	)
 
 	// Check if process was killed by seccomp (SIGSYS) and emit event
-	emitSeccompBlockedIfSIGSYS(terminalCtx, s.app.store, s.app.broker, req.SessionID, cmdID, execErr)
+	emitSeccompBlockedIfSIGSYS(
+		terminalCtx,
+		s.app.store,
+		s.app.broker,
+		req.SessionID,
+		cmdID,
+		execErr,
+	)
 
 	terminationReason, resultError := executionTermination(execErr)
 	end := time.Now().UTC()
@@ -572,7 +865,10 @@ func (s *grpcServer) EventsTail(in *structpb.Struct, stream grpc.ServerStream) e
 	}
 }
 
-func (s *grpcServer) ListSessions(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) ListSessions(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -585,7 +881,10 @@ func (s *grpcServer) ListSessions(ctx context.Context, in *structpb.Struct) (*st
 	return jsonToProto(out)
 }
 
-func (s *grpcServer) GetSession(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) GetSession(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -606,14 +905,20 @@ func (s *grpcServer) GetSession(ctx context.Context, in *structpb.Struct) (*stru
 	return jsonToProto(s.app.sessionSnapshot(sess))
 }
 
-func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) DestroySession(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
 	s.app.sessionTopologyMu.Lock()
 	defer s.app.sessionTopologyMu.Unlock()
 	if err := s.app.resolveCandidateCleanup(ctx); err != nil {
-		return nil, status.Error(codes.FailedPrecondition, "session teardown refused while helper cleanup is uncertain")
+		return nil, status.Error(
+			codes.FailedPrecondition,
+			"session teardown refused while helper cleanup is uncertain",
+		)
 	}
 	var reqMap map[string]any
 	if err := json.Unmarshal(mustProtoJSON(in), &reqMap); err != nil {
@@ -629,15 +934,24 @@ func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*
 		return nil, status.Error(codes.NotFound, "session not found")
 	}
 	if !sess.WorkspaceTeardownAllowed() {
-		return nil, status.Error(codes.FailedPrecondition, "session teardown refused while workspace finalization is running or pending")
+		return nil, status.Error(
+			codes.FailedPrecondition,
+			"session teardown refused while workspace finalization is running or pending",
+		)
 	}
 	if s.app.detachedRuntime != nil {
 		if err := s.app.detachedRuntime.MarkStopping(); err != nil {
-			return nil, status.Error(codes.Internal, "refusing teardown because durable detached lifecycle update failed")
+			return nil, status.Error(
+				codes.Internal,
+				"refusing teardown because durable detached lifecycle update failed",
+			)
 		}
 	}
 	if err := sess.UnmountWorkspace(); err != nil {
-		return nil, status.Error(codes.Internal, "workspace teardown failed and the session was retained")
+		return nil, status.Error(
+			codes.Internal,
+			"workspace teardown failed and the session was retained",
+		)
 	}
 	s.app.closeApprovalUI(id)
 	s.app.revokeChildCapabilitiesForSession(id, errChildCapabilityRevoked)
@@ -650,20 +964,31 @@ func (s *grpcServer) DestroySession(ctx context.Context, in *structpb.Struct) (*
 	_ = sess.CloseRuntime()
 	s.app.purgeTrashForSession(sess)
 	_ = s.app.sessions.Destroy(id)
-	ev := types.Event{ID: uuid.NewString(), Timestamp: time.Now().UTC(), Type: "session_destroyed", SessionID: id}
+	ev := types.Event{
+		ID:        uuid.NewString(),
+		Timestamp: time.Now().UTC(),
+		Type:      "session_destroyed",
+		SessionID: id,
+	}
 	_ = s.app.store.AppendEvent(context.WithoutCancel(ctx), ev)
 	s.app.broker.Publish(ev)
 	if s.app.detachedRuntime != nil {
 		if err := s.app.detachedRuntime.MarkStopped(); err != nil {
 			s.app.signalDetachedStop()
-			return nil, status.Error(codes.Internal, "session was destroyed but durable detached stopped persistence failed")
+			return nil, status.Error(
+				codes.Internal,
+				"session was destroyed but durable detached stopped persistence failed",
+			)
 		}
 		s.app.signalDetachedStop()
 	}
 	return jsonToProto(map[string]any{"ok": true})
 }
 
-func (s *grpcServer) PatchSession(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) PatchSession(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -708,7 +1033,10 @@ func (s *grpcServer) PatchSession(ctx context.Context, in *structpb.Struct) (*st
 	return jsonToProto(s.app.sessionSnapshot(sess))
 }
 
-func (s *grpcServer) GetNetworkEnforcement(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) GetNetworkEnforcement(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -722,7 +1050,10 @@ func (s *grpcServer) GetNetworkEnforcement(ctx context.Context, in *structpb.Str
 	return jsonToProto(s.app.refreshNetworkEnforcement(id))
 }
 
-func (s *grpcServer) PreflightNetworkEnforcement(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) PreflightNetworkEnforcement(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -735,7 +1066,10 @@ func (s *grpcServer) PreflightNetworkEnforcement(ctx context.Context, in *struct
 		return nil, status.Error(codes.NotFound, "session not found")
 	}
 	if sess.Snapshot().State == types.SessionStateBusy {
-		return nil, status.Error(codes.FailedPrecondition, "network enforcement preflight requires an idle session")
+		return nil, status.Error(
+			codes.FailedPrecondition,
+			"network enforcement preflight requires an idle session",
+		)
 	}
 	return jsonToProto(s.app.runNetworkEnforcementPreflight(ctx, id))
 }
@@ -756,7 +1090,10 @@ func grpcSessionID(in *structpb.Struct) (string, error) {
 	return id, nil
 }
 
-func (s *grpcServer) KillCommand(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) KillCommand(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -794,7 +1131,10 @@ func (s *grpcServer) KillCommand(ctx context.Context, in *structpb.Struct) (*str
 	return jsonToProto(map[string]any{"ok": true})
 }
 
-func (s *grpcServer) QueryEvents(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) QueryEvents(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -820,7 +1160,10 @@ func (s *grpcServer) QueryEvents(ctx context.Context, in *structpb.Struct) (*str
 	return jsonToProto(evs)
 }
 
-func (s *grpcServer) SearchEvents(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) SearchEvents(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -840,7 +1183,10 @@ func (s *grpcServer) SearchEvents(ctx context.Context, in *structpb.Struct) (*st
 	return jsonToProto(evs)
 }
 
-func (s *grpcServer) OutputChunk(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) OutputChunk(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -887,7 +1233,10 @@ func (s *grpcServer) OutputChunk(ctx context.Context, in *structpb.Struct) (*str
 	})
 }
 
-func (s *grpcServer) ListApprovals(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) ListApprovals(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -897,7 +1246,10 @@ func (s *grpcServer) ListApprovals(ctx context.Context, in *structpb.Struct) (*s
 	return jsonToProto(s.app.approvals.ListPending())
 }
 
-func (s *grpcServer) ResolveApproval(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) ResolveApproval(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}
@@ -930,7 +1282,10 @@ func (s *grpcServer) ResolveApproval(ctx context.Context, in *structpb.Struct) (
 	return jsonToProto(map[string]any{"ok": true})
 }
 
-func (s *grpcServer) PolicyTest(ctx context.Context, in *structpb.Struct) (*structpb.Struct, error) {
+func (s *grpcServer) PolicyTest(
+	ctx context.Context,
+	in *structpb.Struct,
+) (*structpb.Struct, error) {
 	if s == nil || s.app == nil {
 		return nil, status.Error(codes.Internal, "server not initialized")
 	}

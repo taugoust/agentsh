@@ -114,11 +114,15 @@ type messageContext struct {
 // "message_template_parse" prefix for caller surfacing.
 func compileStatementRule(r *StatementRule) (*compiledStatementRule, error) {
 	c := &compiledStatementRule{
-		src:           r,
-		groups:        map[effects.Group]struct{}{},
-		subtypes:      map[effects.Subtype]struct{}{},
-		requireWhere:  r.RequireWhere,
-		serviceFilter: serviceFilter{service: ServiceID(r.DBService), family: r.DBFamily, dialect: r.DBDialect},
+		src:          r,
+		groups:       map[effects.Group]struct{}{},
+		subtypes:     map[effects.Subtype]struct{}{},
+		requireWhere: r.RequireWhere,
+		serviceFilter: serviceFilter{
+			service: ServiceID(r.DBService),
+			family:  r.DBFamily,
+			dialect: r.DBDialect,
+		},
 	}
 	switch r.Decision {
 	case "allow":
@@ -132,11 +136,18 @@ func compileStatementRule(r *StatementRule) (*compiledStatementRule, error) {
 	case "redirect":
 		c.verb = VerbRedirect
 	default:
-		return nil, fmt.Errorf("compile: rule %q has unhandled decision %q (validate should have rejected)", r.Name, r.Decision)
+		return nil, fmt.Errorf(
+			"compile: rule %q has unhandled decision %q (validate should have rejected)",
+			r.Name,
+			r.Decision,
+		)
 	}
 	if c.verb == VerbRedirect {
 		if len(r.Relations) != 1 || r.Redirect == nil || r.Redirect.Relation == "" {
-			return nil, fmt.Errorf("compile: rule %q has incomplete redirect action (validate should have rejected)", r.Name)
+			return nil, fmt.Errorf(
+				"compile: rule %q has incomplete redirect action (validate should have rejected)",
+				r.Name,
+			)
 		}
 		c.redirect = &RedirectDecision{
 			SourceRelation: r.Relations[0],
@@ -147,7 +158,11 @@ func compileStatementRule(r *StatementRule) (*compiledStatementRule, error) {
 	for _, op := range r.Operations {
 		gs, ok := effects.ExpandAlias(op)
 		if !ok {
-			return nil, fmt.Errorf("compile: rule %q has unknown operation %q (validate should have rejected)", r.Name, op)
+			return nil, fmt.Errorf(
+				"compile: rule %q has unknown operation %q (validate should have rejected)",
+				r.Name,
+				op,
+			)
 		}
 		for _, g := range gs {
 			c.groups[g] = struct{}{}
@@ -167,7 +182,11 @@ func compileStatementRule(r *StatementRule) (*compiledStatementRule, error) {
 	default:
 		res, ok := effects.ParseResolution(r.MatchObjectResolution)
 		if !ok {
-			return nil, fmt.Errorf("compile: rule %q has unknown match_object_resolution %q", r.Name, r.MatchObjectResolution)
+			return nil, fmt.Errorf(
+				"compile: rule %q has unknown match_object_resolution %q",
+				r.Name,
+				r.MatchObjectResolution,
+			)
 		}
 		c.resolution = resolutionMatcher{kind: resEq, r: res}
 	}
@@ -244,7 +263,11 @@ func (c *compiledStatementRule) objectMatches(o effects.ObjectRef) bool {
 	return false
 }
 
-func (c *compiledStatementRule) schemaMatchesObjectSlot(o effects.ObjectRef, resolved effects.ResolvedObjectRef, hasResolved bool) bool {
+func (c *compiledStatementRule) schemaMatchesObjectSlot(
+	o effects.ObjectRef,
+	resolved effects.ResolvedObjectRef,
+	hasResolved bool,
+) bool {
 	if len(c.schemas) == 0 {
 		return true
 	}
@@ -259,7 +282,9 @@ func (c *compiledStatementRule) schemaMatchesObjectSlot(o effects.ObjectRef, res
 	return false
 }
 
-func (c *compiledStatementRule) schemaMatchesResolvedObject(resolved effects.ResolvedObjectRef) bool {
+func (c *compiledStatementRule) schemaMatchesResolvedObject(
+	resolved effects.ResolvedObjectRef,
+) bool {
 	if len(c.schemas) == 0 {
 		return true
 	}
@@ -361,7 +386,11 @@ func compileConnectionRule(r *ConnectionRule) (*compiledConnectionRule, error) {
 	case "audit":
 		c.verb = VerbAudit
 	default:
-		return nil, fmt.Errorf("compile: conn rule %q has unhandled decision %q", r.Name, r.Decision)
+		return nil, fmt.Errorf(
+			"compile: conn rule %q has unhandled decision %q",
+			r.Name,
+			r.Decision,
+		)
 	}
 	switch r.MatchKind {
 	case "", "connect":
@@ -371,7 +400,11 @@ func compileConnectionRule(r *ConnectionRule) (*compiledConnectionRule, error) {
 	case "replication":
 		c.matchKind = MatchReplication
 	default:
-		return nil, fmt.Errorf("compile: conn rule %q has unhandled match_kind %q", r.Name, r.MatchKind)
+		return nil, fmt.Errorf(
+			"compile: conn rule %q has unhandled match_kind %q",
+			r.Name,
+			r.MatchKind,
+		)
 	}
 	if len(r.DBUser) > 0 {
 		c.dbUsers = make(map[string]struct{}, len(r.DBUser))
@@ -383,14 +416,24 @@ func compileConnectionRule(r *ConnectionRule) (*compiledConnectionRule, error) {
 	if r.ApplicationName != "" {
 		g, err := glob.Compile(r.ApplicationName)
 		if err != nil {
-			return nil, fmt.Errorf("glob_compile: conn rule %q application_name %q: %w", r.Name, r.ApplicationName, err)
+			return nil, fmt.Errorf(
+				"glob_compile: conn rule %q application_name %q: %w",
+				r.Name,
+				r.ApplicationName,
+				err,
+			)
 		}
 		c.applicationName = g
 	}
 	if r.ClientIdentity != "" {
 		g, err := glob.Compile(r.ClientIdentity)
 		if err != nil {
-			return nil, fmt.Errorf("glob_compile: conn rule %q client_identity %q: %w", r.Name, r.ClientIdentity, err)
+			return nil, fmt.Errorf(
+				"glob_compile: conn rule %q client_identity %q: %w",
+				r.Name,
+				r.ClientIdentity,
+				err,
+			)
 		}
 		c.clientIdentity = g
 	}

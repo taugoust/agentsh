@@ -35,7 +35,10 @@ type BlockListConfig struct {
 
 // FamilyBlockListed returns the BlockedFamily for the (syscallNr, af_family) pair
 // if it is registered for notify-mode dispatch. Nil receiver returns (_, false).
-func (c *BlockListConfig) FamilyBlockListed(syscallNr uint32, afFamily uint64) (seccompkg.BlockedFamily, bool) {
+func (c *BlockListConfig) FamilyBlockListed(
+	syscallNr uint32,
+	afFamily uint64,
+) (seccompkg.BlockedFamily, bool) {
 	if c == nil || len(c.FamilyByKey) == 0 {
 		return seccompkg.BlockedFamily{}, false
 	}
@@ -46,7 +49,10 @@ func (c *BlockListConfig) FamilyBlockListed(syscallNr uint32, afFamily uint64) (
 
 // SocketRuleBlockListed returns the first notify-mode socket tuple rule that
 // matches socket(2) or socketpair(2). Nil receiver returns (_, false).
-func (c *BlockListConfig) SocketRuleBlockListed(syscallNr uint32, family, typ, protocol uint64) (seccompkg.SocketRule, bool) {
+func (c *BlockListConfig) SocketRuleBlockListed(
+	syscallNr uint32,
+	family, typ, protocol uint64,
+) (seccompkg.SocketRule, bool) {
 	if c == nil || len(c.SocketRules) == 0 {
 		return seccompkg.SocketRule{}, false
 	}
@@ -286,12 +292,30 @@ func attemptKill(notifyFD int, notifID uint64, pid int, sessID, syscallName stri
 	// reflects that we could not deliver the signal.
 	if err := notifIDValidFn(notifyFD, notifID); err != nil {
 		if isENOENT(err) {
-			slog.Debug("seccomp block-list: notif id invalid after pidfd_open — skipping signal (possible pid reuse)",
-				"session_id", sessID, "pid", pid, "syscall", syscallName, "error", err)
+			slog.Debug(
+				"seccomp block-list: notif id invalid after pidfd_open — skipping signal (possible pid reuse)",
+				"session_id",
+				sessID,
+				"pid",
+				pid,
+				"syscall",
+				syscallName,
+				"error",
+				err,
+			)
 			return "killed"
 		}
-		slog.Warn("seccomp block-list: notif id revalidation failed with non-ENOENT error; refusing signal",
-			"session_id", sessID, "pid", pid, "syscall", syscallName, "error", err)
+		slog.Warn(
+			"seccomp block-list: notif id revalidation failed with non-ENOENT error; refusing signal",
+			"session_id",
+			sessID,
+			"pid",
+			pid,
+			"syscall",
+			syscallName,
+			"error",
+			err,
+		)
 		return "denied"
 	}
 
@@ -369,7 +393,12 @@ func handleFamilyBlockNotify(
 	if err := notifIDValidFn(fd, req.ID); err != nil {
 		slog.Debug("seccomp family-block: notif id no longer valid",
 			"session_id", sessID, "pid", req.Pid, "error", err)
-		if derr := NotifRespondDeny(fd, req.ID, int32(unix.EAFNOSUPPORT)); derr != nil && !isENOENT(derr) {
+		if derr := NotifRespondDeny(
+			fd,
+			req.ID,
+			int32(unix.EAFNOSUPPORT),
+		); derr != nil &&
+			!isENOENT(derr) {
 			slog.Warn("seccomp family-block: deny response failed after invalid id",
 				"session_id", sessID, "pid", req.Pid, "error", derr)
 		}
@@ -461,7 +490,12 @@ func handleSocketRuleBlockNotify(
 	if err := notifIDValidFn(fd, req.ID); err != nil {
 		slog.Debug("seccomp socket-rule: notif id no longer valid",
 			"session_id", sessID, "pid", req.Pid, "rule", rule.Name, "error", err)
-		if derr := NotifRespondDeny(fd, req.ID, int32(unix.EAFNOSUPPORT)); derr != nil && !isENOENT(derr) {
+		if derr := NotifRespondDeny(
+			fd,
+			req.ID,
+			int32(unix.EAFNOSUPPORT),
+		); derr != nil &&
+			!isENOENT(derr) {
 			slog.Warn("seccomp socket-rule: deny response failed after invalid id",
 				"session_id", sessID, "pid", req.Pid, "rule", rule.Name, "error", derr)
 		}

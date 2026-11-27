@@ -32,7 +32,11 @@ file_rules:
     operations: ["*"]
     decision: allow
 `
-	if err := os.WriteFile(filepath.Join(policyDir, "default.yaml"), []byte(policy), 0o644); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(policyDir, "default.yaml"),
+		[]byte(policy),
+		0o644,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,7 +106,13 @@ file_rules:
 	}); err != nil {
 		t.Fatal(err)
 	}
-	runtimeState, err := detached.BeginRuntime(stateDir, os.Getpid(), "test-start", "test-boot", createdAt)
+	runtimeState, err := detached.BeginRuntime(
+		stateDir,
+		os.Getpid(),
+		"test-start",
+		"test-boot",
+		createdAt,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +139,8 @@ file_rules:
 	if _, ok := srv.sessions.Get(sessionID); ok {
 		t.Fatal("expired session remains installed after Run exit")
 	}
-	if status := runtimeState.RuntimeStatus(); status.LifecycleState != detached.LifecycleStopping || status.Recoverable {
+	if status := runtimeState.RuntimeStatus(); status.LifecycleState != detached.LifecycleStopping ||
+		status.Recoverable {
 		t.Fatalf("runtime status after Run = %+v, want stopping and non-recoverable", status)
 	}
 }

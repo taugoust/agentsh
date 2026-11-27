@@ -15,7 +15,11 @@ database_rules:
   - {name: r, db_service: appdb, operations: [READ], match_object_resolution: qualified_syntactic, decision: allow}
 `)
 	stmt := effects.ClassifiedStatement{Effects: []effects.Effect{
-		{Group: effects.GroupRead, Resolution: effects.ResolutionQualified, Objects: []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "users"}}},
+		{
+			Group:      effects.GroupRead,
+			Resolution: effects.ResolutionQualified,
+			Objects:    []effects.ObjectRef{{Kind: effects.ObjectTable, Name: "users"}},
+		},
 	}}
 	if d := Evaluate(stmt, rs, "appdb"); d.Verb != VerbAllow {
 		t.Errorf("qualified should match: verb=%v", d.Verb)

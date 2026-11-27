@@ -20,8 +20,19 @@ type cgoParser struct {
 	dialect Dialect
 }
 
-func (p *cgoParser) Classify(sql string, sess SessionState, opts Options) ([]effects.ClassifiedStatement, error) {
-	return classifyWithBackend(p.dialect, sql, sess, opts, parseCGO, effects.ParserBackendLibPgQuery)
+func (p *cgoParser) Classify(
+	sql string,
+	sess SessionState,
+	opts Options,
+) ([]effects.ClassifiedStatement, error) {
+	return classifyWithBackend(
+		p.dialect,
+		sql,
+		sess,
+		opts,
+		parseCGO,
+		effects.ParserBackendLibPgQuery,
+	)
 }
 
 func (p *cgoParser) Parse(sql string) (*pg_query.ParseResult, error) {

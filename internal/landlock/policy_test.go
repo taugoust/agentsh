@@ -208,8 +208,16 @@ func TestDeriveExecutePathsFromFileRules(t *testing.T) {
 	p := &policy.Policy{
 		FileRules: []policy.FileRule{
 			{
-				Name:       "allow-system-read",
-				Paths:      []string{"/usr/**", "/lib/**", "/lib64/**", "/bin/**", "/sbin/**", "/opt/**", "/dev/**"},
+				Name: "allow-system-read",
+				Paths: []string{
+					"/usr/**",
+					"/lib/**",
+					"/lib64/**",
+					"/bin/**",
+					"/sbin/**",
+					"/opt/**",
+					"/dev/**",
+				},
 				Operations: []string{"read", "open", "stat", "list", "readlink"},
 				Decision:   "allow",
 			},
@@ -403,7 +411,10 @@ func TestDeriveExecutePaths_BareCommandGap(t *testing.T) {
 	// DeriveExecutePathsFromPolicy should return empty — bare names have no "/".
 	fromCommands := DeriveExecutePathsFromPolicy(p)
 	if len(fromCommands) != 0 {
-		t.Errorf("DeriveExecutePathsFromPolicy should return empty for bare names, got %v", fromCommands)
+		t.Errorf(
+			"DeriveExecutePathsFromPolicy should return empty for bare names, got %v",
+			fromCommands,
+		)
 	}
 
 	// DeriveExecutePathsFromFileRules should bridge the gap.
@@ -469,11 +480,36 @@ func TestDeriveListPathsFromPolicy_ExactDirectoryOnly(t *testing.T) {
 		t.Skip("landlock tests use Unix paths")
 	}
 	p := &policy.Policy{FileRules: []policy.FileRule{
-		{Name: "root-discovery", Paths: []string{"/"}, Operations: []string{"open", "list", "stat"}, Decision: "allow"},
-		{Name: "scratch-discovery", Paths: []string{"/scratch"}, Operations: []string{"list", "stat"}, Decision: "allow"},
-		{Name: "full-read", Paths: []string{"/share/**"}, Operations: []string{"read", "list"}, Decision: "allow"},
-		{Name: "glob-list", Paths: []string{"/metadata/*"}, Operations: []string{"list"}, Decision: "allow"},
-		{Name: "relative-list", Paths: []string{"metadata"}, Operations: []string{"list"}, Decision: "allow"},
+		{
+			Name:       "root-discovery",
+			Paths:      []string{"/"},
+			Operations: []string{"open", "list", "stat"},
+			Decision:   "allow",
+		},
+		{
+			Name:       "scratch-discovery",
+			Paths:      []string{"/scratch"},
+			Operations: []string{"list", "stat"},
+			Decision:   "allow",
+		},
+		{
+			Name:       "full-read",
+			Paths:      []string{"/share/**"},
+			Operations: []string{"read", "list"},
+			Decision:   "allow",
+		},
+		{
+			Name:       "glob-list",
+			Paths:      []string{"/metadata/*"},
+			Operations: []string{"list"},
+			Decision:   "allow",
+		},
+		{
+			Name:       "relative-list",
+			Paths:      []string{"metadata"},
+			Operations: []string{"list"},
+			Decision:   "allow",
+		},
 		{Name: "denied", Paths: []string{"/root"}, Operations: []string{"list"}, Decision: "deny"},
 	}}
 	found := map[string]bool{}
@@ -484,7 +520,10 @@ func TestDeriveListPathsFromPolicy_ExactDirectoryOnly(t *testing.T) {
 		t.Fatalf("directory-only roots missing: %#v", found)
 	}
 	if found["/share"] || found["/metadata"] || found["metadata"] || found["/root"] {
-		t.Fatalf("full-read, glob, relative, or denied roots leaked into directory-only roots: %#v", found)
+		t.Fatalf(
+			"full-read, glob, relative, or denied roots leaked into directory-only roots: %#v",
+			found,
+		)
 	}
 }
 
@@ -493,9 +532,24 @@ func TestDeriveApprovePathsFromPolicy(t *testing.T) {
 		t.Skip("landlock tests use Unix paths")
 	}
 	p := &policy.Policy{FileRules: []policy.FileRule{
-		{Name: "approve-env", Paths: []string{"/repo/.env"}, Operations: []string{"open", "stat"}, Decision: "approve"},
-		{Name: "approve-out", Paths: []string{"/repo/out/**"}, Operations: []string{"write"}, Decision: "approve"},
-		{Name: "allow-other", Paths: []string{"/repo/allowed/**"}, Operations: []string{"read"}, Decision: "allow"},
+		{
+			Name:       "approve-env",
+			Paths:      []string{"/repo/.env"},
+			Operations: []string{"open", "stat"},
+			Decision:   "approve",
+		},
+		{
+			Name:       "approve-out",
+			Paths:      []string{"/repo/out/**"},
+			Operations: []string{"write"},
+			Decision:   "approve",
+		},
+		{
+			Name:       "allow-other",
+			Paths:      []string{"/repo/allowed/**"},
+			Operations: []string{"read"},
+			Decision:   "allow",
+		},
 	}}
 	read := map[string]bool{}
 	for _, p := range DeriveApproveReadPathsFromPolicy(p) {
@@ -521,9 +575,24 @@ func TestDeriveApprovePaths_ExplicitDenyOverlapWins(t *testing.T) {
 		t.Skip("landlock tests use Unix paths")
 	}
 	p := &policy.Policy{FileRules: []policy.FileRule{
-		{Name: "approve-secrets", Paths: []string{"/repo/secrets/**"}, Operations: []string{"read"}, Decision: "approve"},
-		{Name: "deny-token", Paths: []string{"/repo/secrets/token"}, Operations: []string{"read"}, Decision: "deny"},
-		{Name: "approve-safe", Paths: []string{"/repo/safe/**"}, Operations: []string{"read"}, Decision: "approve"},
+		{
+			Name:       "approve-secrets",
+			Paths:      []string{"/repo/secrets/**"},
+			Operations: []string{"read"},
+			Decision:   "approve",
+		},
+		{
+			Name:       "deny-token",
+			Paths:      []string{"/repo/secrets/token"},
+			Operations: []string{"read"},
+			Decision:   "deny",
+		},
+		{
+			Name:       "approve-safe",
+			Paths:      []string{"/repo/safe/**"},
+			Operations: []string{"read"},
+			Decision:   "approve",
+		},
 	}}
 	found := map[string]bool{}
 	for _, p := range DeriveApproveReadPathsFromPolicy(p) {

@@ -72,7 +72,10 @@ func (p PackagePrivacyConfig) Validate() error {
 			}
 		}
 		if nonEmpty == 0 {
-			return fmt.Errorf("external_scan_registries: provided %d entries but all are empty/whitespace; use [] to disable the filter explicitly", len(p.ExternalScanRegistries))
+			return fmt.Errorf(
+				"external_scan_registries: provided %d entries but all are empty/whitespace; use [] to disable the filter explicitly",
+				len(p.ExternalScanRegistries),
+			)
 		}
 	}
 	return nil
@@ -269,7 +272,12 @@ func (b BlockOnConfig) Validate() error {
 		{"provenance", b.Provenance, []string{"", "any", "never"}},
 	} {
 		if !blockOnContains(kv.valid, kv.value) {
-			return fmt.Errorf("block_on.%s=%q invalid (must be one of %v)", kv.name, kv.value, kv.valid)
+			return fmt.Errorf(
+				"block_on.%s=%q invalid (must be one of %v)",
+				kv.name,
+				kv.value,
+				kv.valid,
+			)
 		}
 	}
 	return nil
@@ -319,20 +327,44 @@ func CompileBlockOnRules(b BlockOnConfig) []policy.PackageRule {
 	// Vulnerability thresholds.
 	switch b.Vulnerability {
 	case "medium":
-		rules = append(rules,
-			policy.PackageRule{Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "critical"}, Action: "deny"},
-			policy.PackageRule{Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "high"}, Action: "deny"},
-			policy.PackageRule{Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "medium"}, Action: "deny"},
+		rules = append(
+			rules,
+			policy.PackageRule{
+				Match:  policy.PackageMatch{FindingType: "vulnerability", Severity: "critical"},
+				Action: "deny",
+			},
+			policy.PackageRule{
+				Match:  policy.PackageMatch{FindingType: "vulnerability", Severity: "high"},
+				Action: "deny",
+			},
+			policy.PackageRule{
+				Match:  policy.PackageMatch{FindingType: "vulnerability", Severity: "medium"},
+				Action: "deny",
+			},
 		)
 	case "high":
-		rules = append(rules,
-			policy.PackageRule{Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "critical"}, Action: "deny"},
-			policy.PackageRule{Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "high"}, Action: "deny"},
+		rules = append(
+			rules,
+			policy.PackageRule{
+				Match:  policy.PackageMatch{FindingType: "vulnerability", Severity: "critical"},
+				Action: "deny",
+			},
+			policy.PackageRule{
+				Match:  policy.PackageMatch{FindingType: "vulnerability", Severity: "high"},
+				Action: "deny",
+			},
 		)
 	case "critical":
-		rules = append(rules,
-			policy.PackageRule{Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "critical"}, Action: "deny"},
-			policy.PackageRule{Match: policy.PackageMatch{FindingType: "vulnerability", Severity: "high"}, Action: "warn"},
+		rules = append(
+			rules,
+			policy.PackageRule{
+				Match:  policy.PackageMatch{FindingType: "vulnerability", Severity: "critical"},
+				Action: "deny",
+			},
+			policy.PackageRule{
+				Match:  policy.PackageMatch{FindingType: "vulnerability", Severity: "high"},
+				Action: "warn",
+			},
 		)
 	}
 

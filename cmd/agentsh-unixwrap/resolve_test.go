@@ -57,7 +57,12 @@ func TestResolveCommandPath_NotFoundIncludesDiagnostics(t *testing.T) {
 	_, err := resolveCommandPath("definitely-not-a-real-command-xyzzy-271")
 	require.Error(t, err)
 	msg := err.Error()
-	require.Contains(t, msg, `PATH="/nonexistent:/also-nonexistent"`, "error must surface PATH for diagnostics")
+	require.Contains(
+		t,
+		msg,
+		`PATH="/nonexistent:/also-nonexistent"`,
+		"error must surface PATH for diagnostics",
+	)
 	require.Contains(t, msg, "env_count=", "error must surface env count")
 	require.Contains(t, msg, "fallback_dirs=", "error must surface fallback list")
 }
@@ -118,7 +123,12 @@ func TestResolveCommandPath_ErrDotDoesNotFallback(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, exec.ErrDot), "ErrDot must propagate unchanged, got: %v", err)
 	// fallback_dirs is only emitted when we actually entered the fallback loop.
-	require.NotContains(t, err.Error(), "fallback_dirs=", "non-not-found error must skip the fallback loop")
+	require.NotContains(
+		t,
+		err.Error(),
+		"fallback_dirs=",
+		"non-not-found error must skip the fallback loop",
+	)
 }
 
 // TestResolveCommandPath_FallbackSkipsNonExecutableCandidate guards
@@ -132,7 +142,10 @@ func TestResolveCommandPath_FallbackSkipsNonExecutableCandidate(t *testing.T) {
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
 	// dir1 has a non-executable file matching the command.
-	require.NoError(t, os.WriteFile(filepath.Join(dir1, "agentsh-271-probe"), []byte("notexec"), 0o644))
+	require.NoError(
+		t,
+		os.WriteFile(filepath.Join(dir1, "agentsh-271-probe"), []byte("notexec"), 0o644),
+	)
 	// dir2 has the executable.
 	exe := filepath.Join(dir2, "agentsh-271-probe")
 	require.NoError(t, os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755))
@@ -144,5 +157,10 @@ func TestResolveCommandPath_FallbackSkipsNonExecutableCandidate(t *testing.T) {
 	t.Setenv("PATH", "")
 	resolved, err := resolveCommandPath("agentsh-271-probe")
 	require.NoError(t, err)
-	require.Equal(t, exe, resolved, "resolver must skip non-executable candidate in dir1 and find dir2's executable")
+	require.Equal(
+		t,
+		exe,
+		resolved,
+		"resolver must skip non-executable candidate in dir1 and find dir2's executable",
+	)
 }

@@ -191,10 +191,13 @@ func TestFormatYAML_UnixRules(t *testing.T) {
 		},
 		BlockedUnix: []UnixRuleGen{
 			{
-				GeneratedRule: GeneratedRule{Name: "private-socket", Provenance: Provenance{Blocked: true, EventCount: 1}},
-				Paths:         []string{"/run/private.sock"},
-				Operations:    []string{"connect"},
-				Decision:      "deny",
+				GeneratedRule: GeneratedRule{
+					Name:       "private-socket",
+					Provenance: Provenance{Blocked: true, EventCount: 1},
+				},
+				Paths:      []string{"/run/private.sock"},
+				Operations: []string{"connect"},
+				Decision:   "deny",
 			},
 		},
 	}
@@ -386,8 +389,12 @@ func TestFormatYAML_MCPBlockedTools(t *testing.T) {
 		MCPBlockedTools: []MCPToolRuleGen{
 			{
 				GeneratedRule: GeneratedRule{
-					Name:       "weather-execute_cmd",
-					Provenance: Provenance{EventCount: 1, Blocked: true, BlockReason: "version_pin"},
+					Name: "weather-execute_cmd",
+					Provenance: Provenance{
+						EventCount:  1,
+						Blocked:     true,
+						BlockReason: "version_pin",
+					},
 				},
 				ServerID:    "weather",
 				ToolName:    "execute_cmd",

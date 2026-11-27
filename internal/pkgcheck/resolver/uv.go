@@ -63,7 +63,11 @@ func (r *uvResolver) CanResolve(command string, args []string) bool {
 	return false
 }
 
-func (r *uvResolver) Resolve(ctx context.Context, workDir string, command []string) (*pkgcheck.InstallPlan, error) {
+func (r *uvResolver) Resolve(
+	ctx context.Context,
+	workDir string,
+	command []string,
+) (*pkgcheck.InstallPlan, error) {
 	var packages []string
 	var args []string
 	if len(command) > 1 {

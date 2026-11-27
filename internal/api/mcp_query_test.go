@@ -25,7 +25,19 @@ func newMCPTestApp(t *testing.T, st *sqlite.Store) http.Handler {
 	cfg.Metrics.Enabled = false
 	cfg.Health.Path = "/health"
 	cfg.Health.ReadinessPath = "/ready"
-	app := NewApp(cfg, sessions, store, nil, events.NewBroker(), nil, nil, nil, metrics.New(), nil, nil)
+	app := NewApp(
+		cfg,
+		sessions,
+		store,
+		nil,
+		events.NewBroker(),
+		nil,
+		nil,
+		nil,
+		metrics.New(),
+		nil,
+		nil,
+	)
 	return app.Router()
 }
 
@@ -201,7 +213,11 @@ func TestMCPListTools_FilterByServerAndDetections(t *testing.T) {
 	seedMCPTools(t, st)
 	h := newMCPTestApp(t, st)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/tools?server=weather-server&detections=true", nil)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/mcp/tools?server=weather-server&detections=true",
+		nil,
+	)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 

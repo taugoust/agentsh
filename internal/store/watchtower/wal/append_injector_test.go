@@ -70,7 +70,11 @@ func TestSetAppendInjector_RunsAfterOversizedPayloadCheck(t *testing.T) {
 	injectorCalled := false
 	wal.SetAppendInjector(func() error {
 		injectorCalled = true
-		return &wal.AppendError{Class: wal.FailureAmbiguous, Op: "fsync", Err: errors.New("should not fire")}
+		return &wal.AppendError{
+			Class: wal.FailureAmbiguous,
+			Op:    "fsync",
+			Err:   errors.New("should not fire"),
+		}
 	})
 	t.Cleanup(func() { wal.SetAppendInjector(nil) })
 
@@ -82,7 +86,10 @@ func TestSetAppendInjector_RunsAfterOversizedPayloadCheck(t *testing.T) {
 		t.Fatal("expected oversized-payload clean failure, got nil")
 	}
 	if !wal.IsClean(err) {
-		t.Errorf("expected clean failure, got %v (IsClean=false) — injector likely ran before preflight", err)
+		t.Errorf(
+			"expected clean failure, got %v (IsClean=false) — injector likely ran before preflight",
+			err,
+		)
 	}
 	if injectorCalled {
 		t.Error("injector ran before the oversized-payload preflight check — ordering regression")
@@ -92,7 +99,10 @@ func TestSetAppendInjector_RunsAfterOversizedPayloadCheck(t *testing.T) {
 	// (no fatal latch because the injector never fired).
 	wal.SetAppendInjector(nil)
 	if _, err := w.Append(0, 1, []byte("ok")); err != nil {
-		t.Errorf("legal append after oversized rejection: got %v — store latched despite preflight-only failure", err)
+		t.Errorf(
+			"legal append after oversized rejection: got %v — store latched despite preflight-only failure",
+			err,
+		)
 	}
 }
 
@@ -124,10 +134,16 @@ func TestSetAppendInjector_NilReturnContinuesToRealAppend(t *testing.T) {
 		t.Fatalf("Append with nil-returning injector: got %v, want success", err)
 	}
 	if injectorCalls != 1 {
-		t.Errorf("injector call count = %d, want 1 (must still be consulted even when it returns nil)", injectorCalls)
+		t.Errorf(
+			"injector call count = %d, want 1 (must still be consulted even when it returns nil)",
+			injectorCalls,
+		)
 	}
 	if got := w.HighWatermark(); got != 5 {
-		t.Errorf("HighWatermark after nil-injector Append = %d, want 5 — real append path did not run", got)
+		t.Errorf(
+			"HighWatermark after nil-injector Append = %d, want 5 — real append path did not run",
+			got,
+		)
 	}
 }
 
@@ -149,7 +165,11 @@ func TestSetAppendInjector_AmbiguousFailureLatchesFatal(t *testing.T) {
 	t.Cleanup(func() { _ = w.Close() })
 
 	wal.SetAppendInjector(func() error {
-		return &wal.AppendError{Class: wal.FailureAmbiguous, Op: "fsync", Err: errors.New("io error")}
+		return &wal.AppendError{
+			Class: wal.FailureAmbiguous,
+			Op:    "fsync",
+			Err:   errors.New("io error"),
+		}
 	})
 	t.Cleanup(func() { wal.SetAppendInjector(nil) })
 

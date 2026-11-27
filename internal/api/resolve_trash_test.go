@@ -74,10 +74,22 @@ func TestResolveTrashPath(t *testing.T) {
 			if tt.want != "" {
 				want, _ := filepath.Abs(tt.want)
 				if got != want {
-					t.Errorf("resolveTrashPath(%q, %q) = %q, want %q", tt.trashPath, tt.workspace, got, want)
+					t.Errorf(
+						"resolveTrashPath(%q, %q) = %q, want %q",
+						tt.trashPath,
+						tt.workspace,
+						got,
+						want,
+					)
 				}
 			} else if got != tt.want {
-				t.Errorf("resolveTrashPath(%q, %q) = %q, want %q", tt.trashPath, tt.workspace, got, tt.want)
+				t.Errorf(
+					"resolveTrashPath(%q, %q) = %q, want %q",
+					tt.trashPath,
+					tt.workspace,
+					got,
+					tt.want,
+				)
 			}
 		})
 	}

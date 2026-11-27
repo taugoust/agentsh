@@ -123,7 +123,11 @@ func TestExecCmd_BashDashC(t *testing.T) {
 			// Success - the command executes and returns
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"session_id":"test-session","command_id":"cmd-1","result":{"exit_code":0,"stdout":"hello\n"}}`))
+			_, _ = w.Write(
+				[]byte(
+					`{"session_id":"test-session","command_id":"cmd-1","result":{"exit_code":0,"stdout":"hello\n"}}`,
+				),
+			)
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -164,7 +168,11 @@ func TestExecCmd_AutoCreatesSessionBeforeInvalidating(t *testing.T) {
 			// Second exec attempt - success
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"session_id":"test-session","command_id":"cmd-1","result":{"exit_code":0,"stdout":"hello\n"}}`))
+			_, _ = w.Write(
+				[]byte(
+					`{"session_id":"test-session","command_id":"cmd-1","result":{"exit_code":0,"stdout":"hello\n"}}`,
+				),
+			)
 			return
 		}
 		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/sessions") {
@@ -219,6 +227,10 @@ func TestExecCmd_AutoCreatesSessionBeforeInvalidating(t *testing.T) {
 
 	// Verify the request sequence: exec -> create -> exec
 	if len(requests) < 3 {
-		t.Errorf("expected at least 3 requests (exec, create, exec), got %d: %v", len(requests), requests)
+		t.Errorf(
+			"expected at least 3 requests (exec, create, exec), got %d: %v",
+			len(requests),
+			requests,
+		)
 	}
 }

@@ -233,7 +233,10 @@ func (m *ProcessMatcher) MatchesIdentity(info *ProcessInfo, name string) bool {
 
 // getCompiled returns the compiled patterns for an identity, compiling if needed.
 // Caller must hold the lock.
-func (m *ProcessMatcher) getCompiled(name string, identity *ProcessIdentity) (*compiledIdentity, error) {
+func (m *ProcessMatcher) getCompiled(
+	name string,
+	identity *ProcessIdentity,
+) (*compiledIdentity, error) {
 	if compiled, ok := m.compiled[name]; ok {
 		return compiled, nil
 	}
@@ -296,7 +299,11 @@ func (m *ProcessMatcher) compileIdentity(identity *ProcessIdentity) (*compiledId
 }
 
 // matchesCompiled checks if process info matches compiled patterns.
-func (m *ProcessMatcher) matchesCompiled(info *ProcessInfo, compiled *compiledIdentity, resolver func(string) ([]string, error)) bool {
+func (m *ProcessMatcher) matchesCompiled(
+	info *ProcessInfo,
+	compiled *compiledIdentity,
+	resolver func(string) ([]string, error),
+) bool {
 	// Match comm
 	if compiled.comm != nil && compiled.comm.Len() > 0 {
 		match, _ := compiled.comm.MatchAnyWithResolver(info.Comm, resolver)

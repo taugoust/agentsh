@@ -60,7 +60,12 @@ func TestDNSInterceptor_DenyDoesNotForwardAndRefuses(t *testing.T) {
 		Version: 1,
 		Name:    "test",
 		NetworkRules: []policy.NetworkRule{
-			{Name: "deny-example", Domains: []string{"example.com"}, Ports: []int{53}, Decision: "deny"},
+			{
+				Name:     "deny-example",
+				Domains:  []string{"example.com"},
+				Ports:    []int{53},
+				Decision: "deny",
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, false, true)
@@ -277,7 +282,12 @@ func TestDNSInterceptor_MonitorOnlyPreservesThreatMetadata(t *testing.T) {
 		Version: 1,
 		Name:    "test",
 		NetworkRules: []policy.NetworkRule{
-			{Name: "allow-safe", Domains: []string{"safe.com"}, Ports: []int{53}, Decision: "allow"},
+			{
+				Name:     "allow-safe",
+				Domains:  []string{"safe.com"},
+				Ports:    []int{53},
+				Decision: "allow",
+			},
 		},
 	}
 	engine, err := policy.NewEngine(pol, false, true)

@@ -316,10 +316,16 @@ func TestModeDescriptionWithCaps(t *testing.T) {
 }
 
 func TestValidateStrictMode_PtraceRequiresInjectable(t *testing.T) {
-	if err := ValidateStrictMode(ModePtrace, &SecurityCapabilities{Ptrace: true, PtraceInjectable: false}); err == nil {
+	if err := ValidateStrictMode(
+		ModePtrace,
+		&SecurityCapabilities{Ptrace: true, PtraceInjectable: false},
+	); err == nil {
 		t.Fatal("strict ptrace mode must fail when injection is unreliable")
 	}
-	if err := ValidateStrictMode(ModePtrace, &SecurityCapabilities{Ptrace: true, PtraceInjectable: true}); err != nil {
+	if err := ValidateStrictMode(
+		ModePtrace,
+		&SecurityCapabilities{Ptrace: true, PtraceInjectable: true},
+	); err != nil {
 		t.Fatalf("strict ptrace mode should pass when injectable: %v", err)
 	}
 }

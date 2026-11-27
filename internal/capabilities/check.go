@@ -50,7 +50,9 @@ func realCheckPtrace() CheckResult {
 	available := checkPtraceCapability()
 	r := CheckResult{Feature: "ptrace", Available: available}
 	if !available {
-		r.Error = fmt.Errorf("ptrace not available (PTRACE_SEIZE probe failed — blocked by seccomp, gVisor, or missing CAP_SYS_PTRACE)")
+		r.Error = fmt.Errorf(
+			"ptrace not available (PTRACE_SEIZE probe failed — blocked by seccomp, gVisor, or missing CAP_SYS_PTRACE)",
+		)
 	}
 	return r
 }
@@ -193,7 +195,8 @@ func CheckAllWithOptions(cfg *config.Config, opts CheckOptions) error {
 
 	// Check ebpf cgroup attach feasibility (eBPF kernel support + attach-capable cgroup mode).
 	// Only recorded as a fatal failure when ebpf.required=true; enabled=true alone is best-effort.
-	if (cfg.Sandbox.Network.EBPF.Enabled || cfg.Sandbox.Network.EBPF.Enforce || cfg.Sandbox.Network.EBPF.Required) && !opts.ExternalEBPFHelper {
+	if (cfg.Sandbox.Network.EBPF.Enabled || cfg.Sandbox.Network.EBPF.Enforce || cfg.Sandbox.Network.EBPF.Required) &&
+		!opts.ExternalEBPFHelper {
 		// Populate the cgroup probe cache using the same cgroup settings the server
 		// will use at runtime. A generic /proc/self/cgroup probe is misleading for
 		// systemd services with DelegateSubgroup/base_path configured: the login
@@ -201,7 +204,12 @@ func CheckAllWithOptions(cfg *config.Config, opts CheckOptions) error {
 		// attach-capable.
 		if LastCgroupProbe() == nil {
 			permitAttachOnly := !cfg.Sandbox.Cgroups.Enabled
-			if mgr, err := limits.NewCgroupManager(context.Background(), cfg.Sandbox.Cgroups.BasePath, permitAttachOnly); err == nil && mgr != nil {
+			if mgr, err := limits.NewCgroupManager(
+				context.Background(),
+				cfg.Sandbox.Cgroups.BasePath,
+				permitAttachOnly,
+			); err == nil &&
+				mgr != nil {
 				cacheCgroupProbe(mgr.Probe())
 			}
 		}

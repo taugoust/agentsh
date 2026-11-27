@@ -76,7 +76,11 @@ func TestDenyRoute_InTx_ExplicitTerminate(t *testing.T) {
 func TestDenyRoute_InTx_RollbackThenContinue(t *testing.T) {
 	got := DenyRoute(
 		ConnState{LastUpstreamRFQ: 'T'},
-		policy.StatementRule{Name: "soft", Decision: "deny", DenyModeInTx: "rollback_then_continue"},
+		policy.StatementRule{
+			Name:         "soft",
+			Decision:     "deny",
+			DenyModeInTx: "rollback_then_continue",
+		},
 		"soft",
 		"42501",
 	)

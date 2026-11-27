@@ -136,7 +136,10 @@ sandbox:
 		t.Errorf("sandbox.limits.max_disk_io_mbps = %d, want 200", cfg.Sandbox.Limits.MaxDiskIOMbps)
 	}
 	if cfg.Sandbox.Limits.MaxNetworkMbps != 100 {
-		t.Errorf("sandbox.limits.max_network_mbps = %d, want 100", cfg.Sandbox.Limits.MaxNetworkMbps)
+		t.Errorf(
+			"sandbox.limits.max_network_mbps = %d, want 100",
+			cfg.Sandbox.Limits.MaxNetworkMbps,
+		)
 	}
 }
 
@@ -157,13 +160,22 @@ sandbox:
 
 	// Check defaults are applied
 	if cfg.Sandbox.Limits.MaxMemoryMB != 2048 {
-		t.Errorf("sandbox.limits.max_memory_mb default = %d, want 2048", cfg.Sandbox.Limits.MaxMemoryMB)
+		t.Errorf(
+			"sandbox.limits.max_memory_mb default = %d, want 2048",
+			cfg.Sandbox.Limits.MaxMemoryMB,
+		)
 	}
 	if cfg.Sandbox.Limits.MaxCPUPercent != 50 {
-		t.Errorf("sandbox.limits.max_cpu_percent default = %d, want 50", cfg.Sandbox.Limits.MaxCPUPercent)
+		t.Errorf(
+			"sandbox.limits.max_cpu_percent default = %d, want 50",
+			cfg.Sandbox.Limits.MaxCPUPercent,
+		)
 	}
 	if cfg.Sandbox.Limits.MaxProcesses != 100 {
-		t.Errorf("sandbox.limits.max_processes default = %d, want 100", cfg.Sandbox.Limits.MaxProcesses)
+		t.Errorf(
+			"sandbox.limits.max_processes default = %d, want 100",
+			cfg.Sandbox.Limits.MaxProcesses,
+		)
 	}
 }
 
@@ -197,13 +209,19 @@ sandbox:
 		t.Errorf("sandbox.network.dns_port = %d, want 9054", cfg.Sandbox.Network.DNSPort)
 	}
 	if cfg.Sandbox.Network.InterceptMode != "tcp_only" {
-		t.Errorf("sandbox.network.intercept_mode = %q, want tcp_only", cfg.Sandbox.Network.InterceptMode)
+		t.Errorf(
+			"sandbox.network.intercept_mode = %q, want tcp_only",
+			cfg.Sandbox.Network.InterceptMode,
+		)
 	}
 	if !cfg.Sandbox.Network.TLSInspection.Enabled {
 		t.Error("sandbox.network.tls_inspection.enabled should be true")
 	}
 	if cfg.Sandbox.Network.TLSInspection.CACert != "/path/to/ca.crt" {
-		t.Errorf("sandbox.network.tls_inspection.ca_cert = %q", cfg.Sandbox.Network.TLSInspection.CACert)
+		t.Errorf(
+			"sandbox.network.tls_inspection.ca_cert = %q",
+			cfg.Sandbox.Network.TLSInspection.CACert,
+		)
 	}
 }
 
@@ -224,13 +242,19 @@ sandbox:
 	}
 
 	if cfg.Sandbox.Network.ProxyPort != 9080 {
-		t.Errorf("sandbox.network.proxy_port default = %d, want 9080", cfg.Sandbox.Network.ProxyPort)
+		t.Errorf(
+			"sandbox.network.proxy_port default = %d, want 9080",
+			cfg.Sandbox.Network.ProxyPort,
+		)
 	}
 	if cfg.Sandbox.Network.DNSPort != 9053 {
 		t.Errorf("sandbox.network.dns_port default = %d, want 9053", cfg.Sandbox.Network.DNSPort)
 	}
 	if cfg.Sandbox.Network.InterceptMode != "all" {
-		t.Errorf("sandbox.network.intercept_mode default = %q, want all", cfg.Sandbox.Network.InterceptMode)
+		t.Errorf(
+			"sandbox.network.intercept_mode default = %q, want all",
+			cfg.Sandbox.Network.InterceptMode,
+		)
 	}
 }
 

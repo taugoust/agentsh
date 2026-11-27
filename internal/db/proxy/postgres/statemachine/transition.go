@@ -15,7 +15,11 @@ import (
 // via TransitionWithParser; transition_test.go uses the live parser via
 // classify_pg.New(classify_pg.DialectPostgres).
 type PolicyClassifier interface {
-	Classify(sql string, sess classify_pg.SessionState, opts classify_pg.Options) ([]effects.ClassifiedStatement, error)
+	Classify(
+		sql string,
+		sess classify_pg.SessionState,
+		opts classify_pg.Options,
+	) ([]effects.ClassifiedStatement, error)
 }
 
 // Transition is the pure state-transition function. It consumes the current
@@ -173,7 +177,10 @@ func handleBind(s ConnState, f *BindFrame, cache CacheView) (ConnState, []Action
 		next := s
 		next.Absorbing = true
 		return next, []Action{
-			&ActionSynthError{SQLState: "34000", Message: "prepared statement \"" + f.Statement + "\" does not exist"},
+			&ActionSynthError{
+				SQLState: "34000",
+				Message:  "prepared statement \"" + f.Statement + "\" does not exist",
+			},
 		}
 	}
 	cache.Put(portalCacheKey(f.Portal), entry)
@@ -204,7 +211,10 @@ func handleExecute(
 		next := s
 		next.Absorbing = true
 		return next, []Action{
-			&ActionSynthError{SQLState: "34000", Message: "portal \"" + f.Portal + "\" does not exist"},
+			&ActionSynthError{
+				SQLState: "34000",
+				Message:  "portal \"" + f.Portal + "\" does not exist",
+			},
 		}
 	}
 	_ = rules
@@ -278,7 +288,11 @@ func handleQuery(
 	return s, actions
 }
 
-func newApproverWaitAction(d policy.Decision, cs effects.ClassifiedStatement, rule policy.StatementRule) *ActionApproverWait {
+func newApproverWaitAction(
+	d policy.Decision,
+	cs effects.ClassifiedStatement,
+	rule policy.StatementRule,
+) *ActionApproverWait {
 	timeout := rule.Timeout
 	if timeout == 0 && d.Approval != nil {
 		timeout = d.Approval.Timeout

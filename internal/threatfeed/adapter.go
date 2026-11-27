@@ -49,7 +49,9 @@ func sanitizeBasename(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, c := range s {
-		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' {
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' ||
+			c == '_' ||
+			c == '-' {
 			b.WriteRune(c)
 		} else {
 			b.WriteByte('_')

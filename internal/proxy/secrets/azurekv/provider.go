@@ -91,7 +91,11 @@ func New(ctx context.Context, cfg Config, _ secrets.RefResolver) (*Provider, err
 		if errors.As(probeErr, &respErr) {
 			switch respErr.StatusCode {
 			case 401, 403:
-				return nil, fmt.Errorf("%w: azure-kv connectivity probe: %s", secrets.ErrUnauthorized, probeErr.Error())
+				return nil, fmt.Errorf(
+					"%w: azure-kv connectivity probe: %s",
+					secrets.ErrUnauthorized,
+					probeErr.Error(),
+				)
 			case 404:
 				// NotFound is success -- proves auth works.
 			default:
@@ -134,14 +138,24 @@ func (p *Provider) Fetch(ctx context.Context, ref secrets.SecretRef) (secrets.Se
 	}
 
 	if ref.Scheme != "azure-kv" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: wrong scheme %q", secrets.ErrInvalidURI, ref.Scheme)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: wrong scheme %q",
+			secrets.ErrInvalidURI,
+			ref.Scheme,
+		)
 	}
 	if ref.Host == "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: azure-kv URI missing secret name (host)", secrets.ErrInvalidURI)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: azure-kv URI missing secret name (host)",
+			secrets.ErrInvalidURI,
+		)
 	}
 	if ref.Path != "" {
-		return secrets.SecretValue{}, fmt.Errorf("%w: azure-kv secret names do not support paths (got %q); use azure-kv://<name> only",
-			secrets.ErrInvalidURI, ref.Host+"/"+ref.Path)
+		return secrets.SecretValue{}, fmt.Errorf(
+			"%w: azure-kv secret names do not support paths (got %q); use azure-kv://<name> only",
+			secrets.ErrInvalidURI,
+			ref.Host+"/"+ref.Path,
+		)
 	}
 
 	if hook := testFetchPreLockHook; hook != nil {

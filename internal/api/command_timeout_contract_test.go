@@ -33,7 +33,10 @@ func TestCommandTimeoutSessionCreateGetListMetadata(t *testing.T) {
 	engine := commandTimeoutTestEngine(t, 4*time.Hour+500*time.Microsecond)
 	app.SwapPolicy(engine)
 
-	created, code, err := app.createSessionCore(context.Background(), types.CreateSessionRequest{Workspace: t.TempDir()})
+	created, code, err := app.createSessionCore(
+		context.Background(),
+		types.CreateSessionRequest{Workspace: t.TempDir()},
+	)
 	if err != nil || code != http.StatusCreated {
 		t.Fatalf("createSessionCore = code %d err %v", code, err)
 	}
@@ -52,7 +55,9 @@ func TestCommandTimeoutSessionCreateGetListMetadata(t *testing.T) {
 			var snapshot types.Session
 			if name == "list" {
 				var snapshots []types.Session
-				if err := json.NewDecoder(recorder.Body).Decode(&snapshots); err != nil || len(snapshots) != 1 {
+				if err := json.NewDecoder(recorder.Body).
+					Decode(&snapshots); err != nil ||
+					len(snapshots) != 1 {
 					t.Fatalf("decode list = %d snapshots, err %v", len(snapshots), err)
 				}
 				snapshot = snapshots[0]
@@ -61,7 +66,8 @@ func TestCommandTimeoutSessionCreateGetListMetadata(t *testing.T) {
 			}
 			assertPolicySessionTimeout(t, snapshot.CommandTimeout, 4*time.Hour+500*time.Microsecond)
 			encoded, _ := json.Marshal(snapshot)
-			if strings.Contains(string(encoded), "resource_limits") || strings.Contains(string(encoded), "session_timeout") {
+			if strings.Contains(string(encoded), "resource_limits") ||
+				strings.Contains(string(encoded), "session_timeout") {
 				t.Fatalf("session snapshot leaked unrelated policy data: %s", encoded)
 			}
 		})
@@ -84,7 +90,8 @@ func TestCommandTimeoutSessionFallbackHasNoMaximum(t *testing.T) {
 		t.Fatal(err)
 	}
 	metadata := sess.Snapshot().CommandTimeout
-	if metadata.DefaultMS != defaultCommandTimeout.Milliseconds() || metadata.MaximumMS != nil || metadata.Source != types.SessionCommandTimeoutSourceFallback {
+	if metadata.DefaultMS != defaultCommandTimeout.Milliseconds() || metadata.MaximumMS != nil ||
+		metadata.Source != types.SessionCommandTimeoutSourceFallback {
 		t.Fatalf("fallback metadata = %+v", metadata)
 	}
 	encoded, _ := json.Marshal(sess.Snapshot())
@@ -104,7 +111,8 @@ func TestCommandTimeoutExecBashTopLevelMetadataAndValidation(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	body := `{"command":"printf ok","timeout_ms":4000}`
-	app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
+	app.Router().
+		ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("exec_bash status = %d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -122,9 +130,22 @@ func TestCommandTimeoutExecBashTopLevelMetadataAndValidation(t *testing.T) {
 	if !response.OK || response.Result.ExitCode != 0 {
 		t.Fatalf("exec_bash response = %+v", response)
 	}
-	assertCommandTimeoutMetadata(t, response.Result.CommandTimeout, 4000, 2001, types.CommandTimeoutSourcePolicyCap)
-	if !equalCommandTimeout(response.Result.ExecResponse.Result.CommandTimeout, response.Result.CommandTimeout) {
-		t.Fatalf("top-level metadata differs from ExecResult: top=%+v nested=%+v", response.Result.CommandTimeout, response.Result.ExecResponse.Result.CommandTimeout)
+	assertCommandTimeoutMetadata(
+		t,
+		response.Result.CommandTimeout,
+		4000,
+		2001,
+		types.CommandTimeoutSourcePolicyCap,
+	)
+	if !equalCommandTimeout(
+		response.Result.ExecResponse.Result.CommandTimeout,
+		response.Result.CommandTimeout,
+	) {
+		t.Fatalf(
+			"top-level metadata differs from ExecResult: top=%+v nested=%+v",
+			response.Result.CommandTimeout,
+			response.Result.ExecResponse.Result.CommandTimeout,
+		)
 	}
 
 	before := countCommandLifecycleEvents(t, store, sess.ID)
@@ -135,14 +156,19 @@ func TestCommandTimeoutExecBashTopLevelMetadataAndValidation(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(invalidBody)))
+			app.Router().
+				ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(invalidBody)))
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 			}
 		})
 	}
 	if after := countCommandLifecycleEvents(t, store, sess.ID); after != before {
-		t.Fatalf("invalid exec_bash requests emitted lifecycle events: before=%d after=%d", before, after)
+		t.Fatalf(
+			"invalid exec_bash requests emitted lifecycle events: before=%d after=%d",
+			before,
+			after,
+		)
 	}
 }
 
@@ -153,7 +179,9 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 	metadataByTransport := make(map[string]types.CommandTimeout)
 	assertRefusal := func(t *testing.T, outcome *types.ExecOutcome, terminationReason string) {
 		t.Helper()
-		if outcome == nil || outcome.CommandStarted || outcome.FailureKind != types.ExecFailurePreExec || outcome.Code != "E_PRE_EXEC_BOUNDARY" {
+		if outcome == nil || outcome.CommandStarted ||
+			outcome.FailureKind != types.ExecFailurePreExec ||
+			outcome.Code != "E_PRE_EXEC_BOUNDARY" {
 			t.Fatalf("outcome = %+v, want pre-exec boundary refusal", outcome)
 		}
 		if terminationReason != "" {
@@ -164,7 +192,8 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 	t.Run("buffered REST", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		body := `{"command":"true","timeout":"900ms"}`
-		app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(body)))
+		app.Router().
+			ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(body)))
 		if recorder.Code != http.StatusServiceUnavailable {
 			t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 		}
@@ -179,7 +208,8 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 	t.Run("exec_bash", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		body := `{"command":"true","timeout_ms":900}`
-		app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
+		app.Router().
+			ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
 		if recorder.Code != http.StatusServiceUnavailable {
 			t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 		}
@@ -199,8 +229,15 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 			t.Fatalf("exec_bash refusal reported ok: %+v", response)
 		}
 		assertRefusal(t, response.Result.Outcome, response.Result.TerminationReason)
-		if !equalCommandTimeout(response.Result.CommandTimeout, response.Result.ExecResponse.Result.CommandTimeout) {
-			t.Fatalf("exec_bash timeout metadata differs: top=%+v nested=%+v", response.Result.CommandTimeout, response.Result.ExecResponse.Result.CommandTimeout)
+		if !equalCommandTimeout(
+			response.Result.CommandTimeout,
+			response.Result.ExecResponse.Result.CommandTimeout,
+		) {
+			t.Fatalf(
+				"exec_bash timeout metadata differs: top=%+v nested=%+v",
+				response.Result.CommandTimeout,
+				response.Result.ExecResponse.Result.CommandTimeout,
+			)
 		}
 		metadataByTransport["exec_bash"] = response.Result.CommandTimeout
 	})
@@ -208,7 +245,8 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 	t.Run("SSE endpoint", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		body := `{"command":"true","timeout":"900ms"}`
-		app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(body)))
+		app.Router().
+			ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(body)))
 		if recorder.Code != http.StatusServiceUnavailable {
 			t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 		}
@@ -225,7 +263,9 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 	})
 
 	t.Run("gRPC stream", func(t *testing.T) {
-		request, err := structpb.NewStruct(map[string]any{"session_id": sess.ID, "command": "true", "timeout": "900ms"})
+		request, err := structpb.NewStruct(
+			map[string]any{"session_id": sess.ID, "command": "true", "timeout": "900ms"},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -248,12 +288,20 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 	})
 
 	t.Run("gRPC policy refusal", func(t *testing.T) {
-		denyEngine := commandTimeoutPolicySnapshotEngine(t, "deny-refusal", "deny", 750*time.Millisecond, false)
+		denyEngine := commandTimeoutPolicySnapshotEngine(
+			t,
+			"deny-refusal",
+			"deny",
+			750*time.Millisecond,
+			false,
+		)
 		sess.SetPolicyEngine(denyEngine)
 		app.SwapPolicy(denyEngine)
 		app.commandBoundarySetupErrorForTest = nil
 
-		request, err := structpb.NewStruct(map[string]any{"session_id": sess.ID, "command": "true", "timeout": "900ms"})
+		request, err := structpb.NewStruct(
+			map[string]any{"session_id": sess.ID, "command": "true", "timeout": "900ms"},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -267,10 +315,14 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 			t.Fatalf("gRPC policy refusal events = %#v", stream.messages)
 		}
 		outcome, ok := refused["outcome"].(map[string]any)
-		if !ok || outcome["failure_kind"] != string(types.ExecFailureDenied) || outcome["code"] != "E_POLICY_DENIED" {
+		if !ok || outcome["failure_kind"] != string(types.ExecFailureDenied) ||
+			outcome["code"] != "E_POLICY_DENIED" {
 			t.Fatalf("gRPC policy refusal outcome = %#v", refused["outcome"])
 		}
-		metadataByTransport["gRPC policy refusal"] = decodeCommandTimeout(t, refused["command_timeout"])
+		metadataByTransport["gRPC policy refusal"] = decodeCommandTimeout(
+			t,
+			refused["command_timeout"],
+		)
 	})
 
 	var baseline types.CommandTimeout
@@ -296,14 +348,27 @@ func TestCommandTimeoutBufferedTypedTerminationAndNatural124(t *testing.T) {
 	if err != nil || code != http.StatusOK {
 		t.Fatalf("exec = code %d err %v", code, err)
 	}
-	if response.Result.ExitCode != 124 || response.Result.TerminationReason != types.TerminationReasonCommandTimeout {
+	if response.Result.ExitCode != 124 ||
+		response.Result.TerminationReason != types.TerminationReasonCommandTimeout {
 		t.Fatalf("timeout result = %+v", response.Result)
 	}
 	if response.Result.Error == nil || response.Result.Error.Code != "E_COMMAND_TIMEOUT" {
 		t.Fatalf("timeout error = %+v", response.Result.Error)
 	}
-	assertCommandTimeoutMetadata(t, response.Result.CommandTimeout, 81, 81, types.CommandTimeoutSourceExplicit)
-	assertLifecycleTimeoutMetadata(t, store, response.CommandID, response.Result.CommandTimeout, types.TerminationReasonCommandTimeout)
+	assertCommandTimeoutMetadata(
+		t,
+		response.Result.CommandTimeout,
+		81,
+		81,
+		types.CommandTimeoutSourceExplicit,
+	)
+	assertLifecycleTimeoutMetadata(
+		t,
+		store,
+		response.CommandID,
+		response.Result.CommandTimeout,
+		types.TerminationReasonCommandTimeout,
+	)
 
 	natural, _, err := app.execInSessionCore(context.Background(), sess.ID, types.ExecRequest{
 		Command: "sh", Args: []string{"-c", "exit 124"}, Timeout: "300ms",
@@ -311,7 +376,8 @@ func TestCommandTimeoutBufferedTypedTerminationAndNatural124(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if natural.Result.ExitCode != 124 || natural.Result.TerminationReason != "" || natural.Result.Error != nil {
+	if natural.Result.ExitCode != 124 || natural.Result.TerminationReason != "" ||
+		natural.Result.Error != nil {
 		t.Fatalf("natural exit 124 was inferred as timeout: %+v", natural.Result)
 	}
 }
@@ -329,13 +395,20 @@ func TestCommandTimeoutBufferedCallerDeadlineIsDistinct(t *testing.T) {
 	if err != nil || code != http.StatusOK {
 		t.Fatalf("exec = code %d err %v", code, err)
 	}
-	if response.Result.ExitCode == 124 || response.Result.TerminationReason != types.TerminationReasonCallerDeadline {
+	if response.Result.ExitCode == 124 ||
+		response.Result.TerminationReason != types.TerminationReasonCallerDeadline {
 		t.Fatalf("caller deadline result = %+v", response.Result)
 	}
 	if response.Result.Error == nil || response.Result.Error.Code == "E_COMMAND_TIMEOUT" {
 		t.Fatalf("caller deadline error = %+v", response.Result.Error)
 	}
-	assertLifecycleTimeoutMetadata(t, store, response.CommandID, response.Result.CommandTimeout, types.TerminationReasonCallerDeadline)
+	assertLifecycleTimeoutMetadata(
+		t,
+		store,
+		response.CommandID,
+		response.Result.CommandTimeout,
+		types.TerminationReasonCallerDeadline,
+	)
 	assertCommandOutputPersisted(t, store, response.CommandID)
 }
 
@@ -345,7 +418,11 @@ func TestCommandTimeoutHTTPStreamStartDoneParity(t *testing.T) {
 	}
 	app, sess, store := newCommandTimeoutTestApp(t, 500*time.Millisecond)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(`{"command":"sh","args":["-c","sleep 2"],"timeout":"80.5ms"}`))
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/"+sess.ID+"/exec/stream",
+		strings.NewReader(`{"command":"sh","args":["-c","sleep 2"],"timeout":"80.5ms"}`),
+	)
 	app.Router().ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("stream status = %d body=%s", recorder.Code, recorder.Body.String())
@@ -362,7 +439,8 @@ func TestCommandTimeoutHTTPStreamStartDoneParity(t *testing.T) {
 	if !equalCommandTimeout(doneTimeout, startTimeout) {
 		t.Fatalf("stream timeout metadata differs: start=%+v done=%+v", startTimeout, doneTimeout)
 	}
-	if int(done["exit_code"].(float64)) != 124 || done["termination_reason"] != types.TerminationReasonCommandTimeout {
+	if int(done["exit_code"].(float64)) != 124 ||
+		done["termination_reason"] != types.TerminationReasonCommandTimeout {
 		t.Fatalf("stream done = %#v", done)
 	}
 	typedError, ok := done["error"].(map[string]any)
@@ -370,7 +448,13 @@ func TestCommandTimeoutHTTPStreamStartDoneParity(t *testing.T) {
 		t.Fatalf("stream error = %#v", done["error"])
 	}
 	commandID, _ := start["command_id"].(string)
-	assertLifecycleTimeoutMetadata(t, store, commandID, startTimeout, types.TerminationReasonCommandTimeout)
+	assertLifecycleTimeoutMetadata(
+		t,
+		store,
+		commandID,
+		startTimeout,
+		types.TerminationReasonCommandTimeout,
+	)
 }
 
 func TestCommandTimeoutHTTPStreamCallerDeadlinePersistsTerminalState(t *testing.T) {
@@ -381,18 +465,26 @@ func TestCommandTimeoutHTTPStreamCallerDeadlinePersistsTerminalState(t *testing.
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(`{"command":"sh","args":["-c","sleep 2"],"timeout":"1s"}`)).WithContext(ctx)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(`{"command":"sh","args":["-c","sleep 2"],"timeout":"1s"}`)).
+		WithContext(ctx)
 	app.Router().ServeHTTP(recorder, request)
 
 	events := decodeSSEEvents(t, recorder.Body.String())
 	start := events["start"]
 	done := events["done"]
-	if start == nil || done == nil || done["termination_reason"] != types.TerminationReasonCallerDeadline {
+	if start == nil || done == nil ||
+		done["termination_reason"] != types.TerminationReasonCallerDeadline {
 		t.Fatalf("caller-deadline stream events = %#v", events)
 	}
 	commandID, _ := start["command_id"].(string)
 	timeout := decodeCommandTimeout(t, start["command_timeout"])
-	assertLifecycleTimeoutMetadata(t, store, commandID, timeout, types.TerminationReasonCallerDeadline)
+	assertLifecycleTimeoutMetadata(
+		t,
+		store,
+		commandID,
+		timeout,
+		types.TerminationReasonCallerDeadline,
+	)
 	assertCommandOutputPersisted(t, store, commandID)
 }
 
@@ -422,7 +514,8 @@ func TestCommandTimeoutGRPCStreamStartDoneParity(t *testing.T) {
 	startTimeout := decodeCommandTimeout(t, start["command_timeout"])
 	doneTimeout := decodeCommandTimeout(t, done["command_timeout"])
 	assertCommandTimeoutMetadata(t, startTimeout, 81, 81, types.CommandTimeoutSourceExplicit)
-	if !equalCommandTimeout(doneTimeout, startTimeout) || done["termination_reason"] != types.TerminationReasonCommandTimeout {
+	if !equalCommandTimeout(doneTimeout, startTimeout) ||
+		done["termination_reason"] != types.TerminationReasonCommandTimeout {
 		t.Fatalf("gRPC stream parity mismatch: start=%#v done=%#v", start, done)
 	}
 	typedError, ok := done["error"].(map[string]any)
@@ -446,9 +539,14 @@ func TestCommandTimeoutPolicyResolutionOccursAfterExecutionAdmission(t *testing.
 	errs := make(chan error, 1)
 	go func() {
 		close(launched)
-		response, _, err := fixture.app.execInSessionCoreWithOptions(context.Background(), fixture.session.ID, fixture.request(), internalExecOptions{
-			onAdmitted: func() { close(admitted) },
-		})
+		response, _, err := fixture.app.execInSessionCoreWithOptions(
+			context.Background(),
+			fixture.session.ID,
+			fixture.request(),
+			internalExecOptions{
+				onAdmitted: func() { close(admitted) },
+			},
+		)
 		result <- response
 		errs <- err
 	}()
@@ -468,7 +566,13 @@ func TestCommandTimeoutPolicyResolutionOccursAfterExecutionAdmission(t *testing.
 	if response == nil {
 		t.Fatal("nil response")
 	}
-	assertCommandTimeoutMetadata(t, response.Result.CommandTimeout, 500, 50, types.CommandTimeoutSourcePolicyCap)
+	assertCommandTimeoutMetadata(
+		t,
+		response.Result.CommandTimeout,
+		500,
+		50,
+		types.CommandTimeoutSourcePolicyCap,
+	)
 }
 
 func TestCommandTimeoutPolicySnapshotIsSharedByLimitsAndBothChecks(t *testing.T) {
@@ -484,7 +588,11 @@ func TestCommandTimeoutPolicySnapshotIsSharedByLimitsAndBothChecks(t *testing.T)
 		result := make(chan *types.ExecResponse, 1)
 		errs := make(chan error, 1)
 		go func() {
-			response, _, err := fixture.app.execInSessionCore(context.Background(), fixture.session.ID, fixture.request())
+			response, _, err := fixture.app.execInSessionCore(
+				context.Background(),
+				fixture.session.ID,
+				fixture.request(),
+			)
 			result <- response
 			errs <- err
 		}()
@@ -497,9 +605,18 @@ func TestCommandTimeoutPolicySnapshotIsSharedByLimitsAndBothChecks(t *testing.T)
 		if response == nil {
 			t.Fatal("nil buffered response")
 		}
-		assertCommandTimeoutMetadata(t, response.Result.CommandTimeout, 500, 500, types.CommandTimeoutSourceExplicit)
+		assertCommandTimeoutMetadata(
+			t,
+			response.Result.CommandTimeout,
+			500,
+			500,
+			types.CommandTimeoutSourceExplicit,
+		)
 		if strings.Contains(response.Result.Stdout, "snapshot-marker-visible") {
-			t.Fatalf("replacement policy leaked into second check; stdout = %q", response.Result.Stdout)
+			t.Fatalf(
+				"replacement policy leaked into second check; stdout = %q",
+				response.Result.Stdout,
+			)
 		}
 	})
 
@@ -510,7 +627,11 @@ func TestCommandTimeoutPolicySnapshotIsSharedByLimitsAndBothChecks(t *testing.T)
 			t.Fatal(err)
 		}
 		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+fixture.session.ID+"/exec/stream", strings.NewReader(string(body)))
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/sessions/"+fixture.session.ID+"/exec/stream",
+			strings.NewReader(string(body)),
+		)
 		done := make(chan struct{})
 		go func() {
 			fixture.app.Router().ServeHTTP(recorder, request)
@@ -531,7 +652,13 @@ func TestCommandTimeoutPolicySnapshotIsSharedByLimitsAndBothChecks(t *testing.T)
 		if start == nil {
 			t.Fatalf("missing stream start event: %s", recorder.Body.String())
 		}
-		assertCommandTimeoutMetadata(t, decodeCommandTimeout(t, start["command_timeout"]), 500, 500, types.CommandTimeoutSourceExplicit)
+		assertCommandTimeoutMetadata(
+			t,
+			decodeCommandTimeout(t, start["command_timeout"]),
+			500,
+			500,
+			types.CommandTimeoutSourceExplicit,
+		)
 		if strings.Contains(recorder.Body.String(), "snapshot-marker-visible") {
 			t.Fatalf("replacement policy leaked into HTTP second check: %s", recorder.Body.String())
 		}
@@ -565,7 +692,13 @@ func TestCommandTimeoutPolicySnapshotIsSharedByLimitsAndBothChecks(t *testing.T)
 		if start == nil {
 			t.Fatalf("missing gRPC start event: %#v", stream.messages)
 		}
-		assertCommandTimeoutMetadata(t, decodeCommandTimeout(t, start["command_timeout"]), 500, 500, types.CommandTimeoutSourceExplicit)
+		assertCommandTimeoutMetadata(
+			t,
+			decodeCommandTimeout(t, start["command_timeout"]),
+			500,
+			500,
+			types.CommandTimeoutSourceExplicit,
+		)
 		encoded, _ := json.Marshal(stream.messages)
 		if strings.Contains(string(encoded), "snapshot-marker-visible") {
 			t.Fatalf("replacement policy leaked into gRPC second check: %s", encoded)
@@ -595,12 +728,19 @@ func TestCommandTimeoutGRPCStreamCallerDeadlinePersistsTerminalState(t *testing.
 	}
 	start := stream.event("start")
 	done := stream.event("done")
-	if start == nil || done == nil || done["termination_reason"] != types.TerminationReasonCallerDeadline {
+	if start == nil || done == nil ||
+		done["termination_reason"] != types.TerminationReasonCallerDeadline {
 		t.Fatalf("caller-deadline gRPC events = %#v", stream.messages)
 	}
 	commandID, _ := start["command_id"].(string)
 	timeout := decodeCommandTimeout(t, start["command_timeout"])
-	assertLifecycleTimeoutMetadata(t, store, commandID, timeout, types.TerminationReasonCallerDeadline)
+	assertLifecycleTimeoutMetadata(
+		t,
+		store,
+		commandID,
+		timeout,
+		types.TerminationReasonCallerDeadline,
+	)
 	assertCommandOutputPersisted(t, store, commandID)
 }
 
@@ -608,7 +748,8 @@ func TestCommandTimeoutWireEmptyIsCompatibleOmission(t *testing.T) {
 	app, sess, _ := newCommandTimeoutTestApp(t, time.Second)
 
 	recorder := httptest.NewRecorder()
-	app.Router().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(`{"command":"pwd","timeout":""}`)))
+	app.Router().
+		ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(`{"command":"pwd","timeout":""}`)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("REST empty timeout status = %d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -618,7 +759,9 @@ func TestCommandTimeoutWireEmptyIsCompatibleOmission(t *testing.T) {
 	}
 	assertOmittedCommandTimeoutMetadata(t, restResponse.Result.CommandTimeout, time.Second)
 
-	grpcBody, _ := json.Marshal(map[string]any{"session_id": sess.ID, "command": "pwd", "timeout": ""})
+	grpcBody, _ := json.Marshal(
+		map[string]any{"session_id": sess.ID, "command": "pwd", "timeout": ""},
+	)
 	grpcResponse, err := app.grpcExec(context.Background(), grpcBody)
 	if err != nil {
 		t.Fatalf("gRPC empty timeout: %v", err)
@@ -644,7 +787,8 @@ func TestCommandTimeoutWireValidationPrecedesSessionAdmission(t *testing.T) {
 			invoke: func(ctx context.Context, value string) error {
 				body, _ := json.Marshal(map[string]any{"command": "true", "timeout": value})
 				recorder := httptest.NewRecorder()
-				request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(string(body))).WithContext(ctx)
+				request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(string(body))).
+					WithContext(ctx)
 				app.Router().ServeHTTP(recorder, request)
 				if recorder.Code != http.StatusBadRequest {
 					return fmt.Errorf("status = %d body=%s", recorder.Code, recorder.Body.String())
@@ -657,7 +801,8 @@ func TestCommandTimeoutWireValidationPrecedesSessionAdmission(t *testing.T) {
 			invoke: func(ctx context.Context, value string) error {
 				body, _ := json.Marshal(map[string]any{"command": "true", "timeout": value})
 				recorder := httptest.NewRecorder()
-				request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(string(body))).WithContext(ctx)
+				request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(string(body))).
+					WithContext(ctx)
 				app.Router().ServeHTTP(recorder, request)
 				if recorder.Code != http.StatusBadRequest {
 					return fmt.Errorf("status = %d body=%s", recorder.Code, recorder.Body.String())
@@ -668,7 +813,9 @@ func TestCommandTimeoutWireValidationPrecedesSessionAdmission(t *testing.T) {
 		{
 			name: "unary gRPC",
 			invoke: func(ctx context.Context, value string) error {
-				body, _ := json.Marshal(map[string]any{"session_id": sess.ID, "command": "true", "timeout": value})
+				body, _ := json.Marshal(
+					map[string]any{"session_id": sess.ID, "command": "true", "timeout": value},
+				)
 				_, err := app.grpcExec(ctx, body)
 				if status.Code(err) != codes.InvalidArgument {
 					return fmt.Errorf("error = %v", err)
@@ -679,11 +826,16 @@ func TestCommandTimeoutWireValidationPrecedesSessionAdmission(t *testing.T) {
 		{
 			name: "streaming gRPC",
 			invoke: func(ctx context.Context, value string) error {
-				request, err := structpb.NewStruct(map[string]any{"session_id": sess.ID, "command": "true", "timeout": value})
+				request, err := structpb.NewStruct(
+					map[string]any{"session_id": sess.ID, "command": "true", "timeout": value},
+				)
 				if err != nil {
 					return err
 				}
-				execErr := (&grpcServer{app: app}).ExecStream(request, &captureServerStream{ctx: ctx})
+				execErr := (&grpcServer{app: app}).ExecStream(
+					request,
+					&captureServerStream{ctx: ctx},
+				)
 				if status.Code(execErr) != codes.InvalidArgument {
 					return fmt.Errorf("error = %v", execErr)
 				}
@@ -744,11 +896,17 @@ func newCommandTimeoutPolicySnapshotFixture(t *testing.T) commandTimeoutPolicySn
 	app.approvals = approvalManager
 	app.SwapPolicy(commandTimeoutPolicySnapshotEngine(t, "admitted", "approve", time.Second, true))
 	return commandTimeoutPolicySnapshotFixture{
-		app:         app,
-		session:     sess,
-		approvals:   approvalManager,
-		replacement: commandTimeoutPolicySnapshotEngine(t, "replacement", "allow", 50*time.Millisecond, false),
-		command:     command,
+		app:       app,
+		session:   sess,
+		approvals: approvalManager,
+		replacement: commandTimeoutPolicySnapshotEngine(
+			t,
+			"replacement",
+			"allow",
+			50*time.Millisecond,
+			false,
+		),
+		command: command,
 	}
 }
 
@@ -783,13 +941,20 @@ func (f commandTimeoutPolicySnapshotFixture) request() types.ExecRequest {
 	}
 }
 
-func commandTimeoutPolicySnapshotEngine(t *testing.T, name, decision string, limit time.Duration, denyMarker bool) *policy.Engine {
+func commandTimeoutPolicySnapshotEngine(
+	t *testing.T,
+	name, decision string,
+	limit time.Duration,
+	denyMarker bool,
+) *policy.Engine {
 	t.Helper()
 	envPolicy := ""
 	if denyMarker {
 		envPolicy = "    env_deny: [\"SNAPSHOT_MARKER\"]\n"
 	}
-	document := []byte("version: 1\nname: " + name + "\ncommand_rules:\n  - name: " + name + "\n    commands: [\"*\"]\n    decision: " + decision + "\n" + envPolicy + "resource_limits:\n  command_timeout: " + limit.String() + "\n")
+	document := []byte(
+		"version: 1\nname: " + name + "\ncommand_rules:\n  - name: " + name + "\n    commands: [\"*\"]\n    decision: " + decision + "\n" + envPolicy + "resource_limits:\n  command_timeout: " + limit.String() + "\n",
+	)
 	loaded, err := policy.LoadFromBytes(document)
 	if err != nil {
 		t.Fatal(err)
@@ -803,7 +968,9 @@ func commandTimeoutPolicySnapshotEngine(t *testing.T, name, decision string, lim
 
 func commandTimeoutTestEngine(t *testing.T, limit time.Duration) *policy.Engine {
 	t.Helper()
-	document := []byte("version: 1\nname: command-timeout-test\ncommand_rules:\n  - name: allow-all\n    commands: [\"*\"]\n    decision: allow\nresource_limits:\n  command_timeout: " + limit.String() + "\n")
+	document := []byte(
+		"version: 1\nname: command-timeout-test\ncommand_rules:\n  - name: allow-all\n    commands: [\"*\"]\n    decision: allow\nresource_limits:\n  command_timeout: " + limit.String() + "\n",
+	)
 	loaded, err := policy.LoadFromBytes(document)
 	if err != nil {
 		t.Fatal(err)
@@ -815,7 +982,10 @@ func commandTimeoutTestEngine(t *testing.T, limit time.Duration) *policy.Engine 
 	return engine
 }
 
-func newCommandTimeoutTestApp(t *testing.T, limit time.Duration) (*App, *session.Session, *composite.Store) {
+func newCommandTimeoutTestApp(
+	t *testing.T,
+	limit time.Duration,
+) (*App, *session.Session, *composite.Store) {
 	t.Helper()
 	manager := session.NewManager(5)
 	workspace := t.TempDir()
@@ -832,37 +1002,66 @@ func newCommandTimeoutTestApp(t *testing.T, limit time.Duration) (*App, *session
 	return app, sess, store
 }
 
-func assertPolicySessionTimeout(t *testing.T, metadata types.SessionCommandTimeout, duration time.Duration) {
+func assertPolicySessionTimeout(
+	t *testing.T,
+	metadata types.SessionCommandTimeout,
+	duration time.Duration,
+) {
 	t.Helper()
 	milliseconds := commandtimeout.CeilMilliseconds(duration)
-	if metadata.DefaultMS != milliseconds || metadata.MaximumMS == nil || *metadata.MaximumMS != milliseconds || metadata.Source != types.SessionCommandTimeoutSourcePolicy {
+	if metadata.DefaultMS != milliseconds || metadata.MaximumMS == nil ||
+		*metadata.MaximumMS != milliseconds ||
+		metadata.Source != types.SessionCommandTimeoutSourcePolicy {
 		t.Fatalf("session command_timeout = %+v, want policy %dms", metadata, milliseconds)
 	}
 }
 
-func assertCommandTimeoutMetadata(t *testing.T, metadata types.CommandTimeout, requested, effective int64, source types.CommandTimeoutSource) {
+func assertCommandTimeoutMetadata(
+	t *testing.T,
+	metadata types.CommandTimeout,
+	requested, effective int64,
+	source types.CommandTimeoutSource,
+) {
 	t.Helper()
-	if metadata.RequestedMS == nil || *metadata.RequestedMS != requested || metadata.EffectiveMS != effective || metadata.Source != source {
-		t.Fatalf("command_timeout = %+v, want requested=%d effective=%d source=%q", metadata, requested, effective, source)
+	if metadata.RequestedMS == nil || *metadata.RequestedMS != requested ||
+		metadata.EffectiveMS != effective ||
+		metadata.Source != source {
+		t.Fatalf(
+			"command_timeout = %+v, want requested=%d effective=%d source=%q",
+			metadata,
+			requested,
+			effective,
+			source,
+		)
 	}
 }
 
-func assertOmittedCommandTimeoutMetadata(t *testing.T, metadata types.CommandTimeout, effective time.Duration) {
+func assertOmittedCommandTimeoutMetadata(
+	t *testing.T,
+	metadata types.CommandTimeout,
+	effective time.Duration,
+) {
 	t.Helper()
-	if metadata.RequestedMS != nil || metadata.EffectiveMS != commandtimeout.CeilMilliseconds(effective) || metadata.Source != types.CommandTimeoutSourcePolicyDefault {
+	if metadata.RequestedMS != nil ||
+		metadata.EffectiveMS != commandtimeout.CeilMilliseconds(effective) ||
+		metadata.Source != types.CommandTimeoutSourcePolicyDefault {
 		t.Fatalf("command_timeout = %+v, want omitted policy default %s", metadata, effective)
 	}
 }
 
 func countCommandLifecycleEvents(t *testing.T, store *composite.Store, sessionID string) int {
 	t.Helper()
-	events, err := store.QueryEvents(context.Background(), types.EventQuery{SessionID: sessionID, Limit: 500, Asc: true})
+	events, err := store.QueryEvents(
+		context.Background(),
+		types.EventQuery{SessionID: sessionID, Limit: 500, Asc: true},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	count := 0
 	for _, event := range events {
-		if event.Type == "command_started" || event.Type == "command_finished" || event.Type == "command_policy" {
+		if event.Type == "command_started" || event.Type == "command_finished" ||
+			event.Type == "command_policy" {
 			count++
 		}
 	}
@@ -871,14 +1070,29 @@ func countCommandLifecycleEvents(t *testing.T, store *composite.Store, sessionID
 
 func assertCommandOutputPersisted(t *testing.T, store *composite.Store, commandID string) {
 	t.Helper()
-	if _, _, _, err := store.ReadOutputChunk(context.Background(), commandID, "stdout", 0, 1); err != nil {
+	if _, _, _, err := store.ReadOutputChunk(
+		context.Background(),
+		commandID,
+		"stdout",
+		0,
+		1,
+	); err != nil {
 		t.Fatalf("command output %s was not persisted: %v", commandID, err)
 	}
 }
 
-func assertLifecycleTimeoutMetadata(t *testing.T, store *composite.Store, commandID string, timeout types.CommandTimeout, reason string) {
+func assertLifecycleTimeoutMetadata(
+	t *testing.T,
+	store *composite.Store,
+	commandID string,
+	timeout types.CommandTimeout,
+	reason string,
+) {
 	t.Helper()
-	events, err := store.QueryEvents(context.Background(), types.EventQuery{CommandID: commandID, Limit: 100, Asc: true})
+	events, err := store.QueryEvents(
+		context.Background(),
+		types.EventQuery{CommandID: commandID, Limit: 100, Asc: true},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -891,10 +1105,13 @@ func assertLifecycleTimeoutMetadata(t *testing.T, store *composite.Store, comman
 			finished = &events[i]
 		}
 	}
-	if started == nil || finished == nil || started.CommandTimeout == nil || finished.CommandTimeout == nil {
+	if started == nil || finished == nil || started.CommandTimeout == nil ||
+		finished.CommandTimeout == nil {
 		t.Fatalf("lifecycle timeout metadata missing: %#v", events)
 	}
-	if !equalCommandTimeout(*started.CommandTimeout, timeout) || !equalCommandTimeout(*finished.CommandTimeout, timeout) || finished.TerminationReason != reason {
+	if !equalCommandTimeout(*started.CommandTimeout, timeout) ||
+		!equalCommandTimeout(*finished.CommandTimeout, timeout) ||
+		finished.TerminationReason != reason {
 		t.Fatalf("lifecycle metadata mismatch: start=%+v finish=%+v", started, finished)
 	}
 }

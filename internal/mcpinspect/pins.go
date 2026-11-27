@@ -178,7 +178,13 @@ func (s *PinStore) List(serverFilter string) ([]Pin, error) {
 	for rows.Next() {
 		var p Pin
 		var trustedAtNs int64
-		if err := rows.Scan(&p.ServerID, &p.ToolName, &p.Hash, &trustedAtNs, &p.TrustedBy); err != nil {
+		if err := rows.Scan(
+			&p.ServerID,
+			&p.ToolName,
+			&p.Hash,
+			&trustedAtNs,
+			&p.TrustedBy,
+		); err != nil {
 			return nil, err
 		}
 		p.TrustedAt = time.Unix(0, trustedAtNs)

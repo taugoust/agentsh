@@ -95,12 +95,17 @@ func TestManager_ReapExpiredGuarded_FailureRetainsFailingAndLaterCandidates(t *t
 	}
 
 	guardErr := errors.New("durable transition failed")
-	reaped, err := m.ReapExpiredGuarded(now.Add(time.Hour), 30*time.Minute, 0, func(sess *Session) error {
-		if sess.ID == second.ID {
-			return guardErr
-		}
-		return nil
-	})
+	reaped, err := m.ReapExpiredGuarded(
+		now.Add(time.Hour),
+		30*time.Minute,
+		0,
+		func(sess *Session) error {
+			if sess.ID == second.ID {
+				return guardErr
+			}
+			return nil
+		},
+	)
 	if !errors.Is(err, guardErr) {
 		t.Fatalf("guard error = %v, want %v", err, guardErr)
 	}
@@ -122,13 +127,18 @@ func TestManager_ReapExpiredGuarded_CommitsBeforeRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	guarded := false
-	reaped, err := m.ReapExpiredGuarded(sess.CreatedAt.Add(time.Hour), 30*time.Minute, 0, func(candidate *Session) error {
-		if candidate.ID != sess.ID {
-			t.Fatalf("guard candidate = %s, want %s", candidate.ID, sess.ID)
-		}
-		guarded = true
-		return nil
-	})
+	reaped, err := m.ReapExpiredGuarded(
+		sess.CreatedAt.Add(time.Hour),
+		30*time.Minute,
+		0,
+		func(candidate *Session) error {
+			if candidate.ID != sess.ID {
+				t.Fatalf("guard candidate = %s, want %s", candidate.ID, sess.ID)
+			}
+			guarded = true
+			return nil
+		},
+	)
 	if err != nil {
 		t.Fatalf("ReapExpiredGuarded: %v", err)
 	}
@@ -179,7 +189,13 @@ func TestWorkspaceFinalizationRequiresQuiescenceAndSealsAdmission(t *testing.T) 
 		t.Fatalf("writer during finalization error = %v", err)
 	}
 	lease.Release(true)
-	if _, err := s.AcquireExecution(context.Background(), ExecutionAdmission{}); !errors.Is(err, ErrWorkspaceSealed) {
+	if _, err := s.AcquireExecution(
+		context.Background(),
+		ExecutionAdmission{},
+	); !errors.Is(
+		err,
+		ErrWorkspaceSealed,
+	) {
 		t.Fatalf("execution after finalization error = %v", err)
 	}
 }

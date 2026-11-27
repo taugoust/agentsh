@@ -102,7 +102,10 @@ func TestRegisterEmptyTools(t *testing.T) {
 		t.Errorf("tools map has %d entries, want 0", len(r.tools))
 	}
 	if len(r.addrs) != 1 {
-		t.Errorf("addrs map has %d entries, want 1 (addr should be recorded even with empty tools)", len(r.addrs))
+		t.Errorf(
+			"addrs map has %d entries, want 1 (addr should be recorded even with empty tools)",
+			len(r.addrs),
+		)
 	}
 	if r.addrs["host:8080"] != "server-2" {
 		t.Errorf("addrs[host:8080] = %q, want %q", r.addrs["host:8080"], "server-2")
@@ -129,7 +132,11 @@ func TestDuplicateToolNameLastWriteWins(t *testing.T) {
 		t.Errorf("overwrite ToolName = %q, want %q", overwrites[0].ToolName, "get_weather")
 	}
 	if overwrites[0].PreviousServerID != "server-1" {
-		t.Errorf("overwrite PreviousServerID = %q, want %q", overwrites[0].PreviousServerID, "server-1")
+		t.Errorf(
+			"overwrite PreviousServerID = %q, want %q",
+			overwrites[0].PreviousServerID,
+			"server-1",
+		)
 	}
 	if overwrites[0].NewServerID != "server-2" {
 		t.Errorf("overwrite NewServerID = %q, want %q", overwrites[0].NewServerID, "server-2")
@@ -218,10 +225,18 @@ func TestServerAddrsOnlyNetwork(t *testing.T) {
 		t.Fatalf("ServerAddrs returned %d entries, want 2", len(addrs))
 	}
 	if addrs["mcp.example.com:443"] != "http-server" {
-		t.Errorf("addrs[mcp.example.com:443] = %q, want %q", addrs["mcp.example.com:443"], "http-server")
+		t.Errorf(
+			"addrs[mcp.example.com:443] = %q, want %q",
+			addrs["mcp.example.com:443"],
+			"http-server",
+		)
 	}
 	if addrs["sse.example.com:8080"] != "sse-server" {
-		t.Errorf("addrs[sse.example.com:8080] = %q, want %q", addrs["sse.example.com:8080"], "sse-server")
+		t.Errorf(
+			"addrs[sse.example.com:8080] = %q, want %q",
+			addrs["sse.example.com:8080"],
+			"sse-server",
+		)
 	}
 }
 
@@ -550,7 +565,10 @@ func TestLookupBatchReturnsCopies(t *testing.T) {
 	// Internal state should be unaffected.
 	entry := r.Lookup("tool_a")
 	if entry.ToolHash != "ha" {
-		t.Errorf("LookupBatch did not return copies; mutation leaked: ToolHash = %q", entry.ToolHash)
+		t.Errorf(
+			"LookupBatch did not return copies; mutation leaked: ToolHash = %q",
+			entry.ToolHash,
+		)
 	}
 }
 

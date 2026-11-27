@@ -63,29 +63,56 @@ func (m Manifest) Validate() error {
 		return fmt.Errorf("%w: unsupported schema_version %d", ErrManifestInvalid, m.SchemaVersion)
 	}
 	if m.ContractVersion != ContractVersion {
-		return fmt.Errorf("%w: unsupported contract_version %d", ErrManifestInvalid, m.ContractVersion)
+		return fmt.Errorf(
+			"%w: unsupported contract_version %d",
+			ErrManifestInvalid,
+			m.ContractVersion,
+		)
 	}
-	if !validName(m.Provider) || !validName(m.Profile) || !validName(m.SessionID) || filepath.Base(m.SessionID) != m.SessionID {
-		return fmt.Errorf("%w: provider, profile, or session identity is invalid", ErrManifestInvalid)
+	if !validName(m.Provider) || !validName(m.Profile) || !validName(m.SessionID) ||
+		filepath.Base(m.SessionID) != m.SessionID {
+		return fmt.Errorf(
+			"%w: provider, profile, or session identity is invalid",
+			ErrManifestInvalid,
+		)
 	}
-	if !filepath.IsAbs(m.StateDir) || filepath.Clean(m.StateDir) != m.StateDir || filepath.Base(m.StateDir) != m.SessionID {
-		return fmt.Errorf("%w: state directory is not bound to the exact session", ErrManifestInvalid)
+	if !filepath.IsAbs(m.StateDir) || filepath.Clean(m.StateDir) != m.StateDir ||
+		filepath.Base(m.StateDir) != m.SessionID {
+		return fmt.Errorf(
+			"%w: state directory is not bound to the exact session",
+			ErrManifestInvalid,
+		)
 	}
 	if m.CreatedAt.IsZero() || m.UpdatedAt.IsZero() || m.UpdatedAt.Before(m.CreatedAt) {
 		return fmt.Errorf("%w: timestamps are invalid", ErrManifestInvalid)
 	}
 	switch m.State {
-	case StateProvisioning, StateRecovering, StateReady, StateDegraded, StateFinalizing, StateStopping, StateStopped, StateFailed:
+	case StateProvisioning,
+		StateRecovering,
+		StateReady,
+		StateDegraded,
+		StateFinalizing,
+		StateStopping,
+		StateStopped,
+		StateFailed:
 	default:
 		return fmt.Errorf("%w: unsupported state %q", ErrManifestInvalid, m.State)
 	}
-	identityPresent := m.Identity.ContractVersion != 0 || m.Identity.Provider != "" || m.Identity.Profile != "" || m.Identity.SessionID != "" || m.Identity.Generation != 0 || m.Identity.IncarnationID != "" || m.Identity.OwnerPID != 0 || m.Identity.OwnerStartIdentity != "" || m.Identity.BootID != ""
+	identityPresent := m.Identity.ContractVersion != 0 || m.Identity.Provider != "" ||
+		m.Identity.Profile != "" ||
+		m.Identity.SessionID != "" ||
+		m.Identity.Generation != 0 ||
+		m.Identity.IncarnationID != "" ||
+		m.Identity.OwnerPID != 0 ||
+		m.Identity.OwnerStartIdentity != "" ||
+		m.Identity.BootID != ""
 	endpointPresent := m.Endpoint.Transport != "" || m.Endpoint.Address != ""
 	if identityPresent {
 		if err := m.Identity.ValidateComplete(); err != nil {
 			return fmt.Errorf("%w: %v", ErrManifestInvalid, err)
 		}
-		if m.Identity.Provider != m.Provider || m.Identity.Profile != m.Profile || m.Identity.SessionID != m.SessionID {
+		if m.Identity.Provider != m.Provider || m.Identity.Profile != m.Profile ||
+			m.Identity.SessionID != m.SessionID {
 			return fmt.Errorf("%w: manifest and runtime identities differ", ErrManifestInvalid)
 		}
 	}
@@ -94,9 +121,15 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("%w: %v", ErrManifestInvalid, err)
 		}
 	}
-	if m.State == StateReady || m.State == StateDegraded || m.State == StateFinalizing || m.State == StateStopping || m.State == StateStopped {
+	if m.State == StateReady || m.State == StateDegraded || m.State == StateFinalizing ||
+		m.State == StateStopping ||
+		m.State == StateStopped {
 		if !identityPresent || !endpointPresent {
-			return fmt.Errorf("%w: state %s requires complete identity and endpoint", ErrManifestInvalid, m.State)
+			return fmt.Errorf(
+				"%w: state %s requires complete identity and endpoint",
+				ErrManifestInvalid,
+				m.State,
+			)
 		}
 	}
 	if m.CleanupPending && !m.CleanupIntentKnown {
@@ -134,7 +167,10 @@ func WriteManifest(stateDir string, manifest Manifest) error {
 
 func ReadManifest(stateDir string) (Manifest, error) {
 	if !filepath.IsAbs(stateDir) || filepath.Clean(stateDir) != stateDir {
-		return Manifest{}, fmt.Errorf("%w: state directory must be clean and absolute", ErrManifestInvalid)
+		return Manifest{}, fmt.Errorf(
+			"%w: state directory must be clean and absolute",
+			ErrManifestInvalid,
+		)
 	}
 	path := ManifestPath(stateDir)
 	data, err := readProtectedRegularFile(path, 1<<20)
@@ -170,7 +206,10 @@ func validateManifestStateDir(stateDir string, manifest Manifest) error {
 		return err
 	}
 	if stateDir != manifest.StateDir {
-		return fmt.Errorf("%w: manifest state directory does not match its storage directory", ErrManifestInvalid)
+		return fmt.Errorf(
+			"%w: manifest state directory does not match its storage directory",
+			ErrManifestInvalid,
+		)
 	}
 	return nil
 }
@@ -228,7 +267,8 @@ func readProtectedRegularFile(path string, maxBytes int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !pathInfo.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 || pathInfo.Mode().Perm()&0o077 != 0 {
+	if !pathInfo.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 ||
+		pathInfo.Mode().Perm()&0o077 != 0 {
 		return nil, fmt.Errorf("protected file has unsafe type or permissions")
 	}
 	if pathInfo.Size() < 0 || pathInfo.Size() > maxBytes {

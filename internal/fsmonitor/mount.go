@@ -17,7 +17,12 @@ type Mount struct {
 	Server     *fuse.Server
 }
 
-func MountWorkspace(ctx context.Context, backingDir string, mountPoint string, hooks *Hooks) (*Mount, error) {
+func MountWorkspace(
+	ctx context.Context,
+	backingDir string,
+	mountPoint string,
+	hooks *Hooks,
+) (*Mount, error) {
 	if backingDir == "" {
 		return nil, fmt.Errorf("backingDir is empty")
 	}
@@ -66,7 +71,10 @@ func MountWorkspace(ctx context.Context, backingDir string, mountPoint string, h
 		}
 		return &Mount{MountPoint: mountPoint, Server: res.server}, nil
 	case <-ctx.Done():
-		return nil, fmt.Errorf("FUSE mount timed out at %s (likely blocked by container runtime)", mountPoint)
+		return nil, fmt.Errorf(
+			"FUSE mount timed out at %s (likely blocked by container runtime)",
+			mountPoint,
+		)
 	}
 }
 

@@ -41,7 +41,10 @@ func TestBuildAllowedEndpoints_MixedRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	keys, cidrs, deny, denyCIDRs, strict, hasDomains, ttl := buildAllowedEndpoints(engine, 60*time.Second)
+	keys, cidrs, deny, denyCIDRs, strict, hasDomains, ttl := buildAllowedEndpoints(
+		engine,
+		60*time.Second,
+	)
 	if !strict {
 		t.Fatalf("expected strict for exact domains+cidr")
 	}

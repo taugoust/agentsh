@@ -20,7 +20,12 @@ func TestLossReasonConstants_StableValues(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.got != tc.expected {
-				t.Fatalf("%s = %q, want %q (on-disk-stable; do NOT change)", tc.name, tc.got, tc.expected)
+				t.Fatalf(
+					"%s = %q, want %q (on-disk-stable; do NOT change)",
+					tc.name,
+					tc.got,
+					tc.expected,
+				)
 			}
 		})
 	}

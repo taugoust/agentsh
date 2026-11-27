@@ -169,23 +169,36 @@ func New(cfg Config) (*Server, error) {
 		return nil, errors.New("postgres.New: Sink is required when Unavoidability != off")
 	}
 	if len(cfg.Services) == 0 {
-		return nil, errors.New("postgres.New: at least one Service is required when Unavoidability != off")
+		return nil, errors.New(
+			"postgres.New: at least one Service is required when Unavoidability != off",
+		)
 	}
 	if cfg.AgentSessionID == "" {
-		return nil, errors.New("postgres.New: AgentSessionID is required when Unavoidability != off")
+		return nil, errors.New(
+			"postgres.New: AgentSessionID is required when Unavoidability != off",
+		)
 	}
 	if cfg.SessionResolver == nil {
-		return nil, errors.New("postgres.New: SessionResolver is required when Unavoidability != off")
+		return nil, errors.New(
+			"postgres.New: SessionResolver is required when Unavoidability != off",
+		)
 	}
 	for i, svc := range cfg.Services {
 		if svc.Name == "" {
 			return nil, fmt.Errorf("postgres.New: services[%d].Name is empty", i)
 		}
 		if svc.Listen.Kind != "unix" && svc.Listen.Kind != "tcp" {
-			return nil, fmt.Errorf("postgres.New: services[%d].Listen.Kind = %q; want unix or tcp", i, svc.Listen.Kind)
+			return nil, fmt.Errorf(
+				"postgres.New: services[%d].Listen.Kind = %q; want unix or tcp",
+				i,
+				svc.Listen.Kind,
+			)
 		}
 		if svc.Listen.Kind == "unix" && svc.Listen.Path == "" {
-			return nil, fmt.Errorf("postgres.New: services[%d].Listen.Path is empty for unix listener", i)
+			return nil, fmt.Errorf(
+				"postgres.New: services[%d].Listen.Path is empty for unix listener",
+				i,
+			)
 		}
 	}
 	if cfg.MaxQueryBytes == 0 {
@@ -252,7 +265,9 @@ func (s *Server) Start(ctx context.Context) error {
 	defer close(s.done)
 
 	if s.sentinel {
-		s.logger.Info("postgres.Server: sentinel mode (Unavoidability == off); not binding listeners")
+		s.logger.Info(
+			"postgres.Server: sentinel mode (Unavoidability == off); not binding listeners",
+		)
 		<-runCtx.Done()
 		return runCtx.Err()
 	}
@@ -275,7 +290,13 @@ func (s *Server) Start(ctx context.Context) error {
 			return fmt.Errorf("bind listener for service %q: %w", svc.Name, err)
 		}
 		bound[svc.Name] = ln
-		s.logger.Info("postgres.Server: bound listener", "service", svc.Name, "path", svc.Listen.Path)
+		s.logger.Info(
+			"postgres.Server: bound listener",
+			"service",
+			svc.Name,
+			"path",
+			svc.Listen.Path,
+		)
 	}
 
 	// Hand listeners over to the Server so Shutdown can close them.
@@ -379,7 +400,13 @@ func (s *Server) acceptLoop(ctx context.Context, svc Service, ln *unixListener) 
 func (s *Server) handleConn(ctx context.Context, svc Service, conn net.Conn) {
 	uid, pid, err := readPeerCred(conn)
 	if err != nil {
-		s.logger.Warn("postgres.Server: peercred read failed; closing", "service", svc.Name, "err", err)
+		s.logger.Warn(
+			"postgres.Server: peercred read failed; closing",
+			"service",
+			svc.Name,
+			"err",
+			err,
+		)
 		s.emitListenerAuthFail(ctx, svc, 0, 0, "", "peercred_read_failed")
 		return
 	}
@@ -401,7 +428,13 @@ func (s *Server) handleConn(ctx context.Context, svc Service, conn net.Conn) {
 		!errors.Is(err, net.ErrClosed) &&
 		!errors.Is(err, io.EOF) &&
 		!errors.Is(err, io.ErrUnexpectedEOF) {
-		s.logger.Warn("postgres.Server: proxyConn exited with error", "service", svc.Name, "err", err)
+		s.logger.Warn(
+			"postgres.Server: proxyConn exited with error",
+			"service",
+			svc.Name,
+			"err",
+			err,
+		)
 	}
 }
 
@@ -411,7 +444,13 @@ func (s *Server) handleConn(ctx context.Context, svc Service, conn net.Conn) {
 // returns context.Canceled and we log warn). Acceptable for Plan 04a; Plan
 // 04b's real sink may want a background ctx with a short timeout to ensure
 // shutdown-race events still survive.
-func (s *Server) emitListenerAuthFail(ctx context.Context, svc Service, uid uint32, pid int32, peerSessionID, reason string) {
+func (s *Server) emitListenerAuthFail(
+	ctx context.Context,
+	svc Service,
+	uid uint32,
+	pid int32,
+	peerSessionID, reason string,
+) {
 	if s.cfg.Sink == nil {
 		return
 	}

@@ -20,7 +20,11 @@ func (r *recordingAdder) AddRule(sc seccomp.ScmpSyscall, _ seccomp.ScmpAction) e
 	return nil
 }
 
-func (r *recordingAdder) AddRuleConditional(sc seccomp.ScmpSyscall, _ seccomp.ScmpAction, _ []seccomp.ScmpCondition) error {
+func (r *recordingAdder) AddRuleConditional(
+	sc seccomp.ScmpSyscall,
+	_ seccomp.ScmpAction,
+	_ []seccomp.ScmpCondition,
+) error {
 	r.syscalls = append(r.syscalls, sc)
 	return nil
 }
@@ -66,7 +70,11 @@ func TestProbeFilterMirrorsProductionFileMonitor(t *testing.T) {
 		{unix.SYS_FACCESSAT2, "faccessat2"}, // metadata family
 	} {
 		if !rec.has(want.nr) {
-			t.Errorf("probe filter composition does not trap %s (nr=%d); no longer mirrors production", want.name, want.nr)
+			t.Errorf(
+				"probe filter composition does not trap %s (nr=%d); no longer mirrors production",
+				want.name,
+				want.nr,
+			)
 		}
 	}
 }

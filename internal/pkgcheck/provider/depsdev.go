@@ -87,7 +87,10 @@ type depsDevResult struct {
 	err      error
 }
 
-func (p *depsDevProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequest) (*pkgcheck.CheckResponse, error) {
+func (p *depsDevProvider) CheckBatch(
+	ctx context.Context,
+	req pkgcheck.CheckRequest,
+) (*pkgcheck.CheckResponse, error) {
 	start := time.Now()
 	ecosystem := mapEcosystemDepsDev(req.Ecosystem)
 
@@ -124,7 +127,10 @@ func (p *depsDevProvider) CheckBatch(ctx context.Context, req pkgcheck.CheckRequ
 	}, nil
 }
 
-func (p *depsDevProvider) fetchVersion(ctx context.Context, ecosystem, name, version string) (*depsDevVersionResponse, error) {
+func (p *depsDevProvider) fetchVersion(
+	ctx context.Context,
+	ecosystem, name, version string,
+) (*depsDevVersionResponse, error) {
 	reqURL := fmt.Sprintf("%s/v3alpha/systems/%s/packages/%s/versions/%s",
 		p.baseURL,
 		url.PathEscape(ecosystem),
@@ -156,7 +162,10 @@ func (p *depsDevProvider) fetchVersion(ctx context.Context, ecosystem, name, ver
 	return &versionResp, nil
 }
 
-func (p *depsDevProvider) extractFindings(pkg pkgcheck.PackageRef, resp *depsDevVersionResponse) []pkgcheck.Finding {
+func (p *depsDevProvider) extractFindings(
+	pkg pkgcheck.PackageRef,
+	resp *depsDevVersionResponse,
+) []pkgcheck.Finding {
 	var findings []pkgcheck.Finding
 
 	// License findings.
@@ -196,7 +205,14 @@ func (p *depsDevProvider) extractFindings(pkg pkgcheck.PackageRef, resp *depsDev
 				Severity: pkgcheck.SeverityMedium,
 				Title:    fmt.Sprintf("Low OpenSSF Scorecard score: %.1f", score),
 				Reasons: []pkgcheck.Reason{
-					{Code: "low_scorecard", Message: fmt.Sprintf("Score %.1f is below threshold %.1f", score, p.scorecardThreshold)},
+					{
+						Code: "low_scorecard",
+						Message: fmt.Sprintf(
+							"Score %.1f is below threshold %.1f",
+							score,
+							p.scorecardThreshold,
+						),
+					},
 				},
 				Metadata: map[string]string{
 					"scorecard_score": fmt.Sprintf("%.1f", score),
@@ -218,7 +234,10 @@ func (p *depsDevProvider) extractFindings(pkg pkgcheck.PackageRef, resp *depsDev
 					Title:    "Package version published recently",
 					Detail:   fmt.Sprintf("Published at %s", resp.PublishedAt),
 					Reasons: []pkgcheck.Reason{
-						{Code: "package_too_new", Message: "Version was published less than 7 days ago"},
+						{
+							Code:    "package_too_new",
+							Message: "Version was published less than 7 days ago",
+						},
 					},
 					Metadata: map[string]string{
 						"published_at": resp.PublishedAt,

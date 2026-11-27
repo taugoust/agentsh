@@ -13,7 +13,12 @@ import (
 //
 // If mustExist is true, the target is expected to exist and will be evaluated directly.
 // If mustExist is false, the parent directory is evaluated for symlink escape and the final path may not exist yet.
-func resolveRealPathUnderRoot(realRoot string, virtPath string, mustExist bool, virtualRoot string) (string, error) {
+func resolveRealPathUnderRoot(
+	realRoot string,
+	virtPath string,
+	mustExist bool,
+	virtualRoot string,
+) (string, error) {
 	virtPath = filepath.ToSlash(virtPath)
 	if !pathutil.IsUnderRoot(virtPath, virtualRoot) {
 		return "", fmt.Errorf("path must be under %s", virtualRoot)

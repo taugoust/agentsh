@@ -112,7 +112,11 @@ func DiscoverProjectOverlays(projectRoot string, cfg ProjectOverlaysConfig) ([]O
 			}
 			if eval, err := filepath.EvalSymlinks(abs); err == nil {
 				if !pathWithin(eval, root) {
-					return nil, fmt.Errorf("overlay path %q resolves outside project root %q", path, root)
+					return nil, fmt.Errorf(
+						"overlay path %q resolves outside project root %q",
+						path,
+						root,
+					)
 				}
 			} else {
 				return nil, fmt.Errorf("resolve overlay path symlinks %q: %w", path, err)
@@ -136,7 +140,10 @@ func DiscoverProjectOverlays(projectRoot string, cfg ProjectOverlaysConfig) ([]O
 		if err != nil {
 			return nil, fmt.Errorf("relativize overlay path %q: %w", abs, err)
 		}
-		out = append(out, OverlayFile{AbsPath: abs, RelPath: filepath.ToSlash(rel), Overlay: *overlay})
+		out = append(
+			out,
+			OverlayFile{AbsPath: abs, RelPath: filepath.ToSlash(rel), Overlay: *overlay},
+		)
 	}
 	return out, nil
 }
@@ -150,7 +157,10 @@ func cleanOverlayPattern(pattern string) (string, error) {
 	}
 	clean := filepath.Clean(pattern)
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("overlay path pattern %q must not traverse outside the project root", pattern)
+		return "", fmt.Errorf(
+			"overlay path pattern %q must not traverse outside the project root",
+			pattern,
+		)
 	}
 	return clean, nil
 }
@@ -204,7 +214,23 @@ func (o PolicyOverlay) Validate() error {
 }
 
 func (o PolicyOverlay) ruleCount() int {
-	return len(o.FileRules) + len(o.NetworkRules) + len(o.CommandRules) + len(o.UnixRules) + len(o.SignalRules) + len(o.DnsRedirectRules) + len(o.ConnectRedirectRules) + len(o.PackageRules)
+	return len(
+		o.FileRules,
+	) + len(
+		o.NetworkRules,
+	) + len(
+		o.CommandRules,
+	) + len(
+		o.UnixRules,
+	) + len(
+		o.SignalRules,
+	) + len(
+		o.DnsRedirectRules,
+	) + len(
+		o.ConnectRedirectRules,
+	) + len(
+		o.PackageRules,
+	)
 }
 
 func rejectProjectOverlayBoundaries(o PolicyOverlay) error {
@@ -215,22 +241,34 @@ func rejectProjectOverlayBoundaries(o PolicyOverlay) error {
 	}
 	for _, rule := range o.NetworkRules {
 		if rule.ProjectOverlayBoundary {
-			return fmt.Errorf("network_rules rule %q must not set project_overlay_boundary", rule.Name)
+			return fmt.Errorf(
+				"network_rules rule %q must not set project_overlay_boundary",
+				rule.Name,
+			)
 		}
 	}
 	for _, rule := range o.CommandRules {
 		if rule.ProjectOverlayBoundary {
-			return fmt.Errorf("command_rules rule %q must not set project_overlay_boundary", rule.Name)
+			return fmt.Errorf(
+				"command_rules rule %q must not set project_overlay_boundary",
+				rule.Name,
+			)
 		}
 	}
 	for _, rule := range o.UnixRules {
 		if rule.ProjectOverlayBoundary {
-			return fmt.Errorf("unix_socket_rules rule %q must not set project_overlay_boundary", rule.Name)
+			return fmt.Errorf(
+				"unix_socket_rules rule %q must not set project_overlay_boundary",
+				rule.Name,
+			)
 		}
 	}
 	for _, rule := range o.SignalRules {
 		if rule.ProjectOverlayBoundary {
-			return fmt.Errorf("signal_rules rule %q must not set project_overlay_boundary", rule.Name)
+			return fmt.Errorf(
+				"signal_rules rule %q must not set project_overlay_boundary",
+				rule.Name,
+			)
 		}
 	}
 	return nil
@@ -311,7 +349,11 @@ func MergePolicyOverlays(base *Policy, overlays []PolicyOverlay) (*Policy, error
 		if !compositionBoundary {
 			for _, rule := range overlay.CommandRules {
 				if rule.SandboxComposition != "" {
-					return nil, fmt.Errorf("overlay %q command rule %q selects sandbox_composition without an explicit trusted project_overlay_boundary", overlay.Name, rule.Name)
+					return nil, fmt.Errorf(
+						"overlay %q command rule %q selects sandbox_composition without an explicit trusted project_overlay_boundary",
+						overlay.Name,
+						rule.Name,
+					)
 				}
 			}
 		}
@@ -393,25 +435,53 @@ func rejectBaseRuleNameConflicts(base *Policy, overlay PolicyOverlay) error {
 		}
 		return nil
 	}
-	if err := checkFamily("file_rules", fileRuleNames(base.FileRules), fileRuleNames(overlay.FileRules)); err != nil {
+	if err := checkFamily(
+		"file_rules",
+		fileRuleNames(base.FileRules),
+		fileRuleNames(overlay.FileRules),
+	); err != nil {
 		return err
 	}
-	if err := checkFamily("network_rules", networkRuleNames(base.NetworkRules), networkRuleNames(overlay.NetworkRules)); err != nil {
+	if err := checkFamily(
+		"network_rules",
+		networkRuleNames(base.NetworkRules),
+		networkRuleNames(overlay.NetworkRules),
+	); err != nil {
 		return err
 	}
-	if err := checkFamily("command_rules", commandRuleNames(base.CommandRules), commandRuleNames(overlay.CommandRules)); err != nil {
+	if err := checkFamily(
+		"command_rules",
+		commandRuleNames(base.CommandRules),
+		commandRuleNames(overlay.CommandRules),
+	); err != nil {
 		return err
 	}
-	if err := checkFamily("unix_socket_rules", unixRuleNames(base.UnixRules), unixRuleNames(overlay.UnixRules)); err != nil {
+	if err := checkFamily(
+		"unix_socket_rules",
+		unixRuleNames(base.UnixRules),
+		unixRuleNames(overlay.UnixRules),
+	); err != nil {
 		return err
 	}
-	if err := checkFamily("signal_rules", signalRuleNames(base.SignalRules), signalRuleNames(overlay.SignalRules)); err != nil {
+	if err := checkFamily(
+		"signal_rules",
+		signalRuleNames(base.SignalRules),
+		signalRuleNames(overlay.SignalRules),
+	); err != nil {
 		return err
 	}
-	if err := checkFamily("dns_redirects", dnsRuleNames(base.DnsRedirectRules), dnsRuleNames(overlay.DnsRedirectRules)); err != nil {
+	if err := checkFamily(
+		"dns_redirects",
+		dnsRuleNames(base.DnsRedirectRules),
+		dnsRuleNames(overlay.DnsRedirectRules),
+	); err != nil {
 		return err
 	}
-	if err := checkFamily("connect_redirects", connectRuleNames(base.ConnectRedirectRules), connectRuleNames(overlay.ConnectRedirectRules)); err != nil {
+	if err := checkFamily(
+		"connect_redirects",
+		connectRuleNames(base.ConnectRedirectRules),
+		connectRuleNames(overlay.ConnectRedirectRules),
+	); err != nil {
 		return err
 	}
 	return nil
@@ -560,7 +630,9 @@ func isTerminalFileDeny(rule FileRule) bool {
 	if strings.HasPrefix(rule.Name, "default-deny") && rule.Decision == "deny" {
 		return true
 	}
-	return rule.Decision == "deny" && len(rule.Paths) == 1 && rule.Paths[0] == "**" && len(rule.Operations) == 1 && rule.Operations[0] == "*"
+	return rule.Decision == "deny" && len(rule.Paths) == 1 && rule.Paths[0] == "**" &&
+		len(rule.Operations) == 1 &&
+		rule.Operations[0] == "*"
 }
 
 func isTerminalCommandDeny(rule CommandRule) bool {
@@ -574,14 +646,17 @@ func isTerminalNetworkDeny(rule NetworkRule) bool {
 	if strings.HasPrefix(rule.Name, "default-deny") && rule.Decision == "deny" {
 		return true
 	}
-	return rule.Decision == "deny" && len(rule.Domains) == 1 && rule.Domains[0] == "*" && len(rule.Ports) == 0 && len(rule.CIDRs) == 0
+	return rule.Decision == "deny" && len(rule.Domains) == 1 && rule.Domains[0] == "*" &&
+		len(rule.Ports) == 0 &&
+		len(rule.CIDRs) == 0
 }
 
 func isTerminalUnixDeny(rule UnixSocketRule) bool {
 	if strings.HasPrefix(rule.Name, "default-deny") && rule.Decision == "deny" {
 		return true
 	}
-	return rule.Decision == "deny" && len(rule.Paths) == 1 && rule.Paths[0] == "**" && len(rule.Operations) == 0
+	return rule.Decision == "deny" && len(rule.Paths) == 1 && rule.Paths[0] == "**" &&
+		len(rule.Operations) == 0
 }
 
 func isTerminalSignalDeny(rule SignalRule) bool {
