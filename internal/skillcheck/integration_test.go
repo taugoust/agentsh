@@ -106,7 +106,8 @@ func TestEndToEnd_QuarantineRoundTrip(t *testing.T) {
 	}
 	if entries, _ := trash.List(trashDir); len(entries) == 0 {
 		t.Fatalf(
-			"trash list is empty after quarantine completed (race between source removal and manifest write?)",
+			"trash list is empty after quarantine completed (race between source removal and " +
+				"manifest write?)",
 		)
 	}
 

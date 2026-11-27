@@ -101,7 +101,8 @@ func TestParseIntegrityEntry_ExtractsIntegrityAndCanonicalPayload(t *testing.T) 
 	t.Parallel()
 
 	line := []byte(
-		`{"z":"last","type":"event","integrity":{"format_version":2,"sequence":17,"prev_hash":"abcd1234","entry_hash":"deadbeef"},"a":"first"}`,
+		`{"z":"last","type":"event","integrity":{"format_version":2,"sequence":17,` +
+			`"prev_hash":"abcd1234","entry_hash":"deadbeef"},"a":"first"}`,
 	)
 
 	got, err := ParseIntegrityEntry(line)

@@ -51,7 +51,8 @@ func newGuestVolumeProofFixture(t *testing.T) guestVolumeProofFixture {
 		t.Fatal(err)
 	}
 	mountInfo := fmt.Sprintf(
-		"31 20 %d:%d / %s rw,relatime - ext4 /dev/vda rw\n32 20 %d:%d /workspace %s rw,relatime - ext4 /dev/vda rw\n",
+		"31 20 %d:%d / %s rw,relatime - ext4 /dev/vda rw\n"+
+			"32 20 %d:%d /workspace %s rw,relatime - ext4 /dev/vda rw\n",
 		major,
 		minor,
 		volumeRoot,
@@ -361,17 +362,24 @@ func TestGuestControlVolumeProofRejectsMalformedOrMismatchedIdentity(t *testing.
 		},
 		{
 			name: "unknown field",
-			raw:  `{"schema_version":1,"session_id":"session-11111111-1111-4111-8111-111111111111","volume_id":"22222222-2222-4222-8222-222222222222","unknown":true}`,
+			raw: `{"schema_version":1,` +
+				`"session_id":"session-11111111-1111-4111-8111-111111111111",` +
+				`"volume_id":"22222222-2222-4222-8222-222222222222","unknown":true}`,
 			mode: 0o600,
 		},
 		{
 			name: "duplicate field",
-			raw:  `{"schema_version":1,"session_id":"session-11111111-1111-4111-8111-111111111111","volume_id":"22222222-2222-4222-8222-222222222222","volume_id":"22222222-2222-4222-8222-222222222222"}`,
+			raw: `{"schema_version":1,` +
+				`"session_id":"session-11111111-1111-4111-8111-111111111111",` +
+				`"volume_id":"22222222-2222-4222-8222-222222222222",` +
+				`"volume_id":"22222222-2222-4222-8222-222222222222"}`,
 			mode: 0o600,
 		},
 		{
 			name: "trailing JSON",
-			raw:  `{"schema_version":1,"session_id":"session-11111111-1111-4111-8111-111111111111","volume_id":"22222222-2222-4222-8222-222222222222"} {}`,
+			raw: `{"schema_version":1,` +
+				`"session_id":"session-11111111-1111-4111-8111-111111111111",` +
+				`"volume_id":"22222222-2222-4222-8222-222222222222"} {}`,
 			mode: 0o600,
 		},
 		{name: "malformed", raw: `{`, mode: 0o600},

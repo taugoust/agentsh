@@ -38,7 +38,10 @@ type catalogRuntimeLoader interface {
 	LoadCurrentSearchPath(ctx context.Context, pc *proxyConn) ([]string, string, error)
 }
 
-type catalogRuntimeLoaderFunc func(context.Context, *proxyConn) (catalog.Snapshot, []string, string, error)
+type catalogRuntimeLoaderFunc func(
+	context.Context,
+	*proxyConn,
+) (catalog.Snapshot, []string, string, error)
 
 func (f catalogRuntimeLoaderFunc) LoadCatalogSnapshot(
 	ctx context.Context,

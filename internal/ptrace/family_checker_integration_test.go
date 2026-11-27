@@ -327,7 +327,8 @@ func TestIntegration_FamilyChecker_Log(t *testing.T) {
 	events := sink.Events()
 	if len(events) == 0 {
 		t.Fatal(
-			"audit sink received no events; expected exactly one seccomp_socket_family_blocked event from ptrace engine",
+			"audit sink received no events; expected exactly one seccomp_socket_family_blocked " +
+				"event from ptrace engine",
 		)
 	}
 	if len(events) > 1 {

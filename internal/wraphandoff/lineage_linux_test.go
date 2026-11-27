@@ -41,9 +41,10 @@ func TestLineageHandoffTwoPhaseRoundTrip(t *testing.T) {
 
 	sendDone := make(chan error, 1)
 	go func() {
-		sendDone <- SendPayloadHandoff(client, int(notifyR.Fd()), int(setupR.Fd()), int(lookupR.Fd()), Metadata{
-			WrapperPID: 41, PayloadPID: 42, CommandJail: true,
-		})
+		sendDone <- SendPayloadHandoff(client, int(notifyR.Fd()), int(setupR.Fd()),
+			int(lookupR.Fd()), Metadata{
+				WrapperPID: 41, PayloadPID: 42, CommandJail: true,
+			})
 	}()
 	handoff, err := RecvHandoff(server)
 	if err != nil {

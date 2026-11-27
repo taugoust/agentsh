@@ -322,7 +322,8 @@ func classifyCreateTrigger(
 	cs.RawVerb = "CREATE_TRIGGER"
 	objs := []effects.ObjectRef{
 		{
-			Kind: effects.ObjectFunction, // trigger names lack a dedicated kind; use function as nearest fit
+			// trigger names lack a dedicated kind; use function as nearest fit
+			Kind: effects.ObjectFunction,
 			Name: strings.ToLower(s.Trigname),
 		},
 	}

@@ -41,6 +41,7 @@ type PackageChecksConfig struct {
 type PackagePrivacyConfig struct {
 	// ExternalScanRegistries lists registries whose packages may be sent
 	// to external providers. An empty list means "no registry filter."
+	//nolint:lll // struct tags cannot be wrapped
 	ExternalScanRegistries []string `yaml:"external_scan_registries" json:"external_scan_registries"`
 	// PrivateScopeDenylist lists package name prefixes / glob patterns
 	// that should NOT be sent externally even when on an allowed registry.
@@ -73,7 +74,8 @@ func (p PackagePrivacyConfig) Validate() error {
 		}
 		if nonEmpty == 0 {
 			return fmt.Errorf(
-				"external_scan_registries: provided %d entries but all are empty/whitespace; use [] to disable the filter explicitly",
+				"external_scan_registries: provided %d entries but all are empty/whitespace; use "+
+					"[] to disable the filter explicitly",
 				len(p.ExternalScanRegistries),
 			)
 		}
@@ -172,12 +174,13 @@ type SkillcheckLimits struct {
 
 // SkillcheckProviderConfig configures a single skillcheck provider.
 type SkillcheckProviderConfig struct {
-	Enabled     bool          `yaml:"enabled" json:"enabled"`
-	Timeout     time.Duration `yaml:"timeout" json:"timeout"`
-	OnFailure   string        `yaml:"on_failure" json:"on_failure"`
-	BinaryPath  string        `yaml:"binary_path,omitempty" json:"binary_path,omitempty"`   // snyk
-	BaseURL     string        `yaml:"base_url,omitempty" json:"base_url,omitempty"`         // skills_sh
-	ProbeAudits bool          `yaml:"probe_audits,omitempty" json:"probe_audits,omitempty"` // skills_sh
+	Enabled    bool          `yaml:"enabled" json:"enabled"`
+	Timeout    time.Duration `yaml:"timeout" json:"timeout"`
+	OnFailure  string        `yaml:"on_failure" json:"on_failure"`
+	BinaryPath string        `yaml:"binary_path,omitempty" json:"binary_path,omitempty"` // snyk
+	// skills_sh
+	BaseURL     string `yaml:"base_url,omitempty" json:"base_url,omitempty"`
+	ProbeAudits bool   `yaml:"probe_audits,omitempty" json:"probe_audits,omitempty"` // skills_sh
 }
 
 // DefaultPackageChecksConfig returns the default configuration for package checks.
@@ -430,8 +433,10 @@ func ApplyExternalProviderDefaults(cfg *PackageChecksConfig) []string {
 	case "new_packages_only":
 		return []string{
 			fmt.Sprintf(
-				"pkgcheck: %s configured but scope=new_packages_only — bare `npm install` and `npm ci` will not be intercepted, "+
-					"so supply-chain attacks via lockfile installs will not be blocked. Set scope: all_installs for full coverage.",
+				"pkgcheck: %s configured but scope=new_packages_only — bare `npm install` and "+
+					"`npm ci` will not be intercepted, "+
+					"so supply-chain attacks via lockfile installs will not be blocked. Set "+
+					"scope: all_installs for full coverage.",
 				strings.Join(enabledExternal, ", "),
 			),
 		}

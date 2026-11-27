@@ -103,7 +103,8 @@ func TestNew_QuarantinesOnSessionIDMismatch(t *testing.T) {
 		`wtp_wal_quarantine_total{reason="session_id_mismatch"} 1`,
 	) {
 		t.Fatalf(
-			"expected wtp_wal_quarantine_total{reason=\"session_id_mismatch\"}=1 after quarantine\nbody:\n%s",
+			"expected wtp_wal_quarantine_total{reason=\"session_id_mismatch\"}=1 after "+
+				"quarantine\nbody:\n%s",
 			got,
 		)
 	}
@@ -183,7 +184,8 @@ func TestNew_QuarantinesOnKeyFingerprintMismatch(t *testing.T) {
 	body := rr.Body.String()
 	if !strings.Contains(body, `wtp_wal_quarantine_total{reason="key_fingerprint_mismatch"} 1`) {
 		t.Fatalf(
-			"expected wtp_wal_quarantine_total{reason=\"key_fingerprint_mismatch\"}=1 after quarantine\nbody:\n%s",
+			"expected wtp_wal_quarantine_total{reason=\"key_fingerprint_mismatch\"}=1 after "+
+				"quarantine\nbody:\n%s",
 			body,
 		)
 	}
@@ -331,7 +333,8 @@ func TestStore_CloseAfterTerminalRunExit(t *testing.T) {
 	elapsed := time.Since(start)
 	if elapsed > 500*time.Millisecond {
 		t.Fatalf(
-			"Close after terminal Run exit took %v; expected < 500ms (would indicate Stop-on-dead-loop deadlock)",
+			"Close after terminal Run exit took %v; expected < 500ms (would indicate "+
+				"Stop-on-dead-loop deadlock)",
 			elapsed,
 		)
 	}
@@ -542,7 +545,8 @@ func TestStore_CloseSafetyNetReturnsSentinel(t *testing.T) {
 	)
 	if elapsed < closeLowerBound {
 		t.Fatalf(
-			"Close took %v; expected >= %v (closeRunCancelGrace=%v - jitter=%v). Possible regression: synthetic-timeout returned too early.",
+			"Close took %v; expected >= %v (closeRunCancelGrace=%v - jitter=%v). Possible "+
+				"regression: synthetic-timeout returned too early.",
 			elapsed,
 			closeLowerBound,
 			closeRunCancelGraceTest,
@@ -557,7 +561,8 @@ func TestStore_CloseSafetyNetReturnsSentinel(t *testing.T) {
 	// The sentinel — the whole point of this test.
 	if !errors.Is(closeErr, watchtower.ErrCloseSafetyNet) {
 		t.Fatalf(
-			"Close error %v is not errors.Is(ErrCloseSafetyNet); higher layers cannot detect the leak/no-reopen path",
+			"Close error %v is not errors.Is(ErrCloseSafetyNet); higher layers cannot detect the "+
+				"leak/no-reopen path",
 			closeErr,
 		)
 	}
@@ -636,7 +641,8 @@ func TestStore_CloseDeadlineFallback(t *testing.T) {
 	const closeUpperBound = 2500 * time.Millisecond
 	if elapsed > closeUpperBound {
 		t.Fatalf(
-			"Close took %v; expected < %v (DrainDeadline + closeRunCancelGrace + jitter). Possible regression: timer.C branch missed.",
+			"Close took %v; expected < %v (DrainDeadline + closeRunCancelGrace + jitter). "+
+				"Possible regression: timer.C branch missed.",
 			elapsed,
 			closeUpperBound,
 		)

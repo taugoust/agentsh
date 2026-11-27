@@ -170,7 +170,8 @@ func TestNew_RejectsSinkChainOverrideInProduction(t *testing.T) {
 	_, err = watchtower.New(context.Background(), opts)
 	if err == nil {
 		t.Fatal(
-			"expected New to reject SinkChainOverrideForTests without AllowSinkChainOverrideForTests",
+			"expected New to reject SinkChainOverrideForTests without " +
+				"AllowSinkChainOverrideForTests",
 		)
 	}
 	if !strings.Contains(err.Error(), "SinkChainOverrideForTests") {
@@ -193,7 +194,8 @@ func TestNew_AcceptsSinkChainOverrideWhenAllowed(t *testing.T) {
 	s, err := watchtower.New(context.Background(), opts)
 	if err != nil {
 		t.Fatalf(
-			"expected New to accept SinkChainOverrideForTests when AllowSinkChainOverrideForTests is true, got %v",
+			"expected New to accept SinkChainOverrideForTests when "+
+				"AllowSinkChainOverrideForTests is true, got %v",
 			err,
 		)
 	}

@@ -63,8 +63,10 @@ func TestSupportedDelegatedSupervisorCgroup(t *testing.T) {
 		t.Fatal("expected fixed supervisor leaf to normalize to its unit root")
 	}
 	for _, path := range []string{
-		filepath.Join(string(filepath.Separator), "sys", "fs", "cgroup", "user.slice", "user@1000.service"),
-		filepath.Join(string(filepath.Separator), "sys", "fs", "cgroup", "system.slice", "agentsh.service"),
+		filepath.Join(string(filepath.Separator), "sys", "fs", "cgroup", "user.slice",
+			"user@1000.service"),
+		filepath.Join(string(filepath.Separator), "sys", "fs", "cgroup", "system.slice",
+			"agentsh.service"),
 		"",
 	} {
 		if supportedDelegatedSupervisorCgroup(path) {

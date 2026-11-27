@@ -129,7 +129,7 @@ func TestIntegrityChain_Restore_ContinuesFromLastWrittenSequence(t *testing.T) {
 	if got := int64(integrity["sequence"].(float64)); got != 42 {
 		t.Fatalf("sequence = %d, want 42", got)
 	}
-	if got := integrity["prev_hash"].(string); got != "0000000000000000000000000000000000000000000000000000000000000000" {
+	if got := integrity["prev_hash"].(string); got != strings.Repeat("0", 64) {
 		t.Fatalf("prev_hash = %q, want zero hex", got)
 	}
 }
@@ -1015,7 +1015,8 @@ func TestIntegrityChain_Restore_PartialFailure_LeavesStateIntact(t *testing.T) {
 	integrity := result["integrity"].(map[string]any)
 	if got := int64(integrity["sequence"].(float64)); got != s0.Sequence+1 {
 		t.Fatalf(
-			"post-Restore Wrap sequence = %d, want %d (S0.Sequence+1; allocator advanced by failed Restore)",
+			"post-Restore Wrap sequence = %d, want %d (S0.Sequence+1; allocator advanced by "+
+				"failed Restore)",
 			got,
 			s0.Sequence+1,
 		)

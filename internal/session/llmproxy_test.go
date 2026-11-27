@@ -90,7 +90,8 @@ func TestStartLLMProxy(t *testing.T) {
 	// Verify we can make requests through the proxy
 	time.Sleep(10 * time.Millisecond) // Wait for server to be ready
 
-	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "Hello"}]}`
+	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": ` +
+		`"Hello"}]}`
 	req, err := http.NewRequest(
 		http.MethodPost,
 		proxyURL+"/v1/messages",
@@ -356,7 +357,8 @@ func TestSession_LLMProxyEnvVars_Integration(t *testing.T) {
 	// Verify we can use the env vars to make a request
 	time.Sleep(10 * time.Millisecond)
 
-	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "Test"}]}`
+	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": ` +
+		`"Test"}]}`
 	req, _ := http.NewRequest(
 		http.MethodPost,
 		envVars["ANTHROPIC_BASE_URL"]+"/v1/messages",
@@ -516,7 +518,8 @@ func TestStartLLMProxy_WithDLP(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Send a request with PII
-	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "Email test@example.com SSN 123-45-6789"}]}`
+	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": ` +
+		`"Email test@example.com SSN 123-45-6789"}]}`
 	req, _ := http.NewRequest(http.MethodPost, proxyURL+"/v1/messages", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", "test-key")
@@ -711,7 +714,8 @@ func TestStartLLMProxy_MCPOnlyMode(t *testing.T) {
 	// Verify we can make requests through the proxy
 	time.Sleep(10 * time.Millisecond)
 
-	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "Hello"}]}`
+	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": ` +
+		`"Hello"}]}`
 	req, err := http.NewRequest(
 		http.MethodPost,
 		proxyURL+"/v1/messages",
@@ -1410,7 +1414,8 @@ func TestStartLLMProxy_StdioPreRegistrationNoMultiServerCallback(t *testing.T) {
 
 	if multiServerFired {
 		t.Error(
-			"OnMultiServer should not fire: only one server (network) was pre-registered; stdio was skipped",
+			"OnMultiServer should not fire: only one server (network) was pre-registered; stdio " +
+				"was skipped",
 		)
 	}
 }

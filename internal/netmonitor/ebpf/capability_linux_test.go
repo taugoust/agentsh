@@ -51,7 +51,8 @@ func TestCheckSupport_DoesNotRejectMissingBpfInControllers(t *testing.T) {
 	status := CheckSupport()
 	if !status.Supported && status.Reason == "cgroup bpf controller not available" {
 		t.Fatalf(
-			"CheckSupport regressed: reported %q on a host whose cgroup.controllers=%q — BPF is not a cgroup v2 resource controller, so that check must not gate eBPF support",
+			"CheckSupport regressed: reported %q on a host whose cgroup.controllers=%q — BPF is "+
+				"not a cgroup v2 resource controller, so that check must not gate eBPF support",
 			status.Reason,
 			strings.TrimSpace(string(data)),
 		)

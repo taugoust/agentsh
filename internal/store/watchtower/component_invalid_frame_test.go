@@ -136,7 +136,9 @@ func TestStore_InboundGoaway_CodeUnspecified(t *testing.T) {
 	got, body := waitForInvalidFrameCounter(t, c, "goaway_code_unspecified", 1, 1*time.Millisecond)
 	if got > 0 {
 		t.Fatalf(
-			"UNSPECIFIED Goaway must NOT increment wtp_dropped_invalid_frame_total{reason=goaway_code_unspecified}; got %d\nbody:\n%s",
+			"UNSPECIFIED Goaway must NOT increment "+
+				"wtp_dropped_invalid_frame_total{reason=goaway_code_unspecified}; got %d\n"+
+				"body:\n%s",
 			got,
 			body,
 		)

@@ -619,7 +619,8 @@ func TestGenerateBundle_BypassToolRules(t *testing.T) {
 		if r.Decision != "deny" {
 			t.Fatalf("command rule %q decision = %q, want deny", r.Name, r.Decision)
 		}
-		if r.Description != "Convenience detection for DB proxy bypass attempts; destination egress deny is the security boundary" {
+		if r.Description != "Convenience detection for DB proxy bypass attempts; destination "+
+			"egress deny is the security boundary" {
 			t.Fatalf("command rule %q description = %q", r.Name, r.Description)
 		}
 		for _, cmd := range r.Commands {
@@ -725,10 +726,12 @@ func TestGenerateBundle_BypassToolPortPatternsAreDeterministic(t *testing.T) {
 
 	ports := "5432|15432"
 	wantPatterns := map[string]string{
-		"db-bypass-ssh-forward":          "(^|\\s)-L(\\s|[^\\s]*:).*:(" + ports + ")(\\s|$)",
-		"db-bypass-socat":                "(?i)(tcp-listen|listen|tcp:).*(^|[^0-9])(" + ports + ")([^0-9]|$)",
-		"db-bypass-kubectl-port-forward": "(^|\\s)port-forward(\\s|$).*(:(" + ports + ")([^0-9]|$)|\\s(" + ports + "):)",
-		"db-bypass-netcat":               "(?i)(-l|--listen|(^|[^0-9])(" + ports + ")([^0-9]|$))",
+		"db-bypass-ssh-forward": "(^|\\s)-L(\\s|[^\\s]*:).*:(" + ports + ")(\\s|$)",
+		"db-bypass-socat": "(?i)(tcp-listen|listen|tcp:).*(^|[^0-9])(" + ports +
+			")([^0-9]|$)",
+		"db-bypass-kubectl-port-forward": "(^|\\s)port-forward(\\s|$).*(:(" + ports +
+			")([^0-9]|$)|\\s(" + ports + "):)",
+		"db-bypass-netcat": "(?i)(-l|--listen|(^|[^0-9])(" + ports + ")([^0-9]|$))",
 	}
 	for ruleName, wantPattern := range wantPatterns {
 		firstRule := commandRuleByName(t, first.Policy.CommandRules, ruleName)

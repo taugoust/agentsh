@@ -1051,7 +1051,8 @@ func blockedFamiliesUseNotifyForSeccomp(seccompCfg config.SandboxSeccompConfig) 
 	families, err := config.ResolveEffectiveBlockedFamilies(seccompCfg)
 	if err != nil {
 		slog.Warn(
-			"seccomp: failed to resolve blocked_socket_families; socket family rules will not use user notify",
+			"seccomp: failed to resolve blocked_socket_families; socket family rules will not "+
+				"use user notify",
 			"error",
 			err,
 		)
@@ -1236,7 +1237,8 @@ func (a *App) acceptNotifyFD(
 	// successfully takes them over.
 	handoff.NotifyFD = nil
 	handoff.CompositionSetup = nil
-	expectedWrapperConfig, configBound := ctx.Value(wrapSeccompConfigContextKey{}).(seccompWrapperConfig)
+	expectedWrapperConfig, configBound :=
+		ctx.Value(wrapSeccompConfigContextKey{}).(seccompWrapperConfig)
 	compositionSelected := configBound && expectedWrapperConfig.SandboxComposition != ""
 	if !configBound {
 		// Internal tests and older in-process callers have no captured config.

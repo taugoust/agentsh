@@ -63,7 +63,8 @@ func newDetachedReviewCmd(op string) *cobra.Command {
 	}
 	if op == "accept" {
 		cmd.Flags().
-			Uint64Var(&reviewGeneration, "review-generation", 0, "Fresh shadow review generation returned by diff")
+			Uint64Var(&reviewGeneration, "review-generation", 0,
+				"Fresh shadow review generation returned by diff")
 		cmd.Flags().
 			StringVar(&reviewHash, "review-hash", "", "Fresh shadow review hash returned by diff")
 	}

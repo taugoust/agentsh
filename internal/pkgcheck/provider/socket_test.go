@@ -217,9 +217,9 @@ func TestSocketProvider_BreakerOpensAfterRepeatedFailures(t *testing.T) {
 		Packages:  []pkgcheck.PackageRef{{Name: "express", Version: "4.18.0"}},
 	}
 
-	// First call: retryClient exhausts all 3 attempts → 3 server hits → RecordFailure x1 from breaker perspective.
-	// But since retryClient retries internally and only returns 1 error to callWithBreaker,
-	// the breaker records 1 failure per CheckBatch call.
+	// First call: retryClient exhausts all 3 attempts → 3 server hits → RecordFailure x1 from
+	// breaker perspective. But since retryClient retries internally and only returns 1 error to
+	// callWithBreaker, the breaker records 1 failure per CheckBatch call.
 	// With Threshold=2, after 2 CheckBatch calls the breaker opens.
 	_, err1 := p.CheckBatch(context.Background(), req)
 	require.Error(t, err1)

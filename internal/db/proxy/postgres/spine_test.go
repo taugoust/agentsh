@@ -927,7 +927,8 @@ func renameSocketForPgx(t *testing.T, oldPath string, port int) string {
 // Query in phase 1; Extended Query (Parse/Bind/Execute) is denied.
 func pgxConnString(sockDir string, port int) string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=alice dbname=app sslmode=disable default_query_exec_mode=simple_protocol",
+		"host=%s port=%d user=alice dbname=app sslmode=disable "+
+			"default_query_exec_mode=simple_protocol",
 		sockDir,
 		port,
 	)

@@ -61,7 +61,8 @@ func TestWaitKillableFilterCompositionTriggersBug(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "socket + file_monitor disabled but enforce_without_fuse on (intercept_metadata defaults true)",
+			name: "socket + file_monitor disabled but enforce_without_fuse on " +
+				"(intercept_metadata defaults true)",
 			cfg: seccompComposition(SandboxSeccompConfig{
 				UnixSocket: SandboxSeccompUnixConfig{Enabled: true},
 				FileMonitor: SandboxSeccompFileMonitorConfig{
@@ -72,7 +73,8 @@ func TestWaitKillableFilterCompositionTriggersBug(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "socket + file_monitor disabled, enforce_without_fuse on, intercept_metadata explicitly off",
+			name: "socket + file_monitor disabled, enforce_without_fuse on, intercept_metadata " +
+				"explicitly off",
 			cfg: seccompComposition(SandboxSeccompConfig{
 				UnixSocket: SandboxSeccompUnixConfig{Enabled: true},
 				FileMonitor: SandboxSeccompFileMonitorConfig{

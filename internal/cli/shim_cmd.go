@@ -43,7 +43,8 @@ func newShimInstallShellCmd() *cobra.Command {
 			}
 			if isHostRoot(root) && !iUnderstand && !dryRun {
 				return fmt.Errorf(
-					"refusing to modify host rootfs (%q); pass --i-understand-this-modifies-the-host to continue",
+					"refusing to modify host rootfs (%q); pass "+
+						"--i-understand-this-modifies-the-host to continue",
 					root,
 				)
 			}
@@ -71,14 +72,18 @@ func newShimInstallShellCmd() *cobra.Command {
 		StringVar(&shimPath, "shim", "", "Path to agentsh shell shim binary (agentsh-shell-shim)")
 	c.Flags().BoolVar(&bash, "bash", false, "Also install shim for /bin/bash if present")
 	c.Flags().
-		BoolVar(&bashOnly, "bash-only", false, "Install shim only for /bin/bash, leaving /bin/sh untouched")
+		BoolVar(&bashOnly, "bash-only", false,
+			"Install shim only for /bin/bash, leaving /bin/sh untouched")
 	c.Flags().
-		BoolVar(&iUnderstand, "i-understand-this-modifies-the-host", false, "Allow modifying the host filesystem when --root=/")
+		BoolVar(&iUnderstand, "i-understand-this-modifies-the-host", false,
+			"Allow modifying the host filesystem when --root=/")
 	c.Flags().
 		BoolVar(&dryRun, "dry-run", false, "Show planned actions without modifying the filesystem")
 	c.Flags().StringVar(&output, "output", "shell", "Output format: shell|json")
 	c.Flags().
-		BoolVar(&force, "force", false, "Write /etc/agentsh/shim.conf with force=true (enforces policy for non-interactive shells)")
+		BoolVar(&force, "force", false,
+			"Write /etc/agentsh/shim.conf with force=true (enforces policy for "+
+				"non-interactive shells)")
 	return c
 }
 
@@ -95,7 +100,8 @@ func newShimUninstallShellCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if isHostRoot(root) && !iUnderstand && !dryRun {
 				return fmt.Errorf(
-					"refusing to modify host rootfs (%q); pass --i-understand-this-modifies-the-host to continue",
+					"refusing to modify host rootfs (%q); pass "+
+						"--i-understand-this-modifies-the-host to continue",
 					root,
 				)
 			}
@@ -120,7 +126,8 @@ func newShimUninstallShellCmd() *cobra.Command {
 	c.Flags().StringVar(&root, "root", "/", "Root filesystem to modify")
 	c.Flags().BoolVar(&bash, "bash", false, "Also restore /bin/bash.real if present")
 	c.Flags().
-		BoolVar(&iUnderstand, "i-understand-this-modifies-the-host", false, "Allow modifying the host filesystem when --root=/")
+		BoolVar(&iUnderstand, "i-understand-this-modifies-the-host", false,
+			"Allow modifying the host filesystem when --root=/")
 	c.Flags().
 		BoolVar(&dryRun, "dry-run", false, "Show planned actions without modifying the filesystem")
 	c.Flags().StringVar(&output, "output", "shell", "Output format: shell|json")

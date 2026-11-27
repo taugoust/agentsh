@@ -298,7 +298,9 @@ func TestShimInstall_NestedInstallsCompose(t *testing.T) {
 	}
 	if wrapCalls > 1 {
 		t.Logf(
-			"note: inner shim also called wrap-init — current run did not exercise the #282 inherited-filter skip (probably no Landlock TCP block AND no inherited filter detected)",
+			"note: inner shim also called wrap-init — current run did not exercise the #282 " +
+				"inherited-filter skip (probably no Landlock TCP block AND no inherited filter " +
+				"detected)",
 		)
 	}
 

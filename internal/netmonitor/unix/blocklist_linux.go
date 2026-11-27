@@ -293,7 +293,8 @@ func attemptKill(notifyFD int, notifID uint64, pid int, sessID, syscallName stri
 	if err := notifIDValidFn(notifyFD, notifID); err != nil {
 		if isENOENT(err) {
 			slog.Debug(
-				"seccomp block-list: notif id invalid after pidfd_open — skipping signal (possible pid reuse)",
+				"seccomp block-list: notif id invalid after pidfd_open — skipping signal "+
+					"(possible pid reuse)",
 				"session_id",
 				sessID,
 				"pid",
@@ -306,7 +307,8 @@ func attemptKill(notifyFD int, notifID uint64, pid int, sessID, syscallName stri
 			return "killed"
 		}
 		slog.Warn(
-			"seccomp block-list: notif id revalidation failed with non-ENOENT error; refusing signal",
+			"seccomp block-list: notif id revalidation failed with non-ENOENT error; "+
+				"refusing signal",
 			"session_id",
 			sessID,
 			"pid",

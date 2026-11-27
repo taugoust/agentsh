@@ -139,7 +139,8 @@ func TestProxy_SSEStreamingRealTime(t *testing.T) {
 	minExpectedSpread := time.Duration(eventCount-2) * eventDelay // Allow some slack
 	if spreadDuration < minExpectedSpread {
 		t.Errorf(
-			"Chunks arrived too quickly (%v spread), suggests buffering instead of streaming. Expected at least %v spread.",
+			"Chunks arrived too quickly (%v spread), suggests buffering instead of streaming. "+
+				"Expected at least %v spread.",
 			spreadDuration,
 			minExpectedSpread,
 		)

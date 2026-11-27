@@ -779,7 +779,8 @@ func TestProbe_TopLevelMemoryMaxNotWritable_DowngradesFromTopLevel(t *testing.T)
 	}
 	if res.Mode != ModeUnavailable {
 		t.Fatalf(
-			"mode: got %q, want ModeUnavailable (memory.max not writable, attach-only not permitted)",
+			"mode: got %q, want ModeUnavailable (memory.max not writable, attach-only not "+
+				"permitted)",
 			res.Mode,
 		)
 	}

@@ -238,7 +238,8 @@ func TestMissingAPIKey_ClosedModeIsFatal(t *testing.T) {
 	if errors.Is(err, errMissingAPIKeyValue) {
 		if mode == "closed" {
 			fatalErr = fmt.Errorf(
-				"pkgcheck: provider %q enabled with missing API key under fail_mode=closed: configured to fail closed, but provider cannot operate",
+				"pkgcheck: provider %q enabled with missing API key under fail_mode=closed: "+
+					"configured to fail closed, but provider cannot operate",
 				"snyk",
 			)
 		}

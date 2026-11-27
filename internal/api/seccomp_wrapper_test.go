@@ -331,7 +331,8 @@ func TestBuildSeccompWrapperConfig_WriteOnlyOpensDefaultsFromInterceptMetadata(t
 	got = app.buildSeccompWrapperConfig(nil, seccompWrapperParams{})
 	if got.WriteOnlyOpens {
 		t.Fatal(
-			"explicit write_only_opens=false should override the intercept_metadata-derived default",
+			"explicit write_only_opens=false should override the " +
+				"intercept_metadata-derived default",
 		)
 	}
 
@@ -489,7 +490,10 @@ func TestAppendShadowRuntimeLandlockPaths(t *testing.T) {
 	}
 	appendRuntimeLandlockPaths(&cfg, s)
 
-	for _, want := range []string{"/var/lib/agentsh/workspaces/session-test/home", "/var/lib/agentsh/workspaces/session-test/tmp"} {
+	for _, want := range []string{
+		"/var/lib/agentsh/workspaces/session-test/home",
+		"/var/lib/agentsh/workspaces/session-test/tmp",
+	} {
 		if !containsPath(cfg.AllowRead, want) {
 			t.Fatalf("AllowRead missing %q: %#v", want, cfg.AllowRead)
 		}

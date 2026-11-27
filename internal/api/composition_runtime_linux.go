@@ -135,7 +135,8 @@ func compareCompositionRuntimeInode(
 	if uint64(observed.Dev) != attested.Device || observed.Ino != attested.Inode ||
 		observed.Mode != attested.Mode {
 		return fmt.Errorf(
-			"%s does not match authenticated helper inode (observed dev=%d ino=%d mode=%#o uid=%d gid=%d; attested dev=%d ino=%d mode=%#o host_uid=%d host_gid=%d)",
+			"%s does not match authenticated helper inode (observed dev=%d ino=%d mode=%#o "+
+				"uid=%d gid=%d; attested dev=%d ino=%d mode=%#o host_uid=%d host_gid=%d)",
 			label,
 			uint64(observed.Dev),
 			observed.Ino,

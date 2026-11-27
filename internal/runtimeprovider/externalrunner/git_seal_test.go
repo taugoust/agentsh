@@ -78,7 +78,9 @@ func TestSealGitDraftPersistsExactResultAndIsIdempotent(t *testing.T) {
 	previousControl := newGitSealControl
 	previousVerify := verifyGitSealResult
 	newGitSealControl = func(guestcontrol.Manifest) (gitSealControl, error) { return control, nil }
-	verifyGitSealResult = func(context.Context, *os.File, *os.File, string, string) error { return nil }
+	verifyGitSealResult = func(context.Context, *os.File, *os.File, string, string) error {
+		return nil
+	}
 	defer func() { newGitSealControl = previousControl; verifyGitSealResult = previousVerify }()
 
 	// The delivery copy is guest-visible and therefore untrusted. Corrupting it
@@ -172,7 +174,10 @@ func TestSealGitDraftPersistsExactResultAndIsIdempotent(t *testing.T) {
 	}
 	deletedVolumes := 0
 	previousDelete := deleteGitDraftVolume
-	deleteGitDraftVolume = func(context.Context, WorkspaceVolumeRequest, string) error { deletedVolumes++; return nil }
+	deleteGitDraftVolume = func(context.Context, WorkspaceVolumeRequest, string) error {
+		deletedVolumes++
+		return nil
+	}
 	defer func() { deleteGitDraftVolume = previousDelete }()
 	terminal, err := FinalizeGitDraftStorage(
 		context.Background(),

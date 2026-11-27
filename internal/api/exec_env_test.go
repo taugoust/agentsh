@@ -418,7 +418,9 @@ func TestBuildCommandEnvironment_TrustedGuestEgressProxyFinalOverride(t *testing
 		t.Fatal(err)
 	}
 	got := envSliceToMap(env)
-	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, name := range []string{
+		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy",
+	} {
 		if got[name] != trusted {
 			t.Fatalf("%s = %q, want trusted final proxy %q; env=%#v", name, got[name], trusted, got)
 		}
@@ -441,7 +443,9 @@ func TestBuildCommandEnvironment_TrustedGuestEgressProxyFinalOverride(t *testing
 		t.Fatal(err)
 	}
 	got = envSliceToMap(env)
-	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+	for _, name := range []string{
+		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy",
+	} {
 		if got[name] != trusted {
 			t.Fatalf(
 				"immutable external %s = %q, want %q despite command-local override %q",

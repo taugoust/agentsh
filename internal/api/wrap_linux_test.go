@@ -88,7 +88,17 @@ func withNotifyHandoffHook(t *testing.T) chan struct{} {
 
 	called := make(chan struct{})
 	prev := startNotifyHandlerForWrapHook
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+	startNotifyHandlerForWrapHook = func(
+		ctx context.Context,
+		notifyFD *os.File,
+		compositionSetup *os.File,
+		sessionID string,
+		a *App,
+		execveEnabled bool,
+		wrapperPID int,
+		s *session.Session,
+		cleanup func() error,
+	) error {
 		if cleanup != nil {
 			_ = cleanup()
 		}
@@ -197,7 +207,17 @@ func TestAcceptNotifyFD_TransfersCompositionSetupEndpoint(t *testing.T) {
 
 	called := make(chan struct{})
 	previous := startNotifyHandlerForWrapHook
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, gotSession *session.Session, cleanup func() error) error {
+	startNotifyHandlerForWrapHook = func(
+		ctx context.Context,
+		notifyFD *os.File,
+		compositionSetup *os.File,
+		sessionID string,
+		a *App,
+		execveEnabled bool,
+		wrapperPID int,
+		gotSession *session.Session,
+		cleanup func() error,
+	) error {
 		defer close(called)
 		if compositionSetup == nil {
 			return fmt.Errorf("composition setup endpoint is nil")
@@ -523,11 +543,27 @@ func TestAcceptNotifyFD_UsesMetadataWrapperPIDForCgroupBeforeAck(t *testing.T) {
 	prevStart := startNotifyHandlerForWrapHook
 	setupCalled := make(chan int, 1)
 	startCalled := make(chan struct{})
-	wrapCgroupSetupForNotifyHook = func(ctx context.Context, a *App, s *session.Session, sessionID string, wrapperPID int) (func() error, error) {
+	wrapCgroupSetupForNotifyHook = func(
+		ctx context.Context,
+		a *App,
+		s *session.Session,
+		sessionID string,
+		wrapperPID int,
+	) (func() error, error) {
 		setupCalled <- wrapperPID
 		return func() error { return nil }, nil
 	}
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD *os.File, compositionSetup *os.File, sessionID string, a *App, execveEnabled bool, wrapperPID int, s *session.Session, cleanup func() error) error {
+	startNotifyHandlerForWrapHook = func(
+		ctx context.Context,
+		notifyFD *os.File,
+		compositionSetup *os.File,
+		sessionID string,
+		a *App,
+		execveEnabled bool,
+		wrapperPID int,
+		s *session.Session,
+		cleanup func() error,
+	) error {
 		_ = notifyFD.Close()
 		if cleanup != nil {
 			_ = cleanup()
@@ -600,7 +636,13 @@ func TestAcceptNotifyFD_RejectsStrictShimWithoutCommandJailCapability(t *testing
 
 	prevSetup := wrapCgroupSetupForNotifyHook
 	setupCalled := make(chan struct{}, 1)
-	wrapCgroupSetupForNotifyHook = func(context.Context, *App, *session.Session, string, int) (func() error, error) {
+	wrapCgroupSetupForNotifyHook = func(
+		context.Context,
+		*App,
+		*session.Session,
+		string,
+		int,
+	) (func() error, error) {
 		setupCalled <- struct{}{}
 		return func() error { return nil }, nil
 	}
@@ -667,7 +709,13 @@ func TestAcceptNotifyFD_RejectsMetadataPIDThatIsNotPeerChild(t *testing.T) {
 
 	prevSetup := wrapCgroupSetupForNotifyHook
 	setupCalled := make(chan struct{}, 1)
-	wrapCgroupSetupForNotifyHook = func(ctx context.Context, a *App, s *session.Session, sessionID string, wrapperPID int) (func() error, error) {
+	wrapCgroupSetupForNotifyHook = func(
+		ctx context.Context,
+		a *App,
+		s *session.Session,
+		sessionID string,
+		wrapperPID int,
+	) (func() error, error) {
 		setupCalled <- struct{}{}
 		return func() error { return nil }, nil
 	}
@@ -809,7 +857,13 @@ func TestAcceptNotifyFD_RejectsWhenNotifyHandlerFailsBeforeAck(t *testing.T) {
 	prevSetup := wrapCgroupSetupForNotifyHook
 	setupCalled := make(chan int, 1)
 	var cleanupCalls atomic.Int32
-	wrapCgroupSetupForNotifyHook = func(ctx context.Context, a *App, s *session.Session, sessionID string, wrapperPID int) (func() error, error) {
+	wrapCgroupSetupForNotifyHook = func(
+		ctx context.Context,
+		a *App,
+		s *session.Session,
+		sessionID string,
+		wrapperPID int,
+	) (func() error, error) {
 		setupCalled <- wrapperPID
 		return func() error {
 			cleanupCalls.Add(1)

@@ -7,7 +7,9 @@ import (
 )
 
 func TestNew_ReturnsParserPerDialect(t *testing.T) {
-	for _, d := range []Dialect{DialectPostgres, DialectAuroraPostgres, DialectCockroachDB, DialectRedshift} {
+	for _, d := range []Dialect{
+		DialectPostgres, DialectAuroraPostgres, DialectCockroachDB, DialectRedshift,
+	} {
 		p := New(d)
 		if p == nil {
 			t.Fatalf("New(%v) returned nil", d)

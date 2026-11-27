@@ -126,7 +126,9 @@ func TestWrapStrongMode_SetsInSessionMarker(t *testing.T) {
 	exitCode, outputReader, err := ctr.Exec(ctx, []string{
 		"/bin/sh",
 		"-lc",
-		`timeout 20s env AGENTSH_NO_AUTO=1 AGENTSH_API_KEY=test-key /usr/local/bin/agentsh --server http://127.0.0.1:18080 wrap -- /bin/sh -c 'if [ -n "$AGENTSH_IN_SESSION" ]; then echo MARKER_SET; else echo MARKER_UNSET; fi' 2>&1`,
+		`timeout 20s env AGENTSH_NO_AUTO=1 AGENTSH_API_KEY=test-key /usr/local/bin/agentsh ` +
+			`--server http://127.0.0.1:18080 wrap -- /bin/sh -c 'if [ -n "$AGENTSH_IN_SESSION" ` +
+			`]; then echo MARKER_SET; else echo MARKER_UNSET; fi' 2>&1`,
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) ||

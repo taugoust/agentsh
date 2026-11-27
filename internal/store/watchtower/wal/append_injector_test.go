@@ -100,7 +100,8 @@ func TestSetAppendInjector_RunsAfterOversizedPayloadCheck(t *testing.T) {
 	wal.SetAppendInjector(nil)
 	if _, err := w.Append(0, 1, []byte("ok")); err != nil {
 		t.Errorf(
-			"legal append after oversized rejection: got %v — store latched despite preflight-only failure",
+			"legal append after oversized rejection: got %v — store latched despite "+
+				"preflight-only failure",
 			err,
 		)
 	}

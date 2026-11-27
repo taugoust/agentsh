@@ -220,7 +220,8 @@ func New(cfg *config.Config) (*Server, error) {
 		}
 	} else {
 		slog.Warn(
-			"SQLite audit storage disabled; event queries, output storage, and MCP tool tracking are unavailable",
+			"SQLite audit storage disabled; event queries, output storage, and MCP tool tracking " +
+				"are unavailable",
 		)
 	}
 
@@ -679,7 +680,8 @@ func New(cfg *config.Config) (*Server, error) {
 		case "open", "closed", "degraded":
 		default:
 			return nil, fmt.Errorf(
-				"pkgcheck: invalid fail_mode %q (env PKGCHECK_FAIL_MODE or package_checks.fail_mode); must be one of open, closed, degraded",
+				"pkgcheck: invalid fail_mode %q (env PKGCHECK_FAIL_MODE or "+
+					"package_checks.fail_mode); must be one of open, closed, degraded",
 				mode,
 			)
 		}
@@ -700,7 +702,9 @@ func New(cfg *config.Config) (*Server, error) {
 				if errors.Is(err, errMissingAPIKeyValue) {
 					if mode == "closed" {
 						return nil, fmt.Errorf(
-							"pkgcheck: provider %q enabled with missing API key under fail_mode=closed: configured to fail closed, but provider cannot operate",
+							"pkgcheck: provider %q enabled with missing API key under "+
+								"fail_mode=closed: configured to fail closed, but provider "+
+								"cannot operate",
 							name,
 						)
 					}
@@ -725,7 +729,8 @@ func New(cfg *config.Config) (*Server, error) {
 
 		if len(providerEntries) == 0 {
 			return nil, fmt.Errorf(
-				"package_checks.enabled=true but no providers were initialized — at least one provider must be configured and have its API key (if required) set",
+				"package_checks.enabled=true but no providers were initialized — at least one " +
+					"provider must be configured and have its API key (if required) set",
 			)
 		}
 
@@ -760,7 +765,8 @@ func New(cfg *config.Config) (*Server, error) {
 		}
 		if cfg.Skillcheck.TrashDir == "" {
 			return nil, fmt.Errorf(
-				"skillcheck.trash_dir: required when skillcheck is enabled (block verdicts cannot quarantine without it)",
+				"skillcheck.trash_dir: required when skillcheck is enabled (block verdicts " +
+					"cannot quarantine without it)",
 			)
 		}
 		skillcheckProviders, err := buildSkillcheckProviders(cfg.Skillcheck.Providers)
@@ -769,7 +775,8 @@ func New(cfg *config.Config) (*Server, error) {
 		}
 		if len(skillcheckProviders) == 0 {
 			return nil, fmt.Errorf(
-				"skillcheck.providers: at least one provider must be enabled when skillcheck is enabled",
+				"skillcheck.providers: at least one provider must be enabled when skillcheck " +
+					"is enabled",
 			)
 		}
 		cacheDir := cfg.Skillcheck.CacheDir
@@ -805,7 +812,8 @@ func New(cfg *config.Config) (*Server, error) {
 			for _, action := range cfg.Skillcheck.Thresholds {
 				if strings.EqualFold(action, "approve") {
 					slog.Warn(
-						"skillcheck has approve thresholds but approvals manager is not configured; approve verdicts will be denied (block)",
+						"skillcheck has approve thresholds but approvals manager is not " +
+							"configured; approve verdicts will be denied (block)",
 					)
 					break
 				}
@@ -1054,7 +1062,8 @@ func listenHTTP(cfg *config.Config) (net.Listener, error) {
 	if cfg.Development.DisableAuth || strings.EqualFold(strings.TrimSpace(cfg.Auth.Type), "none") {
 		if !isLoopbackListenAddr(addr) {
 			return nil, fmt.Errorf(
-				"refusing to listen on %q with auth.type=none (use 127.0.0.1/localhost or enable auth)",
+				"refusing to listen on %q with auth.type=none (use 127.0.0.1/localhost or "+
+					"enable auth)",
 				addr,
 			)
 		}
@@ -1080,7 +1089,8 @@ func listenGRPC(cfg *config.Config) (net.Listener, error) {
 	if cfg.Development.DisableAuth || strings.EqualFold(strings.TrimSpace(cfg.Auth.Type), "none") {
 		if !isLoopbackListenAddr(addr) {
 			return nil, fmt.Errorf(
-				"refusing to listen on %q with auth.type=none (use 127.0.0.1/localhost or enable auth)",
+				"refusing to listen on %q with auth.type=none (use 127.0.0.1/localhost or "+
+					"enable auth)",
 				addr,
 			)
 		}

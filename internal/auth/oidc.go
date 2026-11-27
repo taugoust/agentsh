@@ -106,7 +106,8 @@ func NewOIDCAuth(
 // This should be called during server startup to alert administrators.
 func (o *OIDCAuth) WarnIfNoRoleMap() string {
 	if o.groupRoleMap == nil || len(o.groupRoleMap) == 0 {
-		return "WARNING: OIDC auth configured without group_role_map - all users will have 'agent' role. " +
+		return "WARNING: OIDC auth configured without group_role_map - all users will have " +
+			"'agent' role. " +
 			"Configure auth.oidc.group_role_map to grant admin/approver roles."
 	}
 	return ""

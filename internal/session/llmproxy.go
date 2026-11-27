@@ -66,9 +66,9 @@ func StartLLMProxy(
 
 	if needsRegistry {
 		registry := mcpregistry.NewRegistry()
-		// Pre-register declared network servers so their addresses are available for network detection.
-		// Stdio servers are skipped — they have no network address and would falsely inflate
-		// the distinct-server count (triggering premature OnMultiServer callbacks).
+		// Pre-register declared network servers so their addresses are available for network
+		// detection. Stdio servers are skipped — they have no network address and would falsely
+		// inflate the distinct-server count (triggering premature OnMultiServer callbacks).
 		for _, srv := range mcpCfg.Servers {
 			if addr := extractAddr(srv); addr != "" {
 				registry.Register(srv.ID, srv.Type, addr, nil)

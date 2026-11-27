@@ -215,7 +215,9 @@ func TestValidate_RedirectRejectsNonPlainTargetRelation(t *testing.T) {
 			TLSMode:  "terminate_reissue",
 		},
 	}
-	for _, relation := range []string{"Public.Users", "public.user-name", " public.users", "public.123users"} {
+	for _, relation := range []string{
+		"Public.Users", "public.user-name", " public.users", "public.123users",
+	} {
 		t.Run(relation, func(t *testing.T) {
 			stmt := []*StatementRule{{
 				Name:                  "redirect-users",
@@ -308,7 +310,9 @@ func TestValidate_RedirectRejectsNonPlainSourceRelation(t *testing.T) {
 			TLSMode:  "terminate_reissue",
 		},
 	}
-	for _, relation := range []string{"Public.Users", "public.user-name", " public.users", "public.123users"} {
+	for _, relation := range []string{
+		"Public.Users", "public.user-name", " public.users", "public.123users",
+	} {
 		t.Run(relation, func(t *testing.T) {
 			stmt := []*StatementRule{{
 				Name:                  "redirect-users",
@@ -859,6 +863,7 @@ database_rules:
 }
 
 func TestValidate_DenyModeInTx_AcceptedOnDenyRule(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: test
 db_services:
@@ -884,6 +889,7 @@ database_rules:
 }
 
 func TestValidate_DenyModeInTx_AcceptedTerminate(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: test
 db_services:
@@ -905,6 +911,7 @@ database_rules:
 }
 
 func TestValidate_DenyModeInTx_RejectedOnAllowRule(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: test
 db_services:
@@ -930,6 +937,7 @@ database_rules:
 }
 
 func TestValidate_DenyModeInTx_RejectedUnknownValue(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: test
 db_services:

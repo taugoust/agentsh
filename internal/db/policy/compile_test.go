@@ -57,7 +57,8 @@ func TestCompileStatementRule_CanonicalOnlyDoesNotCoverSyntacticObject(t *testin
 		effects.ObjectRef{Kind: effects.ObjectTable, Schema: "public", Name: "users"},
 	) {
 		t.Fatal(
-			"canonical selector-only rule should not cover a syntactic object without resolved canonical matching",
+			"canonical selector-only rule should not cover a syntactic object without resolved " +
+				"canonical matching",
 		)
 	}
 }

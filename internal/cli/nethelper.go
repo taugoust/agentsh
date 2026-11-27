@@ -158,7 +158,8 @@ func newNethelperServeCmd() *cobra.Command {
 			pinRoot = strings.TrimSpace(pinRoot)
 			if pinRoot == "" {
 				return fmt.Errorf(
-					"--pin-root is required; the installed helper must preserve gates across crashes",
+					"--pin-root is required; the installed helper must preserve gates " +
+						"across crashes",
 				)
 			}
 			if err := nethelper.ValidatePrivilegedServiceUser(); err != nil {
@@ -341,22 +342,29 @@ func newNethelperServeCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().
-		StringVar(&socketPath, "socket", "", "Unix socket path supplied by the installed socket unit")
+		StringVar(&socketPath, "socket", "",
+			"Unix socket path supplied by the installed socket unit")
 	cmd.Flags().IntVar(&expectedUID, "uid", -1, "Expected supervisor Unix UID (required)")
 	cmd.Flags().
-		IntVar(&expectedGID, "gid", -1, "Expected supervisor Unix GID (-1 disables explicit GID check)")
+		IntVar(&expectedGID, "gid", -1,
+			"Expected supervisor Unix GID (-1 disables explicit GID check)")
 	cmd.Flags().
-		StringVar(&pinRoot, "pin-root", nethelper.DefaultBPFFSPinRoot(), "Root-owned AgentSH bpffs subtree for helper map/link pins")
+		StringVar(&pinRoot, "pin-root", nethelper.DefaultBPFFSPinRoot(),
+			"Root-owned AgentSH bpffs subtree for helper map/link pins")
 	cmd.Flags().
-		StringVar(&ephemeralLease, "ephemeral-lease", "", "Fixed lease ID for a transient SSH-bootstrap helper")
+		StringVar(&ephemeralLease, "ephemeral-lease", "",
+			"Fixed lease ID for a transient SSH-bootstrap helper")
 	cmd.Flags().
 		StringVar(&ephemeralUnit, "ephemeral-unit", "", "Fixed non-secret transient unit identity")
 	cmd.Flags().
-		StringVar(&ephemeralCreatedAt, "ephemeral-created-at", "", "Bootstrap creation timestamp (RFC3339)")
+		StringVar(&ephemeralCreatedAt, "ephemeral-created-at", "",
+			"Bootstrap creation timestamp (RFC3339)")
 	cmd.Flags().
-		StringVar(&ephemeralHardExpiry, "ephemeral-hard-expiry", "", "Bootstrap hard expiry (RFC3339)")
+		StringVar(&ephemeralHardExpiry, "ephemeral-hard-expiry", "",
+			"Bootstrap hard expiry (RFC3339)")
 	cmd.Flags().
-		DurationVar(&ephemeralSoftLease, "ephemeral-soft-lease", 0, "Negotiated renewable soft lease (zero means hard-expiry-only compatibility mode)")
+		DurationVar(&ephemeralSoftLease, "ephemeral-soft-lease", 0,
+			"Negotiated renewable soft lease (zero means hard-expiry-only compatibility mode)")
 	return cmd
 }
 
@@ -470,7 +478,8 @@ func newNethelperLifecycleClientCmd(renew bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&socketPath, "socket", "", "Ephemeral helper Unix socket path")
 	cmd.Flags().
-		StringVar(&credentialFile, "credential-file", "", "UID-owned ephemeral helper credential file")
+		StringVar(&credentialFile, "credential-file", "",
+			"UID-owned ephemeral helper credential file")
 	cmd.Flags().StringVar(&leaseID, "lease", "", "Ephemeral helper lease ID")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output JSON")
 	_ = cmd.MarkFlagRequired("socket")
@@ -518,7 +527,8 @@ func newNethelperReleaseCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&socketPath, "socket", "", "Ephemeral helper Unix socket path")
 	cmd.Flags().
-		StringVar(&credentialFile, "credential-file", "", "UID-owned ephemeral helper credential file")
+		StringVar(&credentialFile, "credential-file", "",
+			"UID-owned ephemeral helper credential file")
 	cmd.Flags().StringVar(&leaseID, "lease", "", "Ephemeral helper lease ID")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output JSON")
 	_ = cmd.MarkFlagRequired("socket")
@@ -581,7 +591,8 @@ func newNethelperCleanupPinsCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().
-		StringVar(&pinRoot, "pin-root", nethelper.DefaultBPFFSPinRoot(), "AgentSH bpffs pin root to clean")
+		StringVar(&pinRoot, "pin-root", nethelper.DefaultBPFFSPinRoot(),
+			"AgentSH bpffs pin root to clean")
 	cmd.Flags().StringVar(&sessionID, "session", "", "Limit cleanup to one session ID")
 	cmd.Flags().IntVar(&targetUID, "uid", -1, "Limit cleanup to one helper-instance UID")
 	cmd.Flags().BoolVar(&force, "force", false, "Explicitly remove active or malformed pin trees")

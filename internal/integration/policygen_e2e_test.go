@@ -193,7 +193,8 @@ func TestPolicyGenEndToEnd(t *testing.T) {
 		typeCounts["file_write"] > 0
 	if fuseMountFailed {
 		t.Log(
-			"FUSE mount failed - file_rules tests will be skipped (FUSE not available in this environment)",
+			"FUSE mount failed - file_rules tests will be skipped (FUSE not available in this " +
+				"environment)",
 		)
 	}
 	if !fuseAvailable && !fuseMountFailed {

@@ -230,7 +230,8 @@ func TestServeDeclaredService_Approve_DoesNotSetBogusCommandID(t *testing.T) {
 	}
 	if appr.gotReq.CommandID != "" {
 		t.Errorf(
-			"approval CommandID = %q, want empty (declared-service requests have no session command)",
+			"approval CommandID = %q, want empty (declared-service requests have no session "+
+				"command)",
 			appr.gotReq.CommandID,
 		)
 	}
@@ -1041,7 +1042,8 @@ func TestServeDeclaredService_HookPathRewrite_DropsEncodedBytes(t *testing.T) {
 	// documents the hook contract, not a regression.
 	if gotEscaped != "/repos/a/b/pulls" {
 		t.Errorf(
-			"upstream EscapedPath = %q, want /repos/a/b/pulls (hook owns encoding when mutating Path)",
+			"upstream EscapedPath = %q, want /repos/a/b/pulls (hook owns encoding when "+
+				"mutating Path)",
 			gotEscaped,
 		)
 	}
@@ -1247,7 +1249,8 @@ func TestServeDeclaredService_LogRedactsInjectedAndCookieHeaders(t *testing.T) {
 		t.Fatalf("credsub.Add: %v", err)
 	}
 	p.HookRegistry().
-		Register("github", NewHeaderInjectionHook("github", "X-Hub-Token", "Bearer {{secret}}", tbl))
+		Register("github",
+			NewHeaderInjectionHook("github", "X-Hub-Token", "Bearer {{secret}}", tbl))
 
 	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/svc/github/user", nil)
 	req.Header.Set("Cookie", "session=secret123")

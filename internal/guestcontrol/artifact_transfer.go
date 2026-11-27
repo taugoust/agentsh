@@ -69,7 +69,8 @@ func (c *Client) ImportArtifact(
 	source io.Reader,
 ) error {
 	if c == nil || c.dial == nil ||
-		(c.manifest.ProtocolVersion != ProtocolVersionV3 && c.manifest.ProtocolVersion != ProtocolVersionV4) {
+		(c.manifest.ProtocolVersion != ProtocolVersionV3 &&
+			c.manifest.ProtocolVersion != ProtocolVersionV4) {
 		return fmt.Errorf("guest artifact import requires protocol version 3")
 	}
 	if err := transfer.Validate(); err != nil {
@@ -115,7 +116,8 @@ func (c *Client) ExportArtifact(
 	destination io.Writer,
 ) (ArtifactTransfer, error) {
 	if c == nil || c.dial == nil ||
-		(c.manifest.ProtocolVersion != ProtocolVersionV3 && c.manifest.ProtocolVersion != ProtocolVersionV4) {
+		(c.manifest.ProtocolVersion != ProtocolVersionV3 &&
+			c.manifest.ProtocolVersion != ProtocolVersionV4) {
 		return ArtifactTransfer{}, fmt.Errorf("guest artifact export requires protocol version 3")
 	}
 	if kind != ArtifactKindGitResultBundle || destination == nil {

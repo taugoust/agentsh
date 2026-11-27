@@ -42,7 +42,8 @@ func TestIntegration_SocketDownDegradesToOSV(t *testing.T) {
 		captureBody(&osvBodies, r)
 		_, _ = w.Write(
 			[]byte(
-				`{"results":[{"vulns":[{"id":"GHSA-xxxx","summary":"sample","severity":[{"type":"CVSS_V3","score":"9.8"}]}]}]}`,
+				`{"results":[{"vulns":[{"id":"GHSA-xxxx","summary":"sample",` +
+					`"severity":[{"type":"CVSS_V3","score":"9.8"}]}]}]}`,
 			),
 		)
 	}))

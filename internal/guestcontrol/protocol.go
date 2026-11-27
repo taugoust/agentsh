@@ -142,7 +142,10 @@ func (m Manifest) Validate(
 		return fmt.Errorf("guest control VSOCK ports are invalid or reused")
 	}
 	if m.ProtocolVersion == ProtocolVersionV4 &&
-		(m.EgressPort < 1024 || m.EgressPort > 65535 || m.EgressPort == m.VSockPort || m.EgressPort == m.SupervisorPort) {
+		(m.EgressPort < 1024 ||
+			m.EgressPort > 65535 ||
+			m.EgressPort == m.VSockPort ||
+			m.EgressPort == m.SupervisorPort) {
 		return fmt.Errorf("guest control egress VSOCK port is invalid or reused")
 	}
 	if m.ExpectedGeneration == 0 {
@@ -263,10 +266,14 @@ func (h Handshake) Validate(manifest Manifest) error {
 	if !slices.Contains(h.Capabilities, "exec_probe") ||
 		!slices.Contains(h.Capabilities, "shutdown") ||
 		!slices.Contains(h.Capabilities, "supervisor_proxy") ||
-		(manifest.ProtocolVersion == ProtocolVersionV3 || manifest.ProtocolVersion == ProtocolVersionV4) &&
-			(!slices.Contains(h.Capabilities, "artifact_import") || !slices.Contains(h.Capabilities, "artifact_export")) ||
+		(manifest.ProtocolVersion == ProtocolVersionV3 ||
+			manifest.ProtocolVersion == ProtocolVersionV4) &&
+			(!slices.Contains(h.Capabilities, "artifact_import") ||
+				!slices.Contains(h.Capabilities, "artifact_export")) ||
 		manifest.ProtocolVersion == ProtocolVersionV4 &&
-			(!slices.Contains(h.Capabilities, "host_egress_proxy") || !h.EgressReady || h.NetworkReady) {
+			(!slices.Contains(h.Capabilities, "host_egress_proxy") ||
+				!h.EgressReady ||
+				h.NetworkReady) {
 		return fmt.Errorf("guest control handshake capabilities or readiness are incomplete")
 	}
 	return nil

@@ -68,7 +68,8 @@ func childExecRequest(ctx context.Context, sessionID, token, command string) *ht
 	ctx = context.WithValue(ctx, ctxKeyUnixSocket, true)
 	ctx = context.WithValue(ctx, ctxKeyUnixPeer, unixHTTPPeer{PID: os.Getpid(), Supported: true})
 	body, _ := json.Marshal(execBashToolRequest{Command: command})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/tools/exec_bash", strings.NewReader(string(body))).
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/tools/exec_bash",
+		strings.NewReader(string(body))).
 		WithContext(ctx)
 	req.Header.Set(childCapabilityHeader, token)
 	return req
@@ -454,7 +455,8 @@ func TestChildExecutionLanes_StrictExplicitProxyConfigurationUsesSharedLane(t *t
 	app.cfg.Sandbox.Network.Transparent.Enabled = true
 	if !app.childSharedExecutionSupported(sess, claim) {
 		t.Fatal(
-			"strict exact-proxy cgroup gate should remain shared when legacy transparent interception is configured",
+			"strict exact-proxy cgroup gate should remain shared when legacy transparent " +
+				"interception is configured",
 		)
 	}
 	app.cfg.Sandbox.Network.Transparent.Enabled = false
@@ -481,7 +483,8 @@ func TestChildExecutionCapability_IsScrubbedFromExecutedCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(string(body))).
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+		strings.NewReader(string(body))).
 		WithContext(ctx)
 	request.Header.Set(childCapabilityHeader, capability.token)
 	recorder := httptest.NewRecorder()

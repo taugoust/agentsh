@@ -145,10 +145,22 @@ func TestValidateOutputArtifactRequest(t *testing.T) {
 		ok   bool
 	}{
 		{name: "disabled", req: nil, ok: true},
-		{name: "valid", req: &types.OutputArtifactRequest{PersistOverBytes: 50 * 1024, PersistOverLines: 200}, ok: true},
+		{
+			name: "valid",
+			req:  &types.OutputArtifactRequest{PersistOverBytes: 50 * 1024, PersistOverLines: 200},
+			ok:   true,
+		},
 		{name: "missing byte threshold", req: &types.OutputArtifactRequest{PersistOverLines: 200}},
-		{name: "negative lines", req: &types.OutputArtifactRequest{PersistOverBytes: 1, PersistOverLines: -1}},
-		{name: "oversized threshold", req: &types.OutputArtifactRequest{PersistOverBytes: maxOutputArtifactPresentationThreshold + 1}},
+		{
+			name: "negative lines",
+			req:  &types.OutputArtifactRequest{PersistOverBytes: 1, PersistOverLines: -1},
+		},
+		{
+			name: "oversized threshold",
+			req: &types.OutputArtifactRequest{
+				PersistOverBytes: maxOutputArtifactPresentationThreshold + 1,
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateOutputArtifactRequest(tc.req)
@@ -191,9 +203,25 @@ func TestPersistSubagentFinalArtifact_TrustAndSanitization(t *testing.T) {
 	}
 
 	for _, untrusted := range []subagentResult{
-		{Final: strings.Repeat("x", 100), ModelStopReason: "toolUse", ProtocolSettled: true, Terminal: completedSubagentTerminal(0, subagentTerminationNatural)},
-		{Final: strings.Repeat("x", 100), ModelStopReason: "stop", ProtocolSettled: false, Terminal: completedSubagentTerminal(0, subagentTerminationNatural)},
-		{Final: strings.Repeat("x", 100), ModelStopReason: "stop", ProtocolSettled: true, Terminal: failedSubagentTerminal(subagentFailureModel, 1, "", subagentTerminationNatural, false, "failed")},
+		{
+			Final:           strings.Repeat("x", 100),
+			ModelStopReason: "toolUse",
+			ProtocolSettled: true,
+			Terminal:        completedSubagentTerminal(0, subagentTerminationNatural),
+		},
+		{
+			Final:           strings.Repeat("x", 100),
+			ModelStopReason: "stop",
+			ProtocolSettled: false,
+			Terminal:        completedSubagentTerminal(0, subagentTerminationNatural),
+		},
+		{
+			Final:           strings.Repeat("x", 100),
+			ModelStopReason: "stop",
+			ProtocolSettled: true,
+			Terminal: failedSubagentTerminal(subagentFailureModel, 1, "",
+				subagentTerminationNatural, false, "failed"),
+		},
 	} {
 		app.persistSubagentFinalArtifact(s, &untrusted, "pi-json", 16)
 		if untrusted.FullResultPath != "" || untrusted.FinalTruncated {

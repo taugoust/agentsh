@@ -150,7 +150,8 @@ func TestClassifyUpdate_HasWhereOnlyOnModifyEffect(t *testing.T) {
 func TestClassifyUpdate_HasWhereWithCTE(t *testing.T) {
 	cs := classifyOne(
 		t,
-		"WITH r AS (SELECT id FROM logins) UPDATE users SET active = false WHERE id IN (SELECT id FROM r)",
+		"WITH r AS (SELECT id FROM logins) UPDATE users SET active = false WHERE id IN (SELECT "+
+			"id FROM r)",
 		SessionState{},
 	)
 	e := requireEffectGroup(t, cs, effects.GroupModify)

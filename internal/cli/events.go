@@ -174,7 +174,8 @@ func newEventsQueryCmd() *cobra.Command {
 	}
 
 	cmd.Flags().
-		StringVar(&sessionID, "session", "", "Filter by session ID (or query global events when empty)")
+		StringVar(&sessionID, "session", "",
+			"Filter by session ID (or query global events when empty)")
 	cmd.Flags().StringVar(&typesCSV, "type", "", "Comma-separated event types")
 	cmd.Flags().StringVar(&decision, "decision", "", "Policy decision filter (allow|deny|approve)")
 	cmd.Flags().StringVar(&since, "since", "", "Start time (RFC3339) or duration (e.g. 1h)")

@@ -53,6 +53,7 @@ database_rules:
 }
 
 func TestEvaluate_AllowSpecificObjectsCovers(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -67,6 +68,7 @@ database_rules:
 }
 
 func TestEvaluate_AuditCoversObject(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:

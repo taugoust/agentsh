@@ -396,7 +396,9 @@ func startFileMonitorContainer(
 		WaitingFor: wait.ForHTTP("/health").
 			WithPort("18080/tcp").
 			WithStartupTimeout(60 * time.Second).
-			WithStatusCodeMatcher(func(code int) bool { return code == http.StatusOK || code == http.StatusNotFound }),
+			WithStatusCodeMatcher(func(code int) bool {
+				return code == http.StatusOK || code == http.StatusNotFound
+			}),
 	}
 
 	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -474,7 +476,9 @@ func startFileMonitorContainerNoPtrace(
 		WaitingFor: wait.ForHTTP("/health").
 			WithPort("18080/tcp").
 			WithStartupTimeout(60 * time.Second).
-			WithStatusCodeMatcher(func(code int) bool { return code == http.StatusOK || code == http.StatusNotFound }),
+			WithStatusCodeMatcher(func(code int) bool {
+				return code == http.StatusOK || code == http.StatusNotFound
+			}),
 	}
 
 	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -582,7 +586,8 @@ func TestFileMonitor_NoPtraceCap(t *testing.T) {
 	if probeResult.Result.ExitCode != 0 {
 		t.Logf("BUG REPRODUCED: basic 'echo' fails without CAP_SYS_PTRACE")
 		t.Logf(
-			"This confirms ProcessVMReadv failure → emulated path fail-secure → EACCES on all operations",
+			"This confirms ProcessVMReadv failure → emulated path fail-secure → EACCES on all " +
+				"operations",
 		)
 	} else {
 		t.Logf("Probe succeeded — ProcessVMReadv works without CAP_SYS_PTRACE in this environment")

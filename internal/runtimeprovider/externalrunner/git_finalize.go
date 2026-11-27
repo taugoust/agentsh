@@ -45,7 +45,8 @@ func FinalizeGitDraftStorage(
 		if err != nil {
 			return err
 		}
-		if (request.SchemaVersion != HostMonitorSchemaVersionV2 && request.SchemaVersion != HostMonitorSchemaVersionV3) ||
+		if (request.SchemaVersion != HostMonitorSchemaVersionV2 &&
+			request.SchemaVersion != HostMonitorSchemaVersionV3) ||
 			request.InputArtifact == nil {
 			return fmt.Errorf("runtime is not a Git-volume Draft")
 		}

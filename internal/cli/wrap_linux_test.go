@@ -32,7 +32,8 @@ func TestConfigureWrapCommandBoundaryAppliesFixedLinuxLaunchAttributes(t *testin
 		t.Fatalf("configure wrap command boundary: %v", err)
 	}
 	wantFlags := uintptr(
-		unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC,
+		unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP |
+			unix.CLONE_NEWIPC,
 	)
 	if attr.Cloneflags&wantFlags != wantFlags {
 		t.Fatalf("clone flags = %#x, want all %#x", attr.Cloneflags, wantFlags)

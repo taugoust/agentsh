@@ -416,7 +416,8 @@ func TestProbeCapabilityDrop_BoundingReadBlocked(t *testing.T) {
 	fullLow, fullHigh := capFullMask(lastCap)
 	if data[0].Permitted == fullLow && data[1].Permitted == fullHigh {
 		t.Skip(
-			"test process has full CapPrm; degraded path would report not-dropped regardless of bounding",
+			"test process has full CapPrm; degraded path would report not-dropped regardless of " +
+				"bounding",
 		)
 	}
 
@@ -466,7 +467,8 @@ func TestProbeCapabilityDrop_BoundingReadBlockedFullPermitted(t *testing.T) {
 	r := probeCapabilityDropFrom(data, 0, 0, simulatedErr, 41)
 	if r.Available {
 		t.Errorf(
-			"expected Available=false when CapPrm full and bounding unknown, got Available=true (detail: %q)",
+			"expected Available=false when CapPrm full and bounding unknown, got Available=true "+
+				"(detail: %q)",
 			r.Detail,
 		)
 	}

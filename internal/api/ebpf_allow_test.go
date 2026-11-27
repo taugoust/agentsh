@@ -84,9 +84,13 @@ func TestBuildProxyOnlyAllowedEndpoints_ExactTCPListeners(t *testing.T) {
 			t.Fatalf("proxy endpoint protocol = %d, want TCP", entry.Protocol)
 		}
 		switch {
-		case entry.Family == 2 && entry.Dport == 18081 && net.IP(entry.Addr[:4]).Equal(net.ParseIP("127.0.0.1")):
+		case entry.Family == 2 &&
+			entry.Dport == 18081 &&
+			net.IP(entry.Addr[:4]).Equal(net.ParseIP("127.0.0.1")):
 			seen4 = true
-		case entry.Family == 10 && entry.Dport == 19091 && net.IP(entry.Addr[:]).Equal(net.ParseIP("::1")):
+		case entry.Family == 10 &&
+			entry.Dport == 19091 &&
+			net.IP(entry.Addr[:]).Equal(net.ParseIP("::1")):
 			seen6 = true
 		}
 		if entry.Family == 2 && net.IP(entry.Addr[:4]).Equal(net.ParseIP("1.0.0.127")) {

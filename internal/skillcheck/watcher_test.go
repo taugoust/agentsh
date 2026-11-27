@@ -237,7 +237,8 @@ func TestWatcher_DeepNestedRootMissing(t *testing.T) {
 func TestWatcher_GlobMatchesMultiplePluginsOverTime(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip(
-			"glob root behavior on Windows fsnotify needs deeper investigation; tracking as follow-up",
+			"glob root behavior on Windows fsnotify needs deeper investigation; tracking as " +
+				"follow-up",
 		)
 	}
 	parent := t.TempDir()
@@ -311,7 +312,8 @@ func TestWatcher_GlobMatchesMultiplePluginsOverTime(t *testing.T) {
 func TestWatcher_GlobStaticAncestorAppearsAfterStart(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip(
-			"glob root behavior on Windows fsnotify needs deeper investigation; tracking as follow-up",
+			"glob root behavior on Windows fsnotify needs deeper investigation; tracking as " +
+				"follow-up",
 		)
 	}
 	parent := t.TempDir()

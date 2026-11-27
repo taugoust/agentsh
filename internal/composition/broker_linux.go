@@ -342,14 +342,16 @@ func (b *Broker) validateSetupContract(setup *ReceivedSetup) error {
 			if object.Rights&landlock.LANDLOCK_ACCESS_FS_READ_FILE != 0 && !readable {
 				return typedError(
 					"E_COMPOSITION_SETUP_INVALID",
-					"policy object %q carries file-read rights outside the admitted composition roots",
+					"policy object %q carries file-read rights outside the admitted "+
+						"composition roots",
 					object.Path,
 				)
 			}
 			if object.Rights&landlock.LANDLOCK_ACCESS_FS_READ_DIR != 0 && !readable && !listable {
 				return typedError(
 					"E_COMPOSITION_SETUP_INVALID",
-					"policy object %q carries directory-list rights outside the admitted composition roots",
+					"policy object %q carries directory-list rights outside the admitted "+
+						"composition roots",
 					object.Path,
 				)
 			}
@@ -364,7 +366,8 @@ func (b *Broker) validateSetupContract(setup *ReceivedSetup) error {
 				!pathAllowed(object.Path, b.cfg.ExecuteRoots) {
 				return typedError(
 					"E_COMPOSITION_SETUP_INVALID",
-					"policy object %q carries execute rights outside the admitted composition roots",
+					"policy object %q carries execute rights outside the admitted "+
+						"composition roots",
 					object.Path,
 				)
 			}
@@ -387,7 +390,8 @@ func (b *Broker) validateSetupContract(setup *ReceivedSetup) error {
 		case SetupObjectSyntheticRoot:
 			rootCount++
 			exact := uint64(
-				landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+				landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR |
+					landlock.LANDLOCK_ACCESS_FS_EXECUTE,
 			)
 			if object.Rights != exact || !pathWithin(object.Path, b.cfg.ScratchRoot) {
 				return typedError(
@@ -402,10 +406,13 @@ func (b *Broker) validateSetupContract(setup *ReceivedSetup) error {
 		case SetupObjectSyntheticRW:
 			syntheticCount++
 			required := uint64(
-				landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE,
+				landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR |
+					landlock.LANDLOCK_ACCESS_FS_WRITE_FILE,
 			)
 			forbidden := uint64(
-				landlock.LANDLOCK_ACCESS_FS_EXECUTE | landlock.LANDLOCK_ACCESS_FS_IOCTL_DEV | landlock.LANDLOCK_ACCESS_FS_MAKE_CHAR | landlock.LANDLOCK_ACCESS_FS_MAKE_BLOCK,
+				landlock.LANDLOCK_ACCESS_FS_EXECUTE | landlock.LANDLOCK_ACCESS_FS_IOCTL_DEV |
+					landlock.LANDLOCK_ACCESS_FS_MAKE_CHAR |
+					landlock.LANDLOCK_ACCESS_FS_MAKE_BLOCK,
 			)
 			if object.Rights&required != required || object.Rights&forbidden != 0 ||
 				!pathWithin(object.Path, b.cfg.ScratchRoot) {
@@ -687,7 +694,9 @@ func (b *Broker) handlePlan(
 		if err := b.validateMappedRequester(expectedPID, mapped, credentials); err != nil {
 			return err
 		}
-		revalidate = func() error { return b.validateMappedRequester(expectedPID, mapped, credentials) }
+		revalidate = func() error {
+			return b.validateMappedRequester(expectedPID, mapped, credentials)
+		}
 	} else {
 		pidfd, err := unix.PidfdOpen(requesterPID, 0)
 		if err != nil {
@@ -1592,8 +1601,9 @@ func (b *Broker) finalMountExpectations(
 			}
 		case OperationTmpfs, OperationDev:
 			expected[target] = mountExpectation{
-				requiredAttributes: unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV | unix.MOUNT_ATTR_NOEXEC,
-				filesystem:         "tmpfs",
+				requiredAttributes: unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV |
+					unix.MOUNT_ATTR_NOEXEC,
+				filesystem: "tmpfs",
 			}
 			if operation.Type == OperationDev {
 				for _, name := range []string{"null", "zero", "full", "random", "urandom", "tty"} {
@@ -1624,12 +1634,14 @@ func (b *Broker) finalMountExpectations(
 			}
 		case OperationProc:
 			expected[target] = mountExpectation{
-				requiredAttributes: unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV | unix.MOUNT_ATTR_NOEXEC,
-				filesystem:         "proc",
+				requiredAttributes: unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV |
+					unix.MOUNT_ATTR_NOEXEC,
+				filesystem: "proc",
 			}
 		case OperationRemountRO:
 			entry := expected[target]
-			entry.requiredAttributes |= unix.MOUNT_ATTR_RDONLY | unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV
+			entry.requiredAttributes |=
+				unix.MOUNT_ATTR_RDONLY | unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV
 			expected[target] = entry
 		}
 	}
@@ -1842,7 +1854,8 @@ func (b *Broker) validateCompletedCWD(context *targetContext, staging string, pl
 		)
 	}
 	if provenance == nil ||
-		(provenance.operation.Type != OperationBind && provenance.operation.Type != OperationDevBind) {
+		(provenance.operation.Type != OperationBind &&
+			provenance.operation.Type != OperationDevBind) {
 		return nil
 	}
 	relative, err := filepath.Rel(provenance.operation.Target, plan.Cwd)
@@ -2410,7 +2423,8 @@ func (b *Broker) validateRecursiveSource(
 			)
 		}
 		required := uint64(
-			unix.MOUNT_ATTR_RDONLY | unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV | unix.MOUNT_ATTR_NOEXEC,
+			unix.MOUNT_ATTR_RDONLY | unix.MOUNT_ATTR_NOSUID | unix.MOUNT_ATTR_NODEV |
+				unix.MOUNT_ATTR_NOEXEC,
 		)
 		if mask.attributes&required != required {
 			return nil, typedError(
@@ -2966,7 +2980,12 @@ func (b *Broker) executeDev(
 			return 0, err
 		}
 	}
-	for link, destination := range map[string]string{"fd": "/proc/self/fd", "stdin": "/proc/self/fd/0", "stdout": "/proc/self/fd/1", "stderr": "/proc/self/fd/2"} {
+	for link, destination := range map[string]string{
+		"fd":     "/proc/self/fd",
+		"stdin":  "/proc/self/fd/0",
+		"stdout": "/proc/self/fd/1",
+		"stderr": "/proc/self/fd/2",
+	} {
 		if err := b.runHelper(
 			context,
 			nil,

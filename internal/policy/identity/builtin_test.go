@@ -84,8 +84,9 @@ func TestBuiltinIdentities_CursorMatching(t *testing.T) {
 
 	// Platform-specific test cases
 	// Linux patterns: Comm: []string{"cursor", "Cursor"}, ExePath: []string{"*/cursor", "*/Cursor"}
-	// Darwin patterns: Comm: []string{"Cursor", "Cursor Helper*"}, ExePath: []string{"*/Cursor.app/*"}
-	// Windows patterns: ExeName: []string{"Cursor.exe", "cursor.exe"}, ExePath: []string{"*\\Cursor\\*"}
+	// Darwin patterns: Comm: []string{"Cursor", "Cursor Helper*"}, ExePath:
+	// []string{"*/Cursor.app/*"} Windows patterns: ExeName: []string{"Cursor.exe", "cursor.exe"},
+	// ExePath: []string{"*\\Cursor\\*"}
 
 	tests := []struct {
 		name     string
@@ -152,9 +153,10 @@ func TestBuiltinIdentities_VSCodeMatching(t *testing.T) {
 	require.NoError(t, err)
 
 	// Platform-specific test cases
-	// Linux patterns: Comm: []string{"code", "code-oss"}, ExePath: []string{"*/code", "*/code-oss", "*/vscode/*"}
-	// Darwin patterns: Comm: []string{"Code", "Code Helper*"}, ExePath: []string{"*/Visual Studio Code.app/*", "*/VSCode.app/*"}
-	// Windows patterns: ExeName: []string{"Code.exe", "code.exe"}, ExePath: []string{"*\\Microsoft VS Code\\*"}
+	// Linux patterns: Comm: []string{"code", "code-oss"}, ExePath: []string{"*/code", "*/code-oss",
+	// "*/vscode/*"} Darwin patterns: Comm: []string{"Code", "Code Helper*"}, ExePath:
+	// []string{"*/Visual Studio Code.app/*", "*/VSCode.app/*"} Windows patterns: ExeName:
+	// []string{"Code.exe", "code.exe"}, ExePath: []string{"*\\Microsoft VS Code\\*"}
 
 	tests := []struct {
 		name     string

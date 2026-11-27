@@ -41,7 +41,8 @@ func TestEvaluate_RedirectCoversResolvedRelation(t *testing.T) {
 	if d.Redirect == nil || d.Redirect.SourceRelation != "public.users" ||
 		d.Redirect.TargetRelation != "public.safe_users" {
 		t.Fatalf(
-			"Redirect after prior decision mutation = %+v, want fresh public.users -> public.safe_users",
+			"Redirect after prior decision mutation = %+v, want fresh public.users -> "+
+				"public.safe_users",
 			d.Redirect,
 		)
 	}

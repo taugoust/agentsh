@@ -142,7 +142,10 @@ func TestRing_AppendsAndDumps(t *testing.T) {
 		tr.dumpTraceRing("unit-test")
 	})
 
-	for _, want := range []string{"DUMP BEGIN", "DUMP END", "wait_call", "wait_ret", "ev=stop", "ev=resume", "event:SECCOMP", "via=denySyscall"} {
+	for _, want := range []string{
+		"DUMP BEGIN", "DUMP END", "wait_call", "wait_ret", "ev=stop", "ev=resume", "event:SECCOMP",
+		"via=denySyscall",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("ring dump missing %q; got:\n%s", want, out)
 		}

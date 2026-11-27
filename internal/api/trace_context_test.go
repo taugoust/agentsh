@@ -123,7 +123,8 @@ func TestSetTraceContext_Valid(t *testing.T) {
 
 	sessID := createTestSession(t, h)
 
-	body := `{"trace_id":"0af7651916cd43dd8448eb211c80319c","span_id":"b7ad6b7169203331","trace_flags":"01"}`
+	body := `{"trace_id":"0af7651916cd43dd8448eb211c80319c","span_id":"b7ad6b7169203331",` +
+		`"trace_flags":"01"}`
 	req := httptest.NewRequest(
 		http.MethodPut,
 		"/api/v1/sessions/"+sessID+"/trace-context",
@@ -213,8 +214,9 @@ func TestSetTraceContext_InvalidInputs(t *testing.T) {
 			wantError:  "span_id must be 16 hex characters",
 		},
 		{
-			name:       "all-zero span_id",
-			body:       `{"trace_id":"0af7651916cd43dd8448eb211c80319c","span_id":"0000000000000000"}`,
+			name: "all-zero span_id",
+			body: `{"trace_id":"0af7651916cd43dd8448eb211c80319c",` +
+				`"span_id":"0000000000000000"}`,
 			wantStatus: http.StatusBadRequest,
 			wantError:  "span_id must not be all zeros",
 		},

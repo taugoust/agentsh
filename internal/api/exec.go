@@ -33,22 +33,25 @@ const (
 type compositionConfigurer func(handler any, setup *os.File, wrapperPID int) error
 
 type extraProcConfig struct {
-	extraFiles             []*os.File
-	env                    map[string]string
-	envInject              map[string]string // Operator-trusted env vars that bypass policy filtering
-	notifyParentSock       *os.File          // Parent socket to receive seccomp notify fd (Linux only)
-	compositionParentSock  *os.File          // Parent socket to receive retained composition objects
+	extraFiles []*os.File
+	env        map[string]string
+	// Operator-trusted env vars that bypass policy filtering
+	envInject              map[string]string
+	notifyParentSock       *os.File // Parent socket to receive seccomp notify fd (Linux only)
+	compositionParentSock  *os.File // Parent socket to receive retained composition objects
 	compositionControlRoot string
 	configureComposition   compositionConfigurer
-	notifySessionID        string                      // Session ID for notify handler
-	notifyStore            eventStore                  // Event store for notify handler
-	notifyBroker           eventBroker                 // Event broker for notify handler
-	notifyPolicy           *policy.Engine              // Policy engine for notify handler
-	notifyApprovals        *approvals.Manager          // Approval manager for notify handler
-	notifySession          *session.Session            // Session for notify handler context
-	commandState           session.CommandRuntimeState // Per-command attribution; Session on exclusive paths
-	execveHandler          any                         // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
-	blockList              any                         // Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
+	notifySessionID        string             // Session ID for notify handler
+	notifyStore            eventStore         // Event store for notify handler
+	notifyBroker           eventBroker        // Event broker for notify handler
+	notifyPolicy           *policy.Engine     // Policy engine for notify handler
+	notifyApprovals        *approvals.Manager // Approval manager for notify handler
+	notifySession          *session.Session   // Session for notify handler context
+	// Per-command attribution; Session on exclusive paths
+	commandState  session.CommandRuntimeState
+	execveHandler any // Execve handler (*unixmon.ExecveHandler on Linux, nil otherwise)
+	// Seccomp block-list dispatch config (*unixmon.BlockListConfig on Linux, nil otherwise)
+	blockList any
 
 	// onProcessStarted durably records the external process group before strict
 	// barriers release user code. A persistence failure kills the group and
@@ -259,7 +262,17 @@ func runCommandWithResources(
 	tracer any,
 	sessionID string,
 	onStarted func(),
-) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
+) (
+	exitCode int,
+	stdout []byte,
+	stderr []byte,
+	stdoutTotal int64,
+	stderrTotal int64,
+	stdoutTrunc bool,
+	stderrTrunc bool,
+	resources types.ExecResources,
+	err error,
+) {
 	resolution, resolveErr := resolveCommandTimeout(req, policyLimit)
 	if resolveErr != nil {
 		closePreStartProcessFiles(extra)
@@ -294,7 +307,17 @@ func runCommandWithResourcesResolvedTimeout(
 	tracer any,
 	sessionID string,
 	onStarted func(),
-) (exitCode int, stdout []byte, stderr []byte, stdoutTotal int64, stderrTotal int64, stdoutTrunc bool, stderrTrunc bool, resources types.ExecResources, err error) {
+) (
+	exitCode int,
+	stdout []byte,
+	stderr []byte,
+	stdoutTotal int64,
+	stderrTotal int64,
+	stdoutTrunc bool,
+	stderrTrunc bool,
+	resources types.ExecResources,
+	err error,
+) {
 	ctx, cancel := withExtendableCommandTimeout(ctx, timeout)
 	defer cancel()
 	defer func() {
@@ -401,10 +424,11 @@ func runCommandWithResourcesResolvedTimeout(
 		cmd.SysProcAttr,
 		commandBoundary,
 	); boundaryErr != nil {
-		return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError(
-			"E_PRE_EXEC_BOUNDARY",
-			boundaryErr,
-		)
+		return 127, nil, nil, 0, 0, false, false, types.ExecResources{},
+			markPreExecEnforcementError(
+				"E_PRE_EXEC_BOUNDARY",
+				boundaryErr,
+			)
 	}
 
 	env, err := buildCommandEnvironment(cfg, envPol, os.Environ(), s, req.Env, extra)
@@ -573,10 +597,11 @@ func runCommandWithResourcesResolvedTimeout(
 			if stderrPipeW != nil {
 				stderrPipeW.Close()
 			}
-			return 127, nil, nil, 0, 0, false, false, types.ExecResources{}, markPreExecEnforcementError(
-				"E_DETACHED_COMMAND_JOURNAL",
-				persistErr,
-			)
+			return 127, nil, nil, 0, 0, false, false, types.ExecResources{},
+				markPreExecEnforcementError(
+					"E_DETACHED_COMMAND_JOURNAL",
+					persistErr,
+				)
 		}
 	}
 
@@ -619,7 +644,8 @@ func runCommandWithResourcesResolvedTimeout(
 		// If we started with ptrace (stopped), run the hook BEFORE resuming.
 		// This ensures eBPF/cgroups are attached before the process executes.
 		hasWrapperHandlers := extra != nil &&
-			(extra.notifyParentSock != nil || (extra.signalParentSock != nil && extra.signalEngine != nil))
+			(extra.notifyParentSock != nil ||
+				(extra.signalParentSock != nil && extra.signalEngine != nil))
 		wrapperHandlersStarted := false
 		var commandBoundaryReady chan error
 		if tracer == nil && commandBoundaryRequired(extra) {
@@ -635,9 +661,10 @@ func runCommandWithResourcesResolvedTimeout(
 			wrapperHandlersStarted = true
 		}
 		if tracer != nil && hasWrapperHandlers {
-			// HYBRID MODE: ptrace for execve interception + seccomp wrapper for sockets/files/Landlock.
-			// The wrapper must complete seccomp setup BEFORE ptrace attaches to prevent deadlock.
-			// Protocol: wrapper does seccomp init → READY byte → server attaches ptrace → GO byte → wrapper exec's.
+			// HYBRID MODE: ptrace for execve interception + seccomp wrapper for
+			// sockets/files/Landlock. The wrapper must complete seccomp setup BEFORE ptrace
+			// attaches to prevent deadlock. Protocol: wrapper does seccomp init → READY byte →
+			// server attaches ptrace → GO byte → wrapper exec's.
 			ptraceDone := make(chan struct{})
 			go func() {
 				select {
@@ -778,11 +805,13 @@ func runCommandWithResourcesResolvedTimeout(
 					), true, true, resources, errCommandTimeout
 			}
 			if commandContextError(ctx) != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(
-					ctx,
-				)
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc,
+					resources, commandContextError(
+						ctx,
+					)
 			}
-			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
+			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc,
+				stderrTrunc, resources, result.err
 		} else if tracer != nil {
 			// FULL PTRACE MODE: ptrace handles everything (no seccomp wrapper).
 			// Context cancellation watcher: start BEFORE attach so timeout
@@ -879,11 +908,13 @@ func runCommandWithResourcesResolvedTimeout(
 					), true, true, resources, errCommandTimeout
 			}
 			if commandContextError(ctx) != nil {
-				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(
-					ctx,
-				)
+				return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc,
+					resources, commandContextError(
+						ctx,
+					)
 			}
-			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, result.err
+			return result.exitCode, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc,
+				stderrTrunc, resources, result.err
 		} else if hook != nil {
 			// Ordinary commands are held at a ptrace exec stop. A strict command
 			// jail instead runs only the trusted wrapper, which cannot exec the
@@ -984,17 +1015,20 @@ func runCommandWithResourcesResolvedTimeout(
 			), true, true, resources, errCommandTimeout
 	}
 	if commandContextError(ctx) != nil {
-		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, commandContextError(
-			ctx,
-		)
+		return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources,
+			commandContextError(
+				ctx,
+			)
 	}
 	if waitErr == nil {
 		return 0, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, err
 	}
 	if ee := (*exec.ExitError)(nil); errors.As(waitErr, &ee) {
-		return ee.ExitCode(), stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, err
+		return ee.ExitCode(), stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc,
+			resources, err
 	}
-	return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, waitErr
+	return 127, stdout, stderr, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources,
+		waitErr
 }
 
 func resolveWorkingDir(s *session.Session, reqWorkingDir string) (string, error) {

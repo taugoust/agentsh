@@ -130,8 +130,9 @@ type FileRequest struct {
 	Operation                 string
 	Flags                     uint32
 	Mode                      uint32
-	Lookup                    *FileLookupRequest // exact raw lookup context; nil for synthetic/test requests
-	SessionID                 string
+	// exact raw lookup context; nil for synthetic/test requests
+	Lookup    *FileLookupRequest
+	SessionID string
 }
 
 // FileResult holds the outcome of handling a file syscall.

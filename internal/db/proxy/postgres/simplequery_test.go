@@ -203,7 +203,12 @@ database_rules:
 // side after one inbound frame is received.
 func allowPathFixture(
 	t *testing.T,
-) (pc *proxyConn, clientFE *pgproto3.Frontend, sink *events.SyncSink, script func([]pgproto3.BackendMessage)) {
+) (
+	pc *proxyConn,
+	clientFE *pgproto3.Frontend,
+	sink *events.SyncSink,
+	script func([]pgproto3.BackendMessage),
+) {
 	pc, clientFE, sink = newSimpleQueryFixture(t)
 	up1, up2 := net.Pipe()
 	t.Cleanup(func() { _ = up1.Close(); _ = up2.Close() })
@@ -384,7 +389,9 @@ func TestHandleQuery_RedirectForwardsRewrittenSQL(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- pc.handleQuery(context.Background(), &pgproto3.Query{String: "select note from public.users"})
+		done <- pc.handleQuery(context.Background(), &pgproto3.Query{
+			String: "select note from public.users",
+		})
 	}()
 
 	msg, err := upBackend.Receive()
@@ -449,7 +456,9 @@ func TestHandleQuery_RedirectPlannerFailureFailsClosed(t *testing.T) {
 	}()
 	done := make(chan error, 1)
 	go func() {
-		done <- pc.handleQuery(context.Background(), &pgproto3.Query{String: "select note from public.users"})
+		done <- pc.handleQuery(context.Background(), &pgproto3.Query{
+			String: "select note from public.users",
+		})
 	}()
 
 	select {
@@ -577,7 +586,9 @@ func TestHandleQuery_RequireWhere_DeniesNoWhereBeforeForward(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- pc.handleQuery(context.Background(), &pgproto3.Query{String: "UPDATE users SET active = false"})
+		done <- pc.handleQuery(context.Background(), &pgproto3.Query{
+			String: "UPDATE users SET active = false",
+		})
 	}()
 
 	select {

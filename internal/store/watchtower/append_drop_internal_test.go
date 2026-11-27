@@ -256,13 +256,15 @@ func TestRecordCompactEncodeFailure_MapperReturningSentinelStaysMapperFailure(t 
 			}
 			if got := m.DroppedInvalidMapper(); got != 0 {
 				t.Fatalf(
-					"DroppedInvalidMapper() = %d, want 0 (mapper-originated sentinel must NOT leak)",
+					"DroppedInvalidMapper() = %d, want 0 (mapper-originated sentinel must "+
+						"NOT leak)",
 					got,
 				)
 			}
 			if got := m.DroppedInvalidTimestamp(); got != 0 {
 				t.Fatalf(
-					"DroppedInvalidTimestamp() = %d, want 0 (mapper-originated sentinel must NOT leak)",
+					"DroppedInvalidTimestamp() = %d, want 0 (mapper-originated sentinel must "+
+						"NOT leak)",
 					got,
 				)
 			}

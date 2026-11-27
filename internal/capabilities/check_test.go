@@ -789,7 +789,8 @@ func TestProbeEBPFCanary(t *testing.T) {
 		t,
 		uint32(18),
 		probeEBPFCanaryProgType,
-		"canary must use BPF_PROG_TYPE_CGROUP_SOCK_ADDR (18), not SOCK_OPS (13), CGROUP_SKB (8), or SOCKET_FILTER (1)",
+		"canary must use BPF_PROG_TYPE_CGROUP_SOCK_ADDR (18), not SOCK_OPS (13), CGROUP_SKB (8), "+
+			"or SOCKET_FILTER (1)",
 	)
 
 	// expected_attach_type is required for CGROUP_SOCK_ADDR — without it
@@ -823,7 +824,8 @@ func TestProbeEBPFCanary(t *testing.T) {
 		t,
 		uintptr(72),
 		unsafe.Sizeof(bpfProgLoadAttr{}),
-		"bpfProgLoadAttr must be 72 bytes — the kernel rejects CGROUP_SOCK_ADDR loads with attr_size < expected_attach_type offset+4",
+		"bpfProgLoadAttr must be 72 bytes — the kernel rejects CGROUP_SOCK_ADDR loads with "+
+			"attr_size < expected_attach_type offset+4",
 	)
 	assert.Equal(t, uintptr(68), unsafe.Offsetof(bpfProgLoadAttr{}.expectedAttachType),
 		"expectedAttachType must be at offset 68 — do not reorder fields or add fields before it")

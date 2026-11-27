@@ -27,7 +27,11 @@ var newGitSealControl = func(manifest guestcontrol.Manifest) (gitSealControl, er
 	return guestcontrol.NewVSockClient(manifest)
 }
 
-var verifyGitSealResult = func(ctx context.Context, input, result *os.File, baseline, resultCommit string) error {
+var verifyGitSealResult = func(
+	ctx context.Context,
+	input, result *os.File,
+	baseline, resultCommit string,
+) error {
 	git, err := runtimebin.Resolve("git")
 	if err != nil {
 		return err
@@ -46,7 +50,8 @@ func ExportGitDraftResult(
 			return err
 		}
 		if manifest.SessionID != sessionID || manifest.Provider != ProviderName ||
-			(manifest.State != runtimeprovider.StateReady && manifest.State != runtimeprovider.StateStopped) {
+			(manifest.State != runtimeprovider.StateReady &&
+				manifest.State != runtimeprovider.StateStopped) {
 			return fmt.Errorf("external Git Draft is not reviewable")
 		}
 		request, err := ReadHostMonitorRequest(stateDir)
@@ -115,7 +120,8 @@ func SealGitDraft(ctx context.Context, sessionID, stateDir string) (GitResultRec
 		if err != nil {
 			return err
 		}
-		if (request.SchemaVersion != HostMonitorSchemaVersionV2 && request.SchemaVersion != HostMonitorSchemaVersionV3) ||
+		if (request.SchemaVersion != HostMonitorSchemaVersionV2 &&
+			request.SchemaVersion != HostMonitorSchemaVersionV3) ||
 			request.InputArtifact == nil {
 			return fmt.Errorf("external runtime is not a Git-volume Draft")
 		}

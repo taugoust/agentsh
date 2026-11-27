@@ -95,7 +95,8 @@ func TestLookupTip_CapabilityDropSemanticsChanged(t *testing.T) {
 	noteIdx := strings.Index(tip.Action, noteMarker)
 	if noteIdx < 0 {
 		t.Fatalf(
-			"capability-drop Action missing required 'Note:' marker separating recommendation from cautionary section: %q",
+			"capability-drop Action missing required 'Note:' marker separating recommendation "+
+				"from cautionary section: %q",
 			tip.Action,
 		)
 	}
@@ -121,7 +122,8 @@ func TestLookupTip_CapabilityDropSemanticsChanged(t *testing.T) {
 	}
 	if !matched {
 		t.Errorf(
-			"capability-drop Action recommendation sentence should reference a startup drop mechanism, got %q",
+			"capability-drop Action recommendation sentence should reference a startup drop "+
+				"mechanism, got %q",
 			recommendation,
 		)
 	}
@@ -132,7 +134,8 @@ func TestLookupTip_CapabilityDropSemanticsChanged(t *testing.T) {
 	// the cautionary note explaining why it is not a substitute.
 	if strings.Contains(recommendation, "DropCapabilities") {
 		t.Errorf(
-			"capability-drop Action recommendation sentence must not mention DropCapabilities as a remediation: %q",
+			"capability-drop Action recommendation sentence must not mention DropCapabilities as "+
+				"a remediation: %q",
 			recommendation,
 		)
 	}
@@ -150,7 +153,8 @@ func TestLookupTip_CapabilityDropSemanticsChanged(t *testing.T) {
 	}
 	if !strings.Contains(cautionBody, "DropCapabilities") {
 		t.Errorf(
-			"capability-drop cautionary body must explain why DropCapabilities is not a substitute, got %q",
+			"capability-drop cautionary body must explain why DropCapabilities is not a "+
+				"substitute, got %q",
 			cautionBody,
 		)
 	}

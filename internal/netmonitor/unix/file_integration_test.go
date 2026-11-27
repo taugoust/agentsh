@@ -650,7 +650,8 @@ func TestIOUringBlocking_RawSyscall(t *testing.T) {
 		t.Logf("io_uring_setup returned expected error: %v", errno)
 	default:
 		t.Errorf(
-			"io_uring_setup returned unexpected error: %v (expected EFAULT, EINVAL, ENOSYS, or EPERM)",
+			"io_uring_setup returned unexpected error: %v (expected EFAULT, EINVAL, ENOSYS, "+
+				"or EPERM)",
 			errno,
 		)
 	}

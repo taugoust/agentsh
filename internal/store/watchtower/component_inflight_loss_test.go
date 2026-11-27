@@ -307,7 +307,8 @@ func TestStore_InFlightDrop_NoTransportLoss_WhenFlagOff(t *testing.T) {
 	_, err := srv.WaitForTransportLoss(gracePeriod)
 	if err == nil {
 		t.Fatal(
-			"TestStore_InFlightDrop_NoTransportLoss_WhenFlagOff: unexpected TransportLoss received; flag was off",
+			"TestStore_InFlightDrop_NoTransportLoss_WhenFlagOff: unexpected TransportLoss " +
+				"received; flag was off",
 		)
 	}
 	// err is a deadline error, which is the expected outcome.

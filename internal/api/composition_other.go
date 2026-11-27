@@ -29,7 +29,8 @@ func (a *App) configureExecveCompositionForState(
 ) error {
 	if runtimeState != nil && runtimeState.CurrentSandboxComposition() != "" {
 		return fmt.Errorf(
-			"E_COMPOSITION_BACKEND_UNAVAILABLE: semantic Bubblewrap composition requires Linux with cgo",
+			"E_COMPOSITION_BACKEND_UNAVAILABLE: semantic Bubblewrap composition requires Linux " +
+				"with cgo",
 		)
 	}
 	return nil

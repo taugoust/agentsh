@@ -138,7 +138,8 @@ func TestConfigureSupervisorMVPPreservesStrictEBPFFailClosed(t *testing.T) {
 	}
 	if cfg.Sandbox.Cgroups.Enabled {
 		t.Fatal(
-			"detached strict eBPF should use attach-only cgroup probing, not resource-controller mode",
+			"detached strict eBPF should use attach-only cgroup probing, not " +
+				"resource-controller mode",
 		)
 	}
 	if cfg.Sandbox.Cgroups.BasePath != "" {
@@ -693,7 +694,11 @@ func TestValidateDetachedStopAuthorityRequiresExactTopology(t *testing.T) {
 	}
 	manifest := detached.NewRecoveryManifest(sessionID, types.CreateSessionRequest{
 		ID: sessionID, Workspace: t.TempDir(),
-	}, detached.LaunchSpec{Executable: "/bin/agentsh", WorkingDir: t.TempDir(), EnvironmentFile: filepath.Join(stateDir, "supervisor.env")}, time.Now())
+	}, detached.LaunchSpec{
+		Executable:      "/bin/agentsh",
+		WorkingDir:      t.TempDir(),
+		EnvironmentFile: filepath.Join(stateDir, "supervisor.env"),
+	}, time.Now())
 	manifest.Generation = meta.Generation
 	manifest.IncarnationID = meta.IncarnationID
 	if err := validateDetachedStopAuthority(sessionID, stateDir, meta, manifest, nil); err != nil {
@@ -712,7 +717,8 @@ func TestValidateDetachedStopAuthorityRequiresExactTopology(t *testing.T) {
 		t.Fatal("socket outside exact state directory was accepted")
 	}
 	wrongUnit := meta
-	wrongUnit.SystemdUnit = "agentsh-supervisor-session-22222222-2222-4222-8222-222222222222.service"
+	wrongUnit.SystemdUnit =
+		"agentsh-supervisor-session-22222222-2222-4222-8222-222222222222.service"
 	if err := validateDetachedStopAuthority(
 		sessionID,
 		stateDir,

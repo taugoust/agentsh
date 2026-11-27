@@ -559,9 +559,13 @@ func (s *Session) TryBeginWorkspaceFinalization() (*WorkspaceFinalizationLease, 
 	switch {
 	case s.workspaceFinalization == WorkspaceFinalizationComplete:
 		return nil, ErrWorkspaceSealed
-	case s.workspaceFinalization == WorkspaceFinalizationRunning || s.workspaceFinalization == WorkspaceFinalizationPending:
+	case s.workspaceFinalization == WorkspaceFinalizationRunning ||
+		s.workspaceFinalization == WorkspaceFinalizationPending:
 		return nil, ErrWorkspaceFinalizing
-	case s.execActiveCount != 0 || s.execExclusiveWaiters != 0 || s.execSharedWaiters != 0 || s.workspaceActivities != 0:
+	case s.execActiveCount != 0 ||
+		s.execExclusiveWaiters != 0 ||
+		s.execSharedWaiters != 0 ||
+		s.workspaceActivities != 0:
 		return nil, ErrWorkspaceBusy
 	default:
 		s.workspaceFinalization = WorkspaceFinalizationRunning
@@ -582,9 +586,13 @@ func (s *Session) TrySealWorkspaceAdmission() error {
 	switch {
 	case s.workspaceFinalization == WorkspaceFinalizationComplete:
 		return nil
-	case s.workspaceFinalization == WorkspaceFinalizationRunning || s.workspaceFinalization == WorkspaceFinalizationPending:
+	case s.workspaceFinalization == WorkspaceFinalizationRunning ||
+		s.workspaceFinalization == WorkspaceFinalizationPending:
 		return ErrWorkspaceFinalizing
-	case s.execActiveCount != 0 || s.execExclusiveWaiters != 0 || s.execSharedWaiters != 0 || s.workspaceActivities != 0:
+	case s.execActiveCount != 0 ||
+		s.execExclusiveWaiters != 0 ||
+		s.execSharedWaiters != 0 ||
+		s.workspaceActivities != 0:
 		return ErrWorkspaceBusy
 	default:
 		s.workspaceFinalization = WorkspaceFinalizationComplete

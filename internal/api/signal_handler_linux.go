@@ -23,7 +23,8 @@ import (
 // exit to release the fd and avoid a hot loop; the next exec installs a
 // fresh filter and handler.
 
-// signalEmitterAdapter adapts the API's event store/broker to the signal handler's EventEmitter interface.
+// signalEmitterAdapter adapts the API's event store/broker to the signal handler's EventEmitter
+// interface.
 type signalEmitterAdapter struct {
 	store     eventStore
 	broker    eventBroker

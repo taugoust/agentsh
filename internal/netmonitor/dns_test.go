@@ -137,7 +137,8 @@ func startUDPUpstream(t *testing.T) net.PacketConn {
 		}
 		t.Fatal(err)
 	}
-	// If anything forwards to the upstream, respond with a minimal "NOERROR" reply so tests can detect the difference.
+	// If anything forwards to the upstream, respond with a minimal "NOERROR" reply so tests can
+	// detect the difference.
 	go func() {
 		buf := make([]byte, 2048)
 		for {

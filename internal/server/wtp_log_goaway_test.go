@@ -68,7 +68,8 @@ func TestLogGoawayMessage_NilSurvivesLoad(t *testing.T) {
 	// LOAD-BEARING: the nil state must survive through applyDefaults.
 	if cfg.Audit.Watchtower.LogGoawayMessage != nil {
 		t.Fatalf(
-			"expected LogGoawayMessage to be nil after Load (applyDefaults must not materialise it), got *%v",
+			"expected LogGoawayMessage to be nil after Load (applyDefaults must not materialise "+
+				"it), got *%v",
 			*cfg.Audit.Watchtower.LogGoawayMessage,
 		)
 	}

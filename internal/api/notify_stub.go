@@ -99,7 +99,8 @@ func startNotifyHandlerForState(
 	}
 	if ptraceReady != nil {
 		select {
-		case ptraceReady <- fmt.Errorf("seccomp notify pre-exec barrier is unavailable on this build"):
+		case ptraceReady <- fmt.Errorf("seccomp notify pre-exec barrier is unavailable on " +
+			"this build"):
 		default:
 		}
 	}

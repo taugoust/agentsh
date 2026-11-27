@@ -78,7 +78,8 @@ func TestEvent_ChainFieldNotMarshaled(t *testing.T) {
 // happens to contain a "chain" key does not populate Event.Chain.
 func TestEvent_ChainFieldIgnoredOnUnmarshal(t *testing.T) {
 	raw := []byte(
-		`{"id":"x","type":"file_open","session_id":"s","timestamp":"2024-01-02T03:04:05Z","chain":{"sequence":99,"generation":3}}`,
+		`{"id":"x","type":"file_open","session_id":"s","timestamp":"2024-01-02T03:04:05Z",` +
+			`"chain":{"sequence":99,"generation":3}}`,
 	)
 	var ev Event
 	if err := json.Unmarshal(raw, &ev); err != nil {

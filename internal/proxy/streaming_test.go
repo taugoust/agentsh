@@ -159,7 +159,8 @@ func TestSSEProxyTransport_SSEResponse(t *testing.T) {
 	}
 
 	// Check body was captured
-	expectedBody := "event: message\ndata: {\"text\": \"Hello\"}\n\nevent: message\ndata: {\"text\": \"World\"}\n\n"
+	expectedBody := "event: message\ndata: {\"text\": \"Hello\"}\n\nevent: message\n" +
+		"data: {\"text\": \"World\"}\n\n"
 	if string(callbackBody) != expectedBody {
 		t.Errorf("Callback body = %q, want %q", string(callbackBody), expectedBody)
 	}

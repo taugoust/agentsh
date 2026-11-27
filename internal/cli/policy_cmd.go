@@ -27,7 +27,8 @@ func newPolicyCmd() *cobra.Command {
 		Short: "Manage policies",
 	}
 	cmd.PersistentFlags().
-		StringVar(&configPath, "config", "", "Config file path (defaults to AGENTSH_CONFIG or config.yml)")
+		StringVar(&configPath, "config", "",
+			"Config file path (defaults to AGENTSH_CONFIG or config.yml)")
 	cmd.PersistentFlags().
 		StringVar(&dir, "dir", "", "Policies directory (overrides config policies.dir)")
 

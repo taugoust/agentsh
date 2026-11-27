@@ -368,7 +368,9 @@ func (pc *proxyConn) synthesizeError(sqlstate, message string) error {
 const (
 	// SCRAM-SHA-256-PLUS fail-closed under terminate_* modes. Spec §13.1.
 	scramPlusErrorCode = "28000"
-	scramPlusMessage   = "AgentSH DB proxy cannot terminate channel-bound SCRAM (SCRAM-SHA-256-PLUS). Disable channel binding upstream or use TLS passthrough; see docs/agentsh-db-access-spec.md §13."
+	scramPlusMessage   = "AgentSH DB proxy cannot terminate channel-bound SCRAM " +
+		"(SCRAM-SHA-256-PLUS). Disable channel binding upstream or use TLS passthrough; see " +
+		"docs/agentsh-db-access-spec.md §13."
 	scramPlusEventCode = "SCRAM_PLUS_FAIL_CLOSED"
 
 	// Connection denied by policy; also used for replication denied in Plan 04b₂.

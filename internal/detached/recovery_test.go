@@ -380,7 +380,10 @@ func TestRuntimeRotatesOnlyNethelperPathsInProtectedEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	envFile := filepath.Join(stateDir, "supervisor.env")
-	content := "AGENTSH_DETACHED_EVENT_TOKEN=\"secret-token\"\nAGENTSH_NETHELPER_SOCKET=\"old.sock\"\nAGENTSH_NETHELPER_CREDENTIAL_FILE=\"old.credential\"\nOPENAI_API_KEY=\"must-be-scrubbed\"\n"
+	content := "AGENTSH_DETACHED_EVENT_TOKEN=\"secret-token\"\n" +
+		"AGENTSH_NETHELPER_SOCKET=\"old.sock\"\n" +
+		"AGENTSH_NETHELPER_CREDENTIAL_FILE=\"old.credential\"\n" +
+		"OPENAI_API_KEY=\"must-be-scrubbed\"\n"
 	if err := atomicWritePrivateFile(envFile, []byte(content)); err != nil {
 		t.Fatal(err)
 	}

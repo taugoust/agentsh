@@ -68,9 +68,11 @@ func newNethelperBootstrapCmd() *cobra.Command {
 		IntVar(&targetGID, "gid", -1, "Primary Unix GID authorized to use the temporary helper")
 	cmd.Flags().StringVar(&leaseID, "lease", "", "Canonical lease UUID from nethelper lease-id")
 	cmd.Flags().
-		DurationVar(&runtimeLimit, "runtime", nethelper.DefaultBootstrapRuntime, "Finite helper hard runtime (default 13h, maximum 192h)")
+		DurationVar(&runtimeLimit, "runtime", nethelper.DefaultBootstrapRuntime,
+			"Finite helper hard runtime (default 13h, maximum 192h)")
 	cmd.Flags().
-		DurationVar(&softLease, "soft-lease", 0, "Opt into renewable soft expiry (zero keeps legacy hard-expiry-only behavior)")
+		DurationVar(&softLease, "soft-lease", 0,
+			"Opt into renewable soft expiry (zero keeps legacy hard-expiry-only behavior)")
 	_ = cmd.MarkFlagRequired("uid")
 	_ = cmd.MarkFlagRequired("gid")
 	_ = cmd.MarkFlagRequired("lease")
@@ -234,7 +236,8 @@ func validateSudoBootstrapIdentity(uid, gid uint32) error {
 	sudoUID, err := strconv.ParseUint(strings.TrimSpace(os.Getenv("SUDO_UID")), 10, 32)
 	if err != nil || sudoUID == 0 {
 		return fmt.Errorf(
-			"temporary nethelper bootstrap must be invoked directly through sudo by a non-root user",
+			"temporary nethelper bootstrap must be invoked directly through sudo by a " +
+				"non-root user",
 		)
 	}
 	sudoGID, err := strconv.ParseUint(strings.TrimSpace(os.Getenv("SUDO_GID")), 10, 32)
@@ -780,7 +783,9 @@ func cleanupAbortedEphemeralLease(paths nethelper.EphemeralLeasePaths, uid uint3
 		EnforceTargetUID: true,
 		OwnerUID:         0,
 	})
-	for _, path := range []string{paths.ResultFile, paths.CredentialFile, paths.RootCredential, paths.SocketPath} {
+	for _, path := range []string{
+		paths.ResultFile, paths.CredentialFile, paths.RootCredential, paths.SocketPath,
+	} {
 		_ = os.Remove(path)
 	}
 	_ = removeEmptyCompositionScratchDirectory(paths.CompositionScratchRoot)

@@ -22,7 +22,12 @@ func TestExecPTYFlag_SelectsPTYPath(t *testing.T) {
 	t.Cleanup(func() { execPTYRunner = prev })
 
 	called := false
-	execPTYRunner = func(ctx context.Context, cfg *clientConfig, sessionID string, req execPTYRequest) error {
+	execPTYRunner = func(
+		ctx context.Context,
+		cfg *clientConfig,
+		sessionID string,
+		req execPTYRequest,
+	) error {
 		called = true
 		return nil
 	}
@@ -42,7 +47,12 @@ func TestExecPTYFlag_PassesTimeoutFromJSON(t *testing.T) {
 	t.Cleanup(func() { execPTYRunner = prev })
 
 	var got string
-	execPTYRunner = func(ctx context.Context, cfg *clientConfig, sessionID string, req execPTYRequest) error {
+	execPTYRunner = func(
+		ctx context.Context,
+		cfg *clientConfig,
+		sessionID string,
+		req execPTYRequest,
+	) error {
 		got = req.Timeout
 		return nil
 	}
@@ -81,7 +91,13 @@ func TestExecPTY_RawModeOnlyWhenTTY(t *testing.T) {
 
 	prevGRPC := execPTYGRPCRunner
 	t.Cleanup(func() { execPTYGRPCRunner = prevGRPC })
-	execPTYGRPCRunner = func(ctx context.Context, cfg *clientConfig, sessionID string, req execPTYRequest, deps ptyDeps) error {
+	execPTYGRPCRunner = func(
+		ctx context.Context,
+		cfg *clientConfig,
+		sessionID string,
+		req execPTYRequest,
+		deps ptyDeps,
+	) error {
 		// Ensure deps passed through.
 		if deps.isTTY(0) != false {
 			t.Fatalf("expected deps override")

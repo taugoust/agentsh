@@ -7,6 +7,7 @@ import (
 )
 
 func TestEvaluate_MatchObjectResolution(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:

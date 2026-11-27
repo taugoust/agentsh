@@ -102,10 +102,11 @@ func (a *App) requestDraftLandingApproval(w http.ResponseWriter, r *http.Request
 		Kind:      "approval",
 		Target:    fmt.Sprintf("%s (%d restricted paths)", req.DraftID, req.PathCount),
 		Rule:      "approve-restricted-draft-landing",
-		Message: "Pi wants to land a MicroVM Draft that modifies restricted project files:\n" + strings.Join(
-			quotedPaths,
-			"\n",
-		),
+		Message: "Pi wants to land a MicroVM Draft that modifies restricted project files:\n" +
+			strings.Join(
+				quotedPaths,
+				"\n",
+			),
 		Fields: map[string]any{
 			"draft_id":      req.DraftID,
 			"result_commit": strings.ToLower(req.ResultCommit),

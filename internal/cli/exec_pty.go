@@ -94,7 +94,8 @@ func ptyDeniedExitError(sessionID string, req execPTYRequest, msg string) error 
 		msg = "command denied by policy"
 	}
 	hint := fmt.Sprintf(
-		"Tip: re-run without --pty to see policy details:\nagentsh exec --output json --events=blocked %s -- %s ...",
+		"Tip: re-run without --pty to see policy details:\n"+
+			"agentsh exec --output json --events=blocked %s -- %s ...",
 		sessionID,
 		strings.TrimSpace(req.Command),
 	)

@@ -248,7 +248,10 @@ func TestApply_LogAndKill_TgkillESRCH(t *testing.T) {
 	c := makeApplyChecker(
 		sink,
 		func(tgid, tid int, sig unix.Signal) error { return unix.ESRCH },
-		func(tid int, errno int) error { t.Fatal("denySyscall must not be called on ESRCH"); return nil },
+		func(tid int, errno int) error {
+			t.Fatal("denySyscall must not be called on ESRCH")
+			return nil
+		},
 	)
 
 	err := c.Apply(100, 200, nil, seccomp.OnBlockLogAndKill, unix.SYS_SOCKET, applyBF, "sess-4")

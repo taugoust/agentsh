@@ -18,18 +18,22 @@ import (
 // declaration order. First-match-wins; if no rule matches, Default applies
 // (empty or "deny" means deny).
 type HTTPService struct {
-	Name        string            `yaml:"name"`
-	Upstream    string            `yaml:"upstream"`               // https://api.github.com
-	ExposeAs    string            `yaml:"expose_as,omitempty"`    // env var name; derived from Name if empty
-	Aliases     []string          `yaml:"aliases,omitempty"`      // extra hostnames for the fail-closed check
-	AllowDirect bool              `yaml:"allow_direct,omitempty"` // escape hatch; default false
-	Default     string            `yaml:"default,omitempty"`      // allow | deny; default depends on Rules presence
-	Rules       []HTTPServiceRule `yaml:"rules,omitempty"`
+	Name     string `yaml:"name"`
+	Upstream string `yaml:"upstream"` // https://api.github.com
+	// env var name; derived from Name if empty
+	ExposeAs string `yaml:"expose_as,omitempty"`
+	// extra hostnames for the fail-closed check
+	Aliases     []string `yaml:"aliases,omitempty"`
+	AllowDirect bool     `yaml:"allow_direct,omitempty"` // escape hatch; default false
+	// allow | deny; default depends on Rules presence
+	Default string            `yaml:"default,omitempty"`
+	Rules   []HTTPServiceRule `yaml:"rules,omitempty"`
 
 	// Credential substitution (unified from old services: section).
-	Secret        *HTTPServiceSecret `yaml:"secret,omitempty"`
-	Inject        *HTTPServiceInject `yaml:"inject,omitempty"`
-	ScrubResponse *bool              `yaml:"scrub_response,omitempty"` // nil = default based on Secret presence
+	Secret *HTTPServiceSecret `yaml:"secret,omitempty"`
+	Inject *HTTPServiceInject `yaml:"inject,omitempty"`
+	// nil = default based on Secret presence
+	ScrubResponse *bool `yaml:"scrub_response,omitempty"`
 }
 
 // HTTPServiceSecret defines how to fetch and fake a credential.
@@ -237,7 +241,8 @@ func ValidateHTTPServices(svcs []HTTPService) error {
 			a, ok := canonicalizeHost(alias)
 			if !ok {
 				return fmt.Errorf(
-					"http_services[%q]: invalid alias %q (IPv6 literals must be bracketed, hostnames must be non-empty)",
+					"http_services[%q]: invalid alias %q (IPv6 literals must be bracketed, "+
+						"hostnames must be non-empty)",
 					s.Name,
 					alias,
 				)
@@ -281,7 +286,8 @@ func ValidateHTTPServices(svcs []HTTPService) error {
 			exposeAs = strings.ToUpper(s.Name) + "_API_URL"
 			if !envVarNameRe.MatchString(exposeAs) {
 				return fmt.Errorf(
-					"http_services[%q]: derived env var name %q is invalid; set expose_as explicitly",
+					"http_services[%q]: derived env var name %q is invalid; set expose_as "+
+						"explicitly",
 					s.Name,
 					exposeAs,
 				)
@@ -406,7 +412,8 @@ func ValidateHTTPServicesWithProviders(svcs []HTTPService, providers map[string]
 			}
 			if len(providerSchemes) == 0 && s.Secret != nil {
 				return fmt.Errorf(
-					"http_services[%q]: secret ref scheme %q has no matching provider (no providers declared)",
+					"http_services[%q]: secret ref scheme %q has no matching provider (no "+
+						"providers declared)",
 					s.Name,
 					ref.Scheme,
 				)

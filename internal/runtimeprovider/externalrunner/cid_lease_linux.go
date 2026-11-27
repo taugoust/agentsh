@@ -162,7 +162,8 @@ func acquireCIDLock(ctx context.Context, root string, create bool) (io.Closer, *
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 || !ok ||
 		!trustedCIDOwner(ownerUID) {
 		return nil, nil, fmt.Errorf(
-			"external runner CID lease root has unsafe identity or permissions: mode=%s uid=%d euid=%d",
+			"external runner CID lease root has unsafe identity or permissions: mode=%s "+
+				"uid=%d euid=%d",
 			info.Mode(),
 			ownerUID,
 			os.Geteuid(),

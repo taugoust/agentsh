@@ -154,6 +154,7 @@ func TestStore_TransportLossInflightSlot_RetiredByBatchAck(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal(
-		"valid event seq=1 did not arrive at srvFree within deadline; inflight slot may not have been retired",
+		"valid event seq=1 did not arrive at srvFree within deadline; inflight slot may not have " +
+			"been retired",
 	)
 }

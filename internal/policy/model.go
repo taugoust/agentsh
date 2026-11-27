@@ -98,8 +98,9 @@ type FileRule struct {
 	ProjectOverlayBoundary bool `yaml:"project_overlay_boundary,omitempty"`
 
 	// Redirect configuration for file operations
-	RedirectTo   string `yaml:"redirect_to,omitempty"`   // Target directory for redirected files
-	PreserveTree bool   `yaml:"preserve_tree,omitempty"` // Preserve directory structure under target
+	RedirectTo string `yaml:"redirect_to,omitempty"` // Target directory for redirected files
+	// Preserve directory structure under target
+	PreserveTree bool `yaml:"preserve_tree,omitempty"`
 }
 
 type NetworkRule struct {
@@ -213,7 +214,8 @@ func (r *CommandRedirect) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // UnixSocketRule controls AF_UNIX socket operations such as connect/bind/listen.
-// Paths refer to filesystem socket paths; abstract namespace sockets use "@name" (no leading slash).
+// Paths refer to filesystem socket paths; abstract namespace sockets use "@name" (no leading
+// slash).
 type UnixSocketRule struct {
 	Name        string   `yaml:"name"`
 	Description string   `yaml:"description"`
@@ -244,15 +246,17 @@ type RegistryRule struct {
 
 // SignalRule controls signal sending between processes.
 type SignalRule struct {
-	Name        string           `yaml:"name"`
-	Description string           `yaml:"description"`
-	Signals     []string         `yaml:"signals"`     // Signal names, numbers, or groups (@fatal, @job)
-	Target      SignalTargetSpec `yaml:"target"`      // Who can receive the signal
-	Decision    string           `yaml:"decision"`    // allow, deny, audit, approve, redirect, absorb
-	Fallback    string           `yaml:"fallback"`    // Fallback decision if platform can't enforce
-	RedirectTo  string           `yaml:"redirect_to"` // For redirect: target signal
-	Message     string           `yaml:"message"`
-	Timeout     duration         `yaml:"timeout"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	// Signal names, numbers, or groups (@fatal, @job)
+	Signals []string         `yaml:"signals"`
+	Target  SignalTargetSpec `yaml:"target"` // Who can receive the signal
+	// allow, deny, audit, approve, redirect, absorb
+	Decision   string   `yaml:"decision"`
+	Fallback   string   `yaml:"fallback"`    // Fallback decision if platform can't enforce
+	RedirectTo string   `yaml:"redirect_to"` // For redirect: target signal
+	Message    string   `yaml:"message"`
+	Timeout    duration `yaml:"timeout"`
 
 	// ProjectOverlayBoundary inserts validated project-local signal rules
 	// immediately before this trusted base-policy rule.
@@ -286,9 +290,10 @@ type ConnectRedirectRule struct {
 	RedirectTo     string                    `yaml:"redirect_to,omitempty"`
 	RedirectToUnix string                    `yaml:"redirect_to_unix,omitempty"`
 	TLS            *ConnectRedirectTLSConfig `yaml:"tls,omitempty"`
-	Visibility     string                    `yaml:"visibility,omitempty"` // silent, audit_only, warn
-	Message        string                    `yaml:"message,omitempty"`
-	OnFailure      string                    `yaml:"on_failure,omitempty"` // fail_closed, fail_open, retry_original
+	// silent, audit_only, warn
+	Visibility string `yaml:"visibility,omitempty"`
+	Message    string `yaml:"message,omitempty"`
+	OnFailure  string `yaml:"on_failure,omitempty"` // fail_closed, fail_open, retry_original
 }
 
 // ConnectRedirectTLSConfig controls TLS handling for connect redirects
@@ -362,7 +367,8 @@ type ProcessContext struct {
 	EnvPolicy    *EnvPolicy       `yaml:"env_policy,omitempty"`
 
 	// Quick command lists (simpler alternative to full CommandRules)
-	AllowedCommands []string `yaml:"allowed_commands,omitempty"` // Commands allowed without restriction
+	// Commands allowed without restriction
+	AllowedCommands []string `yaml:"allowed_commands,omitempty"`
 	DeniedCommands  []string `yaml:"denied_commands,omitempty"`  // Commands always denied
 	RequireApproval []string `yaml:"require_approval,omitempty"` // Commands requiring approval
 
@@ -370,15 +376,18 @@ type ProcessContext struct {
 	CommandOverrides map[string]CommandOverrideConfig `yaml:"command_overrides,omitempty"`
 
 	// Default decision when no rules match
-	DefaultDecision string `yaml:"default_decision,omitempty"` // allow, deny, approve (default: deny)
+	// allow, deny, approve (default: deny)
+	DefaultDecision string `yaml:"default_decision,omitempty"`
 
 	// Race condition handling
 	RacePolicy *RacePolicyConfig `yaml:"race_policy,omitempty"`
 
 	// Propagation settings
-	MaxDepth    int      `yaml:"max_depth,omitempty"`    // Max ancestry depth (0 = unlimited)
-	StopAt      []string `yaml:"stop_at,omitempty"`      // Stop propagation at these process classes
-	PassThrough []string `yaml:"pass_through,omitempty"` // Classes that inherit but don't count toward depth
+	MaxDepth int `yaml:"max_depth,omitempty"` // Max ancestry depth (0 = unlimited)
+	// Stop propagation at these process classes
+	StopAt []string `yaml:"stop_at,omitempty"`
+	// Classes that inherit but don't count toward depth
+	PassThrough []string `yaml:"pass_through,omitempty"`
 }
 
 // ChainRuleConfig is the YAML-friendly version of ancestry.ChainRule.
@@ -387,27 +396,32 @@ type ChainRuleConfig struct {
 	Description string                `yaml:"description,omitempty"`
 	Priority    int                   `yaml:"priority"`  // Higher = evaluated first
 	Condition   *ChainConditionConfig `yaml:"condition"` // When this rule applies
-	Action      string                `yaml:"action"`    // allow_normal_policy, apply_context_policy, deny, approve, mark_as_agent, allow
-	Message     string                `yaml:"message,omitempty"`
-	Continue    bool                  `yaml:"continue"` // Keep evaluating after this rule
+	// allow_normal_policy, apply_context_policy, deny, approve, mark_as_agent, allow
+	Action   string `yaml:"action"`
+	Message  string `yaml:"message,omitempty"`
+	Continue bool   `yaml:"continue"` // Keep evaluating after this rule
 }
 
 // ChainConditionConfig is the YAML-friendly version of ancestry.ChainCondition.
 type ChainConditionConfig struct {
 	// Via chain conditions
-	ViaIndex       *int     `yaml:"via_index,omitempty"`        // Check specific via position (0-indexed)
+	// Check specific via position (0-indexed)
+	ViaIndex       *int     `yaml:"via_index,omitempty"`
 	ViaIndexValue  string   `yaml:"via_index_value,omitempty"`  // Value to match at ViaIndex
 	ViaContains    []string `yaml:"via_contains,omitempty"`     // Any of these patterns in via
 	ViaNotContains []string `yaml:"via_not_contains,omitempty"` // None of these patterns in via
 	ViaMatches     []string `yaml:"via_matches,omitempty"`      // Pattern match against via entries
 
 	// Class-based conditions
-	ClassContains    []string `yaml:"class_contains,omitempty"`     // Any of these classes in chain
-	ClassNotContains []string `yaml:"class_not_contains,omitempty"` // None of these classes in chain
+	ClassContains []string `yaml:"class_contains,omitempty"` // Any of these classes in chain
+	// None of these classes in chain
+	ClassNotContains []string `yaml:"class_not_contains,omitempty"`
 
 	// Consecutive pattern detection (shell laundering)
-	ConsecutiveClass *ConsecutiveMatchConfig `yaml:"consecutive_class,omitempty"` // Consecutive class occurrences
-	ConsecutiveComm  *ConsecutiveMatchConfig `yaml:"consecutive_comm,omitempty"`  // Consecutive comm occurrences
+	// Consecutive class occurrences
+	ConsecutiveClass *ConsecutiveMatchConfig `yaml:"consecutive_class,omitempty"`
+	// Consecutive comm occurrences
+	ConsecutiveComm *ConsecutiveMatchConfig `yaml:"consecutive_comm,omitempty"`
 
 	// Depth conditions
 	DepthEQ *int `yaml:"depth_eq,omitempty"` // Depth equals
@@ -452,9 +466,12 @@ type CommandOverrideConfig struct {
 
 // RacePolicyConfig defines how to handle race conditions in taint validation.
 type RacePolicyConfig struct {
-	OnMissingParent   string `yaml:"on_missing_parent,omitempty"`   // deny, allow, approve (default: deny)
-	OnPIDMismatch     string `yaml:"on_pid_mismatch,omitempty"`     // deny, allow, approve (default: deny)
-	OnValidationError string `yaml:"on_validation_error,omitempty"` // deny, allow, approve (default: deny)
+	// deny, allow, approve (default: deny)
+	OnMissingParent string `yaml:"on_missing_parent,omitempty"`
+	// deny, allow, approve (default: deny)
+	OnPIDMismatch string `yaml:"on_pid_mismatch,omitempty"`
+	// deny, allow, approve (default: deny)
+	OnValidationError string `yaml:"on_validation_error,omitempty"`
 	LogRaceConditions bool   `yaml:"log_race_conditions,omitempty"` // Log race condition events
 }
 
@@ -542,14 +559,16 @@ type PackageRule struct {
 
 // PackageMatch specifies conditions for matching packages in policy rules.
 type PackageMatch struct {
-	Packages     []string          `yaml:"packages,omitempty"`      // Exact package names
-	NamePatterns []string          `yaml:"name_patterns,omitempty"` // Glob patterns for package names
-	FindingType  string            `yaml:"finding_type,omitempty"`  // vulnerability, license, etc.
-	Severity     string            `yaml:"severity,omitempty"`      // critical, high, medium, low, info
-	Reasons      []string          `yaml:"reasons,omitempty"`       // Match specific reason codes
-	LicenseSPDX  *LicenseSPDXMatch `yaml:"license_spdx,omitempty"`  // SPDX license matching
-	Ecosystem    string            `yaml:"ecosystem,omitempty"`     // npm, pypi
-	Options      map[string]any    `yaml:"options,omitempty"`       // Provider-specific options
+	Packages []string `yaml:"packages,omitempty"` // Exact package names
+	// Glob patterns for package names
+	NamePatterns []string `yaml:"name_patterns,omitempty"`
+	FindingType  string   `yaml:"finding_type,omitempty"` // vulnerability, license, etc.
+	// critical, high, medium, low, info
+	Severity    string            `yaml:"severity,omitempty"`
+	Reasons     []string          `yaml:"reasons,omitempty"`      // Match specific reason codes
+	LicenseSPDX *LicenseSPDXMatch `yaml:"license_spdx,omitempty"` // SPDX license matching
+	Ecosystem   string            `yaml:"ecosystem,omitempty"`    // npm, pypi
+	Options     map[string]any    `yaml:"options,omitempty"`      // Provider-specific options
 }
 
 // LicenseSPDXMatch defines allow/deny lists for SPDX license identifiers.
@@ -641,7 +660,8 @@ func validateProjectOverlayBoundaries(p Policy) error {
 		for _, rule := range context.FileRules {
 			if rule.ProjectOverlayBoundary {
 				return fmt.Errorf(
-					"process_contexts[%q].file_rules rule %q: project_overlay_boundary is supported only on top-level rules",
+					"process_contexts[%q].file_rules rule %q: project_overlay_boundary is "+
+						"supported only on top-level rules",
 					name,
 					rule.Name,
 				)
@@ -650,7 +670,8 @@ func validateProjectOverlayBoundaries(p Policy) error {
 		for _, rule := range context.NetworkRules {
 			if rule.ProjectOverlayBoundary {
 				return fmt.Errorf(
-					"process_contexts[%q].network_rules rule %q: project_overlay_boundary is supported only on top-level rules",
+					"process_contexts[%q].network_rules rule %q: project_overlay_boundary is "+
+						"supported only on top-level rules",
 					name,
 					rule.Name,
 				)
@@ -659,7 +680,8 @@ func validateProjectOverlayBoundaries(p Policy) error {
 		for _, rule := range context.CommandRules {
 			if rule.ProjectOverlayBoundary {
 				return fmt.Errorf(
-					"process_contexts[%q].command_rules rule %q: project_overlay_boundary is supported only on top-level rules",
+					"process_contexts[%q].command_rules rule %q: project_overlay_boundary is "+
+						"supported only on top-level rules",
 					name,
 					rule.Name,
 				)
@@ -668,7 +690,8 @@ func validateProjectOverlayBoundaries(p Policy) error {
 		for _, rule := range context.UnixRules {
 			if rule.ProjectOverlayBoundary {
 				return fmt.Errorf(
-					"process_contexts[%q].unix_socket_rules rule %q: project_overlay_boundary is supported only on top-level rules",
+					"process_contexts[%q].unix_socket_rules rule %q: project_overlay_boundary is "+
+						"supported only on top-level rules",
 					name,
 					rule.Name,
 				)
@@ -715,7 +738,8 @@ func (p Policy) Validate() error {
 		for rootIndex, root := range rule.WorkingDirectoryRoots {
 			if strings.TrimSpace(root) == "" || strings.ContainsAny(root, "*?[") {
 				return fmt.Errorf(
-					"command_rules[%d].working_directory_roots[%d]: must be a non-empty path root without glob syntax",
+					"command_rules[%d].working_directory_roots[%d]: must be a non-empty path "+
+						"root without glob syntax",
 					i,
 					rootIndex,
 				)
@@ -785,7 +809,8 @@ func (p Policy) Validate() error {
 	for i, r := range p.PackageRules {
 		if len(r.Match.Options) > 0 {
 			return fmt.Errorf(
-				"package rule %d: match.options is not yet supported; remove options or wait for a future release",
+				"package rule %d: match.options is not yet supported; remove options or wait for "+
+					"a future release",
 				i,
 			)
 		}
@@ -839,7 +864,8 @@ func (p Policy) Validate() error {
 		if r.OnFailure != "" && r.OnFailure != "fail_closed" && r.OnFailure != "fail_open" &&
 			r.OnFailure != "retry_original" {
 			return fmt.Errorf(
-				"connect_redirects[%d]: on_failure must be fail_closed, fail_open, or retry_original",
+				"connect_redirects[%d]: on_failure must be fail_closed, fail_open, or "+
+					"retry_original",
 				i,
 			)
 		}
@@ -848,7 +874,8 @@ func (p Policy) Validate() error {
 	// Reject old services: key with migration guidance.
 	if p.Services.Kind != 0 {
 		return fmt.Errorf(
-			"the 'services:' key has been replaced by 'http_services:' — move secret, inject, and scrub_response fields into your http_services entries",
+			"the 'services:' key has been replaced by 'http_services:' — move secret, inject, " +
+				"and scrub_response fields into your http_services entries",
 		)
 	}
 

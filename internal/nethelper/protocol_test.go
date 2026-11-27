@@ -319,7 +319,8 @@ func TestAttestCompositionRuntimeRequestHasNoCallerSelectedPath(t *testing.T) {
 	}
 	for _, field := range []string{"path", "runtime_dir", "device", "inode"} {
 		invalid := fmt.Sprintf(
-			`{"protocol_version":1,"request_id":"attest-2","lease_id":%q,"helper_instance_credential":%q,%q:"/tmp"}`,
+			`{"protocol_version":1,"request_id":"attest-2","lease_id":%q,`+
+				`"helper_instance_credential":%q,%q:"/tmp"}`,
 			req.LeaseID,
 			req.HelperInstanceCredential,
 			field,

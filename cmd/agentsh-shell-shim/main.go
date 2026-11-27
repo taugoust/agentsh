@@ -108,7 +108,8 @@ func main() {
 			fatalWithHint(
 				127,
 				fmt.Sprintf("agentsh-shell-shim: resolve session id: %v", sessErr),
-				"Set AGENTSH_SESSION_ID (best), or set AGENTSH_SESSION_FILE to a writable file path for a stable ID.",
+				"Set AGENTSH_SESSION_ID (best), or set AGENTSH_SESSION_FILE to a writable file "+
+					"path for a stable ID.",
 			)
 		}
 		debugLog("resolved session: id=%s file=%s wd=%s", sessID, sessFile, wd)
@@ -133,7 +134,8 @@ func main() {
 			fatalWithHint(
 				126,
 				"agentsh-shell-shim: shim_install mode: "+modeErr.Error(),
-				"Set shim_install in /etc/agentsh/shim.conf or AGENTSH_SHIM_INSTALL to one of: auto, on, off.",
+				"Set shim_install in /etc/agentsh/shim.conf or AGENTSH_SHIM_INSTALL to one of: "+
+					"auto, on, off.",
 			)
 		}
 		if mode != kernelinstall.ModeOff {
@@ -265,9 +267,11 @@ func main() {
 		srvNetwork, srvAddr, srvErr := serverAddrFromEnv()
 		if srvErr != nil {
 			// Non-empty but invalid server address — fail-closed.
-			hint := "Fix the AGENTSH_SERVER value or unset it to use the default (http://127.0.0.1:18080)."
+			hint := "Fix the AGENTSH_SERVER value or unset it to use the default " +
+				"(http://127.0.0.1:18080)."
 			if strings.ToLower(strings.TrimSpace(os.Getenv("AGENTSH_TRANSPORT"))) == "grpc" {
-				hint = "Fix the AGENTSH_GRPC_ADDR value or unset it to use the default (127.0.0.1:9090)."
+				hint = "Fix the AGENTSH_GRPC_ADDR value or unset it to use the default " +
+					"(127.0.0.1:9090)."
 			}
 			fatalWithHint(127,
 				fmt.Sprintf("agentsh-shell-shim: ready_gate: %v", srvErr),
@@ -288,7 +292,8 @@ func main() {
 				// Transient error (ECONNREFUSED, ENOENT, timeout) on a local
 				// server — likely "not started yet" during boot. Fall through.
 				debugLog(
-					"ready_gate: local server not reachable at %s:%s (%v), falling through to real shell %s",
+					"ready_gate: local server not reachable at %s:%s (%v), falling through to "+
+						"real shell %s",
 					srvNetwork,
 					srvAddr,
 					dialErr,
@@ -312,7 +317,8 @@ func main() {
 			fatalWithHint(
 				127,
 				fmt.Sprintf("agentsh-shell-shim: remote server not reachable at %s", srvAddr),
-				"The agentsh server is configured as a remote endpoint and is not responding. Check server availability.",
+				"The agentsh server is configured as a remote endpoint and is not responding. "+
+					"Check server availability.",
 			)
 		}
 	}
@@ -490,8 +496,8 @@ func resolveAgentshBin() (string, error) {
 func resolveRealShell(shellName string) (string, error) {
 	var candidates []string
 
-	// Prefer resolving relative to argv[0] when it includes a path, since callers often exec "/bin/sh"
-	// with argv0 "sh" or "/bin/sh" depending on the harness.
+	// Prefer resolving relative to argv[0] when it includes a path, since callers often exec
+	// "/bin/sh" with argv0 "sh" or "/bin/sh" depending on the harness.
 	if strings.Contains(os.Args[0], "/") {
 		p := os.Args[0]
 		if !filepath.IsAbs(p) {
@@ -511,7 +517,8 @@ func resolveRealShell(shellName string) (string, error) {
 		filepath.Join("/usr/bin", shellName+".real"),
 	)
 
-	// Fallback to the actual executable's directory (works when shim is installed as a copy into /bin).
+	// Fallback to the actual executable's directory (works when shim is installed as a copy into
+	// /bin).
 	if exe, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(exe), shellName+".real"))
 	}
@@ -610,7 +617,8 @@ func runAndExit(path string, argv0 string, args []string, env []string) {
 		fatalWithHint(
 			127,
 			fmt.Sprintf("agentsh-shell-shim: run %s: %v", path, err),
-			"If you see 'permission denied' in a container, check that the shim and agentsh binaries are executable.",
+			"If you see 'permission denied' in a container, check that the shim and agentsh "+
+				"binaries are executable.",
 		)
 	}
 
@@ -631,7 +639,8 @@ func runAndExit(path string, argv0 string, args []string, env []string) {
 		fatalWithHint(
 			127,
 			fmt.Sprintf("agentsh-shell-shim: run %s: %v", path, waitErr),
-			"If you see 'permission denied' in a container, check that the shim and agentsh binaries are executable.",
+			"If you see 'permission denied' in a container, check that the shim and agentsh "+
+				"binaries are executable.",
 		)
 	}
 	os.Exit(0)

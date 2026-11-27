@@ -145,7 +145,8 @@ func TestStore_WALAmbiguousFailure_LatchesFatal(t *testing.T) {
 	// original I/O error, not a nil result.
 	if gotErr := s.Err(); gotErr == nil {
 		t.Error(
-			"Store.Err() returned nil after fatal latch — operators cannot discover the cause pre-Close",
+			"Store.Err() returned nil after fatal latch — operators cannot discover the cause " +
+				"pre-Close",
 		)
 	}
 }
@@ -563,7 +564,8 @@ func TestStore_RestartRestoresChainState(t *testing.T) {
 	}
 	if got := ce.GetIntegrity().GetPrevHash(); got != wantPrevForSeq3 {
 		t.Errorf(
-			"seq=3 IntegrityRecord.PrevHash = %q, want %q (wire chain not restored: should equal seq=2's EventHash)",
+			"seq=3 IntegrityRecord.PrevHash = %q, want %q (wire chain not restored: should equal "+
+				"seq=2's EventHash)",
 			got,
 			wantPrevForSeq3,
 		)
@@ -793,7 +795,8 @@ func TestStore_RestartRestoresChainState_IgnoresTrailingLossMarker(t *testing.T)
 
 	if got := s2.PeekPrevHash(); got != prev {
 		t.Errorf(
-			"post-restart PeekPrevHash after trailing loss marker = %q, want %q — restore fell back to fresh chain",
+			"post-restart PeekPrevHash after trailing loss marker = %q, want %q — restore fell "+
+				"back to fresh chain",
 			got,
 			prev,
 		)
@@ -918,7 +921,8 @@ func TestStore_AgentIDChangeAcrossRestartsQuarantines(t *testing.T) {
 	// Fresh WAL → genesis chain state (empty prev_hash).
 	if got := s2.PeekPrevHash(); got != "" {
 		t.Errorf(
-			"post-AgentID-change PeekPrevHash = %q, want \"\" (quarantine did not produce a fresh WAL)",
+			"post-AgentID-change PeekPrevHash = %q, want \"\" (quarantine did not produce a "+
+				"fresh WAL)",
 			got,
 		)
 	}
@@ -940,7 +944,8 @@ func TestStore_AgentIDChangeAcrossRestartsQuarantines(t *testing.T) {
 	}
 	if !foundQuarantine {
 		t.Error(
-			"no quarantine sibling found after AgentID change — wal.Open did not detect context_digest mismatch",
+			"no quarantine sibling found after AgentID change — wal.Open did not detect " +
+				"context_digest mismatch",
 		)
 	}
 }

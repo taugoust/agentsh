@@ -190,7 +190,8 @@ func loadFilterWithRetry(prog []byte, withWaitKill bool, snapshot []any) (int, b
 		return -1, false, err
 	}
 	slog.Warn(
-		"seccomp: WaitKillable rejected at filter load time; falling back to SIGURG signal mask only",
+		"seccomp: WaitKillable rejected at filter load time; falling back to SIGURG signal "+
+			"mask only",
 		"error",
 		err,
 	)

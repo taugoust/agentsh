@@ -48,8 +48,11 @@ const (
 	// Exit codes used by the probe child. The parent's classifier
 	// treats these specifically so a setup failure does not look like
 	// a kernel-bug hit.
-	probeExitSetupFailure = 71 // any runProbeChild early-return (bad env, filter build, install, fd send, etc.)
-	probeExitFallback     = 70 // runProbeChild returned past the exec call without any explicit early-return (shouldn't happen)
+	// any runProbeChild early-return (bad env, filter build, install, fd send, etc.)
+	probeExitSetupFailure = 71
+	// runProbeChild returned past the exec call without any explicit early-return (shouldn't
+	// happen)
+	probeExitFallback = 70
 
 	// probeRecvTimeout caps how long the parent waits for the child to
 	// send its notify fd before giving up. The child only blocks

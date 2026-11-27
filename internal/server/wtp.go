@@ -49,7 +49,8 @@ func resolveLogGoawayMessage(cfgVal *bool, logger *slog.Logger) bool {
 		return defaultV
 	case *cfgVal:
 		logger.Warn(
-			"watchtower: log_goaway_message=true; goaway_message text will be logged after client-side sanitization, depends on server-side no-secrets contract",
+			"watchtower: log_goaway_message=true; goaway_message text will be logged after "+
+				"client-side sanitization, depends on server-side no-secrets contract",
 			"see",
 			"github.com/canyonroad/wtp-protos proto/canyonroad/wtp/v1/wtp.proto Goaway.message",
 		)
@@ -145,7 +146,8 @@ func buildWatchtowerStore(
 	tlsEnabled := !cfg.TLS.Insecure
 	if cfg.TLS.Insecure {
 		slog.Warn(
-			"watchtower: TLS disabled via tls.insecure=true; traffic is plaintext — do not use in production",
+			"watchtower: TLS disabled via tls.insecure=true; traffic is plaintext — do not use " +
+				"in production",
 		)
 	}
 

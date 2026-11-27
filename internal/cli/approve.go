@@ -89,7 +89,8 @@ func newApproveCmd() *cobra.Command {
 				); err != nil {
 					return err
 				}
-			} else if err := c.ResolveApproval(cmd.Context(), args[0], decision, reason); err != nil {
+			} else if err :=
+				c.ResolveApproval(cmd.Context(), args[0], decision, reason); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "ok")

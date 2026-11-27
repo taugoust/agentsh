@@ -30,7 +30,8 @@ namespaces or apply filesystem, network, or other sandbox restrictions.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.ArgsLenAtDash() < 0 || len(args) == 0 {
 				return fmt.Errorf(
-					"command required after --\n\nUsage: agentsh permission-gate run [flags] -- COMMAND [ARGS...]",
+					"command required after --\n\nUsage: agentsh permission-gate run [flags] -- " +
+						"COMMAND [ARGS...]",
 				)
 			}
 			result, err := permissiongate.Run(cmd.Context(), permissiongate.RunOptions{
@@ -50,6 +51,7 @@ namespaces or apply filesystem, network, or other sandbox restrictions.`,
 		},
 	}
 	command.Flags().
-		StringVar(&auditPath, "audit-log", "", "Private per-run JSONL audit path (default: user state directory)")
+		StringVar(&auditPath, "audit-log", "",
+			"Private per-run JSONL audit path (default: user state directory)")
 	return command
 }

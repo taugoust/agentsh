@@ -44,7 +44,8 @@ func TestResolveProviderConfigs_Vault(t *testing.T) {
 	providers := map[string]yaml.Node{
 		"v": mustYAMLNode(
 			t,
-			"type: vault\naddress: https://vault.example.com\nauth:\n  method: token\n  token_ref: keyring://agentsh/vt",
+			"type: vault\naddress: https://vault.example.com\nauth:\n  method: token\n"+
+				"  token_ref: keyring://agentsh/vt",
 		),
 	}
 	configs, err := ResolveProviderConfigs(providers)

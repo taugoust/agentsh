@@ -255,8 +255,8 @@ func TestSnykProvider_BreakerOpensAfterRepeatedFailures(t *testing.T) {
 		Packages:  []pkgcheck.PackageRef{{Name: "express", Version: "4.18.0"}},
 	}
 
-	// First call: retryClient exhausts all 3 attempts → server hits → RecordFailure x1 from breaker perspective.
-	// With Threshold=2, after 2 CheckBatch calls the breaker opens.
+	// First call: retryClient exhausts all 3 attempts → server hits → RecordFailure x1 from breaker
+	// perspective. With Threshold=2, after 2 CheckBatch calls the breaker opens.
 	_, err1 := p.CheckBatch(context.Background(), req)
 	require.Error(t, err1)
 
@@ -432,7 +432,8 @@ func TestSnykProvider_FindingsOrderMatchesInputOrder(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{
 			"id":"X",
 			"type":"issue",
-			"attributes":{"title":"` + r.URL.Path + `","severity":"low","type":"package_vulnerability"}
+			"attributes":{"title":"` + r.URL.Path +
+			`","severity":"low","type":"package_vulnerability"}
 		}]}`))
 	}))
 	defer srv.Close()
@@ -558,7 +559,11 @@ func TestSnykProvider_PartialBatchReturnsProviderError(t *testing.T) {
 		APIKey:      "tk",
 		OrgID:       "org",
 		Concurrency: 4,
-	}, circuitBreakerConfig{Threshold: 100, Window: time.Second, OpenPeriod: 100 * time.Millisecond})
+	}, circuitBreakerConfig{
+		Threshold:  100,
+		Window:     time.Second,
+		OpenPeriod: 100 * time.Millisecond,
+	})
 
 	resp, err := p.CheckBatch(context.Background(), pkgcheck.CheckRequest{
 		Ecosystem: pkgcheck.EcosystemNPM,

@@ -346,7 +346,10 @@ func TestMapAWSError_AuthCodes(t *testing.T) {
 		t.Run(code, func(t *testing.T) {
 			mock := &mockSMClient{
 				GetSecretValueFunc: func(_ context.Context, _ *secretsmanager.GetSecretValueInput,
-					_ ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
+					_ ...func(*secretsmanager.Options)) (
+					*secretsmanager.GetSecretValueOutput,
+					error,
+				) {
 					return nil, &mockAPIError{code: code, message: "auth error: " + code}
 				},
 			}

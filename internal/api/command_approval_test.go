@@ -73,7 +73,10 @@ func TestApplyCommandApproval_RequestIncludesCommandSessionScope(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- app.applyCommandApproval(ctx, sess.ID, "cmd-now", "git", []string{"status", "--short"}, map[string]any{"kind": "test"}, &pre)
+		done <- app.applyCommandApproval(ctx, sess.ID, "cmd-now", "git", []string{
+			"status",
+			"--short",
+		}, map[string]any{"kind": "test"}, &pre)
 	}()
 
 	req := waitPendingCommandApproval(t, ctx, app.approvals, sess.ID)
@@ -152,7 +155,10 @@ func TestApplyCommandApproval_ApproveExecutableForSessionAllowsDifferentArgs(t *
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- app.applyCommandApproval(ctx, sess.ID, "cmd-1", command, []string{"events.db", "select * from events limit 10"}, nil, &pre)
+		done <- app.applyCommandApproval(ctx, sess.ID, "cmd-1", command, []string{
+			"events.db",
+			"select * from events limit 10",
+		}, nil, &pre)
 	}()
 
 	req := waitPendingCommandApproval(t, ctx, app.approvals, sess.ID)
@@ -219,7 +225,10 @@ func TestApplyCommandApproval_DifferentExecutableStillPrompts(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- app.applyCommandApproval(ctx, sess.ID, "cmd-psql", psql, []string{"events.db", "select 1"}, nil, &pre)
+		done <- app.applyCommandApproval(ctx, sess.ID, "cmd-psql", psql, []string{
+			"events.db",
+			"select 1",
+		}, nil, &pre)
 	}()
 
 	req := waitPendingCommandApproval(t, ctx, app.approvals, sess.ID)
@@ -244,12 +253,19 @@ func TestResolveApprovalLocal_PiSelectedExecutableSessionScopeResolvesConcurrent
 	pre1 := commandApprovalDecision(rule)
 	done1 := make(chan error, 1)
 	go func() {
-		done1 <- app.applyCommandApproval(ctx, sess.ID, "cmd-1", command, []string{"events.db", "select 1"}, nil, &pre1)
+		done1 <- app.applyCommandApproval(ctx, sess.ID, "cmd-1", command, []string{
+			"events.db",
+			"select 1",
+		}, nil, &pre1)
 	}()
 	pre2 := commandApprovalDecision(rule)
 	done2 := make(chan error, 1)
 	go func() {
-		done2 <- app.applyCommandApproval(ctx, sess.ID, "cmd-2", command, []string{"-readonly", "events.db", "select 2"}, nil, &pre2)
+		done2 <- app.applyCommandApproval(ctx, sess.ID, "cmd-2", command, []string{
+			"-readonly",
+			"events.db",
+			"select 2",
+		}, nil, &pre2)
 	}()
 
 	reqs := waitPendingCommandApprovals(t, ctx, app.approvals, sess.ID, 2)
@@ -293,12 +309,19 @@ func TestApprovalUIResolve_PiSelectedExecutableSessionScopeResolvesConcurrentPen
 	pre1 := commandApprovalDecision(rule)
 	done1 := make(chan error, 1)
 	go func() {
-		done1 <- app.applyCommandApproval(ctx, sess.ID, "cmd-1", command, []string{"events.db", "select 1"}, nil, &pre1)
+		done1 <- app.applyCommandApproval(ctx, sess.ID, "cmd-1", command, []string{
+			"events.db",
+			"select 1",
+		}, nil, &pre1)
 	}()
 	pre2 := commandApprovalDecision(rule)
 	done2 := make(chan error, 1)
 	go func() {
-		done2 <- app.applyCommandApproval(ctx, sess.ID, "cmd-2", command, []string{"-readonly", "events.db", "select 2"}, nil, &pre2)
+		done2 <- app.applyCommandApproval(ctx, sess.ID, "cmd-2", command, []string{
+			"-readonly",
+			"events.db",
+			"select 2",
+		}, nil, &pre2)
 	}()
 
 	reqs := waitPendingCommandApprovals(t, ctx, app.approvals, sess.ID, 2)
@@ -390,7 +413,10 @@ func TestApplyCommandApproval_ExactInvocationSessionScopeIsNarrow(t *testing.T) 
 	preDifferent := commandApprovalDecision(rule)
 	differentDone := make(chan error, 1)
 	go func() {
-		differentDone <- app.applyCommandApproval(ctx, sess.ID, "cmd-3", command, []string{"events.db", "select 2"}, nil, &preDifferent)
+		differentDone <- app.applyCommandApproval(ctx, sess.ID, "cmd-3", command, []string{
+			"events.db",
+			"select 2",
+		}, nil, &preDifferent)
 	}()
 	differentReq := waitPendingCommandApproval(t, ctx, app.approvals, sess.ID)
 	if differentReq.ID == req.ID {

@@ -466,7 +466,9 @@ func (s *ReceivedSetup) PolicyRights(source *os.File, sourcePath string) (uint64
 	matched := false
 	for index := range s.Objects {
 		object := &s.Objects[index]
-		if (object.Kind != SetupObjectPolicy && object.Kind != SetupObjectSyntheticRoot && object.Kind != SetupObjectSyntheticRW) ||
+		if (object.Kind != SetupObjectPolicy &&
+			object.Kind != SetupObjectSyntheticRoot &&
+			object.Kind != SetupObjectSyntheticRW) ||
 			object.File == nil {
 			continue
 		}

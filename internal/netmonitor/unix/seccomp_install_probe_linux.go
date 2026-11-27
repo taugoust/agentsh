@@ -169,7 +169,8 @@ func runInstallProbeChild() {
 // check (SECCOMP_GET_NOTIF_SIZES), used only as a test skip guard. Returns nil
 // when supported.
 func probeSeccompUserNotifyKernel() error {
-	var sizes [3]uint16 // struct seccomp_notif_sizes { __u16 seccomp_notif, seccomp_notif_resp, seccomp_data; }
+	// struct seccomp_notif_sizes { __u16 seccomp_notif, seccomp_notif_resp, seccomp_data; }
+	var sizes [3]uint16
 	_, _, errno := unix.Syscall(
 		unix.SYS_SECCOMP,
 		unix.SECCOMP_GET_NOTIF_SIZES,

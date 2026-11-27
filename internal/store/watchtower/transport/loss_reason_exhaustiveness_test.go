@@ -35,7 +35,8 @@ func TestToWireReason_Exhaustive(t *testing.T) {
 		}
 		if !found {
 			t.Errorf(
-				"ToWireReason missing case for %s — would silently drop loss markers with that reason",
+				"ToWireReason missing case for %s — would silently drop loss markers with "+
+					"that reason",
 				want,
 			)
 		}

@@ -33,7 +33,8 @@ func TestCreateSessionWithRetry_RetriesTransientTransportErrors(t *testing.T) {
 			attempts++
 			if attempts == 1 {
 				return types.Session{}, errors.New(
-					`Post "http://localhost:1234/api/v1/sessions": read tcp [::1]:123->[::1]:456: read: bad file descriptor`,
+					`Post "http://localhost:1234/api/v1/sessions": read tcp ` +
+						`[::1]:123->[::1]:456: read: bad file descriptor`,
 				)
 			}
 			return want, nil
@@ -83,7 +84,8 @@ func TestCreateSessionWithRetry_UsesExistingSessionAfterConflict(t *testing.T) {
 			createAttempts++
 			if createAttempts == 1 {
 				return types.Session{}, errors.New(
-					`Post "http://localhost:1234/api/v1/sessions": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`,
+					`Post "http://localhost:1234/api/v1/sessions": context deadline exceeded ` +
+						`(Client.Timeout exceeded while awaiting headers)`,
 				)
 			}
 			return types.Session{}, &client.HTTPError{
@@ -149,7 +151,8 @@ func TestContainerHTTPEndpointWithRetry_RetriesTransientMappedPortErrors(t *test
 			attempts++
 			if attempts == 1 {
 				return "", errors.New(
-					`inspect: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.48/containers/abc/json": context deadline exceeded`,
+					`inspect: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.48/containers/abc/json": ` +
+						`context deadline exceeded`,
 				)
 			}
 			return wantPort, nil
@@ -211,7 +214,9 @@ func TestStartContainerWithRetry_RetriesTransientNetworkSetupTimeout(t *testing.
 			attempts++
 			if attempts == 1 {
 				return nil, errors.New(
-					`create container: ensure default network: network list: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.51/networks": context deadline exceeded`,
+					`create container: ensure default network: network list: Get ` +
+						`"http://%2Fvar%2Frun%2Fdocker.sock/v1.51/networks": context deadline ` +
+						`exceeded`,
 				)
 			}
 			return nil, nil
@@ -563,7 +568,8 @@ func TestSeccompWrapperDisabled_WrapInitRefuses_WithPolicyLimits(t *testing.T) {
 	})
 	if wrapErr == nil {
 		t.Fatal(
-			"wrap-init succeeded with unix_sockets.enabled=false and policy limits (no cgroup config); expected 503 (regression #361 follow-up)",
+			"wrap-init succeeded with unix_sockets.enabled=false and policy limits (no cgroup " +
+				"config); expected 503 (regression #361 follow-up)",
 		)
 	}
 	var httpErr *client.HTTPError
@@ -686,7 +692,9 @@ func startSeccompServerContainer(
 		WaitingFor: wait.ForHTTP("/health").
 			WithPort("18080/tcp").
 			WithStartupTimeout(60 * time.Second).
-			WithStatusCodeMatcher(func(code int) bool { return code == http.StatusOK || code == http.StatusNotFound }),
+			WithStatusCodeMatcher(func(code int) bool {
+				return code == http.StatusOK || code == http.StatusNotFound
+			}),
 	}
 
 	ctr, err := startContainerWithRetry(t, ctx, testcontainers.GenericContainerRequest{
@@ -1029,7 +1037,8 @@ func TestExecveInterception_DepthEnforcement(t *testing.T) {
 		if errors.Is(probeErr, context.DeadlineExceeded) ||
 			strings.Contains(probeErr.Error(), "deadline exceeded") {
 			t.Skip(
-				"seccomp-user-notify appears to not be working in this environment (command timeout)",
+				"seccomp-user-notify appears to not be working in this environment (command " +
+					"timeout)",
 			)
 		}
 		t.Fatalf("Exec probe: %v", probeErr)

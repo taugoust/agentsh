@@ -11,19 +11,23 @@ import (
 // Conditions can be composed with And/Or for complex matching.
 type ChainCondition struct {
 	// Via chain conditions
-	ViaIndex       *int     `yaml:"via_index,omitempty"`        // Check specific via position (0-indexed)
+	// Check specific via position (0-indexed)
+	ViaIndex       *int     `yaml:"via_index,omitempty"`
 	ViaIndexValue  string   `yaml:"via_index_value,omitempty"`  // Value to match at ViaIndex
 	ViaContains    []string `yaml:"via_contains,omitempty"`     // Any of these patterns in via
 	ViaNotContains []string `yaml:"via_not_contains,omitempty"` // None of these patterns in via
 	ViaMatches     []string `yaml:"via_matches,omitempty"`      // Pattern match against via entries
 
 	// Class-based conditions
-	ClassContains    []string `yaml:"class_contains,omitempty"`     // Any of these classes in chain
-	ClassNotContains []string `yaml:"class_not_contains,omitempty"` // None of these classes in chain
+	ClassContains []string `yaml:"class_contains,omitempty"` // Any of these classes in chain
+	// None of these classes in chain
+	ClassNotContains []string `yaml:"class_not_contains,omitempty"`
 
 	// Consecutive pattern detection (shell laundering)
-	ConsecutiveClass *ConsecutiveMatch `yaml:"consecutive_class,omitempty"` // Consecutive class occurrences
-	ConsecutiveComm  *ConsecutiveMatch `yaml:"consecutive_comm,omitempty"`  // Consecutive comm occurrences
+	// Consecutive class occurrences
+	ConsecutiveClass *ConsecutiveMatch `yaml:"consecutive_class,omitempty"`
+	// Consecutive comm occurrences
+	ConsecutiveComm *ConsecutiveMatch `yaml:"consecutive_comm,omitempty"`
 
 	// Depth conditions
 	DepthEQ *int `yaml:"depth_eq,omitempty"` // Depth equals

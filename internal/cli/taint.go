@@ -336,6 +336,7 @@ func newTaintSimulateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "simulate",
 		Short: "Simulate taint evaluation for testing",
+		//nolint:lll // example commands in help text stay copy-pasteable on one line
 		Long: `Simulates taint evaluation locally without requiring a running daemon.
 Useful for testing policy configurations with different ancestry scenarios.
 
@@ -384,13 +385,16 @@ Example:
 	}
 
 	cmd.Flags().
-		StringVar(&ancestry, "ancestry", "", "Comma-separated process chain (e.g., 'cursor,bash,npm')")
+		StringVar(&ancestry, "ancestry", "",
+			"Comma-separated process chain (e.g., 'cursor,bash,npm')")
 	cmd.Flags().StringVar(&command, "command", "", "Command to evaluate")
 	cmd.Flags().StringVar(&commandArgs, "args", "", "Command arguments (space-separated)")
 	cmd.Flags().
-		StringVar(&contextName, "context", "", "Process context name (auto-detected from first ancestor if not specified)")
+		StringVar(&contextName, "context", "",
+			"Process context name (auto-detected from first ancestor if not specified)")
 	cmd.Flags().
-		StringVar(&policyFile, "policy", "", "Policy file to use (uses built-in test policy if not specified)")
+		StringVar(&policyFile, "policy", "",
+			"Policy file to use (uses built-in test policy if not specified)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 
 	return cmd

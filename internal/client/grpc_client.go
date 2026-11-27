@@ -349,7 +349,8 @@ func (c *GRPCClient) StreamSessionEvents(
 			}
 			b, _ := protojson.Marshal(msg)
 			trim := strings.TrimSpace(string(b))
-			// If server sends {"event":"ready"} for parity with SSE, output {} like SSE clients expect.
+			// If server sends {"event":"ready"} for parity with SSE, output {} like SSE clients
+			// expect.
 			if trim == `{"event":"ready"}` {
 				trim = "{}"
 			}

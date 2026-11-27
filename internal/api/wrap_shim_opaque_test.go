@@ -75,7 +75,8 @@ func TestWrapInit_ShimGuard_OpaqueInterceptionAware(t *testing.T) {
 		resp, code, err := app.wrapInitCore(s, s.ID, req)
 		if code != http.StatusOK {
 			t.Fatalf(
-				"code = %d (err=%v), want 200 (opaque allowed/wrap-init proceeds when execve enforced)",
+				"code = %d (err=%v), want 200 (opaque allowed/wrap-init proceeds when execve "+
+					"enforced)",
 				code,
 				err,
 			)

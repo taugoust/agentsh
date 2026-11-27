@@ -186,11 +186,12 @@ func (a *App) withCompositionRuntimeControlRule(p *policy.Policy) (*policy.Polic
 	clone := clonePolicy(p)
 	clone.FileRules = append([]policy.FileRule{
 		{
-			Name:        "deny-agentsh-composition-runtime",
-			Description: "Keep AgentSH's private composition and helper runtime outside project and payload authority",
-			Paths:       []string{root, filepath.Join(root, "**")},
-			Operations:  []string{"*"},
-			Decision:    "deny",
+			Name: "deny-agentsh-composition-runtime",
+			Description: "Keep AgentSH's private composition and helper runtime outside project " +
+				"and payload authority",
+			Paths:      []string{root, filepath.Join(root, "**")},
+			Operations: []string{"*"},
+			Decision:   "deny",
 		},
 	}, clone.FileRules...)
 	return clone, nil
@@ -241,25 +242,28 @@ func withSessionParentTraversalRules(
 	clone := clonePolicy(p)
 	rules := []policy.FileRule{
 		{
-			Name:        "allow-session-parent-context-files",
-			Description: "Allow reading AgentSH/Pi context files in parent directories of the effective session workspace",
-			Paths:       sessionParentContextFilePaths(paths),
-			Operations:  []string{"read", "open", "stat", "readlink", "access"},
-			Decision:    "allow",
+			Name: "allow-session-parent-context-files",
+			Description: "Allow reading AgentSH/Pi context files in parent directories of the " +
+				"effective session workspace",
+			Paths:      sessionParentContextFilePaths(paths),
+			Operations: []string{"read", "open", "stat", "readlink", "access"},
+			Decision:   "allow",
 		},
 		{
-			Name:        "allow-session-parent-directory-open",
-			Description: "Allow opening parent directories of the effective session workspace for context discovery",
-			Paths:       sessionParentDirectoryOpenPaths(paths),
-			Operations:  []string{"open"},
-			Decision:    "allow",
+			Name: "allow-session-parent-directory-open",
+			Description: "Allow opening parent directories of the effective session workspace " +
+				"for context discovery",
+			Paths:      sessionParentDirectoryOpenPaths(paths),
+			Operations: []string{"open"},
+			Decision:   "allow",
 		},
 		{
-			Name:        "allow-session-parent-path-traversal",
-			Description: "Allow metadata traversal of parent directories for the effective session workspace",
-			Paths:       paths,
-			Operations:  []string{"stat", "readlink", "access"},
-			Decision:    "allow",
+			Name: "allow-session-parent-path-traversal",
+			Description: "Allow metadata traversal of parent directories for the effective " +
+				"session workspace",
+			Paths:      paths,
+			Operations: []string{"stat", "readlink", "access"},
+			Decision:   "allow",
 		},
 	}
 	clone.FileRules = append(rules, clone.FileRules...)

@@ -21,6 +21,7 @@ func TestReadLLMLogs(t *testing.T) {
 	})
 
 	t.Run("parses request and response entries", func(t *testing.T) {
+		//nolint:lll // JSONL fixture records must stay one per line
 		input := `{"id":"req_001","timestamp":"2026-01-04T10:30:01Z","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
 {"request_id":"req_001","timestamp":"2026-01-04T10:30:02Z","duration_ms":1200,"response":{"status":200},"usage":{"input_tokens":150,"output_tokens":892}}
 `
@@ -58,6 +59,7 @@ func TestReadLLMLogs(t *testing.T) {
 	})
 
 	t.Run("counts redactions", func(t *testing.T) {
+		//nolint:lll // JSONL fixture records must stay one per line
 		input := `{"id":"req_001","timestamp":"2026-01-04T10:30:01Z","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"},"dlp":{"redactions":[{"type":"email","count":3},{"type":"phone","count":2}]}}
 {"request_id":"req_001","timestamp":"2026-01-04T10:30:02Z","duration_ms":1000,"response":{"status":200},"usage":{"input_tokens":100,"output_tokens":500}}
 `
@@ -76,6 +78,7 @@ func TestReadLLMLogs(t *testing.T) {
 	})
 
 	t.Run("handles multiple requests", func(t *testing.T) {
+		//nolint:lll // JSONL fixture records must stay one per line
 		input := `{"id":"req_001","timestamp":"2026-01-04T10:30:01Z","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
 {"request_id":"req_001","timestamp":"2026-01-04T10:30:02Z","duration_ms":1200,"response":{"status":200},"usage":{"input_tokens":150,"output_tokens":892}}
 {"id":"req_002","timestamp":"2026-01-04T10:30:15Z","dialect":"openai","request":{"method":"POST","path":"/v1/chat/completions"}}
@@ -99,6 +102,7 @@ func TestReadLLMLogs(t *testing.T) {
 	})
 
 	t.Run("handles orphan response", func(t *testing.T) {
+		//nolint:lll // JSONL fixture records must stay one per line
 		input := `{"request_id":"orphan","timestamp":"2026-01-04T10:30:02Z","duration_ms":1000,"response":{"status":200},"usage":{"input_tokens":100,"output_tokens":500}}
 `
 		rows, err := ReadLLMLogs(strings.NewReader(input))
@@ -119,6 +123,7 @@ func TestReadLLMLogs(t *testing.T) {
 	})
 
 	t.Run("skips malformed lines", func(t *testing.T) {
+		//nolint:lll // JSONL fixture records must stay one per line
 		input := `{"id":"req_001","timestamp":"2026-01-04T10:30:01Z","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
 {malformed json}
 {"request_id":"req_001","timestamp":"2026-01-04T10:30:02Z","duration_ms":1000,"response":{"status":200},"usage":{"input_tokens":100,"output_tokens":500}}
@@ -141,6 +146,7 @@ func TestReadLLMLogs(t *testing.T) {
 // row confuses session reporting.
 func TestReadLLMLogs_SkipsHTTPServiceEntries(t *testing.T) {
 	// One LLM pair (anthropic) and one http_service pair (github).
+	//nolint:lll // JSONL fixture records must stay one per line
 	input := `{"id":"req_001","timestamp":"2026-01-04T10:30:01Z","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
 {"request_id":"req_001","timestamp":"2026-01-04T10:30:02Z","duration_ms":1200,"response":{"status":200},"usage":{"input_tokens":150,"output_tokens":892}}
 {"id":"req_http_1","timestamp":"2026-01-04T10:31:00Z","service_kind":"http_service","service_name":"github","request":{"method":"GET","path":"/user"}}
@@ -241,6 +247,7 @@ func TestReadLLMLogsFromFile(t *testing.T) {
 		tmpDir := t.TempDir()
 		logPath := filepath.Join(tmpDir, "llm-requests.jsonl")
 
+		//nolint:lll // JSONL fixture records must stay one per line
 		content := `{"id":"req_001","timestamp":"2026-01-04T10:30:01Z","dialect":"anthropic","request":{"method":"POST","path":"/v1/messages"}}
 {"request_id":"req_001","timestamp":"2026-01-04T10:30:02Z","duration_ms":1200,"response":{"status":200},"usage":{"input_tokens":150,"output_tokens":892}}
 `

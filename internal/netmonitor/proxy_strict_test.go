@@ -427,7 +427,12 @@ func TestHandleConnectStrictSNIMatchForwardsOriginalClientHelloAfterAudit(t *tes
 	p.dialContext = func(_ context.Context, network, address string) (net.Conn, error) {
 		proxyUpstream, testUpstream := net.Pipe()
 		calls, _ := emitter.snapshot()
-		dialed <- dialObservation{network: network, address: address, peer: testUpstream, calls: calls}
+		dialed <- dialObservation{
+			network: network,
+			address: address,
+			peer:    testUpstream,
+			calls:   calls,
+		}
 		return proxyUpstream, nil
 	}
 

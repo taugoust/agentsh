@@ -38,7 +38,8 @@ type OverwrittenTool struct {
 
 // RegistryCallbacks allows external components to be notified of registry events.
 type RegistryCallbacks struct {
-	OnMultiServer func()                                          // called once when 2nd distinct server registers
+	// called once when 2nd distinct server registers
+	OnMultiServer func()
 	OnOverwrite   func(toolName, oldServerID, newServerID string) // called on tool name collision
 }
 

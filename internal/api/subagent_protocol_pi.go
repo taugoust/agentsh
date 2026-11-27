@@ -262,7 +262,8 @@ func piProtocolOutcome(
 	}
 	if piStopReasonToolUse(state.stopReason) {
 		outcome.FailureKind = subagentFailureProtocol
-		outcome.ErrorMessage = "child Pi settled after a tool-use turn without a final assistant response"
+		outcome.ErrorMessage = "child Pi settled after a tool-use turn without a final assistant " +
+			"response"
 		return outcome
 	}
 	if state.final == "" {

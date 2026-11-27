@@ -160,7 +160,8 @@ func verifyGuestControlWorkspaceVolumeSnapshot(
 		return fmt.Errorf("guest control volume workspace subdirectory is itself overmounted")
 	}
 	for name, info := range map[string]os.FileInfo{
-		"volume root": volumeInfo, "workspace mount": workspaceInfo, "volume workspace subdirectory": volumeWorkspaceInfo,
+		"volume root": volumeInfo, "workspace mount": workspaceInfo,
+		"volume workspace subdirectory": volumeWorkspaceInfo,
 	} {
 		major, minor, deviceErr := guestFileDevice(info)
 		if deviceErr != nil {

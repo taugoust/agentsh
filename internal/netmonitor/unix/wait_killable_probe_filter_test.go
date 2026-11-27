@@ -87,7 +87,9 @@ func TestSharedNotifySyscallHelpers(t *testing.T) {
 	for _, sc := range unixSocketNotifySyscalls() {
 		socket[int(sc)] = true
 	}
-	for _, nr := range []int{unix.SYS_SOCKET, unix.SYS_CONNECT, unix.SYS_BIND, unix.SYS_LISTEN, unix.SYS_SENDTO} {
+	for _, nr := range []int{
+		unix.SYS_SOCKET, unix.SYS_CONNECT, unix.SYS_BIND, unix.SYS_LISTEN, unix.SYS_SENDTO,
+	} {
 		if !socket[nr] {
 			t.Errorf("unixSocketNotifySyscalls missing nr=%d", nr)
 		}
@@ -97,7 +99,9 @@ func TestSharedNotifySyscallHelpers(t *testing.T) {
 	for _, sc := range metadataNotifySyscalls() {
 		meta[int(sc)] = true
 	}
-	for _, nr := range []int{unix.SYS_STATX, unix.SYS_NEWFSTATAT, unix.SYS_FACCESSAT2, unix.SYS_READLINKAT} {
+	for _, nr := range []int{
+		unix.SYS_STATX, unix.SYS_NEWFSTATAT, unix.SYS_FACCESSAT2, unix.SYS_READLINKAT,
+	} {
 		if !meta[nr] {
 			t.Errorf("metadataNotifySyscalls missing nr=%d", nr)
 		}

@@ -202,7 +202,8 @@ func TestDepsDevProvider_PyPIEcosystem(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(
 			[]byte(
-				`{"versionKey":{"system":"pypi","name":"requests","version":"2.28.0"},"licenses":["Apache-2.0"]}`,
+				`{"versionKey":{"system":"pypi","name":"requests","version":"2.28.0"},` +
+					`"licenses":["Apache-2.0"]}`,
 			),
 		)
 	}))
@@ -226,7 +227,8 @@ func TestDepsDevProvider_MultiplePackages(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(
 			[]byte(
-				`{"versionKey":{"system":"npm","name":"test","version":"1.0.0"},"licenses":["MIT"]}`,
+				`{"versionKey":{"system":"npm","name":"test","version":"1.0.0"},` +
+					`"licenses":["MIT"]}`,
 			),
 		)
 	}))

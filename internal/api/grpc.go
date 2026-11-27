@@ -183,7 +183,12 @@ func grpcUnaryHandler(
 	method string,
 	fn func(*grpcServer, context.Context, *structpb.Struct) (*structpb.Struct, error),
 ) func(any, context.Context, func(any) error, grpc.UnaryServerInterceptor) (any, error) {
-	return func(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+	return func(
+		srv any,
+		ctx context.Context,
+		dec func(any) error,
+		interceptor grpc.UnaryServerInterceptor,
+	) (any, error) {
 		in := &structpb.Struct{}
 		if err := dec(in); err != nil {
 			return nil, err
@@ -704,25 +709,27 @@ func (s *grpcServer) ExecStream(in *structpb.Struct, stream grpc.ServerStream) e
 			envPolicy = cmdDecision.EnvPolicy
 			envPolicyResolved = true
 		}
-		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesStreamingEmitResolvedTimeout(
-			stream.Context(),
-			sess,
-			cmdID,
-			wrappedReq,
-			s.app.cfg,
-			envPolicy,
-			timeoutResolution.Duration,
-			emit,
-			s.app.cgroupHook(
-				req.SessionID,
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources,
+			execErr =
+			runCommandWithResourcesStreamingEmitResolvedTimeout(
+				stream.Context(),
+				sess,
 				cmdID,
-				reserveLineagePIDs(limits, extraCfg),
-			),
-			extraCfg,
-			s.app.ptraceTracer,
-			req.SessionID,
-			onStarted,
-		)
+				wrappedReq,
+				s.app.cfg,
+				envPolicy,
+				timeoutResolution.Duration,
+				emit,
+				s.app.cgroupHook(
+					req.SessionID,
+					cmdID,
+					reserveLineagePIDs(limits, extraCfg),
+				),
+				extraCfg,
+				s.app.ptraceTracer,
+				req.SessionID,
+				onStarted,
+			)
 		failure := commandJailFailureFrom(execErr)
 		if failure == nil {
 			break
@@ -1304,7 +1311,8 @@ func (s *grpcServer) PolicyTest(
 		return nil, status.Error(codes.InvalidArgument, "path is required")
 	}
 
-	// Honor session_id: route through policyEngineFor so per-session policy overrides are reflected.
+	// Honor session_id: route through policyEngineFor so per-session policy overrides are
+	// reflected.
 	sessionID, _ := reqMap["session_id"].(string)
 	sessionID = strings.TrimSpace(sessionID)
 
@@ -1322,7 +1330,11 @@ func (s *grpcServer) PolicyTest(
 	op := strings.ToLower(operation)
 
 	switch {
-	case strings.HasPrefix(op, "file_") || op == "read" || op == "write" || op == "delete" || op == "create":
+	case strings.HasPrefix(op, "file_") ||
+		op == "read" ||
+		op == "write" ||
+		op == "delete" ||
+		op == "create":
 		opName := op
 		if strings.HasPrefix(op, "file_") {
 			opName = strings.TrimPrefix(op, "file_")
@@ -1419,7 +1431,12 @@ func mustProtoJSON(in *structpb.Struct) []byte {
 }
 
 func GRPCUnaryAuthInterceptor(app *App) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	return func(
+		ctx context.Context,
+		req any,
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (any, error) {
 		if err := grpcAuth(app, ctx); err != nil {
 			return nil, err
 		}
@@ -1428,7 +1445,12 @@ func GRPCUnaryAuthInterceptor(app *App) grpc.UnaryServerInterceptor {
 }
 
 func GRPCStreamAuthInterceptor(app *App) grpc.StreamServerInterceptor {
-	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(
+		srv any,
+		ss grpc.ServerStream,
+		info *grpc.StreamServerInfo,
+		handler grpc.StreamHandler,
+	) error {
 		if err := grpcAuth(app, ss.Context()); err != nil {
 			return err
 		}

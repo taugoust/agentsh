@@ -533,7 +533,9 @@ func TestAuditVerifyCmd_AllowsBackupOnlyRetainedWindow(t *testing.T) {
 	}
 
 	lines := make([][]byte, 0, 4)
-	for _, payload := range []string{`{"type":"a"}`, `{"type":"b"}`, `{"type":"c"}`, `{"type":"d"}`} {
+	for _, payload := range []string{
+		`{"type":"a"}`, `{"type":"b"}`, `{"type":"c"}`, `{"type":"d"}`,
+	} {
 		line, err := chain.Wrap([]byte(payload))
 		if err != nil {
 			t.Fatalf("chain.Wrap() error = %v", err)
@@ -575,7 +577,9 @@ func TestAuditVerifyCmd_AllowsBackupOnlyHighSuffixWindow(t *testing.T) {
 	}
 
 	lines := make([][]byte, 0, 4)
-	for _, payload := range []string{`{"type":"a"}`, `{"type":"b"}`, `{"type":"c"}`, `{"type":"d"}`} {
+	for _, payload := range []string{
+		`{"type":"a"}`, `{"type":"b"}`, `{"type":"c"}`, `{"type":"d"}`,
+	} {
 		line, err := chain.Wrap([]byte(payload))
 		if err != nil {
 			t.Fatalf("chain.Wrap() error = %v", err)
@@ -664,7 +668,8 @@ func TestAuditVerifyCmd_RejectsLegacyFormatEntry(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 	t.Setenv("AGENTSH_AUDIT_TEST_KEY", string(testAuditKey))
 
-	legacy := `{"type":"legacy","integrity":{"format_version":1,"sequence":0,"prev_hash":"","entry_hash":"deadbeef"}}`
+	legacy := `{"type":"legacy","integrity":{"format_version":1,"sequence":0,"prev_hash":"",` +
+		`"entry_hash":"deadbeef"}}`
 	if err := os.WriteFile(logPath, []byte(legacy+"\n"), 0o600); err != nil {
 		t.Fatalf("os.WriteFile(%q) error = %v", logPath, err)
 	}
@@ -699,7 +704,9 @@ func TestAuditVerifyCmd_RejectsMidHistoryRotationWithoutMatchingPriorSummary(t *
 	}
 	reset, err := chainB.Wrap(
 		[]byte(
-			`{"type":"integrity_chain_rotated","fields":{"reason":"manual reset","reason_code":"manual_reset","new_chain":{"format_version":2,"sequence":0}}}`,
+			`{"type":"integrity_chain_rotated","fields":{"reason":"manual ` +
+				`reset","reason_code":"manual_reset","new_chain":{"format_version":2,` +
+				`"sequence":0}}}`,
 		),
 	)
 	if err != nil {
@@ -745,7 +752,10 @@ func TestAuditVerifyCmd_AcceptsMidHistoryRotationWithMatchingPriorSummary(t *tes
 
 	previousState := chainA.State()
 	resetPayload := fmt.Sprintf(
-		`{"type":"integrity_chain_rotated","fields":{"reason":"manual reset","reason_code":"manual_reset","prior_chain_summary":{"last_sequence_seen_in_log":%d,"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`,
+		`{"type":"integrity_chain_rotated","fields":{"reason":"manual `+
+			`reset","reason_code":"manual_reset",`+
+			`"prior_chain_summary":{"last_sequence_seen_in_log":%d,`+
+			`"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`,
 		previousState.Sequence,
 		previousState.PrevHash,
 	)
@@ -792,7 +802,9 @@ func TestAuditVerifyCmd_AcceptsRotationAsFirstVisibleEntry(t *testing.T) {
 	}
 	reset, err := chain.Wrap(
 		[]byte(
-			`{"type":"integrity_chain_rotated","fields":{"reason":"fresh start","reason_code":"manual_reset","new_chain":{"format_version":2,"sequence":0}}}`,
+			`{"type":"integrity_chain_rotated","fields":{"reason":"fresh ` +
+				`start","reason_code":"manual_reset","new_chain":{"format_version":2,` +
+				`"sequence":0}}}`,
 		),
 	)
 	if err != nil {
@@ -836,7 +848,10 @@ func TestAuditVerifyCmd_RejectsBaseVisibleRotationBoundaryWithPriorHistory(t *te
 
 	previousState := previousChain.State()
 	resetPayload := fmt.Sprintf(
-		`{"type":"integrity_chain_rotated","fields":{"reason":"manual reset","reason_code":"manual_reset","prior_chain_summary":{"last_sequence_seen_in_log":%d,"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`,
+		`{"type":"integrity_chain_rotated","fields":{"reason":"manual `+
+			`reset","reason_code":"manual_reset",`+
+			`"prior_chain_summary":{"last_sequence_seen_in_log":%d,`+
+			`"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`,
 		previousState.Sequence,
 		previousState.PrevHash,
 	)

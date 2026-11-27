@@ -121,7 +121,9 @@ func TestCommandTimeoutMetadataReportsBoundedApprovalAllowance(t *testing.T) {
 }
 
 func TestCommandTimeoutResolverRejectsInvalidExplicitValues(t *testing.T) {
-	for _, value := range []string{"not-a-duration", "0", "0s", "-1ms", "500us", "0.5ms", "2562048h"} {
+	for _, value := range []string{
+		"not-a-duration", "0", "0s", "-1ms", "500us", "0.5ms", "2562048h",
+	} {
 		t.Run(value, func(t *testing.T) {
 			if _, err := resolveCommandTimeout(
 				types.ExecRequest{Timeout: value},

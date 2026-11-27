@@ -34,7 +34,9 @@ type cgroupManager interface {
 var (
 	ebpfCheckSupport                    = ebpftrace.CheckSupport
 	ebpfAttachConnectToCgroup           = ebpftrace.AttachConnectToCgroup
-	ebpfAttachConnectToCgroupFailClosed = func(cgroupPath string) (*ebpf.Collection, func() error, error) {
+	ebpfAttachConnectToCgroupFailClosed = func(
+		cgroupPath string,
+	) (*ebpf.Collection, func() error, error) {
 		attachment, err := ebpftrace.AttachConnectToCgroupWithOptions(
 			cgroupPath,
 			ebpftrace.CgroupAttachOptions{FailClosedBeforeAttach: true},
@@ -48,7 +50,9 @@ var (
 	ebpfCgroupID             = ebpftrace.CgroupID
 	ebpfPopulateAllowlist    = ebpftrace.PopulateAllowlist
 	ebpfCleanupAllowlist     = ebpftrace.CleanupAllowlist
-	nethelperClientForSocket = func(socketPath string) *nethelper.Client { return nethelper.NewClient(socketPath) }
+	nethelperClientForSocket = func(socketPath string) *nethelper.Client {
+		return nethelper.NewClient(socketPath)
+	}
 )
 
 // cgroupBestEffortDegradable reports whether an unenforceable resource-limit
@@ -622,7 +626,8 @@ func applyCgroupV2WithProxyEndpoints(
 						if ebpfStrictSetup {
 							return setupFailure(
 								fmt.Errorf(
-									"ebpf enforcement setup failed while required/enforced: cgroup id: %w",
+									"ebpf enforcement setup failed while required/enforced: "+
+										"cgroup id: %w",
 									cgErr,
 								),
 							)
@@ -665,7 +670,8 @@ func applyCgroupV2WithProxyEndpoints(
 								if key.Protocol != 6 || key.Dport == 0 {
 									return setupFailure(
 										fmt.Errorf(
-											"proxy-required allowlist contains a non-TCP or all-port entry",
+											"proxy-required allowlist contains a non-TCP or " +
+												"all-port entry",
 										),
 									)
 								}
@@ -673,7 +679,8 @@ func applyCgroupV2WithProxyEndpoints(
 								if endpointID == "" {
 									return setupFailure(
 										fmt.Errorf(
-											"proxy-required allowlist contains an unsupported address family",
+											"proxy-required allowlist contains an unsupported " +
+												"address family",
 										),
 									)
 								}
@@ -696,7 +703,8 @@ func applyCgroupV2WithProxyEndpoints(
 						if !strict {
 							return setupFailure(
 								fmt.Errorf(
-									"eBPF enforce mode could not establish a default-deny endpoint set",
+									"eBPF enforce mode could not establish a default-deny " +
+										"endpoint set",
 								),
 							)
 						}
@@ -727,7 +735,8 @@ func applyCgroupV2WithProxyEndpoints(
 							if ebpfStrictSetup {
 								return setupFailure(
 									fmt.Errorf(
-										"ebpf enforcement setup failed while required/enforced: populate allowlist: %w",
+										"ebpf enforcement setup failed while required/enforced: "+
+											"populate allowlist: %w",
 										err,
 									),
 								)
@@ -745,8 +754,10 @@ func applyCgroupV2WithProxyEndpoints(
 								SessionID: sessionID,
 								CommandID: cmdID,
 								Fields: map[string]any{
-									"reason":                             "proxy-required gate active; only exact AgentSH proxy TCP endpoints are allowed",
-									"tier":                               "cgroup-ebpf-proxy-required",
+									"reason": "proxy-required gate active; only exact AgentSH " +
+										"proxy TCP endpoints are allowed",
+									"tier": "cgroup-ebpf-proxy-required",
+
 									"runtime_enforcement_status":         "active",
 									"cgroup_id":                          cgid,
 									"allow_entries":                      len(ep),
@@ -801,10 +812,11 @@ func applyCgroupV2WithProxyEndpoints(
 									case <-refreshCtx.Done():
 										return
 									case <-t.C:
-										ep2, cidrs2, deny2, denyCidrs2, strict2, _, ttl2 := buildAllowedEndpoints(
-											pol,
-											base,
-										)
+										ep2, cidrs2, deny2, denyCidrs2, strict2, _, ttl2 :=
+											buildAllowedEndpoints(
+												pol,
+												base,
+											)
 										if err := ebpfPopulateAllowlist(
 											coll,
 											cgid,
@@ -1270,10 +1282,13 @@ func helperPolicyEntries(
 			if strings.TrimSpace(entry.IP) == "" || strings.TrimSpace(entry.CIDR) != "" ||
 				entry.Port <= 0 ||
 				entry.Protocol.Normalized() != nethelper.TransportProtocolTCP {
-				return nil, nil, false, "proxy-required gate rejected a non-exact, non-TCP, or all-port proxy entry"
+				return nil, nil, false,
+					"proxy-required gate rejected a non-exact, non-TCP, or all-port proxy entry"
 			}
 		}
-		return allow, nil, true, "proxy-required gate active: only exact AgentSH proxy TCP address+port endpoints are allowed; direct TCP, local non-proxy TCP, and UDP/QUIC are default-denied"
+		return allow, nil, true,
+			"proxy-required gate active: only exact AgentSH proxy TCP address+port endpoints are " +
+				"allowed; direct TCP, local non-proxy TCP, and UDP/QUIC are default-denied"
 	}
 
 	maxTTL := time.Duration(cfg.Sandbox.Network.EBPF.DNSMaxTTLSeconds) * time.Second
@@ -1290,7 +1305,8 @@ func helperPolicyEntries(
 	deny := append(policyEntriesFromAllowKeys(denyKeys), policyEntriesFromAllowCIDRs(denyCIDRs)...)
 	warning := ""
 	if hasDomains && strict && cfg.Sandbox.Network.EBPF.DNSRefreshSeconds > 0 {
-		warning = "helper map DNS refresh is not implemented in this supervisor path; entries are a startup snapshot"
+		warning = "helper map DNS refresh is not implemented in this supervisor path; entries " +
+			"are a startup snapshot"
 	}
 	return allow, deny, cfg.Sandbox.Network.EBPF.Enforce && strict, warning
 }

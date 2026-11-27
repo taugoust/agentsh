@@ -566,7 +566,8 @@ func TestValidateHTTPServices(t *testing.T) {
 			wantErr: "duplicate upstream host",
 		},
 		{
-			name: "IPv6 upstream with port collides with bracketed alias with port on another service",
+			name: "IPv6 upstream with port collides with bracketed alias with port on " +
+				"another service",
 			svcs: []HTTPService{
 				{
 					Name:     "svc1",

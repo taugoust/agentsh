@@ -133,7 +133,8 @@ func TestReplayer_TailIsTuple_HardStopsOnSeqExceedingTail(t *testing.T) {
 	for _, s := range seen {
 		if s.gen == 2 {
 			t.Fatalf(
-				"gen=2 record surfaced: (%d, %d) — segment-iteration filter must skip gen=2 segments; full=%v",
+				"gen=2 record surfaced: (%d, %d) — segment-iteration filter must skip gen=2 "+
+					"segments; full=%v",
 				s.gen,
 				s.seq,
 				seen,
@@ -147,7 +148,8 @@ func TestReplayer_TailIsTuple_HardStopsOnSeqExceedingTail(t *testing.T) {
 			overTail++
 			if s.seq != 4 {
 				t.Fatalf(
-					"over-tail seq: got %d, want 4 (only seq=4 may surface as the boundary record); seen=%v",
+					"over-tail seq: got %d, want 4 (only seq=4 may surface as the boundary "+
+						"record); seen=%v",
 					s.seq,
 					seen,
 				)
@@ -170,7 +172,8 @@ func TestReplayer_TailIsTuple_HardStopsOnSeqExceedingTail(t *testing.T) {
 	tg, ts := r.Tail()
 	if tg != 1 || ts != 3 {
 		t.Fatalf(
-			"Tail post-replay: got (%d, %d), want (1, 3) — post-entry appends must NOT advance the snapshot",
+			"Tail post-replay: got (%d, %d), want (1, 3) — post-entry appends must NOT advance "+
+				"the snapshot",
 			tg,
 			ts,
 		)
@@ -289,7 +292,8 @@ func TestReplayer_StopsAtTailWatermark(t *testing.T) {
 			overTailCount++
 			if s != 4 {
 				t.Fatalf(
-					"over-tail seq: got %d, want at most 4 (seq>4 must not surface under hard-stop contract); seqs=%v",
+					"over-tail seq: got %d, want at most 4 (seq>4 must not surface under "+
+						"hard-stop contract); seqs=%v",
 					s,
 					seenSeqs,
 				)
@@ -312,7 +316,9 @@ func TestReplayer_StopsAtTailWatermark(t *testing.T) {
 	if overTailCount == 1 {
 		if !haveData || lastDataSeq != 4 {
 			t.Fatalf(
-				"boundary record placement: last RecordData in final batch was seq=%d (haveData=%v), want seq=4 (the boundary record must be the LAST RecordData in the final batch)",
+				"boundary record placement: last RecordData in final batch was seq=%d "+
+					"(haveData=%v), want seq=4 (the boundary record must be the LAST RecordData "+
+					"in the final batch)",
 				lastDataSeq,
 				haveData,
 			)

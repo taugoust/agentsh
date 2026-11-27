@@ -25,23 +25,33 @@ type NetworkReport struct {
 }
 
 const (
-	unknownNetworkSummary = "Network enforcement: unknown (metadata does not report runtime evidence)"
-	unknownNetworkWarning = "WARNING: Detached session metadata is missing network enforcement evidence; do not assume policy approvals are enforced."
+	unknownNetworkSummary = "Network enforcement: unknown (metadata does not report runtime " +
+		"evidence)"
+	unknownNetworkWarning = "WARNING: Detached session metadata is missing network enforcement " +
+		"evidence; do not assume policy approvals are enforced."
 
 	noNetworkSummary = "Network enforcement: none (network policy is not enforced at runtime)"
-	noNetworkWarning = "WARNING: Detached policy checks may report approvals or denials, but commands can still connect because no runtime network gate is active."
+	noNetworkWarning = "WARNING: Detached policy checks may report approvals or denials, but " +
+		"commands can still connect because no runtime network gate is active."
 
-	cgroupDelegatedSummary = "Network enforcement: cgroup-delegated-only (degraded; helper/proxy gate not ready)"
-	cgroupDelegatedWarning = "WARNING: Cgroup readiness alone does not enforce policy; network traffic is not approval-gated."
+	cgroupDelegatedSummary = "Network enforcement: cgroup-delegated-only (degraded; helper/proxy " +
+		"gate not ready)"
+	cgroupDelegatedWarning = "WARNING: Cgroup readiness alone does not enforce policy; network " +
+		"traffic is not approval-gated."
 
-	helperGateSummary = "Network enforcement: helper-ebpf-gate (degraded; proxy approval path not proven)"
-	helperGateWarning = "WARNING: A helper gate without a proven AgentSH proxy path cannot service hostname-aware approvals."
+	helperGateSummary = "Network enforcement: helper-ebpf-gate (degraded; proxy approval path " +
+		"not proven)"
+	helperGateWarning = "WARNING: A helper gate without a proven AgentSH proxy path cannot " +
+		"service hostname-aware approvals."
 
-	helperProxySummary = "Network enforcement: helper-ebpf-proxy-required (degraded; deployment prerequisites are incomplete)"
-	helperProxyWarning = "WARNING: Helper/proxy availability, same-UID tool isolation, direct-bypass controls, and crash persistence are not all proven active."
+	helperProxySummary = "Network enforcement: helper-ebpf-proxy-required (degraded; deployment " +
+		"prerequisites are incomplete)"
+	helperProxyWarning = "WARNING: Helper/proxy availability, same-UID tool isolation, " +
+		"direct-bypass controls, and crash persistence are not all proven active."
 
 	readyNetworkSummary = "Network enforcement: ready (helper+eBPF proxy-required tier proven)"
-	readyNetworkDetail  = "Proxy-aware HTTP(S) is synchronously policy-gated; direct and unsupported command traffic is fail-closed."
+	readyNetworkDetail  = "Proxy-aware HTTP(S) is synchronously policy-gated; direct and " +
+		"unsupported command traffic is fail-closed."
 
 	activeNetworkSummary = "Network enforcement: active (per-command fail-closed gate attached)"
 	failedNetworkSummary = "Network enforcement: failed (required runtime setup was refused)"
@@ -74,7 +84,8 @@ func NetworkEnforcement(meta *detached.NetworkEnforcement) NetworkReport {
 	case normalized.Status == detached.NetworkEnforcementStatusFailed:
 		report.Label = "failed"
 		report.Summary = failedNetworkSummary
-		report.Warning = "WARNING: Required network setup failed before command resume or strict session startup."
+		report.Warning = "WARNING: Required network setup failed before command resume or strict " +
+			"session startup."
 		report.RuntimeDivergent = true
 	case normalized.Status == detached.NetworkEnforcementStatusActive && proven:
 		report.Label = "active"
@@ -99,7 +110,8 @@ func NetworkEnforcement(meta *detached.NetworkEnforcement) NetworkReport {
 		report.Summary = helperGateSummary
 		report.Warning = helperGateWarning
 		report.RuntimeDivergent = true
-	case normalized.Tier == detached.NetworkEnforcementTierHelperEBPFProxy || normalized.Tier == detached.NetworkEnforcementTierHelperEBPFProxyRequired:
+	case normalized.Tier == detached.NetworkEnforcementTierHelperEBPFProxy ||
+		normalized.Tier == detached.NetworkEnforcementTierHelperEBPFProxyRequired:
 		report.Label = "helper-ebpf-proxy-required-degraded"
 		report.Summary = helperProxySummary
 		report.Warning = helperProxyWarning

@@ -40,8 +40,9 @@ func (rs *RuleSet) statementRulesFor(svc ServiceID) []*compiledStatementRule {
 // effectDecision is the per-effect verdict. internalVerb includes
 // verbImplicitDeny as a distinct value; foldEffects normalizes to DecisionVerb.
 type effectDecision struct {
-	verb                internalVerb
-	rule                *compiledStatementRule   // primary contributing rule (nil for implicit deny)
+	verb internalVerb
+	// primary contributing rule (nil for implicit deny)
+	rule                *compiledStatementRule
 	contributingApprove []*compiledStatementRule // contributing approve rules, deduped by name
 	contributingAudit   []*compiledStatementRule // contributing audit rules, deduped by name
 	uncoveredObject     effects.ObjectRef        // populated when verb == verbImplicitDeny

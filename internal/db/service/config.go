@@ -21,7 +21,8 @@ type Service struct {
 	Dialect  string   `yaml:"dialect"` // postgres | aurora_postgres | redshift | cockroachdb
 	Upstream Endpoint `yaml:"upstream"`
 	Listen   Listener `yaml:"listen"`
-	TLSMode  string   `yaml:"tls_mode"` // terminate_reissue | passthrough | terminate_plaintext_upstream
+	// terminate_reissue | passthrough | terminate_plaintext_upstream
+	TLSMode string `yaml:"tls_mode"`
 }
 
 // Endpoint is a host:port pair — the upstream DB the proxy connects to.

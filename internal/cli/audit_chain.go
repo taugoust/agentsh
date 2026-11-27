@@ -139,11 +139,15 @@ func newAuditChainResetCmd() *cobra.Command {
 	cmd.Flags().
 		StringVar(&configPath, "config", "", "Path to agentsh config YAML (default: auto-discover)")
 	cmd.Flags().
-		StringVar(&reason, "reason", "", "Required free-form reason stored in the integrity_chain_rotated event")
+		StringVar(&reason, "reason", "",
+			"Required free-form reason stored in the integrity_chain_rotated event")
 	cmd.Flags().
-		StringVar(&reasonCode, "reason-code", "", "Structured reset reason code (sidecar_missing, sidecar_corrupt, key_rotated, legacy_archived, manual_reset, post_tamper_recovery)")
+		StringVar(&reasonCode, "reason-code", "",
+			"Structured reset reason code (sidecar_missing, sidecar_corrupt, key_rotated, "+
+				"legacy_archived, manual_reset, post_tamper_recovery)")
 	cmd.Flags().
-		BoolVar(&legacyArchive, "legacy-archive", false, "Rename the current log to audit.jsonl.legacy.<timestamp> before starting fresh")
+		BoolVar(&legacyArchive, "legacy-archive", false,
+			"Rename the current log to audit.jsonl.legacy.<timestamp> before starting fresh")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip the confirmation prompt")
 	return cmd
 }
@@ -213,7 +217,8 @@ func resetIntegrityChain(
 	if !opts.LegacyArchive {
 		if _, err := audit.DiscoverRotationSet(logPath); err != nil {
 			return fmt.Errorf(
-				"cannot perform in-place reset on incomplete audit rotation set: %w; retry with --legacy-archive",
+				"cannot perform in-place reset on incomplete audit rotation set: %w; retry with "+
+					"--legacy-archive",
 				err,
 			)
 		}
@@ -240,7 +245,8 @@ func resetIntegrityChain(
 		}
 		if !ok {
 			return fmt.Errorf(
-				"cannot perform in-place reset with the current audit integrity key/algorithm; retry with --legacy-archive",
+				"cannot perform in-place reset with the current audit integrity key/algorithm; " +
+					"retry with --legacy-archive",
 			)
 		}
 	}

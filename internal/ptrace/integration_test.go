@@ -939,7 +939,8 @@ func TestIntegration_NetworkDenyConnect(t *testing.T) {
 	outfile := filepath.Join(tmpDir, "result.txt")
 	// Use -n to skip DNS resolution (avoids systemd-resolved latency).
 	shellCmd := fmt.Sprintf(
-		`while [ ! -f %s ]; do sleep 0.01; done; (echo test | %s -n -w 1 127.0.0.1 12345) 2>/dev/null && echo connected > %s || echo refused > %s`,
+		`while [ ! -f %s ]; do sleep 0.01; done; (echo test | %s -n -w 1 127.0.0.1 12345) `+
+			`2>/dev/null && echo connected > %s || echo refused > %s`,
 		readyFile,
 		ncPath,
 		outfile,
@@ -1006,7 +1007,8 @@ func TestIntegration_SignalDeny(t *testing.T) {
 	readyFile := filepath.Join(tmpDir, "ready")
 	outfile := filepath.Join(tmpDir, "result.txt")
 	shellCmd := fmt.Sprintf(
-		`while [ ! -f %s ]; do sleep 0.01; done; kill -USR1 $$ 2>/dev/null && echo signaled > %s || echo denied > %s`,
+		`while [ ! -f %s ]; do sleep 0.01; done; kill -USR1 $$ 2>/dev/null && echo signaled > %s `+
+			`|| echo denied > %s`,
 		readyFile,
 		outfile,
 		outfile,
@@ -1069,7 +1071,8 @@ func TestIntegration_SignalRedirect(t *testing.T) {
 	readyFile := filepath.Join(tmpDir, "ready")
 	outfile := filepath.Join(tmpDir, "result.txt")
 	shellCmd := fmt.Sprintf(
-		`trap "echo redirected > %s" USR2; while [ ! -f %s ]; do sleep 0.01; done; kill -USR1 $$; sleep 0.1`,
+		`trap "echo redirected > %s" USR2; while [ ! -f %s ]; do sleep 0.01; done; kill -USR1 `+
+			`$$; sleep 0.1`,
 		outfile,
 		readyFile,
 	)
@@ -1331,7 +1334,8 @@ func TestIntegration_ConnectRedirect(t *testing.T) {
 		"/bin/sh",
 		"-c",
 		fmt.Sprintf(
-			"while [ ! -f %s ]; do sleep 0.01; done; echo | nc -n -w2 127.0.0.1 %d > %s 2>/dev/null || echo failed > %s",
+			"while [ ! -f %s ]; do sleep 0.01; done; echo | nc -n -w2 127.0.0.1 %d > %s "+
+				"2>/dev/null || echo failed > %s",
 			readyFile,
 			origPort,
 			outputFile,
@@ -1587,7 +1591,8 @@ func TestIntegration_ReadExitSkipForNonStatusFd(t *testing.T) {
 	tmpDir := t.TempDir()
 	readyFile := filepath.Join(tmpDir, "ready")
 	shellCmd := fmt.Sprintf(
-		`while [ ! -f %s ]; do sleep 0.01; done; i=0; while [ $i -lt 50 ]; do cat /dev/null; i=$((i+1)); done`,
+		`while [ ! -f %s ]; do sleep 0.01; done; i=0; while [ $i -lt 50 ]; do cat /dev/null; `+
+			`i=$((i+1)); done`,
 		readyFile,
 	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
@@ -1716,7 +1721,8 @@ func TestIntegration_DNSConnectRedirect(t *testing.T) {
 	outfile := filepath.Join(tmpDir, "dns.txt")
 	// Use getent to trigger a DNS query
 	shellCmd := fmt.Sprintf(
-		`while [ ! -f %s ]; do sleep 0.01; done; getent hosts example.com > %s 2>&1 || echo "failed" > %s`,
+		`while [ ! -f %s ]; do sleep 0.01; done; getent hosts example.com > %s 2>&1 || echo `+
+			`"failed" > %s`,
 		readyFile,
 		outfile,
 		outfile,
@@ -1752,7 +1758,8 @@ func TestIntegration_DNSConnectRedirect(t *testing.T) {
 
 	if !sawDNS {
 		t.Log(
-			"DNS operation not captured — DNS proxy may not have intercepted (system DNS config dependent)",
+			"DNS operation not captured — DNS proxy may not have intercepted (system DNS config " +
+				"dependent)",
 		)
 		// This is expected in some CI environments where DNS doesn't go through connect()
 	}
@@ -1848,7 +1855,8 @@ func TestIntegration_ConnectExitSkipDNSRedirect(t *testing.T) {
 	readyFile := filepath.Join(tmpDir, "ready")
 
 	shellCmd := fmt.Sprintf(
-		`while [ ! -f %s ]; do sleep 0.01; done; nslookup example.com 127.0.0.1 2>/dev/null || true`,
+		`while [ ! -f %s ]; do sleep 0.01; done; nslookup example.com 127.0.0.1 `+
+			`2>/dev/null || true`,
 		readyFile,
 	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
@@ -1907,7 +1915,8 @@ func TestIntegration_NarrowBPFNoReadStops(t *testing.T) {
 	tmpDir := t.TempDir()
 	readyFile := filepath.Join(tmpDir, "ready")
 	shellCmd := fmt.Sprintf(
-		`while [ ! -f %s ]; do sleep 0.01; done; i=0; while [ $i -lt 100 ]; do cat /dev/null; i=$((i+1)); done`,
+		`while [ ! -f %s ]; do sleep 0.01; done; i=0; while [ $i -lt 100 ]; do cat /dev/null; `+
+			`i=$((i+1)); done`,
 		readyFile,
 	)
 	cmd := exec.Command("/bin/sh", "-c", shellCmd)
@@ -2015,7 +2024,8 @@ func TestIntegration_ChildInheritsEscalation(t *testing.T) {
 	readyFile := filepath.Join(tmpDir, "ready")
 	outfile := filepath.Join(tmpDir, "child_tracerpid.txt")
 	shellCmd := fmt.Sprintf(
-		`while [ ! -f %s ]; do sleep 0.01; done; cat /proc/self/status > /dev/null; grep TracerPid /proc/self/status > %s`,
+		`while [ ! -f %s ]; do sleep 0.01; done; cat /proc/self/status > /dev/null; grep `+
+			`TracerPid /proc/self/status > %s`,
 		readyFile,
 		outfile,
 	)
@@ -2148,7 +2158,8 @@ func TestIntegration_SkipReinjectionForChildren(t *testing.T) {
 
 func TestArgFilterOpenatReadOnly(t *testing.T) {
 	t.Skip(
-		"openat arg filter not wired in injection path yet (policy bypass risk); see inject_seccomp.go",
+		"openat arg filter not wired in injection path yet (policy bypass risk); see " +
+			"inject_seccomp.go",
 	)
 	requirePtrace(t)
 
@@ -2380,7 +2391,8 @@ func TestArgFilterSendtoConnected(t *testing.T) {
 	for _, c := range netHandler.calls {
 		if c.Syscall == unix.SYS_SENDTO {
 			t.Errorf(
-				"sendto reached network handler (should have been bypassed by BPF null-pointer filter): family=%d addr=%s port=%d",
+				"sendto reached network handler (should have been bypassed by BPF null-pointer "+
+					"filter): family=%d addr=%s port=%d",
 				c.Family,
 				c.Address,
 				c.Port,

@@ -161,7 +161,8 @@ func (m *CgroupManager) Apply(name string, pid int, lim CgroupV2Limits) (*Cgroup
 				// don't accumulate orphans, and surface the deliberate typed error
 				// so callers can apply best-effort policy instead of a generic abort.
 				if createdDir {
-					// Remove fails silently: EBUSY if the dir is populated (safe), ENOENT if already gone.
+					// Remove fails silently: EBUSY if the dir is populated (safe), ENOENT if
+					// already gone.
 					_ = m.fs.Remove(dir)
 				}
 				return &CgroupResourceLimitsUnavailableError{

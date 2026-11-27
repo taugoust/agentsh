@@ -527,7 +527,11 @@ func (s *Server) writeGenericError(conn net.Conn, err error) {
 		_ = conn.SetWriteDeadline(time.Now().Add(s.WriteTimeout))
 	}
 	_ = json.NewEncoder(conn).
-		Encode(ErrorResponse{ProtocolVersion: CurrentProtocolVersion, OK: false, Error: err.Error()})
+		Encode(ErrorResponse{
+			ProtocolVersion: CurrentProtocolVersion,
+			OK:              false,
+			Error:           err.Error(),
+		})
 }
 
 func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
@@ -602,7 +606,8 @@ func (s *Server) dispatch(ctx context.Context, peer PeerInfo, data []byte) any {
 				if preserveErr != nil {
 					out.Error += "; preserve cleanup identity: " + preserveErr.Error()
 				} else if !cleanupSucceeded {
-					out.Error += "; compensating backend cleanup failed; registration retained for retry"
+					out.Error += "; compensating backend cleanup failed; registration retained " +
+						"for retry"
 				}
 				return out
 			}

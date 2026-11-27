@@ -445,7 +445,8 @@ func (p *Provider) instanceFromStatus(
 	configuredProfile, ok := p.options.Profiles[profile.Name]
 	if !ok || request.ProfileFile != configuredProfile || request.StateDir != stateDir {
 		return nil, fmt.Errorf(
-			"external runner immutable request profile path binding differs from operator configuration",
+			"external runner immutable request profile path binding differs from operator " +
+				"configuration",
 		)
 	}
 	if err := validateHostMonitorProfileBinding(request, profile, profileFileDigest); err != nil {
@@ -530,9 +531,10 @@ func (i *providerInstance) ControlPlane(
 			"external runner control plane lacks an authenticated endpoint",
 		)
 	}
-	if (i.request.SchemaVersion == HostMonitorSchemaVersionV1) != (i.profile.Schema == ProfileSchemaV1) ||
-		(i.request.SchemaVersion == HostMonitorSchemaVersionV2) != (i.profile.Schema == ProfileSchemaV2) ||
-		(i.request.SchemaVersion == HostMonitorSchemaVersionV3) != (i.profile.Schema == ProfileSchemaV3) {
+	requestSchema, profileSchema := i.request.SchemaVersion, i.profile.Schema
+	if (requestSchema == HostMonitorSchemaVersionV1) != (profileSchema == ProfileSchemaV1) ||
+		(requestSchema == HostMonitorSchemaVersionV2) != (profileSchema == ProfileSchemaV2) ||
+		(requestSchema == HostMonitorSchemaVersionV3) != (profileSchema == ProfileSchemaV3) {
 		return runtimeprovider.ControlPlaneSnapshot{}, fmt.Errorf(
 			"external runner control-plane schema binding is inconsistent",
 		)

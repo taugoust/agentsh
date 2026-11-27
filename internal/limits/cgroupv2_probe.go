@@ -37,9 +37,10 @@ type CgroupProbeResult struct {
 	// mode — child cgroups for sessions are created under this path. When
 	// LeafMoved is true, the process itself resides in OwnCgroup/agentsh.leaf, but the
 	// parent remains the correct place to create children.
-	OwnCgroup   string
-	SliceDir    string // absolute path to /sys/fs/cgroup/agentsh.slice (top-level mode only; empty otherwise)
-	IOAvailable bool   // true if the io controller is usable in the chosen mode
+	OwnCgroup string
+	// absolute path to /sys/fs/cgroup/agentsh.slice (top-level mode only; empty otherwise)
+	SliceDir    string
+	IOAvailable bool // true if the io controller is usable in the chosen mode
 	// OrphansReaped is populated in top-level mode when the probe removed
 	// leftover unpopulated child cgroups from a prior agentsh run.
 	OrphansReaped []string
@@ -122,8 +123,9 @@ func ProbeCgroupsV2(
 		feasible, feasibleErr := probeAttachOnlyFeasibility(fs, own)
 		if feasible {
 			return &CgroupProbeResult{
-				Mode:      ModeAttachOnly,
-				Reason:    "attach-only cgroup placement available; skipped resource controller probing",
+				Mode: ModeAttachOnly,
+				Reason: "attach-only cgroup placement available; skipped resource " +
+					"controller probing",
 				OwnCgroup: own,
 				LeafMoved: leafResident,
 			}, nil

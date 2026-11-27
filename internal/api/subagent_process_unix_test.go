@@ -38,7 +38,8 @@ func TestSubagentProcessCancellationUsesGracefulTermination(t *testing.T) {
 	dir := t.TempDir()
 	readyFile := filepath.Join(dir, "ready")
 	termFile := filepath.Join(dir, "terminated")
-	script := `term_file=$1; ready_file=$2; trap 'printf terminated > "$term_file"; exit 0' TERM; printf ready > "$ready_file"; while :; do :; done`
+	script := `term_file=$1; ready_file=$2; trap 'printf terminated > "$term_file"; exit 0' ` +
+		`TERM; printf ready > "$ready_file"; while :; do :; done`
 	cmd := exec.Command(sh, "-c", script, "subagent-test", termFile, readyFile)
 	ctx, cancel := context.WithCancel(context.Background())
 	outcomeCh := make(chan subagentProcessOutcome, 1)
@@ -74,7 +75,8 @@ func TestSubagentProcessCancellationEscalatesToForcedTermination(t *testing.T) {
 	}
 	dir := t.TempDir()
 	pidFile := filepath.Join(dir, "descendant.pid")
-	script := `pid_file=$1; trap '' TERM; sleep 30 & child=$!; printf '%s' "$child" > "$pid_file"; wait`
+	script := `pid_file=$1; trap '' TERM; sleep 30 & child=$!; printf '%s' "$child" > ` +
+		`"$pid_file"; wait`
 	cmd := exec.Command(sh, "-c", script, "subagent-test", pidFile)
 	ctx, cancel := context.WithCancel(context.Background())
 	outcomeCh := make(chan subagentProcessOutcome, 1)

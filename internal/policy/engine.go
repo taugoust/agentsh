@@ -116,13 +116,16 @@ type compiledNetworkRule struct {
 }
 
 type compiledCommandRule struct {
-	rule                  CommandRule
-	basenames             map[string]struct{} // Commands without paths (e.g., "sh") - match by basename
-	basenameGlobs         []glob.Glob         // Glob patterns for basenames (e.g., "go*", "*")
-	fullPaths             map[string]struct{} // Commands with paths (e.g., "/bin/sh") - match exact path
-	pathGlobs             []glob.Glob         // Glob patterns for paths (e.g., "/usr/*/sh")
-	argsRegexes           []*regexp.Regexp    // Regex patterns matched against joined args string
-	workingDirectoryRoots []string            // Clean absolute roots matched against the normalized request cwd
+	rule CommandRule
+	// Commands without paths (e.g., "sh") - match by basename
+	basenames     map[string]struct{}
+	basenameGlobs []glob.Glob // Glob patterns for basenames (e.g., "go*", "*")
+	// Commands with paths (e.g., "/bin/sh") - match exact path
+	fullPaths   map[string]struct{}
+	pathGlobs   []glob.Glob      // Glob patterns for paths (e.g., "/usr/*/sh")
+	argsRegexes []*regexp.Regexp // Regex patterns matched against joined args string
+	// Clean absolute roots matched against the normalized request cwd
+	workingDirectoryRoots []string
 }
 
 type compiledUnixRule struct {
@@ -293,7 +296,8 @@ func NewEngine(p *Policy, enforceApprovals bool, enforceRedirects bool) (*Engine
 		for _, root := range r.WorkingDirectoryRoots {
 			if !filepath.IsAbs(root) || filepath.Clean(root) != root {
 				return nil, fmt.Errorf(
-					"compile command rule %q working directory root %q: expected a clean absolute path",
+					"compile command rule %q working directory root %q: expected a clean "+
+						"absolute path",
 					r.Name,
 					root,
 				)
@@ -605,7 +609,8 @@ func (e *Engine) CheckNetworkIP(domain string, ip net.IP, port int) Decision {
 				dec := e.wrapDecision(
 					"deny",
 					"threat-feed:"+result.FeedName,
-					"domain matched threat feed: "+result.FeedName+" (matched: "+result.MatchedDomain+")",
+					"domain matched threat feed: "+result.FeedName+" (matched: "+
+						result.MatchedDomain+")",
 					nil,
 				)
 				dec.ThreatFeed = result.FeedName
@@ -687,9 +692,10 @@ func (e *Engine) CheckNetworkIP(domain string, ip net.IP, port int) Decision {
 type ShellCOpaqueMode int
 
 const (
-	ShellCOpaqueEnforce ShellCOpaqueMode = iota // run only under active per-exec enforcement; else deny
-	ShellCOpaqueAllow                           // run even without per-exec enforcement
-	ShellCOpaqueDeny                            // always deny opaque scripts
+	// run only under active per-exec enforcement; else deny
+	ShellCOpaqueEnforce ShellCOpaqueMode = iota
+	ShellCOpaqueAllow                    // run even without per-exec enforcement
+	ShellCOpaqueDeny                     // always deny opaque scripts
 )
 
 // ParseShellCOpaqueMode maps a config string to a mode. Unknown/empty values
@@ -845,7 +851,8 @@ func (e *Engine) checkCommand(
 				case ShellCOpaqueAllow:
 					if !execveEnforcementActive {
 						slog.Warn(
-							"sandbox.seccomp.shellc.opaque=allow: running opaque shell script without per-exec enforcement",
+							"sandbox.seccomp.shellc.opaque=allow: running opaque shell script "+
+								"without per-exec enforcement",
 							"reason",
 							shellparse.OpaqueReason(cur, curArgs),
 						)
@@ -858,7 +865,9 @@ func (e *Engine) checkCommand(
 						if reason := shellparse.OpaqueReason(cur, curArgs); reason != "" {
 							msg = "opaque shell script: contains " + reason
 						}
-						msg += "; set sandbox.seccomp.shellc.opaque=allow to run it without per-exec enforcement, or enable execve enforcement (seccomp.execve + unix_sockets, or ptrace) to run it under policy"
+						msg += "; set sandbox.seccomp.shellc.opaque=allow to run it without " +
+							"per-exec enforcement, or enable execve enforcement (seccomp.execve " +
+							"+ unix_sockets, or ptrace) to run it under policy"
 						denyDec := e.wrapDecision(
 							string(types.DecisionDeny),
 							"shellc-opaque-script",
@@ -1165,8 +1174,8 @@ func computeFileRedirect(
 	}
 }
 
-// CheckUnixSocket evaluates unix_socket_rules against a path and operation (connect|bind|listen|sendto).
-// Paths for abstract sockets should be passed as "@name".
+// CheckUnixSocket evaluates unix_socket_rules against a path and operation
+// (connect|bind|listen|sendto). Paths for abstract sockets should be passed as "@name".
 func (e *Engine) CheckUnixSocket(path string, operation string) Decision {
 	operation = strings.ToLower(strings.TrimSpace(operation))
 	for _, r := range e.compiledUnixRules {
@@ -1298,7 +1307,8 @@ func (e *Engine) CheckNetworkCtx(ctx context.Context, domain string, port int) D
 				dec := e.wrapDecision(
 					"deny",
 					"threat-feed:"+entry.FeedName,
-					"domain matched threat feed: "+entry.FeedName+" (matched: "+entry.MatchedDomain+")",
+					"domain matched threat feed: "+entry.FeedName+" (matched: "+
+						entry.MatchedDomain+")",
 					nil,
 				)
 				dec.ThreatFeed = entry.FeedName
@@ -1604,7 +1614,8 @@ func (e *Engine) EvaluateConnectRedirect(hostPort string) *ConnectRedirectResult
 
 // CheckExecve evaluates an execve call against command rules with depth context support.
 // Returns the decision from the first matching rule, or default deny if none match.
-// The depth parameter represents the ancestry depth: 0 = direct (user-typed), 1+ = nested (script-spawned).
+// The depth parameter represents the ancestry depth: 0 = direct (user-typed), 1+ = nested
+// (script-spawned).
 func (e *Engine) CheckExecve(filename string, argv []string, depth int) Decision {
 	return e.CheckExecveWithAliasesProvenance(filename, nil, argv, depth, CommandProvenanceNone)
 }

@@ -43,7 +43,8 @@ func resolveSocketRuleConfigs(
 		action, ok := seccomp.ParseOnBlock(actionStr)
 		if !ok {
 			return nil, fmt.Errorf(
-				"socket_rules[%d].action: %q is not valid (allowed: errno, kill, log, log_and_kill)",
+				"socket_rules[%d].action: %q is not valid (allowed: errno, kill, log, "+
+					"log_and_kill)",
 				i,
 				e.Action,
 			)

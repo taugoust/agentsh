@@ -488,7 +488,8 @@ func TestWrapInit_UnixSocketsDisabledWithPolicyLimitsButNoCgroup(t *testing.T) {
 	})
 	if wrapErr == nil {
 		t.Fatal(
-			"expected wrap-init to refuse engagement when unix_sockets is disabled and no cgroup/eBPF enforcement is configured",
+			"expected wrap-init to refuse engagement when unix_sockets is disabled and no " +
+				"cgroup/eBPF enforcement is configured",
 		)
 	}
 	if code != http.StatusServiceUnavailable {
@@ -531,7 +532,8 @@ func TestWrapNeedsCgroupBeforeAck_PolicyLimitsAloneInsufficient(t *testing.T) {
 
 	if wrapNeedsCgroupBeforeAck(app, s) {
 		t.Fatal(
-			"wrapNeedsCgroupBeforeAck must return false when policy has limits but no cgroup/eBPF enforcement is configured",
+			"wrapNeedsCgroupBeforeAck must return false when policy has limits but no " +
+				"cgroup/eBPF enforcement is configured",
 		)
 	}
 
@@ -1778,7 +1780,8 @@ sandbox:
 	}
 	if gotBind {
 		t.Error(
-			"back-compat: allow_bind should default to false (security hardening vs prior accidental permissive)",
+			"back-compat: allow_bind should default to false (security hardening vs prior " +
+				"accidental permissive)",
 		)
 	}
 }
@@ -1863,7 +1866,8 @@ func TestMainFilterUsesUserNotify_SocketRuleMitigationSet(t *testing.T) {
 	app := &App{cfg: cfg}
 	if !app.mainFilterUsesUserNotify(false) {
 		t.Fatal(
-			"mainFilterUsesUserNotify should return true when a mitigation set expands to log socket rules",
+			"mainFilterUsesUserNotify should return true when a mitigation set expands to log " +
+				"socket rules",
 		)
 	}
 }
@@ -1889,7 +1893,8 @@ seccomp:
 	app := &App{cfg: cfg}
 	if !app.mainFilterUsesUserNotify(false) {
 		t.Fatal(
-			"mainFilterUsesUserNotify should return true when a mitigation set adds a log syscall block",
+			"mainFilterUsesUserNotify should return true when a mitigation set adds a log " +
+				"syscall block",
 		)
 	}
 }
@@ -1914,7 +1919,8 @@ seccomp:
 	app := &App{cfg: cfg}
 	if !app.mainFilterUsesUserNotify(false) {
 		t.Fatal(
-			"mainFilterUsesUserNotify should return true when a mitigation set adds a log socket family",
+			"mainFilterUsesUserNotify should return true when a mitigation set adds a log " +
+				"socket family",
 		)
 	}
 }
@@ -1986,7 +1992,8 @@ func TestMainFilterUsesUserNotify_FamilyErrnoAndKill_NoNotify(t *testing.T) {
 
 	if app.mainFilterUsesUserNotify(false) {
 		t.Error(
-			"mainFilterUsesUserNotify should return false when all families use errno/kill (kernel-side)",
+			"mainFilterUsesUserNotify should return false when all families use errno/kill " +
+				"(kernel-side)",
 		)
 	}
 }

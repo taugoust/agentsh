@@ -41,7 +41,9 @@ func buildAnthropicSSE(toolName, toolID string) string {
 	// message_start
 	b.WriteString("event: message_start\n")
 	b.WriteString(
-		`data: {"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
+		`data: {"type":"message_start","message":{"id":"msg_01","type":"message",` +
+			`"role":"assistant","content":[],"model":"claude-sonnet-4-20250514",` +
+			`"stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -55,7 +57,8 @@ func buildAnthropicSSE(toolName, toolID string) string {
 	// text block: content_block_delta (index 0)
 	b.WriteString("event: content_block_delta\n")
 	b.WriteString(
-		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me check the weather."}}`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let ` +
+			`me check the weather."}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -67,14 +70,16 @@ func buildAnthropicSSE(toolName, toolID string) string {
 	// tool_use block: content_block_start (index 1)
 	b.WriteString("event: content_block_start\n")
 	b.WriteString(
-		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` + toolID + `","name":"` + toolName + `"}}`,
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` +
+			toolID + `","name":"` + toolName + `"}}`,
 	)
 	b.WriteString("\n\n")
 
 	// tool_use block: content_block_delta (index 1)
 	b.WriteString("event: content_block_delta\n")
 	b.WriteString(
-		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"San Francisco\"}"}}`,
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta",` +
+			`"partial_json":"{\"location\": \"San Francisco\"}"}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -86,7 +91,8 @@ func buildAnthropicSSE(toolName, toolID string) string {
 	// message_delta with stop_reason
 	b.WriteString("event: message_delta\n")
 	b.WriteString(
-		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":25}}`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},` +
+			`"usage":{"output_tokens":25}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -556,7 +562,9 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 	// message_start
 	b.WriteString("event: message_start\n")
 	b.WriteString(
-		`data: {"type":"message_start","message":{"id":"msg_02","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
+		`data: {"type":"message_start","message":{"id":"msg_02","type":"message",` +
+			`"role":"assistant","content":[],"model":"claude-sonnet-4-20250514",` +
+			`"stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -570,7 +578,8 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 	// text block: content_block_delta (index 0)
 	b.WriteString("event: content_block_delta\n")
 	b.WriteString(
-		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll do both."}}`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll ` +
+			`do both."}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -582,14 +591,16 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 	// tool_use block 1: content_block_start (index 1)
 	b.WriteString("event: content_block_start\n")
 	b.WriteString(
-		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` + tool1ID + `","name":"` + tool1Name + `"}}`,
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` +
+			tool1ID + `","name":"` + tool1Name + `"}}`,
 	)
 	b.WriteString("\n\n")
 
 	// tool_use block 1: content_block_delta (index 1)
 	b.WriteString("event: content_block_delta\n")
 	b.WriteString(
-		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"NYC\"}"}}`,
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta",` +
+			`"partial_json":"{\"location\": \"NYC\"}"}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -601,14 +612,16 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 	// tool_use block 2: content_block_start (index 2)
 	b.WriteString("event: content_block_start\n")
 	b.WriteString(
-		`data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"` + tool2ID + `","name":"` + tool2Name + `"}}`,
+		`data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"` +
+			tool2ID + `","name":"` + tool2Name + `"}}`,
 	)
 	b.WriteString("\n\n")
 
 	// tool_use block 2: content_block_delta (index 2)
 	b.WriteString("event: content_block_delta\n")
 	b.WriteString(
-		`data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"confirm\": true}"}}`,
+		`data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta",` +
+			`"partial_json":"{\"confirm\": true}"}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -620,7 +633,8 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 	// message_delta with stop_reason
 	b.WriteString("event: message_delta\n")
 	b.WriteString(
-		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":40}}`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},` +
+			`"usage":{"output_tokens":40}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -635,7 +649,8 @@ func buildAnthropicSSETwoTools(tool1Name, tool1ID, tool2Name, tool2ID string) st
 func TestSSEInterceptor_Anthropic_PartialBlock(t *testing.T) {
 	// --- Setup ---
 
-	// Build an Anthropic SSE stream: text at index 0, get_weather at index 1, delete_all at index 2.
+	// Build an Anthropic SSE stream: text at index 0, get_weather at index 1, delete_all at index
+	// 2.
 	sseInput := buildAnthropicSSETwoTools(
 		"get_weather", "toolu_01AAA",
 		"delete_all", "toolu_01BBB",
@@ -688,7 +703,8 @@ func TestSSEInterceptor_Anthropic_PartialBlock(t *testing.T) {
 		t.Error("allowed tool get_weather should pass through to client output")
 	}
 
-	// 2. delete_all tool_use block must be suppressed — the original tool_use start for delete_all must not appear.
+	// 2. delete_all tool_use block must be suppressed — the original tool_use start for delete_all
+	// must not appear.
 	if strings.Contains(clientOutput, `"name":"delete_all"`) {
 		t.Error("blocked tool delete_all should be suppressed from client output")
 	}
@@ -823,21 +839,25 @@ func buildAnthropicSSETwoToolsOnly(tool1Name, tool1ID, tool2Name, tool2ID string
 	// message_start
 	b.WriteString("event: message_start\n")
 	b.WriteString(
-		`data: {"type":"message_start","message":{"id":"msg_03","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
+		`data: {"type":"message_start","message":{"id":"msg_03","type":"message",` +
+			`"role":"assistant","content":[],"model":"claude-sonnet-4-20250514",` +
+			`"stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}`,
 	)
 	b.WriteString("\n\n")
 
 	// tool_use block 1: content_block_start (index 0)
 	b.WriteString("event: content_block_start\n")
 	b.WriteString(
-		`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"` + tool1ID + `","name":"` + tool1Name + `"}}`,
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"` +
+			tool1ID + `","name":"` + tool1Name + `"}}`,
 	)
 	b.WriteString("\n\n")
 
 	// tool_use block 1: content_block_delta (index 0)
 	b.WriteString("event: content_block_delta\n")
 	b.WriteString(
-		`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\": \"NYC\"}"}}`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta",` +
+			`"partial_json":"{\"location\": \"NYC\"}"}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -849,14 +869,16 @@ func buildAnthropicSSETwoToolsOnly(tool1Name, tool1ID, tool2Name, tool2ID string
 	// tool_use block 2: content_block_start (index 1)
 	b.WriteString("event: content_block_start\n")
 	b.WriteString(
-		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` + tool2ID + `","name":"` + tool2Name + `"}}`,
+		`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"` +
+			tool2ID + `","name":"` + tool2Name + `"}}`,
 	)
 	b.WriteString("\n\n")
 
 	// tool_use block 2: content_block_delta (index 1)
 	b.WriteString("event: content_block_delta\n")
 	b.WriteString(
-		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"confirm\": true}"}}`,
+		`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta",` +
+			`"partial_json":"{\"confirm\": true}"}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -868,7 +890,8 @@ func buildAnthropicSSETwoToolsOnly(tool1Name, tool1ID, tool2Name, tool2ID string
 	// message_delta with stop_reason
 	b.WriteString("event: message_delta\n")
 	b.WriteString(
-		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":30}}`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},` +
+			`"usage":{"output_tokens":30}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -883,7 +906,8 @@ func buildAnthropicSSETwoToolsOnly(tool1Name, tool1ID, tool2Name, tool2ID string
 func TestSSEInterceptor_Anthropic_AllBlocked(t *testing.T) {
 	// --- Setup ---
 
-	// Build an Anthropic SSE stream: two tool_use blocks, get_weather at index 0, delete_all at index 1.
+	// Build an Anthropic SSE stream: two tool_use blocks, get_weather at index 0, delete_all at
+	// index 1.
 	sseInput := buildAnthropicSSETwoToolsOnly(
 		"get_weather", "toolu_01CCC",
 		"delete_all", "toolu_01DDD",
@@ -1095,19 +1119,25 @@ func buildOpenAISingleToolSSE(toolName, callID string) string {
 
 	// First chunk: tool call with id + function.name
 	b.WriteString(
-		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` + callID + `","type":"function","function":{"name":"` + toolName + `","arguments":""}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,` +
+			`"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` +
+			callID + `","type":"function","function":{"name":"` + toolName +
+			`","arguments":""}}]},"finish_reason":null}]}`,
 	)
 	b.WriteString("\n\n")
 
 	// Argument streaming chunk
 	b.WriteString(
-		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": \"NYC\"}"}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,` +
+			`"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": ` +
+			`\"NYC\"}"}}]},"finish_reason":null}]}`,
 	)
 	b.WriteString("\n\n")
 
 	// Finish chunk
 	b.WriteString(
-		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,` +
+			`"delta":{},"finish_reason":"tool_calls"}]}`,
 	)
 	b.WriteString("\n\n")
 
@@ -1124,25 +1154,35 @@ func buildOpenAITwoToolSSE(tool1Name, call1ID, tool2Name, call2ID string) string
 
 	// First chunk: both tool calls with id + function.name
 	b.WriteString(
-		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` + call1ID + `","type":"function","function":{"name":"` + tool1Name + `","arguments":""}},{"index":1,"id":"` + call2ID + `","type":"function","function":{"name":"` + tool2Name + `","arguments":""}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,` +
+			`"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` +
+			call1ID + `","type":"function","function":{"name":"` + tool1Name +
+			`","arguments":""}},{"index":1,"id":"` + call2ID +
+			`","type":"function","function":{"name":"` + tool2Name +
+			`","arguments":""}}]},"finish_reason":null}]}`,
 	)
 	b.WriteString("\n\n")
 
 	// Argument streaming chunk for tool 0
 	b.WriteString(
-		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": \"NYC\"}"}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,` +
+			`"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\": ` +
+			`\"NYC\"}"}}]},"finish_reason":null}]}`,
 	)
 	b.WriteString("\n\n")
 
 	// Argument streaming chunk for tool 1
 	b.WriteString(
-		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{}"}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,` +
+			`"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{}"}}]},` +
+			`"finish_reason":null}]}`,
 	)
 	b.WriteString("\n\n")
 
 	// Finish chunk
 	b.WriteString(
-		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		`data: {"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,` +
+			`"delta":{},"finish_reason":"tool_calls"}]}`,
 	)
 	b.WriteString("\n\n")
 
@@ -1198,7 +1238,8 @@ func TestSSEInterceptor_OpenAI_SingleBlocked(t *testing.T) {
 
 	// --- Assertions ---
 
-	// 1. tool_calls should be removed from the first chunk; content should have the blocked message.
+	// 1. tool_calls should be removed from the first chunk; content should have the blocked
+	// message.
 	expectedMsg := "[agentsh] Tool 'get_weather' blocked by policy"
 	if !strings.Contains(clientOutput, expectedMsg) {
 		t.Errorf(
@@ -1216,7 +1257,8 @@ func TestSSEInterceptor_OpenAI_SingleBlocked(t *testing.T) {
 	// 3. finish_reason should be rewritten to "stop" (not "tool_calls").
 	if strings.Contains(clientOutput, `"finish_reason":"tool_calls"`) {
 		t.Error(
-			"finish_reason should be rewritten from 'tool_calls' to 'stop' when all tools are blocked",
+			"finish_reason should be rewritten from 'tool_calls' to 'stop' when all tools " +
+				"are blocked",
 		)
 	}
 	if !strings.Contains(clientOutput, `"finish_reason":"stop"`) {
@@ -1249,7 +1291,8 @@ func TestSSEInterceptor_OpenAI_SingleBlocked(t *testing.T) {
 			for _, tc := range choice.Delta.ToolCalls {
 				if tc.Function.Arguments != "" {
 					t.Errorf(
-						"argument-streaming chunk for blocked tool should be suppressed, found index %d with args %q",
+						"argument-streaming chunk for blocked tool should be suppressed, found "+
+							"index %d with args %q",
 						tc.Index,
 						tc.Function.Arguments,
 					)
@@ -1308,7 +1351,9 @@ func TestSSEInterceptor_MalformedJSON(t *testing.T) {
 	// message_start (valid)
 	b.WriteString("event: message_start\n")
 	b.WriteString(
-		`data: {"type":"message_start","message":{"id":"msg_99","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":5,"output_tokens":0}}}`,
+		`data: {"type":"message_start","message":{"id":"msg_99","type":"message",` +
+			`"role":"assistant","content":[],"model":"claude-sonnet-4-20250514",` +
+			`"stop_reason":null,"usage":{"input_tokens":5,"output_tokens":0}}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -1326,7 +1371,8 @@ func TestSSEInterceptor_MalformedJSON(t *testing.T) {
 	// valid text delta
 	b.WriteString("event: content_block_delta\n")
 	b.WriteString(
-		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello world."}}`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta",` +
+			`"text":"Hello world."}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -1338,7 +1384,8 @@ func TestSSEInterceptor_MalformedJSON(t *testing.T) {
 	// message_delta (valid)
 	b.WriteString("event: message_delta\n")
 	b.WriteString(
-		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},` +
+			`"usage":{"output_tokens":5}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -1430,7 +1477,9 @@ func TestSSEInterceptor_TextOnlyStream(t *testing.T) {
 	// message_start
 	b.WriteString("event: message_start\n")
 	b.WriteString(
-		`data: {"type":"message_start","message":{"id":"msg_text1","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":8,"output_tokens":0}}}`,
+		`data: {"type":"message_start","message":{"id":"msg_text1","type":"message",` +
+			`"role":"assistant","content":[],"model":"claude-sonnet-4-20250514",` +
+			`"stop_reason":null,"usage":{"input_tokens":8,"output_tokens":0}}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -1444,7 +1493,8 @@ func TestSSEInterceptor_TextOnlyStream(t *testing.T) {
 	// text content_block_delta
 	b.WriteString("event: content_block_delta\n")
 	b.WriteString(
-		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Here is a purely textual response."}}`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Here ` +
+			`is a purely textual response."}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -1456,7 +1506,8 @@ func TestSSEInterceptor_TextOnlyStream(t *testing.T) {
 	// message_delta with stop_reason=end_turn
 	b.WriteString("event: message_delta\n")
 	b.WriteString(
-		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":10}}`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},` +
+			`"usage":{"output_tokens":10}}`,
 	)
 	b.WriteString("\n\n")
 
@@ -1467,7 +1518,8 @@ func TestSSEInterceptor_TextOnlyStream(t *testing.T) {
 
 	sseInput := b.String()
 
-	// Registry and policy: denylist blocking everything (to ensure non-tool streams are unaffected).
+	// Registry and policy: denylist blocking everything (to ensure non-tool streams are
+	// unaffected).
 	reg := mcpregistry.NewRegistry()
 	reg.Register("some-server", "stdio", "", []mcpregistry.ToolInfo{
 		{Name: "some_tool", Hash: "abc123"},
@@ -1762,20 +1814,28 @@ func buildOpenAIMultiChoiceSSE(tool1Name, call1ID, tool2Name, call2ID string) st
 
 	// First chunk: both choices with their respective tool calls.
 	b.WriteString(`data: {"id":"chatcmpl-mc","object":"chat.completion.chunk","choices":[` +
-		`{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` + call1ID + `","type":"function","function":{"name":"` + tool1Name + `","arguments":""}}]},"finish_reason":null},` +
-		`{"index":1,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` + call2ID + `","type":"function","function":{"name":"` + tool2Name + `","arguments":""}}]},"finish_reason":null}` +
+		`{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` +
+		call1ID + `","type":"function","function":{"name":"` + tool1Name +
+		`","arguments":""}}]},"finish_reason":null},` +
+		`{"index":1,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"` +
+		call2ID + `","type":"function","function":{"name":"` + tool2Name +
+		`","arguments":""}}]},"finish_reason":null}` +
 		`]}`)
 	b.WriteString("\n\n")
 
 	// Argument streaming: choice 0, tool 0
 	b.WriteString(
-		`data: {"id":"chatcmpl-mc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":1}"}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-mc","object":"chat.completion.chunk","choices":[{"index":0,` +
+			`"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":1}"}}]},` +
+			`"finish_reason":null}]}`,
 	)
 	b.WriteString("\n\n")
 
 	// Argument streaming: choice 1, tool 0
 	b.WriteString(
-		`data: {"id":"chatcmpl-mc","object":"chat.completion.chunk","choices":[{"index":1,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":2}"}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-mc","object":"chat.completion.chunk","choices":[{"index":1,` +
+			`"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":2}"}}]},` +
+			`"finish_reason":null}]}`,
 	)
 	b.WriteString("\n\n")
 
@@ -2112,7 +2172,15 @@ func TestSSEInterceptor_RateLimitBlocks(t *testing.T) {
 		nil,
 	)
 
-	stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\",\"input\":{}}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+	stream := "event: message_start\ndata: {\"type\":\"message_start\"," +
+		"\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\"," +
+		"\"content\":[],\"stop_reason\":null}}\n\nevent: content_block_start\n" +
+		"data: {\"type\":\"content_block_start\",\"index\":0," +
+		"\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\"," +
+		"\"input\":{}}}\n\nevent: content_block_stop\n" +
+		"data: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\n" +
+		"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
 
 	var buf bytes.Buffer
 	interceptor.Stream(io.NopCloser(strings.NewReader(stream)), &buf)
@@ -2165,7 +2233,15 @@ func TestSSEInterceptor_VersionPinBlock(t *testing.T) {
 		vpCfg,
 	)
 
-	stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\",\"input\":{}}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+	stream := "event: message_start\ndata: {\"type\":\"message_start\"," +
+		"\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\"," +
+		"\"content\":[],\"stop_reason\":null}}\n\nevent: content_block_start\n" +
+		"data: {\"type\":\"content_block_start\",\"index\":0," +
+		"\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\"," +
+		"\"input\":{}}}\n\nevent: content_block_stop\n" +
+		"data: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\n" +
+		"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\n" +
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
 
 	var buf bytes.Buffer
 	interceptor.Stream(io.NopCloser(strings.NewReader(stream)), &buf)
@@ -2215,10 +2291,15 @@ func TestSSEInterceptor_RateLimitBlocks_NilPolicy(t *testing.T) {
 		nil,
 	)
 
-	stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null}}\n\n" +
-		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\"}}\n\n" +
+	stream := "event: message_start\ndata: {\"type\":\"message_start\"," +
+		"\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\"," +
+		"\"content\":[],\"stop_reason\":null}}\n\n" +
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0," +
+		"\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\"," +
+		"\"name\":\"get_weather\"}}\n\n" +
 		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n" +
-		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\n" +
+		"event: message_delta\ndata: {\"type\":\"message_delta\"," +
+		"\"delta\":{\"stop_reason\":\"tool_use\"}}\n\n" +
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
 
 	var buf bytes.Buffer
@@ -2274,10 +2355,15 @@ func TestSSEInterceptor_VersionPinAlert(t *testing.T) {
 		vpCfg,
 	)
 
-	stream := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null}}\n\n" +
-		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"get_weather\"}}\n\n" +
+	stream := "event: message_start\ndata: {\"type\":\"message_start\"," +
+		"\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\"," +
+		"\"content\":[],\"stop_reason\":null}}\n\n" +
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0," +
+		"\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\"," +
+		"\"name\":\"get_weather\"}}\n\n" +
 		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n" +
-		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\n" +
+		"event: message_delta\ndata: {\"type\":\"message_delta\"," +
+		"\"delta\":{\"stop_reason\":\"tool_use\"}}\n\n" +
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
 
 	var buf bytes.Buffer

@@ -125,7 +125,8 @@ func TestExecCmd_BashDashC(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(
 				[]byte(
-					`{"session_id":"test-session","command_id":"cmd-1","result":{"exit_code":0,"stdout":"hello\n"}}`,
+					`{"session_id":"test-session","command_id":"cmd-1","result":{"exit_code":0,` +
+						`"stdout":"hello\n"}}`,
 				),
 			)
 			return
@@ -170,7 +171,8 @@ func TestExecCmd_AutoCreatesSessionBeforeInvalidating(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(
 				[]byte(
-					`{"session_id":"test-session","command_id":"cmd-1","result":{"exit_code":0,"stdout":"hello\n"}}`,
+					`{"session_id":"test-session","command_id":"cmd-1","result":{"exit_code":0,` +
+						`"stdout":"hello\n"}}`,
 				),
 			)
 			return

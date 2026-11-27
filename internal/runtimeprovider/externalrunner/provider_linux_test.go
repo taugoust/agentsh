@@ -97,7 +97,8 @@ func testProviderV3Profile(t *testing.T) Profile {
 	t.Helper()
 	profile := testProviderV2Profile(t)
 	policyData := []byte(
-		"version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n    domains: [example.com]\n    ports: [443]\n    decision: allow\n",
+		"version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n" +
+			"    domains: [example.com]\n    ports: [443]\n    decision: allow\n",
 	)
 	policyPath := filepath.Join(t.TempDir(), "host-egress.yaml")
 	if err := os.WriteFile(policyPath, policyData, 0o600); err != nil {
@@ -441,7 +442,8 @@ func TestExactHostMonitorStatusTerminalAcceptsConsistentTerminalEvidence(t *test
 			Runner: runner, RunnerExit: exit, RunnerReaped: true, RelayClosed: true,
 		},
 		"v1-true-no-child": {
-			SchemaVersion: HostMonitorSchemaVersionV1, State: HostMonitorFailed, Monitor: monitor, RelayClosed: true,
+			SchemaVersion: HostMonitorSchemaVersionV1, State: HostMonitorFailed, Monitor: monitor,
+			RelayClosed: true,
 		},
 		"v2-true-no-child": {
 			SchemaVersion: HostMonitorSchemaVersionV2, State: HostMonitorFailed, Monitor: monitor,
@@ -449,7 +451,8 @@ func TestExactHostMonitorStatusTerminalAcceptsConsistentTerminalEvidence(t *test
 		},
 		"v2-startup-child-reaped": {
 			SchemaVersion: HostMonitorSchemaVersionV2, State: HostMonitorFailed, Monitor: monitor,
-			VolumeID: volumeID, RunnerExit: exit, StartupChildReaped: true, RelayClosed: true, VolumeClosed: true,
+			VolumeID: volumeID, RunnerExit: exit, StartupChildReaped: true, RelayClosed: true,
+			VolumeClosed: true,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

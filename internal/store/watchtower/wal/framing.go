@@ -128,7 +128,8 @@ var ErrCorruptFrame = errors.New("wal: corrupt record frame")
 // Frame layout:
 //
 //	offset  size      field
-//	0       4         length     (uint32 BE; bytes after this field, excluding CRC, including payload)
+//	0       4         length     (uint32 BE; bytes after this field, excluding CRC,
+//	                             including payload)
 //	4       4         crc32c     (Castagnoli, computed over payload)
 //	8       length-4  payload
 //

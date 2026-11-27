@@ -49,6 +49,7 @@ func extqueryFixture(t *testing.T, policyYAML string) (
 }
 
 func extqueryDenyPolicyYAML() string {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	return `version: 1
 name: test
 db_services:
@@ -581,6 +582,7 @@ func TestExtquery_RedirectPolicyReloadKeepsPreparedPlanAndUsesNewPlanForNewParse
 }
 
 func redirectExtqueryPolicyYAML() string {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	return `version: 1
 name: redirect-extquery
 db_services:

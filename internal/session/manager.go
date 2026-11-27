@@ -171,7 +171,8 @@ func (s *Session) SetNetworkEnforcement(report *types.NetworkEnforcement) {
 	cloned := cloneNetworkEnforcement(report)
 	if cloned != nil && cloned.Attachment != nil &&
 		strings.TrimSpace(cloned.Attachment.CommandID) != "" &&
-		(cloned.Status == types.NetworkEnforcementStatusActive || cloned.Status == types.NetworkEnforcementStatusFailed) {
+		(cloned.Status == types.NetworkEnforcementStatusActive ||
+			cloned.Status == types.NetworkEnforcementStatusFailed) {
 		if s.networkCommandEnforcement == nil {
 			s.networkCommandEnforcement = make(map[string]*types.NetworkEnforcement)
 		}
@@ -257,7 +258,8 @@ func (s *Session) ResolveNetworkSetupRefusal(commandID string) bool {
 	defer s.mu.Unlock()
 	report := s.networkCommandEnforcement[commandID]
 	if report == nil || report.Attachment == nil ||
-		(report.Status != types.NetworkEnforcementStatusFailed && report.Attachment.Status != types.NetworkEnforcementStatusFailed) {
+		(report.Status != types.NetworkEnforcementStatusFailed &&
+			report.Attachment.Status != types.NetworkEnforcementStatusFailed) {
 		return false
 	}
 	s.removeNetworkAttachmentLocked(commandID)
@@ -303,7 +305,8 @@ func (s *Session) networkEnforcementLocked() *types.NetworkEnforcement {
 		failed := report.Status == types.NetworkEnforcementStatusFailed ||
 			attachment.Status == types.NetworkEnforcementStatusFailed
 		if selected == nil || (failed && !selectedFailed) ||
-			(failed == selectedFailed && attachment.CheckedAt.After(selected.Attachment.CheckedAt)) {
+			(failed == selectedFailed &&
+				attachment.CheckedAt.After(selected.Attachment.CheckedAt)) {
 			selected = report
 			selectedFailed = failed
 		}
@@ -778,7 +781,8 @@ func (s *Session) CurrentTraceContext() (traceID, spanID, traceFlags string) {
 	return s.currentTraceID, s.currentSpanID, s.currentTraceFlags
 }
 
-// InjectTraceContext adds trace_id, span_id, and trace_flags to the event fields if trace context is set.
+// InjectTraceContext adds trace_id, span_id, and trace_flags to the event fields if trace context
+// is set.
 func (s *Session) InjectTraceContext(fields map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -918,7 +922,8 @@ func (s *Session) SetRealPaths(enabled bool) bool {
 	defer s.mu.Unlock()
 	if enabled {
 		workspace := s.Workspace
-		if (s.WorkspaceMode == string(types.WorkspaceModeOverlay) || s.WorkspaceMode == string(types.WorkspaceModeShadow)) &&
+		if (s.WorkspaceMode == string(types.WorkspaceModeOverlay) ||
+			s.WorkspaceMode == string(types.WorkspaceModeShadow)) &&
 			s.WorkspaceMount != "" {
 			workspace = s.WorkspaceMount
 		}

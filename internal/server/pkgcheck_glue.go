@@ -107,7 +107,8 @@ func buildProvider(name string, provCfg config.ProviderConfig) (pkgcheck.CheckPr
 
 	default:
 		return nil, fmt.Errorf(
-			"pkgcheck provider %q: unknown provider name (known: osv, depsdev, local, snyk, socket, exec)",
+			"pkgcheck provider %q: unknown provider name (known: osv, depsdev, local, snyk, "+
+				"socket, exec)",
 			name,
 		)
 	}

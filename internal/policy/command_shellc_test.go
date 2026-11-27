@@ -288,7 +288,8 @@ func TestEngine_CheckCommand_ShellCDerive(t *testing.T) {
 			"deny-shutdown",
 		},
 		{
-			"sh -c 'FOO=1 BAR=2 nice -n 19 shutdown' → multi-assign + nice -n parse-through, derived deny",
+			"sh -c 'FOO=1 BAR=2 nice -n 19 shutdown' → multi-assign + nice -n parse-through, " +
+				"derived deny",
 			"/bin/sh",
 			[]string{"-c", "FOO=1 BAR=2 nice -n 19 shutdown"},
 			types.DecisionDeny,
@@ -391,7 +392,8 @@ func TestEngine_CheckCommand_ShellCDerive(t *testing.T) {
 		// derives to the echo builtin and falls back to the outer shell
 		// allow rule — same as `echo hi` without quotes.
 		{
-			"sh -c 'echo \"hi there\"' → quoted arg parses, echo is builtin, fall back to shell allow",
+			"sh -c 'echo \"hi there\"' → quoted arg parses, echo is builtin, fall back to " +
+				"shell allow",
 			"/bin/sh",
 			[]string{"-c", "echo \"hi there\""},
 			types.DecisionAllow,

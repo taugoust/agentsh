@@ -189,7 +189,8 @@ func TestRetentionIntegration_LargestFirstEviction(t *testing.T) {
 	}
 
 	config := RetentionConfig{
-		MaxSizeMB: 1, // 1MB quota - need to remove large (1.5MB) and medium (1MB) to get to small (0.5MB)
+		// 1MB quota - need to remove large (1.5MB) and medium (1MB) to get to small (0.5MB)
+		MaxSizeMB: 1,
 		Eviction:  "largest_first",
 	}
 

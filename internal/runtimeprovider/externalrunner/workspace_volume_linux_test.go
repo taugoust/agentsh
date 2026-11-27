@@ -61,7 +61,12 @@ func testWorkspaceVolumeDependencies(
 			}
 			return filepath.Join(string(filepath.Separator), "packaged", "bin", "qemu-img"), nil
 		},
-		runQEMUImg: func(ctx context.Context, executable, workingDirectory string, image *os.File, args ...string) ([]byte, error) {
+		runQEMUImg: func(
+			ctx context.Context,
+			executable, workingDirectory string,
+			image *os.File,
+			args ...string,
+		) ([]byte, error) {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
@@ -115,7 +120,9 @@ func testWorkspaceVolumeDependencies(
 				case "info":
 					return []byte(
 						fmt.Sprintf(
-							`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1","corrupt":false}}}`,
+							`{"virtual-size":%d,"format":"qcow2",`+
+								`"format-specific":{"type":"qcow2","data":{"compat":"1.1",`+
+								`"corrupt":false}}}`,
 							virtualSize,
 						),
 					), nil
@@ -124,7 +131,8 @@ func testWorkspaceVolumeDependencies(
 				default:
 					return []byte(
 						fmt.Sprintf(
-							`[{"start":0,"length":%d,"depth":0,"present":false,"zero":true,"data":false}]`,
+							`[{"start":0,"length":%d,"depth":0,"present":false,"zero":true,`+
+								`"data":false}]`,
 							virtualSize,
 						),
 					), nil
@@ -182,10 +190,16 @@ func TestWorkspaceVolumeCreatePublishesAndReopensExactImage(t *testing.T) {
 					t.Fatalf("qemu-img invocation = %#v in %q", args, workingDirectory)
 				}
 				joined := strings.Join(args, " ")
-				for _, forbidden := range []string{"mount", "loop", "nbd", filepath.Join(request.StateDir, "runtime", "workspace")} {
+				for _, forbidden := range []string{
+					"mount",
+					"loop",
+					"nbd",
+					filepath.Join(request.StateDir, "runtime", "workspace"),
+				} {
 					if strings.Contains(joined, forbidden) {
 						t.Fatalf(
-							"qemu-img invocation contains forbidden staging or attachment term %q: %s",
+							"qemu-img invocation contains forbidden staging or attachment "+
+								"term %q: %s",
 							forbidden,
 							joined,
 						)
@@ -590,7 +604,12 @@ func TestWorkspaceVolumeFailedCreatePublishesNothingAndCanResume(t *testing.T) {
 	request := testWorkspaceVolumeRequest(t)
 	deps := testWorkspaceVolumeDependencies(t, nil)
 	goodRunner := deps.runQEMUImg
-	deps.runQEMUImg = func(ctx context.Context, executable, workingDirectory string, image *os.File, args ...string) ([]byte, error) {
+	deps.runQEMUImg = func(
+		ctx context.Context,
+		executable, workingDirectory string,
+		image *os.File,
+		args ...string,
+	) ([]byte, error) {
 		if len(args) > 0 && args[0] == "create" {
 			size, err := strconv.ParseInt(args[7], 10, 64)
 			if err != nil {
@@ -710,7 +729,8 @@ func TestWorkspaceVolumeQEMUJSONValidation(t *testing.T) {
 	}
 	validInfo := []byte(
 		fmt.Sprintf(
-			`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1","corrupt":false}}}`,
+			`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2",`+
+				`"data":{"compat":"1.1","corrupt":false}}}`,
 			size,
 		),
 	)
@@ -718,11 +738,22 @@ func TestWorkspaceVolumeQEMUJSONValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, data := range map[string][]byte{
-		"old compatibility": []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"0.10"}}}`, size)),
-		"wrong size":        []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1"}}}`, size+1)),
-		"backing file":      []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2","backing-filename":"base.qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1"}}}`, size)),
-		"data file":         []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1","data-file":"data.raw"}}}`, size)),
-		"corrupt":           []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2","format-specific":{"type":"qcow2","data":{"compat":"1.1","corrupt":true}}}`, size)),
+		"old compatibility": []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2",`+
+			`"format-specific":{"type":"qcow2","data":{"compat":"0.10"}}}`,
+			size)),
+		"wrong size": []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2",`+
+			`"format-specific":{"type":"qcow2","data":{"compat":"1.1"}}}`,
+			size+1)),
+		"backing file": []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2",`+
+			`"backing-filename":"base.qcow2","format-specific":{"type":"qcow2",`+
+			`"data":{"compat":"1.1"}}}`,
+			size)),
+		"data file": []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2",`+
+			`"format-specific":{"type":"qcow2","data":{"compat":"1.1","data-file":"data.raw"}}}`,
+			size)),
+		"corrupt": []byte(fmt.Sprintf(`{"virtual-size":%d,"format":"qcow2",`+
+			`"format-specific":{"type":"qcow2","data":{"compat":"1.1","corrupt":true}}}`,
+			size)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validateWorkspaceVolumeQEMUInfoJSON(
@@ -771,7 +802,8 @@ func TestWorkspaceVolumeQEMUJSONValidation(t *testing.T) {
 	}
 	mutableMap := []byte(
 		fmt.Sprintf(
-			`[{"start":0,"length":4096,"depth":0,"present":true,"zero":false,"data":true},{"start":4096,"length":%d,"depth":0,"present":false,"zero":true,"data":false}]`,
+			`[{"start":0,"length":4096,"depth":0,"present":true,"zero":false,"data":true},`+
+				`{"start":4096,"length":%d,"depth":0,"present":false,"zero":true,"data":false}]`,
 			size-4096,
 		),
 	)

@@ -139,7 +139,8 @@ func (a *SessionAnalyzer) ClearShadow(toolName string) {
 //  1. Shadow tool (always, if enabled)
 //  2. Burst (if enabled)
 //  3. Read-then-send (if enabled, only when category is "send")
-//  4. Cross-server flow (if enabled, when category is write/send/compute/unknown from different server)
+//  4. Cross-server flow (if enabled, when category is write/send/compute/unknown from
+//     different server)
 func (a *SessionAnalyzer) CheckAndRecord(
 	serverID, toolName, toolCallID, requestID string,
 ) (*CrossServerDecision, string) {

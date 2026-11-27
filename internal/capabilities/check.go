@@ -51,7 +51,8 @@ func realCheckPtrace() CheckResult {
 	r := CheckResult{Feature: "ptrace", Available: available}
 	if !available {
 		r.Error = fmt.Errorf(
-			"ptrace not available (PTRACE_SEIZE probe failed — blocked by seccomp, gVisor, or missing CAP_SYS_PTRACE)",
+			"ptrace not available (PTRACE_SEIZE probe failed — blocked by seccomp, gVisor, or " +
+				"missing CAP_SYS_PTRACE)",
 		)
 	}
 	return r
@@ -195,7 +196,9 @@ func CheckAllWithOptions(cfg *config.Config, opts CheckOptions) error {
 
 	// Check ebpf cgroup attach feasibility (eBPF kernel support + attach-capable cgroup mode).
 	// Only recorded as a fatal failure when ebpf.required=true; enabled=true alone is best-effort.
-	if (cfg.Sandbox.Network.EBPF.Enabled || cfg.Sandbox.Network.EBPF.Enforce || cfg.Sandbox.Network.EBPF.Required) &&
+	if (cfg.Sandbox.Network.EBPF.Enabled ||
+		cfg.Sandbox.Network.EBPF.Enforce ||
+		cfg.Sandbox.Network.EBPF.Required) &&
 		!opts.ExternalEBPFHelper {
 		// Populate the cgroup probe cache using the same cgroup settings the server
 		// will use at runtime. A generic /proc/self/cgroup probe is misleading for
@@ -215,7 +218,8 @@ func CheckAllWithOptions(cfg *config.Config, opts CheckOptions) error {
 		}
 		result := checkEBPFCgroupAttach()
 		result.ConfigKey = "sandbox.network.ebpf.enabled"
-		result.Suggestion = "See docs/ebpf.md for capability requirements (CAP_BPF, /sys/fs/bpf, CONFIG_CGROUP_BPF)"
+		result.Suggestion = "See docs/ebpf.md for capability requirements (CAP_BPF, /sys/fs/bpf, " +
+			"CONFIG_CGROUP_BPF)"
 		if !result.Available && cfg.Sandbox.Network.EBPF.Required {
 			failures = append(failures, result)
 		}
@@ -249,8 +253,10 @@ func CheckAllWithOptions(cfg *config.Config, opts CheckOptions) error {
 			result.ConfigKey = "sandbox.seccomp.execve.enabled"
 		}
 		result.Suggestion = fmt.Sprintf(
-			"Install the agentsh-unixwrap binary, or disable the feature by setting '%s: false' in your config.\n"+
-				"          The agentsh-unixwrap binary is required for seccomp/execve interception.\n"+
+			"Install the agentsh-unixwrap binary, or disable the feature by setting '%s: false' "+
+				"in your config.\n"+
+				"          The agentsh-unixwrap binary is required for seccomp/execve "+
+				"interception.\n"+
 				"          It may be missing if you're using a CGO-disabled build.",
 			result.ConfigKey,
 		)

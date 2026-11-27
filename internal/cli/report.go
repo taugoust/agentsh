@@ -125,7 +125,8 @@ Examples:
 	cmd.Flags().
 		StringVar(&dbPath, "db-path", "", "Path to events database (default: ./data/events.db)")
 	cmd.Flags().
-		StringVar(&sessionsDir, "sessions-dir", "", "Path to sessions directory for LLM stats (default: ~/.agentsh/sessions)")
+		StringVar(&sessionsDir, "sessions-dir", "",
+			"Path to sessions directory for LLM stats (default: ~/.agentsh/sessions)")
 	_ = cmd.MarkFlagRequired("level")
 
 	return cmd

@@ -293,7 +293,8 @@ func (t *Tracer) reconcileProc() {
 
 		if fire {
 			slog.Warn(
-				"ptrace-trace WEDGE(v2): tracee kernel-stopped but Run loop not progressing it (#369 #2)",
+				"ptrace-trace WEDGE(v2): tracee kernel-stopped but Run loop not progressing it "+
+					"(#369 #2)",
 				"tid",
 				c.tid,
 				"proc_state",

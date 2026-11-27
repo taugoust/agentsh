@@ -69,7 +69,8 @@ func validateService(s *DBService) []error {
 			errs = append(
 				errs,
 				fmt.Errorf(
-					"service_plaintext_unsafe_dest: db_services[%q]: terminate_plaintext_upstream to %q requires trusted_network: true",
+					"service_plaintext_unsafe_dest: db_services[%q]: "+
+						"terminate_plaintext_upstream to %q requires trusted_network: true",
 					s.Name,
 					host,
 				),
@@ -100,7 +101,8 @@ func validateStatementRule(r *StatementRule, svcs map[ServiceID]*DBService) ([]e
 			errs = append(
 				errs,
 				fmt.Errorf(
-					"rule_service_passthrough: database_rules[%q]: db_service %q is passthrough; statement rules unavailable",
+					"rule_service_passthrough: database_rules[%q]: db_service %q is passthrough; "+
+						"statement rules unavailable",
 					r.Name,
 					r.DBService,
 				),
@@ -150,7 +152,8 @@ func validateStatementRule(r *StatementRule, svcs map[ServiceID]*DBService) ([]e
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"rule_require_where_invalid_operation: database_rules[%q]: require_where is supported only for modify/delete operations",
+				"rule_require_where_invalid_operation: database_rules[%q]: require_where is "+
+					"supported only for modify/delete operations",
 				r.Name,
 			),
 		)
@@ -172,7 +175,8 @@ func validateStatementRule(r *StatementRule, svcs map[ServiceID]*DBService) ([]e
 			errs = append(
 				errs,
 				fmt.Errorf(
-					"rule_unknown_resolution: database_rules[%q]: unknown match_object_resolution %q",
+					"rule_unknown_resolution: database_rules[%q]: unknown "+
+						"match_object_resolution %q",
 					r.Name,
 					r.MatchObjectResolution,
 				),
@@ -209,7 +213,8 @@ func validateStatementRule(r *StatementRule, svcs map[ServiceID]*DBService) ([]e
 			errs = append(
 				errs,
 				fmt.Errorf(
-					"rule_too_broad_allow: database_rules[%q]: refusing to allow operations:[\"*\"] without db_service or db_family scope",
+					"rule_too_broad_allow: database_rules[%q]: refusing to allow "+
+						"operations:[\"*\"] without db_service or db_family scope",
 					r.Name,
 				),
 			)
@@ -224,7 +229,8 @@ func validateStatementRule(r *StatementRule, svcs map[ServiceID]*DBService) ([]e
 				Field: "decision",
 				Code:  "audit_on_dangerous",
 				Message: fmt.Sprintf(
-					"rule %q audits operations of risk tier >= high; set acknowledge_audit_on_dangerous: true to silence",
+					"rule %q audits operations of risk tier >= high; set "+
+						"acknowledge_audit_on_dangerous: true to silence",
 					r.Name,
 				),
 			})
@@ -238,7 +244,8 @@ func validateStatementRule(r *StatementRule, svcs map[ServiceID]*DBService) ([]e
 				Field: "match_object_resolution",
 				Code:  "canonical_selector_without_resolution_guard",
 				Message: fmt.Sprintf(
-					"rule %q uses catalog selectors without match_object_resolution: catalog_resolved",
+					"rule %q uses catalog selectors without match_object_resolution: "+
+						"catalog_resolved",
 					r.Name,
 				),
 			})
@@ -273,7 +280,8 @@ func validateStatementRule(r *StatementRule, svcs map[ServiceID]*DBService) ([]e
 			errs = append(
 				errs,
 				fmt.Errorf(
-					"rule_deny_mode_in_tx_not_deny: database_rules[%q]: deny_mode_in_tx is only valid on deny rules",
+					"rule_deny_mode_in_tx_not_deny: database_rules[%q]: deny_mode_in_tx is only "+
+						"valid on deny rules",
 					r.Name,
 				),
 			)
@@ -285,7 +293,8 @@ func validateStatementRule(r *StatementRule, svcs map[ServiceID]*DBService) ([]e
 				errs = append(
 					errs,
 					fmt.Errorf(
-						"rule_deny_mode_in_tx_unknown: database_rules[%q]: deny_mode_in_tx %q: must be one of \"terminate\" or \"rollback_then_continue\"",
+						"rule_deny_mode_in_tx_unknown: database_rules[%q]: deny_mode_in_tx %q: "+
+							"must be one of \"terminate\" or \"rollback_then_continue\"",
 						r.Name,
 						r.DenyModeInTx,
 					),
@@ -314,7 +323,8 @@ func validateConnectionRule(r *ConnectionRule, svcs map[ServiceID]*DBService) ([
 			errs = append(
 				errs,
 				fmt.Errorf(
-					"rule_service_unknown: database_connection_rules[%q]: db_service %q does not exist",
+					"rule_service_unknown: database_connection_rules[%q]: db_service %q does "+
+						"not exist",
 					r.Name,
 					r.DBService,
 				),
@@ -362,7 +372,8 @@ func validateConnectionRule(r *ConnectionRule, svcs map[ServiceID]*DBService) ([
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"conn_redirect_invalid: database_connection_rules[%q]: decision redirect is not valid for DB connection rules",
+				"conn_redirect_invalid: database_connection_rules[%q]: decision redirect is not "+
+					"valid for DB connection rules",
 				r.Name,
 			),
 		)
@@ -382,7 +393,8 @@ func validateConnectionRule(r *ConnectionRule, svcs map[ServiceID]*DBService) ([
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"cancel_rule_approve: database_connection_rules[%q]: approve on match_kind: cancel is invalid (cancel is real-time; cannot be held)",
+				"cancel_rule_approve: database_connection_rules[%q]: approve on match_kind: "+
+					"cancel is invalid (cancel is real-time; cannot be held)",
 				r.Name,
 			),
 		)
@@ -408,7 +420,8 @@ func validateConnectionRule(r *ConnectionRule, svcs map[ServiceID]*DBService) ([
 			Field: "decision",
 			Code:  "approve_on_replication",
 			Message: fmt.Sprintf(
-				"rule %q approves a match_kind: replication connection; replication is default-deny per §11.1",
+				"rule %q approves a match_kind: replication connection; replication is "+
+					"default-deny per §11.1",
 				r.Name,
 			),
 		})
@@ -435,7 +448,8 @@ func validateRedirectStatementRule(
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"redirect_relation_not_canonical: database_rules[%q]: redirect.relation %q must be canonical schema.name",
+				"redirect_relation_not_canonical: database_rules[%q]: redirect.relation %q must "+
+					"be canonical schema.name",
 				r.Name,
 				r.Redirect.Relation,
 			),
@@ -445,7 +459,8 @@ func validateRedirectStatementRule(
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"redirect_source_relation_required: database_rules[%q]: exactly one relations selector is required for redirect",
+				"redirect_source_relation_required: database_rules[%q]: exactly one relations "+
+					"selector is required for redirect",
 				r.Name,
 			),
 		)
@@ -453,7 +468,8 @@ func validateRedirectStatementRule(
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"redirect_source_relation_not_canonical: database_rules[%q]: relations[0] %q must be canonical schema.name",
+				"redirect_source_relation_not_canonical: database_rules[%q]: relations[0] %q "+
+					"must be canonical schema.name",
 				r.Name,
 				r.Relations[0],
 			),
@@ -463,7 +479,8 @@ func validateRedirectStatementRule(
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"redirect_source_relation_exclusive: database_rules[%q]: redirect rules cannot combine relations with objects or functions selectors",
+				"redirect_source_relation_exclusive: database_rules[%q]: redirect rules cannot "+
+					"combine relations with objects or functions selectors",
 				r.Name,
 			),
 		)
@@ -472,7 +489,8 @@ func validateRedirectStatementRule(
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"redirect_requires_catalog_resolved: database_rules[%q]: redirect requires match_object_resolution: catalog_resolved",
+				"redirect_requires_catalog_resolved: database_rules[%q]: redirect requires "+
+					"match_object_resolution: catalog_resolved",
 				r.Name,
 			),
 		)
@@ -481,7 +499,8 @@ func validateRedirectStatementRule(
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"redirect_operations_must_be_read: database_rules[%q]: redirect operations must expand only to read",
+				"redirect_operations_must_be_read: database_rules[%q]: redirect operations must "+
+					"expand only to read",
 				r.Name,
 			),
 		)
@@ -490,7 +509,8 @@ func validateRedirectStatementRule(
 		errs = append(
 			errs,
 			fmt.Errorf(
-				"redirect_requires_terminate_postgres_service: database_rules[%q]: redirect requires at least one terminate-mode Postgres service",
+				"redirect_requires_terminate_postgres_service: database_rules[%q]: redirect "+
+					"requires at least one terminate-mode Postgres service",
 				r.Name,
 			),
 		)
@@ -622,19 +642,22 @@ func validateConnectionRuleVsService(r *ConnectionRule, svc *DBService) error {
 	}
 	if len(r.DBUser) > 0 {
 		return fmt.Errorf(
-			"conn_passthrough_field_unavailable: database_connection_rules[%q]: db_user/database/application_name not visible under passthrough",
+			"conn_passthrough_field_unavailable: database_connection_rules[%q]: "+
+				"db_user/database/application_name not visible under passthrough",
 			r.Name,
 		)
 	}
 	if r.Database != "" {
 		return fmt.Errorf(
-			"conn_passthrough_field_unavailable: database_connection_rules[%q]: db_user/database/application_name not visible under passthrough",
+			"conn_passthrough_field_unavailable: database_connection_rules[%q]: "+
+				"db_user/database/application_name not visible under passthrough",
 			r.Name,
 		)
 	}
 	if r.ApplicationName != "" {
 		return fmt.Errorf(
-			"conn_passthrough_field_unavailable: database_connection_rules[%q]: db_user/database/application_name not visible under passthrough",
+			"conn_passthrough_field_unavailable: database_connection_rules[%q]: "+
+				"db_user/database/application_name not visible under passthrough",
 			r.Name,
 		)
 	}

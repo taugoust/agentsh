@@ -75,7 +75,8 @@ func TestEligibleMissingLookup_AcceptsSupportedReadLookups(t *testing.T) {
 		{"openat2 supported resolve flags", func() FileLookupRequest {
 			r := baseMissingLookup(unix.SYS_OPENAT2)
 			r.ResolveFlags = uint64(
-				unix.RESOLVE_NO_XDEV|unix.RESOLVE_NO_MAGICLINKS|unix.RESOLVE_NO_SYMLINKS|unix.RESOLVE_BENEATH,
+				unix.RESOLVE_NO_XDEV|unix.RESOLVE_NO_MAGICLINKS|unix.RESOLVE_NO_SYMLINKS|
+					unix.RESOLVE_BENEATH,
 			) | resolveCached
 			return r
 		}()},

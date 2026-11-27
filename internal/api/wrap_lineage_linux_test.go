@@ -51,7 +51,16 @@ func TestAcceptNotifyFDLineageBindsExactWrapperAndPayload(t *testing.T) {
 	}
 	previous := startNotifyHandlerForWrapHook
 	captured := make(chan wrapLineageContext, 1)
-	startNotifyHandlerForWrapHook = func(ctx context.Context, notifyFD, composition *os.File, _ string, _ *App, _ bool, gotWrapper int, _ *session.Session, _ func() error) error {
+	startNotifyHandlerForWrapHook = func(
+		ctx context.Context,
+		notifyFD, composition *os.File,
+		_ string,
+		_ *App,
+		_ bool,
+		gotWrapper int,
+		_ *session.Session,
+		_ func() error,
+	) error {
 		defer notifyFD.Close()
 		if gotWrapper != wrapper.Process.Pid {
 			t.Fatalf("wrapper pid = %d, want %d", gotWrapper, wrapper.Process.Pid)

@@ -215,7 +215,11 @@ func isSensitiveSupervisorAssignment(assignment string) bool {
 	if !ok {
 		return false
 	}
-	for _, sensitive := range []string{"AGENTSH_DETACHED_EVENT_TOKEN", nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce} {
+	for _, sensitive := range []string{
+		"AGENTSH_DETACHED_EVENT_TOKEN",
+		nethelper.EnvHelperInstanceCredential,
+		nethelper.EnvSessionNonce,
+	} {
 		if strings.EqualFold(strings.TrimSpace(name), sensitive) {
 			return true
 		}

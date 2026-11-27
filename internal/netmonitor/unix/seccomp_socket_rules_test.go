@@ -177,13 +177,15 @@ func TestSeccompSocketRuleBlock_Notify_LogDispatched(t *testing.T) {
 	}
 	if strings.Contains(combined, "audit_event=seccomp_socket_family_blocked") {
 		t.Errorf(
-			"socket family event emitted — family dispatch shadowed socket tuple rule;\nhelper output:\n%s",
+			"socket family event emitted — family dispatch shadowed socket tuple rule;\n"+
+				"helper output:\n%s",
 			combined,
 		)
 	}
 	if strings.Contains(combined, "audit_event=seccomp_blocked") {
 		t.Errorf(
-			"generic blocklist event emitted — generic dispatch shadowed socket tuple rule;\nhelper output:\n%s",
+			"generic blocklist event emitted — generic dispatch shadowed socket tuple rule;\n"+
+				"helper output:\n%s",
 			combined,
 		)
 	}

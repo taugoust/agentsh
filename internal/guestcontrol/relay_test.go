@@ -51,7 +51,9 @@ func TestAuthenticatedSupervisorRelay(t *testing.T) {
 			return nil, fmt.Errorf("unexpected endpoint %d:%d", cid, port)
 		}
 		server, client := net.Pipe()
-		go func() { _ = relaySupervisorConnection(context.Background(), server, manifest, socketPath) }()
+		go func() {
+			_ = relaySupervisorConnection(context.Background(), server, manifest, socketPath)
+		}()
 		return client, nil
 	}
 	client, err := newClient(manifest, dial, time.Second)
@@ -85,7 +87,8 @@ func TestSupervisorRelayServerRetainsProtocolV2Authentication(t *testing.T) {
 	server, client := net.Pipe()
 	done := make(chan error, 1)
 	go func() {
-		done <- relaySupervisorConnection(context.Background(), server, manifest, filepath.Join(t.TempDir(), "missing.sock"))
+		done <- relaySupervisorConnection(context.Background(), server, manifest,
+			filepath.Join(t.TempDir(), "missing.sock"))
 	}()
 	request := ProxyRequest{
 		ProtocolVersion: manifest.ProtocolVersion, Type: "connect", RequestID: "legacy-connect",

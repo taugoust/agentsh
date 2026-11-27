@@ -717,12 +717,14 @@ func (p *Proxy) handleConnect(client net.Conn, req *http.Request) error {
 			host,
 		); ok &&
 			!engine.DeclaredHTTPServiceAllowsDirect(host) {
-			msg := "direct HTTPS to " + host + " is blocked; use " + envVar + " to route through the gateway"
+			msg := "direct HTTPS to " + host + " is blocked; use " + envVar +
+				" to route through the gateway"
 			_, _ = io.WriteString(
 				client,
-				"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "+strconv.Itoa(
-					len(msg),
-				)+"\r\n\r\n"+msg,
+				"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "+
+					strconv.Itoa(
+						len(msg),
+					)+"\r\n\r\n"+msg,
 			)
 			failClosedDec := policy.Decision{
 				PolicyDecision:    types.DecisionDeny,
@@ -1111,12 +1113,14 @@ func (p *Proxy) handleHTTP(client net.Conn, req *http.Request) error {
 			host,
 		); ok &&
 			!engine.DeclaredHTTPServiceAllowsDirect(host) {
-			msg := "direct HTTP to " + host + " is blocked; use " + envVar + " to route through the gateway"
+			msg := "direct HTTP to " + host + " is blocked; use " + envVar +
+				" to route through the gateway"
 			_, _ = io.WriteString(
 				client,
-				"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "+strconv.Itoa(
-					len(msg),
-				)+"\r\n\r\n"+msg,
+				"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "+
+					strconv.Itoa(
+						len(msg),
+					)+"\r\n\r\n"+msg,
 			)
 			failClosedDec := policy.Decision{
 				PolicyDecision:    types.DecisionDeny,

@@ -265,7 +265,11 @@ func TestStoreReconcilesOrphanAndInterruptedDelete(t *testing.T) {
 	if _, err := NewStore(stateDir, testSessionID, 1024); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{store.dataPath(orphanID), store.dataPath(descriptor.ArtifactID), store.tombstonePath(descriptor.ArtifactID)} {
+	for _, path := range []string{
+		store.dataPath(orphanID),
+		store.dataPath(descriptor.ArtifactID),
+		store.tombstonePath(descriptor.ArtifactID),
+	} {
 		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("reconciliation retained %s: %v", path, err)
 		}

@@ -3,6 +3,7 @@ package policy
 import "testing"
 
 func TestEvaluate_AuditDoesNotCoverUnrelatedObject(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:
@@ -21,6 +22,7 @@ database_rules:
 }
 
 func TestEvaluate_AuditAndAllowOnSameObjectYieldsAudit(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRules(t, `version: 1
 name: t
 db_services:

@@ -64,7 +64,7 @@ const (
 	NetworkEnforcementTierCgroupDelegated         = types.NetworkEnforcementTierCgroupDelegated
 	NetworkEnforcementTierHelperEBPFGate          = types.NetworkEnforcementTierHelperEBPFGate
 	NetworkEnforcementTierHelperEBPFProxy         = types.NetworkEnforcementTierHelperEBPFProxy
-	NetworkEnforcementTierHelperEBPFProxyRequired = types.NetworkEnforcementTierHelperEBPFProxyRequired
+	NetworkEnforcementTierHelperEBPFProxyRequired = types.NetworkEnforcementTierHelperEBPFProxyRequired //nolint:lll // gofmt cannot wrap const specs
 )
 
 type Metadata struct {
@@ -270,7 +270,8 @@ func ReadMetadataFromRoot(root string, sessionID string) (Metadata, string, erro
 		meta.NetworkEnforcement.Normalize()
 	}
 	if heartbeat, err := readHeartbeat(stateDir); err == nil &&
-		heartbeat.ProtocolVersion == meta.ProtocolVersion && heartbeat.SessionID == meta.SessionID &&
+		heartbeat.ProtocolVersion == meta.ProtocolVersion &&
+		heartbeat.SessionID == meta.SessionID &&
 		heartbeat.Generation == meta.Generation && heartbeat.IncarnationID == meta.IncarnationID &&
 		heartbeat.HeartbeatAt.After(meta.HeartbeatAt) {
 		meta.HeartbeatAt = heartbeat.HeartbeatAt
@@ -400,7 +401,8 @@ func StaleNetworkEnforcementSnapshot(report *NetworkEnforcement) *NetworkEnforce
 		snapshot.Readiness = NetworkEnforcementStatusDegraded
 	}
 	snapshot.NetworkPolicyEnforced = false
-	snapshot.Warning = "detached metadata is a stale startup snapshot; live supervisor runtime evidence is unavailable"
+	snapshot.Warning = "detached metadata is a stale startup snapshot; live supervisor runtime " +
+		"evidence is unavailable"
 	snapshot.Normalize()
 	return &snapshot
 }
@@ -443,7 +445,8 @@ func ValidateUsable(meta Metadata, pidAlive func(int) bool) error {
 	if socketErr != nil {
 		if errors.Is(socketErr, os.ErrNotExist) {
 			return fmt.Errorf(
-				"stale metadata for detached session %s: supervisor.sock is missing at %s; stop/remove the stale session or start a new detached session",
+				"stale metadata for detached session %s: supervisor.sock is missing at %s; "+
+					"stop/remove the stale session or start a new detached session",
 				meta.SessionID,
 				meta.SupervisorSock,
 			)
@@ -464,7 +467,8 @@ func ValidateUsable(meta Metadata, pidAlive func(int) bool) error {
 	}
 	if meta.OwnerPID > 0 && pidAlive != nil && !pidAlive(meta.OwnerPID) {
 		return fmt.Errorf(
-			"dead supervisor for detached session %s: owner_pid %d is not running; recover or stop the exact stale session",
+			"dead supervisor for detached session %s: owner_pid %d is not running; recover or "+
+				"stop the exact stale session",
 			meta.SessionID,
 			meta.OwnerPID,
 		)
@@ -472,7 +476,8 @@ func ValidateUsable(meta Metadata, pidAlive func(int) bool) error {
 	if meta.OwnerPID > 0 && meta.OwnerStartIdentity != "" && meta.BootID != "" &&
 		!ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
 		return fmt.Errorf(
-			"stale supervisor identity for detached session %s: owner_pid %d was reused or belongs to another boot",
+			"stale supervisor identity for detached session %s: owner_pid %d was reused or "+
+				"belongs to another boot",
 			meta.SessionID,
 			meta.OwnerPID,
 		)

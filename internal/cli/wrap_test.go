@@ -147,7 +147,10 @@ type mockWrapClient struct {
 	createSessCalled bool
 	getSessionCalled bool
 	getSessionFn     func(ctx context.Context, id string) (types.Session, error)
-	createSessionFn  func(ctx context.Context, req types.CreateSessionRequest) (types.Session, error)
+	createSessionFn  func(
+		ctx context.Context,
+		req types.CreateSessionRequest,
+	) (types.Session, error)
 }
 
 // Ensure mockWrapClient implements CLIClient at compile time.

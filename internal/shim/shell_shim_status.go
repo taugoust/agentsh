@@ -28,7 +28,8 @@ type ShellShimTargetStatus struct {
 	RealType   string `json:"real_type,omitempty"`
 	RealLink   string `json:"real_link,omitempty"`
 
-	ShimMatches bool `json:"shim_matches"` // only true when shim bytes provided and target is a regular file
+	// only true when shim bytes provided and target is a regular file
+	ShimMatches bool `json:"shim_matches"`
 }
 
 type ShellShimStatus struct {

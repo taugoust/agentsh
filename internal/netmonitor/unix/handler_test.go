@@ -171,7 +171,8 @@ func TestServeNotifyWithExecve_NilEmitterAllowed(t *testing.T) {
 	logs := logBuf.String()
 	if !strings.Contains(logs, "NotifReceive error") {
 		t.Fatalf(
-			"expected NotifReceive error log (proves loop was entered despite nil emitter), got logs: %s",
+			"expected NotifReceive error log (proves loop was entered despite nil emitter), got "+
+				"logs: %s",
 			logs,
 		)
 	}

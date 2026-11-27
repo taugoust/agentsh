@@ -117,7 +117,8 @@ func TestWAL_CRCFailureEmitsCoarseLossRange(t *testing.T) {
 	}
 	if !sawDataBeforeLoss {
 		t.Errorf(
-			"expected at least one RecordData from earlier sealed segments before the loss; saw none",
+			"expected at least one RecordData from earlier sealed segments before the loss; " +
+				"saw none",
 		)
 	}
 }

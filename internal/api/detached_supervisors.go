@@ -107,7 +107,9 @@ func (a *App) detachedMetadataMatchesLiveRuntime(meta detached.Metadata) bool {
 	}
 	return status.ProtocolVersion == meta.ProtocolVersion && status.SessionID == meta.SessionID &&
 		status.Generation == meta.Generation && status.IncarnationID == meta.IncarnationID &&
-		status.OwnerPID == meta.OwnerPID && status.OwnerStartIdentity == meta.OwnerStartIdentity && status.BootID == meta.BootID
+		status.OwnerPID == meta.OwnerPID &&
+		status.OwnerStartIdentity == meta.OwnerStartIdentity &&
+		status.BootID == meta.BootID
 }
 
 func (a *App) detachedSupervisorClient(s detachedSupervisor) *client.Client {
@@ -226,7 +228,8 @@ func (a *App) exchangeDetachedRelay(ctx context.Context, relay *detachedRelay) e
 	if err != nil {
 		var httpErr *client.HTTPError
 		if errors.As(err, &httpErr) &&
-			(httpErr.StatusCode == http.StatusBadRequest || httpErr.StatusCode == http.StatusNotFound) &&
+			(httpErr.StatusCode == http.StatusBadRequest ||
+				httpErr.StatusCode == http.StatusNotFound) &&
 			relay.ack == 0 &&
 			len(relay.outbox) == 0 {
 			var pending []approvals.Request

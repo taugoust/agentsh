@@ -546,7 +546,8 @@ func TestExecveHandler_Action(t *testing.T) {
 	})
 
 	t.Run(
-		"approve preserves notify session for nested exec when parent was first seen without ancestry",
+		"approve preserves notify session for nested exec when parent was first seen without "+
+			"ancestry",
 		func(t *testing.T) {
 			cfg := ExecveHandlerConfig{}
 			pol := &mockPolicy{decision: PolicyDecision{

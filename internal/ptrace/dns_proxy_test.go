@@ -311,7 +311,8 @@ func TestDNSProxy_AllowFallbackUpstream(t *testing.T) {
 
 func TestParseResolvConf(t *testing.T) {
 	tmp := t.TempDir() + "/resolv.conf"
-	content := "# comment\nnameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 2001:4860:4860::8888\nsearch example.com\n"
+	content := "# comment\nnameserver 8.8.8.8\nnameserver 8.8.4.4\n" +
+		"nameserver 2001:4860:4860::8888\nsearch example.com\n"
 	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}

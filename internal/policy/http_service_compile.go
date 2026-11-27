@@ -127,7 +127,8 @@ func compileHTTPServices(
 			}
 			if other, exists := byHost[a]; exists {
 				return nil, nil, fmt.Errorf(
-					"http_services[%q]: duplicate upstream host %q via alias %q (also claimed by %q)",
+					"http_services[%q]: duplicate upstream host %q via alias %q (also "+
+						"claimed by %q)",
 					s.Name,
 					a,
 					alias,

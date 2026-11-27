@@ -280,7 +280,8 @@ func TestSupervisorAuthorizerReaperRequiresProvenDeadSupervisor(t *testing.T) {
 
 	if requests := authz.ReapableRegistrations(); len(requests) != 0 {
 		t.Fatalf(
-			"ReapableRegistrations returned %d request(s) for an unpopulated cgroup whose supervisor is not proven dead",
+			"ReapableRegistrations returned %d request(s) for an unpopulated cgroup whose "+
+				"supervisor is not proven dead",
 			len(requests),
 		)
 	}

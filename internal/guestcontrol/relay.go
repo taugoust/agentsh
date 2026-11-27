@@ -129,8 +129,11 @@ func relaySupervisorConnection(
 	decoder.DisallowUnknownFields()
 	var request ProxyRequest
 	if err := decoder.Decode(&request); err != nil || requireJSONEOF(decoder) != nil ||
-		request.ProtocolVersion != protocol || request.Type != "connect" || !validName(request.RequestID) ||
-		request.LaunchNonce != manifest.LaunchNonce || !secretEqual(request.SupervisorToken, manifest.SupervisorToken) {
+		request.ProtocolVersion != protocol ||
+		request.Type != "connect" ||
+		!validName(request.RequestID) ||
+		request.LaunchNonce != manifest.LaunchNonce ||
+		!secretEqual(request.SupervisorToken, manifest.SupervisorToken) {
 		return writeProxyResponse(
 			host,
 			ProxyResponse{

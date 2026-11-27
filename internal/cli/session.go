@@ -48,8 +48,9 @@ func newSessionNethelperRebindCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "nethelper-rebind SESSION_ID",
 		Short: "Transactionally rebind the exact session to a replacement ephemeral nethelper",
-		Long:  "Validate and authenticate replacement helper metadata, run the full strict disposable preflight, and commit only on success. The session ID is never replaced.",
-		Args:  cobra.ExactArgs(1),
+		Long: "Validate and authenticate replacement helper metadata, run the full strict " +
+			"disposable preflight, and commit only on success. The session ID is never replaced.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := getClientConfig(cmd)
 			c, err := client.NewForCLI(
@@ -65,7 +66,12 @@ func newSessionNethelperRebindCmd() *cobra.Command {
 				return err
 			}
 			rebindClient, ok := c.(interface {
-				RebindSessionNethelperAuthorized(context.Context, string, types.NethelperRebindRequest, string) (types.NetworkEnforcement, error)
+				RebindSessionNethelperAuthorized(
+					context.Context,
+					string,
+					types.NethelperRebindRequest,
+					string,
+				) (types.NetworkEnforcement, error)
 			})
 			if !ok {
 				return fmt.Errorf(
@@ -102,16 +108,23 @@ func newSessionNethelperRebindCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().
-		StringVar(&bootstrapResult, "bootstrap-result", "", "Protected candidate bootstrap.json path")
+		StringVar(&bootstrapResult, "bootstrap-result", "",
+			"Protected candidate bootstrap.json path")
 	cmd.Flags().StringVar(&socketPath, "socket", "", "Candidate helper Unix socket path")
 	cmd.Flags().
-		StringVar(&credentialFile, "credential-file", "", "Protected candidate credential source path")
+		StringVar(&credentialFile, "credential-file", "",
+			"Protected candidate credential source path")
 	cmd.Flags().StringVar(&expectedLease, "expected-lease", "", "Expected candidate lease ID")
 	cmd.Flags().
-		Uint64Var(&expectedGeneration, "expected-generation", 0, "Current binding generation (optimistic concurrency check)")
+		Uint64Var(&expectedGeneration, "expected-generation", 0,
+			"Current binding generation (optimistic concurrency check)")
 	cmd.Flags().
-		StringVar(&recoveryTokenFile, "recovery-token-file", "", "Wrapper-owned private recovery token file")
-	for _, name := range []string{"bootstrap-result", "socket", "credential-file", "expected-lease", "expected-generation", "recovery-token-file"} {
+		StringVar(&recoveryTokenFile, "recovery-token-file", "",
+			"Wrapper-owned private recovery token file")
+	for _, name := range []string{
+		"bootstrap-result", "socket", "credential-file", "expected-lease", "expected-generation",
+		"recovery-token-file",
+	} {
 		_ = cmd.MarkFlagRequired(name)
 	}
 	return cmd
@@ -200,17 +213,20 @@ func newSessionCreateCmd() *cobra.Command {
 	cmd.Flags().
 		BoolVar(&realPaths, "real-paths", false, "Use real host paths instead of /workspace")
 	cmd.Flags().
-		StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct, overlay, or shadow")
+		StringVar(&workspaceMode, "workspace-mode", "",
+			"Workspace mode: direct, overlay, or shadow")
 	cmd.Flags().
 		StringVar(&runtimeHomeMode, "runtime-home", "", "Process HOME mode: isolated or real")
 	cmd.Flags().
 		StringVar(&envBaseMode, "env-base", "", "Child env base: minimal or inherit_allowed")
 	cmd.Flags().
-		StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
+		StringArrayVar(&envInherit, "env-inherit", nil,
+			"Env var name/glob to offer in addition to minimal base (repeatable)")
 	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
 	cmd.Flags().BoolVar(&shadowMode, "shadow", false, "Use shadow workspace mode")
 	cmd.Flags().
-		BoolVar(&shadowKeepOnDestroy, "shadow-keep-on-destroy", false, "Keep shadow workspace on session destroy/expiry for later accept/reject")
+		BoolVar(&shadowKeepOnDestroy, "shadow-keep-on-destroy", false,
+			"Keep shadow workspace on session destroy/expiry for later accept/reject")
 	return cmd
 }
 
@@ -240,7 +256,10 @@ func newSessionListCmd() *cobra.Command {
 					}
 					if len(metas) == 0 {
 						return fmt.Errorf(
-							"agentsh daemon unavailable at %s and no usable detached supervisors were found under %s (stale metadata, missing supervisor.sock, and dead PIDs are ignored); start one with: agentsh session start --detach --workspace . --workspace-mode shadow --json",
+							"agentsh daemon unavailable at %s and no usable detached supervisors "+
+								"were found under %s (stale metadata, missing supervisor.sock, "+
+								"and dead PIDs are ignored); start one with: agentsh session "+
+								"start --detach --workspace . --workspace-mode shadow --json",
 							cfg.serverAddr,
 							detachedSessionsRoot(),
 						)
@@ -396,9 +415,11 @@ func newSessionAcceptCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().
-		Uint64Var(&reviewGeneration, "review-generation", 0, "Fresh shadow review generation returned by session diff")
+		Uint64Var(&reviewGeneration, "review-generation", 0,
+			"Fresh shadow review generation returned by session diff")
 	cmd.Flags().
-		StringVar(&reviewHash, "review-hash", "", "Fresh shadow review hash returned by session diff")
+		StringVar(&reviewHash, "review-hash", "",
+			"Fresh shadow review hash returned by session diff")
 	return cmd
 }
 

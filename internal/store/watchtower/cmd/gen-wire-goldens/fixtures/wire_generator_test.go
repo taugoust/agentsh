@@ -24,7 +24,9 @@ func TestWireGoldens_GeneratorReproducible(t *testing.T) {
 			}
 			if !bytes.Equal(got, want) {
 				t.Fatalf(
-					"generator output drifted from golden %s\n  generator produced %d bytes\n  golden has        %d bytes\n  re-run: go run ./internal/store/watchtower/cmd/gen-wire-goldens",
+					"generator output drifted from golden %s\n  generator produced %d bytes\n"+
+						"  golden has        %d bytes\n"+
+						"  re-run: go run ./internal/store/watchtower/cmd/gen-wire-goldens",
 					f.Name,
 					len(got),
 					len(want),
@@ -61,7 +63,8 @@ func TestWireGoldens_NoOrphanGoldens(t *testing.T) {
 		gotNames[e.Name()] = true
 		if !wantNames[e.Name()] {
 			t.Errorf(
-				"orphan golden %q in testdata/ has no fixture in fixtures.All() — remove it or add a fixture",
+				"orphan golden %q in testdata/ has no fixture in fixtures.All() — remove it or "+
+					"add a fixture",
 				e.Name(),
 			)
 		}
@@ -70,7 +73,8 @@ func TestWireGoldens_NoOrphanGoldens(t *testing.T) {
 	for name := range wantNames {
 		if !gotNames[name] {
 			t.Errorf(
-				"fixture %q has no checked-in golden — run: go run ./internal/store/watchtower/cmd/gen-wire-goldens",
+				"fixture %q has no checked-in golden — run: go run "+
+					"./internal/store/watchtower/cmd/gen-wire-goldens",
 				name,
 			)
 		}

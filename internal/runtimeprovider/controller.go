@@ -236,13 +236,16 @@ func (c Controller) Recover(
 			resumable, ok := provider.(StoppedResumeProvider)
 			if !ok || !resumable.CanResumeStopped(current) {
 				return fmt.Errorf(
-					"runtime session %s is stopped and its provider does not retain resumable state",
+					"runtime session %s is stopped and its provider does not retain "+
+						"resumable state",
 					current.SessionID,
 				)
 			}
 		}
 		if current.CleanupPending ||
-			(!current.CleanupIntentKnown && current.State == StateFailed && !current.CleanupComplete) {
+			(!current.CleanupIntentKnown &&
+				current.State == StateFailed &&
+				!current.CleanupComplete) {
 			return fmt.Errorf(
 				"runtime session %s has incomplete or ambiguous cleanup and cannot be recovered",
 				current.SessionID,
@@ -428,7 +431,9 @@ func (c Controller) Recover(
 			}
 			if !sameManifestLineage(current, prepared) || current.State != StateFinalizing ||
 				current.Identity.Generation > identity.Generation ||
-				(current.Identity.Generation == identity.Generation && current.Identity.IncarnationID != "" && current.Identity != identity) {
+				(current.Identity.Generation == identity.Generation &&
+					current.Identity.IncarnationID != "" &&
+					current.Identity != identity) {
 				return fmt.Errorf("runtime-provider finalization changed during recovery")
 			}
 			return WriteManifest(stateDir, manifest)
@@ -464,11 +469,16 @@ func (c Controller) Recover(
 		}
 		if current.Provider != prepared.Provider || current.Profile != prepared.Profile ||
 			current.SessionID != prepared.SessionID || current.StateDir != prepared.StateDir ||
-			(current.State != StateRecovering && current.State != StateReady && current.State != StateDegraded) || current.CleanupPending ||
+			(current.State != StateRecovering &&
+				current.State != StateReady &&
+				current.State != StateDegraded) ||
+			current.CleanupPending ||
 			!current.CreatedAt.Equal(
 				prepared.CreatedAt,
 			) || current.Identity.Generation > identity.Generation ||
-			(current.Identity.Generation == identity.Generation && current.Identity.IncarnationID != "" && current.Identity != identity) {
+			(current.Identity.Generation == identity.Generation &&
+				current.Identity.IncarnationID != "" &&
+				current.Identity != identity) {
 			return fmt.Errorf("runtime-provider manifest changed during recovery")
 		}
 		return WriteManifest(stateDir, manifest)
@@ -684,7 +694,9 @@ func (c Controller) failStarted(
 	endpoint := instance.Endpoint()
 	bindingErr := identity.ValidateComplete()
 	if bindingErr == nil &&
-		(identity.Provider != manifest.Provider || identity.Profile != manifest.Profile || identity.SessionID != manifest.SessionID) {
+		(identity.Provider != manifest.Provider ||
+			identity.Profile != manifest.Profile ||
+			identity.SessionID != manifest.SessionID) {
 		bindingErr = fmt.Errorf("runtime provider returned a different exact identity")
 	}
 	if bindingErr == nil {
@@ -727,8 +739,12 @@ func (c Controller) failStarted(
 		}
 		if bindingErr == nil {
 			if current.Identity.Generation > identity.Generation ||
-				(current.Identity.Generation == identity.Generation && current.Identity.IncarnationID != "" && current.Identity != identity) ||
-				(current.Identity.Generation == identity.Generation && current.Endpoint != (Endpoint{}) && current.Endpoint != endpoint) {
+				(current.Identity.Generation == identity.Generation &&
+					current.Identity.IncarnationID != "" &&
+					current.Identity != identity) ||
+				(current.Identity.Generation == identity.Generation &&
+					current.Endpoint != (Endpoint{}) &&
+					current.Endpoint != endpoint) {
 				return fmt.Errorf(
 					"runtime-provider incarnation changed before failed-instance cleanup",
 				)
@@ -812,7 +828,8 @@ func sameManifestRevision(current, supplied Manifest) bool {
 		current.State == supplied.State && current.CreatedAt.Equal(supplied.CreatedAt) &&
 		current.UpdatedAt.Equal(supplied.UpdatedAt) && current.Identity == supplied.Identity &&
 		current.Endpoint == supplied.Endpoint && current.LastError == supplied.LastError &&
-		current.CleanupComplete == supplied.CleanupComplete && current.CleanupPending == supplied.CleanupPending &&
+		current.CleanupComplete == supplied.CleanupComplete &&
+		current.CleanupPending == supplied.CleanupPending &&
 		current.CleanupIntentKnown == supplied.CleanupIntentKnown
 }
 

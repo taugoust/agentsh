@@ -227,7 +227,8 @@ func TestServer_SessionAckZeroIsLiteralNotMirror(t *testing.T) {
 	}
 	if ack.GetAckHighWatermarkSeq() != 0 || ack.GetGeneration() != 0 {
 		t.Fatalf(
-			"SessionAck tuple=(%d, %d) — server appears to be mirroring the client's SessionInit watermark; want literal (0, 0) per Options doc",
+			"SessionAck tuple=(%d, %d) — server appears to be mirroring the client's SessionInit "+
+				"watermark; want literal (0, 0) per Options doc",
 			ack.GetAckHighWatermarkSeq(),
 			ack.GetGeneration(),
 		)
@@ -518,7 +519,8 @@ func TestServer_InvalidEventBatchClassifiedAndStreamDropped(t *testing.T) {
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 0 {
 		t.Errorf(
-			"DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed *ValidationError — no bypass)",
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed "+
+				"*ValidationError — no bypass)",
 			got,
 		)
 	}
@@ -579,7 +581,8 @@ func TestServer_InvalidSessionInitClassifiedAndStreamDropped(t *testing.T) {
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 0 {
 		t.Errorf(
-			"DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed *ValidationError)",
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed "+
+				"*ValidationError)",
 			got,
 		)
 	}

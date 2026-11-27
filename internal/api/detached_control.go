@@ -22,7 +22,8 @@ func (a *App) authorizeDetachedOperatorRequest(r *http.Request) bool {
 	allowed := approvalOperator || strings.HasSuffix(path, "/overlay/accept") ||
 		strings.HasSuffix(path, "/overlay/reject") ||
 		path == "/api/v1/session-events" ||
-		(strings.HasPrefix(path, "/api/v1/session-events/") && (strings.HasSuffix(path, "/ack") || strings.HasSuffix(path, "/answer")))
+		(strings.HasPrefix(path, "/api/v1/session-events/") &&
+			(strings.HasSuffix(path, "/ack") || strings.HasSuffix(path, "/answer")))
 	if !allowed {
 		return false
 	}

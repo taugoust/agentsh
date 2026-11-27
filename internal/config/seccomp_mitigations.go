@@ -89,7 +89,8 @@ func EffectiveSeccompRulesForConfig(in SandboxSeccompConfig) (EffectiveSeccompRu
 		if doc.Seccomp.Syscalls.OnBlock != "" &&
 			doc.Seccomp.Syscalls.OnBlock != out.SyscallOnBlock {
 			return EffectiveSeccompRules{}, fmt.Errorf(
-				"%s[%d] %q: seccomp.syscalls.on_block %q conflicts with effective sandbox.seccomp.syscalls.on_block %q",
+				"%s[%d] %q: seccomp.syscalls.on_block %q conflicts with effective "+
+					"sandbox.seccomp.syscalls.on_block %q",
 				request.field,
 				request.index,
 				request.id,

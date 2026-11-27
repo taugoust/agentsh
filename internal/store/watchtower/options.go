@@ -263,7 +263,8 @@ func (o *Options) validate() error {
 	}
 	if !o.AllowStubMapper && compact.IsStubMapper(o.Mapper) {
 		return errors.New(
-			"watchtower: test-only StubMapper not permitted in production (set AllowStubMapper for tests)",
+			"watchtower: test-only StubMapper not permitted in production (set AllowStubMapper " +
+				"for tests)",
 		)
 	}
 	if o.Allocator == nil {
@@ -288,7 +289,8 @@ func (o *Options) validate() error {
 	// branch must be updated to match.
 	if len(o.HMACSecret) < audit.MinKeyLength {
 		return fmt.Errorf(
-			"watchtower: HMAC secret too short: got %d bytes, need at least %d (mirrors audit.MinKeyLength)",
+			"watchtower: HMAC secret too short: got %d bytes, need at least %d (mirrors "+
+				"audit.MinKeyLength)",
 			len(o.HMACSecret),
 			audit.MinKeyLength,
 		)
@@ -337,7 +339,8 @@ func (o *Options) validate() error {
 	}
 	if o.SinkChainOverrideForTests != nil && !o.AllowSinkChainOverrideForTests {
 		return errors.New(
-			"watchtower: SinkChainOverrideForTests must be nil in production (set AllowSinkChainOverrideForTests in tests that need the seam)",
+			"watchtower: SinkChainOverrideForTests must be nil in production (set " +
+				"AllowSinkChainOverrideForTests in tests that need the seam)",
 		)
 	}
 	// Compression configuration: defense-in-depth. The upstream

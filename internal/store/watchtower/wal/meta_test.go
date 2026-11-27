@@ -74,7 +74,8 @@ func TestMeta_LegacyV1ReadInfersAckRecorded(t *testing.T) {
 	// Hand-write a v1 meta.json with no ack_recorded field — exactly the
 	// shape an older binary would have left on disk.
 	raw := []byte(
-		`{"format_version":1,"ack_high_watermark_seq":42,"ack_high_watermark_gen":7,"session_id":"s1","key_fingerprint":"k1"}`,
+		`{"format_version":1,"ack_high_watermark_seq":42,"ack_high_watermark_gen":7,` +
+			`"session_id":"s1","key_fingerprint":"k1"}`,
 	)
 	if err := os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
@@ -85,7 +86,8 @@ func TestMeta_LegacyV1ReadInfersAckRecorded(t *testing.T) {
 	}
 	if !m.AckRecorded {
 		t.Errorf(
-			"legacy v1 meta.json must read back as AckRecorded=true (its existence implied an ack); got false",
+			"legacy v1 meta.json must read back as AckRecorded=true (its existence implied an " +
+				"ack); got false",
 		)
 	}
 	if m.AckHighWatermarkSeq != 42 || m.AckHighWatermarkGen != 7 {

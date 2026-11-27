@@ -437,7 +437,10 @@ func TestChildExecutionLanes_StrictAttachmentsInterleaveAndReverseCleanup(t *tes
 	for _, attachment := range report.Attachments {
 		attachmentEndpoints[attachment.CommandID] = attachment.ProxyEndpointID
 	}
-	for commandID, commandProxy := range map[string]*commandExplicitProxy{"cmd-strict-a": proxyA, "cmd-strict-b": proxyB} {
+	for commandID, commandProxy := range map[string]*commandExplicitProxy{
+		"cmd-strict-a": proxyA,
+		"cmd-strict-b": proxyB,
+	} {
 		registration, update := backend.requests(commandID)
 		wantPort := endpointPort(t, commandProxy.URL())
 		if registration.Proxy == nil || registration.Proxy.Host != "127.0.0.1" ||

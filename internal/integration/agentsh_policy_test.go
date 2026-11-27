@@ -148,7 +148,9 @@ func startServerContainer(
 		WaitingFor: wait.ForHTTP("/health").
 			WithPort("18080/tcp").
 			WithStartupTimeout(60 * time.Second).
-			WithStatusCodeMatcher(func(code int) bool { return code == http.StatusOK || code == http.StatusNotFound }),
+			WithStatusCodeMatcher(func(code int) bool {
+				return code == http.StatusOK || code == http.StatusNotFound
+			}),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

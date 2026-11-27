@@ -51,7 +51,8 @@ func TestCheckCommand_OpaqueAllowedWhenExecveEnforced(t *testing.T) {
 		)
 		if dec.Rule == "shellc-opaque-script" {
 			t.Errorf(
-				"script %q: pre-denied as opaque with execve enforcement active; want fall-through to allow",
+				"script %q: pre-denied as opaque with execve enforcement active; want "+
+					"fall-through to allow",
 				script,
 			)
 		}
@@ -105,7 +106,8 @@ func TestCheckCommand_DerivableDenyStillDeniedWhenExecveEnforced(t *testing.T) {
 	)
 	if dec.PolicyDecision != types.DecisionDeny || dec.Rule != "deny-shutdown" {
 		t.Fatalf(
-			"got %s rule=%q, want deny rule=deny-shutdown (derivable deny must survive execve relaxation)",
+			"got %s rule=%q, want deny rule=deny-shutdown (derivable deny must survive execve "+
+				"relaxation)",
 			dec.PolicyDecision,
 			dec.Rule,
 		)
@@ -132,7 +134,8 @@ func TestCheckCommand_WrapperBypassAllowedWhenExecveEnforced(t *testing.T) {
 			)
 			if dec.Rule == "shellc-wrapper-bypass" {
 				t.Fatalf(
-					"pre-denied as shellc-wrapper-bypass with execve enforcement active; want shell allow and runtime execve policing",
+					"pre-denied as shellc-wrapper-bypass with execve enforcement active; want " +
+						"shell allow and runtime execve policing",
 				)
 			}
 			if dec.PolicyDecision != types.DecisionAllow {

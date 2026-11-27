@@ -26,7 +26,8 @@ func TestExtractUsage_Anthropic(t *testing.T) {
 }
 
 func TestExtractUsage_OpenAI(t *testing.T) {
-	// OpenAI format: {"usage": {"prompt_tokens": 150, "completion_tokens": 892, "total_tokens": 1042}}
+	// OpenAI format: {"usage": {"prompt_tokens": 150, "completion_tokens": 892, "total_tokens":
+	// 1042}}
 	body := []byte(`{
 		"id": "chatcmpl-123",
 		"object": "chat.completion",
@@ -291,7 +292,8 @@ func TestExtractSSEUsage_OpenAI_NegativeTokenUsage(t *testing.T) {
 	// OpenAI SSE chunk with negative token values — HasUsage should be false.
 	body := []byte(
 		`data: {"id":"chatcmpl-1","choices":[{"delta":{"content":"Hi"}}]}` + "\n\n" +
-			`data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":-1,"completion_tokens":-1}}` + "\n\n" +
+			`data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":-1,` +
+			`"completion_tokens":-1}}` + "\n\n" +
 			"data: [DONE]\n\n",
 	)
 
@@ -305,7 +307,8 @@ func TestExtractSSEUsage_OpenAI_NullTokenUsage(t *testing.T) {
 	// OpenAI SSE chunk with usage keys but null values — HasUsage should be false.
 	body := []byte(
 		`data: {"id":"chatcmpl-1","choices":[{"delta":{"content":"Hi"}}]}` + "\n\n" +
-			`data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":null,"completion_tokens":null}}` + "\n\n" +
+			`data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":null,` +
+			`"completion_tokens":null}}` + "\n\n" +
 			"data: [DONE]\n\n",
 	)
 
@@ -319,7 +322,8 @@ func TestExtractSSEUsage_OpenAI_ZeroTokenUsage(t *testing.T) {
 	// OpenAI SSE chunk with usage present but zero tokens — HasUsage should be true.
 	body := []byte(
 		`data: {"id":"chatcmpl-1","choices":[{"delta":{"content":"Hi"}}]}` + "\n\n" +
-			`data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0}}` + "\n\n" +
+			`data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":0,` +
+			`"completion_tokens":0}}` + "\n\n" +
 			"data: [DONE]\n\n",
 	)
 
@@ -345,11 +349,15 @@ func TestExtractSSEUsage_OpenAI_NoUsage(t *testing.T) {
 func TestExtractSSEUsage_Anthropic(t *testing.T) {
 	body := []byte(
 		"event: message_start\n" +
-			`data: {"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"usage":{"input_tokens":150,"output_tokens":0}}}` + "\n\n" +
+			`data: {"type":"message_start","message":{"id":"msg_01","type":"message",` +
+			`"role":"assistant","content":[],"model":"claude-sonnet-4-20250514",` +
+			`"stop_reason":null,"usage":{"input_tokens":150,"output_tokens":0}}}` + "\n\n" +
 			"event: content_block_delta\n" +
-			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}` + "\n\n" +
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta",` +
+			`"text":"Hello"}}` + "\n\n" +
 			"event: message_delta\n" +
-			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":42}}` + "\n\n" +
+			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},` +
+			`"usage":{"output_tokens":42}}` + "\n\n" +
 			"event: message_stop\n" +
 			`data: {"type":"message_stop"}` + "\n\n",
 	)
@@ -373,7 +381,8 @@ func TestExtractSSEUsage_AnthropicEmpty(t *testing.T) {
 func TestExtractSSEUsage_OpenAI(t *testing.T) {
 	body := []byte(
 		`data: {"id":"chatcmpl-1","choices":[{"delta":{"content":"Hi"}}]}` + "\n\n" +
-			`data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":25}}` + "\n\n" +
+			`data: {"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":100,` +
+			`"completion_tokens":25}}` + "\n\n" +
 			"data: [DONE]\n\n",
 	)
 
@@ -399,7 +408,8 @@ func TestExtractSSEUsage_DataNoSpace(t *testing.T) {
 	// SSE spec allows "data:" without trailing space — parser must handle both.
 	body := []byte(
 		"event: message_start\n" +
-			`data:{"type":"message_start","message":{"id":"msg_01","usage":{"input_tokens":80,"output_tokens":0}}}` + "\n\n" +
+			`data:{"type":"message_start","message":{"id":"msg_01","usage":{"input_tokens":80,` +
+			`"output_tokens":0}}}` + "\n\n" +
 			"event: message_delta\n" +
 			`data:{"type":"message_delta","usage":{"output_tokens":20}}` + "\n\n",
 	)
@@ -419,7 +429,8 @@ func TestExtractSSEUsage_LeadingComments(t *testing.T) {
 		": this is a comment\n" +
 			"\n" +
 			"event: message_start\n" +
-			`data: {"type":"message_start","message":{"id":"msg_01","usage":{"input_tokens":50,"output_tokens":0}}}` + "\n\n" +
+			`data: {"type":"message_start","message":{"id":"msg_01","usage":{"input_tokens":50,` +
+			`"output_tokens":0}}}` + "\n\n" +
 			": heartbeat\n" +
 			"event: message_delta\n" +
 			`data: {"type":"message_delta","usage":{"output_tokens":15}}` + "\n\n",
@@ -439,7 +450,8 @@ func TestExtractSSEUsage_AnthropicCumulativeDeltas(t *testing.T) {
 	// result in the latest (highest) value, not the sum.
 	body := []byte(
 		"event: message_start\n" +
-			`data: {"type":"message_start","message":{"id":"msg_01","usage":{"input_tokens":100,"output_tokens":0}}}` + "\n\n" +
+			`data: {"type":"message_start","message":{"id":"msg_01","usage":{"input_tokens":100,` +
+			`"output_tokens":0}}}` + "\n\n" +
 			"event: message_delta\n" +
 			`data: {"type":"message_delta","usage":{"output_tokens":10}}` + "\n\n" +
 			"event: message_delta\n" +
@@ -461,7 +473,8 @@ func TestExtractSSEUsage_AnthropicCumulativeDeltas(t *testing.T) {
 func TestExtractSSEUsage_OpenAIDataNoSpace(t *testing.T) {
 	body := []byte(
 		`data:{"id":"chatcmpl-1","choices":[{"delta":{"content":"Hi"}}]}` + "\n\n" +
-			`data:{"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":60,"completion_tokens":15}}` + "\n\n" +
+			`data:{"id":"chatcmpl-1","choices":[],"usage":{"prompt_tokens":60,` +
+			`"completion_tokens":15}}` + "\n\n" +
 			"data:[DONE]\n\n",
 	)
 
@@ -481,7 +494,8 @@ func TestExtractSSEUsage_MultiLineEvent(t *testing.T) {
 		"event: message_start\n" +
 			// JSON split across two data: lines
 			`data: {"type":"message_start",` + "\n" +
-			`data: "message":{"id":"msg_01","usage":{"input_tokens":99,"output_tokens":0}}}` + "\n\n" +
+			`data: "message":{"id":"msg_01",` +
+			`"usage":{"input_tokens":99,"output_tokens":0}}}` + "\n\n" +
 			"event: message_delta\n" +
 			`data: {"type":"message_delta","usage":{"output_tokens":33}}` + "\n\n",
 	)

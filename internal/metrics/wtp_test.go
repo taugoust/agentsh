@@ -338,7 +338,8 @@ func TestWTPMetrics_DroppedSequenceOverflow(t *testing.T) {
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_sequence_overflow_total 3") {
 		t.Errorf(
-			"expected wtp_dropped_sequence_overflow_total 3 after IncDroppedSequenceOverflow(3)\nbody:\n%s",
+			"expected wtp_dropped_sequence_overflow_total 3 after IncDroppedSequenceOverflow(3)\n"+
+				"body:\n%s",
 			rr.Body.String(),
 		)
 	}
@@ -444,7 +445,8 @@ func TestWTPMetrics_DroppedInvalidMapper(t *testing.T) {
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_invalid_mapper_total 1") {
 		t.Errorf(
-			"expected wtp_dropped_invalid_mapper_total 1 after IncDroppedInvalidMapper(1)\nbody:\n%s",
+			"expected wtp_dropped_invalid_mapper_total 1 after IncDroppedInvalidMapper(1)\n"+
+				"body:\n%s",
 			rr.Body.String(),
 		)
 	}
@@ -472,7 +474,8 @@ func TestWTPMetrics_DroppedInvalidTimestamp(t *testing.T) {
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_invalid_timestamp_total 2") {
 		t.Errorf(
-			"expected wtp_dropped_invalid_timestamp_total 2 after IncDroppedInvalidTimestamp(2)\nbody:\n%s",
+			"expected wtp_dropped_invalid_timestamp_total 2 after IncDroppedInvalidTimestamp(2)\n"+
+				"body:\n%s",
 			rr.Body.String(),
 		)
 	}
@@ -500,7 +503,8 @@ func TestWTPMetrics_DroppedMapperFailure(t *testing.T) {
 	c.Handler(HandlerOptions{}).ServeHTTP(rr, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rr.Body.String(), "wtp_dropped_mapper_failure_total 4") {
 		t.Errorf(
-			"expected wtp_dropped_mapper_failure_total 4 after IncDroppedMapperFailure(4)\nbody:\n%s",
+			"expected wtp_dropped_mapper_failure_total 4 after IncDroppedMapperFailure(4)\n"+
+				"body:\n%s",
 			rr.Body.String(),
 		)
 	}
@@ -645,7 +649,8 @@ func TestWTPInvalidFrameReason_ValidationAndMetricsOnlyDisjoint(t *testing.T) {
 	for _, r := range metricsOnlyReasons {
 		if _, ok := validation[r]; ok {
 			t.Errorf(
-				"reason %q appears in BOTH validationReasonsShared and metricsOnlyReasons (must be disjoint)",
+				"reason %q appears in BOTH validationReasonsShared and metricsOnlyReasons (must "+
+					"be disjoint)",
 				r,
 			)
 		}
@@ -663,7 +668,8 @@ func TestWTPInvalidFrameReason_ValidationPlusMetricsOnlyCoversAllValid(t *testin
 	for r := range wtpInvalidFrameReasonsValid {
 		if _, ok := covered[r]; !ok {
 			t.Errorf(
-				"wtpInvalidFrameReasonsValid contains %q but neither validationReasonsShared nor metricsOnlyReasons covers it",
+				"wtpInvalidFrameReasonsValid contains %q but neither validationReasonsShared nor "+
+					"metricsOnlyReasons covers it",
 				r,
 			)
 		}
@@ -789,7 +795,8 @@ func TestWTPMetrics_ReconnectsAlwaysEmittedIncludesFailClosedControlFrameLabels(
 		want := fmt.Sprintf(`wtp_reconnects_total{reason=%q} 0`, string(reason))
 		if !strings.Contains(body, want) {
 			t.Errorf(
-				"expected non-targeted reason %q to remain at 0; cross-series mutation suspected\nbody:\n%s",
+				"expected non-targeted reason %q to remain at 0; cross-series mutation "+
+					"suspected\nbody:\n%s",
 				reason,
 				body,
 			)
@@ -812,7 +819,8 @@ func TestWTPMetrics_BatchCompressionRatio(t *testing.T) {
 	for _, want := range []string{
 		`wtp_batch_compression_ratio_count{algo="zstd"} 2`,
 		`wtp_batch_compression_ratio_count{algo="gzip"} 1`,
-		`wtp_batch_compression_ratio_bucket{algo="zstd",le="0.5"} 2`, // both 0.25 and 0.40 land here
+		// both 0.25 and 0.40 land here
+		`wtp_batch_compression_ratio_bucket{algo="zstd",le="0.5"} 2`,
 		`wtp_batch_compression_ratio_bucket{algo="gzip",le="0.5"} 0`, // 0.55 is above 0.5
 		`wtp_batch_compression_ratio_bucket{algo="gzip",le="0.75"} 1`,
 		`wtp_batch_compression_ratio_bucket{algo="zstd",le="+Inf"} 2`,

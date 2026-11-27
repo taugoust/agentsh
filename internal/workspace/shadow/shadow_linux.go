@@ -704,13 +704,19 @@ func (w *Workspace) loadFinalizationLocked() error {
 	if finalization.SchemaVersion != finalizationSchemaVersion ||
 		strings.TrimSpace(finalization.ID) == "" ||
 		(finalization.Action != FinalizationAccept && finalization.Action != FinalizationReject) ||
-		(finalization.Phase != FinalizationPrepared && finalization.Phase != FinalizationApplying && finalization.Phase != FinalizationApplied) ||
+		(finalization.Phase != FinalizationPrepared &&
+			finalization.Phase != FinalizationApplying &&
+			finalization.Phase != FinalizationApplied) ||
 		finalization.CreatedAt.IsZero() {
 		return fmt.Errorf("retained shadow finalization is invalid")
 	}
 	if finalization.Action == FinalizationAccept &&
-		(finalization.ReviewGeneration == 0 || finalization.ReviewHash == "" || finalization.ShadowHash == "" ||
-			!filepath.IsAbs(finalization.SnapshotDir) || filepath.Clean(finalization.SnapshotDir) != finalization.SnapshotDir || finalization.SnapshotDir != w.finalizationSnapshotDir()) {
+		(finalization.ReviewGeneration == 0 ||
+			finalization.ReviewHash == "" ||
+			finalization.ShadowHash == "" ||
+			!filepath.IsAbs(finalization.SnapshotDir) ||
+			filepath.Clean(finalization.SnapshotDir) != finalization.SnapshotDir ||
+			finalization.SnapshotDir != w.finalizationSnapshotDir()) {
 		return fmt.Errorf("retained shadow accept finalization is incomplete")
 	}
 	if finalization.Action == FinalizationAccept {

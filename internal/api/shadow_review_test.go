@@ -59,7 +59,8 @@ func TestShadowReviewRequiresFreshPreconditionAndQuiescence(t *testing.T) {
 	}
 	blockedReview := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(blockedReview, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sess.ID+"/overlay/diff", nil))
+		ServeHTTP(blockedReview,
+			httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sess.ID+"/overlay/diff", nil))
 	activity.Release()
 	if blockedReview.Code != http.StatusConflict {
 		t.Fatalf(

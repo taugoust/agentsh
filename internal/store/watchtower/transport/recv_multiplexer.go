@@ -379,7 +379,8 @@ func (t *Transport) runRecv(rs *recvSession) {
 			// Surface as a recv error so the main goroutine drops to
 			// Connecting rather than silently dropping the frame.
 			select {
-			case rs.errCh <- fmt.Errorf("recv: unknown control frame %T, returning to Connecting", m):
+			case rs.errCh <- fmt.Errorf("recv: unknown control frame %T, returning to Connecting",
+				m):
 			default:
 			}
 			return
@@ -502,7 +503,8 @@ func (t *Transport) applyAckFromRecv(
 		t.opts.Logger.LogAttrs(
 			context.Background(),
 			slog.LevelInfo,
-			"ack: server ack tuple lower than persistedAck within same generation; remote replay cursor regressed",
+			"ack: server ack tuple lower than persistedAck within same generation; remote replay "+
+				"cursor regressed",
 			slog.String("frame", frame),
 			slog.Uint64("server_seq", serverSeq),
 			slog.Uint64("server_gen", uint64(serverGen)),

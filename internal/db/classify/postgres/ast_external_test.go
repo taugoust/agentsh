@@ -113,7 +113,8 @@ func TestClassifyDropSubscription(t *testing.T) {
 func TestClassifyCreateServer(t *testing.T) {
 	cs := classifyOne(
 		t,
-		"CREATE SERVER s FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'remote.example', port '5432')",
+		"CREATE SERVER s FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'remote.example', "+
+			"port '5432')",
 		SessionState{},
 	)
 	if cs.RawVerb != "CREATE_SERVER" {
@@ -319,7 +320,8 @@ func TestOptionsHostPort_StringValues(t *testing.T) {
 	// Sanity: confirm helper returns expected values via a CREATE SERVER form.
 	cs := classifyOne(
 		t,
-		"CREATE SERVER s2 FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'h', port '7777', dbname 'app')",
+		"CREATE SERVER s2 FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'h', port '7777', "+
+			"dbname 'app')",
 		SessionState{},
 	)
 	if len(cs.Effects[0].Objects) != 2 {

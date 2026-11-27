@@ -155,13 +155,17 @@ func newAuditVerifyCmd() *cobra.Command {
 	}
 
 	cmd.Flags().
-		StringVar(&opts.configPath, "config", "", "Path to agentsh config YAML (default: auto-discover)")
+		StringVar(&opts.configPath, "config", "",
+			"Path to agentsh config YAML (default: auto-discover)")
 	cmd.Flags().
-		BoolVar(&opts.tolerateUnsigned, "tolerate-unsigned", false, "Warn and skip unsigned lines instead of failing")
+		BoolVar(&opts.tolerateUnsigned, "tolerate-unsigned", false,
+			"Warn and skip unsigned lines instead of failing")
 	cmd.Flags().
-		BoolVar(&opts.tolerateTruncation, "tolerate-truncation", false, "Accept a truncated final line as end-of-chain")
+		BoolVar(&opts.tolerateTruncation, "tolerate-truncation", false,
+			"Accept a truncated final line as end-of-chain")
 	cmd.Flags().
-		Int64Var(&opts.fromSequence, "from-sequence", -1, "Start verification from this sequence instead of the visible chain origin")
+		Int64Var(&opts.fromSequence, "from-sequence", -1,
+			"Start verification from this sequence instead of the visible chain origin")
 
 	return cmd
 }

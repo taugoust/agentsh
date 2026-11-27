@@ -386,7 +386,8 @@ func TestDetachedSupervisorsAggregateSessionEventsAndForwardAckAnswer(t *testing
 		t.Fatal("expected ack to be forwarded to supervisor owning ev-2")
 	}
 
-	answerBody := `{"questionnaire_id":"q1","answers":[{"id":"scope","value":"all"}],"scope_path":"/tmp/raw"}`
+	answerBody := `{"questionnaire_id":"q1","answers":[{"id":"scope","value":"all"}],` +
+		`"scope_path":"/tmp/raw"}`
 	rr = doApproverRequest(h, http.MethodPost, "/api/v1/session-events/ev-2/answer", answerBody)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("answer status=%d body=%s", rr.Code, rr.Body.String())
@@ -419,7 +420,8 @@ func TestDetachedSupervisorsAggregateApprovalsAndForwardRawResolution(t *testing
 		t.Fatalf("unexpected approvals: %#v", approvals)
 	}
 
-	body := `{"decision":"approve","reason":"ok","scope":"session","scope_kind":"file","scope_key":"file:read:/tmp/a","scope_path":"/tmp/a","scope_prefix":true}`
+	body := `{"decision":"approve","reason":"ok","scope":"session","scope_kind":"file",` +
+		`"scope_key":"file:read:/tmp/a","scope_path":"/tmp/a","scope_prefix":true}`
 	rr = doApproverRequest(h, http.MethodPost, "/api/v1/approvals/apr-1", body)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("resolve status=%d body=%s", rr.Code, rr.Body.String())
@@ -427,7 +429,10 @@ func TestDetachedSupervisorsAggregateApprovalsAndForwardRawResolution(t *testing
 	f.mu.Lock()
 	raw := string(f.approvalRaw)
 	f.mu.Unlock()
-	for _, want := range []string{`"scope_kind":"file"`, `"scope_key":"file:read:/tmp/a"`, `"scope_path":"/tmp/a"`, `"scope_prefix":true`} {
+	for _, want := range []string{
+		`"scope_kind":"file"`, `"scope_key":"file:read:/tmp/a"`, `"scope_path":"/tmp/a"`,
+		`"scope_prefix":true`,
+	} {
 		if !strings.Contains(raw, want) {
 			t.Fatalf("raw approval JSON missing %s: %s", want, raw)
 		}

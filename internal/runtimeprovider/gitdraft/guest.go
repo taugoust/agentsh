@@ -142,7 +142,8 @@ func (g GuestWorkspace) Import(
 		return err
 	}
 	for key, value := range map[string]string{
-		"user.name": "Pi Auto", "user.email": "pi-auto@localhost", "commit.gpgSign": "false", "core.hooksPath": "/dev/null",
+		"user.name": "Pi Auto", "user.email": "pi-auto@localhost", "commit.gpgSign": "false",
+		"core.hooksPath": "/dev/null",
 	} {
 		if _, err := g.git(ctx, g.Workspace, "config", "--local", key, value); err != nil {
 			return err
@@ -384,7 +385,11 @@ func (g GuestWorkspace) readState() (state, error) {
 	}
 	resultPresent := record.Result != "" || record.ResultSHA256 != "" || record.ResultSize != 0
 	if resultPresent &&
-		(!record.Sealing || !validOID(record.Result) || record.Result == record.Baseline || !validSHA256(record.ResultSHA256) || record.ResultSize <= 0) {
+		(!record.Sealing ||
+			!validOID(record.Result) ||
+			record.Result == record.Baseline ||
+			!validSHA256(record.ResultSHA256) ||
+			record.ResultSize <= 0) {
 		return state{}, fmt.Errorf("Git Draft result state is invalid")
 	}
 	return record, nil

@@ -97,7 +97,8 @@ func NewKernelBackendWithOptions(opts KernelBackendOptions) *KernelBackend {
 func validateKernelRegistration(req RegisterSessionCgroupRequest) error {
 	if req.Mode.Normalized() != BuiltinModeCgroupConnectGate {
 		return fmt.Errorf(
-			"built-in mode %q is not implemented: transparent redirect is not part of proxy-required enforcement",
+			"built-in mode %q is not implemented: transparent redirect is not part of "+
+				"proxy-required enforcement",
 			req.Mode.Normalized(),
 		)
 	}
@@ -457,7 +458,8 @@ func (b *KernelBackend) UpdatePolicyMap(
 	}
 	if req.Mode.Normalized() == BuiltinModeCgroupProxyRedirect {
 		err := fmt.Errorf(
-			"built-in mode %q is not implemented: transparent redirect is not part of proxy-required enforcement",
+			"built-in mode %q is not implemented: transparent redirect is not part of "+
+				"proxy-required enforcement",
 			BuiltinModeCgroupProxyRedirect,
 		)
 		return UpdatePolicyMapResponse{
@@ -821,7 +823,8 @@ func (b *KernelBackend) registrationWarnings(
 	if !b.opts.TrustBoundaryComplete {
 		warnings = append(
 			warnings,
-			"helper attached the built-in cgroup eBPF gate, but network_policy_enforced is not claimed until same-UID socket/fd isolation and proxy bypass controls are proven",
+			"helper attached the built-in cgroup eBPF gate, but network_policy_enforced is not "+
+				"claimed until same-UID socket/fd isolation and proxy bypass controls are proven",
 		)
 	}
 	if pinPath == "" {
@@ -839,7 +842,8 @@ func (b *KernelBackend) registrationWarnings(
 		req.Tier.Normalized() == EnforcementTierHelperEBPFProxyRequired {
 		warnings = append(
 			warnings,
-			"transparent cgroup redirect is not implemented; helper supports proxy-required mode only when the supervisor installs a default-deny map for exact proxy endpoints",
+			"transparent cgroup redirect is not implemented; helper supports proxy-required mode "+
+				"only when the supervisor installs a default-deny map for exact proxy endpoints",
 		)
 	}
 	return warnings
@@ -850,13 +854,15 @@ func updateWarnings(req UpdatePolicyMapRequest) []string {
 	if req.Proxy != nil && req.DefaultDeny {
 		warnings = append(
 			warnings,
-			"proxy-or-block gate active: direct external connects are denied; proxy-aware clients must use the AgentSH proxy approval path",
+			"proxy-or-block gate active: direct external connects are denied; proxy-aware "+
+				"clients must use the AgentSH proxy approval path",
 		)
 	}
 	if req.Proxy != nil && !req.DefaultDeny {
 		warnings = append(
 			warnings,
-			"proxy metadata supplied without default_deny; direct network bypasses may still be possible",
+			"proxy metadata supplied without default_deny; direct network bypasses may still be "+
+				"possible",
 		)
 	}
 	return warnings
@@ -1488,7 +1494,8 @@ func removeEmptyPinDirectories(root, pinPath string) error {
 		}
 	}
 	root = filepath.Clean(root)
-	for current := filepath.Clean(pinPath); current != root && pathInSubtree(root, current, false); current = filepath.Dir(current) {
+	for current := filepath.Clean(pinPath); current != root &&
+		pathInSubtree(root, current, false); current = filepath.Dir(current) {
 		if err := os.Remove(current); err != nil {
 			if os.IsNotExist(err) || errors.Is(err, syscall.ENOTEMPTY) ||
 				errors.Is(err, syscall.EEXIST) {

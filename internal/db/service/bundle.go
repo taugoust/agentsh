@@ -242,7 +242,8 @@ func addBypassToolRules(b *Bundle, services []Service) {
 			Name:     "db-bypass-kubectl-port-forward",
 			Commands: []string{"kubectl"},
 			ArgsPatterns: []string{
-				"(^|\\s)port-forward(\\s|$).*(:(" + portPattern + ")([^0-9]|$)|\\s(" + portPattern + "):)",
+				"(^|\\s)port-forward(\\s|$).*(:(" + portPattern + ")([^0-9]|$)|\\s(" + portPattern +
+					"):)",
 			},
 			Decision: "deny",
 			Message:  "DB port forwarding is blocked by AgentSH DB unavoidability",
@@ -305,7 +306,8 @@ func addBypassToolRules(b *Bundle, services []Service) {
 		},
 	}
 	for _, r := range rules {
-		r.Description = "Convenience detection for DB proxy bypass attempts; destination egress deny is the security boundary"
+		r.Description = "Convenience detection for DB proxy bypass attempts; destination egress " +
+			"deny is the security boundary"
 		b.Policy.CommandRules = append(b.Policy.CommandRules, r)
 		addMetadata(b, r.Name, "*", BypassModePortForwardTool, "db-service-ports")
 	}
@@ -416,7 +418,8 @@ func validateBundleOptions(cfg Config, opts BundleOptions) error {
 	for i, svc := range cfg.Services {
 		if svc.Listen.Kind == "tcp" && opts.Mode == UnavoidabilityEnforce {
 			return fmt.Errorf(
-				"services[%d] %s: tcp listeners are not supported for DB enforce mode in spec section 12.5",
+				"services[%d] %s: tcp listeners are not supported for DB enforce mode in spec "+
+					"section 12.5",
 				i,
 				svc.Name,
 			)

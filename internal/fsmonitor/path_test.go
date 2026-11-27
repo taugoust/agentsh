@@ -45,7 +45,8 @@ func TestResolveRealPathUnderRoot_AllowsInTreeSymlink(t *testing.T) {
 
 func TestResolveRealPathUnderRoot_UsesParentForCreate(t *testing.T) {
 	root := t.TempDir()
-	// Parent is a symlink to /etc, so creating under it should be blocked even though the file doesn't exist yet.
+	// Parent is a symlink to /etc, so creating under it should be blocked even though the file
+	// doesn't exist yet.
 	if err := os.Symlink("/etc", filepath.Join(root, "p")); err != nil {
 		t.Skipf("symlink not supported: %v", err)
 	}

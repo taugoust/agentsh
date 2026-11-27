@@ -7,7 +7,8 @@ import (
 )
 
 func TestRedshiftFirstKeyword_Unload(t *testing.T) {
-	sql := "UNLOAD ('SELECT * FROM customers') TO 's3://bucket/data.csv' IAM_ROLE 'arn:aws:iam::123:role/redshift'"
+	sql := "UNLOAD ('SELECT * FROM customers') TO 's3://bucket/data.csv' IAM_ROLE " +
+		"'arn:aws:iam::123:role/redshift'"
 	cs, ok := redshiftFirstKeyword(sql, effects.ParserBackendLibPgQuery)
 	if !ok {
 		t.Fatalf("expected ok=true for UNLOAD")
@@ -138,7 +139,9 @@ func TestRedshiftFirstKeyword_Unknown(t *testing.T) {
 		"WUT IS THIS",
 		"",
 		"   ",
-		"SELECT 1",                           // valid pg syntax — never reaches the fallback in practice, but it's not Redshift-specific so fallback returns false
+		// valid pg syntax — never reaches the fallback in practice, but it's not Redshift-specific
+		// so fallback returns false
+		"SELECT 1",
 		"COPY events FROM 'localfile.csv'",   // not s3://
 		"COPY events TO 's3://bucket/key'",   // not FROM
 		"UNLOADX ('select 1') to 's3://x/y'", // not exactly UNLOAD

@@ -404,6 +404,7 @@ policies:
 }
 
 func TestDecode_EscalateUnknownFunctions_DefaultFalse(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs, _, err := loadDB(t, `version: 1
 name: t
 db_services:
@@ -418,6 +419,7 @@ db_services:
 }
 
 func TestDecode_EscalateUnknownFunctions_True(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs, _, err := loadDB(t, `version: 1
 name: t
 db_services:
@@ -438,6 +440,7 @@ policies:
 }
 
 func TestDecode_SafeFunctionAllowlist_Custom(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs, _, err := loadDB(t, `version: 1
 name: t
 db_services:

@@ -37,7 +37,9 @@ func skipOnWindowsCIIfSlow(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip(
-			"integration test skipped on Windows: end-to-end gRPC+WAL timing is unreliable on Windows CI runners; unit tests + wire goldens cover the compression path on this platform",
+			"integration test skipped on Windows: end-to-end gRPC+WAL timing is unreliable on " +
+				"Windows CI runners; unit tests + wire goldens cover the compression path on " +
+				"this platform",
 		)
 	}
 }
@@ -171,7 +173,8 @@ func TestStore_CompressionRoundTrip(t *testing.T) {
 			}
 			if compressedSeen == 0 {
 				t.Fatalf(
-					"no batches recorded with compression=%v + non-nil compressed_payload (total=%d batches); compress wiring is not exercising the codec",
+					"no batches recorded with compression=%v + non-nil compressed_payload "+
+						"(total=%d batches); compress wiring is not exercising the codec",
 					tc.wantAlgo,
 					totalSeen,
 				)

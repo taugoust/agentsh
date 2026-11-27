@@ -112,7 +112,8 @@ func TestRulesetBuilder_WriteAccessMask_IncludesCreationRights(t *testing.T) {
 
 	if mask&LANDLOCK_ACCESS_FS_MAKE_SOCK == 0 {
 		t.Error(
-			"writeAccessMask missing MAKE_SOCK — Unix socket creation blocked in write-allowed paths",
+			"writeAccessMask missing MAKE_SOCK — Unix socket creation blocked in " +
+				"write-allowed paths",
 		)
 	}
 	if mask&LANDLOCK_ACCESS_FS_MAKE_SYM == 0 {

@@ -669,7 +669,8 @@ func TestWAL_HasReplayableRecords(t *testing.T) {
 	got2, err := w.HasReplayableRecords(2)
 	if err != nil || !got2 {
 		t.Errorf(
-			"after AppendLoss into gen=2 segment, HasReplayableRecords(2) = (%v, %v); want (true, nil)",
+			"after AppendLoss into gen=2 segment, HasReplayableRecords(2) = (%v, %v); want "+
+				"(true, nil)",
 			got2,
 			err,
 		)
@@ -680,7 +681,8 @@ func TestWAL_HasReplayableRecords(t *testing.T) {
 	}
 	if got99 {
 		t.Errorf(
-			"HasReplayableRecords(99) = true; want false — set keys on segment generation, not loss.Generation",
+			"HasReplayableRecords(99) = true; want false — set keys on segment generation, not " +
+				"loss.Generation",
 		)
 	}
 }
@@ -886,7 +888,8 @@ func TestWAL_WrittenDataHighWaterIgnoresLossMarkers(t *testing.T) {
 	seq1, ok1, err1 := w.WrittenDataHighWater(1)
 	if err1 != nil || !ok1 || seq1 != 3 {
 		t.Errorf(
-			"WrittenDataHighWater(1) = (%d, %v, %v); want (3, true, nil) — loss marker after seq 3 must not bump",
+			"WrittenDataHighWater(1) = (%d, %v, %v); want (3, true, nil) — loss marker after seq "+
+				"3 must not bump",
 			seq1,
 			ok1,
 			err1,
@@ -1050,7 +1053,8 @@ func TestWAL_WrittenDataHighWater_IsConstantTime(t *testing.T) {
 	// would yield ~100x and trip this assertion.
 	if tHigh > 5*tLow && tHigh > 10*time.Microsecond {
 		t.Errorf(
-			"WrittenDataHighWater scales with segment count: tHigh=%v tLow=%v (want tHigh < 5*tLow)",
+			"WrittenDataHighWater scales with segment count: tHigh=%v tLow=%v (want tHigh "+
+				"< 5*tLow)",
 			tHigh,
 			tLow,
 		)

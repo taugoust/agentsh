@@ -547,13 +547,15 @@ func TestFamilyDispatchBeforeGenericBlocklist(t *testing.T) {
 	// Family action must win: audit event is socket_family_blocked, not syscall_blocked.
 	if !strings.Contains(combined, "audit_event=seccomp_socket_family_blocked") {
 		t.Errorf(
-			"expected seccomp_socket_family_blocked audit event (family action must win);\nhelper output:\n%s",
+			"expected seccomp_socket_family_blocked audit event (family action must win);\n"+
+				"helper output:\n%s",
 			combined,
 		)
 	}
 	if strings.Contains(combined, "audit_event=seccomp_blocked") {
 		t.Errorf(
-			"seccomp_blocked event emitted — generic blocklist shadowed family action;\nhelper output:\n%s",
+			"seccomp_blocked event emitted — generic blocklist shadowed family action;\n"+
+				"helper output:\n%s",
 			combined,
 		)
 	}

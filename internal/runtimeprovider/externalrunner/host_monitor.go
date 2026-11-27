@@ -47,12 +47,31 @@ type hostMonitorDeps struct {
 	// createVolume atomically creates or idempotently reopens the request-bound
 	// volume. startRunner must return a non-nil cleanup handle with an error if a
 	// direct child may have started.
-	createVolume      func(context.Context, WorkspaceVolumeRequest, string) (*WorkspaceVolume, error)
-	startEgressBroker func(context.Context, Profile, HostMonitorLayout, string, uint32, uint32, string, *HostEgressApprovalBinding) (hostEgressBroker, error)
-	startRunner       func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error)
-	validateRunner    func(Profile) error
-	lock              func(context.Context, string) (io.Closer, error)
-	now               func() time.Time
+	createVolume func(
+		context.Context,
+		WorkspaceVolumeRequest,
+		string,
+	) (*WorkspaceVolume, error)
+	startEgressBroker func(
+		context.Context,
+		Profile,
+		HostMonitorLayout,
+		string,
+		uint32,
+		uint32,
+		string,
+		*HostEgressApprovalBinding,
+	) (hostEgressBroker, error)
+	startRunner func(
+		Profile,
+		HostMonitorLayout,
+		uint32,
+		*WorkspaceVolume,
+		io.Writer,
+	) (hostRunner, error)
+	validateRunner func(Profile) error
+	lock           func(context.Context, string) (io.Closer, error)
+	now            func() time.Time
 }
 
 // RunHostMonitor owns one fixed external runner, any v2-or-later workspace
@@ -349,7 +368,8 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 					_ = persist(HostMonitorInitializing)
 				},
 			)
-			if (request.SchemaVersion == HostMonitorSchemaVersionV2 || request.SchemaVersion == HostMonitorSchemaVersionV3) &&
+			if (request.SchemaVersion == HostMonitorSchemaVersionV2 ||
+				request.SchemaVersion == HostMonitorSchemaVersionV3) &&
 				startupChildResult != nil {
 				// A partially-started child has no publishable process identity. Keep
 				// its exact exit separate from true no-child prelaunch evidence.
@@ -465,7 +485,8 @@ func runHostMonitor(ctx context.Context, stateDir string, deps hostMonitorDeps) 
 			err = validateHostMonitorGuestReadiness(request, profile, manifest, volume, handshake)
 		}
 		if err == nil &&
-			(request.SchemaVersion == HostMonitorSchemaVersionV2 || request.SchemaVersion == HostMonitorSchemaVersionV3) {
+			(request.SchemaVersion == HostMonitorSchemaVersionV2 ||
+				request.SchemaVersion == HostMonitorSchemaVersionV3) {
 			err = importHostMonitorGitInput(readinessCtx, stateDir, request, control)
 		}
 		if err == nil {
@@ -834,12 +855,21 @@ func validateHostMonitorBindings(
 		}
 	}
 	if request.SessionID != manifest.SessionID || request.CIDLease.CID != manifest.VSockCID ||
-		request.GuestProfileDigest != profile.Guest.ProfileDigest || request.VolumeID != manifest.VolumeID ||
-		request.GuestManifestSHA256 != manifestDigest || request.ExpectedGuestGeneration != manifest.ExpectedGeneration || request.LaunchNonce != manifest.LaunchNonce ||
-		request.GuestPolicy != manifest.Policy || request.GuestControlPort != manifest.VSockPort || request.GuestSupervisorPort != manifest.SupervisorPort ||
-		profile.Name != manifest.Profile || profile.Guest.ProfileDigest != manifest.ProfileDigest || profile.Guest.Protocol != manifest.ProtocolVersion ||
-		profile.Guest.Policy != manifest.Policy || profile.Guest.ControlPort != manifest.VSockPort ||
-		profile.Guest.SupervisorPort != manifest.SupervisorPort || manifest.EgressPort != expectedEgressPort ||
+		request.GuestProfileDigest != profile.Guest.ProfileDigest ||
+		request.VolumeID != manifest.VolumeID ||
+		request.GuestManifestSHA256 != manifestDigest ||
+		request.ExpectedGuestGeneration != manifest.ExpectedGeneration ||
+		request.LaunchNonce != manifest.LaunchNonce ||
+		request.GuestPolicy != manifest.Policy ||
+		request.GuestControlPort != manifest.VSockPort ||
+		request.GuestSupervisorPort != manifest.SupervisorPort ||
+		profile.Name != manifest.Profile ||
+		profile.Guest.ProfileDigest != manifest.ProfileDigest ||
+		profile.Guest.Protocol != manifest.ProtocolVersion ||
+		profile.Guest.Policy != manifest.Policy ||
+		profile.Guest.ControlPort != manifest.VSockPort ||
+		profile.Guest.SupervisorPort != manifest.SupervisorPort ||
+		manifest.EgressPort != expectedEgressPort ||
 		(profile.Schema == ProfileSchemaV3) != guestcontrol.ValidEgressAuthenticationToken(
 			manifest.EgressToken,
 		) {
@@ -935,7 +965,8 @@ func validateHostMonitorGuestReadiness(
 			expectedEgressPort = request.EgressPort
 			if handshake.NetworkReady || !handshake.EgressReady {
 				return fmt.Errorf(
-					"authenticated guest readiness must prove only the explicit egress proxy, not direct-network enforcement",
+					"authenticated guest readiness must prove only the explicit egress proxy, " +
+						"not direct-network enforcement",
 				)
 			}
 		}
@@ -943,9 +974,13 @@ func validateHostMonitorGuestReadiness(
 			!canonicalWorkspaceVolumeUUID(
 				request.VolumeID,
 			) || volume.Manifest.VolumeID != request.VolumeID ||
-			manifest.VolumeID != request.VolumeID || handshake.VolumeID != request.VolumeID || manifest.EgressPort != expectedEgressPort || handshake.EgressPort != expectedEgressPort {
+			manifest.VolumeID != request.VolumeID ||
+			handshake.VolumeID != request.VolumeID ||
+			manifest.EgressPort != expectedEgressPort ||
+			handshake.EgressPort != expectedEgressPort {
 			return fmt.Errorf(
-				"authenticated guest readiness does not prove the exact workspace volume and egress endpoint",
+				"authenticated guest readiness does not prove the exact workspace volume and " +
+					"egress endpoint",
 			)
 		}
 		volumeRequest := WorkspaceVolumeRequest{

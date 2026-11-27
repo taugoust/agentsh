@@ -500,7 +500,8 @@ func TestComputeReplayPlan_MultiGenerationCoversLaterGens(t *testing.T) {
 		// HighGeneration == persistedAck.Generation: no later-gen probe should fire.
 		SetWALHasReplayableRecordsFnForTest(env.tr, func(gen uint32) (bool, error) {
 			t.Errorf(
-				"HasReplayableRecords MUST NOT be called when HighGeneration == persistedAck.Generation; got gen=%d",
+				"HasReplayableRecords MUST NOT be called when HighGeneration == "+
+					"persistedAck.Generation; got gen=%d",
 				gen,
 			)
 			return false, nil
@@ -607,7 +608,8 @@ func TestComputeReplayPlan_LossOnlyGenerationProducesStage(t *testing.T) {
 	// paths don't fire in this test.)
 	SetWALWrittenDataHighWaterFnForTest(env.tr, func(gen uint32) (uint64, bool, error) {
 		t.Errorf(
-			"WrittenDataHighWater MUST NOT be called by multi-gen probe loop after round-16 Finding 2 fix; got gen=%d",
+			"WrittenDataHighWater MUST NOT be called by multi-gen probe loop after round-16 "+
+				"Finding 2 fix; got gen=%d",
 			gen,
 		)
 		return 0, false, nil
@@ -622,7 +624,8 @@ func TestComputeReplayPlan_LossOnlyGenerationProducesStage(t *testing.T) {
 	}
 	if len(stages) != 3 {
 		t.Fatalf(
-			"stages: got %d, want 3 (gen=1 with start=41, gen=2 loss-only with start=0, gen=3 with start=0): %+v",
+			"stages: got %d, want 3 (gen=1 with start=41, gen=2 loss-only with start=0, gen=3 "+
+				"with start=0): %+v",
 			len(stages),
 			stages,
 		)

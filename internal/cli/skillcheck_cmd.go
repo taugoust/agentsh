@@ -9,7 +9,8 @@ import (
 // skillcheckConfig holds optional overrides for the skillcheck cobra layer,
 // used primarily to inject a TrashDir in tests.
 type skillcheckConfig struct {
-	TrashDir string // if empty, restore/list-quarantined use the default (empty, which prints usage)
+	// if empty, restore/list-quarantined use the default (empty, which prints usage)
+	TrashDir string
 }
 
 func newSkillcheckCmd() *cobra.Command {

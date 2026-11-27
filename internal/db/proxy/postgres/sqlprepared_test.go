@@ -71,7 +71,8 @@ func TestSQLPrepared_Execute_CacheHit_AllowNotHandled(t *testing.T) {
 	handled, acts := Intercept(stmts, nil, cache, statemachine.ConnState{}, nil)
 	if handled {
 		t.Fatalf(
-			"EXECUTE with cache hit should return Handled=false; caller evaluates rewritten stmts. acts=%v",
+			"EXECUTE with cache hit should return Handled=false; caller evaluates rewritten "+
+				"stmts. acts=%v",
 			acts,
 		)
 	}

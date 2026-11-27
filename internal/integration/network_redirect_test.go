@@ -127,7 +127,8 @@ resource_limits:
 
 	if !hasDNSRedirectEvent {
 		t.Logf(
-			"Note: DNS redirect event not found - this may be expected if transparent proxy mode is not active",
+			"Note: DNS redirect event not found - this may be expected if transparent proxy mode " +
+				"is not active",
 		)
 	}
 }

@@ -491,7 +491,8 @@ func validateWrapCommandJail(resp types.WrapInitResponse) error {
 	}
 	if !configRequiresJail {
 		return fmt.Errorf(
-			"server returned Linux command-jail launch requirements without a required wrapper jail",
+			"server returned Linux command-jail launch requirements without a required " +
+				"wrapper jail",
 		)
 	}
 	mode, err := wrapResponseCompositionMode(resp)
@@ -563,7 +564,8 @@ func configureWrapCommandBoundary(
 	if attr.Pdeathsig != 0 && attr.Pdeathsig != syscall.SIGKILL {
 		return fmt.Errorf("strict command boundary requires SIGKILL parent-death behavior")
 	}
-	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
+	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID |
+		unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
 	attr.Pdeathsig = syscall.SIGKILL
 	namespaceID := 0
 	if requirements.MapCurrentUserToNonRoot {

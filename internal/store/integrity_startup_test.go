@@ -98,7 +98,8 @@ func TestNewIntegrityStore_RejectsLegacyLogWithoutSidecar(t *testing.T) {
 	if err := os.WriteFile(
 		logPath,
 		[]byte(
-			`{"type":"legacy","integrity":{"sequence":1,"prev_hash":"","entry_hash":"deadbeef"}}`+"\n",
+			`{"type":"legacy","integrity":{"sequence":1,"prev_hash":"","entry_hash":"deadbeef"}}`+
+				"\n",
 		),
 		0o600,
 	); err != nil {
@@ -308,7 +309,10 @@ func TestNewIntegrityStore_RejectsBaseVisibleRotationBoundaryWithPriorHistory(t 
 
 	previousState := previousChain.State()
 	resetPayload := fmt.Sprintf(
-		`{"type":"integrity_chain_rotated","fields":{"reason":"manual reset","reason_code":"manual_reset","prior_chain_summary":{"last_sequence_seen_in_log":%d,"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`,
+		`{"type":"integrity_chain_rotated","fields":{"reason":"manual `+
+			`reset","reason_code":"manual_reset",`+
+			`"prior_chain_summary":{"last_sequence_seen_in_log":%d,`+
+			`"last_entry_hash_seen_in_log":"%s"},"new_chain":{"format_version":2,"sequence":0}}}`,
 		previousState.Sequence,
 		previousState.PrevHash,
 	)
@@ -675,9 +679,11 @@ func TestNewIntegrityStore_RejectsUnsupportedSidecarFormat(t *testing.T) {
 	if err := os.WriteFile(
 		audit.SidecarPath(logPath),
 		[]byte(
-			`{"format_version":3,"sequence":0,"prev_hash":"`+chain.State().PrevHash+`","key_fingerprint":"`+audit.KeyFingerprint(
-				testKey,
-			)+`"}`,
+			`{"format_version":3,"sequence":0,"prev_hash":"`+chain.State().PrevHash+
+				`","key_fingerprint":"`+
+				audit.KeyFingerprint(
+					testKey,
+				)+`"}`,
 		),
 		0o600,
 	); err != nil {

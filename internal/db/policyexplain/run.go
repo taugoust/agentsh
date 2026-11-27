@@ -46,8 +46,9 @@ func Run(rs *dbpolicy.RuleSet, warns []dbpolicy.Warning, opts Options) (Report, 
 	}
 	if catalogSource == "none" && rs.UsesCanonicalSelectors(opts.Service) {
 		report.Warnings = append(report.Warnings, WarningReport{
-			Code:    "catalog_fixture_missing_for_canonical_selector",
-			Message: "catalog fixture not supplied; canonical relation and function selectors cannot match offline classification",
+			Code: "catalog_fixture_missing_for_canonical_selector",
+			Message: "catalog fixture not supplied; canonical relation and function selectors " +
+				"cannot match offline classification",
 		})
 	}
 	for i, stmt := range stmts {

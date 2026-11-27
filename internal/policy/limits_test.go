@@ -47,7 +47,8 @@ func TestPolicyLoadRejectsSubMillisecondCommandTimeout(t *testing.T) {
 	for _, value := range []string{"1ns", "500us", "999us"} {
 		t.Run(value, func(t *testing.T) {
 			document := []byte(
-				"version: 1\nname: command-timeout-load\nresource_limits:\n  command_timeout: " + value + "\n",
+				"version: 1\nname: command-timeout-load\nresource_limits:\n  command_timeout: " +
+					value + "\n",
 			)
 			if _, err := LoadFromBytes(document); err == nil {
 				t.Fatalf("LoadFromBytes accepted command_timeout %s", value)
@@ -57,7 +58,8 @@ func TestPolicyLoadRejectsSubMillisecondCommandTimeout(t *testing.T) {
 	for _, value := range []string{"0s", "1ms", "1.9ms"} {
 		t.Run("accept_"+value, func(t *testing.T) {
 			document := []byte(
-				"version: 1\nname: command-timeout-load\nresource_limits:\n  command_timeout: " + value + "\n",
+				"version: 1\nname: command-timeout-load\nresource_limits:\n  command_timeout: " +
+					value + "\n",
 			)
 			if _, err := LoadFromBytes(document); err != nil {
 				t.Fatalf("LoadFromBytes rejected command_timeout %s: %v", value, err)

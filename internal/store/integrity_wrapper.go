@@ -253,7 +253,8 @@ func (s *IntegrityStore) validateVisibleChain(files []audit.LogFile) error {
 				if entry.Integrity.Sequence != state.expectedSequence {
 					_ = f.Close()
 					return fmt.Errorf(
-						"audit integrity chain mismatch: sequence mismatch at %s:%d: expected %d, got %d",
+						"audit integrity chain mismatch: sequence mismatch at %s:%d: expected "+
+							"%d, got %d",
 						file.Path,
 						lineNo,
 						state.expectedSequence,
@@ -263,7 +264,8 @@ func (s *IntegrityStore) validateVisibleChain(files []audit.LogFile) error {
 				if entry.Integrity.PrevHash != state.expectedPrevHash {
 					_ = f.Close()
 					return fmt.Errorf(
-						"audit integrity chain mismatch: chain broken at %s:%d: expected prev_hash %q, got %q",
+						"audit integrity chain mismatch: chain broken at %s:%d: expected "+
+							"prev_hash %q, got %q",
 						file.Path,
 						lineNo,
 						state.expectedPrevHash,

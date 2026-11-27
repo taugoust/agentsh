@@ -31,7 +31,8 @@ func TestBackendDeterministic(t *testing.T) {
 	snap2 := snapshotCorpus(t, rows)
 	if snap1 != snap2 {
 		t.Fatalf(
-			"non-deterministic classification across two runs of the same corpus:\n--- run1 ---\n%s\n--- run2 ---\n%s",
+			"non-deterministic classification across two runs of the same corpus:\n--- run1 ---\n"+
+				"%s\n--- run2 ---\n%s",
 			snap1,
 			snap2,
 		)

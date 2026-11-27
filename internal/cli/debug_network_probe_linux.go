@@ -82,7 +82,8 @@ func newDebugNetworkRuntimeProbeCmd() *cobra.Command {
 	cmd.Flags().
 		StringVar(&controlPath, "control-path", "", "supervisor control path expected to be hidden")
 	cmd.Flags().
-		StringVar(&inheritedFile, "inherited-file", "", "descriptor sentinel that must not be inherited")
+		StringVar(&inheritedFile, "inherited-file", "",
+			"descriptor sentinel that must not be inherited")
 	return cmd
 }
 

@@ -38,7 +38,8 @@ type ExecResponse struct {
 
 	Resources *ExecResources `json:"resources,omitempty"`
 
-	// Guidance provides small, actionable context for agents (blocked vs failed, retryability, substitutions).
+	// Guidance provides small, actionable context for agents (blocked vs failed, retryability,
+	// substitutions).
 	Guidance *ExecGuidance `json:"guidance,omitempty"`
 }
 

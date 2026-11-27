@@ -82,7 +82,8 @@ func TestPiToolFileEndpoints_WriteReadEdit(t *testing.T) {
 	app := newTestApp(t, sessions, store)
 	h := app.Router()
 
-	writeBody := `{"path":"src/a.txt","content":"hello world","actor":{"kind":"parent","label":"test"}}`
+	writeBody := `{"path":"src/a.txt","content":"hello ` +
+		`world","actor":{"kind":"parent","label":"test"}}`
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(
 		rr,
@@ -227,11 +228,44 @@ func TestPiToolErrorsExposeStableDomainCodes(t *testing.T) {
 		wantCode   string
 		wantPath   string
 	}{
-		{name: "missing file", url: "/api/v1/sessions/" + sess.ID + "/tools/read_file", body: `{"path":"missing.txt"}`, wantStatus: http.StatusNotFound, wantCode: toolErrorFileNotFound, wantPath: "/workspace/missing.txt"},
-		{name: "missing session", url: "/api/v1/sessions/session-missing/tools/read_file", body: `{"path":"missing.txt"}`, wantStatus: http.StatusNotFound, wantCode: toolErrorSessionNotFound, wantPath: "missing.txt"},
-		{name: "edit conflict", url: "/api/v1/sessions/" + sess.ID + "/tools/edit_file", body: `{"path":"dup.txt","oldText":"x","newText":"y"}`, wantStatus: http.StatusConflict, wantCode: toolErrorEditConflict, wantPath: "/workspace/dup.txt"},
-		{name: "invalid request", url: "/api/v1/sessions/" + sess.ID + "/tools/read_file", body: `{`, wantStatus: http.StatusBadRequest, wantCode: toolErrorInvalidRequest},
-		{name: "unsupported endpoint", url: "/api/v1/sessions/" + sess.ID + "/tools/not_a_tool", body: `{}`, wantStatus: http.StatusNotFound, wantCode: toolErrorUnsupported},
+		{
+			name:       "missing file",
+			url:        "/api/v1/sessions/" + sess.ID + "/tools/read_file",
+			body:       `{"path":"missing.txt"}`,
+			wantStatus: http.StatusNotFound,
+			wantCode:   toolErrorFileNotFound,
+			wantPath:   "/workspace/missing.txt",
+		},
+		{
+			name:       "missing session",
+			url:        "/api/v1/sessions/session-missing/tools/read_file",
+			body:       `{"path":"missing.txt"}`,
+			wantStatus: http.StatusNotFound,
+			wantCode:   toolErrorSessionNotFound,
+			wantPath:   "missing.txt",
+		},
+		{
+			name:       "edit conflict",
+			url:        "/api/v1/sessions/" + sess.ID + "/tools/edit_file",
+			body:       `{"path":"dup.txt","oldText":"x","newText":"y"}`,
+			wantStatus: http.StatusConflict,
+			wantCode:   toolErrorEditConflict,
+			wantPath:   "/workspace/dup.txt",
+		},
+		{
+			name:       "invalid request",
+			url:        "/api/v1/sessions/" + sess.ID + "/tools/read_file",
+			body:       `{`,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   toolErrorInvalidRequest,
+		},
+		{
+			name:       "unsupported endpoint",
+			url:        "/api/v1/sessions/" + sess.ID + "/tools/not_a_tool",
+			body:       `{}`,
+			wantStatus: http.StatusNotFound,
+			wantCode:   toolErrorUnsupported,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
@@ -297,7 +331,9 @@ func TestCommandTimeoutPiToolExecBashBoundsQueuedRequests(t *testing.T) {
 	body := `{"command":"printf should-not-run","queue_timeout_ms":20}`
 	started := time.Now()
 	app.Router().
-		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+				strings.NewReader(body)))
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("queued exec_bash returned after %v", elapsed)
 	}
@@ -347,7 +383,9 @@ func TestPiToolExecBashExplicitCancellationInterruptsAdmission(t *testing.T) {
 			`{"request_id":"` + requestID + `","command":"printf should-not-run"}`,
 		)
 		app.Router().
-			ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", body))
+			ServeHTTP(rr,
+				httptest.NewRequest(http.MethodPost,
+					"/api/v1/sessions/"+sess.ID+"/tools/exec_bash", body))
 	}()
 
 	deadline := time.Now().Add(time.Second)
@@ -365,7 +403,9 @@ func TestPiToolExecBashExplicitCancellationInterruptsAdmission(t *testing.T) {
 	}
 	cancelResponse := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(cancelResponse, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash/"+requestID+"/cancel", nil))
+		ServeHTTP(cancelResponse,
+			httptest.NewRequest(http.MethodPost,
+				"/api/v1/sessions/"+sess.ID+"/tools/exec_bash/"+requestID+"/cancel", nil))
 	if cancelResponse.Code != http.StatusAccepted {
 		t.Fatalf("cancel status = %d body=%s", cancelResponse.Code, cancelResponse.Body.String())
 	}
@@ -402,7 +442,9 @@ func TestPiToolExecBashWaitsForAdmissionByDefault(t *testing.T) {
 		defer close(done)
 		body := strings.NewReader(`{"command":"printf admitted"}`)
 		app.Router().
-			ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", body))
+			ServeHTTP(rr,
+				httptest.NewRequest(http.MethodPost,
+					"/api/v1/sessions/"+sess.ID+"/tools/exec_bash", body))
 	}()
 
 	select {
@@ -451,7 +493,10 @@ func TestPiToolExecBash_UsesNonLoginShell(t *testing.T) {
 	app := newTestApp(t, sessions, store)
 	rr := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(`{"command":"if shopt -q login_shell; then echo login; else echo non-login; fi"}`)))
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+				strings.NewReader(`{"command":"if shopt -q login_shell; then echo login; else `+
+					`echo non-login; fi"}`)))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("exec_bash status = %d body = %s", rr.Code, rr.Body.String())
 	}
@@ -487,7 +532,9 @@ func TestPiToolExecBash_PreExecFailureIsPromotedAndNotStarted(t *testing.T) {
 	body, _ := json.Marshal(map[string]string{"command": "printf ran > " + marker})
 	rr := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(string(body))))
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+				strings.NewReader(string(body))))
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -526,7 +573,9 @@ func TestPiToolExecBash_ChildExit127IsStartedNotPreExec(t *testing.T) {
 	app := newTestApp(t, sessions, store)
 	rr := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(`{"command":"exit 127"}`)))
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+				strings.NewReader(`{"command":"exit 127"}`)))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -577,10 +626,13 @@ func TestPiToolExecBash_RemoteArtifactRetainsBeyondResponseCap(t *testing.T) {
 	}
 
 	app := newTestApp(t, sessions, store)
-	body := `{"command":"yes x | head -c 2200000","persist_output_over_bytes":51200,"persist_output_over_lines":200}`
+	body := `{"command":"yes x | head -c 2200000","persist_output_over_bytes":51200,` +
+		`"persist_output_over_lines":200}`
 	rr := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+				strings.NewReader(body)))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("exec_bash status = %d body = %.1000s", rr.Code, rr.Body.String())
 	}
@@ -641,7 +693,9 @@ func TestPiToolExecBash_RemoteArtifactRetainsBeyondResponseCap(t *testing.T) {
 	readBody, _ := json.Marshal(map[string]string{"path": path})
 	readRecorder := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(readRecorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/read_file", strings.NewReader(string(readBody))))
+		ServeHTTP(readRecorder,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/read_file",
+				strings.NewReader(string(readBody))))
 	if readRecorder.Code != http.StatusOK {
 		t.Fatalf(
 			"registered artifact read status = %d body = %s",
@@ -668,7 +722,9 @@ func TestPiToolExecBash_ValidatesRequestWithoutSpawning(t *testing.T) {
 	app := newTestApp(t, sessions, store)
 	rr := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(`{"command":""}`)))
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+				strings.NewReader(`{"command":""}`)))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("exec_bash validation status = %d body = %s", rr.Code, rr.Body.String())
 	}
@@ -742,7 +798,11 @@ func TestPiToolReadFile_ShadowAllowsOnlyExactRegisteredOutputArtifact(t *testing
 		t.Fatalf("registered artifact result = %#v", resp.Result)
 	}
 
-	for _, path := range []string{unregistered, filepath.Dir(artifact.Path), artifact.Path + ".other"} {
+	for _, path := range []string{
+		unregistered,
+		filepath.Dir(artifact.Path),
+		artifact.Path + ".other",
+	} {
 		rr = postRead(path)
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("unregistered path %q status = %d body = %s", path, rr.Code, rr.Body.String())

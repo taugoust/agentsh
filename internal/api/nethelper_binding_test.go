@@ -129,11 +129,17 @@ func newRebindTestApp(t *testing.T) (*App, *session.Session, nethelperBinding, n
 		HardExpiresAt:   now.Add(193 * time.Hour),
 	}
 	app.nethelperBinding.replace(oldBinding)
-	app.nethelperCandidateForTest = func(req types.NethelperRebindRequest, generation uint64) (nethelperBinding, error) {
+	app.nethelperCandidateForTest = func(
+		req types.NethelperRebindRequest,
+		generation uint64,
+	) (nethelperBinding, error) {
 		candidate.Generation = generation
 		return candidate, nil
 	}
-	app.nethelperStatusForTest = func(_ context.Context, binding nethelperBinding) (nethelper.InstanceStatusResponse, error) {
+	app.nethelperStatusForTest = func(
+		_ context.Context,
+		binding nethelperBinding,
+	) (nethelper.InstanceStatusResponse, error) {
 		return nethelper.InstanceStatusResponse{
 			ProtocolVersion: 1,
 			RequestID:       "status",
@@ -177,7 +183,10 @@ func rebindRequestBody(generation uint64) string {
 func TestHelperDisappearanceAfterReadyPreflightBecomesStickyFailed(t *testing.T) {
 	app, sess, _, _ := newRebindTestApp(t)
 	sess.SetNetworkEnforcement(provenRebindReport(time.Now().UTC()))
-	app.nethelperStatusForTest = func(context.Context, nethelperBinding) (nethelper.InstanceStatusResponse, error) {
+	app.nethelperStatusForTest = func(
+		context.Context,
+		nethelperBinding,
+	) (nethelper.InstanceStatusResponse, error) {
 		return nethelper.InstanceStatusResponse{}, fmt.Errorf("helper disappeared")
 	}
 	first := app.refreshNetworkEnforcement(sess.ID)
@@ -226,7 +235,10 @@ func TestCancelledQueuedNethelperRebindNeverRunsLater(t *testing.T) {
 	app, sess, oldBinding, _ := newRebindTestApp(t)
 	var candidateLoaded atomic.Bool
 	baseLoader := app.nethelperCandidateForTest
-	app.nethelperCandidateForTest = func(req types.NethelperRebindRequest, generation uint64) (nethelperBinding, error) {
+	app.nethelperCandidateForTest = func(
+		req types.NethelperRebindRequest,
+		generation uint64,
+	) (nethelperBinding, error) {
 		candidateLoaded.Store(true)
 		return baseLoader(req, generation)
 	}
@@ -237,7 +249,10 @@ func TestCancelledQueuedNethelperRebindNeverRunsLater(t *testing.T) {
 		rr := httptest.NewRecorder()
 		authorizedRebindHandler(
 			app,
-		).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind", strings.NewReader(rebindRequestBody(oldBinding.Generation))).WithContext(ctx))
+		).ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost,
+				"/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind",
+				strings.NewReader(rebindRequestBody(oldBinding.Generation))).WithContext(ctx))
 		done <- rr
 	}()
 	cancel()
@@ -290,38 +305,45 @@ func TestNethelperRebindFailedCandidateWithProvenCleanupCreatesNoTombstoneOrClea
 		t.Run(action, func(t *testing.T) {
 			app, sess, oldBinding, _ := newRebindTestApp(t)
 			var preflightCalls, cleanupCalls atomic.Int32
-			app.nethelperCleanupForTest = func(context.Context, nethelperBinding, nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error) {
+			app.nethelperCleanupForTest = func(
+				context.Context,
+				nethelperBinding,
+				nethelper.CleanupSessionRequest,
+			) (nethelper.CleanupSessionResponse, error) {
 				cleanupCalls.Add(1)
 				return nethelper.CleanupSessionResponse{OK: true}, nil
 			}
-			app.nethelperRebindPreflightForTest = func(context.Context, string) *types.NetworkEnforcement {
-				if preflightCalls.Add(1) > 1 {
-					return provenRebindReport(time.Now().UTC())
+			app.nethelperRebindPreflightForTest =
+				func(context.Context, string) *types.NetworkEnforcement {
+					if preflightCalls.Add(1) > 1 {
+						return provenRebindReport(time.Now().UTC())
+					}
+					return &types.NetworkEnforcement{
+						Requested: types.NetworkEnforcementRequestStrict,
+						Status:    types.NetworkEnforcementStatusFailed,
+						Readiness: types.NetworkEnforcementStatusFailed,
+						Attachment: &types.NetworkAttachmentEvidence{
+							RegistrationID: "already-cleaned",
+							CgroupID:       41,
+							CgroupPath:     "candidate-cgroup",
+							Pinned:         true,
+						},
+						Preflight: &types.NetworkPreflightEvidence{
+							RegistrationID:      "already-cleaned",
+							CgroupID:            41,
+							CgroupPath:          "candidate-cgroup",
+							Pinned:              true,
+							HelperCleanupProven: true,
+						},
+					}
 				}
-				return &types.NetworkEnforcement{
-					Requested: types.NetworkEnforcementRequestStrict,
-					Status:    types.NetworkEnforcementStatusFailed,
-					Readiness: types.NetworkEnforcementStatusFailed,
-					Attachment: &types.NetworkAttachmentEvidence{
-						RegistrationID: "already-cleaned",
-						CgroupID:       41,
-						CgroupPath:     "candidate-cgroup",
-						Pinned:         true,
-					},
-					Preflight: &types.NetworkPreflightEvidence{
-						RegistrationID:      "already-cleaned",
-						CgroupID:            41,
-						CgroupPath:          "candidate-cgroup",
-						Pinned:              true,
-						HelperCleanupProven: true,
-					},
-				}
-			}
 			path := "/api/v1/sessions/" + sess.ID + "/network-enforcement/helper/rebind"
 			rr := httptest.NewRecorder()
 			authorizedRebindHandler(
 				app,
-			).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, path, strings.NewReader(rebindRequestBody(oldBinding.Generation))))
+			).ServeHTTP(rr,
+				httptest.NewRequest(http.MethodPost, path,
+					strings.NewReader(rebindRequestBody(oldBinding.Generation))))
 			if rr.Code != http.StatusBadGateway ||
 				app.nethelperBinding.uncertainCandidate() != nil {
 				t.Fatalf(
@@ -337,14 +359,17 @@ func TestNethelperRebindFailedCandidateWithProvenCleanupCreatesNoTombstoneOrClea
 				rr = httptest.NewRecorder()
 				authorizedRebindHandler(
 					app,
-				).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, path, strings.NewReader(rebindRequestBody(oldBinding.Generation))))
+				).ServeHTTP(rr,
+					httptest.NewRequest(http.MethodPost, path,
+						strings.NewReader(rebindRequestBody(oldBinding.Generation))))
 				if rr.Code != http.StatusOK {
 					t.Fatalf("retry status=%d body=%s", rr.Code, rr.Body.String())
 				}
 			case "teardown":
 				destroy := httptest.NewRecorder()
 				app.Router().
-					ServeHTTP(destroy, httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/"+sess.ID, nil))
+					ServeHTTP(destroy,
+						httptest.NewRequest(http.MethodDelete, "/api/v1/sessions/"+sess.ID, nil))
 				if destroy.Code != http.StatusNoContent {
 					t.Fatalf(
 						"teardown failed: status=%d body=%s",
@@ -405,7 +430,11 @@ func TestFailedCandidateCleanupProgressSurvivesStatusFailure(t *testing.T) {
 	}
 	app.nethelperBinding.recordUncertainCandidate(sess.ID, candidate, attachment, "test")
 	var cleanupCalls, statusCalls atomic.Int32
-	app.nethelperCleanupForTest = func(_ context.Context, binding nethelperBinding, req nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error) {
+	app.nethelperCleanupForTest = func(
+		_ context.Context,
+		binding nethelperBinding,
+		req nethelper.CleanupSessionRequest,
+	) (nethelper.CleanupSessionResponse, error) {
 		cleanupCalls.Add(1)
 		if binding.LeaseID != candidate.LeaseID ||
 			req.RegistrationID != attachment.RegistrationID ||
@@ -415,7 +444,10 @@ func TestFailedCandidateCleanupProgressSurvivesStatusFailure(t *testing.T) {
 		}
 		return nethelper.CleanupSessionResponse{OK: true}, nil
 	}
-	app.nethelperStatusForTest = func(context.Context, nethelperBinding) (nethelper.InstanceStatusResponse, error) {
+	app.nethelperStatusForTest = func(
+		context.Context,
+		nethelperBinding,
+	) (nethelper.InstanceStatusResponse, error) {
 		if statusCalls.Add(1) == 1 {
 			return nethelper.InstanceStatusResponse{}, fmt.Errorf("transient status failure")
 		}
@@ -464,7 +496,10 @@ func TestFailedCandidateCleanupTombstoneBlocksRebindAndTeardown(t *testing.T) {
 	rr := httptest.NewRecorder()
 	authorizedRebindHandler(
 		app,
-	).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind", strings.NewReader(rebindRequestBody(oldBinding.Generation))))
+	).ServeHTTP(rr,
+		httptest.NewRequest(http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind",
+			strings.NewReader(rebindRequestBody(oldBinding.Generation))))
 	if rr.Code != http.StatusBadGateway {
 		t.Fatalf("initial status=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -477,7 +512,10 @@ func TestFailedCandidateCleanupTombstoneBlocksRebindAndTeardown(t *testing.T) {
 	}
 	// Even an authenticated-looking zero count cannot erase exact candidate
 	// identity without a successful cleanup RPC.
-	app.nethelperStatusForTest = func(context.Context, nethelperBinding) (nethelper.InstanceStatusResponse, error) {
+	app.nethelperStatusForTest = func(
+		context.Context,
+		nethelperBinding,
+	) (nethelper.InstanceStatusResponse, error) {
 		return nethelper.InstanceStatusResponse{
 			OK:                      true,
 			Status:                  "active",
@@ -487,7 +525,10 @@ func TestFailedCandidateCleanupTombstoneBlocksRebindAndTeardown(t *testing.T) {
 	rr = httptest.NewRecorder()
 	authorizedRebindHandler(
 		app,
-	).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind", strings.NewReader(rebindRequestBody(oldBinding.Generation))))
+	).ServeHTTP(rr,
+		httptest.NewRequest(http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind",
+			strings.NewReader(rebindRequestBody(oldBinding.Generation))))
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("second status=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -519,7 +560,10 @@ func TestRebindSerializesGRPCDestroy(t *testing.T) {
 		rr := httptest.NewRecorder()
 		authorizedRebindHandler(
 			app,
-		).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind", strings.NewReader(rebindRequestBody(oldBinding.Generation))))
+		).ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost,
+				"/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind",
+				strings.NewReader(rebindRequestBody(oldBinding.Generation))))
 		rebindDone <- rr
 	}()
 	<-entered
@@ -551,7 +595,10 @@ func TestRebindSerializesHardExpiryAndRetainsFailedStage(t *testing.T) {
 	app.nethelperRebindPreflightForTest = func(context.Context, string) *types.NetworkEnforcement {
 		close(entered)
 		<-release
-		app.nethelperStatusForTest = func(context.Context, nethelperBinding) (nethelper.InstanceStatusResponse, error) {
+		app.nethelperStatusForTest = func(
+			context.Context,
+			nethelperBinding,
+		) (nethelper.InstanceStatusResponse, error) {
 			return nethelper.InstanceStatusResponse{}, fmt.Errorf("candidate unavailable")
 		}
 		return &types.NetworkEnforcement{
@@ -571,7 +618,10 @@ func TestRebindSerializesHardExpiryAndRetainsFailedStage(t *testing.T) {
 		rr := httptest.NewRecorder()
 		authorizedRebindHandler(
 			app,
-		).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind", strings.NewReader(rebindRequestBody(oldBinding.Generation))))
+		).ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost,
+				"/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind",
+				strings.NewReader(rebindRequestBody(oldBinding.Generation))))
 		rebindDone <- rr
 	}()
 	<-entered
@@ -602,7 +652,10 @@ func TestNethelperRebindGenerationConflictDoesNotCommit(t *testing.T) {
 	rr := httptest.NewRecorder()
 	authorizedRebindHandler(
 		app,
-	).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind", strings.NewReader(rebindRequestBody(oldBinding.Generation-1))))
+	).ServeHTTP(rr,
+		httptest.NewRequest(http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind",
+			strings.NewReader(rebindRequestBody(oldBinding.Generation-1))))
 	if rr.Code != http.StatusConflict ||
 		app.nethelperBindingSnapshot().Generation != oldBinding.Generation {
 		t.Fatalf(
@@ -626,7 +679,10 @@ func TestNethelperRebindFailedPreflightRetainsOldBindingAndStickyFailure(t *test
 	rr := httptest.NewRecorder()
 	authorizedRebindHandler(
 		app,
-	).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind", strings.NewReader(rebindRequestBody(oldBinding.Generation))))
+	).ServeHTTP(rr,
+		httptest.NewRequest(http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind",
+			strings.NewReader(rebindRequestBody(oldBinding.Generation))))
 	if rr.Code != http.StatusBadGateway ||
 		app.nethelperBindingSnapshot().Generation != oldBinding.Generation {
 		t.Fatalf(
@@ -645,11 +701,19 @@ func TestNethelperRebindFailedPreflightRetainsOldBindingAndStickyFailure(t *test
 func TestNethelperRebindRejectsCandidateWithoutSessionLifetime(t *testing.T) {
 	app, sess, oldBinding, candidate := newRebindTestApp(t)
 	candidate.HardExpiresAt = time.Now().UTC().Add(4 * time.Hour)
-	app.nethelperCandidateForTest = func(types.NethelperRebindRequest, uint64) (nethelperBinding, error) { return candidate, nil }
+	app.nethelperCandidateForTest = func(
+		types.NethelperRebindRequest,
+		uint64,
+	) (nethelperBinding, error) {
+		return candidate, nil
+	}
 	rr := httptest.NewRecorder()
 	authorizedRebindHandler(
 		app,
-	).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind", strings.NewReader(rebindRequestBody(oldBinding.Generation))))
+	).ServeHTTP(rr,
+		httptest.NewRequest(http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind",
+			strings.NewReader(rebindRequestBody(oldBinding.Generation))))
 	if rr.Code != http.StatusBadRequest ||
 		!strings.Contains(rr.Body.String(), "remaining absolute session lifetime") {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
@@ -721,7 +785,9 @@ func TestCommandJailMasksDetachedStateTreeAndPreservesRuntimeDirectories(t *test
 			t.Fatalf("runtime directory %q is not preserved: %+v", path, jail)
 		}
 	}
-	for _, name := range []string{"metadata.json", "recovery.json", "runtime-provider.json", "supervisor.sock"} {
+	for _, name := range []string{
+		"metadata.json", "recovery.json", "runtime-provider.json", "supervisor.sock",
+	} {
 		path := filepath.Join(stateDir, name)
 		if !pathHiddenByCommandJailTree(path, jail.HideDirectoryTrees[0]) {
 			t.Fatalf("control path %q remains exposed: %+v", path, jail)
@@ -774,11 +840,16 @@ func TestAutomaticCompositionMasksHelperObjectsWithoutMaskingLeaseRuntime(t *tes
 func TestNethelperRebindSuccessfulPreflightPreservesSessionAndOmitsSecret(t *testing.T) {
 	app, sess, oldBinding, candidate := newRebindTestApp(t)
 	originalID := sess.ID
-	app.nethelperRebindPreflightForTest = func(context.Context, string) *types.NetworkEnforcement { return provenRebindReport(time.Now().UTC()) }
+	app.nethelperRebindPreflightForTest = func(context.Context, string) *types.NetworkEnforcement {
+		return provenRebindReport(time.Now().UTC())
+	}
 	rr := httptest.NewRecorder()
 	authorizedRebindHandler(
 		app,
-	).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind", strings.NewReader(rebindRequestBody(oldBinding.Generation))))
+	).ServeHTTP(rr,
+		httptest.NewRequest(http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/network-enforcement/helper/rebind",
+			strings.NewReader(rebindRequestBody(oldBinding.Generation))))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 	}

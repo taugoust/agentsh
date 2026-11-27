@@ -471,7 +471,8 @@ func Open(opts Options) (*WAL, error) {
 	// callers can adjust configuration before any events are written.
 	if opts.SyncMode != SyncImmediate {
 		return nil, errors.New(
-			"wal.Open: only SyncImmediate is implemented; SyncDeferred requires the periodic-sync timer hook",
+			"wal.Open: only SyncImmediate is implemented; SyncDeferred requires the " +
+				"periodic-sync timer hook",
 		)
 	}
 	segDir := filepath.Join(opts.Dir, "segments")

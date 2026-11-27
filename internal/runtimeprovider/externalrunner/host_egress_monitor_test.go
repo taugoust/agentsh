@@ -127,11 +127,23 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 			}
 			return &fakeHostRelay{path: path}, nil
 		},
-		createVolume: func(_ context.Context, got WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
+		createVolume: func(
+			_ context.Context,
+			got WorkspaceVolumeRequest,
+			volumeID string,
+		) (*WorkspaceVolume, error) {
 			openedVolume = testOpenedHostMonitorVolume(t, got, volumeID, nil)
 			return openedVolume, nil
 		},
-		startEgressBroker: func(_ context.Context, got Profile, layout HostMonitorLayout, sessionID string, cid, port uint32, token string, approval *HostEgressApprovalBinding) (hostEgressBroker, error) {
+		startEgressBroker: func(
+			_ context.Context,
+			got Profile,
+			layout HostMonitorLayout,
+			sessionID string,
+			cid, port uint32,
+			token string,
+			approval *HostEgressApprovalBinding,
+		) (hostEgressBroker, error) {
 			status, statusErr := ReadHostMonitorStatus(stateDir)
 			if statusErr != nil || status.State != HostMonitorInitializing ||
 				!status.EgressBrokerClosed {
@@ -153,7 +165,13 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 			brokerStarted.Store(true)
 			return broker, nil
 		},
-		startRunner: func(got Profile, _ HostMonitorLayout, cid uint32, volume *WorkspaceVolume, _ io.Writer) (hostRunner, error) {
+		startRunner: func(
+			got Profile,
+			_ HostMonitorLayout,
+			cid uint32,
+			volume *WorkspaceVolume,
+			_ io.Writer,
+		) (hostRunner, error) {
 			if !brokerStarted.Load() || broker.closed.Load() {
 				t.Fatal("runner started without the exact live egress broker")
 			}
@@ -164,8 +182,10 @@ func TestHostMonitorV3StartsBrokerBeforeRunnerAndStopsItWithLifecycle(t *testing
 			return runner, nil
 		},
 		validateRunner: func(Profile) error { return nil },
-		lock:           func(context.Context, string) (io.Closer, error) { return nopCloser{}, nil },
-		now:            func() time.Time { return time.Now().UTC() },
+		lock: func(context.Context, string) (io.Closer, error) {
+			return nopCloser{}, nil
+		},
+		now: func() time.Time { return time.Now().UTC() },
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

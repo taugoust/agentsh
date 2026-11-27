@@ -69,7 +69,8 @@ func (r Request) Validate() error {
 	if !filepath.IsAbs(r.StateDir) || filepath.Clean(r.StateDir) != r.StateDir ||
 		filepath.Base(r.StateDir) != r.SessionID {
 		return fmt.Errorf(
-			"runtime request state directory must be clean, absolute, and bound to the exact session",
+			"runtime request state directory must be clean, absolute, and bound to the " +
+				"exact session",
 		)
 	}
 	if r.Session.ID != r.SessionID {
@@ -194,7 +195,8 @@ type ControlPlaneSnapshot struct {
 
 func (s ControlPlaneSnapshot) Validate(identity Identity, endpoint Endpoint) error {
 	if s.Metadata.SessionID != identity.SessionID || s.Metadata.Generation != identity.Generation ||
-		s.Metadata.IncarnationID != identity.IncarnationID || s.Metadata.SupervisorSock != endpoint.Address {
+		s.Metadata.IncarnationID != identity.IncarnationID ||
+		s.Metadata.SupervisorSock != endpoint.Address {
 		return fmt.Errorf("runtime control-plane metadata identity mismatch")
 	}
 	if !filepath.IsAbs(s.StateDir) || filepath.Clean(s.StateDir) != s.StateDir ||
@@ -205,7 +207,8 @@ func (s ControlPlaneSnapshot) Validate(identity Identity, endpoint Endpoint) err
 		return fmt.Errorf("runtime control-plane session identity mismatch")
 	}
 	if s.Status.SessionID != "" && (s.Status.SessionID != identity.SessionID ||
-		s.Status.Generation != identity.Generation || s.Status.IncarnationID != identity.IncarnationID) {
+		s.Status.Generation != identity.Generation ||
+		s.Status.IncarnationID != identity.IncarnationID) {
 		return fmt.Errorf("runtime control-plane status identity mismatch")
 	}
 	return nil

@@ -211,7 +211,8 @@ func TestResolveFamilyCheckerForPtrace_AlwaysWiresWhenFamiliesConfigured(t *test
 	}
 	if checker == nil {
 		t.Error(
-			"expected non-nil FamilyChecker when BlockedSocketFamilies is configured; got nil (families would fail open)",
+			"expected non-nil FamilyChecker when BlockedSocketFamilies is configured; got nil " +
+				"(families would fail open)",
 		)
 	}
 }

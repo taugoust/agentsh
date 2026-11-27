@@ -73,7 +73,8 @@ func TestApprovalsEndpointsRequireApproverRole(t *testing.T) {
 		t.Fatalf("expected 403 for agent key, got %d", rr.Code)
 	}
 
-	// Approver key: allowed (even if approvals mgr is nil -> 503 from handler is ok, but not 401/403).
+	// Approver key: allowed (even if approvals mgr is nil -> 503 from handler is ok, but not
+	// 401/403).
 	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/approvals", nil)
 	req2.Header.Set("X-API-Key", "sk-approver")
 	rr2 := httptest.NewRecorder()

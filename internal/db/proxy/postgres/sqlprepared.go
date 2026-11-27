@@ -70,7 +70,8 @@ func Intercept(
 			return true, []statemachine.Action{
 				&statemachine.ActionSynthError{
 					SQLState: "26000",
-					Message:  "SQL_PREPARED_CACHE_MISS: prepared statement \"" + first.PreparedName + "\" does not exist in AgentSH proxy cache",
+					Message: "SQL_PREPARED_CACHE_MISS: prepared statement \"" +
+						first.PreparedName + "\" does not exist in AgentSH proxy cache",
 				},
 				&statemachine.ActionSynthReadyForQuery{Status: 'I'},
 			}

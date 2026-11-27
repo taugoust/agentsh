@@ -163,7 +163,9 @@ func (m WorkspaceVolumeManifest) Validate() error {
 	}
 	if err := runtimeprovider.ValidateName(
 		m.Profile,
-	); err != nil || (m.ProfileSchema != ProfileSchemaV2 && m.ProfileSchema != ProfileSchemaV3) || !validSHA256(m.ProfileDigest) ||
+	); err != nil ||
+		(m.ProfileSchema != ProfileSchemaV2 && m.ProfileSchema != ProfileSchemaV3) ||
+		!validSHA256(m.ProfileDigest) ||
 		!validSHA256(m.ProfileFileSHA256) {
 		return fmt.Errorf("%w: manifest profile binding is invalid", ErrWorkspaceVolumeInvalid)
 	}

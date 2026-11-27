@@ -65,7 +65,8 @@ func ptraceBackendDetail(caps *SecurityCapabilities) string {
 	return "" // capability absent; the - speaks for itself
 }
 
-// buildLinuxDomains builds the five protection domains from cached probe results and capability flags.
+// buildLinuxDomains builds the five protection domains from cached probe results and capability
+// flags.
 func buildLinuxDomains(caps *SecurityCapabilities) []ProtectionDomain {
 	fuseMountMethod := "none"
 	if caps.FUSE {
@@ -319,9 +320,10 @@ func applyWrapperAvailability(domains []ProtectionDomain, secCaps *SecurityCapab
 // backwardCompatCaps builds the flat capabilities map for backward compatibility.
 func backwardCompatCaps(caps *SecurityCapabilities, domains []ProtectionDomain) map[string]any {
 	m := map[string]any{
-		"seccomp":                             caps.Seccomp,
-		"seccomp_user_notify":                 caps.SeccompInstallable, // installable here (issue #388)
-		"seccomp_user_notify_kernel":          caps.Seccomp,            // kernel-supported (read-only probe)
+		"seccomp": caps.Seccomp,
+		// installable here (issue #388)
+		"seccomp_user_notify":                 caps.SeccompInstallable,
+		"seccomp_user_notify_kernel":          caps.Seccomp, // kernel-supported (read-only probe)
 		"seccomp_basic":                       caps.SeccompBasic,
 		"landlock":                            caps.Landlock,
 		"landlock_abi":                        caps.LandlockABI,
@@ -433,8 +435,9 @@ func Detect() (*DetectResult, error) {
 		tips = append(tips, Tip{
 			Feature: "seccomp-wrapper",
 			Status:  "missing",
-			Impact:  "seccomp and Landlock enforcement disabled — processes run without kernel-level interception",
-			Action:  "install agentsh-unixwrap or rebuild the package with CGO_ENABLED=1",
+			Impact: "seccomp and Landlock enforcement disabled — processes run without " +
+				"kernel-level interception",
+			Action: "install agentsh-unixwrap or rebuild the package with CGO_ENABLED=1",
 		})
 	}
 

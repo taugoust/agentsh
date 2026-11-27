@@ -52,7 +52,8 @@ func testEnvCommand(t *testing.T) *exec.Cmd {
 func TestEnvShimBlocksIteration(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip(
-			"LD_PRELOAD only works on Linux; macOS SIP blocks DYLD_INSERT_LIBRARIES for system binaries",
+			"LD_PRELOAD only works on Linux; macOS SIP blocks DYLD_INSERT_LIBRARIES for system " +
+				"binaries",
 		)
 	}
 	shim := buildShim(t)
@@ -80,7 +81,8 @@ func TestEnvShimBlocksIteration(t *testing.T) {
 func TestEnvShimAllowsIterationWhenNotBlocked(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip(
-			"LD_PRELOAD only works on Linux; macOS SIP blocks DYLD_INSERT_LIBRARIES for system binaries",
+			"LD_PRELOAD only works on Linux; macOS SIP blocks DYLD_INSERT_LIBRARIES for system " +
+				"binaries",
 		)
 	}
 	shim := buildShim(t)

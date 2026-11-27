@@ -259,7 +259,10 @@ func (a *App) startPTY(
 			ExtraFiles:      extraProcessFiles(extraCfg),
 			CommandBoundary: commandBoundary,
 			PreExec:         preExec,
-			FinalizePreExecFailure: func(processState *os.ProcessState, waitErr, cleanupErr, preExecErr error) error {
+			FinalizePreExecFailure: func(
+				processState *os.ProcessState,
+				waitErr, cleanupErr, preExecErr error,
+			) error {
 				return finalizePTYCommandBoundaryFailure(
 					processState,
 					waitErr,

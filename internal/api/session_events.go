@@ -167,7 +167,9 @@ func (s *sessionEventStore) GetAnswer(
 ) (sessionQuestionAnswer, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	answer, ok := s.answersByQuestionnaire[strings.TrimSpace(sessionID)+"\x00"+strings.TrimSpace(questionnaireID)]
+	answer, ok := s.answersByQuestionnaire[strings.TrimSpace(
+		sessionID,
+	)+"\x00"+strings.TrimSpace(questionnaireID)]
 	return answer, ok
 }
 

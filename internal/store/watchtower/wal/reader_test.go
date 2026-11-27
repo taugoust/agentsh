@@ -220,7 +220,8 @@ func TestReader_AdvancesPastLiveSegmentAfterGenerationRoll(t *testing.T) {
 		}
 		if rec.Kind == RecordData && rec.Generation == 8 {
 			t.Fatalf(
-				"gen=7 Reader surfaced gen=8 record (seq=%d) — segment-iteration filter must skip other-generation segments",
+				"gen=7 Reader surfaced gen=8 record (seq=%d) — segment-iteration filter must "+
+					"skip other-generation segments",
 				rec.Sequence,
 			)
 		}
@@ -316,7 +317,8 @@ func TestReader_SkipsGCdSegmentsContinuingPastLossMarker(t *testing.T) {
 		if rec.Kind == RecordData {
 			if rec.Generation != 0 {
 				t.Fatalf(
-					"gen=0 reader surfaced rec.Generation=%d (seq=%d) — segment-iteration filter must skip other-generation segments",
+					"gen=0 reader surfaced rec.Generation=%d (seq=%d) — segment-iteration filter "+
+						"must skip other-generation segments",
 					rec.Generation,
 					rec.Sequence,
 				)
@@ -403,7 +405,8 @@ func TestReader_FollowsLiveSegmentRenamedBetweenSnapshotAndOpen(t *testing.T) {
 	if len(seenSeqs) != 3 || seenSeqs[0] != want[0] || seenSeqs[1] != want[1] ||
 		seenSeqs[2] != want[2] {
 		t.Errorf(
-			"seen seqs = %v, want %v (records from the renamed segment must not be silently dropped)",
+			"seen seqs = %v, want %v (records from the renamed segment must not be silently "+
+				"dropped)",
 			seenSeqs,
 			want,
 		)
@@ -467,7 +470,8 @@ func TestReader_GenerationScoped_SkipsOtherGenerationsOnDisk(t *testing.T) {
 		}
 		if rec.Generation != 1 {
 			t.Fatalf(
-				"gen=1 reader surfaced rec.Generation=%d (seq=%d) — must skip other-generation segments",
+				"gen=1 reader surfaced rec.Generation=%d (seq=%d) — must skip other-generation "+
+					"segments",
 				rec.Generation,
 				rec.Sequence,
 			)
@@ -507,7 +511,8 @@ func TestReader_GenerationScoped_SkipsOtherGenerationsOnDisk(t *testing.T) {
 		}
 		if rec.Generation != 2 {
 			t.Fatalf(
-				"gen=2 reader surfaced rec.Generation=%d (seq=%d) — must skip other-generation segments",
+				"gen=2 reader surfaced rec.Generation=%d (seq=%d) — must skip other-generation "+
+					"segments",
 				rec.Generation,
 				rec.Sequence,
 			)
@@ -587,7 +592,8 @@ func TestReader_GenerationScoped_DoesNotReturnLowerSeqFromOtherGen(t *testing.T)
 		}
 		if rec.Generation != 1 {
 			t.Fatalf(
-				"surfaced rec.Generation=%d seq=%d — must NOT cross generations (segment-iteration filter must skip gen=2 segments)",
+				"surfaced rec.Generation=%d seq=%d — must NOT cross generations "+
+					"(segment-iteration filter must skip gen=2 segments)",
 				rec.Generation,
 				rec.Sequence,
 			)

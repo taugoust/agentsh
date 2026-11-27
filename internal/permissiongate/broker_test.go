@@ -152,8 +152,26 @@ func TestPermissionGateBrokerDenyAndCancel(t *testing.T) {
 		finish any
 		reason string
 	}{
-		{name: "deny", finish: ResolveRequest{V: ProtocolVersion, Type: messageResolve, ID: "request-1", Decision: "deny"}, reason: "denied by Pi user interface"},
-		{name: "cancel", finish: CancelRequest{V: ProtocolVersion, Type: messageCancel, ID: "request-1", Reason: "caller aborted"}, reason: "caller aborted"},
+		{
+			name: "deny",
+			finish: ResolveRequest{
+				V:        ProtocolVersion,
+				Type:     messageResolve,
+				ID:       "request-1",
+				Decision: "deny",
+			},
+			reason: "denied by Pi user interface",
+		},
+		{
+			name: "cancel",
+			finish: CancelRequest{
+				V:      ProtocolVersion,
+				Type:   messageCancel,
+				ID:     "request-1",
+				Reason: "caller aborted",
+			},
+			reason: "caller aborted",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			audit := &recordingAudit{}

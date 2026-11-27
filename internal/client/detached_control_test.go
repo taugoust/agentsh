@@ -37,7 +37,10 @@ func TestExchangeDetachedControlAuthenticatesAndValidatesIdentity(t *testing.T) 
 			t.Errorf("request=%+v", request)
 		}
 		_ = json.NewEncoder(w).
-			Encode(detachedtransport.ExchangeResponse{Version: detachedtransport.Version, Identity: identity})
+			Encode(detachedtransport.ExchangeResponse{
+				Version:  detachedtransport.Version,
+				Identity: identity,
+			})
 	})}
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()

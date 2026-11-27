@@ -102,7 +102,8 @@ func stageWorkspace(ctx context.Context, source, destination string) (WorkspaceB
 			}
 			resolved, err = filepath.Abs(resolved)
 			if err != nil ||
-				(resolved != source && !strings.HasPrefix(resolved, source+string(filepath.Separator))) {
+				(resolved != source &&
+					!strings.HasPrefix(resolved, source+string(filepath.Separator))) {
 				return fmt.Errorf("staged workspace symlink %s escapes its source", relative)
 			}
 			return os.Symlink(link, target)

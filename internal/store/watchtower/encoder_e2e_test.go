@@ -114,7 +114,8 @@ func TestStore_AppendEvent_DeliversRealEventBatch(t *testing.T) {
 	}
 	if !sawRealBody {
 		t.Fatalf(
-			"no batch carried a non-empty UncompressedEvents body; encoder may have regressed to a stub",
+			"no batch carried a non-empty UncompressedEvents body; encoder may have regressed " +
+				"to a stub",
 		)
 	}
 }
@@ -179,7 +180,8 @@ func TestEncoderE2E_WithOCSFMapper(t *testing.T) {
 	}
 	if cleanResult.EntryHash() == tamperedResult.EntryHash() {
 		t.Fatal(
-			"chain tamper check: clean and tampered payloads produced identical EntryHash — payload bytes are not part of the HMAC input",
+			"chain tamper check: clean and tampered payloads produced identical EntryHash — " +
+				"payload bytes are not part of the HMAC input",
 		)
 	}
 }

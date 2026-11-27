@@ -249,14 +249,17 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 				w,
 				http.StatusPreconditionRequired,
 				map[string]any{
-					"error": "shadow accept requires review_generation and review_hash from a fresh diff",
+					"error": "shadow accept requires review_generation and review_hash from a " +
+						"fresh diff",
 				},
 			)
 			return
 		}
 		pending, resume := sw.PendingFinalization()
 		if resume &&
-			(pending.Action != shadow.FinalizationAccept || pending.ReviewGeneration != req.ReviewGeneration || pending.ReviewHash != req.ReviewHash) {
+			(pending.Action != shadow.FinalizationAccept ||
+				pending.ReviewGeneration != req.ReviewGeneration ||
+				pending.ReviewHash != req.ReviewHash) {
 			writeJSON(
 				w,
 				http.StatusConflict,
@@ -327,7 +330,8 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 					w,
 					http.StatusInternalServerError,
 					map[string]any{
-						"error": "refusing workspace apply because durable finalization state could not be recorded",
+						"error": "refusing workspace apply because durable finalization state " +
+							"could not be recorded",
 					},
 				)
 				return
@@ -338,7 +342,8 @@ func (a *App) acceptOverlay(w http.ResponseWriter, r *http.Request) {
 				w,
 				http.StatusInternalServerError,
 				map[string]any{
-					"error": "workspace apply failed after durable finalization began: " + err.Error(),
+					"error": "workspace apply failed after durable finalization began: " +
+						err.Error(),
 				},
 			)
 			return
@@ -458,7 +463,8 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 					w,
 					http.StatusInternalServerError,
 					map[string]any{
-						"error": "workspace rejection intent is retained but durable detached finalization could not be recorded",
+						"error": "workspace rejection intent is retained but durable detached " +
+							"finalization could not be recorded",
 					},
 				)
 				return
@@ -473,7 +479,8 @@ func (a *App) rejectOverlay(w http.ResponseWriter, r *http.Request) {
 				w,
 				http.StatusInternalServerError,
 				map[string]any{
-					"error": "workspace rejection is retained for finalization retry: " + err.Error(),
+					"error": "workspace rejection is retained for finalization retry: " +
+						err.Error(),
 				},
 			)
 			return

@@ -157,7 +157,8 @@ func requestParentHostEgressApproval(
 	}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}
-	endpoint := "http://unix/api/v1/sessions/" + binding.ParentSessionID + "/tools/request_guest_egress_approval"
+	endpoint := "http://unix/api/v1/sessions/" + binding.ParentSessionID +
+		"/tools/request_guest_egress_approval"
 	httpRequest, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,

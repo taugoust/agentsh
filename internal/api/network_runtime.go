@@ -119,7 +119,8 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 		report.Detail = "authenticated nethelper lifecycle check failed: " + boundedLifecycleReason(
 			lifecycleErr,
 		)
-		report.Warning = "strict command execution is disabled until a fresh helper preflight succeeds"
+		report.Warning = "strict command execution is disabled until a fresh helper preflight " +
+			"succeeds"
 		report.Normalize()
 		return report
 	}
@@ -134,11 +135,13 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 				report.ProxyEndpointID = endpoint.String()
 				report.ProxyReady = probeLoopbackProxy(endpoint.String())
 				if !report.ProxyReady {
-					report.Warning = "the configured AgentSH proxy endpoint did not accept a loopback readiness connection"
+					report.Warning = "the configured AgentSH proxy endpoint did not accept a " +
+						"loopback readiness connection"
 				}
 			} else {
 				report.ProxyReady = false
-				report.Warning = "configured proxy endpoint is not an exact loopback IP address and port"
+				report.Warning = "configured proxy endpoint is not an exact loopback IP address " +
+					"and port"
 			}
 		}
 		if previous := sess.NetworkEnforcement(); previous != nil {
@@ -231,21 +234,27 @@ func (a *App) observedNetworkEnforcement(sessionID string) *types.NetworkEnforce
 	case report.HelperConfigured && report.ProxyReady && strict:
 		report.Status = types.NetworkEnforcementStatusDegraded
 		report.Tier = types.NetworkEnforcementTierHelperEBPFProxyRequired
-		report.Detail = "delegated cgroup, helper socket, and proxy are available; readiness is withheld because helper attachment, direct-bypass behavior, and the same-UID tool boundary are not all proven"
+		report.Detail = "delegated cgroup, helper socket, and proxy are available; readiness is " +
+			"withheld because helper attachment, direct-bypass behavior, and the same-UID tool " +
+			"boundary are not all proven"
 	case report.CgroupDelegated:
 		report.Status = types.NetworkEnforcementStatusDegraded
 		report.Tier = types.NetworkEnforcementTierCgroupDelegated
-		report.Detail = "the runtime cgroup probe succeeded, but no authenticated helper/proxy command gate is active"
+		report.Detail = "the runtime cgroup probe succeeded, but no authenticated helper/proxy " +
+			"command gate is active"
 	case report.Requested != types.NetworkEnforcementRequestNone:
 		report.Status = types.NetworkEnforcementStatusDegraded
-		report.Detail = "network enforcement was requested but runtime prerequisites are unavailable"
+		report.Detail = "network enforcement was requested but runtime prerequisites are " +
+			"unavailable"
 	default:
 		report.Status = types.NetworkEnforcementStatusNone
 		report.Detail = "no runtime network gate was requested"
-		report.Warning = "no runtime network gate is active; policy decisions do not imply traffic enforcement"
+		report.Warning = "no runtime network gate is active; policy decisions do not imply " +
+			"traffic enforcement"
 	}
 	if report.Requested != types.NetworkEnforcementRequestNone {
-		report.Warning = "network policy decisions are informational until status is ready; autonomous strict startup must refuse this report"
+		report.Warning = "network policy decisions are informational until status is ready; " +
+			"autonomous strict startup must refuse this report"
 	}
 	report.Normalize()
 	return report
@@ -374,14 +383,19 @@ func (a *App) recordNetworkAttachment(
 		Pinned:                    pinned,
 		Reloaded:                  reloaded,
 		CheckedAt:                 time.Now().UTC(),
-		Detail:                    "helper registration, locked initial state, and exact proxy default-deny map update succeeded before command resume",
+		Detail: "helper registration, locked initial state, and exact proxy " +
+			"default-deny map update succeeded before command resume",
 	}
 	if preflightReady {
-		report.Detail = "a per-command helper proxy-required gate is active after the disposable boundary and bypass preflight passed"
+		report.Detail = "a per-command helper proxy-required gate is active after the disposable " +
+			"boundary and bypass preflight passed"
 		report.Warning = ""
 	} else {
-		report.Detail = "a per-command helper proxy-required gate is active; full session enforcement is not claimed without the installed same-UID boundary and unsupported-traffic preflight"
-		report.Warning = "active attachment evidence does not by itself prove the installed tool boundary or raw-socket denial"
+		report.Detail = "a per-command helper proxy-required gate is active; full session " +
+			"enforcement is not claimed without the installed same-UID boundary and " +
+			"unsupported-traffic preflight"
+		report.Warning = "active attachment evidence does not by itself prove the installed tool " +
+			"boundary or raw-socket denial"
 	}
 	report.Normalize()
 	sess.SetNetworkEnforcement(report)
@@ -464,10 +478,13 @@ func (a *App) recordDirectNetworkAttachment(
 		UnsupportedTrafficBlocked: false,
 		TransparentRedirect:       false,
 		CheckedAt:                 time.Now().UTC(),
-		Detail:                    "in-process locked initial state, exact proxy map update, and fixed-program attachment succeeded before command resume",
+		Detail: "in-process locked initial state, exact proxy map update, and " +
+			"fixed-program attachment succeeded before command resume",
 	}
-	report.Detail = "a per-command in-process proxy-required cgroup eBPF gate is active; helper crash persistence and the installed same-UID boundary are not proven"
-	report.Warning = "in-process attachment is degraded and cannot claim full network policy enforcement"
+	report.Detail = "a per-command in-process proxy-required cgroup eBPF gate is active; helper " +
+		"crash persistence and the installed same-UID boundary are not proven"
+	report.Warning = "in-process attachment is degraded and cannot claim full network policy " +
+		"enforcement"
 	report.Normalize()
 	sess.SetNetworkEnforcement(report)
 	a.emitNetworkEnforcementEvidence(
@@ -520,7 +537,8 @@ func (a *App) finishNetworkAttachment(sessionID, commandID string, resolveSetupR
 			// its attachment and retains the disposable preflight.
 			report.Status = types.NetworkEnforcementStatusReady
 			report.Readiness = types.NetworkEnforcementStatusReady
-			report.Detail = "session preflight remains ready; the completed command attachment was cleaned successfully"
+			report.Detail = "session preflight remains ready; the completed command attachment " +
+				"was cleaned successfully"
 			report.Warning = ""
 		} else {
 			report.Status = types.NetworkEnforcementStatusDegraded
@@ -541,7 +559,8 @@ func (a *App) finishNetworkAttachment(sessionID, commandID string, resolveSetupR
 			report.UnsupportedTrafficBlocked = false
 			report.FailClosedSetup = report.Preflight != nil &&
 				report.Preflight.FailClosedBarrierProven
-			report.Detail = "a disposable or completed command attachment was observed; no proven session preflight is available"
+			report.Detail = "a disposable or completed command attachment was observed; no " +
+				"proven session preflight is available"
 			report.Warning = "network policy enforcement is not ready for strict autonomous startup"
 		}
 		report.Attachments = nil
@@ -706,7 +725,8 @@ func (a *App) recordNetworkCleanupFailure(sessionID, commandID string, err error
 	} else {
 		report.Detail = "command network cleanup failed"
 	}
-	report.Warning = "helper or cgroup resources may remain pinned fail closed; operator cleanup may be required"
+	report.Warning = "helper or cgroup resources may remain pinned fail closed; operator cleanup " +
+		"may be required"
 	report.Normalize()
 	sess.SetNetworkEnforcement(report)
 	if a.detachedRuntime != nil {
@@ -899,7 +919,8 @@ func (a *App) runNetworkEnforcementPreflightWithLock(
 			sess,
 			report,
 			preflight,
-			"the supervisor was not launched through the supported delegated systemd user-service path",
+			"the supervisor was not launched through the supported delegated systemd "+
+				"user-service path",
 			false,
 		)
 	}
@@ -1324,7 +1345,8 @@ func (a *App) runNetworkEnforcementPreflightWithLock(
 	preflight.Status = types.NetworkEnforcementStatusReady
 
 	if !preflight.Proven() {
-		detail := "disposable preflight completed but one or more required observations were not proven"
+		detail := "disposable preflight completed but one or more required observations were " +
+			"not proven"
 		if strings.TrimSpace(runtimeProbe.Detail) != "" {
 			detail += ": " + runtimeProbe.Detail
 		}
@@ -1500,7 +1522,8 @@ func (a *App) proveNetworkPreExecRefusal(
 	if !hookSawStoppedChild || !markerAbsent || !errors.Is(runErr, forcedRefusal) ||
 		exitCode != 127 {
 		return false, fmt.Sprintf(
-			"forced setup failure did not prove that the disposable child remained stopped (hook_observed=%t marker_absent=%t expected_error=%t exit_code=%d error=%v)",
+			"forced setup failure did not prove that the disposable child remained stopped "+
+				"(hook_observed=%t marker_absent=%t expected_error=%t exit_code=%d error=%v)",
 			hookSawStoppedChild,
 			markerAbsent,
 			errors.Is(runErr, forcedRefusal),
@@ -1560,7 +1583,8 @@ func (a *App) finishNetworkEnforcementPreflight(
 		preflight.Status = types.NetworkEnforcementStatusReady
 		if !preflight.Proven() {
 			ready = false
-			preflight.Detail = "ready preflight was rejected because required evidence was incomplete"
+			preflight.Detail = "ready preflight was rejected because required evidence was " +
+				"incomplete"
 			detail = preflight.Detail
 		}
 	}
@@ -1636,7 +1660,8 @@ func (a *App) finishNetworkEnforcementPreflight(
 		report.UnsupportedTrafficBlocked = false
 		report.FailClosedSetup = preflight.FailClosedBarrierProven
 		report.Detail = detail
-		report.Warning = "runtime network preflight did not prove every required property; strict autonomous startup must refuse and best-effort operation remains degraded"
+		report.Warning = "runtime network preflight did not prove every required property; " +
+			"strict autonomous startup must refuse and best-effort operation remains degraded"
 	}
 	report.Normalize()
 	if sess != nil {
@@ -1649,20 +1674,20 @@ func (a *App) finishNetworkEnforcementPreflight(
 	} else if report.Status == types.NetworkEnforcementStatusFailed {
 		eventType = "network_enforcement_preflight_failed"
 	}
+	strictRefusal := report.Requested == types.NetworkEnforcementRequestStrict && !report.Ready()
 	ev := types.Event{
 		ID:        uuid.NewString(),
 		Timestamp: time.Now().UTC(),
 		Type:      eventType,
 		SessionID: sessionID,
 		Fields: map[string]any{
-			"requested":               report.Requested,
-			"readiness":               report.Readiness,
-			"status":                  report.Status,
-			"tier":                    report.Tier,
-			"network_policy_enforced": report.NetworkPolicyEnforced,
-			"strict_startup_refusal_required": report.Requested == types.NetworkEnforcementRequestStrict &&
-				!report.Ready(),
-			"preflight": preflight,
+			"requested":                       report.Requested,
+			"readiness":                       report.Readiness,
+			"status":                          report.Status,
+			"tier":                            report.Tier,
+			"network_policy_enforced":         report.NetworkPolicyEnforced,
+			"strict_startup_refusal_required": strictRefusal,
+			"preflight":                       preflight,
 		},
 	}
 	if a != nil && a.store != nil {
@@ -1776,7 +1801,8 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 				w,
 				http.StatusConflict,
 				map[string]any{
-					"error": "candidate cleanup remains uncertain; exact cleanup confirmation and authenticated zero-registration status are required before rebinding",
+					"error": "candidate cleanup remains uncertain; exact cleanup confirmation " +
+						"and authenticated zero-registration status are required before rebinding",
 				},
 			)
 			return
@@ -1796,7 +1822,8 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 			w,
 			http.StatusConflict,
 			map[string]any{
-				"error": "previous helper cleanup is uncertain; retaining fail-closed registration state",
+				"error": "previous helper cleanup is uncertain; retaining fail-closed " +
+					"registration state",
 			},
 		)
 		return
@@ -1921,7 +1948,8 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 			w,
 			http.StatusBadRequest,
 			map[string]any{
-				"error": "candidate hard expiry does not cover the remaining absolute session lifetime and cleanup slack",
+				"error": "candidate hard expiry does not cover the remaining absolute session " +
+					"lifetime and cleanup slack",
 			},
 		)
 		return
@@ -2013,7 +2041,8 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 		)
 		report = sess.NetworkEnforcement()
 		writeJSON(w, http.StatusBadGateway, map[string]any{
-			"error":               "candidate helper strict preflight failed; previous binding retained and execution remains failed",
+			"error": "candidate helper strict preflight failed; previous binding " +
+				"retained and execution remains failed",
 			"network_enforcement": report,
 			"binding_generation":  oldBinding.Generation,
 		})
@@ -2058,7 +2087,8 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 				w,
 				http.StatusInternalServerError,
 				map[string]any{
-					"error": "replacement helper is live but its durable path/generation identity could not be committed; exact reconciliation is required",
+					"error": "replacement helper is live but its durable path/generation " +
+						"identity could not be committed; exact reconciliation is required",
 				},
 			)
 			return
@@ -2071,7 +2101,8 @@ func (a *App) rebindSessionNethelper(w http.ResponseWriter, r *http.Request) {
 				w,
 				http.StatusInternalServerError,
 				map[string]any{
-					"error": "replacement helper readiness could not be persisted; exact reconciliation is required",
+					"error": "replacement helper readiness could not be persisted; exact " +
+						"reconciliation is required",
 				},
 			)
 			return
@@ -2096,6 +2127,7 @@ func (a *App) policyTestRuntimeEnforcement(sessionID, op string) map[string]any 
 		}
 	}
 	report["operation_executed"] = false
-	report["policy_test_note"] = "policy-test evaluates a decision only; it does not execute or attach a gate for the tested operation"
+	report["policy_test_note"] = "policy-test evaluates a decision only; it does not execute or " +
+		"attach a gate for the tested operation"
 	return report
 }

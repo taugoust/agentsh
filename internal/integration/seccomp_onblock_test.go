@@ -91,7 +91,8 @@ func runHelper() {
 				if syscall.Gettid() == tgid {
 					fmt.Fprintln(
 						os.Stderr,
-						"ptrace-storm: worker landed on TGL thread; aborting to avoid masking regression",
+						"ptrace-storm: worker landed on TGL thread; aborting to avoid masking "+
+							"regression",
 					)
 					os.Exit(3)
 				}
@@ -555,25 +556,32 @@ func TestSeccompOnBlock_LogAndKill_ConcurrentCalls(t *testing.T) {
 	require.True(
 		t,
 		sawKilled,
-		"at least one event must record outcome=killed (proves TGID resolution worked for a non-TGL thread)",
+		"at least one event must record outcome=killed (proves TGID resolution worked for a "+
+			"non-TGL thread)",
 	)
 }
 
 func TestSeccompOnBlock_DoesNotAffectFileMonitor(t *testing.T) {
 	t.Skip(
-		"non-interference covered by other subsystem integration suites; block-list dispatch uses IsBlockListed over a fixed map of resolved syscall numbers and cannot intercept file_monitor syscalls",
+		"non-interference covered by other subsystem integration suites; block-list dispatch " +
+			"uses IsBlockListed over a fixed map of resolved syscall numbers and cannot " +
+			"intercept file_monitor syscalls",
 	)
 }
 
 func TestSeccompOnBlock_DoesNotAffectUnixSocket(t *testing.T) {
 	t.Skip(
-		"non-interference covered by other subsystem integration suites; block-list dispatch uses IsBlockListed over a fixed map of resolved syscall numbers and cannot intercept unix socket syscalls",
+		"non-interference covered by other subsystem integration suites; block-list dispatch " +
+			"uses IsBlockListed over a fixed map of resolved syscall numbers and cannot " +
+			"intercept unix socket syscalls",
 	)
 }
 
 func TestSeccompOnBlock_DoesNotAffectSignalFilter(t *testing.T) {
 	t.Skip(
-		"non-interference covered by other subsystem integration suites; block-list dispatch uses IsBlockListed over a fixed map of resolved syscall numbers and cannot intercept signal filter syscalls",
+		"non-interference covered by other subsystem integration suites; block-list dispatch " +
+			"uses IsBlockListed over a fixed map of resolved syscall numbers and cannot " +
+			"intercept signal filter syscalls",
 	)
 }
 

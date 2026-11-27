@@ -5,7 +5,8 @@
 // to the server over an inherited socketpair (SCM_RIGHTS), then execs the target command.
 // Usage: agentsh-unixwrap -- <command> [args...]
 // Requires env AGENTSH_NOTIFY_SOCK_FD set to the fd number of the socketpair to the server.
-// If seccomp user-notify is unsupported, exits 0 with a message (server should treat as monitor-only).
+// If seccomp user-notify is unsupported, exits 0 with a message (server should treat as
+// monitor-only).
 
 package main
 
@@ -196,7 +197,8 @@ func legacyMain() {
 					"blocked (likely by AppArmor or container security policy). Without a\n"+
 					"working notification handler, all intercepted syscalls will fail.\n"+
 					"Fix: set 'sandbox.seccomp.file_monitor.enabled: false' in your config,\n"+
-					"or adjust the container's security profile to allow seccomp notify ioctls.", err)
+					"or adjust the container's security profile to allow seccomp notify ioctls.",
+					err)
 			}
 			// Only unix_sockets / metadata monitoring is enabled. The intercepted
 			// syscalls (socket, connect, bind, etc.) are not critical for most

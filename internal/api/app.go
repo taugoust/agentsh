@@ -79,10 +79,23 @@ type App struct {
 	// Deterministic lifecycle seams used only by package tests. Production leaves
 	// these nil and always performs protected-path validation, authenticated RPC,
 	// and the full disposable strict preflight.
-	nethelperStatusForTest           func(context.Context, nethelperBinding) (nethelper.InstanceStatusResponse, error)
-	nethelperAttestationForTest      func(context.Context, nethelperBinding) (nethelper.AttestCompositionRuntimeResponse, error)
-	nethelperCleanupForTest          func(context.Context, nethelperBinding, nethelper.CleanupSessionRequest) (nethelper.CleanupSessionResponse, error)
-	nethelperCandidateForTest        func(types.NethelperRebindRequest, uint64) (nethelperBinding, error)
+	nethelperStatusForTest func(
+		context.Context,
+		nethelperBinding,
+	) (nethelper.InstanceStatusResponse, error)
+	nethelperAttestationForTest func(
+		context.Context,
+		nethelperBinding,
+	) (nethelper.AttestCompositionRuntimeResponse, error)
+	nethelperCleanupForTest func(
+		context.Context,
+		nethelperBinding,
+		nethelper.CleanupSessionRequest,
+	) (nethelper.CleanupSessionResponse, error)
+	nethelperCandidateForTest func(
+		types.NethelperRebindRequest,
+		uint64,
+	) (nethelperBinding, error)
 	nethelperRebindPreflightForTest  func(context.Context, string) *types.NetworkEnforcement
 	commandBoundarySetupErrorForTest error
 
@@ -189,7 +202,11 @@ func NewApp(
 	nethelperRecoveryToken, nethelperRecoveryTokenFile := readRecoveryTokenFile(
 		nethelperRecoveryTokenFile,
 	)
-	for _, key := range []string{nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile} {
+	for _, key := range []string{
+		nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce,
+		nethelper.EnvCredentialFile, nethelper.EnvSocket, nethelper.EnvBootstrapResult,
+		nethelper.EnvRecoveryTokenFile,
+	} {
 		_ = os.Unsetenv(key)
 	}
 
@@ -215,7 +232,8 @@ func NewApp(
 			false,
 		) {
 		slog.Warn(
-			"real_paths enabled but enforce_without_fuse is false: outside-workspace file access will be audit-only (not blocked)",
+			"real_paths enabled but enforce_without_fuse is false: outside-workspace file access " +
+				"will be audit-only (not blocked)",
 		)
 	}
 
@@ -223,7 +241,9 @@ func NewApp(
 	// cgroup-related feature was requested so there is nothing to report.
 	// ModeNested / ModeTopLevel are silent success paths.
 	if cgroupMgr != nil &&
-		(cfg.Sandbox.Network.EBPF.Enabled || cfg.Sandbox.Network.EBPF.Enforce || cfg.Sandbox.Network.EBPF.Required) {
+		(cfg.Sandbox.Network.EBPF.Enabled ||
+			cfg.Sandbox.Network.EBPF.Enforce ||
+			cfg.Sandbox.Network.EBPF.Required) {
 		probe := cgroupMgr.Probe()
 		switch probe.Mode {
 		case limits.ModeAttachOnly:
@@ -345,7 +365,11 @@ func (a *App) SetDetachedRuntime(runtime *detached.Runtime) {
 			},
 		)
 		a.approvals.SetDetachedTerminalObserver(
-			func(_ context.Context, request approvals.Request, resolution approvals.Resolution) error {
+			func(
+				_ context.Context,
+				request approvals.Request,
+				resolution approvals.Resolution,
+			) error {
 				status := runtime.RuntimeStatus()
 				identity := detachedtransport.Identity{
 					SessionID:     status.SessionID,
@@ -489,9 +513,10 @@ func (a *App) Router() http.Handler {
 			"map_lpm_deny_default":  def.LPMDeny,
 			"map_default_default":   def.Default,
 			"map_counts_last":       ebpftrace.GetLastMapCounts(),
-			"map_counts_note":       "map_counts_last reflects the most recent PopulateAllowlist, not live occupancy",
-			"dns_cache_entries":     DNSCacheLen(),
-			"dns_cache_metrics":     DNSMetrics(),
+			"map_counts_note": "map_counts_last reflects the most recent " +
+				"PopulateAllowlist, not live occupancy",
+			"dns_cache_entries": DNSCacheLen(),
+			"dns_cache_metrics": DNSMetrics(),
 		})
 	})
 	r.Get(
@@ -771,7 +796,8 @@ func (a *App) requireRoles(roles ...string) func(http.Handler) http.Handler {
 				// Otherwise an agent could self-approve by calling the approvals API.
 				// Detached supervisors opt in to the Unix-socket-only exception above.
 				writeJSON(w, http.StatusForbidden, map[string]any{
-					"error": "approvals endpoints require auth (set auth.type=api_key and use separate agent/approver keys)",
+					"error": "approvals endpoints require auth (set auth.type=api_key and use " +
+						"separate agent/approver keys)",
 				})
 				return
 			}
@@ -801,7 +827,8 @@ func (r createSessionRequestWire) rejectRuntimeSelection() error {
 	if len(r.Runtime) > 0 || len(r.RuntimeProfile) > 0 || len(r.RuntimeProvider) > 0 ||
 		len(r.RuntimeOptions) > 0 {
 		return fmt.Errorf(
-			"runtime selection is operator-owned; use the trusted detached session start command with a configured profile",
+			"runtime selection is operator-owned; use the trusted detached session start command " +
+				"with a configured profile",
 		)
 	}
 	return nil
@@ -1033,7 +1060,8 @@ func (a *App) startExplicitProxy(ctx context.Context, s *session.Session) error 
 }
 
 func (a *App) startLLMProxy(ctx context.Context, s *session.Session) {
-	// Pass the sessions base directory - NewStorage will create <base>/<session-id>/llm-requests.jsonl
+	// Pass the sessions base directory - NewStorage will create
+	// <base>/<session-id>/llm-requests.jsonl
 	storagePath := a.cfg.Sessions.BaseDir
 
 	// Resolve policy-driven providers, services, and env injection.
@@ -1129,7 +1157,8 @@ func (a *App) startLLMProxy(ctx context.Context, s *session.Session) {
 					}
 					broker.Publish(typesEv)
 
-					// Emit a richer cross-server event when a cross-server rule triggered the block.
+					// Emit a richer cross-server event when a cross-server rule triggered the
+					// block.
 					if ev.CrossServerRule != "" {
 						csEv := mcpCrossServerToEvent(mcpinspect.MCPCrossServerEvent{
 							Type:            "mcp_cross_server_blocked",
@@ -1182,7 +1211,8 @@ func (a *App) startLLMProxy(ctx context.Context, s *session.Session) {
 }
 
 func (a *App) tryStartTransparentNetwork(ctx context.Context, s *session.Session) error {
-	// Implementation uses root-only Linux network namespaces. If it fails, we leave the session in proxy-env mode.
+	// Implementation uses root-only Linux network namespaces. If it fails, we leave the session in
+	// proxy-env mode.
 	em := storeEmitter{store: a.store, broker: a.broker}
 
 	// Start interceptors on host; netns will DNAT to host veth IP.
@@ -1314,7 +1344,8 @@ func (a *App) patchSession(w http.ResponseWriter, r *http.Request) {
 				w,
 				http.StatusInternalServerError,
 				map[string]any{
-					"error": "session update applied in memory but durable recovery persistence failed; command execution is disabled",
+					"error": "session update applied in memory but durable recovery persistence " +
+						"failed; command execution is disabled",
 				},
 			)
 			return
@@ -1329,7 +1360,8 @@ func (a *App) patchSession(w http.ResponseWriter, r *http.Request) {
 				w,
 				http.StatusInternalServerError,
 				map[string]any{
-					"error": "environment was reprovisioned but detached lifecycle persistence failed",
+					"error": "environment was reprovisioned but detached lifecycle " +
+						"persistence failed",
 				},
 			)
 			return
@@ -1379,7 +1411,8 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 			w,
 			http.StatusConflict,
 			map[string]any{
-				"error": "session teardown refused while workspace finalization is running or pending",
+				"error": "session teardown refused while workspace finalization is running " +
+					"or pending",
 			},
 		)
 		return
@@ -1433,7 +1466,8 @@ func (a *App) destroySession(w http.ResponseWriter, r *http.Request) {
 				w,
 				http.StatusInternalServerError,
 				map[string]any{
-					"error": "session was destroyed but durable detached stopped persistence failed; supervisor shutdown was requested",
+					"error": "session was destroyed but durable detached stopped persistence " +
+						"failed; supervisor shutdown was requested",
 				},
 			)
 			return
@@ -1721,7 +1755,8 @@ func addExecveApprovalHints(
 		suggestions = append(suggestions, types.Suggestion{
 			Action: "retry_after_approval",
 			Reason: fmt.Sprintf(
-				"nested execve of %s required approval but timed out; retry and approve promptly, or increase sandbox.seccomp.execve.approval_timeout",
+				"nested execve of %s required approval but timed out; retry and approve "+
+					"promptly, or increase sandbox.seccomp.execve.approval_timeout",
 				target,
 			),
 		})
@@ -1926,7 +1961,8 @@ func guidanceForResponse(
 				if ev.Path != "" && !session.IsUnderRoot(ev.Path, "/workspace") {
 					g.Suggestions = append(g.Suggestions, types.Suggestion{
 						Action: "move_to_workspace",
-						Reason: "copy/move required inputs under /workspace so the policy can allow access",
+						Reason: "copy/move required inputs under /workspace so the policy can " +
+							"allow access",
 					})
 				}
 			}
@@ -2350,7 +2386,8 @@ func (a *App) policyTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Honor session_id: route through policyEngineFor so per-session policy overrides are reflected.
+	// Honor session_id: route through policyEngineFor so per-session policy overrides are
+	// reflected.
 	engine := a.policy
 	if req.SessionID != "" {
 		if s, ok := a.sessions.Get(req.SessionID); ok {
@@ -2371,7 +2408,11 @@ func (a *App) policyTest(w http.ResponseWriter, r *http.Request) {
 	op := strings.ToLower(req.Operation)
 
 	switch {
-	case strings.HasPrefix(op, "file_") || op == "read" || op == "write" || op == "delete" || op == "create":
+	case strings.HasPrefix(op, "file_") ||
+		op == "read" ||
+		op == "write" ||
+		op == "delete" ||
+		op == "create":
 		// Map common operation names
 		opName := op
 		if strings.HasPrefix(op, "file_") {

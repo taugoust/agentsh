@@ -69,7 +69,8 @@ func ServeNotify(
 				"error",
 				err,
 				"hint",
-				"if EPERM, seccomp notify ioctl may be blocked by container security policy (e.g., AppArmor)",
+				"if EPERM, seccomp notify ioctl may be blocked by container security policy "+
+					"(e.g., AppArmor)",
 			)
 			return
 		}
@@ -191,8 +192,8 @@ func buildUnixSocketEvent(
 }
 
 // ServeNotifyWithExecve runs the seccomp notify loop with execve interception support.
-// It routes execve/execveat syscalls to the execveHandler and unix socket syscalls to the policy engine.
-// When blockList is non-nil and populated, syscalls present in its map are routed
+// It routes execve/execveat syscalls to the execveHandler and unix socket syscalls to the policy
+// engine. When blockList is non-nil and populated, syscalls present in its map are routed
 // to handleBlockListNotify (log / log_and_kill modes). Silent modes (errno, kill)
 // are handled kernel-side and never reach this loop, so blockList is empty for them.
 // It stops when the fd is closed or ctx is done.
@@ -222,7 +223,8 @@ func ServeNotifyWithExecve(
 	}
 	if emit == nil {
 		slog.Warn(
-			"ServeNotifyWithExecve: nil emitter — enforcement will run but audit events will be dropped",
+			"ServeNotifyWithExecve: nil emitter — enforcement will run but audit events will "+
+				"be dropped",
 			"session_id",
 			sessID,
 		)
@@ -283,7 +285,8 @@ func ServeNotifyWithExecve(
 				"total_notifications",
 				notifCount,
 				"hint",
-				"if EPERM, seccomp notify ioctl may be blocked by container security policy (e.g., AppArmor)",
+				"if EPERM, seccomp notify ioctl may be blocked by container security policy "+
+					"(e.g., AppArmor)",
 			)
 			return
 		}
@@ -769,7 +772,9 @@ func evaluateFileNotificationWithOps(
 				// are still present immediately before the direct error response.
 				if req.Lookup.PathPtr == 0 {
 					lookupResult = unknownFileLookup(LookupReasonContextUnavailable)
-				} else if current, err := readPathname(req.PID, req.Lookup.PathPtr, maxTraceePathnameLen); err != nil || current != req.Lookup.RawPath {
+				} else if current, err :=
+					readPathname(req.PID, req.Lookup.PathPtr, maxTraceePathnameLen); err != nil ||
+					current != req.Lookup.RawPath {
 					lookupResult = unknownFileLookup(LookupReasonContextUnavailable)
 				} else if staleFileNotification(ops, notifFD, notifID) {
 					return fileNotificationEvaluation{stale: true}
@@ -1193,7 +1198,8 @@ func handleFileNotificationEmulated(
 			if h.Enforce() {
 				if err := NotifRespondDeny(int(fd), req.ID, int32(unix.EACCES)); err != nil {
 					slog.Error(
-						"emulated file handler: deny response failed after second path resolution error",
+						"emulated file handler: deny response failed after second path "+
+							"resolution error",
 						"pid",
 						pid,
 						"error",

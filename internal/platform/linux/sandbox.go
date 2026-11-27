@@ -197,7 +197,8 @@ func (s *Sandbox) buildSysProcAttr() *syscall.SysProcAttr {
 	switch s.isolationLevel {
 	case platform.IsolationFull:
 		// Full isolation with user namespace (allows unprivileged)
-		attr.Cloneflags = syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS | syscall.CLONE_NEWPID | syscall.CLONE_NEWIPC
+		attr.Cloneflags = syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS | syscall.CLONE_NEWPID |
+			syscall.CLONE_NEWIPC
 		attr.UidMappings = []syscall.SysProcIDMap{
 			{ContainerID: 0, HostID: os.Getuid(), Size: 1},
 		}

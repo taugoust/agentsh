@@ -276,7 +276,8 @@ func (s *Store) migrate(ctx context.Context) error {
 			last_used_ns INTEGER,
 			name TEXT
 		);`,
-		`CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON webauthn_credentials(user_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user ON ` +
+			`webauthn_credentials(user_id);`,
 	}
 
 	for _, stmt := range stmts {
@@ -654,7 +655,8 @@ func (s *Store) ReadOutputChunk(
 
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT `+stream+`, `+stream+`_total_bytes, `+stream+`_truncated FROM command_outputs WHERE command_id = ?`,
+		`SELECT `+stream+`, `+stream+`_total_bytes, `+stream+
+			`_truncated FROM command_outputs WHERE command_id = ?`,
 		commandID,
 	)
 	if err := row.Scan(&data, &total, &truncatedInt); err != nil {
@@ -684,7 +686,8 @@ func (s *Store) UpsertMCPTool(ctx context.Context, tool MCPTool) error {
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO mcp_tools (server_id, tool_name, tool_hash, description, first_seen_ns, last_seen_ns, pinned, detection_count, max_severity)
+		INSERT INTO mcp_tools (server_id, tool_name, tool_hash, description, first_seen_ns,
+			last_seen_ns, pinned, detection_count, max_severity)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(server_id, tool_name) DO UPDATE SET
 			tool_hash = excluded.tool_hash,
@@ -724,11 +727,9 @@ func (s *Store) ListMCPTools(ctx context.Context, filter MCPToolFilter) ([]MCPTo
 
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT server_id, tool_name, tool_hash, description, first_seen_ns, last_seen_ns, pinned, detection_count, max_severity
-		 FROM mcp_tools WHERE `+strings.Join(
-			where,
-			" AND ",
-		)+` ORDER BY server_id, tool_name`,
+		`SELECT server_id, tool_name, tool_hash, description, first_seen_ns, last_seen_ns,
+		 pinned, detection_count, max_severity
+		 FROM mcp_tools WHERE `+strings.Join(where, " AND ")+` ORDER BY server_id, tool_name`,
 		args...,
 	)
 	if err != nil {
@@ -770,7 +771,8 @@ func (s *Store) ListMCPTools(ctx context.Context, filter MCPToolFilter) ([]MCPTo
 // ListMCPServers returns summary of all MCP servers.
 func (s *Store) ListMCPServers(ctx context.Context) ([]MCPServerSummary, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT server_id, COUNT(*) as tool_count, MAX(last_seen_ns) as last_seen, SUM(detection_count) as detections
+		SELECT server_id, COUNT(*) as tool_count, MAX(last_seen_ns) as last_seen,
+			SUM(detection_count) as detections
 		FROM mcp_tools
 		GROUP BY server_id
 		ORDER BY server_id

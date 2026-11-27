@@ -17,8 +17,8 @@ func parseExecInput(
 	return parseExecInputWithEnv(args, jsonStr, timeoutFlag, stream, "")
 }
 
-// parseExecInputWithEnv parses exec command input, using envSessionID as fallback if no session ID in args.
-// Formats supported:
+// parseExecInputWithEnv parses exec command input, using envSessionID as fallback if no session ID
+// in args. Formats supported:
 //   - SESSION_ID -- COMMAND [ARGS...]
 //   - SESSION_ID COMMAND [ARGS...]       (no -- separator)
 //   - -- COMMAND [ARGS...]               (with AGENTSH_SESSION_ID env var)

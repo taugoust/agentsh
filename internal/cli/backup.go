@@ -50,7 +50,8 @@ func newBackupCmd() *cobra.Command {
 	}
 
 	cmd.Flags().
-		StringVarP(&output, "output", "o", "", "Output file path (default: agentsh-backup-<timestamp>.tar.gz)")
+		StringVarP(&output, "output", "o", "",
+			"Output file path (default: agentsh-backup-<timestamp>.tar.gz)")
 	cmd.Flags().BoolVar(&verify, "verify", false, "Verify backup after creation")
 	cmd.Flags().StringVar(&configPath, "config", "/etc/agentsh/config.yaml", "Path to config file")
 

@@ -63,7 +63,8 @@ func TestWrapperLogCaptureRetainsBoundedSanitizedCommandJailFatal(t *testing.T) 
 	)
 	_, _ = w.WriteString("landlock: restrictions applied workspace=/private/workspace\n")
 	_, _ = w.WriteString(
-		"command jail: stage=mount_propagation_private path=/private/control token=top-secret: operation not permitted\n",
+		"command jail: stage=mount_propagation_private path=/private/control token=top-secret: " +
+			"operation not permitted\n",
 	)
 	_ = w.Close()
 	select {
@@ -77,7 +78,10 @@ func TestWrapperLogCaptureRetainsBoundedSanitizedCommandJailFatal(t *testing.T) 
 			t.Fatalf("diagnostic leaked %q: %s", forbidden, tail)
 		}
 	}
-	for _, want := range []string{"command jail", "stage=mount_propagation_private", "[REDACTED]", "[path]", "operation not permitted"} {
+	for _, want := range []string{
+		"command jail", "stage=mount_propagation_private", "[REDACTED]", "[path]",
+		"operation not permitted",
+	} {
 		if !strings.Contains(tail, want) {
 			t.Fatalf("diagnostic missing %q: %s", want, tail)
 		}

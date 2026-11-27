@@ -25,7 +25,8 @@ type ResolveSessionIDOptions struct {
 	BaseDirs []string
 }
 
-// ResolveSessionID resolves the current agentsh session ID using environment and file-based fallbacks.
+// ResolveSessionID resolves the current agentsh session ID using environment and file-based
+// fallbacks.
 //
 // Priority:
 //  1. AGENTSH_SESSION_ID (return directly; no file path)

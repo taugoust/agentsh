@@ -14,8 +14,10 @@ func TestValidateConfig_RejectsPtraceUnixSocketsNonExecveOnly(t *testing.T) {
 	applyDefaults(cfg)
 	enabled := true
 	cfg.Sandbox.UnixSockets.Enabled = &enabled
-	cfg.Sandbox.Seccomp.Execve.Enabled = false // isolate the unix_sockets path (else ptrace+seccomp.execve mutual-exclusion fires first)
-	cfg.Sandbox.Ptrace = DefaultPtraceConfig() // valid sub-fields; Trace.* all true => NOT execve-only
+	// isolate the unix_sockets path (else ptrace+seccomp.execve mutual-exclusion fires first)
+	cfg.Sandbox.Seccomp.Execve.Enabled = false
+	// valid sub-fields; Trace.* all true => NOT execve-only
+	cfg.Sandbox.Ptrace = DefaultPtraceConfig()
 	cfg.Sandbox.Ptrace.Enabled = true
 
 	err := validateConfig(cfg)

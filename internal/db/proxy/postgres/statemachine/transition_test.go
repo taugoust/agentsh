@@ -16,6 +16,7 @@ import (
 
 func dummyRules(t *testing.T) *policy.RuleSet {
 	t.Helper()
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: t
 db_services:
@@ -33,6 +34,7 @@ db_services:
 }
 
 func denyDeletePolicyYAML() string {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	return `version: 1
 name: t
 db_services:
@@ -164,6 +166,7 @@ func TestTransition_Parse_Deny_OutOfTx(t *testing.T) {
 }
 
 func TestTransition_Parse_Approve_EmitsApproverWait(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	yaml := `version: 1
 name: t
 db_services:
@@ -551,6 +554,7 @@ func TestTransition_Query_DenyInTx_TerminateDefault(t *testing.T) {
 }
 
 func TestTransition_Query_DenyInTx_RollbackThenContinue(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	yaml := `version: 1
 name: t
 db_services:

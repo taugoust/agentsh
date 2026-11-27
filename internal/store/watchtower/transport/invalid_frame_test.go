@@ -45,13 +45,15 @@ func TestReceiver_NonTypedErrorClassifiedAsClassifierBypass(t *testing.T) {
 
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 2 {
 		t.Errorf(
-			"DroppedInvalidFrame(classifier_bypass) = %d, want 2 (counter MUST be unconditional even when WARN is rate-limited)",
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 2 (counter MUST be unconditional "+
+				"even when WARN is rate-limited)",
 			got,
 		)
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonUnknown); got != 0 {
 		t.Errorf(
-			"DroppedInvalidFrame(unknown) = %d, want 0 (classifier_bypass and unknown MUST be disjoint)",
+			"DroppedInvalidFrame(unknown) = %d, want 0 (classifier_bypass and unknown MUST be "+
+				"disjoint)",
 			got,
 		)
 	}
@@ -63,7 +65,8 @@ func TestReceiver_NonTypedErrorClassifiedAsClassifierBypass(t *testing.T) {
 	}
 	if logged != 1 {
 		t.Errorf(
-			"WARN log emitted %d entries for 2 bare-error calls; want exactly 1 (first allowed, second throttled by shared limiter)\nlog:\n%s",
+			"WARN log emitted %d entries for 2 bare-error calls; want exactly 1 (first allowed, "+
+				"second throttled by shared limiter)\nlog:\n%s",
 			logged,
 			out,
 		)
@@ -107,12 +110,14 @@ func TestReceiver_PerPathLimiterNotStarvedByMetricsSide(t *testing.T) {
 
 	if buf.Len() == 0 {
 		t.Error(
-			"receiver-side WARN was suppressed after metrics-side drain — limiters are not per-path",
+			"receiver-side WARN was suppressed after metrics-side drain — limiters are not " +
+				"per-path",
 		)
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 3 {
 		t.Errorf(
-			"DroppedInvalidFrame(classifier_bypass) = %d, want 3 (2 metrics drains + 1 receiver call — counter must be unconditional)",
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 3 (2 metrics drains + 1 receiver "+
+				"call — counter must be unconditional)",
 			got,
 		)
 	}

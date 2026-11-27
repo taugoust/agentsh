@@ -12,6 +12,7 @@ import (
 )
 
 func TestRun_WithCatalogFixtureAllowsCanonicalRelation(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -52,6 +53,7 @@ relations:
 }
 
 func TestRun_WithSearchPathAndCatalogFixtureAllowsCanonicalRelation(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -84,6 +86,7 @@ database_rules:
 }
 
 func TestRun_SearchPathInitializesDefaultSearchPath(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -103,7 +106,8 @@ database_rules:
 	if len(report.Statements) != 1 || len(report.Statements[0].Effects) != 1 {
 		t.Fatalf("report statements = %+v", report.Statements)
 	}
-	if got := report.Statements[0].Effects[0].Resolution; got != effects.ResolutionUnqualified.String() {
+	if got :=
+		report.Statements[0].Effects[0].Resolution; got != effects.ResolutionUnqualified.String() {
 		t.Fatalf("resolution = %q, want %q", got, effects.ResolutionUnqualified)
 	}
 	dec := report.Statements[0].Decision
@@ -113,6 +117,7 @@ database_rules:
 }
 
 func TestRun_WithoutCatalogFixtureWarnsForCanonicalSelectors(t *testing.T) {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -159,6 +164,7 @@ func TestResolveEffect_MixedRelationSkipsUnsupportedSlotsAndPolicyStillDenies(t 
 		t.Fatalf("resolved objects = %+v, want only public.users", eff.ResolvedObjects)
 	}
 
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -196,6 +202,7 @@ func TestResolveEffect_DuplicateRelationNamesPreserveSlotOrder(t *testing.T) {
 		t.Fatalf("resolved objects = %+v, want public.users then audit.users", eff.ResolvedObjects)
 	}
 
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:
@@ -239,6 +246,7 @@ func TestResolveStatements_InvalidatesFixtureAfterRoleChange(t *testing.T) {
 		t.Fatalf("second statement resolved objects = %+v", eff.ResolvedObjects)
 	}
 
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	rs := loadRuleSetForExplain(t, `version: 1
 name: t
 db_services:

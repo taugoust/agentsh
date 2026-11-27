@@ -55,20 +55,22 @@ var (
 var (
 	subagentBearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
 	subagentSecretPattern = regexp.MustCompile(
-		`(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|password|passwd|secret)\b\s*[:=]\s*[^\s,;]+`,
+		`(?i)\b(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|password|` +
+			`passwd|secret)\b\s*[:=]\s*[^\s,;]+`,
 	)
 )
 
 type subagentTerminal struct {
-	State                      subagentTerminalState     `json:"state"`
-	FailureKind                subagentFailureKind       `json:"failure_kind,omitempty"`
-	CancellationCause          subagentCancellationCause `json:"cancellation_cause,omitempty"`
-	ExitCode                   int                       `json:"exit_code,omitempty"`
-	Signal                     string                    `json:"signal,omitempty"`
-	Termination                subagentTermination       `json:"termination,omitempty"`
-	Retryable                  bool                      `json:"retryable"`
-	SideEffectsMayHaveOccurred bool                      `json:"side_effects_may_have_occurred,omitempty"`
-	Message                    string                    `json:"message,omitempty"`
+	State             subagentTerminalState     `json:"state"`
+	FailureKind       subagentFailureKind       `json:"failure_kind,omitempty"`
+	CancellationCause subagentCancellationCause `json:"cancellation_cause,omitempty"`
+	ExitCode          int                       `json:"exit_code,omitempty"`
+	Signal            string                    `json:"signal,omitempty"`
+	Termination       subagentTermination       `json:"termination,omitempty"`
+	Retryable         bool                      `json:"retryable"`
+
+	SideEffectsMayHaveOccurred bool   `json:"side_effects_may_have_occurred,omitempty"`
+	Message                    string `json:"message,omitempty"`
 }
 
 func sanitizeSubagentDiagnostic(message string) string {
@@ -132,15 +134,19 @@ func subagentCancellationFromContext(
 	case errors.Is(cause, errSubagentRequestTimeout),
 		errors.Is(cause, context.DeadlineExceeded),
 		errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return subagentStateTimedOut, subagentFailureProcess, subagentCancelRequestTimeout, "subagent request timed out"
+		return subagentStateTimedOut, subagentFailureProcess, subagentCancelRequestTimeout,
+			"subagent request timed out"
 	case errors.Is(cause, errSubagentUserCancelled):
 		return subagentStateCancelled, "", subagentCancelUser, "subagent was cancelled by the user"
 	case errors.Is(cause, errSubagentParentCancelled):
-		return subagentStateCancelled, "", subagentCancelParent, "subagent was cancelled by its parent"
+		return subagentStateCancelled, "", subagentCancelParent,
+			"subagent was cancelled by its parent"
 	case errors.Is(cause, errSubagentSupervisorShutdown):
-		return subagentStateCancelled, subagentFailureProcess, subagentCancelSupervisorShutdown, "subagent was cancelled because the supervisor is shutting down"
+		return subagentStateCancelled, subagentFailureProcess, subagentCancelSupervisorShutdown,
+			"subagent was cancelled because the supervisor is shutting down"
 	default:
-		return subagentStateCancelled, subagentFailureTransport, subagentCancelClientDisconnected, "subagent client disconnected"
+		return subagentStateCancelled, subagentFailureTransport, subagentCancelClientDisconnected,
+			"subagent client disconnected"
 	}
 }
 
@@ -208,7 +214,11 @@ func aggregateSubagentTerminal(results []subagentResult, fallbackError error) su
 			fallbackError.Error(),
 		)
 	}
-	for _, state := range []subagentTerminalState{subagentStateTimedOut, subagentStateCancelled, subagentStateFailed} {
+	for _, state := range []subagentTerminalState{
+		subagentStateTimedOut,
+		subagentStateCancelled,
+		subagentStateFailed,
+	} {
 		for _, result := range results {
 			if result.Terminal.State == state {
 				return result.Terminal
@@ -220,7 +230,10 @@ func aggregateSubagentTerminal(results []subagentResult, fallbackError error) su
 
 func likelySubagentAuthFailure(values ...string) bool {
 	text := strings.ToLower(strings.Join(values, "\n"))
-	for _, marker := range []string{"authentication failed", "not authenticated", "not logged in", "unauthorized", "login required", "oauth"} {
+	for _, marker := range []string{
+		"authentication failed", "not authenticated", "not logged in", "unauthorized",
+		"login required", "oauth",
+	} {
 		if strings.Contains(text, marker) {
 			return true
 		}

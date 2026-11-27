@@ -106,8 +106,17 @@ func TestRunCommandStreamingAuthoritativeStartSharedBySSEAndGRPC(t *testing.T) {
 		wantStarted bool
 		wantCode    string
 	}{
-		{name: "start failure", req: types.ExecRequest{Command: filepath.Join(t.TempDir(), "missing")}, wantCode: "E_COMMAND_START"},
-		{name: "child 127", req: types.ExecRequest{Command: "sh", Args: []string{"-c", "exit 127"}}, wantStarted: true, wantCode: "E_CHILD_EXIT"},
+		{
+			name:     "start failure",
+			req:      types.ExecRequest{Command: filepath.Join(t.TempDir(), "missing")},
+			wantCode: "E_COMMAND_START",
+		},
+		{
+			name:        "child 127",
+			req:         types.ExecRequest{Command: "sh", Args: []string{"-c", "exit 127"}},
+			wantStarted: true,
+			wantCode:    "E_CHILD_EXIT",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			started := false
@@ -150,9 +159,24 @@ func TestNormalizeTimeoutCausesRemainDistinct(t *testing.T) {
 		wantCode string
 		wantKind types.ExecFailureKind
 	}{
-		{name: "command budget", err: errCommandTimeout, wantCode: "E_COMMAND_TIMEOUT", wantKind: types.ExecFailureCommandTimeout},
-		{name: "caller deadline", err: context.DeadlineExceeded, wantCode: "E_CALLER_DEADLINE", wantKind: types.ExecFailureCancellation},
-		{name: "caller cancellation", err: context.Canceled, wantCode: "E_CALLER_CANCELLED", wantKind: types.ExecFailureCancellation},
+		{
+			name:     "command budget",
+			err:      errCommandTimeout,
+			wantCode: "E_COMMAND_TIMEOUT",
+			wantKind: types.ExecFailureCommandTimeout,
+		},
+		{
+			name:     "caller deadline",
+			err:      context.DeadlineExceeded,
+			wantCode: "E_CALLER_DEADLINE",
+			wantKind: types.ExecFailureCancellation,
+		},
+		{
+			name:     "caller cancellation",
+			err:      context.Canceled,
+			wantCode: "E_CALLER_CANCELLED",
+			wantKind: types.ExecFailureCancellation,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			outcome := normalizeExecOutcome(true, 124, tc.err)

@@ -59,8 +59,9 @@ type Reader struct {
 	segments []segmentEntry // remaining segments in numeric-index order
 	current  *os.File
 	curHdr   SegmentHeader
-	curIdx   uint64 // numeric segment index of `current`; used to detect rollover from .INPROGRESS to .seg.
-	curLive  bool   // true if `current` is an .INPROGRESS file (re-tail on EOF)
+	// numeric segment index of `current`; used to detect rollover from .INPROGRESS to .seg.
+	curIdx  uint64
+	curLive bool // true if `current` is an .INPROGRESS file (re-tail on EOF)
 	// nextScanIdx is the smallest segment index NOT yet enqueued in
 	// `segments` from a previous scan. When `segments` empties and `current`
 	// is nil, Next re-reads the directory and adds segments with idx >=

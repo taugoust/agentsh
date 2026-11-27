@@ -212,7 +212,8 @@ func TestWAL_MarkAckedReclaimsSegmentsContainingLossMarkers(t *testing.T) {
 	after := countSealed()
 	if after >= before {
 		t.Errorf(
-			"MarkAcked freed nothing (sealed before=%d, after=%d) — segmentHighSeq likely misread a loss marker as a huge seq",
+			"MarkAcked freed nothing (sealed before=%d, after=%d) — segmentHighSeq likely "+
+				"misread a loss marker as a huge seq",
 			before,
 			after,
 		)
@@ -388,7 +389,8 @@ func TestWAL_OverflowOnFreshWALEmitsLossEvenAtSeqZero(t *testing.T) {
 	}
 	if !sawMarker {
 		t.Errorf(
-			"no TransportLoss marker after overflow on fresh WAL: ackPresent=false must block silent GC of the seq=0 segment",
+			"no TransportLoss marker after overflow on fresh WAL: ackPresent=false must block " +
+				"silent GC of the seq=0 segment",
 		)
 	}
 }
@@ -491,13 +493,15 @@ func TestWAL_GcAckedRespectsGenerationBoundary(t *testing.T) {
 	for _, s := range afterSealed {
 		if s.gen < 7 {
 			t.Errorf(
-				"sealed segment gen=%d still on disk after acking (gen=7,seq=3) — should have been GCd",
+				"sealed segment gen=%d still on disk after acking (gen=7,seq=3) — should have "+
+					"been GCd",
 				s.gen,
 			)
 		}
 		if s.gen == 7 {
 			t.Errorf(
-				"sealed gen=7 segment idx=%d survived ack of (7,3) — gcAckedLocked should have reclaimed it",
+				"sealed gen=7 segment idx=%d survived ack of (7,3) — gcAckedLocked should have "+
+					"reclaimed it",
 				s.idx,
 			)
 		}
@@ -511,7 +515,8 @@ func TestWAL_GcAckedRespectsGenerationBoundary(t *testing.T) {
 	}
 	if !anyGen8Surviving {
 		t.Errorf(
-			"no gen=8 sealed segment survived gcAckedLocked; expected at least one (we acked only through (gen=7, seq=3))",
+			"no gen=8 sealed segment survived gcAckedLocked; expected at least one (we acked " +
+				"only through (gen=7, seq=3))",
 		)
 	}
 	// Sanity: at least one gen=7 segment must have been reclaimed across
@@ -530,7 +535,8 @@ func TestWAL_GcAckedRespectsGenerationBoundary(t *testing.T) {
 	}
 	if gen7BeforeCount == gen7AfterCount && gen7BeforeCount > 0 {
 		t.Errorf(
-			"ack of (gen=7,seq=3) did not reclaim any gen=7 segment: before=%d after=%d explicit-gc-removed=%d",
+			"ack of (gen=7,seq=3) did not reclaim any gen=7 segment: before=%d after=%d "+
+				"explicit-gc-removed=%d",
 			gen7BeforeCount,
 			gen7AfterCount,
 			n,
@@ -550,7 +556,8 @@ func TestWAL_OpenWithLegacyV1MetaHonorsAckWatermark(t *testing.T) {
 	// (gen=0, seq=4). Real pre-v2 deployments would have produced exactly
 	// this shape via MarkAcked.
 	raw := []byte(
-		`{"format_version":1,"ack_high_watermark_seq":4,"ack_high_watermark_gen":0,"session_id":"","key_fingerprint":""}`,
+		`{"format_version":1,"ack_high_watermark_seq":4,"ack_high_watermark_gen":0,` +
+			`"session_id":"","key_fingerprint":""}`,
 	)
 	if err := os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
@@ -569,7 +576,8 @@ func TestWAL_OpenWithLegacyV1MetaHonorsAckWatermark(t *testing.T) {
 	w.mu.Unlock()
 	if !gotPresent {
 		t.Errorf(
-			"ackPresent after legacy v1 reopen = false; want true (legacy file's existence implied a persisted ack)",
+			"ackPresent after legacy v1 reopen = false; want true (legacy file's existence " +
+				"implied a persisted ack)",
 		)
 	}
 	if gotSeq != 4 || gotGen != 0 {

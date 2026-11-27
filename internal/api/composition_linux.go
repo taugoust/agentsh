@@ -65,7 +65,8 @@ func (a *App) configureExecveCompositionForState(
 		wrapperCfg.WriteOnlyOpens ||
 		!wrapperCfg.BlockIOUring {
 		return fmt.Errorf(
-			"E_COMPOSITION_BACKEND_UNAVAILABLE: enforced source-aware read/write and metadata file interception is not active",
+			"E_COMPOSITION_BACKEND_UNAVAILABLE: enforced source-aware read/write and metadata " +
+				"file interception is not active",
 		)
 	}
 	if wrapperPID <= 0 {
@@ -131,7 +132,10 @@ func (a *App) configureExecveCompositionForState(
 		SetupSyntheticRW:         ceiling.MaxSyntheticMounts,
 		RequireSetupPathsRemoved: true,
 		DeviceIOCTLRoots:         ceiling.DeviceIOCTLPaths,
-		PublishNormalizedPlan: func(parentPID, targetPID int, snapshot composition.NormalizedPlanSnapshot) {
+		PublishNormalizedPlan: func(
+			parentPID, targetPID int,
+			snapshot composition.NormalizedPlanSnapshot,
+		) {
 			event := types.Event{
 				ID:        uuid.NewString(),
 				Timestamp: time.Now().UTC(),

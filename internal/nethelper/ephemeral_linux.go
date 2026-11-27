@@ -49,7 +49,8 @@ func ValidateCompositionScratchMetadata(mode, uid, gid uint32) error {
 	permissions := mode & permissionMask
 	if fileType != expectedType || permissions != expectedMode || uid != 0 || gid != 0 {
 		return fmt.Errorf(
-			"composition runtime has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d gid=%d; expected type=%#o mode=%#o uid=0 gid=0)",
+			"composition runtime has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d "+
+				"gid=%d; expected type=%#o mode=%#o uid=0 gid=0)",
 			fileType,
 			permissions,
 			uid,
@@ -70,7 +71,8 @@ func ValidateCompositionLeaseDirectoryMetadata(mode, uid, gid uint32) error {
 	permissions := mode & permissionMask
 	if fileType != uint32(unix.S_IFDIR) || permissions&0o022 != 0 || uid != 0 || gid != 0 {
 		return fmt.Errorf(
-			"composition lease directory has unsafe type, mode, or ownership (type=%#o mode=%#o uid=%d gid=%d)",
+			"composition lease directory has unsafe type, mode, or ownership (type=%#o mode=%#o "+
+				"uid=%d gid=%d)",
 			fileType,
 			permissions,
 			uid,
@@ -104,8 +106,9 @@ func EphemeralPathsForUID(uid uint32, leaseID string) (EphemeralLeasePaths, erro
 	pinLeaseDir := filepath.Join(ephemeralPinBase, uidText, leaseID)
 	leaseSuffix := strings.TrimPrefix(leaseID, "lease-")
 	return EphemeralLeasePaths{
-		LeaseID:                leaseID,
-		UnitName:               "agentsh-nethelper-ephemeral-" + uidText + "-" + leaseSuffix + ".service",
+		LeaseID: leaseID,
+		UnitName: "agentsh-nethelper-ephemeral-" + uidText + "-" + leaseSuffix +
+			".service",
 		RuntimeDir:             leaseDir,
 		SocketPath:             filepath.Join(leaseDir, "nethelper.sock"),
 		CredentialFile:         filepath.Join(leaseDir, "instance-credential"),

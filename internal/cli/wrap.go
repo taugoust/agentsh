@@ -71,7 +71,8 @@ Examples:
 	cmd.Flags().StringVar(&root, "root", "", "Workspace root (default: current directory)")
 	cmd.Flags().StringVar(&workspaceMode, "workspace-mode", "", "Workspace mode: direct or overlay")
 	cmd.Flags().
-		StringVar(&home, "home", "", "Home directory for policy variable expansion (default: current user home)")
+		StringVar(&home, "home", "",
+			"Home directory for policy variable expansion (default: current user home)")
 	cmd.Flags().BoolVar(&overlayMode, "overlay", false, "Use overlay workspace mode")
 	cmd.Flags().BoolVar(&report, "report", true, "Generate session report on exit")
 
@@ -333,16 +334,17 @@ func runWrap(ctx context.Context, cfg *clientConfig, opts wrapOptions) error {
 
 // wrapLaunchConfig holds the configuration for launching the agent through a wrapper.
 type wrapLaunchConfig struct {
-	command       string
-	args          []string
-	env           []string
-	extraFiles    []*os.File
-	sysProcAttr   *syscall.SysProcAttr
-	postStart     func(childPID int) error // Completes notify handoff while the wrapper is ACK-blocked
-	postWait      func()                   // Called after the process exits (e.g., to reclaim terminal)
-	cleanup       func()                   // Closes parent-side launch/control resources once
-	keepAlive     io.Closer                // Held open during shell lifetime (e.g., ptrace handshake conn)
-	foregroundTTY bool                     // Child owns the terminal foreground process group after Start.
+	command     string
+	args        []string
+	env         []string
+	extraFiles  []*os.File
+	sysProcAttr *syscall.SysProcAttr
+	// Completes notify handoff while the wrapper is ACK-blocked
+	postStart     func(childPID int) error
+	postWait      func()    // Called after the process exits (e.g., to reclaim terminal)
+	cleanup       func()    // Closes parent-side launch/control resources once
+	keepAlive     io.Closer // Held open during shell lifetime (e.g., ptrace handshake conn)
+	foregroundTTY bool      // Child owns the terminal foreground process group after Start.
 	// ptracePostStart is called after the child is started with the child PID.
 	// It performs the ptrace handshake (send PID, wait for ACK).
 	ptracePostStart func(childPID int) error

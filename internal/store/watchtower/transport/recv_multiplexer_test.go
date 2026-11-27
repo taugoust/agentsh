@@ -740,7 +740,9 @@ func TestRecvMultiplexer_BatchAckReturnsOutcomeKind(t *testing.T) {
 		got := env.tr.applyAckFromRecv("batch_ack", 7, 100)
 		if got != AckOutcomeNoOp {
 			t.Fatalf(
-				"rolled-back ack: got outcome %v, want AckOutcomeNoOp (rollback path must report NoOp so runLive's inflight-- gate stays closed AND log/metric semantics match the no-cursor-moved contract)",
+				"rolled-back ack: got outcome %v, want AckOutcomeNoOp (rollback path must report "+
+					"NoOp so runLive's inflight-- gate stays closed AND log/metric semantics "+
+					"match the no-cursor-moved contract)",
 				got,
 			)
 		}

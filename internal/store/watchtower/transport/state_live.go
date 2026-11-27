@@ -320,7 +320,12 @@ func (t *Transport) runLive(ctx context.Context, rdr *wal.Reader, opts LiveOptio
 // TransportLoss frames are emitted or silently dropped; callers pass
 // their per-Transport flag captured at run-state entry so a global flag
 // mutation in another test goroutine cannot affect an in-progress encode.
-var encodeBatchMessageFn = func(records []wal.Record, emitExtended bool, compressor compress.Encoder, m CompressMetrics) ([]*wtpv1.ClientMessage, error) {
+var encodeBatchMessageFn = func(
+	records []wal.Record,
+	emitExtended bool,
+	compressor compress.Encoder,
+	m CompressMetrics,
+) ([]*wtpv1.ClientMessage, error) {
 	return encodeBatchMessageWithCompressor(records, emitExtended, compressor, m)
 }
 

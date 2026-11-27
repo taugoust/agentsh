@@ -139,7 +139,8 @@ file_rules:
 	if _, ok := srv.sessions.Get(sessionID); ok {
 		t.Fatal("expired session remains installed after Run exit")
 	}
-	if status := runtimeState.RuntimeStatus(); status.LifecycleState != detached.LifecycleStopping ||
+	if status :=
+		runtimeState.RuntimeStatus(); status.LifecycleState != detached.LifecycleStopping ||
 		status.Recoverable {
 		t.Fatalf("runtime status after Run = %+v, want stopping and non-recoverable", status)
 	}

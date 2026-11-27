@@ -29,7 +29,8 @@ func TestCreateSession_AssignsRuntimeHomeAndTmp(t *testing.T) {
 	body := `{"workspace":` + strconvQuote(ws) + `,"policy":"default","workspace_mode":"direct"}`
 	rr := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body)))
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body)))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create session status = %d body = %s", rr.Code, rr.Body.String())
 	}
@@ -50,7 +51,14 @@ func TestCreateSession_AssignsRuntimeHomeAndTmp(t *testing.T) {
 	if out.ProcessHome != out.RuntimeHome || out.RuntimeHomeMode != "isolated" {
 		t.Fatalf("isolated process home mismatch: %+v", out)
 	}
-	for _, dir := range []string{out.RuntimeHome, out.RuntimeTmp, filepath.Join(out.RuntimeHome, ".config"), filepath.Join(out.RuntimeHome, ".cache"), filepath.Join(out.RuntimeHome, ".local", "state"), filepath.Join(out.RuntimeHome, ".local", "share")} {
+	for _, dir := range []string{
+		out.RuntimeHome,
+		out.RuntimeTmp,
+		filepath.Join(out.RuntimeHome, ".config"),
+		filepath.Join(out.RuntimeHome, ".cache"),
+		filepath.Join(out.RuntimeHome, ".local", "state"),
+		filepath.Join(out.RuntimeHome, ".local", "share"),
+	} {
 		info, err := os.Stat(dir)
 		if err != nil {
 			t.Fatalf("runtime dir %s: %v", dir, err)
@@ -92,10 +100,13 @@ func TestCreateSession_RuntimeHomeModeRealKeepsRuntimeDataIsolated(t *testing.T)
 		ws,
 	) + `,"policy":"default","workspace_mode":"direct","home":` + strconvQuote(
 		realHome,
-	) + `,"runtime_home_mode":"real","env_base_mode":"inherit_allowed","env_inherit":["SSH_AUTH_SOCK"]}`
+	) +
+		`,"runtime_home_mode":"real","env_base_mode":"inherit_allowed",` +
+		`"env_inherit":["SSH_AUTH_SOCK"]}`
 	rr := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body)))
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(body)))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create session status = %d body = %s", rr.Code, rr.Body.String())
 	}

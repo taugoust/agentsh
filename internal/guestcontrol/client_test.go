@@ -110,7 +110,10 @@ func TestClientRejectsResponseIdentityMismatch(t *testing.T) {
 				Type:            request.Type,
 				RequestID:       "substituted-request",
 				OK:              true,
-				Handshake:       func() *Handshake { value := testHandshake(manifest); return &value }(),
+				Handshake: func() *Handshake {
+					value := testHandshake(manifest)
+					return &value
+				}(),
 			})
 		}()
 		return client, nil

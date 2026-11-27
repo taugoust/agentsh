@@ -130,7 +130,8 @@ func TestIssue369_ShippedPoliciesAllowLoaderReads(t *testing.T) {
 				if !strings.HasPrefix(dec.Rule, "allow-") {
 					t.Errorf(
 						"CheckFile(%q, open) allowed via %q; expected an explicit allow- rule "+
-							"(default-allow-reads fallback means the loader path isn't intentionally allowed)",
+							"(default-allow-reads fallback means the loader path isn't "+
+							"intentionally allowed)",
 						path,
 						dec.Rule,
 					)

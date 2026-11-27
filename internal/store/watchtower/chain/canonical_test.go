@@ -21,7 +21,8 @@ func TestEncodeCanonical_KeyOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"context_digest":"0123456789abcdef","event_hash":"cafef00d","format_version":2,"generation":7,"key_fingerprint":"sha256:aabbccdd","prev_hash":"deadbeef","sequence":42}`
+	want := `{"context_digest":"0123456789abcdef","event_hash":"cafef00d","format_version":2,` +
+		`"generation":7,"key_fingerprint":"sha256:aabbccdd","prev_hash":"deadbeef","sequence":42}`
 	if string(got) != want {
 		t.Errorf("EncodeCanonical mismatch\ngot:  %s\nwant: %s", got, want)
 	}

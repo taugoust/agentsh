@@ -51,7 +51,12 @@ func NewMonitoredLoopbackRoot(realRoot string, hooks *Hooks) (fs.InodeEmbedder, 
 		Dev:  uint64(st.Dev),
 	}
 
-	lbRoot.NewNode = func(rootData *fs.LoopbackRoot, parent *fs.Inode, name string, st *syscall.Stat_t) fs.InodeEmbedder {
+	lbRoot.NewNode = func(
+		rootData *fs.LoopbackRoot,
+		parent *fs.Inode,
+		name string,
+		st *syscall.Stat_t,
+	) fs.InodeEmbedder {
 		return &node{
 			LoopbackNode: fs.LoopbackNode{RootData: rootData},
 			hooks:        hooks,
@@ -647,7 +652,9 @@ func (n *node) checkWithExist(
 				// evalEscapedSymlink rejects (escaped == "").
 				if inCwdSubtree && n.hooks.Session.FirstCwdEscapeWarn() {
 					slog.Warn(
-						"symlink_escape=deny: process cwd is a symlink escaping the workspace mount; evaluating its subtree against file_rules instead of blanket-denying",
+						"symlink_escape=deny: process cwd is a symlink escaping the workspace "+
+							"mount; evaluating its subtree against file_rules instead of "+
+							"blanket-denying",
 						"session",
 						n.hooks.SessionID,
 						"cwd",

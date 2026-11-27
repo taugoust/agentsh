@@ -63,12 +63,13 @@ type SessionResolver interface {
 // Unavoidability != UnavoidabilityOff. Logger defaults to slog.Default
 // when nil.
 type Config struct {
-	Unavoidability  service.Unavoidability
-	Services        []Service
-	StateDir        string
-	Sink            events.Sink
-	Logger          *slog.Logger
-	Policy          *policy.RuleSet // current rule set; nil means "no rules" (implicit deny). Hot-swappable in a later plan.
+	Unavoidability service.Unavoidability
+	Services       []Service
+	StateDir       string
+	Sink           events.Sink
+	Logger         *slog.Logger
+	// current rule set; nil means "no rules" (implicit deny). Hot-swappable in a later plan.
+	Policy          *policy.RuleSet
 	Approver        policy.Approver // defaults to policy.NopApprover{} when nil.
 	AgentSessionID  string
 	SessionResolver SessionResolver

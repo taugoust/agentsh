@@ -1187,7 +1187,8 @@ func TestEmulationPath_ReadOnlyOpenat_CaughtByGuard(t *testing.T) {
 	assert.False(
 		t,
 		shouldUseContinuePathForFileNotify(unix.SYS_OPENAT, flags, 0),
-		"read-only openat still takes the emulation branch so explicit policy denies can be enforced",
+		"read-only openat still takes the emulation branch so explicit policy denies can be "+
+			"enforced",
 	)
 
 	// Step 3: The read-only guard catches it before emulateOpenat.
@@ -1262,7 +1263,8 @@ func TestFileHandler_RestrictiveNonDenyDecisionDeniesWhenEnforced(t *testing.T) 
 	})
 	if result.Action != ActionDeny || result.Errno != int32(unix.EACCES) {
 		t.Fatalf(
-			"approve effective decision should fail closed without approval adapter, got action=%s errno=%d",
+			"approve effective decision should fail closed without approval adapter, got "+
+				"action=%s errno=%d",
 			result.Action,
 			result.Errno,
 		)

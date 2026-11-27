@@ -186,7 +186,8 @@ func TestDaemon_DenyFloorBeatsPositiveProvenance(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf(
-		"provider deny + positive provenance should still block (floor enforced); skill remained installed",
+		"provider deny + positive provenance should still block (floor enforced); skill remained " +
+			"installed",
 	)
 }
 

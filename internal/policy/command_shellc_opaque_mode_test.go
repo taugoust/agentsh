@@ -79,7 +79,11 @@ func TestCheckCommand_OpaqueModeNoRestrictiveRuleAlwaysAllows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEngine: %v", err)
 	}
-	for _, mode := range []ShellCOpaqueMode{ShellCOpaqueEnforce, ShellCOpaqueAllow, ShellCOpaqueDeny} {
+	for _, mode := range []ShellCOpaqueMode{
+		ShellCOpaqueEnforce,
+		ShellCOpaqueAllow,
+		ShellCOpaqueDeny,
+	} {
 		dec := e.CheckCommandWithExecve("/bin/sh", []string{"-c", opaqueScript}, false, mode)
 		if dec.Rule == "shellc-opaque-script" {
 			t.Errorf("mode=%v: opaque denied despite no restrictive rule", mode)

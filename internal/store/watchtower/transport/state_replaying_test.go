@@ -188,7 +188,8 @@ func TestRunReplaying_SendFailureClosesConn(t *testing.T) {
 	}
 	if got, want := conn.closeCalls, 1; got != want {
 		t.Fatalf(
-			"Close calls: got %d, want %d (every error path on a held Conn must Close exactly once)",
+			"Close calls: got %d, want %d (every error path on a held Conn must Close "+
+				"exactly once)",
 			got,
 			want,
 		)

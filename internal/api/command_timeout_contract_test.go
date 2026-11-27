@@ -112,7 +112,9 @@ func TestCommandTimeoutExecBashTopLevelMetadataAndValidation(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	body := `{"command":"printf ok","timeout_ms":4000}`
 	app.Router().
-		ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
+		ServeHTTP(recorder,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+				strings.NewReader(body)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("exec_bash status = %d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -157,7 +159,10 @@ func TestCommandTimeoutExecBashTopLevelMetadataAndValidation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			app.Router().
-				ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(invalidBody)))
+				ServeHTTP(recorder,
+					httptest.NewRequest(http.MethodPost,
+						"/api/v1/sessions/"+sess.ID+"/tools/exec_bash",
+						strings.NewReader(invalidBody)))
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 			}
@@ -193,7 +198,9 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		body := `{"command":"true","timeout":"900ms"}`
 		app.Router().
-			ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(body)))
+			ServeHTTP(recorder,
+				httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec",
+					strings.NewReader(body)))
 		if recorder.Code != http.StatusServiceUnavailable {
 			t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 		}
@@ -209,7 +216,9 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		body := `{"command":"true","timeout_ms":900}`
 		app.Router().
-			ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
+			ServeHTTP(recorder,
+				httptest.NewRequest(http.MethodPost,
+					"/api/v1/sessions/"+sess.ID+"/tools/exec_bash", strings.NewReader(body)))
 		if recorder.Code != http.StatusServiceUnavailable {
 			t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 		}
@@ -246,7 +255,9 @@ func TestCommandTimeoutPostResolutionRefusalsPreserveMetadata(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		body := `{"command":"true","timeout":"900ms"}`
 		app.Router().
-			ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(body)))
+			ServeHTTP(recorder,
+				httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream",
+					strings.NewReader(body)))
 		if recorder.Code != http.StatusServiceUnavailable {
 			t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 		}
@@ -465,7 +476,8 @@ func TestCommandTimeoutHTTPStreamCallerDeadlinePersistsTerminalState(t *testing.
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(`{"command":"sh","args":["-c","sleep 2"],"timeout":"1s"}`)).
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream",
+		strings.NewReader(`{"command":"sh","args":["-c","sleep 2"],"timeout":"1s"}`)).
 		WithContext(ctx)
 	app.Router().ServeHTTP(recorder, request)
 
@@ -749,7 +761,9 @@ func TestCommandTimeoutWireEmptyIsCompatibleOmission(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(`{"command":"pwd","timeout":""}`)))
+		ServeHTTP(recorder,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec",
+				strings.NewReader(`{"command":"pwd","timeout":""}`)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("REST empty timeout status = %d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -787,7 +801,8 @@ func TestCommandTimeoutWireValidationPrecedesSessionAdmission(t *testing.T) {
 			invoke: func(ctx context.Context, value string) error {
 				body, _ := json.Marshal(map[string]any{"command": "true", "timeout": value})
 				recorder := httptest.NewRecorder()
-				request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(string(body))).
+				request := httptest.NewRequest(http.MethodPost,
+					"/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(string(body))).
 					WithContext(ctx)
 				app.Router().ServeHTTP(recorder, request)
 				if recorder.Code != http.StatusBadRequest {
@@ -801,7 +816,8 @@ func TestCommandTimeoutWireValidationPrecedesSessionAdmission(t *testing.T) {
 			invoke: func(ctx context.Context, value string) error {
 				body, _ := json.Marshal(map[string]any{"command": "true", "timeout": value})
 				recorder := httptest.NewRecorder()
-				request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(string(body))).
+				request := httptest.NewRequest(http.MethodPost,
+					"/api/v1/sessions/"+sess.ID+"/exec/stream", strings.NewReader(string(body))).
 					WithContext(ctx)
 				app.Router().ServeHTTP(recorder, request)
 				if recorder.Code != http.StatusBadRequest {
@@ -953,7 +969,9 @@ func commandTimeoutPolicySnapshotEngine(
 		envPolicy = "    env_deny: [\"SNAPSHOT_MARKER\"]\n"
 	}
 	document := []byte(
-		"version: 1\nname: " + name + "\ncommand_rules:\n  - name: " + name + "\n    commands: [\"*\"]\n    decision: " + decision + "\n" + envPolicy + "resource_limits:\n  command_timeout: " + limit.String() + "\n",
+		"version: 1\nname: " + name + "\ncommand_rules:\n  - name: " + name +
+			"\n    commands: [\"*\"]\n    decision: " + decision + "\n" + envPolicy +
+			"resource_limits:\n  command_timeout: " + limit.String() + "\n",
 	)
 	loaded, err := policy.LoadFromBytes(document)
 	if err != nil {
@@ -969,7 +987,9 @@ func commandTimeoutPolicySnapshotEngine(
 func commandTimeoutTestEngine(t *testing.T, limit time.Duration) *policy.Engine {
 	t.Helper()
 	document := []byte(
-		"version: 1\nname: command-timeout-test\ncommand_rules:\n  - name: allow-all\n    commands: [\"*\"]\n    decision: allow\nresource_limits:\n  command_timeout: " + limit.String() + "\n",
+		"version: 1\nname: command-timeout-test\ncommand_rules:\n  - name: allow-all\n" +
+			"    commands: [\"*\"]\n    decision: allow\nresource_limits:\n  command_timeout: " +
+			limit.String() + "\n",
 	)
 	loaded, err := policy.LoadFromBytes(document)
 	if err != nil {

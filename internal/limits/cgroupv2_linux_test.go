@@ -17,7 +17,8 @@ func TestEnableControllers_ReturnsError(t *testing.T) {
 	// Create a fake FS where subtree_control exists but WriteString injects EBUSY.
 	f := newFakeCgroupFS()
 	f.seedFile("/sys/fs/cgroup/system.slice/agentsh.service/cgroup.subtree_control", "")
-	f.openErrs["/sys/fs/cgroup/system.slice/agentsh.service/cgroup.subtree_control:write"] = syscall.EBUSY
+	f.openErrs["/sys/fs/cgroup/system.slice/agentsh.service/cgroup.subtree_control:write"] =
+		syscall.EBUSY
 
 	err := enableControllersFS(
 		f,

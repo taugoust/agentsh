@@ -16,6 +16,7 @@ import (
 var cachedRules *policy.RuleSet
 
 func init() {
+	//nolint:lll // YAML fixture keeps one flow-style entry per line
 	src := `version: 1
 name: t
 db_services:
@@ -121,7 +122,11 @@ func genFrame(t *rapid.T) Frame {
 	switch kind {
 	case 0:
 		return &QueryFrame{
-			SQL: rapid.SampledFrom([]string{"SELECT id FROM users", "DELETE FROM users", "UPDATE users SET x=1"}).
+			SQL: rapid.SampledFrom([]string{
+				"SELECT id FROM users",
+				"DELETE FROM users",
+				"UPDATE users SET x=1",
+			}).
 				Draw(t, "sql"),
 		}
 	case 1:

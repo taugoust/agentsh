@@ -331,7 +331,9 @@ func startAlpineServerContainer(
 		WaitingFor: wait.ForHTTP("/health").
 			WithPort("18080/tcp").
 			WithStartupTimeout(90 * time.Second).
-			WithStatusCodeMatcher(func(code int) bool { return code == http.StatusOK || code == http.StatusNotFound }),
+			WithStatusCodeMatcher(func(code int) bool {
+				return code == http.StatusOK || code == http.StatusNotFound
+			}),
 	}
 
 	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

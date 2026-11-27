@@ -141,7 +141,12 @@ func TestCompositionPathRegistryResolvesAliasesFreshBarriersSymlinksAndNesting(t
 	}{
 		{path: "/alias/child", want: "/source/child"},
 		{path: "/alias/fresh/child", want: "/alias/fresh/child", fresh: true},
-		{path: "/alias/writable/child", want: "/alias/writable/child", fresh: true, freshWritable: true},
+		{
+			path:          "/alias/writable/child",
+			want:          "/alias/writable/child",
+			fresh:         true,
+			freshWritable: true,
+		},
 		{path: "/link", want: "/source/file"},
 	} {
 		resolution, err := registry.ResolveDetails(pid, test.path)

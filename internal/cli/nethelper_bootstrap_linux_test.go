@@ -50,7 +50,9 @@ func TestEphemeralSystemdRunArgsAreFixedAndSecretFree(t *testing.T) {
 			t.Fatalf("systemd-run args missing %q:\n%s", required, joined)
 		}
 	}
-	for _, forbidden := range []string{"sudo", "sh -c", "bash -c", "helper_instance_credential=", "--ephemeral-soft-lease"} {
+	for _, forbidden := range []string{
+		"sudo", "sh -c", "bash -c", "helper_instance_credential=", "--ephemeral-soft-lease",
+	} {
 		if strings.Contains(strings.ToLower(joined), forbidden) {
 			t.Fatalf("systemd-run args contain forbidden value %q:\n%s", forbidden, joined)
 		}
@@ -90,12 +92,20 @@ func TestEphemeralSystemdRunArgsNegotiatesSoftLease(t *testing.T) {
 }
 
 func TestValidateEphemeralNethelperRuntime(t *testing.T) {
-	for _, valid := range []time.Duration{nethelper.DefaultBootstrapRuntime, nethelper.MaximumBootstrapRuntime} {
+	for _, valid := range []time.Duration{
+		nethelper.DefaultBootstrapRuntime,
+		nethelper.MaximumBootstrapRuntime,
+	} {
 		if err := validateEphemeralNethelperRuntime(valid); err != nil {
 			t.Fatalf("runtime %s rejected: %v", valid, err)
 		}
 	}
-	for _, invalid := range []time.Duration{0, -time.Second, nethelper.MaximumBootstrapRuntime + time.Second, time.Second + time.Nanosecond} {
+	for _, invalid := range []time.Duration{
+		0,
+		-time.Second,
+		nethelper.MaximumBootstrapRuntime + time.Second,
+		time.Second + time.Nanosecond,
+	} {
 		if err := validateEphemeralNethelperRuntime(invalid); err == nil {
 			t.Fatalf("runtime %s accepted", invalid)
 		}

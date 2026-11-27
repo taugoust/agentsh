@@ -151,7 +151,8 @@ func (c *Collector) Handler(opts HandlerOptions) http.Handler {
 
 		fmt.Fprint(
 			w,
-			"# HELP agentsh_net_ebpf_dropped_events_total eBPF connect events dropped due to backpressure.\n",
+			"# HELP agentsh_net_ebpf_dropped_events_total eBPF connect events dropped due to "+
+				"backpressure.\n",
 		)
 		fmt.Fprint(w, "# TYPE agentsh_net_ebpf_dropped_events_total counter\n")
 		fmt.Fprintf(w, "agentsh_net_ebpf_dropped_events_total %d\n", c.ebpfDropped.Load())

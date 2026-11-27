@@ -134,20 +134,21 @@ type SignalResult struct {
 
 // TracerConfig holds configuration for the ptrace tracer.
 type TracerConfig struct {
-	AttachMode        string
-	TargetPID         int
-	TargetPIDFile     string
-	TraceExecve       bool
-	TraceFile         bool
-	TraceNetwork      bool
-	TraceSignal       bool
-	MaskTracerPid     bool
-	SeccompPrefilter  bool
-	ArgLevelFilter    bool
-	MaxTracees        int
-	MaxHoldMs         int
-	OnAttachFailure   string
-	ReadyFile         string // Path to write after successful attach (sentinel for workload readiness)
+	AttachMode       string
+	TargetPID        int
+	TargetPIDFile    string
+	TraceExecve      bool
+	TraceFile        bool
+	TraceNetwork     bool
+	TraceSignal      bool
+	MaskTracerPid    bool
+	SeccompPrefilter bool
+	ArgLevelFilter   bool
+	MaxTracees       int
+	MaxHoldMs        int
+	OnAttachFailure  string
+	// Path to write after successful attach (sentinel for workload readiness)
+	ReadyFile         string
 	ExecHandler       ExecHandler
 	FileHandler       FileHandler
 	NetworkHandler    NetworkHandler
@@ -190,9 +191,10 @@ type TraceeState struct {
 	LastOpenFlags          int    // flags from last openat/openat2 entry (event-loop-only)
 	LastOpenOp             string // operation from last openat/openat2 entry (event-loop-only)
 	LastFileAction         string // action from last file entry-time policy check (event-loop-only)
-	PendingExecStubFD      int    // fd injected for exec redirect; cleaned up on exec failure (-1 = none)
-	PendingExecSavedFD     int    // fd that was displaced by stub fd; restored on exec failure (-1 = none)
-	MemFD                  int
+	// fd injected for exec redirect; cleaned up on exec failure (-1 = none)
+	PendingExecStubFD  int
+	PendingExecSavedFD int // fd that was displaced by stub fd; restored on exec failure (-1 = none)
+	MemFD              int
 	// SessionlessPIDAttach marks a tracee that descends from a root
 	// attached via AttachPID without a SessionID (the attach_mode=pid
 	// path). Propagated to children via seedChildStateFromParent so
@@ -988,7 +990,8 @@ func (t *Tracer) handleStop(
 
 				t.mu.Lock()
 				if s := t.tracees[tid]; s != nil {
-					s.listening = true // watchdog must not treat a LISTEN'd group-stop as wedged (#369 #2)
+					// watchdog must not treat a LISTEN'd group-stop as wedged (#369 #2)
+					s.listening = true
 				}
 				t.mu.Unlock()
 				ptraceListen(tid)
@@ -2312,7 +2315,8 @@ func (t *Tracer) reconcileExitNotify() int {
 			continue // handleExit won the race and already delivered the real exit
 		}
 		slog.Warn(
-			"ptrace: recovering vanished exec — registered pid gone from /proc, no exit delivered (#369 #2)",
+			"ptrace: recovering vanished exec — registered pid gone from /proc, no exit "+
+				"delivered (#369 #2)",
 			"pid",
 			pid,
 		)

@@ -198,7 +198,8 @@ func validatePreExecBarrierPath(hook postStartHook, tracer any, extra *extraProc
 		return markPreExecEnforcementError(
 			"E_PRE_EXEC_BARRIER",
 			fmt.Errorf(
-				"pre-exec enforcement barrier requires wrapper READY/GO synchronization with ptrace",
+				"pre-exec enforcement barrier requires wrapper READY/GO synchronization "+
+					"with ptrace",
 			),
 		)
 	}

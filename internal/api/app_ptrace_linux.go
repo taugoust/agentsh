@@ -83,7 +83,8 @@ func (a *App) initPtraceTracer() {
 	familyChecker, err := resolveFamilyCheckerForPtrace(a.cfg, emit)
 	if err != nil {
 		slog.Warn(
-			"initPtraceTracer: failed to resolve blocked_socket_families; socket-family blocking will not be enforced via ptrace",
+			"initPtraceTracer: failed to resolve blocked_socket_families; socket-family blocking "+
+				"will not be enforced via ptrace",
 			"error",
 			err,
 		)
@@ -97,7 +98,8 @@ func (a *App) initPtraceTracer() {
 		engine := selectFamilyBlockingEngine(families, &a.cfg.Sandbox, caps)
 		if engine == familyEngineNone && len(families) > 0 {
 			slog.Warn(
-				"socket-family blocking is configured but no enforcement engine is available; families will not be blocked",
+				"socket-family blocking is configured but no enforcement engine is available; "+
+					"families will not be blocked",
 				"families_count",
 				len(families),
 			)
@@ -107,7 +109,8 @@ func (a *App) initPtraceTracer() {
 	socketRuleChecker, err := resolveSocketRuleCheckerForPtrace(a.cfg, emit)
 	if err != nil {
 		slog.Warn(
-			"initPtraceTracer: failed to resolve socket_rules; socket tuple rules will not be enforced via ptrace",
+			"initPtraceTracer: failed to resolve socket_rules; socket tuple rules will not be "+
+				"enforced via ptrace",
 			"error",
 			err,
 		)
@@ -280,7 +283,8 @@ func (a *App) warnIfFamiliesOrphan() {
 	caps := capabilities.DetectInterceptionCapabilities()
 	if selectFamilyBlockingEngine(families, &a.cfg.Sandbox, caps) == familyEngineNone {
 		slog.Warn(
-			"socket-family blocking is configured but no enforcement engine is available on this host "+
+			"socket-family blocking is configured but no enforcement engine is available on "+
+				"this host "+
 				"(seccomp and ptrace both unavailable or disabled); families will not be blocked",
 			"families",
 			len(families),

@@ -32,21 +32,22 @@ const (
 )
 
 type spawnSubagentToolRequest struct {
-	RequestID                    string                `json:"request_id,omitempty"`
-	Mode                         string                `json:"mode,omitempty"`
-	Task                         string                `json:"task,omitempty"`
-	Action                       string                `json:"action,omitempty"`
-	DraftID                      string                `json:"draft_id,omitempty"`
-	SystemPrompt                 string                `json:"systemPrompt,omitempty"`
-	Model                        string                `json:"model,omitempty"`
-	Tools                        []string              `json:"tools,omitempty"`
-	Cwd                          string                `json:"cwd,omitempty"`
-	Tasks                        []subagentItemRequest `json:"tasks,omitempty"`
-	Chain                        []subagentItemRequest `json:"chain,omitempty"`
-	TimeoutMS                    int64                 `json:"timeout_ms,omitempty"`
-	ResultArtifactThresholdBytes int64                 `json:"result_artifact_threshold_bytes,omitempty"`
-	Stream                       bool                  `json:"stream,omitempty"`
-	Actor                        piToolActor           `json:"actor,omitempty"`
+	RequestID    string                `json:"request_id,omitempty"`
+	Mode         string                `json:"mode,omitempty"`
+	Task         string                `json:"task,omitempty"`
+	Action       string                `json:"action,omitempty"`
+	DraftID      string                `json:"draft_id,omitempty"`
+	SystemPrompt string                `json:"systemPrompt,omitempty"`
+	Model        string                `json:"model,omitempty"`
+	Tools        []string              `json:"tools,omitempty"`
+	Cwd          string                `json:"cwd,omitempty"`
+	Tasks        []subagentItemRequest `json:"tasks,omitempty"`
+	Chain        []subagentItemRequest `json:"chain,omitempty"`
+	TimeoutMS    int64                 `json:"timeout_ms,omitempty"`
+
+	ResultArtifactThresholdBytes int64       `json:"result_artifact_threshold_bytes,omitempty"`
+	Stream                       bool        `json:"stream,omitempty"`
+	Actor                        piToolActor `json:"actor,omitempty"`
 }
 
 type subagentItemRequest struct {
@@ -645,7 +646,8 @@ func validateSpawnSubagentRequest(
 	}
 	if count != 1 {
 		return "", nil, errors.New(
-			"provide exactly one mode: task, non-empty tasks, non-empty chain, or Draft disposition",
+			"provide exactly one mode: task, non-empty tasks, non-empty chain, or Draft " +
+				"disposition",
 		)
 	}
 	if hasDisposition {
@@ -1383,7 +1385,8 @@ func (a *App) runSingleSubagent(
 	if protocolOutcome.Failed() {
 		res.Error = protocolOutcome.ErrorMessage
 		retryable := !process.Started &&
-			(protocolOutcome.FailureKind == subagentFailureProtocol || protocolOutcome.FailureKind == subagentFailureCompaction)
+			(protocolOutcome.FailureKind == subagentFailureProtocol ||
+				protocolOutcome.FailureKind == subagentFailureCompaction)
 		terminal := failedSubagentTerminal(
 			protocolOutcome.FailureKind,
 			1,

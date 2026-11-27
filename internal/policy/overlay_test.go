@@ -16,7 +16,8 @@ func TestDiscoverProjectOverlaysDisabled(t *testing.T) {
 		t,
 		root,
 		"xilinx.yaml",
-		"name: xilinx\nfile_rules:\n  - name: allow-xilinx\n    paths: [/share/xilinx/**]\n    operations: [read]\n    decision: allow\n",
+		"name: xilinx\nfile_rules:\n  - name: allow-xilinx\n    paths: [/share/xilinx/**]\n"+
+			"    operations: [read]\n    decision: allow\n",
 	)
 	files, err := DiscoverProjectOverlays(root, ProjectOverlaysConfig{Enabled: false})
 	if err != nil {
@@ -46,7 +47,8 @@ func TestLoadOverlayKnownFieldsAndDuplicates(t *testing.T) {
 	if err := os.WriteFile(
 		path,
 		[]byte(
-			"name: bad\nversion: 1\nfile_rules:\n  - name: dup\n    paths: [/**]\n    operations: [read]\n    decision: allow\n",
+			"name: bad\nversion: 1\nfile_rules:\n  - name: dup\n    paths: [/**]\n"+
+				"    operations: [read]\n    decision: allow\n",
 		),
 		0o644,
 	); err != nil {
@@ -63,7 +65,8 @@ func TestLoadOverlayKnownFieldsAndDuplicates(t *testing.T) {
 	if err := os.WriteFile(
 		path,
 		[]byte(
-			"name: bad-command\ncommand_rules:\n  - name: typo\n    command: [echo]\n    decision: allow\n",
+			"name: bad-command\ncommand_rules:\n  - name: typo\n    command: [echo]\n"+
+				"    decision: allow\n",
 		),
 		0o644,
 	); err != nil {
@@ -80,7 +83,8 @@ func TestLoadOverlayKnownFieldsAndDuplicates(t *testing.T) {
 	if err := os.WriteFile(
 		path,
 		[]byte(
-			"name: bad-context\ncommand_rules:\n  - name: typo\n    commands: [echo]\n    context:\n      min_dept: 1\n    decision: allow\n",
+			"name: bad-context\ncommand_rules:\n  - name: typo\n    commands: [echo]\n"+
+				"    context:\n      min_dept: 1\n    decision: allow\n",
 		),
 		0o644,
 	); err != nil {
@@ -97,7 +101,8 @@ func TestLoadOverlayKnownFieldsAndDuplicates(t *testing.T) {
 	if err := os.WriteFile(
 		path,
 		[]byte(
-			"name: bad-redirect\ncommand_rules:\n  - name: typo\n    commands: [echo]\n    decision: redirect\n    redirect_to:\n      commmand: printf\n",
+			"name: bad-redirect\ncommand_rules:\n  - name: typo\n    commands: [echo]\n"+
+				"    decision: redirect\n    redirect_to:\n      commmand: printf\n",
 		),
 		0o644,
 	); err != nil {
@@ -114,7 +119,12 @@ func TestLoadOverlayKnownFieldsAndDuplicates(t *testing.T) {
 	if err := os.WriteFile(
 		path,
 		[]byte(
-			"name: valid-context\ncommand_rules:\n  - &nested_rule\n    name: nested\n    commands: [echo]\n    context: &nested_context\n      min_depth: 1\n    decision: allow\n    timeout: 5m\n  - name: direct\n    commands: [printf]\n    context: [direct]\n    decision: allow\n  - name: alias-context\n    commands: [pwd]\n    context: *nested_context\n    decision: allow\n  - <<: *nested_rule\n    name: merged-rule\n    commands: [true]\n",
+			"name: valid-context\ncommand_rules:\n  - &nested_rule\n    name: nested\n"+
+				"    commands: [echo]\n    context: &nested_context\n      min_depth: 1\n"+
+				"    decision: allow\n    timeout: 5m\n  - name: direct\n    commands: [printf]\n"+
+				"    context: [direct]\n    decision: allow\n  - name: alias-context\n"+
+				"    commands: [pwd]\n    context: *nested_context\n    decision: allow\n"+
+				"  - <<: *nested_rule\n    name: merged-rule\n    commands: [true]\n",
 		),
 		0o644,
 	); err != nil {
@@ -147,7 +157,9 @@ func TestLoadOverlayKnownFieldsAndDuplicates(t *testing.T) {
 	if err := os.WriteFile(
 		path,
 		[]byte(
-			"name: dup\nfile_rules:\n  - name: same\n    paths: [/a]\n    operations: [read]\n    decision: allow\ncommand_rules:\n  - name: same\n    commands: [echo]\n    decision: allow\n",
+			"name: dup\nfile_rules:\n  - name: same\n    paths: [/a]\n    operations: [read]\n"+
+				"    decision: allow\ncommand_rules:\n  - name: same\n    commands: [echo]\n"+
+				"    decision: allow\n",
 		),
 		0o644,
 	); err != nil {

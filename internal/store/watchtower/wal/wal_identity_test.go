@@ -221,7 +221,8 @@ func TestWAL_OpenWithEmptyPersistedIdentityAdoptsCallerIdentity(t *testing.T) {
 	// Hand-write a v2 meta.json with empty identity fields — exactly the
 	// shape a hypothetical post-v2 / pre-Task-14a binary would have left.
 	raw := []byte(
-		`{"format_version":2,"ack_high_watermark_seq":42,"ack_high_watermark_gen":7,"ack_recorded":true,"session_id":"","key_fingerprint":""}`,
+		`{"format_version":2,"ack_high_watermark_seq":42,"ack_high_watermark_gen":7,` +
+			`"ack_recorded":true,"session_id":"","key_fingerprint":""}`,
 	)
 	if err := os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
@@ -590,7 +591,8 @@ func TestWAL_RecordBearingSegmentBlocksIdentityBackfill(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal(
-			"reopen with record-bearing WAL + new identity silently adopted; want ErrIdentityMismatch",
+			"reopen with record-bearing WAL + new identity silently adopted; want " +
+				"ErrIdentityMismatch",
 		)
 	}
 	var idErr *ErrIdentityMismatch

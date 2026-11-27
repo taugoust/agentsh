@@ -707,7 +707,8 @@ func TestComputeResult_HasNoExportedDataFields(t *testing.T) {
 		f := typ.Field(i)
 		if f.IsExported() {
 			t.Errorf(
-				"ComputeResult has exported data field %q (type %s) — must remain unexported to preserve token opacity",
+				"ComputeResult has exported data field %q (type %s) — must remain unexported to "+
+					"preserve token opacity",
 				f.Name,
 				f.Type,
 			)

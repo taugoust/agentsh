@@ -36,7 +36,10 @@ sessions:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for requested, want := range map[string]string{"": "workstation", "compatibility": "compatibility"} {
+	for requested, want := range map[string]string{
+		"":              "workstation",
+		"compatibility": "compatibility",
+	} {
 		name, profile, err := cfg.Sessions.Runtime.ResolveProfile(requested)
 		if err != nil {
 			t.Fatalf("ResolveProfile(%q): %v", requested, err)

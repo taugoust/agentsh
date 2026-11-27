@@ -16,13 +16,21 @@ import (
 )
 
 type vectorEntry struct {
-	Name          string          `json:"name"`
-	Kind          string          `json:"kind"`                     // "integrity_record" | "context_digest"
-	Input         json.RawMessage `json:"input,omitempty"`          // for valid inputs, an object with canonical wire snake_case keys (e.g. format_version, sequence, session_id) — NOT Go field names. Each implementation maps the keys to its local struct fields inside its harness.
-	InputB64      string          `json:"input_b64,omitempty"`      // base64-encoded raw struct field bytes for negative cases (non-UTF-8)
-	InputField    string          `json:"input_field,omitempty"`    // canonical wire field name receiving InputB64 (e.g., "prev_hash", "session_id")
-	Expected      string          `json:"expected,omitempty"`       // for valid: canonical bytes (integrity_record) or hex digest (context_digest)
-	ExpectedError string          `json:"expected_error,omitempty"` // for negative: sentinel name (e.g., "ErrInvalidUTF8")
+	Name string `json:"name"`
+	// "integrity_record" | "context_digest"
+	Kind string `json:"kind"`
+	// for valid inputs, an object with canonical wire snake_case keys (e.g. format_version,
+	// sequence, session_id) — NOT Go field names. Each implementation maps the keys to its local
+	// struct fields inside its harness.
+	Input json.RawMessage `json:"input,omitempty"`
+	// base64-encoded raw struct field bytes for negative cases (non-UTF-8)
+	InputB64 string `json:"input_b64,omitempty"`
+	// canonical wire field name receiving InputB64 (e.g., "prev_hash", "session_id")
+	InputField string `json:"input_field,omitempty"`
+	// for valid: canonical bytes (integrity_record) or hex digest (context_digest)
+	Expected string `json:"expected,omitempty"`
+	// for negative: sentinel name (e.g., "ErrInvalidUTF8")
+	ExpectedError string `json:"expected_error,omitempty"`
 }
 
 func TestVectors(t *testing.T) {
@@ -429,7 +437,8 @@ func supportedSchemaVersionList() []int {
 
 func TestBuildIntegrityRecord_RejectsUint32Overflow(t *testing.T) {
 	raw := json.RawMessage(
-		`{"format_version": 4294967296, "sequence": 0, "generation": 0, "prev_hash": "", "event_hash": "", "context_digest": "", "key_fingerprint": ""}`,
+		`{"format_version": 4294967296, "sequence": 0, "generation": 0, "prev_hash": "", ` +
+			`"event_hash": "", "context_digest": "", "key_fingerprint": ""}`,
 	)
 	v := vectorEntry{Input: raw, Kind: "integrity_record"}
 	_, err := buildIntegrityRecord(v)
@@ -443,7 +452,8 @@ func TestBuildIntegrityRecord_RejectsUint32Overflow(t *testing.T) {
 
 func TestBuildIntegrityRecord_AcceptsUint32Max(t *testing.T) {
 	raw := json.RawMessage(
-		`{"format_version": 4294967295, "sequence": 0, "generation": 4294967295, "prev_hash": "", "event_hash": "", "context_digest": "", "key_fingerprint": ""}`,
+		`{"format_version": 4294967295, "sequence": 0, "generation": 4294967295, "prev_hash": ` +
+			`"", "event_hash": "", "context_digest": "", "key_fingerprint": ""}`,
 	)
 	v := vectorEntry{Input: raw, Kind: "integrity_record"}
 	rec, err := buildIntegrityRecord(v)
@@ -483,7 +493,11 @@ func TestDecodeUint32_AcceptsMax(t *testing.T) {
 
 func TestLoadVectors_V1Array(t *testing.T) {
 	data := []byte(
-		`[{"name":"x","kind":"integrity_record","input":{"format_version":2,"sequence":0,"generation":0,"prev_hash":"","event_hash":"","context_digest":"","key_fingerprint":""},"expected":"{\"context_digest\":\"\",\"event_hash\":\"\",\"format_version\":2,\"generation\":0,\"key_fingerprint\":\"\",\"prev_hash\":\"\",\"sequence\":0}"}]`,
+		`[{"name":"x","kind":"integrity_record","input":{"format_version":2,"sequence":0,` +
+			`"generation":0,"prev_hash":"","event_hash":"","context_digest":"",` +
+			`"key_fingerprint":""},"expected":"{\"context_digest\":\"\",\"event_hash\":\"\",` +
+			`\"format_version\":2,\"generation\":0,\"key_fingerprint\":\"\",\"prev_hash\":\"\",` +
+			`\"sequence\":0}"}]`,
 	)
 	entries, err := loadVectors(data)
 	if err != nil {
@@ -551,7 +565,9 @@ func TestLoadVectors_RejectsTrailingContent(t *testing.T) {
 	// after the top-level JSON value. Catches accidental concatenation and
 	// forward-incompatible streaming formats. Spec §"Trailing content".
 	v1WithJunk := []byte(
-		`[{"name":"x","kind":"integrity_record","input":{"format_version":2,"sequence":0,"generation":0,"prev_hash":"","event_hash":"","context_digest":"","key_fingerprint":""},"expected":"{}"}]  garbage`,
+		`[{"name":"x","kind":"integrity_record","input":{"format_version":2,"sequence":0,` +
+			`"generation":0,"prev_hash":"","event_hash":"","context_digest":"",` +
+			`"key_fingerprint":""},"expected":"{}"}]  garbage`,
 	)
 	if _, err := loadVectors(v1WithJunk); err == nil {
 		t.Fatal("expected v1 trailing-content rejection, got nil")
@@ -585,7 +601,8 @@ func TestLoadVectors_RejectsUnknownFields(t *testing.T) {
 		t.Errorf("v2 envelope error must mention unknown field: %v", err)
 	}
 	v2EntryUnknown := []byte(
-		`{"schema_version":2,"vectors":[{"name":"y","kind":"context_digest","UNKNOWN_ENTRY_FIELD":"x"}]}`,
+		`{"schema_version":2,"vectors":[{"name":"y","kind":"context_digest",` +
+			`"UNKNOWN_ENTRY_FIELD":"x"}]}`,
 	)
 	if _, err := loadVectors(v2EntryUnknown); err == nil {
 		t.Fatal("expected v2 unknown-field rejection at entry level, got nil")

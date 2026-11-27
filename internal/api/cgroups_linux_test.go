@@ -75,7 +75,9 @@ func withEBPFHooks(t *testing.T) {
 	prevCheck := ebpfCheckSupport
 	prevAttach := ebpfAttachConnectToCgroup
 	prevFailClosedAttach := ebpfAttachConnectToCgroupFailClosed
-	ebpfAttachConnectToCgroupFailClosed = func(path string) (*ebpf.Collection, func() error, error) {
+	ebpfAttachConnectToCgroupFailClosed = func(
+		path string,
+	) (*ebpf.Collection, func() error, error) {
 		return ebpfAttachConnectToCgroup(path)
 	}
 	prevStart := ebpfStartCollector

@@ -542,7 +542,8 @@ func TestPhase0_MixedSinkOutcome_PrimaryCommitsSecondaryFailsClean(t *testing.T)
 	}
 	if b.records[2].Sequence != 3 {
 		t.Fatalf(
-			"b.records[2].Sequence = %d, want 3 (eager-advance leaves both observing the same fresh seq)",
+			"b.records[2].Sequence = %d, want 3 (eager-advance leaves both observing the same "+
+				"fresh seq)",
 			b.records[2].Sequence,
 		)
 	}
@@ -550,7 +551,8 @@ func TestPhase0_MixedSinkOutcome_PrimaryCommitsSecondaryFailsClean(t *testing.T)
 	// Secondary's chain continued from PRE-FAILURE prev_hash — rollback proof.
 	if got := b.records[2].PrevHash; got != bPreFailEntryHash {
 		t.Fatalf(
-			"b.records[2].PrevHash = %q, want %q (secondary chain must continue from pre-failure prev_hash)",
+			"b.records[2].PrevHash = %q, want %q (secondary chain must continue from pre-failure "+
+				"prev_hash)",
 			got,
 			bPreFailEntryHash,
 		)
@@ -664,7 +666,8 @@ func TestPhase0_MixedSinkOutcome_PrimaryCommitsSecondaryLatchesFatal(t *testing.
 	}
 	if len(a.records) != 3 {
 		t.Fatalf(
-			"len(a.records) after follow-up = %d, want 3 (primary continues despite latched secondary)",
+			"len(a.records) after follow-up = %d, want 3 (primary continues despite latched "+
+				"secondary)",
 			len(a.records),
 		)
 	}

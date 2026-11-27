@@ -56,7 +56,8 @@ const closeRunCancelGrace = 2 * time.Second
 // message. The wrapped error message also names the elapsed grace
 // duration for operator triage.
 var ErrCloseSafetyNet = errors.New(
-	"watchtower.Close: shutdown safety net hit; bg goroutine and WAL handle leaked, process restart required",
+	"watchtower.Close: shutdown safety net hit; bg goroutine and WAL handle leaked, process " +
+		"restart required",
 )
 
 // Store is the watchtower store.EventStore implementation.
@@ -625,7 +626,8 @@ func (s *Store) shutdown() error {
 			// stable instance identifiers (session_id, agent_id,
 			// wal_dir) so multi-instance failures are triageable.
 			s.opts.Logger.Warn(
-				"watchtower.Close: shutdown safety net hit; transport likely wedged in non-interruptible Conn.Send/Recv/Dial",
+				"watchtower.Close: shutdown safety net hit; transport likely wedged in "+
+					"non-interruptible Conn.Send/Recv/Dial",
 				"drain_deadline",
 				s.opts.DrainDeadline,
 				"close_run_cancel_grace",
@@ -637,7 +639,8 @@ func (s *Store) shutdown() error {
 				"wal_dir",
 				s.opts.WALDir,
 				"action",
-				"returning synthetic timeout error; bg goroutine + WAL handle leaked, restart required for clean state",
+				"returning synthetic timeout error; bg goroutine + WAL handle leaked, restart "+
+					"required for clean state",
 			)
 			// IMPORTANT: do NOT call s.combineWALCloseErr — that
 			// would invoke wal.Close while a Reader inside the bg
@@ -669,7 +672,8 @@ func (s *Store) combineWALCloseErr(runErr error) error {
 	// (roborev #5989 High)
 	if !s.appendDrained.Load() {
 		drainErr := fmt.Errorf(
-			"watchtower.Close: append drain timed out; skipped wal.Close to preserve bounded-latency shutdown",
+			"watchtower.Close: append drain timed out; skipped wal.Close to preserve " +
+				"bounded-latency shutdown",
 		)
 		if runErr == nil {
 			return drainErr

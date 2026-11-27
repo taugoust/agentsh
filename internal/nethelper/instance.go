@@ -64,7 +64,11 @@ func NewEphemeralInstanceController(
 		opts.Now = time.Now
 	}
 	if opts.NewTimer == nil {
-		opts.NewTimer = func(d time.Duration) InstanceTimer { return &realInstanceTimer{timer: time.NewTimer(d)} }
+		opts.NewTimer = func(d time.Duration) InstanceTimer {
+			return &realInstanceTimer{
+				timer: time.NewTimer(d),
+			}
+		}
 	}
 	now := opts.Now().UTC()
 	if opts.CreatedAt.IsZero() {

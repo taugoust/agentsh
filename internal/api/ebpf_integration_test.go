@@ -93,7 +93,8 @@ func TestEBPFConnectEventFlow(t *testing.T) {
 	}
 	if len(evs) == 0 {
 		t.Skip(
-			"no net_connect events observed; likely missing ebpf object or blocked by kernel lockdown",
+			"no net_connect events observed; likely missing ebpf object or blocked by kernel " +
+				"lockdown",
 		)
 	}
 }

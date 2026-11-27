@@ -100,7 +100,8 @@ func (t *Tracer) scanStalledExecs(firstSeen map[int]time.Time, dumped map[int]bo
 		if !dumped[pid] && now.Sub(firstSeen[pid]) >= watchdogExecStallDump {
 			dumped[pid] = true
 			slog.Warn(
-				"ptrace WATCHDOG: exec stalled — exit-notify pending past threshold, dumping trace ring (#369 #2)",
+				"ptrace WATCHDOG: exec stalled — exit-notify pending past threshold, dumping "+
+					"trace ring (#369 #2)",
 				"pid",
 				pid,
 				"stalled_ms",

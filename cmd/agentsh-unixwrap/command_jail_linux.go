@@ -727,7 +727,8 @@ func maskPath(target string) error {
 		return err
 	}
 	flags := uintptr(
-		unix.MS_BIND | unix.MS_REMOUNT | unix.MS_RDONLY | unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC,
+		unix.MS_BIND | unix.MS_REMOUNT | unix.MS_RDONLY | unix.MS_NOSUID | unix.MS_NODEV |
+			unix.MS_NOEXEC,
 	)
 	if err := unix.Mount("", target, "", flags, ""); err != nil {
 		return fmt.Errorf("remount read-only: %w", err)

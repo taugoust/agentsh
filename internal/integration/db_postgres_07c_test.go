@@ -415,7 +415,8 @@ func TestDB09RealPostgresCatalogResolution(t *testing.T) {
 		statementText, _ := ev.Fields["statement_text"].(string)
 		return ev.Type == "db_statement" &&
 			strings.Contains(statementText, "select * from plan09.missing_relation") &&
-			(ev.Fields["object_resolution"] == "catalog_unresolved" || ev.Fields["object_resolution_reason"] == "missing")
+			(ev.Fields["object_resolution"] == "catalog_unresolved" ||
+				ev.Fields["object_resolution_reason"] == "missing")
 	}, "catalog_unresolved missing-object event")
 }
 
@@ -509,7 +510,8 @@ func TestDB12RealPostgresRedirectUnsupportedFormsFailClosed(t *testing.T) {
 		"-mode",
 		"scalar",
 		"-sql",
-		"select note from plan12.users_source where id = 1; select note from plan12.users_source where id = 1",
+		"select note from plan12.users_source where id = 1; select note from plan12.users_source "+
+			"where id = 1",
 		"-simple",
 	)
 	if multi.OK || multi.SQLState != "0A000" {
@@ -756,7 +758,9 @@ func startDB07CServerContainer(
 		WaitingFor: wait.ForHTTP("/health").
 			WithPort("18080/tcp").
 			WithStartupTimeout(60 * time.Second).
-			WithStatusCodeMatcher(func(code int) bool { return code == http.StatusOK || code == http.StatusNotFound }),
+			WithStatusCodeMatcher(func(code int) bool {
+				return code == http.StatusOK || code == http.StatusNotFound
+			}),
 	}
 	ctr, err := testcontainers.GenericContainer(
 		ctx,

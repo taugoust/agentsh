@@ -332,7 +332,8 @@ func TestRecvMultiplexer_ReconnectDoesNotLeakStateAcrossSessions(t *testing.T) {
 	// in the per-connection eventCh allocation contract.
 	if !h1Old.TrySendStaleEventForTest(transport.MakeBatchAckEventForTest(staleEvt)) {
 		t.Fatal(
-			"stale event injection did not succeed; eventCh was full or recv goroutine still draining — test cannot prove isolation",
+			"stale event injection did not succeed; eventCh was full or recv goroutine still " +
+				"draining — test cannot prove isolation",
 		)
 	}
 
@@ -346,7 +347,8 @@ func TestRecvMultiplexer_ReconnectDoesNotLeakStateAcrossSessions(t *testing.T) {
 	); frame != "batch_ack" || gen != 2 ||
 		seq != 50 {
 		t.Fatalf(
-			"session 2 first event: got (%q, %d, %d), want (batch_ack, 2, 50) — stale (99, 9999) bleed?",
+			"session 2 first event: got (%q, %d, %d), want (batch_ack, 2, 50) — stale (99, "+
+				"9999) bleed?",
 			frame,
 			gen,
 			seq,
@@ -359,7 +361,8 @@ func TestRecvMultiplexer_ReconnectDoesNotLeakStateAcrossSessions(t *testing.T) {
 	select {
 	case ev := <-h2.EventCh():
 		t.Fatalf(
-			"session 2 eventCh saw unexpected event after legitimate one: frame=%q gen=%d seq=%d (stale leak)",
+			"session 2 eventCh saw unexpected event after legitimate one: frame=%q gen=%d seq=%d "+
+				"(stale leak)",
 			transport.FrameForTest(ev),
 			transport.GenForTest(ev),
 			transport.SeqForTest(ev),

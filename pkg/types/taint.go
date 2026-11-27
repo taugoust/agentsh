@@ -30,7 +30,8 @@ type TaintMatchedRule struct {
 
 // TaintEvent represents a taint-related event for streaming.
 type TaintEvent struct {
-	Type        string    `json:"type"` // taint_created, taint_propagated, taint_removed, agent_detected
+	// taint_created, taint_propagated, taint_removed, agent_detected
+	Type        string    `json:"type"`
 	PID         int       `json:"pid"`
 	SourcePID   int       `json:"source_pid,omitempty"`
 	SourceName  string    `json:"source_name,omitempty"`

@@ -38,8 +38,16 @@ func TestSubagentTerminalDistinguishesTimeoutAndCancellation(t *testing.T) {
 	}{
 		{name: "user", cause: errSubagentUserCancelled, want: subagentCancelUser},
 		{name: "parent", cause: errSubagentParentCancelled, want: subagentCancelParent},
-		{name: "disconnect", cause: errSubagentClientDisconnected, want: subagentCancelClientDisconnected},
-		{name: "shutdown", cause: errSubagentSupervisorShutdown, want: subagentCancelSupervisorShutdown},
+		{
+			name:  "disconnect",
+			cause: errSubagentClientDisconnected,
+			want:  subagentCancelClientDisconnected,
+		},
+		{
+			name:  "shutdown",
+			cause: errSubagentSupervisorShutdown,
+			want:  subagentCancelSupervisorShutdown,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cancelCtx, cancel := context.WithCancelCause(context.Background())
@@ -135,7 +143,10 @@ func TestSubagentTerminalSanitizesDiagnosticCredentials(t *testing.T) {
 }
 
 func TestSubagentPiJSONOutcomeExcludesThinking(t *testing.T) {
-	stdout := `{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hidden-chain-sentinel"},{"type":"text","text":"visible answer"}],"stopReason":"stop"}}` + "\n" +
+	stdout := `{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking",` +
+		`"thinking":"hidden-chain-sentinel"},{"type":"text","text":"visible ` +
+		`answer"}],"stopReason":"stop"}}` +
+		"\n" +
 		`{"type":"agent_settled"}` + "\n"
 	outcome := parseSubagentProtocolOutcome("pi-json", stdout)
 	if !outcome.Completed || outcome.Final != "visible answer" || outcome.StopReason != "stop" {
@@ -147,7 +158,9 @@ func TestSubagentPiJSONOutcomeExcludesThinking(t *testing.T) {
 }
 
 func TestSubagentPiJSONOutcomeClassifiesFailedCompaction(t *testing.T) {
-	stdout := `{"type":"compaction_end","reason":"overflow","aborted":true,"willRetry":false,"errorMessage":"compaction failed"}` + "\n"
+	stdout := `{"type":"compaction_end","reason":"overflow","aborted":true,"willRetry":false,` +
+		`"errorMessage":"compaction failed"}` +
+		"\n"
 	outcome := parseSubagentProtocolOutcome("pi-json", stdout)
 	if outcome.FailureKind != subagentFailureCompaction ||
 		outcome.ErrorMessage != "compaction failed" {
@@ -156,8 +169,12 @@ func TestSubagentPiJSONOutcomeClassifiesFailedCompaction(t *testing.T) {
 }
 
 func TestSubagentProtocolAllowsPiRecoveryAfterCompactionFailure(t *testing.T) {
-	stdout := `{"type":"compaction_end","reason":"overflow","aborted":true,"willRetry":false,"errorMessage":"compaction failed"}` + "\n" +
-		`{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"recovered"}],"stopReason":"stop"}}` + "\n" +
+	stdout := `{"type":"compaction_end","reason":"overflow","aborted":true,"willRetry":false,` +
+		`"errorMessage":"compaction failed"}` +
+		"\n" +
+		`{"type":"message_end","message":{"role":"assistant","content":[{"type":"text",` +
+		`"text":"recovered"}],"stopReason":"stop"}}` +
+		"\n" +
 		`{"type":"agent_settled"}` + "\n"
 	outcome := parseSubagentProtocolOutcome("pi-json", stdout)
 	if !outcome.Completed || outcome.Failed() || outcome.Final != "recovered" {
@@ -166,7 +183,9 @@ func TestSubagentProtocolAllowsPiRecoveryAfterCompactionFailure(t *testing.T) {
 }
 
 func TestSubagentPiJSONPreservesModelErrorWithoutSettledLifecycle(t *testing.T) {
-	stdout := `{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"provider failed"}}` + "\n"
+	stdout := `{"type":"message_end","message":{"role":"assistant","content":[],` +
+		`"stopReason":"error","errorMessage":"provider failed"}}` +
+		"\n"
 	outcome := parseSubagentProtocolOutcome("pi-json", stdout)
 	if outcome.Completed || outcome.FailureKind != subagentFailureModel ||
 		outcome.ErrorMessage != "provider failed" {
@@ -175,7 +194,9 @@ func TestSubagentPiJSONPreservesModelErrorWithoutSettledLifecycle(t *testing.T) 
 }
 
 func TestSubagentPiJSONRejectsSettledToolUseTurn(t *testing.T) {
-	stdout := `{"type":"message_end","message":{"role":"assistant","content":[{"type":"toolCall","name":"grep"}],"stopReason":"toolUse"}}` + "\n" +
+	stdout := `{"type":"message_end","message":{"role":"assistant","content":[{"type":"toolCall",` +
+		`"name":"grep"}],"stopReason":"toolUse"}}` +
+		"\n" +
 		`{"type":"agent_settled"}` + "\n"
 	outcome := parseSubagentProtocolOutcome("pi-json", stdout)
 	if outcome.Completed || outcome.FailureKind != subagentFailureProtocol ||
@@ -185,7 +206,9 @@ func TestSubagentPiJSONRejectsSettledToolUseTurn(t *testing.T) {
 }
 
 func TestSubagentPiJSONRejectsEmptySettledResponse(t *testing.T) {
-	stdout := `{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"stop"}}` + "\n" +
+	stdout := `{"type":"message_end","message":{"role":"assistant","content":[],` +
+		`"stopReason":"stop"}}` +
+		"\n" +
 		`{"type":"agent_settled"}` + "\n"
 	outcome := parseSubagentProtocolOutcome("pi-json", stdout)
 	if outcome.Completed || outcome.FailureKind != subagentFailureProtocol ||
@@ -195,7 +218,9 @@ func TestSubagentPiJSONRejectsEmptySettledResponse(t *testing.T) {
 }
 
 func TestSubagentPiJSONRequiresSettledLifecycle(t *testing.T) {
-	stdout := `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"not settled"}],"stopReason":"stop"}}` + "\n"
+	stdout := `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text",` +
+		`"text":"not settled"}],"stopReason":"stop"}}` +
+		"\n"
 	outcome := parseSubagentProtocolOutcome("pi-json", stdout)
 	if outcome.Completed || outcome.FailureKind != subagentFailureProtocol ||
 		!strings.Contains(outcome.ErrorMessage, "agent_settled") {
@@ -215,7 +240,9 @@ func TestSubagentPiJSONReducerRetainsFinalAcrossLargeProgressAndAggregateEvents(
 	}
 	if _, err := reducer.Write(
 		[]byte(
-			`{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"durable final sentinel"}],"stopReason":"stop"}}` + "\n",
+			`{"type":"message_end","message":{"role":"assistant","content":[{"type":"text",` +
+				`"text":"durable final sentinel"}],"stopReason":"stop"}}` +
+				"\n",
 		),
 	); err != nil {
 		t.Fatal(err)

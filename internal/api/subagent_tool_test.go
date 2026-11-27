@@ -182,14 +182,56 @@ func TestValidateSpawnSubagentRequestModes(t *testing.T) {
 	}{
 		{name: "none", req: spawnSubagentToolRequest{}, wantErr: true},
 		{name: "single", req: spawnSubagentToolRequest{Task: "summarize"}, mode: "single"},
-		{name: "parallel", req: spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: "a"}, {Task: "b"}}}, mode: "parallel"},
-		{name: "chain", req: spawnSubagentToolRequest{Chain: []subagentItemRequest{{Task: "a"}, {Task: "b"}}}, mode: "chain"},
-		{name: "disposition", req: spawnSubagentToolRequest{Action: "apply", DraftID: "session-11111111-1111-4111-8111-111111111111"}, mode: "disposition"},
-		{name: "disposition missing id", req: spawnSubagentToolRequest{Action: "apply"}, wantErr: true},
-		{name: "disposition invalid action", req: spawnSubagentToolRequest{Action: "publish", DraftID: "session-11111111-1111-4111-8111-111111111111"}, wantErr: true},
-		{name: "multiple", req: spawnSubagentToolRequest{Task: "x", Action: "apply", DraftID: "session-11111111-1111-4111-8111-111111111111"}, wantErr: true},
-		{name: "multiple task forms", req: spawnSubagentToolRequest{Task: "x", Tasks: []subagentItemRequest{{Task: "y"}}}, wantErr: true},
-		{name: "empty item", req: spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: ""}}}, wantErr: true},
+		{
+			name: "parallel",
+			req:  spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: "a"}, {Task: "b"}}},
+			mode: "parallel",
+		},
+		{
+			name: "chain",
+			req:  spawnSubagentToolRequest{Chain: []subagentItemRequest{{Task: "a"}, {Task: "b"}}},
+			mode: "chain",
+		},
+		{
+			name: "disposition",
+			req: spawnSubagentToolRequest{
+				Action:  "apply",
+				DraftID: "session-11111111-1111-4111-8111-111111111111",
+			},
+			mode: "disposition",
+		},
+		{
+			name:    "disposition missing id",
+			req:     spawnSubagentToolRequest{Action: "apply"},
+			wantErr: true,
+		},
+		{
+			name: "disposition invalid action",
+			req: spawnSubagentToolRequest{
+				Action:  "publish",
+				DraftID: "session-11111111-1111-4111-8111-111111111111",
+			},
+			wantErr: true,
+		},
+		{
+			name: "multiple",
+			req: spawnSubagentToolRequest{
+				Task:    "x",
+				Action:  "apply",
+				DraftID: "session-11111111-1111-4111-8111-111111111111",
+			},
+			wantErr: true,
+		},
+		{
+			name:    "multiple task forms",
+			req:     spawnSubagentToolRequest{Task: "x", Tasks: []subagentItemRequest{{Task: "y"}}},
+			wantErr: true,
+		},
+		{
+			name:    "empty item",
+			req:     spawnSubagentToolRequest{Tasks: []subagentItemRequest{{Task: ""}}},
+			wantErr: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mode, _, err := validateSpawnSubagentRequest(tc.req)
@@ -260,6 +302,7 @@ func TestSplitCommandArgs(t *testing.T) {
 }
 
 func TestParsePiJSONFinal(t *testing.T) {
+	//nolint:lll // fixture script emits one JSON record per line
 	stdout := `{"type":"message_start","message":{"role":"assistant","content":[{"type":"text","text":"draft"}]}}
 {"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"final"}]}}
 {"type":"agent_settled"}
@@ -454,6 +497,7 @@ func TestSubagentStreamEndpointTerminalContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	scriptPath := filepath.Join(root, "child.sh")
+	//nolint:lll // fixture script emits one JSON record per line
 	script := `if [ -n "$AGENTSH_SUBAGENT_SYSTEM_PROMPT" ]; then
   printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"system prompt leaked through environment"}}'
   printf '%s\n' '{"type":"agent_settled"}'
@@ -513,6 +557,7 @@ esac
 	}
 
 	draftScriptPath := filepath.Join(root, "draft-worker.sh")
+	//nolint:lll // fixture script emits one JSON record per line
 	draftScript := `#!/bin/sh
 cat >/dev/null
 [ "$AGENTSH_NETHELPER_SOCKET" = /run/agentsh/nethelper/1000/nethelper.sock ]
@@ -567,15 +612,70 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 		wantTimeoutMS   int64
 		wantChildStates []string
 	}{
-		{name: "completed", body: `{"task":"complete","systemPrompt":"system-prompt-sentinel","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "Draft completed", body: `{"mode":"draft","task":"complete","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "child receives deadline", body: `{"task":"deadline","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "large progress retains final", body: `{"task":"large","stream":true}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "long final gets remote artifact", body: `{"task":"artifact","stream":true,"result_artifact_threshold_bytes":4096}`, wantState: "completed", wantTimeoutMS: 7_200_000},
-		{name: "failed task is protocol success", body: `{"task":"fail","stream":true}`, wantState: "failed", wantTimeoutMS: 7_200_000},
-		{name: "timeout", body: `{"task":"timeout","stream":true,"timeout_ms":50}`, wantState: "timed_out", wantCause: "request_timeout", wantTimeoutMS: 50, wantChildStates: []string{"timed_out"}},
-		{name: "parallel preserves completed sibling on timeout", body: `{"tasks":[{"task":"quick"},{"task":"timeout"}],"stream":true,"timeout_ms":250}`, wantState: "timed_out", wantCause: "request_timeout", wantTimeoutMS: 250, wantChildStates: []string{"completed", "timed_out"}},
-		{name: "chain preserves completed step on timeout", body: `{"chain":[{"task":"quick"},{"task":"timeout"}],"stream":true,"timeout_ms":250}`, wantState: "timed_out", wantCause: "request_timeout", wantTimeoutMS: 250, wantChildStates: []string{"completed", "timed_out"}},
+		{
+			name: "completed",
+			body: `{"task":"complete","systemPrompt":"system-prompt-sentinel",` +
+				`"stream":true}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:          "Draft completed",
+			body:          `{"mode":"draft","task":"complete","stream":true}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:          "child receives deadline",
+			body:          `{"task":"deadline","stream":true}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:          "large progress retains final",
+			body:          `{"task":"large","stream":true}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name: "long final gets remote artifact",
+			body: `{"task":"artifact","stream":true,` +
+				`"result_artifact_threshold_bytes":4096}`,
+			wantState:     "completed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:          "failed task is protocol success",
+			body:          `{"task":"fail","stream":true}`,
+			wantState:     "failed",
+			wantTimeoutMS: 7_200_000,
+		},
+		{
+			name:            "timeout",
+			body:            `{"task":"timeout","stream":true,"timeout_ms":50}`,
+			wantState:       "timed_out",
+			wantCause:       "request_timeout",
+			wantTimeoutMS:   50,
+			wantChildStates: []string{"timed_out"},
+		},
+		{
+			name: "parallel preserves completed sibling on timeout",
+			body: `{"tasks":[{"task":"quick"},{"task":"timeout"}],"stream":true,` +
+				`"timeout_ms":250}`,
+			wantState:       "timed_out",
+			wantCause:       "request_timeout",
+			wantTimeoutMS:   250,
+			wantChildStates: []string{"completed", "timed_out"},
+		},
+		{
+			name: "chain preserves completed step on timeout",
+			body: `{"chain":[{"task":"quick"},{"task":"timeout"}],"stream":true,` +
+				`"timeout_ms":250}`,
+			wantState:       "timed_out",
+			wantCause:       "request_timeout",
+			wantTimeoutMS:   250,
+			wantChildStates: []string{"completed", "timed_out"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
@@ -765,7 +865,9 @@ printf '%s\n' '{"schema_version":1,"draft_id":"session-11111111-1111-4111-8111-1
 	t.Run("client cancellation", func(t *testing.T) {
 		rr := httptest.NewRecorder()
 		ctx, cancel := context.WithCancel(context.Background())
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent", strings.NewReader(`{"task":"timeout","stream":true}`)).
+		req := httptest.NewRequest(http.MethodPost,
+			"/api/v1/sessions/"+sess.ID+"/tools/spawn_subagent",
+			strings.NewReader(`{"task":"timeout","stream":true}`)).
 			WithContext(ctx)
 		doneServing := make(chan struct{})
 		go func() {

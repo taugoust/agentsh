@@ -132,7 +132,9 @@ func ParseConfig(data []byte) (*NetworkACLConfig, error) {
 	if err := dec.Decode(
 		&wrapped,
 	); err == nil &&
-		(wrapped.NetworkACL.Default != "" || len(wrapped.NetworkACL.Processes) > 0 || wrapped.NetworkACL.ApprovalUI != nil) {
+		(wrapped.NetworkACL.Default != "" ||
+			len(wrapped.NetworkACL.Processes) > 0 ||
+			wrapped.NetworkACL.ApprovalUI != nil) {
 		config := wrapped.NetworkACL
 		if err := config.Validate(); err != nil {
 			return nil, fmt.Errorf("validate config: %w", err)
@@ -182,7 +184,8 @@ func ValidateConfig(config *NetworkACLConfig) error {
 	if c.Default != "" {
 		if !isValidDecision(c.Default) {
 			return fmt.Errorf(
-				"invalid default decision %q: must be one of allow, deny, approve, audit, allow_once_then_approve",
+				"invalid default decision %q: must be one of allow, deny, approve, audit, "+
+					"allow_once_then_approve",
 				c.Default,
 			)
 		}
@@ -215,7 +218,8 @@ func validateProcessConfig(pc ProcessConfig) error {
 	if pc.Default != "" {
 		if !isValidDecision(pc.Default) {
 			return fmt.Errorf(
-				"invalid default decision %q: must be one of allow, deny, approve, audit, allow_once_then_approve",
+				"invalid default decision %q: must be one of allow, deny, approve, audit, "+
+					"allow_once_then_approve",
 				pc.Default,
 			)
 		}
@@ -272,7 +276,8 @@ func validateNetworkTarget(t NetworkTarget) error {
 	}
 	if !isValidDecision(string(t.Decision)) {
 		return fmt.Errorf(
-			"invalid decision %q: must be one of allow, deny, approve, audit, allow_once_then_approve",
+			"invalid decision %q: must be one of allow, deny, approve, audit, "+
+				"allow_once_then_approve",
 			t.Decision,
 		)
 	}

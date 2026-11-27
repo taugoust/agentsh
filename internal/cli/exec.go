@@ -181,7 +181,9 @@ it, or how to launch a long-lived agent under "agentsh wrap" instead.`,
 					st, ok := status.FromError(e)
 					return ok && st.Code() == codes.NotFound
 				}
-				isSessionNotFound := (errors.As(err, &he) && he.StatusCode == http.StatusNotFound && strings.Contains(strings.ToLower(he.Body), "session not found")) ||
+				isSessionNotFound := (errors.As(err, &he) &&
+					he.StatusCode == http.StatusNotFound &&
+					strings.Contains(strings.ToLower(he.Body), "session not found")) ||
 					grpcNotFound(err)
 				if isSessionNotFound {
 					// Try auto-create first if we have a workspace (unless auto is disabled)
@@ -206,8 +208,9 @@ it, or how to launch a long-lived agent under "agentsh wrap" instead.`,
 					}
 				}
 			}
-			// Server returns a structured ExecResponse body for certain non-2xx statuses (e.g. policy denies).
-			// Decode it so CLI can still render output and exit with the intended command exit code.
+			// Server returns a structured ExecResponse body for certain non-2xx statuses (e.g.
+			// policy denies). Decode it so CLI can still render output and exit with the intended
+			// command exit code.
 			if err != nil {
 				if decoded, ok := decodeExecResponseFromHTTPError(err); ok {
 					resp = decoded
@@ -237,23 +240,31 @@ it, or how to launch a long-lived agent under "agentsh wrap" instead.`,
 	}
 	c.Flags().StringVar(&timeout, "timeout", "", "Command timeout (e.g. 30s, 5m)")
 	c.Flags().
-		StringVar(&jsonStr, "json", "", "Exec request as JSON (e.g. '{\"command\":\"ls\",\"args\":[\"-la\"]}')")
+		StringVar(&jsonStr, "json", "",
+			"Exec request as JSON (e.g. '{\"command\":\"ls\",\"args\":[\"-la\"]}')")
 	c.Flags().BoolVar(&stream, "stream", false, "Stream output (requires server support)")
 	c.Flags().
-		BoolVar(&pty, "pty", false, "Execute in an interactive PTY (stdin/stdout streaming, resize, signals)")
+		BoolVar(&pty, "pty", false,
+			"Execute in an interactive PTY (stdin/stdout streaming, resize, signals)")
 	c.Flags().StringVar(&argv0, "argv0", "", "Override argv[0] for the executed process")
 	c.Flags().
-		StringVar(&output, "output", getenvDefault("AGENTSH_OUTPUT", "shell"), "Output format: shell|json")
+		StringVar(&output, "output", getenvDefault("AGENTSH_OUTPUT", "shell"),
+			"Output format: shell|json")
 	c.Flags().
-		StringVar(&events, "events", getenvDefault("AGENTSH_EVENTS", ""), "Events to include in response: all|summary|blocked|none (default depends on --output)")
+		StringVar(&events, "events", getenvDefault("AGENTSH_EVENTS", ""),
+			"Events to include in response: all|summary|blocked|none (default depends on --output)")
 	c.Flags().
-		StringVar(&root, "root", "", "Root directory for auto-creating session if it doesn't exist (defaults to $PWD)")
+		StringVar(&root, "root", "",
+			"Root directory for auto-creating session if it doesn't exist (defaults to $PWD)")
 	c.Flags().
-		BoolVar(&noDetectRoot, "no-detect-root", false, "Disable project root detection when auto-creating session")
+		BoolVar(&noDetectRoot, "no-detect-root", false,
+			"Disable project root detection when auto-creating session")
 	c.Flags().
-		StringVar(&projectRoot, "project-root", "", "Explicit project root (skips detection) when auto-creating session")
+		StringVar(&projectRoot, "project-root", "",
+			"Explicit project root (skips detection) when auto-creating session")
 	c.Flags().
-		StringVar(&sessionFile, "session-file", "", "Path to cached session file (deleted on 404 to invalidate stale sessions)")
+		StringVar(&sessionFile, "session-file", "",
+			"Path to cached session file (deleted on 404 to invalidate stale sessions)")
 	c.Flags().BoolVar(&realPaths, "real-paths", false, "Use real host paths instead of /workspace")
 	return c
 }
@@ -285,7 +296,9 @@ func execStream(
 			st, ok := status.FromError(e)
 			return ok && st.Code() == codes.NotFound
 		}
-		isSessionNotFound := (errors.As(err, &he) && he.StatusCode == http.StatusNotFound && strings.Contains(strings.ToLower(he.Body), "session not found")) ||
+		isSessionNotFound := (errors.As(err, &he) &&
+			he.StatusCode == http.StatusNotFound &&
+			strings.Contains(strings.ToLower(he.Body), "session not found")) ||
 			grpcNotFound(err)
 		if isSessionNotFound {
 			// Try auto-create first if we have a workspace (unless auto is disabled)

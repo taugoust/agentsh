@@ -306,14 +306,16 @@ func TestIntegration_LLMProxyBothDialects(t *testing.T) {
 			anthropicCalled = true
 			w.Write(
 				[]byte(
-					`{"content":[{"text":"Anthropic"}],"usage":{"input_tokens":5,"output_tokens":3}}`,
+					`{"content":[{"text":"Anthropic"}],"usage":{"input_tokens":5,` +
+						`"output_tokens":3}}`,
 				),
 			)
 		} else if strings.Contains(r.URL.Path, "chat/completions") {
 			openaiCalled = true
 			w.Write(
 				[]byte(
-					`{"choices":[{"message":{"content":"OpenAI"}}],"usage":{"prompt_tokens":5,"completion_tokens":3}}`,
+					`{"choices":[{"message":{"content":"OpenAI"}}],"usage":{"prompt_tokens":5,` +
+						`"completion_tokens":3}}`,
 				),
 			)
 		}

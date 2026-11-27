@@ -13,8 +13,8 @@ import (
 	"github.com/agentsh/agentsh/internal/netmonitor/ebpf"
 )
 
-// Integration test: attach BPF to a temp cgroup, populate allowlist, attempt a denied connect via nc.
-// Requires root; skipped otherwise.
+// Integration test: attach BPF to a temp cgroup, populate allowlist, attempt a denied connect via
+// nc. Requires root; skipped otherwise.
 func TestIntegration_AttachAndEnforce(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("needs root")

@@ -39,7 +39,12 @@ func ExtractToolCalls(body []byte, dialect Dialect) []ToolCall {
 //	  "stop_reason": "tool_use",
 //	  "content": [
 //	    {"type": "text", "text": "..."},
-//	    {"type": "tool_use", "id": "toolu_01A09q90qw90lq917835lq9", "name": "get_weather", "input": {"location": "San Francisco, CA"}}
+//	    {
+//	      "type": "tool_use",
+//	      "id": "toolu_01A09q90qw90lq917835lq9",
+//	      "name": "get_weather",
+//	      "input": {"location": "San Francisco, CA"}
+//	    }
 //	  ]
 //	}
 func extractAnthropicToolCalls(body []byte) []ToolCall {
@@ -85,7 +90,10 @@ func extractAnthropicToolCalls(body []byte) []ToolCall {
 //	      "tool_calls": [{
 //	        "id": "call_KlZ3...",
 //	        "type": "function",
-//	        "function": {"name": "get_weather", "arguments": "{\"location\": \"San Francisco, CA\"}"}
+//	        "function": {
+//	          "name": "get_weather",
+//	          "arguments": "{\"location\": \"San Francisco, CA\"}"
+//	        }
 //	      }]
 //	    }
 //	  }]

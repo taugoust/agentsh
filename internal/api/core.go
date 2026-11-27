@@ -60,9 +60,9 @@ type wrapperSetupResult struct {
 	setupErr   error
 }
 
-// setupSeccompWrapper configures the command to run through agentsh-unixwrap for seccomp enforcement.
-// Returns the wrapped request and extra process config, or nil extraCfg if wrapping is disabled.
-// Note: agentsh-unixwrap is Linux-only; this function returns early on other platforms.
+// setupSeccompWrapper configures the command to run through agentsh-unixwrap for seccomp
+// enforcement. Returns the wrapped request and extra process config, or nil extraCfg if wrapping is
+// disabled. Note: agentsh-unixwrap is Linux-only; this function returns early on other platforms.
 func (a *App) setupSeccompWrapper(
 	req types.ExecRequest,
 	sessionID string,
@@ -135,7 +135,8 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(
 		return &wrapperSetupResult{
 			wrappedReq: req,
 			setupErr: fmt.Errorf(
-				"strict command jail is unavailable with ptrace execution; refusing to run without the same-UID boundary",
+				"strict command jail is unavailable with ptrace execution; refusing to run " +
+					"without the same-UID boundary",
 			),
 		}
 	}
@@ -174,7 +175,8 @@ func (a *App) setupSeccompWrapperWithPolicyAndState(
 			}
 		}
 		slog.Warn(
-			"seccomp wrapper unavailable: wrapper binary not found (running without seccomp enforcement)",
+			"seccomp wrapper unavailable: wrapper binary not found (running without seccomp "+
+				"enforcement)",
 			"wrapper_bin",
 			wrapperBin,
 			"session_id",
@@ -457,7 +459,8 @@ func (a *App) detachedCommandJailStateDir() string {
 func buildCommandJailConfig(
 	cfg *config.Config,
 	sess *session.Session,
-	detachedStateDir, nethelperSocket, nethelperCredentialFile, nethelperBootstrapResult, recoveryTokenFile, compositionScratchRoot string,
+	detachedStateDir, nethelperSocket, nethelperCredentialFile string,
+	nethelperBootstrapResult, recoveryTokenFile, compositionScratchRoot string,
 ) *commandJailConfig {
 	jail := &commandJailConfig{Required: true}
 	compositionScratchRoot = strings.TrimSpace(compositionScratchRoot)
@@ -856,7 +859,8 @@ func (a *App) loadOptionalProfileBasePolicy(policyName string) (*policy.Policy, 
 					)
 				}
 				fmt.Fprintf(os.Stderr, "WARNING: failed to load trust store: %v\n", tsErr)
-			} else if _, vErr := signing.VerifyPolicyBytes(policyData, policyPath+".sig", ts); vErr != nil {
+			} else if _, vErr :=
+				signing.VerifyPolicyBytes(policyData, policyPath+".sig", ts); vErr != nil {
 				if sigMode == "enforce" {
 					return nil, http.StatusForbidden, fmt.Errorf("policy signing: %w", vErr)
 				}
@@ -2248,7 +2252,8 @@ func (a *App) execInSessionCoreWithOptions(
 		case errors.Is(admissionErr, errChildCapabilityRevoked):
 			code = "E_CHILD_CAPABILITY_REVOKED"
 			status = http.StatusForbidden
-		case errors.As(admissionErr, &queueErr) && queueErr.Failure == session.ExecutionQueueDeadline:
+		case errors.As(admissionErr, &queueErr) &&
+			queueErr.Failure == session.ExecutionQueueDeadline:
 			kind = types.ExecFailureQueueTimeout
 			code = "E_QUEUE_TIMEOUT"
 			retryable = true
@@ -2644,7 +2649,9 @@ func (a *App) execInSessionCoreWithOptions(
 		var proxyErr error
 		commandProxy, proxyErr = a.startCommandExplicitProxy(ctx, s, cmdID)
 		if proxyErr != nil {
-			message := "command-local strict network proxy could not start; command was not executed: " + proxyErr.Error()
+			message := "command-local strict network proxy could not start; command was not " +
+				"executed: " +
+				proxyErr.Error()
 			resp := &types.ExecResponse{
 				CommandID: cmdID,
 				SessionID: id,
@@ -2880,25 +2887,27 @@ func (a *App) execInSessionCoreWithOptions(
 			envPolicyResolved = true
 		}
 
-		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources, execErr = runCommandWithResourcesResolvedTimeout(
-			ctx,
-			s,
-			cmdID,
-			wrappedReq,
-			a.cfg,
-			envPolicy,
-			timeoutResolution.Duration,
-			a.cgroupHookWithProxyEndpoints(
-				id,
+		exitCode, stdoutB, stderrB, stdoutTotal, stderrTotal, stdoutTrunc, stderrTrunc, resources,
+			execErr =
+			runCommandWithResourcesResolvedTimeout(
+				ctx,
+				s,
 				cmdID,
-				reserveLineagePIDs(limits, extraCfg),
-				commandProxyEndpoints,
-			),
-			extraCfg,
-			a.ptraceTracer,
-			id,
-			onStarted,
-		)
+				wrappedReq,
+				a.cfg,
+				envPolicy,
+				timeoutResolution.Duration,
+				a.cgroupHookWithProxyEndpoints(
+					id,
+					cmdID,
+					reserveLineagePIDs(limits, extraCfg),
+					commandProxyEndpoints,
+				),
+				extraCfg,
+				a.ptraceTracer,
+				id,
+				onStarted,
+			)
 		failure := commandJailFailureFrom(execErr)
 		if failure == nil {
 			break
@@ -3003,7 +3012,9 @@ func (a *App) execInSessionCoreWithOptions(
 		}
 
 		switch {
-		case strings.HasPrefix(ev.Type, "file_") || strings.HasPrefix(ev.Type, "dir_") || strings.HasPrefix(ev.Type, "symlink_"):
+		case strings.HasPrefix(ev.Type, "file_") ||
+			strings.HasPrefix(ev.Type, "dir_") ||
+			strings.HasPrefix(ev.Type, "symlink_"):
 			fileOps = append(fileOps, ev)
 		case strings.HasPrefix(ev.Type, "net_") || ev.Type == "dns_query":
 			netOps = append(netOps, ev)
@@ -3124,7 +3135,8 @@ func (a *App) execInSessionCoreWithOptions(
 			_ = a.detachedRuntime.MarkFailed(
 				"persist terminal mutable session state: " + err.Error(),
 			)
-			message := "command completed, but durable detached session state could not be committed; side effects may have occurred and the command must not be replayed"
+			message := "command completed, but durable detached session state could not be " +
+				"committed; side effects may have occurred and the command must not be replayed"
 			resp.Result.Error = &types.ExecError{Code: "E_TERMINAL_PERSISTENCE", Message: message}
 			resp.Result.Outcome.Code = "E_TERMINAL_PERSISTENCE"
 			resp.Result.Outcome.Message = message
@@ -3360,7 +3372,8 @@ func (a *App) tryEnableFUSE(fs platform.FilesystemInterceptor) {
 // session creation (e.g., in E2B sandbox environments where /dev/fuse permissions
 // change at runtime). The method is idempotent — it's a no-op if already mounted.
 func (a *App) ensureFUSEMount(ctx context.Context, s *session.Session) {
-	// Already have a real FUSE mount? (WorkspaceMount differs from Workspace when FUSE overlay is active)
+	// Already have a real FUSE mount? (WorkspaceMount differs from Workspace when FUSE overlay is
+	// active)
 	if s.WorkspaceMount != "" && s.WorkspaceMount != s.Workspace {
 		return
 	}
@@ -3413,7 +3426,8 @@ func (a *App) ensureFUSEMount(ctx context.Context, s *session.Session) {
 								return
 							}
 							slog.Warn("ensureFUSEMount: trust store load failed", "error", tsErr)
-						} else if _, vErr := signing.VerifyPolicyBytes(policyData, policyPath+".sig", ts); vErr != nil {
+						} else if _, vErr := signing.VerifyPolicyBytes(policyData,
+							policyPath+".sig", ts); vErr != nil {
 							if sigMode == "enforce" {
 								slog.Error(
 									"ensureFUSEMount: policy signing verification failed",
@@ -3430,7 +3444,8 @@ func (a *App) ensureFUSEMount(ctx context.Context, s *session.Session) {
 						}
 					} else if sigMode == "enforce" {
 						slog.Error(
-							"ensureFUSEMount: signing mode is enforce but trust_store not configured",
+							"ensureFUSEMount: signing mode is enforce but trust_store not " +
+								"configured",
 						)
 						return
 					} else {
@@ -3612,7 +3627,8 @@ func (a *App) applyRealPaths(s *session.Session, reqRealPaths *bool) {
 			false,
 		) {
 			slog.Warn(
-				"session created with real_paths but enforce_without_fuse is false: outside-workspace file access will be audit-only",
+				"session created with real_paths but enforce_without_fuse is false: "+
+					"outside-workspace file access will be audit-only",
 				"session_id",
 				s.ID,
 			)

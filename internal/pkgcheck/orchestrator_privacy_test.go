@@ -233,7 +233,8 @@ func TestOrchestrator_AllSkippedSkipsExternalEvenWithLocalProvider(t *testing.T)
 	}
 	if external.last != nil {
 		t.Errorf(
-			"external must not be invoked when scan list is empty, even with local present; got last=%+v",
+			"external must not be invoked when scan list is empty, even with local present; got "+
+				"last=%+v",
 			external.last,
 		)
 	}

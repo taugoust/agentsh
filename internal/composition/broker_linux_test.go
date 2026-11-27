@@ -139,10 +139,12 @@ func sendSetupTestObjects(
 	}
 	defer writable.Close()
 	rootRights := uint64(
-		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR |
+			landlock.LANDLOCK_ACCESS_FS_EXECUTE,
 	)
 	writableRights := uint64(
-		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE,
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR |
+			landlock.LANDLOCK_ACCESS_FS_WRITE_FILE,
 	)
 	if err := SendSetup(
 		sender,
@@ -169,10 +171,12 @@ func TestCompositionSetupSenderHelper(t *testing.T) {
 	defer root.Close()
 	defer writable.Close()
 	rootRights := uint64(
-		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR |
+			landlock.LANDLOCK_ACCESS_FS_EXECUTE,
 	)
 	writableRights := uint64(
-		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE,
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR |
+			landlock.LANDLOCK_ACCESS_FS_WRITE_FILE,
 	)
 	if err := SendSetup(
 		sender,
@@ -418,7 +422,9 @@ func TestBrokerRejectsSetupAfterTrustedSenderExit(t *testing.T) {
 		err = broker.awaitSetup()
 	}
 	if err == nil ||
-		(!strings.Contains(err.Error(), "pin composition setup sender") && !strings.Contains(err.Error(), "not live and trusted") && !strings.Contains(err.Error(), "E_COMPOSITION_REQUESTER_CHANGED")) {
+		(!strings.Contains(err.Error(), "pin composition setup sender") &&
+			!strings.Contains(err.Error(), "not live and trusted") &&
+			!strings.Contains(err.Error(), "E_COMPOSITION_REQUESTER_CHANGED")) {
 		t.Fatalf("exited setup sender error = %v", err)
 	}
 }
@@ -527,7 +533,8 @@ func TestDestinationRightsCannotBroadenWritableSyntheticAncestor(t *testing.T) {
 		t.Fatal(err)
 	}
 	read := uint64(landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR)
-	destination := read | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE | landlock.LANDLOCK_ACCESS_FS_MAKE_REG
+	destination :=
+		read | landlock.LANDLOCK_ACCESS_FS_WRITE_FILE | landlock.LANDLOCK_ACCESS_FS_MAKE_REG
 	if err := validateDestinationRights(
 		directory,
 		read,
@@ -645,7 +652,8 @@ func TestListOnlyDirectoryBindFitsSyntheticRootAfterReadOnlyNoExecReduction(t *t
 	}
 	listOnly := uint64(landlock.LANDLOCK_ACCESS_FS_READ_DIR)
 	destination := uint64(
-		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR | landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+		landlock.LANDLOCK_ACCESS_FS_READ_FILE | landlock.LANDLOCK_ACCESS_FS_READ_DIR |
+			landlock.LANDLOCK_ACCESS_FS_EXECUTE,
 	)
 	attributes := uint64(unix.MOUNT_ATTR_RDONLY | unix.MOUNT_ATTR_NOEXEC)
 	source, err := os.Open(directory)
@@ -745,7 +753,8 @@ func TestHeterogeneousBindPreservesRetainedWritableDescendant(t *testing.T) {
 	projectMetadata, err := objectMetadata(
 		SetupObjectPolicy,
 		project,
-		compositionMutationRights|landlock.LANDLOCK_ACCESS_FS_READ_DIR|landlock.LANDLOCK_ACCESS_FS_EXECUTE,
+		compositionMutationRights|landlock.LANDLOCK_ACCESS_FS_READ_DIR|
+			landlock.LANDLOCK_ACCESS_FS_EXECUTE,
 		projectObject,
 	)
 	if err != nil {
@@ -793,7 +802,8 @@ func TestHeterogeneousBindPreservesRetainedWritableDescendant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantValidationRights := rootRights | compositionMutationRights | landlock.LANDLOCK_ACCESS_FS_EXECUTE
+	wantValidationRights :=
+		rootRights | compositionMutationRights | landlock.LANDLOCK_ACCESS_FS_EXECUTE
 	if validationRights&wantValidationRights != wantValidationRights {
 		t.Fatalf(
 			"heterogeneous validation rights=%#x, want coverage %#x",
@@ -848,7 +858,11 @@ func TestBrokerRejectsScratchRootAsBindSourceOrDescendant(t *testing.T) {
 	broker := &Broker{cfg: BrokerConfig{ScratchRoot: scratch}}
 	context := &targetContext{root: root}
 
-	for _, source := range []string{scratch, filepath.Join(scratch, "child"), string(filepath.Separator)} {
+	for _, source := range []string{
+		scratch,
+		filepath.Join(scratch, "child"),
+		string(filepath.Separator),
+	} {
 		if source != string(filepath.Separator) {
 			if err := os.MkdirAll(source, 0o700); err != nil {
 				t.Fatal(err)

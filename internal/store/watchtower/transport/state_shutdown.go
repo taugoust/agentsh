@@ -60,7 +60,8 @@ func (t *Transport) runShutdown(
 				break
 			}
 			if outBatch := b.Add(rec); outBatch != nil {
-				msgs, err := encodeBatchMessageFn(outBatch.Records, t.emitExtendedLossReasons, t.compressor, t.compressMetrics)
+				msgs, err := encodeBatchMessageFn(outBatch.Records, t.emitExtendedLossReasons,
+					t.compressor, t.compressMetrics)
 				if err != nil {
 					break drainLoop
 				}

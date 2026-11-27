@@ -16,7 +16,11 @@ type RefResolver func(ctx context.Context, ref SecretRef) (SecretValue, error)
 // resolver can fetch secrets from providers that have already been
 // constructed (for auth chaining like vault's token_ref pointing
 // at keyring://...).
-type ConstructorFunc func(ctx context.Context, cfg ProviderConfig, resolver RefResolver) (SecretProvider, error)
+type ConstructorFunc func(
+	ctx context.Context,
+	cfg ProviderConfig,
+	resolver RefResolver,
+) (SecretProvider, error)
 
 // Registry holds constructed providers keyed by their config name.
 // It is constructed by NewRegistry, which resolves auth-chaining

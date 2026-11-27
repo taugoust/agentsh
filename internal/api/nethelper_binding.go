@@ -162,8 +162,10 @@ func newNethelperBindingState(
 	if binding.BootstrapResultPath != "" {
 		if result, err := readNethelperBootstrapResult(binding.BootstrapResultPath); err == nil &&
 			result.Validate(time.Now().UTC()) == nil &&
-			result.SocketPath == binding.SocketPath && result.CredentialFile == binding.CredentialFile &&
-			result.ResultFile == binding.BootstrapResultPath && bootstrapResultMatchesFixedPaths(result) {
+			result.SocketPath == binding.SocketPath &&
+			result.CredentialFile == binding.CredentialFile &&
+			result.ResultFile == binding.BootstrapResultPath &&
+			bootstrapResultMatchesFixedPaths(result) {
 			binding.Kind = "ephemeral"
 			binding.UnitName = result.UnitName
 			binding.BootstrapSchemaVersion = result.BootstrapSchemaVersion
@@ -251,7 +253,8 @@ func (s *nethelperBindingState) confirmUncertainCandidateCleanup(
 	defer s.mu.Unlock()
 	current := s.uncertain
 	if current == nil || current.Attachment == nil || current.SessionID != pending.SessionID ||
-		current.Binding.Generation != pending.Binding.Generation || current.Binding.LeaseID != pending.Binding.LeaseID {
+		current.Binding.Generation != pending.Binding.Generation ||
+		current.Binding.LeaseID != pending.Binding.LeaseID {
 		return false
 	}
 	got, want := current.Attachment, pending.Attachment
@@ -606,7 +609,11 @@ func (a *App) loadCandidateNethelperBinding(
 			"ephemeral helper rebinding is supported only on Linux",
 		)
 	}
-	for name, path := range map[string]string{"bootstrap_result_path": req.BootstrapResultPath, "socket_path": req.SocketPath, "credential_file": req.CredentialFile} {
+	for name, path := range map[string]string{
+		"bootstrap_result_path": req.BootstrapResultPath,
+		"socket_path":           req.SocketPath,
+		"credential_file":       req.CredentialFile,
+	} {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 			return nethelperBinding{}, fmt.Errorf("%s must be absolute and canonical", name)
 		}

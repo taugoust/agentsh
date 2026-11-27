@@ -56,7 +56,8 @@ func TestSocketRuleChecker_Check_MatchMissTypeMaskAndNilReceiver(t *testing.T) {
 	}
 	if _, ok := NewSocketRuleChecker(
 		nil,
-	).Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW), uint64(unix.NETLINK_XFRM)); ok {
+	).Check(uint64(unix.SYS_SOCKET), uint64(unix.AF_NETLINK), uint64(unix.SOCK_RAW),
+		uint64(unix.NETLINK_XFRM)); ok {
 		t.Fatal("empty checker should never match")
 	}
 	var nilChecker *SocketRuleChecker
@@ -126,7 +127,8 @@ func TestSocketRuleChecker_ConstructionCopiesRulePointers(t *testing.T) {
 		uint64(unix.NETLINK_XFRM),
 	); !ok {
 		t.Fatal(
-			"checker should retain original Type/Protocol values after caller mutates input pointers",
+			"checker should retain original Type/Protocol values after caller mutates input " +
+				"pointers",
 		)
 	}
 	if _, ok := c.Check(

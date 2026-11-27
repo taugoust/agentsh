@@ -94,7 +94,10 @@ func TestParseProxyAuthorityUsesExactDestinationPort(t *testing.T) {
 }
 
 func TestParseProxyAuthorityRejectsMalformedOrServicePorts(t *testing.T) {
-	for _, authority := range []string{"example.test", "example.test:https", "example.test:0", "example.test:70000", "bad host:443", "[fe80::1%eth0]:443"} {
+	for _, authority := range []string{
+		"example.test", "example.test:https", "example.test:0", "example.test:70000",
+		"bad host:443", "[fe80::1%eth0]:443",
+	} {
 		if _, _, _, err := parseProxyAuthority(authority, 443, true); err == nil {
 			t.Fatalf("CONNECT authority %q was accepted", authority)
 		}

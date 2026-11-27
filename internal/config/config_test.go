@@ -1323,10 +1323,11 @@ func TestMCPServerDeclaration_YAMLRoundTrip(t *testing.T) {
 				Args:    []string{"@mcp/fs", "/data"},
 			},
 			{
-				ID:             "api",
-				Type:           "http",
-				URL:            "https://mcp.example.com",
-				TLSFingerprint: "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+				ID:   "api",
+				Type: "http",
+				URL:  "https://mcp.example.com",
+				TLSFingerprint: "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4" +
+					"e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
 			},
 		},
 		ServerPolicy: "allowlist",
@@ -2127,14 +2128,28 @@ func TestAuditWatchtowerConfig_KMSSourcesMutualExclusion(t *testing.T) {
 		{"file", "      key_file: \"" + chainKey + "\"\n"},
 		{"env", "      key_env: \"WTP_KEY\"\n"},
 		{"aws_kms", "      aws_kms:\n        key_id: \"alias/aws-key\"\n"},
-		{"azure_keyvault", "      azure_keyvault:\n        vault_url: \"https://v.vault.azure.net\"\n        key_name: \"k\"\n"},
-		{"hashicorp_vault", "      hashicorp_vault:\n        address: \"https://vault.example.com\"\n        secret_path: \"secret/data/agentsh/wtp\"\n"},
-		{"gcp_kms", "      gcp_kms:\n        key_name: \"projects/p/locations/l/keyRings/r/cryptoKeys/k\"\n"},
+		{
+			"azure_keyvault",
+			"      azure_keyvault:\n        vault_url: \"https://v.vault.azure.net\"\n" +
+				"        key_name: \"k\"\n",
+		},
+		{
+			"hashicorp_vault",
+			"      hashicorp_vault:\n        address: \"https://vault.example.com\"\n" +
+				"        secret_path: \"secret/data/agentsh/wtp\"\n",
+		},
+		{
+			"gcp_kms",
+			"      gcp_kms:\n        key_name: \"projects/p/locations/l/keyRings/r/" +
+				"cryptoKeys/k\"\n",
+		},
 	} {
 		t.Run("only_"+c.name, func(t *testing.T) {
 			yaml := "audit:\n  watchtower:\n    enabled: true\n" +
 				"    endpoint: \"wtp.example.com:9443\"\n" +
-				"    state_dir: \"" + filepath.ToSlash(filepath.Join(t.TempDir(), "wtp-state")) + "\"\n" +
+				"    state_dir: \"" + filepath.ToSlash(
+				filepath.Join(t.TempDir(), "wtp-state"),
+			) + "\"\n" +
 				"    auth:\n      token_file: \"/t\"\n" +
 				"    chain:\n" + c.chain
 			_, err := loadFromString(t, yaml)
@@ -2217,7 +2232,9 @@ func TestAuditWatchtowerConfig_ProviderRequiredFields(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			yaml := "audit:\n  watchtower:\n    enabled: true\n" +
 				"    endpoint: \"wtp.example.com:9443\"\n" +
-				"    state_dir: \"" + filepath.ToSlash(filepath.Join(t.TempDir(), "wtp-state")) + "\"\n" +
+				"    state_dir: \"" + filepath.ToSlash(
+				filepath.Join(t.TempDir(), "wtp-state"),
+			) + "\"\n" +
 				"    auth:\n      token_file: \"/t\"\n" +
 				"    chain:\n" + tc.chain
 			_, err := loadFromString(t, yaml)

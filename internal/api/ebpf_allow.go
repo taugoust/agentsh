@@ -99,11 +99,20 @@ func exactLoopbackProxyAddrPort(rawURL string) (netip.AddrPort, error) {
 
 // buildAllowedEndpoints converts policy/network rules into ebpf allowlist entries and CIDRs.
 // Best-effort: expands allow network rules into concrete IP/port tuples and prefix matches.
-// Returns: allow entries, allow cidrs, deny entries, deny cidrs, strict flag, hasDomains flag, ttlHint (min TTL observed, 0 if none).
+// Returns: allow entries, allow cidrs, deny entries, deny cidrs, strict flag, hasDomains flag,
+// ttlHint (min TTL observed, 0 if none).
 func buildAllowedEndpoints(
 	p *policy.Engine,
 	maxTTL time.Duration,
-) ([]ebpf.AllowKey, []ebpf.AllowCIDR, []ebpf.AllowKey, []ebpf.AllowCIDR, bool, bool, time.Duration) {
+) (
+	[]ebpf.AllowKey,
+	[]ebpf.AllowCIDR,
+	[]ebpf.AllowKey,
+	[]ebpf.AllowCIDR,
+	bool,
+	bool,
+	time.Duration,
+) {
 	if p == nil {
 		return nil, nil, nil, nil, false, false, 0
 	}

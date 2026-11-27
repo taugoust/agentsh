@@ -148,7 +148,8 @@ func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_RawRules(t *t
 	})
 	if !warned {
 		t.Fatal(
-			"expected orphan warning for socket_rules when ptrace is disabled and wrapper is missing",
+			"expected orphan warning for socket_rules when ptrace is disabled and wrapper " +
+				"is missing",
 		)
 	}
 }
@@ -167,7 +168,8 @@ func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_MitigationSet
 	})
 	if !warned {
 		t.Fatal(
-			"expected orphan warning for dirtyfrag-conservative socket rules when ptrace is disabled and wrapper is missing",
+			"expected orphan warning for dirtyfrag-conservative socket rules when ptrace is " +
+				"disabled and wrapper is missing",
 		)
 	}
 }
@@ -191,7 +193,7 @@ func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenWra
 	}
 }
 
-func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenWrapperRunsWithSeccompDisabled(
+func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWrapperWithoutSeccomp(
 	t *testing.T,
 ) {
 	withPresentWrapper(t)
@@ -209,7 +211,8 @@ func TestResolveSocketRuleCheckerForPtrace_WarnIfSocketRulesOrphan_NoWarnWhenWra
 	})
 	if warned {
 		t.Fatal(
-			"must not warn when unix_sockets wrapper can enforce socket rules even with sandbox.seccomp.enabled=false",
+			"must not warn when unix_sockets wrapper can enforce socket rules even with " +
+				"sandbox.seccomp.enabled=false",
 		)
 	}
 }

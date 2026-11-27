@@ -197,7 +197,10 @@ func TestEphemeralInstanceControllerAttestsOnlyFixedAuthenticatedLease(t *testin
 		ExpectedUID:              1000,
 		ExpectedGID:              100,
 		EnforceGID:               true,
-		AttestCompositionRuntime: func(uid uint32, gotLease string) (CompositionRuntimeAttestation, error) {
+		AttestCompositionRuntime: func(
+			uid uint32,
+			gotLease string,
+		) (CompositionRuntimeAttestation, error) {
 			called = true
 			if uid != 1000 || gotLease != lease {
 				t.Fatalf("attester received uid=%d lease=%q", uid, gotLease)

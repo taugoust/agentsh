@@ -37,7 +37,8 @@ database_rules:
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbAllow {
 		t.Fatalf(
-			"verb = %v, want allow; FunctionCallProtocol effect must be reachable via objectless coverage (RuleName=%q, Reason=%q)",
+			"verb = %v, want allow; FunctionCallProtocol effect must be reachable via objectless "+
+				"coverage (RuleName=%q, Reason=%q)",
 			d.Verb,
 			d.RuleName,
 			d.Reason,
@@ -78,7 +79,8 @@ database_rules:
 	d := Evaluate(stmt, rs, "appdb")
 	if d.Verb != VerbDeny {
 		t.Fatalf(
-			"verb = %v, want deny; SQL-escalated objectless procedural must fail closed (RuleName=%q)",
+			"verb = %v, want deny; SQL-escalated objectless procedural must fail closed "+
+				"(RuleName=%q)",
 			d.Verb,
 			d.RuleName,
 		)

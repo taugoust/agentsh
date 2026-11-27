@@ -212,7 +212,9 @@ func TestProxy_TPM_Returns429(t *testing.T) {
 		// Report 500 input + 500 output = 1000 total tokens
 		w.Write(
 			[]byte(
-				`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":500,"output_tokens":500}}`,
+				`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text",` +
+					`"text":"ok"}],"model":"claude-sonnet-4-20250514",` +
+					`"usage":{"input_tokens":500,"output_tokens":500}}`,
 			),
 		)
 	}))
@@ -279,7 +281,8 @@ func TestProxy_TPM_Returns429(t *testing.T) {
 		return resp
 	}
 
-	// First request succeeds; upstream reports 1000 tokens which depletes the 100-token burst budget.
+	// First request succeeds; upstream reports 1000 tokens which depletes the 100-token burst
+	// budget.
 	//nolint:bodyclose // makeRequest returns an already drained and closed body.
 	resp1 := makeRequest()
 	if resp1.StatusCode == http.StatusTooManyRequests {
@@ -303,7 +306,9 @@ func TestProxy_RPM_Returns429(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(
 			[]byte(
-				`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":5,"output_tokens":2}}`,
+				`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text",` +
+					`"text":"ok"}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":5,` +
+					`"output_tokens":2}}`,
 			),
 		)
 	}))
@@ -395,7 +400,8 @@ func TestProxy_TPM_FallbackChargeOnMissingUsage(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(
 			[]byte(
-				`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-sonnet-4-20250514"}`,
+				`{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text",` +
+					`"text":"ok"}],"model":"claude-sonnet-4-20250514"}`,
 			),
 		)
 	}))

@@ -228,7 +228,8 @@ func TestSetupLogging_NoSelfDeadlockUnderFileMonitor(t *testing.T) {
 	runErr := cmd.Run()
 	if ctx.Err() != nil {
 		t.Fatalf(
-			"child deadlocked under file-monitor filter (#415 tz lazy-load regression)\noutput:\n%s",
+			"child deadlocked under file-monitor filter (#415 tz lazy-load regression)\n"+
+				"output:\n%s",
 			out.String(),
 		)
 	}

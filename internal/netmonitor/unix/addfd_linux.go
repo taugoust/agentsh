@@ -58,8 +58,8 @@ const (
 //   - notifFD: the seccomp notify file descriptor
 //   - notifID: the notification ID from the trapped syscall
 //   - srcFD: the file descriptor in the supervisor to inject
-//   - targetFD: the desired fd number in the tracee (only used when SECCOMP_ADDFD_FLAG_SETFD is set;
-//     otherwise set to 0 and the kernel will choose)
+//   - targetFD: the desired fd number in the tracee (only used when SECCOMP_ADDFD_FLAG_SETFD is
+//     set; otherwise set to 0 and the kernel will choose)
 //   - flags: SECCOMP_ADDFD_FLAG_* flags
 //
 // Returns the fd number allocated in the tracee, or an error.

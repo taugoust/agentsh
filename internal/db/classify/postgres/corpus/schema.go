@@ -19,8 +19,9 @@ type Row struct {
 	SpecRef     string `yaml:"spec_ref"`
 	Description string `yaml:"description"`
 
-	SQL     string `yaml:"sql"`
-	Dialect string `yaml:"dialect"` // postgres | aurora_postgres | cockroachdb | redshift; default postgres
+	SQL string `yaml:"sql"`
+	// postgres | aurora_postgres | cockroachdb | redshift; default postgres
+	Dialect string `yaml:"dialect"`
 	Session struct {
 		SearchPath        []string `yaml:"search_path,omitempty"`
 		DefaultSearchPath []string `yaml:"default_search_path,omitempty"`
@@ -34,7 +35,8 @@ type Row struct {
 	} `yaml:"options,omitempty"`
 
 	ExpectedClassification []ExpectedStatement `yaml:"expected_classification"`
-	ExpectedDecision       *ExpectedDecision   `yaml:"expected_decision_under_sample_policy,omitempty"`
+
+	ExpectedDecision *ExpectedDecision `yaml:"expected_decision_under_sample_policy,omitempty"`
 }
 
 type ExpectedStatement struct {

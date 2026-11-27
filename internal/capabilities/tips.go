@@ -29,7 +29,8 @@ var tipsByBackend = map[string][]reasonTip{
 			Tip: Tip{
 				Feature: "fuse",
 				Impact:  "Fine-grained filesystem control disabled",
-				Action:  "Install FUSE3: apt install fuse3 (Debian/Ubuntu), dnf install fuse3 (Fedora)",
+				Action: "Install FUSE3: apt install fuse3 (Debian/Ubuntu), dnf install fuse3 " +
+					"(Fedora)",
 			},
 		},
 	},
@@ -66,7 +67,9 @@ var tipsByBackend = map[string][]reasonTip{
 			Tip: Tip{
 				Feature: "ebpf",
 				Impact:  "Network monitoring disabled",
-				Action:  "Kernel was built without CONFIG_DEBUG_INFO_BTF=y; cilium/ebpf CO-RE programs cannot relocate types without BTF. Rebuild the kernel with CONFIG_DEBUG_INFO_BTF=y (and ideally CONFIG_DEBUG_INFO_BTF_MODULES=y).",
+				Action: "Kernel was built without CONFIG_DEBUG_INFO_BTF=y; cilium/ebpf CO-RE " +
+					"programs cannot relocate types without BTF. Rebuild the kernel with " +
+					"CONFIG_DEBUG_INFO_BTF=y (and ideally CONFIG_DEBUG_INFO_BTF_MODULES=y).",
 			},
 		},
 		{
@@ -74,7 +77,8 @@ var tipsByBackend = map[string][]reasonTip{
 			Tip: Tip{
 				Feature: "ebpf",
 				Impact:  "Network monitoring disabled",
-				Action:  "eBPF socket association requires cgroups v2. Mount a unified cgroup hierarchy or switch to a systemd-based init.",
+				Action: "eBPF socket association requires cgroups v2. Mount a unified cgroup " +
+					"hierarchy or switch to a systemd-based init.",
 			},
 		},
 		{
@@ -82,7 +86,8 @@ var tipsByBackend = map[string][]reasonTip{
 			Tip: Tip{
 				Feature: "ebpf",
 				Impact:  "Network monitoring disabled",
-				Action:  "Could not determine kernel version. eBPF network monitoring requires kernel 5.8+.",
+				Action: "Could not determine kernel version. eBPF network monitoring requires " +
+					"kernel 5.8+.",
 			},
 		},
 		{
@@ -90,14 +95,16 @@ var tipsByBackend = map[string][]reasonTip{
 			Tip: Tip{
 				Feature: "ebpf",
 				Impact:  "Network monitoring disabled",
-				Action:  "eBPF network monitoring requires kernel 5.8+ for BPF ring buffer and CO-RE support. Upgrade your kernel.",
+				Action: "eBPF network monitoring requires kernel 5.8+ for BPF ring buffer and " +
+					"CO-RE support. Upgrade your kernel.",
 			},
 		},
 		{
 			Tip: Tip{
 				Feature: "ebpf",
 				Impact:  "Network monitoring disabled",
-				Action:  "Requires CAP_BPF (or CAP_SYS_ADMIN) and cgroups v2. Run as root or with elevated privileges.",
+				Action: "Requires CAP_BPF (or CAP_SYS_ADMIN) and cgroups v2. Run as root or " +
+					"with elevated privileges.",
 			},
 		},
 	},
@@ -115,7 +122,11 @@ var tipsByBackend = map[string][]reasonTip{
 			Tip: Tip{
 				Feature: "cgroups_v2_resource_limits",
 				Impact:  "Resource limits (memory/cpu/pids) cannot be enforced for sessions",
-				Action:  "Required only if you want resource limits. On stock Docker, add a docker.service drop-in:\n  # /etc/systemd/system/docker.service.d/cgroup-delegate.conf\n  [Service]\n  Delegate=memory pids cpu\nThen `systemctl daemon-reload && systemctl restart docker`. eBPF network enforcement does NOT require this.",
+				Action: "Required only if you want resource limits. On stock Docker, add a " +
+					"docker.service drop-in:\n  # /etc/systemd/system/docker.service.d/" +
+					"cgroup-delegate.conf\n  [Service]\n  Delegate=memory pids cpu\n" +
+					"Then `systemctl daemon-reload && systemctl restart docker`. eBPF network " +
+					"enforcement does NOT require this.",
 			},
 		},
 	},
@@ -124,7 +135,9 @@ var tipsByBackend = map[string][]reasonTip{
 			Tip: Tip{
 				Feature: "ebpf_cgroup_attach",
 				Impact:  "Network rules (domain-based denies) won't enforce against subprocesses",
-				Action:  "eBPF cgroup_connect requires CAP_BPF (or CAP_SYS_ADMIN), /sys/fs/bpf mounted, and kernel CONFIG_CGROUP_BPF. Check `agentsh detect` output for the specific blocker.",
+				Action: "eBPF cgroup_connect requires CAP_BPF (or CAP_SYS_ADMIN), /sys/fs/bpf " +
+					"mounted, and kernel CONFIG_CGROUP_BPF. Check `agentsh detect` output for " +
+					"the specific blocker.",
 			},
 		},
 	},
@@ -151,7 +164,12 @@ var tipsByBackend = map[string][]reasonTip{
 			Tip: Tip{
 				Feature: "capability-drop",
 				Impact:  "Process retains full Linux capabilities (privilege reduction inactive)",
-				Action:  "Start the process with a reduced capability set using systemd CapabilityBoundingSet= + User=, docker run --cap-drop=ALL, or an unprivileged user. Note: capabilities.DropCapabilities() only narrows the bounding set for exec'd children via PR_CAPBSET_DROP and does not lower the running process's permitted/effective sets, so calling it from inside the server is not a substitute for the startup-time mechanisms above.",
+				Action: "Start the process with a reduced capability set using systemd " +
+					"CapabilityBoundingSet= + User=, docker run --cap-drop=ALL, or an " +
+					"unprivileged user. Note: capabilities.DropCapabilities() only narrows the " +
+					"bounding set for exec'd children via PR_CAPBSET_DROP and does not lower the " +
+					"running process's permitted/effective sets, so calling it from inside the " +
+					"server is not a substitute for the startup-time mechanisms above.",
 			},
 		},
 	},

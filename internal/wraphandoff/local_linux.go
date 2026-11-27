@@ -114,7 +114,11 @@ func recvLocalMessage(file *os.File, expectedType uint16) (*LocalMessage, error)
 	return recvLocalMessageWith(file, expectedType, unix.Recvmsg)
 }
 
-type localRecvmsg func(fd int, p, oob []byte, flags int) (n, oobn, recvflags int, from unix.Sockaddr, err error)
+type localRecvmsg func(
+	fd int,
+	p, oob []byte,
+	flags int,
+) (n, oobn, recvflags int, from unix.Sockaddr, err error)
 
 func recvLocalMessageWith(
 	file *os.File,

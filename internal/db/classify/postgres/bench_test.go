@@ -35,6 +35,8 @@ func BenchmarkClassify_50StatementMix(b *testing.B) {
 // representativeWorkloadSQL is a 50-statement mix covering the major
 // classification paths: DML reads/writes, DDL, COPY, privilege, session,
 // maintenance, and procedural. Statement count is checked at bench start.
+//
+//nolint:lll // SQL corpus keeps one statement per line
 const representativeWorkloadSQL = `
 -- DML reads (5)
 SELECT 1;

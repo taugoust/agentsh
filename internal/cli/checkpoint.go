@@ -26,7 +26,8 @@ func newCheckpointCmd() *cobra.Command {
 
 func addCheckpointStorageFlag(cmd *cobra.Command) {
 	cmd.Flags().
-		String("storage-dir", "", "checkpoint storage directory (default: config sessions.checkpoints.storage_dir)")
+		String("storage-dir", "",
+			"checkpoint storage directory (default: config sessions.checkpoints.storage_dir)")
 }
 
 func getCheckpointStorage(cmd *cobra.Command) (*session.FileCheckpointStorage, error) {

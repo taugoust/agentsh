@@ -32,7 +32,8 @@ func buildSkillcheckProviders(
 		}
 		if !valid[name] {
 			return nil, fmt.Errorf(
-				"skillcheck.providers: unknown provider %q (valid: local, snyk, skills_sh, chainguard, repello)",
+				"skillcheck.providers: unknown provider %q (valid: local, snyk, skills_sh, "+
+					"chainguard, repello)",
 				name,
 			)
 		}

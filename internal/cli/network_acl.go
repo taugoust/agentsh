@@ -162,7 +162,8 @@ and decision for each rule.`,
 	}
 
 	cmd.Flags().
-		StringVar(&configPath, "config", "", "Path to network ACL config (default: ~/.config/agentsh/network-acl.yml)")
+		StringVar(&configPath, "config", "",
+			"Path to network ACL config (default: ~/.config/agentsh/network-acl.yml)")
 	cmd.Flags().StringVar(&processFilter, "process", "", "Filter rules by process name")
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output in JSON format")
 

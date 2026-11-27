@@ -17,7 +17,12 @@ func TestInterruptedProcessTerminationRequiresUnreusedIdentity(t *testing.T) {
 		want          string
 	}{
 		{name: "missing identity", want: "lacks a verifiable process identity"},
-		{name: "reused identity", startIdentity: "not-this-process", bootID: "not-this-boot", want: "process identity was reused"},
+		{
+			name:          "reused identity",
+			startIdentity: "not-this-process",
+			bootID:        "not-this-boot",
+			want:          "process identity was reused",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := terminateDetachedInterruptedProcesses([]detached.InflightCommand{{

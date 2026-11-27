@@ -117,11 +117,15 @@ func TestProfileV2RequiresExactWorkspaceVolumeContract(t *testing.T) {
 		{"runner fd", func(p *Profile) { p.WorkspaceVolume.RunnerFD++ }},
 		{
 			"virtual size below minimum",
-			func(p *Profile) { p.WorkspaceVolume.VirtualSizeBytes = WorkspaceVolumeMinVirtualSizeBytes - 1 },
+			func(p *Profile) {
+				p.WorkspaceVolume.VirtualSizeBytes = WorkspaceVolumeMinVirtualSizeBytes - 1
+			},
 		},
 		{
 			"virtual size above maximum",
-			func(p *Profile) { p.WorkspaceVolume.VirtualSizeBytes = WorkspaceVolumeMaxVirtualSizeBytes + 1 },
+			func(p *Profile) {
+				p.WorkspaceVolume.VirtualSizeBytes = WorkspaceVolumeMaxVirtualSizeBytes + 1
+			},
 		},
 	}
 	for _, test := range tests {
@@ -169,7 +173,8 @@ func TestProfileSchemaRequiresBoundGuestProtocol(t *testing.T) {
 
 func TestProfileV3RequiresExplicitHostBrokerStrictEgress(t *testing.T) {
 	policyData := []byte(
-		"version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n    domains: [example.com]\n    ports: [443]\n    decision: allow\n",
+		"version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n" +
+			"    domains: [example.com]\n    ports: [443]\n    decision: allow\n",
 	)
 	policyPath := filepath.Join(t.TempDir(), "host-egress.yaml")
 	if err := os.WriteFile(policyPath, policyData, 0o600); err != nil {

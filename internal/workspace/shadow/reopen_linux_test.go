@@ -40,7 +40,11 @@ func installShadowRuntimeFixtures(t *testing.T) {
 func materializeRetainedShadow(t *testing.T, base, id, real string) (Root, time.Time) {
 	t.Helper()
 	work := filepath.Join(base, id, "work")
-	for _, dir := range []string{work, filepath.Join(base, id, "home"), filepath.Join(base, id, "tmp")} {
+	for _, dir := range []string{
+		work,
+		filepath.Join(base, id, "home"),
+		filepath.Join(base, id, "tmp"),
+	} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}

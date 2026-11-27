@@ -55,6 +55,8 @@ func decodeApprovalResolution(raw []byte) (approvals.Resolution, error) {
 func sameResolutionDecision(a, b approvals.Resolution) bool {
 	return a.Approved == b.Approved && a.Reason == b.Reason && a.Scope == b.Scope &&
 		a.ScopeKind == b.ScopeKind && a.ScopeKey == b.ScopeKey && a.ScopeLabel == b.ScopeLabel &&
-		a.ScopeOperation == b.ScopeOperation && a.ScopePath == b.ScopePath && a.ScopeRule == b.ScopeRule &&
+		a.ScopeOperation == b.ScopeOperation &&
+		a.ScopePath == b.ScopePath &&
+		a.ScopeRule == b.ScopeRule &&
 		a.ScopePrefix == b.ScopePrefix
 }

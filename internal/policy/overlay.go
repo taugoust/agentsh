@@ -350,7 +350,8 @@ func MergePolicyOverlays(base *Policy, overlays []PolicyOverlay) (*Policy, error
 			for _, rule := range overlay.CommandRules {
 				if rule.SandboxComposition != "" {
 					return nil, fmt.Errorf(
-						"overlay %q command rule %q selects sandbox_composition without an explicit trusted project_overlay_boundary",
+						"overlay %q command rule %q selects sandbox_composition without an "+
+							"explicit trusted project_overlay_boundary",
 						overlay.Name,
 						rule.Name,
 					)

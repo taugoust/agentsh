@@ -39,7 +39,8 @@ func TestProjectOverlaysDefaults(t *testing.T) {
 func TestProjectOverlaysExplicitNoApproval(t *testing.T) {
 	cfg, err := loadProjectOverlayTestConfig(
 		[]byte(
-			"policies:\n  project_overlays:\n    enabled: true\n    require_approval: false\n    on_denied: ignore\n",
+			"policies:\n  project_overlays:\n    enabled: true\n    require_approval: false\n" +
+				"    on_denied: ignore\n",
 		),
 	)
 	if err != nil {

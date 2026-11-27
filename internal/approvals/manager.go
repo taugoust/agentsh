@@ -80,10 +80,12 @@ type Manager struct {
 	requestObserver  func(context.Context, Request) error
 	terminalObserver func(context.Context, Request, Resolution) error
 
-	mu            sync.Mutex
-	pending       map[string]*pending
-	scoped        map[string]map[string]ScopedDecision            // sessionID -> scopeKey -> decision
-	commandScoped map[string]map[string]map[string]ScopedDecision // sessionID -> commandID -> scopeKey -> decision
+	mu      sync.Mutex
+	pending map[string]*pending
+	// sessionID -> scopeKey -> decision
+	scoped map[string]map[string]ScopedDecision
+	// sessionID -> commandID -> scopeKey -> decision
+	commandScoped map[string]map[string]map[string]ScopedDecision
 	// scopedChanged persists session-scoped grants for detached crash recovery.
 	// Command-scoped decisions deliberately never survive a command/process loss.
 	scopedChanged func(sessionID string, decisions []ScopedDecision)

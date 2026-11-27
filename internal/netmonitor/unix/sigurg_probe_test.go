@@ -58,7 +58,8 @@ func TestInstallFilter_EmitsWaitKillEngagedOnSupportedKernel(t *testing.T) {
 			strings.Contains(lower, "seccomp not supported") ||
 			strings.Contains(lower, "lacks user notify") {
 			t.Skipf(
-				"host cannot install seccomp filter in this environment; skipping.\nhelper output:\n%s",
+				"host cannot install seccomp filter in this environment; skipping.\n"+
+					"helper output:\n%s",
 				combined,
 			)
 		}
@@ -69,13 +70,15 @@ func TestInstallFilter_EmitsWaitKillEngagedOnSupportedKernel(t *testing.T) {
 	hasJSONFmt := strings.Contains(combined, `"wait_killable":true`)
 	if !hasTextFmt && !hasJSONFmt {
 		t.Fatalf(
-			"startup log did not announce wait_killable=true — Layer 1 silently disabled.\ncombined output:\n%s",
+			"startup log did not announce wait_killable=true — Layer 1 silently disabled.\n"+
+				"combined output:\n%s",
 			combined,
 		)
 	}
 	if strings.Contains(combined, "WaitKillable rejected at filter load time") {
 		t.Fatalf(
-			"Layer 1 fell back at filter load time on a kernel >=6.0 — SIGURG fix degraded.\ncombined output:\n%s",
+			"Layer 1 fell back at filter load time on a kernel >=6.0 — SIGURG fix degraded.\n"+
+				"combined output:\n%s",
 			combined,
 		)
 	}
@@ -141,7 +144,8 @@ func TestInstallFilter_HonorsOperatorOverride(t *testing.T) {
 			strings.Contains(lower, "seccomp not supported") ||
 			strings.Contains(lower, "lacks user notify") {
 			t.Skipf(
-				"host cannot install seccomp filter in this environment; skipping.\nhelper output:\n%s",
+				"host cannot install seccomp filter in this environment; skipping.\n"+
+					"helper output:\n%s",
 				combined,
 			)
 		}
@@ -152,7 +156,8 @@ func TestInstallFilter_HonorsOperatorOverride(t *testing.T) {
 	hasWKFalseJSON := strings.Contains(combined, `"wait_killable":false`)
 	if !hasWKFalseText && !hasWKFalseJSON {
 		t.Fatalf(
-			"operator override not honored at install time — want wait_killable=false in load log.\ncombined output:\n%s",
+			"operator override not honored at install time — want wait_killable=false in load "+
+				"log.\ncombined output:\n%s",
 			combined,
 		)
 	}
@@ -160,7 +165,8 @@ func TestInstallFilter_HonorsOperatorOverride(t *testing.T) {
 	hasSrcJSON := strings.Contains(combined, `"wait_killable_source":"config"`)
 	if !hasSrcText && !hasSrcJSON {
 		t.Fatalf(
-			"wait_killable_source not 'config' in load log — Task 10 plumbing broken.\ncombined output:\n%s",
+			"wait_killable_source not 'config' in load log — Task 10 plumbing broken.\n"+
+				"combined output:\n%s",
 			combined,
 		)
 	}

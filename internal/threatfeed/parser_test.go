@@ -9,7 +9,8 @@ import (
 )
 
 func TestHostfileParser_Standard(t *testing.T) {
-	input := "# comment line\n127.0.0.1 localhost\n0.0.0.0 malware.example.com\n127.0.0.1 phishing.bad.org  # trailing comment\n"
+	input := "# comment line\n127.0.0.1 localhost\n0.0.0.0 malware.example.com\n" +
+		"127.0.0.1 phishing.bad.org  # trailing comment\n"
 	p := &HostfileParser{}
 	domains, err := p.Parse(strings.NewReader(input))
 	require.NoError(t, err)

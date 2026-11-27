@@ -125,7 +125,8 @@ func requireUnfilteredSeccompProcess(t *testing.T) {
 	t.Helper()
 	if count := seccompFilterCount(); count > 0 {
 		t.Skipf(
-			"requires an unfiltered process; inherited Seccomp_filters=%d (covered by the native VM check)",
+			"requires an unfiltered process; inherited Seccomp_filters=%d (covered by the native "+
+				"VM check)",
 			count,
 		)
 	}

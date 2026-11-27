@@ -30,7 +30,12 @@ func TestRemoveAllWritableRemovesReadOnlyTree(t *testing.T) {
 	if err := os.WriteFile(file, []byte("name: ci\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	for _, p := range []string{file, modDir, filepath.Dir(modDir), filepath.Dir(filepath.Dir(modDir))} {
+	for _, p := range []string{
+		file,
+		modDir,
+		filepath.Dir(modDir),
+		filepath.Dir(filepath.Dir(modDir)),
+	} {
 		if err := os.Chmod(p, 0o555); err != nil {
 			t.Fatalf("Chmod %s: %v", p, err)
 		}

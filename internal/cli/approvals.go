@@ -122,7 +122,13 @@ func resolveApprovalWithClient(
 	id, decision, reason, scope string,
 ) error {
 	if scoped, ok := c.(interface {
-		ResolveApprovalWithScope(ctx context.Context, id string, decision string, reason string, scope string) error
+		ResolveApprovalWithScope(
+			ctx context.Context,
+			id string,
+			decision string,
+			reason string,
+			scope string,
+		) error
 	}); ok {
 		return scoped.ResolveApprovalWithScope(cmd.Context(), id, decision, reason, scope)
 	}

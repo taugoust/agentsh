@@ -154,7 +154,8 @@ func TestWrapAutoStart(t *testing.T) {
 	// Verify session was created
 	if !strings.Contains(logOutput, "session") || !strings.Contains(logOutput, "created") {
 		t.Error(
-			"expected log output containing 'session' and 'created' (session should have been established)",
+			"expected log output containing 'session' and 'created' (session should have been " +
+				"established)",
 		)
 	}
 

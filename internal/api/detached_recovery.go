@@ -327,7 +327,8 @@ func (a *App) BootstrapDetachedSession(
 			}
 		}
 		if len(manifest.Mutable.VolatileEnvironment) > 0 || manifest.Mutable.DirenvRefreshRequired {
-			reason := "volatile environment must be explicitly reprovisioned after supervisor recovery"
+			reason := "volatile environment must be explicitly reprovisioned after supervisor " +
+				"recovery"
 			if err := a.detachedRuntime.MarkDegraded(reason, report); err != nil {
 				return cleanupOnError(err)
 			}
@@ -367,7 +368,8 @@ func (a *App) emitDetachedSubagentInterrupted(operation detached.InflightCommand
 		Termination:                subagentTerminationForced,
 		Retryable:                  false,
 		SideEffectsMayHaveOccurred: true,
-		Message:                    "subagent was interrupted by a supervisor restart; side effects are unknown",
+		Message: "subagent was interrupted by a supervisor restart; side " +
+			"effects are unknown",
 	}
 	eventType := "tool_spawn_subagent_end"
 	if operation.Operation == detachedOperationSpawnSubagentChild {

@@ -399,6 +399,7 @@ func TestNew_DefaultsCancelMapConfig(t *testing.T) {
 			sessionID: testAgentSessionID,
 			ok:        true,
 		},
+		//nolint:lll // YAML fixture keeps one flow-style entry per line
 		Policy: loadRuleSet(t, `version: 1
 name: test
 db_services:

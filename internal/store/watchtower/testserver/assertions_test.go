@@ -541,7 +541,8 @@ func TestServer_NilEventBatchRejectedByValidator(t *testing.T) {
 	}
 	if got := m.DroppedInvalidFrame(metrics.WTPInvalidFrameReasonClassifierBypass); got != 0 {
 		t.Errorf(
-			"DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed *ValidationError)",
+			"DroppedInvalidFrame(classifier_bypass) = %d, want 0 (validator emitted typed "+
+				"*ValidationError)",
 			got,
 		)
 	}

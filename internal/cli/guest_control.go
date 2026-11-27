@@ -84,7 +84,8 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				filepath.Clean(probeCommand) != probeCommand {
 				return fmt.Errorf("guest control probe command must be a fixed absolute executable")
 			}
-			if (manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 || manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4) &&
+			if (manifest.ProtocolVersion == guestcontrol.ProtocolVersionV3 ||
+				manifest.ProtocolVersion == guestcontrol.ProtocolVersionV4) &&
 				(!filepath.IsAbs(gitCommand) || filepath.Clean(gitCommand) != gitCommand) {
 				return fmt.Errorf(
 					"guest control protocol version %d requires a fixed absolute Git executable",
@@ -266,8 +267,17 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 				err     error
 			}
 			results := make(chan serveResult, 2)
-			go func() { results <- serveResult{control: true, err: server.Serve(serveCtx, manifest, handler)} }()
-			go func() { results <- serveResult{err: relay.Serve(serveCtx, manifest, result.SupervisorSock)} }()
+			go func() {
+				results <- serveResult{
+					control: true,
+					err:     server.Serve(serveCtx, manifest, handler),
+				}
+			}()
+			go func() {
+				results <- serveResult{
+					err: relay.Serve(serveCtx, manifest, result.SupervisorSock),
+				}
+			}()
 			first := <-results
 			cancelServe()
 			_ = server.Close()
@@ -295,19 +305,27 @@ func newGuestControlRunCmd(version string) *cobra.Command {
 	cmd.Flags().StringVar(&handshakePath, "handshake", "", "Protected handshake output path")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Operator-owned staged workspace mount")
 	cmd.Flags().
-		StringVar(&volumeRoot, "volume-root", "", "Operator-owned workspace volume root (required by protocol v3 and later)")
+		StringVar(&volumeRoot, "volume-root", "",
+			"Operator-owned workspace volume root (required by protocol v3 and later)")
 	cmd.Flags().StringVar(&profile, "profile", "", "Compiled operator-owned guest profile name")
 	cmd.Flags().
-		StringVar(&profileDigest, "profile-digest", "", "Compiled operator-owned guest profile digest")
+		StringVar(&profileDigest, "profile-digest", "",
+			"Compiled operator-owned guest profile digest")
 	cmd.Flags().
-		StringArrayVar(&allowedPolicies, "allowed-policy", nil, "Operator-allowed guest policy (repeatable)")
+		StringArrayVar(&allowedPolicies, "allowed-policy", nil,
+			"Operator-allowed guest policy (repeatable)")
 	cmd.Flags().
-		StringVar(&probeCommand, "probe-command", "", "Fixed harmless executable used by the bring-up probe")
+		StringVar(&probeCommand, "probe-command", "",
+			"Fixed harmless executable used by the bring-up probe")
 	cmd.Flags().
 		StringArrayVar(&probeArgs, "probe-arg", nil, "Fixed bring-up probe argument (repeatable)")
 	cmd.Flags().
-		StringVar(&gitCommand, "git-command", "", "Fixed Git executable used for protocol-v3-and-later Draft materialization")
-	for _, name := range []string{"manifest", "handshake", "workspace", "profile", "profile-digest", "allowed-policy", "probe-command"} {
+		StringVar(&gitCommand, "git-command", "",
+			"Fixed Git executable used for protocol-v3-and-later Draft materialization")
+	for _, name := range []string{
+		"manifest", "handshake", "workspace", "profile", "profile-digest", "allowed-policy",
+		"probe-command",
+	} {
 		_ = cmd.MarkFlagRequired(name)
 	}
 	return cmd
@@ -339,9 +357,17 @@ func serveGuestControlV4(
 		_ = egress.Close()
 		return fmt.Errorf("publish guest control handshake: %w", err)
 	}
-	go func() { results <- serveResult{kind: "control", err: control.Serve(serveCtx, manifest, handler)} }()
 	go func() {
-		results <- serveResult{kind: "supervisor", err: supervisor.Serve(serveCtx, manifest, supervisorSocket)}
+		results <- serveResult{
+			kind: "control",
+			err:  control.Serve(serveCtx, manifest, handler),
+		}
+	}()
+	go func() {
+		results <- serveResult{
+			kind: "supervisor",
+			err:  supervisor.Serve(serveCtx, manifest, supervisorSocket),
+		}
 	}()
 
 	first := <-results

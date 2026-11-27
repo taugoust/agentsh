@@ -246,7 +246,8 @@ func TestRun_RetriesTransientDialFailureUntilSuccess(t *testing.T) {
 	case <-conn3.sendCh:
 	case <-time.After(3 * time.Second):
 		t.Fatalf(
-			"no SessionInit on third attempt; replay-failure did not regress to Connecting (dial attempts=%d)",
+			"no SessionInit on third attempt; replay-failure did not regress to Connecting (dial "+
+				"attempts=%d)",
 			attempts.Load(),
 		)
 	}
@@ -352,7 +353,8 @@ func TestRun_StartsRecvGoroutineAfterAcceptedSessionAck(t *testing.T) {
 
 	if rsh := transport.RecvSessionForTest(tr); rsh == nil {
 		t.Fatal(
-			"recv goroutine never started after accepted SessionAck (SCAFFOLDING ONLY item #1 still open)",
+			"recv goroutine never started after accepted SessionAck (SCAFFOLDING ONLY item #1 " +
+				"still open)",
 		)
 	}
 
@@ -460,7 +462,8 @@ func TestRun_NoRecvLeakOnReaderFactoryFailure(t *testing.T) {
 	case <-rsh.Done():
 	case <-time.After(1 * time.Second):
 		t.Fatal(
-			"recv goroutine still running after rdrFactory failure; teardown leaked the recvSession",
+			"recv goroutine still running after rdrFactory failure; teardown leaked the " +
+				"recvSession",
 		)
 	}
 
@@ -650,7 +653,8 @@ func TestRunOnce_DoesNotStartRecvGoroutine(t *testing.T) {
 	// leak a recvSession with no teardown owner.
 	if rsh := transport.RecvSessionForTest(tr); rsh != nil {
 		t.Fatal(
-			"RunOnce(StateConnecting) leaked a recvSession; Run should own startRecv, not runConnecting",
+			"RunOnce(StateConnecting) leaked a recvSession; Run should own startRecv, not " +
+				"runConnecting",
 		)
 	}
 
@@ -661,7 +665,8 @@ func TestRunOnce_DoesNotStartRecvGoroutine(t *testing.T) {
 	case <-conn.closed:
 	default:
 		t.Fatal(
-			"RunOnce(StateConnecting) did not close the accepted conn; caller would inherit a live stream",
+			"RunOnce(StateConnecting) did not close the accepted conn; caller would inherit a " +
+				"live stream",
 		)
 	}
 }

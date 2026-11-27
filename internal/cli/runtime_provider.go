@@ -104,7 +104,10 @@ func (p *nativeRuntimeProvider) Open(
 		return nil, fmt.Errorf("native runtime state directory identity mismatch")
 	}
 	if nativeRuntimeIdentity(manifest.Profile, meta) != manifest.Identity ||
-		(runtimeprovider.Endpoint{Transport: "unix", Address: meta.SupervisorSock}) != manifest.Endpoint {
+		(runtimeprovider.Endpoint{
+			Transport: "unix",
+			Address:   meta.SupervisorSock,
+		}) != manifest.Endpoint {
 		return nil, fmt.Errorf("native runtime exact incarnation mismatch")
 	}
 	return newNativeRuntimeInstance(
@@ -250,7 +253,8 @@ func (i *nativeRuntimeInstance) Probe(ctx context.Context) (runtimeprovider.Stat
 	}
 	status := i.recoveredStatus
 	if status.SessionID == "" ||
-		(status.LifecycleState != detached.LifecycleStopped && status.LifecycleState != detached.LifecycleFinalized) {
+		(status.LifecycleState != detached.LifecycleStopped &&
+			status.LifecycleState != detached.LifecycleFinalized) {
 		client := client.NewWithTimeout("unix://"+meta.SupervisorSock, "", 3*time.Second)
 		status, err = detachedRuntimeHandshakeStatus(ctx, client, meta)
 		if err != nil {
@@ -625,12 +629,16 @@ func syncNativeRuntimeProviderManifestLocked(stateDir string, meta supervisorMet
 		return nil
 	}
 	if manifest.CleanupPending ||
-		(!manifest.CleanupIntentKnown && manifest.State == runtimeprovider.StateFailed && !manifest.CleanupComplete) {
+		(!manifest.CleanupIntentKnown &&
+			manifest.State == runtimeprovider.StateFailed &&
+			!manifest.CleanupComplete) {
 		return fmt.Errorf("native runtime-provider cleanup debt is absorbing")
 	}
 	identity := nativeRuntimeIdentity(manifest.Profile, meta)
 	if manifest.Identity.Generation > identity.Generation ||
-		(manifest.Identity.Generation == identity.Generation && manifest.Identity.IncarnationID != "" && manifest.Identity != identity) {
+		(manifest.Identity.Generation == identity.Generation &&
+			manifest.Identity.IncarnationID != "" &&
+			manifest.Identity != identity) {
 		return fmt.Errorf("native runtime-provider supervisor attempted a stale incarnation update")
 	}
 	state, cleanupComplete := inferredRuntimeState(meta.State)
@@ -691,7 +699,9 @@ func recoverDetachedSession(ctx context.Context, sessionID string) (detached.Run
 	if err != nil {
 		return detached.RuntimeStatus{}, err
 	}
-	instance, err := (runtimeprovider.Controller{CleanupTimeout: detachedRuntimeCleanupTimeout}).Recover(
+	instance, err := (runtimeprovider.Controller{
+		CleanupTimeout: detachedRuntimeCleanupTimeout,
+	}).Recover(
 		ctx,
 		selected,
 		stateDir,

@@ -358,7 +358,8 @@ func validateHostRunnerWorkspaceVolume(profile Profile, volume *WorkspaceVolume)
 		if !ok || uint64(stat.Dev) != volume.Manifest.Image.Device ||
 			stat.Ino != volume.Manifest.Image.Inode {
 			return fmt.Errorf(
-				"external runner v2 workspace volume image descriptor identity differs from its manifest",
+				"external runner v2 workspace volume image descriptor identity differs from its " +
+					"manifest",
 			)
 		}
 		return nil

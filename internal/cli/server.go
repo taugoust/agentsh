@@ -37,6 +37,8 @@ func newServerCmd() *cobra.Command {
 	}
 
 	cmd.Flags().
-		StringVar(&configPath, "config", "", "Path to server config YAML (default: ./config.yml, ./config.yaml, or /etc/agentsh/config.yaml)")
+		StringVar(&configPath, "config", "",
+			"Path to server config YAML (default: ./config.yml, ./config.yaml, or "+
+				"/etc/agentsh/config.yaml)")
 	return cmd
 }

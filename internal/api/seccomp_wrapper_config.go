@@ -132,7 +132,8 @@ func (a *App) buildSeccompWrapperConfig(
 	blockedSyscalls, onBlock, err := config.EffectiveSyscallBlock(a.cfg.Sandbox.Seccomp)
 	if err != nil {
 		slog.Warn(
-			"seccomp: failed to resolve effective syscall block list; syscall rules will not be blocked",
+			"seccomp: failed to resolve effective syscall block list; syscall rules will not "+
+				"be blocked",
 			"error",
 			err,
 		)
@@ -217,9 +218,10 @@ func (a *App) buildSeccompWrapperConfig(
 			seccompCfg.LandlockABI = llResult.ABI
 			seccompCfg.Workspace = workspace
 
-			seccompCfg.AllowExecute, seccompCfg.AllowRead, seccompCfg.AllowWrite = a.deriveLandlockAllowPaths(
-				s,
-			)
+			seccompCfg.AllowExecute, seccompCfg.AllowRead, seccompCfg.AllowWrite =
+				a.deriveLandlockAllowPaths(
+					s,
+				)
 			seccompCfg.AllowList = a.deriveLandlockBaseListPaths(s)
 			appendRuntimeLandlockPaths(&seccompCfg, s)
 			seccompCfg.AllowExecute = append(
@@ -233,9 +235,11 @@ func (a *App) buildSeccompWrapperConfig(
 			// ordinary commands preserve their existing Landlock contract.
 			if s != nil && compositionMode == bubblewrapCompositionMode {
 				seccompCfg.SandboxComposition = bubblewrapCompositionMode
-				seccompCfg.CompositionAllowExecute, seccompCfg.CompositionAllowRead, seccompCfg.CompositionAllowWrite = a.deriveLandlockBaseAllowPaths(
-					s,
-				)
+				seccompCfg.CompositionAllowExecute, seccompCfg.CompositionAllowRead,
+					seccompCfg.CompositionAllowWrite =
+					a.deriveLandlockBaseAllowPaths(
+						s,
+					)
 				seccompCfg.CompositionAllowList = a.deriveLandlockBaseListPaths(s)
 				appendRuntimeCompositionPaths(&seccompCfg, s)
 				seccompCfg.CompositionAllowExecute = append(
@@ -249,7 +253,8 @@ func (a *App) buildSeccompWrapperConfig(
 					a.cfg.Landlock.AllowWrite...)
 				if scratchRoot, err := a.compositionScratchRoot(); err == nil {
 					controlRoot := scratchRoot
-					if a.cfg.Sandbox.Composition.Bubblewrap.ScratchRoot == config.CompositionScratchRootAuto {
+					if a.cfg.Sandbox.Composition.Bubblewrap.ScratchRoot ==
+						config.CompositionScratchRootAuto {
 						controlRoot, err = automaticCompositionRuntimeControlRoot(scratchRoot)
 					}
 					if err == nil {
@@ -263,14 +268,18 @@ func (a *App) buildSeccompWrapperConfig(
 					}
 				} else {
 					slog.Warn(
-						"composition runtime became unavailable while building the command boundary",
+						"composition runtime became unavailable while building the command "+
+							"boundary",
 						"error",
 						err,
 					)
 				}
-				seccompCfg.CompositionSyntheticMounts = a.cfg.Sandbox.Composition.Bubblewrap.MaxSyntheticMounts
-				seccompCfg.CompositionMaxTransitions = a.cfg.Sandbox.Composition.Bubblewrap.MaxNamespaceTransitions
-				seccompCfg.CompositionMaxDataBytes = a.cfg.Sandbox.Composition.Bubblewrap.MaxDataBytes
+				seccompCfg.CompositionSyntheticMounts =
+					a.cfg.Sandbox.Composition.Bubblewrap.MaxSyntheticMounts
+				seccompCfg.CompositionMaxTransitions =
+					a.cfg.Sandbox.Composition.Bubblewrap.MaxNamespaceTransitions
+				seccompCfg.CompositionMaxDataBytes =
+					a.cfg.Sandbox.Composition.Bubblewrap.MaxDataBytes
 				seccompCfg.HandleDeviceIOCTL = true
 				seccompCfg.AllowDeviceIOCTL = append(
 					seccompCfg.AllowDeviceIOCTL,
@@ -346,7 +355,13 @@ func appendProxyRequiredUnsupportedTrafficRules(cfg *seccompWrapperConfig) {
 		ensureFamilyDenied(family.number, family.name)
 	}
 
-	addRule := func(name, familyName string, family, socketType int, typeName string, protocol *int, protocolName string) {
+	addRule := func(
+		name, familyName string,
+		family, socketType int,
+		typeName string,
+		protocol *int,
+		protocolName string,
+	) {
 		found := false
 		for i := range cfg.SocketRules {
 			existing := &cfg.SocketRules[i]

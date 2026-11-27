@@ -10,7 +10,12 @@ func TestDetectSecurityCapabilities_SeccompInstallable(t *testing.T) {
 	origUN, origInstall := checkSeccompUserNotify, checkSeccompInstall
 	defer func() { checkSeccompUserNotify, checkSeccompInstall = origUN, origInstall }()
 
-	checkSeccompUserNotify = func() CheckResult { return CheckResult{Feature: "seccomp-user-notify", Available: true} }
+	checkSeccompUserNotify = func() CheckResult {
+		return CheckResult{
+			Feature:   "seccomp-user-notify",
+			Available: true,
+		}
+	}
 	checkSeccompInstall = func() CheckResult {
 		return CheckResult{
 			Feature:   "seccomp-install",

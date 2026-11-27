@@ -33,10 +33,11 @@ const (
 type EnforcementTier string
 
 const (
-	EnforcementTierNone                    EnforcementTier = "none"
-	EnforcementTierCgroupDelegated         EnforcementTier = "cgroup-delegated"
-	EnforcementTierHelperEBPFGate          EnforcementTier = "helper-ebpf-gate"
-	EnforcementTierHelperEBPFProxy         EnforcementTier = "helper-ebpf-proxy" // legacy degraded label
+	EnforcementTierNone            EnforcementTier = "none"
+	EnforcementTierCgroupDelegated EnforcementTier = "cgroup-delegated"
+	EnforcementTierHelperEBPFGate  EnforcementTier = "helper-ebpf-gate"
+	// legacy degraded label
+	EnforcementTierHelperEBPFProxy         EnforcementTier = "helper-ebpf-proxy"
 	EnforcementTierHelperEBPFProxyRequired EnforcementTier = "helper-ebpf-proxy-required"
 )
 
@@ -350,7 +351,8 @@ func (r RegisterSessionCgroupRequest) Validate() error {
 		return fmt.Errorf("invalid mode %q", r.Mode)
 	}
 	mode := r.Mode.Normalized()
-	if (r.Tier.Normalized() == EnforcementTierHelperEBPFProxy || r.Tier.Normalized() == EnforcementTierHelperEBPFProxyRequired) &&
+	if (r.Tier.Normalized() == EnforcementTierHelperEBPFProxy ||
+		r.Tier.Normalized() == EnforcementTierHelperEBPFProxyRequired) &&
 		r.Proxy == nil {
 		return fmt.Errorf("tier %q requires proxy metadata", r.Tier.Normalized())
 	}

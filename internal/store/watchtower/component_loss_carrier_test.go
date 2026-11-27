@@ -23,7 +23,8 @@ func skipLossCarrierOnWindows(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip(
-			"integration test skipped on Windows: active WAL readers can race segment seal/rename with ERROR_SHARING_VIOLATION",
+			"integration test skipped on Windows: active WAL readers can race segment " +
+				"seal/rename with ERROR_SHARING_VIOLATION",
 		)
 	}
 }

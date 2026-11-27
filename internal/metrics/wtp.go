@@ -293,7 +293,8 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_session_state Current WTP session state (0=connecting,1=replaying,2=live,3=shutdown).\n",
+		"# HELP wtp_session_state Current WTP session state "+
+			"(0=connecting,1=replaying,2=live,3=shutdown).\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_session_state gauge\n")
 	fmt.Fprintf(w, "wtp_session_state %d\n", c.wtpSessionState.Load())
@@ -326,7 +327,8 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 	// across scrapes.
 	fmt.Fprint(
 		w,
-		"# HELP wtp_anomalous_ack_total Server ack tuples that fell into one of the AckOutcomeAnomaly sub-cases, by reason.\n",
+		"# HELP wtp_anomalous_ack_total Server ack tuples that fell into one of the "+
+			"AckOutcomeAnomaly sub-cases, by reason.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_anomalous_ack_total counter\n")
 	for _, reason := range wtpAnomalousAckReasons {
@@ -351,14 +353,16 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_resend_needed_total Server ack tuples that landed in the ResendNeeded branch (legitimate stale-server recovery).\n",
+		"# HELP wtp_resend_needed_total Server ack tuples that landed in the ResendNeeded branch "+
+			"(legitimate stale-server recovery).\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_resend_needed_total counter\n")
 	fmt.Fprintf(w, "wtp_resend_needed_total %d\n", c.wtpResendNeeded.Load())
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_ack_regression_loss_total Synthesized in-memory loss markers from computeReplayStart Case A or C.\n",
+		"# HELP wtp_ack_regression_loss_total Synthesized in-memory loss markers from "+
+			"computeReplayStart Case A or C.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_ack_regression_loss_total counter\n")
 	fmt.Fprintf(w, "wtp_ack_regression_loss_total %d\n", c.wtpAckRegressionLoss.Load())
@@ -366,42 +370,49 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 	// Task 22a: sink-failure unlabeled counters.
 	fmt.Fprint(
 		w,
-		"# HELP wtp_dropped_invalid_utf8_total Records dropped because the canonical encoder reported invalid UTF-8.\n",
+		"# HELP wtp_dropped_invalid_utf8_total Records dropped because the canonical encoder "+
+			"reported invalid UTF-8.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_invalid_utf8_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_invalid_utf8_total %d\n", c.wtpDroppedInvalidUTF8.Load())
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_dropped_sequence_overflow_total Records dropped because Chain.Sequence exceeded math.MaxInt64.\n",
+		"# HELP wtp_dropped_sequence_overflow_total Records dropped because Chain.Sequence "+
+			"exceeded math.MaxInt64.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_sequence_overflow_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_sequence_overflow_total %d\n", c.wtpDroppedSequenceOverflow.Load())
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_dropped_invalid_mapper_total Records dropped because compact.Encode rejected the mapper (defense in depth).\n",
+		"# HELP wtp_dropped_invalid_mapper_total Records dropped because compact.Encode rejected "+
+			"the mapper (defense in depth).\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_invalid_mapper_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_invalid_mapper_total %d\n", c.wtpDroppedInvalidMapper.Load())
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_dropped_invalid_timestamp_total Records dropped because compact.Encode rejected ev.Timestamp (zero or pre-epoch).\n",
+		"# HELP wtp_dropped_invalid_timestamp_total Records dropped because compact.Encode "+
+			"rejected ev.Timestamp (zero or pre-epoch).\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_invalid_timestamp_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_invalid_timestamp_total %d\n", c.wtpDroppedInvalidTimestamp.Load())
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_dropped_mapper_failure_total Records dropped because compact.Encode wrapped a mapper-side error.\n",
+		"# HELP wtp_dropped_mapper_failure_total Records dropped because compact.Encode wrapped "+
+			"a mapper-side error.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_mapper_failure_total counter\n")
 	fmt.Fprintf(w, "wtp_dropped_mapper_failure_total %d\n", c.wtpDroppedMapperFailure.Load())
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_loss_unknown_reason_total Loss markers dropped because the in-WAL Reason string had no wire enum mapping. Non-zero indicates a producer added a new reason without updating ToWireReason — programming bug.\n",
+		"# HELP wtp_loss_unknown_reason_total Loss markers dropped because the in-WAL Reason "+
+			"string had no wire enum mapping. Non-zero indicates a producer added a new reason "+
+			"without updating ToWireReason — programming bug.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_loss_unknown_reason_total counter\n")
 	fmt.Fprintf(w, "wtp_loss_unknown_reason_total %d\n", c.wtpLossUnknownReason.Load())
@@ -412,7 +423,8 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 	// vs. "zero events" ambiguity.
 	fmt.Fprint(
 		w,
-		"# HELP wtp_dropped_invalid_frame_total WTP peer frames dropped at the protocol-validation boundary, by reason.\n",
+		"# HELP wtp_dropped_invalid_frame_total WTP peer frames dropped at the "+
+			"protocol-validation boundary, by reason.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_dropped_invalid_frame_total counter\n")
 	for _, r := range wtpInvalidFrameReasonsEmitOrder {
@@ -538,7 +550,8 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_batch_compressed_bytes_total Bytes emitted as EventBatch.compressed_payload, by algorithm.\n",
+		"# HELP wtp_batch_compressed_bytes_total Bytes emitted as EventBatch.compressed_payload, "+
+			"by algorithm.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_batch_compressed_bytes_total counter\n")
 	for _, algo := range wtpCompressionAlgos {
@@ -551,7 +564,8 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_batch_uncompressed_bytes_total Marshaled UncompressedEvents size pre-compression, by algorithm.\n",
+		"# HELP wtp_batch_uncompressed_bytes_total Marshaled UncompressedEvents size "+
+			"pre-compression, by algorithm.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_batch_uncompressed_bytes_total counter\n")
 	for _, algo := range wtpCompressionAlgos {
@@ -564,7 +578,8 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_compress_error_total Sender-side fail-open fallbacks: encoder returned an error and the batch was emitted as COMPRESSION_NONE.\n",
+		"# HELP wtp_compress_error_total Sender-side fail-open fallbacks: encoder returned an "+
+			"error and the batch was emitted as COMPRESSION_NONE.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_compress_error_total counter\n")
 	for _, algo := range wtpCompressionAlgos {
@@ -577,7 +592,8 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 
 	fmt.Fprint(
 		w,
-		"# HELP wtp_decompress_error_total Receiver-side decode failures by algorithm and reason.\n",
+		"# HELP wtp_decompress_error_total Receiver-side decode failures by algorithm and "+
+			"reason.\n",
 	)
 	fmt.Fprint(w, "# TYPE wtp_decompress_error_total counter\n")
 	for _, algo := range wtpCompressionAlgos {
@@ -598,18 +614,28 @@ func (c *Collector) emitWTPMetrics(w io.Writer) {
 // exposition, and validation logic for nine new counter families.
 // Wiring status SPLITS into two groups per the table below:
 //
-//	Counter family                              Wired by                                 Status (as of Task 22a R2)
-//	wtp_dropped_invalid_utf8_total              AppendEvent (Task 23 follow-up)          WIRED — recordCanonicalFailure
-//	wtp_dropped_sequence_overflow_total         AppendEvent (Task 23 follow-up)          WIRED — recordSequenceOverflow
-//	wtp_dropped_invalid_mapper_total            AppendEvent (Task 23 follow-up)          WIRED — recordCompactEncodeFailure (defense-in-depth)
-//	wtp_dropped_invalid_timestamp_total         AppendEvent (Task 23 follow-up)          WIRED — recordCompactEncodeFailure
-//	wtp_dropped_mapper_failure_total            AppendEvent (Task 23 follow-up)          WIRED — recordCompactEncodeFailure (catch-all)
-//	wtp_dropped_invalid_frame_total{reason}     transport receivers (Task 17 Step 4a)    NOT YET WIRED — emits zero
-//	wtp_session_init_failures_total{reason}     transport (Phase 8)                      NOT YET WIRED — emits zero
-//	wtp_session_rotation_failures_total{reason} transport (Phase 8)                      NOT YET WIRED — emits zero
-//	wtp_wal_quarantine_total{reason}            store wal.Open recovery path             LIVE as of Task 22a R2
-//	                                            (openWALWithIdentityRecovery,
-//	                                            internal/store/watchtower/store.go)
+//	Counter family
+//	    Wired by | Status (as of Task 22a R2)
+//
+//	wtp_dropped_invalid_utf8_total
+//	    AppendEvent (Task 23 follow-up) | WIRED — recordCanonicalFailure
+//	wtp_dropped_sequence_overflow_total
+//	    AppendEvent (Task 23 follow-up) | WIRED — recordSequenceOverflow
+//	wtp_dropped_invalid_mapper_total
+//	    AppendEvent (Task 23 follow-up) | WIRED — recordCompactEncodeFailure (defense-in-depth)
+//	wtp_dropped_invalid_timestamp_total
+//	    AppendEvent (Task 23 follow-up) | WIRED — recordCompactEncodeFailure
+//	wtp_dropped_mapper_failure_total
+//	    AppendEvent (Task 23 follow-up) | WIRED — recordCompactEncodeFailure (catch-all)
+//	wtp_dropped_invalid_frame_total{reason}
+//	    transport receivers (Task 17 Step 4a) | NOT YET WIRED — emits zero
+//	wtp_session_init_failures_total{reason}
+//	    transport (Phase 8) | NOT YET WIRED — emits zero
+//	wtp_session_rotation_failures_total{reason}
+//	    transport (Phase 8) | NOT YET WIRED — emits zero
+//	wtp_wal_quarantine_total{reason}
+//	    store wal.Open recovery path (openWALWithIdentityRecovery,
+//	    internal/store/watchtower/store.go) | LIVE as of Task 22a R2
 //
 // "Task 22a complete" therefore has TWO meanings depending on the
 // counter:
@@ -696,6 +722,7 @@ var wtpSessionFailureReasonsEmitOrder = []WTPSessionFailureReason{
 // NOT treat them as interchangeable.
 type WTPInvalidFrameReason string
 
+//nolint:lll // gofmt cannot wrap const specs; keep the reason table one entry per line
 const (
 	WTPInvalidFrameReasonEventBatchBodyUnset            WTPInvalidFrameReason = "event_batch_body_unset"
 	WTPInvalidFrameReasonEventBatchCompressionUnspec    WTPInvalidFrameReason = "event_batch_compression_unspecified"
@@ -825,7 +852,8 @@ const (
 	WTPWALQuarantineReasonSessionIDMismatch      WTPWALQuarantineReason = "session_id_mismatch"
 	WTPWALQuarantineReasonKeyFingerprintMismatch WTPWALQuarantineReason = "key_fingerprint_mismatch"
 	WTPWALQuarantineReasonContextDigestMismatch  WTPWALQuarantineReason = "context_digest_mismatch"
-	WTPWALQuarantineReasonUnknown                WTPWALQuarantineReason = "unknown_identity_mismatch"
+
+	WTPWALQuarantineReasonUnknown WTPWALQuarantineReason = "unknown_identity_mismatch"
 )
 
 var wtpWALQuarantineReasonsValid = map[WTPWALQuarantineReason]struct{}{

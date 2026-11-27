@@ -242,13 +242,15 @@ func TestAppendEvent_MapperReturningWrappedSentinelStaysMapperFailure(t *testing
 			}
 			if got := wtp.DroppedInvalidMapper(); got != 0 {
 				t.Fatalf(
-					"DroppedInvalidMapper() = %d, want 0 (inner sentinel must NOT leak past classifier)",
+					"DroppedInvalidMapper() = %d, want 0 (inner sentinel must NOT leak past "+
+						"classifier)",
 					got,
 				)
 			}
 			if got := wtp.DroppedInvalidTimestamp(); got != 0 {
 				t.Fatalf(
-					"DroppedInvalidTimestamp() = %d, want 0 (inner sentinel must NOT leak past classifier)",
+					"DroppedInvalidTimestamp() = %d, want 0 (inner sentinel must NOT leak past "+
+						"classifier)",
 					got,
 				)
 			}

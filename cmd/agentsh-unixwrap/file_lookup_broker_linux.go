@@ -194,7 +194,9 @@ func (b *lookupBrokerState) close() {
 		b.baseline.close()
 		b.baseline = nil
 	}
-	for _, file := range []*os.File{b.brokerEndpoint, b.transferEndpoint, b.procRoot, b.worker, b.devNull} {
+	for _, file := range []*os.File{
+		b.brokerEndpoint, b.transferEndpoint, b.procRoot, b.worker, b.devNull,
+	} {
 		if file != nil {
 			_ = file.Close()
 		}
@@ -388,7 +390,10 @@ func (b *lookupBrokerState) inspectTask(pid int) (*lookupTaskContext, lookupprot
 		_ = unix.Close(taskFD)
 		return nil, lookupproto.ReasonContextUnavailable, errors.New("retain task proc directory")
 	}
-	fail := func(reason lookupproto.Reason, err error) (*lookupTaskContext, lookupproto.Reason, error) {
+	fail := func(
+		reason lookupproto.Reason,
+		err error,
+	) (*lookupTaskContext, lookupproto.Reason, error) {
 		context.close()
 		return nil, reason, err
 	}
@@ -577,12 +582,21 @@ func parseLookupStatus(data []byte, context *lookupTaskContext) error {
 			if err != nil {
 				return err
 			}
-			index := map[string]int{"CapInh": 0, "CapPrm": 1, "CapEff": 2, "CapBnd": 3, "CapAmb": 4}[name]
+			index := map[string]int{
+				"CapInh": 0,
+				"CapPrm": 1,
+				"CapEff": 2,
+				"CapBnd": 3,
+				"CapAmb": 4,
+			}[name]
 			context.caps[index] = parsed
 			seen[name] = true
 		}
 	}
-	for _, field := range []string{"Tgid", "Pid", "PPid", "NoNewPrivs", "Uid", "Gid", "Groups", "CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"} {
+	for _, field := range []string{
+		"Tgid", "Pid", "PPid", "NoNewPrivs", "Uid", "Gid", "Groups", "CapInh", "CapPrm", "CapEff",
+		"CapBnd", "CapAmb",
+	} {
 		if !seen[field] {
 			return fmt.Errorf("task status omitted %s", field)
 		}

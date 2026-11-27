@@ -56,7 +56,8 @@ sandbox:
 	for _, path := range []string{"dev/null", "/dev/*", "/dev/../dev/null"} {
 		_, err := loadFromString(
 			t,
-			"sandbox:\n  composition:\n    bubblewrap:\n      device_ioctl_paths:\n        - "+path+"\n",
+			"sandbox:\n  composition:\n    bubblewrap:\n      device_ioctl_paths:\n        - "+
+				path+"\n",
 		)
 		if err == nil {
 			t.Errorf("device ioctl path %q unexpectedly accepted", path)
@@ -135,7 +136,10 @@ sandbox:
 }
 
 func TestBubblewrapCompositionRequiresDedicatedTopLevelStaticScratch(t *testing.T) {
-	for _, scratch := range []string{"", "/", "/run/agentsh-composition", "/tmp/agentsh-composition", "/agentsh-composition/../scratch"} {
+	for _, scratch := range []string{
+		"", "/", "/run/agentsh-composition", "/tmp/agentsh-composition",
+		"/agentsh-composition/../scratch",
+	} {
 		_, err := loadFromString(t, `
 landlock:
   enabled: true

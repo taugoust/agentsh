@@ -195,7 +195,8 @@ func TestFailedRegistrationCompensationRetainsAuthenticatedTombstone(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp, ok := server.dispatch(context.Background(), peer, wire).(RegisterSessionCgroupResponse)
+		resp, ok :=
+			server.dispatch(context.Background(), peer, wire).(RegisterSessionCgroupResponse)
 		if !ok {
 			t.Fatalf("response type was not registration response")
 		}
@@ -367,7 +368,9 @@ func TestClientServerAuthenticatedStatusAndRenewal(t *testing.T) {
 		CreatedAt:                created,
 		HardExpiresAt:            created.Add(60 * time.Hour),
 		Registrations:            fixedRegistrationCount(0),
-		AttestCompositionRuntime: func(uint32, string) (CompositionRuntimeAttestation, error) { return wantAttestation, nil },
+		AttestCompositionRuntime: func(uint32, string) (CompositionRuntimeAttestation, error) {
+			return wantAttestation, nil
+		},
 	})
 	socket := shortSocketPath(t)
 	ln, err := ListenUnix(socket)

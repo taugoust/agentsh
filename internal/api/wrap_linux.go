@@ -284,7 +284,9 @@ func startNotifyHandlerForWrap(
 		fileHandler.SetCompositionPathRegistry(execveHandler.CompositionPathRegistry())
 	}
 	if wrapperCfg.SandboxComposition != "" &&
-		(fileHandler == nil || execveHandler == nil || execveHandler.CompositionPathRegistry() == nil) {
+		(fileHandler == nil ||
+			execveHandler == nil ||
+			execveHandler.CompositionPathRegistry() == nil) {
 		_ = notifyFD.Close()
 		abortComposition()
 		runCleanup()
@@ -292,7 +294,8 @@ func startNotifyHandlerForWrap(
 			cleanupSymlink()
 		}
 		return fmt.Errorf(
-			"E_COMPOSITION_BACKEND_UNAVAILABLE: source-aware file interception handler is unavailable",
+			"E_COMPOSITION_BACKEND_UNAVAILABLE: source-aware file interception handler is " +
+				"unavailable",
 		)
 	}
 
@@ -316,7 +319,8 @@ func startNotifyHandlerForWrap(
 					cleanupSymlink()
 				}
 				return fmt.Errorf(
-					"wrap notify handler startup probe failed for payload pid %d: pvr_error=%v mem_error=%v",
+					"wrap notify handler startup probe failed for payload pid %d: pvr_error=%v "+
+						"mem_error=%v",
 					payloadPID,
 					pvrErr,
 					memErr,
@@ -327,7 +331,8 @@ func startNotifyHandlerForWrap(
 		} else if pvrErr != nil {
 			if sessionPolicy != nil {
 				slog.Warn("wrap: ProcessVMReadv failed — socket monitoring will be degraded "+
-					"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for file monitoring",
+					"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for file "+
+					"monitoring",
 					"payload_pid", payloadPID, "pvr_error", pvrErr)
 			} else {
 				slog.Debug("wrap: ProcessVMReadv failed but /proc/mem fallback works",
@@ -387,7 +392,8 @@ func startNotifyHandlerForWrap(
 		bl, _ := a.buildBlockListConfigFor(sessionID).(*unixmon.BlockListConfig)
 		if bl != nil && len(bl.ActionByNr) > 0 && emitter == nil {
 			slog.Warn(
-				"seccomp: on_block=log/log_and_kill selected but no event emitter wired; events will be dropped",
+				"seccomp: on_block=log/log_and_kill selected but no event emitter wired; events "+
+					"will be dropped",
 				"session_id",
 				sessionID,
 			)

@@ -50,7 +50,8 @@ func configureCommandBoundaryProcess(
 	if attr.Pdeathsig != 0 && attr.Pdeathsig != syscall.SIGKILL {
 		return fmt.Errorf("strict command boundary requires SIGKILL parent-death behavior")
 	}
-	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID | unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
+	attr.Cloneflags |= unix.CLONE_NEWUSER | unix.CLONE_NEWNS | unix.CLONE_NEWPID |
+		unix.CLONE_NEWCGROUP | unix.CLONE_NEWIPC
 	attr.Pdeathsig = syscall.SIGKILL
 	namespaceID := 0
 	if requirements.MapCurrentUserToNonRoot {

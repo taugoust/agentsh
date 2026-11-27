@@ -255,7 +255,8 @@ func TestShimPipedStdin_PassesBinaryDataThrough(t *testing.T) {
 
 	if !bytes.Equal(stdout.Bytes(), binaryData) {
 		t.Fatalf(
-			"binary data corrupted: wrote %d bytes, got %d bytes back\nfirst 16 in:  %x\nfirst 16 out: %x",
+			"binary data corrupted: wrote %d bytes, got %d bytes back\nfirst 16 in:  %x\n"+
+				"first 16 out: %x",
 			len(binaryData),
 			stdout.Len(),
 			binaryData[:16],
@@ -854,7 +855,8 @@ func TestShimReadinessGate_GRPCTransport_ProbesGRPCAddr(t *testing.T) {
 	// shim tried to enforce but couldn't find agentsh.
 	if err == nil {
 		t.Fatalf(
-			"expected error: readiness gate should have passed and enforcement should fail (no agentsh)",
+			"expected error: readiness gate should have passed and enforcement should fail (no " +
+				"agentsh)",
 		)
 	}
 	if !strings.Contains(stderr.String(), "agentsh") {

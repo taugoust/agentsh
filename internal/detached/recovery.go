@@ -176,7 +176,8 @@ func validateRecoveryManifest(manifest RecoveryManifest) error {
 	}
 	switch manifest.State {
 	case LifecycleProvisioning, LifecycleRecovering, LifecycleReady, LifecycleDegraded,
-		LifecycleFinalizing, LifecycleStopping, LifecycleStopped, LifecycleFinalized, LifecycleFailed:
+		LifecycleFinalizing, LifecycleStopping, LifecycleStopped, LifecycleFinalized,
+		LifecycleFailed:
 	default:
 		return fmt.Errorf(
 			"%w: unsupported lifecycle state %q",
@@ -231,7 +232,9 @@ func validateRecoveryManifest(manifest RecoveryManifest) error {
 		if strings.TrimSpace(finalization.ID) == "" ||
 			(finalization.Action != "accept" && finalization.Action != "reject") ||
 			finalization.CreatedAt.IsZero() ||
-			(finalization.Action == "accept" && (finalization.ReviewGeneration == 0 || strings.TrimSpace(finalization.ReviewHash) == "")) ||
+			(finalization.Action == "accept" &&
+				(finalization.ReviewGeneration == 0 ||
+					strings.TrimSpace(finalization.ReviewHash) == "")) ||
 			(finalization.AuditCommitted && !finalization.Applied) ||
 			(finalization.CleanupComplete && !finalization.AuditCommitted) {
 			return fmt.Errorf(
@@ -240,7 +243,8 @@ func validateRecoveryManifest(manifest RecoveryManifest) error {
 			)
 		}
 	}
-	for _, command := range append(append([]InflightCommand(nil), manifest.Inflight...), manifest.Interrupted...) {
+	for _, command := range append(append([]InflightCommand(nil), manifest.Inflight...),
+		manifest.Interrupted...) {
 		if strings.TrimSpace(command.CommandID) == "" || len(command.CommandID) > 128 ||
 			strings.ContainsAny(command.CommandID, "\x00\r\n") {
 			return fmt.Errorf(
@@ -383,7 +387,9 @@ func BeginRuntime(
 				manifest.SessionID,
 			)
 		}
-	} else if manifest.State == LifecycleStopping || manifest.State == LifecycleStopped || manifest.State == LifecycleFinalized {
+	} else if manifest.State == LifecycleStopping ||
+		manifest.State == LifecycleStopped ||
+		manifest.State == LifecycleFinalized {
 		return nil, fmt.Errorf(
 			"detached session %s is %s and cannot be restarted",
 			manifest.SessionID,
@@ -609,7 +615,9 @@ func (r *Runtime) MarkFinalizing(finalization ShadowFinalizationRecovery) error 
 	if strings.TrimSpace(finalization.ID) == "" ||
 		(finalization.Action != "accept" && finalization.Action != "reject") ||
 		finalization.CreatedAt.IsZero() ||
-		(finalization.Action == "accept" && (finalization.ReviewGeneration == 0 || strings.TrimSpace(finalization.ReviewHash) == "")) {
+		(finalization.Action == "accept" &&
+			(finalization.ReviewGeneration == 0 ||
+				strings.TrimSpace(finalization.ReviewHash) == "")) {
 		return fmt.Errorf("detached shadow finalization identity is invalid")
 	}
 	r.mu.Lock()
@@ -936,10 +944,13 @@ func (r *Runtime) NethelperRecoveryEnvironment() map[string]string {
 func RestartSafeEnvironmentName(name string) bool {
 	switch strings.ToUpper(strings.TrimSpace(name)) {
 	case "PATH", "SSH_AUTH_SOCK", "SSH_CONFIG_FILE", "GIT_SSH_COMMAND", "RSYNC_RSH",
-		"HOME", "TMPDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR",
-		"PI_CODING_AGENT_DIR", "AGENTSH_SUBAGENT_COMMAND", "AGENTSH_SUBAGENT_ARGS", "AGENTSH_SUBAGENT_TASK_MODE",
+		"HOME", "TMPDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME",
+		"XDG_RUNTIME_DIR",
+		"PI_CODING_AGENT_DIR", "AGENTSH_SUBAGENT_COMMAND", "AGENTSH_SUBAGENT_ARGS",
+		"AGENTSH_SUBAGENT_TASK_MODE",
 		"AGENTSH_SUBAGENT_PROTOCOL", "AGENTSH_SUBAGENT_MAX_DEPTH", "AGENTSH_SUBAGENT_RUNTIME",
-		"AGENTSH_DRAFT_SUBAGENT_COMMAND", "AGENTSH_DRAFT_SUBAGENT_ARGS", "AGENTSH_DRAFT_SUBAGENT_HOME", "AGENTSH_DRAFT_SUBAGENT_STATE_DIR",
+		"AGENTSH_DRAFT_SUBAGENT_COMMAND", "AGENTSH_DRAFT_SUBAGENT_ARGS",
+		"AGENTSH_DRAFT_SUBAGENT_HOME", "AGENTSH_DRAFT_SUBAGENT_STATE_DIR",
 		EnvGuestEgressProxyURL:
 		return true
 	default:

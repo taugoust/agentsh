@@ -89,7 +89,8 @@ func TestSeedChildStateFromParent_CopiesAllEnforcementFields(t *testing.T) {
 	}
 	if !child.SessionlessPIDAttach {
 		t.Error(
-			"SessionlessPIDAttach must be inherited so descendants of an attach_mode=pid root keep the marker",
+			"SessionlessPIDAttach must be inherited so descendants of an attach_mode=pid root " +
+				"keep the marker",
 		)
 	}
 

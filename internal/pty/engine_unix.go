@@ -40,8 +40,11 @@ type StartRequest struct {
 	// FinalizePreExecFailure runs after the failed child is killed/reaped,
 	// cleanup has completed, and all PTY descriptors/channels are closed. It can
 	// attach process and cleanup evidence to the returned typed error.
-	FinalizePreExecFailure func(processState *os.ProcessState, waitErr, cleanupErr, preExecErr error) error
-	PreExecFailureGrace    time.Duration
+	FinalizePreExecFailure func(
+		processState *os.ProcessState,
+		waitErr, cleanupErr, preExecErr error,
+	) error
+	PreExecFailureGrace time.Duration
 }
 
 type Session struct {

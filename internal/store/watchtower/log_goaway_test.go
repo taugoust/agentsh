@@ -55,7 +55,8 @@ func TestOptions_LogGoawayMessage_WireThrough(t *testing.T) {
 			gotTr := s.TransportLogGoawayMessageForTest()
 			if gotTr != tc.value {
 				t.Errorf(
-					"TransportLogGoawayMessageForTest() = %v, want %v (wire-through to transport.New regressed)",
+					"TransportLogGoawayMessageForTest() = %v, want %v (wire-through to "+
+						"transport.New regressed)",
 					gotTr,
 					tc.value,
 				)

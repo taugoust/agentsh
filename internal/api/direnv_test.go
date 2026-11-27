@@ -82,7 +82,8 @@ func TestCommandOutputArtifactCapture_DirenvAtomicFiltering(t *testing.T) {
 	old, generation := s.DirenvEnvironment()
 	result := evaluateDirenvResult(cfg, s, old, generation, internalSensitiveExecResult{
 		Stdout: []byte(
-			`{"DEV_SHELL":"ready","REMOVE":null,"HOME":"stolen","project_token":"secret","database_url":"stolen"}`,
+			`{"DEV_SHELL":"ready","REMOVE":null,"HOME":"stolen","project_token":"secret",` +
+				`"database_url":"stolen"}`,
 		),
 	})
 	if result.State != "loaded" || result.SetCount != 1 || result.UnsetCount != 1 ||
@@ -218,7 +219,10 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 	if err := os.WriteFile(nested, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "#!/bin/sh\n" + nested + " '" + nestedSecret + "'\nif [ \"${DEV_SHELL:-}\" = ready ]; then\n  exit 0\nfi\nprintf '%s' '{\"DEV_SHELL\":\"ready\",\"HOME\":\"" + secret + "\",\"PROJECT_TOKEN\":\"" + secret + "\"}'\n"
+	body := "#!/bin/sh\n" + nested + " '" + nestedSecret +
+		"'\nif [ \"${DEV_SHELL:-}\" = ready ]; then\n  exit 0\nfi\n" +
+		"printf '%s' '{\"DEV_SHELL\":\"ready\",\"HOME\":\"" +
+		secret + "\",\"PROJECT_TOKEN\":\"" + secret + "\"}'\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +232,10 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 
 	generic := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(generic, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec", strings.NewReader(`{"command":"direnv","args":["export","json"],"working_dir":"/workspace","actor":{"kind":"extension","label":"Pi direnv refresh"}}`)))
+		ServeHTTP(generic,
+			httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/exec",
+				strings.NewReader(`{"command":"direnv","args":["export","json"],"working_dir":"/`+
+					`workspace","actor":{"kind":"extension","label":"Pi direnv refresh"}}`)))
 	if generic.Code != http.StatusForbidden {
 		t.Fatalf(
 			"generic exec spoofed refresh provenance: status=%d body=%s",
@@ -239,7 +246,11 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 
 	rr := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv", strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension","label":"test"}}`)))
+		ServeHTTP(rr,
+			httptest.NewRequest(http.MethodPost,
+				"/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv",
+				strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension",`+
+					`"label":"test"}}`)))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rr.Code, rr.Body.String())
 	}
@@ -263,7 +274,11 @@ func TestCommandOutputArtifactCapture_DirenvEndpointKeepsValuesServerSide(t *tes
 
 	unchanged := httptest.NewRecorder()
 	app.Router().
-		ServeHTTP(unchanged, httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv", strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension","label":"test"}}`)))
+		ServeHTTP(unchanged,
+			httptest.NewRequest(http.MethodPost,
+				"/api/v1/sessions/"+sess.ID+"/tools/refresh_direnv",
+				strings.NewReader(`{"cwd":"/workspace","actor":{"kind":"extension",`+
+					`"label":"test"}}`)))
 	if unchanged.Code != http.StatusOK {
 		t.Fatalf("unchanged status = %d body=%s", unchanged.Code, unchanged.Body.String())
 	}

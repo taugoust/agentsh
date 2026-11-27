@@ -13,7 +13,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// fdcwdUint64 returns AT_FDCWD (-100) as it appears in syscall register args (sign-extended to uint64).
+// fdcwdUint64 returns AT_FDCWD (-100) as it appears in syscall register args (sign-extended to
+// uint64).
 func fdcwdUint64() uint64 {
 	v := int32(unix.AT_FDCWD)
 	return uint64(int64(v))

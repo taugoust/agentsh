@@ -900,7 +900,8 @@ func moreRestrictiveExecveDecision(current, candidate PolicyDecision) PolicyDeci
 	currentRank := execveDecisionRank(effectiveExecveDecision(current))
 	candidateRank := execveDecisionRank(effectiveExecveDecision(candidate))
 	if candidateRank > currentRank ||
-		(candidateRank == currentRank && execveDecisionRank(candidate.Decision) > execveDecisionRank(current.Decision)) {
+		(candidateRank == currentRank &&
+			execveDecisionRank(candidate.Decision) > execveDecisionRank(current.Decision)) {
 		return candidate
 	}
 	return current
@@ -948,7 +949,8 @@ func trustedExecveAliases(filename, rawFilename string, argv []string) []string 
 	if rawTrusted && rawFilename != "" && argv0Base == filepath.Base(rawFilename) {
 		add(argv0)
 		add(argv0Base)
-	} else if isTrustedNixCoreutilsMulticall(filename) || isTrustedNixCoreutilsMulticall(rawFilename) {
+	} else if isTrustedNixCoreutilsMulticall(filename) ||
+		isTrustedNixCoreutilsMulticall(rawFilename) {
 		add(argv0)
 		add(argv0Base)
 	}

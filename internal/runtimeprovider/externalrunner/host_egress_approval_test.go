@@ -29,7 +29,8 @@ func TestRemoteHostEgressApprovalUsesBoundUnixSupervisor(t *testing.T) {
 	}
 	requestSeen := make(chan remoteHostEgressApprovalRequest, 1)
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/sessions/"+binding.ParentSessionID+"/tools/request_guest_egress_approval" ||
+		if r.URL.Path != "/api/v1/sessions/"+binding.ParentSessionID+
+			"/tools/request_guest_egress_approval" ||
 			r.Header.Get(HostEgressApprovalHeader) != token {
 			http.Error(w, "bad binding", http.StatusUnauthorized)
 			return
@@ -41,7 +42,15 @@ func TestRemoteHostEgressApprovalUsesBoundUnixSupervisor(t *testing.T) {
 		}
 		requestSeen <- request
 		_ = json.NewEncoder(w).
-			Encode(approvals.Resolution{Approved: true, Reason: "operator", Scope: approvals.ScopeSession, At: time.Now().UTC(), ScopeKind: "network", ScopeKey: "network:test", ScopeLabel: "unknown.example:443"})
+			Encode(approvals.Resolution{
+				Approved:   true,
+				Reason:     "operator",
+				Scope:      approvals.ScopeSession,
+				At:         time.Now().UTC(),
+				ScopeKind:  "network",
+				ScopeKey:   "network:test",
+				ScopeLabel: "unknown.example:443",
+			})
 	})}
 	go server.Serve(listener)
 	defer server.Shutdown(context.Background())
@@ -74,7 +83,10 @@ func TestRemoteHostEgressApprovalUsesBoundUnixSupervisor(t *testing.T) {
 }
 
 func TestHostEgressApprovalEnvironmentFailsClosedWhenPartial(t *testing.T) {
-	for _, name := range []string{HostEgressApprovalTokenEnv, HostEgressApprovalCredentialEnv, HostEgressApprovalSessionEnv, HostEgressApprovalSupervisorEnv} {
+	for _, name := range []string{
+		HostEgressApprovalTokenEnv, HostEgressApprovalCredentialEnv, HostEgressApprovalSessionEnv,
+		HostEgressApprovalSupervisorEnv,
+	} {
 		t.Setenv(name, "")
 	}
 	if binding, err := hostEgressApprovalBindingFromEnvironment(); err != nil || binding != nil {
@@ -87,7 +99,10 @@ func TestHostEgressApprovalEnvironmentFailsClosedWhenPartial(t *testing.T) {
 }
 
 func TestHostEgressApprovalCredentialFile(t *testing.T) {
-	for _, name := range []string{HostEgressApprovalTokenEnv, HostEgressApprovalCredentialEnv, HostEgressApprovalSessionEnv, HostEgressApprovalSupervisorEnv} {
+	for _, name := range []string{
+		HostEgressApprovalTokenEnv, HostEgressApprovalCredentialEnv, HostEgressApprovalSessionEnv,
+		HostEgressApprovalSupervisorEnv,
+	} {
 		t.Setenv(name, "")
 	}
 	token := base64.RawURLEncoding.EncodeToString(make([]byte, 32))

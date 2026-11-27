@@ -212,7 +212,9 @@ func TestLinuxHostRunnerUsesExactGroupAndBoundedForce(t *testing.T) {
 		t.Fatal(err)
 	}
 	scriptData := []byte(
-		"#!" + shell + "\nprintf '%s\\n' \"$PI_AGENT_MICROVM_VSOCK_CID\" > workspace/cid\nwhile :; do :; done\n",
+		"#!" + shell +
+			"\nprintf '%s\\n' \"$PI_AGENT_MICROVM_VSOCK_CID\" > workspace/cid\n" +
+			"while :; do :; done\n",
 	)
 	script := filepath.Join(root, "runner")
 	if err := os.WriteFile(script, scriptData, 0o555); err != nil {
@@ -332,7 +334,9 @@ func TestLinuxHostRunnerV2InheritsExactImageAsFD4WithFixedEnvironment(t *testing
 	resultPath := filepath.Join(root, "result")
 	volumeFDPath := filepath.Join(string(filepath.Separator), "proc", "self", "fd", "4")
 	scriptData := []byte(
-		"#!" + shell + "\nIFS= read -r marker < " + volumeFDPath + "\nprintf '%s|%s|%s\\n' \"$marker\" \"$PI_AGENT_MICROVM_VSOCK_CID\" \"${HOME-unset}\" > result\nwhile :; do :; done\n",
+		"#!" + shell + "\nIFS= read -r marker < " + volumeFDPath +
+			"\nprintf '%s|%s|%s\\n' \"$marker\" \"$PI_AGENT_MICROVM_VSOCK_CID\" " +
+			"\"${HOME-unset}\" > result\nwhile :; do :; done\n",
 	)
 	script := filepath.Join(root, "runner")
 	if err := os.WriteFile(script, scriptData, 0o555); err != nil {
@@ -391,7 +395,8 @@ func TestLinuxHostRunnerV2InheritsExactImageAsFD4WithFixedEnvironment(t *testing
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf(
-				"v2 runner did not receive exact fd 4 and allowlisted environment: data=%q err=%v output=%q",
+				"v2 runner did not receive exact fd 4 and allowlisted environment: data=%q "+
+					"err=%v output=%q",
 				data,
 				readErr,
 				output.String(),
@@ -445,11 +450,21 @@ func TestHostMonitorPublishesOnlyAfterAuthenticationAndStopsExactly(t *testing.T
 			}
 			return &fakeHostRelay{path: path}, nil
 		},
-		createVolume: func(context.Context, WorkspaceVolumeRequest, string) (*WorkspaceVolume, error) {
+		createVolume: func(
+			context.Context,
+			WorkspaceVolumeRequest,
+			string,
+		) (*WorkspaceVolume, error) {
 			t.Fatal("v1 monitor attempted to create a workspace volume")
 			return nil, nil
 		},
-		startRunner: func(got Profile, layout HostMonitorLayout, cid uint32, volume *WorkspaceVolume, output io.Writer) (hostRunner, error) {
+		startRunner: func(
+			got Profile,
+			layout HostMonitorLayout,
+			cid uint32,
+			volume *WorkspaceVolume,
+			output io.Writer,
+		) (hostRunner, error) {
 			if volume != nil {
 				t.Fatal("v1 runner received a workspace volume")
 			}
@@ -461,8 +476,10 @@ func TestHostMonitorPublishesOnlyAfterAuthenticationAndStopsExactly(t *testing.T
 			return runner, nil
 		},
 		validateRunner: func(Profile) error { return nil },
-		lock:           func(context.Context, string) (io.Closer, error) { return nopCloser{}, nil },
-		now:            func() time.Time { return time.Now().UTC() },
+		lock: func(context.Context, string) (io.Closer, error) {
+			return nopCloser{}, nil
+		},
+		now: func() time.Time { return time.Now().UTC() },
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
@@ -555,7 +572,11 @@ func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnl
 			}
 			return &fakeHostRelay{path: path}, nil
 		},
-		createVolume: func(_ context.Context, got WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
+		createVolume: func(
+			_ context.Context,
+			got WorkspaceVolumeRequest,
+			volumeID string,
+		) (*WorkspaceVolume, error) {
 			durableRequest, requestErr := ReadHostMonitorRequest(stateDir)
 			durableStatus, statusErr := ReadHostMonitorStatus(stateDir)
 			if requestErr != nil || statusErr != nil ||
@@ -567,7 +588,8 @@ func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnl
 				durableStatus.SchemaVersion != HostMonitorSchemaVersionV2 ||
 				durableStatus.State != HostMonitorInitializing {
 				t.Fatalf(
-					"volume creation preceded durable v2 monitor evidence: request=%+v (%v), status=%+v (%v)",
+					"volume creation preceded durable v2 monitor evidence: request=%+v (%v), "+
+						"status=%+v (%v)",
 					durableRequest,
 					requestErr,
 					durableStatus,
@@ -589,7 +611,13 @@ func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnl
 			})
 			return openedVolume, nil
 		},
-		startRunner: func(got Profile, layout HostMonitorLayout, cid uint32, volume *WorkspaceVolume, _ io.Writer) (hostRunner, error) {
+		startRunner: func(
+			got Profile,
+			layout HostMonitorLayout,
+			cid uint32,
+			volume *WorkspaceVolume,
+			_ io.Writer,
+		) (hostRunner, error) {
 			if got.Schema != ProfileSchemaV2 || layout.StateDir != stateDir ||
 				cid != request.CIDLease.CID ||
 				volume != openedVolume ||
@@ -599,8 +627,10 @@ func TestHostMonitorV2CreatesOrReopensExactVolumeAfterDurableRequestAndClosesOnl
 			return runner, nil
 		},
 		validateRunner: func(Profile) error { return nil },
-		lock:           func(context.Context, string) (io.Closer, error) { return nopCloser{}, nil },
-		now:            func() time.Time { return time.Now().UTC() },
+		lock: func(context.Context, string) (io.Closer, error) {
+			return nopCloser{}, nil
+		},
+		now: func() time.Time { return time.Now().UTC() },
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
@@ -672,15 +702,27 @@ func TestHostMonitorV2RejectsHandshakeForDifferentVolumeBeforeReadiness(t *testi
 			relayCalled = true
 			return nil, errors.New("must not publish a mismatched volume")
 		},
-		createVolume: func(_ context.Context, got WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
+		createVolume: func(
+			_ context.Context,
+			got WorkspaceVolumeRequest,
+			volumeID string,
+		) (*WorkspaceVolume, error) {
 			return testOpenedHostMonitorVolume(t, got, volumeID, nil), nil
 		},
-		startRunner: func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error) {
+		startRunner: func(
+			Profile,
+			HostMonitorLayout,
+			uint32,
+			*WorkspaceVolume,
+			io.Writer,
+		) (hostRunner, error) {
 			return runner, nil
 		},
 		validateRunner: func(Profile) error { return nil },
-		lock:           func(context.Context, string) (io.Closer, error) { return nopCloser{}, nil },
-		now:            func() time.Time { return time.Now().UTC() },
+		lock: func(context.Context, string) (io.Closer, error) {
+			return nopCloser{}, nil
+		},
+		now: func() time.Time { return time.Now().UTC() },
 	}
 	if err := runHostMonitor(context.Background(), stateDir, deps); err == nil {
 		t.Fatal("host monitor accepted a handshake for a different volume")
@@ -719,7 +761,11 @@ func TestHostMonitorV2PreLaunchFailureClosesButDoesNotDeleteVolumeAndIsTerminal(
 	var volumeClosed atomic.Bool
 	var retainedPath string
 	deps := hostMonitorDeps{
-		createVolume: func(_ context.Context, got WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
+		createVolume: func(
+			_ context.Context,
+			got WorkspaceVolumeRequest,
+			volumeID string,
+		) (*WorkspaceVolume, error) {
 			volume := testOpenedHostMonitorVolume(
 				t,
 				got,
@@ -729,12 +775,20 @@ func TestHostMonitorV2PreLaunchFailureClosesButDoesNotDeleteVolumeAndIsTerminal(
 			retainedPath = volume.Image.Name()
 			return volume, nil
 		},
-		startRunner: func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error) {
+		startRunner: func(
+			Profile,
+			HostMonitorLayout,
+			uint32,
+			*WorkspaceVolume,
+			io.Writer,
+		) (hostRunner, error) {
 			return nil, errors.New("injected runner startup failure")
 		},
 		validateRunner: func(Profile) error { return nil },
-		lock:           func(context.Context, string) (io.Closer, error) { return nopCloser{}, nil },
-		now:            func() time.Time { return time.Now().UTC() },
+		lock: func(context.Context, string) (io.Closer, error) {
+			return nopCloser{}, nil
+		},
+		now: func() time.Time { return time.Now().UTC() },
 	}
 	if err := runHostMonitor(context.Background(), stateDir, deps); err == nil {
 		t.Fatal("injected v2 startup failure succeeded")
@@ -768,7 +822,11 @@ func TestHostMonitorV2PartialStartupRetainsLeaseUntilExactReap(t *testing.T) {
 	var volumeClosed atomic.Bool
 	var volumeClosedEarly atomic.Bool
 	deps := hostMonitorDeps{
-		createVolume: func(_ context.Context, got WorkspaceVolumeRequest, volumeID string) (*WorkspaceVolume, error) {
+		createVolume: func(
+			_ context.Context,
+			got WorkspaceVolumeRequest,
+			volumeID string,
+		) (*WorkspaceVolume, error) {
 			return testOpenedHostMonitorVolume(t, got, volumeID, func() {
 				if !partial.reaped.Load() {
 					volumeClosedEarly.Store(true)
@@ -776,12 +834,20 @@ func TestHostMonitorV2PartialStartupRetainsLeaseUntilExactReap(t *testing.T) {
 				volumeClosed.Store(true)
 			}), nil
 		},
-		startRunner: func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error) {
+		startRunner: func(
+			Profile,
+			HostMonitorLayout,
+			uint32,
+			*WorkspaceVolume,
+			io.Writer,
+		) (hostRunner, error) {
 			return partial, errors.New("injected partial runner startup")
 		},
 		validateRunner: func(Profile) error { return nil },
-		lock:           func(context.Context, string) (io.Closer, error) { return nopCloser{}, nil },
-		now:            func() time.Time { return time.Now().UTC() },
+		lock: func(context.Context, string) (io.Closer, error) {
+			return nopCloser{}, nil
+		},
+		now: func() time.Time { return time.Now().UTC() },
 	}
 	result := make(chan error, 1)
 	go func() { result <- runHostMonitor(context.Background(), stateDir, deps) }()
@@ -801,7 +867,8 @@ func TestHostMonitorV2PartialStartupRetainsLeaseUntilExactReap(t *testing.T) {
 		volumeClosed.Load() ||
 		exactHostMonitorStatusTerminal(status, status.Monitor) {
 		t.Fatalf(
-			"partial startup published reap evidence, terminal state, or released volume early: status=%+v closed=%t",
+			"partial startup published reap evidence, terminal state, or released volume early: "+
+				"status=%+v closed=%t",
 			status,
 			volumeClosed.Load(),
 		)
@@ -867,16 +934,28 @@ func TestHostMonitorAuthenticationFailureNeverPublishesEndpoint(t *testing.T) {
 			relayCalled = true
 			return nil, errors.New("must not publish")
 		},
-		createVolume: func(context.Context, WorkspaceVolumeRequest, string) (*WorkspaceVolume, error) {
+		createVolume: func(
+			context.Context,
+			WorkspaceVolumeRequest,
+			string,
+		) (*WorkspaceVolume, error) {
 			t.Fatal("v1 monitor attempted to create a workspace volume")
 			return nil, nil
 		},
-		startRunner: func(Profile, HostMonitorLayout, uint32, *WorkspaceVolume, io.Writer) (hostRunner, error) {
+		startRunner: func(
+			Profile,
+			HostMonitorLayout,
+			uint32,
+			*WorkspaceVolume,
+			io.Writer,
+		) (hostRunner, error) {
 			return runner, nil
 		},
 		validateRunner: func(Profile) error { return nil },
-		lock:           func(context.Context, string) (io.Closer, error) { return nopCloser{}, nil },
-		now:            func() time.Time { return time.Now().UTC() },
+		lock: func(context.Context, string) (io.Closer, error) {
+			return nopCloser{}, nil
+		},
+		now: func() time.Time { return time.Now().UTC() },
 	}
 	if err := runHostMonitor(context.Background(), stateDir, deps); err == nil {
 		t.Fatal("unauthenticated guest monitor succeeded")
@@ -1193,7 +1272,8 @@ func prepareHostMonitorFixtureForSchema(
 		}
 		if schema == ProfileSchemaV3 {
 			policyData := []byte(
-				"version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n    domains: [example.com]\n    ports: [443]\n    decision: allow\n",
+				"version: 1\nname: host-egress\nnetwork_rules:\n  - name: allow-example\n" +
+					"    domains: [example.com]\n    ports: [443]\n    decision: allow\n",
 			)
 			policyPath := filepath.Join(t.TempDir(), "host-egress.yaml")
 			if err := os.WriteFile(policyPath, policyData, 0o600); err != nil {

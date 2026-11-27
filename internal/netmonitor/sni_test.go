@@ -62,7 +62,8 @@ func buildClientHelloNoSNI() []byte {
 }
 
 func buildClientHelloWithExtensions(extensions []byte) []byte {
-	// ClientHello body: version(2) + random(32) + sessionID(1+0) + cipherSuites(2+2) + compression(1+1) + extensions
+	// ClientHello body: version(2) + random(32) + sessionID(1+0) + cipherSuites(2+2) +
+	// compression(1+1) + extensions
 	var body []byte
 	// ClientVersion TLS 1.2
 	body = append(body, 0x03, 0x03)

@@ -177,7 +177,8 @@ func TestConnectingState_SendsSessionInitAndAdvancesOnAck(t *testing.T) {
 		if got, want := init.FormatVersion, wantFormatVersion; got != want {
 			t.Fatalf("format_version default: got %d, want %d", got, want)
 		}
-		if got, want := init.Algorithm, wtpv1.HashAlgorithm_HASH_ALGORITHM_HMAC_SHA256; got != want {
+		if got, want :=
+			init.Algorithm, wtpv1.HashAlgorithm_HASH_ALGORITHM_HMAC_SHA256; got != want {
 			t.Fatalf("algorithm default: got %s, want %s", got, want)
 		}
 		if got, want := init.WalHighWatermarkSeq, uint64(0); got != want {

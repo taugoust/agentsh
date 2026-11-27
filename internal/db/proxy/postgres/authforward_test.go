@@ -416,7 +416,9 @@ func TestForwardAuth_UpstreamErrorResponse_ForwardedVerbatim(t *testing.T) {
 	// received the ErrorResponse first.
 	if err == nil {
 		t.Log("forwardAuth returned nil; acceptable if upstream EOF was clean")
-	} else if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, net.ErrClosed) {
+	} else if !errors.Is(err, io.EOF) &&
+		!errors.Is(err, io.ErrClosedPipe) &&
+		!errors.Is(err, net.ErrClosed) {
 		t.Logf("forwardAuth returned: %v (acceptable)", err)
 	}
 	resp := <-clientErrCh

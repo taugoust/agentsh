@@ -154,7 +154,11 @@ func TestBuildStatementEvent_DigestStableAcrossTiers(t *testing.T) {
 	}
 	parser := classify_pg.New(classify_pg.DialectPostgres)
 	digests := map[policy.RedactionTier]string{}
-	for _, tier := range []policy.RedactionTier{policy.RedactFull, policy.RedactParametersRedacted, policy.RedactNone} {
+	for _, tier := range []policy.RedactionTier{
+		policy.RedactFull,
+		policy.RedactParametersRedacted,
+		policy.RedactNone,
+	} {
 		ev := buildStatementEvent(buildArgs{
 			Stmt: stmt, SQL: sql, Tier: tier,
 			Conn:       connStateForTest("appdb", "postgres", "terminate_reissue"),

@@ -21,7 +21,9 @@ func TestCreateSessionRejectsCallerRuntimeSelection(t *testing.T) {
 	handler := app.Router()
 	workspace := filepath.ToSlash(t.TempDir())
 
-	for _, field := range []string{"runtime", "runtime_profile", "runtime_provider", "runtime_options"} {
+	for _, field := range []string{
+		"runtime", "runtime_profile", "runtime_provider", "runtime_options",
+	} {
 		t.Run(field, func(t *testing.T) {
 			value := `"project-selected"`
 			if field == "runtime" || field == "runtime_options" {
@@ -45,7 +47,9 @@ func TestCreateSessionRejectsCallerRuntimeSelection(t *testing.T) {
 
 func TestGRPCCreateSessionRejectsCallerRuntimeSelection(t *testing.T) {
 	app := &App{}
-	for _, field := range []string{"runtime", "runtime_profile", "runtime_provider", "runtime_options"} {
+	for _, field := range []string{
+		"runtime", "runtime_profile", "runtime_provider", "runtime_options",
+	} {
 		t.Run(field, func(t *testing.T) {
 			body := []byte(fmt.Sprintf(`{%q:"project-selected"}`, field))
 			_, err := app.grpcCreateSession(context.Background(), body)

@@ -168,9 +168,11 @@ type MCPToolSummary struct {
 	HighRiskTools   []MCPToolRisk  `json:"high_risk_tools,omitempty"`
 
 	// New fields for previously-missing event types
-	ToolCallsTotal     int `json:"tool_calls_total"`     // mcp_tool_called count
-	InterceptedTotal   int `json:"intercepted_total"`    // mcp_tool_call_intercepted count (allow + block)
-	InterceptedBlocked int `json:"intercepted_blocked"`  // mcp_tool_call_intercepted with action=block
+	ToolCallsTotal int `json:"tool_calls_total"` // mcp_tool_called count
+	// mcp_tool_call_intercepted count (allow + block)
+	InterceptedTotal int `json:"intercepted_total"`
+	// mcp_tool_call_intercepted with action=block
+	InterceptedBlocked int `json:"intercepted_blocked"`
 	CrossServerBlocked int `json:"cross_server_blocked"` // mcp_cross_server_blocked count
 	NetworkConnections int `json:"network_connections"`  // mcp_network_connection count
 }

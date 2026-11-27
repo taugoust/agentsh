@@ -692,7 +692,8 @@ func refuseConflictingWorkspaceVolumeTransactions(
 		case strings.HasPrefix(name, workspaceVolumeCreatePrefix):
 			if name != exactCreateName {
 				return fmt.Errorf(
-					"%w: a different workspace volume create transaction requires explicit recovery",
+					"%w: a different workspace volume create transaction requires explicit "+
+						"recovery",
 					ErrWorkspaceVolumeExists,
 				)
 			}
@@ -1755,7 +1756,8 @@ func validateWorkspaceVolumeQEMUInfoJSON(data []byte, virtualSize int64) error {
 	}
 	if len(info.Snapshots) != 0 || info.Encrypted != nil && *info.Encrypted {
 		return fmt.Errorf(
-			"%w: qemu-img info reports snapshots or encryption outside the workspace volume contract",
+			"%w: qemu-img info reports snapshots or encryption outside the workspace volume "+
+				"contract",
 			ErrWorkspaceVolumeCorrupt,
 		)
 	}
@@ -1782,7 +1784,8 @@ func validateWorkspaceVolumeQEMUCheckJSON(data []byte, initiallyBlank bool) erro
 		return fmt.Errorf("%w: qemu-img check reports structural errors", ErrWorkspaceVolumeCorrupt)
 	}
 	if initiallyBlank &&
-		(nonzeroOptionalInt64(check.AllocatedClusters) || nonzeroOptionalInt64(check.CompressedClusters)) {
+		(nonzeroOptionalInt64(check.AllocatedClusters) ||
+			nonzeroOptionalInt64(check.CompressedClusters)) {
 		return fmt.Errorf(
 			"%w: qemu-img check reports allocated data in a newly-created workspace volume",
 			ErrWorkspaceVolumeCorrupt,

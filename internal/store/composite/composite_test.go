@@ -326,7 +326,8 @@ func TestComposite_StampsChainBeforeFanout(t *testing.T) {
 		// on dereferenced values (must match).
 		if p == o {
 			t.Errorf(
-				"event %d: sinks alias the same *ChainState pointer (%p); composite must stamp fresh per sink",
+				"event %d: sinks alias the same *ChainState pointer (%p); composite must stamp "+
+					"fresh per sink",
 				i,
 				p,
 			)
@@ -459,7 +460,8 @@ func TestComposite_NextGeneration_BlocksUntilInflightFanoutCompletes(t *testing.
 	select {
 	case got := <-nextGenDone:
 		t.Fatalf(
-			"NextGeneration returned (gen=%d, err=%v) while AppendEvent was mid-fanout; expected to block",
+			"NextGeneration returned (gen=%d, err=%v) while AppendEvent was mid-fanout; expected "+
+				"to block",
 			got.gen,
 			got.err,
 		)
@@ -689,7 +691,8 @@ func TestComposite_NextGeneration_NoStaleStamping(t *testing.T) {
 		// violation we are testing for.
 		if gen < maxGenSeen {
 			t.Fatalf(
-				"captured[%d]: stale stamping — got gen=%d after observing gen=%d earlier in stream",
+				"captured[%d]: stale stamping — got gen=%d after observing gen=%d earlier "+
+					"in stream",
 				i,
 				gen,
 				maxGenSeen,

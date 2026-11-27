@@ -238,7 +238,8 @@ func TestApprovalResolutionDuplicateIDCannotReplacePending(t *testing.T) {
 	m.rateMu.Unlock()
 	if originalRate != 1 || hijackRateExists || rateEntries != 1 {
 		t.Fatalf(
-			"rate counters after duplicate: original=%d hijackPresent=%v entries=%d, want 1/false/1",
+			"rate counters after duplicate: original=%d hijackPresent=%v entries=%d, want "+
+				"1/false/1",
 			originalRate,
 			hijackRateExists,
 			rateEntries,
@@ -266,7 +267,10 @@ func TestApprovalResolutionDuplicateIDCannotReplacePending(t *testing.T) {
 	}
 
 	appended, published := emitter.events()
-	for name, events := range map[string][]types.Event{"appended": appended, "published": published} {
+	for name, events := range map[string][]types.Event{
+		"appended":  appended,
+		"published": published,
+	} {
 		requestedEvents := resolutionRaceEventsOfType(events, "approval_requested")
 		resolvedEvents := resolutionRaceEventsOfType(events, "approval_resolved")
 		if len(requestedEvents) != 1 || len(resolvedEvents) != 1 {
@@ -505,7 +509,10 @@ func TestApprovalResolutionEventMatchesDecisionWinner(t *testing.T) {
 	}
 
 	appended, published := emitter.events()
-	for name, events := range map[string][]types.Event{"appended": appended, "published": published} {
+	for name, events := range map[string][]types.Event{
+		"appended":  appended,
+		"published": published,
+	} {
 		resolved := resolutionRaceEventsOfType(events, "approval_resolved")
 		if len(resolved) != 1 {
 			t.Fatalf("%s approval_resolved events = %d, want 1", name, len(resolved))
@@ -563,7 +570,8 @@ func TestApprovalResolutionScopeAndCleanupByTerminalCause(t *testing.T) {
 
 			m.mu.Lock()
 			sessionDecision, sessionOK := m.scoped[request.SessionID][scope.Key]
-			commandDecision, commandOK := m.commandScoped[request.SessionID][request.CommandID][scope.Key]
+			commandDecision, commandOK :=
+				m.commandScoped[request.SessionID][request.CommandID][scope.Key]
 			m.mu.Unlock()
 			switch resolutionScope {
 			case ScopeOnce:
@@ -743,7 +751,10 @@ func TestApprovalResolutionSessionCoverageUsesTerminalTransition(t *testing.T) {
 	}
 
 	appended, published := emitter.events()
-	for name, events := range map[string][]types.Event{"appended": appended, "published": published} {
+	for name, events := range map[string][]types.Event{
+		"appended":  appended,
+		"published": published,
+	} {
 		resolved := resolutionRaceEventsOfType(events, "approval_resolved")
 		if len(resolved) != 2 {
 			t.Fatalf("%s resolved event count = %d, want 2", name, len(resolved))

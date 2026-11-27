@@ -130,7 +130,8 @@ drainSends:
 	}
 	if sendCount != 3 {
 		t.Fatalf(
-			"got %d post-shutdown sends; want exactly 3 (data1 EventBatch + TransportLoss + data2 EventBatch)",
+			"got %d post-shutdown sends; want exactly 3 (data1 EventBatch + TransportLoss + "+
+				"data2 EventBatch)",
 			sendCount,
 		)
 	}
@@ -402,7 +403,8 @@ func TestShutdown_StopDrainsThenCloseSends(t *testing.T) {
 	case <-conn.sendCh:
 	case <-time.After(2 * time.Second):
 		t.Fatal(
-			"no Live-drain EventBatch on sendCh within 2s of Stop; runShutdown did not flush the batcher",
+			"no Live-drain EventBatch on sendCh within 2s of Stop; runShutdown did not flush " +
+				"the batcher",
 		)
 	}
 
@@ -605,7 +607,8 @@ func TestShutdown_StopBetweenReplayBatches(t *testing.T) {
 	case <-stopReturned:
 	case <-time.After(2 * time.Second):
 		t.Fatalf(
-			"Stop did not return within 2s; sends=%d, sendsAtEnqueue=%d, limit=%d, blocked=%v — regression: runReplaying did not observe stopCh promptly",
+			"Stop did not return within 2s; sends=%d, sendsAtEnqueue=%d, limit=%d, blocked=%v — "+
+				"regression: runReplaying did not observe stopCh promptly",
 			sendCalls.Load(),
 			sendsAtEnqueue,
 			sendsAtEnqueue+maxSendsAfterStop,
@@ -631,7 +634,8 @@ func TestShutdown_StopBetweenReplayBatches(t *testing.T) {
 	totalSends := sendCalls.Load()
 	if delta := totalSends - sendsAtEnqueue; delta > maxSendsAfterStop {
 		t.Fatalf(
-			"Stop not observed promptly between replay batches: totalSends=%d, sendsAtEnqueue=%d, delta=%d, limit=%d",
+			"Stop not observed promptly between replay batches: totalSends=%d, "+
+				"sendsAtEnqueue=%d, delta=%d, limit=%d",
 			totalSends,
 			sendsAtEnqueue,
 			delta,

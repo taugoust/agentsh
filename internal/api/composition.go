@@ -57,7 +57,8 @@ func (a *App) selectSandboxComposition(dec *policy.Decision) (string, string) {
 		!commandJailRequired(a.cfg) {
 		return deny(
 			"E_COMPOSITION_BACKEND_UNAVAILABLE",
-			"Bubblewrap composition requires Landlock, exec interception, and the strict command jail",
+			"Bubblewrap composition requires Landlock, exec interception, and the strict "+
+				"command jail",
 		)
 	}
 	fileMonitor := a.cfg.Sandbox.Seccomp.FileMonitor
@@ -74,7 +75,8 @@ func (a *App) selectSandboxComposition(dec *policy.Decision) (string, string) {
 		) {
 		return deny(
 			"E_COMPOSITION_BACKEND_UNAVAILABLE",
-			"Bubblewrap composition requires enforced read/write and metadata file interception plus io_uring denial for source attribution",
+			"Bubblewrap composition requires enforced read/write and metadata file interception "+
+				"plus io_uring denial for source attribution",
 		)
 	}
 	if _, err := a.compositionScratchRoot(); err != nil {

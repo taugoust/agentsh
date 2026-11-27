@@ -384,7 +384,8 @@ func startNotifyHandlerForState(
 		defer func() {
 			if ptraceReady != nil && !readySignaled {
 				select {
-				case ptraceReady <- fmt.Errorf("notify handler exited before pre-fork lineage readiness"):
+				case ptraceReady <- fmt.Errorf("notify handler exited before pre-fork lineage " +
+					"readiness"):
 				default:
 				}
 			}
@@ -565,7 +566,8 @@ func startNotifyHandlerForState(
 			}
 		} else if compositionSetup != nil {
 			err := fmt.Errorf(
-				"E_COMPOSITION_BACKEND_UNAVAILABLE: composition setup channel has no bound configurer",
+				"E_COMPOSITION_BACKEND_UNAVAILABLE: composition setup channel has no bound " +
+					"configurer",
 			)
 			if ptraceReady != nil {
 				select {
@@ -719,7 +721,8 @@ func startNotifyHandlerForState(
 			} else if pvrErr != nil {
 				if pol != nil {
 					slog.Warn("ProcessVMReadv failed — socket monitoring will be degraded "+
-						"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for file monitoring",
+						"(ReadSockaddr requires ProcessVMReadv), /proc/mem fallback works for "+
+						"file monitoring",
 						"payload_pid", payloadPID, "pvr_error", pvrErr)
 				} else {
 					slog.Debug("ProcessVMReadv failed but /proc/mem fallback works",
@@ -737,7 +740,8 @@ func startNotifyHandlerForState(
 		bl, _ := blockList.(*unixmon.BlockListConfig)
 		if bl != nil && len(bl.ActionByNr) > 0 && emitter == nil {
 			slog.Warn(
-				"seccomp: on_block=log/log_and_kill selected but no event emitter wired; events will be dropped",
+				"seccomp: on_block=log/log_and_kill selected but no event emitter wired; events "+
+					"will be dropped",
 				"session_id",
 				sessID,
 			)

@@ -974,7 +974,8 @@ func TestWaitForSidecarSequence_RetriesTransientReadErrors(t *testing.T) {
 					Op:   "open",
 					Path: "audit.jsonl.chain",
 					Err: errors.New(
-						"The process cannot access the file because it is being used by another process.",
+						"The process cannot access the file because it is being used by another " +
+							"process.",
 					),
 				}
 			}
