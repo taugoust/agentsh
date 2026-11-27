@@ -14,10 +14,16 @@ linters:
     - copyloopvar
     - govet
     - ineffassign
+    - lll
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
   settings:
+    lll:
+      # Match the golines formatter in nix/treefmt.nix so the linter and the
+      # formatter measure lines the same way.
+      line-length: 100
+      tab-width: 4
     staticcheck:
       checks:
         # Start with correctness checks. Deprecations are tracked separately
@@ -29,6 +35,10 @@ linters:
         # Go 1.26's experimental inlining suggestion is style-oriented rather
         # than a correctness check and churns reflect-kind comparisons.
         - inline
+  exclusions:
+    # Skip only files carrying the standard "Code generated ... DO NOT EDIT."
+    # header, such as the protobuf bindings in pkg/ptygrpc.
+    generated: strict
 
 issues:
   max-issues-per-linter: 0
