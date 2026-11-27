@@ -241,11 +241,12 @@ Its rules are named `base-*` and are checked first, so an extending policy
 can't turn them into allows or denies. That is why the base has no deny
 rules: nobody could relax them. Approve keeps the user in the loop instead.
 
-Approvals only prompt when `approvals.enabled` is set in the server config.
-With approvals off, approve rules allow the operation and log it. With
-approvals on, a request nobody answers is denied after `approvals.timeout`
-(5m by default). Unix socket checks can't wait for an answer, so the
-systemd socket rule refuses the connection when approvals are on.
+Approvals are on by default. A request nobody answers is denied after
+`approvals.timeout` (5m by default). With the default `local_tty` mode, a
+server that has no terminal denies right away. Unix socket checks can't wait
+for an answer, so the systemd socket rule refuses the connection. Setting
+`approvals.enabled: false` turns approve rules into allow, so the base then
+loosens the policies that extend it.
 
 It has no allow rules, so on its own it denies everything except file
 reads. Extend it instead:

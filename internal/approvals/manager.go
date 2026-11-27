@@ -71,6 +71,9 @@ type Manager struct {
 	// prompt is factored for testability; defaults to promptTTY.
 	prompt func(ctx context.Context, req Request) (Resolution, error)
 
+	// ttyPath is the terminal the tty prompts open; defaults to /dev/tty.
+	ttyPath string
+
 	// totpSecretLookup retrieves the TOTP secret for a session (TOTP mode only)
 	totpSecretLookup func(sessionID string) string
 
@@ -147,6 +150,7 @@ func New(mode string, timeout time.Duration, emit Emitter) *Manager {
 		mode:          mode,
 		timeout:       timeout,
 		emit:          emit,
+		ttyPath:       defaultTTYPath,
 		pending:       make(map[string]*pending),
 		scoped:        make(map[string]map[string]ScopedDecision),
 		commandScoped: make(map[string]map[string]map[string]ScopedDecision),
@@ -1529,13 +1533,30 @@ func (m *Manager) emitEvent(ctx context.Context, evType string, req Request, res
 	m.emit.Publish(ev)
 }
 
+const defaultTTYPath = "/dev/tty"
+
+// openTTY opens the approval terminal. A server without a controlling
+// terminal (for example under systemd) gets an error here, which the caller
+// turns into an immediate denial instead of waiting for the timeout.
+func (m *Manager) openTTY() (*os.File, error) {
+	path := m.ttyPath
+	if path == "" {
+		path = defaultTTYPath
+	}
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return nil, fmt.Errorf("no terminal for local approval prompt: %w", err)
+	}
+	return f, nil
+}
+
 func (m *Manager) promptTTY(ctx context.Context, req Request) (Resolution, error) {
 	m.promptMu.Lock()
 	defer m.promptMu.Unlock()
 
-	f, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	f, err := m.openTTY()
 	if err != nil {
-		return Resolution{}, fmt.Errorf("open /dev/tty: %w", err)
+		return Resolution{}, err
 	}
 
 	// Use sync.Once to ensure we only close the file once
@@ -1629,9 +1650,9 @@ func (m *Manager) promptTOTP(ctx context.Context, req Request) (Resolution, erro
 			fmt.Errorf("no TOTP secret for session %s", req.SessionID)
 	}
 
-	f, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	f, err := m.openTTY()
 	if err != nil {
-		return Resolution{}, fmt.Errorf("open /dev/tty: %w", err)
+		return Resolution{}, err
 	}
 
 	var closeOnce sync.Once

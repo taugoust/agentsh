@@ -1091,10 +1091,33 @@ type WebAuthnConfig struct {
 }
 
 type ApprovalsConfig struct {
+	// Enabled defaults to true when the key is absent from the config file.
 	Enabled  bool           `yaml:"enabled"`
 	Mode     string         `yaml:"mode"`    // "local_tty", "api", "totp", or "webauthn"
 	Timeout  string         `yaml:"timeout"` // duration string, e.g. "5m"
 	WebAuthn WebAuthnConfig `yaml:"webauthn"`
+
+	enabledSet bool `yaml:"-"`
+}
+
+// UnmarshalYAML records whether enabled was explicitly set so defaults can
+// keep the public bool schema while still defaulting to true.
+func (c *ApprovalsConfig) UnmarshalYAML(value *yaml.Node) error {
+	type raw ApprovalsConfig
+	r := raw(*c)
+	if err := value.Decode(&r); err != nil {
+		return err
+	}
+	if value.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(value.Content); i += 2 {
+			if value.Content[i].Value == "enabled" {
+				r.enabledSet = true
+				break
+			}
+		}
+	}
+	*c = ApprovalsConfig(r)
+	return nil
 }
 
 type MetricsConfig struct {
@@ -2337,6 +2360,10 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	}
 	if cfg.Audit.OTEL.Resource.ServiceName == "" {
 		cfg.Audit.OTEL.Resource.ServiceName = "agentsh"
+	}
+	if !cfg.Approvals.enabledSet {
+		cfg.Approvals.Enabled = true
+		cfg.Approvals.enabledSet = true
 	}
 	if cfg.Approvals.Timeout == "" {
 		cfg.Approvals.Timeout = "5m"

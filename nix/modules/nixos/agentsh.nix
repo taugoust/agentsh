@@ -831,7 +831,8 @@ in
     approvals = {
       enable = mkOption {
         type = types.bool;
-        default = false;
+        default = true;
+        description = "Ask for approval on approve rules. When off, approve rules allow the operation.";
       };
       mode = mkOption {
         type = types.enum [

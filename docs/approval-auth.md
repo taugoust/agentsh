@@ -973,6 +973,9 @@ All the anti-self-approval protections described in this document apply equally 
 # /etc/agentsh/config.yaml
 
 approvals:
+  # On by default. false turns approve rules into allow.
+  enabled: true
+
   # Approval mode: how approvals are handled
   # - "local_tty": Math challenge on terminal (default)
   # - "api": Remote approval via API (requires separate approver credentials)
