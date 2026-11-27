@@ -13,7 +13,7 @@
         chmod -R u+w source
         cd source
         mapfile -d "" scripts < <(find . -type f \( -name '*.sh' -o -name '*.bash' \) \
-        -not -path './.git/*' -not -path './packaging/completions/*' -print0)
+        -not -path './.git/*' -print0)
         if [ "''${#scripts[@]}" -eq 0 ]; then
           echo "no shell scripts found" >&2
           exit 1

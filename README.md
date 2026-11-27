@@ -86,36 +86,31 @@ Containers isolate the host surface; agentsh adds **in-container runtime visibil
 
 ### Install
 
-**From a GitHub Release**
-
-Download the `.deb`, `.rpm`, or `.apk` for your platform from the [releases page](https://github.com/erans/agentsh/releases).
+**With Nix**
 
 ```bash
-# Example for Debian/Ubuntu
-sudo dpkg -i agentsh_<VERSION>_linux_amd64.deb
+nix build   # binaries are in ./result/bin
+sudo install -m 0755 result/bin/agentsh result/bin/agentsh-shell-shim /usr/local/bin
 ```
 
-**From source**
-
-```bash
-make build
-sudo install -m 0755 bin/agentsh bin/agentsh-shell-shim /usr/local/bin
-```
+To run without installing, use `nix run .#agentsh -- <args>`. On NixOS, import the `nixosModules.default` module from this flake.
 
 ---
 
 ### Run locally
 
+The examples assume `nix build` has been run, so the binaries are in `./result/bin`.
+
 ```bash
 # Start the server (optional if using autostart)
-./bin/agentsh server --config configs/server-config.yaml
+./result/bin/agentsh server --config configs/server-config.yaml
 
 # Create a session and run a command (shell output)
-SID=$(./bin/agentsh session create --workspace . --json | jq -r .id)
-./bin/agentsh exec "$SID" -- ls -la
+SID=$(./result/bin/agentsh session create --workspace . --json | jq -r .id)
+./result/bin/agentsh exec "$SID" -- ls -la
 
 # Structured output for agents
-./bin/agentsh exec --output json --events summary "$SID" -- curl https://example.com
+./result/bin/agentsh exec --output json --events summary "$SID" -- curl https://example.com
 ```
 
 ---
@@ -245,13 +240,13 @@ command_rules:
 
 ```bash
 # Start the server with your policy
-./bin/agentsh server --config configs/server-config.yaml
+./result/bin/agentsh server --config configs/server-config.yaml
 
 # Create a session pinned to a policy
-SID=$(./bin/agentsh session create --workspace /workspace --policy default --json | jq -r .id)
+SID=$(./result/bin/agentsh session create --workspace /workspace --policy default --json | jq -r .id)
 
 # Exec commands; responses include decision + guidance when blocked/approved
-./bin/agentsh exec "$SID" -- rm -rf /workspace/tmp
+./result/bin/agentsh exec "$SID" -- rm -rf /workspace/tmp
 ```
 
 ### Authentication
