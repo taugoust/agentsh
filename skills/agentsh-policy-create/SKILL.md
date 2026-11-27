@@ -73,6 +73,7 @@ Create new AgentSH security policies from built-in templates, customized to the 
 ## Guardrails
 
 - Always use `version: 1`
+- Keep `extends: base` when the template has it, and make sure `base.yaml` is in the same policy directory; don't copy base rules into the new policy. The base asks for approval, so leave it out of policies that run with no one to approve, such as CI
 - Every policy must have `name` and `description`
 - End rule-list categories (file_rules, network_rules, command_rules) with a default-deny catch-all
 - Use descriptive rule names in `verb-noun` format (e.g., `allow-npm`, `deny-ssh-keys`)

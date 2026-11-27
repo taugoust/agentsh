@@ -394,7 +394,8 @@ mount_profiles:
 # =============================================================================
 
 approvals:
-  enabled: false
+  # On by default. With approvals off, approve rules allow the operation.
+  enabled: true
   # Approval mode:
   # - local_tty: prompt on server /dev/tty (safe for local dev)
   # - api: approvals resolved via /api/v1/approvals/* (requires auth.type=api_key to prevent self-approval)

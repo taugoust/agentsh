@@ -28,6 +28,27 @@ func findProjectRoot(t *testing.T) string {
 	}
 }
 
+// withoutBaseRules checks that p starts with the shipped base policy's rules
+// and returns a copy of p without them, so tests can index p's own rules.
+func withoutBaseRules(t *testing.T, p *Policy) *Policy {
+	t.Helper()
+	base, err := LoadFromFile(filepath.Join(findProjectRoot(t), "configs", "policies", "base.yaml"))
+	require.NoError(t, err)
+	c := *p
+	c.FileRules = stripRulePrefix(t, "file_rules", p.FileRules, base.FileRules)
+	c.NetworkRules = stripRulePrefix(t, "network_rules", p.NetworkRules, base.NetworkRules)
+	c.CommandRules = stripRulePrefix(t, "command_rules", p.CommandRules, base.CommandRules)
+	c.UnixRules = stripRulePrefix(t, "unix_socket_rules", p.UnixRules, base.UnixRules)
+	return &c
+}
+
+func stripRulePrefix[T any](t *testing.T, family string, rules, base []T) []T {
+	t.Helper()
+	require.GreaterOrEqual(t, len(rules), len(base), family)
+	require.Equal(t, base, rules[:len(base)], "%s must start with the base rules", family)
+	return rules[len(base):]
+}
+
 func TestAgentPolicies(t *testing.T) {
 	root := findProjectRoot(t)
 	policiesDir := filepath.Join(root, "configs", "policies")
@@ -39,19 +60,21 @@ func TestAgentPolicies(t *testing.T) {
 		wantFileRules    int
 		wantNetworkRules int
 	}{
+		// Counts include the 5 command, 17 file and 3 network rules inherited
+		// from base.yaml.
 		{
 			file:             "agent-default.yaml",
 			name:             "agent-default",
-			wantCommandRules: 21,
-			wantFileRules:    15,
-			wantNetworkRules: 15,
+			wantCommandRules: 26,
+			wantFileRules:    28,
+			wantNetworkRules: 17,
 		},
 		{
 			file:             "agent-strict.yaml",
 			name:             "agent-strict",
-			wantCommandRules: 3,
-			wantFileRules:    4,
-			wantNetworkRules: 1,
+			wantCommandRules: 8,
+			wantFileRules:    21,
+			wantNetworkRules: 4,
 		},
 		{
 			file:             "agent-observe.yaml",
@@ -90,6 +113,7 @@ func TestAgentPolicies_DefaultRuleDetails(t *testing.T) {
 	path := filepath.Join(root, "configs", "policies", "agent-default.yaml")
 	p, err := LoadFromFile(path)
 	require.NoError(t, err)
+	p = withoutBaseRules(t, p)
 
 	// --- Command rules ---
 
@@ -145,33 +169,18 @@ func TestAgentPolicies_DefaultRuleDetails(t *testing.T) {
 	assert.Equal(t, "approve", p.FileRules[0].Decision)
 	assert.Contains(t, p.FileRules[0].Paths, "**/.env")
 
-	// Git credentials require approval (MUST precede workspace allow)
-	assert.Equal(t, "approve-git-credentials", p.FileRules[1].Name)
-	assert.Equal(t, "approve", p.FileRules[1].Decision)
-	assert.Contains(t, p.FileRules[1].Paths, "**/.netrc")
-
 	// Workspace full access
-	assert.Equal(t, "allow-workspace", p.FileRules[2].Name)
-	assert.Equal(t, "allow", p.FileRules[2].Decision)
-	assert.Contains(t, p.FileRules[2].Paths, "${PROJECT_ROOT}/**")
+	assert.Equal(t, "allow-workspace", p.FileRules[1].Name)
+	assert.Equal(t, "allow", p.FileRules[1].Decision)
+	assert.Contains(t, p.FileRules[1].Paths, "${PROJECT_ROOT}/**")
 
-	// Credential paths require approval
-	assert.Equal(t, "approve-ssh-keys", p.FileRules[9].Name)
-	assert.Equal(t, "approve", p.FileRules[9].Decision)
-
-	assert.Equal(t, "approve-cloud-credentials", p.FileRules[10].Name)
-	assert.Equal(t, "approve", p.FileRules[10].Decision)
-
-	// Deny rules
-	assert.Equal(t, "deny-passwd-shadow", p.FileRules[11].Name)
-	assert.Equal(t, "deny", p.FileRules[11].Decision)
-
-	assert.Equal(t, "deny-proc-sensitive", p.FileRules[12].Name)
-	assert.Equal(t, "deny", p.FileRules[12].Decision)
+	// Other SSH files, such as config and public keys, require approval
+	assert.Equal(t, "approve-ssh-keys", p.FileRules[8].Name)
+	assert.Equal(t, "approve", p.FileRules[8].Decision)
 
 	// Default deny at the end
-	assert.Equal(t, "default-deny-files", p.FileRules[14].Name)
-	assert.Equal(t, "deny", p.FileRules[14].Decision)
+	assert.Equal(t, "default-deny-files", p.FileRules[10].Name)
+	assert.Equal(t, "deny", p.FileRules[10].Decision)
 
 	// --- Network rules ---
 
@@ -186,13 +195,13 @@ func TestAgentPolicies_DefaultRuleDetails(t *testing.T) {
 	assert.Equal(t, "allow", p.NetworkRules[6].Decision)
 	assert.Contains(t, p.NetworkRules[6].Domains, "github.com")
 
-	// Cloud metadata denied
-	assert.Equal(t, "deny-metadata-services", p.NetworkRules[11].Name)
+	// Private networks denied
+	assert.Equal(t, "deny-private-networks", p.NetworkRules[11].Name)
 	assert.Equal(t, "deny", p.NetworkRules[11].Decision)
 
 	// Default deny at the end
-	assert.Equal(t, "default-deny-network", p.NetworkRules[14].Name)
-	assert.Equal(t, "deny", p.NetworkRules[14].Decision)
+	assert.Equal(t, "default-deny-network", p.NetworkRules[13].Name)
+	assert.Equal(t, "deny", p.NetworkRules[13].Decision)
 
 	// --- Env policy ---
 	assert.True(t, p.EnvPolicy.BlockIteration)
@@ -229,6 +238,7 @@ func TestAgentPolicies_StrictRuleDetails(t *testing.T) {
 	path := filepath.Join(root, "configs", "policies", "agent-strict.yaml")
 	p, err := LoadFromFile(path)
 	require.NoError(t, err)
+	p = withoutBaseRules(t, p)
 
 	// Read-only tools allowed
 	assert.Equal(t, "read-only-tools", p.CommandRules[0].Name)
@@ -392,16 +402,23 @@ func TestAgentDefault_CommandDecisions(t *testing.T) {
 
 		// Denied commands
 		{
-			name:     "sudo denied",
+			name:     "sudo needs approval",
 			cmd:      "sudo",
 			args:     []string{"rm", "-rf", "/"},
-			wantDec:  types.DecisionDeny,
-			wantRule: "deny-privilege-escalation",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-privilege-escalation",
 		},
 		{
-			name:     "su denied",
+			name:     "su needs approval",
 			cmd:      "su",
 			args:     []string{"-"},
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-privilege-escalation",
+		},
+		{
+			name:     "unshare denied",
+			cmd:      "unshare",
+			args:     []string{"-r"},
 			wantDec:  types.DecisionDeny,
 			wantRule: "deny-privilege-escalation",
 		},
@@ -599,10 +616,24 @@ func TestAgentDefault_FileDecisions(t *testing.T) {
 			wantRule: "allow-etc-read",
 		},
 
-		// Credential paths require approval
+		// The base policy asks before credential access
 		{
 			name:     "read SSH private key",
 			path:     "/home/user/.ssh/id_rsa",
+			op:       "read",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-ssh-private-keys",
+		},
+		{
+			name:     "read SSH public key (approval required)",
+			path:     "/home/user/.ssh/id_rsa.pub",
+			op:       "read",
+			wantDec:  types.DecisionApprove,
+			wantRule: "approve-ssh-keys",
+		},
+		{
+			name:     "read SSH config (approval required)",
+			path:     "/home/user/.ssh/config",
 			op:       "read",
 			wantDec:  types.DecisionApprove,
 			wantRule: "approve-ssh-keys",
@@ -612,28 +643,28 @@ func TestAgentDefault_FileDecisions(t *testing.T) {
 			path:     "/home/user/.aws/credentials",
 			op:       "read",
 			wantDec:  types.DecisionApprove,
-			wantRule: "approve-cloud-credentials",
+			wantRule: "base-credential-stores",
 		},
 		{
 			name:     "read kube config",
 			path:     "/home/user/.kube/config",
 			op:       "read",
 			wantDec:  types.DecisionApprove,
-			wantRule: "approve-cloud-credentials",
+			wantRule: "base-credential-stores",
 		},
 		{
 			name:     "read git-credentials",
 			path:     "/home/user/.git-credentials",
 			op:       "read",
 			wantDec:  types.DecisionApprove,
-			wantRule: "approve-git-credentials",
+			wantRule: "base-credential-stores",
 		},
 		{
-			name:     "read .netrc in project (approval required)",
+			name:     "read .netrc in project",
 			path:     "/home/user/project/.netrc",
 			op:       "read",
 			wantDec:  types.DecisionApprove,
-			wantRule: "approve-git-credentials",
+			wantRule: "base-credential-stores",
 		},
 		{
 			name:     "read .env in project (approval required)",
@@ -650,27 +681,27 @@ func TestAgentDefault_FileDecisions(t *testing.T) {
 			wantRule: "approve-env-files",
 		},
 
-		// Denied paths
+		// Sensitive system paths need approval
 		{
-			name:     "read /etc/shadow denied",
+			name:     "read /etc/shadow needs approval",
 			path:     "/etc/shadow",
 			op:       "read",
-			wantDec:  types.DecisionDeny,
-			wantRule: "deny-passwd-shadow",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-shadow-files",
 		},
 		{
-			name:     "read /etc/gshadow denied",
+			name:     "read /etc/gshadow needs approval",
 			path:     "/etc/gshadow",
 			op:       "open",
-			wantDec:  types.DecisionDeny,
-			wantRule: "deny-passwd-shadow",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-shadow-files",
 		},
 		{
-			name:     "read /proc/self/environ denied (secrets)",
+			name:     "read /proc/self/environ needs approval (secrets)",
 			path:     "/proc/self/environ",
 			op:       "read",
-			wantDec:  types.DecisionDeny,
-			wantRule: "deny-proc-sensitive",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-proc-secrets",
 		},
 		{
 			name:     "read /sys allowed (reads not blocked)",
@@ -753,11 +784,11 @@ func TestAgentDefault_FileDecisions(t *testing.T) {
 
 		// /proc read/write behavior after narrowing
 		{
-			name:     "open /proc/self/environ denied (secrets)",
+			name:     "open /proc/self/environ needs approval (secrets)",
 			path:     "/proc/self/environ",
 			op:       "open",
-			wantDec:  types.DecisionDeny,
-			wantRule: "deny-proc-sensitive",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-proc-secrets",
 		},
 		{
 			name:     "read /proc/self/status allowed",
@@ -960,18 +991,18 @@ func TestAgentDefault_NetworkIPDecisions(t *testing.T) {
 			wantRule: "allow-localhost",
 		},
 		{
-			name:     "cloud metadata denied",
+			name:     "cloud metadata needs approval",
 			ip:       "169.254.169.254",
 			port:     80,
-			wantDec:  types.DecisionDeny,
-			wantRule: "deny-metadata-services",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-cloud-metadata-ips",
 		},
 		{
-			name:     "Alibaba metadata denied",
+			name:     "Alibaba metadata needs approval",
 			ip:       "100.100.100.200",
 			port:     80,
-			wantDec:  types.DecisionDeny,
-			wantRule: "deny-metadata-services",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-cloud-metadata-ips",
 		},
 		{
 			name:     "private network 10.x denied",

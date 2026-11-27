@@ -10,6 +10,9 @@ description: |
   on files and network. Agents can work productively while credentials
   are protected and destructive operations are blocked.
 
+# Rules from base.yaml are checked before the rules below.
+extends: base
+
 # =============================================================================
 # COMMAND RULES
 # =============================================================================
@@ -104,12 +107,8 @@ command_rules:
     message: "System administration command blocked."
 
   - name: deny-privilege-escalation
-    description: Block privilege escalation
+    description: Block user namespace creation. The base policy asks before sudo, su, chroot and nsenter.
     commands:
-      - sudo
-      - su
-      - chroot
-      - nsenter
       - unshare
     decision: deny
     message: "Privilege escalation blocked."
@@ -358,7 +357,7 @@ command_rules:
 
 file_rules:
   # ---------------------------------------------------------------------------
-  # Credential/sensitive files — require approval (MUST precede workspace allow)
+  # Secret files — require approval (MUST precede workspace allow)
   # These use ** globs that would otherwise be swallowed by allow-workspace.
   # ---------------------------------------------------------------------------
 
@@ -371,17 +370,6 @@ file_rules:
       - "*"
     decision: approve
     message: "Agent wants to access environment file: {{.Path}}"
-    timeout: 5m
-
-  - name: approve-git-credentials
-    description: Require approval for git credential access
-    paths:
-      - "${HOME}/.git-credentials"
-      - "**/.netrc"
-    operations:
-      - "*"
-    decision: approve
-    message: "Agent wants to access git credentials: {{.Path}}"
     timeout: 5m
 
   # ---------------------------------------------------------------------------
@@ -508,11 +496,11 @@ file_rules:
     decision: allow
 
   # ---------------------------------------------------------------------------
-  # Credential paths — require approval
+  # SSH config and known_hosts: ask before access
   # ---------------------------------------------------------------------------
 
   - name: approve-ssh-keys
-    description: Require approval for SSH key access
+    description: Require approval for other SSH file access
     paths:
       - "${HOME}/.ssh/**"
     operations:
@@ -521,45 +509,9 @@ file_rules:
     message: "Agent wants to access SSH keys: {{.Path}}"
     timeout: 5m
 
-  - name: approve-cloud-credentials
-    description: Require approval for cloud credential access
-    paths:
-      - "${HOME}/.aws/**"
-      - "${HOME}/.gcloud/**"
-      - "${HOME}/.azure/**"
-      - "${HOME}/.config/gcloud/**"
-      - "${HOME}/.kube/**"
-    operations:
-      - "*"
-    decision: approve
-    message: "Agent wants to access cloud credentials: {{.Path}}"
-    timeout: 5m
-
   # ---------------------------------------------------------------------------
   # Deny — sensitive system paths and default
   # ---------------------------------------------------------------------------
-
-  - name: deny-passwd-shadow
-    description: Block access to password/shadow files
-    paths:
-      - "/etc/shadow"
-      - "/etc/gshadow"
-    operations:
-      - "*"
-    decision: deny
-
-  - name: deny-proc-sensitive
-    description: Block reading sensitive /proc entries (environ, mem, kcore)
-    paths:
-      - "/proc/self/environ"
-      - "/proc/thread-self/environ"
-      - "/proc/*/environ"
-      - "/proc/*/task/*/environ"
-      - "/proc/*/mem"
-      - "/proc/kcore"
-    operations:
-      - "*"
-    decision: deny
 
   - name: deny-proc-sys
     description: Block writes to /proc and /sys
@@ -736,13 +688,6 @@ network_rules:
   # ---------------------------------------------------------------------------
   # Blocked networks
   # ---------------------------------------------------------------------------
-
-  - name: deny-metadata-services
-    description: Block cloud metadata services
-    cidrs:
-      - "169.254.169.254/32"
-      - "100.100.100.200/32"
-    decision: deny
 
   - name: deny-private-networks
     description: Block private/internal networks

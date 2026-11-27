@@ -19,6 +19,20 @@ let
 
   yaml = pkgs.formats.yaml { };
 
+  # The policy directory: policies.source plus base.yaml unless the source
+  # already has its own `base` policy.
+  policyDir =
+    if cfg.policies.base == null then
+      cfg.policies.source
+    else
+      pkgs.runCommand "agentsh-policies" { } ''
+        mkdir -p "$out"
+        cp -rs ${cfg.policies.source}/. "$out"/
+        if [ ! -e "$out/base.yaml" ] && [ ! -e "$out/base.yml" ] && [ ! -e "$out/base" ]; then
+          ln -s ${cfg.policies.base} "$out/base.yaml"
+        fi
+      '';
+
   safeAbsolutePath =
     path:
     lib.hasPrefix "/" path
@@ -768,6 +782,17 @@ in
         type = types.path;
         default = "${cfg.package}/share/agentsh/configs/policies";
       };
+      base = mkOption {
+        type = types.nullOr types.path;
+        default = cfg.package.policies.base or ../../../configs/policies/base.yaml;
+        defaultText = lib.literalExpression "cfg.package.policies.base";
+        description = ''
+          Recommended base policy, installed as base.yaml in the policy
+          directory so policies can use `extends: base`. A base policy in
+          policies.source takes precedence. Set to null to install only
+          policies.source.
+        '';
+      };
       default = mkOption {
         type = types.str;
         default = "default";
@@ -806,7 +831,8 @@ in
     approvals = {
       enable = mkOption {
         type = types.bool;
-        default = false;
+        default = true;
+        description = "Ask for approval on approve rules. When off, approve rules allow the operation.";
       };
       mode = mkOption {
         type = types.enum [
@@ -971,7 +997,7 @@ in
       systemPackages = [ cfg.package ];
       etc = {
         "agentsh/config.yml".source = configFile;
-        "agentsh/policies".source = cfg.policies.source;
+        "agentsh/policies".source = policyDir;
       }
       // optionalAttrs cfg.nethelper.enable {
         "profile.d/agentsh-nethelper.sh" = {

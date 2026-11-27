@@ -628,7 +628,7 @@ You already have a default policy (`configs/policies/default.yaml`). These opini
 * **[`policies/dev-safe.yaml`](configs/policies/dev-safe.yaml)**: safe for local development
   * allow workspace read/write
   * approve deletes in workspace
-  * deny `~/.ssh/**`, `/root/.ssh/**`
+  * deny `~/.ssh/**`, `/root/.ssh/**` (private keys ask for approval)
   * restrict network to allowlisted domains/ports
 
 * **[`policies/ci-strict.yaml`](configs/policies/ci-strict.yaml)**: safe for CI runners
@@ -642,6 +642,8 @@ You already have a default policy (`configs/policies/default.yaml`). These opini
   * approve any credential/path access
   * redirect network tool usage to internal proxies/mirrors
   * soft-delete destructive operations for easy recovery
+
+`dev-safe` and `agent-sandbox` extend [`policies/base.yaml`](configs/policies/base.yaml), which asks for approval before access to credentials, writes to persistence paths, connections to cloud metadata endpoints and privilege escalation. `ci-strict` doesn't, because no one answers approvals in CI. Use `extends: base` to build your own policies on it. See [Recommended Base Policy](docs/operations/policies.md#recommended-base-policy).
 
 ---
 

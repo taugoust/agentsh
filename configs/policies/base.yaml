@@ -1,0 +1,524 @@
+# Recommended base policy for agentsh.
+#
+# Other policies build on it with `extends: base`. It only has approve
+# rules: they are checked first and an extending policy can't change them,
+# so a deny here could never be relaxed.
+#
+# Approvals only prompt when approvals are enabled in the server config.
+# With approvals off, approve rules allow the operation and log it.
+#
+# Don't select it on its own. It has no allow rules, so the built-in
+# defaults deny all commands, network, Unix sockets and file writes.
+#
+# Notes:
+#   - Paths are globs: `*` stays within one path component, `**` crosses
+#     components. `**/x` does not match a bare `x`.
+#   - It uses only ${HOME}, ${PROJECT_ROOT} and ${GIT_ROOT}, which every
+#     session sets.
+#   - Persistence rules cover writes only. Shells, git, ssh and direnv read
+#     these files all the time.
+#   - Rule names start with `base-` so they don't clash with rules in
+#     extending policies.
+#   - With approvals on, Unix socket connections that need approval are
+#     refused, because socket checks can't wait for an answer.
+
+version: 1
+name: base
+description: |
+  Asks for approval before access to credentials, password hashes and
+  process memory, writes to files that later run code outside the sandbox
+  (shell profiles, git hooks and config, direnv, ssh, systemd user units,
+  autostart, cron), connections to cloud metadata endpoints, and privilege
+  escalation. Extend it instead of using it alone.
+
+file_rules:
+  # ---------------------------------------------------------------------------
+  # Credentials: all operations, reads included.
+  # ---------------------------------------------------------------------------
+
+  - name: base-ssh-private-keys
+    description: SSH private keys. Public `.pub` keys are not matched.
+    paths:
+      - "${HOME}/.ssh/id_rsa"
+      - "${HOME}/.ssh/id_dsa"
+      - "${HOME}/.ssh/id_ecdsa"
+      - "${HOME}/.ssh/id_ed25519"
+      - "${HOME}/.ssh/id_ecdsa_sk"
+      - "${HOME}/.ssh/id_ed25519_sk"
+      - "${HOME}/.ssh/*.pem"
+      - "${HOME}/.ssh/*.key"
+    operations: ["*"]
+    decision: approve
+    message: "Agent wants to access an SSH private key: {{.Path}}"
+    timeout: 5m
+
+  - name: base-credential-stores
+    description: Git, netrc, cloud CLI, container registry, Kubernetes, password manager and publishing credentials
+    paths:
+      # git / netrc
+      - "${HOME}/.git-credentials"
+      - "${HOME}/.config/git/credentials"
+      - "**/.netrc"
+      - "**/_netrc"
+      # AWS
+      - "${HOME}/.aws"
+      - "${HOME}/.aws/**"
+      # Google Cloud
+      - "${HOME}/.config/gcloud"
+      - "${HOME}/.config/gcloud/**"
+      - "${HOME}/.gcloud"
+      - "${HOME}/.gcloud/**"
+      # Azure
+      - "${HOME}/.azure"
+      - "${HOME}/.azure/**"
+      # Oracle Cloud
+      - "${HOME}/.oci"
+      - "${HOME}/.oci/**"
+      # Kubernetes
+      - "${HOME}/.kube"
+      - "${HOME}/.kube/**"
+      # Container registry auth
+      - "${HOME}/.docker/config.json"
+      - "${HOME}/.config/containers/auth.json"
+      - "/run/user/*/containers/auth.json"
+      # Password managers and keyrings
+      - "${HOME}/.password-store"
+      - "${HOME}/.password-store/**"
+      - "${HOME}/.local/share/keyrings"
+      - "${HOME}/.local/share/keyrings/**"
+      # Publishing and infrastructure tokens
+      - "${HOME}/.pypirc"
+      - "${HOME}/.cargo/credentials"
+      - "${HOME}/.cargo/credentials.toml"
+      - "${HOME}/.gem/credentials"
+      - "${HOME}/.vault-token"
+      - "${HOME}/.terraform.d/credentials.tfrc.json"
+      - "${HOME}/.config/sops/age/keys.txt"
+    operations: ["*"]
+    decision: approve
+    message: "Agent wants to access credentials: {{.Path}}"
+    timeout: 5m
+
+  - name: base-gnupg-private-keys
+    description: GnuPG secret keys and revocation certificates
+    paths:
+      - "${HOME}/.gnupg/private-keys-v1.d"
+      - "${HOME}/.gnupg/private-keys-v1.d/**"
+      - "${HOME}/.gnupg/secring.gpg"
+      - "${HOME}/.gnupg/openpgp-revocs.d"
+      - "${HOME}/.gnupg/openpgp-revocs.d/**"
+    operations: ["*"]
+    decision: approve
+    message: "Agent wants to access GnuPG secret keys: {{.Path}}"
+    timeout: 5m
+
+  - name: base-proc-secrets
+    description: Process environments and memory, and kernel memory. `*` also matches `self` and `thread-self`.
+    paths:
+      - "/proc/*/environ"
+      - "/proc/*/task/*/environ"
+      - "/proc/*/mem"
+      - "/proc/*/task/*/mem"
+      - "/proc/kcore"
+    operations: ["*"]
+    decision: approve
+    message: "Agent wants to access process environment or memory: {{.Path}}"
+    timeout: 5m
+
+  - name: base-shadow-files
+    description: Local password hashes
+    paths:
+      - "/etc/shadow"
+      - "/etc/gshadow"
+      - "/etc/shadow-"
+      - "/etc/gshadow-"
+    operations: ["*"]
+    decision: approve
+    message: "Agent wants to access password hashes: {{.Path}}"
+    timeout: 5m
+
+  # ---------------------------------------------------------------------------
+  # Persistence: writes only.
+  # ---------------------------------------------------------------------------
+
+  - name: base-shell-startup-writes
+    description: Shell, login and session startup files
+    paths:
+      # sh / bash
+      - "${HOME}/.profile"
+      - "${HOME}/.shrc"
+      - "${HOME}/.bashrc"
+      - "${HOME}/.bash_profile"
+      - "${HOME}/.bash_login"
+      - "${HOME}/.bash_logout"
+      - "${HOME}/.bash_aliases"
+      - "${HOME}/.bashrc.d"
+      - "${HOME}/.bashrc.d/**"
+      - "${HOME}/.inputrc"
+      # zsh
+      - "${HOME}/.zshenv"
+      - "${HOME}/.zprofile"
+      - "${HOME}/.zshrc"
+      - "${HOME}/.zlogin"
+      - "${HOME}/.zlogout"
+      - "${HOME}/.config/zsh"
+      - "${HOME}/.config/zsh/**"
+      - "${HOME}/.oh-my-zsh"
+      - "${HOME}/.oh-my-zsh/**"
+      # fish
+      - "${HOME}/.config/fish"
+      - "${HOME}/.config/fish/**"
+      - "${HOME}/.local/share/fish/vendor_conf.d"
+      - "${HOME}/.local/share/fish/vendor_conf.d/**"
+      - "${HOME}/.local/share/fish/vendor_functions.d"
+      - "${HOME}/.local/share/fish/vendor_functions.d/**"
+      # csh / tcsh / ksh
+      - "${HOME}/.cshrc"
+      - "${HOME}/.tcshrc"
+      - "${HOME}/.login"
+      - "${HOME}/.logout"
+      - "${HOME}/.kshrc"
+      - "${HOME}/.mkshrc"
+      # nushell / PowerShell
+      - "${HOME}/.config/nushell"
+      - "${HOME}/.config/nushell/**"
+      - "${HOME}/.config/powershell"
+      - "${HOME}/.config/powershell/**"
+      # Login session environment
+      - "${HOME}/.pam_environment"
+      - "${HOME}/.config/environment.d"
+      - "${HOME}/.config/environment.d/**"
+      # X11 session scripts
+      - "${HOME}/.xprofile"
+      - "${HOME}/.xinitrc"
+      - "${HOME}/.xsession"
+      - "${HOME}/.xsessionrc"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change a shell startup file: {{.Path}}"
+    timeout: 5m
+
+  - name: base-autostart-writes
+    description: XDG and KDE autostart and login/logout scripts
+    paths:
+      - "${HOME}/.config/autostart"
+      - "${HOME}/.config/autostart/**"
+      - "${HOME}/.config/autostart-scripts"
+      - "${HOME}/.config/autostart-scripts/**"
+      - "${HOME}/.config/plasma-workspace/env"
+      - "${HOME}/.config/plasma-workspace/env/**"
+      - "${HOME}/.config/plasma-workspace/shutdown"
+      - "${HOME}/.config/plasma-workspace/shutdown/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change an autostart entry: {{.Path}}"
+    timeout: 5m
+
+  - name: base-systemd-user-unit-writes
+    description: systemd user units, timers, drop-ins and manager config
+    paths:
+      - "${HOME}/.config/systemd"
+      - "${HOME}/.config/systemd/**"
+      - "${HOME}/.local/share/systemd"
+      - "${HOME}/.local/share/systemd/**"
+      - "/run/user/*/systemd"
+      - "/run/user/*/systemd/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change systemd user units: {{.Path}}"
+    timeout: 5m
+
+  - name: base-cron-at-writes
+    description: cron and at spools and configuration
+    paths:
+      - "/var/spool/cron"
+      - "/var/spool/cron/**"
+      - "/var/spool/at"
+      - "/var/spool/at/**"
+      - "/etc/cron*"
+      - "/etc/cron*/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change cron or at jobs: {{.Path}}"
+    timeout: 5m
+
+  - name: base-ssh-persistence-writes
+    description: SSH files that grant access or run commands, and ~/.ssh itself. known_hosts stays writable.
+    paths:
+      - "${HOME}/.ssh"
+      - "${HOME}/.ssh/authorized_keys"
+      - "${HOME}/.ssh/authorized_keys2"
+      - "${HOME}/.ssh/rc"
+      - "${HOME}/.ssh/environment"
+      - "${HOME}/.ssh/config"
+      - "${HOME}/.ssh/config.d"
+      - "${HOME}/.ssh/config.d/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change SSH access or config files: {{.Path}}"
+    timeout: 5m
+
+  - name: base-gnupg-config-writes
+    description: GnuPG configs that can name programs to run
+    paths:
+      - "${HOME}/.gnupg"
+      - "${HOME}/.gnupg/gpg-agent.conf"
+      - "${HOME}/.gnupg/gpg.conf"
+      - "${HOME}/.gnupg/common.conf"
+      - "${HOME}/.gnupg/scdaemon.conf"
+      - "${HOME}/.gnupg/dirmngr.conf"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change GnuPG configuration: {{.Path}}"
+    timeout: 5m
+
+  - name: base-global-git-config-writes
+    description: User-wide git config (aliases, pager, editor, hooksPath, sshCommand, credential helpers, includes)
+    paths:
+      - "${HOME}/.gitconfig"
+      - "${HOME}/.config/git"
+      - "${HOME}/.config/git/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change the global git config: {{.Path}}"
+    timeout: 5m
+
+  - name: base-project-git-config-writes
+    description: |
+      Git config of the opened project. Git writes config.lock and renames it,
+      and both rename paths are checked, so `git config`, `git remote add`,
+      `git push -u` and `git init` inside the project ask for approval. The
+      `.git` entry covers replacing .git with a `gitdir:` file or symlink;
+      mkdir is allowed.
+      Scratch repositories elsewhere are not affected.
+    paths:
+      - "${PROJECT_ROOT}/.git"
+      - "${PROJECT_ROOT}/.git/config"
+      - "${PROJECT_ROOT}/.git/config.worktree"
+      - "${PROJECT_ROOT}/.git/worktrees/*/config.worktree"
+      - "${PROJECT_ROOT}/.git/modules/**/config"
+      - "${GIT_ROOT}/.git"
+      - "${GIT_ROOT}/.git/config"
+      - "${GIT_ROOT}/.git/config.worktree"
+      - "${GIT_ROOT}/.git/worktrees/*/config.worktree"
+      - "${GIT_ROOT}/.git/modules/**/config"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change the project's git config: {{.Path}}"
+    timeout: 5m
+
+  - name: base-project-git-hooks-writes
+    description: Everything under the opened project's hooks directories, including submodule hooks
+    paths:
+      - "${PROJECT_ROOT}/.git/hooks"
+      - "${PROJECT_ROOT}/.git/hooks/**"
+      - "${PROJECT_ROOT}/.git/modules/**/hooks"
+      - "${PROJECT_ROOT}/.git/modules/**/hooks/**"
+      - "${GIT_ROOT}/.git/hooks"
+      - "${GIT_ROOT}/.git/hooks/**"
+      - "${GIT_ROOT}/.git/modules/**/hooks"
+      - "${GIT_ROOT}/.git/modules/**/hooks/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change a git hook: {{.Path}}"
+    timeout: 5m
+
+  - name: base-git-hook-writes-anywhere
+    description: |
+      Active git hook names in any repository. `*.sample` files stay writable
+      so `git init` and `git clone` still work in scratch repositories.
+    paths:
+      - "**/.git/hooks/applypatch-msg"
+      - "**/.git/hooks/pre-applypatch"
+      - "**/.git/hooks/post-applypatch"
+      - "**/.git/hooks/pre-commit"
+      - "**/.git/hooks/pre-merge-commit"
+      - "**/.git/hooks/prepare-commit-msg"
+      - "**/.git/hooks/commit-msg"
+      - "**/.git/hooks/post-commit"
+      - "**/.git/hooks/pre-rebase"
+      - "**/.git/hooks/post-checkout"
+      - "**/.git/hooks/post-merge"
+      - "**/.git/hooks/pre-push"
+      - "**/.git/hooks/pre-receive"
+      - "**/.git/hooks/update"
+      - "**/.git/hooks/proc-receive"
+      - "**/.git/hooks/post-receive"
+      - "**/.git/hooks/post-update"
+      - "**/.git/hooks/reference-transaction"
+      - "**/.git/hooks/push-to-checkout"
+      - "**/.git/hooks/pre-auto-gc"
+      - "**/.git/hooks/post-rewrite"
+      - "**/.git/hooks/sendemail-validate"
+      - "**/.git/hooks/fsmonitor-watchman"
+      - "**/.git/hooks/post-index-change"
+      - "**/.git/hooks/p4-changelist"
+      - "**/.git/hooks/p4-prepare-changelist"
+      - "**/.git/hooks/p4-post-changelist"
+      - "**/.git/hooks/p4-pre-submit"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change a git hook: {{.Path}}"
+    timeout: 5m
+
+  - name: base-direnv-writes
+    description: .envrc files, the user's direnv config, and the allow database (so the agent can't approve its own .envrc)
+    paths:
+      - "**/.envrc"
+      - "**/.envrc.*"
+      - "${HOME}/.direnvrc"
+      - "${HOME}/.config/direnv"
+      - "${HOME}/.config/direnv/**"
+      - "${HOME}/.local/share/direnv/allow"
+      - "${HOME}/.local/share/direnv/allow/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: approve
+    message: "Agent wants to change direnv files: {{.Path}}"
+    timeout: 5m
+
+  - name: base-persistence-parent-swaps
+    description: |
+      Parents of the trees above. Without this, moving ~/.config away and a
+      prepared tree into its place would skip the rules above. mkdir and
+      writes inside are not matched.
+    paths:
+      - "${HOME}/.config"
+      - "${HOME}/.local"
+      - "${HOME}/.local/share"
+      - "${HOME}/.local/share/direnv"
+      - "${HOME}/.local/share/fish"
+      - "${HOME}/.config/plasma-workspace"
+    operations: [rename, link, symlink, delete, rmdir]
+    decision: approve
+    message: "Agent wants to move or replace a configuration directory: {{.Path}}"
+    timeout: 5m
+
+# No `ports` means all ports. CIDRs also match IPv4-mapped IPv6 addresses.
+network_rules:
+  - name: base-cloud-metadata-ips
+    description: Cloud instance metadata, credential and identity endpoints
+    cidrs:
+      - "169.254.169.254/32"    # AWS, GCP, Azure, OCI, DigitalOcean, Hetzner, OpenStack, Linode, Vultr
+      - "fd00:ec2::254/128"     # AWS IMDS (IPv6)
+      - "169.254.170.2/32"      # AWS ECS task credentials
+      - "169.254.170.23/32"     # AWS EKS Pod Identity
+      - "fd00:ec2::23/128"      # AWS EKS Pod Identity (IPv6)
+      - "fd20:ce::254/128"      # GCP (IPv6)
+      - "100.100.100.200/32"    # Alibaba Cloud
+      - "169.254.0.23/32"       # Tencent Cloud
+      - "169.254.42.42/32"      # Scaleway
+      - "fd00:42::42/128"       # Scaleway (IPv6)
+      - "fd00:a9fe:a9fe::1/128" # Akamai/Linode (IPv6)
+      - "192.0.0.192/32"        # Oracle Cloud Classic
+    decision: approve
+    message: "Agent wants to connect to a cloud metadata endpoint: {{.RemoteAddr}}"
+    timeout: 2m
+
+  - name: base-azure-wireserver
+    description: Azure WireServer HTTP ports. Port 53 on the same address is Azure's DNS resolver and stays open.
+    cidrs:
+      - "168.63.129.16/32"
+    ports: [80, 32526]
+    decision: approve
+    message: "Agent wants to connect to Azure WireServer: {{.RemoteAddr}}:{{.RemotePort}}"
+    timeout: 2m
+
+  - name: base-cloud-metadata-hostnames
+    description: Metadata hostnames, matched before DNS resolution
+    domains:
+      - "metadata.google.internal"
+      - "metadata.google.internal."
+      - "metadata"
+      - "instance-data"
+      - "instance-data.ec2.internal"
+      - "metadata.tencentyun.com"
+      - "metadata.platformequinix.com"
+      - "metadata.packet.net"
+    decision: approve
+    message: "Agent wants to connect to a cloud metadata endpoint: {{.RemoteAddr}}"
+    timeout: 2m
+
+# Commands without a '/' match the executable name. Shell `-c` scripts and
+# wrappers such as env, nice and nohup are checked too.
+command_rules:
+  - name: base-privilege-escalation
+    description: setuid and polkit escalation, account-changing helpers, and namespace or root changes
+    commands:
+      - sudo
+      - sudoedit
+      - su
+      - doas
+      - pkexec
+      - run0
+      - ksu
+      - newgrp
+      - chsh
+      - chfn
+      - passwd
+      - gpasswd
+      - unix_chkpwd
+      - polkit-agent-helper-1
+      - userhelper
+      - consolehelper
+      - kdesu
+      - kdesudo
+      - gksu
+      - gksudo
+      - lxqt-sudo
+      - machinectl
+      - nsenter
+      - chroot
+      - setcap
+      - capsh
+    decision: approve
+    message: "Agent wants to run a privilege escalation command: {{.Args}}"
+    timeout: 5m
+
+  - name: base-out-of-sandbox-schedulers
+    description: Run code under the user's service manager or job schedulers
+    commands:
+      - systemd-run
+      - crontab
+      - at
+      - batch
+    decision: approve
+    message: "Agent wants to schedule work outside the sandbox: {{.Args}}"
+    timeout: 5m
+
+  - name: base-systemctl-mutation
+    description: systemctl verbs that start, install or reconfigure units
+    commands: [systemctl]
+    args_patterns:
+      - "(^|\\s)(start|restart|try-restart|reload-or-restart|try-reload-or-restart|enable|reenable|link|edit|preset|preset-all|revert|add-wants|add-requires|set-property|set-environment|unset-environment|import-environment|daemon-reload|daemon-reexec|unmask|isolate)(\\s|$)"
+    decision: approve
+    message: "Agent wants to start or change systemd units: {{.Args}}"
+    timeout: 5m
+
+  - name: base-loginctl-linger
+    description: Lingering keeps user services running after logout and starts them at boot
+    commands: [loginctl]
+    args_patterns:
+      - "(^|\\s)enable-linger(\\s|$)"
+    decision: approve
+    message: "Agent wants to enable lingering: {{.Args}}"
+    timeout: 5m
+
+  - name: base-direnv-allow
+    description: An allowed .envrc runs in the user's shell outside the sandbox
+    commands: [direnv]
+    args_patterns:
+      - "(^|\\s)(allow|permit|grant)(\\s|$)"
+    decision: approve
+    message: "Agent wants to allow a .envrc: {{.Args}}"
+    timeout: 5m
+
+unix_socket_rules:
+  - name: base-systemd-private-sockets
+    description: systemd manager private sockets, which can start units outside the sandbox
+    paths:
+      - "/run/user/*/systemd/private"
+      - "/run/systemd/private"
+    operations: [connect, sendto]
+    decision: approve
+    message: "Agent wants to connect to the systemd manager: {{.Path}}"
+    timeout: 5m

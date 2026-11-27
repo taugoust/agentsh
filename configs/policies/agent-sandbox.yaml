@@ -8,6 +8,9 @@ description: |
   Default deny with explicit allowlist, approval for any credential access,
   redirect network tools to internal proxies, soft-delete for recovery.
 
+# Rules from base.yaml are checked before the rules below.
+extends: base
+
 # =============================================================================
 # FILE OPERATION RULES
 # =============================================================================
@@ -133,27 +136,13 @@ file_rules:
     timeout: 5m
 
   - name: approve-aws-credentials
-    description: Require approval for AWS credentials
+    description: Require approval for root's AWS credentials
     paths:
-      - "${HOME}/.aws/**"
       - "/root/.aws/**"
     operations:
       - "*"
     decision: approve
     message: "Agent wants to access AWS credentials: {{.Path}}"
-    timeout: 5m
-
-  - name: approve-cloud-credentials
-    description: Require approval for cloud credentials
-    paths:
-      - "${HOME}/.gcloud/**"
-      - "${HOME}/.azure/**"
-      - "${HOME}/.config/gcloud/**"
-      - "${HOME}/.kube/**"
-    operations:
-      - "*"
-    decision: approve
-    message: "Agent wants to access cloud credentials: {{.Path}}"
     timeout: 5m
 
   - name: approve-env-files
@@ -165,17 +154,6 @@ file_rules:
       - "*"
     decision: approve
     message: "Agent wants to access environment file: {{.Path}}"
-    timeout: 5m
-
-  - name: approve-git-credentials
-    description: Require approval for git credentials
-    paths:
-      - "${HOME}/.git-credentials"
-      - "**/.netrc"
-    operations:
-      - "*"
-    decision: approve
-    message: "Agent wants to access git credentials: {{.Path}}"
     timeout: 5m
 
   # ---------------------------------------------------------------------------
@@ -292,13 +270,6 @@ network_rules:
       - "172.16.0.0/12"
       - "192.168.0.0/16"
       - "169.254.0.0/16"
-    decision: deny
-
-  - name: block-metadata-services
-    description: Block cloud metadata services
-    cidrs:
-      - "169.254.169.254/32"
-      - "100.100.100.200/32"
     decision: deny
 
   # ---------------------------------------------------------------------------
@@ -454,12 +425,8 @@ command_rules:
     decision: deny
 
   - name: block-shell-escape
-    description: Block potential shell escapes
+    description: Block user namespace creation. The base policy asks before sudo, su, chroot and nsenter.
     commands:
-      - sudo
-      - su
-      - chroot
-      - nsenter
       - unshare
     decision: deny
 
