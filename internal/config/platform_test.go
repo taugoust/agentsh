@@ -3,58 +3,18 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
 func TestGetMountPoint(t *testing.T) {
 	cfg := &Config{}
-	cfg.Platform.Mode = "auto"
 	cfg.Platform.MountPoints.Linux = "/tmp/agentsh/linux"
-	cfg.Platform.MountPoints.Darwin = "/tmp/agentsh/darwin"
-	cfg.Platform.MountPoints.Windows = "X:"
-	cfg.Platform.MountPoints.WindowsWSL2 = "/tmp/agentsh/wsl2"
 
-	// Test with auto mode - should return based on current OS
-	mp := GetMountPoint(cfg)
-	switch runtime.GOOS {
-	case "linux":
-		if mp != "/tmp/agentsh/linux" {
-			t.Errorf("GetMountPoint() = %q, want %q", mp, "/tmp/agentsh/linux")
+	for _, mode := range []string{"auto", "linux"} {
+		cfg.Platform.Mode = mode
+		if mp := GetMountPoint(cfg); mp != "/tmp/agentsh/linux" {
+			t.Errorf("GetMountPoint(%s) = %q, want %q", mode, mp, "/tmp/agentsh/linux")
 		}
-	case "darwin":
-		if mp != "/tmp/agentsh/darwin" {
-			t.Errorf("GetMountPoint() = %q, want %q", mp, "/tmp/agentsh/darwin")
-		}
-	case "windows":
-		if mp != "X:" {
-			t.Errorf("GetMountPoint() = %q, want %q", mp, "X:")
-		}
-	}
-
-	// Test with explicit mode
-	cfg.Platform.Mode = "linux"
-	mp = GetMountPoint(cfg)
-	if mp != "/tmp/agentsh/linux" {
-		t.Errorf("GetMountPoint(linux) = %q, want %q", mp, "/tmp/agentsh/linux")
-	}
-
-	cfg.Platform.Mode = "darwin"
-	mp = GetMountPoint(cfg)
-	if mp != "/tmp/agentsh/darwin" {
-		t.Errorf("GetMountPoint(darwin) = %q, want %q", mp, "/tmp/agentsh/darwin")
-	}
-
-	cfg.Platform.Mode = "windows"
-	mp = GetMountPoint(cfg)
-	if mp != "X:" {
-		t.Errorf("GetMountPoint(windows) = %q, want %q", mp, "X:")
-	}
-
-	cfg.Platform.Mode = "windows-wsl2"
-	mp = GetMountPoint(cfg)
-	if mp != "/tmp/agentsh/wsl2" {
-		t.Errorf("GetMountPoint(windows-wsl2) = %q, want %q", mp, "/tmp/agentsh/wsl2")
 	}
 }
 
@@ -63,16 +23,8 @@ func TestGetDataDir(t *testing.T) {
 	if dir == "" {
 		t.Error("GetDataDir() returned empty string")
 	}
-	// Just verify it returns something reasonable based on OS
-	switch runtime.GOOS {
-	case "windows":
-		if !filepath.IsAbs(dir) {
-			t.Errorf("GetDataDir() = %q, expected absolute path", dir)
-		}
-	default:
-		if !filepath.IsAbs(dir) {
-			t.Errorf("GetDataDir() = %q, expected absolute path", dir)
-		}
+	if !filepath.IsAbs(dir) {
+		t.Errorf("GetDataDir() = %q, expected absolute path", dir)
 	}
 }
 
@@ -136,40 +88,22 @@ func TestConfigSourceString_Unknown(t *testing.T) {
 func TestGetUserDataDir(t *testing.T) {
 	home, _ := os.UserHomeDir()
 
-	// Test with XDG_DATA_HOME set (Linux only meaningful but function should work)
-	if runtime.GOOS == "linux" {
-		orig := os.Getenv("XDG_DATA_HOME")
-		os.Setenv("XDG_DATA_HOME", "/custom/data")
-		defer os.Setenv("XDG_DATA_HOME", orig)
+	// Test with XDG_DATA_HOME set
+	orig := os.Getenv("XDG_DATA_HOME")
+	os.Setenv("XDG_DATA_HOME", "/custom/data")
+	defer os.Setenv("XDG_DATA_HOME", orig)
 
-		got := GetUserDataDir()
-		if got != "/custom/data/agentsh" {
-			t.Errorf("GetUserDataDir() with XDG_DATA_HOME = %q, want %q", got, "/custom/data/agentsh")
-		}
-		os.Setenv("XDG_DATA_HOME", orig)
+	got := GetUserDataDir()
+	if got != "/custom/data/agentsh" {
+		t.Errorf("GetUserDataDir() with XDG_DATA_HOME = %q, want %q", got, "/custom/data/agentsh")
 	}
 
-	// Test default behavior
-	got := GetUserDataDir()
-	switch runtime.GOOS {
-	case "windows":
-		// Should use APPDATA or fallback
-		if got == "" {
-			t.Error("GetUserDataDir() returned empty on Windows")
-		}
-	case "darwin":
-		want := home + "/Library/Application Support/agentsh"
-		if got != want {
-			t.Errorf("GetUserDataDir() = %q, want %q", got, want)
-		}
-	default:
-		// Linux default without XDG_DATA_HOME
-		os.Unsetenv("XDG_DATA_HOME")
-		got = GetUserDataDir()
-		want := home + "/.local/share/agentsh"
-		if got != want {
-			t.Errorf("GetUserDataDir() = %q, want %q", got, want)
-		}
+	// Default without XDG_DATA_HOME
+	os.Unsetenv("XDG_DATA_HOME")
+	got = GetUserDataDir()
+	want := home + "/.local/share/agentsh"
+	if got != want {
+		t.Errorf("GetUserDataDir() = %q, want %q", got, want)
 	}
 }
 
@@ -350,17 +284,13 @@ func TestLoad_PlatformConfig(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.yml")
 	if err := os.WriteFile(cfgPath, []byte(`
 platform:
-  mode: darwin-lima
+  mode: linux
   fallback:
     enabled: true
     order:
-      - darwin
       - linux
   mount_points:
     linux: /mnt/workspace
-    darwin: /Volumes/workspace
-    windows: "Y:"
-    windows_wsl2: /mnt/wsl
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -370,19 +300,16 @@ platform:
 		t.Fatal(err)
 	}
 
-	if cfg.Platform.Mode != "darwin-lima" {
-		t.Errorf("platform.mode = %q, want darwin-lima", cfg.Platform.Mode)
+	if cfg.Platform.Mode != "linux" {
+		t.Errorf("platform.mode = %q, want linux", cfg.Platform.Mode)
 	}
 	if !cfg.Platform.Fallback.Enabled {
 		t.Error("platform.fallback.enabled should be true")
 	}
-	if len(cfg.Platform.Fallback.Order) != 2 {
-		t.Errorf("platform.fallback.order len = %d, want 2", len(cfg.Platform.Fallback.Order))
+	if len(cfg.Platform.Fallback.Order) != 1 {
+		t.Errorf("platform.fallback.order len = %d, want 1", len(cfg.Platform.Fallback.Order))
 	}
 	if cfg.Platform.MountPoints.Linux != "/mnt/workspace" {
 		t.Errorf("platform.mount_points.linux = %q", cfg.Platform.MountPoints.Linux)
-	}
-	if cfg.Platform.MountPoints.Darwin != "/Volumes/workspace" {
-		t.Errorf("platform.mount_points.darwin = %q", cfg.Platform.MountPoints.Darwin)
 	}
 }

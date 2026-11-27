@@ -39,18 +39,17 @@ type Config struct {
 	ThreatFeeds       ThreatFeedsConfig       `yaml:"threat_feeds"`
 	PackageChecks     PackageChecksConfig     `yaml:"package_checks"`
 	Skillcheck        SkillcheckConfig        `yaml:"skillcheck"`
-	PolicySocket      PolicySocketConfig      `yaml:"policy_socket"`
 }
 
-// PlatformConfig configures cross-platform selection and fallback behavior.
+// PlatformConfig configures platform selection and fallback behavior.
 type PlatformConfig struct {
-	// Mode selects the platform: auto, linux, darwin, darwin-lima, windows, windows-wsl2
+	// Mode selects the platform: auto or linux
 	Mode string `yaml:"mode"`
 
 	// Fallback configures fallback behavior when preferred mode is unavailable
 	Fallback PlatformFallbackConfig `yaml:"fallback"`
 
-	// MountPoints configures platform-specific mount points
+	// MountPoints configures the workspace mount point
 	MountPoints PlatformMountPointsConfig `yaml:"mount_points"`
 }
 
@@ -63,12 +62,9 @@ type PlatformFallbackConfig struct {
 	Order []string `yaml:"order"`
 }
 
-// PlatformMountPointsConfig specifies platform-specific mount points.
+// PlatformMountPointsConfig specifies the workspace mount point.
 type PlatformMountPointsConfig struct {
-	Linux       string `yaml:"linux"`
-	Darwin      string `yaml:"darwin"`
-	Windows     string `yaml:"windows"`
-	WindowsWSL2 string `yaml:"windows_wsl2"`
+	Linux string `yaml:"linux"`
 }
 
 type ServerConfig struct {
@@ -485,7 +481,6 @@ type SandboxConfig struct {
 	Cgroups     SandboxCgroupsConfig     `yaml:"cgroups"`
 	UnixSockets SandboxUnixSocketsConfig `yaml:"unix_sockets"`
 	Seccomp     SandboxSeccompConfig     `yaml:"seccomp"`
-	XPC         SandboxXPCConfig         `yaml:"xpc"`
 	MCP         SandboxMCPConfig         `yaml:"mcp"`
 	Ptrace      SandboxPtraceConfig      `yaml:"ptrace"`
 	Composition SandboxCompositionConfig `yaml:"composition"`
@@ -761,36 +756,6 @@ func FileMonitorBoolWithDefault(v *bool, defaultVal bool) bool {
 
 // boolPtr returns a pointer to the given bool value.
 func boolPtr(v bool) *bool { return &v }
-
-// SandboxXPCConfig configures macOS XPC/Mach IPC control.
-type SandboxXPCConfig struct {
-	Enabled       bool                 `yaml:"enabled"`
-	Mode          string               `yaml:"mode"` // enforce, audit, disabled
-	WrapperBin    string               `yaml:"wrapper_bin"`
-	MachServices  SandboxXPCMachConfig `yaml:"mach_services"`
-	ESFMonitoring SandboxXPCESFConfig  `yaml:"esf_monitoring"`
-}
-
-// SandboxXPCMachConfig configures mach-lookup restrictions.
-type SandboxXPCMachConfig struct {
-	DefaultAction string   `yaml:"default_action"` // allow, deny
-	Allow         []string `yaml:"allow"`
-	Block         []string `yaml:"block"`
-	AllowPrefixes []string `yaml:"allow_prefixes"`
-	BlockPrefixes []string `yaml:"block_prefixes"`
-}
-
-// SandboxXPCESFConfig configures ESF-based XPC monitoring.
-type SandboxXPCESFConfig struct {
-	Enabled bool `yaml:"enabled"`
-}
-
-// PolicySocketConfig configures the macOS policy socket server (IPC bridge
-// between the agentsh daemon and the system extension).
-type PolicySocketConfig struct {
-	Path   string `yaml:"path" json:"path"`
-	TeamID string `yaml:"team_id" json:"team_id"`
-}
 
 // SandboxMCPConfig configures MCP security policies.
 type SandboxMCPConfig struct {
@@ -1144,7 +1109,7 @@ type AuditWatchtowerConfig struct {
 	// time (NOT in applyDefaults — non-daemon CLI subcommands like
 	// `agentsh config show` must not trigger hostname lookup).
 	AgentID       string `yaml:"agent_id"`
-	StateDir      string `yaml:"state_dir"` // default GetUserStateDir() + "/wtp"; per-OS path differs (XDG_STATE_HOME on Linux, LOCALAPPDATA on Windows). See defaultWatchtowerStateDir.
+	StateDir      string `yaml:"state_dir"` // default GetUserStateDir() + "/wtp" (honors XDG_STATE_HOME). See defaultWatchtowerStateDir.
 	EphemeralMode bool   `yaml:"ephemeral_mode"`
 
 	// LogGoawayMessage controls whether the WARN log emitted on GOAWAY
@@ -1362,10 +1327,7 @@ func (w *AuditWatchtowerConfig) applyDefaults() {
 
 // defaultWatchtowerStateDir returns the default state directory for WTP.
 // Uses GetUserStateDir() and falls back to the OS temp dir if a user state
-// directory cannot be determined. See GetUserStateDir() for the per-OS
-// contract — on Windows the state directory is intentionally non-roaming
-// (LOCALAPPDATA), distinct from GetUserDataDir which roams via APPDATA.
-// Cross-platform: uses filepath.Join.
+// directory cannot be determined.
 func defaultWatchtowerStateDir() string {
 	base := GetUserStateDir()
 	if base == "" {
@@ -1780,34 +1742,11 @@ func LoadWithSource(path string, source ConfigSource) (*Config, ConfigSource, er
 		slog.Warn("unknown key under sandbox.fuse ignored; check the config schema",
 			"key", k, "hint", "soft-delete uses sandbox.fuse.audit.mode and sandbox.fuse.audit.trash_path")
 	}
-	if source == ConfigSourceBundle {
-		resolveRelativePaths(&cfg, GetUserDataDir())
-	}
 	applyEnvOverrides(&cfg)
 	if err := validateConfig(&cfg); err != nil {
 		return nil, source, err
 	}
 	return &cfg, source, nil
-}
-
-// resolveRelativePaths rewrites relative file paths in the config to be
-// relative to baseDir instead of the current working directory. This is
-// needed when loading config from the macOS app bundle, where the CWD is
-// unpredictable.
-func resolveRelativePaths(cfg *Config, baseDir string) {
-	resolve := func(p string) string {
-		if p == "" || p == "stdout" || p == "stderr" || filepath.IsAbs(p) {
-			return p
-		}
-		return filepath.Join(baseDir, p)
-	}
-	cfg.Server.UnixSocket.Path = resolve(cfg.Server.UnixSocket.Path)
-	cfg.Logging.Output = resolve(cfg.Logging.Output)
-	cfg.Audit.Output = resolve(cfg.Audit.Output)
-	cfg.Audit.Storage.SQLitePath = resolve(cfg.Audit.Storage.SQLitePath)
-	cfg.Sessions.BaseDir = resolve(cfg.Sessions.BaseDir)
-	cfg.Sessions.WorkspaceOverlay.BaseDir = resolve(cfg.Sessions.WorkspaceOverlay.BaseDir)
-	cfg.Sessions.WorkspaceShadow.BaseDir = resolve(cfg.Sessions.WorkspaceShadow.BaseDir)
 }
 
 // getDefaultDataDir returns the appropriate data directory based on config source.
@@ -1820,8 +1759,6 @@ func getDefaultDataDir(source ConfigSource, configPath string) string {
 		}
 		return GetUserDataDir()
 	case ConfigSourceUser:
-		return GetUserDataDir()
-	case ConfigSourceBundle:
 		return GetUserDataDir()
 	case ConfigSourceSystem:
 		return GetDataDir()
@@ -1841,46 +1778,10 @@ func getDefaultPoliciesDir(source ConfigSource, configPath string) string {
 		return filepath.Join(GetUserConfigDir(), "policies")
 	case ConfigSourceUser:
 		return filepath.Join(GetUserConfigDir(), "policies")
-	case ConfigSourceBundle:
-		// Use user-writable policies dir; seed from bundle on first run
-		userPolicies := filepath.Join(GetUserConfigDir(), "policies")
-		if configPath != "" {
-			bundlePolicies := filepath.Join(filepath.Dir(configPath), "policies")
-			seedPoliciesFromBundle(bundlePolicies, userPolicies)
-		}
-		return userPolicies
 	case ConfigSourceSystem:
 		return GetPoliciesDir()
 	default:
 		return GetPoliciesDir()
-	}
-}
-
-// seedPoliciesFromBundle copies bundled policy files to the user's config
-// directory if it doesn't exist yet, giving users a writable starting point.
-func seedPoliciesFromBundle(bundleDir, userDir string) {
-	// Only seed if user dir doesn't exist
-	if _, err := os.Stat(userDir); err == nil {
-		return
-	}
-	entries, err := os.ReadDir(bundleDir)
-	if err != nil || len(entries) == 0 {
-		return
-	}
-	if err := os.MkdirAll(userDir, 0o755); err != nil {
-		return
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		src := filepath.Join(bundleDir, e.Name())
-		dst := filepath.Join(userDir, e.Name())
-		data, err := os.ReadFile(src)
-		if err != nil {
-			continue
-		}
-		_ = os.WriteFile(dst, data, 0o644)
 	}
 }
 
@@ -1899,15 +1800,6 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	}
 	if cfg.Platform.MountPoints.Linux == "" {
 		cfg.Platform.MountPoints.Linux = "/tmp/agentsh/workspace"
-	}
-	if cfg.Platform.MountPoints.Darwin == "" {
-		cfg.Platform.MountPoints.Darwin = "/tmp/agentsh/workspace"
-	}
-	if cfg.Platform.MountPoints.Windows == "" {
-		cfg.Platform.MountPoints.Windows = "X:"
-	}
-	if cfg.Platform.MountPoints.WindowsWSL2 == "" {
-		cfg.Platform.MountPoints.WindowsWSL2 = "/tmp/agentsh/workspace"
 	}
 
 	if cfg.Server.HTTP.Addr == "" {
@@ -2278,14 +2170,6 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 			"note", "port-scoped bind rules are a planned follow-up")
 	}
 
-	// macOS XPC defaults
-	if cfg.Sandbox.XPC.Mode == "" {
-		cfg.Sandbox.XPC.Mode = "enforce"
-	}
-	if cfg.Sandbox.XPC.MachServices.DefaultAction == "" {
-		cfg.Sandbox.XPC.MachServices.DefaultAction = "deny"
-	}
-
 	// Use source-aware policies directory
 	if cfg.Policies.Dir == "" {
 		cfg.Policies.Dir = policiesDir
@@ -2506,14 +2390,6 @@ func applyDefaultsWithSource(cfg *Config, source ConfigSource, configPath string
 	}
 	if cfg.PackageChecks.BlockOn.Provenance == "" {
 		cfg.PackageChecks.BlockOn.Provenance = pkgDefaults.BlockOn.Provenance
-	}
-
-	// Policy socket defaults (macOS system extension IPC)
-	if cfg.PolicySocket.Path == "" {
-		cfg.PolicySocket.Path = "/tmp/agentsh-policy.sock"
-	}
-	if cfg.PolicySocket.TeamID == "" {
-		cfg.PolicySocket.TeamID = "WCKWMMKJ35"
 	}
 
 	// WTP (Watchtower Transport Protocol) defaults
@@ -2743,21 +2619,9 @@ func validateConfig(cfg *Config) error {
 	}
 	// Validate platform mode
 	switch cfg.Platform.Mode {
-	case "", "auto", "linux", "darwin", "darwin-lima", "windows", "windows-wsl2":
+	case "", "auto", "linux":
 	default:
 		return fmt.Errorf("invalid platform.mode %q", cfg.Platform.Mode)
-	}
-	// Validate XPC mode
-	switch cfg.Sandbox.XPC.Mode {
-	case "", "enforce", "audit", "disabled":
-	default:
-		return fmt.Errorf("invalid sandbox.xpc.mode %q", cfg.Sandbox.XPC.Mode)
-	}
-	// Validate XPC default_action
-	switch cfg.Sandbox.XPC.MachServices.DefaultAction {
-	case "", "allow", "deny":
-	default:
-		return fmt.Errorf("invalid sandbox.xpc.mach_services.default_action %q", cfg.Sandbox.XPC.MachServices.DefaultAction)
 	}
 	// Validate security mode
 	switch cfg.Security.Mode {

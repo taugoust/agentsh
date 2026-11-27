@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -271,9 +270,6 @@ func NewServer(backend Backend, authorizer Authorizer) *Server {
 // protected by the service manager; chmod here is defense-in-depth, not the
 // complete same-UID boundary.
 func ListenUnix(socketPath string) (net.Listener, error) {
-	if runtime.GOOS == "windows" {
-		return nil, fmt.Errorf("unix sockets are not supported on windows")
-	}
 	if strings.TrimSpace(socketPath) == "" {
 		return nil, fmt.Errorf("socket path is required")
 	}
@@ -1044,9 +1040,6 @@ func clientIDKey(sessionID string, cgroupID uint64) string {
 func (c *Client) roundTrip(ctx context.Context, op Operation, req any, resp any) error {
 	if c == nil || strings.TrimSpace(c.SocketPath) == "" {
 		return fmt.Errorf("nethelper socket path is required")
-	}
-	if runtime.GOOS == "windows" {
-		return fmt.Errorf("nethelper unix socket is not supported on windows")
 	}
 	if c.Timeout > 0 {
 		var cancel context.CancelFunc

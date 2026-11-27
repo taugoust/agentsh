@@ -1,4 +1,4 @@
-//go:build (!linux || !cgo) && !windows
+//go:build !linux || !cgo
 
 package api
 
@@ -54,10 +54,6 @@ func startSignalHandlerForWrap(ctx context.Context, signalFD *os.File, sessionID
 	if signalFD != nil {
 		signalFD.Close()
 	}
-}
-
-func (a *App) wrapInitWindows(ctx context.Context, s *session.Session, sessionID string, req types.WrapInitRequest) (types.WrapInitResponse, int, error) {
-	return types.WrapInitResponse{}, http.StatusBadRequest, errWrapNotSupported
 }
 
 func getConnPeerCreds(conn *net.UnixConn) peerCreds {

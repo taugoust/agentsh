@@ -149,18 +149,6 @@ type App struct {
 	// continue under remaining backends. (#369)
 	ptraceDegraded atomic.Bool
 
-	// cmdResolver registers PID→command_id for ESF file event attribution (darwin).
-	// Nil on non-darwin platforms or when policy socket is not configured.
-	cmdResolver interface {
-		RegisterCommand(pid int32, commandID string)
-	}
-
-	// sessionTracker registers PIDs with sessions for ESF event attribution (darwin).
-	// Nil on non-darwin platforms or when policy socket is not configured.
-	sessionTracker interface {
-		RegisterProcess(sessionID string, pid, ppid int32)
-	}
-
 	// acceptNotifyFDForTest, if non-nil, wraps the goroutine launch for
 	// acceptNotifyFD so tests can observe its lifecycle. Production code
 	// passes nil and the goroutine is launched directly via `go fn()`.
@@ -371,25 +359,9 @@ func (a *App) signalDetachedStop() {
 	a.detachedStopOnce.Do(func() { close(ch) })
 }
 
-// SetCmdResolver attaches a PID→command_id resolver for ESF file event attribution.
-// Called on darwin after the policy socket server is started. No-op on other platforms.
-func (a *App) SetCmdResolver(r interface {
-	RegisterCommand(pid int32, commandID string)
-}) {
-	a.cmdResolver = r
-}
-
-// SetSessionTracker attaches a session tracker for ESF PID→session registration.
-// Called on darwin after the policy socket server is started. No-op on other platforms.
 // SetSessionAbsoluteTimeout supplies the exact hard timeout used by the server
 // reaper so helper replacement lifetime validation cannot drift from teardown.
 func (a *App) SetSessionAbsoluteTimeout(timeout time.Duration) { a.sessionAbsoluteTimeout = timeout }
-
-func (a *App) SetSessionTracker(t interface {
-	RegisterProcess(sessionID string, pid, ppid int32)
-}) {
-	a.sessionTracker = t
-}
 
 // BeginShutdown cancels server-owned operations with an explicit lifecycle
 // cause before listeners begin waiting for graceful request completion.

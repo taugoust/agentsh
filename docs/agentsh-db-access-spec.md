@@ -79,7 +79,7 @@ Unavoidability rests on AgentSH's existing primitives: process interception, net
 - Catalog-backed relation and function identity metadata for Postgres policy selectors.
 - Runtime execution of safe Postgres `redirect` decisions in Simple Query and Extended Query `Parse`.
 
-The database proxy runtime is Linux-only today. Non-Linux builds compile with a stub; use Linux, WSL2, or a Linux VM environment for database enforcement.
+The database proxy runtime is in-process code.
 
 ### 2.2 Out of scope for current implementation
 

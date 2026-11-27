@@ -2,9 +2,7 @@ package platform
 
 import (
 	"fmt"
-	"os"
 	"runtime"
-	"strings"
 )
 
 // PlatformOptions configures platform selection and fallback.
@@ -72,66 +70,15 @@ func NewWithMode(mode PlatformMode) (Platform, error) {
 	switch mode {
 	case ModeLinuxNative:
 		return newLinuxPlatform()
-	case ModeDarwinNative:
-		return newDarwinPlatform()
-	case ModeDarwinLima:
-		return newDarwinLimaPlatform()
-	case ModeWindowsNative:
-		return newWindowsPlatform()
-	case ModeWindowsWSL2:
-		return newWindowsWSL2Platform()
 	default:
 		return nil, fmt.Errorf("unsupported platform mode: %v", mode)
 	}
 }
 
 // detectPlatformMode determines the best platform mode for the current system.
+// Only the Linux implementation exists.
 func detectPlatformMode() PlatformMode {
-	switch runtime.GOOS {
-	case "linux":
-		// Check if we're running in WSL2
-		if isWSL2() {
-			// WSL2 uses the Linux implementation
-			return ModeLinuxNative
-		}
-		return ModeLinuxNative
-
-	case "darwin":
-		// macOS - check for Lima first, then fall back to native
-		if isLimaAvailable() {
-			return ModeDarwinLima
-		}
-		return ModeDarwinNative
-
-	case "windows":
-		// Check if WSL2 is available and preferred
-		if isWSL2Available() {
-			return ModeWindowsWSL2
-		}
-		return ModeWindowsNative
-
-	default:
-		// Unknown OS - try Linux as fallback
-		return ModeLinuxNative
-	}
-}
-
-// isWSL2 checks if we're running inside WSL2.
-func isWSL2() bool {
-	data, err := os.ReadFile("/proc/version")
-	if err != nil {
-		return false
-	}
-	lower := strings.ToLower(string(data))
-	return strings.Contains(lower, "microsoft") || strings.Contains(lower, "wsl")
-}
-
-// isWSL2Available checks if WSL2 is available on Windows.
-// This is called from Windows to check if WSL2 can be used.
-func isWSL2Available() bool {
-	// This would be implemented in windows-specific code
-	// For now, return false as a stub
-	return false
+	return ModeLinuxNative
 }
 
 // Detect returns information about the current platform without creating it.
@@ -175,39 +122,12 @@ func MustNewWithMode(mode PlatformMode) Platform {
 // Platform constructor functions - implemented in platform-specific files.
 // These are variables so they can be set by build-tag-specific files.
 
-var (
-	newLinuxPlatform       func() (Platform, error)
-	newDarwinPlatform      func() (Platform, error)
-	newDarwinLimaPlatform  func() (Platform, error)
-	newWindowsPlatform     func() (Platform, error)
-	newWindowsWSL2Platform func() (Platform, error)
-)
-
-// Registration functions for platform-specific packages to call in their init().
+var newLinuxPlatform func() (Platform, error)
 
 // RegisterLinux registers the Linux platform constructor.
+// The linux package calls this from its init().
 func RegisterLinux(constructor func() (Platform, error)) {
 	newLinuxPlatform = constructor
-}
-
-// RegisterDarwin registers the macOS platform constructor.
-func RegisterDarwin(constructor func() (Platform, error)) {
-	newDarwinPlatform = constructor
-}
-
-// RegisterDarwinLima registers the macOS+Lima platform constructor.
-func RegisterDarwinLima(constructor func() (Platform, error)) {
-	newDarwinLimaPlatform = constructor
-}
-
-// RegisterWindows registers the Windows platform constructor.
-func RegisterWindows(constructor func() (Platform, error)) {
-	newWindowsPlatform = constructor
-}
-
-// RegisterWindowsWSL2 registers the Windows+WSL2 platform constructor.
-func RegisterWindowsWSL2(constructor func() (Platform, error)) {
-	newWindowsWSL2Platform = constructor
 }
 
 // platformNotImplemented returns an error for unimplemented platforms.
@@ -220,26 +140,6 @@ func init() {
 	if newLinuxPlatform == nil {
 		newLinuxPlatform = func() (Platform, error) {
 			return platformNotImplemented("linux")
-		}
-	}
-	if newDarwinPlatform == nil {
-		newDarwinPlatform = func() (Platform, error) {
-			return platformNotImplemented("darwin")
-		}
-	}
-	if newDarwinLimaPlatform == nil {
-		newDarwinLimaPlatform = func() (Platform, error) {
-			return platformNotImplemented("darwin-lima")
-		}
-	}
-	if newWindowsPlatform == nil {
-		newWindowsPlatform = func() (Platform, error) {
-			return platformNotImplemented("windows")
-		}
-	}
-	if newWindowsWSL2Platform == nil {
-		newWindowsWSL2Platform = func() (Platform, error) {
-			return platformNotImplemented("windows-wsl2")
 		}
 	}
 }

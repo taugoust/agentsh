@@ -467,7 +467,7 @@ audit:
   include_stderr: true
 
 # =============================================================================
-# SIGNAL RULES (Linux: enforced, macOS/Windows: audit only)
+# SIGNAL RULES
 # =============================================================================
 
 signal_rules:

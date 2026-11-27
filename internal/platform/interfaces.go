@@ -1,6 +1,6 @@
-// Package platform provides cross-platform abstractions for filesystem,
-// network, sandbox, and resource management. Each platform (Linux, macOS,
-// Windows) implements these interfaces using native primitives.
+// Package platform provides abstractions for filesystem, network, sandbox,
+// and resource management. The Linux implementation provides these
+// interfaces using native primitives.
 package platform
 
 import (
@@ -11,7 +11,7 @@ import (
 // Platform is the main interface for platform-specific implementations.
 // Use New() to get the appropriate implementation for the current OS.
 type Platform interface {
-	// Name returns the platform identifier (e.g., "linux", "darwin", "windows")
+	// Name returns the platform identifier (e.g., "linux")
 	Name() string
 
 	// Capabilities returns what this platform supports
@@ -237,65 +237,6 @@ type SandboxConfig struct {
 
 	// Environment variables for the sandbox
 	Environment map[string]string
-
-	// WindowsOptions contains Windows-specific options (ignored on other platforms)
-	WindowsOptions *WindowsSandboxOptions
-}
-
-// NetworkAccessLevel controls network capabilities for Windows AppContainer.
-type NetworkAccessLevel int
-
-const (
-	// NetworkNone disables all network access
-	NetworkNone NetworkAccessLevel = iota
-	// NetworkOutbound allows internet client connections only
-	NetworkOutbound
-	// NetworkLocal allows private network only
-	NetworkLocal
-	// NetworkFull allows all network access
-	NetworkFull
-)
-
-func (n NetworkAccessLevel) String() string {
-	switch n {
-	case NetworkNone:
-		return "none"
-	case NetworkOutbound:
-		return "outbound"
-	case NetworkLocal:
-		return "local"
-	case NetworkFull:
-		return "full"
-	default:
-		return "unknown"
-	}
-}
-
-// WindowsSandboxOptions contains Windows-specific sandbox configuration.
-// These options are ignored on other platforms.
-type WindowsSandboxOptions struct {
-	// UseAppContainer enables AppContainer isolation (default: true)
-	UseAppContainer bool
-
-	// UseMinifilter enables minifilter driver policy enforcement (default: true)
-	UseMinifilter bool
-
-	// NetworkAccess controls network capabilities when UseAppContainer is true
-	NetworkAccess NetworkAccessLevel
-
-	// FailOnAppContainerError fails hard if AppContainer setup fails (default: true)
-	// When false, falls back to restricted token execution
-	FailOnAppContainerError bool
-}
-
-// DefaultWindowsSandboxOptions returns secure default options.
-func DefaultWindowsSandboxOptions() *WindowsSandboxOptions {
-	return &WindowsSandboxOptions{
-		UseAppContainer:         true,
-		UseMinifilter:           true,
-		NetworkAccess:           NetworkNone,
-		FailOnAppContainerError: true,
-	}
 }
 
 // Sandbox represents an isolated execution environment.
@@ -419,9 +360,6 @@ type PolicyEngine interface {
 
 	// CheckCommand evaluates command execution
 	CheckCommand(cmd string, args []string) Decision
-
-	// CheckRegistry evaluates Windows registry access (Windows-only)
-	CheckRegistry(path string, op string) Decision
 }
 
 // Config holds platform initialization configuration.

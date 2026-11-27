@@ -12,7 +12,6 @@ agentsh/
 ├── proto/                       # gRPC proto definitions (Struct-based)
 ├── configs/                     # example configs (api keys, etc.)
 ├── docs/                        # design docs and notes
-├── macos/                       # macOS System Extension (ESF+NE) Swift code
 ├── config.yml                   # example server config (repo-local)
 └── default-policy.yml           # example policy (repo-local)
 ```
@@ -25,7 +24,7 @@ agentsh/
 - `internal/client/` — HTTP + gRPC clients used by the CLI (and tests) to call the server API.
 - `internal/config/` — Config structs, load/validate helpers.
 - `internal/policy/` — Policy parsing + evaluation and derived limits/timeouts. New in this release: `http_service.go` (YAML types, validation, host canonicalization for declared HTTP services), `http_service_check.go` (the `CheckHTTPService` evaluator with traversal guard and `DeclaredHTTPServiceHost`/`DeclaredHTTPServiceAllowsDirect` helpers used by the netmonitor fail-closed path), `http_service_compile.go` (`compileHTTPServices` builds the name and host lookup tables consumed by the engine), and `http_service_fuzz_test.go` (fuzz targets for the evaluator). Database policy blocks are accepted here as opaque YAML nodes and decoded by `internal/db/policy`.
-- `internal/db/` — Postgres-family database access control. `effects/`, `policy/`, `events/`, and `service/` are platform-neutral data/evaluator packages; `classify/postgres/`, `catalog/`, and `redirect/` classify statements, resolve catalog objects, and plan safe relation redirects; `proxy/postgres/` is the Linux-only PostgreSQL wire proxy runtime with non-Linux stubs for cross-builds. Current runtime DB support is Postgres-related only.
+- `internal/db/` — Postgres-family database access control. `effects/`, `policy/`, `events/`, and `service/` are platform-neutral data/evaluator packages; `classify/postgres/`, `catalog/`, and `redirect/` classify statements, resolve catalog objects, and plan safe relation redirects; `proxy/postgres/` is the PostgreSQL wire proxy runtime. Current runtime DB support is Postgres-related only.
 - `internal/session/` — Session manager and built-in commands (`cd`, `export`, `aenv`, `als`, `acat`, `astat`).
 - `internal/fsmonitor/` — FUSE workspace view + file operation capture.
 - `internal/netmonitor/` — Network proxy + DNS cache/resolver and optional netns/transparent plumbing. The netmonitor's fail-closed check calls `DeclaredHTTPServiceHost` and `DeclaredHTTPServiceAllowsDirect` from the policy engine to block direct connections to declared `http_services` upstream hosts.
@@ -35,10 +34,7 @@ agentsh/
 - `internal/store/` — Event sinks (SQLite, JSONL, webhook) and composition.
 - `internal/auth/` — API key auth implementation.
 - `internal/approvals/` — Approval manager (shadow/enforced modes).
-- `internal/platform/` — Platform abstraction layer for cross-platform support.
-- `internal/platform/fuse/` — Shared FUSE package for Linux (FUSE3) and Windows (WinFsp) filesystem mounting.
-- `internal/platform/lima/` — Lima VM platform for macOS with full Linux isolation (cgroups v2, iptables, namespaces).
-- `internal/platform/wsl2/` — WSL2 platform for Windows with full Linux isolation (cgroups v2, iptables, namespaces).
+- `internal/platform/` — Platform abstraction layer; `internal/platform/linux/` is the implementation.
 
 ## Notes
 
@@ -50,56 +46,3 @@ For gRPC:
 - `proto/agentsh/v1/agentsh.proto` defines the service (Struct-based, no codegen required).
 - `internal/api/grpc.go` implements the gRPC server (including `ExecStream` and `EventsTail`).
 - `internal/client/grpc_client.go` provides a small gRPC client used by the CLI when `AGENTSH_TRANSPORT=grpc`.
-
-## `macos/` directory (ESF+NE enterprise mode)
-
-The `macos/` directory contains Swift code for the macOS System Extension that provides ESF+NE enforcement:
-
-```
-macos/
-├── SysExt/                      # System Extension bundle
-│   ├── main.swift               # System Extension entry point
-│   ├── ESFClient.swift          # Endpoint Security Framework client
-│   ├── FilterDataProvider.swift # Network Extension flow filter
-│   ├── DNSProxyProvider.swift   # Network Extension DNS proxy
-│   ├── Info.plist               # Bundle configuration
-│   └── SysExt.entitlements      # ESF + NE entitlements
-├── XPCService/                  # XPC service bridging Swift ↔ Go
-│   ├── main.swift               # XPC service entry point
-│   ├── XPCServiceDelegate.swift # XPC connection handling
-│   └── PolicyBridge.swift       # Unix socket bridge to Go policy server
-├── Shared/                      # Shared Swift types
-│   └── XPCProtocol.swift        # XPC protocol definition
-└── AgentSH.xcodeproj/           # Xcode project (build with Xcode 15+)
-```
-
-Related Go packages:
-- `internal/platform/darwin/xpc/` — XPC protocol types and Unix socket server
-- `internal/platform/darwin/sysext.go` — System Extension manager
-
-**Build:** `make build-macos-enterprise` (requires Xcode 15+, Apple entitlements)
-
-## `drivers/` directory (Windows kernel components)
-
-The `drivers/` directory contains Windows kernel-mode driver code:
-
-```
-drivers/
-└── windows/
-    └── agentsh-minifilter/       # Windows Mini Filter driver
-        ├── inc/                   # Header files
-        │   ├── protocol.h         # User-mode ↔ kernel protocol
-        │   └── ...
-        └── src/                   # Driver implementation
-            ├── driver.c           # Driver entry point
-            ├── filesystem.c       # File operation interception
-            ├── communication.c    # Filter port communication
-            ├── registry.c         # Registry operation interception
-            └── ...
-```
-
-Related Go packages:
-- `internal/platform/windows/driver_client.go` — Driver communication client
-- `internal/platform/windows/filesystem.go` — Filesystem interceptor (WinFsp + minifilter)
-
-**Build:** Requires Visual Studio 2022 + WDK (Windows Driver Kit)

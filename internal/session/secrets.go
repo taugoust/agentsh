@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime"
 	"strings"
 
 	"github.com/agentsh/agentsh/internal/proxy/credsub"
@@ -12,13 +11,8 @@ import (
 )
 
 // envVarKey returns the map key for duplicate env-var detection.
-// On Windows, environment variable names are case-insensitive,
-// so we fold to upper-case. On POSIX systems, names are
-// case-sensitive and used as-is.
+// Environment variable names are case-sensitive and used as-is.
 func envVarKey(name string) string {
-	if runtime.GOOS == "windows" {
-		return strings.ToUpper(name)
-	}
 	return name
 }
 

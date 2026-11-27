@@ -90,33 +90,6 @@ func detectMachineID() string {
 		if data, err := os.ReadFile("/var/lib/dbus/machine-id"); err == nil {
 			return strings.TrimSpace(string(data))
 		}
-	case "darwin":
-		out, err := exec.Command("ioreg", "-rd1", "-c", "IOPlatformExpertDevice").Output()
-		if err == nil {
-			for _, line := range strings.Split(string(out), "\n") {
-				if strings.Contains(line, "IOPlatformUUID") {
-					parts := strings.Split(line, "=")
-					if len(parts) >= 2 {
-						return strings.Trim(strings.TrimSpace(parts[1]), `"`)
-					}
-				}
-			}
-		}
-	case "windows":
-		out, err := exec.Command("reg", "query",
-			`HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Cryptography`,
-			"/v", "MachineGuid").Output()
-		if err == nil {
-			lines := strings.Split(string(out), "\n")
-			for _, line := range lines {
-				if strings.Contains(line, "MachineGuid") {
-					fields := strings.Fields(line)
-					if len(fields) >= 3 {
-						return fields[len(fields)-1]
-					}
-				}
-			}
-		}
 	}
 	return ""
 }
@@ -216,30 +189,15 @@ func detectOSVersion() (version, distro string) {
 				}
 			}
 		}
-	case "darwin":
-		if out, err := exec.Command("sw_vers", "-productVersion").Output(); err == nil {
-			version = "macOS " + strings.TrimSpace(string(out))
-		}
-	case "windows":
-		if out, err := exec.Command("cmd", "/c", "ver").Output(); err == nil {
-			version = strings.TrimSpace(string(out))
-		}
 	}
 	return
 }
 
 func detectKernelVersion() string {
 	switch runtime.GOOS {
-	case "linux", "darwin":
+	case "linux":
 		if out, err := exec.Command("uname", "-r").Output(); err == nil {
 			return strings.TrimSpace(string(out))
-		}
-	case "windows":
-		if out, err := exec.Command("cmd", "/c", "wmic", "os", "get", "version").Output(); err == nil {
-			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-			if len(lines) >= 2 {
-				return strings.TrimSpace(lines[1])
-			}
 		}
 	}
 	return ""

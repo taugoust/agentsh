@@ -36,8 +36,8 @@ func newDaemonCmd() *cobra.Command {
 		Short: "Manage the agentsh daemon",
 		Long: `Manage the agentsh daemon for background network monitoring.
 
-The daemon runs as a systemd user service on Linux, providing persistent
-network monitoring and policy enforcement. On macOS, it uses launchd.`,
+The daemon runs as a systemd user service, providing persistent
+network monitoring and policy enforcement.`,
 	}
 
 	cmd.AddCommand(newDaemonInstallCmd())
@@ -57,17 +57,13 @@ func newDaemonInstallCmd() *cobra.Command {
 		Long: `Install the agentsh daemon as a system service.
 
 On Linux, this creates a systemd user service at ~/.config/systemd/user/agentsh.service
-that starts automatically on user login.
-
-On macOS, this creates a launchd plist at ~/Library/LaunchAgents/ai.canyonroad.agentsh.daemon.plist.`,
+that starts automatically on user login.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			w := cmd.OutOrStdout()
 
 			switch runtime.GOOS {
 			case "linux":
 				return installSystemdService(cmd, force)
-			case "darwin":
-				return installLaunchdService(cmd, force)
 			default:
 				fmt.Fprintf(w, "Daemon installation not supported on %s\n", runtime.GOOS)
 				fmt.Fprintln(w, "Run 'agentsh server' manually instead")
@@ -92,8 +88,6 @@ This stops the running daemon and removes the service configuration.`,
 			switch runtime.GOOS {
 			case "linux":
 				return uninstallSystemdService(cmd)
-			case "darwin":
-				return uninstallLaunchdService(cmd)
 			default:
 				fmt.Fprintf(cmd.OutOrStdout(), "Daemon uninstall not supported on %s\n", runtime.GOOS)
 				return nil
@@ -170,17 +164,6 @@ This stops the current daemon, clears session state, and starts a new session.`,
 			case "linux":
 				fmt.Fprintln(w, "Restarting agentsh daemon...")
 				if err := runSystemctl("restart", "agentsh"); err != nil {
-					return fmt.Errorf("restart failed: %w", err)
-				}
-				fmt.Fprintln(w, "Daemon restarted successfully")
-				return nil
-
-			case "darwin":
-				fmt.Fprintln(w, "Restarting agentsh daemon...")
-				// Unload and reload the service
-				plistPath := getLaunchdPlistPath()
-				_ = exec.Command("launchctl", "unload", plistPath).Run()
-				if err := exec.Command("launchctl", "load", plistPath).Run(); err != nil {
 					return fmt.Errorf("restart failed: %w", err)
 				}
 				fmt.Fprintln(w, "Daemon restarted successfully")
@@ -347,132 +330,6 @@ func runSystemctl(action, service string) error {
 	return cmd.Run()
 }
 
-// launchd service generation (macOS)
-
-const launchdPlistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>ai.canyonroad.agentsh.daemon</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>%s</string>
-        <string>server</string>
-        <string>--daemon</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
-    <key>StandardOutPath</key>
-    <string>%s/agentsh.log</string>
-    <key>StandardErrorPath</key>
-    <string>%s/agentsh.err</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>HOME</key>
-        <string>%s</string>
-    </dict>
-</dict>
-</plist>
-`
-
-func getLaunchdPlistPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "LaunchAgents", "ai.canyonroad.agentsh.daemon.plist")
-}
-
-func installLaunchdService(cmd *cobra.Command, force bool) error {
-	w := cmd.OutOrStdout()
-
-	currentUser, err := user.Current()
-	if err != nil {
-		return fmt.Errorf("get current user: %w", err)
-	}
-
-	exePath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("get executable path: %w", err)
-	}
-	exePath, err = filepath.EvalSymlinks(exePath)
-	if err != nil {
-		return fmt.Errorf("resolve executable path: %w", err)
-	}
-
-	// Ensure LaunchAgents directory exists
-	launchAgentsDir := filepath.Join(currentUser.HomeDir, "Library", "LaunchAgents")
-	if err := os.MkdirAll(launchAgentsDir, 0755); err != nil {
-		return fmt.Errorf("create LaunchAgents directory: %w", err)
-	}
-
-	plistPath := getLaunchdPlistPath()
-
-	if _, err := os.Stat(plistPath); err == nil && !force {
-		fmt.Fprintf(w, "Plist file already exists at %s\n", plistPath)
-		fmt.Fprintln(w, "Use --force to overwrite")
-		return nil
-	}
-
-	// Log directory
-	logDir := filepath.Join(currentUser.HomeDir, "Library", "Logs", "agentsh")
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return fmt.Errorf("create log directory: %w", err)
-	}
-
-	plistContent := fmt.Sprintf(launchdPlistTemplate,
-		exePath,
-		logDir,
-		logDir,
-		currentUser.HomeDir,
-	)
-
-	if err := os.WriteFile(plistPath, []byte(plistContent), 0644); err != nil {
-		return fmt.Errorf("write plist file: %w", err)
-	}
-
-	fmt.Fprintf(w, "Service installed: %s\n", plistPath)
-	fmt.Fprintln(w)
-
-	// Load the service
-	if err := exec.Command("launchctl", "load", plistPath).Run(); err != nil {
-		fmt.Fprintf(w, "Warning: failed to load service: %v\n", err)
-	} else {
-		fmt.Fprintln(w, "Service loaded and started")
-	}
-
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "To check status:")
-	fmt.Fprintln(w, "  launchctl list | grep agentsh")
-	fmt.Fprintln(w, "  agentsh daemon status")
-
-	return nil
-}
-
-func uninstallLaunchdService(cmd *cobra.Command) error {
-	w := cmd.OutOrStdout()
-
-	plistPath := getLaunchdPlistPath()
-
-	// Unload service if loaded
-	_ = exec.Command("launchctl", "unload", plistPath).Run()
-
-	// Remove plist file
-	if err := os.Remove(plistPath); err != nil {
-		if os.IsNotExist(err) {
-			fmt.Fprintln(w, "Plist file not found, nothing to uninstall")
-			return nil
-		}
-		return fmt.Errorf("remove plist file: %w", err)
-	}
-
-	fmt.Fprintln(w, "Service uninstalled successfully")
-	return nil
-}
-
 // Session context capture
 
 func getCurrentSession(cmd *cobra.Command) (*PNACLSession, error) {
@@ -516,13 +373,6 @@ func getCurrentSession(cmd *cobra.Command) (*PNACLSession, error) {
 			} else {
 				session.Status = status
 			}
-		} else {
-			session.Status = "stopped"
-		}
-	case "darwin":
-		output, err := exec.Command("launchctl", "list").Output()
-		if err == nil && strings.Contains(string(output), "ai.canyonroad.agentsh.daemon") {
-			session.Status = "running"
 		} else {
 			session.Status = "stopped"
 		}

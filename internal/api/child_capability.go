@@ -461,7 +461,7 @@ func (a *App) childSharedExecutionSupported(sess *session.Session, claim *childC
 	if runtime.GOOS != "linux" || a.cfg.Sessions.Subagents.ExecConcurrency() <= 1 {
 		return false
 	}
-	if a.ptraceTracer != nil || a.cmdResolver != nil || a.sessionTracker != nil || a.cfg.Sandbox.FUSE.Enabled {
+	if a.ptraceTracer != nil || a.cfg.Sandbox.FUSE.Enabled {
 		return false
 	}
 	if sess.NetNSName() != "" {

@@ -19,8 +19,6 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
-        "aarch64-darwin"
       ];
 
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f (import nixpkgs { inherit system; }));
@@ -55,7 +53,7 @@
             inherit version;
 
             src = self;
-            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+            vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
 
             subPackages = [
               "cmd/agentsh"
@@ -65,10 +63,6 @@
               "cmd/agentsh-stub"
               "cmd/agentsh-unixwrap"
               "cmd/agentsh-bwrap-adapter"
-            ]
-            ++ lib.optionals stdenv.hostPlatform.isDarwin [
-              "cmd/agentsh-stub"
-              "cmd/agentsh-rlimit-exec"
             ];
 
             nativeBuildInputs = [
@@ -105,34 +99,24 @@
                 BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
             '';
 
-            postBuild =
-              lib.optionalString stdenv.hostPlatform.isLinux ''
-                $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
-                  -L${pkgs.glibc.static}/lib \
-                  cmd/agentsh-composition-mount-helper/main.c \
-                  -o agentsh-composition-mount-helper
-                $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
-                  -L${pkgs.glibc.static}/lib \
-                  cmd/agentsh-composition-ns-launcher/main.c \
-                  -o agentsh-composition-ns-launcher
-                $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
-                  -L${pkgs.glibc.static}/lib \
-                  cmd/agentsh-file-lookup-broker/main.c \
-                  -o agentsh-file-lookup-broker
-                CGO_ENABLED=0 go build \
-                  -ldflags='-s -w' \
-                  -o agentsh-bwrap-adapter-static \
-                  ./cmd/agentsh-bwrap-adapter
-              ''
-              + lib.optionalString stdenv.hostPlatform.isDarwin ''
-                # Keep the main agentsh binary CGO-disabled on Darwin so cgofuse
-                # does not require macFUSE headers. Build only the Seatbelt wrapper
-                # with CGO enabled; it needs sandbox_init_with_parameters().
-                CGO_ENABLED=1 go build \
-                  -ldflags='-s -w -X main.version=${version} -X main.commit=${rev}' \
-                  -o agentsh-macwrap \
-                  ./cmd/agentsh-macwrap
-              '';
+            postBuild = lib.optionalString stdenv.hostPlatform.isLinux ''
+              $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
+                -L${pkgs.glibc.static}/lib \
+                cmd/agentsh-composition-mount-helper/main.c \
+                -o agentsh-composition-mount-helper
+              $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
+                -L${pkgs.glibc.static}/lib \
+                cmd/agentsh-composition-ns-launcher/main.c \
+                -o agentsh-composition-ns-launcher
+              $CC -std=c11 -O2 -Wall -Wextra -Werror -static \
+                -L${pkgs.glibc.static}/lib \
+                cmd/agentsh-file-lookup-broker/main.c \
+                -o agentsh-file-lookup-broker
+              CGO_ENABLED=0 go build \
+                -ldflags='-s -w' \
+                -o agentsh-bwrap-adapter-static \
+                ./cmd/agentsh-bwrap-adapter
+            '';
 
             # Tests exercise kernel features such as FUSE, seccomp, eBPF,
             # ptrace, and network namespaces. Keep package builds pure and
@@ -153,24 +137,6 @@
               substituteInPlace $out/share/agentsh/configs/server-config.yaml \
                 --replace-fail /usr/lib/agentsh/bash_startup.sh \
                   $out/lib/agentsh/bash_startup.sh
-            ''
-            + lib.optionalString stdenv.hostPlatform.isDarwin ''
-
-              install -Dm755 agentsh-macwrap $out/bin/agentsh-macwrap
-
-              wrapProgram $out/bin/agentsh \
-                --suffix PATH : "$out/bin:${runtimePath}"
-              wrapProgram $out/bin/agentsh-shell-shim \
-                --suffix PATH : "$out/bin:${runtimePath}"
-              # Do not wrap agentsh-stub: execve interception redirects
-              # supervised workloads to this exact binary. A makeWrapper shell
-              # script would exec the hidden .agentsh-stub-wrapped binary,
-              # which is then seen as a second, untrusted exec and can be
-              # denied before the approval workflow starts.
-              wrapProgram $out/bin/agentsh-rlimit-exec \
-                --suffix PATH : "$out/bin:${runtimePath}"
-              wrapProgram $out/bin/agentsh-macwrap \
-                --suffix PATH : "$out/bin:${runtimePath}"
             ''
             + lib.optionalString stdenv.hostPlatform.isLinux ''
 
@@ -215,7 +181,7 @@
               homepage = "https://github.com/canyonroad/agentsh";
               license = lib.licenses.asl20;
               mainProgram = "agentsh";
-              platforms = lib.platforms.linux ++ lib.platforms.darwin;
+              platforms = lib.platforms.linux;
             };
           };
         in
@@ -396,7 +362,7 @@
                 pname = "agentsh-linux-amd64-compile";
                 version = "unstable-2026-06-17";
                 src = self;
-                vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+                vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
                 subPackages = [ "internal/netmonitor/unix" ];
                 nativeBuildInputs = [
                   pkgs.gnumake
@@ -484,7 +450,7 @@
             pname = "agentsh-approval-resolution-race-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+            vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
 
             env = {
               CGO_ENABLED = "0";
@@ -514,7 +480,7 @@
             pname = "agentsh-go-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+            vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.diffutils
@@ -579,16 +545,6 @@
               grep -qx 'permission-gate-bun-live-ok' "$TMPDIR/bun-live.out"
               grep -q '"request_id":"bun-live-check"' "$TMPDIR/bun-live-audit.jsonl"
               grep -q '"decision":"allow"' "$TMPDIR/bun-live-audit.jsonl"
-              CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go test -c \
-                -o "$TMPDIR/permission-gate-darwin.test" \
-                ./internal/permissiongate
-              CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go test -c \
-                -o "$TMPDIR/permission-gate-windows.test.exe" \
-                ./internal/permissiongate
-              CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go test -c \
-                -o "$TMPDIR/permission-gate-cli-windows.test.exe" \
-                ./internal/cli/permission_gate.go \
-                ./internal/cli/exit.go
               runHook postCheck
             '';
           });
@@ -645,7 +601,7 @@
                 pname = "agentsh-workspace-volume-tests";
                 version = "unstable-2026-06-17";
                 src = self;
-                vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+                vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
                 nativeBuildInputs = [ pkgs.qemu-utils ];
 
                 env = {
@@ -661,12 +617,6 @@
                   runHook preCheck
                   go test -count=1 ./internal/runtimeprovider/externalrunner \
                     -run '^Test(WorkspaceVolume|Profile(V[12].*WorkspaceVolume|SchemaRequiresBoundGuestProtocol)|Provider(PreflightAdmitsV2|DormantV2Manifest|OpenBinds|InstanceBinding|V2(ControlPlane|Destroy))|HostMonitorV[12]|LinuxHostRunnerV2|PartialLinuxHostRunner|ExactHostMonitorStatusTerminal)'
-                  GOOS=darwin GOARCH=amd64 go test -c \
-                    -o "$TMPDIR/workspace-volume-darwin.test" \
-                    ./internal/runtimeprovider/externalrunner
-                  GOOS=windows GOARCH=amd64 go test -c \
-                    -o "$TMPDIR/workspace-volume-windows.test.exe" \
-                    ./internal/runtimeprovider/externalrunner
                   go test -c \
                     -ldflags='-X github.com/agentsh/agentsh/internal/workspace/runtimebin.packagedPath=${pkgs.qemu-utils}/bin' \
                     -o "$TMPDIR/workspace-volume.test" \
@@ -704,12 +654,6 @@
               go test ./internal/cli -run '^TestGuestControl'
               go test ./internal/runtimeprovider/externalrunner \
                 -run '^Test(ProfileSchemaRequiresBoundGuestProtocol|ProviderDormantV2Manifest|HostMonitorV2(RejectsHandshake|BindingsRequireExactManifestVolume))'
-              CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go test -c \
-                -o "$TMPDIR/guest-volume-darwin.test" \
-                ./internal/cli/guest_volume_other.go ./internal/cli/guest_volume_other_test.go
-              CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go test -c \
-                -o "$TMPDIR/guest-volume-windows.test.exe" \
-                ./internal/cli/guest_volume_other.go ./internal/cli/guest_volume_other_test.go
               runHook postCheck
             '';
           });
@@ -728,12 +672,6 @@
                 -run '^TestBuildCommandEnvironment_TrustedGuestEgressProxyFinalOverride$'
               go test -count=1 ./internal/runtimeprovider/externalrunner \
                 -run '^Test(ProfileV[23].*(Host|Strict)|ProfileSchemaRequiresBoundGuestProtocol|ProfileV1StillRejectsWorkspaceVolume|Provider(V3|DormantV2)|CompileHostEgress|HostEgress(Approve|Broker)|HostNetworkAudit|VerifiedVSock|HostMonitorV[123]JSON|HostMonitorV3)'
-              CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go test -c \
-                -o "$TMPDIR/microvm-host-egress-darwin.test" \
-                ./internal/runtimeprovider/externalrunner
-              CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go test -c \
-                -o "$TMPDIR/microvm-host-egress-windows.test.exe" \
-                ./internal/runtimeprovider/externalrunner
               runHook postCheck
             '';
           });
@@ -808,7 +746,7 @@
             pname = "agentsh-command-timeout-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+            vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.gnumake
@@ -852,37 +790,11 @@
             '';
           };
 
-          api-darwin-cross-compile-tests = pkgs.buildGoModule {
-            pname = "agentsh-api-darwin-cross-compile-tests";
-            version = "unstable-2026-06-17";
-            src = self;
-            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
-
-            env = {
-              CGO_ENABLED = "0";
-              GOTELEMETRY = "off";
-            };
-
-            buildPhase = ''
-              runHook preBuild
-              GOOS=darwin GOARCH=amd64 go test -c -o api-darwin-amd64.test ./internal/api
-              GOOS=darwin GOARCH=arm64 go test -c -o api-darwin-arm64.test ./internal/api
-              runHook postBuild
-            '';
-            doCheck = false;
-            installPhase = ''
-              runHook preInstall
-              mkdir -p $out
-              touch $out/passed
-              runHook postInstall
-            '';
-          };
-
           workspace-runtime-tests = pkgs.buildGoModule {
             pname = "agentsh-workspace-runtime-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+            vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
             nativeBuildInputs = [
               pkgs.diffutils
               pkgs.rsync
@@ -900,9 +812,7 @@
             checkPhase = ''
               runHook preCheck
               go test ./internal/workspace/runtimebin ./internal/workspace/shadow ./internal/workspace/overlay
-              GOOS=linux go build ./internal/workspace/... ./internal/session
-              GOOS=darwin go build ./internal/workspace/... ./internal/session
-              GOOS=windows go build ./internal/workspace/... ./internal/session
+              go build ./internal/workspace/... ./internal/session
               runHook postCheck
             '';
             installPhase = ''
@@ -917,7 +827,7 @@
             pname = "agentsh-subagent-reliability-tests";
             version = "unstable-2026-06-17";
             src = self;
-            vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+            vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
 
             nativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
               pkgs.gnumake
@@ -1062,7 +972,7 @@
                 pname = "agentsh-approval-regression-tests";
                 version = "unstable-2026-06-17";
                 src = self;
-                vendorHash = "sha256-D5LujqOssPZWviaDRqgeZOQLXBAUkL5Kj5FvxpL5kvQ=";
+                vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
 
                 nativeBuildInputs = [
                   pkgs.gnumake
@@ -1149,9 +1059,6 @@
               export CGO_CFLAGS="-I${pkgs.fuse.dev}/include"
               export BPF_CLANG=${pkgs.llvmPackages.clang-unwrapped}/bin/clang
               export BPF_INCLUDE="-I${pkgs.libbpf}/include -I${pkgs.linuxHeaders}/include"
-            ''
-            + lib.optionalString stdenv.hostPlatform.isDarwin ''
-              export CGO_ENABLED=0
             '';
           };
         }

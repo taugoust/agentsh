@@ -1,5 +1,3 @@
-//go:build !windows
-
 // internal/signal/target_test.go
 package signal
 

@@ -17,14 +17,7 @@ const (
 // CaptureSnapshot captures current process info for the given PID.
 // This is implemented per-platform in snapshot_*.go files.
 //
-// StartTime reliability varies by platform:
-//   - Linux: High reliability (jiffies from /proc/PID/stat)
-//   - macOS with cgo: High reliability (kernel start time via sysctl)
-//   - macOS without cgo: Second-level precision only (derived from ps etime)
-//   - Windows: High reliability (FILETIME from GetProcessTimes)
-//   - Other platforms: Unreliable (uses current time as approximation)
-//
-// For security-critical validation, prefer platforms with high reliability.
+// StartTime comes from the jiffies field in /proc/PID/stat.
 func CaptureSnapshot(pid int) (*ProcessSnapshot, error) {
 	return captureSnapshotImpl(pid)
 }
@@ -33,10 +26,8 @@ func CaptureSnapshot(pid int) (*ProcessSnapshot, error) {
 // by comparing start times. Returns true if valid or if validation
 // cannot be performed (e.g., process exited).
 //
-// Note: This validation relies on StartTime accuracy. On platforms with
-// unreliable StartTime (see CaptureSnapshot), this function may produce
-// false positives or negatives. See the RacePolicy configuration for
-// handling validation failures appropriately.
+// Note: This validation relies on StartTime accuracy. See the RacePolicy
+// configuration for handling validation failures appropriately.
 func ValidateSnapshot(pid int, snapshot *ProcessSnapshot) bool {
 	if snapshot == nil {
 		return false

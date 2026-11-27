@@ -20,17 +20,7 @@ func main() {
 }
 
 func run() int {
-	// Check for named pipe first (Windows)
-	pipeName := os.Getenv("AGENTSH_STUB_PIPE")
-	if pipeName != "" {
-		code := runWithPipe(pipeName)
-		if code >= 0 {
-			return code
-		}
-		// Negative return means pipe not supported on this platform; fall through to fd
-	}
-
-	// Check for explicit fd env var (Unix)
+	// Check for explicit fd env var
 	fdStr := os.Getenv("AGENTSH_STUB_FD")
 	if fdStr != "" {
 		return runWithFD(fdStr)
@@ -42,11 +32,7 @@ func run() int {
 	}
 
 	// Nothing worked — report error
-	if pipeName != "" {
-		fmt.Fprintf(os.Stderr, "agentsh-stub: pipe transport not supported on this platform and AGENTSH_STUB_FD not set\n")
-	} else {
-		fmt.Fprintf(os.Stderr, "agentsh-stub: neither AGENTSH_STUB_PIPE nor AGENTSH_STUB_FD set\n")
-	}
+	fmt.Fprintf(os.Stderr, "agentsh-stub: AGENTSH_STUB_FD not set\n")
 	return 126
 }
 

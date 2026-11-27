@@ -145,8 +145,7 @@ This will:
 1. Create a fresh session pinned to
    [`configs/policies/agent-strict.yaml`](../../configs/policies/agent-strict.yaml).
 2. Set up the FUSE workspace mount and LLM proxy for the session.
-3. Install the platform-appropriate interception layer (seccomp or ptrace on
-   Linux, ES on macOS, driver on Windows).
+3. Install the interception layer (seccomp or ptrace).
 4. Spawn `emdash` under that layer.
 5. Forward the terminal's stdin/stdout/stderr and signals to the emdash
    process, so Ctrl-C and the like behave as expected.

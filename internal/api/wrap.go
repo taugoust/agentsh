@@ -264,13 +264,7 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 			fmt.Errorf("strict command jail is unavailable on %s", runtime.GOOS)
 	}
 
-	// Windows uses driver-based interception when strict Linux network
-	// enforcement was not requested.
-	if runtime.GOOS == "windows" {
-		return a.wrapInitWindows(ctx, s, sessionID, req)
-	}
-
-	// Only supported on Linux (seccomp) otherwise.
+	// Only supported on Linux (seccomp).
 	if runtime.GOOS != "linux" {
 		return types.WrapInitResponse{}, http.StatusBadRequest, errWrapNotSupported
 	}
@@ -454,9 +448,10 @@ func (a *App) wrapInitCore(s *session.Session, sessionID string, req types.WrapI
 		os.RemoveAll(notifyDir)
 		return types.WrapInitResponse{}, http.StatusInternalServerError, err
 	}
-	// Unix socket paths are limited to 104 bytes (macOS) or 108 (Linux).
-	// Compute remaining budget for the session ID portion and hash if needed.
-	const socketPathLimit = 104 // use the most restrictive (macOS)
+	// Unix socket paths are limited to 108 bytes on Linux; keep a conservative
+	// 104-byte budget. Compute remaining budget for the session ID portion and
+	// hash if needed.
+	const socketPathLimit = 104
 	const fixedParts = len("/notify-") + len(".sock")
 	budget := socketPathLimit - len(notifyDir) - fixedParts
 	if budget < 1 {

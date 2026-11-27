@@ -10,7 +10,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,7 +22,6 @@ import (
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/signal"
 	"github.com/agentsh/agentsh/internal/wraphandoff"
-	"github.com/agentsh/agentsh/pkg/types"
 	"golang.org/x/sys/unix"
 )
 
@@ -369,11 +367,6 @@ func startSignalHandlerForWrap(ctx context.Context, signalFD *os.File, sessionID
 		serveSignalNotify(ctx, signalFD, handler)
 		slog.Info("wrap: signal handler returned", "session_id", sessionID)
 	}()
-}
-
-// wrapInitWindows is not available on Linux.
-func (a *App) wrapInitWindows(_ context.Context, _ *session.Session, _ string, _ types.WrapInitRequest) (types.WrapInitResponse, int, error) {
-	return types.WrapInitResponse{}, http.StatusBadRequest, errWrapNotSupported
 }
 
 type peerCreds struct {
