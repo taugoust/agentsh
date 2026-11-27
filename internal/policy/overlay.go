@@ -368,11 +368,16 @@ func MergePolicyOverlays(base *Policy, overlays []PolicyOverlay) (*Policy, error
 	// Insert each family's complete overlay block once. Besides preserving the
 	// deterministic overlay-file order, this prevents a terminal-shaped rule in
 	// one overlay from becoming the insertion point for a later overlay.
-	merged.FileRules = insertFileOverlayRules(merged.FileRules, added.FileRules)
-	merged.CommandRules = insertCommandOverlayRules(merged.CommandRules, added.CommandRules)
-	merged.NetworkRules = insertNetworkOverlayRules(merged.NetworkRules, added.NetworkRules)
-	merged.UnixRules = insertUnixOverlayRules(merged.UnixRules, added.UnixRules)
-	merged.SignalRules = insertSignalOverlayRules(merged.SignalRules, added.SignalRules)
+	// Overlay rules go after rules inherited through extends.
+	inherited := base.inherited
+	merged.FileRules = insertFileOverlayRules(merged.FileRules, added.FileRules, inherited.file)
+	merged.CommandRules = insertCommandOverlayRules(
+		merged.CommandRules, added.CommandRules, inherited.command)
+	merged.NetworkRules = insertNetworkOverlayRules(
+		merged.NetworkRules, added.NetworkRules, inherited.network)
+	merged.UnixRules = insertUnixOverlayRules(merged.UnixRules, added.UnixRules, inherited.unix)
+	merged.SignalRules = insertSignalOverlayRules(
+		merged.SignalRules, added.SignalRules, inherited.signal)
 	merged.DnsRedirectRules = append(merged.DnsRedirectRules, added.DnsRedirectRules...)
 	merged.ConnectRedirectRules = append(merged.ConnectRedirectRules, added.ConnectRedirectRules...)
 	merged.PackageRules = append(merged.PackageRules, added.PackageRules...)
@@ -538,25 +543,33 @@ func connectRuleNames(rs []ConnectRedirectRule) []string {
 	return out
 }
 
-func projectOverlayInsertionIndex[T any](base []T, isBoundary, isTerminalDeny func(T) bool) int {
-	for i, rule := range base {
-		if isBoundary(rule) {
+// projectOverlayInsertionIndex returns where overlay rules go: before the
+// boundary rule, else before the first terminal deny, else at the end. Rules
+// before minIdx came from a base and are skipped.
+func projectOverlayInsertionIndex[T any](
+	base []T,
+	minIdx int,
+	isBoundary, isTerminalDeny func(T) bool,
+) int {
+	minIdx = min(minIdx, len(base))
+	for i := minIdx; i < len(base); i++ {
+		if isBoundary(base[i]) {
 			return i
 		}
 	}
-	for i, rule := range base {
-		if isTerminalDeny(rule) {
+	for i := minIdx; i < len(base); i++ {
+		if isTerminalDeny(base[i]) {
 			return i
 		}
 	}
 	return len(base)
 }
 
-func insertFileOverlayRules(base []FileRule, added []FileRule) []FileRule {
+func insertFileOverlayRules(base []FileRule, added []FileRule, minIdx int) []FileRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := projectOverlayInsertionIndex(base,
+	idx := projectOverlayInsertionIndex(base, minIdx,
 		func(rule FileRule) bool { return rule.ProjectOverlayBoundary },
 		isTerminalFileDeny,
 	)
@@ -567,11 +580,11 @@ func insertFileOverlayRules(base []FileRule, added []FileRule) []FileRule {
 	return out
 }
 
-func insertCommandOverlayRules(base []CommandRule, added []CommandRule) []CommandRule {
+func insertCommandOverlayRules(base []CommandRule, added []CommandRule, minIdx int) []CommandRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := projectOverlayInsertionIndex(base,
+	idx := projectOverlayInsertionIndex(base, minIdx,
 		func(rule CommandRule) bool { return rule.ProjectOverlayBoundary },
 		isTerminalCommandDeny,
 	)
@@ -582,11 +595,11 @@ func insertCommandOverlayRules(base []CommandRule, added []CommandRule) []Comman
 	return out
 }
 
-func insertNetworkOverlayRules(base []NetworkRule, added []NetworkRule) []NetworkRule {
+func insertNetworkOverlayRules(base []NetworkRule, added []NetworkRule, minIdx int) []NetworkRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := projectOverlayInsertionIndex(base,
+	idx := projectOverlayInsertionIndex(base, minIdx,
 		func(rule NetworkRule) bool { return rule.ProjectOverlayBoundary },
 		isTerminalNetworkDeny,
 	)
@@ -597,11 +610,15 @@ func insertNetworkOverlayRules(base []NetworkRule, added []NetworkRule) []Networ
 	return out
 }
 
-func insertUnixOverlayRules(base []UnixSocketRule, added []UnixSocketRule) []UnixSocketRule {
+func insertUnixOverlayRules(
+	base []UnixSocketRule,
+	added []UnixSocketRule,
+	minIdx int,
+) []UnixSocketRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := projectOverlayInsertionIndex(base,
+	idx := projectOverlayInsertionIndex(base, minIdx,
 		func(rule UnixSocketRule) bool { return rule.ProjectOverlayBoundary },
 		isTerminalUnixDeny,
 	)
@@ -612,11 +629,11 @@ func insertUnixOverlayRules(base []UnixSocketRule, added []UnixSocketRule) []Uni
 	return out
 }
 
-func insertSignalOverlayRules(base []SignalRule, added []SignalRule) []SignalRule {
+func insertSignalOverlayRules(base []SignalRule, added []SignalRule, minIdx int) []SignalRule {
 	if len(added) == 0 {
 		return base
 	}
-	idx := projectOverlayInsertionIndex(base,
+	idx := projectOverlayInsertionIndex(base, minIdx,
 		func(rule SignalRule) bool { return rule.ProjectOverlayBoundary },
 		isTerminalSignalDeny,
 	)

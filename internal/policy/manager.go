@@ -10,8 +10,6 @@ import (
 	"regexp"
 	"sync"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/agentsh/agentsh/internal/policy/signing"
 )
 
@@ -104,6 +102,12 @@ func (m *Manager) loadLocked() (*Policy, error) {
 	if err != nil {
 		return nil, err
 	}
+	return LoadFile(path, m.readVerified)
+}
+
+// readVerified reads a policy file or one of its bases and checks it against
+// the manifest and signing settings.
+func (m *Manager) readVerified(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read policy: %w", err)
@@ -130,16 +134,7 @@ func (m *Manager) loadLocked() (*Policy, error) {
 			fmt.Fprintf(os.Stderr, "WARNING: policy signing verification failed: %v\n", err)
 		}
 	}
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	var p Policy
-	if err := dec.Decode(&p); err != nil {
-		return nil, fmt.Errorf("parse policy: %w", err)
-	}
-	if err := p.Validate(); err != nil {
-		return nil, fmt.Errorf("validate policy: %w", err)
-	}
-	return &p, nil
+	return data, nil
 }
 
 func (m *Manager) verifySigning(path string, data []byte) error {

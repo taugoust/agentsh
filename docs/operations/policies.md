@@ -166,6 +166,57 @@ marker, AgentSH retains the compatibility behavior of inserting project rules
 before a recognized terminal catch-all deny, or appending them when no terminal
 deny is represented as a rule.
 
+## Extending a Base Policy
+
+Use `extends` to start from one or more base policies. It takes a name or a
+list of names. AgentSH looks the bases up in the same directory as the policy,
+and a base can extend another policy.
+
+```yaml
+# /etc/agentsh/policies/team.yaml
+version: 1
+name: team
+extends: org-base        # or: extends: [org-base, network-base]
+
+command_rules:
+  - name: allow-make
+    commands: [make]
+    decision: allow
+```
+
+In each rule list, the base rules come first and the policy's own rules
+follow. With several bases, they go in the order listed. A base that shows up
+twice in the chain is only included once.
+
+The first matching rule wins, so a policy can't override its base. If the base
+denies `rm`, an `allow` for `rm` in the policy has no effect. Reusing a rule
+name from the base is an error. For the same reason, a base meant to be
+extended should leave out catch-all denies like `default-deny-*` or
+`paths: ["**"]`, because rules after them would not be reached. Put those
+in the policy you select.
+
+Other sections:
+
+- `resource_limits`, `env_policy`, `direnv`, `audit`, `mcp_rules`,
+  `transparent_commands`, `db_services`, `database_rules`,
+  `database_connection_rules` and `policies` are taken from the policy if it
+  sets them, and from the base otherwise. If two bases set one, the later base
+  is used.
+- `env_inject`, `providers`, `process_contexts` and `process_identities` are
+  merged. Setting the same key twice is an error.
+- `version`, `name` and `description` come from the policy itself.
+
+Each base is checked like the selected policy, so with signing or
+`policies.manifest_path` turned on, every base needs its own signature and
+manifest entry. Loops, chains longer than 8 and missing bases are errors.
+`extends` only works for policies loaded from a policy directory, so a pinned
+host egress policy snapshot has to be a single file.
+
+Project overlay rules go after the base rules. A `project_overlay_boundary`
+or terminal deny in a base only counts when that base is selected directly.
+In a policy that extends it, overlay rules go before the policy's own boundary
+or terminal deny, or at the end.
+
 ## Signal Rules
 
 Signal rules control how signals (kill, terminate, stop, etc.) can be sent between processes within an agentsh session. This provides protection against runaway processes, accidental signal delivery to critical services, and enables graceful shutdown patterns.

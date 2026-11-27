@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,26 +55,25 @@ func validateYAMLMappingFields(
 	return validate(value, make(map[*yaml.Node]struct{}))
 }
 
-func LoadFromFile(path string) (*Policy, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read policy: %w", err)
-	}
-	return LoadFromBytes(b)
-}
-
-// LoadFromBytes parses and validates a policy from raw YAML bytes.
+// LoadFromBytes parses and validates a policy from YAML. Policies that use
+// extends need LoadFile, which knows where to find their bases.
 func LoadFromBytes(b []byte) (*Policy, error) {
-	dec := yaml.NewDecoder(bytes.NewReader(b))
-	dec.KnownFields(true)
-	var p Policy
-	if err := dec.Decode(&p); err != nil {
-		return nil, fmt.Errorf("parse policy: %w", err)
+	layer, err := parsePolicyLayer(b)
+	if err != nil {
+		return nil, err
+	}
+	p := layer.policy
+	if len(p.Extends) > 0 {
+		return nil, fmt.Errorf(
+			"policy %q extends %q: base policies can only be resolved when the policy "+
+				"is loaded from a policy directory",
+			p.Name, []string(p.Extends),
+		)
 	}
 	if err := p.Validate(); err != nil {
 		return nil, fmt.Errorf("validate policy: %w", err)
 	}
-	return &p, nil
+	return p, nil
 }
 
 func ResolvePolicyPath(dir, name string) (string, error) {
