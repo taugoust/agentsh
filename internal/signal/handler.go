@@ -32,13 +32,6 @@ func NewHandler(engine *Engine, registry *PIDRegistry, emitter EventEmitter) *Ha
 	}
 }
 
-// SetLogger sets the logger for the handler.
-func (h *Handler) SetLogger(logger *slog.Logger) {
-	if logger != nil {
-		h.logger = logger
-	}
-}
-
 // Evaluate checks a signal against policy and returns the decision.
 // This does not emit events or apply fallback - use Handle for that.
 func (h *Handler) Evaluate(sigCtx SignalContext) Decision {

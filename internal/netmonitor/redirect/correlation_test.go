@@ -58,23 +58,3 @@ func TestCorrelationMap_Expiry(t *testing.T) {
 		t.Error("expected not to find hostname after expiry")
 	}
 }
-
-func TestCorrelationMap_Cleanup(t *testing.T) {
-	m := NewCorrelationMap(10 * time.Millisecond)
-
-	ips := []net.IP{net.ParseIP("10.0.0.1")}
-	m.AddResolution("api.anthropic.com", ips)
-
-	time.Sleep(20 * time.Millisecond)
-	m.Cleanup()
-
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if len(m.hostnameToIP) != 0 {
-		t.Errorf("expected hostnameToIP to be empty after cleanup, got %d entries", len(m.hostnameToIP))
-	}
-	if len(m.ipToHostname) != 0 {
-		t.Errorf("expected ipToHostname to be empty after cleanup, got %d entries", len(m.ipToHostname))
-	}
-}

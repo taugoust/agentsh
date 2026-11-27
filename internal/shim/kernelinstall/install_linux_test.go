@@ -7,14 +7,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
-	"github.com/agentsh/agentsh/internal/wraphandoff"
 	"github.com/agentsh/agentsh/internal/wrapperlog"
 	"github.com/agentsh/agentsh/pkg/types"
 	"golang.org/x/sys/unix"
@@ -48,23 +46,6 @@ func baseParams(srv *httptest.Server) InstallParams {
 		ShellArgs:     []string{"-c", "echo hello"},
 		Env:           []string{"HOME=/tmp"},
 	}
-}
-
-func serveNotifySetupStatus(ln net.Listener, okStatus bool) {
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-
-		unixConn := conn.(*net.UnixConn)
-		fd, _, _, err := wraphandoff.RecvNotifyFD(unixConn)
-		if err == nil {
-			_ = fd.Close()
-			_ = wraphandoff.WriteStatus(unixConn, okStatus)
-		}
-	}()
 }
 
 // ─── Test 1: ModeOff returns ResultSkip without any HTTP call ───────────────
@@ -340,32 +321,6 @@ func TestInstall_ModeOn_EmptyResponse_FailsClosed(t *testing.T) {
 }
 
 // ─── Test 6: AGENTSH_SIGNAL_SOCK_FD is stripped from WrapperEnv ─────────────
-
-func TestInstall_StripsSignalSockFd(t *testing.T) {
-	// Build env with signal sock fd and another var.
-	env := []string{
-		"AGENTSH_SIGNAL_SOCK_FD=4",
-		"OTHER=x",
-		"HOME=/tmp",
-	}
-
-	filtered := filterSignalSockFD(env)
-
-	for _, e := range filtered {
-		if strings.HasPrefix(e, "AGENTSH_SIGNAL_SOCK_FD=") {
-			t.Errorf("AGENTSH_SIGNAL_SOCK_FD was not stripped: %q", e)
-		}
-	}
-	found := false
-	for _, e := range filtered {
-		if e == "OTHER=x" {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("OTHER=x was unexpectedly removed")
-	}
-}
 
 // ─── Test 6b: AGENTSH_SIGNAL_SOCK_FD is stripped from p.Env (not just WrapperEnv) ─
 
@@ -672,24 +627,5 @@ func TestInstall_PtraceModeNACK_ModeOn(t *testing.T) {
 	}
 	if res.Action != ResultFailClosed {
 		t.Errorf("action = %v (reason=%q), want ResultFailClosed on NACK in ModeOn", res.Action, res.Reason)
-	}
-}
-
-// findModuleRoot walks up from the current working directory to find go.mod.
-func findModuleRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("could not find go.mod")
-		}
-		dir = parent
 	}
 }

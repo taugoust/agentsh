@@ -11,13 +11,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// ListenSystemdActivation preserves the version-1 API and expects the socket to
-// be owned by the current UID (or root). Root helper services should call
-// ListenSystemdActivationForUID with their configured supervisor UID.
-func ListenSystemdActivation(socketPath string) (net.Listener, bool, error) {
-	return listenSystemdActivation(socketPath, uint32(os.Getuid()), true)
-}
-
 // ListenSystemdActivationForUID accepts exactly one named AF_UNIX/SOCK_STREAM
 // activation fd and requires the filesystem socket to be owned by expectedUID.
 func ListenSystemdActivationForUID(socketPath string, expectedUID uint32) (net.Listener, bool, error) {

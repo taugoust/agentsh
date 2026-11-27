@@ -79,46 +79,6 @@ func NewCheckpointManager(storage CheckpointStorage) *CheckpointManager {
 	}
 }
 
-// CreateCheckpoint creates a checkpoint for the given session.
-func (m *CheckpointManager) CreateCheckpoint(s *Session, reason string) (*Checkpoint, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	s.mu.Lock()
-	stats := s.stats
-	workspace := s.Workspace
-	sessionID := s.ID
-	s.mu.Unlock()
-
-	cp := &Checkpoint{
-		ID:        uuid.New().String(),
-		SessionID: sessionID,
-		CreatedAt: time.Now().UTC(),
-		Reason:    reason,
-		Stats:     stats,
-	}
-
-	// Hash current workspace state
-	hash, modifiedFiles, err := hashWorkspace(workspace)
-	if err != nil {
-		// Non-fatal: checkpoint still created but without workspace hash
-		cp.CanRollback = false
-	} else {
-		cp.WorkspaceHash = hash
-		cp.ModifiedFiles = modifiedFiles
-		cp.CanRollback = true
-	}
-
-	// Save checkpoint
-	if m.storage != nil {
-		if err := m.storage.Save(cp); err != nil {
-			return nil, err
-		}
-	}
-
-	return cp, nil
-}
-
 // ListCheckpoints returns all checkpoints for a session.
 func (m *CheckpointManager) ListCheckpoints(sessionID string) ([]*Checkpoint, error) {
 	m.mu.RLock()
@@ -129,18 +89,6 @@ func (m *CheckpointManager) ListCheckpoints(sessionID string) ([]*Checkpoint, er
 	}
 
 	return m.storage.List(sessionID)
-}
-
-// GetCheckpoint retrieves a specific checkpoint.
-func (m *CheckpointManager) GetCheckpoint(sessionID, checkpointID string) (*Checkpoint, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if m.storage == nil {
-		return nil, ErrCheckpointNotFound
-	}
-
-	return m.storage.Load(sessionID, checkpointID)
 }
 
 // CreateCheckpointWithSnapshot creates a checkpoint with file backup for rollback.
@@ -225,18 +173,6 @@ func (m *CheckpointManager) Diff(sessionID, checkpointID, workspacePath string) 
 	}
 
 	return fs.Diff(sessionID, checkpointID, workspacePath)
-}
-
-// DeleteCheckpoint removes a checkpoint.
-func (m *CheckpointManager) DeleteCheckpoint(sessionID, checkpointID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.storage == nil {
-		return ErrCheckpointNotFound
-	}
-
-	return m.storage.Delete(sessionID, checkpointID)
 }
 
 // PurgeCheckpoints removes old checkpoints based on age and count limits.
@@ -328,71 +264,4 @@ func hashWorkspace(workspacePath string) (string, []string, error) {
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), modifiedFiles, nil
-}
-
-// InMemoryCheckpointStorage provides in-memory checkpoint storage for testing.
-type InMemoryCheckpointStorage struct {
-	mu          sync.RWMutex
-	checkpoints map[string]map[string]*Checkpoint // sessionID -> checkpointID -> checkpoint
-}
-
-// NewInMemoryCheckpointStorage creates a new in-memory checkpoint storage.
-func NewInMemoryCheckpointStorage() *InMemoryCheckpointStorage {
-	return &InMemoryCheckpointStorage{
-		checkpoints: make(map[string]map[string]*Checkpoint),
-	}
-}
-
-func (s *InMemoryCheckpointStorage) Save(cp *Checkpoint) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, ok := s.checkpoints[cp.SessionID]; !ok {
-		s.checkpoints[cp.SessionID] = make(map[string]*Checkpoint)
-	}
-	s.checkpoints[cp.SessionID][cp.ID] = cp
-	return nil
-}
-
-func (s *InMemoryCheckpointStorage) Load(sessionID, checkpointID string) (*Checkpoint, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	session, ok := s.checkpoints[sessionID]
-	if !ok {
-		return nil, ErrCheckpointNotFound
-	}
-
-	cp, ok := session[checkpointID]
-	if !ok {
-		return nil, ErrCheckpointNotFound
-	}
-
-	return cp, nil
-}
-
-func (s *InMemoryCheckpointStorage) List(sessionID string) ([]*Checkpoint, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	session, ok := s.checkpoints[sessionID]
-	if !ok {
-		return nil, nil
-	}
-
-	result := make([]*Checkpoint, 0, len(session))
-	for _, cp := range session {
-		result = append(result, cp)
-	}
-	return result, nil
-}
-
-func (s *InMemoryCheckpointStorage) Delete(sessionID, checkpointID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if session, ok := s.checkpoints[sessionID]; ok {
-		delete(session, checkpointID)
-	}
-	return nil
 }

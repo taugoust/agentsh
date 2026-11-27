@@ -325,10 +325,6 @@ func (a *App) emitCommandDBBypassAttempt(ctx context.Context, s *session.Session
 	})
 }
 
-func waitForDBProxyListeners(ctx context.Context, services []dbProxyService, timeout time.Duration) error {
-	return waitForDBProxyListenersOrStartError(ctx, services, timeout, nil)
-}
-
 func waitForDBProxyListenersOrStartError(ctx context.Context, services []dbProxyService, timeout time.Duration, startErrCh <-chan error) error {
 	deadline := time.Now().Add(timeout)
 	for {

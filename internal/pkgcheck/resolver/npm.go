@@ -317,16 +317,3 @@ func (r *npmResolver) hasRegistryFlag(args []string) bool {
 	}
 	return false
 }
-
-// trimWindowsScriptExt strips .cmd and .bat extensions (case-insensitive)
-// from a command base name for Windows compatibility.
-func trimWindowsScriptExt(base string) string {
-	if len(base) < 5 {
-		return base
-	}
-	ext := strings.ToLower(base[len(base)-4:])
-	if ext == ".cmd" || ext == ".bat" {
-		return base[:len(base)-4]
-	}
-	return base
-}

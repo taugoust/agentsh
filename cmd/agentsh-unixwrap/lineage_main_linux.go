@@ -9,7 +9,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"time"
 
 	lookupproto "github.com/agentsh/agentsh/internal/filelookup"
 	unixmon "github.com/agentsh/agentsh/internal/netmonitor/unix"
@@ -209,10 +208,4 @@ func payloadEnvironment(environment []string, commandJail bool) []string {
 		out = append(out, entry)
 	}
 	return out
-}
-
-func setControlTimeout(fd int, timeout time.Duration) {
-	if fd >= 0 {
-		_ = unix.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &unix.Timeval{Sec: int64(timeout / time.Second)})
-	}
 }

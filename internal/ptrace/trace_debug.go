@@ -65,23 +65,6 @@ const (
 	evNote                           // a milestone note (attach handshake, exit-notify, park)
 )
 
-func (k traceEventKind) String() string {
-	switch k {
-	case evWaitCall:
-		return "wait_call"
-	case evWaitRet:
-		return "wait_ret"
-	case evStop:
-		return "stop"
-	case evResume:
-		return "resume"
-	case evNote:
-		return "note"
-	default:
-		return "?"
-	}
-}
-
 // traceEvent is one ring entry. Fields are raw; formatting happens only on dump.
 // String fields hold interned literals (the wait layer / resume site), so an
 // append allocates nothing.

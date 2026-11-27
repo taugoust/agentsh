@@ -424,39 +424,6 @@ func writeResponse(writer io.Writer, response Response) error {
 	return encoder.Encode(response)
 }
 
-func ReadHandshake(path string, manifest Manifest) (Handshake, error) {
-	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return Handshake{}, fmt.Errorf("guest control handshake path must be clean and absolute")
-	}
-	before, err := os.Lstat(path)
-	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm() != 0o600 || before.Size() > MaxMessageBytes {
-		return Handshake{}, fmt.Errorf("guest control handshake has unsafe type, permissions, or size")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return Handshake{}, err
-	}
-	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil || !os.SameFile(before, opened) {
-		return Handshake{}, fmt.Errorf("guest control handshake identity changed while opening")
-	}
-	decoder := json.NewDecoder(io.LimitReader(file, MaxMessageBytes+1))
-	decoder.DisallowUnknownFields()
-	var handshake Handshake
-	if err := decoder.Decode(&handshake); err != nil || requireJSONEOF(decoder) != nil {
-		return Handshake{}, fmt.Errorf("decode guest control handshake")
-	}
-	public := handshake
-	if public.EventToken == "" {
-		public.EventToken = strings.Repeat("0", 64)
-	}
-	if err := public.Validate(manifest); err != nil {
-		return Handshake{}, err
-	}
-	return handshake, nil
-}
-
 func WriteHandshake(path string, handshake Handshake) error {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return fmt.Errorf("guest control handshake path must be clean and absolute")

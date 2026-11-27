@@ -257,10 +257,6 @@ func piProtocolOutcome(state piProtocolState, diagnostics []subagentProtocolDiag
 	return outcome
 }
 
-func parsePiJSONFinal(stdout string) string {
-	return parsePiSubagentProtocol(stdout).Final
-}
-
 func piStopReasonFailed(stopReason, errorMessage string) bool {
 	if errorMessage != "" {
 		return true

@@ -4,7 +4,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
-	"syscall"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/approvals"
@@ -547,27 +545,4 @@ func payloadLineageMatches(payloadPID, wrapperPID int) bool {
 	}
 	status, err := readWrapperProcStatus(payloadPID)
 	return err == nil && status.PPid == wrapperPID
-}
-
-func readCommandJailREADY(r io.Reader) (int, error) {
-	if r == nil {
-		return 0, io.ErrUnexpectedEOF
-	}
-	buf := []byte{0}
-	for {
-		n, err := r.Read(buf)
-		if err != nil && errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		if n == 1 {
-			if buf[0] != 'R' {
-				return 1, fmt.Errorf("unexpected READY byte: got 0x%02x, expected 'R'", buf[0])
-			}
-			return 1, nil
-		}
-		if err == nil {
-			err = io.ErrUnexpectedEOF
-		}
-		return n, fmt.Errorf("read READY byte: %w", err)
-	}
 }

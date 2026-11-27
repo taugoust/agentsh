@@ -32,8 +32,3 @@ func (pc *proxyConn) evaluateConnect(ctx context.Context) policy.Decision {
 func (pc *proxyConn) evaluateReplication(ctx context.Context) policy.Decision {
 	return pc.evaluateConnection(ctx, policy.MatchReplication)
 }
-
-// evaluateCancel is the match_kind=cancel entry point.
-func (pc *proxyConn) evaluateCancel(ctx context.Context) policy.Decision {
-	return pc.evaluateConnection(ctx, policy.MatchCancel)
-}

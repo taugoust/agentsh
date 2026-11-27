@@ -331,21 +331,6 @@ func main() {
 	runAndExit(agentshBin, "", args[1:], os.Environ())
 }
 
-// isMCPCommand checks if the command being executed is an MCP server.
-func isMCPCommand(argv0 string, args []string) bool {
-	// Extract command from shell -c "command"
-	if len(args) >= 2 && args[0] == "-c" {
-		// Parse the command string
-		cmdParts := strings.Fields(args[1])
-		if len(cmdParts) > 0 {
-			return shim.IsMCPServer(cmdParts[0], cmdParts[1:], nil)
-		}
-	}
-
-	// Direct command execution
-	return shim.IsMCPServer(argv0, args, nil)
-}
-
 // isAgentshCommand checks if the command being executed is the agentsh binary.
 // This prevents a deadlock where the shim routes agentsh CLI commands through
 // the server, and the CLI connects back to the same blocked server.
@@ -545,15 +530,6 @@ func lookupShellInPath(shellName string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("could not find %s in PATH", shellName)
-}
-
-func execOrExit(path string, argv []string, env []string) {
-	if err := syscall.Exec(path, argv, env); err != nil {
-		fatalWithHint(127,
-			fmt.Sprintf("agentsh-shell-shim: exec %s: %v", path, err),
-			"If you see 'permission denied' in a container, check that the shim and agentsh binaries are executable.",
-		)
-	}
 }
 
 // runAndExit runs a command as a child process, copies its stdout/stderr

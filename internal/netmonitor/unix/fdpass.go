@@ -35,9 +35,3 @@ func RecvFD(sock *os.File) (*os.File, error) {
 	}
 	return nil, fmt.Errorf("no fd in control message")
 }
-
-// SendFD sends fd over sock.
-func SendFD(sock *os.File, fd int) error {
-	rights := unix.UnixRights(fd)
-	return unix.Sendmsg(int(sock.Fd()), []byte{0}, rights, nil, 0)
-}

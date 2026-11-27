@@ -48,13 +48,6 @@ func isSignalSyscall(nr int) bool {
 	return false
 }
 
-func tracedSyscallNumbers(cfg *TracerConfig) []int {
-	nums := narrowTracedSyscallNumbers(cfg)
-	// Full set includes read/write for TRACESYSGOOD fallback mode
-	nums = append(nums, unix.SYS_READ, unix.SYS_PREAD64, unix.SYS_WRITE)
-	return nums
-}
-
 // narrowTracedSyscallNumbers returns the syscalls for the initial narrow
 // BPF filter, excluding read/pread64/write which are lazily escalated.
 // The set is driven by cfg to avoid tracing syscalls for disabled features.

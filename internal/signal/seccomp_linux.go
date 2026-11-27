@@ -133,16 +133,6 @@ func (f *SignalFilter) Respond(reqID uint64, allow bool, errno int32) error {
 	return seccomp.NotifRespond(f.fd, &resp)
 }
 
-// RespondWithValue replies to a notification with a specific return value.
-func (f *SignalFilter) RespondWithValue(reqID uint64, val uint64, errno int32) error {
-	resp := seccomp.ScmpNotifResp{
-		ID:    reqID,
-		Val:   val,
-		Error: -errno,
-	}
-	return seccomp.NotifRespond(f.fd, &resp)
-}
-
 // ExtractSignalContext extracts signal information from a seccomp notify request.
 // The syscall arguments vary by syscall:
 //   - kill(pid, sig):           args[0]=pid, args[1]=sig

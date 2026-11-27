@@ -81,14 +81,6 @@ func NewConditionEvaluator() *ConditionEvaluator {
 	}
 }
 
-// NewConditionEvaluatorWithRegistry creates an evaluator with custom registry.
-func NewConditionEvaluatorWithRegistry(registry *pattern.ClassRegistry) *ConditionEvaluator {
-	return &ConditionEvaluator{
-		registry:   registry,
-		classifier: NewClassifierWithRegistry(registry),
-	}
-}
-
 // Evaluate checks if a taint and execution context match a condition.
 func (e *ConditionEvaluator) Evaluate(cond *ChainCondition, taint *ProcessTaint, ctx *ExecutionContext) bool {
 	if cond == nil {
@@ -539,14 +531,6 @@ func (e *ChainRuleEvaluator) SetRules(rules []ChainRule) {
 	copy(e.rules, rules)
 
 	// Sort by priority (descending - higher first)
-	sort.Slice(e.rules, func(i, j int) bool {
-		return e.rules[i].Priority > e.rules[j].Priority
-	})
-}
-
-// AddRule adds a rule (maintains priority order).
-func (e *ChainRuleEvaluator) AddRule(rule ChainRule) {
-	e.rules = append(e.rules, rule)
 	sort.Slice(e.rules, func(i, j int) bool {
 		return e.rules[i].Priority > e.rules[j].Priority
 	})

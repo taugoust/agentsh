@@ -5,13 +5,11 @@ package api
 import (
 	"context"
 	"errors"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/agentsh/agentsh/internal/config"
 	"github.com/agentsh/agentsh/internal/events"
@@ -89,33 +87,6 @@ func withEBPFHooks(t *testing.T) {
 		ebpfPopulateAllowlist = prevPopulate
 		ebpfCleanupAllowlist = prevCleanup
 	})
-}
-
-func withDomainResolverHook(t *testing.T, fn func(string, time.Duration) ([]net.IP, time.Duration)) {
-	t.Helper()
-	prev := resolveDomainWithTTL
-	resolveDomainWithTTL = fn
-	t.Cleanup(func() {
-		resolveDomainWithTTL = prev
-	})
-}
-
-func networkPolicyEngineForCgroupTest(t *testing.T) *policy.Engine {
-	t.Helper()
-	engine, err := policy.NewEngine(&policy.Policy{
-		Version: 1,
-		Name:    "cgroup-ebpf-test",
-		NetworkRules: []policy.NetworkRule{{
-			Name:     "allow-example",
-			Domains:  []string{"example.test"},
-			Ports:    []int{443},
-			Decision: "allow",
-		}},
-	}, false, true)
-	if err != nil {
-		t.Fatalf("build policy engine: %v", err)
-	}
-	return engine
 }
 
 func TestApplyCgroupV2_CleansCgroupWhenRequiredEBPFUnsupported(t *testing.T) {

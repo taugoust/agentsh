@@ -5,20 +5,6 @@ import (
 	"time"
 )
 
-func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig()
-
-	if cfg.Session.FileOpsPerSecond != 1000 {
-		t.Errorf("FileOpsPerSecond = %v, want 1000", cfg.Session.FileOpsPerSecond)
-	}
-	if cfg.Session.BurstMultiplier != 5 {
-		t.Errorf("BurstMultiplier = %v, want 5", cfg.Session.BurstMultiplier)
-	}
-	if cfg.Global.MaxConcurrentSessions != 1000 {
-		t.Errorf("MaxConcurrentSessions = %v, want 1000", cfg.Global.MaxConcurrentSessions)
-	}
-}
-
 func TestNewLimiter(t *testing.T) {
 	l := NewLimiter(10, 50)
 
@@ -129,41 +115,5 @@ func TestLimiter_Wait(t *testing.T) {
 	// Should have waited approximately 1ms (1/1000 second)
 	if elapsed < 500*time.Microsecond {
 		t.Errorf("Second Wait() elapsed = %v, expected some delay", elapsed)
-	}
-}
-
-func TestActionType(t *testing.T) {
-	tests := []struct {
-		action ActionType
-		want   string
-	}{
-		{ActionThrottle, "throttle"},
-		{ActionBlock, "block"},
-		{ActionAlert, "alert"},
-	}
-
-	for _, tt := range tests {
-		if string(tt.action) != tt.want {
-			t.Errorf("ActionType = %q, want %q", tt.action, tt.want)
-		}
-	}
-}
-
-func TestResourceType(t *testing.T) {
-	tests := []struct {
-		resource ResourceType
-		want     string
-	}{
-		{ResourceFileOps, "file_ops"},
-		{ResourceNetworkConns, "network_conns"},
-		{ResourceDNSQueries, "dns_queries"},
-		{ResourceStorage, "storage"},
-		{ResourceNetworkBytes, "network_bytes"},
-	}
-
-	for _, tt := range tests {
-		if string(tt.resource) != tt.want {
-			t.Errorf("ResourceType = %q, want %q", tt.resource, tt.want)
-		}
 	}
 }

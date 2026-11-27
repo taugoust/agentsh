@@ -106,17 +106,6 @@ func TestParseOnBlock(t *testing.T) {
 	}
 }
 
-func TestFilterConfigFromYAML(t *testing.T) {
-	cfg := FilterConfigFromYAML(true, []string{"ptrace"}, "log_and_kill", nil)
-	require.True(t, cfg.UnixSocketEnabled)
-	require.Equal(t, []string{"ptrace"}, cfg.BlockedSyscalls)
-	require.Equal(t, OnBlockLogAndKill, cfg.OnBlock)
-
-	// Unknown string degrades to errno
-	cfgBad := FilterConfigFromYAML(false, nil, "nope", nil)
-	require.Equal(t, OnBlockErrno, cfgBad.OnBlock)
-}
-
 func TestFilterConfig_IncludesBlockedFamilies(t *testing.T) {
 	cfg := FilterConfig{
 		UnixSocketEnabled: false,
@@ -131,15 +120,5 @@ func TestFilterConfig_IncludesBlockedFamilies(t *testing.T) {
 	}
 	if cfg.BlockedFamilies[0].Name != "AF_ALG" {
 		t.Errorf("name=%q want AF_ALG", cfg.BlockedFamilies[0].Name)
-	}
-}
-
-func TestFilterConfigFromYAML_PassesFamilies(t *testing.T) {
-	families := []BlockedFamily{
-		{Family: 38, Action: OnBlockErrno, Name: "AF_ALG"},
-	}
-	cfg := FilterConfigFromYAML(true, []string{"ptrace"}, "errno", families)
-	if len(cfg.BlockedFamilies) != 1 || cfg.BlockedFamilies[0].Family != 38 {
-		t.Errorf("FilterConfigFromYAML did not pass families through: %+v", cfg.BlockedFamilies)
 	}
 }

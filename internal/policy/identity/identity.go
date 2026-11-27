@@ -145,15 +145,6 @@ func NewProcessMatcher() *ProcessMatcher {
 	}
 }
 
-// NewProcessMatcherWithRegistry creates a matcher with a custom class registry.
-func NewProcessMatcherWithRegistry(registry *pattern.ClassRegistry) *ProcessMatcher {
-	return &ProcessMatcher{
-		identities: make(map[string]*ProcessIdentity),
-		compiled:   make(map[string]*compiledIdentity),
-		registry:   registry,
-	}
-}
-
 // AddIdentity adds a process identity to the matcher.
 func (m *ProcessMatcher) AddIdentity(id *ProcessIdentity) error {
 	if id.Name == "" {

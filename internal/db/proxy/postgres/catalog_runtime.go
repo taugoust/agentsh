@@ -334,11 +334,6 @@ func (pc *proxyConn) refreshCatalogForStatements(ctx context.Context, stmts []ef
 	pc.refreshCatalogContext(ctx, snapshot)
 }
 
-func (pc *proxyConn) markCatalogRefreshPending(stmts []effects.ClassifiedStatement) {
-	searchPath, snapshot := statementsNeedCatalogRefresh(stmts)
-	pc.markCatalogRefreshPendingForNeeds(searchPath, snapshot)
-}
-
 func (pc *proxyConn) markCatalogRefreshPendingForNeeds(searchPath, snapshot bool) {
 	if !searchPath && !snapshot {
 		return

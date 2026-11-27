@@ -3,7 +3,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/session"
@@ -360,12 +359,4 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return s[:max-3] + "..."
-}
-
-// resolveWorkspacePath resolves a workspace path, handling relative paths
-func resolveWorkspacePath(path string) (string, error) {
-	if path == "" {
-		return "", fmt.Errorf("workspace path is empty")
-	}
-	return filepath.Abs(path)
 }

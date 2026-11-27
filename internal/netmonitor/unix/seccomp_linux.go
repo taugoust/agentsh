@@ -136,42 +136,6 @@ func (f *Filter) SocketRules() []seccompkg.SocketRule {
 	return cloneSocketRules(f.socketRules)
 }
 
-// InstallFilter installs a user-notify seccomp filter on the current process
-// that traps socket-related syscalls. Caller must run the notify loop on fd.
-func InstallFilter() (*Filter, error) {
-	if err := DetectSupport(); err != nil {
-		return nil, err
-	}
-
-	filt, err := seccomp.NewFilter(seccomp.ActAllow)
-	if err != nil {
-		return nil, err
-	}
-
-	trap := seccomp.ActNotify
-	rules := []seccomp.ScmpSyscall{
-		seccomp.ScmpSyscall(unix.SYS_SOCKET),
-		seccomp.ScmpSyscall(unix.SYS_CONNECT),
-		seccomp.ScmpSyscall(unix.SYS_BIND),
-		seccomp.ScmpSyscall(unix.SYS_LISTEN),
-		seccomp.ScmpSyscall(unix.SYS_SENDTO),
-	}
-	for _, sc := range rules {
-		if err := filt.AddRule(sc, trap); err != nil {
-			return nil, fmt.Errorf("add rule %v: %w", sc, err)
-		}
-	}
-
-	if err := filt.Load(); err != nil {
-		return nil, err
-	}
-	fd, err := filt.GetNotifFd()
-	if err != nil {
-		return nil, err
-	}
-	return &Filter{fd: fd}, nil
-}
-
 // ReadSockaddr reads up to maxLen bytes from the tracee at addrPtr.
 func ReadSockaddr(pid int, addrPtr uint64, addrLen uint64) ([]byte, error) {
 	if addrPtr == 0 || addrLen == 0 {
@@ -223,22 +187,6 @@ func (f *Filter) NotifFD() int {
 	return int(f.fd)
 }
 
-// Receive receives one seccomp notification.
-func (f *Filter) Receive() (*seccomp.ScmpNotifReq, error) {
-	return seccomp.NotifReceive(f.fd)
-}
-
-// Respond replies to a notification.
-func (f *Filter) Respond(reqID uint64, allow bool, errno int32) error {
-	if allow {
-		return NotifRespondContinue(int(f.fd), reqID)
-	}
-	if errno <= 0 {
-		errno = int32(unix.EPERM) // normalize invalid errno to avoid unanswered notification
-	}
-	return NotifRespondDeny(int(f.fd), reqID, errno)
-}
-
 // Context holds the data needed to evaluate a trapped syscall.
 type Context struct {
 	PID     int
@@ -287,14 +235,6 @@ func ProbeNotifReceive(notifFD int) error {
 		return nil
 	}
 	return fmt.Errorf("%w: %v", ErrNotifyBlocked, err)
-}
-
-// InstallOrWarn installs filter or returns ErrUnsupported.
-func InstallOrWarn() (*Filter, error) {
-	if err := DetectSupport(); err != nil {
-		return nil, ErrUnsupported
-	}
-	return InstallFilter()
 }
 
 // FilterConfig configures the seccomp filter to install.
@@ -911,22 +851,6 @@ func socketRuleConditions(rule seccompkg.SocketRule) []seccomp.ScmpCondition {
 		})
 	}
 	return conditions
-}
-
-func notifySocketRules(rules []seccompkg.SocketRule) []seccompkg.SocketRule {
-	if len(rules) == 0 {
-		return nil
-	}
-	out := make([]seccompkg.SocketRule, 0, len(rules))
-	for _, rule := range rules {
-		if socketRuleUsesNotify(rule) {
-			out = append(out, cloneSocketRule(rule))
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
 }
 
 func socketRuleUsesNotify(rule seccompkg.SocketRule) bool {

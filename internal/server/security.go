@@ -52,26 +52,3 @@ func DetectAndValidateSecurityMode(cfg *config.Config) (string, *capabilities.Se
 
 	return mode, caps, nil
 }
-
-// LogSecurityCapabilities logs the detected security capabilities at startup.
-func LogSecurityCapabilities(caps *capabilities.SecurityCapabilities, mode string) {
-	slog.Info("security capabilities detected",
-		"mode", mode,
-		"description", capabilities.ModeDescriptionWithCaps(mode, caps),
-		"seccomp", caps.Seccomp,
-		"seccomp_basic", caps.SeccompBasic,
-		"landlock", caps.Landlock,
-		"landlock_abi", caps.LandlockABI,
-		"landlock_network", caps.LandlockNetwork,
-		"ebpf", caps.EBPF,
-		"fuse", caps.FUSE,
-		// "capabilities" is the mechanism flag (kept for log-field
-		// backward compatibility) — always true on Linux. The
-		// behavioural "is this process actually running with a reduced
-		// capability set" signal is logged separately as
-		// "capabilities_active" so operators can distinguish the two
-		// after #198 split them.
-		"capabilities", caps.Capabilities,
-		"capabilities_active", caps.CapabilitiesActive,
-	)
-}

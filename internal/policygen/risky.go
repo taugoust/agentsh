@@ -41,18 +41,6 @@ var builtinRisky = map[string]string{
 	"cargo": "package",
 }
 
-// IsBuiltinRisky checks if a command is in the built-in risky list.
-func IsBuiltinRisky(cmd string) (bool, string) {
-	// Normalize: take base name, remove extension
-	base := filepath.Base(cmd)
-	base = strings.TrimSuffix(base, filepath.Ext(base))
-
-	if reason, ok := builtinRisky[base]; ok {
-		return true, reason
-	}
-	return false, ""
-}
-
 // RiskyDetector tracks which commands are risky based on behavior.
 type RiskyDetector struct {
 	observed map[string]string // command -> reason
@@ -80,15 +68,6 @@ func (d *RiskyDetector) MarkDestructive(cmd string) {
 	base = strings.TrimSuffix(base, filepath.Ext(base))
 	if _, exists := d.observed[base]; !exists {
 		d.observed[base] = "destructive-observed"
-	}
-}
-
-// MarkPrivileged marks a command as risky because it changed UID.
-func (d *RiskyDetector) MarkPrivileged(cmd string) {
-	base := filepath.Base(cmd)
-	base = strings.TrimSuffix(base, filepath.Ext(base))
-	if _, exists := d.observed[base]; !exists {
-		d.observed[base] = "privilege-observed"
 	}
 }
 

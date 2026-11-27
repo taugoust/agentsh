@@ -895,18 +895,6 @@ func containsString(xs []string, s string) bool {
 	return false
 }
 
-// blockedFamiliesUsesNotify reports whether any BlockedSocketFamilies entry
-// uses an action that requires the userspace notify handler (log or log_and_kill).
-// errno and kill are handled kernel-side and do not require a notify fd.
-func blockedFamiliesUsesNotify(families []config.SandboxSeccompSocketFamilyConfig) bool {
-	for _, f := range families {
-		if f.Action == "log" || f.Action == "log_and_kill" {
-			return true
-		}
-	}
-	return false
-}
-
 func blockedFamiliesUseNotifyForSeccomp(seccompCfg config.SandboxSeccompConfig) bool {
 	families, err := config.ResolveEffectiveBlockedFamilies(seccompCfg)
 	if err != nil {

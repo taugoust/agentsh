@@ -23,11 +23,6 @@ type WebAuthnApprover struct {
 	service *auth.WebAuthnService
 }
 
-// NewWebAuthnApprover creates a new WebAuthn approver.
-func NewWebAuthnApprover(service *auth.WebAuthnService) *WebAuthnApprover {
-	return &WebAuthnApprover{service: service}
-}
-
 // CreateChallenge generates a WebAuthn challenge for an approval request.
 func (w *WebAuthnApprover) CreateChallenge(ctx context.Context, req Request, userID string) (*WebAuthnChallenge, error) {
 	assertion, err := w.service.BeginAuthentication(ctx, userID)

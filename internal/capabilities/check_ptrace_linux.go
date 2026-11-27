@@ -3,38 +3,12 @@
 package capabilities
 
 import (
-	"fmt"
-	"os"
 	"os/exec"
-	"strconv"
-	"strings"
 
 	"golang.org/x/sys/unix"
 
 	"github.com/agentsh/agentsh/internal/ptrace"
 )
-
-const capSysPtrace = 19
-
-// readCapEff reads the effective capability set from /proc/self/status.
-func readCapEff() (uint64, error) {
-	data, err := os.ReadFile("/proc/self/status")
-	if err != nil {
-		return 0, err
-	}
-	return parseCapEff(string(data))
-}
-
-// parseCapEff extracts the CapEff value from /proc/self/status content.
-func parseCapEff(content string) (uint64, error) {
-	for _, line := range strings.Split(content, "\n") {
-		if strings.HasPrefix(line, "CapEff:\t") {
-			hex := strings.TrimSpace(strings.TrimPrefix(line, "CapEff:\t"))
-			return strconv.ParseUint(hex, 16, 64)
-		}
-	}
-	return 0, fmt.Errorf("CapEff not found in /proc/self/status")
-}
 
 // checkPtraceCapability checks if ptrace is available and functional
 // by forking a child and attempting PTRACE_SEIZE. This is more reliable

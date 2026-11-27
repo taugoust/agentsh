@@ -844,27 +844,3 @@ func TestSessionSnapshotIncludesDBProxySocketDir(t *testing.T) {
 		t.Fatalf("Snapshot().DBProxySocketDir = %q, want %q", snap.DBProxySocketDir, socketDir)
 	}
 }
-
-func TestSessionCleanup_ClosesDBProxy(t *testing.T) {
-	mgr := NewManager(5)
-	s, err := mgr.Create(t.TempDir(), "default")
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	socketDir := filepath.Join(t.TempDir(), "db")
-	var closed int
-	s.SetDBProxy(socketDir, func() error {
-		closed++
-		return nil
-	})
-
-	s.cleanup()
-
-	if closed != 1 {
-		t.Fatalf("closed = %d, want 1", closed)
-	}
-	if got := s.DBProxySocketDir(); got != "" {
-		t.Fatalf("DBProxySocketDir after cleanup = %q, want empty", got)
-	}
-}

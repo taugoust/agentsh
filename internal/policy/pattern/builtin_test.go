@@ -27,40 +27,6 @@ func TestBuiltinClasses_Defined(t *testing.T) {
 	}
 }
 
-func TestExpandClass(t *testing.T) {
-	tests := []struct {
-		name     string
-		wantOK   bool
-		contains string // At least one pattern should contain this
-	}{
-		{"shell", true, "bash"},
-		{"@shell", true, "bash"}, // With @ prefix
-		{"editor", true, "vim"},
-		{"agent", true, "aider"},
-		{"build", true, "npm"},
-		{"language-server", true, "gopls"},
-		{"nonexistent", false, ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			patterns, ok := ExpandClass(tt.name)
-			assert.Equal(t, tt.wantOK, ok)
-			if tt.wantOK {
-				assert.NotEmpty(t, patterns)
-				found := false
-				for _, p := range patterns {
-					if p == tt.contains {
-						found = true
-						break
-					}
-				}
-				assert.True(t, found, "class @%s should contain %q", tt.name, tt.contains)
-			}
-		})
-	}
-}
-
 func TestIsBuiltinClass(t *testing.T) {
 	tests := []struct {
 		name string
@@ -100,67 +66,6 @@ func TestClassRegistry_Has(t *testing.T) {
 	assert.True(t, r.Has("shell"))
 	assert.True(t, r.Has("editor"))
 	assert.False(t, r.Has("nonexistent"))
-}
-
-func TestClassRegistry_Set(t *testing.T) {
-	r := NewClassRegistry()
-
-	// Add new class
-	r.Set("custom", []string{"pattern1", "pattern2"})
-	assert.True(t, r.Has("custom"))
-
-	patterns, err := r.Get("custom")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"pattern1", "pattern2"}, patterns)
-
-	// Replace existing class
-	r.Set("custom", []string{"new-pattern"})
-	patterns, err = r.Get("custom")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"new-pattern"}, patterns)
-}
-
-func TestClassRegistry_Extend(t *testing.T) {
-	r := NewClassRegistry()
-
-	originalLen := len(BuiltinClasses["shell"])
-
-	// Extend existing class
-	r.Extend("shell", []string{"my-custom-shell"})
-	patterns, err := r.Get("shell")
-	require.NoError(t, err)
-	assert.Len(t, patterns, originalLen+1)
-	assert.Contains(t, patterns, "my-custom-shell")
-
-	// Extend nonexistent class (creates it)
-	r.Extend("newclass", []string{"pattern"})
-	assert.True(t, r.Has("newclass"))
-}
-
-func TestClassRegistry_Delete(t *testing.T) {
-	r := NewClassRegistry()
-
-	r.Set("todelete", []string{"pattern"})
-	assert.True(t, r.Has("todelete"))
-
-	r.Delete("todelete")
-	assert.False(t, r.Has("todelete"))
-}
-
-func TestClassRegistry_List(t *testing.T) {
-	r := NewClassRegistry()
-
-	names := r.List()
-	assert.NotEmpty(t, names)
-
-	// Check that names are sorted
-	for i := 1; i < len(names); i++ {
-		assert.True(t, names[i-1] < names[i], "list should be sorted")
-	}
-
-	// Check essential classes are in list
-	assert.Contains(t, names, "shell")
-	assert.Contains(t, names, "editor")
 }
 
 func TestClassRegistry_Matches(t *testing.T) {

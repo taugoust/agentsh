@@ -31,21 +31,6 @@ const socketRuleHelperDirtyFragNetlinkRoute = "dirtyfrag_netlink_route"
 const socketRuleHelperDirtyFragRXRPC = "dirtyfrag_rxrpc"
 const socketRuleHelperDirtyFragSocketpairXFRM = "dirtyfrag_socketpair_xfrm"
 
-func TestNotifySocketRules_FiltersNotifyActions(t *testing.T) {
-	rules := []seccompkg.SocketRule{
-		{Name: "errno", Family: 60, Action: seccompkg.OnBlockErrno},
-		{Name: "kill", Family: 61, Action: seccompkg.OnBlockKill},
-		{Name: "log", Family: 62, Action: seccompkg.OnBlockLog},
-		{Name: "log_and_kill", Family: 63, Action: seccompkg.OnBlockLogAndKill},
-	}
-
-	got := notifySocketRules(rules)
-
-	require.Len(t, got, 2)
-	require.Equal(t, "log", got[0].Name)
-	require.Equal(t, "log_and_kill", got[1].Name)
-}
-
 func TestInstallFilterWithConfig_SocketRulesRetainedOnlyForNotifyActions(t *testing.T) {
 	if err := DetectSupport(); err != nil {
 		t.Skipf("seccomp user-notify not supported: %v", err)
@@ -93,28 +78,6 @@ func TestFilterSocketRules_ReturnsDeepCopy(t *testing.T) {
 	require.Equal(t, "netlink_xfrm", again[0].Name)
 	require.Equal(t, int(gounix.SOCK_DGRAM), *again[0].Type)
 	require.Equal(t, int(gounix.NETLINK_XFRM), *again[0].Protocol)
-}
-
-func TestSocketRules_RetainProtocolSpecificNetlinkXFRM(t *testing.T) {
-	typ := int(gounix.SOCK_RAW)
-	protocol := int(gounix.NETLINK_XFRM)
-	got := notifySocketRules([]seccompkg.SocketRule{
-		{
-			Name:         "netlink_xfrm",
-			Family:       gounix.AF_NETLINK,
-			FamilyName:   "AF_NETLINK",
-			Type:         &typ,
-			TypeName:     "SOCK_RAW",
-			Protocol:     &protocol,
-			ProtocolName: "NETLINK_XFRM",
-			Action:       seccompkg.OnBlockLog,
-		},
-	})
-
-	require.Len(t, got, 1)
-	require.Equal(t, gounix.AF_NETLINK, got[0].Family)
-	require.NotNil(t, got[0].Protocol)
-	require.Equal(t, int(gounix.NETLINK_XFRM), *got[0].Protocol)
 }
 
 func TestSocketRuleConditions_UseMaskedTypeAndProtocol(t *testing.T) {

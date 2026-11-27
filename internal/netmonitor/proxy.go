@@ -1092,13 +1092,6 @@ func (p *Proxy) checkConnectNetwork(ctx context.Context, commandID string, host 
 	return dec
 }
 
-func (p *Proxy) isDBUnavoidabilityTCPDirectRule(ruleName string) bool {
-	if p == nil {
-		return false
-	}
-	return isDBUnavoidabilityTCPDirectRule(p.policyEngine(), ruleName)
-}
-
 func (p *Proxy) policyEngine() *policy.Engine {
 	if p == nil {
 		return nil
@@ -1481,18 +1474,4 @@ func (p *Proxy) resolveAndEmitDNSChecked(ctx context.Context, commandID string, 
 		return "", false
 	}
 	return ips[0], true
-}
-
-func mustAtoi(s string, def int) int {
-	n := 0
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return def
-		}
-		n = n*10 + int(r-'0')
-	}
-	if n == 0 {
-		return def
-	}
-	return n
 }
