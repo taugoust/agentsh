@@ -117,10 +117,8 @@ var ErrCloseSafetyNet = errors.New("watchtower.Close: shutdown safety net hit; b
 //     from Close on the leak path. This avoids string-matching the
 //     wrapped error message for the same-process-reopen guard.
 //
-//     Related tracked work: **Task 27c** in the plan
-//     (docs/superpowers/plans/2026-04-18-wtp-client.md) eliminates
-//     the narrower "Stop called AFTER Run has already exited" race
-//     by adding a Transport-side RunDone signal; the wedged-goroutine
+//     A Transport-side RunDone signal would eliminate the narrower
+//     "Stop called AFTER Run has already exited" race; the wedged-goroutine
 //     case (Run parked inside a ctx-ignoring Conn.Send/Recv/Dial)
 //     stays covered by ErrCloseSafetyNet. Today ALL dialers are
 //     injected via Options.Dialer (the built-in production dialer

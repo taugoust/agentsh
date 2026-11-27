@@ -58,9 +58,8 @@ type Replayer struct {
 	// captured under the WAL lock at NewReplayer time via
 	// wal.WrittenDataHighWater(rdr.Generation()): every RecordData with
 	// (gen=rdr.Generation(), seq <= tail.Sequence) was already on disk
-	// by then and will be visible to the underlying Reader. The spec at
-	// docs/superpowers/specs/2026-04-18-wtp-client-design.md:586 defines
-	// replay as the finite (ack_hw, wal_hw_at_entry] window before
+	// by then and will be visible to the underlying Reader. Replay is
+	// defined as the finite (ack_hw, wal_hw_at_entry] window before
 	// advancing to live; without a hard stop, sustained appends would
 	// prevent TryNext from ever returning ok=false and replay would
 	// never terminate.

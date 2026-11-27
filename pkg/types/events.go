@@ -92,8 +92,7 @@ type EventQuery struct {
 }
 
 // ChainState is the shared (sequence, generation) tuple that the composite
-// store will stamp on each event before fanout to chained sinks. See
-// docs/superpowers/specs/2026-04-18-phase-0-shared-sequence-contract.md.
+// store will stamp on each event before fanout to chained sinks.
 //
 // Contract for consumers: ChainState MUST be treated as read-only. Sinks
 // must never mutate the fields of a *ChainState they receive on
