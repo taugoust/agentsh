@@ -33,7 +33,6 @@ import (
 	"github.com/agentsh/agentsh/internal/pkgcheck"
 	"github.com/agentsh/agentsh/internal/platform"
 	"github.com/agentsh/agentsh/internal/policy"
-	"github.com/agentsh/agentsh/internal/policy/signing"
 	"github.com/agentsh/agentsh/internal/proxy"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/store/composite"
@@ -2496,55 +2495,8 @@ func (l *DefaultPolicyLoader) Load(name string) (*policy.Engine, error) {
 		return nil, fmt.Errorf("resolve policy %q: %w", name, err)
 	}
 
-	policyBytes, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read policy %q: %w", name, err)
-	}
-
-	// Signature verification
-	if l.signingMode != "" && l.signingMode != "off" {
-		if l.trustStorePath == "" {
-			if l.signingMode == "enforce" {
-				return nil, fmt.Errorf(
-					"signing verification for %q: trust_store not configured",
-					name,
-				)
-			}
-			fmt.Fprintf(
-				os.Stderr,
-				"WARNING: policy %q: signing mode is %q but trust_store not configured\n",
-				name,
-				l.signingMode,
-			)
-		} else {
-			ts, tsErr := signing.LoadTrustStore(l.trustStorePath, l.signingMode == "enforce")
-			if tsErr != nil {
-				if l.signingMode == "enforce" {
-					return nil, fmt.Errorf("load trust store for %q: %w", name, tsErr)
-				}
-				fmt.Fprintf(
-					os.Stderr,
-					"WARNING: policy %q: failed to load trust store: %v\n",
-					name,
-					tsErr,
-				)
-			} else {
-				if _, vErr := signing.VerifyPolicyBytes(policyBytes, path+".sig", ts); vErr != nil {
-					if l.signingMode == "enforce" {
-						return nil, fmt.Errorf("signing verification for %q: %w", name, vErr)
-					}
-					fmt.Fprintf(
-						os.Stderr,
-						"WARNING: policy %q signing verification failed: %v\n",
-						name,
-						vErr,
-					)
-				}
-			}
-		}
-	}
-
-	p, err := policy.LoadFromBytes(policyBytes)
+	warn := func(msg string) { stderrWarning(fmt.Sprintf("policy %q: %s", name, msg)) }
+	p, err := policy.LoadFile(path, verifiedPolicyReader(l.signingMode, l.trustStorePath, warn))
 	if err != nil {
 		return nil, fmt.Errorf("load policy %q: %w", name, err)
 	}

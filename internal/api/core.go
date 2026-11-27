@@ -25,7 +25,6 @@ import (
 	"github.com/agentsh/agentsh/internal/pkgcheck"
 	"github.com/agentsh/agentsh/internal/platform"
 	"github.com/agentsh/agentsh/internal/policy"
-	"github.com/agentsh/agentsh/internal/policy/signing"
 	"github.com/agentsh/agentsh/internal/session"
 	"github.com/agentsh/agentsh/internal/signal"
 	storepkg "github.com/agentsh/agentsh/internal/store"
@@ -829,50 +828,36 @@ func (a *App) loadOptionalProfileBasePolicy(policyName string) (*policy.Policy, 
 	if err != nil {
 		return nil, 0, nil
 	}
-	policyData, err := os.ReadFile(policyPath)
+	pol, err := a.loadVerifiedPolicyFile(policyPath)
 	if err != nil {
-		return nil, http.StatusInternalServerError, fmt.Errorf("read policy: %w", err)
-	}
-	sigMode := a.cfg.Policies.Signing.SigningMode()
-	if sigMode != "off" {
-		if a.cfg.Policies.Signing.TrustStore == "" {
-			if sigMode == "enforce" {
-				return nil, http.StatusInternalServerError, fmt.Errorf(
-					"signing mode is enforce but trust_store not configured",
-				)
-			}
-			fmt.Fprintf(
-				os.Stderr,
-				"WARNING: signing mode is %q but trust_store not configured\n",
-				sigMode,
-			)
-		} else {
-			ts, tsErr := signing.LoadTrustStore(
-				a.cfg.Policies.Signing.TrustStore,
-				sigMode == "enforce",
-			)
-			if tsErr != nil {
-				if sigMode == "enforce" {
-					return nil, http.StatusInternalServerError, fmt.Errorf(
-						"load trust store: %w",
-						tsErr,
-					)
-				}
-				fmt.Fprintf(os.Stderr, "WARNING: failed to load trust store: %v\n", tsErr)
-			} else if _, vErr :=
-				signing.VerifyPolicyBytes(policyData, policyPath+".sig", ts); vErr != nil {
-				if sigMode == "enforce" {
-					return nil, http.StatusForbidden, fmt.Errorf("policy signing: %w", vErr)
-				}
-				fmt.Fprintf(os.Stderr, "WARNING: policy signing verification failed: %v\n", vErr)
-			}
-		}
-	}
-	pol, err := policy.LoadFromBytes(policyData)
-	if err != nil {
-		return nil, http.StatusInternalServerError, fmt.Errorf("load policy: %w", err)
+		return nil, policyLoadStatus(err), err
 	}
 	return pol, 0, nil
+}
+
+// loadVerifiedPolicyFile loads the policy at path and its bases and checks the
+// signature of each file.
+func (a *App) loadVerifiedPolicyFile(path string) (*policy.Policy, error) {
+	signingCfg := a.cfg.Policies.Signing
+	read := verifiedPolicyReader(signingCfg.SigningMode(), signingCfg.TrustStore, stderrWarning)
+	pol, err := policy.LoadFile(path, read)
+	if err != nil {
+		var sigErr *policySigningError
+		if errors.As(err, &sigErr) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("load policy: %w", err)
+	}
+	return pol, nil
+}
+
+// policyLoadStatus maps a loadVerifiedPolicyFile error to an HTTP status.
+func policyLoadStatus(err error) int {
+	var sigErr *policySigningError
+	if errors.As(err, &sigErr) {
+		return sigErr.status
+	}
+	return http.StatusInternalServerError
 }
 
 // createSessionWithProfile creates a session using a mount profile.
@@ -1747,70 +1732,10 @@ func (a *App) createSessionCore(
 			return types.Session{}, http.StatusBadRequest, fmt.Errorf("resolve policy: %w", err)
 		}
 
-		// Read raw bytes for signing verification
-		policyData, err := os.ReadFile(policyPath)
+		// Load the policy and its bases and check each signature.
+		pol, err := a.loadVerifiedPolicyFile(policyPath)
 		if err != nil {
-			return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
-				"read policy: %w",
-				err,
-			)
-		}
-
-		// Signature verification
-		sigMode := a.cfg.Policies.Signing.SigningMode()
-		if sigMode != "off" {
-			if a.cfg.Policies.Signing.TrustStore == "" {
-				if sigMode == "enforce" {
-					return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
-						"signing mode is enforce but trust_store not configured",
-					)
-				}
-				fmt.Fprintf(
-					os.Stderr,
-					"WARNING: signing mode is %q but trust_store not configured\n",
-					sigMode,
-				)
-			} else {
-				ts, tsErr := signing.LoadTrustStore(
-					a.cfg.Policies.Signing.TrustStore,
-					sigMode == "enforce",
-				)
-				if tsErr != nil {
-					if sigMode == "enforce" {
-						return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
-							"load trust store: %w",
-							tsErr,
-						)
-					}
-					fmt.Fprintf(os.Stderr, "WARNING: failed to load trust store: %v\n", tsErr)
-				} else {
-					if _, vErr := signing.VerifyPolicyBytes(
-						policyData,
-						policyPath+".sig",
-						ts,
-					); vErr != nil {
-						if sigMode == "enforce" {
-							return types.Session{}, http.StatusForbidden, fmt.Errorf(
-								"policy signing: %w",
-								vErr,
-							)
-						}
-						fmt.Fprintf(
-							os.Stderr,
-							"WARNING: policy signing verification failed: %v\n",
-							vErr,
-						)
-					}
-				}
-			}
-		}
-
-		pol, err := policy.LoadFromBytes(policyData)
-		if err != nil {
-			return types.Session{}, http.StatusInternalServerError, fmt.Errorf(
-				"load policy: %w",
-				err,
-			)
+			return types.Session{}, policyLoadStatus(err), err
 		}
 		basePolicy = pol
 	}
@@ -3406,72 +3331,24 @@ func (a *App) ensureFUSEMount(ctx context.Context, s *session.Session) {
 	if engine == nil && a.cfg.Policies.Dir != "" {
 		policyPath, pErr := policy.ResolvePolicyPath(a.cfg.Policies.Dir, s.Policy)
 		if pErr == nil {
-			policyData, rErr := os.ReadFile(policyPath)
-			if rErr == nil {
-				// Signature verification (same flow as session creation)
-				sigMode := a.cfg.Policies.Signing.SigningMode()
-				if sigMode != "off" {
-					if a.cfg.Policies.Signing.TrustStore != "" {
-						ts, tsErr := signing.LoadTrustStore(
-							a.cfg.Policies.Signing.TrustStore,
-							sigMode == "enforce",
-						)
-						if tsErr != nil {
-							if sigMode == "enforce" {
-								slog.Error(
-									"ensureFUSEMount: trust store load failed",
-									"error",
-									tsErr,
-								)
-								return
-							}
-							slog.Warn("ensureFUSEMount: trust store load failed", "error", tsErr)
-						} else if _, vErr := signing.VerifyPolicyBytes(policyData,
-							policyPath+".sig", ts); vErr != nil {
-							if sigMode == "enforce" {
-								slog.Error(
-									"ensureFUSEMount: policy signing verification failed",
-									"error",
-									vErr,
-								)
-								return
-							}
-							slog.Warn(
-								"ensureFUSEMount: policy signing verification failed",
-								"error",
-								vErr,
-							)
-						}
-					} else if sigMode == "enforce" {
-						slog.Error(
-							"ensureFUSEMount: signing mode is enforce but trust_store not " +
-								"configured",
-						)
-						return
-					} else {
-						slog.Warn(
-							"ensureFUSEMount: signing mode is set but trust_store not configured",
-							"mode",
-							sigMode,
-						)
-					}
+			// Check signatures the same way as session creation.
+			warn := func(msg string) { slog.Warn("ensureFUSEMount: " + msg) }
+			signingCfg := a.cfg.Policies.Signing
+			read := verifiedPolicyReader(signingCfg.SigningMode(), signingCfg.TrustStore, warn)
+			pol, lErr := policy.LoadFile(policyPath, read)
+			var sigErr *policySigningError
+			if errors.As(lErr, &sigErr) {
+				slog.Error("ensureFUSEMount: policy signing verification failed", "error", lErr)
+				return
+			}
+			if lErr == nil {
+				policyVars := map[string]string{
+					"PROJECT_ROOT": s.Workspace,
+					"GIT_ROOT":     s.Workspace,
+					"HOME":         os.Getenv("HOME"),
 				}
-
-				pol, lErr := policy.LoadFromBytes(policyData)
-				if lErr == nil {
-					policyVars := map[string]string{
-						"PROJECT_ROOT": s.Workspace,
-						"GIT_ROOT":     s.Workspace,
-						"HOME":         os.Getenv("HOME"),
-					}
-					enforceApprovals := a.cfg.Approvals.Enabled && a.cfg.Approvals.Mode != ""
-					engine, _ = policy.NewEngineWithVariables(
-						pol,
-						enforceApprovals,
-						true,
-						policyVars,
-					)
-				}
+				enforceApprovals := a.cfg.Approvals.Enabled && a.cfg.Approvals.Mode != ""
+				engine, _ = policy.NewEngineWithVariables(pol, enforceApprovals, true, policyVars)
 			}
 		}
 	}

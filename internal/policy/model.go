@@ -19,6 +19,14 @@ type Policy struct {
 	Description string         `yaml:"description"`
 	Metadata    []RuleMetadata `yaml:"metadata,omitempty"`
 
+	// Extends names base policies in the same directory. Their rules come
+	// first. See LoadFile.
+	Extends PolicyNames `yaml:"extends,omitempty"`
+
+	// inherited counts the rules that came from base policies, so project
+	// overlay rules can go after them.
+	inherited inheritedRuleCounts
+
 	FileRules            []FileRule            `yaml:"file_rules"`
 	NetworkRules         []NetworkRule         `yaml:"network_rules"`
 	CommandRules         []CommandRule         `yaml:"command_rules"`
