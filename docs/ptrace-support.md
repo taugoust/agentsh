@@ -44,10 +44,6 @@ The agentsh server process in the sidecar runs the ptrace tracer loop, which att
 ### 2.3 Component Placement
 
 ```
-cmd/
-  seccomp-probe/               ← Seccomp availability probe
-    main.go                    ← Linux: trivial BPF RET_ALLOW probe
-    main_stub.go               ← Non-Linux stub for cross-platform builds
 internal/
   ptrace/                      ← NEW package
     tracer.go                  ← Core ptrace event loop + ReadyFile sentinel support
