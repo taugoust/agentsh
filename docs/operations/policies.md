@@ -237,16 +237,15 @@ It only has approve rules. It asks for approval before:
   `systemctl` verbs, `loginctl enable-linger`, `direnv allow`, and
   connections to the systemd manager's private sockets.
 
-Its rules are named `base-*` and are checked first. An extending policy
-can't change them, so a deny in the base could never be relaxed. Approve
-keeps the user in the loop instead. It also means an extending policy can't
-turn these approvals into allows or denies.
+Its rules are named `base-*` and are checked first, so an extending policy
+can't turn them into allows or denies. That is why the base has no deny
+rules: nobody could relax them. Approve keeps the user in the loop instead.
 
 Approvals only prompt when `approvals.enabled` is set in the server config.
 With approvals off, approve rules allow the operation and log it. With
 approvals on, a request nobody answers is denied after `approvals.timeout`
-(5m by default). Unix socket checks can't wait for an answer, so the systemd socket rule refuses
-the connection when approvals are on.
+(5m by default). Unix socket checks can't wait for an answer, so the
+systemd socket rule refuses the connection when approvals are on.
 
 It has no allow rules, so on its own it denies everything except file
 reads. Extend it instead:
