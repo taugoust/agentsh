@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"runtime"
 	"strings"
 )
 
@@ -41,30 +40,4 @@ func isRunningInContainer() bool {
 		return strings.Contains(s, "docker") || strings.Contains(s, "kubepods")
 	}
 	return false
-}
-
-// Environment contains information about the current runtime environment.
-type Environment struct {
-	OS             string
-	InContainer    bool
-	InWSL          bool
-	InDevContainer bool
-}
-
-// DetectEnvironment returns information about the current runtime environment.
-func DetectEnvironment() Environment {
-	env := Environment{OS: runtime.GOOS}
-
-	env.InContainer = isRunningInContainer()
-
-	if runtime.GOOS == "linux" {
-		if data, err := os.ReadFile("/proc/version"); err == nil {
-			env.InWSL = strings.Contains(strings.ToLower(string(data)), "microsoft")
-		}
-	}
-
-	env.InDevContainer = os.Getenv("REMOTE_CONTAINERS") != "" ||
-		os.Getenv("CODESPACES") != ""
-
-	return env
 }

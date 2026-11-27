@@ -321,16 +321,6 @@ func removeExistingSocket(socketPath string) error {
 	return nil
 }
 
-func (s *Server) Serve(ctx context.Context, socketPath string) error {
-	ln, err := ListenUnix(socketPath)
-	if err != nil {
-		return err
-	}
-	defer ln.Close()
-	defer os.Remove(socketPath)
-	return s.ServeListener(ctx, ln)
-}
-
 func (s *Server) ServeListener(ctx context.Context, ln net.Listener) error {
 	if s == nil {
 		s = NewServer(nil, nil)

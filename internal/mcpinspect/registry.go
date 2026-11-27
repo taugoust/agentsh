@@ -121,23 +121,3 @@ func (r *Registry) Register(serverID string, tool ToolDefinition) *RegistrationR
 		Definition: tool,
 	}
 }
-
-// Get retrieves a registered tool by server and name.
-func (r *Registry) Get(serverID, toolName string) *RegisteredTool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	return r.tools[serverID+":"+toolName]
-}
-
-// List returns all registered tools.
-func (r *Registry) List() []*RegisteredTool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make([]*RegisteredTool, 0, len(r.tools))
-	for _, tool := range r.tools {
-		result = append(result, tool)
-	}
-	return result
-}

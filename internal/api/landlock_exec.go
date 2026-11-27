@@ -3,7 +3,6 @@
 package api
 
 import (
-	"fmt"
 	"log/slog"
 
 	"github.com/agentsh/agentsh/internal/capabilities"
@@ -87,19 +86,5 @@ func MakeLandlockPostStartHook(
 
 		// No cleanup needed
 		return nil, nil
-	}
-}
-
-// GetLandlockEnvVars returns environment variables to pass to child processes
-// for Landlock-aware wrapper binaries.
-func GetLandlockEnvVars(cfg *config.LandlockConfig, workspace string, abi int) map[string]string {
-	if cfg == nil || !cfg.Enabled {
-		return nil
-	}
-
-	return map[string]string{
-		"AGENTSH_LANDLOCK_ENABLED":   "1",
-		"AGENTSH_LANDLOCK_WORKSPACE": workspace,
-		"AGENTSH_LANDLOCK_ABI":       fmt.Sprintf("%d", abi),
 	}
 }

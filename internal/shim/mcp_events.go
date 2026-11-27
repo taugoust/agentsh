@@ -2,7 +2,6 @@
 package shim
 
 import (
-	"encoding/json"
 	"net"
 	"sync"
 )
@@ -34,40 +33,4 @@ func (f *MCPEventForwarder) Close() error {
 		return f.conn.Close()
 	}
 	return nil
-}
-
-// Emit sends an event to the agentsh server.
-func (f *MCPEventForwarder) Emit(event interface{}) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	if f.conn == nil {
-		return nil
-	}
-
-	data, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	// Write event as JSON line
-	data = append(data, '\n')
-	_, err = f.conn.Write(data)
-	return err
-}
-
-// EmitFunc returns a function suitable for use as mcpinspect.EventEmitter.
-func (f *MCPEventForwarder) EmitFunc() func(interface{}) {
-	return func(event interface{}) {
-		_ = f.Emit(event)
-	}
-}
-
-// LocalEmitter creates an emitter that just logs events locally.
-// Used when no event socket is available.
-func LocalEmitter() func(interface{}) {
-	return func(event interface{}) {
-		// Silent - events are discarded when no socket available
-		// Could add logging here if needed
-	}
 }

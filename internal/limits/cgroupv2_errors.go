@@ -4,7 +4,7 @@ package limits
 
 import "fmt"
 
-// EnableControllersError is returned by enableControllers (and enableControllersFS)
+// EnableControllersError is returned by enableControllersFS
 // when writing to cgroup.subtree_control fails. It carries the parent cgroup
 // directory, the controller that failed (or "*" when the file could not be
 // opened at all), and the underlying OS error.

@@ -248,26 +248,10 @@ func (h *ConnectionHolder) incEventsAudited() {
 	h.stats.mu.Unlock()
 }
 
-func (h *ConnectionHolder) incEventsTimedOut() {
-	h.stats.mu.Lock()
-	h.stats.EventsTimedOut++
-	h.stats.mu.Unlock()
-}
-
 func (h *ConnectionHolder) incErrors() {
 	h.stats.mu.Lock()
 	h.stats.Errors++
 	h.stats.mu.Unlock()
-}
-
-// Filter returns the process filter.
-func (h *ConnectionHolder) Filter() *ProcessFilter {
-	return h.filter
-}
-
-// Collector returns the underlying collector.
-func (h *ConnectionHolder) Collector() *Collector {
-	return h.collector
 }
 
 // Close stops the connection holder.
@@ -559,43 +543,6 @@ func parsePort(s string) (int, error) {
 	return strconv.Atoi(s)
 }
 
-// SetPolicyEngine updates the policy engine and repopulates BPF maps.
-func (m *PNACLMonitor) SetPolicyEngine(engine *pnacl.PolicyEngine) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.engine = engine
-	if m.filter != nil {
-		m.filter.SetPolicyEngine(engine)
-	}
-
-	// Repopulate BPF maps if monitor is running
-	if m.running && m.coll != nil {
-		cgroupID, err := CgroupID(m.cgroupPath)
-		if err == nil {
-			allow, allowCIDRs, deny, denyCIDRs, defaultDeny := m.convertPolicyToMapEntries()
-			_ = PopulateAllowlist(m.coll, cgroupID, allow, allowCIDRs, deny, denyCIDRs, defaultDeny)
-		}
-	}
-}
-
-// SetOnApprovalNeeded sets the approval callback.
-func (m *PNACLMonitor) SetOnApprovalNeeded(fn func(*PendingConnection) pnacl.Decision) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.filter != nil {
-		m.filter.SetOnApprovalNeeded(fn)
-	}
-}
-
-// SetOnAudit sets the audit callback.
-func (m *PNACLMonitor) SetOnAudit(fn func(*ConnectionEvent)) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.filter != nil {
-		m.filter.SetOnAudit(fn)
-	}
-}
-
 // SetOnDeny sets the deny callback.
 func (m *PNACLMonitor) SetOnDeny(fn func(*ConnectionEvent)) {
 	m.mu.Lock()
@@ -614,36 +561,6 @@ func (m *PNACLMonitor) SetOnAllow(fn func(*ConnectionEvent)) {
 	}
 }
 
-// GetPendingConnections returns pending connections awaiting approval.
-func (m *PNACLMonitor) GetPendingConnections() []*PendingConnection {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.filter == nil {
-		return nil
-	}
-	return m.filter.GetPendingConnections()
-}
-
-// ApproveConnection approves a pending connection.
-func (m *PNACLMonitor) ApproveConnection(id uint64) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.filter == nil {
-		return false
-	}
-	return m.filter.ApproveConnection(id)
-}
-
-// DenyConnection denies a pending connection.
-func (m *PNACLMonitor) DenyConnection(id uint64) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.filter == nil {
-		return false
-	}
-	return m.filter.DenyConnection(id)
-}
-
 // GetStats returns connection holder stats.
 func (m *PNACLMonitor) GetStats() *ConnectionHolderStats {
 	m.mu.RLock()
@@ -653,13 +570,6 @@ func (m *PNACLMonitor) GetStats() *ConnectionHolderStats {
 	}
 	stats := m.holder.GetStats()
 	return &stats
-}
-
-// Filter returns the process filter.
-func (m *PNACLMonitor) Filter() *ProcessFilter {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.filter
 }
 
 // Stop stops monitoring.

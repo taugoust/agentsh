@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -114,11 +113,6 @@ func (pr *PathRedirector) RedirectWithInfo(path string, operation string) *types
 	}
 
 	return nil
-}
-
-// EnsureRedirectDir creates the parent directory for a redirected path if needed.
-func EnsureRedirectDir(redirectPath string) error {
-	return os.MkdirAll(filepath.Dir(redirectPath), 0o755)
 }
 
 func matchRedirectOp(ops map[string]struct{}, op string) bool {

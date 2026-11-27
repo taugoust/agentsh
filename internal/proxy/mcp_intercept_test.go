@@ -1185,15 +1185,6 @@ func TestInterceptMCPToolCalls_OpenAIPartialBlock(t *testing.T) {
 	}
 }
 
-// newDenylistPolicy creates a policy that denies the specified tools.
-func newDenylistPolicy(rules []config.MCPToolRule) *mcpinspect.PolicyEvaluator {
-	return mcpinspect.NewPolicyEvaluator(config.SandboxMCPConfig{
-		EnforcePolicy: true,
-		ToolPolicy:    "denylist",
-		DeniedTools:   rules,
-	})
-}
-
 func TestInterceptMCPToolCalls_MixedMCPAndNonMCP(t *testing.T) {
 	// One tool is in the registry (MCP), one is not (non-MCP).
 	// Only the MCP tool should generate an event.

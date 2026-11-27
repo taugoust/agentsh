@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/spf13/cobra"
 )
 
 func TestCheckpointCmd_Create(t *testing.T) {
@@ -384,14 +382,4 @@ func TestCheckpointCmd_MissingSession(t *testing.T) {
 	if !strings.Contains(err.Error(), "--session is required") {
 		t.Errorf("expected '--session is required' error, got: %v", err)
 	}
-}
-
-// Helper to run a cobra command in tests
-func executeCommand(root *cobra.Command, args ...string) (output string, err error) {
-	buf := new(bytes.Buffer)
-	root.SetOut(buf)
-	root.SetErr(buf)
-	root.SetArgs(args)
-	err = root.Execute()
-	return buf.String(), err
 }

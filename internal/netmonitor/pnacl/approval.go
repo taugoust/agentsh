@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agentsh/agentsh/internal/approval/notify"
 	"github.com/google/uuid"
 )
 
@@ -531,81 +530,4 @@ func (p *TTYPromptProvider) Prompt(ctx context.Context, req ApprovalRequest) (Ap
 			Persistent: decision == UserDecisionAllowPermanent || decision == UserDecisionDenyForever,
 		}, nil
 	}
-}
-
-// NotificationPromptProvider implements PromptProvider for desktop notifications.
-// Uses notify-send --action on Linux for lightweight approval prompts that
-// appear in the notification area without stealing focus.
-type NotificationPromptProvider struct {
-	// FallbackDecision is returned when notification is dismissed or unavailable.
-	FallbackDecision UserDecision
-}
-
-// NewNotificationPromptProvider creates a new notification prompt provider.
-func NewNotificationPromptProvider(fallback UserDecision) *NotificationPromptProvider {
-	return &NotificationPromptProvider{
-		FallbackDecision: fallback,
-	}
-}
-
-// Prompt sends a desktop notification with Allow/Deny action buttons and waits for response.
-func (p *NotificationPromptProvider) Prompt(ctx context.Context, req ApprovalRequest) (ApprovalResponse, error) {
-	notifyReq := notify.Request{
-		Title: "Network Access Request",
-		Message: fmt.Sprintf("Process: %s (pid: %d)\nTarget: %s:%d (%s)",
-			req.ProcessName, req.PID, req.Target, req.Port, req.Protocol),
-		Timeout: time.Until(req.ExpiresAt),
-		Urgency: "normal",
-	}
-
-	resp, err := notify.Show(ctx, notifyReq)
-
-	if err != nil || resp.Dismissed || resp.TimedOut {
-		reason := "notification dismissed"
-		if resp.TimedOut {
-			reason = "notification timed out"
-		}
-		if err != nil {
-			reason = fmt.Sprintf("notification unavailable: %v", err)
-		}
-		return ApprovalResponse{
-			RequestID: req.ID,
-			Decision:  p.FallbackDecision,
-			At:        time.Now().UTC(),
-			Reason:    reason,
-		}, nil
-	}
-
-	decision := UserDecisionDenyOnce
-	if resp.Allowed {
-		decision = UserDecisionAllowOnce
-	}
-
-	return ApprovalResponse{
-		RequestID: req.ID,
-		Decision:  decision,
-		At:        time.Now().UTC(),
-	}, nil
-}
-
-// RemoteAPIPromptProvider implements PromptProvider for remote API approval.
-// This allows forwarding approval requests to an external service.
-type RemoteAPIPromptProvider struct {
-	// Endpoint is the URL of the remote approval service.
-	Endpoint string
-	// Fallback is the decision to use when the remote API is unavailable.
-	Fallback UserDecision
-}
-
-// Prompt sends the approval request to a remote API and waits for response.
-// Note: This is a stub implementation. Real implementation would make HTTP calls.
-func (p *RemoteAPIPromptProvider) Prompt(ctx context.Context, req ApprovalRequest) (ApprovalResponse, error) {
-	// TODO: Implement HTTP-based remote approval
-	// For now, return the fallback decision
-	return ApprovalResponse{
-		RequestID: req.ID,
-		Decision:  p.Fallback,
-		At:        time.Now().UTC(),
-		Reason:    "remote API not implemented",
-	}, nil
 }

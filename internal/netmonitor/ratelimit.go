@@ -49,26 +49,6 @@ func (d *DomainRateLimiter) Allow(domain string) bool {
 	return true
 }
 
-// AllowN checks if n requests to a domain are allowed.
-func (d *DomainRateLimiter) AllowN(domain string, n int) bool {
-	if !d.cfg.Enabled {
-		return true
-	}
-
-	// Check global limit first
-	if d.global != nil && !d.global.AllowN(n) {
-		return false
-	}
-
-	// Check per-domain limit
-	limiter := d.getDomainLimiter(domain)
-	if limiter != nil {
-		return limiter.AllowN(n)
-	}
-
-	return true
-}
-
 func (d *DomainRateLimiter) getDomainLimiter(domain string) *ratelimit.Limiter {
 	// Check if there's a specific config for this domain
 	domainCfg, exists := d.cfg.PerDomain[domain]
@@ -118,11 +98,4 @@ func (d *DomainRateLimiter) Stats() map[string]float64 {
 		stats[domain] = limiter.Tokens()
 	}
 	return stats
-}
-
-// Reset clears all domain limiters (useful for testing or config reload).
-func (d *DomainRateLimiter) Reset() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.domains = make(map[string]*ratelimit.Limiter)
 }

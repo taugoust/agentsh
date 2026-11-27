@@ -547,15 +547,6 @@ func lookupShellInPath(shellName string) (string, error) {
 	return "", fmt.Errorf("could not find %s in PATH", shellName)
 }
 
-func execOrExit(path string, argv []string, env []string) {
-	if err := syscall.Exec(path, argv, env); err != nil {
-		fatalWithHint(127,
-			fmt.Sprintf("agentsh-shell-shim: exec %s: %v", path, err),
-			"If you see 'permission denied' in a container, check that the shim and agentsh binaries are executable.",
-		)
-	}
-}
-
 // runAndExit runs a command as a child process, copies its stdout/stderr
 // through the shim process, and exits with the child's exit code.
 //

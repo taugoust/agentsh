@@ -51,14 +51,6 @@ func NewManager(dir, defaultName string, allowed []string, manifestPath, envName
 	}
 }
 
-// SelectedName returns the bound policy name (without suffix).
-func (m *Manager) SelectedName() string {
-	if m == nil {
-		return ""
-	}
-	return m.selectedName
-}
-
 // SetSigningConfig configures signature verification for this manager.
 // mode is "enforce", "warn", or "off". trustStorePath is a directory of public key JSON files.
 func (m *Manager) SetSigningConfig(mode, trustStorePath string) {

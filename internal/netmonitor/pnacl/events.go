@@ -107,11 +107,6 @@ func NewApprovalEventEmitter(base EventEmitter, sessionID string) *ApprovalEvent
 	}
 }
 
-// EmitNetworkACLEvent emits the event with the appropriate type based on decision.
-func (e *ApprovalEventEmitter) EmitNetworkACLEvent(ctx context.Context, event NetworkACLEvent) error {
-	return e.base.EmitNetworkACLEvent(ctx, event)
-}
-
 // EmitApprovalRequested emits an event when an approval is requested.
 func (e *ApprovalEventEmitter) EmitApprovalRequested(ctx context.Context, req ApprovalRequest) error {
 	event := NetworkACLEvent{

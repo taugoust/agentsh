@@ -51,11 +51,6 @@ type LifecycleHooks struct {
 	OnStatsUpdate func(session *Session, stats *types.SessionStats)
 }
 
-// DefaultHooks returns lifecycle hooks with no-op implementations.
-func DefaultHooks() *LifecycleHooks {
-	return &LifecycleHooks{}
-}
-
 // Merge combines two LifecycleHooks, calling both callbacks in order.
 func (h *LifecycleHooks) Merge(other *LifecycleHooks) *LifecycleHooks {
 	if other == nil {

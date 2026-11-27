@@ -77,10 +77,6 @@ func validateEphemeralNethelperRuntime(runtimeLimit time.Duration) error {
 	return nil
 }
 
-func bootstrapEphemeralNethelper(uid, gid uint32, leaseID string, runtimeLimit time.Duration) (result nethelperBootstrapResult, retErr error) {
-	return bootstrapEphemeralNethelperWithSoftLease(uid, gid, leaseID, runtimeLimit, 0)
-}
-
 func bootstrapEphemeralNethelperWithSoftLease(uid, gid uint32, leaseID string, runtimeLimit, softLease time.Duration) (result nethelperBootstrapResult, retErr error) {
 	if err := validateEphemeralNethelperRuntime(runtimeLimit); err != nil {
 		return result, err

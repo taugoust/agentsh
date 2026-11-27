@@ -538,29 +538,6 @@ func configureWrapCommandBoundary(attr *syscall.SysProcAttr, requirements *types
 	return nil
 }
 
-func readWrapControlByte(file *os.File, expected byte) error {
-	if file == nil {
-		return fmt.Errorf("control socket is unavailable")
-	}
-	buf := []byte{0}
-	for {
-		n, err := file.Read(buf)
-		if err != nil && errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if n != 1 {
-			return fmt.Errorf("read %d control bytes, want 1", n)
-		}
-		if buf[0] != expected {
-			return fmt.Errorf("unexpected control byte 0x%02x, want 0x%02x", buf[0], expected)
-		}
-		return nil
-	}
-}
-
 func writeWrapControlByte(file *os.File, value byte) error {
 	if file == nil {
 		return fmt.Errorf("control socket is unavailable")

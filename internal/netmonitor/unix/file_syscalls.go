@@ -374,24 +374,6 @@ func (a *FileArgs) applyOpenHow(how OpenHowContext) {
 	a.Mode = uint32(how.Mode)
 }
 
-// readOpenHow is retained for existing policy/emulation callers. New lookup
-// code must use readOpenHowExact so resolve and size semantics cannot be lost.
-func readOpenHow(pid int, howPtr uint64) (flags uint64, mode uint64, err error) {
-	how, err := readOpenHowExact(pid, howPtr, openHowSizeVersion0)
-	if err != nil {
-		return 0, 0, err
-	}
-	return how.Flags, how.Mode, nil
-}
-
-func readOpenHowWithFallback(pid int, howPtr uint64) (flags uint64, mode uint64, err error) {
-	how, err := readOpenHowExactWithFallback(pid, howPtr, openHowSizeVersion0)
-	if err != nil {
-		return 0, 0, err
-	}
-	return how.Flags, how.Mode, nil
-}
-
 // readOpenHowResolve is retained for compatibility with callers that only need
 // the version-0 resolve field. It still requires a complete eight-byte read.
 func readOpenHowResolve(pid int, howPtr uint64) (uint64, error) {
@@ -503,13 +485,6 @@ func fileSyscallName(nr int32) string {
 // and resolves a policy path relative to the supplied dirfd.
 func resolvePathAt(pid int, dirfd int32, pathPtr uint64) (string, error) {
 	_, resolved, err := resolvePathAtDetailed(pid, dirfd, pathPtr, false)
-	return resolved, err
-}
-
-// resolvePathAtWithFallback is like resolvePathAt but uses /proc/<pid>/mem
-// when process_vm_readv itself fails. It never accepts a non-NUL partial read.
-func resolvePathAtWithFallback(pid int, dirfd int32, pathPtr uint64) (string, error) {
-	_, resolved, err := resolvePathAtDetailed(pid, dirfd, pathPtr, true)
 	return resolved, err
 }
 

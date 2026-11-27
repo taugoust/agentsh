@@ -110,15 +110,6 @@ func MustNew() Platform {
 	return p
 }
 
-// MustNewWithMode is like NewWithMode but panics on error.
-func MustNewWithMode(mode PlatformMode) Platform {
-	p, err := NewWithMode(mode)
-	if err != nil {
-		panic(fmt.Sprintf("platform.NewWithMode(%v): %v", mode, err))
-	}
-	return p
-}
-
 // Platform constructor functions - implemented in platform-specific files.
 // These are variables so they can be set by build-tag-specific files.
 

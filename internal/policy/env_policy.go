@@ -157,14 +157,6 @@ func uniqStrings(in []string) []string {
 	return out
 }
 
-func toSet(in []string) map[string]bool {
-	m := make(map[string]bool, len(in))
-	for _, s := range in {
-		m[s] = true
-	}
-	return m
-}
-
 // compilePatterns compiles a list of glob patterns, returning nil on error.
 func compilePatterns(patterns []string) []glob.Glob {
 	var compiled []glob.Glob

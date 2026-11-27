@@ -480,33 +480,6 @@ func (s *ReceivedSetup) HasRightsDescendant(source *os.File, rightsMask uint64) 
 	return false, nil
 }
 
-// ExactPolicyObject returns the retained base-policy object matching source.
-// Ancestor pathname allowance is intentionally insufficient: moving a strict
-// descendant away from its tagged mount ancestry loses the ancestor grant.
-func (s *ReceivedSetup) ExactPolicyObject(source *os.File) (*ReceivedSetupObject, error) {
-	if s == nil || source == nil {
-		return nil, typedError("E_COMPOSITION_SETUP_MISSING", "retained policy objects are unavailable")
-	}
-	var sourceStat unix.Stat_t
-	if err := unix.Fstat(int(source.Fd()), &sourceStat); err != nil {
-		return nil, typedError("E_COMPOSITION_SETUP_INVALID", "stat resolved source object")
-	}
-	for index := range s.Objects {
-		object := &s.Objects[index]
-		if object.Kind != SetupObjectPolicy || object.File == nil {
-			continue
-		}
-		var objectStat unix.Stat_t
-		if err := unix.Fstat(int(object.File.Fd()), &objectStat); err != nil {
-			return nil, typedError("E_COMPOSITION_SETUP_INVALID", "stat retained policy object")
-		}
-		if sourceStat.Dev == objectStat.Dev && sourceStat.Ino == objectStat.Ino {
-			return object, nil
-		}
-	}
-	return nil, typedError("E_COMPOSITION_TOPOLOGY_UNRESOLVED", "source is not an exact retained policy object")
-}
-
 func (s *ReceivedSetup) Close() {
 	if s == nil {
 		return

@@ -730,10 +730,6 @@ func detachedSupervisorFixedEnvironment(ctx context.Context) []string {
 	return append([]string(nil), assignments...)
 }
 
-func startDetachedSupervisorSession(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile string) (*detachedSessionStartResult, error) {
-	return startDetachedSupervisorSessionAtGeneration(ctx, requestedSessionID, workspaces, workspaceMode, policyName, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, "", 1)
-}
-
 func startDetachedSupervisorSessionWithInput(ctx context.Context, requestedSessionID string, workspaces []string, workspaceMode, policyName, runtimeHomeMode, envBaseMode string, envInherit []string, runtimeProfile, inputBundle string) (*detachedSessionStartResult, error) {
 	return startDetachedSupervisorSessionAtGeneration(ctx, requestedSessionID, workspaces, workspaceMode, policyName, runtimeHomeMode, envBaseMode, envInherit, runtimeProfile, inputBundle, 1)
 }
@@ -1007,21 +1003,6 @@ func startNativeDetachedSupervisorSession(ctx context.Context, request runtimepr
 	meta.Worktree = worktree
 	keepSupervisor = true
 	return &detachedSessionStartResult{supervisorMetadata: meta, Session: sess, StateDir: stateDir}, nil
-}
-
-func detachedSupervisorRuntimeHandshake(ctx context.Context, c *client.Client, sessionID string) (*detached.NetworkEnforcement, error) {
-	if c == nil {
-		return nil, fmt.Errorf("supervisor client is nil")
-	}
-	handshakeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	var report detached.NetworkEnforcement
-	path := "/api/v1/sessions/" + url.PathEscape(sessionID) + "/network-enforcement/preflight"
-	if err := c.DoRawJSON(handshakeCtx, http.MethodPost, path, []byte(`{}`), &report); err != nil {
-		return nil, err
-	}
-	report.Normalize()
-	return &report, nil
 }
 
 func waitForSupervisor(ctx context.Context, sockPath string, c *client.Client) error {

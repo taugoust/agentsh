@@ -16,7 +16,6 @@ type QuotaManager struct {
 
 	// Callbacks
 	onWarning func(id string, resource ResourceType, percentage float64)
-	onExceed  func(id string, resource ResourceType, err *QuotaExceededError)
 }
 
 // ResourceQuota tracks usage of a resource.
@@ -56,13 +55,6 @@ func (q *QuotaManager) OnWarning(fn func(id string, resource ResourceType, perce
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.onWarning = fn
-}
-
-// OnExceed sets a callback for quota exceeded events.
-func (q *QuotaManager) OnExceed(fn func(id string, resource ResourceType, err *QuotaExceededError)) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.onExceed = fn
 }
 
 // GetSessionLimiter returns a rate limiter for a session and resource type.
@@ -277,15 +269,6 @@ func (q *QuotaManager) CheckAndConsume(ctx context.Context, scope, id string, re
 			Used:      quota.Used,
 			Requested: amount,
 		}
-
-		q.mu.RLock()
-		onExceed := q.onExceed
-		q.mu.RUnlock()
-
-		if onExceed != nil {
-			onExceed(id, resource, err)
-		}
-
 		return err
 	}
 

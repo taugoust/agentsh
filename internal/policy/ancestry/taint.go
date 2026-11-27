@@ -138,64 +138,10 @@ type TaintCache struct {
 	classifyProcess func(comm string) ProcessClass
 }
 
-// RaceAction specifies what to do when a race condition is detected.
-type RaceAction string
-
-const (
-	// RaceActionDeny denies the operation when race detected.
-	RaceActionDeny RaceAction = "deny"
-	// RaceActionAllow allows the operation despite race detection.
-	RaceActionAllow RaceAction = "allow"
-	// RaceActionApprove requires explicit user approval.
-	RaceActionApprove RaceAction = "approve"
-)
-
-// RacePolicy configures how to handle race conditions in taint validation.
-type RacePolicy struct {
-	OnMissingParent   RaceAction // Parent process exited before we could validate
-	OnPIDMismatch     RaceAction // PID was reused (start time mismatch)
-	OnValidationError RaceAction // Error during validation (e.g., permission denied)
-	LogRaceConditions bool       // Whether to log when race conditions are detected
-}
-
-// DefaultRacePolicy returns a conservative default race policy.
-func DefaultRacePolicy() RacePolicy {
-	return RacePolicy{
-		OnMissingParent:   RaceActionAllow, // Trust cached data if parent exited
-		OnPIDMismatch:     RaceActionDeny,  // Deny if PID was reused
-		OnValidationError: RaceActionDeny,  // Deny on validation errors
-		LogRaceConditions: true,
-	}
-}
-
-// PropagationConfig controls taint propagation behavior.
-type PropagationConfig struct {
-	MaxDepth   int           // Maximum ancestry depth (0 = unlimited)
-	TTL        time.Duration // Taint entry TTL (0 = no expiration)
-	RacePolicy RacePolicy    // How to handle race conditions
-}
-
-// DefaultPropagationConfig returns sensible defaults for propagation.
-func DefaultPropagationConfig() PropagationConfig {
-	return PropagationConfig{
-		MaxDepth:   100,
-		TTL:        time.Hour,
-		RacePolicy: DefaultRacePolicy(),
-	}
-}
-
 // TaintCacheConfig configures the TaintCache.
 type TaintCacheConfig struct {
 	TTL      time.Duration // Time-to-live for taint entries (0 = no expiration)
 	MaxDepth int           // Maximum ancestry depth (0 = unlimited)
-}
-
-// TaintCacheConfigFromPropagation creates a TaintCacheConfig from PropagationConfig.
-func TaintCacheConfigFromPropagation(pc PropagationConfig) TaintCacheConfig {
-	return TaintCacheConfig{
-		TTL:      pc.TTL,
-		MaxDepth: pc.MaxDepth,
-	}
 }
 
 // NewTaintCache creates a new TaintCache with the given configuration.

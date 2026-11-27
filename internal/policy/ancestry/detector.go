@@ -3,9 +3,7 @@
 package ancestry
 
 import (
-	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -440,19 +438,6 @@ func (r *AgentRegistry) GetInfo(pid int) (RegistrationInfo, bool) {
 	defer r.mu.RUnlock()
 	info, ok := r.registered[pid]
 	return info, ok
-}
-
-// CheckMarkerFile checks for an agent marker file.
-// Agents can create ~/.agentsh/agent-<pid> to self-register.
-func (r *AgentRegistry) CheckMarkerFile(pid int) bool {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false
-	}
-
-	markerPath := filepath.Join(home, ".agentsh", "agent-"+strconv.Itoa(pid))
-	_, err = os.Stat(markerPath)
-	return err == nil
 }
 
 // BehaviorDetector detects agent behavior through heuristics.

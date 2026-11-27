@@ -712,19 +712,3 @@ func AddTemporaryAllowRule(coll *ebpf.Collection, cgroupID uint64, key AllowKey)
 	}
 	return nil
 }
-
-// RemoveTemporaryAllowRule removes a previously added temporary allow rule.
-func RemoveTemporaryAllowRule(coll *ebpf.Collection, cgroupID uint64, key AllowKey) error {
-	if coll == nil {
-		return nil
-	}
-	allowMap, ok := coll.Maps["allowlist"]
-	if !ok {
-		return nil
-	}
-
-	k := key
-	k.CgroupID = cgroupID
-	_ = allowMap.Delete(k) // best effort
-	return nil
-}

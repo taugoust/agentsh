@@ -50,7 +50,6 @@ type EventFactory struct {
 	ctx       *RuntimeContext
 	sessionID string
 	sequence  int64
-	sanitizer *Sanitizer
 	config    *EventConfig
 }
 
@@ -63,7 +62,6 @@ func NewEventFactory(ctx *RuntimeContext, sessionID string, config *EventConfig)
 		ctx:       ctx,
 		sessionID: sessionID,
 		config:    config,
-		sanitizer: NewSanitizer(config.SanitizePatterns),
 	}
 }
 
@@ -138,55 +136,6 @@ func (f *EventFactory) NewEvent(eventType EventType, pid int) *BaseEvent {
 	}
 
 	return event
-}
-
-// SetCommandID sets the command ID for correlation.
-func (f *EventFactory) SetCommandID(event *BaseEvent, commandID string) {
-	event.CommandID = commandID
-}
-
-// SetTraceContext sets OpenTelemetry trace context.
-func (f *EventFactory) SetTraceContext(event *BaseEvent, traceID, spanID, parentSpanID string) {
-	event.TraceID = traceID
-	event.SpanID = spanID
-	event.ParentSpanID = parentSpanID
-	event.TraceFlags = "01" // sampled
-}
-
-// SetDecision sets policy decision information.
-func (f *EventFactory) SetDecision(event *BaseEvent, decision, rule string) {
-	event.Decision = decision
-	event.PolicyRule = rule
-}
-
-// SetError sets error context.
-func (f *EventFactory) SetError(event *BaseEvent, err error, code string, errno int) {
-	if err != nil {
-		event.Error = err.Error()
-	}
-	event.ErrorCode = code
-	event.Errno = errno
-}
-
-// SanitizePath sanitizes a path if configured.
-func (f *EventFactory) SanitizePath(event *BaseEvent, path string) string {
-	if !f.config.SanitizePaths {
-		return path
-	}
-	sanitized, fields := f.sanitizer.SanitizePath(path)
-	if len(fields) > 0 {
-		event.SanitizedFields = append(event.SanitizedFields, fields...)
-		event.SanitizationReason = "sensitive_path_pattern"
-	}
-	return sanitized
-}
-
-// SanitizeCmdline sanitizes command line arguments if configured.
-func (f *EventFactory) SanitizeCmdline(event *BaseEvent, cmdline []string) []string {
-	if !f.config.SanitizePaths {
-		return cmdline
-	}
-	return f.sanitizer.SanitizeCmdline(cmdline)
 }
 
 func generateEventID() string {

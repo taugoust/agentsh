@@ -49,10 +49,6 @@ func resolveStatementWithContext(stmt effects.ClassifiedStatement, ctx resolveCo
 	return out
 }
 
-func resolveEffect(eff effects.Effect, fixture CatalogFixture) effects.Effect {
-	return resolveEffectWithContext(eff, newResolveContext(fixture))
-}
-
 func resolveEffectWithContext(eff effects.Effect, ctx resolveContext) effects.Effect {
 	out := eff
 	out.ResolvedObjects = nil
@@ -91,10 +87,6 @@ func resolveEffectWithContext(eff effects.Effect, ctx resolveContext) effects.Ef
 		out.Resolution = effects.ResolutionCatalogUnresolved
 	}
 	return out
-}
-
-func resolveObject(obj effects.ObjectRef, fixture CatalogFixture) effects.ResolvedObjectRef {
-	return resolveObjectWithContext(obj, resolveContext{fixture: fixture})
 }
 
 func resolveObjectWithContext(obj effects.ObjectRef, ctx resolveContext) effects.ResolvedObjectRef {
@@ -162,10 +154,6 @@ func isCatalogRelationObject(kind effects.ObjectKind) bool {
 	default:
 		return false
 	}
-}
-
-func resolveFunctionOID(oid int32, fixture CatalogFixture) effects.ResolvedObjectRef {
-	return resolveFunctionOIDWithContext(oid, newResolveContext(fixture))
 }
 
 func resolveFunctionOIDWithContext(oid int32, ctx resolveContext) effects.ResolvedObjectRef {

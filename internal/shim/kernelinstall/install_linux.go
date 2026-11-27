@@ -23,7 +23,6 @@ import (
 	"github.com/agentsh/agentsh/internal/composition"
 	"github.com/agentsh/agentsh/internal/envinject"
 	"github.com/agentsh/agentsh/internal/wrapenv"
-	"github.com/agentsh/agentsh/internal/wraphandoff"
 	"github.com/agentsh/agentsh/internal/wrapperlog"
 	"github.com/agentsh/agentsh/pkg/types"
 	"golang.org/x/sys/unix"
@@ -425,26 +424,6 @@ func configureCommandJailProcess(attr *syscall.SysProcAttr, requirements *types.
 	return nil
 }
 
-func readCommandJailControlByte(file *os.File, expected byte) error {
-	buf := []byte{0}
-	for {
-		n, err := file.Read(buf)
-		if err != nil && errors.Is(err, syscall.EINTR) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if n != 1 {
-			return fmt.Errorf("read %d control bytes, want 1", n)
-		}
-		if buf[0] != expected {
-			return fmt.Errorf("unexpected control byte 0x%02x, want 0x%02x", buf[0], expected)
-		}
-		return nil
-	}
-}
-
 func writeCommandJailControlByte(file *os.File, value byte) error {
 	n, err := file.Write([]byte{value})
 	if err != nil {
@@ -662,95 +641,6 @@ func createPipe() (int, int, error) {
 		return -1, -1, errno
 	}
 	return fds[0], fds[1], nil
-}
-
-// recvNotifyFD receives a file descriptor from a Unix socket using SCM_RIGHTS.
-// Mirrors internal/cli/wrap_linux.go recvNotifyFD.
-func recvNotifyFD(sock *os.File) (int, error) {
-	if sock == nil {
-		return -1, errors.New("nil notify socket")
-	}
-	buf := make([]byte, 1)
-	oob := make([]byte, unix.CmsgSpace(4*2))
-	n, oobn, flags, _, err := unix.Recvmsg(int(sock.Fd()), buf, oob, unix.MSG_CMSG_CLOEXEC)
-	if err != nil {
-		return -1, fmt.Errorf("recvmsg: %w", err)
-	}
-	if n != 1 || oobn == 0 {
-		return -1, fmt.Errorf("invalid notify fd packet (n=%d, oobn=%d)", n, oobn)
-	}
-	msgs, err := unix.ParseSocketControlMessage(oob[:oobn])
-	if err != nil {
-		return -1, fmt.Errorf("parse control message: %w", err)
-	}
-	var received []int
-	closeReceived := func() {
-		for _, fd := range received {
-			_ = unix.Close(fd)
-		}
-	}
-	for _, message := range msgs {
-		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SCM_RIGHTS {
-			closeReceived()
-			return -1, fmt.Errorf("unexpected notify ancillary level=%d type=%d", message.Header.Level, message.Header.Type)
-		}
-		fds, parseErr := unix.ParseUnixRights(&message)
-		if parseErr != nil {
-			closeReceived()
-			return -1, fmt.Errorf("parse notify descriptors: %w", parseErr)
-		}
-		received = append(received, fds...)
-	}
-	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 {
-		closeReceived()
-		return -1, errors.New("truncated notify fd packet")
-	}
-	if len(msgs) != 1 || len(received) != 1 {
-		closeReceived()
-		return -1, fmt.Errorf("expected exactly one notify descriptor, received %d", len(received))
-	}
-	return received[0], nil
-}
-
-// forwardNotifyFDWithPID connects to the server's Unix listener socket, sends
-// the notify fd plus wrapper PID metadata, and waits for server setup status.
-func forwardNotifyFDWithPID(socketPath string, notifyFD int, wrapperPID int, commandJail bool) error {
-	return forwardNotifyHandoffWithPID(socketPath, notifyFD, -1, wrapperPID, commandJail)
-}
-
-func forwardNotifyHandoffWithPID(socketPath string, notifyFD, setupFD, wrapperPID int, commandJail bool) error {
-	conn, err := net.Dial("unix", socketPath)
-	if err != nil {
-		return fmt.Errorf("dial %s: %w", socketPath, err)
-	}
-	defer conn.Close()
-
-	unixConn, ok := conn.(*net.UnixConn)
-	if !ok {
-		return fmt.Errorf("not a unix connection")
-	}
-
-	metadata := wraphandoff.Metadata{WrapperPID: wrapperPID, CommandJail: commandJail}
-	var sendErr error
-	if setupFD >= 0 {
-		sendErr = wraphandoff.SendNotifyFDWithSetup(unixConn, notifyFD, setupFD, metadata)
-	} else {
-		sendErr = wraphandoff.SendNotifyFD(unixConn, notifyFD, metadata)
-	}
-	if sendErr != nil {
-		return sendErr
-	}
-	if err := unixConn.SetReadDeadline(time.Now().Add(notifySetupStatusTimeout)); err != nil {
-		return fmt.Errorf("set notify setup status deadline: %w", err)
-	}
-	if err := wraphandoff.ReadStatus(unixConn); err != nil {
-		var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
-			return fmt.Errorf("timed out waiting for notify setup status after %s: %w", notifySetupStatusTimeout, err)
-		}
-		return fmt.Errorf("read notify setup status: %w", err)
-	}
-	return nil
 }
 
 // filterSignalSockFD returns a copy of env with AGENTSH_SIGNAL_SOCK_FD

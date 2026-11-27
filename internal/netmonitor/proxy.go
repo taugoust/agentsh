@@ -1092,13 +1092,6 @@ func (p *Proxy) checkConnectNetwork(ctx context.Context, commandID string, host 
 	return dec
 }
 
-func (p *Proxy) isDBUnavoidabilityTCPDirectRule(ruleName string) bool {
-	if p == nil {
-		return false
-	}
-	return isDBUnavoidabilityTCPDirectRule(p.policyEngine(), ruleName)
-}
-
 func (p *Proxy) policyEngine() *policy.Engine {
 	if p == nil {
 		return nil

@@ -2,10 +2,8 @@ package cli
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -213,16 +211,4 @@ func parseTimeOrAgo(s string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return t.UTC(), nil
-}
-
-func mustLoadEventJSON(path string) ([]types.Event, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var evs []types.Event
-	if err := json.Unmarshal(b, &evs); err != nil {
-		return nil, err
-	}
-	return evs, nil
 }

@@ -348,13 +348,6 @@ func buildPrefilterBPF(cfg *TracerConfig) ([]unix.SockFilter, error) {
 	return buildBPFForSyscalls(tracedSyscallNumbers(cfg))
 }
 
-// buildNarrowPrefilterBPF generates a BPF filter that excludes read/write
-// syscalls from the traced set. Used as the initial filter; read/write are
-// lazily escalated per-TGID when needed.
-func buildNarrowPrefilterBPF(cfg *TracerConfig) ([]unix.SockFilter, error) {
-	return buildBPFForSyscalls(narrowTracedSyscallNumbers(cfg))
-}
-
 // buildEscalationBPF generates a minimal BPF filter that traces only the
 // specified syscalls. Installed on top of the narrow filter via seccomp
 // stacking to add read/write when needed.

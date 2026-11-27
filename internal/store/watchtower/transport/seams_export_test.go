@@ -2,7 +2,6 @@ package transport
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"github.com/agentsh/agentsh/internal/store/watchtower/wal"
@@ -102,12 +101,6 @@ func ComputeReplayStartForTest(t *Transport, replay AckCursor, persisted AckCurs
 // orchestration without driving the Run loop or opening real Readers.
 func ComputeReplayPlanForTest(t *Transport, replay AckCursor, persisted AckCursor) ([]ReplayStage, error) {
 	return t.computeReplayPlan(replay, persisted)
-}
-
-// LoggerForTest returns the resolved logger so tests can sanity-check the
-// New() default wiring.
-func LoggerForTest(t *Transport) *slog.Logger {
-	return t.opts.Logger
 }
 
 // RecvSessionForTest is the round-22 integration-test seam that returns
@@ -263,13 +256,6 @@ func StartRecvForTest(t *Transport, parent context.Context) *RecvSessionHandle {
 		errCh:    rs.errCh,
 		done:     rs.done,
 	}
-}
-
-// LogGoawayMessageForTest returns the transport's LogGoawayMessage option
-// value so integration tests can assert the wiring path from
-// watchtower.Options → transport.Options.
-func LogGoawayMessageForTest(t *Transport) bool {
-	return t.opts.LogGoawayMessage
 }
 
 // TeardownRecvForTest invokes the production teardownRecv helper so

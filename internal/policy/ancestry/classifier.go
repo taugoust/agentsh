@@ -24,14 +24,6 @@ func NewClassifier() *Classifier {
 	}
 }
 
-// NewClassifierWithRegistry creates a classifier with a custom class registry.
-func NewClassifierWithRegistry(registry *pattern.ClassRegistry) *Classifier {
-	return &Classifier{
-		registry:    registry,
-		customRules: make(map[string]ProcessClass),
-	}
-}
-
 // AddCustomRule adds a custom classification rule.
 // Custom rules take precedence over built-in class matching.
 func (c *Classifier) AddCustomRule(commPattern string, class ProcessClass) {
@@ -115,11 +107,6 @@ func (c *Classifier) ClassifyChain(via []string) []ProcessClass {
 // ClassifyProcess is a convenience function using a default classifier.
 func ClassifyProcess(comm string) ProcessClass {
 	return DefaultClassifier.Classify(comm)
-}
-
-// ClassifyChain is a convenience function using a default classifier.
-func ClassifyChainDefault(via []string) []ProcessClass {
-	return DefaultClassifier.ClassifyChain(via)
 }
 
 // DefaultClassifier is a global classifier instance.
@@ -257,17 +244,6 @@ func ChainContainsComm(via []string, patterns []string) bool {
 			if compiled.Match(comm) {
 				return true
 			}
-		}
-	}
-	return false
-}
-
-// ChainMatchesPattern checks if any via entry matches a pattern.
-func ChainMatchesPattern(via []string, p *pattern.Pattern, resolver func(string) ([]string, error)) bool {
-	for _, comm := range via {
-		match, _ := p.MatchWithResolver(comm, resolver)
-		if match {
-			return true
 		}
 	}
 	return false

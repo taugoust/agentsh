@@ -227,18 +227,6 @@ func (m *CheckpointManager) Diff(sessionID, checkpointID, workspacePath string) 
 	return fs.Diff(sessionID, checkpointID, workspacePath)
 }
 
-// DeleteCheckpoint removes a checkpoint.
-func (m *CheckpointManager) DeleteCheckpoint(sessionID, checkpointID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.storage == nil {
-		return ErrCheckpointNotFound
-	}
-
-	return m.storage.Delete(sessionID, checkpointID)
-}
-
 // PurgeCheckpoints removes old checkpoints based on age and count limits.
 func (m *CheckpointManager) PurgeCheckpoints(sessionID string, maxAge time.Duration, maxCount int) (int, error) {
 	m.mu.Lock()
