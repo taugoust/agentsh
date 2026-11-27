@@ -1,26 +1,10 @@
-// Package mcpinspect provides MCP (Model Context Protocol) message inspection
-// for security monitoring.
+// Package mcpinspect provides MCP (Model Context Protocol) security monitoring
+// primitives.
 //
-// The package intercepts MCP JSON-RPC messages to:
-//   - Parse tool definitions from tools/list responses
-//   - Track tool definitions with content hashing for rug pull detection
-//   - Detect suspicious patterns (credential theft, exfiltration, hidden instructions)
-//   - Emit audit events for tool discovery, changes, and security detections
-//
-// Pattern Detection:
-//
-// The detector scans tool descriptions and inputSchema for:
-//   - credential_theft: References to SSH keys, .env files, API keys, etc.
-//   - exfiltration: curl, wget, netcat patterns
-//   - hidden_instructions: HIDDEN:, IGNORE PREVIOUS, SYSTEM OVERRIDE
-//   - shell_injection: Command chaining, substitution patterns
-//   - path_traversal: ../.. sequences, /etc/, /root/ access
-//
-// Example usage:
-//
-//	emitter := func(event interface{}) {
-//	    // Log or store the event
-//	}
-//	inspector := mcpinspect.NewInspectorWithDetection("session-id", "server-id", emitter)
-//	result, err := inspector.Inspect(messageBytes, mcpinspect.DirectionResponse)
+// The package provides:
+//   - Tool policy evaluation for intercepted MCP tool calls
+//   - Tool pinning for rug pull detection
+//   - Per-server rate limiting
+//   - Cross-server session analysis
+//   - Audit event types for MCP activity
 package mcpinspect

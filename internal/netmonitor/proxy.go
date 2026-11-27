@@ -1475,17 +1475,3 @@ func (p *Proxy) resolveAndEmitDNSChecked(ctx context.Context, commandID string, 
 	}
 	return ips[0], true
 }
-
-func mustAtoi(s string, def int) int {
-	n := 0
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return def
-		}
-		n = n*10 + int(r-'0')
-	}
-	if n == 0 {
-		return def
-	}
-	return n
-}

@@ -150,43 +150,6 @@ func TestResolveRealShell(t *testing.T) {
 	})
 }
 
-func TestIsMCPCommand(t *testing.T) {
-	tests := []struct {
-		name  string
-		argv0 string
-		args  []string
-		want  bool
-	}{
-		{
-			name:  "shell with mcp server",
-			argv0: "/bin/sh",
-			args:  []string{"-c", "npx @modelcontextprotocol/server-filesystem /workspace"},
-			want:  true,
-		},
-		{
-			name:  "shell with regular command",
-			argv0: "/bin/sh",
-			args:  []string{"-c", "ls -la"},
-			want:  false,
-		},
-		{
-			name:  "direct mcp server",
-			argv0: "mcp-server-sqlite",
-			args:  []string{"--db", "test.db"},
-			want:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isMCPCommand(tt.argv0, tt.args)
-			if got != tt.want {
-				t.Errorf("isMCPCommand(%q, %v) = %v, want %v", tt.argv0, tt.args, got, tt.want)
-			}
-		})
-	}
-}
-
 // buildShim compiles the shell shim binary into dir and returns its path.
 func buildShim(t *testing.T, dir string) string {
 	t.Helper()

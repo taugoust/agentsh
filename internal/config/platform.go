@@ -30,11 +30,6 @@ func (s ConfigSource) String() string {
 	}
 }
 
-// GetMountPoint returns the workspace mount point.
-func GetMountPoint(cfg *Config) string {
-	return cfg.Platform.MountPoints.Linux
-}
-
 // GetDataDir returns the system data directory.
 func GetDataDir() string {
 	return "/var/lib/agentsh"

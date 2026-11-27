@@ -331,21 +331,6 @@ func main() {
 	runAndExit(agentshBin, "", args[1:], os.Environ())
 }
 
-// isMCPCommand checks if the command being executed is an MCP server.
-func isMCPCommand(argv0 string, args []string) bool {
-	// Extract command from shell -c "command"
-	if len(args) >= 2 && args[0] == "-c" {
-		// Parse the command string
-		cmdParts := strings.Fields(args[1])
-		if len(cmdParts) > 0 {
-			return shim.IsMCPServer(cmdParts[0], cmdParts[1:], nil)
-		}
-	}
-
-	// Direct command execution
-	return shim.IsMCPServer(argv0, args, nil)
-}
-
 // isAgentshCommand checks if the command being executed is the agentsh binary.
 // This prevents a deadlock where the shim routes agentsh CLI commands through
 // the server, and the CLI connects back to the same blocked server.

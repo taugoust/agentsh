@@ -6,18 +6,6 @@ import (
 	"testing"
 )
 
-func TestGetMountPoint(t *testing.T) {
-	cfg := &Config{}
-	cfg.Platform.MountPoints.Linux = "/tmp/agentsh/linux"
-
-	for _, mode := range []string{"auto", "linux"} {
-		cfg.Platform.Mode = mode
-		if mp := GetMountPoint(cfg); mp != "/tmp/agentsh/linux" {
-			t.Errorf("GetMountPoint(%s) = %q, want %q", mode, mp, "/tmp/agentsh/linux")
-		}
-	}
-}
-
 func TestGetDataDir(t *testing.T) {
 	dir := GetDataDir()
 	if dir == "" {

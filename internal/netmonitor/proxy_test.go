@@ -75,18 +75,6 @@ func newNetmonitorDBUnavoidabilityEngine(t *testing.T) *policy.Engine {
 	return engine
 }
 
-func TestMustAtoi(t *testing.T) {
-	if got := mustAtoi("123", 9); got != 123 {
-		t.Fatalf("want 123, got %d", got)
-	}
-	if got := mustAtoi("abc", 7); got != 7 {
-		t.Fatalf("non-numeric should return default, got %d", got)
-	}
-	if got := mustAtoi("0", 5); got != 5 {
-		t.Fatalf("zero should return default, got %d", got)
-	}
-}
-
 func TestParseProxyAuthorityUsesExactDestinationPort(t *testing.T) {
 	host, hostPort, port, err := parseProxyAuthority("127.0.0.1:18443", 443, true)
 	if err != nil {

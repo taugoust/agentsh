@@ -2,7 +2,6 @@ package pattern
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -204,21 +203,6 @@ func TestCheckRegexComplexity(t *testing.T) {
 	}
 }
 
-func TestPattern_MatchWithTimeout(t *testing.T) {
-	p, err := Compile("re:^a{1,100}$")
-	require.NoError(t, err)
-
-	// Normal match should complete quickly
-	match, err := p.MatchWithTimeout("aaaaaaaaaa", 100*time.Millisecond)
-	require.NoError(t, err)
-	assert.True(t, match)
-
-	// Non-match should also complete quickly
-	match, err = p.MatchWithTimeout("b", 100*time.Millisecond)
-	require.NoError(t, err)
-	assert.False(t, match)
-}
-
 func TestPattern_String(t *testing.T) {
 	tests := []struct {
 		pattern string
@@ -306,18 +290,6 @@ func TestPatternSet_InvalidPattern(t *testing.T) {
 	_, err := NewPatternSet([]string{"valid", "re:[invalid"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to compile pattern")
-}
-
-func TestPatternSet_Patterns(t *testing.T) {
-	patterns := []string{"a", "b*", "re:c"}
-	ps, err := NewPatternSet(patterns)
-	require.NoError(t, err)
-
-	result := ps.Patterns()
-	assert.Len(t, result, 3)
-	assert.Equal(t, "a", result[0].Raw)
-	assert.Equal(t, "b*", result[1].Raw)
-	assert.Equal(t, "re:c", result[2].Raw)
 }
 
 func TestIsGlobPattern(t *testing.T) {

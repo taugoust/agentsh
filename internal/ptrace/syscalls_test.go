@@ -79,38 +79,6 @@ func TestIsSignalSyscall(t *testing.T) {
 	}
 }
 
-func TestTracedSyscallNumbers(t *testing.T) {
-	cfg := allFeaturesConfig()
-	nums := tracedSyscallNumbers(cfg)
-	if len(nums) < 10 {
-		t.Errorf("expected at least 10 traced syscalls, got %d", len(nums))
-	}
-	found := false
-	for _, n := range nums {
-		if n == unix.SYS_EXECVE {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("SYS_EXECVE missing from traced syscalls")
-	}
-	// read/write must be present in the full set
-	contains := func(nr int) bool {
-		for _, n := range nums {
-			if n == nr {
-				return true
-			}
-		}
-		return false
-	}
-	for _, nr := range []int{unix.SYS_READ, unix.SYS_PREAD64, unix.SYS_WRITE} {
-		if !contains(nr) {
-			t.Errorf("syscall %d missing from full traced set", nr)
-		}
-	}
-}
-
 func TestNarrowTracedSyscallNumbers_AllFeatures(t *testing.T) {
 	cfg := allFeaturesConfig()
 	nums := narrowTracedSyscallNumbers(cfg)

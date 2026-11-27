@@ -643,21 +643,6 @@ func createPipe() (int, int, error) {
 	return fds[0], fds[1], nil
 }
 
-// filterSignalSockFD returns a copy of env with AGENTSH_SIGNAL_SOCK_FD
-// entries removed.  Used by tests that need to verify the strip behavior
-// without going through the full relay.
-func filterSignalSockFD(env []string) []string {
-	out := make([]string, 0, len(env))
-	prefix := signalSockFDKey + "="
-	for _, e := range env {
-		if strings.HasPrefix(e, prefix) {
-			continue
-		}
-		out = append(out, e)
-	}
-	return out
-}
-
 // filterShimInternalEnv returns a copy of env with all internal env vars
 // (AGENTSH_SIGNAL_SOCK_FD, AGENTSH_UNIXWRAP_ARGV0) removed. The signal
 // fd is stripped because shim mode does not replicate the signal-filter

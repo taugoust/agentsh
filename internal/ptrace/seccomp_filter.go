@@ -343,11 +343,6 @@ func buildBPFWithArgFilters(actions []bpfSyscallAction, argFilters []bpfArgFilte
 	return prog, nil
 }
 
-// buildPrefilterBPF generates the full prefilter (all traced syscalls).
-func buildPrefilterBPF(cfg *TracerConfig) ([]unix.SockFilter, error) {
-	return buildBPFForSyscalls(tracedSyscallNumbers(cfg))
-}
-
 // buildEscalationBPF generates a minimal BPF filter that traces only the
 // specified syscalls. Installed on top of the narrow filter via seccomp
 // stacking to add read/write when needed.

@@ -322,32 +322,6 @@ func TestInstall_ModeOn_EmptyResponse_FailsClosed(t *testing.T) {
 
 // ─── Test 6: AGENTSH_SIGNAL_SOCK_FD is stripped from WrapperEnv ─────────────
 
-func TestInstall_StripsSignalSockFd(t *testing.T) {
-	// Build env with signal sock fd and another var.
-	env := []string{
-		"AGENTSH_SIGNAL_SOCK_FD=4",
-		"OTHER=x",
-		"HOME=/tmp",
-	}
-
-	filtered := filterSignalSockFD(env)
-
-	for _, e := range filtered {
-		if strings.HasPrefix(e, "AGENTSH_SIGNAL_SOCK_FD=") {
-			t.Errorf("AGENTSH_SIGNAL_SOCK_FD was not stripped: %q", e)
-		}
-	}
-	found := false
-	for _, e := range filtered {
-		if e == "OTHER=x" {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("OTHER=x was unexpectedly removed")
-	}
-}
-
 // ─── Test 6b: AGENTSH_SIGNAL_SOCK_FD is stripped from p.Env (not just WrapperEnv) ─
 
 // TestInstall_StripsSignalSockFdFromPEnv verifies that a stale

@@ -377,15 +377,6 @@ func sendFD(sock int, fd int) error {
 	return unix.Sendmsg(sock, []byte{0}, rights, nil, 0)
 }
 
-// waitForACK blocks until a single ACK byte is received via the provided read
-// function. It retries on EINTR (signal interruption) and fails on any other
-// error or unexpected byte count. The readFn abstraction enables deterministic
-// testing of the EINTR retry path.
-func waitForACK(readFn func([]byte) (int, error)) error {
-	_, err := readControlByte(readFn)
-	return err
-}
-
 func waitForControlByte(readFn func([]byte) (int, error), expected byte) error {
 	got, err := readControlByte(readFn)
 	if err != nil {

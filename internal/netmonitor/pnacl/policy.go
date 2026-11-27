@@ -25,10 +25,6 @@ const (
 	DecisionAllowOnceThenApprove Decision = "allow_once_then_approve"
 	// DecisionAudit allows but logs for review.
 	DecisionAudit Decision = "audit"
-	// DecisionUseDefault is a special value for timeout fallback that
-	// indicates the policy engine's global or process default should be used.
-	// This is only valid for ApprovalConfig.TimeoutFallback.
-	DecisionUseDefault Decision = "use_default"
 )
 
 // NetworkTarget specifies allowed/denied network destinations.
@@ -449,28 +445,4 @@ func (e *PolicyEngine) evaluateProcessRules(pp *ProcessPolicy, host string, ip n
 		ProcessName: pp.Name,
 		RuleIndex:   -1,
 	}
-}
-
-// EvaluateForParentChild evaluates policy considering parent-child relationship.
-// parentProc is the parent process info, childProc is the current process being evaluated.
-func (e *PolicyEngine) EvaluateForParentChild(parentProc, childProc ProcessInfo, host string, ip net.IP, port int, protocol string) PolicyResult {
-	// First, find a policy matching the parent.
-	for _, pp := range e.ProcessPolicies {
-		if !pp.Matcher.Matches(parentProc) {
-			continue
-		}
-
-		// Check if there's a child policy matching the child process.
-		for _, cp := range pp.Children {
-			if cp.Matcher.Matches(childProc) {
-				return e.evaluateWithChild(pp, cp, host, ip, port, protocol)
-			}
-		}
-
-		// If no child policy matches but child inherits, use parent rules.
-		return e.evaluateProcessRules(pp, host, ip, port, protocol)
-	}
-
-	// Check if the child itself matches a process policy directly.
-	return e.Evaluate(childProc, host, ip, port, protocol)
 }

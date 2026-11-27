@@ -854,22 +854,6 @@ func socketRuleConditions(rule seccompkg.SocketRule) []seccomp.ScmpCondition {
 	return conditions
 }
 
-func notifySocketRules(rules []seccompkg.SocketRule) []seccompkg.SocketRule {
-	if len(rules) == 0 {
-		return nil
-	}
-	out := make([]seccompkg.SocketRule, 0, len(rules))
-	for _, rule := range rules {
-		if socketRuleUsesNotify(rule) {
-			out = append(out, cloneSocketRule(rule))
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
 func socketRuleUsesNotify(rule seccompkg.SocketRule) bool {
 	return rule.Action == seccompkg.OnBlockLog || rule.Action == seccompkg.OnBlockLogAndKill
 }
