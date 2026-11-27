@@ -7,6 +7,10 @@
       url = "github:golang/vulndb";
       flake = false;
     };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -14,6 +18,7 @@
       self,
       nixpkgs,
       go-vulndb,
+      treefmt-nix,
     }:
     let
       systems = [
@@ -22,6 +27,8 @@
       ];
 
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f (import nixpkgs { inherit system; }));
+
+      treefmtEval = pkgs: treefmt-nix.lib.evalModule pkgs ./nix/treefmt.nix;
     in
     {
       packages = forAllSystems (
@@ -188,19 +195,6 @@
         {
           default = agentsh;
           inherit agentsh;
-          formatted-go-source =
-            pkgs.runCommand "agentsh-formatted-go-source"
-              {
-                nativeBuildInputs = [ pkgs.go ];
-              }
-              ''
-                mkdir -p "$out"
-                cp -R ${self}/. "$out/"
-                chmod -R u+w "$out"
-                find "$out" -type f -name '*.go' \
-                  -not -path "$out/vendor/*" \
-                  -exec gofmt -w {} +
-              '';
         }
       );
 
@@ -330,28 +324,7 @@
         // leakChecks
         // repositoryValidationChecks
         // rec {
-          go-format =
-            pkgs.runCommand "agentsh-go-format-check"
-              {
-                nativeBuildInputs = [ pkgs.go ];
-              }
-              ''
-                set -euo pipefail
-                cp -R ${self} source
-                chmod -R u+w source
-                cd source
-                find . -type f -name '*.go' \
-                  -not -path './.git/*' \
-                  -not -path './vendor/*' \
-                  -exec gofmt -l {} + > "$TMPDIR/unformatted-go"
-                if [ -s "$TMPDIR/unformatted-go" ]; then
-                  echo "Go files require formatting; run: nix fmt -- <files>" >&2
-                  cat "$TMPDIR/unformatted-go" >&2
-                  exit 1
-                fi
-                mkdir -p "$out"
-                touch "$out/passed"
-              '';
+          formatting = (treefmtEval pkgs).config.build.check self;
 
           linux-amd64-compile =
             if stdenv.hostPlatform.system == "aarch64-linux" then
@@ -1064,54 +1037,6 @@
         }
       );
 
-      formatter = forAllSystems (
-        pkgs:
-        pkgs.writeShellApplication {
-          name = "agentsh-format";
-          runtimeInputs = [
-            pkgs.findutils
-            pkgs.go
-            pkgs.nixfmt-rfc-style
-          ];
-          text = ''
-            set -euo pipefail
-            mode=all
-            if [ "''${1:-}" = "--go-only" ]; then
-              mode=go
-              shift
-            fi
-            if [ "$#" -eq 0 ]; then
-              set -- .
-            fi
-            go_files=()
-            nix_files=()
-            add_file() {
-              case "$1" in
-                *.go) go_files+=("$1") ;;
-                *.nix)
-                  if [ "$mode" = all ]; then
-                    nix_files+=("$1")
-                  fi
-                  ;;
-              esac
-            }
-            for target in "$@"; do
-              if [ -d "$target" ]; then
-                while IFS= read -r -d $'\0' file; do
-                  add_file "$file"
-                done < <(find "$target" -type f \( -name '*.go' -o -name '*.nix' \) -not -path '*/.git/*' -not -path '*/vendor/*' -print0)
-              elif [ -f "$target" ]; then
-                add_file "$target"
-              fi
-            done
-            if [ "''${#go_files[@]}" -gt 0 ]; then
-              gofmt -w "''${go_files[@]}"
-            fi
-            if [ "''${#nix_files[@]}" -gt 0 ]; then
-              nixfmt "''${nix_files[@]}"
-            fi
-          '';
-        }
-      );
+      formatter = forAllSystems (pkgs: (treefmtEval pkgs).config.build.wrapper);
     };
 }
