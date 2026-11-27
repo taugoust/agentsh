@@ -11,21 +11,20 @@ come back for depth.
 
 ## Status legend
 
-Every provider below is tagged with one of three statuses. Pay attention
+Every provider below is tagged with one of two statuses. Pay attention
 to the tag — agentsh is mid-evolution and the set of "works today" is
 smaller than the set of "designed."
 
 | Tag | Meaning |
 |---|---|
 | **Operational** | Code is in `main`, wired into the server, covered by tests, safe to use in production. |
-| **Scaffold** | Code exists in the tree but is **not yet wired into the running server**. The Go API is stable enough to read; the YAML config surface is not. Do not deploy with this. |
 | **Planned** | Design-stage only. No implementation has landed. |
 
 ---
 
 ## Part 0 — Overview
 
-agentsh has **three distinct vault concerns**, and conflating them is the
+agentsh has **two distinct vault concerns**, and conflating them is the
 single most common source of confusion:
 
 1. **Audit integrity KMS** — **Operational.** The HMAC key used to sign
@@ -33,12 +32,7 @@ single most common source of confusion:
    key per agentsh instance. Read once at startup, cached in memory. See
    [Part 1](#part-1--audit-integrity-chain-kms-backends-operational).
 
-2. **Runtime secret injection** — **Scaffold.** A secret manager that
-   would fetch arbitrary secrets from a vault and expose them to spawned
-   agent sessions. Lives in `pkg/secrets/`. The code is present; the
-   wiring is not. See [Part 2](#part-2--runtime-secret-injection-pkgsecrets-scaffold).
-
-3. **External-secrets fake-credential substitution** — **Planned.** The
+2. **External-secrets fake-credential substitution** — **Planned.** The
    future direction: real credentials never enter the agent's address
    space; a substituting proxy swaps fake credentials for real ones at
    egress. Plan 1 (package rename + Hook interface) is the only piece that has
@@ -50,7 +44,6 @@ single most common source of confusion:
 |---|---|
 | Sign my audit log with a key in AWS KMS | [Part 1.3 — AWS KMS](#aws-kms) |
 | Sign my audit log with a HashiCorp Vault key | [Part 1.3 — HashiCorp Vault](#hashicorp-vault-audit-kms) |
-| Understand why `pkg/secrets/` isn't loaded by my server | [Part 2.1 — Status](#21-status) |
 | See what Plans 2–12 will add | [Part 3 — External-secrets substitution](#part-3--external-secrets-substitution-planned) |
 | Stand up agentsh on Kubernetes | [Part 4.4 — Kubernetes](#44-kubernetes-deployment-vault--service-account) |
 | Stand up agentsh on AWS | [Part 4.5 — AWS-native](#45-aws-native-deployment) |
@@ -478,233 +471,12 @@ To disable integrity temporarily, set `audit.integrity.enabled: false`.
 
 ---
 
-## Part 2 — Runtime secret injection (`pkg/secrets/`, **scaffold**)
-
-### 2.1 Status
-
-**This subsystem is not yet wired into the running server.** The
-package `pkg/secrets/` contains provider code, a secret manager, a
-cache, and a test suite, but nothing in `internal/server/` or the
-session pipeline instantiates a `secrets.Manager` or calls
-`GetInjections`. The scaffold was added as a forward-looking
-placeholder (commit `71b993a9`, PR #40) and is kept in the tree as a
-reference for the future [external-secrets](#part-3--external-secrets-substitution-planned)
-work.
-
-You cannot deploy with `pkg/secrets/` today. The YAML config surface
-described below is what the code **reads** if you manually build a
-`ManagerConfig` in tests; it is **not** exposed through the top-level
-`Config` struct in `internal/config/config.go`. If you need runtime
-secret injection today, the operational answer is
-`sessions.env_inject` (plain environment variables, no vault) — not
-`pkg/secrets`.
-
-### 2.2 Manager architecture
-
-The scaffold implements a straightforward provider-registry pattern.
-
-```
-                    ┌──────────────────────┐
-                    │   secrets.Manager    │
-                    │                      │
-  Provider IF ─────►│  providers map[..]   │
-  (Vault, AWS, ...) │  cache (TTL)         │
-                    │  approvals (IF)      │
-                    │  auditLog (IF)       │
-                    └──────────┬───────────┘
-                               │
-                     Get(SecretRequest)
-                               │
-               ┌───────────────┼───────────────┐
-               ▼               ▼               ▼
-        path allowed?    check cache      approval required?
-               │               │               │
-               └───────────────┼───────────────┘
-                               ▼
-                    provider.Get(ctx, path)
-                               ▼
-                          cache.set
-                               ▼
-                     return *Secret
-```
-
-Key types (in `pkg/secrets/manager.go`):
-
-- `Provider` — `Name()`, `Get()`, `List()`, `IsHealthy()`.
-- `Secret` — `Path`, `Data map[string]string`, `Version`, `ExpiresAt`, `Metadata`.
-- `Manager` — coordinates providers, cache, approvals, audit log.
-- `ApprovalService` — interface for human-in-the-loop approval of
-  secret access. Not yet implemented.
-- `AuditLogger` — interface for emitting secret-access events to the
-  audit pipeline. Not yet implemented.
-- `InjectConfig` — maps a provider path to an env var or file inside
-  the spawned session.
-
-### 2.3 Provider setup (scaffold config)
-
-The `secrets.ManagerConfig` struct (see `pkg/secrets/manager.go`) uses
-this shape when loaded from YAML:
-
-```yaml
-secrets:
-  providers:
-    vault:
-      enabled: true
-      address: https://vault.corp.internal:8200
-      auth_method: approle
-      role_id: 11111111-2222-3333-4444-555555555555
-      secret_id: ${VAULT_SECRET_ID}   # read from env at load time, scaffold only
-      namespace: ""
-      allowed_paths:
-        - "secret/data/agentsh/*"
-    aws:
-      enabled: true
-      region: us-east-1
-      role_arn: arn:aws:iam::123456789012:role/agentsh-secrets
-      allowed_secrets:
-        - "agentsh/*"
-    azure:
-      enabled: false           # stubbed, no implementation
-      vault_url: https://agentsh-vault.vault.azure.net
-      tenant_id: 00000000-0000-0000-0000-000000000000
-      client_id: 00000000-0000-0000-0000-000000000000
-      allowed_keys:
-        - "agentsh-*"
-
-  allowed_paths:
-    - "*"
-
-  inject:
-    - provider: vault
-      path: secret/data/agentsh/github
-      key: token
-      env_var: GITHUB_TOKEN
-    - provider: aws
-      path: agentsh/db-password
-      env_var: DB_PASSWORD
-
-  require_approval: true
-  cache_ttl: 5m
-  audit_log: true
-```
-
-**Providers implemented:**
-
-| Provider | Package file | Status |
-|---|---|---|
-| HashiCorp Vault | `pkg/secrets/vault.go` | Complete: token, AppRole, Kubernetes auth; KV v1, KV v2; namespaces. |
-| AWS Secrets Manager | `pkg/secrets/aws.go` | Complete: Get/List/Create/Update/Delete/Rotate; JSON multi-field secrets; `role_arn` assumption via STS. |
-| Azure Key Vault | *(no file)* | **Stubbed.** `AzureConfig` struct exists in `manager.go` but no `AzureProvider` implementation. |
-
-#### HashiCorp Vault (runtime secrets)
-
-Almost identical shape to the audit-KMS Vault provider, but a
-**separate implementation**. Key differences:
-
-- Uses a hand-rolled HTTP client (`net/http`) rather than the
-  official `github.com/hashicorp/vault/api` library. See
-  `pkg/secrets/vault.go`.
-- Supports token, AppRole, and Kubernetes auth.
-- Reads the Kubernetes service account JWT from the default path
-  `/var/run/secrets/kubernetes.io/serviceaccount/token`.
-- Supports Vault namespaces via `X-Vault-Namespace` header.
-- `allowed_paths` provides a per-provider allowlist; paths outside
-  the allowlist return `ErrSecretPathNotAllowed`.
-
-**Auth method fields:**
-
-| `auth_method` | Required fields |
-|---|---|
-| `token` | `token` |
-| `approle` | `role_id`, `secret_id` |
-| `kubernetes` | `kube_role` |
-
-#### AWS Secrets Manager
-
-Uses `github.com/aws/aws-sdk-go-v2/service/secretsmanager`.
-
-- Standard AWS credential chain; optional `role_arn` to assume a
-  specific IAM role via STS.
-- Secrets stored as JSON get parsed into `Secret.Data` as a
-  `map[string]string`.
-- Binary secrets are exposed as `Data["binary"]`.
-- `allowed_secrets` is a per-provider allowlist; matched with simple
-  prefix/exact semantics.
-
-Extras not present in the audit KMS equivalent: `CreateSecret`,
-`UpdateSecret`, `DeleteSecret`, `RotateSecret`, `GetSecretVersions`.
-These are exposed as methods on `AWSProvider` — they are **not** on
-the `Provider` interface, so a caller would need to type-assert to
-`*AWSProvider`.
-
-### 2.4 Injection config
-
-`ManagerConfig.Inject` describes how fetched secrets become visible
-to the spawned session:
-
-```go
-type InjectConfig struct {
-    Provider string  // "vault" | "aws" | "azure"
-    Path     string  // provider-specific secret path
-    Key      string  // optional: specific field inside a multi-field secret
-    EnvVar   string  // env var name inside the session
-    File     string  // optional: write secret to a file
-}
-```
-
-At session-start time, `Manager.GetInjections(ctx, agentID)` iterates
-every `Inject` entry, calls `Get`, extracts the configured `Key` (or
-the first value if `Key` is empty), and returns a
-`map[string]string{envVarName: secretValue}` that the session
-launcher can splice into the spawned process's environment.
-
-**File injection (`File` field) is not yet wired** — the struct field
-exists but `GetInjections` only returns env vars. File injection is
-tracked as part of the external-secrets design.
-
-### 2.5 Approval flow + audit
-
-`ManagerConfig.RequireApproval: true` makes every `Get` call block
-until an `ApprovalService` returns `ApprovalApproved`. The
-`ApprovalService` interface:
-
-```go
-type ApprovalService interface {
-    Request(ctx, *ApprovalRequest) ApprovalDecision
-    GetPending(ctx) ([]*ApprovalRequest, error)
-    Approve(ctx, requestID, approver string) error
-    Deny(ctx, requestID, approver, reason string) error
-}
-```
-
-No implementation of `ApprovalService` exists yet — this is one of
-the pieces that will be filled in when the scaffold moves into
-production. For now, setting `require_approval: true` with no
-approval service will panic on first `Get`.
-
-The `AuditLogger` interface emits four event types:
-
-- `SecretAccessed(agentID, path, provider, granted)` — every `Get`
-  call, pass or fail.
-- `SecretInjected(agentID, path, envVar)` — every successful
-  injection.
-- `ApprovalRequested(req)` — when an approval is queued.
-- `ApprovalDecided(requestID, decision, approver)` — when an
-  approval is resolved.
-
-These events would flow into the same audit pipeline that the
-integrity chain in Part 1 protects. The wiring from
-`secrets.AuditLogger` to `audit.Logger` is one of the outstanding
-pieces — it does not exist in the scaffold.
-
----
-
 ## Part 3 — External-secrets substitution (**planned**)
 
 ### 3.1 Problem
 
-The runtime-injection model in Part 2 still puts the real secret into
-the agent's address space. An agent that gets subverted — prompt
+Injecting a real secret into a spawned session puts it into the
+agent's address space. An agent that gets subverted — prompt
 injection, a malicious tool call, a subtly wrong HTTP destination —
 can exfiltrate whatever it can read. For high-value credentials
 (GitHub tokens, cloud IAM keys, database passwords), this is too much
@@ -776,11 +548,7 @@ type SecretValue struct {
 | `op://` | 1Password (Connect API or CLI) | 1 | Connect by default, `op` CLI pluggable |
 | `keyring://` | OS keyring | 1 | macOS Keychain, Linux libsecret, Windows Credential Manager |
 
-Each lives in its own subpackage under `internal/proxy/secrets/`. Note
-that this is a **new hierarchy** — not the same as the existing
-`pkg/secrets/` scaffold from Part 2. The external-secrets design
-treats `pkg/secrets/` as a reference implementation that the new
-code will cannibalize.
+Each lives in its own subpackage under `internal/proxy/secrets/`.
 
 ### 3.4 Service declarations (YAML-first)
 
@@ -876,8 +644,7 @@ created as Plan 1's follow-on work.
 ### 4.1 Which provider should I use?
 
 Start here. Pick your **audit KMS provider** first — that is the only
-thing you can configure today. Runtime secret injection is scaffold
-only; external-secrets is planned.
+thing you can configure today. External-secrets is planned.
 
 ```
 Where does agentsh run?
@@ -1072,9 +839,6 @@ EBS volume. On plain EC2, use the local disk with a backup policy.
   integrity protection is worse than being down.
 - **Rotation.** See [1.4](#14-key-rotation-runbook). The integrity
   chain intentionally does not auto-rotate.
-- **Runtime secret injection (Part 2) is not production-ready.** Do
-  not deploy `pkg/secrets/` as if it were operational — it is not
-  wired into the server.
 - **External-secrets substitution (Part 3) is not implemented.** Do
   not plan a migration off your current secret injection flow
   assuming Part 3 will be available on a specific date — only the
@@ -1090,11 +854,6 @@ catch naturally.
 For HashiCorp Vault deployments, monitor the Vault sidecar or the
 `sys/health` endpoint independently — agentsh does not poll Vault
 after the initial key fetch.
-
-The `pkg/secrets/` scaffold does expose an `IsHealthy(ctx) bool`
-method on each provider and a `Manager.Health(ctx)` aggregator, but
-since the scaffold is not wired into the server there is no HTTP
-endpoint to query today.
 
 ---
 
@@ -1137,46 +896,6 @@ audit:
       encrypted_dek_file: ""          # strongly recommended
 ```
 
-### A.2 Full `secrets.ManagerConfig` YAML (scaffold)
-
-**Not exposed in `Config` today.** Included here for reference only —
-the field names are what `pkg/secrets.ManagerConfig` would accept if
-it were wired up.
-
-```yaml
-secrets:
-  providers:
-    vault:
-      enabled: false
-      address: ""
-      auth_method: "token"            # token | approle | kubernetes
-      token: ""
-      role_id: ""
-      secret_id: ""
-      kube_role: ""
-      namespace: ""
-      allowed_paths: []
-
-    aws:
-      enabled: false
-      region: ""
-      allowed_secrets: []
-      role_arn: ""
-
-    azure:                            # config exists, provider does not
-      enabled: false
-      vault_url: ""
-      tenant_id: ""
-      client_id: ""
-      allowed_keys: []
-
-  allowed_paths: []                   # global path allowlist
-  inject: []                          # []InjectConfig
-  require_approval: false
-  cache_ttl: 5m
-  audit_log: true
-```
-
 ## Appendix B — Links
 
 **Code:**
@@ -1189,9 +908,6 @@ secrets:
 - `internal/audit/kms/gcp.go` — GCP Cloud KMS
 - `internal/audit/integrity.go` — audit pipeline wire-up
 - `internal/config/config.go` — `AuditIntegrityConfig` and friends
-- `pkg/secrets/manager.go` — scaffold secret manager
-- `pkg/secrets/vault.go` — scaffold HashiCorp Vault provider
-- `pkg/secrets/aws.go` — scaffold AWS Secrets Manager provider
 - `internal/proxy/hooks.go` — Hook interface (Plan 1)
 - `internal/proxy/hooks_test.go` — Hook interface tests
 

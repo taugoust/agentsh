@@ -6,7 +6,7 @@
 let
   inherit (pkgs) lib stdenv;
   version = "unstable-2026-06-17";
-  vendorHash = "sha256-XEW4qO7TP77+qnnR2L6B+wcBTw5ydLHAsxFArl2/GaE=";
+  vendorHash = "sha256-qbCd9R5kJksLYQJLPVa28JS8Sr0ZYIAmuqtAdyT66pw=";
 
   linuxNativeBuildInputs = lib.optionals stdenv.hostPlatform.isLinux [
     pkgs.gnumake
