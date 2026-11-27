@@ -217,6 +217,52 @@ or terminal deny in a base only counts when that base is selected directly.
 In a policy that extends it, overlay rules go before the policy's own boundary
 or terminal deny, or at the end.
 
+## Recommended Base Policy
+
+`configs/policies/base.yaml` is a base policy for other policies to extend.
+It denies:
+
+- credentials: SSH private keys, cloud CLI, Kubernetes, registry,
+  password-manager and publishing credentials, `.netrc`, GnuPG secret keys,
+  `/etc/shadow`, and `/proc/*/environ`, `/proc/*/mem` and `/proc/kcore`;
+- writes to persistence paths: shell profiles, `.envrc` files and direnv's
+  allow list, git hooks, the global git config and the opened project's
+  `.git/config`, `~/.ssh` access files, systemd user units, autostart
+  entries, cron and at;
+- cloud metadata endpoints (AWS, GCP, Azure, Alibaba and others);
+- privilege escalation (`sudo`, `su`, `doas`, `pkexec`, `run0`, `nsenter`,
+  `chroot` and similar), `systemd-run`, `crontab`, `at`, mutating
+  `systemctl` verbs, `loginctl enable-linger`, `direnv allow`, and
+  connections to the systemd manager's private sockets.
+
+It has no allow rules, so on its own it denies everything except file
+reads. Extend it instead:
+
+```yaml
+version: 1
+name: team
+extends: base
+```
+
+Its rules are named `base-*` and are checked first, so what it denies stays
+denied. Don't copy its rules into your policy. These shipped policies extend
+it: `default`, `dev-safe`, `ci-strict`, `agent-default`, `agent-sandbox`,
+`agent-strict` and `bench-realistic`. The project `.git/config` rule also
+blocks `git config`, `git remote add` and `git push -u` inside the opened
+project.
+
+`base.yaml` has to be in the same directory as the policies that extend it.
+The package installs it as `share/agentsh/configs/policies/base.yaml`. The
+flake exposes it for Nix consumers:
+
+- `agentsh.lib.policies.base`: the source file;
+- `agentsh.packages.<system>.default.policies.base`: the installed file.
+
+The NixOS module adds `base.yaml` to `/etc/agentsh/policies` next to
+`services.agentsh.policies.source`, unless that directory has its own `base`
+policy. Set `services.agentsh.policies.base = null` to turn this off, or to
+another file to use a different base.
+
 ## Signal Rules
 
 Signal rules control how signals (kill, terminate, stop, etc.) can be sent between processes within an agentsh session. This provides protection against runaway processes, accidental signal delivery to critical services, and enables graceful shutdown patterns.

@@ -1,0 +1,486 @@
+# Recommended base policy for agentsh.
+#
+# Other policies build on it with `extends: base`. Its rules are checked
+# first and the first match wins, so what it denies stays denied. It only
+# has deny rules.
+#
+# Don't select it on its own. It has no allow rules, so the built-in
+# defaults deny all commands, network, Unix sockets and file writes.
+#
+# Notes:
+#   - Paths are globs: `*` stays within one path component, `**` crosses
+#     components. `**/x` does not match a bare `x`.
+#   - It uses only ${HOME}, ${PROJECT_ROOT} and ${GIT_ROOT}, which every
+#     session sets.
+#   - Persistence rules deny writes only. Shells, git, ssh and direnv read
+#     these files all the time.
+#   - Rule names start with `base-` so they don't clash with rules in
+#     extending policies.
+
+version: 1
+name: base
+description: |
+  Denies credential files and sensitive /proc entries, writes to files that
+  later run code outside the sandbox (shell profiles, git hooks and config,
+  direnv, ssh, systemd user units, autostart, cron), cloud metadata
+  endpoints, and privilege escalation. Extend it instead of using it alone.
+
+file_rules:
+  # ---------------------------------------------------------------------------
+  # Credentials: all operations, reads included.
+  # ---------------------------------------------------------------------------
+
+  - name: base-deny-ssh-private-keys
+    description: SSH private keys. `id_*` also matches the `.pub` files.
+    paths:
+      - "${HOME}/.ssh/id_*"
+      - "${HOME}/.ssh/*.pem"
+      - "${HOME}/.ssh/*.key"
+    operations: ["*"]
+    decision: deny
+    message: "SSH private key access is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-credential-stores
+    description: Git, netrc, cloud CLI, container registry, Kubernetes, password manager and publishing credentials
+    paths:
+      # git / netrc
+      - "${HOME}/.git-credentials"
+      - "${HOME}/.config/git/credentials"
+      - "**/.netrc"
+      - "**/_netrc"
+      # AWS
+      - "${HOME}/.aws"
+      - "${HOME}/.aws/**"
+      # Google Cloud
+      - "${HOME}/.config/gcloud"
+      - "${HOME}/.config/gcloud/**"
+      - "${HOME}/.gcloud"
+      - "${HOME}/.gcloud/**"
+      # Azure
+      - "${HOME}/.azure"
+      - "${HOME}/.azure/**"
+      # Oracle Cloud
+      - "${HOME}/.oci"
+      - "${HOME}/.oci/**"
+      # Kubernetes
+      - "${HOME}/.kube"
+      - "${HOME}/.kube/**"
+      # Container registry auth
+      - "${HOME}/.docker/config.json"
+      - "${HOME}/.config/containers/auth.json"
+      - "/run/user/*/containers/auth.json"
+      # Password managers and keyrings
+      - "${HOME}/.password-store"
+      - "${HOME}/.password-store/**"
+      - "${HOME}/.local/share/keyrings"
+      - "${HOME}/.local/share/keyrings/**"
+      # Publishing and infrastructure tokens
+      - "${HOME}/.pypirc"
+      - "${HOME}/.cargo/credentials"
+      - "${HOME}/.cargo/credentials.toml"
+      - "${HOME}/.gem/credentials"
+      - "${HOME}/.vault-token"
+      - "${HOME}/.terraform.d/credentials.tfrc.json"
+      - "${HOME}/.config/sops/age/keys.txt"
+    operations: ["*"]
+    decision: deny
+    message: "Credential store access is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-gnupg-private-keys
+    description: GnuPG secret keys and revocation certificates
+    paths:
+      - "${HOME}/.gnupg/private-keys-v1.d"
+      - "${HOME}/.gnupg/private-keys-v1.d/**"
+      - "${HOME}/.gnupg/secring.gpg"
+      - "${HOME}/.gnupg/openpgp-revocs.d"
+      - "${HOME}/.gnupg/openpgp-revocs.d/**"
+    operations: ["*"]
+    decision: deny
+    message: "GnuPG secret key access is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-proc-secrets
+    description: Process environments and memory, and kernel memory. `*` also matches `self` and `thread-self`.
+    paths:
+      - "/proc/*/environ"
+      - "/proc/*/task/*/environ"
+      - "/proc/*/mem"
+      - "/proc/*/task/*/mem"
+      - "/proc/kcore"
+    operations: ["*"]
+    decision: deny
+    message: "Sensitive /proc access is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-shadow-files
+    description: Local password hashes
+    paths:
+      - "/etc/shadow"
+      - "/etc/gshadow"
+      - "/etc/shadow-"
+      - "/etc/gshadow-"
+    operations: ["*"]
+    decision: deny
+    message: "Password hash files are blocked by the base policy: {{.Path}}"
+
+  # ---------------------------------------------------------------------------
+  # Persistence: writes only.
+  # ---------------------------------------------------------------------------
+
+  - name: base-deny-shell-startup-writes
+    description: Shell, login and session startup files
+    paths:
+      # sh / bash
+      - "${HOME}/.profile"
+      - "${HOME}/.shrc"
+      - "${HOME}/.bashrc"
+      - "${HOME}/.bash_profile"
+      - "${HOME}/.bash_login"
+      - "${HOME}/.bash_logout"
+      - "${HOME}/.bash_aliases"
+      - "${HOME}/.bashrc.d"
+      - "${HOME}/.bashrc.d/**"
+      - "${HOME}/.inputrc"
+      # zsh
+      - "${HOME}/.zshenv"
+      - "${HOME}/.zprofile"
+      - "${HOME}/.zshrc"
+      - "${HOME}/.zlogin"
+      - "${HOME}/.zlogout"
+      - "${HOME}/.config/zsh"
+      - "${HOME}/.config/zsh/**"
+      - "${HOME}/.oh-my-zsh"
+      - "${HOME}/.oh-my-zsh/**"
+      # fish
+      - "${HOME}/.config/fish"
+      - "${HOME}/.config/fish/**"
+      - "${HOME}/.local/share/fish/vendor_conf.d"
+      - "${HOME}/.local/share/fish/vendor_conf.d/**"
+      - "${HOME}/.local/share/fish/vendor_functions.d"
+      - "${HOME}/.local/share/fish/vendor_functions.d/**"
+      # csh / tcsh / ksh
+      - "${HOME}/.cshrc"
+      - "${HOME}/.tcshrc"
+      - "${HOME}/.login"
+      - "${HOME}/.logout"
+      - "${HOME}/.kshrc"
+      - "${HOME}/.mkshrc"
+      # nushell / PowerShell
+      - "${HOME}/.config/nushell"
+      - "${HOME}/.config/nushell/**"
+      - "${HOME}/.config/powershell"
+      - "${HOME}/.config/powershell/**"
+      # Login session environment
+      - "${HOME}/.pam_environment"
+      - "${HOME}/.config/environment.d"
+      - "${HOME}/.config/environment.d/**"
+      # X11 session scripts
+      - "${HOME}/.xprofile"
+      - "${HOME}/.xinitrc"
+      - "${HOME}/.xsession"
+      - "${HOME}/.xsessionrc"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing shell startup files is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-autostart-writes
+    description: XDG and KDE autostart and login/logout scripts
+    paths:
+      - "${HOME}/.config/autostart"
+      - "${HOME}/.config/autostart/**"
+      - "${HOME}/.config/autostart-scripts"
+      - "${HOME}/.config/autostart-scripts/**"
+      - "${HOME}/.config/plasma-workspace/env"
+      - "${HOME}/.config/plasma-workspace/env/**"
+      - "${HOME}/.config/plasma-workspace/shutdown"
+      - "${HOME}/.config/plasma-workspace/shutdown/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing autostart entries is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-systemd-user-unit-writes
+    description: systemd user units, timers, drop-ins and manager config
+    paths:
+      - "${HOME}/.config/systemd"
+      - "${HOME}/.config/systemd/**"
+      - "${HOME}/.local/share/systemd"
+      - "${HOME}/.local/share/systemd/**"
+      - "/run/user/*/systemd"
+      - "/run/user/*/systemd/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing systemd user units is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-cron-at-writes
+    description: cron and at spools and configuration
+    paths:
+      - "/var/spool/cron"
+      - "/var/spool/cron/**"
+      - "/var/spool/at"
+      - "/var/spool/at/**"
+      - "/etc/cron*"
+      - "/etc/cron*/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing cron or at jobs is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-ssh-persistence-writes
+    description: SSH files that grant access or run commands, and ~/.ssh itself. known_hosts stays writable.
+    paths:
+      - "${HOME}/.ssh"
+      - "${HOME}/.ssh/authorized_keys"
+      - "${HOME}/.ssh/authorized_keys2"
+      - "${HOME}/.ssh/rc"
+      - "${HOME}/.ssh/environment"
+      - "${HOME}/.ssh/config"
+      - "${HOME}/.ssh/config.d"
+      - "${HOME}/.ssh/config.d/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing SSH access or config files is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-gnupg-config-writes
+    description: GnuPG configs that can name programs to run
+    paths:
+      - "${HOME}/.gnupg"
+      - "${HOME}/.gnupg/gpg-agent.conf"
+      - "${HOME}/.gnupg/gpg.conf"
+      - "${HOME}/.gnupg/common.conf"
+      - "${HOME}/.gnupg/scdaemon.conf"
+      - "${HOME}/.gnupg/dirmngr.conf"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing GnuPG configuration is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-global-git-config-writes
+    description: User-wide git config (aliases, pager, editor, hooksPath, sshCommand, credential helpers, includes)
+    paths:
+      - "${HOME}/.gitconfig"
+      - "${HOME}/.config/git"
+      - "${HOME}/.config/git/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing global git configuration is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-project-git-config-writes
+    description: |
+      Git config of the opened project. Git writes config.lock and renames it,
+      and both rename paths are checked, so `git config`, `git remote add`,
+      `git push -u` and `git init` inside the project fail. The `.git` entry
+      blocks replacing .git with a `gitdir:` file or symlink; mkdir is allowed.
+      Scratch repositories elsewhere are not affected.
+    paths:
+      - "${PROJECT_ROOT}/.git"
+      - "${PROJECT_ROOT}/.git/config"
+      - "${PROJECT_ROOT}/.git/config.worktree"
+      - "${PROJECT_ROOT}/.git/worktrees/*/config.worktree"
+      - "${PROJECT_ROOT}/.git/modules/**/config"
+      - "${GIT_ROOT}/.git"
+      - "${GIT_ROOT}/.git/config"
+      - "${GIT_ROOT}/.git/config.worktree"
+      - "${GIT_ROOT}/.git/worktrees/*/config.worktree"
+      - "${GIT_ROOT}/.git/modules/**/config"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, rmdir, truncate]
+    decision: deny
+    message: "Writing the project's git config is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-project-git-hooks-writes
+    description: Everything under the opened project's hooks directories, including submodule hooks
+    paths:
+      - "${PROJECT_ROOT}/.git/hooks"
+      - "${PROJECT_ROOT}/.git/hooks/**"
+      - "${PROJECT_ROOT}/.git/modules/**/hooks"
+      - "${PROJECT_ROOT}/.git/modules/**/hooks/**"
+      - "${GIT_ROOT}/.git/hooks"
+      - "${GIT_ROOT}/.git/hooks/**"
+      - "${GIT_ROOT}/.git/modules/**/hooks"
+      - "${GIT_ROOT}/.git/modules/**/hooks/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing git hooks is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-git-hook-writes-anywhere
+    description: |
+      Active git hook names in any repository. `*.sample` files stay writable
+      so `git init` and `git clone` still work in scratch repositories.
+    paths:
+      - "**/.git/hooks/applypatch-msg"
+      - "**/.git/hooks/pre-applypatch"
+      - "**/.git/hooks/post-applypatch"
+      - "**/.git/hooks/pre-commit"
+      - "**/.git/hooks/pre-merge-commit"
+      - "**/.git/hooks/prepare-commit-msg"
+      - "**/.git/hooks/commit-msg"
+      - "**/.git/hooks/post-commit"
+      - "**/.git/hooks/pre-rebase"
+      - "**/.git/hooks/post-checkout"
+      - "**/.git/hooks/post-merge"
+      - "**/.git/hooks/pre-push"
+      - "**/.git/hooks/pre-receive"
+      - "**/.git/hooks/update"
+      - "**/.git/hooks/proc-receive"
+      - "**/.git/hooks/post-receive"
+      - "**/.git/hooks/post-update"
+      - "**/.git/hooks/reference-transaction"
+      - "**/.git/hooks/push-to-checkout"
+      - "**/.git/hooks/pre-auto-gc"
+      - "**/.git/hooks/post-rewrite"
+      - "**/.git/hooks/sendemail-validate"
+      - "**/.git/hooks/fsmonitor-watchman"
+      - "**/.git/hooks/post-index-change"
+      - "**/.git/hooks/p4-changelist"
+      - "**/.git/hooks/p4-prepare-changelist"
+      - "**/.git/hooks/p4-post-changelist"
+      - "**/.git/hooks/p4-pre-submit"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing git hooks is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-direnv-writes
+    description: .envrc files, the user's direnv config, and the allow database (so the agent can't approve its own .envrc)
+    paths:
+      - "**/.envrc"
+      - "**/.envrc.*"
+      - "${HOME}/.direnvrc"
+      - "${HOME}/.config/direnv"
+      - "${HOME}/.config/direnv/**"
+      - "${HOME}/.local/share/direnv/allow"
+      - "${HOME}/.local/share/direnv/allow/**"
+    operations: [write, create, delete, rename, link, symlink, chmod, chown, mknod, mkdir, rmdir, truncate]
+    decision: deny
+    message: "Writing direnv files is blocked by the base policy: {{.Path}}"
+
+  - name: base-deny-persistence-parent-swaps
+    description: |
+      Parents of the trees above. Without this, moving ~/.config away and a
+      prepared tree into its place would slip past the rules above. mkdir and
+      writes inside stay allowed.
+    paths:
+      - "${HOME}/.config"
+      - "${HOME}/.local"
+      - "${HOME}/.local/share"
+      - "${HOME}/.local/share/direnv"
+      - "${HOME}/.local/share/fish"
+      - "${HOME}/.config/plasma-workspace"
+    operations: [rename, link, symlink, delete, rmdir]
+    decision: deny
+    message: "Replacing a protected configuration directory is blocked by the base policy: {{.Path}}"
+
+# No `ports` means all ports. CIDRs also match IPv4-mapped IPv6 addresses.
+network_rules:
+  - name: base-deny-cloud-metadata-ips
+    description: Cloud instance metadata, credential and identity endpoints
+    cidrs:
+      - "169.254.169.254/32"    # AWS, GCP, Azure, OCI, DigitalOcean, Hetzner, OpenStack, Linode, Vultr
+      - "fd00:ec2::254/128"     # AWS IMDS (IPv6)
+      - "169.254.170.2/32"      # AWS ECS task credentials
+      - "169.254.170.23/32"     # AWS EKS Pod Identity
+      - "fd00:ec2::23/128"      # AWS EKS Pod Identity (IPv6)
+      - "fd20:ce::254/128"      # GCP (IPv6)
+      - "100.100.100.200/32"    # Alibaba Cloud
+      - "169.254.0.23/32"       # Tencent Cloud
+      - "169.254.42.42/32"      # Scaleway
+      - "fd00:42::42/128"       # Scaleway (IPv6)
+      - "fd00:a9fe:a9fe::1/128" # Akamai/Linode (IPv6)
+      - "192.0.0.192/32"        # Oracle Cloud Classic
+    decision: deny
+    message: "Cloud metadata endpoints are blocked by the base policy."
+
+  - name: base-deny-azure-wireserver
+    description: Azure WireServer HTTP ports. Port 53 on the same address is Azure's DNS resolver and stays open.
+    cidrs:
+      - "168.63.129.16/32"
+    ports: [80, 32526]
+    decision: deny
+    message: "Azure WireServer is blocked by the base policy."
+
+  - name: base-deny-cloud-metadata-hostnames
+    description: Metadata hostnames, matched before DNS resolution
+    domains:
+      - "metadata.google.internal"
+      - "metadata.google.internal."
+      - "metadata"
+      - "instance-data"
+      - "instance-data.ec2.internal"
+      - "metadata.tencentyun.com"
+      - "metadata.platformequinix.com"
+      - "metadata.packet.net"
+    decision: deny
+    message: "Cloud metadata endpoints are blocked by the base policy."
+
+# Commands without a '/' match the executable name. Shell `-c` scripts and
+# wrappers such as env, nice and nohup are checked too.
+command_rules:
+  - name: base-deny-privilege-escalation
+    description: setuid and polkit escalation, account-changing helpers, and namespace or root changes
+    commands:
+      - sudo
+      - sudoedit
+      - su
+      - doas
+      - pkexec
+      - run0
+      - ksu
+      - newgrp
+      - chsh
+      - chfn
+      - passwd
+      - gpasswd
+      - unix_chkpwd
+      - polkit-agent-helper-1
+      - userhelper
+      - consolehelper
+      - kdesu
+      - kdesudo
+      - gksu
+      - gksudo
+      - lxqt-sudo
+      - machinectl
+      - nsenter
+      - chroot
+      - setcap
+      - capsh
+    decision: deny
+    message: "Privilege escalation is blocked by the base policy."
+
+  - name: base-deny-out-of-sandbox-schedulers
+    description: Run code under the user's service manager or job schedulers
+    commands:
+      - systemd-run
+      - crontab
+      - at
+      - batch
+    decision: deny
+    message: "Scheduling work outside the sandbox is blocked by the base policy."
+
+  - name: base-deny-systemctl-mutation
+    description: systemctl verbs that start, install or reconfigure units
+    commands: [systemctl]
+    args_patterns:
+      - "(^|\\s)(start|restart|try-restart|reload-or-restart|try-reload-or-restart|enable|reenable|link|edit|preset|preset-all|revert|add-wants|add-requires|set-property|set-environment|unset-environment|import-environment|daemon-reload|daemon-reexec|unmask|isolate)(\\s|$)"
+    decision: deny
+    message: "Starting or installing systemd units is blocked by the base policy."
+
+  - name: base-deny-loginctl-linger
+    description: Lingering keeps user services running after logout and starts them at boot
+    commands: [loginctl]
+    args_patterns:
+      - "(^|\\s)enable-linger(\\s|$)"
+    decision: deny
+    message: "Enabling lingering is blocked by the base policy."
+
+  - name: base-deny-direnv-allow
+    description: An allowed .envrc runs in the user's shell outside the sandbox
+    commands: [direnv]
+    args_patterns:
+      - "(^|\\s)(allow|permit|grant)(\\s|$)"
+    decision: deny
+    message: "direnv allow is blocked by the base policy."
+
+unix_socket_rules:
+  - name: base-deny-systemd-private-sockets
+    description: systemd manager private sockets, which can start units outside the sandbox
+    paths:
+      - "/run/user/*/systemd/private"
+      - "/run/systemd/private"
+    operations: [connect, sendto]
+    decision: deny
+    message: "systemd manager access is blocked by the base policy."

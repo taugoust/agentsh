@@ -9,6 +9,9 @@ description: |
   other commands require approval, file writes are denied outside
   workspace, and all network access is blocked.
 
+# Rules from base.yaml are checked before the rules below.
+extends: base
+
 # =============================================================================
 # COMMAND RULES
 # =============================================================================

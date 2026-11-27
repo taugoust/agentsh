@@ -12,6 +12,9 @@ description: |
   Standard policy for AI agent execution. Allows workspace operations,
   common package registries, and blocks sensitive system paths.
 
+# Rules from base.yaml are checked before the rules below.
+extends: base
+
 # =============================================================================
 # FILE OPERATION RULES
 # =============================================================================
@@ -25,12 +28,8 @@ file_rules:
   # ---------------------------------------------------------------------------
 
   - name: deny-shell-rc
-    description: Block modifications to shell config files
+    description: Block modifications to root's shell config files
     paths:
-      - "${HOME}/.bashrc"
-      - "${HOME}/.bash_profile"
-      - "${HOME}/.profile"
-      - "${HOME}/.zshrc"
       - "/root/.bashrc"
       - "/root/.bash_profile"
       - "/root/.profile"
@@ -55,28 +54,16 @@ file_rules:
     decision: deny
 
   - name: deny-aws-credentials
-    description: Block AWS credentials
+    description: Block root's AWS credentials
     paths:
-      - "${HOME}/.aws/**"
       - "/root/.aws/**"
     operations:
       - "*"
     decision: deny
 
-  - name: deny-cloud-credentials
-    description: Block cloud provider credentials
-    paths:
-      - "${HOME}/.gcloud/**"
-      - "${HOME}/.azure/**"
-      - "${HOME}/.config/gcloud/**"
-    operations:
-      - "*"
-    decision: deny
-
   - name: deny-git-credentials
-    description: Block git credentials in home directory
+    description: Block reading the global git config, which can hold credentials
     paths:
-      - "${HOME}/.git-credentials"
       - "${HOME}/.gitconfig"
     operations:
       - "*"
@@ -255,25 +242,10 @@ file_rules:
     decision: deny
 
   - name: deny-passwd-shadow
-    description: Block password files
+    description: Block account files
     paths:
       - "/etc/passwd"
-      - "/etc/shadow"
       - "/etc/group"
-      - "/etc/gshadow"
-    operations:
-      - "*"
-    decision: deny
-    
-  - name: deny-proc-sensitive
-    description: Block reading sensitive /proc entries (environ, mem, kcore)
-    paths:
-      - "/proc/self/environ"
-      - "/proc/thread-self/environ"
-      - "/proc/*/environ"
-      - "/proc/*/task/*/environ"
-      - "/proc/*/mem"
-      - "/proc/kcore"
     operations:
       - "*"
     decision: deny
@@ -485,13 +457,6 @@ network_rules:
       - "169.254.0.0/16"   # Link-local
       - "fc00::/7"          # IPv6 private
       - "fe80::/10"         # IPv6 link-local
-    decision: deny
-    
-  - name: block-metadata-services
-    description: Block cloud metadata services
-    cidrs:
-      - "169.254.169.254/32"  # AWS, GCP, Azure metadata
-      - "100.100.100.200/32"  # Alibaba metadata
     decision: deny
 
   # ---------------------------------------------------------------------------

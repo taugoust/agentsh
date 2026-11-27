@@ -7,6 +7,9 @@ description: |
   Safe policy for local development. Allows project read/write,
   approves destructive operations, and blocks credential access.
 
+# Rules from base.yaml are checked before the rules below.
+extends: base
+
 # =============================================================================
 # FILE OPERATION RULES
 # =============================================================================
@@ -191,29 +194,9 @@ file_rules:
     decision: deny
 
   - name: deny-aws-credentials
-    description: Block AWS credentials
+    description: Block root's AWS credentials
     paths:
-      - "${HOME}/.aws/**"
       - "/root/.aws/**"
-    operations:
-      - "*"
-    decision: deny
-
-  - name: deny-cloud-credentials
-    description: Block cloud provider credentials
-    paths:
-      - "${HOME}/.gcloud/**"
-      - "${HOME}/.azure/**"
-      - "${HOME}/.config/gcloud/**"
-    operations:
-      - "*"
-    decision: deny
-
-  - name: deny-git-credentials
-    description: Block git credentials
-    paths:
-      - "${HOME}/.git-credentials"
-      - "**/.netrc"
     operations:
       - "*"
     decision: deny
@@ -311,16 +294,6 @@ network_rules:
       - "unpkg.com"
     ports: [443, 80]
     decision: allow
-
-  # ---------------------------------------------------------------------------
-  # Blocked networks
-  # ---------------------------------------------------------------------------
-
-  - name: block-metadata-services
-    description: Block cloud metadata services
-    cidrs:
-      - "169.254.169.254/32"
-    decision: deny
 
   # ---------------------------------------------------------------------------
   # Require approval for other destinations

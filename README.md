@@ -639,9 +639,11 @@ You already have a default policy (`configs/policies/default.yaml`). These opini
 
 * **[`policies/agent-sandbox.yaml`](configs/policies/agent-sandbox.yaml)**: "agent runs unknown code" mode
   * default deny + explicit allowlist
-  * approve any credential/path access
+  * approve credential access the base policy does not deny
   * redirect network tool usage to internal proxies/mirrors
   * soft-delete destructive operations for easy recovery
+
+These packs extend [`policies/base.yaml`](configs/policies/base.yaml), which denies credential files, persistence paths, cloud metadata endpoints and privilege escalation. Use `extends: base` to build your own policies on it. See [Recommended Base Policy](docs/operations/policies.md#recommended-base-policy).
 
 ---
 

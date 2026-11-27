@@ -31,6 +31,10 @@
       treefmtEval = pkgs: treefmt-nix.lib.evalModule pkgs ./nix/treefmt.nix;
     in
     {
+      # The recommended base policy, for consumers that install it next to their
+      # own policies and use `extends: base`.
+      lib.policies.base = ./configs/policies/base.yaml;
+
       packages = forAllSystems (
         pkgs:
         let
@@ -55,7 +59,7 @@
             ]
           );
 
-          agentsh = pkgs.buildGoModule {
+          agentsh = pkgs.buildGoModule (finalAttrs: {
             pname = "agentsh";
             inherit version;
 
@@ -183,6 +187,9 @@
                 --suffix PATH : "$out/bin:${runtimePath}"
             '';
 
+            # Installed policies for consumers that place them next to their own.
+            passthru.policies.base = "${finalAttrs.finalPackage}/share/agentsh/configs/policies/base.yaml";
+
             meta = {
               description = "Policy-enforced execution gateway for AI agents";
               homepage = "https://github.com/canyonroad/agentsh";
@@ -190,7 +197,7 @@
               mainProgram = "agentsh";
               platforms = lib.platforms.linux;
             };
-          };
+          });
         in
         {
           default = agentsh;
@@ -253,6 +260,33 @@
                 })
               ];
             };
+          evalPoliciesModule =
+            policies:
+            nixpkgs.lib.nixosSystem {
+              system = stdenv.hostPlatform.system;
+              modules = [
+                self.nixosModules.default
+                (_: {
+                  system.stateVersion = "25.11";
+                  services.agentsh = {
+                    enable = true;
+                    package = moduleTestPackage;
+                    inherit policies;
+                  };
+                })
+              ];
+            };
+          policyDirOf =
+            policies: (evalPoliciesModule policies).config.environment.etc."agentsh/policies".source;
+          consumerPolicies = pkgs.writeTextDir "team.yaml" ''
+            version: 1
+            name: team
+            extends: base
+          '';
+          consumerPoliciesWithBase = pkgs.runCommand "agentsh-consumer-policies-with-base" { } ''
+            mkdir -p "$out"
+            printf 'version: 1\nname: own-base\n' > "$out/base.yaml"
+          '';
           defaultSessionRuntimeModule = evalSessionRuntimeModule null null;
           customSessionRuntimeModule = evalSessionRuntimeModule 33554432 "45m";
           compositionEnabledModule = nixpkgs.lib.nixosSystem {
@@ -805,6 +839,33 @@
               go test ./internal/config -run '^TestSubagents_'
               go test -race ./internal/netmonitor -run '^(TestStartProxy|TestProxy|TestHandleConnect|TestCheckConnectNetwork)'
               go test -race ./internal/api -run '^(TestChildExecution(Lanes|Capability)_|TestKillCommand_KillsRunningExec$|TestNetworkCleanupFailureCannotBeOverwrittenByInactiveSuccess$)'
+              runHook postCheck
+            '';
+          });
+
+          nixos-policies-module =
+            assert
+              policyDirOf {
+                source = consumerPolicies;
+                base = null;
+              } == consumerPolicies;
+            pkgs.runCommand "agentsh-nixos-policies-module-test" { } ''
+              set -euo pipefail
+              dir=${policyDirOf { source = consumerPolicies; }}
+              test -e "$dir/team.yaml"
+              cmp "$dir/base.yaml" ${./configs/policies/base.yaml}
+              own=${policyDirOf { source = consumerPoliciesWithBase; }}
+              grep -qx 'name: own-base' "$own/base.yaml"
+              mkdir -p "$out"
+              touch "$out/passed"
+            '';
+
+          policy-tests = go-unit-tests.overrideAttrs (_: {
+            pname = "agentsh-policy-tests";
+            checkPhase = ''
+              runHook preCheck
+              go test -count=1 ./internal/policy/...
+              go test -count=1 ./internal/api -run '^TestDefaultPolicyLoader'
               runHook postCheck
             '';
           });
