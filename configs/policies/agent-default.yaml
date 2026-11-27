@@ -107,7 +107,7 @@ command_rules:
     message: "System administration command blocked."
 
   - name: deny-privilege-escalation
-    description: Block user namespace creation (the base policy covers sudo, su, chroot, nsenter)
+    description: Block user namespace creation. The base policy asks before sudo, su, chroot and nsenter.
     commands:
       - unshare
     decision: deny

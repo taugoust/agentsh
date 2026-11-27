@@ -174,7 +174,7 @@ func TestAgentPolicies_DefaultRuleDetails(t *testing.T) {
 	assert.Equal(t, "allow", p.FileRules[1].Decision)
 	assert.Contains(t, p.FileRules[1].Paths, "${PROJECT_ROOT}/**")
 
-	// SSH files the base leaves readable require approval
+	// Other SSH files, such as config and public keys, require approval
 	assert.Equal(t, "approve-ssh-keys", p.FileRules[8].Name)
 	assert.Equal(t, "approve", p.FileRules[8].Decision)
 
@@ -402,18 +402,18 @@ func TestAgentDefault_CommandDecisions(t *testing.T) {
 
 		// Denied commands
 		{
-			name:     "sudo denied",
+			name:     "sudo needs approval",
 			cmd:      "sudo",
 			args:     []string{"rm", "-rf", "/"},
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-privilege-escalation",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-privilege-escalation",
 		},
 		{
-			name:     "su denied",
+			name:     "su needs approval",
 			cmd:      "su",
 			args:     []string{"-"},
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-privilege-escalation",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-privilege-escalation",
 		},
 		{
 			name:     "unshare denied",
@@ -616,13 +616,20 @@ func TestAgentDefault_FileDecisions(t *testing.T) {
 			wantRule: "allow-etc-read",
 		},
 
-		// Credentials are denied by the base policy
+		// The base policy asks before credential access
 		{
 			name:     "read SSH private key",
 			path:     "/home/user/.ssh/id_rsa",
 			op:       "read",
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-ssh-private-keys",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-ssh-private-keys",
+		},
+		{
+			name:     "read SSH public key (approval required)",
+			path:     "/home/user/.ssh/id_rsa.pub",
+			op:       "read",
+			wantDec:  types.DecisionApprove,
+			wantRule: "approve-ssh-keys",
 		},
 		{
 			name:     "read SSH config (approval required)",
@@ -635,29 +642,29 @@ func TestAgentDefault_FileDecisions(t *testing.T) {
 			name:     "read AWS credentials",
 			path:     "/home/user/.aws/credentials",
 			op:       "read",
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-credential-stores",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-credential-stores",
 		},
 		{
 			name:     "read kube config",
 			path:     "/home/user/.kube/config",
 			op:       "read",
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-credential-stores",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-credential-stores",
 		},
 		{
 			name:     "read git-credentials",
 			path:     "/home/user/.git-credentials",
 			op:       "read",
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-credential-stores",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-credential-stores",
 		},
 		{
 			name:     "read .netrc in project",
 			path:     "/home/user/project/.netrc",
 			op:       "read",
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-credential-stores",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-credential-stores",
 		},
 		{
 			name:     "read .env in project (approval required)",
@@ -674,27 +681,27 @@ func TestAgentDefault_FileDecisions(t *testing.T) {
 			wantRule: "approve-env-files",
 		},
 
-		// Denied paths
+		// Sensitive system paths need approval
 		{
-			name:     "read /etc/shadow denied",
+			name:     "read /etc/shadow needs approval",
 			path:     "/etc/shadow",
 			op:       "read",
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-shadow-files",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-shadow-files",
 		},
 		{
-			name:     "read /etc/gshadow denied",
+			name:     "read /etc/gshadow needs approval",
 			path:     "/etc/gshadow",
 			op:       "open",
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-shadow-files",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-shadow-files",
 		},
 		{
-			name:     "read /proc/self/environ denied (secrets)",
+			name:     "read /proc/self/environ needs approval (secrets)",
 			path:     "/proc/self/environ",
 			op:       "read",
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-proc-secrets",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-proc-secrets",
 		},
 		{
 			name:     "read /sys allowed (reads not blocked)",
@@ -777,11 +784,11 @@ func TestAgentDefault_FileDecisions(t *testing.T) {
 
 		// /proc read/write behavior after narrowing
 		{
-			name:     "open /proc/self/environ denied (secrets)",
+			name:     "open /proc/self/environ needs approval (secrets)",
 			path:     "/proc/self/environ",
 			op:       "open",
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-proc-secrets",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-proc-secrets",
 		},
 		{
 			name:     "read /proc/self/status allowed",
@@ -984,18 +991,18 @@ func TestAgentDefault_NetworkIPDecisions(t *testing.T) {
 			wantRule: "allow-localhost",
 		},
 		{
-			name:     "cloud metadata denied",
+			name:     "cloud metadata needs approval",
 			ip:       "169.254.169.254",
 			port:     80,
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-cloud-metadata-ips",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-cloud-metadata-ips",
 		},
 		{
-			name:     "Alibaba metadata denied",
+			name:     "Alibaba metadata needs approval",
 			ip:       "100.100.100.200",
 			port:     80,
-			wantDec:  types.DecisionDeny,
-			wantRule: "base-deny-cloud-metadata-ips",
+			wantDec:  types.DecisionApprove,
+			wantRule: "base-cloud-metadata-ips",
 		},
 		{
 			name:     "private network 10.x denied",

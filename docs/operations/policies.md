@@ -220,20 +220,33 @@ or terminal deny, or at the end.
 ## Recommended Base Policy
 
 `configs/policies/base.yaml` is a base policy for other policies to extend.
-It denies:
+It only has approve rules. It asks for approval before:
 
-- credentials: SSH private keys, cloud CLI, Kubernetes, registry,
+- access to credentials: SSH private keys, cloud CLI, Kubernetes, registry,
   password-manager and publishing credentials, `.netrc`, GnuPG secret keys,
-  `/etc/shadow`, and `/proc/*/environ`, `/proc/*/mem` and `/proc/kcore`;
+  `/etc/shadow` and `/etc/gshadow`, and `/proc/*/environ`, `/proc/*/mem`
+  and `/proc/kcore`;
 - writes to persistence paths: shell profiles, `.envrc` files and direnv's
   allow list, git hooks, the global git config and the opened project's
   `.git/config`, `~/.ssh` access files, systemd user units, autostart
   entries, cron and at;
-- cloud metadata endpoints (AWS, GCP, Azure, Alibaba and others);
+- connections to cloud metadata endpoints (AWS, GCP, Azure, Alibaba and
+  others);
 - privilege escalation (`sudo`, `su`, `doas`, `pkexec`, `run0`, `nsenter`,
   `chroot` and similar), `systemd-run`, `crontab`, `at`, mutating
   `systemctl` verbs, `loginctl enable-linger`, `direnv allow`, and
   connections to the systemd manager's private sockets.
+
+Its rules are named `base-*` and are checked first. An extending policy
+can't change them, so a deny in the base could never be relaxed. Approve
+keeps the user in the loop instead. It also means an extending policy can't
+turn these approvals into allows or denies.
+
+Approvals only prompt when `approvals.enabled` is set in the server config.
+With approvals off, approve rules allow the operation and log it. With
+approvals on, a request nobody answers is denied after `approvals.timeout`
+(5m by default). Unix socket checks can't wait for an answer, so the systemd socket rule refuses
+the connection when approvals are on.
 
 It has no allow rules, so on its own it denies everything except file
 reads. Extend it instead:
@@ -244,12 +257,11 @@ name: team
 extends: base
 ```
 
-Its rules are named `base-*` and are checked first, so what it denies stays
-denied. Don't copy its rules into your policy. These shipped policies extend
-it: `default`, `dev-safe`, `ci-strict`, `agent-default`, `agent-sandbox`,
-`agent-strict` and `bench-realistic`. The project `.git/config` rule also
-blocks `git config`, `git remote add` and `git push -u` inside the opened
-project.
+Don't copy its rules into your policy. These shipped policies extend it:
+`default`, `dev-safe`, `agent-default`, `agent-sandbox` and `agent-strict`.
+`ci-strict` and `bench-realistic` don't, because they run without anyone to
+answer approvals. The project `.git/config` rule also covers `git config`,
+`git remote add` and `git push -u` inside the opened project.
 
 `base.yaml` has to be in the same directory as the policies that extend it.
 The package installs it as `share/agentsh/configs/policies/base.yaml`. The

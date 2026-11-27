@@ -9,9 +9,6 @@ description: |
   git hard reset), and a comprehensive allow list. Full audit logging enabled.
   Mirrors agent-default patterns without approve decisions (which would hang).
 
-# Rules from base.yaml are checked before the rules below.
-extends: base
-
 # =============================================================================
 # COMMAND RULES
 # =============================================================================
@@ -89,8 +86,12 @@ command_rules:
     message: "System administration command blocked."
 
   - name: deny-privilege-escalation
-    description: Block user namespace creation (the base policy covers sudo, su, chroot, nsenter)
+    description: Block privilege escalation
     commands:
+      - sudo
+      - su
+      - chroot
+      - nsenter
       - unshare
     decision: deny
     message: "Privilege escalation blocked."
@@ -226,6 +227,16 @@ file_rules:
       - "*"
     decision: deny
 
+  - name: deny-cloud-credentials
+    description: Block cloud credentials
+    paths:
+      - "${HOME}/.aws/**"
+      - "${HOME}/.gcloud/**"
+      - "${HOME}/.azure/**"
+    operations:
+      - "*"
+    decision: deny
+
   - name: deny-proc-sys
     description: Block /proc and /sys
     paths:
@@ -323,6 +334,12 @@ network_rules:
       - "127.0.0.1/32"
       - "::1/128"
     decision: allow
+
+  - name: deny-metadata-services
+    description: Block cloud metadata services
+    cidrs:
+      - "169.254.169.254/32"
+    decision: deny
 
   - name: deny-private-networks
     description: Block private/internal networks

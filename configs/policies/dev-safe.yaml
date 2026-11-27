@@ -5,7 +5,7 @@ version: 1
 name: dev-safe
 description: |
   Safe policy for local development. Allows project read/write,
-  approves destructive operations, and blocks credential access.
+  approves destructive operations and credential access.
 
 # Rules from base.yaml are checked before the rules below.
 extends: base

@@ -5,9 +5,8 @@ version: 1
 name: agent-sandbox
 description: |
   High-security sandbox for AI agents running unknown code.
-  Default deny with explicit allowlist, approval for credential access the
-  base policy does not already deny, redirect network tools to internal
-  proxies, soft-delete for recovery.
+  Default deny with explicit allowlist, approval for any credential access,
+  redirect network tools to internal proxies, soft-delete for recovery.
 
 # Rules from base.yaml are checked before the rules below.
 extends: base
@@ -426,7 +425,7 @@ command_rules:
     decision: deny
 
   - name: block-shell-escape
-    description: Block user namespace creation (the base policy covers sudo, su, chroot, nsenter)
+    description: Block user namespace creation. The base policy asks before sudo, su, chroot and nsenter.
     commands:
       - unshare
     decision: deny

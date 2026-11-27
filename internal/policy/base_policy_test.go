@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -35,13 +36,14 @@ func TestShippedPoliciesLoadAndCompile(t *testing.T) {
 	}
 }
 
-// TestBasePolicyIsDenyOnly checks that base.yaml only takes access away and
-// that its rule names cannot clash with extending policies.
-func TestBasePolicyIsDenyOnly(t *testing.T) {
+// TestBasePolicyIsApproveOnly checks that base.yaml only asks for approval,
+// that every rule has a message and a timeout, and that its rule names don't
+// clash with extending policies.
+func TestBasePolicyIsApproveOnly(t *testing.T) {
 	p, err := LoadFromFile(filepath.Join(findProjectRoot(t), "configs", "policies", "base.yaml"))
 	require.NoError(t, err)
 	require.Empty(t, p.Extends)
-	check := func(family, name, decision string) {
+	check := func(family, name, decision, message string, timeout time.Duration) {
 		t.Helper()
 		require.True(
 			t,
@@ -50,19 +52,21 @@ func TestBasePolicyIsDenyOnly(t *testing.T) {
 			family,
 			name,
 		)
-		require.Equal(t, "deny", decision, "%s rule %q", family, name)
+		require.Equal(t, "approve", decision, "%s rule %q", family, name)
+		require.NotEmpty(t, message, "%s rule %q needs a message", family, name)
+		require.Positive(t, timeout, "%s rule %q needs a timeout", family, name)
 	}
 	for _, r := range p.FileRules {
-		check("file", r.Name, r.Decision)
+		check("file", r.Name, r.Decision, r.Message, r.Timeout.Duration)
 	}
 	for _, r := range p.NetworkRules {
-		check("network", r.Name, r.Decision)
+		check("network", r.Name, r.Decision, r.Message, r.Timeout.Duration)
 	}
 	for _, r := range p.CommandRules {
-		check("command", r.Name, r.Decision)
+		check("command", r.Name, r.Decision, r.Message, r.Timeout.Duration)
 	}
 	for _, r := range p.UnixRules {
-		check("unix socket", r.Name, r.Decision)
+		check("unix socket", r.Name, r.Decision, r.Message, r.Timeout.Duration)
 	}
 	require.Empty(t, p.SignalRules)
 	require.Empty(t, p.RegistryRules)
@@ -71,7 +75,7 @@ func TestBasePolicyIsDenyOnly(t *testing.T) {
 }
 
 // TestBasePolicyWinsOverExtendingAllow extends base with a policy that allows
-// everything. Each case must end in a base deny or in the child's allow.
+// everything. Each case must end in a base approval or in the child's allow.
 func TestBasePolicyWinsOverExtendingAllow(t *testing.T) {
 	dir := t.TempDir()
 	base, err := os.ReadFile(filepath.Join(findProjectRoot(t), "configs", "policies", "base.yaml"))
@@ -105,11 +109,11 @@ unix_socket_rules:
 	e, err := NewEngineWithVariables(p, true, true, basePolicyTestVars)
 	require.NoError(t, err)
 
-	check := func(what string, d Decision, wantDeny bool) {
+	check := func(what string, d Decision, wantApprove bool) {
 		t.Helper()
-		if wantDeny {
-			if !strings.HasPrefix(d.Rule, "base-") || d.EffectiveDecision != "deny" {
-				t.Errorf("%s = %s by %q; want a base deny", what, d.EffectiveDecision, d.Rule)
+		if wantApprove {
+			if !strings.HasPrefix(d.Rule, "base-") || d.EffectiveDecision != "approve" {
+				t.Errorf("%s = %s by %q; want a base approval", what, d.EffectiveDecision, d.Rule)
 			}
 		} else if !strings.HasPrefix(d.Rule, "allow-all-") || d.EffectiveDecision != "allow" {
 			t.Errorf("%s = %s by %q; want the child's allow", what, d.EffectiveDecision, d.Rule)
@@ -118,11 +122,15 @@ unix_socket_rules:
 
 	files := []struct {
 		path, op string
-		deny     bool
+		approve  bool
 	}{
 		// Credentials
 		{"/home/u/.ssh/id_ed25519", "open", true},
-		{"/home/u/.ssh/id_ed25519.pub", "open", true},
+		{"/home/u/.ssh/id_ed25519.pub", "open", false},
+		{"/home/u/.ssh/id_rsa", "open", true},
+		{"/home/u/.ssh/id_ecdsa_sk", "open", true},
+		{"/home/u/.ssh/id_rsa.pub", "open", false},
+		{"/home/u/.ssh/id_ed25519_sk.pub", "open", false},
 		{"/home/u/.ssh/deploy.pem", "read", true},
 		{"/home/u/.ssh/known_hosts", "open", false},
 		{"/home/u/.git-credentials", "open", true},
@@ -140,7 +148,8 @@ unix_socket_rules:
 		{"/proc/kcore", "open", true},
 		{"/proc/self/status", "open", false},
 		{"/etc/shadow", "open", true},
-		// Persistence: writes denied, reads allowed
+		{"/etc/gshadow-", "open", true},
+		// Persistence: writes need approval, reads allowed
 		{"/home/u/.bashrc", "write", true},
 		{"/home/u/.bashrc", "open", false},
 		{"/home/u/.profile", "rename", true},
@@ -177,13 +186,13 @@ unix_socket_rules:
 		{"/work/proj/src/main.go", "delete", false},
 	}
 	for _, c := range files {
-		check("CheckFile("+c.path+", "+c.op+")", e.CheckFile(c.path, c.op), c.deny)
+		check("CheckFile("+c.path+", "+c.op+")", e.CheckFile(c.path, c.op), c.approve)
 	}
 
 	cmds := []struct {
-		cmd  string
-		args []string
-		deny bool
+		cmd     string
+		args    []string
+		approve bool
 	}{
 		// Privilege escalation and out-of-sandbox execution
 		{"sudo", []string{"ls"}, true},
@@ -206,14 +215,14 @@ unix_socket_rules:
 		check(
 			"CheckCommand("+c.cmd+" "+strings.Join(c.args, " ")+")",
 			e.CheckCommand(c.cmd, c.args),
-			c.deny,
+			c.approve,
 		)
 	}
 
 	nets := []struct {
 		domain, ip string
 		port       int
-		deny       bool
+		approve    bool
 	}{
 		// Cloud metadata
 		{"", "169.254.169.254", 80, true},
@@ -235,13 +244,13 @@ unix_socket_rules:
 		check(
 			"CheckNetworkIP("+c.domain+", "+c.ip+")",
 			e.CheckNetworkIP(c.domain, ip, c.port),
-			c.deny,
+			c.approve,
 		)
 	}
 
 	socks := []struct {
-		path string
-		deny bool
+		path    string
+		approve bool
 	}{
 		{"/run/user/1000/systemd/private", true},
 		{"/run/systemd/private", true},
@@ -250,6 +259,6 @@ unix_socket_rules:
 		{"/run/user/1000/gnupg/S.gpg-agent", false},
 	}
 	for _, c := range socks {
-		check("CheckUnixSocket("+c.path+")", e.CheckUnixSocket(c.path, "connect"), c.deny)
+		check("CheckUnixSocket("+c.path+")", e.CheckUnixSocket(c.path, "connect"), c.approve)
 	}
 }
